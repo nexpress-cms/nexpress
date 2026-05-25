@@ -178,15 +178,15 @@ export function MediaLibrary() {
   const rootFolders = useMemo(() => folders.filter((folder) => !folder.parentId), [folders]);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-      <Card className="h-fit">
+    <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
+      <Card className="h-fit min-w-0">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FolderOpen className="h-4 w-4" />
-            Folders
+          <CardTitle className="flex min-w-0 items-center gap-2">
+            <FolderOpen className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 break-words">Folders</span>
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0">
           <ScrollArea className="h-[540px] pr-4">
             <div className="space-y-2">
               <SidebarButton
@@ -215,25 +215,25 @@ export function MediaLibrary() {
         </CardContent>
       </Card>
 
-      <div className="space-y-6">
-        <Card>
-          <CardContent className="flex flex-col gap-4 p-6">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+      <div className="min-w-0 space-y-6">
+        <Card className="min-w-0">
+          <CardContent className="flex min-w-0 flex-col gap-4 p-6">
+            <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="min-w-0 space-y-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-muted-foreground">
                   <button
                     type="button"
-                    className="transition-colors hover:text-foreground"
+                    className="break-words transition-colors hover:text-foreground"
                     onClick={() => setCurrentFolder(undefined)}
                   >
                     Media
                   </button>
                   {breadcrumbs.map((folder) => (
-                    <div key={folder.id} className="flex items-center gap-2">
-                      <span>/</span>
+                    <div key={folder.id} className="flex min-w-0 items-center gap-2">
+                      <span className="shrink-0">/</span>
                       <button
                         type="button"
-                        className="transition-colors hover:text-foreground"
+                        className="min-w-0 break-all transition-colors hover:text-foreground"
                         onClick={() => setCurrentFolder(folder.id)}
                       >
                         {folder.name}
@@ -242,17 +242,17 @@ export function MediaLibrary() {
                   ))}
                 </div>
                 <div>
-                  <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
+                  <h1 className="break-words text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
                     Media
                   </h1>
-                  <p className="mt-1 text-[13.5px] text-neutral-500 dark:text-neutral-400">
+                  <p className="mt-1 break-words text-[13.5px] text-neutral-500 dark:text-neutral-400">
                     Browse assets, search across files, and manage folders without leaving the
                     admin.
                   </p>
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:flex xl:flex-wrap xl:items-center">
+              <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:flex xl:flex-wrap xl:items-center">
                 <div className="relative min-w-0 xl:w-[280px] xl:flex-none">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
                   <Input
@@ -268,7 +268,7 @@ export function MediaLibrary() {
                   control instead of a select to keep it inline with
                   the existing view-mode toggle below.
                 */}
-                <div className="flex w-full items-center rounded-lg border border-border/70 bg-background p-1 text-sm sm:w-auto">
+                <div className="flex min-w-0 w-full items-center rounded-lg border border-border/70 bg-background p-1 text-sm sm:w-auto">
                   {(
                     [
                       { value: "all", label: "All" },
@@ -280,7 +280,7 @@ export function MediaLibrary() {
                       key={option.value}
                       type="button"
                       className={cn(
-                        "flex-1 rounded-md px-3 py-2 transition-colors sm:flex-none",
+                        "min-w-0 flex-1 rounded-md px-3 py-2 transition-colors sm:flex-none",
                         uploaderFilter === option.value
                           ? "bg-foreground text-background"
                           : "text-muted-foreground hover:text-foreground",
@@ -292,7 +292,7 @@ export function MediaLibrary() {
                   ))}
                 </div>
 
-                <div className="flex w-full items-center rounded-lg border border-border/70 bg-background p-1 sm:w-auto">
+                <div className="flex min-w-0 w-full items-center rounded-lg border border-border/70 bg-background p-1 sm:w-auto">
                   <button
                     type="button"
                     className={cn(
@@ -326,7 +326,7 @@ export function MediaLibrary() {
                       Upload
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="max-w-3xl">
+                  <DialogContent className="min-w-0 max-w-3xl">
                     <MediaUploadZone
                       folderId={currentFolder}
                       onUploadComplete={() => {
@@ -340,8 +340,8 @@ export function MediaLibrary() {
               </div>
             </div>
 
-            <div className="grid gap-3 rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm sm:flex sm:items-center sm:justify-between">
-              <div className="text-muted-foreground">
+            <div className="grid min-w-0 gap-3 rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm sm:flex sm:items-center sm:justify-between">
+              <div className="min-w-0 break-words text-muted-foreground">
                 {selectedItems.length > 0
                   ? `${selectedItems.length} item${selectedItems.length === 1 ? "" : "s"} selected`
                   : `${media.length} item${media.length === 1 ? "" : "s"} shown`}
@@ -358,7 +358,7 @@ export function MediaLibrary() {
             </div>
 
             {error ? (
-              <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
                 {error}
               </div>
             ) : null}
@@ -398,7 +398,7 @@ function GridView({
 }) {
   if (loading) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 8 }).map((_, index) => (
           <div
             key={`media-grid-skeleton-${index}`}
@@ -446,9 +446,9 @@ function GridView({
               </div>
               <MediaThumb item={item} />
             </div>
-            <div className="space-y-1 p-4">
-              <p className="truncate font-medium text-foreground">{item.filename}</p>
-              <p className="text-sm text-muted-foreground">{formatBytes(item.size)}</p>
+            <div className="min-w-0 space-y-1 p-4">
+              <p className="break-words font-medium text-foreground">{item.filename}</p>
+              <p className="break-words text-sm text-muted-foreground">{formatBytes(item.size)}</p>
               {item.uploader ? <UploaderBadge uploader={item.uploader} /> : null}
             </div>
           </label>
@@ -530,7 +530,7 @@ function ListView({
           <label
             key={item.id}
             className={cn(
-              "grid cursor-pointer grid-cols-[auto_56px_minmax(0,1fr)] gap-3 rounded-xl border bg-background/80 p-3 transition-all",
+              "grid min-w-0 cursor-pointer grid-cols-[auto_56px_minmax(0,1fr)] gap-3 rounded-xl border bg-background/80 p-3 transition-all",
               selectedItems.includes(item.id)
                 ? "border-primary shadow-[0_0_0_1px_rgba(0,0,0,0.04)]"
                 : "border-border/70",
@@ -546,17 +546,17 @@ function ListView({
               <MediaThumb item={item} compact />
             </div>
             <div className="min-w-0 space-y-1">
-              <p className="truncate font-medium text-foreground">{item.filename}</p>
+              <p className="break-words font-medium text-foreground">{item.filename}</p>
               <p className="break-all text-xs text-muted-foreground">
                 {item.type || "file"} / {formatBytes(item.size)}
               </p>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 {item.uploader ? (
                   <UploaderBadge uploader={item.uploader} />
                 ) : (
                   <span className="italic">system</span>
                 )}
-                <span>{formatDate(item.createdAt)}</span>
+                <span className="break-words">{formatDate(item.createdAt)}</span>
               </div>
             </div>
           </label>
@@ -608,10 +608,14 @@ function DesktopListTable({
               </div>
             </div>
             <div className="flex min-w-0 items-center font-medium text-foreground">
-              <span className="truncate">{item.filename}</span>
+              <span className="break-words">{item.filename}</span>
             </div>
-            <div className="flex items-center text-muted-foreground">{item.type || "file"}</div>
-            <div className="flex items-center text-muted-foreground">{formatBytes(item.size)}</div>
+            <div className="flex min-w-0 items-center break-all text-muted-foreground">
+              {item.type || "file"}
+            </div>
+            <div className="flex min-w-0 items-center break-words text-muted-foreground">
+              {formatBytes(item.size)}
+            </div>
             <div className="flex min-w-0 items-center text-muted-foreground">
               {item.uploader ? (
                 <UploaderBadge uploader={item.uploader} />
@@ -619,7 +623,7 @@ function DesktopListTable({
                 <span className="text-xs italic">system</span>
               )}
             </div>
-            <div className="flex items-center text-muted-foreground">
+            <div className="flex min-w-0 items-center break-words text-muted-foreground">
               {formatDate(item.createdAt)}
             </div>
           </div>
@@ -655,7 +659,7 @@ function MediaThumb({ item, compact = false }: { item: MediaItem; compact?: bool
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="rounded-xl border border-dashed border-border/70 px-6 py-12 text-center text-sm text-muted-foreground">
+    <div className="break-words rounded-xl border border-dashed border-border/70 px-6 py-12 text-center text-sm text-muted-foreground">
       {message}
     </div>
   );
@@ -674,15 +678,15 @@ function SidebarButton({
     <button
       type="button"
       className={cn(
-        "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+        "flex min-w-0 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
         active
           ? "bg-foreground text-background"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
       onClick={onClick}
     >
-      <FolderOpen className="h-4 w-4" />
-      <span className="truncate">{label}</span>
+      <FolderOpen className="h-4 w-4 shrink-0" />
+      <span className="min-w-0 break-words">{label}</span>
     </button>
   );
 }
@@ -703,11 +707,11 @@ function FolderTree({
   const children = folders.filter((item) => item.parentId === folder.id);
 
   return (
-    <div className="space-y-1">
+    <div className="min-w-0 space-y-1">
       <button
         type="button"
         className={cn(
-          "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+          "flex min-w-0 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
           activeId === folder.id
             ? "bg-foreground text-background"
             : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -715,8 +719,8 @@ function FolderTree({
         style={{ paddingLeft: `${depth * 14 + 12}px` }}
         onClick={() => onSelect(folder.id)}
       >
-        <FolderOpen className="h-4 w-4" />
-        <span className="truncate">{folder.name}</span>
+        <FolderOpen className="h-4 w-4 shrink-0" />
+        <span className="min-w-0 break-words">{folder.name}</span>
       </button>
       {children.length > 0 ? (
         <div className="space-y-1">

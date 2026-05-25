@@ -37,11 +37,11 @@ export function MembersListView({
 }: MembersListViewProps) {
   const isFiltered = filterQuery.length > 0 || filterStatus.length > 0;
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title={
-          <span className="flex items-center gap-2.5">
-            Members
+          <span className="flex min-w-0 flex-wrap items-center gap-2.5">
+            <span className="min-w-0">Members</span>
             <Badge variant="secondary">{totalDocs}</Badge>
           </span>
         }
@@ -56,7 +56,7 @@ export function MembersListView({
       */}
       <form
         method="GET"
-        className="flex flex-wrap items-end gap-3 rounded-xl border border-neutral-200/80 bg-neutral-50/60 p-4 dark:border-neutral-800/80 dark:bg-neutral-900/40"
+        className="flex min-w-0 flex-wrap items-end gap-3 rounded-xl border border-neutral-200/80 bg-neutral-50/60 p-4 dark:border-neutral-800/80 dark:bg-neutral-900/40"
       >
         <div className="min-w-0 flex-1 space-y-1.5 sm:min-w-[200px]">
           <Label htmlFor="np-members-q">Search</Label>
@@ -72,13 +72,13 @@ export function MembersListView({
             />
           </div>
         </div>
-        <div className="w-full space-y-1.5 sm:w-auto">
+        <div className="min-w-0 w-full space-y-1.5 sm:w-auto">
           <Label htmlFor="np-members-status">Status</Label>
           <select
             id="np-members-status"
             name="status"
             defaultValue={filterStatus}
-            className="flex h-8 w-full rounded-lg border border-neutral-200/80 bg-white px-2.5 text-[13px] text-neutral-950 outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50 sm:w-auto"
+            className="flex h-8 w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-2.5 text-[13px] text-neutral-950 outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50 sm:w-auto"
           >
             <option value="">All</option>
             <option value="active">Active</option>
@@ -100,11 +100,11 @@ export function MembersListView({
         ) : null}
       </form>
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle>{isFiltered ? "Filtered members" : "All members"}</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0">
           <div className="space-y-3 md:hidden">
             {members.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">
@@ -121,11 +121,13 @@ export function MembersListView({
                       <Link
                         href={`/u/${member.handle}`}
                         target="_blank"
-                        className="block truncate font-medium underline-offset-4 hover:underline"
+                        className="block break-all font-medium underline-offset-4 hover:underline"
                       >
                         @{member.handle}
                       </Link>
-                      <p className="truncate text-sm text-muted-foreground">{member.displayName}</p>
+                      <p className="break-words text-sm text-muted-foreground">
+                        {member.displayName}
+                      </p>
                     </div>
                     <StatusBadge status={member.status} />
                   </div>
@@ -179,13 +181,13 @@ export function MembersListView({
                         <Link
                           href={`/u/${member.handle}`}
                           target="_blank"
-                          className="font-medium underline-offset-4 hover:underline"
+                          className="break-all font-medium underline-offset-4 hover:underline"
                         >
                           @{member.handle}
                         </Link>
                       </td>
-                      <td className="px-4 py-3 align-middle">{member.displayName}</td>
-                      <td className="px-4 py-3 align-middle text-muted-foreground">
+                      <td className="px-4 py-3 align-middle break-words">{member.displayName}</td>
+                      <td className="px-4 py-3 align-middle break-all text-muted-foreground">
                         {member.email}
                       </td>
                       <td className="px-4 py-3 align-middle">
