@@ -29,6 +29,12 @@ describe("deploy plan core", () => {
       }),
     );
     expect(json.commands).toContain("pnpm run doctor:prod -- --target vercel");
+    expect(json.commands).toEqual(
+      expect.arrayContaining(["pnpm db:migrate -- --status", "pnpm db:migrate"]),
+    );
+    expect(json.commands.indexOf("pnpm db:migrate -- --status")).toBeLessThan(
+      json.commands.indexOf("pnpm db:migrate"),
+    );
     expect(json.requiredEnv).toContainEqual({
       name: "DATABASE_URL",
       variable: "DATABASE_URL",
@@ -95,6 +101,7 @@ describe("deploy plan core", () => {
     expect(output).toContain("No --target supplied; inferred docker.");
     expect(output).toContain("Required env: 1/3 set");
     expect(output).toContain("[todo] NP_SECRET");
+    expect(output).toContain("pnpm db:migrate -- --status");
     expect(output).toContain("pnpm run doctor:prod -- --target docker");
     expect(output).not.toContain("Fit");
     expect(output).not.toMatch(/\x1b\[/);
