@@ -173,11 +173,11 @@ export function PendingQueueView() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title={
-          <span className="flex items-center gap-2.5">
-            Pending review
+          <span className="flex min-w-0 flex-wrap items-center gap-2.5">
+            <span className="min-w-0">Pending review</span>
             <Badge variant="secondary">{totalDocs}</Badge>
           </span>
         }
@@ -194,19 +194,19 @@ export function PendingQueueView() {
       />
 
       {error ? (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       ) : null}
       {message ? (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">
+        <div className="break-words rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">
           {message}
         </div>
       ) : null}
 
       {selected.size > 0 ? (
-        <div className="grid gap-3 rounded-xl border border-border/60 bg-muted/40 px-4 py-3 text-sm sm:flex sm:items-center sm:justify-between">
-          <span>
+        <div className="grid min-w-0 gap-3 rounded-xl border border-border/60 bg-muted/40 px-4 py-3 text-sm sm:flex sm:items-center sm:justify-between">
+          <span className="min-w-0 break-words">
             <strong>{selected.size}</strong> selected
           </span>
           <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
@@ -244,11 +244,11 @@ export function PendingQueueView() {
         </div>
       ) : null}
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle>Queue</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0">
           <div className="space-y-3 md:hidden">
             {loading ? (
               <div className="rounded-xl border border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">
@@ -276,7 +276,7 @@ export function PendingQueueView() {
                     <div className="min-w-0 flex-1 space-y-1">
                       <Link
                         href={`/admin/collections/${row.collectionSlug}/${row.id}`}
-                        className="block truncate font-medium underline-offset-4 hover:underline"
+                        className="block break-words font-medium underline-offset-4 hover:underline"
                       >
                         {row.title}
                       </Link>
@@ -295,16 +295,16 @@ export function PendingQueueView() {
                       <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
                         Author
                       </dt>
-                      <dd>
+                      <dd className="min-w-0 break-words">
                         {row.memberAuthor ? (
                           <>
                             <Link
                               href={`/admin/members/${row.memberAuthor.id}`}
-                              className="font-medium underline-offset-4 hover:underline"
+                              className="break-all font-medium underline-offset-4 hover:underline"
                             >
                               @{row.memberAuthor.handle}
                             </Link>
-                            <span className="ml-2 text-xs text-muted-foreground">
+                            <span className="ml-2 break-words text-xs text-muted-foreground">
                               {row.memberAuthor.displayName}
                             </span>
                           </>
@@ -394,12 +394,12 @@ export function PendingQueueView() {
                       <td className="px-4 py-3">
                         <Link
                           href={`/admin/collections/${row.collectionSlug}/${row.id}`}
-                          className="font-medium underline-offset-4 hover:underline"
+                          className="break-words font-medium underline-offset-4 hover:underline"
                         >
                           {row.title}
                         </Link>
                         {row.slug ? (
-                          <div className="mt-1 font-mono text-xs text-muted-foreground">
+                          <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
                             /{row.slug}
                           </div>
                         ) : null}
@@ -413,7 +413,7 @@ export function PendingQueueView() {
                         {row.memberAuthor ? (
                           <Link
                             href={`/admin/members/${row.memberAuthor.id}`}
-                            className="font-medium underline-offset-4 hover:underline"
+                            className="break-all font-medium underline-offset-4 hover:underline"
                           >
                             @{row.memberAuthor.handle}
                           </Link>
@@ -421,7 +421,7 @@ export function PendingQueueView() {
                           <span className="text-muted-foreground italic">deleted member</span>
                         )}
                         {row.memberAuthor ? (
-                          <div className="mt-1 text-xs text-muted-foreground">
+                          <div className="mt-1 break-words text-xs text-muted-foreground">
                             {row.memberAuthor.displayName}
                           </div>
                         ) : null}
@@ -461,14 +461,14 @@ export function PendingQueueView() {
 
       {actingOn ? (
         <Dialog open onOpenChange={(open) => !open && setActingOn(null)}>
-          <DialogContent>
+          <DialogContent className="min-w-0">
             <DialogHeader>
-              <DialogTitle>
+              <DialogTitle className="break-words">
                 {actingOn.verb === "approve" ? "Approve" : "Reject"}
                 {": "}
                 {actingOn.row.title}
               </DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="break-words">
                 {actingOn.verb === "approve"
                   ? "Publish this thread and credit the author's reputation. The doc becomes visible on the public site immediately."
                   : "Delete this thread. The author can re-create with a fresh submission. This action is recorded in the audit log."}

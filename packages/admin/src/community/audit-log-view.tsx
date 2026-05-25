@@ -102,22 +102,22 @@ export function AuditLogView() {
   const totalPages = totalDocs === 0 ? 0 : Math.ceil(totalDocs / PAGE_SIZE);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title={
-          <span className="flex items-center gap-2.5">
-            Audit log
+          <span className="flex min-w-0 flex-wrap items-center gap-2.5">
+            <span className="min-w-0">Audit log</span>
             <Badge variant="secondary">{totalDocs}</Badge>
           </span>
         }
         description="Append-only record of every moderation action — comment hide / restore / delete, member ban / unban, report file / resolve. Filter by target or actor when investigating an incident."
       />
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle>Filters</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0">
           <form
             className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4"
             onSubmit={(event) => {
@@ -203,7 +203,7 @@ export function AuditLogView() {
                 }
               />
             </div>
-            <div className="flex gap-2 md:col-span-2 lg:col-span-4">
+            <div className="grid grid-cols-2 gap-2 md:col-span-2 sm:flex sm:flex-wrap lg:col-span-4">
               <Button type="submit" className="flex-1 sm:flex-none">
                 Apply
               </Button>
@@ -233,7 +233,7 @@ export function AuditLogView() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Events</CardTitle>
           {totalPages > 1 ? (
@@ -260,9 +260,9 @@ export function AuditLogView() {
             </div>
           ) : null}
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="min-w-0 space-y-3">
           {error ? (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
               {error}
             </div>
           ) : null}
@@ -361,20 +361,20 @@ export function AuditLogView() {
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                         {new Date(event.createdAt).toLocaleString()}
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs">{event.action}</td>
+                      <td className="px-4 py-3 break-all font-mono text-xs">{event.action}</td>
                       <td className="px-4 py-3">
                         <span
                           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ACTOR_BADGE[event.actorKind]}`}
                         >
                           {event.actorKind}
                         </span>
-                        <div className="mt-1 font-mono text-xs text-muted-foreground">
+                        <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
                           {event.actorUserId ?? event.actorMemberId ?? "—"}
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <div>{event.targetType ?? "—"}</div>
-                        <div className="font-mono text-xs text-muted-foreground">
+                        <div className="break-words">{event.targetType ?? "—"}</div>
+                        <div className="break-all font-mono text-xs text-muted-foreground">
                           {event.targetId ?? ""}
                         </div>
                       </td>

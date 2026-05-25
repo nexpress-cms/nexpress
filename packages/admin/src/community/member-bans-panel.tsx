@@ -185,7 +185,7 @@ export function MemberBansPanel({ memberId, memberHandle, canModify }: MemberBan
   }
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader className="grid gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <CardTitle className="min-w-0">Bans</CardTitle>
         {canModify ? (
@@ -204,11 +204,11 @@ export function MemberBansPanel({ memberId, memberHandle, canModify }: MemberBan
           </Button>
         ) : null}
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="min-w-0 space-y-4">
         {error ? (
           <div
             role="alert"
-            className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+            className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
           >
             {error}
           </div>
@@ -271,17 +271,17 @@ export function MemberBansPanel({ memberId, memberHandle, canModify }: MemberBan
 
       {issueOpen ? (
         <Dialog open onOpenChange={(open) => !open && setIssueOpen(false)}>
-          <DialogContent>
+          <DialogContent className="min-w-0">
             <DialogHeader>
               <DialogTitle className="break-words">Ban @{memberHandle}</DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="break-words">
                 Choose a scope and duration. Site-wide bans block every community write; scoped bans
                 restrict the chosen category/collection. The action is recorded in the audit log.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4">
-              <div className="space-y-1">
+            <div className="min-w-0 space-y-4">
+              <div className="min-w-0 space-y-1">
                 <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                   Scope
                 </Label>
@@ -289,7 +289,7 @@ export function MemberBansPanel({ memberId, memberHandle, canModify }: MemberBan
                   value={form.scopeType}
                   onValueChange={(v) => setForm((f) => ({ ...f, scopeType: v as BanScope }))}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="min-w-0">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -303,7 +303,7 @@ export function MemberBansPanel({ memberId, memberHandle, canModify }: MemberBan
               </div>
 
               {form.scopeType !== "site" ? (
-                <div className="space-y-1">
+                <div className="min-w-0 space-y-1">
                   <Label
                     htmlFor="ban-scope-id"
                     className="text-xs uppercase tracking-wide text-muted-foreground"
@@ -326,7 +326,7 @@ export function MemberBansPanel({ memberId, memberHandle, canModify }: MemberBan
                   <Label htmlFor="ban-permanent" className="text-sm font-medium">
                     Permanent ban
                   </Label>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="break-words text-xs text-muted-foreground">
                     Permanent bans never expire — revoke from this panel to lift them.
                   </p>
                 </div>
@@ -340,7 +340,7 @@ export function MemberBansPanel({ memberId, memberHandle, canModify }: MemberBan
               </div>
 
               {form.kind === "temporary" ? (
-                <div className="space-y-1">
+                <div className="min-w-0 space-y-1">
                   <Label
                     htmlFor="ban-expires-at"
                     className="text-xs uppercase tracking-wide text-muted-foreground"
@@ -356,7 +356,7 @@ export function MemberBansPanel({ memberId, memberHandle, canModify }: MemberBan
                 </div>
               ) : null}
 
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 <Label
                   htmlFor="ban-reason"
                   className="text-xs uppercase tracking-wide text-muted-foreground"
