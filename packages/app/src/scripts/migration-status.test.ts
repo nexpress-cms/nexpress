@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildMigrationStatus,
   buildMigrationStatusJson,
+  migrationStatusHasBlockingRisk,
   readLocalMigrationEntries,
   renderMigrationStatus,
   type AppliedMigrationEntry,
@@ -81,6 +82,7 @@ describe("migration status", () => {
       { id: 2, createdAt: 1_700_000_100_000, hash: "different-hash" },
     ]);
 
+    expect(migrationStatusHasBlockingRisk(status)).toBe(true);
     expect(status.drifted).toEqual([
       {
         tag: "0001_posts",
@@ -97,6 +99,7 @@ describe("migration status", () => {
       { id: 2, createdAt: 1_700_000_999_000, hash: "hash-from-another-codebase" },
     ]);
 
+    expect(migrationStatusHasBlockingRisk(status)).toBe(true);
     expect(status.pending).toEqual([]);
     expect(status.unknownApplied).toEqual([
       { id: 2, createdAt: 1_700_000_999_000, hash: "hash-from-another-codebase" },
@@ -109,6 +112,7 @@ describe("migration status", () => {
       { id: 2, createdAt: 1_700_000_100_000, hash: "hash-posts" },
     ]);
 
+    expect(migrationStatusHasBlockingRisk(status)).toBe(false);
     expect(buildMigrationStatusJson(status)).toEqual({
       schemaVersion: "np.migrations.v1",
       ok: true,

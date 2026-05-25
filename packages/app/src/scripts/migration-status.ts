@@ -158,7 +158,7 @@ export function buildMigrationStatus(
 export function buildMigrationStatusJson(status: MigrationStatus): Record<string, unknown> {
   return {
     schemaVersion: "np.migrations.v1",
-    ok: status.drifted.length === 0 && status.unknownApplied.length === 0,
+    ok: !migrationStatusHasBlockingRisk(status),
     migrationsFolder: "./drizzle",
     migrationTable: MIGRATIONS_TABLE_NAME,
     localCount: status.local.length,
@@ -191,6 +191,10 @@ export function buildMigrationStatusJson(status: MigrationStatus): Record<string
       hash: migration.hash,
     })),
   };
+}
+
+export function migrationStatusHasBlockingRisk(status: MigrationStatus): boolean {
+  return status.drifted.length > 0 || status.unknownApplied.length > 0;
 }
 
 export function renderMigrationStatus(status: MigrationStatus): string {
