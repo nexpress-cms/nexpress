@@ -199,8 +199,8 @@ importers:
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.5)
       '@hookform/resolvers':
-        specifier: ^5.2.2
-        version: 5.2.2(react-hook-form@7.76.0(react@19.2.5))
+        specifier: ^5.4.0
+        version: 5.4.0(react-hook-form@7.76.0(react@19.2.5))
       '@nexpress/blocks':
         specifier: workspace:*
         version: link:../blocks
@@ -2129,8 +2129,8 @@ packages:
   '@formatjs/icu-skeleton-parser@2.1.7':
     resolution: {integrity: sha512-cIw1SFP0bi0CUBiJ2jzp99ws3OJNQDfStcHq9Z0iHWzItmiIikihFO+npR8C80yDlp7ZuBCLXCcKjgWjHicksA==}
 
-  '@hookform/resolvers@5.2.2':
-    resolution: {integrity: sha512-A/IxlMLShx3KjV/HeTcTfaMxdwy690+L/ZADoeaTltLx+CVuzkeVIPuybK3jrRfw7YZnmdKsVVHAlEPIAEUNlA==}
+  '@hookform/resolvers@5.4.0':
+    resolution: {integrity: sha512-EIsqr/t/qbinPIhGjMdtvutIN1Kk4uwbROE9/UQ93CAVGR7GkA7Y92+fX80OzXi/OB67jVFYwKGO1WzkxmkFZw==}
     peerDependencies:
       react-hook-form: ^7.55.0
 
@@ -6275,7 +6275,7 @@ snapshots:
 
   '@formatjs/icu-skeleton-parser@2.1.7': {}
 
-  '@hookform/resolvers@5.2.2(react-hook-form@7.76.0(react@19.2.5))':
+  '@hookform/resolvers@5.4.0(react-hook-form@7.76.0(react@19.2.5))':
     dependencies:
       '@standard-schema/utils': 0.3.0
       react-hook-form: 7.76.0(react@19.2.5)
