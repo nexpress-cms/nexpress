@@ -86,49 +86,58 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div className="space-y-1.5">
-          <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
+    <div className="min-w-0 space-y-6">
+      <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div className="min-w-0 space-y-1.5">
+          <h1 className="break-words text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
             {todayFormatter.format(new Date())}
           </h1>
-          <p className="max-w-[64ch] text-[13.5px] text-neutral-500 dark:text-neutral-400">
+          <p className="max-w-[64ch] break-words text-[13.5px] text-neutral-500 dark:text-neutral-400">
             Keep an eye on publishing flow, recent edits, and the most-used shortcuts.
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" asChild>
+        <div className="grid min-w-0 gap-2 sm:flex sm:flex-wrap">
+          <Button variant="outline" className="w-full sm:w-auto" asChild>
             <a href="/" target="_blank" rel="noreferrer">
               <ExternalLink />
               View site
             </a>
           </Button>
-          <Button variant="outline" onClick={() => router.push("/admin/media")}>
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            onClick={() => router.push("/admin/media")}
+          >
             <Upload />
             Upload Media
           </Button>
-          <Button onClick={() => router.push("/admin/collections/posts/create")}>
+          <Button
+            className="w-full sm:w-auto"
+            onClick={() => router.push("/admin/collections/posts/create")}
+          >
             <Plus />
             New entry
           </Button>
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
         {statCards.map(({ label, value, helper, icon: Icon }) => (
-          <Card key={label}>
-            <div className="flex items-center justify-between p-4 pb-0">
-              <span className="text-[12px] font-medium text-neutral-500 dark:text-neutral-400">
+          <Card key={label} className="min-w-0">
+            <div className="flex min-w-0 items-center justify-between gap-3 p-4 pb-0">
+              <span className="min-w-0 break-words text-[12px] font-medium text-neutral-500 dark:text-neutral-400">
                 {label}
               </span>
-              <Icon className="size-3.5 text-neutral-400" />
+              <Icon className="size-3.5 shrink-0 text-neutral-400" />
             </div>
             <div className="px-4 pb-4 pt-3.5">
-              <div className="text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] tabular-nums text-neutral-950 dark:text-neutral-50">
+              <div className="break-words text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] tabular-nums text-neutral-950 dark:text-neutral-50">
                 {value.toLocaleString()}
               </div>
-              <p className="mt-1 text-[12px] text-neutral-500 dark:text-neutral-400">{helper}</p>
+              <p className="mt-1 break-words text-[12px] text-neutral-500 dark:text-neutral-400">
+                {helper}
+              </p>
             </div>
           </Card>
         ))}
@@ -151,14 +160,14 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
         <DashboardPluginWidgets widgets={pluginWidgets} />
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
-        <Card>
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+        <Card className="min-w-0">
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle>Recent activity</CardTitle>
           </CardHeader>
           {stats.recentActivity.length === 0 ? (
-            <CardContent>
-              <div className="rounded-lg border border-dashed border-neutral-200 bg-neutral-50/60 px-6 py-10 text-center text-[13px] text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/40">
+            <CardContent className="min-w-0">
+              <div className="break-words rounded-lg border border-dashed border-neutral-200 bg-neutral-50/60 px-6 py-10 text-center text-[13px] text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/40">
                 No recent activity yet.
               </div>
             </CardContent>
@@ -169,24 +178,24 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
                 <span>Where</span>
                 <span className="text-right">When</span>
               </div>
-              <div className="divide-y divide-neutral-100 dark:divide-neutral-900">
+              <div className="min-w-0 divide-y divide-neutral-100 dark:divide-neutral-900">
                 {stats.recentActivity.map((item) => (
                   <div
                     key={item.id}
                     className="grid gap-2 px-4 py-3 text-[13px] md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(7rem,0.7fr)] md:items-center md:gap-4"
                   >
                     <div className="min-w-0">
-                      <p className="truncate font-medium text-neutral-950 dark:text-neutral-50">
+                      <p className="break-words font-medium text-neutral-950 dark:text-neutral-50">
                         {item.title}
                       </p>
-                      <p className="mt-0.5 text-[11.5px] text-neutral-500 dark:text-neutral-400">
+                      <p className="mt-0.5 break-words text-[11.5px] text-neutral-500 dark:text-neutral-400">
                         {item.action}
                       </p>
                     </div>
-                    <div className="font-mono text-[11.5px] text-neutral-700 dark:text-neutral-300">
+                    <div className="break-all font-mono text-[11.5px] text-neutral-700 dark:text-neutral-300">
                       {item.collection}
                     </div>
-                    <div className="tabular-nums text-neutral-500 dark:text-neutral-400 md:text-right">
+                    <div className="break-words tabular-nums text-neutral-500 dark:text-neutral-400 md:text-right">
                       {formatTimestamp(item.timestamp)}
                     </div>
                   </div>
@@ -196,13 +205,13 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
           )}
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Collection pulse</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3.5">
+          <CardContent className="min-w-0 space-y-3.5">
             {stats.collections.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-neutral-200 bg-neutral-50/60 px-4 py-6 text-center text-[13px] text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/40">
+              <div className="break-words rounded-lg border border-dashed border-neutral-200 bg-neutral-50/60 px-4 py-6 text-center text-[13px] text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/40">
                 No collections registered yet.
               </div>
             ) : null}
@@ -212,17 +221,17 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
                 totalContent > 0 ? (collection.count / totalContent) * 100 : 18,
               );
               return (
-                <div key={collection.slug} className="space-y-1.5">
-                  <div className="flex items-baseline justify-between gap-3 text-[12.5px]">
+                <div key={collection.slug} className="min-w-0 space-y-1.5">
+                  <div className="flex min-w-0 items-baseline justify-between gap-3 text-[12.5px]">
                     <div className="min-w-0">
-                      <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                      <span className="break-words font-medium text-neutral-900 dark:text-neutral-100">
                         {collection.label}
                       </span>
-                      <span className="ml-1.5 font-mono text-[11px] text-neutral-400">
+                      <span className="ml-1.5 break-all font-mono text-[11px] text-neutral-400">
                         /{collection.slug}
                       </span>
                     </div>
-                    <span className="font-mono text-[11.5px] tabular-nums text-neutral-500 dark:text-neutral-400">
+                    <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-neutral-500 dark:text-neutral-400">
                       {collection.count.toLocaleString()}
                     </span>
                   </div>
@@ -312,23 +321,23 @@ function WelcomeCard({ router, onboarding }: WelcomeCardProps) {
   const totalSteps = steps.length;
 
   return (
-    <Card className="border-[var(--np-color-brand)]/30 bg-[var(--np-color-brand)]/5">
+    <Card className="min-w-0 border-[var(--np-color-brand)]/30 bg-[var(--np-color-brand)]/5">
       <CardHeader className="space-y-1.5">
-        <CardTitle className="flex items-center justify-between gap-2 text-[15px]">
-          <span className="flex items-center gap-2">
-            <Sparkles className="size-4 text-[var(--np-color-brand)]" />
-            Welcome to NexPress
+        <CardTitle className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-[15px]">
+          <span className="flex min-w-0 items-center gap-2">
+            <Sparkles className="size-4 shrink-0 text-[var(--np-color-brand)]" />
+            <span className="min-w-0 break-words">Welcome to NexPress</span>
           </span>
-          <span className="font-mono text-[12px] tabular-nums text-neutral-500 dark:text-neutral-400">
+          <span className="shrink-0 font-mono text-[12px] tabular-nums text-neutral-500 dark:text-neutral-400">
             {doneCount} / {totalSteps}
           </span>
         </CardTitle>
-        <p className="text-[12.5px] text-neutral-500 dark:text-neutral-400">
+        <p className="break-words text-[12.5px] text-neutral-500 dark:text-neutral-400">
           Five steps to a public, named, branded site. The card disappears once every step is ✓.
         </p>
       </CardHeader>
-      <CardContent>
-        <ol className="space-y-2">
+      <CardContent className="min-w-0">
+        <ol className="min-w-0 space-y-2">
           {steps.map((step, index) => (
             <li key={step.title}>
               <button
@@ -336,15 +345,15 @@ function WelcomeCard({ router, onboarding }: WelcomeCardProps) {
                 onClick={step.onClick}
                 className={
                   step.done
-                    ? "group flex w-full items-start gap-3 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 text-left transition-colors hover:border-emerald-500/50 dark:border-emerald-500/20"
-                    : "group flex w-full items-start gap-3 rounded-md border border-neutral-200/80 bg-background px-3 py-2.5 text-left transition-colors hover:border-[var(--np-color-brand)]/40 hover:bg-[var(--np-color-brand)]/5 dark:border-neutral-800/80"
+                    ? "group flex min-w-0 w-full items-start gap-3 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 text-left transition-colors hover:border-emerald-500/50 dark:border-emerald-500/20"
+                    : "group flex min-w-0 w-full items-start gap-3 rounded-md border border-neutral-200/80 bg-background px-3 py-2.5 text-left transition-colors hover:border-[var(--np-color-brand)]/40 hover:bg-[var(--np-color-brand)]/5 dark:border-neutral-800/80"
                 }
               >
                 <div
                   className={
                     step.done
-                      ? "mt-0.5 rounded-full bg-emerald-500/15 p-1 text-emerald-600 dark:text-emerald-400"
-                      : "mt-0.5 rounded-full border border-neutral-300 p-1 text-neutral-400 dark:border-neutral-700"
+                      ? "mt-0.5 shrink-0 rounded-full bg-emerald-500/15 p-1 text-emerald-600 dark:text-emerald-400"
+                      : "mt-0.5 shrink-0 rounded-full border border-neutral-300 p-1 text-neutral-400 dark:border-neutral-700"
                   }
                   aria-hidden
                 >
@@ -358,14 +367,14 @@ function WelcomeCard({ router, onboarding }: WelcomeCardProps) {
                   <div
                     className={
                       step.done
-                        ? "text-[13px] font-medium text-neutral-500 line-through decoration-neutral-300 dark:text-neutral-400 dark:decoration-neutral-700"
-                        : "text-[13px] font-medium text-neutral-950 dark:text-neutral-50"
+                        ? "break-words text-[13px] font-medium text-neutral-500 line-through decoration-neutral-300 dark:text-neutral-400 dark:decoration-neutral-700"
+                        : "break-words text-[13px] font-medium text-neutral-950 dark:text-neutral-50"
                     }
                   >
                     {index + 1}. {step.title}
                   </div>
                   {!step.done ? (
-                    <p className="text-[11.5px] text-neutral-500 dark:text-neutral-400">
+                    <p className="break-words text-[11.5px] text-neutral-500 dark:text-neutral-400">
                       {step.description}
                     </p>
                   ) : null}
