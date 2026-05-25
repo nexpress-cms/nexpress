@@ -229,6 +229,7 @@ assertIncludes(readme, "NP_STORAGE_ADAPTER=s3", "README");
 assertIncludes(readme, "NP_S3_ENDPOINT", "README");
 assertIncludes(readme, "pnpm db:migrate", "README");
 assertIncludes(readme, "pnpm run doctor:prod -- --target vercel", "README");
+assertIncludes(readme, "pnpm run doctor:prod -- --target vercel --json --fix-plan", "README");
 assertIncludes(readme, "pnpm run deploy:plan -- --target vercel --brief --no-color", "README");
 assertIncludes(readme, "pnpm run doctor:prod -- --target vercel --brief --no-color", "README");
 console.log("✓ README exposes the Vercel deploy entrypoint");
