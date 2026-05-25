@@ -743,11 +743,11 @@ export function NavigationEditor() {
 
   return (
     <>
-      <Card>
+      <Card className="min-w-0">
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 space-y-1">
-            <CardTitle>Navigation structure</CardTitle>
-            <p className="text-sm text-muted-foreground">
+            <CardTitle className="break-words">Navigation structure</CardTitle>
+            <p className="break-words text-sm text-muted-foreground">
               Drag the grip handle to reorder, or drag right onto another item to nest as its
               sub-menu (one level deep). The Parent select still works for keyboard-driven changes.
             </p>
@@ -802,25 +802,25 @@ export function NavigationEditor() {
             onSelect={(value) => requestLocationChange(value)}
           />
           {error ? (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
               {error}
             </div>
           ) : null}
 
           {collectionsError ? (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
               {collectionsError}
             </div>
           ) : null}
 
           {message ? (
-            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300">
+            <div className="break-words rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300">
               {message}
             </div>
           ) : null}
 
           {loading ? (
-            <div className="space-y-3">
+            <div className="min-w-0 space-y-3">
               {Array.from({ length: 4 }).map((_, index) => (
                 <div
                   key={`navigation-skeleton-${index}`}
@@ -829,7 +829,7 @@ export function NavigationEditor() {
               ))}
             </div>
           ) : items.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border/70 px-6 py-12 text-center text-sm text-muted-foreground">
+            <div className="break-words rounded-xl border border-dashed border-border/70 px-6 py-12 text-center text-sm text-muted-foreground">
               No navigation items in this location yet. Add your first link to get started.
             </div>
           ) : (
@@ -845,7 +845,7 @@ export function NavigationEditor() {
                 items={renderOrder.map((entry) => entry.id)}
                 strategy={verticalListSortingStrategy}
               >
-                <div className="space-y-3">
+                <div className="min-w-0 space-y-3">
                   {renderOrder.map(({ id, isChild }) => {
                     const item = items.find((i) => i.id === id);
                     if (!item) return null;
@@ -895,13 +895,16 @@ export function NavigationEditor() {
         open={pendingLocation !== null}
         onOpenChange={(open) => !open && setPendingLocation(null)}
       >
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
+        <DialogContent className="min-w-0 max-h-[calc(100dvh-2rem)] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Discard unsaved changes?</DialogTitle>
-            <DialogDescription>
-              You have unsaved edits in <strong>{labelFor(location, locations)}</strong>. Switching
-              to <strong>{pendingLocation ? labelFor(pendingLocation, locations) : ""}</strong> will
-              discard them.
+            <DialogTitle className="break-words">Discard unsaved changes?</DialogTitle>
+            <DialogDescription className="break-words">
+              You have unsaved edits in{" "}
+              <strong className="break-words">{labelFor(location, locations)}</strong>. Switching to{" "}
+              <strong className="break-words">
+                {pendingLocation ? labelFor(pendingLocation, locations) : ""}
+              </strong>{" "}
+              will discard them.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -924,16 +927,17 @@ export function NavigationEditor() {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="min-w-0">
           <DialogHeader>
-            <DialogTitle>New navigation location</DialogTitle>
-            <DialogDescription>
-              Add a custom slot for theme code or templates to render (e.g. <code>sidebar</code>,{" "}
-              <code>announcement-bar</code>). Themes consume locations by name via{" "}
-              <code>getCachedNavigation(&quot;your-slug&quot;)</code>.
+            <DialogTitle className="break-words">New navigation location</DialogTitle>
+            <DialogDescription className="break-words">
+              Add a custom slot for theme code or templates to render (e.g.{" "}
+              <code className="break-all">sidebar</code>,{" "}
+              <code className="break-all">announcement-bar</code>). Themes consume locations by name
+              via <code className="break-all">getCachedNavigation(&quot;your-slug&quot;)</code>.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             <Label htmlFor="new-location-slug">Location slug</Label>
             <Input
               id="new-location-slug"
@@ -942,7 +946,7 @@ export function NavigationEditor() {
               placeholder="sidebar"
               autoFocus
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="break-words text-xs text-muted-foreground">
               Lowercase letters, numbers, and hyphens.
             </p>
           </div>
@@ -976,15 +980,16 @@ export function NavigationEditor() {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="min-w-0">
           <DialogHeader>
-            <DialogTitle>Manage navigation locations</DialogTitle>
-            <DialogDescription>
-              Rename or delete custom slots. The built-in <code>header</code>, <code>footer</code>,
-              and <code>main</code> are theme-baked and not editable here.
+            <DialogTitle className="break-words">Manage navigation locations</DialogTitle>
+            <DialogDescription className="break-words">
+              Rename or delete custom slots. The built-in <code className="break-all">header</code>,{" "}
+              <code className="break-all">footer</code>, and <code className="break-all">main</code>{" "}
+              are theme-baked and not editable here.
             </DialogDescription>
           </DialogHeader>
-          <ul className="space-y-2">
+          <ul className="min-w-0 space-y-2">
             {locations
               .filter((loc) => !PROTECTED_LOCATIONS.has(loc.value))
               .map((loc) => {
@@ -1007,7 +1012,7 @@ export function NavigationEditor() {
                         className="h-8 min-w-0"
                       />
                     ) : (
-                      <span className="min-w-0 truncate font-mono text-sm">{loc.value}</span>
+                      <span className="min-w-0 break-all font-mono text-sm">{loc.value}</span>
                     )}
                     {editing ? (
                       <>
@@ -1083,7 +1088,7 @@ export function NavigationEditor() {
                 );
               })}
             {locations.filter((loc) => !PROTECTED_LOCATIONS.has(loc.value)).length === 0 ? (
-              <p className="text-sm text-muted-foreground">No custom locations yet.</p>
+              <p className="break-words text-sm text-muted-foreground">No custom locations yet.</p>
             ) : null}
           </ul>
           <DialogFooter>
@@ -1143,13 +1148,13 @@ function LocationAssignmentsPanel({
 
   return (
     <div className="min-w-0 space-y-3 rounded-xl border border-border/70 bg-muted/20 p-4">
-      <div className="space-y-1">
-        <h3 className="text-sm font-semibold">Location assignments</h3>
-        <p className="text-xs text-muted-foreground">
+      <div className="min-w-0 space-y-1">
+        <h3 className="break-words text-sm font-semibold">Location assignments</h3>
+        <p className="break-words text-xs text-muted-foreground">
           Slots your active theme expects you to fill. Click a card to edit that location.
         </p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {themeLocations.map((loc) => {
           const isActive = loc.value === activeLocation;
           const count = isActive ? activeLocationLiveCount : (loc.itemCount ?? 0);
@@ -1166,16 +1171,16 @@ function LocationAssignmentsPanel({
                 isActive ? "border-primary ring-2 ring-primary/30" : "border-border/60",
               )}
             >
-              <div className="flex items-start justify-between gap-2">
+              <div className="flex min-w-0 items-start justify-between gap-2">
                 <div className="min-w-0 space-y-0.5">
-                  <div className="truncate text-sm font-medium">{loc.label}</div>
-                  <code className="block truncate text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <div className="break-words text-sm font-medium">{loc.label}</div>
+                  <code className="block break-all text-[10px] uppercase tracking-wider text-muted-foreground">
                     {loc.value}
                   </code>
                 </div>
                 <span
                   className={cn(
-                    "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider",
+                    "w-fit shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider",
                     overLimit
                       ? "bg-destructive/10 text-destructive"
                       : isEmpty
@@ -1196,7 +1201,9 @@ function LocationAssignmentsPanel({
                 <p className="break-words text-xs text-muted-foreground">{loc.description}</p>
               ) : null}
               {isActive ? (
-                <span className="text-[10px] uppercase tracking-wider text-primary">Editing</span>
+                <span className="break-words text-[10px] uppercase tracking-wider text-primary">
+                  Editing
+                </span>
               ) : null}
             </button>
           );

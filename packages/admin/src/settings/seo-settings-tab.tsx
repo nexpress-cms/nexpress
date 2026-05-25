@@ -47,10 +47,7 @@ export function SeoSettingsTab() {
     setError(null);
     try {
       const res = await npFetch("/api/settings");
-      const raw = (await res.json().catch(() => null)) as Record<
-        string,
-        unknown
-      > | null;
+      const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok) {
         setError(extract(raw) ?? `HTTP ${res.status}`);
         return;
@@ -60,14 +57,9 @@ export function SeoSettingsTab() {
           ? (raw.seo as Record<string, unknown>)
           : {};
       setSettings({
-        defaultOgImage:
-          typeof seo.defaultOgImage === "string" ? seo.defaultOgImage : "",
-        twitterHandle:
-          typeof seo.twitterHandle === "string" ? seo.twitterHandle : "",
-        defaultLocale:
-          typeof seo.defaultLocale === "string"
-            ? seo.defaultLocale
-            : "en_US",
+        defaultOgImage: typeof seo.defaultOgImage === "string" ? seo.defaultOgImage : "",
+        twitterHandle: typeof seo.twitterHandle === "string" ? seo.twitterHandle : "",
+        defaultLocale: typeof seo.defaultLocale === "string" ? seo.defaultLocale : "en_US",
       });
     } catch {
       setError("Unable to load SEO settings.");
@@ -86,8 +78,7 @@ export function SeoSettingsTab() {
       // malformed strings but accept the empty path explicitly.
       const value = {
         defaultOgImage: settings.defaultOgImage.trim() || null,
-        twitterHandle:
-          settings.twitterHandle.trim().replace(/^@/, "") || null,
+        twitterHandle: settings.twitterHandle.trim().replace(/^@/, "") || null,
         defaultLocale: settings.defaultLocale.trim() || "en_US",
       };
       const res = await npFetch("/api/settings", {
@@ -96,10 +87,7 @@ export function SeoSettingsTab() {
         body: JSON.stringify({ key: "seo", value }),
       });
       if (!res.ok) {
-        const raw = (await res.json().catch(() => null)) as Record<
-          string,
-          unknown
-        > | null;
+        const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
         setError(extract(raw) ?? `HTTP ${res.status}`);
         return;
       }
@@ -112,25 +100,28 @@ export function SeoSettingsTab() {
   }
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <CardTitle>SEO defaults</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Site-wide fallbacks for Open Graph and Twitter card metadata.
-            Page-level overrides (per-document descriptions, cover images)
-            still take precedence.
+        <div className="min-w-0 space-y-1">
+          <CardTitle className="break-words">SEO defaults</CardTitle>
+          <p className="break-words text-sm text-muted-foreground">
+            Site-wide fallbacks for Open Graph and Twitter card metadata. Page-level overrides
+            (per-document descriptions, cover images) still take precedence.
           </p>
         </div>
-        <Button onClick={() => void save()} disabled={saving || loading}>
+        <Button
+          className="w-full sm:w-auto"
+          onClick={() => void save()}
+          disabled={saving || loading}
+        >
           {saving ? "Saving…" : "Save"}
         </Button>
       </CardHeader>
-      <CardContent className="space-y-5">
+      <CardContent className="min-w-0 space-y-5">
         {error ? (
           <div
             role="alert"
-            className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+            className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
           >
             {error}
           </div>
@@ -138,59 +129,54 @@ export function SeoSettingsTab() {
         {message ? (
           <div
             role="status"
-            className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300"
+            className="break-words rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300"
           >
             {message}
           </div>
         ) : null}
 
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="seo-og-image">Default Open Graph image</Label>
           <Input
             id="seo-og-image"
             value={settings.defaultOgImage}
-            onChange={(e) =>
-              setSettings((s) => ({ ...s, defaultOgImage: e.target.value }))
-            }
+            onChange={(e) => setSettings((s) => ({ ...s, defaultOgImage: e.target.value }))}
             placeholder="https://example.com/og.png or /og.png"
             disabled={loading || saving}
           />
-          <p className="text-xs text-muted-foreground">
-            Absolute URL or a path starting with <code>/</code>. Used when a
+          <p className="break-words text-xs text-muted-foreground">
+            Absolute URL or a path starting with <code className="break-all">/</code>. Used when a
             page doesn&rsquo;t define its own cover image.
           </p>
         </div>
 
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="seo-twitter">Twitter handle</Label>
           <Input
             id="seo-twitter"
             value={settings.twitterHandle}
-            onChange={(e) =>
-              setSettings((s) => ({ ...s, twitterHandle: e.target.value }))
-            }
+            onChange={(e) => setSettings((s) => ({ ...s, twitterHandle: e.target.value }))}
             placeholder="nexpress (no @)"
             disabled={loading || saving}
           />
-          <p className="text-xs text-muted-foreground">
-            Drives the <code>twitter:site</code> tag. Leave blank to omit.
+          <p className="break-words text-xs text-muted-foreground">
+            Drives the <code className="break-all">twitter:site</code> tag. Leave blank to omit.
           </p>
         </div>
 
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="seo-locale">Default locale</Label>
           <Input
             id="seo-locale"
             value={settings.defaultLocale}
-            onChange={(e) =>
-              setSettings((s) => ({ ...s, defaultLocale: e.target.value }))
-            }
+            onChange={(e) => setSettings((s) => ({ ...s, defaultLocale: e.target.value }))}
             placeholder="en_US"
             disabled={loading || saving}
           />
-          <p className="text-xs text-muted-foreground">
-            BCP 47 tag (e.g. <code>en_US</code>, <code>ko_KR</code>). Drives{" "}
-            <code>og:locale</code>.
+          <p className="break-words text-xs text-muted-foreground">
+            BCP 47 tag (e.g. <code className="break-all">en_US</code>,{" "}
+            <code className="break-all">ko_KR</code>). Drives{" "}
+            <code className="break-all">og:locale</code>.
           </p>
         </div>
       </CardContent>

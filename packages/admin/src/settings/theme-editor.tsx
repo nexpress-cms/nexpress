@@ -215,27 +215,27 @@ export function ThemeEditor() {
     <div className="grid min-w-0 gap-6 xl:grid-cols-[1.25fr_0.85fr]">
       <div className="min-w-0 space-y-6">
         {error ? (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {error}
           </div>
         ) : null}
 
         {message ? (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300">
+          <div className="break-words rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300">
             {message}
           </div>
         ) : null}
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex min-w-0 items-center gap-2">
               <Palette className="h-4 w-4" />
-              Colors
+              <span className="min-w-0 break-words">Colors</span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
+          <CardContent className="grid min-w-0 gap-4 sm:grid-cols-2">
             {colorFields.map(({ key, label }) => (
-              <div key={key} className="space-y-2">
+              <div key={key} className="min-w-0 space-y-2">
                 <Label htmlFor={`theme-color-${key}`}>{label}</Label>
                 <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-xl border border-border/70 bg-background/60 p-3">
                   <input
@@ -265,16 +265,16 @@ export function ThemeEditor() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex min-w-0 items-center gap-2">
               <Type className="h-4 w-4" />
-              Typography
+              <span className="min-w-0 break-words">Typography</span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
+          <CardContent className="grid min-w-0 gap-4 sm:grid-cols-2">
             {typographyFields.map(({ key, label }) => (
-              <div key={key} className="space-y-2">
+              <div key={key} className="min-w-0 space-y-2">
                 <Label htmlFor={`theme-typography-${key}`}>{label}</Label>
                 <Input
                   id={`theme-typography-${key}`}
@@ -294,17 +294,17 @@ export function ThemeEditor() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex min-w-0 items-center gap-2">
               <Square className="h-4 w-4" />
-              Shape & depth
+              <span className="min-w-0 break-words">Shape & depth</span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2">
+          <CardContent className="min-w-0 space-y-6">
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2">
               {shapeFields.map(({ key, label }) => (
-                <div key={key} className="space-y-2">
+                <div key={key} className="min-w-0 space-y-2">
                   <Label htmlFor={`theme-shape-${key}`}>{label}</Label>
                   <Input
                     id={`theme-shape-${key}`}
@@ -371,11 +371,11 @@ export function ThemeEditor() {
 
       <Card className="min-w-0 xl:sticky xl:top-6 xl:h-fit">
         <CardHeader>
-          <CardTitle>Live preview</CardTitle>
+          <CardTitle className="break-words">Live preview</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0">
           <div
-            className="space-y-5 rounded-[28px] border p-5"
+            className="min-w-0 space-y-5 rounded-[28px] border p-5"
             style={{
               backgroundColor: theme.colors.background,
               color: theme.colors.foreground,
@@ -395,9 +395,9 @@ export function ThemeEditor() {
             >
               Theme direction
             </div>
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               <h3
-                className="text-3xl font-semibold"
+                className="break-words text-3xl font-semibold"
                 style={{
                   fontFamily: theme.typography.fontHeading,
                   fontSize: theme.typography.fontSize3xl,
@@ -407,7 +407,7 @@ export function ThemeEditor() {
                 Editorial but practical.
               </h3>
               <p
-                className="text-sm"
+                className="break-words text-sm"
                 style={{
                   fontFamily: theme.typography.fontBody,
                   fontSize: theme.typography.fontSizeBase,
@@ -418,7 +418,7 @@ export function ThemeEditor() {
                 changes live.
               </p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid min-w-0 gap-3 sm:grid-cols-2">
               <div
                 className="rounded-xl border p-4"
                 style={{
@@ -432,8 +432,10 @@ export function ThemeEditor() {
                   className="mb-3 h-2 w-20 rounded-full"
                   style={{ backgroundColor: theme.colors.accent }}
                 />
-                <p className="font-medium">Content card</p>
-                <p className="mt-1 text-sm opacity-80">Quiet surfaces with strong hierarchy.</p>
+                <p className="break-words font-medium">Content card</p>
+                <p className="mt-1 break-words text-sm opacity-80">
+                  Quiet surfaces with strong hierarchy.
+                </p>
               </div>
               <div
                 className="rounded-xl p-4"
@@ -443,8 +445,10 @@ export function ThemeEditor() {
                   borderRadius: theme.shape.radiusMd,
                 }}
               >
-                <p className="font-medium">Primary action</p>
-                <p className="mt-1 text-sm opacity-80">Contrast stays crisp at every scale.</p>
+                <p className="break-words font-medium">Primary action</p>
+                <p className="mt-1 break-words text-sm opacity-80">
+                  Contrast stays crisp at every scale.
+                </p>
               </div>
             </div>
           </div>

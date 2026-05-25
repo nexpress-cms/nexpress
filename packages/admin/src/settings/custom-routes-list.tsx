@@ -108,16 +108,19 @@ export function CustomRoutesList() {
   }, [state]);
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader className="space-y-2">
-        <CardTitle>Custom routes</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Hand-coded Next.js routes registered by the app at boot. To add or
-          remove one, edit the app&apos;s <code className="rounded bg-muted px-1.5 py-0.5 text-xs">registerCustomRoute</code>{" "}
+        <CardTitle className="break-words">Custom routes</CardTitle>
+        <p className="break-words text-sm text-muted-foreground">
+          Hand-coded Next.js routes registered by the app at boot. To add or remove one, edit the
+          app&apos;s{" "}
+          <code className="break-all rounded bg-muted px-1.5 py-0.5 text-xs">
+            registerCustomRoute
+          </code>{" "}
           calls and redeploy. The navigation editor autocompletes URLs from this list.
         </p>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="min-w-0 space-y-6">
         {state.kind === "loading" ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -126,15 +129,17 @@ export function CustomRoutesList() {
         ) : null}
 
         {state.kind === "error" ? (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {state.message}
           </div>
         ) : null}
 
         {state.kind === "ready" && state.routes.length === 0 ? (
-          <div className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+          <div className="break-words rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
             No custom routes registered yet. Call{" "}
-            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">registerCustomRoute</code>{" "}
+            <code className="break-all rounded bg-muted px-1.5 py-0.5 text-xs">
+              registerCustomRoute
+            </code>{" "}
             from the app&apos;s bootstrap to surface routes here.
           </div>
         ) : null}
@@ -142,26 +147,26 @@ export function CustomRoutesList() {
         {state.kind === "ready" && state.routes.length > 0 ? (
           <div className="space-y-6">
             {grouped.map(({ group, routes }) => (
-              <div key={group} className="space-y-3">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <div key={group} className="min-w-0 space-y-3">
+                <h3 className="break-words text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   {group}
                 </h3>
-                <ul className="divide-y rounded-xl border">
+                <ul className="min-w-0 divide-y rounded-xl border">
                   {routes.map((route) => {
                     const Icon = resolveIcon(route.icon);
                     const dyn = isDynamic(route.path);
                     return (
                       <li
                         key={route.path}
-                        className="flex items-start gap-3 px-4 py-3"
+                        className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-3 px-4 py-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start"
                       >
                         <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                           <Icon className="h-4 w-4" />
                         </span>
                         <div className="min-w-0 flex-1 space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-medium">{route.label}</span>
-                            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <span className="min-w-0 break-words font-medium">{route.label}</span>
+                            <code className="break-all rounded bg-muted px-1.5 py-0.5 text-xs">
                               {route.path}
                             </code>
                             {dyn ? (
@@ -171,7 +176,7 @@ export function CustomRoutesList() {
                             ) : null}
                           </div>
                           {route.description ? (
-                            <p className="text-sm text-muted-foreground">
+                            <p className="break-words text-sm text-muted-foreground">
                               {route.description}
                             </p>
                           ) : null}
@@ -181,7 +186,7 @@ export function CustomRoutesList() {
                             href={route.path}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                            className="col-start-2 inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground sm:col-start-auto"
                           >
                             Open
                             <ExternalLink className="h-3 w-3" />
