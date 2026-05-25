@@ -1530,11 +1530,12 @@ function renderHtml(defaults: FormDefaults): string {
   .done-copy { display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; }
   .done h2 { margin:0; font-size:26px; letter-spacing:-.022em; text-align:center; }
   .done p { margin:0; max-width:50ch; text-align:center; font-size:14px; line-height:1.55; color:var(--nx-neutral-500); }
-  .nextcards { width:100%; display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .nextcards { width:100%; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
   .nextcard { display:flex; flex-direction:column; gap:6px; padding:14px; border:1px solid #ececeb; border-radius:10px; background:#fff; text-align:left; }
   .nextcard-top { display:flex; align-items:center; justify-content:space-between; }
   .nextcard-ico { width:28px; height:28px; border-radius:8px; background:var(--nx-brand-soft); color:var(--nx-brand); display:inline-flex; align-items:center; justify-content:center; }
   .nextcard b { font-size:13px; } .nextcard span { font-size:11.5px; color:var(--nx-neutral-500); line-height:1.45; }
+  .nextcard .mono { overflow-wrap:anywhere; }
   .hidden { display:none !important; }
   @media (max-width: 820px) {
     .sw-top { padding:0 16px; } .sw-top-right > span:last-child { display:none; }
@@ -1687,6 +1688,7 @@ function renderHtml(defaults: FormDefaults): string {
                 <div class="nextcard"><div class="nextcard-top"><span class="nextcard-ico" data-icon="terminal"></span><span class="mono">next</span></div><b>Run the dev server</b><span class="mono">pnpm dev</span></div>
                 <div class="nextcard"><div class="nextcard-top"><span class="nextcard-ico" data-icon="logo"></span><span class="mono">then</span></div><b>Open the admin</b><span class="mono">http://localhost:3000/admin</span></div>
                 <div class="nextcard"><div class="nextcard-top"><span class="nextcard-ico" data-icon="layers"></span><span class="mono">edit</span></div><b>Edit collections</b><span class="mono">src/nexpress.config.ts</span></div>
+                <div class="nextcard"><div class="nextcard-top"><span class="nextcard-ico" data-icon="shield"></span><span class="mono">deploy</span></div><b>Check deploy readiness</b><span class="mono">pnpm run deploy:plan -- --target vercel --brief --no-color</span></div>
               </div>
               <div class="codepanel" style="width:100%"><div class="code-head"><span>terminal · pnpm run setup</span><span style="color:#79c87f">exited 0</span></div><div class="code-body" id="doneLog"></div></div>
             </div>
@@ -1965,6 +1967,7 @@ function renderHtml(defaults: FormDefaults): string {
       '<span class="c">  -> ' + (body.firstBoot && !body.firstBoot.skipped ? "first admin ready" : "first admin skipped") + '</span>\\n' +
       '<span class="c">  -> theme ' + (firstBootReady && !themeSkipped ? "activated" : "skipped") + '</span>\\n' +
       '<span class="c">  -> demo content ' + (firstBootReady && !seedSkipped ? "seeded" : "skipped") + '</span>\\n' +
+      '<span class="c">  -> next deploy check: pnpm run deploy:plan -- --target vercel --brief --no-color</span>\\n' +
       '<span class="v">  ✓ done — run pnpm dev, then open /admin</span>';
     goto(6);
   }
