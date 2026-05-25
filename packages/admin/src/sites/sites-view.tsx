@@ -2,24 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  AlertTriangle,
-  Globe2,
-  Loader2,
-  Plus,
-  Star,
-  Trash2,
-  Users,
-} from "lucide-react";
+import { AlertTriangle, Globe2, Loader2, Plus, Star, Trash2, Users } from "lucide-react";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../ui/card.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import {
   Dialog,
   DialogContent,
@@ -78,9 +65,7 @@ export function SitesView() {
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(
-    null,
-  );
+  const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
 
   useEffect(() => {
     void load();
@@ -90,9 +75,10 @@ export function SitesView() {
     setError(null);
     try {
       const res = await npFetch("/api/admin/sites");
-      const body = (await res.json().catch(() => null)) as
-        | { docs?: Site[]; error?: { message?: string } }
-        | null;
+      const body = (await res.json().catch(() => null)) as {
+        docs?: Site[];
+        error?: { message?: string };
+      } | null;
       if (!res.ok) {
         setError(body?.error?.message ?? "Unable to load sites.");
         return;
@@ -117,12 +103,11 @@ export function SitesView() {
     });
     setError(null);
     try {
-      const res = await npFetch(
-        `/api/admin/sites/${encodeURIComponent(site.id)}/usage`,
-      );
-      const body = (await res.json().catch(() => null)) as
-        | { usage?: SiteUsage; error?: { message?: string } }
-        | null;
+      const res = await npFetch(`/api/admin/sites/${encodeURIComponent(site.id)}/usage`);
+      const body = (await res.json().catch(() => null)) as {
+        usage?: SiteUsage;
+        error?: { message?: string };
+      } | null;
       if (!res.ok || !body?.usage) {
         setError(body?.error?.message ?? "Unable to load site usage.");
         setDeleteDialog(null);
@@ -147,22 +132,16 @@ export function SitesView() {
     setBusyId(site.id);
     setError(null);
     try {
-      const cascadeParam =
-        usage.total > 0 && cascade ? "?cascade=true" : "";
-      const res = await npFetch(
-        `/api/admin/sites/${encodeURIComponent(site.id)}${cascadeParam}`,
-        {
-          method: "DELETE",
-        },
-      );
+      const cascadeParam = usage.total > 0 && cascade ? "?cascade=true" : "";
+      const res = await npFetch(`/api/admin/sites/${encodeURIComponent(site.id)}${cascadeParam}`, {
+        method: "DELETE",
+      });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as
-          | { error?: { message?: string } }
-          | null;
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
         setError(body?.error?.message ?? "Unable to delete site.");
-        setDeleteDialog((prev) =>
-          prev ? { ...prev, busy: false } : prev,
-        );
+        setDeleteDialog((prev) => (prev ? { ...prev, busy: false } : prev));
         return;
       }
       setDeleteDialog(null);
@@ -204,8 +183,8 @@ export function SitesView() {
       ) : sites.length === 0 ? (
         <Card>
           <CardContent className="text-[13px] text-muted-foreground">
-            No sites configured. (This shouldn&apos;t be possible — the framework
-            seeds a default site at install time.)
+            No sites configured. (This shouldn&apos;t be possible — the framework seeds a default
+            site at install time.)
           </CardContent>
         </Card>
       ) : (
@@ -213,13 +192,13 @@ export function SitesView() {
           {sites.map((site) => (
             <Card key={site.id}>
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between gap-3">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Globe2 className="h-4 w-4 text-muted-foreground" />
-                    {site.name}
+                <div className="grid gap-2 sm:flex sm:items-center sm:justify-between sm:gap-3">
+                  <CardTitle className="flex min-w-0 items-center gap-2 text-base">
+                    <Globe2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{site.name}</span>
                   </CardTitle>
                   {site.isDefault ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                    <span className="inline-flex w-fit items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
                       <Star className="h-3 w-3" /> Default
                     </span>
                   ) : null}
@@ -228,17 +207,13 @@ export function SitesView() {
               <CardContent className="space-y-3">
                 <div className="space-y-1 text-xs text-muted-foreground">
                   <p>
-                    <span className="font-mono uppercase tracking-wider opacity-70">
-                      ID
-                    </span>{" "}
-                    <code>{site.id}</code>
+                    <span className="font-mono uppercase tracking-wider opacity-70">ID</span>{" "}
+                    <code className="break-all">{site.id}</code>
                   </p>
                   <p>
-                    <span className="font-mono uppercase tracking-wider opacity-70">
-                      Host
-                    </span>{" "}
+                    <span className="font-mono uppercase tracking-wider opacity-70">Host</span>{" "}
                     {site.hostname ? (
-                      <code>{site.hostname}</code>
+                      <code className="break-all">{site.hostname}</code>
                     ) : (
                       <span className="italic">any (default)</span>
                     )}
@@ -247,9 +222,9 @@ export function SitesView() {
                     <p className="pt-1 text-foreground">{site.description}</p>
                   ) : null}
                 </div>
-                <div className="flex items-center justify-end gap-2">
+                <div className="grid gap-2 sm:flex sm:items-center sm:justify-end">
                   <Link href={`/admin/sites/${encodeURIComponent(site.id)}/members`}>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" className="w-full sm:w-auto">
                       <Users className="size-3" />
                       Members
                     </Button>
@@ -258,6 +233,7 @@ export function SitesView() {
                     <Button
                       variant="outline"
                       size="sm"
+                      className="w-full sm:w-auto"
                       disabled={busyId === site.id}
                       onClick={() => void openDeleteDialog(site)}
                     >
@@ -289,9 +265,7 @@ export function SitesView() {
         state={deleteDialog}
         onClose={() => setDeleteDialog(null)}
         onCascadeChange={(value) =>
-          setDeleteDialog((prev) =>
-            prev ? { ...prev, cascade: value } : prev,
-          )
+          setDeleteDialog((prev) => (prev ? { ...prev, cascade: value } : prev))
         }
         onConfirm={() => void handleConfirmDelete()}
       />
@@ -324,12 +298,10 @@ function DeleteSiteDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            Delete site{state ? ` "${state.site.name}"` : ""}?
-          </DialogTitle>
+          <DialogTitle>Delete site{state ? ` "${state.site.name}"` : ""}?</DialogTitle>
           <DialogDescription>
-            This action removes the site from the registry. Site-scoped
-            data is left in place unless you opt into cascade.
+            This action removes the site from the registry. Site-scoped data is left in place unless
+            you opt into cascade.
           </DialogDescription>
         </DialogHeader>
 
@@ -345,8 +317,8 @@ function DeleteSiteDialog({
                 <p className="flex items-start gap-2 font-medium">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   This site has {usage.total} attached row(s) across{" "}
-                  {Object.keys(usage.collections).length} collection(s) +
-                  system tables. Without cascade they become orphaned.
+                  {Object.keys(usage.collections).length} collection(s) + system tables. Without
+                  cascade they become orphaned.
                 </p>
               </div>
             ) : (
@@ -360,10 +332,7 @@ function DeleteSiteDialog({
                 {Object.entries(usage.collections)
                   .filter(([, count]) => count > 0)
                   .map(([slug, count]) => (
-                    <li
-                      key={slug}
-                      className="flex items-center justify-between py-1"
-                    >
+                    <li key={slug} className="flex items-center justify-between py-1">
                       <code className="font-mono">{slug}</code>
                       <span className="tabular-nums">{count}</span>
                     </li>
@@ -389,9 +358,7 @@ function DeleteSiteDialog({
                 {usage.stringOverrides > 0 ? (
                   <li className="flex items-center justify-between py-1">
                     <code className="font-mono">np_string_overrides</code>
-                    <span className="tabular-nums">
-                      {usage.stringOverrides}
-                    </span>
+                    <span className="tabular-nums">{usage.stringOverrides}</span>
                   </li>
                 ) : null}
               </ul>
@@ -406,9 +373,8 @@ function DeleteSiteDialog({
                   className="mt-0.5"
                 />
                 <span>
-                  Cascade-delete every row above. This is{" "}
-                  <strong>irreversible</strong> — there's no soft-delete or
-                  archive.
+                  Cascade-delete every row above. This is <strong>irreversible</strong> — there's no
+                  soft-delete or archive.
                 </span>
               </label>
             ) : null}
@@ -422,12 +388,7 @@ function DeleteSiteDialog({
           <Button
             variant="destructive"
             onClick={onConfirm}
-            disabled={
-              !state ||
-              state.loading ||
-              state.busy ||
-              (cascadeRequired && !state.cascade)
-            }
+            disabled={!state || state.loading || state.busy || (cascadeRequired && !state.cascade)}
           >
             {state?.busy ? (
               <Loader2 className="size-3 animate-spin" />
@@ -483,9 +444,7 @@ function CreateSiteDialog({
           description: description || null,
         }),
       });
-      const body = (await res.json().catch(() => null)) as
-        | { error?: { message?: string } }
-        | null;
+      const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
       if (!res.ok) {
         setError(body?.error?.message ?? "Unable to create site.");
         return;
@@ -504,8 +463,8 @@ function CreateSiteDialog({
         <DialogHeader>
           <DialogTitle>Add a site</DialogTitle>
           <DialogDescription>
-            Each site is an independent tenant. The id is the stable handle
-            used in URLs and the database; pick a short lowercase string.
+            Each site is an independent tenant. The id is the stable handle used in URLs and the
+            database; pick a short lowercase string.
           </DialogDescription>
         </DialogHeader>
 
@@ -540,9 +499,8 @@ function CreateSiteDialog({
               placeholder="acme.example.com"
             />
             <p className="text-xs text-muted-foreground">
-              Requests with this <code>Host</code> header route to this site.
-              Leave blank for sites you&apos;ll route by some other mechanism
-              (path prefix, future support).
+              Requests with this <code>Host</code> header route to this site. Leave blank for sites
+              you&apos;ll route by some other mechanism (path prefix, future support).
             </p>
           </div>
           <div className="space-y-2">
@@ -562,20 +520,11 @@ function CreateSiteDialog({
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={submitting}
-          >
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
             Cancel
           </Button>
-          <Button
-            onClick={() => void handleSubmit()}
-            disabled={submitting || !id || !name}
-          >
-            {submitting ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : null}
+          <Button onClick={() => void handleSubmit()} disabled={submitting || !id || !name}>
+            {submitting ? <Loader2 className="size-3.5 animate-spin" /> : null}
             Create site
           </Button>
         </DialogFooter>

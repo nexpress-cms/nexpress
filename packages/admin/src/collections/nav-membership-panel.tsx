@@ -6,13 +6,7 @@ import { Check, ExternalLink, Loader2, Plus, X } from "lucide-react";
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select.js";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 
 interface NavMembershipPanelProps {
   pageId: string;
@@ -91,9 +85,7 @@ export function NavMembershipPanel({
     setError(null);
     try {
       const params = new URLSearchParams({ pageId, collection: collectionSlug });
-      const response = await fetch(
-        `/api/navigation/membership?${params.toString()}`,
-      );
+      const response = await fetch(`/api/navigation/membership?${params.toString()}`);
       const payload = (await response.json().catch(() => null)) as unknown;
       if (!response.ok) {
         setError(extractErrorMessage(payload, "Unable to load nav membership."));
@@ -132,9 +124,7 @@ export function NavMembershipPanel({
     setError(null);
     setSuccess(null);
     try {
-      const fetchResponse = await fetch(
-        `/api/navigation?location=${encodeURIComponent(location)}`,
-      );
+      const fetchResponse = await fetch(`/api/navigation?location=${encodeURIComponent(location)}`);
       const payload = (await fetchResponse.json().catch(() => null)) as unknown;
       if (!fetchResponse.ok) {
         setError(extractErrorMessage(payload, "Unable to read nav."));
@@ -142,8 +132,7 @@ export function NavMembershipPanel({
       }
       const existingItems = extractItems(payload);
       const expectedUpdatedAt = extractUpdatedAt(payload);
-      const locationLabel =
-        locations.find((l) => l.value === location)?.label ?? location;
+      const locationLabel = locations.find((l) => l.value === location)?.label ?? location;
       const nextItems: NavItem[] = [
         ...existingItems,
         {
@@ -173,9 +162,7 @@ export function NavMembershipPanel({
     setError(null);
     setSuccess(null);
     try {
-      const fetchResponse = await fetch(
-        `/api/navigation?location=${encodeURIComponent(location)}`,
-      );
+      const fetchResponse = await fetch(`/api/navigation?location=${encodeURIComponent(location)}`);
       const payload = (await fetchResponse.json().catch(() => null)) as unknown;
       if (!fetchResponse.ok) {
         setError(extractErrorMessage(payload, "Unable to read nav."));
@@ -184,8 +171,7 @@ export function NavMembershipPanel({
       const existingItems = extractItems(payload);
       const expectedUpdatedAt = extractUpdatedAt(payload);
       const nextItems = removeItemById(existingItems, itemId);
-      const locationLabel =
-        locations.find((l) => l.value === location)?.label ?? location;
+      const locationLabel = locations.find((l) => l.value === location)?.label ?? location;
       await saveLocation(location, nextItems, expectedUpdatedAt);
       await loadMemberships();
       setSuccess(`Removed from ${locationLabel}.`);
@@ -226,11 +212,10 @@ export function NavMembershipPanel({
 
   const presentLocations = new Set(memberships.map((m) => m.location));
   const addableLocations = locations.filter((loc) => !presentLocations.has(loc.value));
-  const labelFor = (value: string) =>
-    locations.find((l) => l.value === value)?.label ?? value;
+  const labelFor = (value: string) => locations.find((l) => l.value === value)?.label ?? value;
   const effectiveAddLocation = addableLocations.find((l) => l.value === addLocation)
     ? addLocation
-    : addableLocations[0]?.value ?? "";
+    : (addableLocations[0]?.value ?? "");
 
   return (
     <Card>
@@ -248,10 +233,10 @@ export function NavMembershipPanel({
           <div
             role="status"
             aria-live="polite"
-            className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300"
+            className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300"
           >
             <Check className="h-3.5 w-3.5" />
-            {success}
+            <span className="min-w-0 break-words">{success}</span>
           </div>
         ) : null}
 
@@ -267,7 +252,7 @@ export function NavMembershipPanel({
             {memberships.map((m) => (
               <li
                 key={`${m.location}-${m.itemId}`}
-                className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2"
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2"
               >
                 <div className="min-w-0">
                   <p className="truncate text-foreground">{labelFor(m.location)}</p>
@@ -294,12 +279,9 @@ export function NavMembershipPanel({
         {addableLocations.length > 0 ? (
           <div className="space-y-2">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Add to</p>
-            <div className="flex items-center gap-2">
-              <Select
-                value={effectiveAddLocation}
-                onValueChange={(value) => setAddLocation(value)}
-              >
-                <SelectTrigger className="h-9 flex-1">
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <Select value={effectiveAddLocation} onValueChange={(value) => setAddLocation(value)}>
+                <SelectTrigger className="h-9 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -313,6 +295,7 @@ export function NavMembershipPanel({
               <Button
                 variant="outline"
                 size="sm"
+                className="w-full sm:w-auto"
                 disabled={!effectiveAddLocation || busyLocation === effectiveAddLocation}
                 onClick={() => void addToLocation(effectiveAddLocation)}
               >
@@ -375,11 +358,7 @@ function isMembership(value: unknown): value is Membership {
 }
 
 function isLocationOption(value: unknown): value is LocationOption {
-  return (
-    isRecord(value) &&
-    typeof value.value === "string" &&
-    typeof value.label === "string"
-  );
+  return isRecord(value) && typeof value.value === "string" && typeof value.label === "string";
 }
 
 function isNavItem(value: unknown): value is NavItem {

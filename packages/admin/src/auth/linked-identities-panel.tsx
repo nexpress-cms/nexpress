@@ -143,7 +143,54 @@ export function LinkedIdentitiesPanel({
           </div>
         ) : null}
 
-        <div className="overflow-x-auto rounded-xl border border-border/60">
+        <div className="space-y-3 md:hidden">
+          {loading ? (
+            <div className="rounded-xl border border-border/60 px-4 py-10 text-center text-sm text-muted-foreground">
+              Loading…
+            </div>
+          ) : identities.length === 0 ? (
+            <div className="rounded-xl border border-border/60 px-4 py-10 text-center text-sm text-muted-foreground">
+              No linked identities.
+            </div>
+          ) : (
+            identities.map((identity) => (
+              <div
+                key={identity.id}
+                className="space-y-3 rounded-xl border border-border/60 bg-background/70 p-4"
+              >
+                <div className="grid gap-2">
+                  <Badge variant="secondary" className="font-mono">
+                    {identity.provider}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(identity.createdAt).toLocaleString()}
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  <p className="break-all font-mono text-xs text-muted-foreground">
+                    {identity.subject}
+                  </p>
+                  {identity.email ? (
+                    <p className="break-all text-xs text-foreground">{identity.email}</p>
+                  ) : null}
+                </div>
+                {canRevoke ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setRevoking(identity)}
+                    disabled={submitting}
+                  >
+                    Revoke
+                  </Button>
+                ) : null}
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto rounded-xl border border-border/60 md:block">
           <table className="w-full min-w-[640px] text-sm">
             <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
               <tr>

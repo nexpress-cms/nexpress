@@ -6,12 +6,7 @@ import { ArrowLeft, Loader2, Plus, Trash2, Users } from "lucide-react";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../ui/card.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import {
   Dialog,
   DialogContent,
@@ -23,13 +18,7 @@ import {
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { PageHeader } from "../layout/page-header.js";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select.js";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 
 /**
  * Phase 15.6 — per-site membership management.
@@ -70,20 +59,16 @@ export function MembershipsView({ siteId }: { siteId: string }) {
   async function load() {
     setError(null);
     try {
-      const res = await npFetch(
-        `/api/admin/sites/${encodeURIComponent(siteId)}/memberships`,
-      );
+      const res = await npFetch(`/api/admin/sites/${encodeURIComponent(siteId)}/memberships`);
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as
-          | { error?: { message?: string } }
-          | null;
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
         setError(body?.error?.message ?? "Unable to load memberships.");
         setMemberships([]);
         return;
       }
-      const body = (await res.json().catch(() => null)) as
-        | { docs?: Membership[] }
-        | null;
+      const body = (await res.json().catch(() => null)) as { docs?: Membership[] } | null;
       setMemberships(body?.docs ?? []);
     } catch {
       setError("Unable to load memberships.");
@@ -106,9 +91,9 @@ export function MembershipsView({ siteId }: { siteId: string }) {
         { method: "DELETE" },
       );
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as
-          | { error?: { message?: string } }
-          | null;
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
         setError(body?.error?.message ?? "Unable to revoke.");
         return;
       }
@@ -131,7 +116,11 @@ export function MembershipsView({ siteId }: { siteId: string }) {
         }
         description={
           <>
-            Members of <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-[12px] text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">{siteId}</code> with explicit roles. Users not listed here fall back to their global default role.
+            Members of{" "}
+            <code className="break-all rounded bg-neutral-100 px-1 py-0.5 font-mono text-[12px] text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
+              {siteId}
+            </code>{" "}
+            with explicit roles. Users not listed here fall back to their global default role.
           </>
         }
         actions={
@@ -166,8 +155,7 @@ export function MembershipsView({ siteId }: { siteId: string }) {
       ) : memberships.length === 0 ? (
         <Card>
           <CardContent className="text-[13px] text-muted-foreground">
-            No explicit memberships on this site. Grant one to start scoping
-            roles per tenant.
+            No explicit memberships on this site. Grant one to start scoping roles per tenant.
           </CardContent>
         </Card>
       ) : (
@@ -182,21 +170,22 @@ export function MembershipsView({ siteId }: { siteId: string }) {
             {memberships.map((m) => (
               <div
                 key={m.userId}
-                className="flex items-center justify-between gap-3 px-5 py-3"
+                className="grid gap-3 px-5 py-3 sm:flex sm:items-center sm:justify-between"
               >
-                <div className="space-y-1">
-                  <p className="font-mono text-xs">{m.userId}</p>
+                <div className="min-w-0 space-y-1">
+                  <p className="break-all font-mono text-xs">{m.userId}</p>
                   <p className="text-[11px] text-muted-foreground">
                     Granted {new Date(m.createdAt).toLocaleString()}
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary capitalize">
+                <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:gap-3">
+                  <span className="justify-self-start rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary capitalize">
                     {m.role}
                   </span>
                   <Button
                     size="sm"
                     variant="outline"
+                    className="w-full sm:w-auto"
                     disabled={busyUserId === m.userId}
                     onClick={() => void handleRevoke(m.userId)}
                   >
@@ -273,16 +262,12 @@ function GrantDialog({
     const runSearch = async () => {
       setSearching(true);
       try {
-        const res = await npFetch(
-          `/api/users?search=${encodeURIComponent(search.trim())}&limit=8`,
-        );
+        const res = await npFetch(`/api/users?search=${encodeURIComponent(search.trim())}&limit=8`);
         if (!res.ok) {
           setResults([]);
           return;
         }
-        const body = (await res.json().catch(() => null)) as
-          | { docs?: UserSearchResult[] }
-          | null;
+        const body = (await res.json().catch(() => null)) as { docs?: UserSearchResult[] } | null;
         setResults(body?.docs ?? []);
       } finally {
         setSearching(false);
@@ -299,17 +284,12 @@ function GrantDialog({
     setSubmitting(true);
     setError(null);
     try {
-      const res = await npFetch(
-        `/api/admin/sites/${encodeURIComponent(siteId)}/memberships`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: selected.id, role }),
-        },
-      );
-      const body = (await res.json().catch(() => null)) as
-        | { error?: { message?: string } }
-        | null;
+      const res = await npFetch(`/api/admin/sites/${encodeURIComponent(siteId)}/memberships`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: selected.id, role }),
+      });
+      const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
       if (!res.ok) {
         setError(body?.error?.message ?? "Unable to grant membership.");
         return;
@@ -328,8 +308,8 @@ function GrantDialog({
         <DialogHeader>
           <DialogTitle>Grant membership on {siteId}</DialogTitle>
           <DialogDescription>
-            Search by email or name. Granting on a site overrides the
-            user&apos;s global default role for queries scoped to this site.
+            Search by email or name. Granting on a site overrides the user&apos;s global default
+            role for queries scoped to this site.
           </DialogDescription>
         </DialogHeader>
 
@@ -337,17 +317,16 @@ function GrantDialog({
           <div className="space-y-2">
             <Label htmlFor="grant-user-search">User</Label>
             {selected ? (
-              <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/30 px-3 py-2">
+              <div className="grid gap-2 rounded-xl border border-border/70 bg-muted/30 px-3 py-2 sm:flex sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{selected.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {selected.email}
-                  </p>
+                  <p className="break-all text-xs text-muted-foreground">{selected.email}</p>
                 </div>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
+                  className="w-full sm:w-auto"
                   onClick={() => {
                     setSelected(null);
                     setSearch("");
@@ -372,25 +351,21 @@ function GrantDialog({
                         Searching…
                       </p>
                     ) : results.length === 0 ? (
-                      <p className="px-3 py-2 text-xs text-muted-foreground">
-                        No users match.
-                      </p>
+                      <p className="px-3 py-2 text-xs text-muted-foreground">No users match.</p>
                     ) : (
                       <ul className="max-h-48 overflow-auto divide-y divide-border/60">
                         {results.map((r) => (
                           <li key={r.id}>
                             <button
                               type="button"
-                              className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-muted/40"
+                              className="grid w-full gap-1 px-3 py-2 text-left text-sm hover:bg-muted/40 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:items-center"
                               onClick={() => {
                                 setSelected(r);
                                 setSearch("");
                               }}
                             >
-                              <span className="truncate font-medium">
-                                {r.name}
-                              </span>
-                              <span className="truncate text-xs text-muted-foreground">
+                              <span className="min-w-0 truncate font-medium">{r.name}</span>
+                              <span className="min-w-0 break-all text-xs text-muted-foreground sm:truncate sm:text-right">
                                 {r.email}
                               </span>
                             </button>
@@ -405,10 +380,7 @@ function GrantDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="grant-role">Role</Label>
-            <Select
-              value={role}
-              onValueChange={(v) => setRole(v as (typeof ROLES)[number])}
-            >
+            <Select value={role} onValueChange={(v) => setRole(v as (typeof ROLES)[number])}>
               <SelectTrigger id="grant-role">
                 <SelectValue />
               </SelectTrigger>
@@ -429,20 +401,11 @@ function GrantDialog({
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={submitting}
-          >
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
             Cancel
           </Button>
-          <Button
-            onClick={() => void handleSubmit()}
-            disabled={submitting || !selected}
-          >
-            {submitting ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : null}
+          <Button onClick={() => void handleSubmit()} disabled={submitting || !selected}>
+            {submitting ? <Loader2 className="size-3.5 animate-spin" /> : null}
             Grant
           </Button>
         </DialogFooter>
