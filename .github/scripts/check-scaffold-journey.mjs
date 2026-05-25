@@ -223,6 +223,44 @@ assertIncludes(doctorBrief.output, "NP_STORAGE_ADAPTER=local", "doctor:prod --br
 assertNotIncludes(doctorBrief.output, "Running in --prod mode", "doctor:prod --brief");
 console.log("✓ doctor:prod brief failure stays compact");
 
+const doctorBriefFixPlan = runTsx("scripts/doctor.ts", [
+  "--prod",
+  "--target",
+  "vercel",
+  "--brief",
+  "--no-color",
+  "--fix-plan",
+]);
+assertNoResolverCrash(doctorBriefFixPlan.output, "doctor:prod --brief --fix-plan");
+if (doctorBriefFixPlan.code === 0) {
+  fail(
+    "doctor:prod --brief --fix-plan should fail against the intentional closed DB/local Vercel storage env",
+  );
+}
+assertNoAnsi(doctorBriefFixPlan.output, "doctor:prod --brief --fix-plan --no-color");
+assertIncludes(
+  doctorBriefFixPlan.output,
+  "NexPress doctor: prod for vercel",
+  "doctor:prod --fix-plan",
+);
+assertIncludes(doctorBriefFixPlan.output, "Fix plan", "doctor:prod --fix-plan");
+assertIncludes(
+  doctorBriefFixPlan.output,
+  "Configure storage for the selected deployment target",
+  "doctor:prod --fix-plan",
+);
+assertIncludes(
+  doctorBriefFixPlan.output,
+  "Configure a hosted Postgres DATABASE_URL for the selected deployment target",
+  "doctor:prod --fix-plan",
+);
+assertIncludes(
+  doctorBriefFixPlan.output,
+  "command: pnpm run deploy:plan -- --target vercel --json",
+  "doctor:prod --fix-plan",
+);
+console.log("✓ doctor:prod human fix-plan renders inside the scaffold journey");
+
 assertIncludes(readme, "Deploy with Vercel", "README");
 assertIncludes(readme, "https://vercel.com/new?utm_source=nexpress", "README");
 assertIncludes(readme, "NP_STORAGE_ADAPTER=s3", "README");
