@@ -8,12 +8,7 @@ import { MailPlus, Plus } from "lucide-react";
 import { npFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../ui/card.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import {
   Dialog,
   DialogContent,
@@ -24,13 +19,7 @@ import {
 } from "../ui/dialog.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select.js";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 
 type UserRow = {
   id: string;
@@ -188,8 +177,8 @@ export function UserManagement() {
           </div>
         ) : null}
 
-        <div className="overflow-hidden rounded-xl border border-border/70">
-          <div className="grid grid-cols-[1fr_1.2fr_140px_120px] gap-4 border-b border-border/70 bg-muted/35 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+        <div className="overflow-x-auto rounded-xl border border-border/70">
+          <div className="grid min-w-[680px] grid-cols-[1fr_1.2fr_140px_120px] gap-4 border-b border-border/70 bg-muted/35 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             <span>Name</span>
             <span>Email</span>
             <span>Role</span>
@@ -198,10 +187,7 @@ export function UserManagement() {
           <div className="divide-y divide-border/70">
             {loading ? (
               Array.from({ length: 3 }).map((_, index) => (
-                <div
-                  key={`user-skeleton-${index}`}
-                  className="h-14 animate-pulse bg-muted/20"
-                />
+                <div key={`user-skeleton-${index}`} className="h-14 animate-pulse bg-muted/20" />
               ))
             ) : users.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-muted-foreground">
@@ -211,7 +197,7 @@ export function UserManagement() {
               users.map((user) => (
                 <div
                   key={user.id}
-                  className="grid grid-cols-[1fr_1.2fr_140px_120px] gap-4 px-4 py-4 text-sm"
+                  className="grid min-w-[680px] grid-cols-[1fr_1.2fr_140px_120px] gap-4 px-4 py-4 text-sm"
                 >
                   <div className="font-medium text-foreground">{user.name}</div>
                   <div className="text-muted-foreground">{user.email}</div>
@@ -327,8 +313,8 @@ export function UserManagement() {
           <DialogHeader>
             <DialogTitle>Invite user</DialogTitle>
             <DialogDescription>
-              Send an email invitation. The user sets their own password via the link — valid
-              for 7 days.
+              Send an email invitation. The user sets their own password via the link — valid for 7
+              days.
             </DialogDescription>
           </DialogHeader>
 

@@ -78,9 +78,10 @@ export function AuditLogView() {
       const res = await npFetch(`/api/admin/audit?${params.toString()}`);
       const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok || !raw) {
-        const err = raw && typeof raw.error === "object" && raw.error
-          ? (raw.error as { message?: unknown }).message
-          : null;
+        const err =
+          raw && typeof raw.error === "object" && raw.error
+            ? (raw.error as { message?: unknown }).message
+            : null;
         throw new Error(typeof err === "string" ? err : `HTTP ${res.status}`);
       }
       const docs = Array.isArray(raw.docs) ? (raw.docs as AuditEventRow[]) : [];
@@ -262,8 +263,8 @@ export function AuditLogView() {
               {error}
             </div>
           ) : null}
-          <div className="overflow-hidden rounded-xl border border-border/60">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-xl border border-border/60">
+            <table className="w-full min-w-[860px] text-sm">
               <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
                 <tr>
                   <th className="h-9 px-3.5 font-medium">When</th>

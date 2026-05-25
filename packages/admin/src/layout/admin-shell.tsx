@@ -23,6 +23,7 @@ import {
   Tag,
   Timer,
   Users,
+  X,
 } from "lucide-react";
 import type { NpAuthUser } from "@nexpress/core";
 
@@ -116,7 +117,9 @@ type NavGroup = {
 };
 
 function isActive(pathname: string, href: string) {
-  return href === "/admin" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+  return href === "/admin"
+    ? pathname === href
+    : pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function NavLink({
@@ -124,12 +127,14 @@ function NavLink({
   href,
   icon: Icon,
   label,
+  onNavigate,
   pathname,
 }: {
   collapsed: boolean;
   href: string;
   icon: NavItem["icon"];
   label: string;
+  onNavigate?: () => void;
   pathname: string;
 }) {
   const active = isActive(pathname, href);
@@ -137,6 +142,7 @@ function NavLink({
   const content = (
     <Link
       href={href}
+      onClick={onNavigate}
       className={cn(
         "group relative flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13.5px] font-normal transition-colors",
         active
@@ -157,9 +163,7 @@ function NavLink({
       <Icon
         className={cn(
           "size-[15px] shrink-0",
-          active
-            ? "text-[var(--np-color-brand)]"
-            : "text-neutral-500 dark:text-neutral-400",
+          active ? "text-[var(--np-color-brand)]" : "text-neutral-500 dark:text-neutral-400",
         )}
       />
       {!collapsed ? <span className="truncate">{label}</span> : null}
@@ -181,6 +185,11 @@ function NavLink({
 function AdminShell({ user, collections, caps, children }: AdminShellProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState(false);
+  const [mobileOpen, setMobileOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   const collectionGroups = React.useMemo(() => {
     return collections
@@ -269,7 +278,11 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
       communityItems.push({ href: "/admin/members", label: "Members", icon: Users });
     }
     if (caps.canModerate) {
-      communityItems.push({ href: "/admin/community/pending", label: "Pending review", icon: Inbox });
+      communityItems.push({
+        href: "/admin/community/pending",
+        label: "Pending review",
+        icon: Inbox,
+      });
       communityItems.push({ href: "/admin/community/reports", label: "Reports", icon: Flag });
       communityItems.push({ href: "/admin/community/audit", label: "Audit log", icon: History });
       communityItems.push({
@@ -287,9 +300,7 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
       }
     }
 
-    const systemItems: NavItem[] = [
-      { href: "/admin/plugins", label: "Plugins", icon: Puzzle },
-    ];
+    const systemItems: NavItem[] = [{ href: "/admin/plugins", label: "Plugins", icon: Puzzle }];
     if (caps.canManageAdmin) {
       systemItems.push({ href: "/admin/jobs", label: "Jobs", icon: Timer });
       systemItems.push({ href: "/admin/health", label: "Health", icon: Activity });
@@ -302,11 +313,21 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
 
   return (
     <TooltipProvider delayDuration={120}>
-      <div className="flex min-h-screen bg-[#f8f8f7] text-neutral-950 dark:bg-neutral-950 dark:text-neutral-50">
+      <div className="flex min-h-screen overflow-x-hidden bg-[#f8f8f7] text-neutral-950 dark:bg-neutral-950 dark:text-neutral-50">
+        {mobileOpen ? (
+          <button
+            type="button"
+            aria-label="Close navigation"
+            className="fixed inset-0 z-30 bg-neutral-950/35 backdrop-blur-[1px] md:hidden"
+            onClick={() => setMobileOpen(false)}
+          />
+        ) : null}
+
         <aside
           className={cn(
-            "sticky top-0 flex h-screen shrink-0 flex-col border-r border-neutral-200/70 bg-[#fbfbfa] transition-[width] duration-300 dark:border-neutral-800/70 dark:bg-neutral-950/95",
-            collapsed ? "w-16" : "w-60",
+            "fixed inset-y-0 left-0 z-40 flex h-dvh w-[min(18rem,calc(100vw-3rem))] max-w-[calc(100vw-3rem)] flex-col border-r border-neutral-200/70 bg-[#fbfbfa] shadow-2xl transition-transform duration-300 dark:border-neutral-800/70 dark:bg-neutral-950/95 md:sticky md:top-0 md:z-auto md:h-screen md:shrink-0 md:translate-x-0 md:shadow-none md:transition-[width]",
+            mobileOpen ? "translate-x-0" : "-translate-x-full",
+            collapsed ? "md:w-16" : "md:w-60",
           )}
         >
           <div className="flex h-14 items-center justify-between px-4">
@@ -321,11 +342,22 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
               <NpMark size={22} />
               {!collapsed ? <span>NexPress</span> : null}
             </Link>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="md:hidden"
+              onClick={() => setMobileOpen(false)}
+              aria-label="Close navigation"
+            >
+              <X className="size-3.5" />
+            </Button>
             {!collapsed ? (
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-sm"
+                className="hidden md:inline-flex"
                 onClick={() => setCollapsed(true)}
                 aria-label="Collapse sidebar"
               >
@@ -353,6 +385,7 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
                         href={item.href}
                         icon={item.icon}
                         label={item.label}
+                        onNavigate={() => setMobileOpen(false)}
                         pathname={pathname}
                       />
                     ))}
@@ -375,7 +408,7 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                className="ml-auto"
+                className="ml-auto hidden md:inline-flex"
                 onClick={() => setCollapsed(false)}
                 aria-label="Expand sidebar"
               >
@@ -386,8 +419,14 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <AdminTopbar user={user} />
-          <main className="flex-1 px-6 py-7 md:px-8">
+          <AdminTopbar
+            user={user}
+            onOpenNavigation={() => {
+              setCollapsed(false);
+              setMobileOpen(true);
+            }}
+          />
+          <main className="flex-1 px-4 py-5 sm:px-5 md:px-8 md:py-7">
             <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-6">{children}</div>
           </main>
         </div>

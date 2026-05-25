@@ -102,13 +102,11 @@ export function MembersListView({
 
       <Card>
         <CardHeader>
-          <CardTitle>
-            {isFiltered ? "Filtered members" : "All members"}
-          </CardTitle>
+          <CardTitle>{isFiltered ? "Filtered members" : "All members"}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-hidden rounded-xl border border-border/60">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-xl border border-border/60">
+            <table className="w-full min-w-[760px] text-sm">
               <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
                 <tr>
                   <th className="h-9 px-3.5 font-medium">Handle</th>

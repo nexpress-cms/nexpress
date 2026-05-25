@@ -2,8 +2,7 @@ import * as React from "react";
 
 const STORAGE_KEY = "np-theme";
 
-export function ThemeInit(): React.JSX.Element {
-  const script = `
+export const npThemeInitScript = `
 (function() {
   try {
     var stored = localStorage.getItem(${JSON.stringify(STORAGE_KEY)});
@@ -13,5 +12,9 @@ export function ThemeInit(): React.JSX.Element {
   } catch (e) {}
 })();
 `;
-  return <script dangerouslySetInnerHTML={{ __html: script }} suppressHydrationWarning />;
+
+export function ThemeInit(): React.JSX.Element {
+  return (
+    <script dangerouslySetInnerHTML={{ __html: npThemeInitScript }} suppressHydrationWarning />
+  );
 }

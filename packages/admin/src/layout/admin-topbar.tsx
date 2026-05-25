@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, ChevronDown, ExternalLink, LogOut, User } from "lucide-react";
+import { Bell, ChevronDown, ExternalLink, LogOut, PanelLeft, User } from "lucide-react";
 import type { NpAuthUser } from "@nexpress/core";
 
 import { SitePicker } from "../sites/site-picker.js";
@@ -20,6 +20,7 @@ import { ThemeToggle } from "./theme-toggle.js";
 
 export interface AdminTopbarProps {
   user: NpAuthUser;
+  onOpenNavigation?: () => void;
 }
 
 const SECTION_LABELS: Record<string, string> = {
@@ -96,45 +97,64 @@ function deriveCrumbs(pathname: string): string[] {
   return [section, leaf];
 }
 
-function AdminTopbar({ user }: AdminTopbarProps) {
+function AdminTopbar({ user, onOpenNavigation }: AdminTopbarProps) {
   const pathname = usePathname();
   const crumbs = React.useMemo(() => deriveCrumbs(pathname), [pathname]);
   const initials = React.useMemo(() => {
-    return (user.name || user.email || "?")
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part.charAt(0).toUpperCase())
-      .join("") || "?";
+    return (
+      (user.name || user.email || "?")
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part.charAt(0).toUpperCase())
+        .join("") || "?"
+    );
   }, [user.email, user.name]);
 
   return (
-    <header className="sticky top-0 z-20 flex h-[57px] items-center justify-between border-b border-neutral-200/70 bg-[rgb(248_248_247_/_0.8)] px-6 backdrop-blur-md backdrop-saturate-150 dark:border-neutral-800/70 dark:bg-neutral-950/80">
-      <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-[13px]">
-        {crumbs.map((crumb, i) => {
-          const isLast = i === crumbs.length - 1;
-          return (
-            <React.Fragment key={`${crumb}-${i}`}>
-              {i > 0 ? (
-                <span aria-hidden className="text-neutral-300 dark:text-neutral-700">
-                  /
+    <header className="sticky top-0 z-20 flex h-[57px] min-w-0 items-center justify-between gap-3 border-b border-neutral-200/70 bg-[rgb(248_248_247_/_0.8)] px-4 backdrop-blur-md backdrop-saturate-150 dark:border-neutral-800/70 dark:bg-neutral-950/80 sm:px-5 md:px-6">
+      <div className="flex min-w-0 items-center gap-2">
+        {onOpenNavigation ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0 md:hidden"
+            onClick={onOpenNavigation}
+            aria-label="Open navigation"
+          >
+            <PanelLeft className="size-3.5" />
+          </Button>
+        ) : null}
+        <nav
+          aria-label="Breadcrumb"
+          className="flex min-w-0 items-center gap-2 overflow-hidden text-[13px]"
+        >
+          {crumbs.map((crumb, i) => {
+            const isLast = i === crumbs.length - 1;
+            return (
+              <React.Fragment key={`${crumb}-${i}`}>
+                {i > 0 ? (
+                  <span aria-hidden className="shrink-0 text-neutral-300 dark:text-neutral-700">
+                    /
+                  </span>
+                ) : null}
+                <span
+                  className={
+                    isLast
+                      ? "truncate font-medium text-neutral-950 dark:text-neutral-50"
+                      : "shrink-0 text-neutral-500 dark:text-neutral-400"
+                  }
+                >
+                  {crumb}
                 </span>
-              ) : null}
-              <span
-                className={
-                  isLast
-                    ? "font-medium text-neutral-950 dark:text-neutral-50"
-                    : "text-neutral-500 dark:text-neutral-400"
-                }
-              >
-                {crumb}
-              </span>
-            </React.Fragment>
-          );
-        })}
-      </nav>
+              </React.Fragment>
+            );
+          })}
+        </nav>
+      </div>
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex shrink-0 items-center gap-1.5">
         <SitePicker />
         <ThemeToggle />
         <Button
@@ -157,10 +177,10 @@ function AdminTopbar({ user }: AdminTopbarProps) {
               <span className="flex size-7 items-center justify-center rounded-full bg-gradient-to-br from-[#3858E9] to-[#1f2c91] text-[10.5px] font-semibold text-white">
                 {initials}
               </span>
-              <span className="px-1 text-[13px] font-medium text-neutral-950 dark:text-neutral-50">
+              <span className="hidden px-1 text-[13px] font-medium text-neutral-950 dark:text-neutral-50 sm:inline">
                 {user.name?.split(" ")[0] ?? user.email}
               </span>
-              <ChevronDown className="size-3 text-neutral-400" />
+              <ChevronDown className="hidden size-3 text-neutral-400 sm:block" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">
@@ -182,7 +202,12 @@ function AdminTopbar({ user }: AdminTopbarProps) {
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <a href="/" target="_blank" rel="noreferrer" className="flex w-full items-center gap-2">
+              <a
+                href="/"
+                target="_blank"
+                rel="noreferrer"
+                className="flex w-full items-center gap-2"
+              >
                 <ExternalLink className="size-4" />
                 View Site
               </a>

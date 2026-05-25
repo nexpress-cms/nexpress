@@ -43,7 +43,10 @@ export function PendingQueueView() {
   const [totalDocs, setTotalDocs] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actingOn, setActingOn] = useState<{ row: PendingDocRow; verb: "approve" | "reject" } | null>(null);
+  const [actingOn, setActingOn] = useState<{
+    row: PendingDocRow;
+    verb: "approve" | "reject";
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   // Phase: bulk approve / reject. Selection is keyed by
@@ -180,7 +183,8 @@ export function PendingQueueView() {
         }
         description={
           <>
-            Member-authored documents that landed in the moderation queue — either because the collection sets{" "}
+            Member-authored documents that landed in the moderation queue — either because the
+            collection sets{" "}
             <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-[12px] text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
               defaultStatus: &quot;pending&quot;
             </code>{" "}
@@ -243,17 +247,15 @@ export function PendingQueueView() {
           <CardTitle>Queue</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-hidden rounded-xl border border-border/60">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-xl border border-border/60">
+            <table className="w-full min-w-[760px] text-sm">
               <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
                 <tr>
                   <th className="w-10 px-4 py-3">
                     <input
                       type="checkbox"
                       aria-label="Select all"
-                      checked={
-                        rows.length > 0 && selected.size === rows.length
-                      }
+                      checked={rows.length > 0 && selected.size === rows.length}
                       onChange={toggleAll}
                       disabled={loading || rows.length === 0}
                     />

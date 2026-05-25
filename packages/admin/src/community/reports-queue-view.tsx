@@ -18,13 +18,7 @@ import {
 } from "../ui/dialog.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select.js";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 
 export interface ReportRow {
   id: string;
@@ -102,9 +96,7 @@ export function ReportsQueueView() {
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Queue</CardTitle>
           <div className="flex items-center gap-2">
-            <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-              Status
-            </Label>
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Status</Label>
             <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
               <SelectTrigger className="w-40">
                 <SelectValue />
@@ -125,8 +117,8 @@ export function ReportsQueueView() {
               {error}
             </div>
           ) : null}
-          <div className="overflow-hidden rounded-xl border border-border/60">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-xl border border-border/60">
+            <table className="w-full min-w-[720px] text-sm">
               <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
                 <tr>
                   <th className="h-9 px-3.5 font-medium">Target</th>
@@ -159,9 +151,7 @@ export function ReportsQueueView() {
                         </div>
                       </td>
                       <td className="px-4 py-3 max-w-md">
-                        <span className="line-clamp-3 whitespace-pre-wrap">
-                          {report.reason}
-                        </span>
+                        <span className="line-clamp-3 whitespace-pre-wrap">{report.reason}</span>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {new Date(report.createdAt).toLocaleString()}
@@ -175,11 +165,7 @@ export function ReportsQueueView() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         {report.resolvedAt ? null : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setResolving(report)}
-                          >
+                          <Button size="sm" variant="outline" onClick={() => setResolving(report)}>
                             Resolve
                           </Button>
                         )}
@@ -223,14 +209,11 @@ function ResolveDialog({ report, onClose, onResolved }: ResolveDialogProps) {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await npFetch(
-        `/api/admin/community/reports/${report.id}/resolve`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ resolution }),
-        },
-      );
+      const res = await npFetch(`/api/admin/community/reports/${report.id}/resolve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resolution }),
+      });
       if (!res.ok) {
         const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
         throw new Error(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
@@ -249,16 +232,13 @@ function ResolveDialog({ report, onClose, onResolved }: ResolveDialogProps) {
         <DialogHeader>
           <DialogTitle>Resolve report</DialogTitle>
           <DialogDescription>
-            Free-form label that tells future moderators what action you took.
-            Common values: <code>hidden</code>, <code>banned</code>,{" "}
-            <code>dismissed</code>.
+            Free-form label that tells future moderators what action you took. Common values:{" "}
+            <code>hidden</code>, <code>banned</code>, <code>dismissed</code>.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">
-              Reason
-            </div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Reason</div>
             <div className="mt-1 whitespace-pre-wrap">{report.reason}</div>
           </div>
           <div className="space-y-2">
@@ -271,18 +251,13 @@ function ResolveDialog({ report, onClose, onResolved }: ResolveDialogProps) {
               maxLength={120}
             />
           </div>
-          {error ? (
-            <p className="text-sm text-destructive">{error}</p>
-          ) : null}
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            onClick={() => void submit()}
-            disabled={submitting || !resolution.trim()}
-          >
+          <Button onClick={() => void submit()} disabled={submitting || !resolution.trim()}>
             {submitting ? "Resolving…" : "Resolve"}
           </Button>
         </DialogFooter>

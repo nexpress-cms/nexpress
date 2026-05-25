@@ -4,12 +4,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, Globe, Star } from "lucide-react";
 
 import { npFetch } from "../lib/api-client.js";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../ui/card.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 
 /**
  * Phase 12.3 — read-only Settings → Locales view.
@@ -66,9 +61,9 @@ export function LocalesTab() {
       // Progress is optional — failures don't block the
       // configured-locale list from rendering.
       if (progressRes.ok) {
-        const progressBody = (await progressRes.json().catch(() => null)) as
-          | TranslationProgress
-          | null;
+        const progressBody = (await progressRes
+          .json()
+          .catch(() => null)) as TranslationProgress | null;
         if (progressBody && Array.isArray(progressBody.collections)) {
           setProgress(progressBody);
         }
@@ -113,8 +108,8 @@ export function LocalesTab() {
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>
-            i18n is not configured. To enable multi-language content, add an{" "}
-            <code>i18n</code> block to <code>nexpress.config.ts</code>:
+            i18n is not configured. To enable multi-language content, add an <code>i18n</code> block
+            to <code>nexpress.config.ts</code>:
           </p>
           <pre className="rounded-xl border border-border/70 bg-muted/40 p-4 font-mono text-xs leading-relaxed">{`i18n: {
   locales: ["en", "ko"],
@@ -148,10 +143,7 @@ export function LocalesTab() {
             {(config.locales ?? []).map((locale) => {
               const isDefault = locale === config.defaultLocale;
               return (
-                <li
-                  key={locale}
-                  className="flex items-center justify-between py-3"
-                >
+                <li key={locale} className="flex items-center justify-between py-3">
                   <div className="flex items-center gap-3">
                     <span className="rounded-md border border-border/70 bg-background px-2 py-0.5 font-mono text-xs uppercase">
                       {locale}
@@ -179,11 +171,7 @@ export function LocalesTab() {
   );
 }
 
-function TranslationProgressCard({
-  progress,
-}: {
-  progress: TranslationProgress;
-}) {
+function TranslationProgressCard({ progress }: { progress: TranslationProgress }) {
   if (progress.collections.length === 0) {
     return (
       <Card>
@@ -194,8 +182,7 @@ function TranslationProgressCard({
           </CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
-          No i18n-enabled collections registered yet. Set{" "}
-          <code>i18n: true</code> on a collection in{" "}
+          No i18n-enabled collections registered yet. Set <code>i18n: true</code> on a collection in{" "}
           <code>defineCollection</code> to start tracking translations.
         </CardContent>
       </Card>
@@ -210,21 +197,26 @@ function TranslationProgressCard({
           Translation progress
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Each row is one i18n-enabled collection. Numbers are
-          live row counts per locale; the missing badge shows
-          how many translation groups still need a translation
-          in that locale.
+          Each row is one i18n-enabled collection. Numbers are live row counts per locale; the
+          missing badge shows how many translation groups still need a translation in that locale.
         </p>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="border-b border-neutral-200/70 dark:border-neutral-800/70">
-                <th className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">Collection</th>
-                <th className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">Groups</th>
+                <th className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
+                  Collection
+                </th>
+                <th className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
+                  Groups
+                </th>
                 {progress.locales.map((locale) => (
-                  <th key={locale} className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
+                  <th
+                    key={locale}
+                    className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400"
+                  >
                     {locale.toUpperCase()}
                   </th>
                 ))}
@@ -232,10 +224,7 @@ function TranslationProgressCard({
             </thead>
             <tbody>
               {progress.collections.map((row) => (
-                <tr
-                  key={row.collection}
-                  className="border-b border-border/40 last:border-0"
-                >
+                <tr key={row.collection} className="border-b border-border/40 last:border-0">
                   <td className="py-3 pr-4 font-medium">{row.collection}</td>
                   <td className="py-3 pr-4 tabular-nums text-muted-foreground">
                     {row.totalGroups}
@@ -243,10 +232,13 @@ function TranslationProgressCard({
                   {progress.locales.map((locale) => {
                     const cell = row.perLocale[locale];
                     if (!cell) {
-                      return <td key={locale} className="py-3 pr-4 text-muted-foreground">—</td>;
+                      return (
+                        <td key={locale} className="py-3 pr-4 text-muted-foreground">
+                          —
+                        </td>
+                      );
                     }
-                    const complete =
-                      cell.missing === 0 && row.totalGroups > 0;
+                    const complete = cell.missing === 0 && row.totalGroups > 0;
                     return (
                       <td key={locale} className="py-3 pr-4 tabular-nums">
                         <span

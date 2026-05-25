@@ -1,20 +1,19 @@
-import { ThemeInit } from "@nexpress/admin";
+import { npThemeInitScript } from "@nexpress/admin";
+import Script from "next/script";
 
 /**
  * Admin route-group layout. The only thing it does today is mount
- * <ThemeInit /> so the inline theme bootstrap script runs before
- * the admin shell paints — without it, switching from a light page
- * into an operator's dark-preference admin session would flash
- * white for a beat. The script body is tiny and side-effect-only.
+ * the admin theme bootstrap without rendering a raw <script> tag
+ * from a React component. The script body is tiny and side-effect-only.
  */
-export default function AdminGroupLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function AdminGroupLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <ThemeInit />
+      <Script
+        id="np-admin-theme-init"
+        strategy="beforeInteractive"
+        dangerouslySetInnerHTML={{ __html: npThemeInitScript }}
+      />
       {children}
     </>
   );

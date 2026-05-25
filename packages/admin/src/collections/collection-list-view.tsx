@@ -53,7 +53,9 @@ interface CollectionListViewProps {
   activeKind?: string;
 }
 
-const getNamedFields = (fields: NpFieldConfig[]): Array<Extract<NpFieldConfig, { name: string }>> => {
+const getNamedFields = (
+  fields: NpFieldConfig[],
+): Array<Extract<NpFieldConfig, { name: string }>> => {
   const result: Array<Extract<NpFieldConfig, { name: string }>> = [];
 
   for (const field of fields) {
@@ -169,10 +171,9 @@ export function CollectionListView({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState<null | "publish" | "unpublish" | "delete">(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [bulkToast, setBulkToast] = useState<
-    | { type: "success" | "error"; message: string }
-    | null
-  >(null);
+  const [bulkToast, setBulkToast] = useState<{ type: "success" | "error"; message: string } | null>(
+    null,
+  );
 
   // Reset selection whenever the underlying page changes — stale ids from a
   // prior page would silently target docs the user can't see anymore.
@@ -200,10 +201,10 @@ export function CollectionListView({
     const timeout = globalThis.setTimeout(() => {
       // Search changed → always reset to page 1; the prior page
       // index is meaningless against a different result set.
-      const query = createQueryString(
-        new URLSearchParams(searchParams.toString()),
-        { search: searchValue || null, page: "1" },
-      );
+      const query = createQueryString(new URLSearchParams(searchParams.toString()), {
+        search: searchValue || null,
+        page: "1",
+      });
       const nextUrl = query ? `${pathname}?${query}` : pathname;
       router.replace(nextUrl);
     }, 250);
@@ -260,9 +261,9 @@ export function CollectionListView({
           body: JSON.stringify({ action, ids: [...selectedIds] }),
         });
         if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as
-            | { error?: { message?: string } }
-            | null;
+          const payload = (await response.json().catch(() => null)) as {
+            error?: { message?: string };
+          } | null;
           throw new Error(payload?.error?.message ?? `Bulk ${action} failed`);
         }
         const payload = (await response.json()) as {
@@ -337,237 +338,327 @@ export function CollectionListView({
           </CardContent>
         </Card>
       ) : (
-      <Card>
-        <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <CardTitle>All entries</CardTitle>
-          <div className="relative w-full md:max-w-sm">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
-            <Input
-              value={searchValue}
-              onChange={(event: { target: { value: string } }) => setSearchValue(event.target.value)}
-              placeholder={`Search ${config.labels.plural.toLowerCase()}...`}
-              className="pl-8"
-            />
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {bulkToast ? (
-            <div
-              className={
-                bulkToast.type === "success"
-                  ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-200"
-                  : "rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200"
-              }
-            >
-              {bulkToast.message}
+        <Card>
+          <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <CardTitle>All entries</CardTitle>
+            <div className="relative w-full md:max-w-sm">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
+              <Input
+                value={searchValue}
+                onChange={(event: { target: { value: string } }) =>
+                  setSearchValue(event.target.value)
+                }
+                placeholder={`Search ${config.labels.plural.toLowerCase()}...`}
+                className="pl-8"
+              />
             </div>
-          ) : null}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {bulkToast ? (
+              <div
+                className={
+                  bulkToast.type === "success"
+                    ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-200"
+                    : "rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200"
+                }
+              >
+                {bulkToast.message}
+              </div>
+            ) : null}
 
-          {selectedIds.size > 0 ? (
-            <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-sm font-medium">
-                {selectedIds.size} selected
-              </span>
-              <div className="flex flex-wrap items-center gap-2">
+            {selectedIds.size > 0 ? (
+              <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-sm font-medium">{selectedIds.size} selected</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void runBulk("publish")}
+                    disabled={bulkBusy !== null}
+                  >
+                    {bulkBusy === "publish" ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="size-3.5" />
+                    )}
+                    Publish
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void runBulk("unpublish")}
+                    disabled={bulkBusy !== null}
+                  >
+                    {bulkBusy === "unpublish" ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <CircleX className="size-3.5" />
+                    )}
+                    Unpublish
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-rose-600 dark:text-rose-300"
+                    onClick={() => setConfirmDelete(true)}
+                    disabled={bulkBusy !== null}
+                  >
+                    <Trash2 className="size-3.5" />
+                    Delete
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedIds(new Set())}
+                    disabled={bulkBusy !== null}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="hidden overflow-hidden rounded-xl border border-border/60 md:block">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] text-sm">
+                  <thead className="bg-muted/40 text-left text-muted-foreground">
+                    <tr>
+                      <th className="w-10 px-4 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all"
+                          checked={allSelected}
+                          ref={(input) => {
+                            if (input) input.indeterminate = someSelected;
+                          }}
+                          onChange={toggleAll}
+                          disabled={docIds.length === 0}
+                        />
+                      </th>
+                      {columns.map((column) => (
+                        <th key={column} className="px-4 py-3 font-medium capitalize">
+                          {column}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {docs.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={columns.length + 1}
+                          className="px-4 py-10 text-center text-muted-foreground"
+                        >
+                          No documents found.
+                        </td>
+                      </tr>
+                    ) : (
+                      docs.map((doc, index) => {
+                        const href = `/admin/collections/${config.slug}/${String(doc.id ?? "")}`;
+                        const docIdStr =
+                          doc.id !== undefined && doc.id !== null ? String(doc.id) : null;
+                        const isSelected = docIdStr ? selectedIds.has(docIdStr) : false;
+
+                        return (
+                          <tr
+                            key={String(doc.id ?? index)}
+                            className={cn(
+                              "border-t border-border/60 transition-colors hover:bg-muted/30",
+                              isSelected && "bg-muted/40",
+                              "cursor-pointer",
+                            )}
+                            onClick={(event) => {
+                              // Don't trigger navigation when the user clicks the
+                              // checkbox cell or anything inside it.
+                              const target = event.target as HTMLElement;
+                              if (target.closest('[data-row-checkbox="1"]')) return;
+                              if (doc.id !== undefined && doc.id !== null) {
+                                router.push(href);
+                              }
+                            }}
+                          >
+                            <td data-row-checkbox="1" className="w-10 px-4 py-3 align-middle">
+                              <input
+                                type="checkbox"
+                                aria-label={`Select row ${docIdStr ?? index}`}
+                                checked={isSelected}
+                                onChange={() => {
+                                  if (docIdStr) toggleOne(docIdStr);
+                                }}
+                                disabled={!docIdStr}
+                              />
+                            </td>
+                            {columns.map((column) => {
+                              const rawValue = doc[column];
+                              const isFirst = column === columns[0];
+                              const isStatus = column === "status" && typeof rawValue === "string";
+                              return (
+                                <td key={column} className="px-4 py-3 align-middle">
+                                  {isFirst && doc.id !== undefined && doc.id !== null ? (
+                                    <Link
+                                      href={href}
+                                      className="block font-medium text-foreground underline-offset-4 hover:underline"
+                                    >
+                                      {formatCellValue(rawValue)}
+                                    </Link>
+                                  ) : isStatus ? (
+                                    <StatusBadge status={rawValue} />
+                                  ) : (
+                                    <span className="text-muted-foreground">
+                                      {formatCellValue(rawValue)}
+                                    </span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {docs.length === 0 ? (
+              <div className="rounded-xl border border-border/60 px-4 py-10 text-center text-muted-foreground md:hidden">
+                No documents found.
+              </div>
+            ) : (
+              <div className="grid gap-2 md:hidden">
+                {docs.map((doc, index) => {
+                  const href = `/admin/collections/${config.slug}/${String(doc.id ?? "")}`;
+                  const docIdStr = doc.id !== undefined && doc.id !== null ? String(doc.id) : null;
+                  const isSelected = docIdStr ? selectedIds.has(docIdStr) : false;
+                  const titleColumn = columns[0];
+                  const title = titleColumn ? formatCellValue(doc[titleColumn]) : "Untitled";
+                  const detailColumns = columns.slice(1, 4);
+
+                  return (
+                    <article
+                      key={String(doc.id ?? index)}
+                      className={cn(
+                        "rounded-xl border border-border/60 bg-card px-3.5 py-3 shadow-sm",
+                        isSelected &&
+                          "border-[var(--np-color-brand)]/50 bg-[var(--np-color-brand)]/5",
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <input
+                          data-row-checkbox="1"
+                          type="checkbox"
+                          aria-label={`Select row ${docIdStr ?? index}`}
+                          checked={isSelected}
+                          onChange={() => {
+                            if (docIdStr) toggleOne(docIdStr);
+                          }}
+                          disabled={!docIdStr}
+                          className="mt-1 shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          {doc.id !== undefined && doc.id !== null ? (
+                            <Link
+                              href={href}
+                              className="block text-[13.5px] font-medium leading-5 text-foreground underline-offset-4 hover:underline"
+                            >
+                              {title}
+                            </Link>
+                          ) : (
+                            <p className="text-[13.5px] font-medium leading-5 text-foreground">
+                              {title}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {detailColumns.length > 0 ? (
+                        <dl className="mt-3 grid gap-2 border-t border-border/60 pt-3 text-[12px]">
+                          {detailColumns.map((column) => {
+                            const rawValue = doc[column];
+                            const isStatus = column === "status" && typeof rawValue === "string";
+                            return (
+                              <div key={column} className="flex items-start justify-between gap-3">
+                                <dt className="shrink-0 capitalize text-muted-foreground">
+                                  {column}
+                                </dt>
+                                <dd className="min-w-0 text-right text-foreground">
+                                  {isStatus ? (
+                                    <StatusBadge status={rawValue} />
+                                  ) : (
+                                    <span className="break-words text-muted-foreground">
+                                      {formatCellValue(rawValue)}
+                                    </span>
+                                  )}
+                                </dd>
+                              </div>
+                            );
+                          })}
+                        </dl>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3 border-t border-neutral-100 pt-3.5 dark:border-neutral-900 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-[12.5px] tabular-nums text-neutral-500 dark:text-neutral-400">
+                Page {currentPage} of {Math.max(totalPages, 1)}
+              </p>
+
+              <div className="flex items-center gap-1.5">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => void runBulk("publish")}
-                  disabled={bulkBusy !== null}
+                  disabled={currentPage <= 1}
+                  onClick={() => {
+                    const query = createQueryString(new URLSearchParams(searchParams.toString()), {
+                      page: String(Math.max(currentPage - 1, 1)),
+                    });
+
+                    router.push(query ? `${pathname}?${query}` : pathname);
+                  }}
                 >
-                  {bulkBusy === "publish" ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="size-3.5" />
-                  )}
-                  Publish
+                  <ChevronLeft className="size-3.5" />
+                  Previous
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => void runBulk("unpublish")}
-                  disabled={bulkBusy !== null}
+                  disabled={currentPage >= totalPages}
+                  onClick={() => {
+                    const query = createQueryString(new URLSearchParams(searchParams.toString()), {
+                      page: String(Math.min(currentPage + 1, totalPages || currentPage + 1)),
+                    });
+
+                    router.push(query ? `${pathname}?${query}` : pathname);
+                  }}
                 >
-                  {bulkBusy === "unpublish" ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <CircleX className="size-3.5" />
-                  )}
-                  Unpublish
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="text-rose-600 dark:text-rose-300"
-                  onClick={() => setConfirmDelete(true)}
-                  disabled={bulkBusy !== null}
-                >
-                  <Trash2 className="size-3.5" />
-                  Delete
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedIds(new Set())}
-                  disabled={bulkBusy !== null}
-                >
-                  Clear
+                  Next
+                  <ChevronRight className="size-3.5" />
                 </Button>
               </div>
             </div>
-          ) : null}
-
-          <div className="overflow-hidden rounded-xl border border-border/60">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-sm">
-                <thead className="bg-muted/40 text-left text-muted-foreground">
-                  <tr>
-                    <th className="w-10 px-4 py-3">
-                      <input
-                        type="checkbox"
-                        aria-label="Select all"
-                        checked={allSelected}
-                        ref={(input) => {
-                          if (input) input.indeterminate = someSelected;
-                        }}
-                        onChange={toggleAll}
-                        disabled={docIds.length === 0}
-                      />
-                    </th>
-                    {columns.map((column) => (
-                      <th key={column} className="px-4 py-3 font-medium capitalize">
-                        {column}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {docs.length === 0 ? (
-                    <tr>
-                      <td colSpan={columns.length + 1} className="px-4 py-10 text-center text-muted-foreground">
-                        No documents found.
-                      </td>
-                    </tr>
-                  ) : (
-                    docs.map((doc, index) => {
-                      const href = `/admin/collections/${config.slug}/${String(doc.id ?? "")}`;
-                      const docIdStr = doc.id !== undefined && doc.id !== null ? String(doc.id) : null;
-                      const isSelected = docIdStr ? selectedIds.has(docIdStr) : false;
-
-                      return (
-                        <tr
-                          key={String(doc.id ?? index)}
-                          className={cn(
-                            "border-t border-border/60 transition-colors hover:bg-muted/30",
-                            isSelected && "bg-muted/40",
-                            "cursor-pointer",
-                          )}
-                          onClick={(event) => {
-                            // Don't trigger navigation when the user clicks the
-                            // checkbox cell or anything inside it.
-                            const target = event.target as HTMLElement;
-                            if (target.closest('[data-row-checkbox="1"]')) return;
-                            if (doc.id !== undefined && doc.id !== null) {
-                              router.push(href);
-                            }
-                          }}
-                        >
-                          <td
-                            data-row-checkbox="1"
-                            className="w-10 px-4 py-3 align-middle"
-                          >
-                            <input
-                              type="checkbox"
-                              aria-label={`Select row ${docIdStr ?? index}`}
-                              checked={isSelected}
-                              onChange={() => {
-                                if (docIdStr) toggleOne(docIdStr);
-                              }}
-                              disabled={!docIdStr}
-                            />
-                          </td>
-                          {columns.map((column) => {
-                            const rawValue = doc[column];
-                            const isFirst = column === columns[0];
-                            const isStatus = column === "status" && typeof rawValue === "string";
-                            return (
-                              <td key={column} className="px-4 py-3 align-middle">
-                                {isFirst && doc.id !== undefined && doc.id !== null ? (
-                                  <Link href={href} className="block font-medium text-foreground underline-offset-4 hover:underline">
-                                    {formatCellValue(rawValue)}
-                                  </Link>
-                                ) : isStatus ? (
-                                  <StatusBadge status={rawValue} />
-                                ) : (
-                                  <span className="text-muted-foreground">{formatCellValue(rawValue)}</span>
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3 border-t border-neutral-100 pt-3.5 dark:border-neutral-900 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-[12.5px] tabular-nums text-neutral-500 dark:text-neutral-400">
-              Page {currentPage} of {Math.max(totalPages, 1)}
-            </p>
-
-            <div className="flex items-center gap-1.5">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={currentPage <= 1}
-                onClick={() => {
-                  const query = createQueryString(new URLSearchParams(searchParams.toString()), {
-                    page: String(Math.max(currentPage - 1, 1)),
-                  });
-
-                  router.push(query ? `${pathname}?${query}` : pathname);
-                }}
-              >
-                <ChevronLeft className="size-3.5" />
-                Previous
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={currentPage >= totalPages}
-                onClick={() => {
-                  const query = createQueryString(new URLSearchParams(searchParams.toString()), {
-                    page: String(Math.min(currentPage + 1, totalPages || currentPage + 1)),
-                  });
-
-                  router.push(query ? `${pathname}?${query}` : pathname);
-                }}
-              >
-                Next
-                <ChevronRight className="size-3.5" />
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
       )}
 
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete {selectedIds.size} {config.labels.singular.toLowerCase()}{selectedIds.size === 1 ? "" : "s"}?</DialogTitle>
+            <DialogTitle>
+              Delete {selectedIds.size} {config.labels.singular.toLowerCase()}
+              {selectedIds.size === 1 ? "" : "s"}?
+            </DialogTitle>
             <DialogDescription>
-              This permanently removes the selected entries. Hooks fire and any
-              media references release.
+              This permanently removes the selected entries. Hooks fire and any media references
+              release.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">

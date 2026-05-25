@@ -46,29 +46,34 @@ export function SitePicker() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
-    void load();
-  }, []);
+    let active = true;
 
-  async function load() {
-    try {
-      const res = await npFetch("/api/admin/sites/accessible");
-      if (!res.ok) {
-        setSites([]);
-        return;
-      }
-      const body = (await res.json().catch(() => null)) as
-        | AccessiblePayload
-        | null;
-      setSites(body?.docs ?? []);
-      // The cookie is HttpOnly so we can't read it client-
-      // side. The endpoint surfaces the resolver's current
-      // site id explicitly so the picker can highlight the
-      // active entry without leaking the cookie to JS.
-      setCurrentId(body?.currentId ?? null);
-    } catch {
-      setSites([]);
-    }
-  }
+    void npFetch("/api/admin/sites/accessible")
+      .then(async (res) => {
+        if (!active) return;
+        if (!res.ok) {
+          setSites([]);
+          return;
+        }
+        const body = (await res.json().catch(() => null)) as AccessiblePayload | null;
+        if (!active) return;
+        setSites(body?.docs ?? []);
+        // The cookie is HttpOnly so we can't read it client-
+        // side. The endpoint surfaces the resolver's current
+        // site id explicitly so the picker can highlight the
+        // active entry without leaking the cookie to JS.
+        setCurrentId(body?.currentId ?? null);
+      })
+      .catch(() => {
+        if (active) {
+          setSites([]);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function handleSelect(id: string) {
     setBusyId(id);
@@ -107,14 +112,14 @@ export function SitePicker() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-neutral-200/80 bg-white px-2.5 text-[12.5px] font-medium text-neutral-700 transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800/80 dark:bg-neutral-950 dark:text-neutral-300 dark:hover:bg-neutral-900"
+          className="inline-flex h-7 max-w-[9rem] items-center gap-1.5 rounded-md border border-neutral-200/80 bg-white px-2 text-[12.5px] font-medium text-neutral-700 transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800/80 dark:bg-neutral-950 dark:text-neutral-300 dark:hover:bg-neutral-900 sm:max-w-none sm:px-2.5"
           title="Switch site"
         >
           <Globe2 className="size-3.5 text-neutral-400" />
-          <span className="text-neutral-950 dark:text-neutral-50">
+          <span className="hidden truncate text-neutral-950 dark:text-neutral-50 sm:inline">
             {current?.name ?? "Site"}
           </span>
-          <ChevronsUpDown className="size-3 text-neutral-400" />
+          <ChevronsUpDown className="hidden size-3 text-neutral-400 sm:block" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72">
