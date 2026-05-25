@@ -348,6 +348,7 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("## First-site checklist");
     expect(readme).toContain("pnpm run deploy:plan -- --target vercel");
     expect(readme).toContain("pnpm run doctor:prod -- --target vercel");
+    expect(readme).toContain("pnpm run doctor:prod -- --target vercel --json --fix-plan");
     expect(readme).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
     expect(readme).toContain("pnpm run doctor:prod -- --target vercel --brief --no-color");
     expect(readme).toContain("Deploy with Vercel");

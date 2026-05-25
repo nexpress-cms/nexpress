@@ -756,6 +756,12 @@ pnpm run deploy:plan -- --target vercel
 pnpm run doctor:prod -- --target vercel
 \`\`\`
 
+If the production doctor fails, ask it for an ordered fix plan:
+
+\`\`\`bash
+pnpm run doctor:prod -- --target vercel --json --fix-plan
+\`\`\`
+
 For compact CI logs, append \`--brief --no-color\`:
 
 \`\`\`bash
@@ -839,6 +845,12 @@ Then run the readiness commands against the same production env:
 pnpm run deploy:plan -- --target vercel
 pnpm db:migrate
 pnpm run doctor:prod -- --target vercel
+\`\`\`
+
+If readiness fails, get ordered remediation as JSON:
+
+\`\`\`bash
+pnpm run doctor:prod -- --target vercel --json --fix-plan
 \`\`\`
 
 Use \`--brief --no-color\` on \`deploy:plan\` and \`doctor:prod\` when
