@@ -118,6 +118,19 @@ assertIncludes(deployPlan.output, "Run migrations against the same DATABASE_URL"
 assertIncludes(deployPlan.output, "pnpm run doctor:prod -- --target vercel", "deploy:plan");
 console.log("✓ deploy:plan target guidance renders");
 
+const deployPlanHelp = runTsx("scripts/deploy-plan.ts", ["--help"]);
+assertNoResolverCrash(deployPlanHelp.output, "deploy:plan --help");
+if (deployPlanHelp.code !== 0) {
+  fail("deploy:plan --help should exit 0", deployPlanHelp.output.split("\n").slice(-40).join("\n"));
+}
+assertNoAnsi(deployPlanHelp.output, "deploy:plan --help");
+assertIncludes(deployPlanHelp.output, "NexPress deploy plan", "deploy:plan --help");
+assertIncludes(deployPlanHelp.output, "--brief", "deploy:plan --help");
+assertIncludes(deployPlanHelp.output, "--no-color", "deploy:plan --help");
+assertIncludes(deployPlanHelp.output, "--help, -h", "deploy:plan --help");
+assertIncludes(deployPlanHelp.output, "vercel, railway, render, fly, docker", "deploy:plan --help");
+console.log("✓ deploy:plan help documents output modes");
+
 const deployPlanBrief = runTsx("scripts/deploy-plan.ts", [
   "--target",
   "vercel",
