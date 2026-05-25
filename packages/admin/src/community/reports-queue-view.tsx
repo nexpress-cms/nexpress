@@ -81,24 +81,24 @@ export function ReportsQueueView() {
   }, [refresh]);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title={
-          <span className="flex items-center gap-2.5">
-            Reports
+          <span className="flex min-w-0 flex-wrap items-center gap-2.5">
+            <span className="min-w-0">Reports</span>
             <Badge variant="secondary">{totalDocs}</Badge>
           </span>
         }
         description="Member-filed reports against comments, members, and other community content. Resolving a report flips its row and writes an audit entry — take any follow-up action (hide / ban) separately."
       />
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Queue</CardTitle>
-          <div className="grid gap-1 sm:flex sm:items-center sm:gap-2">
+          <div className="grid min-w-0 gap-1 sm:flex sm:items-center sm:gap-2">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">Status</Label>
             <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
-              <SelectTrigger className="w-full sm:w-40">
+              <SelectTrigger className="min-w-0 sm:w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -111,9 +111,9 @@ export function ReportsQueueView() {
             </Select>
           </div>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="min-w-0 space-y-3">
           {error ? (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
               {error}
             </div>
           ) : null}
@@ -135,7 +135,7 @@ export function ReportsQueueView() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="font-medium">{report.targetType}</p>
+                      <p className="break-words font-medium">{report.targetType}</p>
                       <p className="break-all font-mono text-xs text-muted-foreground">
                         {report.targetId}
                       </p>
@@ -150,7 +150,7 @@ export function ReportsQueueView() {
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
                       Reason
                     </p>
-                    <p className="whitespace-pre-wrap text-sm">{report.reason}</p>
+                    <p className="whitespace-pre-wrap break-words text-sm">{report.reason}</p>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Filed {new Date(report.createdAt).toLocaleString()}
@@ -198,13 +198,15 @@ export function ReportsQueueView() {
                   reports.map((report) => (
                     <tr key={report.id} className="border-t border-border/60 align-top">
                       <td className="px-4 py-3">
-                        <div className="font-medium">{report.targetType}</div>
-                        <div className="font-mono text-xs text-muted-foreground">
+                        <div className="break-words font-medium">{report.targetType}</div>
+                        <div className="break-all font-mono text-xs text-muted-foreground">
                           {report.targetId}
                         </div>
                       </td>
                       <td className="px-4 py-3 max-w-md">
-                        <span className="line-clamp-3 whitespace-pre-wrap">{report.reason}</span>
+                        <span className="line-clamp-3 whitespace-pre-wrap break-words">
+                          {report.reason}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {new Date(report.createdAt).toLocaleString()}
@@ -281,18 +283,18 @@ function ResolveDialog({ report, onClose, onResolved }: ResolveDialogProps) {
 
   return (
     <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
-      <DialogContent>
+      <DialogContent className="min-w-0">
         <DialogHeader>
           <DialogTitle>Resolve report</DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="break-words">
             Free-form label that tells future moderators what action you took. Common values:{" "}
             <code>hidden</code>, <code>banned</code>, <code>dismissed</code>.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
+        <div className="min-w-0 space-y-3">
+          <div className="min-w-0 rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
             <div className="text-xs uppercase tracking-wide text-muted-foreground">Reason</div>
-            <div className="mt-1 whitespace-pre-wrap">{report.reason}</div>
+            <div className="mt-1 whitespace-pre-wrap break-words">{report.reason}</div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="resolution">Resolution label</Label>

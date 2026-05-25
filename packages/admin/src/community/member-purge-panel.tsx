@@ -69,11 +69,11 @@ export function MemberPurgePanel({ memberId, memberHandle }: MemberPurgePanelPro
   };
 
   return (
-    <Card className="border-destructive/40 shadow-sm">
+    <Card className="min-w-0 border-destructive/40 shadow-sm">
       <CardHeader>
         <CardTitle className="text-destructive">Danger zone</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="min-w-0 space-y-4">
         <p className="break-words text-sm text-muted-foreground">
           Delete every piece of content this member authored — comments, discussions, uploaded
           images. Existing references in other docs are preserved (the operator must clean those up
@@ -132,12 +132,12 @@ export function MemberPurgePanel({ memberId, memberHandle }: MemberPurgePanelPro
 
       {confirming ? (
         <Dialog open onOpenChange={(open) => !open && setConfirming(false)}>
-          <DialogContent>
+          <DialogContent className="min-w-0">
             <DialogHeader>
               <DialogTitle className="break-words">
                 Delete all content by @{memberHandle}?
               </DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="break-words">
                 This wipes comments, member-authored docs, and uploaded media in one sweep. Audit
                 log records the action. Items still referenced from other docs (embedded media) are
                 skipped — you&rsquo;ll see them in the count and can clean up separately. The member

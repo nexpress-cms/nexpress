@@ -200,7 +200,7 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
   }
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader className="grid gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <CardTitle className="min-w-0">Community roles</CardTitle>
         {canModify ? (
@@ -222,11 +222,11 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
           </Button>
         ) : null}
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="min-w-0 space-y-4">
         {error ? (
           <div
             role="alert"
-            className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+            className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
           >
             {error}
           </div>
@@ -295,18 +295,18 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
 
       {grantOpen ? (
         <Dialog open onOpenChange={(open) => !open && setGrantOpen(false)}>
-          <DialogContent>
+          <DialogContent className="min-w-0">
             <DialogHeader>
               <DialogTitle className="break-words">Grant role to @{memberHandle}</DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="break-words">
                 Granting a role gives this member the moderation capabilities for the chosen scope.
                 Use site-wide for `community-mod`, or pick a category / collection / thread to limit
                 the grant. The action is recorded in the audit log.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4">
-              <div className="space-y-1">
+            <div className="min-w-0 space-y-4">
+              <div className="min-w-0 space-y-1">
                 <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                   Scope
                 </Label>
@@ -314,7 +314,7 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
                   value={form.scopeType}
                   onValueChange={(v) => setForm((f) => ({ ...f, scopeType: v as CommunityScope }))}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="min-w-0">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -326,12 +326,12 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
                 </Select>
               </div>
 
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                   Role
                 </Label>
                 {eligibleRoles.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
+                  <p className="break-words text-sm text-muted-foreground">
                     No roles registered for this scope.
                   </p>
                 ) : (
@@ -339,7 +339,7 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
                     value={form.role}
                     onValueChange={(v) => setForm((f) => ({ ...f, role: v }))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="min-w-0">
                       <SelectValue placeholder="Pick a role" />
                     </SelectTrigger>
                     <SelectContent>
@@ -354,7 +354,7 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
               </div>
 
               {form.scopeType !== "site" ? (
-                <div className="space-y-1">
+                <div className="min-w-0 space-y-1">
                   <Label
                     htmlFor="grant-scope-id"
                     className="text-xs uppercase tracking-wide text-muted-foreground"
@@ -380,7 +380,7 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
                 </div>
               ) : null}
 
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 <Label
                   htmlFor="grant-expires-at"
                   className="text-xs uppercase tracking-wide text-muted-foreground"
@@ -393,7 +393,9 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
                   value={form.expiresAt}
                   onChange={(e) => setForm((f) => ({ ...f, expiresAt: e.target.value }))}
                 />
-                <p className="text-xs text-muted-foreground">Leave blank for a permanent grant.</p>
+                <p className="break-words text-xs text-muted-foreground">
+                  Leave blank for a permanent grant.
+                </p>
               </div>
             </div>
 

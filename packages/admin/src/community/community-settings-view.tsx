@@ -67,10 +67,8 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
               ? data.registrationEnabled
               : DEFAULT_SETTINGS.registrationEnabled,
           memberUploadQuota: {
-            perDay:
-              typeof quotaRaw.perDay === "number" ? quotaRaw.perDay : null,
-            total:
-              typeof quotaRaw.total === "number" ? quotaRaw.total : null,
+            perDay: typeof quotaRaw.perDay === "number" ? quotaRaw.perDay : null,
+            total: typeof quotaRaw.total === "number" ? quotaRaw.total : null,
           },
         });
       } catch {
@@ -128,69 +126,65 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title="Community settings"
         description="Site-wide knobs for member registration and the reactions members can leave on community content. Changes apply immediately."
       />
 
       {error ? (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       ) : null}
       {message ? (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">
+        <div className="break-words rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">
           {message}
         </div>
       ) : null}
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle>Member registration</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
+        <CardContent className="min-w-0 space-y-4">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+            <div className="min-w-0 space-y-1">
               <Label htmlFor="registration-enabled" className="text-sm font-medium">
                 Self-registration
               </Label>
-              <p className="text-sm text-muted-foreground">
-                When off, the public sign-up endpoint returns 403. Existing members
-                can still sign in; new members must be provisioned manually.
+              <p className="break-words text-sm text-muted-foreground">
+                When off, the public sign-up endpoint returns 403. Existing members can still sign
+                in; new members must be provisioned manually.
               </p>
             </div>
             <Switch
               id="registration-enabled"
               checked={settings.registrationEnabled}
               disabled={loading || saving || !canEdit}
-              onCheckedChange={(v) =>
-                setSettings((s) => ({ ...s, registrationEnabled: v }))
-              }
+              onCheckedChange={(v) => setSettings((s) => ({ ...s, registrationEnabled: v }))}
             />
           </div>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle>Reaction kinds</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Members can only add reactions whose kind is in this list. Removing a
-            kind doesn&rsquo;t delete existing reactions — members can still un-react
-            them. An empty list disables reactions entirely.
+        <CardContent className="min-w-0 space-y-4">
+          <p className="break-words text-sm text-muted-foreground">
+            Members can only add reactions whose kind is in this list. Removing a kind doesn&rsquo;t
+            delete existing reactions — members can still un-react them. An empty list disables
+            reactions entirely.
           </p>
           <div className="flex flex-wrap gap-2">
             {settings.reactionKinds.length === 0 ? (
-              <span className="text-sm text-muted-foreground">
-                No reaction kinds configured.
-              </span>
+              <span className="text-sm text-muted-foreground">No reaction kinds configured.</span>
             ) : (
               settings.reactionKinds.map((kind) => (
                 <Badge key={kind} variant="secondary" className="gap-2 px-3 py-1.5 text-sm">
-                  <span className="font-mono">{kind}</span>
+                  <span className="break-all font-mono">{kind}</span>
                   {canEdit ? (
                     <button
                       type="button"
@@ -207,9 +201,12 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
             )}
           </div>
           {canEdit ? (
-            <div className="flex items-end gap-2">
-              <div className="flex-1 space-y-1">
-                <Label htmlFor="pending-kind" className="text-xs uppercase tracking-wide text-muted-foreground">
+            <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <div className="min-w-0 space-y-1">
+                <Label
+                  htmlFor="pending-kind"
+                  className="text-xs uppercase tracking-wide text-muted-foreground"
+                >
                   Add kind
                 </Label>
                 <Input
@@ -220,7 +217,13 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
                   disabled={saving}
                 />
               </div>
-              <Button type="button" variant="outline" onClick={addKind} disabled={saving}>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={addKind}
+                disabled={saving}
+              >
                 Add
               </Button>
             </div>
@@ -228,18 +231,18 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle>Member upload quota</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Limits image uploads from member accounts. Leave a field blank for
-            unlimited. Admin / member deletes free up quota — staff uploads
-            are never gated. The 24h window is rolling, not calendar-day.
+        <CardContent className="min-w-0 space-y-4">
+          <p className="break-words text-sm text-muted-foreground">
+            Limits image uploads from member accounts. Leave a field blank for unlimited. Admin /
+            member deletes free up quota — staff uploads are never gated. The 24h window is rolling,
+            not calendar-day.
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1">
+            <div className="min-w-0 space-y-1">
               <Label
                 htmlFor="quota-per-day"
                 className="text-xs uppercase tracking-wide text-muted-foreground"
@@ -272,7 +275,7 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
                 }
               />
             </div>
-            <div className="space-y-1">
+            <div className="min-w-0 space-y-1">
               <Label
                 htmlFor="quota-total"
                 className="text-xs uppercase tracking-wide text-muted-foreground"
@@ -309,13 +312,17 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
         </CardContent>
       </Card>
 
-      <div className="flex items-center justify-end gap-3">
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-3">
         {canEdit ? (
-          <Button onClick={() => void save()} disabled={loading || saving}>
+          <Button
+            className="w-full sm:w-auto"
+            onClick={() => void save()}
+            disabled={loading || saving}
+          >
             {saving ? "Saving…" : "Save changes"}
           </Button>
         ) : (
-          <span className="text-sm text-muted-foreground">
+          <span className="min-w-0 break-words text-sm text-muted-foreground">
             Read-only view. Admin role required to edit.
           </span>
         )}
