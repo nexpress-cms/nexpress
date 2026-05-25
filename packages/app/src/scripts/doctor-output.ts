@@ -101,6 +101,36 @@ export function renderDoctorSummary(
   );
 }
 
+function formatBriefState(state: CheckResult["state"], color: boolean): string {
+  const c = color ? ANSI : EMPTY_ANSI;
+  if (state === "ok") return `${c.green}[ok]${c.reset}`;
+  if (state === "warn") return `${c.yellow}[warn]${c.reset}`;
+  return `${c.red}[error]${c.reset}`;
+}
+
+function renderBriefDoctorCheck(result: CheckResult, options: RenderOptions): string {
+  const parts = [formatBriefState(result.state, options.color), result.id, result.label];
+  if (result.detail) parts.push(`- ${result.detail.replace(/\s+/g, " ")}`);
+  return parts.join(" ");
+}
+
+export function renderBriefDoctorReport(
+  args: {
+    prodMode: boolean;
+    target: DeployTarget | null;
+    checks: CheckResult[];
+  },
+  options: RenderOptions = { color: true },
+): string {
+  const c = options.color ? ANSI : EMPTY_ANSI;
+  const targetDetail = args.prodMode && args.target ? ` for ${args.target}` : "";
+  const mode = args.prodMode ? "prod" : "dev";
+  const lines = [`${c.dim}NexPress doctor: ${mode}${targetDetail}${c.reset}`];
+  lines.push(renderDoctorSummary(args.checks, options));
+  for (const result of args.checks) lines.push(renderBriefDoctorCheck(result, options));
+  return lines.join("\n");
+}
+
 export function dim(text: string, color = true): string {
   const c = color ? ANSI : EMPTY_ANSI;
   return `${c.dim}${text}${c.reset}`;

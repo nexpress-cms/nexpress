@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDoctorFixPlan,
   buildDoctorJson,
+  renderBriefDoctorReport,
   renderDoctorCheck,
   renderDoctorSummary,
   summarizeChecks,
@@ -118,5 +119,19 @@ describe("doctor output", () => {
   it("renders a no-color summary", () => {
     expect(renderDoctorSummary(checks, { color: false })).toBe("1 error, 1 warning.");
     expect(renderDoctorSummary([checks[0]!], { color: false })).toBe("All 1 checks passed.");
+  });
+
+  it("renders a compact one-line-per-check brief", () => {
+    expect(
+      renderBriefDoctorReport({ prodMode: true, target: "vercel", checks }, { color: false }),
+    ).toBe(
+      [
+        "NexPress doctor: prod for vercel",
+        "1 error, 1 warning.",
+        "[ok] node.version Node.js >= 20 - 24.11.1",
+        "[warn] prod.scheduler_token NP_SCHEDULER_TOKEN - not set",
+        "[error] env.database_url DATABASE_URL - not set",
+      ].join("\n"),
+    );
   });
 });
