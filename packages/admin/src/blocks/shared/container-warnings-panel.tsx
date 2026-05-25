@@ -20,7 +20,7 @@ export function ContainerWarningsPanel({ warnings, onPick }: ContainerWarningsPa
   if (warnings.length === 0) return null;
   return (
     <section
-      className="rounded-2xl border border-neutral-200/80 bg-white/95 shadow-sm backdrop-blur-sm dark:border-neutral-800/80 dark:bg-neutral-950/95"
+      className="min-w-0 overflow-hidden rounded-2xl border border-neutral-200/80 bg-white/95 shadow-sm backdrop-blur-sm dark:border-neutral-800/80 dark:bg-neutral-950/95"
       aria-label="Container warnings"
     >
       <header className="border-b border-neutral-200/80 px-4 py-2.5 dark:border-neutral-800/80">
@@ -33,20 +33,20 @@ export function ContainerWarningsPanel({ warnings, onPick }: ContainerWarningsPa
               type="button"
               onClick={() => onPick(w.id)}
               className={cn(
-                "grid w-full grid-cols-[14px_1fr_auto] items-center gap-2 rounded-md border border-amber-200/80 bg-amber-50/70 px-2.5 py-1.5 text-left text-xs text-amber-900",
+                "grid min-w-0 w-full grid-cols-[14px_minmax(0,1fr)] items-center gap-2 rounded-md border border-amber-200/80 bg-amber-50/70 px-2.5 py-1.5 text-left text-xs text-amber-900 min-[420px]:grid-cols-[14px_minmax(0,1fr)_auto]",
                 "hover:bg-amber-100/70 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200",
               )}
             >
               <AlertCircle className="h-3 w-3" aria-hidden="true" />
-              <span className="leading-snug">{w.message}</span>
-              <code className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider">
+              <span className="min-w-0 break-words leading-snug">{w.message}</span>
+              <code className="col-start-2 w-fit rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider min-[420px]:col-start-auto">
                 {w.kind}
               </code>
             </button>
           </li>
         ))}
       </ul>
-      <footer className="border-t border-neutral-200/80 bg-neutral-50/60 px-4 py-1.5 font-mono text-[10px] text-muted-foreground dark:border-neutral-800/80 dark:bg-neutral-900/40">
+      <footer className="break-all border-t border-neutral-200/80 bg-neutral-50/60 px-4 py-1.5 font-mono text-[10px] text-muted-foreground dark:border-neutral-800/80 dark:bg-neutral-900/40">
         min · max · allowedChildTypes
       </footer>
     </section>

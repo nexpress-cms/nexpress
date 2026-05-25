@@ -358,8 +358,8 @@ export function CommandMenu({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="grid max-h-[calc(100dvh-2rem)] max-w-lg grid-rows-[auto_auto_minmax(0,1fr)] gap-2 overflow-hidden p-0">
-        <DialogHeader className="border-b border-border/60 px-3 py-2">
+      <DialogContent className="grid min-w-0 max-h-[calc(100dvh-2rem)] max-w-lg grid-rows-[auto_auto_minmax(0,1fr)] gap-2 overflow-hidden p-0">
+        <DialogHeader className="min-w-0 border-b border-border/60 px-3 py-2">
           <DialogTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Page-builder commands
           </DialogTitle>
@@ -367,7 +367,7 @@ export function CommandMenu({
             Run a context-sensitive page-builder action by typing a name.
           </DialogDescription>
         </DialogHeader>
-        <div className="px-3 pt-2">
+        <div className="min-w-0 px-3 pt-2">
           <Input
             ref={inputRef}
             value={query}
@@ -379,32 +379,32 @@ export function CommandMenu({
             aria-label="Filter commands"
           />
         </div>
-        <div className="min-h-0 overflow-y-auto px-1 pb-2">
+        <div className="min-h-0 min-w-0 overflow-y-auto px-1 pb-2">
           {filtered.length === 0 ? (
             <p className="px-3 py-4 text-center text-xs text-muted-foreground">
               No matching commands.
             </p>
           ) : (
             groups.map(({ group, subgroups }) => (
-              <div key={group} className="px-2 pt-2">
+              <div key={group} className="min-w-0 px-2 pt-2">
                 <div className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                   {group}
                 </div>
                 {subgroups.map((sub, i) => (
-                  <div key={sub.subgroup ?? `__default-${i.toString()}`}>
+                  <div key={sub.subgroup ?? `__default-${i.toString()}`} className="min-w-0">
                     {sub.subgroup ? (
                       <div className="px-2 pt-1.5 pb-0.5 text-[10px] font-medium tracking-wide text-muted-foreground/80">
                         {capitalize(sub.subgroup)}
                       </div>
                     ) : null}
-                    <ul className="space-y-0.5">
+                    <ul className="min-w-0 space-y-0.5">
                       {sub.items.map((action) => (
-                        <li key={action.id}>
+                        <li key={action.id} className="min-w-0">
                           <button
                             type="button"
                             onClick={() => runAction(action)}
                             className={cn(
-                              "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
+                              "flex min-w-0 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
                               "hover:bg-accent focus-visible:bg-accent focus-visible:outline-none",
                               action.hint === "destructive" && "text-destructive",
                             )}
@@ -412,9 +412,9 @@ export function CommandMenu({
                             {action.preview ? (
                               <PatternPreview src={action.preview} alt="" size="thumb" />
                             ) : null}
-                            <span className="flex-1 truncate">{action.label}</span>
+                            <span className="min-w-0 flex-1 truncate">{action.label}</span>
                             {action.hint && action.hint !== "destructive" ? (
-                              <span className="ml-2 truncate font-mono text-[10px] text-muted-foreground">
+                              <span className="ml-2 max-w-[8rem] truncate font-mono text-[10px] text-muted-foreground">
                                 {action.hint}
                               </span>
                             ) : null}

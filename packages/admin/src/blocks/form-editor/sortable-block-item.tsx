@@ -159,14 +159,14 @@ export function SortableBlockItem({
       aria-label={`Block row: ${definition?.label ?? block.type}`}
       aria-selected={selfSelected}
       className={cn(
-        "overflow-hidden rounded-2xl border border-neutral-200/80 bg-white/95 shadow-sm outline-none backdrop-blur-sm dark:border-neutral-800/80 dark:bg-neutral-950/95",
+        "min-w-0 overflow-hidden rounded-2xl border border-neutral-200/80 bg-white/95 shadow-sm outline-none backdrop-blur-sm dark:border-neutral-800/80 dark:bg-neutral-950/95",
         "focus-visible:ring-2 focus-visible:ring-primary/40",
         isContainer && "focus-within:ring-2 focus-within:ring-primary/30",
         selfSelected && "ring-2 ring-primary/60 ring-offset-1",
       )}
     >
       <Collapsible open={selfOpen} onOpenChange={(next) => onOpenChange(block.id, next)}>
-        <header className="flex flex-wrap items-center gap-2 border-b border-neutral-200/80 bg-neutral-50/60 px-3 py-2 dark:border-neutral-800/80 dark:bg-neutral-900/40">
+        <header className="flex min-w-0 flex-wrap items-center gap-2 border-b border-neutral-200/80 bg-neutral-50/60 px-3 py-2 dark:border-neutral-800/80 dark:bg-neutral-900/40">
           {/* Multi-select checkbox (#467 #3). Click toggles; shift-
               click extends from the last clicked id (the orchestrator
               owns the range logic). Stop propagation so the click
@@ -346,7 +346,7 @@ export function SortableBlockItem({
           }}
         />
         <CollapsibleContent>
-          <div className="grid gap-4 p-4">
+          <div className="grid min-w-0 gap-4 p-3 sm:p-4">
             {/* Grid-child layout control. Only shown when this
                 block sits directly inside a `grid` container — the
                 meta lives on the child's props as `_layout: { colSpan }`. */}
@@ -387,7 +387,7 @@ export function SortableBlockItem({
                     key={section.group ?? "__ungrouped__"}
                     className={cn(
                       section.group
-                        ? "rounded-md border border-border/50 bg-muted/20 p-3"
+                        ? "min-w-0 rounded-md border border-border/50 bg-muted/20 p-3"
                         : "contents",
                     )}
                   >
@@ -396,7 +396,7 @@ export function SortableBlockItem({
                         {section.group}
                       </div>
                     ) : null}
-                    <div className="grid gap-4">
+                    <div className="grid min-w-0 gap-4">
                       {section.fields.map((field) => {
                         // Required-missing checks the RAW prop, not the
                         // value-with-defaults (#467 post-review).
@@ -408,7 +408,7 @@ export function SortableBlockItem({
                           (rawValue === undefined || rawValue === "" || rawValue === null);
                         const lintMessage = lintFieldValue(field, value);
                         return (
-                          <div key={field.name} className="grid gap-1.5">
+                          <div key={field.name} className="grid min-w-0 gap-1.5">
                             {field.type !== "boolean" ? (
                               <Label htmlFor={inputId} className="flex items-center gap-1">
                                 <span>{field.label}</span>
@@ -447,7 +447,7 @@ export function SortableBlockItem({
               )
             ) : (
               <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                Unknown block type: <span className="font-mono">{block.type}</span>
+                Unknown block type: <span className="break-all font-mono">{block.type}</span>
               </div>
             )}
 
@@ -543,9 +543,9 @@ function ChildrenArea({
   const atMax = typeof max === "number" && children.length >= max;
   const belowMin = typeof min === "number" && children.length < min;
   return (
-    <div className="grid gap-2 rounded-md border border-dashed border-border/60 bg-muted/20 p-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+    <div className="grid min-w-0 gap-2 rounded-md border border-dashed border-border/60 bg-muted/20 p-3">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <p className="min-w-0 break-words text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
           Children ({children.length}
           {typeof max === "number" ? ` / ${max}` : ""})
         </p>
@@ -573,7 +573,7 @@ function ChildrenArea({
         </p>
       ) : null}
       <SortableContext items={children.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-        <div className="grid gap-2">
+        <div className="grid min-w-0 gap-2">
           {children.length === 0 ? (
             <p className="rounded-md bg-background/50 px-3 py-4 text-center text-xs text-muted-foreground">
               No children yet. Add one to start.

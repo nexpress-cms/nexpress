@@ -25,7 +25,7 @@ function OutlineRow({ node, depth, definitions, activeId, onPick }: OutlineRowPr
         type="button"
         onClick={() => onPick(node.id)}
         className={cn(
-          "grid w-full grid-cols-[14px_1fr_auto_auto] items-center gap-2 rounded-md py-1 text-left text-xs transition-colors",
+          "grid min-w-0 w-full grid-cols-[14px_minmax(0,1fr)] items-center gap-2 rounded-md py-1 text-left text-xs transition-colors min-[420px]:grid-cols-[14px_minmax(0,1fr)_auto_minmax(0,6rem)]",
           "hover:bg-accent/60",
           isActive && "bg-primary/10 text-primary",
         )}
@@ -43,12 +43,16 @@ function OutlineRow({ node, depth, definitions, activeId, onPick }: OutlineRowPr
           <span className="truncate font-medium text-foreground/90">
             {meta?.label ?? node.type}
           </span>
-          {summary ? <span className="truncate text-muted-foreground">{summary}</span> : null}
+          {summary ? (
+            <span className="hidden min-w-0 truncate text-muted-foreground min-[520px]:inline">
+              {summary}
+            </span>
+          ) : null}
         </span>
         {meta?.source && meta.source !== "built-in" ? (
           <span
             className={cn(
-              "rounded px-1 py-0.5 text-[9px] font-medium uppercase tracking-wider",
+              "hidden rounded px-1 py-0.5 text-[9px] font-medium uppercase tracking-wider min-[420px]:inline-flex",
               meta.source === "plugin"
                 ? "bg-primary/10 text-primary"
                 : meta.source === "theme"
@@ -59,7 +63,9 @@ function OutlineRow({ node, depth, definitions, activeId, onPick }: OutlineRowPr
             {meta.source}
           </span>
         ) : null}
-        <span className="font-mono text-[10px] text-muted-foreground/70">{node.type}</span>
+        <span className="hidden truncate font-mono text-[10px] text-muted-foreground/70 min-[420px]:block">
+          {node.type}
+        </span>
       </button>
       {Array.isArray(node.children) &&
         node.children.map((child) => (
@@ -121,7 +127,7 @@ export function OutlinePanel({
 }: OutlinePanelProps) {
   return (
     <section
-      className="rounded-2xl border border-neutral-200/80 bg-white/95 shadow-sm backdrop-blur-sm dark:border-neutral-800/80 dark:bg-neutral-950/95"
+      className="min-w-0 overflow-hidden rounded-2xl border border-neutral-200/80 bg-white/95 shadow-sm backdrop-blur-sm dark:border-neutral-800/80 dark:bg-neutral-950/95"
       aria-label={title}
     >
       <header className="border-b border-neutral-200/80 px-4 py-2.5 dark:border-neutral-800/80">
@@ -146,7 +152,7 @@ export function OutlinePanel({
         )}
       </ScrollArea>
       {footer ? (
-        <footer className="border-t border-neutral-200/80 bg-neutral-50/60 px-4 py-1.5 font-mono text-[10px] text-muted-foreground dark:border-neutral-800/80 dark:bg-neutral-900/40">
+        <footer className="break-all border-t border-neutral-200/80 bg-neutral-50/60 px-4 py-1.5 font-mono text-[10px] text-muted-foreground dark:border-neutral-800/80 dark:bg-neutral-900/40">
           {footer}
         </footer>
       ) : null}
