@@ -15,9 +15,50 @@
 
 import "./_load-env.js";
 
+import { existsSync, readdirSync } from "node:fs";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
+
+const ARGV = process.argv.slice(2);
+const MIGRATIONS_FOLDER = "./drizzle";
+
+function printHelp(): void {
+  console.log(`NexPress migrations
+
+Usage:
+  pnpm db:generate
+  pnpm db:migrate
+  pnpm db:migrate -- --help
+
+Options:
+  --help, -h   Show this help without connecting to the database.
+`);
+}
+
+function shouldPrintHelp(argv: string[]): boolean {
+  return argv.includes("--help") || argv.includes("-h");
+}
+
+function hasLocalMigrationSql(folder: string): boolean {
+  if (!existsSync(folder)) return false;
+  return readdirSync(folder, { withFileTypes: true }).some(
+    (entry) => entry.isFile() && entry.name.endsWith(".sql"),
+  );
+}
+
+if (shouldPrintHelp(ARGV)) {
+  printHelp();
+  process.exit(0);
+}
+
+if (!hasLocalMigrationSql(MIGRATIONS_FOLDER)) {
+  console.error("No local Drizzle migrations found in ./drizzle.");
+  console.error(
+    "Run `pnpm db:generate` first, review the generated SQL, then run `pnpm db:migrate`.",
+  );
+  process.exit(1);
+}
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -38,7 +79,7 @@ try {
 const db = drizzle(client);
 
 try {
-  await migrate(db, { migrationsFolder: "./drizzle" });
+  await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
   console.log("✓ migrations applied");
 } catch (err) {
   console.error("✗ migration failed:");
@@ -76,20 +117,14 @@ try {
       }
     })();
     console.error("");
-    console.error(
-      "  This database already contains tables/types from another NexPress",
-    );
+    console.error("  This database already contains tables/types from another NexPress");
     console.error("  install. Pick one:");
     console.error(
       `    1. Point DATABASE_URL at a fresh database (recommended for multi-project hosts)`,
     );
     console.error(`    2. Drop and recreate this one:`);
-    console.error(
-      `       docker compose -f docker/docker-compose.yml exec db psql -U nexpress \\`,
-    );
-    console.error(
-      `         -c 'DROP DATABASE "${dbName}"; CREATE DATABASE "${dbName}";'`,
-    );
+    console.error(`       docker compose -f docker/docker-compose.yml exec db psql -U nexpress \\`);
+    console.error(`         -c 'DROP DATABASE "${dbName}"; CREATE DATABASE "${dbName}";'`);
     console.error(`       (this DESTROYS all data in '${dbName}')`);
   }
   await client.end().catch(() => {});
