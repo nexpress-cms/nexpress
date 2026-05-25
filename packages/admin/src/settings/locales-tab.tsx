@@ -143,8 +143,11 @@ export function LocalesTab() {
             {(config.locales ?? []).map((locale) => {
               const isDefault = locale === config.defaultLocale;
               return (
-                <li key={locale} className="flex items-center justify-between py-3">
-                  <div className="flex items-center gap-3">
+                <li
+                  key={locale}
+                  className="grid gap-2 py-3 sm:flex sm:items-center sm:justify-between"
+                >
+                  <div className="flex flex-wrap items-center gap-3">
                     <span className="rounded-md border border-border/70 bg-background px-2 py-0.5 font-mono text-xs uppercase">
                       {locale}
                     </span>
@@ -154,7 +157,7 @@ export function LocalesTab() {
                       </span>
                     ) : null}
                   </div>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground sm:text-right">
                     {isDefault
                       ? "Used when no locale is requested or a translation is missing."
                       : "Available for translations."}

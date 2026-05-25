@@ -28,11 +28,7 @@ type UploadState = {
   error?: string;
 };
 
-export function MediaUploadZone({
-  folderId,
-  onUploadComplete,
-  onClose,
-}: MediaUploadZoneProps) {
+export function MediaUploadZone({ folderId, onUploadComplete, onClose }: MediaUploadZoneProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploads, setUploads] = useState<UploadState[]>([]);
@@ -59,9 +55,7 @@ export function MediaUploadZone({
     setUploads((current) => [...nextUploads, ...current]);
 
     const results = await Promise.all(
-      files.map((file, index) =>
-        uploadFile(file, nextUploads[index].id, folderId, setUploads),
-      ),
+      files.map((file, index) => uploadFile(file, nextUploads[index].id, folderId, setUploads)),
     );
 
     if (results.some(Boolean)) {
@@ -103,9 +97,7 @@ export function MediaUploadZone({
       <div
         className={cn(
           "rounded-xl border border-dashed px-6 py-12 text-center transition-colors",
-          isDragging
-            ? "border-primary bg-primary/5"
-            : "border-border/80 bg-muted/25",
+          isDragging ? "border-primary bg-primary/5" : "border-border/80 bg-muted/25",
         )}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -116,9 +108,7 @@ export function MediaUploadZone({
             <Upload className="h-6 w-6" />
           </div>
           <div className="space-y-2">
-            <h3 className="text-lg font-semibold text-foreground">
-              Drop files to upload
-            </h3>
+            <h3 className="text-lg font-semibold text-foreground">Drop files to upload</h3>
             <p className="text-sm text-muted-foreground">
               Drag images, videos, or documents here, or choose files from your device.
             </p>
@@ -138,14 +128,19 @@ export function MediaUploadZone({
       </div>
 
       <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
+        <div className="grid gap-3 sm:flex sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <h4 className="font-medium text-foreground">Upload queue</h4>
             <p className="text-sm text-muted-foreground">
               Progress updates appear here while files are processing.
             </p>
           </div>
-          <Button variant="ghost" onClick={onClose} disabled={isUploading}>
+          <Button
+            variant="ghost"
+            className="w-full sm:w-auto"
+            onClick={onClose}
+            disabled={isUploading}
+          >
             Close
           </Button>
         </div>
@@ -161,12 +156,12 @@ export function MediaUploadZone({
                 key={upload.id}
                 className="rounded-xl border border-border/70 bg-background/70 p-4"
               >
-                <div className="flex items-center justify-between gap-3">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                   <div className="min-w-0">
                     <p className="truncate font-medium text-foreground">{upload.name}</p>
                     <p className="text-sm text-muted-foreground">
                       {upload.status === "error"
-                        ? upload.error ?? "Upload failed"
+                        ? (upload.error ?? "Upload failed")
                         : upload.status === "success"
                           ? "Upload complete"
                           : `${upload.progress}% uploaded`}
@@ -228,9 +223,7 @@ function uploadFile(
       const progress = Math.round((event.loaded / event.total) * 100);
 
       setUploads((current) =>
-        current.map((upload) =>
-          upload.id === uploadId ? { ...upload, progress } : upload,
-        ),
+        current.map((upload) => (upload.id === uploadId ? { ...upload, progress } : upload)),
       );
     });
 

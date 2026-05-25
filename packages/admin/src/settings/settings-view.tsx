@@ -4,12 +4,7 @@ import { useEffect, useState } from "react";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../ui/card.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs.js";
@@ -115,7 +110,7 @@ export function SettingsView() {
       ) : null}
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 gap-2 md:w-auto md:grid-cols-8">
+        <TabsList className="grid h-auto w-full grid-cols-2 items-stretch gap-2 md:h-9 md:w-auto md:grid-cols-8 md:items-center">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="seo">SEO</TabsTrigger>
           <TabsTrigger value="theme">Theme</TabsTrigger>
