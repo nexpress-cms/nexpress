@@ -21,6 +21,7 @@ import {
   dim,
   renderBriefDoctorReport,
   renderDoctorCheck,
+  renderDoctorFixPlan,
   renderDoctorSummary,
 } from "./doctor-output.js";
 import {
@@ -84,6 +85,7 @@ Usage:
   pnpm run doctor
   pnpm run doctor -- --prod --target vercel
   pnpm run doctor:prod -- --target vercel --brief --no-color
+  pnpm run doctor:prod -- --target vercel --fix-plan
   pnpm run doctor:prod -- --target vercel --json --fix-plan
 
 Targets:
@@ -93,7 +95,7 @@ Options:
   --prod          Run production deploy-readiness checks.
   --target <host> Apply host-specific production checks.
   --json          Print the stable machine-readable readiness report.
-  --fix-plan      Include ordered fix suggestions in JSON output.
+  --fix-plan      Include ordered fix suggestions.
   --brief         Print compact one-line-per-check human output.
   --no-color      Disable ANSI color in human-readable output.
   --help, -h      Show this help.
@@ -573,10 +575,18 @@ async function main(): Promise<void> {
         { color: COLOR_MODE },
       ),
     );
+    if (FIX_PLAN_MODE) {
+      console.log("");
+      console.log(renderDoctorFixPlan(report.fixPlan ?? [], { color: COLOR_MODE }));
+    }
   } else {
     for (const result of checks) console.log(renderDoctorCheck(result, { color: COLOR_MODE }));
     console.log("");
     console.log(renderDoctorSummary(checks, { color: COLOR_MODE }));
+    if (FIX_PLAN_MODE) {
+      console.log("");
+      console.log(renderDoctorFixPlan(report.fixPlan ?? [], { color: COLOR_MODE }));
+    }
   }
   process.exit(report.ok ? 0 : 1);
 }

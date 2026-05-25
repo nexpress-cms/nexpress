@@ -5,6 +5,7 @@ import {
   buildDoctorJson,
   renderBriefDoctorReport,
   renderDoctorCheck,
+  renderDoctorFixPlan,
   renderDoctorSummary,
   summarizeChecks,
 } from "./doctor-output.js";
@@ -147,5 +148,38 @@ describe("doctor output", () => {
         "[error] env.database_url DATABASE_URL - not set",
       ].join("\n"),
     );
+  });
+
+  it("renders a human-readable fix plan", () => {
+    expect(
+      renderDoctorFixPlan(
+        [
+          {
+            id: "database.configure_target_postgres",
+            checkIds: ["target.vercel.database_url"],
+            title: "Configure a hosted Postgres DATABASE_URL for the selected deployment target",
+            risk: "medium",
+            requiresApproval: true,
+            commands: ["pnpm run deploy:plan -- --target vercel --json", "pnpm run setup"],
+            notes: [
+              "Set DATABASE_URL to the hosted provider's public or pooler connection string.",
+            ],
+          },
+        ],
+        { color: false },
+      ),
+    ).toBe(
+      [
+        "Fix plan",
+        "1. Configure a hosted Postgres DATABASE_URL for the selected deployment target",
+        "   risk: medium; approval required",
+        "   checks: target.vercel.database_url",
+        "   command: pnpm run deploy:plan -- --target vercel --json",
+        "   command: pnpm run setup",
+        "   note: Set DATABASE_URL to the hosted provider's public or pooler connection string.",
+      ].join("\n"),
+    );
+
+    expect(renderDoctorFixPlan([], { color: false })).toBe("No fix-plan actions needed.");
   });
 });

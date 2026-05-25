@@ -30,7 +30,7 @@ describe("deploy plan core", () => {
     );
     expect(json.commands).toContain("pnpm run doctor:prod -- --target vercel");
     expect(json.diagnostics).toContain(
-      "Run pnpm run doctor:prod -- --target vercel --json --fix-plan for ordered remediation.",
+      "Run pnpm run doctor:prod -- --target vercel --fix-plan for ordered remediation.",
     );
     expect(json.commands).toEqual(
       expect.arrayContaining(["pnpm db:migrate -- --status", "pnpm db:migrate"]),
@@ -89,7 +89,7 @@ describe("deploy plan core", () => {
     expect(output).toContain("[todo] NP_STORAGE_ADAPTER=s3");
     expect(output).toContain("Run before deploy");
     expect(output).toContain("Diagnostics");
-    expect(output).toContain("pnpm run doctor:prod -- --target vercel --json --fix-plan");
+    expect(output).toContain("pnpm run doctor:prod -- --target vercel --fix-plan");
     expect(output).not.toMatch(/\x1b\[/);
   });
 
@@ -109,7 +109,7 @@ describe("deploy plan core", () => {
     expect(output).toContain("pnpm db:migrate -- --status");
     expect(output).toContain("pnpm run doctor:prod -- --target docker");
     expect(output).toContain("If blocked:");
-    expect(output).toContain("pnpm run doctor:prod -- --target docker --json --fix-plan");
+    expect(output).toContain("pnpm run doctor:prod -- --target docker --fix-plan");
     expect(output).not.toContain("Fit");
     expect(output).not.toMatch(/\x1b\[/);
   });

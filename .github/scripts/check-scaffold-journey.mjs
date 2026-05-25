@@ -120,7 +120,7 @@ assertIncludes(deployPlan.output, "pnpm db:migrate -- --status", "deploy:plan");
 assertIncludes(deployPlan.output, "pnpm run doctor:prod -- --target vercel", "deploy:plan");
 assertIncludes(
   deployPlan.output,
-  "pnpm run doctor:prod -- --target vercel --json --fix-plan",
+  "pnpm run doctor:prod -- --target vercel --fix-plan",
   "deploy:plan",
 );
 console.log("✓ deploy:plan target guidance renders");
@@ -158,7 +158,7 @@ assertIncludes(deployPlanBrief.output, "Run before deploy:", "deploy:plan --brie
 assertIncludes(deployPlanBrief.output, "If blocked:", "deploy:plan --brief");
 assertIncludes(
   deployPlanBrief.output,
-  "pnpm run doctor:prod -- --target vercel --json --fix-plan",
+  "pnpm run doctor:prod -- --target vercel --fix-plan",
   "deploy:plan --brief",
 );
 assertNotIncludes(deployPlanBrief.output, "Fit", "deploy:plan --brief");
@@ -229,7 +229,7 @@ assertIncludes(readme, "NP_STORAGE_ADAPTER=s3", "README");
 assertIncludes(readme, "NP_S3_ENDPOINT", "README");
 assertIncludes(readme, "pnpm db:migrate", "README");
 assertIncludes(readme, "pnpm run doctor:prod -- --target vercel", "README");
-assertIncludes(readme, "pnpm run doctor:prod -- --target vercel --json --fix-plan", "README");
+assertIncludes(readme, "pnpm run doctor:prod -- --target vercel --fix-plan", "README");
 assertIncludes(readme, "pnpm run deploy:plan -- --target vercel --brief --no-color", "README");
 assertIncludes(readme, "pnpm run doctor:prod -- --target vercel --brief --no-color", "README");
 console.log("✓ README exposes the Vercel deploy entrypoint");
