@@ -5,12 +5,7 @@ import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../ui/card.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { PageHeader } from "../layout/page-header.js";
 
 /**
@@ -111,9 +106,7 @@ export function ThemeCleanupView() {
           ? payload.removedInstances
           : 0;
       const docs =
-        isRecord(payload) && typeof payload.updatedDocs === "number"
-          ? payload.updatedDocs
-          : 0;
+        isRecord(payload) && typeof payload.updatedDocs === "number" ? payload.updatedDocs : 0;
       setMessage(
         `Removed ${removed} block instance${removed === 1 ? "" : "s"} from ${docs} doc${docs === 1 ? "" : "s"}.`,
       );
@@ -139,29 +132,30 @@ export function ThemeCleanupView() {
   }, [report]);
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <PageHeader
         title="Cleanup unused blocks"
         description="Block instances whose type is no longer registered (after a theme uninstall, theme switch, or plugin removal). The render layer shows these as placeholder cards; this tool removes them in bulk."
+        className="min-w-0"
       />
 
       {error ? (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       ) : null}
 
       {message ? (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300">
+        <div className="break-words rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300">
           {message}
         </div>
       ) : null}
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-2">
-          <div className="space-y-1">
+        <CardHeader className="grid gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 space-y-1">
             <CardTitle>Unknown block instances</CardTitle>
-            <p className="text-sm text-muted-foreground">
+            <p className="break-words text-sm text-muted-foreground">
               {loading
                 ? "Scanning collections…"
                 : report && report.totalInstances > 0
@@ -169,11 +163,12 @@ export function ThemeCleanupView() {
                   : "Nothing to clean up."}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:items-center">
             <Button
               type="button"
               variant="ghost"
               size="sm"
+              className="w-full sm:w-auto"
               onClick={() => void refresh()}
               disabled={loading || busyType !== null}
             >
@@ -184,6 +179,7 @@ export function ThemeCleanupView() {
                 type="button"
                 variant="destructive"
                 size="sm"
+                className="w-full sm:w-auto"
                 onClick={() => void cleanup(null)}
                 disabled={loading || busyType !== null}
               >
@@ -197,7 +193,7 @@ export function ThemeCleanupView() {
             ) : null}
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0">
           {loading ? (
             <div className="space-y-3">
               {Array.from({ length: 3 }).map((_, i) => (
@@ -208,7 +204,7 @@ export function ThemeCleanupView() {
               ))}
             </div>
           ) : !report || report.unknownTypes.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-border/60 px-6 py-12 text-center text-sm text-muted-foreground">
+            <p className="break-words rounded-lg border border-dashed border-border/60 px-6 py-12 text-center text-sm text-muted-foreground">
               All block instances reference registered block types. ✓
             </p>
           ) : (
@@ -219,40 +215,39 @@ export function ThemeCleanupView() {
                 return (
                   <li
                     key={row.type}
-                    className="rounded-lg border border-border/60 bg-background/70 p-3"
+                    className="min-w-0 rounded-lg border border-border/60 bg-background/70 p-3"
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
+                    <div className="grid min-w-0 gap-3 sm:flex sm:items-start sm:justify-between">
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex min-w-0 items-center gap-2">
                           <AlertTriangle className="h-4 w-4 text-amber-500" />
-                          <code className="font-mono text-sm">{row.type}</code>
+                          <code className="min-w-0 break-all font-mono text-sm">{row.type}</code>
                         </div>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="break-words text-xs text-muted-foreground">
                           {row.instanceCount} instance
                           {row.instanceCount === 1 ? "" : "s"} in {row.docCount} doc
                           {row.docCount === 1 ? "" : "s"}.
                         </p>
                         {affected.length > 0 ? (
-                          <details className="text-xs text-muted-foreground">
+                          <details className="min-w-0 text-xs text-muted-foreground">
                             <summary className="cursor-pointer hover:text-foreground">
                               Show docs
                             </summary>
-                            <ul className="mt-1 space-y-0.5 pl-4">
+                            <ul className="mt-1 min-w-0 space-y-0.5 pl-4">
                               {affected.slice(0, 8).map((d) => (
-                                <li key={`${d.collection}-${d.docId}-${d.fieldName}`}>
-                                  <code className="font-mono">{d.collection}</code>{" "}
-                                  /{" "}
-                                  <code className="font-mono text-[10px]">
+                                <li
+                                  key={`${d.collection}-${d.docId}-${d.fieldName}`}
+                                  className="break-words"
+                                >
+                                  <code className="break-all font-mono">{d.collection}</code> /{" "}
+                                  <code className="break-all font-mono text-[10px]">
                                     {d.docId.slice(0, 8)}
                                   </code>{" "}
-                                  · field{" "}
-                                  <code className="font-mono">{d.fieldName}</code>
+                                  · field <code className="break-all font-mono">{d.fieldName}</code>
                                 </li>
                               ))}
                               {affected.length > 8 ? (
-                                <li className="italic">
-                                  …and {affected.length - 8} more
-                                </li>
+                                <li className="italic">…and {affected.length - 8} more</li>
                               ) : null}
                             </ul>
                           </details>
@@ -262,6 +257,7 @@ export function ThemeCleanupView() {
                         type="button"
                         variant="outline"
                         size="sm"
+                        className="w-full sm:w-auto"
                         onClick={() => void cleanup([row.type])}
                         disabled={loading || busyType !== null}
                       >
@@ -326,9 +322,7 @@ function parseScanReport(payload: unknown): ScanReport {
             collection: row.collection,
             docId: row.docId,
             fieldName: row.fieldName,
-            removableTypes: row.removableTypes.filter(
-              (t): t is string => typeof t === "string",
-            ),
+            removableTypes: row.removableTypes.filter((t): t is string => typeof t === "string"),
             removedCount: row.removedCount,
           };
         })
@@ -337,8 +331,7 @@ function parseScanReport(payload: unknown): ScanReport {
   return {
     unknownTypes,
     affected,
-    totalInstances:
-      typeof payload.totalInstances === "number" ? payload.totalInstances : 0,
+    totalInstances: typeof payload.totalInstances === "number" ? payload.totalInstances : 0,
     totalDocs: typeof payload.totalDocs === "number" ? payload.totalDocs : 0,
   };
 }
@@ -346,10 +339,7 @@ function parseScanReport(payload: unknown): ScanReport {
 function getErrorMessage(payload: unknown, fallback: string): string {
   if (isRecord(payload)) {
     if (typeof payload.error === "string") return payload.error;
-    if (
-      isRecord(payload.error) &&
-      typeof payload.error.message === "string"
-    ) {
+    if (isRecord(payload.error) && typeof payload.error.message === "string") {
       return payload.error.message;
     }
   }

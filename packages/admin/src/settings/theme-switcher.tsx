@@ -5,12 +5,7 @@ import { AlertTriangle, Check, Loader2, RotateCcw, Sparkles } from "lucide-react
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../ui/card.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { ThemeReseedDialog } from "./theme-reseed-dialog.js";
 
 /**
@@ -74,16 +69,12 @@ function summarizeMismatches(req: NonNullable<ThemeSummary["requirements"]>): st
   }
   if (req.missingFields.length > 0) {
     parts.push(
-      `${req.missingFields.length} missing field${
-        req.missingFields.length === 1 ? "" : "s"
-      }`,
+      `${req.missingFields.length} missing field${req.missingFields.length === 1 ? "" : "s"}`,
     );
   }
   if (req.typeConflicts.length > 0) {
     parts.push(
-      `${req.typeConflicts.length} type conflict${
-        req.typeConflicts.length === 1 ? "" : "s"
-      }`,
+      `${req.typeConflicts.length} type conflict${req.typeConflicts.length === 1 ? "" : "s"}`,
     );
   }
   if (req.relationConflicts.length > 0) {
@@ -170,9 +161,7 @@ export function ThemeSwitcher({
       // Update local state optimistically; a full refetch is
       // unnecessary because the server confirmed the new id.
       setThemes((current) =>
-        current
-          ? current.map((t) => ({ ...t, isActive: t.id === id }))
-          : current,
+        current ? current.map((t) => ({ ...t, isActive: t.id === id })) : current,
       );
       onActivated?.(id);
     } catch {
@@ -186,7 +175,7 @@ export function ThemeSwitcher({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex min-w-0 items-center gap-2">
             <Sparkles className="h-4 w-4" />
             Active theme
           </CardTitle>
@@ -207,35 +196,35 @@ export function ThemeSwitcher({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+      <CardHeader className="min-w-0">
+        <CardTitle className="flex min-w-0 items-center gap-2">
           <Sparkles className="h-4 w-4" />
           Active theme
         </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Switch between installed themes without redeploying. Adding a new
-          theme still requires registering it in <code>nexpress.config.ts</code>.
+        <p className="break-words text-sm text-muted-foreground">
+          Switch between installed themes without redeploying. Adding a new theme still requires
+          registering it in <code className="break-all">nexpress.config.ts</code>.
         </p>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="min-w-0 space-y-4">
         {error ? (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {error}
           </div>
         ) : null}
         {message ? (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300">
+          <div className="break-words rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300">
             {message}
           </div>
         ) : null}
         {showCleanupHint ? (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+          <div className="min-w-0 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
             <p className="font-medium">Theme switched — check for stale blocks?</p>
-            <p className="mt-1 text-xs opacity-80">
+            <p className="mt-1 break-words text-xs opacity-80">
               The previous theme may have contributed blocks (e.g.{" "}
-              <code className="font-mono">magazine.hero-feature</code>) that
-              are still embedded in your pages. The public site shows them
-              as placeholder cards until you run cleanup.{" "}
+              <code className="break-all font-mono">magazine.hero-feature</code>) that are still
+              embedded in your pages. The public site shows them as placeholder cards until you run
+              cleanup.{" "}
               <a
                 href="/admin/themes/cleanup"
                 className="underline underline-offset-2 hover:no-underline"
@@ -247,36 +236,37 @@ export function ThemeSwitcher({
         ) : null}
 
         {themes && themes.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
-            No themes registered. Add one to{" "}
-            <code>nexpress.config.ts</code>'s <code>themes</code> array.
+          <div className="break-words rounded-xl border border-dashed border-border/70 bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
+            No themes registered. Add one to <code className="break-all">nexpress.config.ts</code>
+            {"'s "}
+            <code className="break-all">themes</code> array.
           </div>
         ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2">
           {(themes ?? []).map((theme) => (
             <article
               key={theme.id}
               data-active={theme.isActive ? "true" : undefined}
-              className={`flex flex-col justify-between gap-4 rounded-xl border bg-background/60 p-4 shadow-sm transition ${
+              className={`flex min-w-0 flex-col justify-between gap-4 rounded-xl border bg-background/60 p-4 shadow-sm transition ${
                 theme.isActive
                   ? "border-primary/60 ring-2 ring-primary/30"
                   : "border-border/70 hover:border-border"
               }`}
             >
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-medium leading-tight text-foreground">
+              <div className="min-w-0 space-y-2">
+                <div className="flex min-w-0 flex-wrap items-start gap-2">
+                  <h3 className="min-w-0 break-words font-medium leading-tight text-foreground">
                     {theme.name}
                   </h3>
                   {theme.isActive ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
                       <Check className="h-3 w-3" /> Active
                     </span>
                   ) : null}
                   {theme.requirements?.hasMismatches ? (
                     <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
                         theme.requirements.hasHardMismatches
                           ? "bg-destructive/10 text-destructive"
                           : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
@@ -290,18 +280,16 @@ export function ThemeSwitcher({
                     </span>
                   ) : null}
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="break-words text-xs text-muted-foreground">
                   v{theme.version}
                   {theme.author?.name ? ` · ${theme.author.name}` : ""}
                 </p>
                 {theme.description ? (
-                  <p className="text-sm text-muted-foreground">
-                    {theme.description}
-                  </p>
+                  <p className="break-words text-sm text-muted-foreground">{theme.description}</p>
                 ) : null}
                 {theme.requirements?.hasMismatches ? (
                   <p
-                    className={`text-xs ${
+                    className={`break-words text-xs ${
                       theme.requirements.hasHardMismatches
                         ? "text-destructive"
                         : "text-amber-600 dark:text-amber-400"
@@ -312,17 +300,16 @@ export function ThemeSwitcher({
                     theme.requirements.relationConflicts.length > 0 ? (
                       <>
                         Resolve the conflicting field types in your{" "}
-                        <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
+                        <code className="break-all rounded bg-muted px-1 py-0.5 text-[10px]">
                           src/collections/*.ts
                         </code>{" "}
-                        — the framework auto-merges theme-declared fields, but
-                        an operator-defined field with a different type wins
-                        and needs a manual fix.
+                        — the framework auto-merges theme-declared fields, but an operator-defined
+                        field with a different type wins and needs a manual fix.
                       </>
                     ) : (
                       <>
                         Run{" "}
-                        <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
+                        <code className="break-all rounded bg-muted px-1 py-0.5 text-[10px]">
                           pnpm db:generate && pnpm db:migrate
                         </code>{" "}
                         to materialise theme-declared columns.
@@ -331,10 +318,10 @@ export function ThemeSwitcher({
                   </p>
                 ) : null}
               </div>
-              <div className="flex items-center justify-between gap-2">
+              <div className="grid gap-2 sm:flex sm:items-center sm:justify-between">
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  className="inline-flex min-w-0 items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground sm:justify-start"
                   onClick={() => setReseedTarget(theme)}
                   title={
                     theme.isActive
@@ -350,6 +337,7 @@ export function ThemeSwitcher({
                   variant={theme.isActive ? "outline" : "default"}
                   disabled={theme.isActive || activatingId !== null}
                   onClick={() => void activate(theme.id)}
+                  className="w-full sm:w-auto"
                 >
                   {activatingId === theme.id ? (
                     <>
