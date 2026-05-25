@@ -756,6 +756,13 @@ pnpm run deploy:plan -- --target vercel
 pnpm run doctor:prod -- --target vercel
 \`\`\`
 
+For compact CI logs, append \`--brief --no-color\`:
+
+\`\`\`bash
+pnpm run deploy:plan -- --target vercel --brief --no-color
+pnpm run doctor:prod -- --target vercel --brief --no-color
+\`\`\`
+
 Tightens the dev defaults: \`NP_SECRET\` < 32 chars becomes an error,
 \`http://\` SITE_URL warns, missing \`NP_ENABLE_JOBS\` warns,
 \`local\` storage on a multi-node platform errors. Wire this into
@@ -833,6 +840,9 @@ pnpm run deploy:plan -- --target vercel
 pnpm db:migrate
 pnpm run doctor:prod -- --target vercel
 \`\`\`
+
+Use \`--brief --no-color\` on \`deploy:plan\` and \`doctor:prod\` when
+the output is going into CI logs or an issue comment.
 
 Vercel's filesystem is ephemeral, so media uploads require S3/R2/MinIO
 or another S3-compatible store. For scheduled publishing, add
