@@ -23,11 +23,10 @@ export interface SetupBody {
   defaultLocale?: string;
   timezone?: string;
   sampleContent?: boolean;
+  requireFirstAdmin?: boolean;
 }
 
-export function validateBody(
-  raw: Partial<SetupBody>,
-): { body: SetupBody } | { error: string } {
+export function validateBody(raw: Partial<SetupBody>): { body: SetupBody } | { error: string } {
   const databaseUrl = (raw.databaseUrl ?? "").trim();
   if (!/^postgres(?:ql)?:\/\//.test(databaseUrl)) {
     return { error: "DATABASE_URL must start with postgres:// or postgresql://" };
@@ -104,7 +103,8 @@ export function validateBody(
     typeof raw.adminPassword === "string" && raw.adminPassword.length > 0
       ? raw.adminPassword
       : undefined;
-  const wantsFirstAdmin = Boolean(adminEmail) || Boolean(adminPassword);
+  const wantsFirstAdmin =
+    raw.requireFirstAdmin === true || Boolean(adminEmail) || Boolean(adminPassword);
 
   if (wantsFirstAdmin) {
     if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
