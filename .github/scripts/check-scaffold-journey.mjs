@@ -118,6 +118,11 @@ assertIncludes(deployPlan.output, "NP_STORAGE_ADAPTER=s3", "deploy:plan");
 assertIncludes(deployPlan.output, "Run migrations against the same DATABASE_URL", "deploy:plan");
 assertIncludes(deployPlan.output, "pnpm db:migrate -- --status", "deploy:plan");
 assertIncludes(deployPlan.output, "pnpm run doctor:prod -- --target vercel", "deploy:plan");
+assertIncludes(
+  deployPlan.output,
+  "pnpm run doctor:prod -- --target vercel --json --fix-plan",
+  "deploy:plan",
+);
 console.log("✓ deploy:plan target guidance renders");
 
 const deployPlanHelp = runTsx("scripts/deploy-plan.ts", ["--help"]);
@@ -150,6 +155,12 @@ assertNoAnsi(deployPlanBrief.output, "deploy:plan --brief --no-color");
 assertIncludes(deployPlanBrief.output, "Required env:", "deploy:plan --brief");
 assertIncludes(deployPlanBrief.output, "[check] NP_STORAGE_ADAPTER=s3", "deploy:plan --brief");
 assertIncludes(deployPlanBrief.output, "Run before deploy:", "deploy:plan --brief");
+assertIncludes(deployPlanBrief.output, "If blocked:", "deploy:plan --brief");
+assertIncludes(
+  deployPlanBrief.output,
+  "pnpm run doctor:prod -- --target vercel --json --fix-plan",
+  "deploy:plan --brief",
+);
 assertNotIncludes(deployPlanBrief.output, "Fit", "deploy:plan --brief");
 console.log("✓ deploy:plan brief target guidance stays compact");
 
