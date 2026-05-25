@@ -12,6 +12,7 @@ import { resolve } from "node:path";
 import { messageForConnectionError } from "./setup-server-errors.js";
 import { findFreePort } from "./setup-server-ports.js";
 import { inferDeployTargetFromEnv, parseDeployTargetArg } from "./deploy-targets.js";
+import { buildDoctorJson, dim, renderDoctorCheck, renderDoctorSummary } from "./doctor-output.js";
 import {
   checkJobsEnabledProd,
   checkSchedulerTokenProd,
@@ -53,6 +54,8 @@ import {
  */
 
 const PROD_MODE = process.argv.includes("--prod");
+const JSON_MODE = process.argv.includes("--json");
+const COLOR_MODE = !JSON_MODE && !process.argv.includes("--no-color") && !process.env.NO_COLOR;
 
 interface PgClientLike {
   connect(): Promise<void>;
@@ -411,36 +414,14 @@ async function checkEnvExampleSync(): Promise<CheckResult> {
   return { state: "ok", label: "NP_SECRET not the placeholder" };
 }
 
-const COLOR = {
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  red: "\x1b[31m",
-  dim: "\x1b[2m",
-  reset: "\x1b[0m",
-};
-
-function render(result: CheckResult): string {
-  const icon =
-    result.state === "ok"
-      ? `${COLOR.green}✓${COLOR.reset}`
-      : result.state === "warn"
-        ? `${COLOR.yellow}⚠${COLOR.reset}`
-        : `${COLOR.red}✗${COLOR.reset}`;
-  let line = `${icon} ${result.label}`;
-  if (result.detail) line += `  ${COLOR.dim}${result.detail}${COLOR.reset}`;
-  if (result.hint && result.state !== "ok") line += `\n    ${result.hint}`;
-  return line;
-}
-
 async function main(): Promise<void> {
   const deployTarget = PROD_MODE
     ? (parseDeployTargetArg(process.argv.slice(2)) ?? inferDeployTargetFromEnv())
     : null;
-  if (PROD_MODE) {
+  if (PROD_MODE && !JSON_MODE) {
     const targetDetail = deployTarget ? ` for ${deployTarget}` : "";
-    console.log(
-      `${COLOR.dim}Running in --prod mode${targetDetail}: deploy-readiness checks.${COLOR.reset}\n`,
-    );
+    console.log(dim(`Running in --prod mode${targetDetail}: deploy-readiness checks.`, COLOR_MODE));
+    console.log("");
   }
   const checks: Array<CheckResult> = [];
   checks.push(await checkNodeVersion());
@@ -467,19 +448,15 @@ async function main(): Promise<void> {
     if (result) checks.push(result);
   }
 
-  for (const r of checks) console.log(render(r));
-
-  const failed = checks.filter((r) => r.state === "error").length;
-  const warned = checks.filter((r) => r.state === "warn").length;
-  console.log("");
-  if (failed === 0 && warned === 0) {
-    console.log(`${COLOR.green}All ${checks.length.toString()} checks passed.${COLOR.reset}`);
+  const report = buildDoctorJson({ prodMode: PROD_MODE, target: deployTarget, checks });
+  if (JSON_MODE) {
+    console.log(JSON.stringify(report, null, 2));
   } else {
-    console.log(
-      `${failed.toString()} error${failed === 1 ? "" : "s"}, ${warned.toString()} warning${warned === 1 ? "" : "s"}.`,
-    );
+    for (const result of checks) console.log(renderDoctorCheck(result, { color: COLOR_MODE }));
+    console.log("");
+    console.log(renderDoctorSummary(checks, { color: COLOR_MODE }));
   }
-  process.exit(failed > 0 ? 1 : 0);
+  process.exit(report.ok ? 0 : 1);
 }
 
 // Touch readFile so the linter doesn't complain about an unused import
