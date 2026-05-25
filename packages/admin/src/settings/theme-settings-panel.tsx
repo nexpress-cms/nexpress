@@ -6,12 +6,7 @@ import { AlertTriangle, Loader2, Save } from "lucide-react";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../ui/card.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { ZodForm, type ZodFormValue } from "../zod-form/index.js";
 
 /**
@@ -44,9 +39,7 @@ export function ThemeSettingsPanel({ themeId }: { themeId: string }) {
     setError(null);
     setMessage(null);
     try {
-      const res = await npFetch(
-        `/api/admin/themes/${encodeURIComponent(themeId)}/settings`,
-      );
+      const res = await npFetch(`/api/admin/themes/${encodeURIComponent(themeId)}/settings`);
       const payload = (await res.json().catch(() => null)) as
         | ThemeSettingsResponse
         | { error?: { message?: string } }
@@ -76,17 +69,15 @@ export function ThemeSettingsPanel({ themeId }: { themeId: string }) {
     setError(null);
     setMessage(null);
     try {
-      const res = await npFetch(
-        `/api/admin/themes/${encodeURIComponent(themeId)}/settings`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ value: draft }),
-        },
-      );
-      const payload = (await res.json().catch(() => null)) as
-        | { value?: ZodFormValue; error?: { message?: string; details?: unknown } }
-        | null;
+      const res = await npFetch(`/api/admin/themes/${encodeURIComponent(themeId)}/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: draft }),
+      });
+      const payload = (await res.json().catch(() => null)) as {
+        value?: ZodFormValue;
+        error?: { message?: string; details?: unknown };
+      } | null;
       if (!res.ok) {
         setError(payload?.error?.message ?? "Unable to save settings.");
         return;
@@ -126,13 +117,13 @@ export function ThemeSettingsPanel({ themeId }: { themeId: string }) {
         ) : null}
 
         {data?.parseError ? (
-          <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+          <div className="flex min-w-0 items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <div>
+            <div className="min-w-0">
               <p className="font-medium">Settings reset to defaults.</p>
-              <p className="text-xs opacity-90">
-                The stored value didn't match the current schema, likely after
-                a theme upgrade. Review and save to persist new defaults.
+              <p className="break-words text-xs opacity-90">
+                The stored value didn't match the current schema, likely after a theme upgrade.
+                Review and save to persist new defaults.
               </p>
             </div>
           </div>
@@ -159,7 +150,7 @@ export function ThemeSettingsPanel({ themeId }: { themeId: string }) {
               onChange={setDraft}
             />
             {data.fields.length > 0 ? (
-              <div className="flex justify-end">
+              <div className="grid sm:flex sm:justify-end">
                 {/* Disable save while loading the next theme's
                     schema — otherwise a click during the load
                     transition would PUT the previous theme's
@@ -167,6 +158,7 @@ export function ThemeSettingsPanel({ themeId }: { themeId: string }) {
                 <Button
                   onClick={() => void save()}
                   disabled={saving || !data}
+                  className="w-full sm:w-auto"
                 >
                   {saving ? (
                     <>
