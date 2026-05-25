@@ -745,20 +745,20 @@ export function NavigationEditor() {
     <>
       <Card>
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
+          <div className="min-w-0 space-y-1">
             <CardTitle>Navigation structure</CardTitle>
             <p className="text-sm text-muted-foreground">
               Drag the grip handle to reorder, or drag right onto another item to nest as its
               sub-menu (one level deep). The Parent select still works for keyboard-driven changes.
             </p>
           </div>
-          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
-            <div className="col-span-2 grid gap-1 sm:flex sm:items-center sm:gap-2">
+          <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+            <div className="col-span-2 grid min-w-0 gap-1 sm:flex sm:items-center sm:gap-2">
               <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
                 Location
               </Label>
               <Select value={location} onValueChange={(value) => requestLocationChange(value)}>
-                <SelectTrigger className="w-full sm:w-40">
+                <SelectTrigger className="min-w-0 sm:w-40">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -790,7 +790,7 @@ export function NavigationEditor() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="min-w-0 space-y-4">
           <LocationAssignmentsPanel
             locations={locations}
             activeLocation={location}
@@ -1142,7 +1142,7 @@ function LocationAssignmentsPanel({
   if (themeLocations.length === 0) return null;
 
   return (
-    <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-4">
+    <div className="min-w-0 space-y-3 rounded-xl border border-border/70 bg-muted/20 p-4">
       <div className="space-y-1">
         <h3 className="text-sm font-semibold">Location assignments</h3>
         <p className="text-xs text-muted-foreground">
@@ -1161,7 +1161,7 @@ function LocationAssignmentsPanel({
               type="button"
               onClick={() => onSelect(loc.value)}
               className={cn(
-                "group flex flex-col gap-2 rounded-lg border bg-background/70 p-3 text-left transition",
+                "group flex min-w-0 flex-col gap-2 rounded-lg border bg-background/70 p-3 text-left transition",
                 "hover:border-primary/60 hover:bg-background",
                 isActive ? "border-primary ring-2 ring-primary/30" : "border-border/60",
               )}
@@ -1193,7 +1193,7 @@ function LocationAssignmentsPanel({
                 </span>
               </div>
               {loc.description ? (
-                <p className="text-xs text-muted-foreground">{loc.description}</p>
+                <p className="break-words text-xs text-muted-foreground">{loc.description}</p>
               ) : null}
               {isActive ? (
                 <span className="text-[10px] uppercase tracking-wider text-primary">Editing</span>
@@ -1279,8 +1279,8 @@ function SortableRow({
     <div
       ref={setNodeRef}
       style={style}
-      className={`grid gap-4 rounded-xl border border-border/70 bg-background/70 p-4 lg:grid-cols-[auto_1.1fr_1.4fr_180px_180px_auto] lg:items-end ${
-        isChild ? "ml-8 border-l-4 border-l-primary/40" : ""
+      className={`grid min-w-0 gap-4 rounded-xl border border-border/70 bg-background/70 p-4 lg:grid-cols-[auto_1.1fr_1.4fr_180px_180px_auto] lg:items-end ${
+        isChild ? "border-l-4 border-l-primary/40 pl-6 sm:ml-8 sm:pl-4" : ""
       } ${isDragging ? "shadow-lg" : ""} ${previewClass} transition-shadow`}
     >
       <button
@@ -1293,7 +1293,7 @@ function SortableRow({
         {isChild ? <CornerDownRight className="h-4 w-4" /> : <GripVertical className="h-4 w-4" />}
       </button>
 
-      <div className="space-y-2">
+      <div className="min-w-0 space-y-2">
         <Label htmlFor={`nav-label-${item.id}`}>Label</Label>
         <Input
           id={`nav-label-${item.id}`}
@@ -1302,7 +1302,7 @@ function SortableRow({
         />
       </div>
 
-      <div className="space-y-2">
+      <div className="min-w-0 space-y-2">
         {item.type === "page" ? (
           <>
             <Label htmlFor={`nav-page-${item.id}`}>Page</Label>
@@ -1321,7 +1321,7 @@ function SortableRow({
               value={item.collection ?? ""}
               onValueChange={(value) => onUpdate(item.id, { collection: value })}
             >
-              <SelectTrigger id={`nav-collection-${item.id}`}>
+              <SelectTrigger id={`nav-collection-${item.id}`} className="min-w-0">
                 <SelectValue
                   placeholder={collectionsLoading ? "Loading…" : "Select a collection"}
                 />
@@ -1364,13 +1364,13 @@ function SortableRow({
         )}
       </div>
 
-      <div className="space-y-2">
+      <div className="min-w-0 space-y-2">
         <Label>Type</Label>
         <Select
           value={item.type}
           onValueChange={(value) => onChangeType(item.id, value as EditableNavItem["type"])}
         >
-          <SelectTrigger>
+          <SelectTrigger className="min-w-0">
             <SelectValue placeholder="Select a type" />
           </SelectTrigger>
           <SelectContent>
@@ -1381,14 +1381,14 @@ function SortableRow({
         </Select>
       </div>
 
-      <div className="space-y-2">
+      <div className="min-w-0 space-y-2">
         <Label>Parent</Label>
         <Select
           value={item.parentId ?? NO_PARENT}
           onValueChange={(value) => onChangeParent(item.id, value)}
           disabled={hasChildren}
         >
-          <SelectTrigger>
+          <SelectTrigger className="min-w-0">
             <SelectValue placeholder="Top level" />
           </SelectTrigger>
           <SelectContent>
@@ -1645,12 +1645,12 @@ function PagePicker({ triggerId, value, cache, onChange, onCachePages }: PagePic
           // reads as a plain button and the SR user has no hint that
           // activating it surfaces a list of options.
           aria-haspopup="listbox"
-          className="w-full justify-between font-normal"
+          className="min-w-0 w-full justify-between font-normal"
         >
           <span className="truncate">{triggerLabel}</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="start">
+      <PopoverContent className="w-[min(20rem,calc(100vw-2rem))] p-0" align="start">
         <div className="border-b border-border/60 p-2">
           <Input
             value={query}

@@ -153,11 +153,17 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
     >
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className="text-sm font-semibold text-foreground">{plugin.name}</span>
-          <span className="font-mono text-[11px] text-muted-foreground">{slugLabel}</span>
+          <span className="min-w-0 break-words text-sm font-semibold text-foreground">
+            {plugin.name}
+          </span>
+          <span className="min-w-0 break-all font-mono text-[11px] text-muted-foreground">
+            {slugLabel}
+          </span>
         </div>
         {plugin.description ? (
-          <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">{plugin.description}</p>
+          <p className="mt-0.5 break-words text-xs text-muted-foreground sm:text-sm">
+            {plugin.description}
+          </p>
         ) : null}
         {hasDetails ? (
           <button
@@ -175,7 +181,7 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
           </button>
         ) : null}
         {detailsOpen ? (
-          <div className="mt-2 space-y-2 rounded-md bg-muted/40 px-3 py-2 text-xs">
+          <div className="mt-2 min-w-0 space-y-2 rounded-md bg-muted/40 px-3 py-2 text-xs">
             {plugin.capabilities.length > 0 ? (
               <div>
                 <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -195,7 +201,7 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
                 <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                   Hooks
                 </span>
-                <p className="mt-1 font-mono text-[10px] text-muted-foreground">
+                <p className="mt-1 break-all font-mono text-[10px] text-muted-foreground">
                   {plugin.hooks.join(", ")}
                 </p>
               </div>
@@ -207,7 +213,7 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
                 </span>
                 <ul className="mt-1 space-y-0.5 font-mono text-[10px] text-muted-foreground">
                   {plugin.routes.map((route) => (
-                    <li key={`${route.method} ${route.path}`}>
+                    <li key={`${route.method} ${route.path}`} className="break-all">
                       <span className="font-semibold">{route.method}</span> /api/plugins/
                       {plugin.id}
                       {route.path}
@@ -222,20 +228,33 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
 
       <PluginStatusBadge status={status} />
 
-      <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+      <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:w-auto sm:flex sm:flex-nowrap">
         {plugin.hasAdmin ? (
-          <Button type="button" variant="outline" size="sm" asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="col-span-2 w-full sm:w-auto"
+            asChild
+          >
             <Link href={`/admin/plugins/${plugin.id}`}>
               <ExternalLink className="size-3.5" />
               Open admin
             </Link>
           </Button>
         ) : null}
-        <Button type="button" variant="outline" size="sm" onClick={() => onOpenConfig(plugin)}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full sm:w-auto"
+          onClick={() => onOpenConfig(plugin)}
+        >
           <Settings2 className="size-3.5" />
           Configure
         </Button>
         <Switch
+          className="justify-self-end"
           checked={plugin.enabled}
           disabled={togglingId !== null}
           onCheckedChange={(checked) => {
@@ -454,17 +473,19 @@ export function PluginsManager() {
   };
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-start justify-between gap-3">
+    <div className="flex min-w-0 flex-col gap-5">
+      <div className="grid min-w-0 gap-3 sm:flex sm:items-start sm:justify-between">
         <PageHeader
           title="Plugins"
           description="Toggle and configure installed plugins. Enable / disable applies to the next request; new plugins still need a server restart to register hooks and routes."
+          className="min-w-0"
         />
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-none sm:flex sm:flex-wrap sm:items-center">
           <Button
             type="button"
             variant="outline"
             size="sm"
+            className="w-full sm:w-auto"
             onClick={() => void reloadAllPlugins()}
             disabled={reloading}
             title="Reset the plugin registry and re-run setup() on every plugin"
@@ -476,7 +497,13 @@ export function PluginsManager() {
             )}
             Reload all
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => setBrowseOpen(true)}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-auto"
+            onClick={() => setBrowseOpen(true)}
+          >
             <Globe className="size-3.5" />
             Browse registry
           </Button>
@@ -484,6 +511,7 @@ export function PluginsManager() {
             type="button"
             variant="default"
             size="sm"
+            className="w-full sm:w-auto"
             onClick={() => setInstallGuideOpen(true)}
           >
             <Plus className="size-3.5" />
@@ -560,10 +588,12 @@ export function PluginsManager() {
           if (!open) setConfigPlugin(null);
         }}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="min-w-0 max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{configPlugin ? `${configPlugin.name} config` : "Config"}</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="break-words">
+              {configPlugin ? `${configPlugin.name} config` : "Config"}
+            </DialogTitle>
+            <DialogDescription className="break-words">
               {configPlugin?.adminSettings
                 ? "Edit the plugin's settings. Changes apply immediately to new requests; already-loaded handlers see the new config on their next call."
                 : "Edit the plugin's JSON config. Changes apply immediately to new requests, but already-loaded plugin code may need a restart."}
@@ -591,7 +621,7 @@ export function PluginsManager() {
                 value={configText}
                 onChange={(event) => setConfigText(event.target.value)}
                 rows={14}
-                className="font-mono text-xs"
+                className="min-w-0 font-mono text-xs"
                 spellCheck={false}
               />
               {configError ? (
@@ -685,10 +715,10 @@ function PluginConfigForm({
         onSubmit={(event) => {
           void onSubmit(event);
         }}
-        className="space-y-4"
+        className="min-w-0 space-y-4"
       >
         {settings.description ? (
-          <p className="text-sm text-muted-foreground">{settings.description}</p>
+          <p className="break-words text-sm text-muted-foreground">{settings.description}</p>
         ) : null}
         {settings.fields.map((field, index) => (
           <FieldRenderer
@@ -811,20 +841,23 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="grid max-h-[calc(100dvh-2rem)] max-w-3xl grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden">
+      <DialogContent className="grid min-w-0 max-h-[calc(100dvh-2rem)] max-w-3xl grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex min-w-0 items-center gap-2">
             <Globe className="size-4" />
-            Browse plugin registry
+            <span className="min-w-0 break-words">Browse plugin registry</span>
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="break-words">
             Searches packages on the npm registry tagged with{" "}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+            <code className="break-all rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
               keywords:nexpress-plugin
             </code>
             . Copy the install command and run it from your project root, then add the plugin to{" "}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">plugins</code> in{" "}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+            <code className="break-all rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+              plugins
+            </code>{" "}
+            in{" "}
+            <code className="break-all rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
               nexpress.config.ts
             </code>
             .
@@ -832,7 +865,7 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
         </DialogHeader>
 
         <form
-          className="grid gap-2 sm:flex"
+          className="grid min-w-0 gap-2 sm:flex"
           onSubmit={(event) => {
             event.preventDefault();
             void search(query);
@@ -861,7 +894,7 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
           </Button>
         </form>
 
-        <div className="min-h-0 overflow-y-auto pr-1">
+        <div className="min-h-0 min-w-0 overflow-y-auto pr-1">
           {error ? <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
           {!error && loading && items === null ? (
             <div className="flex items-center gap-2 py-12 text-sm text-muted-foreground">
@@ -879,12 +912,12 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
               {items.map((plugin) => (
                 <div
                   key={plugin.name}
-                  className="rounded-xl border border-border/60 bg-card/40 p-3"
+                  className="min-w-0 rounded-xl border border-border/60 bg-card/40 p-3"
                 >
                   <div className="grid gap-3 sm:flex sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                        <span>{plugin.name}</span>
+                        <span className="min-w-0 break-all">{plugin.name}</span>
                         {plugin.version ? (
                           <Badge variant="secondary" className="font-mono text-[10px]">
                             v{plugin.version}
@@ -892,7 +925,9 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
                         ) : null}
                       </div>
                       {plugin.description ? (
-                        <p className="text-xs text-muted-foreground">{plugin.description}</p>
+                        <p className="break-words text-xs text-muted-foreground">
+                          {plugin.description}
+                        </p>
                       ) : null}
                       <p className="break-all font-mono text-[10px] text-muted-foreground">
                         pnpm add {plugin.name}
@@ -907,7 +942,7 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
                         </p>
                       ) : null}
                     </div>
-                    <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:flex-col">
+                    <div className="grid grid-cols-1 gap-2 sm:flex sm:shrink-0 sm:flex-col">
                       <Button
                         type="button"
                         variant="outline"
@@ -994,27 +1029,27 @@ export default defineConfig({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="min-w-0 max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex min-w-0 items-center gap-2">
             <Plus className="size-4" />
-            Install a plugin
+            <span className="min-w-0 break-words">Install a plugin</span>
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="break-words">
             NexPress plugins are npm packages. There&apos;s no runtime install — the three steps
             below are the whole flow.
           </DialogDescription>
         </DialogHeader>
 
-        <ol className="space-y-4 text-sm">
+        <ol className="min-w-0 space-y-4 text-sm">
           <li className="space-y-2">
-            <div className="flex items-baseline gap-2">
+            <div className="flex min-w-0 items-baseline gap-2">
               <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
                 1
               </span>
-              <div className="font-medium">Install the package</div>
+              <div className="min-w-0 break-words font-medium">Install the package</div>
             </div>
-            <div className="ml-7 space-y-1.5">
+            <div className="ml-7 min-w-0 space-y-1.5">
               <p className="text-xs text-muted-foreground">
                 Run the install in your project root. Use <strong>Browse registry</strong> to find
                 packages tagged{" "}
@@ -1043,15 +1078,15 @@ export default defineConfig({
           </li>
 
           <li className="space-y-2">
-            <div className="flex items-baseline gap-2">
+            <div className="flex min-w-0 items-baseline gap-2">
               <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
                 2
               </span>
-              <div className="font-medium">
+              <div className="min-w-0 break-words font-medium">
                 Register the plugin in <code className="font-mono">nexpress.config.ts</code>
               </div>
             </div>
-            <div className="ml-7 space-y-1.5">
+            <div className="ml-7 min-w-0 space-y-1.5">
               <p className="text-xs text-muted-foreground">
                 Add it to the <code className="font-mono">plugins</code> array. Most plugins export
                 a factory function — pass the options it expects.
@@ -1071,7 +1106,7 @@ export default defineConfig({
                     {copied === "config" ? "Copied!" : "Copy"}
                   </Button>
                 </div>
-                <pre className="overflow-x-auto px-3 py-2 font-mono text-[11px] leading-relaxed">
+                <pre className="max-w-full overflow-x-auto px-3 py-2 font-mono text-[11px] leading-relaxed">
                   {configSnippet}
                 </pre>
               </div>
@@ -1079,13 +1114,13 @@ export default defineConfig({
           </li>
 
           <li className="space-y-2">
-            <div className="flex items-baseline gap-2">
+            <div className="flex min-w-0 items-baseline gap-2">
               <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
                 3
               </span>
-              <div className="font-medium">Restart and verify</div>
+              <div className="min-w-0 break-words font-medium">Restart and verify</div>
             </div>
-            <div className="ml-7 space-y-1.5 text-xs text-muted-foreground">
+            <div className="ml-7 min-w-0 space-y-1.5 text-xs text-muted-foreground">
               <p>
                 Restart your dev server (or redeploy in production) so the bootstrap picks up the
                 new plugin. The plugin will appear in the{" "}
