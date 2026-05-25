@@ -131,6 +131,25 @@ export function renderBriefDoctorReport(
   return lines.join("\n");
 }
 
+export function renderDoctorFixPlan(
+  fixPlan: DoctorFixPlanItem[],
+  options: RenderOptions = { color: true },
+): string {
+  const c = options.color ? ANSI : EMPTY_ANSI;
+  if (fixPlan.length === 0) return `${c.green}No fix-plan actions needed.${c.reset}`;
+
+  const lines = [`${c.dim}Fix plan${c.reset}`];
+  fixPlan.forEach((item, index) => {
+    const approval = item.requiresApproval ? "approval required" : "no approval needed";
+    lines.push(`${String(index + 1)}. ${item.title}`);
+    lines.push(`   risk: ${item.risk}; ${approval}`);
+    lines.push(`   checks: ${item.checkIds.join(", ")}`);
+    for (const command of item.commands) lines.push(`   command: ${command}`);
+    for (const note of item.notes ?? []) lines.push(`   note: ${note}`);
+  });
+  return lines.join("\n");
+}
+
 export function dim(text: string, color = true): string {
   const c = color ? ANSI : EMPTY_ANSI;
   return `${c.dim}${text}${c.reset}`;
