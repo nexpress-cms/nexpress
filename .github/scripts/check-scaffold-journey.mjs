@@ -164,6 +164,17 @@ assertIncludes(doctorHelp.output, "--fix-plan", "doctor --help");
 assertIncludes(doctorHelp.output, "vercel, railway, render, fly, docker", "doctor --help");
 console.log("✓ doctor help documents deploy-readiness output modes");
 
+const migrateHelp = runTsx("scripts/run-migrations.ts", ["--help"]);
+assertNoResolverCrash(migrateHelp.output, "db:migrate --help");
+if (migrateHelp.code !== 0) {
+  fail("db:migrate --help should exit 0", migrateHelp.output.split("\n").slice(-40).join("\n"));
+}
+assertNoAnsi(migrateHelp.output, "db:migrate --help");
+assertIncludes(migrateHelp.output, "NexPress migrations", "db:migrate --help");
+assertIncludes(migrateHelp.output, "pnpm db:generate", "db:migrate --help");
+assertIncludes(migrateHelp.output, "pnpm db:migrate", "db:migrate --help");
+console.log("✓ db:migrate help runs without touching the database");
+
 const doctor = runTsx("scripts/doctor.ts", ["--prod", "--target", "vercel"]);
 assertNoResolverCrash(doctor.output, "doctor:prod");
 if (doctor.code === 0) {
