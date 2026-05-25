@@ -7,6 +7,7 @@ import {
   checkSecretLengthProd,
   checkSiteUrlProd,
   checkStorageProd,
+  checkTargetDatabaseProd,
   checkTargetStorageProd,
   checkTargetWorkerProd,
 } from "./doctor-readiness.js";
@@ -30,6 +31,9 @@ const migrated: MigrationStatus = {
 describe("doctor production target readiness", () => {
   it("keeps target checks out of the default dev doctor path", () => {
     expect(checkTargetStorageProd(false, "vercel", { NP_STORAGE_ADAPTER: "local" })).toEqual([]);
+    expect(
+      checkTargetDatabaseProd(false, "vercel", { DATABASE_URL: "postgres://u:p@localhost/db" }),
+    ).toEqual([]);
     expect(checkTargetWorkerProd(false, "vercel", { NP_ENABLE_JOBS: "1" })).toEqual([]);
     expect(checkStorageProd(false, "docker", { NP_MULTI_NODE: "true" })).toBeNull();
   });
@@ -70,6 +74,78 @@ describe("doctor production target readiness", () => {
         detail: "S3-compatible",
       }),
     ]);
+  });
+
+  it("blocks loopback database URLs for hosted deploy targets", () => {
+    for (const target of ["vercel", "railway", "render", "fly"] as const) {
+      expect(
+        checkTargetDatabaseProd(true, target, {
+          DATABASE_URL: "postgres://nexpress:nexpress@localhost:5433/nexpress",
+        }),
+      ).toEqual([
+        expect.objectContaining({
+          id: `target.${target}.database_url`,
+          state: "error",
+          detail: "DATABASE_URL host is localhost",
+        }),
+      ]);
+    }
+
+    expect(
+      checkTargetDatabaseProd(true, "vercel", {
+        DATABASE_URL: "postgres://nexpress:nexpress@[::1]:5433/nexpress",
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        id: "target.vercel.database_url",
+        state: "error",
+        detail: "DATABASE_URL host is ::1",
+      }),
+    ]);
+
+    expect(
+      checkTargetDatabaseProd(true, "vercel", {
+        DATABASE_URL: "postgres://nexpress:nexpress@127.0.0.2:5433/nexpress",
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        id: "target.vercel.database_url",
+        state: "error",
+        detail: "DATABASE_URL host is 127.0.0.2",
+      }),
+    ]);
+  });
+
+  it("blocks private IP database URLs for Vercel but allows public hosted URLs", () => {
+    expect(
+      checkTargetDatabaseProd(true, "vercel", {
+        DATABASE_URL: "postgres://nexpress:nexpress@192.168.1.10:5432/nexpress",
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        id: "target.vercel.database_url",
+        state: "error",
+        detail: "DATABASE_URL host is 192.168.1.10",
+      }),
+    ]);
+
+    expect(
+      checkTargetDatabaseProd(true, "vercel", {
+        DATABASE_URL: "postgres://nexpress:nexpress@db.example.com:5432/nexpress",
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        id: "target.vercel.database_url",
+        state: "ok",
+        detail: "db.example.com",
+      }),
+    ]);
+
+    expect(
+      checkTargetDatabaseProd(true, "docker", {
+        DATABASE_URL: "postgres://nexpress:nexpress@localhost:5433/nexpress",
+      }),
+    ).toEqual([]);
   });
 
   it("warns when Vercel jobs are enabled without a long-running worker host", () => {
