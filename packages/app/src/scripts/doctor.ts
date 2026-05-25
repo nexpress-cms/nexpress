@@ -12,7 +12,13 @@ import { resolve } from "node:path";
 import { messageForConnectionError } from "./setup-server-errors.js";
 import { findFreePort } from "./setup-server-ports.js";
 import { inferDeployTargetFromEnv, parseDeployTargetArg } from "./deploy-targets.js";
-import { buildDoctorJson, dim, renderDoctorCheck, renderDoctorSummary } from "./doctor-output.js";
+import {
+  buildDoctorJson,
+  dim,
+  renderBriefDoctorReport,
+  renderDoctorCheck,
+  renderDoctorSummary,
+} from "./doctor-output.js";
 import {
   checkJobsEnabledProd,
   checkSchedulerTokenProd,
@@ -56,6 +62,7 @@ import {
 const PROD_MODE = process.argv.includes("--prod");
 const JSON_MODE = process.argv.includes("--json");
 const FIX_PLAN_MODE = process.argv.includes("--fix-plan");
+const BRIEF_MODE = process.argv.includes("--brief");
 const COLOR_MODE = !JSON_MODE && !process.argv.includes("--no-color") && !process.env.NO_COLOR;
 
 interface PgClientLike {
@@ -465,7 +472,7 @@ async function main(): Promise<void> {
   const deployTarget = PROD_MODE
     ? (parseDeployTargetArg(process.argv.slice(2)) ?? inferDeployTargetFromEnv())
     : null;
-  if (PROD_MODE && !JSON_MODE) {
+  if (PROD_MODE && !JSON_MODE && !BRIEF_MODE) {
     const targetDetail = deployTarget ? ` for ${deployTarget}` : "";
     console.log(dim(`Running in --prod mode${targetDetail}: deploy-readiness checks.`, COLOR_MODE));
     console.log("");
@@ -503,6 +510,13 @@ async function main(): Promise<void> {
   });
   if (JSON_MODE) {
     console.log(JSON.stringify(report, null, 2));
+  } else if (BRIEF_MODE) {
+    console.log(
+      renderBriefDoctorReport(
+        { prodMode: PROD_MODE, target: deployTarget, checks },
+        { color: COLOR_MODE },
+      ),
+    );
   } else {
     for (const result of checks) console.log(renderDoctorCheck(result, { color: COLOR_MODE }));
     console.log("");
