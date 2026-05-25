@@ -294,18 +294,18 @@ export function JobsView() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title="Background jobs"
         description="Inspect, retry, and cancel queued jobs. Failed jobs surface their last error inline so you can patch the upstream issue and re-run."
         actions={
           <div
-            className={`grid w-full gap-2 sm:flex sm:w-auto sm:items-center ${
+            className={`grid min-w-0 w-full gap-2 sm:flex sm:w-auto sm:items-center ${
               isStateTab(tab) ? "grid-cols-2" : "grid-cols-1"
             }`}
           >
             {isStateTab(tab) ? (
-              <div className="col-span-2 inline-flex h-8 rounded-lg bg-neutral-100 p-1 text-[12.5px] dark:bg-neutral-900 sm:col-span-1">
+              <div className="col-span-2 inline-flex h-8 min-w-0 rounded-lg bg-neutral-100 p-1 text-[12.5px] dark:bg-neutral-900 sm:col-span-1">
                 <button
                   type="button"
                   onClick={() => setWindowMode("all")}
@@ -355,8 +355,8 @@ export function JobsView() {
       />
 
       {!supported ? (
-        <Card className="border-amber-500/30/60 bg-amber-500/10">
-          <CardContent className="text-[13px] text-amber-900 dark:text-amber-100">
+        <Card className="min-w-0 border-amber-500/30/60 bg-amber-500/10">
+          <CardContent className="break-words text-[13px] text-amber-900 dark:text-amber-100">
             <strong className="font-semibold">Background jobs disabled.</strong> This site is
             running without pg-boss. Set <code>NP_ENABLE_JOBS=1</code> and restart the worker to
             surface queued jobs here.
@@ -365,14 +365,18 @@ export function JobsView() {
       ) : null}
 
       {error ? (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       ) : null}
 
       <WorkerHealthCard />
 
-      <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)} className="space-y-6">
+      <Tabs
+        value={tab}
+        onValueChange={(value) => setTab(value as Tab)}
+        className="min-w-0 space-y-6"
+      >
         <TabsList className="grid h-auto w-full grid-cols-3 items-stretch gap-2 md:h-9 md:w-auto md:grid-cols-6 md:items-center">
           <TabsTrigger value="pending">Pending</TabsTrigger>
           <TabsTrigger value="active">Active</TabsTrigger>
@@ -383,12 +387,13 @@ export function JobsView() {
         </TabsList>
 
         {STATE_TABS.map((key) => (
-          <TabsContent key={key} value={key} className="space-y-3">
+          <TabsContent key={key} value={key} className="min-w-0 space-y-3">
             {key === "failed" && jobs && jobs.length > 0 ? (
-              <div className="flex justify-end">
+              <div className="flex min-w-0 justify-end">
                 <Button
                   size="sm"
                   variant="outline"
+                  className="w-full sm:w-auto"
                   disabled={refreshing}
                   onClick={() => void retryAllFailed()}
                 >
@@ -398,7 +403,7 @@ export function JobsView() {
               </div>
             ) : null}
             {key === "archive" ? (
-              <p className="text-xs text-muted-foreground">
+              <p className="break-words text-xs text-muted-foreground">
                 Rows pg-boss has rolled out of <code>pgboss.job</code> after their{" "}
                 <code>keepUntil</code> window. Read-only — retrying an archived job re-enqueues a
                 fresh row in <code>pgboss.job</code>.
@@ -414,7 +419,7 @@ export function JobsView() {
           </TabsContent>
         ))}
 
-        <TabsContent value="scheduled" className="space-y-4">
+        <TabsContent value="scheduled" className="min-w-0 space-y-4">
           <SchedulesPanel
             supported={schedulesSupported}
             schedules={schedules}
@@ -491,8 +496,8 @@ function WorkerHealthCard() {
   const showStuckWarning = failedOverThreshold || expiredOverThreshold;
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3 p-4 text-sm md:flex-row md:items-center md:justify-between">
+    <Card className="min-w-0">
+      <CardContent className="flex min-w-0 flex-col gap-3 p-4 text-sm md:flex-row md:items-center md:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <span
             className={`inline-flex h-2.5 w-2.5 rounded-full ${
@@ -501,29 +506,31 @@ function WorkerHealthCard() {
             aria-hidden
           />
           <div className="min-w-0">
-            <p className="font-medium text-foreground">
+            <p className="break-words font-medium text-foreground">
               Workers: {alive} alive / {total} total
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="break-words text-xs text-muted-foreground">
               {newest
                 ? `Last heartbeat ${formatAge(ageMs ?? 0)} ago`
                 : "No heartbeats recorded yet."}
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 md:justify-end">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
           {paused ? (
-            <span className="rounded-md border border-amber-500/30/60 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-100">
+            <span className="break-words rounded-md border border-amber-500/30/60 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-100">
               Queue paused
             </span>
           ) : null}
           {showStuckWarning && stuck ? (
             <span
-              className="inline-flex items-center gap-1 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-300"
+              className="inline-flex min-w-0 items-center gap-1 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-300"
               title={stuckTooltip(stuck)}
             >
               <AlertTriangle className="h-3 w-3" aria-hidden />
-              {stuckLabel(stuck, failedOverThreshold, expiredOverThreshold)}
+              <span className="min-w-0 break-words">
+                {stuckLabel(stuck, failedOverThreshold, expiredOverThreshold)}
+              </span>
             </span>
           ) : null}
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={refreshing}>
@@ -580,51 +587,57 @@ function SchedulesPanel({
   onEnqueued: () => void;
 }) {
   return (
-    <div className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
+    <div className="min-w-0 space-y-4">
+      <div className="grid min-w-0 gap-4 md:grid-cols-2">
+        <Card className="min-w-0">
           <CardHeader className="border-b-0 pb-0">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium">
-              <CalendarClock className="h-4 w-4" /> Cron schedules
+            <CardTitle className="flex min-w-0 items-center gap-2 text-sm font-medium">
+              <CalendarClock className="h-4 w-4 shrink-0" />{" "}
+              <span className="min-w-0 break-words">Cron schedules</span>
             </CardTitle>
-            <p className="text-xs text-muted-foreground">
+            <p className="break-words text-xs text-muted-foreground">
               Recurring jobs registered via <code>boss.schedule()</code>. Reads from{" "}
               <code>pgboss.schedule</code>.
             </p>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="min-w-0 p-0">
             {!supported ? (
-              <p className="px-5 pb-5 text-sm text-muted-foreground">
+              <p className="break-words px-5 pb-5 text-sm text-muted-foreground">
                 The active queue adapter doesn't expose schedules.
               </p>
             ) : schedules === null ? (
-              <p className="px-5 pb-5 text-sm text-muted-foreground">
+              <p className="break-words px-5 pb-5 text-sm text-muted-foreground">
                 <Loader2 className="size-3 animate-spin" />
                 Loading…
               </p>
             ) : schedules.length === 0 ? (
-              <p className="px-5 pb-5 text-sm text-muted-foreground">No schedules registered.</p>
+              <p className="break-words px-5 pb-5 text-sm text-muted-foreground">
+                No schedules registered.
+              </p>
             ) : (
               <ul className="divide-y divide-border/60">
                 {schedules.map((schedule) => (
-                  <li key={`${schedule.name}#${schedule.key}`} className="space-y-1 px-5 py-3">
-                    <div className="flex flex-wrap items-baseline gap-2">
+                  <li
+                    key={`${schedule.name}#${schedule.key}`}
+                    className="min-w-0 space-y-1 px-5 py-3"
+                  >
+                    <div className="flex min-w-0 flex-wrap items-baseline gap-2">
                       <code className="break-all font-mono text-xs">{schedule.name}</code>
                       {schedule.key ? (
                         <code className="break-all rounded bg-muted px-1.5 py-0.5 text-[11px]">
                           {schedule.key}
                         </code>
                       ) : null}
-                      <code className="rounded bg-muted px-1.5 py-0.5 text-[11px]">
+                      <code className="break-all rounded bg-muted px-1.5 py-0.5 text-[11px]">
                         {schedule.cron}
                       </code>
                       {schedule.timezone ? (
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="break-all text-[10px] text-muted-foreground">
                           {schedule.timezone}
                         </span>
                       ) : null}
                     </div>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="break-words text-[11px] text-muted-foreground">
                       Registered {new Date(schedule.createdOn).toLocaleString()}
                     </p>
                   </li>
@@ -634,19 +647,22 @@ function SchedulesPanel({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader className="border-b-0 pb-0">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium">
-              <Code className="h-4 w-4" /> Registered handlers
+            <CardTitle className="flex min-w-0 items-center gap-2 text-sm font-medium">
+              <Code className="h-4 w-4 shrink-0" />{" "}
+              <span className="min-w-0 break-words">Registered handlers</span>
             </CardTitle>
-            <p className="text-xs text-muted-foreground">
+            <p className="break-words text-xs text-muted-foreground">
               Job types that have a worker handler registered. Enqueues to other types will sit in
               the queue with no consumer.
             </p>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="min-w-0 p-0">
             {handlers.length === 0 ? (
-              <p className="px-5 pb-5 text-sm text-muted-foreground">No handlers registered yet.</p>
+              <p className="break-words px-5 pb-5 text-sm text-muted-foreground">
+                No handlers registered yet.
+              </p>
             ) : (
               <ul className="divide-y divide-border/60">
                 {handlers.map((name) => (
@@ -710,19 +726,20 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
   }
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader className="border-b-0 pb-0">
-        <CardTitle className="flex items-center gap-2 text-sm font-medium">
-          <Play className="h-4 w-4" /> Run a handler
+        <CardTitle className="flex min-w-0 items-center gap-2 text-sm font-medium">
+          <Play className="h-4 w-4 shrink-0" />{" "}
+          <span className="min-w-0 break-words">Run a handler</span>
         </CardTitle>
-        <p className="text-xs text-muted-foreground">
+        <p className="break-words text-xs text-muted-foreground">
           Enqueue a one-off job for any registered handler. Useful for ad-hoc re-runs (e.g.{" "}
           <code>media:cleanup</code>) without dropping into a shell.
         </p>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="grid gap-3 md:grid-cols-[1fr_2fr]">
-          <div className="space-y-1">
+      <CardContent className="min-w-0 space-y-3">
+        <div className="grid min-w-0 gap-3 md:grid-cols-[1fr_2fr]">
+          <div className="min-w-0 space-y-1">
             <label
               htmlFor="np-job-enqueue-type"
               className="text-xs font-medium text-muted-foreground"
@@ -733,7 +750,7 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
               id="np-job-enqueue-type"
               value={type}
               onChange={(event) => setType(event.target.value)}
-              className="flex h-8 w-full rounded-lg border border-neutral-200/80 bg-white px-2.5 text-[13px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950"
+              className="flex h-8 w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-2.5 text-[13px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950"
             >
               <option value="">Select…</option>
               {handlers.map((name) => (
@@ -743,7 +760,7 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
               ))}
             </select>
           </div>
-          <div className="space-y-1">
+          <div className="min-w-0 space-y-1">
             <label
               htmlFor="np-job-enqueue-data"
               className="text-xs font-medium text-muted-foreground"
@@ -756,16 +773,16 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
               onChange={(event) => setDataText(event.target.value)}
               rows={3}
               spellCheck={false}
-              className="w-full rounded-lg border border-neutral-200/80 bg-white px-2.5 py-2 font-mono text-[12px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950"
+              className="w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-2.5 py-2 font-mono text-[12px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950"
               placeholder='{"docId": "..."}'
             />
           </div>
         </div>
-        {error ? <p className="text-xs text-destructive">{error}</p> : null}
+        {error ? <p className="break-words text-xs text-destructive">{error}</p> : null}
         {message ? (
-          <p className="text-xs text-emerald-700 dark:text-emerald-400">{message}</p>
+          <p className="break-words text-xs text-emerald-700 dark:text-emerald-400">{message}</p>
         ) : null}
-        <div className="flex justify-end">
+        <div className="flex min-w-0 justify-end">
           <Button
             size="sm"
             className="w-full sm:w-auto"
@@ -796,8 +813,8 @@ function JobList({
 }) {
   if (jobs === null) {
     return (
-      <Card className="border-border/60 bg-card/60">
-        <CardContent className="text-[13px] text-muted-foreground">
+      <Card className="min-w-0 border-border/60 bg-card/60">
+        <CardContent className="break-words text-[13px] text-muted-foreground">
           <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
           Loading jobs…
         </CardContent>
@@ -806,43 +823,43 @@ function JobList({
   }
   if (jobs.length === 0) {
     return (
-      <Card className="border-dashed border-border/60 bg-muted/20">
-        <CardContent className="text-center text-[13px] text-muted-foreground">
+      <Card className="min-w-0 border-dashed border-border/60 bg-muted/20">
+        <CardContent className="break-words text-center text-[13px] text-muted-foreground">
           No jobs in this bucket.
         </CardContent>
       </Card>
     );
   }
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader className="border-b-0 pb-0">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {jobs.length} job{jobs.length === 1 ? "" : "s"}
         </CardTitle>
       </CardHeader>
-      <CardContent className="divide-y divide-border/60 p-0">
+      <CardContent className="min-w-0 divide-y divide-border/60 p-0">
         {jobs.map((job) => (
-          <div key={job.id} className="space-y-2 px-5 py-4">
-            <div className="grid gap-3 sm:flex sm:items-start sm:justify-between">
+          <div key={job.id} className="min-w-0 space-y-2 px-5 py-4">
+            <div className="grid min-w-0 gap-3 sm:flex sm:items-start sm:justify-between">
               <div className="min-w-0 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <StateBadge state={job.state} />
                   <code className="min-w-0 break-all font-mono text-xs">{job.name}</code>
                   {typeof job.retryCount === "number" && job.retryCount > 0 ? (
-                    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:text-amber-100">
+                    <span className="break-words rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:text-amber-100">
                       {job.retryCount} retries
                     </span>
                   ) : null}
                 </div>
                 <p className="break-all font-mono text-[11px] text-muted-foreground">{job.id}</p>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="break-words text-[11px] text-muted-foreground">
                   Created {new Date(job.createdOn).toLocaleString()}
                   {job.completedOn
                     ? ` · Finished ${new Date(job.completedOn).toLocaleString()}`
                     : null}
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+              <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:items-center">
                 {tab === "failed" ? (
                   <Button
                     size="sm"
@@ -878,15 +895,15 @@ function JobList({
               </div>
             </div>
             {job.output ? (
-              <pre className="max-h-32 overflow-auto rounded-lg border border-destructive/30 bg-destructive/5 p-3 font-mono text-[11px] text-destructive whitespace-pre-wrap">
+              <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-destructive/30 bg-destructive/5 p-3 font-mono text-[11px] text-destructive">
                 {job.output}
               </pre>
             ) : null}
-            <details className="text-[11px]">
+            <details className="min-w-0 text-[11px]">
               <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
                 Payload
               </summary>
-              <pre className="mt-1 max-h-32 overflow-auto rounded-lg border border-border/60 bg-muted/20 p-3 font-mono text-[11px]">
+              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-muted/20 p-3 font-mono text-[11px]">
                 {JSON.stringify(job.data, null, 2)}
               </pre>
             </details>
@@ -948,7 +965,7 @@ function JobLogsSection({ jobId }: { jobId: string }) {
 
   return (
     <details
-      className="text-[11px]"
+      className="min-w-0 text-[11px]"
       open={open}
       onToggle={(event) => {
         const nowOpen = event.currentTarget.open;
@@ -961,7 +978,7 @@ function JobLogsSection({ jobId }: { jobId: string }) {
         }
       }}
     >
-      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+      <summary className="cursor-pointer break-words text-muted-foreground hover:text-foreground">
         Logs
         {state.kind === "loaded" ? (
           <span className="ml-2 text-[10px] opacity-70">
@@ -970,34 +987,34 @@ function JobLogsSection({ jobId }: { jobId: string }) {
           </span>
         ) : null}
       </summary>
-      <div className="mt-1">
+      <div className="mt-1 min-w-0">
         {state.kind === "loading" ? (
-          <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/10 p-3 text-muted-foreground">
-            <Loader2 className="h-3 w-3 animate-spin" />
+          <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-muted/10 p-3 text-muted-foreground">
+            <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
             Loading logs…
           </div>
         ) : state.kind === "error" ? (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive">
+          <div className="break-words rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive">
             {state.message}
           </div>
         ) : state.kind === "loaded" ? (
           state.entries.length === 0 ? (
-            <div className="rounded-lg border border-border/60 bg-muted/10 p-3 text-muted-foreground">
+            <div className="break-words rounded-lg border border-border/60 bg-muted/10 p-3 text-muted-foreground">
               No log entries for this job.
             </div>
           ) : (
-            <ol className="max-h-64 space-y-1 overflow-auto rounded-lg border border-border/60 bg-muted/10 p-3 font-mono text-[11px]">
+            <ol className="max-h-64 min-w-0 space-y-1 overflow-auto rounded-lg border border-border/60 bg-muted/10 p-3 font-mono text-[11px]">
               {state.entries.map((entry) => (
-                <li key={entry.id} className="flex flex-wrap items-baseline gap-2">
-                  <span className="opacity-60">{formatLogTime(entry.createdAt)}</span>
+                <li key={entry.id} className="flex min-w-0 flex-wrap items-baseline gap-2">
+                  <span className="shrink-0 opacity-60">{formatLogTime(entry.createdAt)}</span>
                   <LogLevelBadge level={entry.level} />
-                  <span className="break-words whitespace-pre-wrap">{entry.message}</span>
+                  <span className="min-w-0 whitespace-pre-wrap break-words">{entry.message}</span>
                   {entry.context && Object.keys(entry.context).length > 0 ? (
-                    <details className="ml-6 w-full">
+                    <details className="ml-0 min-w-0 w-full sm:ml-6">
                       <summary className="cursor-pointer opacity-70 hover:opacity-100">
                         context
                       </summary>
-                      <pre className="mt-1 overflow-auto rounded border border-border/40 bg-background/40 p-2 text-[10px]">
+                      <pre className="mt-1 overflow-auto whitespace-pre-wrap break-words rounded border border-border/40 bg-background/40 p-2 text-[10px]">
                         {JSON.stringify(entry.context, null, 2)}
                       </pre>
                     </details>
