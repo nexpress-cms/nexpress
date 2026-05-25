@@ -120,7 +120,7 @@ assertIncludes(deployPlan.output, "pnpm db:migrate -- --status", "deploy:plan");
 assertIncludes(deployPlan.output, "pnpm run doctor:prod -- --target vercel", "deploy:plan");
 assertIncludes(
   deployPlan.output,
-  "pnpm run doctor:prod -- --target vercel --fix-plan",
+  "pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan",
   "deploy:plan",
 );
 console.log("✓ deploy:plan target guidance renders");
@@ -158,7 +158,7 @@ assertIncludes(deployPlanBrief.output, "Run before deploy:", "deploy:plan --brie
 assertIncludes(deployPlanBrief.output, "If blocked:", "deploy:plan --brief");
 assertIncludes(
   deployPlanBrief.output,
-  "pnpm run doctor:prod -- --target vercel --fix-plan",
+  "pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan",
   "deploy:plan --brief",
 );
 assertNotIncludes(deployPlanBrief.output, "Fit", "deploy:plan --brief");
