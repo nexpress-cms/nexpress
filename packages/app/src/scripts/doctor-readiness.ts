@@ -232,6 +232,96 @@ export function checkTargetStorageProd(
   ];
 }
 
+function databaseHost(env: DoctorEnv): string | null {
+  const value = env.DATABASE_URL;
+  if (!value) return null;
+  try {
+    return new URL(value).hostname.toLowerCase().replace(/^\[(.*)\]$/, "$1");
+  } catch {
+    return null;
+  }
+}
+
+function ipv4Parts(host: string): [number, number, number, number] | null {
+  const parts = host.split(".").map((part) => Number.parseInt(part, 10));
+  if (
+    parts.length !== 4 ||
+    parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)
+  ) {
+    return null;
+  }
+  return parts as [number, number, number, number];
+}
+
+function isLoopbackDatabaseHost(host: string): boolean {
+  const parts = ipv4Parts(host);
+  return (
+    host === "localhost" ||
+    parts?.[0] === 127 ||
+    host === "::1" ||
+    host === "0.0.0.0" ||
+    host === "host.docker.internal"
+  );
+}
+
+function isPrivateIpDatabaseHost(host: string): boolean {
+  const parts = ipv4Parts(host);
+  if (!parts) return false;
+  const [a, b] = parts;
+  return (
+    a === 10 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254)
+  );
+}
+
+export function checkTargetDatabaseProd(
+  prodMode: boolean,
+  target: DeployTarget | null,
+  env: DoctorEnv,
+): CheckResult[] {
+  if (!prodMode || !target || target === "docker") return [];
+  const host = databaseHost(env);
+  if (!host) return [];
+
+  const targetTitle = deployTargetTitle(target);
+  const label = `${targetTitle} database URL`;
+  const detail = `DATABASE_URL host is ${host}`;
+  if (isLoopbackDatabaseHost(host)) {
+    return [
+      {
+        id: `target.${target}.database_url`,
+        state: "error",
+        label,
+        detail,
+        hint: `Use a Postgres connection string reachable from ${targetTitle}. Localhost and Docker-only hosts work only on this machine.`,
+      },
+    ];
+  }
+
+  if (target === "vercel" && isPrivateIpDatabaseHost(host)) {
+    return [
+      {
+        id: "target.vercel.database_url",
+        state: "error",
+        label,
+        detail,
+        hint: "Vercel cannot reach private/LAN IP database hosts. Use a hosted Postgres public or pooler connection string.",
+      },
+    ];
+  }
+
+  return [
+    {
+      id: `target.${target}.database_url`,
+      state: "ok",
+      label,
+      detail: host,
+    },
+  ];
+}
+
 export function checkTargetWorkerProd(
   prodMode: boolean,
   target: DeployTarget | null,

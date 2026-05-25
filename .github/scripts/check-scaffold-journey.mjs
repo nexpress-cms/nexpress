@@ -185,6 +185,8 @@ if (doctor.code === 0) {
 }
 assertIncludes(doctor.output, "Running in --prod mode for vercel", "doctor:prod");
 assertIncludes(doctor.output, "Postgres reachable", "doctor:prod");
+assertIncludes(doctor.output, "Vercel database URL", "doctor:prod");
+assertIncludes(doctor.output, "DATABASE_URL host is 127.0.0.1", "doctor:prod");
 assertIncludes(doctor.output, "Vercel storage", "doctor:prod");
 assertIncludes(doctor.output, "NP_STORAGE_ADAPTER=local", "doctor:prod");
 console.log("✓ doctor:prod target-aware failure is actionable");
@@ -204,6 +206,7 @@ if (doctorBrief.code === 0) {
 }
 assertNoAnsi(doctorBrief.output, "doctor:prod --brief --no-color");
 assertIncludes(doctorBrief.output, "NexPress doctor: prod for vercel", "doctor:prod --brief");
+assertIncludes(doctorBrief.output, "[error] target.vercel.database_url", "doctor:prod --brief");
 assertIncludes(doctorBrief.output, "[error] target.vercel.storage", "doctor:prod --brief");
 assertIncludes(doctorBrief.output, "NP_STORAGE_ADAPTER=local", "doctor:prod --brief");
 assertNotIncludes(doctorBrief.output, "Running in --prod mode", "doctor:prod --brief");
