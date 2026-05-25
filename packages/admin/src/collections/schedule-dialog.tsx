@@ -93,17 +93,16 @@ export function ScheduleDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="min-w-0">
         <DialogHeader>
-          <DialogTitle>Schedule publish</DialogTitle>
-          <DialogDescription>
-            Pick a future time. NexPress saves the document with{" "}
-            <code>status=scheduled</code> until the cron worker flips it to{" "}
-            <code>published</code> at that time.
+          <DialogTitle className="break-words">Schedule publish</DialogTitle>
+          <DialogDescription className="break-words">
+            Pick a future time. NexPress saves the document with <code>status=scheduled</code> until
+            the cron worker flips it to <code>published</code> at that time.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-2 py-2">
+        <div className="min-w-0 space-y-2 py-2">
           <Label htmlFor="schedule-publish-at">Publish at</Label>
           <Input
             id="schedule-publish-at"
@@ -112,7 +111,9 @@ export function ScheduleDialog({
             onChange={(event) => setLocalValue(event.target.value)}
             min={nowPlusHourLocal().slice(0, 16)}
           />
-          {error ? <p className="text-xs text-rose-600 dark:text-rose-300">{error}</p> : null}
+          {error ? (
+            <p className="break-words text-xs text-rose-600 dark:text-rose-300">{error}</p>
+          ) : null}
         </div>
 
         <DialogFooter className="gap-2 sm:justify-between">
@@ -120,7 +121,7 @@ export function ScheduleDialog({
             <Button
               type="button"
               variant="ghost"
-              className="text-rose-600 dark:text-rose-300"
+              className="w-full text-rose-600 dark:text-rose-300 sm:w-auto"
               onClick={onCancelSchedule}
               disabled={busy}
             >
@@ -129,16 +130,22 @@ export function ScheduleDialog({
           ) : (
             <span />
           )}
-          <div className="flex gap-2">
+          <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:justify-end">
             <Button
               type="button"
               variant="outline"
+              className="w-full sm:w-auto"
               onClick={() => onOpenChange(false)}
               disabled={busy}
             >
               Cancel
             </Button>
-            <Button type="button" onClick={handleSubmit} disabled={busy}>
+            <Button
+              type="button"
+              className="w-full sm:w-auto"
+              onClick={handleSubmit}
+              disabled={busy}
+            >
               {busy ? (
                 <Loader2 className="size-3.5 animate-spin" />
               ) : (

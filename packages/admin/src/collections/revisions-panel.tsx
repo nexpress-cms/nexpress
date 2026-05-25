@@ -151,25 +151,25 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <div className="flex items-center gap-2">
-          <History className="h-5 w-5 text-muted-foreground" />
-          <CardTitle>Revision history</CardTitle>
+    <Card className="min-w-0">
+      <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+        <div className="flex min-w-0 items-center gap-2">
+          <History className="h-5 w-5 shrink-0 text-muted-foreground" />
+          <CardTitle className="break-words">Revision history</CardTitle>
         </div>
         {state.kind === "ready" ? (
-          <span className="text-xs text-muted-foreground">
+          <span className="shrink-0 text-xs text-muted-foreground">
             {state.total} {state.total === 1 ? "version" : "versions"}
           </span>
         ) : null}
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="min-w-0 space-y-3">
         {toast ? (
           <div
             className={
               toast.type === "success"
-                ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-200"
-                : "rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-700 dark:text-rose-200"
+                ? "break-words rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-200"
+                : "break-words rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-700 dark:text-rose-200"
             }
           >
             {toast.message}
@@ -177,20 +177,20 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
         ) : null}
 
         {state.kind === "loading" || state.kind === "idle" ? (
-          <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+          <div className="flex min-w-0 items-center gap-2 py-6 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
             Loading revisions…
           </div>
         ) : null}
 
         {state.kind === "error" ? (
-          <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200">
+          <div className="break-words rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200">
             {state.message}
           </div>
         ) : null}
 
         {state.kind === "ready" && state.revisions.length === 0 ? (
-          <p className="py-6 text-sm text-muted-foreground">
+          <p className="break-words py-6 text-sm text-muted-foreground">
             No revisions yet. Saves to this document will appear here.
           </p>
         ) : null}
@@ -208,15 +208,15 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
                     onClick={() => {
                       void handleOpenDetail(revision);
                     }}
-                    className="flex flex-1 flex-col items-start gap-1 text-left"
+                    className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left"
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">v{revision.version}</span>
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span className="break-words font-medium">v{revision.version}</span>
                       <Badge className={statusBadgeClass[revision.status]} variant="secondary">
                         {revision.status}
                       </Badge>
                     </div>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="break-words text-xs text-muted-foreground">
                       {formatDate(revision.createdAt)}
                       {revision.changedFields.length > 0 ? (
                         <>
@@ -231,6 +231,7 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
                     type="button"
                     variant="outline"
                     size="sm"
+                    className="w-full sm:w-auto"
                     onClick={() => {
                       void handleRestore(revision);
                     }}
@@ -251,12 +252,12 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
       </CardContent>
 
       <Dialog open={selected !== null} onOpenChange={(open) => !open && setSelected(null)}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="min-w-0 max-w-3xl">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="break-words">
               {selected ? `Version ${selected.version}` : "Revision"}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="break-words">
               {selected ? formatDate(selected.createdAt) : null}
               {selected && selected.changedFields.length > 0 ? (
                 <>
@@ -266,10 +267,10 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
               ) : null}
             </DialogDescription>
           </DialogHeader>
-          <div className="max-h-[60vh] overflow-auto rounded-xl bg-slate-950 p-4 text-xs text-slate-100">
+          <div className="max-h-[60vh] min-w-0 overflow-auto rounded-xl bg-slate-950 p-4 text-xs text-slate-100">
             {loadingDetail ? (
-              <div className="flex items-center gap-2 text-slate-300">
-                <Loader2 className="h-4 w-4 animate-spin" /> Loading snapshot…
+              <div className="flex min-w-0 items-center gap-2 text-slate-300">
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> Loading snapshot…
               </div>
             ) : selected ? (
               <pre className="whitespace-pre-wrap break-words font-mono">

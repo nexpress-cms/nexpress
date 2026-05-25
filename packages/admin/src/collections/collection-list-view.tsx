@@ -295,11 +295,11 @@ export function CollectionListView({
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title={
-          <span className="flex items-center gap-2.5">
-            {config.labels.plural}
+          <span className="flex min-w-0 flex-wrap items-center gap-2.5">
+            <span className="min-w-0 break-words">{config.labels.plural}</span>
             <Badge variant="secondary">{totalDocs}</Badge>
           </span>
         }
@@ -315,16 +315,16 @@ export function CollectionListView({
       />
 
       {isPristineEmpty ? (
-        <Card className="border-[var(--np-color-brand)]/30 bg-[var(--np-color-brand)]/5">
-          <CardContent className="flex flex-col items-center gap-4 px-6 py-12 text-center">
-            <div className="rounded-full bg-[var(--np-color-brand)]/10 p-3 text-[var(--np-color-brand)]">
+        <Card className="min-w-0 border-[var(--np-color-brand)]/30 bg-[var(--np-color-brand)]/5">
+          <CardContent className="flex min-w-0 flex-col items-center gap-4 px-6 py-12 text-center">
+            <div className="shrink-0 rounded-full bg-[var(--np-color-brand)]/10 p-3 text-[var(--np-color-brand)]">
               <Sparkles className="size-5" />
             </div>
-            <div className="space-y-1.5">
-              <h2 className="text-base font-semibold text-neutral-950 dark:text-neutral-50">
+            <div className="min-w-0 space-y-1.5">
+              <h2 className="break-words text-base font-semibold text-neutral-950 dark:text-neutral-50">
                 Create your first {config.labels.singular.toLowerCase()}
               </h2>
-              <p className="max-w-md text-[13px] text-neutral-500 dark:text-neutral-400">
+              <p className="max-w-md break-words text-[13px] text-neutral-500 dark:text-neutral-400">
                 {config.admin?.description ??
                   `No ${config.labels.plural.toLowerCase()} yet — add one to see it here.`}
               </p>
@@ -338,10 +338,10 @@ export function CollectionListView({
           </CardContent>
         </Card>
       ) : (
-        <Card>
+        <Card className="min-w-0">
           <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <CardTitle>All entries</CardTitle>
-            <div className="relative w-full md:max-w-sm">
+            <CardTitle className="break-words">All entries</CardTitle>
+            <div className="relative min-w-0 w-full md:max-w-sm">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
               <Input
                 value={searchValue}
@@ -353,13 +353,13 @@ export function CollectionListView({
               />
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="min-w-0 space-y-4">
             {bulkToast ? (
               <div
                 className={
                   bulkToast.type === "success"
-                    ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-200"
-                    : "rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200"
+                    ? "break-words rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-200"
+                    : "break-words rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200"
                 }
               >
                 {bulkToast.message}
@@ -367,13 +367,16 @@ export function CollectionListView({
             ) : null}
 
             {selectedIds.size > 0 ? (
-              <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-sm font-medium">{selectedIds.size} selected</span>
-                <div className="flex flex-wrap items-center gap-2">
+              <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-border/60 bg-muted/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <span className="min-w-0 break-words text-sm font-medium">
+                  {selectedIds.size} selected
+                </span>
+                <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
+                    className="w-full sm:w-auto"
                     onClick={() => void runBulk("publish")}
                     disabled={bulkBusy !== null}
                   >
@@ -388,6 +391,7 @@ export function CollectionListView({
                     type="button"
                     variant="outline"
                     size="sm"
+                    className="w-full sm:w-auto"
                     onClick={() => void runBulk("unpublish")}
                     disabled={bulkBusy !== null}
                   >
@@ -402,7 +406,7 @@ export function CollectionListView({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="text-rose-600 dark:text-rose-300"
+                    className="w-full text-rose-600 dark:text-rose-300 sm:w-auto"
                     onClick={() => setConfirmDelete(true)}
                     disabled={bulkBusy !== null}
                   >
@@ -413,6 +417,7 @@ export function CollectionListView({
                     type="button"
                     variant="ghost"
                     size="sm"
+                    className="w-full sm:w-auto"
                     onClick={() => setSelectedIds(new Set())}
                     disabled={bulkBusy !== null}
                   >
@@ -501,14 +506,14 @@ export function CollectionListView({
                                   {isFirst && doc.id !== undefined && doc.id !== null ? (
                                     <Link
                                       href={href}
-                                      className="block font-medium text-foreground underline-offset-4 hover:underline"
+                                      className="block break-words font-medium text-foreground underline-offset-4 hover:underline"
                                     >
                                       {formatCellValue(rawValue)}
                                     </Link>
                                   ) : isStatus ? (
                                     <StatusBadge status={rawValue} />
                                   ) : (
-                                    <span className="text-muted-foreground">
+                                    <span className="break-words text-muted-foreground">
                                       {formatCellValue(rawValue)}
                                     </span>
                                   )}
@@ -525,7 +530,7 @@ export function CollectionListView({
             </div>
 
             {docs.length === 0 ? (
-              <div className="rounded-xl border border-border/60 px-4 py-10 text-center text-muted-foreground md:hidden">
+              <div className="break-words rounded-xl border border-border/60 px-4 py-10 text-center text-muted-foreground md:hidden">
                 No documents found.
               </div>
             ) : (
@@ -563,12 +568,12 @@ export function CollectionListView({
                           {doc.id !== undefined && doc.id !== null ? (
                             <Link
                               href={href}
-                              className="block text-[13.5px] font-medium leading-5 text-foreground underline-offset-4 hover:underline"
+                              className="block break-words text-[13.5px] font-medium leading-5 text-foreground underline-offset-4 hover:underline"
                             >
                               {title}
                             </Link>
                           ) : (
-                            <p className="text-[13.5px] font-medium leading-5 text-foreground">
+                            <p className="break-words text-[13.5px] font-medium leading-5 text-foreground">
                               {title}
                             </p>
                           )}
@@ -581,8 +586,11 @@ export function CollectionListView({
                             const rawValue = doc[column];
                             const isStatus = column === "status" && typeof rawValue === "string";
                             return (
-                              <div key={column} className="flex items-start justify-between gap-3">
-                                <dt className="shrink-0 capitalize text-muted-foreground">
+                              <div
+                                key={column}
+                                className="flex min-w-0 items-start justify-between gap-3"
+                              >
+                                <dt className="shrink-0 break-words capitalize text-muted-foreground">
                                   {column}
                                 </dt>
                                 <dd className="min-w-0 text-right text-foreground">
@@ -605,16 +613,17 @@ export function CollectionListView({
               </div>
             )}
 
-            <div className="flex flex-col gap-3 border-t border-neutral-100 pt-3.5 dark:border-neutral-900 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-[12.5px] tabular-nums text-neutral-500 dark:text-neutral-400">
+            <div className="flex min-w-0 flex-col gap-3 border-t border-neutral-100 pt-3.5 dark:border-neutral-900 sm:flex-row sm:items-center sm:justify-between">
+              <p className="break-words text-[12.5px] tabular-nums text-neutral-500 dark:text-neutral-400">
                 Page {currentPage} of {Math.max(totalPages, 1)}
               </p>
 
-              <div className="flex items-center gap-1.5">
+              <div className="grid min-w-0 grid-cols-2 gap-1.5 sm:flex sm:items-center">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="w-full sm:w-auto"
                   disabled={currentPage <= 1}
                   onClick={() => {
                     const query = createQueryString(new URLSearchParams(searchParams.toString()), {
@@ -631,6 +640,7 @@ export function CollectionListView({
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="w-full sm:w-auto"
                   disabled={currentPage >= totalPages}
                   onClick={() => {
                     const query = createQueryString(new URLSearchParams(searchParams.toString()), {
@@ -650,13 +660,13 @@ export function CollectionListView({
       )}
 
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <DialogContent>
+        <DialogContent className="min-w-0">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="break-words">
               Delete {selectedIds.size} {config.labels.singular.toLowerCase()}
               {selectedIds.size === 1 ? "" : "s"}?
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="break-words">
               This permanently removes the selected entries. Hooks fire and any media references
               release.
             </DialogDescription>
