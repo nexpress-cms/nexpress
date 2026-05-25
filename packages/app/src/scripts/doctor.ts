@@ -11,7 +11,11 @@ import { resolve } from "node:path";
 
 import { messageForConnectionError } from "./setup-server-errors.js";
 import { findFreePort } from "./setup-server-ports.js";
-import { inferDeployTargetFromEnv, parseDeployTargetArg } from "./deploy-targets.js";
+import {
+  DEPLOY_TARGETS,
+  inferDeployTargetFromEnv,
+  parseDeployTargetArg,
+} from "./deploy-targets.js";
 import {
   buildDoctorJson,
   dim,
@@ -59,11 +63,39 @@ import {
  * doing shouldn't have to silence them in CI.
  */
 
-const PROD_MODE = process.argv.includes("--prod");
-const JSON_MODE = process.argv.includes("--json");
-const FIX_PLAN_MODE = process.argv.includes("--fix-plan");
-const BRIEF_MODE = process.argv.includes("--brief");
-const COLOR_MODE = !JSON_MODE && !process.argv.includes("--no-color") && !process.env.NO_COLOR;
+const ARGV = process.argv.slice(2);
+const PROD_MODE = ARGV.includes("--prod");
+const JSON_MODE = ARGV.includes("--json");
+const FIX_PLAN_MODE = ARGV.includes("--fix-plan");
+const BRIEF_MODE = ARGV.includes("--brief");
+const COLOR_MODE = !JSON_MODE && !ARGV.includes("--no-color") && !process.env.NO_COLOR;
+
+function printHelp(): void {
+  console.log(`NexPress doctor
+
+Usage:
+  pnpm run doctor
+  pnpm run doctor -- --prod --target vercel
+  pnpm run doctor:prod -- --target vercel --brief --no-color
+  pnpm run doctor:prod -- --target vercel --json --fix-plan
+
+Targets:
+  ${DEPLOY_TARGETS.join(", ")}
+
+Options:
+  --prod          Run production deploy-readiness checks.
+  --target <host> Apply host-specific production checks.
+  --json          Print the stable machine-readable readiness report.
+  --fix-plan      Include ordered fix suggestions in JSON output.
+  --brief         Print compact one-line-per-check human output.
+  --no-color      Disable ANSI color in human-readable output.
+  --help, -h      Show this help.
+`);
+}
+
+function shouldPrintHelp(argv: string[]): boolean {
+  return argv.includes("--help") || argv.includes("-h");
+}
 
 interface PgClientLike {
   connect(): Promise<void>;
@@ -469,8 +501,13 @@ async function checkEnvExampleSync(): Promise<CheckResult> {
 }
 
 async function main(): Promise<void> {
+  if (shouldPrintHelp(ARGV)) {
+    printHelp();
+    return;
+  }
+
   const deployTarget = PROD_MODE
-    ? (parseDeployTargetArg(process.argv.slice(2)) ?? inferDeployTargetFromEnv())
+    ? (parseDeployTargetArg(ARGV) ?? inferDeployTargetFromEnv())
     : null;
   if (PROD_MODE && !JSON_MODE && !BRIEF_MODE) {
     const targetDetail = deployTarget ? ` for ${deployTarget}` : "";

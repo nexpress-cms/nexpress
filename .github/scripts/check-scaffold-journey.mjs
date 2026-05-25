@@ -138,6 +138,18 @@ assertIncludes(deployPlanBrief.output, "Run before deploy:", "deploy:plan --brie
 assertNotIncludes(deployPlanBrief.output, "Fit", "deploy:plan --brief");
 console.log("✓ deploy:plan brief target guidance stays compact");
 
+const doctorHelp = runTsx("scripts/doctor.ts", ["--help"]);
+assertNoResolverCrash(doctorHelp.output, "doctor --help");
+if (doctorHelp.code !== 0) {
+  fail("doctor --help should exit 0", doctorHelp.output.split("\n").slice(-40).join("\n"));
+}
+assertNoAnsi(doctorHelp.output, "doctor --help");
+assertIncludes(doctorHelp.output, "NexPress doctor", "doctor --help");
+assertIncludes(doctorHelp.output, "--brief", "doctor --help");
+assertIncludes(doctorHelp.output, "--fix-plan", "doctor --help");
+assertIncludes(doctorHelp.output, "vercel, railway, render, fly, docker", "doctor --help");
+console.log("✓ doctor help documents deploy-readiness output modes");
+
 const doctor = runTsx("scripts/doctor.ts", ["--prod", "--target", "vercel"]);
 assertNoResolverCrash(doctor.output, "doctor:prod");
 if (doctor.code === 0) {
