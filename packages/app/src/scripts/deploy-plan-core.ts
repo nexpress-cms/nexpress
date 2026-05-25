@@ -9,6 +9,7 @@ export interface TargetPlan {
   storage: string[];
   runtime: string[];
   commands: string[];
+  diagnostics?: string[];
 }
 
 export type EnvRequirementStatus = "set" | "missing" | "mismatch";
@@ -33,6 +34,7 @@ export interface DeployPlanJson {
   storage: string[];
   runtime: string[];
   commands: string[];
+  diagnostics: string[];
 }
 
 type DeployPlanEnv = Record<string, string | undefined>;
@@ -60,13 +62,15 @@ const EMPTY_ANSI = {
 export function buildDeployPlan(target: DeployTarget): TargetPlan {
   const commonRequired = ["DATABASE_URL", "NP_SECRET", "SITE_URL"];
   const commonRecommended = ["NP_ENABLE_JOBS=1", "NP_SCHEDULER_TOKEN"];
+  const doctorCommand = `pnpm run doctor:prod -- --target ${target}`;
   const commonCommands = [
     "pnpm install",
     "pnpm run setup -- --non-interactive",
     "pnpm db:migrate -- --status",
     "pnpm db:migrate",
-    `pnpm run doctor:prod -- --target ${target}`,
+    doctorCommand,
   ];
+  const commonDiagnostics = [`Run ${doctorCommand} --json --fix-plan for ordered remediation.`];
 
   switch (target) {
     case "vercel":
@@ -91,6 +95,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
           "Use a separate worker host if you need long-running pg-boss workers.",
         ],
         commands: commonCommands,
+        diagnostics: commonDiagnostics,
       };
     case "railway":
       return {
@@ -112,6 +117,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
           "Run migrations before promoting the new image.",
         ],
         commands: commonCommands,
+        diagnostics: commonDiagnostics,
       };
     case "render":
       return {
@@ -133,6 +139,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
           "Run migrations before the web service receives traffic.",
         ],
         commands: commonCommands,
+        diagnostics: commonDiagnostics,
       };
     case "fly":
       return {
@@ -154,6 +161,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
           "Run migrations as a release step before promotion.",
         ],
         commands: commonCommands,
+        diagnostics: commonDiagnostics,
       };
     case "docker":
       return {
@@ -175,6 +183,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
           "Terminate TLS at Caddy, NGINX, or your platform load balancer.",
         ],
         commands: commonCommands,
+        diagnostics: commonDiagnostics,
       };
   }
 }
@@ -228,6 +237,7 @@ export function buildDeployPlanJson(
     storage: plan.storage,
     runtime: plan.runtime,
     commands: plan.commands,
+    diagnostics: plan.diagnostics ?? [],
   };
 }
 
@@ -262,6 +272,7 @@ export function renderDeployPlan(
 ): string {
   const c = options.color ? ANSI : EMPTY_ANSI;
   const lines = [`${c.cyan}NexPress deploy plan: ${plan.title}${c.reset}`];
+  const diagnostics = plan.diagnostics ?? [];
   if (inferred) {
     lines.push(`${c.dim}No --target supplied; inferred ${plan.target}.${c.reset}`);
   }
@@ -286,6 +297,7 @@ export function renderDeployPlan(
   pushSection(lines, "Storage", plan.storage, options);
   pushSection(lines, "Runtime", plan.runtime, options);
   pushSection(lines, "Run before deploy", plan.commands, options);
+  if (diagnostics.length > 0) pushSection(lines, "Diagnostics", diagnostics, options);
 
   lines.push(
     "",
@@ -304,6 +316,7 @@ export function renderBriefDeployPlan(
   const c = options.color ? ANSI : EMPTY_ANSI;
   const required = plan.requiredEnv.map((name) => checkEnvRequirement(name, env));
   const unresolved = required.filter((check) => check.status !== "set");
+  const diagnostics = plan.diagnostics ?? [];
   const lines = [`${c.cyan}NexPress deploy plan: ${plan.title}${c.reset}`];
   if (inferred) lines.push(`${c.dim}No --target supplied; inferred ${plan.target}.${c.reset}`);
   lines.push(
@@ -312,5 +325,9 @@ export function renderBriefDeployPlan(
   for (const check of unresolved) lines.push(`  - ${formatEnvRequirement(check, options.color)}`);
   lines.push("", "Run before deploy:");
   for (const command of plan.commands) lines.push(`  - ${command}`);
+  if (diagnostics.length > 0) {
+    lines.push("", "If blocked:");
+    for (const diagnostic of diagnostics) lines.push(`  - ${diagnostic}`);
+  }
   return lines.join("\n");
 }
