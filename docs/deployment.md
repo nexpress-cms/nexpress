@@ -45,6 +45,9 @@ For example, `--target vercel` errors unless media storage is S3-compatible;
 `railway`, `render`, and `fly` warn or error on local storage depending on
 whether you explicitly opted into a single-node volume deployment.
 
+For automation, `deploy:plan -- --target vercel --json` emits the same plan
+as stable JSON; `--brief` and `--no-color` keep human logs compact.
+
 ---
 
 ## Path 1: Docker self-host
