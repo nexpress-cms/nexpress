@@ -25,6 +25,7 @@ import {
 } from "./doctor-output.js";
 import {
   checkJobsEnabledProd,
+  checkMigrationStatusReadiness,
   checkSchedulerTokenProd,
   checkSecretLengthProd,
   checkSiteUrlProd,
@@ -33,6 +34,11 @@ import {
   checkTargetWorkerProd,
   type CheckResult,
 } from "./doctor-readiness.js";
+import {
+  buildMigrationStatus,
+  readAppliedMigrations,
+  readLocalMigrationEntries,
+} from "./migration-status.js";
 
 /**
  * `pnpm doctor` — best-effort diagnosis of the env / runtime
@@ -99,7 +105,7 @@ function shouldPrintHelp(argv: string[]): boolean {
 
 interface PgClientLike {
   connect(): Promise<void>;
-  query<T = unknown>(text: string): Promise<{ rows: T[] }>;
+  query<T = unknown>(text: string, values?: unknown[]): Promise<{ rows: T[] }>;
   end(): Promise<void>;
 }
 
@@ -380,7 +386,7 @@ async function checkS3Vars(): Promise<CheckResult | null> {
   return { id: "storage.s3_settings", state: "ok", label: "S3 settings" };
 }
 
-async function checkMigrationsApplied(): Promise<CheckResult> {
+async function checkMigrationsApplied(prodMode: boolean): Promise<CheckResult> {
   const url = process.env.DATABASE_URL;
   if (!url) {
     return {
@@ -421,13 +427,24 @@ async function checkMigrationsApplied(): Promise<CheckResult> {
     const present = new Set(result.rows.map((r) => r.table_name));
     const missing = expected.filter((t) => !present.has(t));
     if (missing.length === 0) {
+      let statusCheck: CheckResult;
+      try {
+        const local = readLocalMigrationEntries("./drizzle");
+        const applied = await readAppliedMigrations(client);
+        statusCheck = checkMigrationStatusReadiness(prodMode, buildMigrationStatus(local, applied));
+      } catch (err) {
+        statusCheck = {
+          id: "migrations.applied",
+          state: prodMode ? "error" : "warn",
+          label: "Migrations applied",
+          detail: `framework tables found; status unavailable: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+          hint: "Run `pnpm db:migrate -- --status` for a dedicated migration status report.",
+        };
+      }
       await client.end();
-      return {
-        id: "migrations.applied",
-        state: "ok",
-        label: "Migrations applied",
-        detail: `${expected.length.toString()} framework tables found`,
-      };
+      return statusCheck;
     }
     // Stale-tracking footgun (the case that bit us live): a partial
     // \`DROP TABLE\` / \`DROP SCHEMA public\` clears the framework
@@ -524,7 +541,7 @@ async function main(): Promise<void> {
   if (s3) checks.push(s3);
   checks.push(await checkLocalStorage());
   checks.push(await checkDatabase());
-  checks.push(await checkMigrationsApplied());
+  checks.push(await checkMigrationsApplied(PROD_MODE));
   // Production-only checks. Each returns null in dev mode so the
   // dev-default doctor output is unchanged.
   for (const result of [
