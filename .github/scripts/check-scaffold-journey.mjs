@@ -116,6 +116,7 @@ if (deployPlan.code !== 0) {
 assertIncludes(deployPlan.output, "NexPress deploy plan: Vercel", "deploy:plan");
 assertIncludes(deployPlan.output, "NP_STORAGE_ADAPTER=s3", "deploy:plan");
 assertIncludes(deployPlan.output, "Run migrations against the same DATABASE_URL", "deploy:plan");
+assertIncludes(deployPlan.output, "pnpm db:migrate -- --status", "deploy:plan");
 assertIncludes(deployPlan.output, "pnpm run doctor:prod -- --target vercel", "deploy:plan");
 console.log("✓ deploy:plan target guidance renders");
 

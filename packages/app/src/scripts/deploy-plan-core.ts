@@ -63,6 +63,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
   const commonCommands = [
     "pnpm install",
     "pnpm run setup -- --non-interactive",
+    "pnpm db:migrate -- --status",
     "pnpm db:migrate",
     `pnpm run doctor:prod -- --target ${target}`,
   ];
