@@ -90,6 +90,23 @@ interface FormDefaults {
   dbName: string;
 }
 
+type SetupTaskId =
+  | "env"
+  | "database"
+  | "generate"
+  | "status"
+  | "migrate"
+  | "admin"
+  | "theme"
+  | "seed";
+
+interface SetupStepResult {
+  ok: boolean;
+  output: string;
+  failedTask?: SetupTaskId;
+  skipped?: boolean;
+}
+
 const FALLBACK_FORM_DEFAULTS: FormDefaults = {
   databaseUrl: DEFAULT_DATABASE_URL,
   testDatabaseUrl: DEFAULT_TEST_DATABASE_URL,
@@ -291,11 +308,11 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     }
     await saveEnv(validated.body);
     console.log(`[setup] wrote ${ENV_PATH}`);
-    let migrate: { ok: boolean; output: string } | null = null;
+    let migrate: SetupStepResult | null = null;
     if (validated.body.runMigrate) {
       migrate = await runMigrations(validated.body);
     }
-    let firstBoot: { ok: boolean; output: string; skipped?: boolean } | null = null;
+    let firstBoot: SetupStepResult | null = null;
     if (!migrate || migrate.ok) {
       firstBoot = await completeFirstBoot(validated.body);
     }
@@ -733,7 +750,7 @@ async function inspectMigrationStatus(
   }
 }
 
-async function runMigrations(body: SetupBody): Promise<{ ok: boolean; output: string }> {
+async function runMigrations(body: SetupBody): Promise<SetupStepResult> {
   // `pnpm` resolves through PATH; the script is meant to run inside
   // `apps/web` where the package's own `db:generate` / `db:migrate`
   // scripts already wire drizzle-kit.
@@ -763,7 +780,7 @@ async function runMigrations(body: SetupBody): Promise<{ ok: boolean; output: st
       `  psql -c "DROP DATABASE ${dbName}; CREATE DATABASE ${dbName};"\n` +
       `Then re-run setup.`;
     console.log("[setup] db pre-flight FAILED — DB already populated");
-    return { ok: false, output: message };
+    return { ok: false, output: message, failedTask: "database" };
   }
 
   // Verify the DB actually exists before kicking off drizzle-kit.
@@ -776,21 +793,21 @@ async function runMigrations(body: SetupBody): Promise<{ ok: boolean; output: st
   const connTest = await testDbConnection(body.databaseUrl);
   if (!connTest.ok) {
     console.log("[setup] db connection failed before migration");
-    return { ok: false, output: connTest.message };
+    return { ok: false, output: connTest.message, failedTask: "database" };
   }
 
   console.log("[setup] running pnpm db:generate …");
   const gen = await runChild(["pnpm", "run", "db:generate"], env);
   if (!gen.ok) {
     console.log("[setup] db:generate FAILED");
-    return gen;
+    return { ...gen, failedTask: "generate" };
   }
   console.log("[setup] checking migration status …");
   const statusCheck = await inspectMigrationStatus(body.databaseUrl);
   if (statusCheck.output) console.log(statusCheck.output);
   if (!statusCheck.ok) {
     console.log("[setup] migration status FAILED");
-    return { ok: false, output: gen.output + statusCheck.output };
+    return { ok: false, output: gen.output + statusCheck.output, failedTask: "status" };
   }
   console.log("[setup] running migrations …");
   // Use the local drizzle-orm migrate runner (scripts/run-migrations.ts)
@@ -804,15 +821,17 @@ async function runMigrations(body: SetupBody): Promise<{ ok: boolean; output: st
   const mig = await runChild(["pnpm", "exec", "tsx", "./scripts/run-migrations.ts"], env);
   if (!mig.ok) {
     console.log("[setup] db:migrate FAILED");
-    return { ok: false, output: gen.output + statusCheck.output + mig.output };
+    return {
+      ok: false,
+      output: gen.output + statusCheck.output + mig.output,
+      failedTask: "migrate",
+    };
   }
   console.log("[setup] migrations applied");
   return { ok: true, output: gen.output + statusCheck.output + mig.output };
 }
 
-async function completeFirstBoot(
-  body: SetupBody,
-): Promise<{ ok: boolean; output: string; skipped?: boolean }> {
+async function completeFirstBoot(body: SetupBody): Promise<SetupStepResult> {
   if (!body.adminEmail || !body.adminPassword) {
     return { ok: true, skipped: true, output: "First admin skipped" };
   }
@@ -827,6 +846,7 @@ async function completeFirstBoot(
 
   console.log("");
   console.log("[setup] creating first admin …");
+  let currentTask: SetupTaskId = "admin";
 
   try {
     const core = await import("@nexpress/core");
@@ -849,10 +869,12 @@ async function completeFirstBoot(
           ok: false,
           output:
             `Unknown theme '${body.adminThemeId}'. Registered themes: ` + knownThemeIds.join(", "),
+          failedTask: "admin",
         };
       }
     }
 
+    currentTask = "admin";
     const admin = existingAdmin
       ? existingAdmin
       : (
@@ -868,7 +890,7 @@ async function completeFirstBoot(
         )[0];
 
     if (!admin) {
-      return { ok: false, output: "Failed to create first admin." };
+      return { ok: false, output: "Failed to create first admin.", failedTask: "admin" };
     }
 
     const now = new Date();
@@ -926,6 +948,7 @@ async function completeFirstBoot(
       });
 
     if (body.adminThemeId) {
+      currentTask = "theme";
       await db
         .insert(core.npSettings)
         .values({
@@ -948,9 +971,10 @@ async function completeFirstBoot(
     );
 
     if (body.sampleContent) {
+      currentTask = "seed";
       console.log("[setup] seeding sample content …");
       const seed = await runChild(["pnpm", "run", "seed:content"], env);
-      if (!seed.ok) return seed;
+      if (!seed.ok) return { ...seed, failedTask: "seed" };
     }
 
     return {
@@ -958,7 +982,11 @@ async function completeFirstBoot(
       output: existingAdmin ? "First admin already exists" : "First admin ready",
     };
   } catch (err) {
-    return { ok: false, output: err instanceof Error ? err.message : String(err) };
+    return {
+      ok: false,
+      output: err instanceof Error ? err.message : String(err),
+      failedTask: currentTask,
+    };
   }
 }
 
@@ -1683,6 +1711,7 @@ function renderHtml(defaults: FormDefaults): string {
   };
   const TASKS = [
     ["env","Write .env", SETUP_ENV_PATH],
+    ["database","Check database", "DATABASE_URL pre-flight"],
     ["generate","Generate schema", "pnpm db:generate"],
     ["status","Inspect migrations", "pnpm db:migrate -- --status"],
     ["migrate","Apply migrations", "scripts/run-migrations.ts"],
@@ -1690,6 +1719,7 @@ function renderHtml(defaults: FormDefaults): string {
     ["theme","Activate starter theme", "optional"],
     ["seed","Seed demo content", "optional"],
   ];
+  const TASK_INDEX = Object.fromEntries(TASKS.map((task, index) => [task[0], index]));
   const $ = (id) => document.getElementById(id);
   let step = 0;
   let secret = DEFAULT_SECRET;
@@ -1875,9 +1905,13 @@ function renderHtml(defaults: FormDefaults): string {
       return '<div class="task-row" data-state="' + st + '"><span class="task-icon">' + mark + '</span><div><div class="row-name">' + t[1] + '</div><div class="row-sub">' + esc(t[2]) + '</div></div><span class="task-time">' + (st === "pending" ? "-" : "ok") + '</span><span class="row-state">' + (st === "running" ? "running..." : st === "pending" ? "queued" : st) + '</span></div>';
     }).join("");
   }
-  function failRun(message) {
+  function taskIndex(id) {
+    return typeof id === "string" && Number.isInteger(TASK_INDEX[id]) ? TASK_INDEX[id] : taskCursor;
+  }
+  function failRun(message, taskId) {
     runState = "error";
     clearInterval(taskTimer);
+    taskCursor = taskIndex(taskId);
     $("runErrorText").textContent = message || "Setup failed.";
     $("runError").classList.remove("hidden");
     logRow("err", message || "setup failed");
@@ -1909,12 +1943,12 @@ function renderHtml(defaults: FormDefaults): string {
     try {
       const res = await fetch("/save?token=" + TOKEN, { method:"POST", headers:{ "content-type":"application/json" }, body: JSON.stringify(payload()) });
       const body = await res.json();
-      if (!body.ok) { failRun(body.message || "Save failed"); return; }
-      const failed = (body.migrate && !body.migrate.ok && { label:"migrations", output:body.migrate.output }) || (body.firstBoot && !body.firstBoot.ok && { label:"first-admin setup", output:body.firstBoot.output });
-      if (failed) { failRun(failed.label + " failed: " + (failed.output || "")); return; }
+      if (!body.ok) { failRun(body.message || "Save failed", "env"); return; }
+      const failed = (body.migrate && !body.migrate.ok && { label:"migrations", output:body.migrate.output, taskId:body.migrate.failedTask || "migrate" }) || (body.firstBoot && !body.firstBoot.ok && { label:"first-admin setup", output:body.firstBoot.output, taskId:body.firstBoot.failedTask || "admin" });
+      if (failed) { failRun(failed.label + " failed: " + (failed.output || ""), failed.taskId); return; }
       succeedRun(body);
     } catch (err) {
-      failRun(String(err));
+      failRun(String(err), "env");
     }
   }
   $("backBtn").addEventListener("click", () => goto(step - 1));
