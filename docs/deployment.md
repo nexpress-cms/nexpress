@@ -46,7 +46,9 @@ For example, `--target vercel` errors unless media storage is S3-compatible;
 whether you explicitly opted into a single-node volume deployment.
 
 For automation, `deploy:plan -- --target vercel --json` emits the same plan
-as stable JSON; `--brief` and `--no-color` keep human logs compact.
+as stable JSON; `doctor:prod -- --target vercel --json` emits the matching
+readiness report. Use `deploy:plan --brief` for compact human plans, and
+`--no-color` on either command for plain logs.
 
 ---
 
