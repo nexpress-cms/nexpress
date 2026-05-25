@@ -30,6 +30,15 @@ import { createRequire } from "node:module";
 import { basename, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
+import type { QueryResultRow } from "pg";
+import {
+  buildMigrationStatus,
+  migrationStatusHasBlockingRisk,
+  readAppliedMigrations,
+  readLocalMigrationEntries,
+  renderMigrationStatus,
+  type MigrationStatus,
+} from "./migration-status.js";
 
 /**
  * `PROJECT_DIR` is the project root — where `package.json` lives.
@@ -46,6 +55,7 @@ import { pathToFileURL } from "node:url";
  */
 const PROJECT_DIR = process.cwd();
 const ENV_PATH = resolve(PROJECT_DIR, process.env.NP_SETUP_ENV_PATH ?? ".env");
+const MIGRATIONS_FOLDER = "./drizzle";
 
 // Default Postgres database name = project directory name,
 // sanitized to lowercase + underscores. Each scaffolded project
@@ -407,7 +417,10 @@ async function fileExists(path: string): Promise<boolean> {
 
 interface PgClientLike {
   connect(): Promise<void>;
-  query(text: string): Promise<{ rows: Array<{ version: string }> }>;
+  query<T extends QueryResultRow = QueryResultRow>(
+    text: string,
+    values?: unknown[],
+  ): Promise<{ rows: T[] }>;
   end(): Promise<void>;
 }
 
@@ -418,6 +431,19 @@ interface PgModuleLike {
       connectionTimeoutMillis?: number;
     }) => PgClientLike;
   };
+}
+
+async function loadProjectPg(): Promise<PgModuleLike | null> {
+  try {
+    // Resolve `pg` from the project root (not this module's
+    // location in node_modules/@nexpress/app/...) so pnpm's strict
+    // hoisting finds the consumer-installed copy reliably.
+    const require = createRequire(resolve(PROJECT_DIR, "package.json"));
+    const resolved = require.resolve("pg");
+    return (await import(resolved)) as unknown as PgModuleLike;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -440,17 +466,8 @@ interface PgModuleLike {
  *     proceed without a false-positive collision flag)
  */
 async function probeExistingFrameworkTables(url: string): Promise<{ existing: number }> {
-  let pg: PgModuleLike;
-  try {
-    // Resolve `pg` from the project root (not this module's
-    // location in node_modules/@nexpress/app/...) so pnpm's strict
-    // hoisting finds the consumer-installed copy reliably.
-    const require = createRequire(resolve(PROJECT_DIR, "package.json"));
-    const resolved = require.resolve("pg");
-    pg = (await import(resolved)) as unknown as PgModuleLike;
-  } catch {
-    return { existing: 0 };
-  }
+  const pg = await loadProjectPg();
+  if (!pg) return { existing: 0 };
   const client = new pg.default.Client({
     connectionString: url,
     connectionTimeoutMillis: 5_000,
@@ -464,12 +481,11 @@ async function probeExistingFrameworkTables(url: string): Promise<{ existing: nu
     // re-runs `pnpm setup`" case that previously false-
     // positived. The table only exists once drizzle-kit migrate
     // has succeeded at least once.
-    type CountRow = { rows: Array<{ n: number }> };
     let trackedCount = 0;
     try {
-      const tracked = (await client.query(
+      const tracked = await client.query<{ n: number }>(
         "SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations",
-      )) as unknown as CountRow;
+      );
       trackedCount = tracked.rows[0]?.n ?? 0;
     } catch {
       // table doesn't exist → drizzle hasn't touched this DB
@@ -480,9 +496,9 @@ async function probeExistingFrameworkTables(url: string): Promise<{ existing: nu
       return { existing: 0 };
     }
 
-    const result = (await client.query(
+    const result = await client.query<{ n: number }>(
       "SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'np\\_%' ESCAPE '\\'",
-    )) as unknown as CountRow;
+    );
     await client.end();
     return { existing: result.rows[0]?.n ?? 0 };
   } catch {
@@ -511,15 +527,8 @@ async function testDbConnection(
   // we widen the search via createRequire (which honors Node's
   // full module resolution including pnpm's hoisted store) and
   // hand the resolved path back to the dynamic import.
-  let pg: PgModuleLike;
-  try {
-    // Resolve `pg` from the project root (not this module's
-    // location in node_modules/@nexpress/app/...) so pnpm's strict
-    // hoisting finds the consumer-installed copy reliably.
-    const require = createRequire(resolve(PROJECT_DIR, "package.json"));
-    const resolved = require.resolve("pg");
-    pg = (await import(resolved)) as unknown as PgModuleLike;
-  } catch {
+  const pg = await loadProjectPg();
+  if (!pg) {
     return {
       ok: false,
       message: "`pg` not installed in this workspace — run `pnpm install` first",
@@ -531,7 +540,7 @@ async function testDbConnection(
   });
   try {
     await client.connect();
-    const result = await client.query("select version()");
+    const result = await client.query<{ version: string }>("select version()");
     await client.end();
     const version = result.rows[0]?.version ?? "unknown";
     return { ok: true, message: `Connected — ${version.split(" ").slice(0, 2).join(" ")}` };
@@ -656,6 +665,74 @@ async function resolveInstalledPackageVersion(name: string): Promise<string | nu
   }
 }
 
+function migrationSetupBlocker(status: MigrationStatus): string | null {
+  if (status.local.length === 0) {
+    return (
+      "No local migrations found after `pnpm db:generate`.\n" +
+      "Review ./drizzle generation output before applying migrations."
+    );
+  }
+
+  if (!migrationStatusHasBlockingRisk(status)) return null;
+
+  const problems = [
+    status.drifted.length > 0
+      ? `${status.drifted.length.toString()} drifted migration${
+          status.drifted.length === 1 ? "" : "s"
+        }`
+      : null,
+    status.unknownApplied.length > 0
+      ? `${status.unknownApplied.length.toString()} unknown applied migration${
+          status.unknownApplied.length === 1 ? "" : "s"
+        }`
+      : null,
+  ].filter((problem): problem is string => problem !== null);
+
+  return (
+    `Migration status has ${problems.join(" and ")}. Refusing to apply migrations.\n` +
+    "Check DATABASE_URL, restore the expected migration files, or reset the database before continuing."
+  );
+}
+
+async function inspectMigrationStatus(
+  databaseUrl: string,
+): Promise<{ ok: boolean; output: string }> {
+  const pg = await loadProjectPg();
+  if (!pg) {
+    return {
+      ok: false,
+      output: "`pg` not installed in this workspace — run `pnpm install` first",
+    };
+  }
+
+  const client = new pg.default.Client({
+    connectionString: databaseUrl,
+    connectionTimeoutMillis: 5_000,
+  });
+
+  try {
+    await client.connect();
+    const local = readLocalMigrationEntries(MIGRATIONS_FOLDER);
+    const applied = await readAppliedMigrations(client);
+    const status = buildMigrationStatus(local, applied);
+    const report = renderMigrationStatus(status);
+    const blocker = migrationSetupBlocker(status);
+    return {
+      ok: blocker === null,
+      output: blocker ? `${report}\n\n${blocker}` : report,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      output:
+        "Migration status check failed before applying migrations.\n" +
+        (err instanceof Error ? err.message : String(err)),
+    };
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
 async function runMigrations(body: SetupBody): Promise<{ ok: boolean; output: string }> {
   // `pnpm` resolves through PATH; the script is meant to run inside
   // `apps/web` where the package's own `db:generate` / `db:migrate`
@@ -708,6 +785,13 @@ async function runMigrations(body: SetupBody): Promise<{ ok: boolean; output: st
     console.log("[setup] db:generate FAILED");
     return gen;
   }
+  console.log("[setup] checking migration status …");
+  const statusCheck = await inspectMigrationStatus(body.databaseUrl);
+  if (statusCheck.output) console.log(statusCheck.output);
+  if (!statusCheck.ok) {
+    console.log("[setup] migration status FAILED");
+    return { ok: false, output: gen.output + statusCheck.output };
+  }
   console.log("[setup] running migrations …");
   // Use the local drizzle-orm migrate runner (scripts/run-migrations.ts)
   // instead of the `drizzle-kit migrate` CLI. The CLI swallows SQL
@@ -720,10 +804,10 @@ async function runMigrations(body: SetupBody): Promise<{ ok: boolean; output: st
   const mig = await runChild(["pnpm", "exec", "tsx", "./scripts/run-migrations.ts"], env);
   if (!mig.ok) {
     console.log("[setup] db:migrate FAILED");
-    return { ok: false, output: gen.output + mig.output };
+    return { ok: false, output: gen.output + statusCheck.output + mig.output };
   }
   console.log("[setup] migrations applied");
-  return { ok: true, output: gen.output + mig.output };
+  return { ok: true, output: gen.output + statusCheck.output + mig.output };
 }
 
 async function completeFirstBoot(
@@ -1594,12 +1678,13 @@ function renderHtml(defaults: FormDefaults): string {
     admin:["STEP 03 / 07 · ADMIN","Create the first admin","Optional here. If you skip it, /admin/setup will continue the account and theme flow after pnpm dev."],
     site:["STEP 04 / 07 · SITE","Name your site","Choose site metadata, the initial theme, and whether to seed demo content."],
     env:["STEP 05 / 07 · ENVIRONMENT","Review .env","NexPress will write this file to your project root. NP_SECRET is regenerated on demand and never committed."],
-    migrate:["STEP 06 / 07 · INITIALIZE","Initialize the database","Write .env, apply migrations, optionally bootstrap the admin user, and seed starter content."],
+    migrate:["STEP 06 / 07 · INITIALIZE","Initialize the database","Write .env, inspect migration status, apply migrations, optionally bootstrap the admin user, and seed starter content."],
     done:["STEP 07 / 07 · DONE","You're set.",""],
   };
   const TASKS = [
     ["env","Write .env", SETUP_ENV_PATH],
     ["generate","Generate schema", "pnpm db:generate"],
+    ["status","Inspect migrations", "pnpm db:migrate -- --status"],
     ["migrate","Apply migrations", "scripts/run-migrations.ts"],
     ["admin","Bootstrap admin user", "optional"],
     ["theme","Activate starter theme", "optional"],
@@ -1811,6 +1896,7 @@ function renderHtml(defaults: FormDefaults): string {
     $("doneText").textContent = body.firstBoot && !body.firstBoot.skipped ? "Admin, theme, and environment are ready." : "Environment is ready. Continue first admin and theme setup at /admin/setup after pnpm dev.";
     $("doneLog").innerHTML = '<span class="h">$</span> pnpm run setup\\n' +
       '<span class="c">  -> wrote .env</span>\\n' +
+      '<span class="c">  -> migration status checked</span>\\n' +
       '<span class="c">  -> migrations ' + (body.migrate ? "applied" : "skipped") + '</span>\\n' +
       '<span class="c">  -> ' + (body.firstBoot && !body.firstBoot.skipped ? "first admin ready" : "first admin skipped") + '</span>\\n' +
       '<span class="v">  ✓ done — run pnpm dev, then open /admin</span>';
