@@ -9,14 +9,16 @@ import {
 import type { CheckResult } from "./doctor-readiness.js";
 
 const checks: CheckResult[] = [
-  { state: "ok", label: "Node.js >= 20", detail: "24.11.1" },
+  { id: "node.version", state: "ok", label: "Node.js >= 20", detail: "24.11.1" },
   {
+    id: "prod.scheduler_token",
     state: "warn",
     label: "NP_SCHEDULER_TOKEN",
     detail: "not set",
     hint: "Set it when scheduled publishing is enabled.",
   },
   {
+    id: "env.database_url",
     state: "error",
     label: "DATABASE_URL",
     detail: "not set",

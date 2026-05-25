@@ -76,13 +76,14 @@ async function checkNodeVersion(): Promise<CheckResult> {
   const major = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
   if (Number.isNaN(major) || major < 20) {
     return {
+      id: "node.version",
       state: "error",
       label: "Node.js >= 20",
       detail: `running ${process.versions.node}`,
       hint: "NexPress requires Node 20+. Use nvm/asdf/fnm to upgrade.",
     };
   }
-  return { state: "ok", label: "Node.js >= 20", detail: process.versions.node };
+  return { id: "node.version", state: "ok", label: "Node.js >= 20", detail: process.versions.node };
 }
 
 async function checkPnpmVersion(): Promise<CheckResult> {
@@ -94,6 +95,7 @@ async function checkPnpmVersion(): Promise<CheckResult> {
   const match = /pnpm\/([\d.]+)/.exec(ua);
   if (!match) {
     return {
+      id: "pnpm.version",
       state: "warn",
       label: "pnpm 10.33+",
       detail: "couldn't read pnpm version from env",
@@ -103,22 +105,24 @@ async function checkPnpmVersion(): Promise<CheckResult> {
   const [major, minor] = match[1]!.split(".").map((n) => Number.parseInt(n, 10));
   if ((major ?? 0) < 10 || (major === 10 && (minor ?? 0) < 33)) {
     return {
+      id: "pnpm.version",
       state: "error",
       label: "pnpm 10.33+",
       detail: `running ${match[1]}`,
       hint: "Run `npm i -g pnpm@10.33` (or follow https://pnpm.io/installation).",
     };
   }
-  return { state: "ok", label: "pnpm 10.33+", detail: match[1] };
+  return { id: "pnpm.version", state: "ok", label: "pnpm 10.33+", detail: match[1] };
 }
 
 async function checkEnvFile(): Promise<CheckResult> {
   const envPath = resolve(process.cwd(), ".env");
   try {
     await access(envPath);
-    return { state: "ok", label: ".env file present" };
+    return { id: "env.file", state: "ok", label: ".env file present" };
   } catch {
     return {
+      id: "env.file",
       state: "error",
       label: ".env file present",
       hint: "Run `pnpm run setup` (browser env wizard) or copy .env.example to .env.",
@@ -127,6 +131,7 @@ async function checkEnvFile(): Promise<CheckResult> {
 }
 
 interface RequiredVarSpec {
+  id: string;
   name: string;
   minLength?: number;
   matches?: RegExp;
@@ -135,16 +140,19 @@ interface RequiredVarSpec {
 
 const REQUIRED_VARS: RequiredVarSpec[] = [
   {
+    id: "env.database_url",
     name: "DATABASE_URL",
     matches: /^postgres(?:ql)?:\/\//,
     hint: "Set DATABASE_URL to a postgres:// connection string. `pnpm run setup` writes one for you.",
   },
   {
+    id: "env.np_secret",
     name: "NP_SECRET",
     minLength: 32,
     hint: "Set NP_SECRET to ≥32 random characters. `pnpm run setup` generates one.",
   },
   {
+    id: "env.site_url",
     name: "SITE_URL",
     matches: /^https?:\/\//,
     hint: "Set SITE_URL to your public origin (e.g. http://localhost:3000).",
@@ -155,6 +163,7 @@ function checkRequiredVar(spec: RequiredVarSpec): CheckResult {
   const value = process.env[spec.name];
   if (!value) {
     return {
+      id: spec.id,
       state: "error",
       label: spec.name,
       detail: "not set",
@@ -163,6 +172,7 @@ function checkRequiredVar(spec: RequiredVarSpec): CheckResult {
   }
   if (spec.matches && !spec.matches.test(value)) {
     return {
+      id: spec.id,
       state: "error",
       label: spec.name,
       detail: "set but doesn't match expected shape",
@@ -173,13 +183,14 @@ function checkRequiredVar(spec: RequiredVarSpec): CheckResult {
     // In --prod mode a sub-floor secret is forgeable; surface as
     // error so a release gate can catch it. In dev mode it's a hint.
     return {
+      id: spec.id,
       state: PROD_MODE ? "error" : "warn",
       label: spec.name,
       detail: `set but only ${value.length.toString()} chars (recommend ≥${spec.minLength.toString()})`,
       hint: spec.hint,
     };
   }
-  return { state: "ok", label: spec.name };
+  return { id: spec.id, state: "ok", label: spec.name };
 }
 
 async function loadPg(): Promise<unknown> {
@@ -204,6 +215,7 @@ async function checkDatabase(): Promise<CheckResult> {
   const url = process.env.DATABASE_URL;
   if (!url) {
     return {
+      id: "database.reachable",
       state: "error",
       label: "Postgres reachable",
       detail: "DATABASE_URL not set",
@@ -215,6 +227,7 @@ async function checkDatabase(): Promise<CheckResult> {
     pg = (await loadPg()) as PgModuleLike;
   } catch {
     return {
+      id: "database.reachable",
       state: "warn",
       label: "Postgres reachable",
       detail: "`pg` not installed in this workspace yet",
@@ -230,7 +243,7 @@ async function checkDatabase(): Promise<CheckResult> {
     const result = await client.query<{ version: string }>("select version()");
     await client.end();
     const version = result.rows[0]?.version?.split(" ").slice(0, 2).join(" ") ?? "Postgres";
-    return { state: "ok", label: "Postgres reachable", detail: version };
+    return { id: "database.reachable", state: "ok", label: "Postgres reachable", detail: version };
   } catch (err) {
     try {
       await client.end();
@@ -260,6 +273,7 @@ async function checkDatabase(): Promise<CheckResult> {
       }
     }
     return {
+      id: "database.reachable",
       state: "error",
       label: "Postgres reachable",
       detail: messageForConnectionError(url, err, { suggestedPort }),
@@ -272,7 +286,12 @@ async function checkLocalStorage(): Promise<CheckResult> {
   if (adapter !== "local") {
     // S3 / R2 connectivity check would need the AWS SDK + credentials;
     // we leave that surface to runtime errors for now.
-    return { state: "ok", label: `Storage adapter: ${adapter}`, detail: "S3-side checks not run" };
+    return {
+      id: "storage.adapter",
+      state: "ok",
+      label: `Storage adapter: ${adapter}`,
+      detail: "S3-side checks not run",
+    };
   }
   const dir = process.env.NP_STORAGE_DIR ?? "./public/media";
   const path = resolve(process.cwd(), dir);
@@ -280,15 +299,22 @@ async function checkLocalStorage(): Promise<CheckResult> {
     const stats = await stat(path);
     if (!stats.isDirectory()) {
       return {
+        id: "storage.local_directory",
         state: "error",
         label: "Local storage directory",
         detail: `${dir} exists but is not a directory`,
         hint: "Move the file aside or pick a different NP_STORAGE_DIR.",
       };
     }
-    return { state: "ok", label: "Local storage directory", detail: dir };
+    return {
+      id: "storage.local_directory",
+      state: "ok",
+      label: "Local storage directory",
+      detail: dir,
+    };
   } catch {
     return {
+      id: "storage.local_directory",
       state: "warn",
       label: "Local storage directory",
       detail: `${dir} doesn't exist yet`,
@@ -304,25 +330,36 @@ async function checkS3Vars(): Promise<CheckResult | null> {
   if (!process.env.NP_S3_REGION) missing.push("NP_S3_REGION");
   if (missing.length > 0) {
     return {
+      id: "storage.s3_settings",
       state: "error",
       label: "S3 settings",
       detail: `missing ${missing.join(", ")}`,
       hint: "Re-run `pnpm run setup` and pick S3 to fill these in.",
     };
   }
-  return { state: "ok", label: "S3 settings" };
+  return { id: "storage.s3_settings", state: "ok", label: "S3 settings" };
 }
 
 async function checkMigrationsApplied(): Promise<CheckResult> {
   const url = process.env.DATABASE_URL;
   if (!url) {
-    return { state: "warn", label: "Migrations applied", detail: "skipped (no DATABASE_URL)" };
+    return {
+      id: "migrations.applied",
+      state: "warn",
+      label: "Migrations applied",
+      detail: "skipped (no DATABASE_URL)",
+    };
   }
   let pg: PgModuleLike;
   try {
     pg = (await loadPg()) as PgModuleLike;
   } catch {
-    return { state: "warn", label: "Migrations applied", detail: "skipped (no `pg`)" };
+    return {
+      id: "migrations.applied",
+      state: "warn",
+      label: "Migrations applied",
+      detail: "skipped (no `pg`)",
+    };
   }
   const client = new pg.default.Client({
     connectionString: url,
@@ -346,6 +383,7 @@ async function checkMigrationsApplied(): Promise<CheckResult> {
     if (missing.length === 0) {
       await client.end();
       return {
+        id: "migrations.applied",
         state: "ok",
         label: "Migrations applied",
         detail: `${expected.length.toString()} framework tables found`,
@@ -374,6 +412,7 @@ async function checkMigrationsApplied(): Promise<CheckResult> {
     await client.end();
     if (trackedCount > 0) {
       return {
+        id: "migrations.applied",
         state: "error",
         label: "Migrations applied",
         detail: `drizzle tracks ${trackedCount.toString()} applied, but framework tables are missing`,
@@ -385,6 +424,7 @@ async function checkMigrationsApplied(): Promise<CheckResult> {
       };
     }
     return {
+      id: "migrations.applied",
       state: "warn",
       label: "Migrations applied",
       detail: `missing ${missing.join(", ")}`,
@@ -396,7 +436,12 @@ async function checkMigrationsApplied(): Promise<CheckResult> {
     } catch {
       /* swallow */
     }
-    return { state: "warn", label: "Migrations applied", detail: "could not query schema" };
+    return {
+      id: "migrations.applied",
+      state: "warn",
+      label: "Migrations applied",
+      detail: "could not query schema",
+    };
   }
 }
 
@@ -405,13 +450,14 @@ async function checkEnvExampleSync(): Promise<CheckResult> {
   const value = process.env.NP_SECRET ?? "";
   if (value === "change-me-in-production" || value === "change-me-to-a-random-string") {
     return {
+      id: "env.np_secret_placeholder",
       state: "error",
       label: "NP_SECRET not the placeholder",
       detail: "still the .env.example placeholder",
       hint: "Replace with a real secret. `pnpm run setup` generates one.",
     };
   }
-  return { state: "ok", label: "NP_SECRET not the placeholder" };
+  return { id: "env.np_secret_placeholder", state: "ok", label: "NP_SECRET not the placeholder" };
 }
 
 async function main(): Promise<void> {
