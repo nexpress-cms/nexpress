@@ -97,19 +97,19 @@ export function SettingsView() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title="Settings"
         description="Tune brand language, navigation structure, and admin-facing defaults from one place."
       />
 
       {error ? (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       ) : null}
 
-      <Tabs defaultValue="general" className="space-y-6">
+      <Tabs defaultValue="general" className="min-w-0 space-y-6">
         <TabsList className="grid h-auto w-full grid-cols-2 items-stretch gap-2 md:h-9 md:w-auto md:grid-cols-8 md:items-center">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="seo">SEO</TabsTrigger>
@@ -121,22 +121,26 @@ export function SettingsView() {
           <TabsTrigger value="users">Users</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="general" className="space-y-6">
-          <Card>
+        <TabsContent value="general" className="min-w-0 space-y-6">
+          <Card className="min-w-0">
             <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <CardTitle>General settings</CardTitle>
-                <p className="text-sm text-muted-foreground">
+              <div className="min-w-0 space-y-1">
+                <CardTitle className="break-words">General settings</CardTitle>
+                <p className="break-words text-sm text-muted-foreground">
                   Update the public-facing site identity used across metadata and admin panels.
                 </p>
               </div>
-              <Button onClick={() => void saveSettings()} disabled={saving || loading}>
+              <Button
+                className="w-full sm:w-auto"
+                onClick={() => void saveSettings()}
+                disabled={saving || loading}
+              >
                 {saving ? "Saving..." : "Save"}
               </Button>
             </CardHeader>
-            <CardContent className="space-y-5">
+            <CardContent className="min-w-0 space-y-5">
               {message ? (
-                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300">
+                <div className="break-words rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300">
                   {message}
                 </div>
               ) : null}
@@ -152,7 +156,7 @@ export function SettingsView() {
                 </div>
               ) : (
                 <>
-                  <div className="space-y-2">
+                  <div className="min-w-0 space-y-2">
                     <Label htmlFor="settings-site-name">Site name</Label>
                     <Input
                       id="settings-site-name"
@@ -166,7 +170,7 @@ export function SettingsView() {
                     />
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="min-w-0 space-y-2">
                     <Label htmlFor="settings-site-url">Site URL</Label>
                     <Input
                       id="settings-site-url"
@@ -180,7 +184,7 @@ export function SettingsView() {
                     />
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="min-w-0 space-y-2">
                     <Label htmlFor="settings-description">Description</Label>
                     <Textarea
                       id="settings-description"

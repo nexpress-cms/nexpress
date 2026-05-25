@@ -143,9 +143,9 @@ export function UserManagement() {
   }
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <CardTitle>User management</CardTitle>
+        <CardTitle className="break-words">User management</CardTitle>
         <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
           <Button className="w-full sm:w-auto" onClick={() => setEmailInviteOpen(true)}>
             <MailPlus className="size-3.5" />
@@ -161,10 +161,10 @@ export function UserManagement() {
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="min-w-0 space-y-6">
         {emailInviteToast ? (
-          <div className="grid gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-300 sm:flex sm:items-start sm:justify-between">
-            <span>{emailInviteToast}</span>
+          <div className="grid min-w-0 gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-300 sm:flex sm:items-start sm:justify-between">
+            <span className="min-w-0 break-words">{emailInviteToast}</span>
             <button
               type="button"
               className="justify-self-start text-xs uppercase tracking-wide text-emerald-700 hover:text-emerald-900 dark:text-emerald-200 dark:hover:text-emerald-100 sm:justify-self-auto"
@@ -176,7 +176,7 @@ export function UserManagement() {
         ) : null}
 
         {error ? (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {error}
           </div>
         ) : null}
@@ -201,7 +201,7 @@ export function UserManagement() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate font-medium text-foreground">{user.name}</p>
+                    <p className="break-words font-medium text-foreground">{user.name}</p>
                     <p className="break-all text-sm text-muted-foreground">{user.email}</p>
                   </div>
                   <Badge variant="secondary">{user.role}</Badge>
@@ -236,8 +236,8 @@ export function UserManagement() {
                   key={user.id}
                   className="grid min-w-[680px] grid-cols-[1fr_1.2fr_140px_120px] gap-4 px-4 py-4 text-sm"
                 >
-                  <div className="font-medium text-foreground">{user.name}</div>
-                  <div className="text-muted-foreground">{user.email}</div>
+                  <div className="break-words font-medium text-foreground">{user.name}</div>
+                  <div className="break-all text-muted-foreground">{user.email}</div>
                   <div>
                     <Badge variant="secondary">{user.role}</Badge>
                   </div>
@@ -257,17 +257,17 @@ export function UserManagement() {
       </CardContent>
 
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-        <DialogContent>
+        <DialogContent className="min-w-0">
           <DialogHeader>
-            <DialogTitle>Create user</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="break-words">Create user</DialogTitle>
+            <DialogDescription className="break-words">
               Add a new user to the system. They can sign in with the password you set here.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             {inviteError ? (
-              <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
                 {inviteError}
               </div>
             ) : null}
@@ -305,7 +305,7 @@ export function UserManagement() {
                   setInviteForm((current) => ({ ...current, password: event.target.value }))
                 }
               />
-              <p className="text-xs text-muted-foreground">Minimum 8 characters.</p>
+              <p className="break-words text-xs text-muted-foreground">Minimum 8 characters.</p>
             </div>
 
             <div className="space-y-2">
@@ -316,7 +316,7 @@ export function UserManagement() {
                   setInviteForm((current) => ({ ...current, role: value as NpUserRole }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="min-w-0">
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent>
@@ -346,18 +346,18 @@ export function UserManagement() {
       </Dialog>
 
       <Dialog open={emailInviteOpen} onOpenChange={setEmailInviteOpen}>
-        <DialogContent>
+        <DialogContent className="min-w-0">
           <DialogHeader>
-            <DialogTitle>Invite user</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="break-words">Invite user</DialogTitle>
+            <DialogDescription className="break-words">
               Send an email invitation. The user sets their own password via the link — valid for 7
               days.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             {emailInviteError ? (
-              <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
                 {emailInviteError}
               </div>
             ) : null}
@@ -393,7 +393,7 @@ export function UserManagement() {
                   setEmailInviteForm((current) => ({ ...current, role: value as NpUserRole }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="min-w-0">
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent>

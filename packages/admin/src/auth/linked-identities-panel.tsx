@@ -122,23 +122,23 @@ export function LinkedIdentitiesPanel({
   }
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
-        <CardTitle>Linked OAuth identities</CardTitle>
+        <CardTitle className="break-words">Linked OAuth identities</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
+      <CardContent className="min-w-0 space-y-4">
+        <p className="break-words text-sm text-muted-foreground">
           Provider accounts that resolve to this {subjectKind}. Revoking a link drops the durable
           mapping; the {subjectKind} can re-link by signing in via OAuth again.
         </p>
 
         {error ? (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {error}
           </div>
         ) : null}
         {message ? (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">
+          <div className="break-words rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">
             {message}
           </div>
         ) : null}
@@ -159,10 +159,10 @@ export function LinkedIdentitiesPanel({
                 className="space-y-3 rounded-xl border border-border/60 bg-background/70 p-4"
               >
                 <div className="grid gap-2">
-                  <Badge variant="secondary" className="font-mono">
+                  <Badge variant="secondary" className="max-w-full break-all font-mono">
                     {identity.provider}
                   </Badge>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="break-words text-xs text-muted-foreground">
                     {new Date(identity.createdAt).toLocaleString()}
                   </span>
                 </div>
@@ -217,15 +217,17 @@ export function LinkedIdentitiesPanel({
                 identities.map((identity) => (
                   <tr key={identity.id} className="border-t border-border/60 align-top">
                     <td className="px-4 py-3">
-                      <Badge variant="secondary" className="font-mono">
+                      <Badge variant="secondary" className="max-w-full break-all font-mono">
                         {identity.provider}
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="font-mono text-xs text-muted-foreground">
+                      <div className="break-all font-mono text-xs text-muted-foreground">
                         {identity.subject}
                       </div>
-                      {identity.email ? <div className="mt-1 text-xs">{identity.email}</div> : null}
+                      {identity.email ? (
+                        <div className="mt-1 break-all text-xs">{identity.email}</div>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {new Date(identity.createdAt).toLocaleString()}
@@ -252,10 +254,10 @@ export function LinkedIdentitiesPanel({
 
       {revoking ? (
         <Dialog open onOpenChange={(open) => !open && setRevoking(null)}>
-          <DialogContent>
+          <DialogContent className="min-w-0">
             <DialogHeader>
-              <DialogTitle>Revoke {revoking.provider} link?</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className="break-words">Revoke {revoking.provider} link?</DialogTitle>
+              <DialogDescription className="break-words">
                 This drops the durable provider link. The {subjectKind} can re-link by signing in
                 via {revoking.provider} again. Existing sessions are not affected.
               </DialogDescription>

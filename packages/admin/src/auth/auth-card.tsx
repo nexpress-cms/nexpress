@@ -43,39 +43,33 @@ interface AuthCardProps {
  * optional footer. Intentionally narrow (max-w-sm) — wider forms read
  * as marketing pages, not as auth.
  */
-export function AuthCard({
-  title,
-  description,
-  footer,
-  children,
-  className,
-}: AuthCardProps) {
+export function AuthCard({ title, description, footer, children, className }: AuthCardProps) {
   return (
     <div
       className={cn(
-        "w-full max-w-[380px] rounded-xl border border-neutral-200/70 bg-white px-7 pt-7 pb-5 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.12),0_8px_16px_-8px_rgba(0,0,0,0.06)] dark:border-neutral-800/70 dark:bg-neutral-950 dark:shadow-[0_20px_50px_-20px_rgba(0,0,0,0.5)]",
+        "min-w-0 w-full max-w-[380px] rounded-xl border border-neutral-200/70 bg-white px-7 pt-7 pb-5 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.12),0_8px_16px_-8px_rgba(0,0,0,0.06)] dark:border-neutral-800/70 dark:bg-neutral-950 dark:shadow-[0_20px_50px_-20px_rgba(0,0,0,0.5)]",
         className,
       )}
     >
-      <div className="mb-5 flex items-center gap-3">
+      <div className="mb-5 flex min-w-0 items-center gap-3">
         <NpMark size={28} />
-        <span className="text-[16px] font-semibold tracking-[-0.01em] text-neutral-950 dark:text-neutral-50">
+        <span className="min-w-0 break-words text-[16px] font-semibold tracking-[-0.01em] text-neutral-950 dark:text-neutral-50">
           NexPress
         </span>
       </div>
-      <h1 className="text-[22px] font-semibold leading-[1.15] tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
+      <h1 className="break-words text-[22px] font-semibold leading-[1.15] tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
         {title}
       </h1>
       {description ? (
-        <p className="mt-1 mb-5 text-[13.5px] leading-[1.5] text-neutral-500 dark:text-neutral-400">
+        <p className="mt-1 mb-5 break-words text-[13.5px] leading-[1.5] text-neutral-500 dark:text-neutral-400">
           {description}
         </p>
       ) : (
         <div className="mb-4" />
       )}
-      <div className="flex flex-col gap-3">{children}</div>
+      <div className="flex min-w-0 flex-col gap-3">{children}</div>
       {footer ? (
-        <div className="mt-5 flex items-center justify-between border-t border-neutral-200/70 pt-3.5 text-[12px] text-neutral-500 dark:border-neutral-800/70 dark:text-neutral-400">
+        <div className="mt-5 flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-neutral-200/70 pt-3.5 text-[12px] text-neutral-500 dark:border-neutral-800/70 dark:text-neutral-400">
           {footer}
         </div>
       ) : null}
@@ -91,9 +85,9 @@ export function AuthCard({
 export function AuthCardDefaultFooter() {
   return (
     <>
-      <span className="font-mono">v0.1.0 · pre-1.0</span>
-      <span className="inline-flex items-center gap-1">
-        <Lock className="size-3" />
+      <span className="break-words font-mono">v0.1.0 · pre-1.0</span>
+      <span className="inline-flex min-w-0 items-center gap-1">
+        <Lock className="size-3 shrink-0" />
         Argon2 + JWT
       </span>
     </>
@@ -110,9 +104,9 @@ interface AuthDividerProps {
  */
 export function AuthDivider({ children = "or" }: AuthDividerProps) {
   return (
-    <div className="flex items-center gap-2.5 my-1 text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+    <div className="my-1 flex min-w-0 items-center gap-2.5 text-[11px] uppercase tracking-[0.18em] text-neutral-400">
       <span aria-hidden className="h-px flex-1 bg-neutral-200 dark:bg-neutral-800" />
-      <span>{children}</span>
+      <span className="break-words">{children}</span>
       <span aria-hidden className="h-px flex-1 bg-neutral-200 dark:bg-neutral-800" />
     </div>
   );
