@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildDoctorFixPlan,
   buildDoctorJson,
   renderDoctorCheck,
   renderDoctorSummary,
@@ -48,6 +49,63 @@ describe("doctor output", () => {
       },
       checks,
     });
+  });
+
+  it("adds fix-plan actions only when requested", () => {
+    expect(buildDoctorJson({ prodMode: true, target: "vercel", checks })).not.toHaveProperty(
+      "fixPlan",
+    );
+
+    expect(
+      buildDoctorJson({ prodMode: true, target: "vercel", checks, includeFixPlan: true }),
+    ).toEqual(
+      expect.objectContaining({
+        fixPlan: [
+          expect.objectContaining({
+            id: "scheduler.generate_token",
+            checkIds: ["prod.scheduler_token"],
+            commands: ["openssl rand -hex 32"],
+          }),
+          expect.objectContaining({
+            id: "env.run_setup",
+            checkIds: ["env.database_url"],
+            commands: ["pnpm run setup"],
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("builds target-specific fix-plan actions for deployment checks", () => {
+    const fixPlan = buildDoctorFixPlan({
+      target: "vercel",
+      checks: [
+        {
+          id: "target.vercel.storage",
+          state: "error",
+          label: "Vercel storage",
+          detail: "NP_STORAGE_ADAPTER=local",
+        },
+        {
+          id: "target.vercel.jobs_worker",
+          state: "warn",
+          label: "Vercel jobs worker",
+        },
+      ],
+    });
+
+    expect(fixPlan).toEqual([
+      expect.objectContaining({
+        id: "storage.configure_target_durable_storage",
+        checkIds: ["target.vercel.storage"],
+        commands: ["pnpm run deploy:plan -- --target vercel --json", "pnpm run setup"],
+      }),
+      expect.objectContaining({
+        id: "jobs.add_target_worker_host",
+        checkIds: ["target.vercel.jobs_worker"],
+        commands: ["pnpm run deploy:plan -- --target vercel --json", "pnpm worker"],
+      }),
+    ]);
   });
 
   it("renders no-color check output for logs", () => {

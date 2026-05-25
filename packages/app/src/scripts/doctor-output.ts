@@ -1,4 +1,5 @@
 import type { DeployTarget } from "./deploy-targets.js";
+import { buildDoctorFixPlan, type DoctorFixPlanItem } from "./doctor-fix-plan.js";
 import type { CheckResult } from "./doctor-readiness.js";
 
 export interface DoctorSummary {
@@ -7,6 +8,8 @@ export interface DoctorSummary {
   warnings: number;
 }
 
+export { buildDoctorFixPlan, type DoctorFixPlanItem };
+
 export interface DoctorJsonOutput {
   schemaVersion: "np.doctor.v1";
   ok: boolean;
@@ -14,6 +17,7 @@ export interface DoctorJsonOutput {
   target: DeployTarget | null;
   summary: DoctorSummary;
   checks: CheckResult[];
+  fixPlan?: DoctorFixPlanItem[];
 }
 
 interface RenderOptions {
@@ -48,9 +52,10 @@ export function buildDoctorJson(args: {
   prodMode: boolean;
   target: DeployTarget | null;
   checks: CheckResult[];
+  includeFixPlan?: boolean;
 }): DoctorJsonOutput {
   const summary = summarizeChecks(args.checks);
-  return {
+  const report: DoctorJsonOutput = {
     schemaVersion: "np.doctor.v1",
     ok: summary.errors === 0,
     mode: args.prodMode ? "prod" : "dev",
@@ -58,6 +63,10 @@ export function buildDoctorJson(args: {
     summary,
     checks: args.checks,
   };
+  if (args.includeFixPlan) {
+    report.fixPlan = buildDoctorFixPlan({ checks: args.checks, target: args.target });
+  }
+  return report;
 }
 
 export function renderDoctorCheck(
