@@ -256,7 +256,7 @@ assertIncludes(
 );
 assertIncludes(
   doctorBriefFixPlan.output,
-  "command: pnpm run deploy:plan -- --target vercel --json",
+  "command: pnpm run deploy:plan -- --target vercel --brief --no-color",
   "doctor:prod --fix-plan",
 );
 console.log("✓ doctor:prod human fix-plan renders inside the scaffold journey");

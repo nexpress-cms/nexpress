@@ -106,12 +106,12 @@ describe("doctor output", () => {
       expect.objectContaining({
         id: "storage.configure_target_durable_storage",
         checkIds: ["target.vercel.storage"],
-        commands: ["pnpm run deploy:plan -- --target vercel --json", "pnpm run setup"],
+        commands: ["pnpm run deploy:plan -- --target vercel --brief --no-color", "pnpm run setup"],
       }),
       expect.objectContaining({
         id: "database.configure_target_postgres",
         checkIds: ["target.vercel.database_url"],
-        commands: ["pnpm run deploy:plan -- --target vercel --json", "pnpm run setup"],
+        commands: ["pnpm run deploy:plan -- --target vercel --brief --no-color", "pnpm run setup"],
         notes: expect.arrayContaining([
           "Set DATABASE_URL to the hosted provider's public or pooler connection string.",
         ]),
@@ -119,7 +119,7 @@ describe("doctor output", () => {
       expect.objectContaining({
         id: "jobs.add_target_worker_host",
         checkIds: ["target.vercel.jobs_worker"],
-        commands: ["pnpm run deploy:plan -- --target vercel --json", "pnpm worker"],
+        commands: ["pnpm run deploy:plan -- --target vercel --brief --no-color", "pnpm worker"],
       }),
     ]);
   });
@@ -160,7 +160,10 @@ describe("doctor output", () => {
             title: "Configure a hosted Postgres DATABASE_URL for the selected deployment target",
             risk: "medium",
             requiresApproval: true,
-            commands: ["pnpm run deploy:plan -- --target vercel --json", "pnpm run setup"],
+            commands: [
+              "pnpm run deploy:plan -- --target vercel --brief --no-color",
+              "pnpm run setup",
+            ],
             notes: [
               "Set DATABASE_URL to the hosted provider's public or pooler connection string.",
             ],
@@ -174,7 +177,7 @@ describe("doctor output", () => {
         "1. Configure a hosted Postgres DATABASE_URL for the selected deployment target",
         "   risk: medium; approval required",
         "   checks: target.vercel.database_url",
-        "   command: pnpm run deploy:plan -- --target vercel --json",
+        "   command: pnpm run deploy:plan -- --target vercel --brief --no-color",
         "   command: pnpm run setup",
         "   note: Set DATABASE_URL to the hosted provider's public or pooler connection string.",
       ].join("\n"),

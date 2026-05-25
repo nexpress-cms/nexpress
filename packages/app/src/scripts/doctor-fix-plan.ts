@@ -13,6 +13,10 @@ export interface DoctorFixPlanItem {
 
 type FixPlanTemplate = Omit<DoctorFixPlanItem, "checkIds">;
 
+function targetDeployPlanCommand(target: DeployTarget | null, fallback: DeployTarget): string {
+  return `pnpm run deploy:plan -- --target ${target ?? fallback} --brief --no-color`;
+}
+
 function mergeFixPlanItem(
   plan: DoctorFixPlanItem[],
   checkId: string,
@@ -155,10 +159,7 @@ function fixForCheck(result: CheckResult, target: DeployTarget | null): FixPlanT
           title: "Configure storage for the selected deployment target",
           risk: "medium",
           requiresApproval: true,
-          commands: [
-            `pnpm run deploy:plan -- --target ${target ?? "vercel"} --json`,
-            "pnpm run setup",
-          ],
+          commands: [targetDeployPlanCommand(target, "vercel"), "pnpm run setup"],
         };
       }
       if (result.id.startsWith("target.") && result.id.endsWith(".database_url")) {
@@ -167,10 +168,7 @@ function fixForCheck(result: CheckResult, target: DeployTarget | null): FixPlanT
           title: "Configure a hosted Postgres DATABASE_URL for the selected deployment target",
           risk: "medium",
           requiresApproval: true,
-          commands: [
-            `pnpm run deploy:plan -- --target ${target ?? "vercel"} --json`,
-            "pnpm run setup",
-          ],
+          commands: [targetDeployPlanCommand(target, "vercel"), "pnpm run setup"],
           notes: [
             "Set DATABASE_URL to the hosted provider's public or pooler connection string.",
             "Localhost, Docker-only hosts, and private LAN IPs work locally but are not reachable from hosted deploy runtimes.",
@@ -183,10 +181,7 @@ function fixForCheck(result: CheckResult, target: DeployTarget | null): FixPlanT
           title: "Add a worker runtime for the selected deployment target",
           risk: "medium",
           requiresApproval: true,
-          commands: [
-            `pnpm run deploy:plan -- --target ${target ?? "docker"} --json`,
-            "pnpm worker",
-          ],
+          commands: [targetDeployPlanCommand(target, "docker"), "pnpm worker"],
         };
       }
       return null;
