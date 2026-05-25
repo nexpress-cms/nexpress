@@ -205,15 +205,16 @@ export function PendingQueueView() {
       ) : null}
 
       {selected.size > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-muted/40 px-4 py-3 text-sm">
+        <div className="grid gap-3 rounded-xl border border-border/60 bg-muted/40 px-4 py-3 text-sm sm:flex sm:items-center sm:justify-between">
           <span>
             <strong>{selected.size}</strong> selected
           </span>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
             <Button
               type="button"
               variant="outline"
               size="sm"
+              className="w-full sm:w-auto"
               onClick={() => void runBulk("approve")}
               disabled={bulkBusy !== null}
             >
@@ -223,7 +224,7 @@ export function PendingQueueView() {
               type="button"
               variant="outline"
               size="sm"
-              className="text-destructive hover:text-destructive"
+              className="w-full text-destructive hover:text-destructive sm:w-auto"
               onClick={() => void runBulk("reject")}
               disabled={bulkBusy !== null}
             >
@@ -233,6 +234,7 @@ export function PendingQueueView() {
               type="button"
               variant="ghost"
               size="sm"
+              className="col-span-2 w-full sm:col-span-1 sm:w-auto"
               onClick={() => setSelected(new Set())}
               disabled={bulkBusy !== null}
             >
@@ -247,7 +249,104 @@ export function PendingQueueView() {
           <CardTitle>Queue</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto rounded-xl border border-border/60">
+          <div className="space-y-3 md:hidden">
+            {loading ? (
+              <div className="rounded-xl border border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">
+                Loading…
+              </div>
+            ) : rows.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">
+                Nothing pending review.
+              </div>
+            ) : (
+              rows.map((row) => (
+                <div
+                  key={rowKey(row)}
+                  className="space-y-3 rounded-xl border border-border/60 bg-background/70 p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${row.title}`}
+                      checked={selected.has(rowKey(row))}
+                      onChange={() => toggleOne(row)}
+                      disabled={bulkBusy !== null}
+                      className="mt-1"
+                    />
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <Link
+                        href={`/admin/collections/${row.collectionSlug}/${row.id}`}
+                        className="block truncate font-medium underline-offset-4 hover:underline"
+                      >
+                        {row.title}
+                      </Link>
+                      {row.slug ? (
+                        <p className="break-all font-mono text-xs text-muted-foreground">
+                          /{row.slug}
+                        </p>
+                      ) : null}
+                    </div>
+                    <Badge variant="secondary" className="max-w-[7rem] shrink-0 truncate font-mono">
+                      {row.collectionSlug}
+                    </Badge>
+                  </div>
+                  <dl className="grid gap-2 text-sm">
+                    <div className="grid gap-0.5">
+                      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Author
+                      </dt>
+                      <dd>
+                        {row.memberAuthor ? (
+                          <>
+                            <Link
+                              href={`/admin/members/${row.memberAuthor.id}`}
+                              className="font-medium underline-offset-4 hover:underline"
+                            >
+                              @{row.memberAuthor.handle}
+                            </Link>
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              {row.memberAuthor.displayName}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground italic">deleted member</span>
+                        )}
+                      </dd>
+                    </div>
+                    <div className="grid gap-0.5">
+                      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Submitted
+                      </dt>
+                      <dd className="text-muted-foreground">
+                        {new Date(row.createdAt).toLocaleString()}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActingOn({ row, verb: "approve" })}
+                      disabled={submitting}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setActingOn({ row, verb: "reject" })}
+                      disabled={submitting}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="hidden overflow-x-auto rounded-xl border border-border/60 md:block">
             <table className="w-full min-w-[760px] text-sm">
               <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
                 <tr>
