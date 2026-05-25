@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/auth-pages",
-  "version": "0.3.10",
+  "version": "0.3.11",
   "description": "Server route factories + headless React hooks for member auth pages — login, register, password reset, verify, OAuth.",
   "license": "MIT",
   "author": "Nexpress",

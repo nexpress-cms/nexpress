@@ -1,5 +1,58 @@
 # @nexpress/app
 
+## 0.3.11
+
+### Patch Changes
+
+- dc7ef85: Make deploy-plan diagnostics point to compact no-color doctor fix-plan output.
+- 91a9f93: Show the doctor fix-plan command from deploy plans when deployment readiness is blocked.
+- a23c820: Document `deploy:plan --help` output for brief, no-color, and help modes, and cover it in the fresh scaffold smoke.
+- b21157a: Add JSON, brief, no-color, and dry-run output options to `deploy:plan` for agent-operated deployment workflows, and silence dotenv loader noise in script output.
+- 1f06de0: Include `db:migrate -- --status` in deploy plans before applying migrations so operators can inspect pending work first.
+- 1288812: Tighten the scaffolded Vercel deploy checklist and production readiness guidance.
+- b7328fa: Add `--brief` support to `doctor` so human logs can show compact one-line-per-check readiness output.
+- 24e92e7: Add stable `id` fields to `doctor --json` checks so agents and CI can key off machine-safe identifiers instead of human labels.
+- 644b9ab: Add `--fix-plan` support to `doctor --json` so failed readiness checks can include stable, command-oriented next actions for CI and agent workflows.
+- 4757675: Add `doctor --help` output that documents production, JSON, fix-plan, brief, target, and no-color modes.
+- 8c5e6ca: Add hosted deployment database URL guidance to the doctor fix plan.
+- 16cd6a5: Make `doctor:prod` fail hosted deploy targets that still use localhost-style database URLs.
+- 8f01038: Render doctor fix plans in human-readable output and point scaffold docs at the shorter command.
+- 8b712c2: Add stable JSON and no-color output support to `doctor` / `doctor:prod` for agent-operated readiness gates.
+- c702157: Have `doctor` inspect pending, drifted, and unknown applied migrations through the shared read-only migration status logic.
+- 64546d4: Make target-specific doctor fix-plan commands point operators at the human deploy-plan output.
+- a466171: Add `db:migrate -- --help` output and fail before connecting to the database when no local Drizzle migrations exist.
+- 9566192: Add `db:migrate -- --status` / `--plan` read-only migration status output with stable JSON for agent-operated deploy checks.
+- 0a77c09: Make `NP_SETUP_CREATE_ADMIN=true` fail non-interactive setup validation when admin credentials are missing.
+- 5b87b84: Surface the deploy readiness command from the setup wizard completion screen.
+- ee15964: Keep setup wizard progress aligned with the actual task that failed.
+- b494603: Improve setup wizard error output readability for multi-line migration and first-boot failures.
+- e2594cc: Check migration status during setup before applying migrations and surface the status step in the setup wizard.
+- 15dd758: Show skipped optional first-boot tasks separately in the setup wizard progress list.
+- Updated dependencies [ba836ea]
+  - @nexpress/theme-docs@0.3.11
+  - @nexpress/admin@0.3.11
+  - @nexpress/auth-pages@0.3.11
+  - @nexpress/blocks@0.3.11
+  - @nexpress/core@0.3.11
+  - @nexpress/editor@0.3.11
+  - @nexpress/next@0.3.11
+  - @nexpress/plugin-block-callout@0.3.11
+  - @nexpress/plugin-block-embed@0.3.11
+  - @nexpress/plugin-block-latest-posts@0.3.11
+  - @nexpress/plugin-block-newsletter@0.3.11
+  - @nexpress/plugin-block-pricing@0.3.11
+  - @nexpress/plugin-block-stats@0.3.11
+  - @nexpress/plugin-forum@0.3.11
+  - @nexpress/plugin-oauth-github@0.3.11
+  - @nexpress/plugin-oauth-google@0.3.11
+  - @nexpress/plugin-reading-time@0.3.11
+  - @nexpress/plugin-sdk@0.3.11
+  - @nexpress/plugin-seo-audit@0.3.11
+  - @nexpress/theme@0.3.11
+  - @nexpress/theme-default@0.3.11
+  - @nexpress/theme-magazine@0.3.11
+  - @nexpress/theme-portfolio@0.3.11
+
 ## 0.3.10
 
 ### Patch Changes
