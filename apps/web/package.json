@@ -27,7 +27,7 @@
     "wp-import": "tsx scripts/wp-import.ts",
     "xliff": "tsx scripts/xliff.ts",
     "db:generate": "pnpm schema:gen && drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "tsx scripts/run-migrations.ts",
     "db:push": "pnpm schema:gen && drizzle-kit push",
     "db:studio": "drizzle-kit studio"
   },
