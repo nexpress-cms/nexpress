@@ -2,23 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { NpThemeTokens } from "@nexpress/core";
-import {
-  Download,
-  Palette,
-  RotateCcw,
-  Save,
-  Square,
-  Type,
-  Upload,
-} from "lucide-react";
+import { Download, Palette, RotateCcw, Save, Square, Type, Upload } from "lucide-react";
 
 import { Button } from "../ui/button.js";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../ui/card.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { npFetch } from "../lib/api-client.js";
@@ -210,8 +197,8 @@ export function ThemeEditor() {
 
   if (loading) {
     return (
-      <div className="grid gap-6 xl:grid-cols-[1.25fr_0.85fr]">
-        <div className="space-y-4">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[1.25fr_0.85fr]">
+        <div className="min-w-0 space-y-4">
           {Array.from({ length: 3 }).map((_, index) => (
             <div
               key={`theme-skeleton-${index}`}
@@ -225,8 +212,8 @@ export function ThemeEditor() {
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[1.25fr_0.85fr]">
-      <div className="space-y-6">
+    <div className="grid min-w-0 gap-6 xl:grid-cols-[1.25fr_0.85fr]">
+      <div className="min-w-0 space-y-6">
         {error ? (
           <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {error}
@@ -250,7 +237,7 @@ export function ThemeEditor() {
             {colorFields.map(({ key, label }) => (
               <div key={key} className="space-y-2">
                 <Label htmlFor={`theme-color-${key}`}>{label}</Label>
-                <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-background/60 p-3">
+                <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-xl border border-border/70 bg-background/60 p-3">
                   <input
                     id={`theme-color-${key}`}
                     type="color"
@@ -333,7 +320,7 @@ export function ThemeEditor() {
               ))}
             </div>
 
-            <div className="flex flex-wrap justify-end gap-3">
+            <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:justify-end sm:gap-3">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -352,19 +339,28 @@ export function ThemeEditor() {
               <Button
                 variant="outline"
                 onClick={() => fileInputRef.current?.click()}
+                className="w-full sm:w-auto"
               >
                 <Upload className="size-3.5" />
                 Import JSON
               </Button>
-              <Button variant="outline" onClick={exportTheme}>
+              <Button variant="outline" onClick={exportTheme} className="w-full sm:w-auto">
                 <Download className="size-3.5" />
                 Export JSON
               </Button>
-              <Button variant="outline" onClick={() => setTheme(defaultTheme)}>
+              <Button
+                variant="outline"
+                onClick={() => setTheme(defaultTheme)}
+                className="w-full sm:w-auto"
+              >
                 <RotateCcw className="size-3.5" />
                 Reset to Defaults
               </Button>
-              <Button onClick={() => void saveTheme()} disabled={saving}>
+              <Button
+                onClick={() => void saveTheme()}
+                disabled={saving}
+                className="w-full sm:w-auto"
+              >
                 <Save className="size-3.5" />
                 {saving ? "Saving..." : "Save Theme"}
               </Button>
@@ -373,7 +369,7 @@ export function ThemeEditor() {
         </Card>
       </div>
 
-      <Card className="sticky top-6 h-fit">
+      <Card className="min-w-0 xl:sticky xl:top-6 xl:h-fit">
         <CardHeader>
           <CardTitle>Live preview</CardTitle>
         </CardHeader>
@@ -418,7 +414,8 @@ export function ThemeEditor() {
                   lineHeight: theme.typography.lineHeight,
                 }}
               >
-                Preview how the palette, type ramp, and surfaces feel together before shipping changes live.
+                Preview how the palette, type ramp, and surfaces feel together before shipping
+                changes live.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -431,7 +428,10 @@ export function ThemeEditor() {
                   borderRadius: theme.shape.radiusMd,
                 }}
               >
-                <div className="mb-3 h-2 w-20 rounded-full" style={{ backgroundColor: theme.colors.accent }} />
+                <div
+                  className="mb-3 h-2 w-20 rounded-full"
+                  style={{ backgroundColor: theme.colors.accent }}
+                />
                 <p className="font-medium">Content card</p>
                 <p className="mt-1 text-sm opacity-80">Quiet surfaces with strong hierarchy.</p>
               </div>

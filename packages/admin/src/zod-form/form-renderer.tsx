@@ -8,13 +8,7 @@ import { Button } from "../ui/button.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Textarea } from "../ui/textarea.js";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select.js";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 import { Switch } from "../ui/switch.js";
 
 export type ZodFormValue = Record<string, unknown>;
@@ -75,7 +69,7 @@ export function ZodForm({ fields, initialValue, onChange }: ZodFormProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {fields.map((field) => (
         <FieldDispatch
           key={field.name}
@@ -133,8 +127,10 @@ function FieldShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1.5">
-      <Label htmlFor={name}>{description ?? name}</Label>
+    <div className="min-w-0 space-y-1.5">
+      <Label htmlFor={name} className="break-words">
+        {description ?? name}
+      </Label>
       {children}
     </div>
   );
@@ -220,7 +216,7 @@ function ColorField({ field, value, onChange }: FieldProps) {
   const v = typeof value === "string" ? value : "#000000";
   return (
     <FieldShell name={field.name} description={field.description ?? field.name}>
-      <div className="flex items-center gap-2">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
         <Input
           id={field.name}
           type="color"
@@ -232,7 +228,7 @@ function ColorField({ field, value, onChange }: FieldProps) {
           type="text"
           value={typeof value === "string" ? value : ""}
           onChange={(e) => onChange(commitText(e.target.value, field.required))}
-          className="font-mono text-xs"
+          className="min-w-0 font-mono text-xs"
           placeholder={field.required ? "#000000" : "(none)"}
         />
       </div>
@@ -262,15 +258,11 @@ function NumberField({ field, value, onChange }: FieldProps) {
 
 function BooleanField({ field, value, onChange }: FieldProps) {
   return (
-    <div className="flex items-center justify-between rounded-md border border-border/60 bg-background/40 px-3 py-2">
-      <Label htmlFor={field.name} className="cursor-pointer">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border/60 bg-background/40 px-3 py-2">
+      <Label htmlFor={field.name} className="min-w-0 cursor-pointer break-words">
         {field.description ?? field.name}
       </Label>
-      <Switch
-        id={field.name}
-        checked={value === true}
-        onCheckedChange={onChange}
-      />
+      <Switch id={field.name} checked={value === true} onCheckedChange={onChange} />
     </div>
   );
 }
@@ -279,11 +271,8 @@ function EnumField({ field, value, onChange }: FieldProps) {
   const f = field as Extract<NpThemeSettingsField, { type: "enum" }>;
   return (
     <FieldShell name={field.name} description={field.description ?? field.name}>
-      <Select
-        value={typeof value === "string" ? value : undefined}
-        onValueChange={onChange}
-      >
-        <SelectTrigger id={field.name}>
+      <Select value={typeof value === "string" ? value : undefined} onValueChange={onChange}>
+        <SelectTrigger id={field.name} className="min-w-0">
           <SelectValue placeholder="Select…" />
         </SelectTrigger>
         <SelectContent>
@@ -300,13 +289,10 @@ function EnumField({ field, value, onChange }: FieldProps) {
 
 function ObjectField({ field, value, onChange }: FieldProps) {
   const f = field as Extract<NpThemeSettingsField, { type: "object" }>;
-  const v = (value && typeof value === "object" ? value : {}) as Record<
-    string,
-    unknown
-  >;
+  const v = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   return (
-    <fieldset className="rounded-lg border border-border/60 bg-background/30 p-3">
-      <legend className="px-1 text-xs font-medium text-muted-foreground">
+    <fieldset className="min-w-0 rounded-lg border border-border/60 bg-background/30 p-3">
+      <legend className="max-w-full break-words px-1 text-xs font-medium text-muted-foreground">
         {field.description ?? field.name}
       </legend>
       <div className="space-y-3">
@@ -338,21 +324,16 @@ function ArrayField({ field, value, onChange }: FieldProps) {
   return (
     <FieldShell name={field.name} description={field.description ?? field.name}>
       <div className="space-y-2">
-        {items.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No items.</p>
-        ) : null}
+        {items.length === 0 ? <p className="text-xs text-muted-foreground">No items.</p> : null}
         {items.map((item, idx) => {
-          const itemV = (item && typeof item === "object" ? item : {}) as Record<
-            string,
-            unknown
-          >;
+          const itemV = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
           return (
             <div
               key={idx}
-              className="space-y-2 rounded-md border border-border/60 bg-background/30 p-3"
+              className="min-w-0 space-y-2 rounded-md border border-border/60 bg-background/30 p-3"
             >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                <span className="min-w-0 break-words text-xs font-medium text-muted-foreground">
                   Item {idx + 1}
                 </span>
                 <Button
@@ -388,6 +369,7 @@ function ArrayField({ field, value, onChange }: FieldProps) {
           variant="outline"
           size="sm"
           onClick={() => onChange([...items, emptyItem()])}
+          className="w-full sm:w-auto"
         >
           <Plus className="mr-1 h-3 w-3" />
           Add item
@@ -452,7 +434,7 @@ function UnsupportedField({ field, value, onChange }: FieldProps) {
   return (
     <FieldShell name={field.name} description={field.description ?? field.name}>
       <textarea
-        className="font-mono text-xs h-24 w-full rounded-md border border-border/60 bg-background/40 p-2"
+        className="h-24 w-full min-w-0 rounded-md border border-border/60 bg-background/40 p-2 font-mono text-xs"
         value={
           value === undefined
             ? ""
@@ -469,8 +451,8 @@ function UnsupportedField({ field, value, onChange }: FieldProps) {
         }}
       />
       <p className="text-[11px] text-muted-foreground">
-        Field type <code>{f.zodTypeName}</code> doesn't have a dedicated editor
-        in v0.2 — edit as JSON.
+        Field type <code className="break-all">{f.zodTypeName}</code> doesn't have a dedicated
+        editor in v0.2 — edit as JSON.
       </p>
     </FieldShell>
   );
