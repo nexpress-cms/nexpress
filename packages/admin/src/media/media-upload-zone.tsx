@@ -93,7 +93,7 @@ export function MediaUploadZone({ folderId, onUploadComplete, onClose }: MediaUp
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div
         className={cn(
           "rounded-xl border border-dashed px-6 py-12 text-center transition-colors",
@@ -103,13 +103,15 @@ export function MediaUploadZone({ folderId, onUploadComplete, onClose }: MediaUp
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <div className="mx-auto flex max-w-md flex-col items-center gap-4">
+        <div className="mx-auto flex min-w-0 max-w-md flex-col items-center gap-4">
           <div className="rounded-full border border-border/70 bg-background p-4 text-muted-foreground">
             <Upload className="h-6 w-6" />
           </div>
-          <div className="space-y-2">
-            <h3 className="text-lg font-semibold text-foreground">Drop files to upload</h3>
-            <p className="text-sm text-muted-foreground">
+          <div className="min-w-0 space-y-2">
+            <h3 className="break-words text-lg font-semibold text-foreground">
+              Drop files to upload
+            </h3>
+            <p className="break-words text-sm text-muted-foreground">
               Drag images, videos, or documents here, or choose files from your device.
             </p>
           </div>
@@ -120,18 +122,18 @@ export function MediaUploadZone({ folderId, onUploadComplete, onClose }: MediaUp
             className="hidden"
             onChange={handleInputChange}
           />
-          <Button onClick={() => inputRef.current?.click()}>
+          <Button className="w-full sm:w-auto" onClick={() => inputRef.current?.click()}>
             <Upload className="size-3.5" />
             Choose files
           </Button>
         </div>
       </div>
 
-      <div className="space-y-3">
-        <div className="grid gap-3 sm:flex sm:items-center sm:justify-between">
+      <div className="min-w-0 space-y-3">
+        <div className="grid min-w-0 gap-3 sm:flex sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <h4 className="font-medium text-foreground">Upload queue</h4>
-            <p className="text-sm text-muted-foreground">
+            <h4 className="break-words font-medium text-foreground">Upload queue</h4>
+            <p className="break-words text-sm text-muted-foreground">
               Progress updates appear here while files are processing.
             </p>
           </div>
@@ -146,20 +148,20 @@ export function MediaUploadZone({ folderId, onUploadComplete, onClose }: MediaUp
         </div>
 
         {uploads.length === 0 ? (
-          <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
+          <div className="break-words rounded-xl border border-border/70 bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
             No uploads started yet.
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             {uploads.map((upload) => (
               <div
                 key={upload.id}
-                className="rounded-xl border border-border/70 bg-background/70 p-4"
+                className="min-w-0 rounded-xl border border-border/70 bg-background/70 p-4"
               >
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                   <div className="min-w-0">
-                    <p className="truncate font-medium text-foreground">{upload.name}</p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="break-words font-medium text-foreground">{upload.name}</p>
+                    <p className="break-words text-sm text-muted-foreground">
                       {upload.status === "error"
                         ? (upload.error ?? "Upload failed")
                         : upload.status === "success"
@@ -167,7 +169,7 @@ export function MediaUploadZone({ folderId, onUploadComplete, onClose }: MediaUp
                           : `${upload.progress}% uploaded`}
                     </p>
                   </div>
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full border border-border/70 bg-muted/30 text-muted-foreground">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/70 bg-muted/30 text-muted-foreground">
                     {upload.status === "uploading" ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : upload.status === "success" ? (
