@@ -422,87 +422,6 @@ export function CollectionListView({
               </div>
             ) : null}
 
-            {docs.length === 0 ? (
-              <div className="rounded-xl border border-border/60 px-4 py-10 text-center text-muted-foreground md:hidden">
-                No documents found.
-              </div>
-            ) : (
-              <div className="grid gap-2 md:hidden">
-                {docs.map((doc, index) => {
-                  const href = `/admin/collections/${config.slug}/${String(doc.id ?? "")}`;
-                  const docIdStr = doc.id !== undefined && doc.id !== null ? String(doc.id) : null;
-                  const isSelected = docIdStr ? selectedIds.has(docIdStr) : false;
-                  const titleColumn = columns[0];
-                  const title = titleColumn ? formatCellValue(doc[titleColumn]) : "Untitled";
-                  const detailColumns = columns.slice(1, 4);
-
-                  return (
-                    <article
-                      key={String(doc.id ?? index)}
-                      className={cn(
-                        "rounded-xl border border-border/60 bg-card px-3.5 py-3 shadow-sm",
-                        isSelected &&
-                          "border-[var(--np-color-brand)]/50 bg-[var(--np-color-brand)]/5",
-                      )}
-                    >
-                      <div className="flex items-start gap-3">
-                        <input
-                          data-row-checkbox="1"
-                          type="checkbox"
-                          aria-label={`Select row ${docIdStr ?? index}`}
-                          checked={isSelected}
-                          onChange={() => {
-                            if (docIdStr) toggleOne(docIdStr);
-                          }}
-                          disabled={!docIdStr}
-                          className="mt-1 shrink-0"
-                        />
-                        <div className="min-w-0 flex-1">
-                          {doc.id !== undefined && doc.id !== null ? (
-                            <Link
-                              href={href}
-                              className="block text-[13.5px] font-medium leading-5 text-foreground underline-offset-4 hover:underline"
-                            >
-                              {title}
-                            </Link>
-                          ) : (
-                            <p className="text-[13.5px] font-medium leading-5 text-foreground">
-                              {title}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      {detailColumns.length > 0 ? (
-                        <dl className="mt-3 grid gap-2 border-t border-border/60 pt-3 text-[12px]">
-                          {detailColumns.map((column) => {
-                            const rawValue = doc[column];
-                            const isStatus = column === "status" && typeof rawValue === "string";
-                            return (
-                              <div key={column} className="flex items-start justify-between gap-3">
-                                <dt className="shrink-0 capitalize text-muted-foreground">
-                                  {column}
-                                </dt>
-                                <dd className="min-w-0 text-right text-foreground">
-                                  {isStatus ? (
-                                    <StatusBadge status={rawValue} />
-                                  ) : (
-                                    <span className="break-words text-muted-foreground">
-                                      {formatCellValue(rawValue)}
-                                    </span>
-                                  )}
-                                </dd>
-                              </div>
-                            );
-                          })}
-                        </dl>
-                      ) : null}
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-
             <div className="hidden overflow-hidden rounded-xl border border-border/60 md:block">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[720px] text-sm">
@@ -604,6 +523,87 @@ export function CollectionListView({
                 </table>
               </div>
             </div>
+
+            {docs.length === 0 ? (
+              <div className="rounded-xl border border-border/60 px-4 py-10 text-center text-muted-foreground md:hidden">
+                No documents found.
+              </div>
+            ) : (
+              <div className="grid gap-2 md:hidden">
+                {docs.map((doc, index) => {
+                  const href = `/admin/collections/${config.slug}/${String(doc.id ?? "")}`;
+                  const docIdStr = doc.id !== undefined && doc.id !== null ? String(doc.id) : null;
+                  const isSelected = docIdStr ? selectedIds.has(docIdStr) : false;
+                  const titleColumn = columns[0];
+                  const title = titleColumn ? formatCellValue(doc[titleColumn]) : "Untitled";
+                  const detailColumns = columns.slice(1, 4);
+
+                  return (
+                    <article
+                      key={String(doc.id ?? index)}
+                      className={cn(
+                        "rounded-xl border border-border/60 bg-card px-3.5 py-3 shadow-sm",
+                        isSelected &&
+                          "border-[var(--np-color-brand)]/50 bg-[var(--np-color-brand)]/5",
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <input
+                          data-row-checkbox="1"
+                          type="checkbox"
+                          aria-label={`Select row ${docIdStr ?? index}`}
+                          checked={isSelected}
+                          onChange={() => {
+                            if (docIdStr) toggleOne(docIdStr);
+                          }}
+                          disabled={!docIdStr}
+                          className="mt-1 shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          {doc.id !== undefined && doc.id !== null ? (
+                            <Link
+                              href={href}
+                              className="block text-[13.5px] font-medium leading-5 text-foreground underline-offset-4 hover:underline"
+                            >
+                              {title}
+                            </Link>
+                          ) : (
+                            <p className="text-[13.5px] font-medium leading-5 text-foreground">
+                              {title}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {detailColumns.length > 0 ? (
+                        <dl className="mt-3 grid gap-2 border-t border-border/60 pt-3 text-[12px]">
+                          {detailColumns.map((column) => {
+                            const rawValue = doc[column];
+                            const isStatus = column === "status" && typeof rawValue === "string";
+                            return (
+                              <div key={column} className="flex items-start justify-between gap-3">
+                                <dt className="shrink-0 capitalize text-muted-foreground">
+                                  {column}
+                                </dt>
+                                <dd className="min-w-0 text-right text-foreground">
+                                  {isStatus ? (
+                                    <StatusBadge status={rawValue} />
+                                  ) : (
+                                    <span className="break-words text-muted-foreground">
+                                      {formatCellValue(rawValue)}
+                                    </span>
+                                  )}
+                                </dd>
+                              </div>
+                            );
+                          })}
+                        </dl>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="flex flex-col gap-3 border-t border-neutral-100 pt-3.5 dark:border-neutral-900 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-[12.5px] tabular-nums text-neutral-500 dark:text-neutral-400">
