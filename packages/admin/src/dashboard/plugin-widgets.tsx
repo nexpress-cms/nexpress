@@ -37,11 +37,11 @@ export function DashboardPluginWidgets({ widgets }: DashboardPluginWidgetsProps)
   if (widgets.length === 0) return null;
 
   return (
-    <div>
-      <h2 className="mb-3 text-[13px] font-semibold tracking-[-0.005em] text-neutral-950 dark:text-neutral-50">
+    <div className="min-w-0">
+      <h2 className="mb-3 break-words text-[13px] font-semibold tracking-[-0.005em] text-neutral-950 dark:text-neutral-50">
         Plugin widgets
       </h2>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {widgets.map((widget) => (
           <PluginWidgetCard key={`${widget.pluginId}:${widget.id}`} widget={widget} />
         ))}
@@ -93,39 +93,47 @@ function PluginWidgetCard({ widget }: { widget: DashboardPluginWidget }) {
   }, [load]);
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader className="border-b-0 pb-0">
-        <CardTitle className="text-[12px] font-medium text-neutral-500 dark:text-neutral-400">
+        <CardTitle className="break-words text-[12px] font-medium text-neutral-500 dark:text-neutral-400">
           {widget.label}
         </CardTitle>
-        <p className="font-mono text-[11px] text-neutral-400">{widget.pluginName}</p>
+        <p className="break-all font-mono text-[11px] text-neutral-400">{widget.pluginName}</p>
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-w-0">
         {state.kind === "loading" ? (
           <Loader2 className="size-4 animate-spin text-neutral-400" />
         ) : state.kind === "metric" ? (
-          <div>
-            <div className="text-[22px] font-semibold tracking-[-0.02em] tabular-nums text-neutral-950 dark:text-neutral-50">{state.value}</div>
+          <div className="min-w-0">
+            <div className="break-words text-[22px] font-semibold tracking-[-0.02em] tabular-nums text-neutral-950 dark:text-neutral-50">
+              {state.value}
+            </div>
             {state.delta ? (
-              <div className="mt-0.5 text-[12px] text-neutral-500 dark:text-neutral-400">{state.delta}</div>
+              <div className="mt-0.5 break-words text-[12px] text-neutral-500 dark:text-neutral-400">
+                {state.delta}
+              </div>
             ) : null}
           </div>
         ) : state.kind === "status" ? (
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             {state.level === "ok" ? (
-              <CheckCircle2 className="size-4 text-emerald-500" />
+              <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
             ) : state.level === "warn" ? (
-              <AlertTriangle className="size-4 text-amber-500" />
+              <AlertTriangle className="size-4 shrink-0 text-amber-500" />
             ) : (
-              <AlertTriangle className="size-4 text-red-600" />
+              <AlertTriangle className="size-4 shrink-0 text-red-600" />
             )}
-            <span className="text-[13px]">{state.message}</span>
+            <span className="min-w-0 break-words text-[13px]">{state.message}</span>
           </div>
         ) : (
-          <div className="text-[12px] text-red-600 dark:text-red-300">{state.message}</div>
+          <div className="break-words text-[12px] text-red-600 dark:text-red-300">
+            {state.message}
+          </div>
         )}
         {widget.description ? (
-          <p className="mt-2 text-[11.5px] text-neutral-500 dark:text-neutral-400">{widget.description}</p>
+          <p className="mt-2 break-words text-[11.5px] text-neutral-500 dark:text-neutral-400">
+            {widget.description}
+          </p>
         ) : null}
       </CardContent>
     </Card>
