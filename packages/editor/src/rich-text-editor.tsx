@@ -85,7 +85,7 @@ export function NpRichTextEditor({ value, onChange, config }: NpRichTextEditorPr
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
-      <div className="np-rich-text-editor overflow-hidden rounded-md border border-border/60 bg-background focus-within:ring-2 focus-within:ring-primary/30">
+      <div className="np-rich-text-editor min-w-0 max-w-full overflow-hidden rounded-md border border-border/60 bg-background focus-within:ring-2 focus-within:ring-primary/30">
         <ToolbarPlugin onUploadImage={config?.onUploadImage} />
         {/* `relative` wraps the contentEditable so the placeholder
             (positioned absolutely by Lexical's RichTextPlugin) sits
