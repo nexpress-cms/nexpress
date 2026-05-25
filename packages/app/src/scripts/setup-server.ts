@@ -105,6 +105,7 @@ interface SetupStepResult {
   output: string;
   failedTask?: SetupTaskId;
   skipped?: boolean;
+  skippedTasks?: SetupTaskId[];
 }
 
 const FALLBACK_FORM_DEFAULTS: FormDefaults = {
@@ -833,7 +834,12 @@ async function runMigrations(body: SetupBody): Promise<SetupStepResult> {
 
 async function completeFirstBoot(body: SetupBody): Promise<SetupStepResult> {
   if (!body.adminEmail || !body.adminPassword) {
-    return { ok: true, skipped: true, output: "First admin skipped" };
+    return {
+      ok: true,
+      skipped: true,
+      skippedTasks: ["admin", "theme", "seed"],
+      output: "First admin skipped",
+    };
   }
 
   const env = { ...process.env, ...envForChild(body) };
@@ -977,9 +983,14 @@ async function completeFirstBoot(body: SetupBody): Promise<SetupStepResult> {
       if (!seed.ok) return { ...seed, failedTask: "seed" };
     }
 
+    const skippedTasks: SetupTaskId[] = [];
+    if (!body.adminThemeId) skippedTasks.push("theme");
+    if (!body.sampleContent) skippedTasks.push("seed");
+
     return {
       ok: true,
       output: existingAdmin ? "First admin already exists" : "First admin ready",
+      ...(skippedTasks.length > 0 ? { skippedTasks } : {}),
     };
   } catch (err) {
     return {
@@ -1505,6 +1516,8 @@ function renderHtml(defaults: FormDefaults): string {
   .task-icon { width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; border:1px dashed #d8d8d6; font-size:11px; }
   .task-row[data-state="done"] .task-icon { background:var(--nx-success); color:#fff; border-color:var(--nx-success); }
   .task-row[data-state="error"] .task-icon { background:var(--nx-danger); color:#fff; border-color:var(--nx-danger); }
+  .task-row[data-state="skipped"] .task-icon { background:#f5f5f4; color:var(--nx-neutral-500); border-color:#d8d8d6; border-style:solid; }
+  .task-row[data-state="skipped"] .row-name, .task-row[data-state="skipped"] .row-sub { color:var(--nx-neutral-500); }
   .task-row[data-state="running"] .task-icon { border:2px solid #d8d8d6; border-top-color:var(--nx-brand); animation:spin 700ms linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
   .log { height:200px; overflow:auto; background:#0f0f0e; border:1px solid #1d1d1c; border-radius:10px; padding:12px 14px; font:11.5px/1.65 var(--nx-mono); color:#d6d6d4; }
@@ -1732,6 +1745,7 @@ function renderHtml(defaults: FormDefaults): string {
   let taskTimer = null;
   let taskCursor = 0;
   let lastResult = null;
+  let skippedTaskIds = new Set();
 
   function esc(s) {
     return String(s ?? "").replace(/[&<>"]/g, (ch) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[ch]));
@@ -1889,22 +1903,32 @@ function renderHtml(defaults: FormDefaults): string {
     $("runLog").scrollTop = $("runLog").scrollHeight;
   }
   function taskState(i) {
-    if (runState === "success") return "done";
+    const taskId = TASKS[i][0];
+    if (runState === "success") return skippedTaskIds.has(taskId) ? "skipped" : "done";
     if (runState === "error") return i < taskCursor ? "done" : i === taskCursor ? "error" : "pending";
     if (runState === "running") return i < taskCursor ? "done" : i === taskCursor ? "running" : "pending";
     return "pending";
   }
+  function taskTimeLabel(state) {
+    if (state === "pending") return "-";
+    if (state === "running") return "...";
+    if (state === "skipped") return "skip";
+    if (state === "error") return "fail";
+    return "ok";
+  }
   function renderTasks() {
+    const skipped = runState === "success" ? skippedTaskIds.size : 0;
+    const complete = TASKS.length - skipped;
     const done = runState === "success" ? TASKS.length : taskCursor;
     const pct = runState === "idle" ? 0 : Math.round((done / TASKS.length) * 100);
-    $("progressLabel").innerHTML = runState === "idle" ? "Ready to run · " + TASKS.length + " tasks queued" : runState === "running" ? "Running · task <strong>" + Math.min(done + 1, TASKS.length) + "</strong> of " + TASKS.length : runState === "error" ? "Stopped · " + done + " of " + TASKS.length + " complete" : "Complete · " + TASKS.length + " of " + TASKS.length + " tasks";
+    $("progressLabel").innerHTML = runState === "idle" ? "Ready to run · " + TASKS.length + " tasks queued" : runState === "running" ? "Running · task <strong>" + Math.min(done + 1, TASKS.length) + "</strong> of " + TASKS.length : runState === "error" ? "Stopped · " + done + " of " + TASKS.length + " complete" : skipped > 0 ? "Complete · " + complete + " complete, " + skipped + " skipped" : "Complete · " + TASKS.length + " of " + TASKS.length + " tasks";
     $("progressFill").style.width = pct + "%";
     $("progressFill").style.background = runState === "error" ? "var(--nx-danger)" : "var(--nx-brand)";
     $("progressPct").innerHTML = "<strong>" + pct + "</strong>%";
     $("taskList").innerHTML = TASKS.map((t, i) => {
       const st = taskState(i);
-      const mark = st === "done" ? "✓" : st === "error" ? "!" : "";
-      return '<div class="task-row" data-state="' + st + '"><span class="task-icon">' + mark + '</span><div><div class="row-name">' + t[1] + '</div><div class="row-sub">' + esc(t[2]) + '</div></div><span class="task-time">' + (st === "pending" ? "-" : "ok") + '</span><span class="row-state">' + (st === "running" ? "running..." : st === "pending" ? "queued" : st) + '</span></div>';
+      const mark = st === "done" ? "✓" : st === "error" ? "!" : st === "skipped" ? "-" : "";
+      return '<div class="task-row" data-state="' + st + '"><span class="task-icon">' + mark + '</span><div><div class="row-name">' + t[1] + '</div><div class="row-sub">' + esc(t[2]) + '</div></div><span class="task-time">' + taskTimeLabel(st) + '</span><span class="row-state">' + (st === "running" ? "running..." : st === "pending" ? "queued" : st) + '</span></div>';
     }).join("");
   }
   function taskIndex(id) {
@@ -1923,23 +1947,29 @@ function renderHtml(defaults: FormDefaults): string {
   function succeedRun(body) {
     runState = "success";
     setupComplete = true;
+    skippedTaskIds = new Set((body.firstBoot && body.firstBoot.skippedTasks) || []);
     taskCursor = TASKS.length;
     clearInterval(taskTimer);
     $("runError").classList.add("hidden");
     logRow("ok", "setup complete");
     lastResult = body;
     renderTasks();
-    $("doneText").textContent = body.firstBoot && !body.firstBoot.skipped ? "Admin, theme, and environment are ready." : "Environment is ready. Continue first admin and theme setup at /admin/setup after pnpm dev.";
+    const firstBootReady = body.firstBoot && !body.firstBoot.skipped;
+    const themeSkipped = skippedTaskIds.has("theme");
+    const seedSkipped = skippedTaskIds.has("seed");
+    $("doneText").textContent = firstBootReady ? "Admin and environment are ready." : "Environment is ready. Continue first admin and theme setup at /admin/setup after pnpm dev.";
     $("doneLog").innerHTML = '<span class="h">$</span> pnpm run setup\\n' +
       '<span class="c">  -> wrote .env</span>\\n' +
       '<span class="c">  -> migration status checked</span>\\n' +
       '<span class="c">  -> migrations ' + (body.migrate ? "applied" : "skipped") + '</span>\\n' +
       '<span class="c">  -> ' + (body.firstBoot && !body.firstBoot.skipped ? "first admin ready" : "first admin skipped") + '</span>\\n' +
+      '<span class="c">  -> theme ' + (firstBootReady && !themeSkipped ? "activated" : "skipped") + '</span>\\n' +
+      '<span class="c">  -> demo content ' + (firstBootReady && !seedSkipped ? "seeded" : "skipped") + '</span>\\n' +
       '<span class="v">  ✓ done — run pnpm dev, then open /admin</span>';
     goto(6);
   }
   async function runSetup() {
-    runState = "running"; taskCursor = 0; $("runLog").innerHTML = ""; $("runError").classList.add("hidden"); renderTasks(); goto(5);
+    runState = "running"; taskCursor = 0; skippedTaskIds = new Set(); $("runLog").innerHTML = ""; $("runError").classList.add("hidden"); renderTasks(); goto(5);
     logRow("info", "starting nexpress setup");
     taskTimer = setInterval(() => { if (taskCursor < TASKS.length - 1) { taskCursor += 1; renderTasks(); logRow("info", "running " + TASKS[taskCursor][1]); } }, 900);
     try {
