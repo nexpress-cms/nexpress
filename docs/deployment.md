@@ -47,8 +47,10 @@ whether you explicitly opted into a single-node volume deployment.
 
 For automation, `deploy:plan -- --target vercel --json` emits the same plan
 as stable JSON; `doctor:prod -- --target vercel --json` emits the matching
-readiness report. Use `deploy:plan --brief` for compact human plans, and
-`--no-color` on either command for plain logs.
+readiness report. Each doctor check includes a stable `id` such as
+`database.reachable` so CI and agents can key off machine-safe identifiers
+instead of human labels. Use `deploy:plan --brief` for compact human plans,
+and `--no-color` on either command for plain logs.
 
 ---
 

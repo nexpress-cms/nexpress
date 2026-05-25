@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  checkJobsEnabledProd,
+  checkSchedulerTokenProd,
+  checkSecretLengthProd,
+  checkSiteUrlProd,
   checkStorageProd,
   checkTargetStorageProd,
   checkTargetWorkerProd,
@@ -13,9 +17,28 @@ describe("doctor production target readiness", () => {
     expect(checkStorageProd(false, "docker", { NP_MULTI_NODE: "true" })).toBeNull();
   });
 
+  it("assigns stable ids to production checks", () => {
+    expect(checkSecretLengthProd(true, { NP_SECRET: "short" })).toEqual(
+      expect.objectContaining({ id: "prod.secret_length" }),
+    );
+    expect(checkJobsEnabledProd(true, { NP_ENABLE_JOBS: "1" })).toEqual(
+      expect.objectContaining({ id: "prod.jobs_enabled" }),
+    );
+    expect(checkStorageProd(true, "docker", { NP_STORAGE_ADAPTER: "s3" })).toEqual(
+      expect.objectContaining({ id: "prod.storage_adapter" }),
+    );
+    expect(checkSiteUrlProd(true, { SITE_URL: "https://example.com" })).toEqual(
+      expect.objectContaining({ id: "prod.site_url_https" }),
+    );
+    expect(checkSchedulerTokenProd(true, { NP_SCHEDULER_TOKEN: "0123456789abcdef" })).toEqual(
+      expect.objectContaining({ id: "prod.scheduler_token" }),
+    );
+  });
+
   it("requires S3-compatible storage for Vercel", () => {
     expect(checkTargetStorageProd(true, "vercel", { NP_STORAGE_ADAPTER: "local" })).toEqual([
       expect.objectContaining({
+        id: "target.vercel.storage",
         state: "error",
         label: "Vercel storage",
         detail: "NP_STORAGE_ADAPTER=local",
@@ -24,6 +47,7 @@ describe("doctor production target readiness", () => {
 
     expect(checkTargetStorageProd(true, "vercel", { NP_STORAGE_ADAPTER: "s3" })).toEqual([
       expect.objectContaining({
+        id: "target.vercel.storage",
         state: "ok",
         label: "Vercel storage",
         detail: "S3-compatible",
@@ -34,6 +58,7 @@ describe("doctor production target readiness", () => {
   it("warns when Vercel jobs are enabled without a long-running worker host", () => {
     expect(checkTargetWorkerProd(true, "vercel", { NP_ENABLE_JOBS: "1" })).toEqual([
       expect.objectContaining({
+        id: "target.vercel.jobs_worker",
         state: "warn",
         label: "Vercel jobs worker",
       }),
@@ -41,6 +66,7 @@ describe("doctor production target readiness", () => {
 
     expect(checkTargetWorkerProd(true, "railway", { NP_ENABLE_JOBS: "true" })).toEqual([
       expect.objectContaining({
+        id: "target.railway.jobs_worker",
         state: "ok",
         label: "Railway jobs worker",
       }),
@@ -51,6 +77,7 @@ describe("doctor production target readiness", () => {
     for (const target of ["railway", "render", "fly"] as const) {
       expect(checkTargetStorageProd(true, target, { NP_STORAGE_ADAPTER: "local" })).toEqual([
         expect.objectContaining({
+          id: `target.${target}.storage`,
           state: "error",
           detail: "local storage",
         }),
@@ -63,6 +90,7 @@ describe("doctor production target readiness", () => {
         }),
       ).toEqual([
         expect.objectContaining({
+          id: `target.${target}.storage`,
           state: "warn",
           detail: "local + NP_MULTI_NODE=false",
         }),
@@ -70,6 +98,7 @@ describe("doctor production target readiness", () => {
 
       expect(checkTargetStorageProd(true, target, { NP_STORAGE_ADAPTER: "s3" })).toEqual([
         expect.objectContaining({
+          id: `target.${target}.storage`,
           state: "ok",
           detail: "s3",
         }),
@@ -85,6 +114,7 @@ describe("doctor production target readiness", () => {
       }),
     ).toEqual(
       expect.objectContaining({
+        id: "prod.storage_adapter",
         state: "error",
         label: "Storage adapter (production)",
         detail: "local + NP_MULTI_NODE=true",
@@ -98,6 +128,7 @@ describe("doctor production target readiness", () => {
       }),
     ).toEqual(
       expect.objectContaining({
+        id: "prod.storage_adapter",
         state: "ok",
         label: "Storage adapter (production): local",
       }),
