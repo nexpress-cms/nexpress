@@ -63,15 +63,15 @@ export function ArrayFieldEditor({ field, control, name, renderField }: ArrayFie
   const canAdd = field.maxRows === undefined || fields.length < field.maxRows;
 
   return (
-    <FormItem>
-      <div className="space-y-1">
-        <FormLabel>{field.label ?? field.name}</FormLabel>
+    <FormItem className="min-w-0">
+      <div className="min-w-0 space-y-1">
+        <FormLabel className="break-words">{field.label ?? field.name}</FormLabel>
         {field.admin?.description ? (
-          <FormDescription>{field.admin.description}</FormDescription>
+          <FormDescription className="break-words">{field.admin.description}</FormDescription>
         ) : null}
       </div>
 
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         {fields.map((item, index) => {
           const rowPrefix = `${name}.${index}`;
           const canRemove = field.minRows === undefined || fields.length > field.minRows;
@@ -81,9 +81,14 @@ export function ArrayFieldEditor({ field, control, name, renderField }: ArrayFie
               : `${name}-${index}`;
 
           return (
-            <div key={rowKey} className="space-y-4 rounded-xl border border-border/60 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm font-medium text-foreground">Item {index + 1}</p>
+            <div
+              key={rowKey}
+              className="min-w-0 space-y-4 rounded-xl border border-border/60 p-3 sm:p-4"
+            >
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+                <p className="min-w-0 break-words text-sm font-medium text-foreground">
+                  Item {index + 1}
+                </p>
                 <Button
                   type="button"
                   variant="outline"
@@ -97,7 +102,7 @@ export function ArrayFieldEditor({ field, control, name, renderField }: ArrayFie
                 </Button>
               </div>
 
-              <div className="space-y-4">
+              <div className="min-w-0 space-y-4">
                 {field.fields.map((nestedField, nestedIndex) => (
                   <div
                     key={
@@ -105,6 +110,7 @@ export function ArrayFieldEditor({ field, control, name, renderField }: ArrayFie
                         ? `${nestedField.type}-${nestedIndex}`
                         : nestedField.name
                     }
+                    className="min-w-0"
                   >
                     {renderField({
                       field: nestedField,
@@ -123,6 +129,7 @@ export function ArrayFieldEditor({ field, control, name, renderField }: ArrayFie
           variant="outline"
           onClick={() => append(createEmptyRow(field.fields))}
           disabled={!canAdd}
+          className="w-full sm:w-auto"
         >
           <Plus className="size-3.5" />
           Add item

@@ -15,7 +15,14 @@ import { RelationshipField } from "./fields/relationship-field.js";
 import { TemplatePickerField } from "./template-picker-field.js";
 import { npFetch } from "../lib/api-client.js";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible.js";
-import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "../ui/form.js";
+import {
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "../ui/form.js";
 import { Input } from "../ui/input.js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 import { Switch } from "../ui/switch.js";
@@ -28,9 +35,7 @@ import { Textarea } from "../ui/textarea.js";
  * override via `editor.onUploadImage` for sites with custom
  * media pipelines.
  */
-async function defaultStaffImageUpload(
-  file: File,
-): Promise<{ url: string }> {
+async function defaultStaffImageUpload(file: File): Promise<{ url: string }> {
   const formData = new FormData();
   formData.append("file", file);
   const res = await npFetch("/api/media/upload", {
@@ -38,16 +43,14 @@ async function defaultStaffImageUpload(
     body: formData,
   });
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as
-      | { error?: { message?: string; details?: Array<{ message?: string }> } }
-      | null;
+    const body = (await res.json().catch(() => null)) as {
+      error?: { message?: string; details?: Array<{ message?: string }> };
+    } | null;
     const detail = body?.error?.details?.[0]?.message;
     const message = detail ?? body?.error?.message ?? `HTTP ${res.status}`;
     throw new Error(message);
   }
-  const json = (await res.json()) as
-    | { data?: { url?: string }; url?: string }
-    | null;
+  const json = (await res.json()) as { data?: { url?: string }; url?: string } | null;
   const url = json?.data?.url ?? json?.url ?? null;
   if (!url) throw new Error("Upload succeeded but no URL was returned.");
   return { url };
@@ -93,7 +96,8 @@ const LazyBlockPageEditor = lazy(async () => {
   };
 });
 
-const buildFieldName = (fieldName: string, namePrefix?: string): string => (namePrefix ? `${namePrefix}.${fieldName}` : fieldName);
+const buildFieldName = (fieldName: string, namePrefix?: string): string =>
+  namePrefix ? `${namePrefix}.${fieldName}` : fieldName;
 
 const isRichTextContent = (value: unknown): value is NpRichTextContent => {
   if (typeof value !== "object" || value === null) {
@@ -123,8 +127,10 @@ const toBlockInstances = (value: unknown): NpBlockInstance[] => {
       id: candidate.id,
       type: candidate.type,
       props:
-        typeof candidate.props === "object" && candidate.props !== null && !Array.isArray(candidate.props)
-          ? (candidate.props)
+        typeof candidate.props === "object" &&
+        candidate.props !== null &&
+        !Array.isArray(candidate.props)
+          ? candidate.props
           : {},
     };
 
@@ -206,9 +212,7 @@ function BlocksFieldRender({
                 blocks={toBlockInstances(formField.value)}
                 onChange={formField.onChange}
                 availableBlocks={availableBlocks}
-                viewScope={
-                  collectionSlug ? `${collectionSlug}.${name}` : undefined
-                }
+                viewScope={collectionSlug ? `${collectionSlug}.${name}` : undefined}
               />
             </Suspense>
           </FormControl>
@@ -243,7 +247,10 @@ const renderNamedField = (
             <FormItem>
               <FormLabel>{label}</FormLabel>
               <FormControl>
-                <Input {...formField} value={typeof formField.value === "string" ? formField.value : ""} />
+                <Input
+                  {...formField}
+                  value={typeof formField.value === "string" ? formField.value : ""}
+                />
               </FormControl>
               {renderDescription(field.admin?.description)}
               <FormMessage />
@@ -286,10 +293,20 @@ const renderNamedField = (
                   min={field.min}
                   max={field.max}
                   step={field.step ?? (field.integerOnly ? 1 : undefined)}
-                  value={typeof formField.value === "number" || typeof formField.value === "string" ? String(formField.value) : ""}
+                  value={
+                    typeof formField.value === "number" || typeof formField.value === "string"
+                      ? String(formField.value)
+                      : ""
+                  }
                   onChange={(event: { target: { value: string } }) => {
                     const value = event.target.value;
-                    formField.onChange(value === "" ? undefined : field.integerOnly ? parseInt(value, 10) : Number(value));
+                    formField.onChange(
+                      value === ""
+                        ? undefined
+                        : field.integerOnly
+                          ? parseInt(value, 10)
+                          : Number(value),
+                    );
                   }}
                 />
               </FormControl>
@@ -308,7 +325,11 @@ const renderNamedField = (
             <FormItem>
               <FormLabel>{label}</FormLabel>
               <FormControl>
-                <Input {...formField} type="email" value={typeof formField.value === "string" ? formField.value : ""} />
+                <Input
+                  {...formField}
+                  type="email"
+                  value={typeof formField.value === "string" ? formField.value : ""}
+                />
               </FormControl>
               {renderDescription(field.admin?.description)}
               <FormMessage />
@@ -325,7 +346,13 @@ const renderNamedField = (
             <FormItem>
               <FormLabel>{label}</FormLabel>
               <FormControl>
-                <Suspense fallback={<div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">Loading editor…</div>}>
+                <Suspense
+                  fallback={
+                    <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
+                      Loading editor…
+                    </div>
+                  }
+                >
                   <LazyRichTextEditor
                     value={isRichTextContent(formField.value) ? formField.value : null}
                     onChange={formField.onChange}
@@ -370,13 +397,17 @@ const renderNamedField = (
           control={control}
           name={name}
           render={({ field: formField }) => (
-            <FormItem className="flex flex-row items-center justify-between rounded-xl border border-border/60 px-4 py-3">
-              <div className="space-y-1">
-                <FormLabel>{label}</FormLabel>
+            <FormItem className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 px-4 py-3">
+              <div className="min-w-0 flex-1 space-y-1">
+                <FormLabel className="break-words">{label}</FormLabel>
                 {renderDescription(field.admin?.description)}
               </div>
               <FormControl>
-                <Switch checked={formField.value === true} onCheckedChange={formField.onChange} />
+                <Switch
+                  checked={formField.value === true}
+                  onCheckedChange={formField.onChange}
+                  className="shrink-0"
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -416,7 +447,10 @@ const renderNamedField = (
           render={({ field: formField }) => (
             <FormItem>
               <FormLabel>{label}</FormLabel>
-              <Select value={typeof formField.value === "string" ? formField.value : undefined} onValueChange={formField.onChange}>
+              <Select
+                value={typeof formField.value === "string" ? formField.value : undefined}
+                onValueChange={formField.onChange}
+              >
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
@@ -447,7 +481,7 @@ const renderNamedField = (
               <FormControl>
                 <fieldset className="space-y-3">
                   {field.options.map((option) => (
-                    <label key={option.value} className="flex items-center gap-3 text-sm">
+                    <label key={option.value} className="flex min-w-0 items-center gap-3 text-sm">
                       <input
                         type="radio"
                         name={formField.name}
@@ -455,7 +489,7 @@ const renderNamedField = (
                         checked={formField.value === option.value}
                         onChange={() => formField.onChange(option.value)}
                       />
-                      <span>{option.label}</span>
+                      <span className="min-w-0 break-words">{option.label}</span>
                     </label>
                   ))}
                 </fieldset>
@@ -540,7 +574,9 @@ const renderNamedField = (
                   }}
                 />
               </FormControl>
-              <FormDescription>Enter valid JSON or keep editing until the structure is complete.</FormDescription>
+              <FormDescription>
+                Enter valid JSON or keep editing until the structure is complete.
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -552,18 +588,28 @@ const renderNamedField = (
           control={control}
           field={field}
           name={name}
-          renderField={({ field: nestedField, control: nestedControl, namePrefix: nestedPrefix }) => (
+          renderField={({
+            field: nestedField,
+            control: nestedControl,
+            namePrefix: nestedPrefix,
+          }) => (
             <FieldRenderer field={nestedField} control={nestedControl} namePrefix={nestedPrefix} />
           )}
         />
       );
     case "group":
       return (
-        <fieldset className="space-y-4 rounded-xl border border-border/60 p-5">
-          <legend className="px-2 text-sm font-semibold text-foreground">{label}</legend>
+        <fieldset className="min-w-0 space-y-4 rounded-xl border border-border/60 p-4 sm:p-5">
+          <legend className="max-w-full break-words px-2 text-sm font-semibold text-foreground">
+            {label}
+          </legend>
           {field.fields.map((nestedField, index) => (
             <FieldRenderer
-              key={nestedField.type === "row" || nestedField.type === "collapsible" ? `${nestedField.type}-${index}` : nestedField.name}
+              key={
+                nestedField.type === "row" || nestedField.type === "collapsible"
+                  ? `${nestedField.type}-${index}`
+                  : nestedField.name
+              }
               field={nestedField}
               control={control}
               namePrefix={buildFieldName(field.name, namePrefix)}
@@ -576,19 +622,18 @@ const renderNamedField = (
   }
 };
 
-export function FieldRenderer({
-  field,
-  control,
-  namePrefix,
-  collectionSlug,
-}: FieldRendererProps) {
+export function FieldRenderer({ field, control, namePrefix, collectionSlug }: FieldRendererProps) {
   if (field.type === "row") {
     return (
-      <div className="flex flex-col gap-4 md:flex-row md:items-start">
+      <div className="flex min-w-0 flex-col gap-4 md:flex-row md:items-start">
         {field.fields.map((nestedField, index) => (
           <div
-            key={nestedField.type === "row" || nestedField.type === "collapsible" ? `${nestedField.type}-${index}` : nestedField.name}
-            className="flex-1"
+            key={
+              nestedField.type === "row" || nestedField.type === "collapsible"
+                ? `${nestedField.type}-${index}`
+                : nestedField.name
+            }
+            className="min-w-0 flex-1"
           >
             <FieldRenderer
               field={nestedField}
@@ -604,15 +649,19 @@ export function FieldRenderer({
 
   if (field.type === "collapsible") {
     return (
-      <Collapsible className="rounded-xl border border-border/60">
-        <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium">
-          <span>{field.label}</span>
-          <ChevronDown className="h-4 w-4" />
+      <Collapsible className="min-w-0 overflow-hidden rounded-xl border border-border/60">
+        <CollapsibleTrigger className="flex min-w-0 w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium">
+          <span className="min-w-0 break-words">{field.label}</span>
+          <ChevronDown className="h-4 w-4 shrink-0" />
         </CollapsibleTrigger>
-        <CollapsibleContent className="space-y-4 border-t border-border/60 px-4 py-4">
+        <CollapsibleContent className="min-w-0 space-y-4 border-t border-border/60 px-4 py-4">
           {field.fields.map((nestedField, index) => (
             <FieldRenderer
-              key={nestedField.type === "row" || nestedField.type === "collapsible" ? `${nestedField.type}-${index}` : nestedField.name}
+              key={
+                nestedField.type === "row" || nestedField.type === "collapsible"
+                  ? `${nestedField.type}-${index}`
+                  : nestedField.name
+              }
               field={nestedField}
               control={control}
               namePrefix={namePrefix}
@@ -655,11 +704,7 @@ export function FieldRenderer({
   // body copy and breaks the title→editor visual flow. Authors
   // who set a description on a `kind: "title"` field probably
   // didn't intend it; treat it as advisory metadata only.
-  if (
-    "name" in field &&
-    field.type === "text" &&
-    field.admin?.kind === "title"
-  ) {
+  if ("name" in field && field.type === "text" && field.admin?.kind === "title") {
     return (
       <FormField
         control={control}

@@ -63,13 +63,13 @@ export function MediaPickerField({ value, onChange, relationTo }: MediaPickerFie
   const selectedItem = useMemo(() => items.find((item) => item.id === value), [items, value]);
 
   return (
-    <div className="space-y-3 rounded-xl border border-border/60 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="min-w-0 space-y-3 rounded-xl border border-border/60 p-3 sm:p-4">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">
+          <p className="truncate text-sm font-medium text-foreground">
             {selectedItem ? getMediaLabel(selectedItem) : "No media selected"}
           </p>
-          <p className="text-xs text-muted-foreground">Source: {relationTo}</p>
+          <p className="break-all text-xs text-muted-foreground">Source: {relationTo}</p>
         </div>
         <Button
           type="button"
@@ -82,33 +82,35 @@ export function MediaPickerField({ value, onChange, relationTo }: MediaPickerFie
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Select media</DialogTitle>
-            <DialogDescription>Choose an uploaded asset to attach to this field.</DialogDescription>
+        <DialogContent className="min-w-0 max-w-3xl">
+          <DialogHeader className="min-w-0">
+            <DialogTitle className="break-words">Select media</DialogTitle>
+            <DialogDescription className="break-words">
+              Choose an uploaded asset to attach to this field.
+            </DialogDescription>
           </DialogHeader>
 
           {isLoading ? <p className="text-sm text-muted-foreground">Loading media…</p> : null}
           {error ? <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
 
-          <div className="grid max-h-[28rem] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid min-w-0 max-h-[28rem] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                className="rounded-xl border border-border/60 p-4 text-left transition-colors hover:bg-muted/40"
+                className="min-w-0 rounded-xl border border-border/60 p-3 text-left transition-colors hover:bg-muted/40 sm:p-4"
                 onClick={() => {
                   onChange(item.id);
                   setOpen(false);
                 }}
               >
-                <p className="font-medium text-foreground">{getMediaLabel(item)}</p>
+                <p className="break-words font-medium text-foreground">{getMediaLabel(item)}</p>
                 <p className="mt-2 break-all text-xs text-muted-foreground">ID: {item.id}</p>
               </button>
             ))}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={() => onChange("")}>
               Clear
             </Button>

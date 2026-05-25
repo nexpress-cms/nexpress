@@ -104,13 +104,19 @@ export function RelationshipField({
   );
 
   return (
-    <div className="space-y-3 rounded-xl border border-border/60 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="min-w-0 space-y-3 rounded-xl border border-border/60 p-3 sm:p-4">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {selectedItems.length > 0 ? (
-            selectedItems.map((item) => <Badge key={item.id}>{getDocumentLabel(item)}</Badge>)
+            selectedItems.map((item) => (
+              <Badge key={item.id} className="max-w-full min-w-0 truncate">
+                {getDocumentLabel(item)}
+              </Badge>
+            ))
           ) : (
-            <p className="text-sm text-muted-foreground">No related item selected.</p>
+            <p className="min-w-0 break-words text-sm text-muted-foreground">
+              No related item selected.
+            </p>
           )}
         </div>
 
@@ -125,16 +131,18 @@ export function RelationshipField({
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Select relation</DialogTitle>
-            <DialogDescription>Browse the first 20 items from {relationSlug}.</DialogDescription>
+        <DialogContent className="min-w-0 max-w-3xl">
+          <DialogHeader className="min-w-0">
+            <DialogTitle className="break-words">Select relation</DialogTitle>
+            <DialogDescription className="break-words">
+              Browse the first 20 items from {relationSlug}.
+            </DialogDescription>
           </DialogHeader>
 
           {isLoading ? <p className="text-sm text-muted-foreground">Loading items…</p> : null}
           {error ? <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
 
-          <div className="grid max-h-[28rem] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+          <div className="grid min-w-0 max-h-[28rem] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
             {items.map((item) => {
               const isSelected = selectedValues.includes(item.id);
 
@@ -144,8 +152,8 @@ export function RelationshipField({
                   type="button"
                   className={
                     isSelected
-                      ? "rounded-xl border border-foreground bg-muted/50 p-4 text-left"
-                      : "rounded-xl border border-border/60 p-4 text-left transition-colors hover:bg-muted/40"
+                      ? "min-w-0 rounded-xl border border-foreground bg-muted/50 p-3 text-left sm:p-4"
+                      : "min-w-0 rounded-xl border border-border/60 p-3 text-left transition-colors hover:bg-muted/40 sm:p-4"
                   }
                   onClick={() => {
                     if (hasMany) {
@@ -160,14 +168,16 @@ export function RelationshipField({
                     setOpen(false);
                   }}
                 >
-                  <p className="font-medium text-foreground">{getDocumentLabel(item)}</p>
+                  <p className="break-words font-medium text-foreground">
+                    {getDocumentLabel(item)}
+                  </p>
                   <p className="mt-2 break-all text-xs text-muted-foreground">ID: {item.id}</p>
                 </button>
               );
             })}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={() => onChange(hasMany ? [] : "")}>
               Clear
             </Button>
