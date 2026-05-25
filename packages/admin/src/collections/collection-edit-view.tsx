@@ -1206,8 +1206,8 @@ function CollectionEditViewInner({
           onCancelSchedule={isScheduled ? handleCancelSchedule : undefined}
         />
 
-        <div className="grid gap-6 xl:grid-cols-12">
-          <div className="space-y-4 xl:col-span-8">
+        <div className="grid min-w-0 gap-6 xl:grid-cols-12">
+          <div className="min-w-0 space-y-4 xl:col-span-8">
             {config.i18n && doc?.id ? (
               <TranslationTabs collectionSlug={collectionSlug} documentId={String(doc.id)} />
             ) : null}
@@ -1336,7 +1336,7 @@ function CollectionEditViewInner({
             })()}
           </div>
 
-          <div className="xl:col-span-4">
+          <div className="min-w-0 xl:col-span-4">
             <div className="space-y-6 xl:sticky xl:top-20">
               {/* Show-all toggle — only rendered when some field
                   has an `admin.condition` that's currently hiding
