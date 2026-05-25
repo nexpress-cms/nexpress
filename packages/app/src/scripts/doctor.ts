@@ -55,6 +55,7 @@ import {
 
 const PROD_MODE = process.argv.includes("--prod");
 const JSON_MODE = process.argv.includes("--json");
+const FIX_PLAN_MODE = process.argv.includes("--fix-plan");
 const COLOR_MODE = !JSON_MODE && !process.argv.includes("--no-color") && !process.env.NO_COLOR;
 
 interface PgClientLike {
@@ -494,7 +495,12 @@ async function main(): Promise<void> {
     if (result) checks.push(result);
   }
 
-  const report = buildDoctorJson({ prodMode: PROD_MODE, target: deployTarget, checks });
+  const report = buildDoctorJson({
+    prodMode: PROD_MODE,
+    target: deployTarget,
+    checks,
+    includeFixPlan: FIX_PLAN_MODE,
+  });
   if (JSON_MODE) {
     console.log(JSON.stringify(report, null, 2));
   } else {

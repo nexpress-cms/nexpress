@@ -49,8 +49,9 @@ For automation, `deploy:plan -- --target vercel --json` emits the same plan
 as stable JSON; `doctor:prod -- --target vercel --json` emits the matching
 readiness report. Each doctor check includes a stable `id` such as
 `database.reachable` so CI and agents can key off machine-safe identifiers
-instead of human labels. Use `deploy:plan --brief` for compact human plans,
-and `--no-color` on either command for plain logs.
+instead of human labels. Add `--fix-plan` to the JSON doctor command to include
+ordered next-command suggestions for fixable failures. Use `deploy:plan --brief`
+for compact human plans, and `--no-color` on either command for plain logs.
 
 ---
 
