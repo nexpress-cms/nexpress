@@ -77,6 +77,14 @@ function assertNoResolverCrash(text, label) {
   }
 }
 
+function parseJsonOutput(text, label) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    fail(`${label} should emit parseable JSON`, text.split("\n").slice(-40).join("\n"));
+  }
+}
+
 function runTsx(script, args) {
   const result = spawnSync(resolve(scaffoldDir, "node_modules/.bin/tsx"), [script, ...args], {
     cwd: scaffoldDir,
@@ -260,6 +268,41 @@ assertIncludes(
   "doctor:prod --fix-plan",
 );
 console.log("✓ doctor:prod human fix-plan renders inside the scaffold journey");
+
+const doctorJsonFixPlan = runTsx("scripts/doctor.ts", [
+  "--prod",
+  "--target",
+  "vercel",
+  "--json",
+  "--fix-plan",
+]);
+assertNoResolverCrash(doctorJsonFixPlan.output, "doctor:prod --json --fix-plan");
+if (doctorJsonFixPlan.code === 0) {
+  fail(
+    "doctor:prod --json --fix-plan should fail against the intentional closed DB/local Vercel storage env",
+  );
+}
+const doctorJson = parseJsonOutput(doctorJsonFixPlan.output, "doctor:prod --json --fix-plan");
+if (doctorJson.schemaVersion !== "np.doctor.v1") {
+  fail("doctor:prod --json --fix-plan should emit the v1 schema", doctorJsonFixPlan.output);
+}
+if (!Array.isArray(doctorJson.fixPlan)) {
+  fail("doctor:prod --json --fix-plan should include a fixPlan array", doctorJsonFixPlan.output);
+}
+const fixPlanIds = new Set(doctorJson.fixPlan.map((item) => item?.id));
+if (!fixPlanIds.has("database.configure_target_postgres")) {
+  fail("doctor:prod --json --fix-plan missing target Postgres remediation");
+}
+if (!fixPlanIds.has("storage.configure_target_durable_storage")) {
+  fail("doctor:prod --json --fix-plan missing target storage remediation");
+}
+const fixPlanCommands = doctorJson.fixPlan.flatMap((item) =>
+  Array.isArray(item?.commands) ? item.commands : [],
+);
+if (!fixPlanCommands.includes("pnpm run deploy:plan -- --target vercel --brief --no-color")) {
+  fail("doctor:prod --json --fix-plan should point target actions at human deploy-plan output");
+}
+console.log("✓ doctor:prod JSON fix-plan stays machine-readable inside the scaffold journey");
 
 assertIncludes(readme, "Deploy with Vercel", "README");
 assertIncludes(readme, "https://vercel.com/new?utm_source=nexpress", "README");
