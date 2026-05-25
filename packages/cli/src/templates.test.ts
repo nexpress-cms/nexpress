@@ -332,6 +332,15 @@ describe("getProjectFiles", () => {
     expect(files["scripts/deploy-plan.ts"]).toMatch(/@nexpress\/app\/scripts\/deploy-plan/);
   });
 
+  it("package.json runs manual migrations through the shared error-rich runner", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const pkg = JSON.parse(files["package.json"]) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts["db:migrate"]).toBe("tsx scripts/run-migrations.ts");
+    expect(files["scripts/run-migrations.ts"]).toMatch(/@nexpress\/app\/scripts\/run-migrations/);
+  });
+
   it("scaffold README follows the current setup-first onboarding path", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const readme = files["README.md"];

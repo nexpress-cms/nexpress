@@ -148,7 +148,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         setup: "tsx scripts/setup-server.ts",
         worker: "tsx scripts/worker.ts",
         "db:generate": "pnpm schema:gen && drizzle-kit generate",
-        "db:migrate": "drizzle-kit migrate",
+        "db:migrate": "tsx scripts/run-migrations.ts",
         "db:push": "pnpm schema:gen && drizzle-kit push",
         "db:studio": "drizzle-kit studio",
       },
