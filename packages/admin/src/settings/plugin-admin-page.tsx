@@ -97,7 +97,11 @@ interface PluginAdminPageProps {
 
 type ActionResult = { ok: boolean; data?: unknown; error?: string };
 
-async function dispatch(pluginId: string, actionId: string, payload?: unknown): Promise<ActionResult> {
+async function dispatch(
+  pluginId: string,
+  actionId: string,
+  payload?: unknown,
+): Promise<ActionResult> {
   const response = await npFetch(`/api/plugins/${pluginId}/actions/${actionId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -121,7 +125,8 @@ export function PluginAdminPage({
   configParseError,
 }: PluginAdminPageProps) {
   const hasAutoForm = (configFields?.length ?? 0) > 0;
-  const sections: Array<"autoForm" | "settings" | "widgets" | "actions" | "tables" | "schedules"> = [];
+  const sections: Array<"autoForm" | "settings" | "widgets" | "actions" | "tables" | "schedules"> =
+    [];
   if (hasAutoForm) sections.push("autoForm");
   // G.1 § 5.1.1 — auto-form wins; the legacy admin.settings.fields
   // form is hidden when configSchema is also declared. Host-side
@@ -159,11 +164,7 @@ export function PluginAdminPage({
           parseError={configParseError}
         />
       ) : admin.settings ? (
-        <SettingsCard
-          pluginId={pluginId}
-          settings={admin.settings}
-          initialConfig={initialConfig}
-        />
+        <SettingsCard pluginId={pluginId} settings={admin.settings} initialConfig={initialConfig} />
       ) : null}
 
       {admin.actions && admin.actions.length > 0 ? (
@@ -233,9 +234,9 @@ function ConfigAutoFormCard({
         body: JSON.stringify({ value }),
       });
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as
-          | { error?: { message?: string } }
-          | null;
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
         setToast({
           type: "error",
           message: payload?.error?.message ?? "Failed to save config.",
@@ -352,7 +353,9 @@ function SettingsCard({
         body: JSON.stringify({ config: values }),
       });
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
         setToast({ type: "error", message: payload?.error?.message ?? "Failed to save settings." });
         return;
       }
@@ -396,7 +399,11 @@ function SettingsCard({
           >
             {settings.fields.map((field, index) => (
               <FieldRenderer
-                key={field.type === "row" || field.type === "collapsible" ? `${field.type}-${index}` : field.name}
+                key={
+                  field.type === "row" || field.type === "collapsible"
+                    ? `${field.type}-${index}`
+                    : field.name
+                }
                 field={field}
                 control={form.control}
               />
@@ -431,11 +438,17 @@ function WidgetCard({ pluginId, widget }: { pluginId: string; widget: WidgetDef 
     if (widget.kind === "metric") {
       setState({
         kind: "metric",
-        value: typeof data.value === "string" || typeof data.value === "number" ? String(data.value) : "—",
+        value:
+          typeof data.value === "string" || typeof data.value === "number"
+            ? String(data.value)
+            : "—",
         delta: typeof data.delta === "string" ? data.delta : undefined,
       });
     } else {
-      const level = data.level === "ok" || data.level === "warn" || data.level === "error" ? data.level : "warn";
+      const level =
+        data.level === "ok" || data.level === "warn" || data.level === "error"
+          ? data.level
+          : "warn";
       setState({
         kind: "status",
         level,
@@ -458,8 +471,12 @@ function WidgetCard({ pluginId, widget }: { pluginId: string; widget: WidgetDef 
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         ) : state.kind === "metric" ? (
           <div>
-            <div className="text-[22px] font-semibold tracking-[-0.02em] tabular-nums text-neutral-950 dark:text-neutral-50">{state.value}</div>
-            {state.delta ? <div className="text-xs text-muted-foreground">{state.delta}</div> : null}
+            <div className="text-[22px] font-semibold tracking-[-0.02em] tabular-nums text-neutral-950 dark:text-neutral-50">
+              {state.value}
+            </div>
+            {state.delta ? (
+              <div className="text-xs text-muted-foreground">{state.delta}</div>
+            ) : null}
           </div>
         ) : state.kind === "status" ? (
           <div className="flex items-center gap-2">
@@ -562,9 +579,7 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle>{table.label}</CardTitle>
-        {state.kind === "ready" ? (
-          <Badge variant="secondary">{state.total}</Badge>
-        ) : null}
+        {state.kind === "ready" ? <Badge variant="secondary">{state.total}</Badge> : null}
       </CardHeader>
       <CardContent>
         {state.kind === "loading" ? (
@@ -572,16 +587,17 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
         ) : state.kind === "error" ? (
           <p className="text-sm text-rose-600 dark:text-rose-300">{state.message}</p>
         ) : state.rows.length === 0 ? (
-          <p className="py-4 text-sm text-muted-foreground">
-            {table.emptyMessage ?? "No rows."}
-          </p>
+          <p className="py-4 text-sm text-muted-foreground">{table.emptyMessage ?? "No rows."}</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[640px] text-sm">
               <thead>
                 <tr className="border-b border-neutral-200/70 dark:border-neutral-800/70">
                   {table.columns.map((col) => (
-                    <th key={col.name} className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
+                    <th
+                      key={col.name}
+                      className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400"
+                    >
                       {col.label}
                     </th>
                   ))}
@@ -606,13 +622,7 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
   );
 }
 
-function SchedulesCard({
-  pluginId,
-  schedules,
-}: {
-  pluginId: string;
-  schedules: ScheduleDef[];
-}) {
+function SchedulesCard({ pluginId, schedules }: { pluginId: string; schedules: ScheduleDef[] }) {
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
@@ -625,16 +635,19 @@ function SchedulesCard({
           method: "POST",
         });
         if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as
-            | { error?: { message?: string } }
-            | null;
+          const payload = (await response.json().catch(() => null)) as {
+            error?: { message?: string };
+          } | null;
           setToast({
             type: "error",
             message: payload?.error?.message ?? "Failed to enqueue task.",
           });
           return;
         }
-        setToast({ type: "success", message: `Enqueued "${taskId}". Watch /admin/jobs for progress.` });
+        setToast({
+          type: "success",
+          message: `Enqueued "${taskId}". Watch /admin/jobs for progress.`,
+        });
       } catch (error) {
         setToast({
           type: "error",
@@ -733,11 +746,7 @@ function ScheduleStat({
     <div>
       <div className="text-[10px] font-medium uppercase tracking-[0.08em]">{label}</div>
       <div
-        className={
-          highlight === "warn"
-            ? "text-rose-600 dark:text-rose-300"
-            : "text-foreground/80"
-        }
+        className={highlight === "warn" ? "text-rose-600 dark:text-rose-300" : "text-foreground/80"}
       >
         {value}
       </div>

@@ -8,4 +8,4 @@ export type {
 export type { DashboardPluginWidget } from "./dashboard/plugin-widgets.js";
 export type { DashboardStats } from "./dashboard/dashboard-view.js";
 
-export { ThemeInit } from "./layout/theme-init.js";
+export { ThemeInit, npThemeInitScript } from "./layout/theme-init.js";

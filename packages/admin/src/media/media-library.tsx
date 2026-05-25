@@ -15,17 +15,8 @@ import {
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../ui/card.js";
-import {
-  Dialog,
-  DialogContent,
-  DialogTrigger,
-} from "../ui/dialog.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
+import { Dialog, DialogContent, DialogTrigger } from "../ui/dialog.js";
 import { Input } from "../ui/input.js";
 import { ScrollArea } from "../ui/scroll-area.js";
 import { cn } from "../ui/utils.js";
@@ -180,16 +171,11 @@ export function MediaLibrary() {
 
   function toggleSelected(id: string) {
     setSelectedItems((current) =>
-      current.includes(id)
-        ? current.filter((item) => item !== id)
-        : [...current, id],
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
     );
   }
 
-  const rootFolders = useMemo(
-    () => folders.filter((folder) => !folder.parentId),
-    [folders],
-  );
+  const rootFolders = useMemo(() => folders.filter((folder) => !folder.parentId), [folders]);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
@@ -208,24 +194,22 @@ export function MediaLibrary() {
                 label="All media"
                 onClick={() => setCurrentFolder(undefined)}
               />
-              {loadingFolders ? (
-                Array.from({ length: 6 }).map((_, index) => (
-                  <div
-                    key={`folder-skeleton-${index}`}
-                    className="h-9 animate-pulse rounded-lg bg-muted"
-                  />
-                ))
-              ) : (
-                rootFolders.map((folder) => (
-                  <FolderTree
-                    key={folder.id}
-                    activeId={currentFolder}
-                    folders={folders}
-                    folder={folder}
-                    onSelect={setCurrentFolder}
-                  />
-                ))
-              )}
+              {loadingFolders
+                ? Array.from({ length: 6 }).map((_, index) => (
+                    <div
+                      key={`folder-skeleton-${index}`}
+                      className="h-9 animate-pulse rounded-lg bg-muted"
+                    />
+                  ))
+                : rootFolders.map((folder) => (
+                    <FolderTree
+                      key={folder.id}
+                      activeId={currentFolder}
+                      folders={folders}
+                      folder={folder}
+                      onSelect={setCurrentFolder}
+                    />
+                  ))}
             </div>
           </ScrollArea>
         </CardContent>
@@ -262,7 +246,8 @@ export function MediaLibrary() {
                     Media
                   </h1>
                   <p className="mt-1 text-[13.5px] text-neutral-500 dark:text-neutral-400">
-                    Browse assets, search across files, and manage folders without leaving the admin.
+                    Browse assets, search across files, and manage folders without leaving the
+                    admin.
                   </p>
                 </div>
               </div>
@@ -504,11 +489,11 @@ function ListView({
 }) {
   if (loading) {
     return (
-      <div className="overflow-hidden rounded-xl border border-border/70">
+      <div className="overflow-x-auto rounded-xl border border-border/70">
         {Array.from({ length: 6 }).map((_, index) => (
           <div
             key={`media-list-skeleton-${index}`}
-            className="grid grid-cols-[36px_72px_1.3fr_0.8fr_0.8fr_1fr_0.9fr] gap-4 border-b border-border/70 px-4 py-4 last:border-b-0"
+            className="grid min-w-[760px] grid-cols-[36px_72px_1.3fr_0.8fr_0.8fr_1fr_0.9fr] gap-4 border-b border-border/70 px-4 py-4 last:border-b-0"
           >
             {Array.from({ length: 7 }).map((__, cellIndex) => (
               <div
@@ -527,8 +512,8 @@ function ListView({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border/70">
-      <div className="grid grid-cols-[36px_72px_1.3fr_0.8fr_0.8fr_1fr_0.9fr] gap-4 border-b border-border/70 bg-muted/35 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+    <div className="overflow-x-auto rounded-xl border border-border/70">
+      <div className="grid min-w-[760px] grid-cols-[36px_72px_1.3fr_0.8fr_0.8fr_1fr_0.9fr] gap-4 border-b border-border/70 bg-muted/35 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
         <span />
         <span>Thumbnail</span>
         <span>Filename</span>
@@ -541,7 +526,7 @@ function ListView({
         {items.map((item) => (
           <div
             key={item.id}
-            className="grid grid-cols-[36px_72px_1.3fr_0.8fr_0.8fr_1fr_0.9fr] gap-4 px-4 py-4 text-sm"
+            className="grid min-w-[760px] grid-cols-[36px_72px_1.3fr_0.8fr_0.8fr_1fr_0.9fr] gap-4 px-4 py-4 text-sm"
           >
             <div className="flex items-center">
               <input
@@ -711,11 +696,7 @@ function normalizeMediaItem(entry: unknown, index: number): MediaItem {
     filename: getString(record, "filename", getString(record, "name", "Untitled file")),
     type,
     size: getNumber(record, "size", 0),
-    createdAt: getString(
-      record,
-      "createdAt",
-      getString(record, "date", new Date().toISOString()),
-    ),
+    createdAt: getString(record, "createdAt", getString(record, "date", new Date().toISOString())),
     url: getOptionalString(record, "url") ?? getOptionalString(record, "src"),
     thumbnailUrl:
       getOptionalString(record, "thumbnailUrl") ??

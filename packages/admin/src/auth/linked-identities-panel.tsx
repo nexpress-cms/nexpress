@@ -128,9 +128,8 @@ export function LinkedIdentitiesPanel({
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Provider accounts that resolve to this {subjectKind}. Revoking a link
-          drops the durable mapping; the {subjectKind} can re-link by signing in
-          via OAuth again.
+          Provider accounts that resolve to this {subjectKind}. Revoking a link drops the durable
+          mapping; the {subjectKind} can re-link by signing in via OAuth again.
         </p>
 
         {error ? (
@@ -144,8 +143,8 @@ export function LinkedIdentitiesPanel({
           </div>
         ) : null}
 
-        <div className="overflow-hidden rounded-xl border border-border/60">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-xl border border-border/60">
+          <table className="w-full min-w-[640px] text-sm">
             <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
               <tr>
                 <th className="h-9 px-3.5 font-medium">Provider</th>
@@ -179,9 +178,7 @@ export function LinkedIdentitiesPanel({
                       <div className="font-mono text-xs text-muted-foreground">
                         {identity.subject}
                       </div>
-                      {identity.email ? (
-                        <div className="mt-1 text-xs">{identity.email}</div>
-                      ) : null}
+                      {identity.email ? <div className="mt-1 text-xs">{identity.email}</div> : null}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {new Date(identity.createdAt).toLocaleString()}
@@ -212,9 +209,8 @@ export function LinkedIdentitiesPanel({
             <DialogHeader>
               <DialogTitle>Revoke {revoking.provider} link?</DialogTitle>
               <DialogDescription>
-                This drops the durable provider link. The {subjectKind} can re-link
-                by signing in via {revoking.provider} again. Existing sessions are
-                not affected.
+                This drops the durable provider link. The {subjectKind} can re-link by signing in
+                via {revoking.provider} again. Existing sessions are not affected.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
