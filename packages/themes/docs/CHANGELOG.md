@@ -1,5 +1,16 @@
 # @nexpress/theme-docs
 
+## 0.3.11
+
+### Patch Changes
+
+- ba836ea: Fix docs theme detail pages so seeded and authored post content renders from the built-in `content` rich-text field instead of falling back to an empty body placeholder.
+  - @nexpress/blocks@0.3.11
+  - @nexpress/core@0.3.11
+  - @nexpress/editor@0.3.11
+  - @nexpress/next@0.3.11
+  - @nexpress/theme@0.3.11
+
 ## 0.3.10
 
 ### Patch Changes

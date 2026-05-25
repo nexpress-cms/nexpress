@@ -1,5 +1,15 @@
 # create-nexpress
 
+## 0.1.24
+
+### Patch Changes
+
+- 1288812: Tighten the scaffolded Vercel deploy checklist and production readiness guidance.
+- 8f01038: Render doctor fix plans in human-readable output and point scaffold docs at the shorter command.
+- 9bcc372: Run scaffolded `pnpm db:migrate` through the shared migration runner so manual migrations surface the same database error detail as the setup wizard.
+- 8fd36a7: Surface compact `--brief --no-color` deploy-readiness commands in the scaffolded README so CI logs stay readable.
+- fa4991b: Document the production doctor fix-plan command in scaffolded README files.
+
 ## 0.1.23
 
 ### Patch Changes

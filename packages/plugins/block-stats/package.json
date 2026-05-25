@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/plugin-block-stats",
-  "version": "0.3.10",
+  "version": "0.3.11",
   "description": "Stats counter block — live document counts for any collection. Sample plugin showcasing data-bound blocks.",
   "license": "MIT",
   "author": "Nexpress",
