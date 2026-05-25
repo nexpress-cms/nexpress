@@ -70,7 +70,9 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
     "pnpm db:migrate",
     doctorCommand,
   ];
-  const commonDiagnostics = [`Run ${doctorCommand} --fix-plan for ordered remediation.`];
+  const commonDiagnostics = [
+    `Run ${doctorCommand} --brief --no-color --fix-plan for ordered remediation.`,
+  ];
 
   switch (target) {
     case "vercel":
