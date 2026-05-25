@@ -493,10 +493,10 @@ function SidebarGroupCard({
 
   return (
     <Collapsible open={effectiveOpen} onOpenChange={setOpen} asChild>
-      <Card>
+      <Card className="min-w-0">
         <CollapsibleTrigger asChild>
           <CardHeader
-            className="cursor-pointer select-none flex flex-row items-center justify-between gap-2 outline-none focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] rounded-t-xl"
+            className="flex cursor-pointer select-none flex-row items-center justify-between gap-2 rounded-t-xl outline-none focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)]"
             role="button"
             tabIndex={0}
             aria-expanded={effectiveOpen}
@@ -521,9 +521,9 @@ function SidebarGroupCard({
                 </span>
               ) : null}
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <CardTitle>{name}</CardTitle>
+                <CardTitle className="break-words">{name}</CardTitle>
                 {description && effectiveOpen ? (
-                  <p className="truncate text-[11.5px] font-normal text-neutral-500 dark:text-neutral-400">
+                  <p className="break-words text-[11.5px] font-normal text-neutral-500 dark:text-neutral-400">
                     {description}
                   </p>
                 ) : null}
@@ -539,7 +539,7 @@ function SidebarGroupCard({
           </CardHeader>
         </CollapsibleTrigger>
         <CollapsibleContent id={contentId} className="np-sidebar-group-content">
-          <CardContent className="space-y-6">{children}</CardContent>
+          <CardContent className="min-w-0 space-y-6">{children}</CardContent>
         </CollapsibleContent>
       </Card>
     </Collapsible>
@@ -1072,24 +1072,24 @@ function CollectionEditViewInner({
         onSubmit={(e) => {
           void handlePublish(e);
         }}
-        className="space-y-6"
+        className="min-w-0 space-y-6"
       >
         {toast ? (
           <div
             className={
               toast.type === "success"
-                ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-200"
-                : "rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200"
+                ? "break-words rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-200"
+                : "break-words rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200"
             }
           >
             {toast.message}
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
+        <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <h1 className="min-w-0 break-words text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
                 {doc?.id ? `Edit ${config.labels.singular}` : `Create ${config.labels.singular}`}
               </h1>
               {currentStatus ? (
@@ -1105,17 +1105,17 @@ function CollectionEditViewInner({
                 />
               ) : null}
             </div>
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="mt-2 break-words text-sm text-muted-foreground">
               Shape content, metadata, and publishing details in one pass.
             </p>
             {autosaveEnabled && doc?.id ? (
-              <p className="mt-1 text-xs text-muted-foreground" aria-live="polite">
+              <p className="mt-1 break-words text-xs text-muted-foreground" aria-live="polite">
                 {autosaveStatus.kind === "saving" ? (
                   "Autosaving…"
                 ) : autosaveStatus.kind === "saved" ? (
                   `Autosaved ${formatRelative(autosaveStatus.at)}`
                 ) : autosaveStatus.kind === "error" ? (
-                  <span className="text-rose-600 dark:text-rose-300">
+                  <span className="break-words text-rose-600 dark:text-rose-300">
                     Autosave error: {autosaveStatus.message}
                   </span>
                 ) : (
@@ -1125,7 +1125,7 @@ function CollectionEditViewInner({
             ) : null}
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
+          <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
             {previewSlug ? (
               <Button type="button" variant="outline" className="w-full sm:w-auto" asChild>
                 <Link href={`/api/preview?path=/${collectionSlug}/${previewSlug}`} target="_blank">
@@ -1226,9 +1226,9 @@ function CollectionEditViewInner({
                 collection with name + sku + dimensions) can group
                 them naturally. */}
             {mainHiddenByKind ? (
-              <Card>
-                <CardContent className="flex flex-col items-start gap-3 px-4 py-5">
-                  <p className="text-[13px] text-muted-foreground">
+              <Card className="min-w-0">
+                <CardContent className="flex min-w-0 flex-col items-start gap-3 px-4 py-5">
+                  <p className="break-words text-[13px] text-muted-foreground">
                     Every editor field is hidden for this kind. Toggle{" "}
                     <button
                       type="button"
@@ -1251,7 +1251,10 @@ function CollectionEditViewInner({
                 const meta = config.admin?.groupMeta?.[pending.name];
                 const Icon = resolveGroupIcon(meta?.icon);
                 out.push(
-                  <Card key={`group-${pending.startIdx.toString()}-${pending.name}`}>
+                  <Card
+                    key={`group-${pending.startIdx.toString()}-${pending.name}`}
+                    className="min-w-0"
+                  >
                     <CardHeader className="flex flex-row items-center gap-2">
                       {Icon ? (
                         <span
@@ -1262,15 +1265,15 @@ function CollectionEditViewInner({
                         </span>
                       ) : null}
                       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <CardTitle>{pending.name}</CardTitle>
+                        <CardTitle className="break-words">{pending.name}</CardTitle>
                         {meta?.description ? (
-                          <p className="truncate text-[11.5px] font-normal text-neutral-500 dark:text-neutral-400">
+                          <p className="break-words text-[11.5px] font-normal text-neutral-500 dark:text-neutral-400">
                             {meta.description}
                           </p>
                         ) : null}
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-6">
+                    <CardContent className="min-w-0 space-y-6">
                       {pending.fields.map((field, i) => (
                         <FieldRenderer
                           key={
@@ -1312,8 +1315,8 @@ function CollectionEditViewInner({
                 if (!groupName) {
                   flush();
                   out.push(
-                    <Card key={key}>
-                      <CardContent>
+                    <Card key={key} className="min-w-0">
+                      <CardContent className="min-w-0">
                         <FieldRenderer
                           field={filterContainerChildren(field, formValues, showAllFields)}
                           control={form.control}
@@ -1346,10 +1349,10 @@ function CollectionEditViewInner({
                   screen reader announces the relationship; the
                   Switch primitive supplies its own aria-checked. */}
               {hasHiddenFields || showAllFields ? (
-                <div className="flex items-center justify-between rounded-md border border-dashed border-neutral-200 bg-neutral-50/50 px-3 py-2 text-xs dark:border-neutral-800 dark:bg-neutral-900/40">
+                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-dashed border-neutral-200 bg-neutral-50/50 px-3 py-2 text-xs dark:border-neutral-800 dark:bg-neutral-900/40">
                   <label
                     htmlFor="np-show-all-fields-toggle"
-                    className="text-muted-foreground select-none cursor-pointer"
+                    className="cursor-pointer select-none break-words text-muted-foreground"
                   >
                     {showAllFields ? "Showing all fields" : "Showing fields relevant to this kind"}
                   </label>
@@ -1410,9 +1413,9 @@ function CollectionEditViewInner({
                    familiar Publish / Author / Taxonomy cards
                    disappear after kind change. Surface the
                    reason + escape hatch. */
-                <Card>
-                  <CardContent className="flex flex-col items-start gap-3 px-4 py-5">
-                    <p className="text-[13px] text-muted-foreground">
+                <Card className="min-w-0">
+                  <CardContent className="flex min-w-0 flex-col items-start gap-3 px-4 py-5">
+                    <p className="break-words text-[13px] text-muted-foreground">
                       Every sidebar field is hidden for this kind. Toggle{" "}
                       <button
                         type="button"
@@ -1426,12 +1429,12 @@ function CollectionEditViewInner({
                   </CardContent>
                 </Card>
               ) : (
-                <Card>
+                <Card className="min-w-0">
                   <CardHeader>
-                    <CardTitle>Publishing</CardTitle>
+                    <CardTitle className="break-words">Publishing</CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground">
+                  <CardContent className="min-w-0">
+                    <p className="break-words text-sm text-muted-foreground">
                       No sidebar fields configured for this collection.
                     </p>
                   </CardContent>
