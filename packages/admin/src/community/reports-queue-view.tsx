@@ -95,10 +95,10 @@ export function ReportsQueueView() {
       <Card>
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Queue</CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="grid gap-1 sm:flex sm:items-center sm:gap-2">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">Status</Label>
             <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
-              <SelectTrigger className="w-40">
+              <SelectTrigger className="w-full sm:w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -111,13 +111,66 @@ export function ReportsQueueView() {
             </Select>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           {error ? (
             <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
               {error}
             </div>
           ) : null}
-          <div className="overflow-x-auto rounded-xl border border-border/60">
+
+          <div className="space-y-3 md:hidden">
+            {loading ? (
+              <div className="rounded-xl border border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">
+                Loading…
+              </div>
+            ) : reports.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">
+                No reports.
+              </div>
+            ) : (
+              reports.map((report) => (
+                <div
+                  key={report.id}
+                  className="space-y-3 rounded-xl border border-border/60 bg-background/70 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium">{report.targetType}</p>
+                      <p className="break-all font-mono text-xs text-muted-foreground">
+                        {report.targetId}
+                      </p>
+                    </div>
+                    {report.resolvedAt ? (
+                      <StatusBadge status={report.resolution ?? "resolved"} />
+                    ) : (
+                      <StatusBadge status="open" />
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      Reason
+                    </p>
+                    <p className="whitespace-pre-wrap text-sm">{report.reason}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Filed {new Date(report.createdAt).toLocaleString()}
+                  </p>
+                  {report.resolvedAt ? null : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => setResolving(report)}
+                    >
+                      Resolve
+                    </Button>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="hidden overflow-x-auto rounded-xl border border-border/60 md:block">
             <table className="w-full min-w-[720px] text-sm">
               <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
                 <tr>

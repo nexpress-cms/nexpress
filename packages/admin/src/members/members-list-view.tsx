@@ -58,7 +58,7 @@ export function MembersListView({
         method="GET"
         className="flex flex-wrap items-end gap-3 rounded-xl border border-neutral-200/80 bg-neutral-50/60 p-4 dark:border-neutral-800/80 dark:bg-neutral-900/40"
       >
-        <div className="flex-1 min-w-[200px] space-y-1.5">
+        <div className="min-w-0 flex-1 space-y-1.5 sm:min-w-[200px]">
           <Label htmlFor="np-members-q">Search</Label>
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
@@ -72,13 +72,13 @@ export function MembersListView({
             />
           </div>
         </div>
-        <div className="space-y-1.5">
+        <div className="w-full space-y-1.5 sm:w-auto">
           <Label htmlFor="np-members-status">Status</Label>
           <select
             id="np-members-status"
             name="status"
             defaultValue={filterStatus}
-            className="flex h-8 rounded-lg border border-neutral-200/80 bg-white px-2.5 text-[13px] text-neutral-950 outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50"
+            className="flex h-8 w-full rounded-lg border border-neutral-200/80 bg-white px-2.5 text-[13px] text-neutral-950 outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50 sm:w-auto"
           >
             <option value="">All</option>
             <option value="active">Active</option>
@@ -87,13 +87,13 @@ export function MembersListView({
             <option value="deleted">Deleted</option>
           </select>
         </div>
-        <Button type="submit" size="sm">
+        <Button type="submit" size="sm" className="w-full sm:w-auto">
           Apply
         </Button>
         {isFiltered ? (
           <a
             href="/admin/members"
-            className="text-[12px] text-neutral-500 underline-offset-[3px] hover:underline dark:text-neutral-400"
+            className="w-full text-center text-[12px] text-neutral-500 underline-offset-[3px] hover:underline dark:text-neutral-400 sm:w-auto"
           >
             Clear
           </a>
@@ -105,7 +105,55 @@ export function MembersListView({
           <CardTitle>{isFiltered ? "Filtered members" : "All members"}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto rounded-xl border border-border/60">
+          <div className="space-y-3 md:hidden">
+            {members.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">
+                No members yet.
+              </div>
+            ) : (
+              members.map((member) => (
+                <div
+                  key={member.id}
+                  className="space-y-3 rounded-xl border border-border/60 bg-background/70 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <Link
+                        href={`/u/${member.handle}`}
+                        target="_blank"
+                        className="block truncate font-medium underline-offset-4 hover:underline"
+                      >
+                        @{member.handle}
+                      </Link>
+                      <p className="truncate text-sm text-muted-foreground">{member.displayName}</p>
+                    </div>
+                    <StatusBadge status={member.status} />
+                  </div>
+                  <dl className="grid gap-2 text-sm">
+                    <div className="grid gap-0.5">
+                      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Email
+                      </dt>
+                      <dd className="break-all text-muted-foreground">{member.email}</dd>
+                    </div>
+                    <div className="grid gap-0.5">
+                      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Joined
+                      </dt>
+                      <dd className="text-muted-foreground">
+                        {new Date(member.createdAt).toLocaleDateString()}
+                      </dd>
+                    </div>
+                  </dl>
+                  <Button variant="outline" size="sm" className="w-full" asChild>
+                    <Link href={`/admin/members/${member.id}`}>Manage</Link>
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="hidden overflow-x-auto rounded-xl border border-border/60 md:block">
             <table className="w-full min-w-[760px] text-sm">
               <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
                 <tr>

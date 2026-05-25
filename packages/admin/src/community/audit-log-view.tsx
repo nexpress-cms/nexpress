@@ -203,11 +203,14 @@ export function AuditLogView() {
                 }
               />
             </div>
-            <div className="md:col-span-2 lg:col-span-4 flex gap-2">
-              <Button type="submit">Apply</Button>
+            <div className="flex gap-2 md:col-span-2 lg:col-span-4">
+              <Button type="submit" className="flex-1 sm:flex-none">
+                Apply
+              </Button>
               <Button
                 type="button"
                 variant="outline"
+                className="flex-1 sm:flex-none"
                 onClick={() => {
                   const empty = {
                     targetType: "",
@@ -234,7 +237,7 @@ export function AuditLogView() {
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Events</CardTitle>
           {totalPages > 1 ? (
-            <div className="flex items-center gap-1.5">
+            <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1.5 sm:flex">
               <Button
                 size="sm"
                 variant="outline"
@@ -257,13 +260,78 @@ export function AuditLogView() {
             </div>
           ) : null}
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           {error ? (
             <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
               {error}
             </div>
           ) : null}
-          <div className="overflow-x-auto rounded-xl border border-border/60">
+
+          <div className="space-y-3 md:hidden">
+            {loading ? (
+              <div className="rounded-xl border border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">
+                Loading…
+              </div>
+            ) : events.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">
+                No audit events match these filters.
+              </div>
+            ) : (
+              events.map((event) => (
+                <div
+                  key={event.id}
+                  className="space-y-3 rounded-xl border border-border/60 bg-background/70 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="break-all font-mono text-xs font-medium">{event.action}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {new Date(event.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    <span
+                      className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ACTOR_BADGE[event.actorKind]}`}
+                    >
+                      {event.actorKind}
+                    </span>
+                  </div>
+                  <dl className="grid gap-2 text-sm">
+                    <div className="grid gap-0.5">
+                      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Actor
+                      </dt>
+                      <dd className="break-all font-mono text-xs text-muted-foreground">
+                        {event.actorUserId ?? event.actorMemberId ?? "—"}
+                      </dd>
+                    </div>
+                    <div className="grid gap-0.5">
+                      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Target
+                      </dt>
+                      <dd>
+                        <span>{event.targetType ?? "—"}</span>
+                        {event.targetId ? (
+                          <span className="mt-0.5 block break-all font-mono text-xs text-muted-foreground">
+                            {event.targetId}
+                          </span>
+                        ) : null}
+                      </dd>
+                    </div>
+                  </dl>
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                      Payload
+                    </summary>
+                    <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/40 p-2 font-mono text-[11px]">
+                      {JSON.stringify(event.payload, null, 2)}
+                    </pre>
+                  </details>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="hidden overflow-x-auto rounded-xl border border-border/60 md:block">
             <table className="w-full min-w-[860px] text-sm">
               <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
                 <tr>

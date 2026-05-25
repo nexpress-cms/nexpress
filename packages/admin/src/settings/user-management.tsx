@@ -146,12 +146,16 @@ export function UserManagement() {
     <Card>
       <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle>User management</CardTitle>
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={() => setEmailInviteOpen(true)}>
+        <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
+          <Button className="w-full sm:w-auto" onClick={() => setEmailInviteOpen(true)}>
             <MailPlus className="size-3.5" />
             Invite user
           </Button>
-          <Button variant="outline" onClick={() => setInviteOpen(true)}>
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            onClick={() => setInviteOpen(true)}
+          >
             <Plus className="size-3.5" />
             Create with password
           </Button>
@@ -159,11 +163,11 @@ export function UserManagement() {
       </CardHeader>
       <CardContent className="space-y-6">
         {emailInviteToast ? (
-          <div className="flex items-start justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-300">
+          <div className="grid gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-300 sm:flex sm:items-start sm:justify-between">
             <span>{emailInviteToast}</span>
             <button
               type="button"
-              className="text-xs uppercase tracking-wide text-emerald-700 dark:text-emerald-200 hover:text-emerald-900 dark:text-emerald-100"
+              className="justify-self-start text-xs uppercase tracking-wide text-emerald-700 hover:text-emerald-900 dark:text-emerald-200 dark:hover:text-emerald-100 sm:justify-self-auto"
               onClick={() => setEmailInviteToast(null)}
             >
               dismiss
@@ -177,7 +181,40 @@ export function UserManagement() {
           </div>
         ) : null}
 
-        <div className="overflow-x-auto rounded-xl border border-border/70">
+        <div className="space-y-3 md:hidden">
+          {loading ? (
+            Array.from({ length: 3 }).map((_, index) => (
+              <div
+                key={`user-card-skeleton-${index}`}
+                className="h-28 animate-pulse rounded-xl border border-border/70 bg-muted/20"
+              />
+            ))
+          ) : users.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
+              No users found.
+            </div>
+          ) : (
+            users.map((user) => (
+              <div
+                key={user.id}
+                className="space-y-3 rounded-xl border border-border/70 bg-background/70 p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-foreground">{user.name}</p>
+                    <p className="break-all text-sm text-muted-foreground">{user.email}</p>
+                  </div>
+                  <Badge variant="secondary">{user.role}</Badge>
+                </div>
+                <Button variant="outline" size="sm" className="w-full" asChild>
+                  <Link href={`/admin/users/${user.id}`}>Manage</Link>
+                </Button>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto rounded-xl border border-border/70 md:block">
           <div className="grid min-w-[680px] grid-cols-[1fr_1.2fr_140px_120px] gap-4 border-b border-border/70 bg-muted/35 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             <span>Name</span>
             <span>Email</span>
