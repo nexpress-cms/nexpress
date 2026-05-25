@@ -252,8 +252,8 @@ export function MediaLibrary() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="relative min-w-[220px] flex-1 xl:w-[280px] xl:flex-none">
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:flex xl:flex-wrap xl:items-center">
+                <div className="relative min-w-0 xl:w-[280px] xl:flex-none">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
                   <Input
                     value={searchQuery}
@@ -268,7 +268,7 @@ export function MediaLibrary() {
                   control instead of a select to keep it inline with
                   the existing view-mode toggle below.
                 */}
-                <div className="flex items-center rounded-lg border border-border/70 bg-background p-1 text-sm">
+                <div className="flex w-full items-center rounded-lg border border-border/70 bg-background p-1 text-sm sm:w-auto">
                   {(
                     [
                       { value: "all", label: "All" },
@@ -280,7 +280,7 @@ export function MediaLibrary() {
                       key={option.value}
                       type="button"
                       className={cn(
-                        "rounded-md px-3 py-2 transition-colors",
+                        "flex-1 rounded-md px-3 py-2 transition-colors sm:flex-none",
                         uploaderFilter === option.value
                           ? "bg-foreground text-background"
                           : "text-muted-foreground hover:text-foreground",
@@ -292,11 +292,11 @@ export function MediaLibrary() {
                   ))}
                 </div>
 
-                <div className="flex items-center rounded-lg border border-border/70 bg-background p-1">
+                <div className="flex w-full items-center rounded-lg border border-border/70 bg-background p-1 sm:w-auto">
                   <button
                     type="button"
                     className={cn(
-                      "rounded-md px-3 py-2 text-sm transition-colors",
+                      "flex-1 rounded-md px-3 py-2 text-sm transition-colors sm:flex-none",
                       viewMode === "grid"
                         ? "bg-foreground text-background"
                         : "text-muted-foreground",
@@ -308,7 +308,7 @@ export function MediaLibrary() {
                   <button
                     type="button"
                     className={cn(
-                      "rounded-md px-3 py-2 text-sm transition-colors",
+                      "flex-1 rounded-md px-3 py-2 text-sm transition-colors sm:flex-none",
                       viewMode === "list"
                         ? "bg-foreground text-background"
                         : "text-muted-foreground",
@@ -321,7 +321,7 @@ export function MediaLibrary() {
 
                 <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
                   <DialogTrigger asChild>
-                    <Button>
+                    <Button className="w-full sm:w-auto">
                       <Upload className="size-3.5" />
                       Upload
                     </Button>
@@ -340,7 +340,7 @@ export function MediaLibrary() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm">
+            <div className="grid gap-3 rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm sm:flex sm:items-center sm:justify-between">
               <div className="text-muted-foreground">
                 {selectedItems.length > 0
                   ? `${selectedItems.length} item${selectedItems.length === 1 ? "" : "s"} selected`
@@ -348,6 +348,7 @@ export function MediaLibrary() {
               </div>
               <Button
                 variant="outline"
+                className="w-full sm:w-auto"
                 onClick={() => void handleBulkDelete()}
                 disabled={selectedItems.length === 0}
               >
@@ -461,7 +462,7 @@ function UploaderBadge({ uploader }: { uploader: MediaUploader }) {
   if (uploader.kind === "member") {
     return (
       <p className="text-xs text-muted-foreground">
-        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+        <span className="inline-block max-w-full break-all rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
           @{uploader.handle}
         </span>
       </p>
@@ -469,7 +470,7 @@ function UploaderBadge({ uploader }: { uploader: MediaUploader }) {
   }
   return (
     <p className="text-xs text-muted-foreground">
-      <span className="rounded-full bg-muted px-2 py-0.5">
+      <span className="inline-block max-w-full break-all rounded-full bg-muted px-2 py-0.5">
         {uploader.name ?? uploader.email ?? "staff"}
       </span>
     </p>
@@ -489,21 +490,32 @@ function ListView({
 }) {
   if (loading) {
     return (
-      <div className="overflow-x-auto rounded-xl border border-border/70">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <div
-            key={`media-list-skeleton-${index}`}
-            className="grid min-w-[760px] grid-cols-[36px_72px_1.3fr_0.8fr_0.8fr_1fr_0.9fr] gap-4 border-b border-border/70 px-4 py-4 last:border-b-0"
-          >
-            {Array.from({ length: 7 }).map((__, cellIndex) => (
-              <div
-                key={`media-list-skeleton-${index}-${cellIndex}`}
-                className="h-4 animate-pulse rounded bg-muted"
-              />
-            ))}
-          </div>
-        ))}
-      </div>
+      <>
+        <div className="space-y-3 md:hidden">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={`media-list-card-skeleton-${index}`}
+              className="h-24 animate-pulse rounded-xl border border-border/70 bg-muted/20"
+            />
+          ))}
+        </div>
+
+        <div className="hidden overflow-x-auto rounded-xl border border-border/70 md:block">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={`media-list-skeleton-${index}`}
+              className="grid min-w-[760px] grid-cols-[36px_72px_1.3fr_0.8fr_0.8fr_1fr_0.9fr] gap-4 border-b border-border/70 px-4 py-4 last:border-b-0"
+            >
+              {Array.from({ length: 7 }).map((__, cellIndex) => (
+                <div
+                  key={`media-list-skeleton-${index}-${cellIndex}`}
+                  className="h-4 animate-pulse rounded bg-muted"
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      </>
     );
   }
 
@@ -512,7 +524,61 @@ function ListView({
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-border/70">
+    <>
+      <div className="space-y-3 md:hidden">
+        {items.map((item) => (
+          <label
+            key={item.id}
+            className={cn(
+              "grid cursor-pointer grid-cols-[auto_56px_minmax(0,1fr)] gap-3 rounded-xl border bg-background/80 p-3 transition-all",
+              selectedItems.includes(item.id)
+                ? "border-primary shadow-[0_0_0_1px_rgba(0,0,0,0.04)]"
+                : "border-border/70",
+            )}
+          >
+            <input
+              type="checkbox"
+              checked={selectedItems.includes(item.id)}
+              onChange={() => onToggle(item.id)}
+              className="mt-5 h-4 w-4 rounded border-border"
+            />
+            <div className="h-14 w-14 overflow-hidden rounded-xl bg-muted/40">
+              <MediaThumb item={item} compact />
+            </div>
+            <div className="min-w-0 space-y-1">
+              <p className="truncate font-medium text-foreground">{item.filename}</p>
+              <p className="break-all text-xs text-muted-foreground">
+                {item.type || "file"} / {formatBytes(item.size)}
+              </p>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                {item.uploader ? (
+                  <UploaderBadge uploader={item.uploader} />
+                ) : (
+                  <span className="italic">system</span>
+                )}
+                <span>{formatDate(item.createdAt)}</span>
+              </div>
+            </div>
+          </label>
+        ))}
+      </div>
+
+      <DesktopListTable items={items} selectedItems={selectedItems} onToggle={onToggle} />
+    </>
+  );
+}
+
+function DesktopListTable({
+  items,
+  selectedItems,
+  onToggle,
+}: {
+  items: MediaItem[];
+  selectedItems: string[];
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <div className="hidden overflow-x-auto rounded-xl border border-border/70 md:block">
       <div className="grid min-w-[760px] grid-cols-[36px_72px_1.3fr_0.8fr_0.8fr_1fr_0.9fr] gap-4 border-b border-border/70 bg-muted/35 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
         <span />
         <span>Thumbnail</span>
