@@ -36,7 +36,7 @@ const projectRoot = process.cwd();
 
 const ancestor = process.env.NP_ROOT_ENV_PATH;
 if (ancestor) {
-  loadEnv({ path: resolve(projectRoot, ancestor) });
+  loadEnv({ path: resolve(projectRoot, ancestor), quiet: true });
 }
 
-loadEnv({ path: resolve(projectRoot, ".env"), override: false });
+loadEnv({ path: resolve(projectRoot, ".env"), override: false, quiet: true });

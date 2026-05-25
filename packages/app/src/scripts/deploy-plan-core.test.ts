@@ -1,0 +1,102 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  buildDeployPlan,
+  buildDeployPlanJson,
+  checkEnvRequirement,
+  renderBriefDeployPlan,
+  renderDeployPlan,
+} from "./deploy-plan-core.js";
+
+describe("deploy plan core", () => {
+  it("builds a stable JSON plan for agent-operated Vercel deploys", () => {
+    const plan = buildDeployPlan("vercel");
+    const json = buildDeployPlanJson(plan, false, {
+      DATABASE_URL: "postgres://user:pass@example.com:5432/nexpress",
+      NP_SECRET: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+      SITE_URL: "https://demo.example.com",
+      NP_STORAGE_ADAPTER: "local",
+      NP_S3_BUCKET: "media",
+    });
+
+    expect(json).toEqual(
+      expect.objectContaining({
+        schemaVersion: "np.deploy-plan.v1",
+        target: "vercel",
+        title: "Vercel",
+        inferred: false,
+        dryRun: true,
+      }),
+    );
+    expect(json.commands).toContain("pnpm run doctor:prod -- --target vercel");
+    expect(json.requiredEnv).toContainEqual({
+      name: "DATABASE_URL",
+      variable: "DATABASE_URL",
+      status: "set",
+    });
+    expect(json.requiredEnv).toContainEqual({
+      name: "NP_STORAGE_ADAPTER=s3",
+      variable: "NP_STORAGE_ADAPTER",
+      expectedValue: "s3",
+      actualValue: "local",
+      status: "mismatch",
+    });
+    expect(json.requiredEnv).toContainEqual({
+      name: "NP_S3_REGION",
+      variable: "NP_S3_REGION",
+      status: "missing",
+    });
+  });
+
+  it("checks env requirements without leaking set secret values", () => {
+    expect(checkEnvRequirement("NP_SECRET", { NP_SECRET: "super-secret-value" })).toEqual({
+      name: "NP_SECRET",
+      variable: "NP_SECRET",
+      status: "set",
+    });
+
+    expect(checkEnvRequirement("NP_ENABLE_JOBS=1", { NP_ENABLE_JOBS: "true" })).toEqual({
+      name: "NP_ENABLE_JOBS=1",
+      variable: "NP_ENABLE_JOBS",
+      expectedValue: "1",
+      actualValue: "true",
+      status: "mismatch",
+    });
+  });
+
+  it("renders no-color human output for logs and non-TTY agents", () => {
+    const output = renderDeployPlan(
+      buildDeployPlan("vercel"),
+      false,
+      {
+        DATABASE_URL: "postgres://user:pass@example.com:5432/nexpress",
+        NP_SECRET: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+        SITE_URL: "https://demo.example.com",
+      },
+      { color: false },
+    );
+
+    expect(output).toContain("NexPress deploy plan: Vercel");
+    expect(output).toContain("[todo] NP_STORAGE_ADAPTER=s3");
+    expect(output).toContain("Run before deploy");
+    expect(output).not.toMatch(/\x1b\[/);
+  });
+
+  it("renders a compact brief with only unresolved required env and commands", () => {
+    const output = renderBriefDeployPlan(
+      buildDeployPlan("docker"),
+      true,
+      {
+        DATABASE_URL: "postgres://user:pass@example.com:5432/nexpress",
+      },
+      { color: false },
+    );
+
+    expect(output).toContain("No --target supplied; inferred docker.");
+    expect(output).toContain("Required env: 1/3 set");
+    expect(output).toContain("[todo] NP_SECRET");
+    expect(output).toContain("pnpm run doctor:prod -- --target docker");
+    expect(output).not.toContain("Fit");
+    expect(output).not.toMatch(/\x1b\[/);
+  });
+});
