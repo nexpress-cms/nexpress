@@ -19,9 +19,21 @@ import { existsSync, readdirSync } from "node:fs";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
+import {
+  buildMigrationStatus,
+  buildMigrationStatusJson,
+  readAppliedMigrations,
+  readLocalMigrationEntries,
+  renderMigrationStatus,
+} from "./migration-status.js";
 
 const ARGV = process.argv.slice(2);
 const MIGRATIONS_FOLDER = "./drizzle";
+
+interface CliOptions {
+  json: boolean;
+  status: boolean;
+}
 
 function printHelp(): void {
   console.log(`NexPress migrations
@@ -29,15 +41,28 @@ function printHelp(): void {
 Usage:
   pnpm db:generate
   pnpm db:migrate
+  pnpm db:migrate -- --status
+  pnpm db:migrate -- --status --json
   pnpm db:migrate -- --help
 
 Options:
+  --status     Check local vs applied migrations without applying changes.
+  --plan       Alias for --status.
+  --json       Print the stable machine-readable status report; implies --status.
   --help, -h   Show this help without connecting to the database.
 `);
 }
 
 function shouldPrintHelp(argv: string[]): boolean {
   return argv.includes("--help") || argv.includes("-h");
+}
+
+function parseCliOptions(argv: string[]): CliOptions {
+  const json = argv.includes("--json");
+  return {
+    json,
+    status: json || argv.includes("--status") || argv.includes("--plan"),
+  };
 }
 
 function hasLocalMigrationSql(folder: string): boolean {
@@ -51,6 +76,8 @@ if (shouldPrintHelp(ARGV)) {
   printHelp();
   process.exit(0);
 }
+
+const options = parseCliOptions(ARGV);
 
 if (!hasLocalMigrationSql(MIGRATIONS_FOLDER)) {
   console.error("No local Drizzle migrations found in ./drizzle.");
@@ -74,6 +101,26 @@ try {
   const msg = err instanceof Error ? err.message : String(err);
   console.error(`could not connect to database: ${msg}`);
   process.exit(1);
+}
+
+if (options.status) {
+  try {
+    const local = readLocalMigrationEntries(MIGRATIONS_FOLDER);
+    const applied = await readAppliedMigrations(client);
+    const status = buildMigrationStatus(local, applied);
+    if (options.json) {
+      console.log(JSON.stringify(buildMigrationStatusJson(status), null, 2));
+    } else {
+      console.log(renderMigrationStatus(status));
+    }
+  } catch (err) {
+    console.error("✗ migration status failed:");
+    console.error(`  ${err instanceof Error ? err.message : String(err)}`);
+    await client.end().catch(() => {});
+    process.exit(1);
+  }
+  await client.end();
+  process.exit(0);
 }
 
 const db = drizzle(client);

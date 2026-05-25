@@ -173,6 +173,8 @@ assertNoAnsi(migrateHelp.output, "db:migrate --help");
 assertIncludes(migrateHelp.output, "NexPress migrations", "db:migrate --help");
 assertIncludes(migrateHelp.output, "pnpm db:generate", "db:migrate --help");
 assertIncludes(migrateHelp.output, "pnpm db:migrate", "db:migrate --help");
+assertIncludes(migrateHelp.output, "pnpm db:migrate -- --status", "db:migrate --help");
+assertIncludes(migrateHelp.output, "--json", "db:migrate --help");
 console.log("✓ db:migrate help runs without touching the database");
 
 const doctor = runTsx("scripts/doctor.ts", ["--prod", "--target", "vercel"]);
