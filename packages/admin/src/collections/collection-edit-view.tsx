@@ -128,7 +128,10 @@ const getDefaultValue = (field: NpFieldConfig, source: Record<string, unknown>):
   }
 };
 
-const buildDefaultValues = (fields: NpFieldConfig[], source: Record<string, unknown>): Record<string, unknown> => {
+const buildDefaultValues = (
+  fields: NpFieldConfig[],
+  source: Record<string, unknown>,
+): Record<string, unknown> => {
   const result: Record<string, unknown> = {};
 
   for (const field of fields) {
@@ -203,8 +206,7 @@ const buildSchemaShape = (
 
     let schema = buildFieldSchema(field);
 
-    const effectiveRequired =
-      field.required && !hiddenByCondition.has(field.name);
+    const effectiveRequired = field.required && !hiddenByCondition.has(field.name);
     if (!effectiveRequired) {
       schema = schema.optional();
     }
@@ -391,10 +393,7 @@ const filterContainerChildren = (
  * `forceOpen` decision so a group containing a container with
  * a nested-error field still gets force-opened on save failure.
  */
-const fieldTreeHasError = (
-  fields: NpFieldConfig[],
-  errors: Record<string, unknown>,
-): boolean => {
+const fieldTreeHasError = (fields: NpFieldConfig[], errors: Record<string, unknown>): boolean => {
   for (const f of fields) {
     if (f.type === "row" || f.type === "collapsible") {
       if (fieldTreeHasError(f.fields, errors)) return true;
@@ -539,10 +538,7 @@ function SidebarGroupCard({
             />
           </CardHeader>
         </CollapsibleTrigger>
-        <CollapsibleContent
-          id={contentId}
-          className="np-sidebar-group-content"
-        >
+        <CollapsibleContent id={contentId} className="np-sidebar-group-content">
           <CardContent className="space-y-6">{children}</CardContent>
         </CollapsibleContent>
       </Card>
@@ -573,7 +569,12 @@ export function CollectionEditView(props: CollectionEditViewProps) {
   );
 }
 
-function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }: CollectionEditViewProps) {
+function CollectionEditViewInner({
+  config,
+  doc,
+  collectionSlug,
+  collectionTabs,
+}: CollectionEditViewProps) {
   const router = useRouter();
   const emitSave = useSaveEmitter();
   const [toast, setToast] = useState<ToastState>(null);
@@ -632,7 +633,8 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
   }, [defaultValues, form]);
 
   const slugValue = form.watch("slug");
-  const previewSlug = typeof slugValue === "string" ? slugValue : typeof doc?.slug === "string" ? doc.slug : "";
+  const previewSlug =
+    typeof slugValue === "string" ? slugValue : typeof doc?.slug === "string" ? doc.slug : "";
   const currentStatus = typeof doc?.status === "string" ? doc.status : null;
 
   // Autosave wiring — enabled only when the collection opts in via
@@ -640,7 +642,8 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
   const autosaveEnabled =
     typeof config.versions?.drafts === "object" && config.versions.drafts.autosave === true;
   const autosaveInterval =
-    typeof config.versions?.drafts === "object" && typeof config.versions.drafts.autosaveInterval === "number"
+    typeof config.versions?.drafts === "object" &&
+    typeof config.versions.drafts.autosaveInterval === "number"
       ? config.versions.drafts.autosaveInterval
       : 5_000;
   const [autosaveStatus, setAutosaveStatus] = useState<
@@ -694,9 +697,9 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
             },
           );
           if (!response.ok) {
-            const body = (await response.json().catch(() => null)) as
-              | { error?: { message?: string } }
-              | null;
+            const body = (await response.json().catch(() => null)) as {
+              error?: { message?: string };
+            } | null;
             throw new Error(body?.error?.message ?? `HTTP ${response.status}`);
           }
           setAutosaveStatus({ kind: "saved", at: Date.now() });
@@ -772,8 +775,7 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
   // escape hatch rather than leaving the column blank. The check
   // only fires when there *were* candidates to begin with — a
   // collection with no main-position fields stays empty silently.
-  const mainHiddenByKind =
-    !showAllFields && mainCandidates.length > 0 && mainFields.length === 0;
+  const mainHiddenByKind = !showAllFields && mainCandidates.length > 0 && mainFields.length === 0;
 
   // Group sidebar fields by `admin.group`, preserving the first-
   // seen order of groups so operators control layout by ordering
@@ -789,7 +791,7 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
         indexByName.set(name, idx);
         sidebarGroups.push({ name, fields: [] });
       }
-      sidebarGroups[idx]!.fields.push(field);
+      sidebarGroups[idx].fields.push(field);
     }
   }
 
@@ -808,7 +810,8 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
       return `${config.labels.singular} scheduled for ${new Date(publishedAt).toLocaleString()}.`;
     }
     if (status === "published") return `${config.labels.singular} published.`;
-    if (status === "unschedule") return `${config.labels.singular} schedule cancelled — back to draft.`;
+    if (status === "unschedule")
+      return `${config.labels.singular} schedule cancelled — back to draft.`;
     return `${config.labels.singular} saved as draft.`;
   };
 
@@ -851,7 +854,7 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
     let cursor: NpFieldConfig[] | undefined = effectiveFields;
     let found: NpFieldConfig | null = null;
     for (let i = 0; i < segments.length; i += 1) {
-      const segment = segments[i]!;
+      const segment = segments[i];
       if (!cursor) break;
       const next = findNamed(cursor, segment);
       if (!next) {
@@ -886,10 +889,7 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
    * `{ title: { type, message }, seo: { metaTitle: { type } } }`
    * → `["title", "seo.metaTitle"]`
    */
-  const flattenErrorPaths = (
-    errors: Record<string, unknown>,
-    prefix: string[] = [],
-  ): string[] => {
+  const flattenErrorPaths = (errors: Record<string, unknown>, prefix: string[] = []): string[] => {
     const out: string[] = [];
     for (const [key, value] of Object.entries(errors)) {
       if (!value || typeof value !== "object") continue;
@@ -972,7 +972,8 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
           ? `/api/collections/${collectionSlug}/${String(doc.id)}`
           : `/api/collections/${collectionSlug}`;
 
-        const wireStatus = status === "scheduled" ? "published" : status === "unschedule" ? "draft" : status;
+        const wireStatus =
+          status === "scheduled" ? "published" : status === "unschedule" ? "draft" : status;
         const body: Record<string, unknown> = { ...values, _status: wireStatus };
         if (status === "scheduled" && publishedAtOverride) {
           body.publishedAt = publishedAtOverride;
@@ -1096,29 +1097,37 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
                   status={currentStatus}
                   override={
                     currentStatus === "scheduled" && doc?.publishedAt
-                      ? { label: `Scheduled · ${new Date(String(doc.publishedAt)).toLocaleString()}` }
+                      ? {
+                          label: `Scheduled · ${new Date(String(doc.publishedAt)).toLocaleString()}`,
+                        }
                       : undefined
                   }
                 />
               ) : null}
             </div>
-            <p className="mt-2 text-sm text-muted-foreground">Shape content, metadata, and publishing details in one pass.</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Shape content, metadata, and publishing details in one pass.
+            </p>
             {autosaveEnabled && doc?.id ? (
               <p className="mt-1 text-xs text-muted-foreground" aria-live="polite">
-                {autosaveStatus.kind === "saving"
-                  ? "Autosaving…"
-                  : autosaveStatus.kind === "saved"
-                    ? `Autosaved ${formatRelative(autosaveStatus.at)}`
-                    : autosaveStatus.kind === "error"
-                      ? <span className="text-rose-600 dark:text-rose-300">Autosave error: {autosaveStatus.message}</span>
-                      : "Autosave on"}
+                {autosaveStatus.kind === "saving" ? (
+                  "Autosaving…"
+                ) : autosaveStatus.kind === "saved" ? (
+                  `Autosaved ${formatRelative(autosaveStatus.at)}`
+                ) : autosaveStatus.kind === "error" ? (
+                  <span className="text-rose-600 dark:text-rose-300">
+                    Autosave error: {autosaveStatus.message}
+                  </span>
+                ) : (
+                  "Autosave on"
+                )}
               </p>
             ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
             {previewSlug ? (
-              <Button type="button" variant="outline" asChild>
+              <Button type="button" variant="outline" className="w-full sm:w-auto" asChild>
                 <Link href={`/api/preview?path=/${collectionSlug}/${previewSlug}`} target="_blank">
                   <Eye className="size-3.5" />
                   Preview
@@ -1130,13 +1139,17 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
               <Button
                 type="button"
                 variant="outline"
-                className="text-rose-600 dark:text-rose-300"
                 onClick={() => {
                   void handleDelete();
                 }}
                 disabled={isDeleting}
+                className="w-full text-rose-600 dark:text-rose-300 sm:w-auto"
               >
-                {isDeleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+                {isDeleting ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="size-3.5" />
+                )}
                 Delete
               </Button>
             ) : null}
@@ -1148,8 +1161,13 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
                 void handleSaveDraft();
               }}
               disabled={isSaving}
+              className="w-full sm:w-auto"
             >
-              {savingAs === "draft" ? <Loader2 className="size-3.5 animate-spin" /> : <FileText className="size-3.5" />}
+              {savingAs === "draft" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <FileText className="size-3.5" />
+              )}
               Save as Draft
             </Button>
 
@@ -1158,6 +1176,7 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
               variant="outline"
               onClick={() => setScheduleOpen(true)}
               disabled={isSaving}
+              className="w-full sm:w-auto"
             >
               {savingAs === "scheduled" || savingAs === "unschedule" ? (
                 <Loader2 className="size-3.5 animate-spin" />
@@ -1167,8 +1186,12 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
               {isScheduled ? "Reschedule" : "Schedule"}
             </Button>
 
-            <Button type="submit" disabled={isSaving}>
-              {savingAs === "published" ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+            <Button type="submit" disabled={isSaving} className="w-full sm:w-auto">
+              {savingAs === "published" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Save className="size-3.5" />
+              )}
               {isScheduled ? "Publish now" : "Publish"}
             </Button>
           </div>
@@ -1186,10 +1209,7 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
         <div className="grid gap-6 xl:grid-cols-12">
           <div className="space-y-4 xl:col-span-8">
             {config.i18n && doc?.id ? (
-              <TranslationTabs
-                collectionSlug={collectionSlug}
-                documentId={String(doc.id)}
-              />
+              <TranslationTabs collectionSlug={collectionSlug} documentId={String(doc.id)} />
             ) : null}
             {/* Main column render. Mirrors the sidebar's grouping
                 semantics for consumer symmetry — fields tagged
@@ -1224,7 +1244,8 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
             ) : null}
             {(() => {
               const out: ReactElement[] = [];
-              let pending: { name: string; fields: NpFieldConfig[]; startIdx: number } | null = null;
+              let pending: { name: string; fields: NpFieldConfig[]; startIdx: number } | null =
+                null;
               const flush = (): void => {
                 if (!pending) return;
                 const meta = config.admin?.groupMeta?.[pending.name];
@@ -1285,7 +1306,9 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
                   return;
                 }
                 const groupName =
-                  field.type === "row" || field.type === "collapsible" ? null : field.admin?.group ?? null;
+                  field.type === "row" || field.type === "collapsible"
+                    ? null
+                    : (field.admin?.group ?? null);
                 if (!groupName) {
                   flush();
                   out.push(
@@ -1314,7 +1337,7 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
           </div>
 
           <div className="xl:col-span-4">
-            <div className="sticky top-20 space-y-6">
+            <div className="space-y-6 xl:sticky xl:top-20">
               {/* Show-all toggle — only rendered when some field
                   has an `admin.condition` that's currently hiding
                   it. Operators on collections without conditional
@@ -1322,7 +1345,7 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
                   is wired to the Switch via a stable id so a
                   screen reader announces the relationship; the
                   Switch primitive supplies its own aria-checked. */}
-              {(hasHiddenFields || showAllFields) ? (
+              {hasHiddenFields || showAllFields ? (
                 <div className="flex items-center justify-between rounded-md border border-dashed border-neutral-200 bg-neutral-50/50 px-3 py-2 text-xs dark:border-neutral-800 dark:bg-neutral-900/40">
                   <label
                     htmlFor="np-show-all-fields-toggle"
@@ -1353,10 +1376,7 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
                   // this, a required nested field that fails
                   // validation wouldn't force its parent group
                   // open, defeating the focus + scroll from PR 6.
-                  const hasError = fieldTreeHasError(
-                    group.fields,
-                    form.formState.errors as Record<string, unknown>,
-                  );
+                  const hasError = fieldTreeHasError(group.fields, form.formState.errors);
                   const meta = config.admin?.groupMeta?.[group.name];
                   return (
                     <SidebarGroupCard
@@ -1437,10 +1457,7 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
               <div id="np-block-editor-aside" />
 
               {doc?.id && config.versions ? (
-                <RevisionsPanel
-                  collectionSlug={collectionSlug}
-                  documentId={String(doc.id)}
-                />
+                <RevisionsPanel collectionSlug={collectionSlug} documentId={String(doc.id)} />
               ) : null}
 
               {doc?.id && collectionTabs && collectionTabs.length > 0 ? (

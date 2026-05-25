@@ -84,7 +84,7 @@ export function PaletteModal({
       {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
       <DialogContent
         aria-label={ariaLabel}
-        className="grid w-[min(100%-2rem,46rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0"
+        className="grid max-h-[calc(100dvh-2rem)] max-w-[46rem] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0"
       >
         <div className="flex items-center gap-2 border-b border-neutral-200/80 px-3.5 py-2.5 dark:border-neutral-800/80">
           <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -106,7 +106,7 @@ export function PaletteModal({
             <X className="h-3.5 w-3.5" />
           </Button>
         </div>
-        <div className="max-h-[60vh] overflow-y-auto px-3 py-2.5">
+        <div className="min-h-0 overflow-y-auto px-3 py-2.5">
           {filteredSections.length === 0 ? (
             <div className="px-2 py-12 text-center text-sm text-muted-foreground">
               No blocks match.
@@ -132,12 +132,12 @@ export function PaletteModal({
             ))
           )}
         </div>
-        <div className="flex items-center justify-between border-t border-neutral-200/80 px-3.5 py-2 text-[11px] text-muted-foreground dark:border-neutral-800/80">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-200/80 px-3.5 py-2 text-[11px] text-muted-foreground dark:border-neutral-800/80">
           <span>
             <strong className="font-semibold text-foreground">{availableBlocks.length}</strong>{" "}
             blocks · shared registry
           </span>
-          <span>↑↓ navigate · ↵ insert · esc close</span>
+          <span className="hidden sm:inline">↑↓ navigate · ↵ insert · esc close</span>
         </div>
       </DialogContent>
     </Dialog>

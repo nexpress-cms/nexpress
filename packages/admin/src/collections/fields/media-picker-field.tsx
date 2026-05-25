@@ -2,7 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import type { NpFindResult } from "@nexpress/core";
 
 import { Button } from "../../ui/button.js";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../ui/dialog.js";
 
 interface MediaDocument extends Record<string, unknown> {
   id: string;
@@ -57,12 +64,19 @@ export function MediaPickerField({ value, onChange, relationTo }: MediaPickerFie
 
   return (
     <div className="space-y-3 rounded-xl border border-border/60 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-foreground">{selectedItem ? getMediaLabel(selectedItem) : "No media selected"}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground">
+            {selectedItem ? getMediaLabel(selectedItem) : "No media selected"}
+          </p>
           <p className="text-xs text-muted-foreground">Source: {relationTo}</p>
         </div>
-        <Button type="button" variant="outline" onClick={() => setOpen(true)}>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full sm:w-auto"
+          onClick={() => setOpen(true)}
+        >
           Select
         </Button>
       </div>
@@ -89,13 +103,15 @@ export function MediaPickerField({ value, onChange, relationTo }: MediaPickerFie
                 }}
               >
                 <p className="font-medium text-foreground">{getMediaLabel(item)}</p>
-                <p className="mt-2 text-xs text-muted-foreground">ID: {item.id}</p>
+                <p className="mt-2 break-all text-xs text-muted-foreground">ID: {item.id}</p>
               </button>
             ))}
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onChange("")}>Clear</Button>
+            <Button type="button" variant="outline" onClick={() => onChange("")}>
+              Clear
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

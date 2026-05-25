@@ -358,7 +358,7 @@ export function CommandMenu({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg gap-2 p-0">
+      <DialogContent className="grid max-h-[calc(100dvh-2rem)] max-w-lg grid-rows-[auto_auto_minmax(0,1fr)] gap-2 overflow-hidden p-0">
         <DialogHeader className="border-b border-border/60 px-3 py-2">
           <DialogTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Page-builder commands
@@ -379,7 +379,7 @@ export function CommandMenu({
             aria-label="Filter commands"
           />
         </div>
-        <div className="max-h-[60vh] overflow-y-auto px-1 pb-2">
+        <div className="min-h-0 overflow-y-auto px-1 pb-2">
           {filtered.length === 0 ? (
             <p className="px-3 py-4 text-center text-xs text-muted-foreground">
               No matching commands.
@@ -410,11 +410,7 @@ export function CommandMenu({
                             )}
                           >
                             {action.preview ? (
-                              <PatternPreview
-                                src={action.preview}
-                                alt=""
-                                size="thumb"
-                              />
+                              <PatternPreview src={action.preview} alt="" size="thumb" />
                             ) : null}
                             <span className="flex-1 truncate">{action.label}</span>
                             {action.hint && action.hint !== "destructive" ? (

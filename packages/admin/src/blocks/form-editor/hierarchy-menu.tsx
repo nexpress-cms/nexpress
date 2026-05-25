@@ -70,7 +70,7 @@ export function HierarchyMenu({
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="icon" aria-label="More actions">
+        <Button type="button" variant="ghost" size="icon-sm" aria-label="More actions">
           <MoreHorizontal className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
@@ -92,10 +92,7 @@ export function HierarchyMenu({
               Move into
             </DropdownMenuLabel>
             {candidates.map((c) => (
-              <DropdownMenuItem
-                key={`into-${c.id}`}
-                onSelect={() => onMoveInto(block.id, c.id)}
-              >
+              <DropdownMenuItem key={`into-${c.id}`} onSelect={() => onMoveInto(block.id, c.id)}>
                 {c.label}
               </DropdownMenuItem>
             ))}
@@ -103,9 +100,7 @@ export function HierarchyMenu({
         ) : null}
         {wrapTargets.length > 0 ? (
           <>
-            {canMoveOut || candidates.length > 0 ? (
-              <DropdownMenuSeparator />
-            ) : null}
+            {canMoveOut || candidates.length > 0 ? <DropdownMenuSeparator /> : null}
             <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
               Wrap in
             </DropdownMenuLabel>

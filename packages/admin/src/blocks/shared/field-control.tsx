@@ -214,7 +214,7 @@ export function FieldControl({ field, value, onChange, inputId }: FieldControlPr
     // theme-token references.
     const stringValue = typeof value === "string" ? value : "";
     return (
-      <div className="flex items-center gap-2">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
         <input
           id={inputId}
           type="color"
@@ -226,7 +226,7 @@ export function FieldControl({ field, value, onChange, inputId }: FieldControlPr
           value={stringValue}
           onChange={(event) => onChange(event.currentTarget.value)}
           placeholder="#000000 or var(--np-color-primary)"
-          className="flex-1 font-mono text-xs"
+          className="min-w-0 font-mono text-xs"
         />
       </div>
     );

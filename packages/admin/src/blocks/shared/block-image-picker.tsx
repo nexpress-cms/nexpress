@@ -194,16 +194,22 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
 
   return (
     <div className="grid gap-2">
-      <div className="flex items-center gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
         <Input
           id={inputId}
           type="url"
           value={value}
           onChange={(e) => onChange(e.currentTarget.value)}
           placeholder="https://… or pick from library"
-          className="flex-1"
+          className="col-span-2 min-w-0 sm:col-span-1 sm:flex-1"
         />
-        <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full sm:w-auto"
+          onClick={() => setOpen(true)}
+        >
           Library
         </Button>
         {value ? (
@@ -211,6 +217,7 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
             type="button"
             variant="ghost"
             size="sm"
+            className="w-full sm:w-auto"
             onClick={() => onChange("")}
             aria-label="Remove image"
           >
@@ -243,12 +250,12 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
               Search the library, upload a new file, or paste a URL above.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
             <Input
               value={query}
               onChange={(e) => setQuery(e.currentTarget.value)}
               placeholder="Search by filename or alt text"
-              className="h-8 flex-1"
+              className="col-span-2 h-8 min-w-0 sm:col-span-1 sm:flex-1"
               autoFocus
             />
             <input
@@ -265,6 +272,7 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
               type="button"
               variant="outline"
               size="sm"
+              className="w-full sm:w-auto"
               disabled={uploading}
               onClick={() => fileInputRef.current?.click()}
             >
@@ -279,7 +287,7 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
               {error}
             </p>
           ) : null}
-          <div className="grid max-h-[28rem] grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid max-h-[min(28rem,55dvh)] grid-cols-1 gap-3 overflow-y-auto pr-1 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
             {items.length === 0 && !loading ? (
               <div className="col-span-full px-2 py-6 text-center text-xs text-muted-foreground">
                 {debouncedQuery

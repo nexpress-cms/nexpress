@@ -103,12 +103,12 @@ export function PatternLibraryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl gap-3 p-0">
+      <DialogContent className="grid max-h-[calc(100dvh-2rem)] max-w-4xl grid-rows-[auto_auto_minmax(0,1fr)] gap-3 overflow-hidden p-0">
         <DialogHeader className="border-b border-border/60 px-4 py-3">
           <DialogTitle>Pattern library</DialogTitle>
           <DialogDescription>
-            Browse patterns shipped by your theme, plugins, and your saved snippets.
-            Pick one to insert at the current position.
+            Browse patterns shipped by your theme, plugins, and your saved snippets. Pick one to
+            insert at the current position.
           </DialogDescription>
         </DialogHeader>
 
@@ -120,11 +120,7 @@ export function PatternLibraryDialog({
             aria-label="Search patterns"
             autoFocus
           />
-          <div
-            role="tablist"
-            aria-label="Filter by source"
-            className="flex flex-wrap gap-1"
-          >
+          <div role="tablist" aria-label="Filter by source" className="flex flex-wrap gap-1">
             {SOURCE_FILTERS.map((f) => {
               const active = filter === f.key;
               return (
@@ -148,7 +144,7 @@ export function PatternLibraryDialog({
           </div>
         </div>
 
-        <div className="max-h-[60vh] overflow-y-auto px-4 pb-4">
+        <div className="min-h-0 overflow-y-auto px-4 pb-4">
           {filtered.length === 0 ? (
             <p className="px-2 py-12 text-center text-sm text-muted-foreground">
               No patterns match.

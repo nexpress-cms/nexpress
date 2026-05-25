@@ -11,11 +11,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 
@@ -30,19 +26,10 @@ import {
   lintFieldValue,
   type ContainerCandidate,
 } from "../editor-engine/index.js";
-import {
-  BlockIcon,
-  BlockJsonDialog,
-  DeleteBlockDialog,
-  FieldControl,
-} from "../shared/index.js";
+import { BlockIcon, BlockJsonDialog, DeleteBlockDialog, FieldControl } from "../shared/index.js";
 import { Button } from "../../ui/button.js";
 import { Card } from "../../ui/card.js";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "../../ui/collapsible.js";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../ui/collapsible.js";
 import { Label } from "../../ui/label.js";
 import { cn } from "../../ui/utils.js";
 
@@ -78,11 +65,7 @@ export interface SortableBlockItemProps {
   onUpdateProps: (id: string, props: Record<string, unknown>) => void;
   onReplaceProps: (id: string, props: Record<string, unknown>) => void;
   onAddChild: (parentId: string, blockType: string) => void;
-  onInsert: (
-    position: "before" | "after",
-    targetId: string,
-    blockType: string,
-  ) => void;
+  onInsert: (position: "before" | "after", targetId: string, blockType: string) => void;
   onMoveOut: (id: string) => void;
   onMoveInto: (id: string, targetParentId: string) => void;
   onWrapIn: (id: string, containerType: string) => void;
@@ -110,10 +93,7 @@ export interface SortableBlockItemProps {
    * relative to the last clicked id.
    */
   isSelected: (id: string) => boolean;
-  onToggleSelected: (
-    id: string,
-    modifiers: { shift: boolean; meta: boolean },
-  ) => void;
+  onToggleSelected: (id: string, modifiers: { shift: boolean; meta: boolean }) => void;
 }
 
 export function SortableBlockItem({
@@ -140,8 +120,9 @@ export function SortableBlockItem({
   isSelected,
   onToggleSelected,
 }: SortableBlockItemProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: block.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: block.id,
+  });
   const [jsonOpen, setJsonOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -184,11 +165,8 @@ export function SortableBlockItem({
         selfSelected && "ring-2 ring-primary/60 ring-offset-1",
       )}
     >
-      <Collapsible
-        open={selfOpen}
-        onOpenChange={(next) => onOpenChange(block.id, next)}
-      >
-        <header className="flex items-center gap-2 border-b border-neutral-200/80 bg-neutral-50/60 px-3 py-2 dark:border-neutral-800/80 dark:bg-neutral-900/40">
+      <Collapsible open={selfOpen} onOpenChange={(next) => onOpenChange(block.id, next)}>
+        <header className="flex flex-wrap items-center gap-2 border-b border-neutral-200/80 bg-neutral-50/60 px-3 py-2 dark:border-neutral-800/80 dark:bg-neutral-900/40">
           {/* Multi-select checkbox (#467 #3). Click toggles; shift-
               click extends from the last clicked id (the orchestrator
               owns the range logic). Stop propagation so the click
@@ -241,7 +219,7 @@ export function SortableBlockItem({
             kind={definition?.iconKind}
             className="text-muted-foreground"
           />
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 basis-[10rem]">
             <div className="truncate text-sm font-semibold">
               {definition?.label ?? block.type}
               {definition?.source && definition.source !== "built-in" ? (
@@ -251,8 +229,8 @@ export function SortableBlockItem({
                     definition.source === "plugin"
                       ? "bg-primary/10 text-primary"
                       : definition.source === "theme"
-                      ? "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
-                      : "bg-muted text-muted-foreground",
+                        ? "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
+                        : "bg-muted text-muted-foreground",
                   )}
                   aria-label={`${definition.source} block`}
                 >
@@ -285,20 +263,16 @@ export function SortableBlockItem({
                 </span>
               ) : null}
               {summary ? (
-                <span className="ml-2 font-normal text-muted-foreground">
-                  — {summary}
-                </span>
+                <span className="ml-2 font-normal text-muted-foreground">— {summary}</span>
               ) : null}
             </div>
-            <div className="truncate font-mono text-xs text-muted-foreground">
-              {block.type}
-            </div>
+            <div className="truncate font-mono text-xs text-muted-foreground">{block.type}</div>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1">
             <Button
               type="button"
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               aria-label="Move up"
               onClick={() => onMoveUp(block.id)}
             >
@@ -307,7 +281,7 @@ export function SortableBlockItem({
             <Button
               type="button"
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               aria-label="Move down"
               onClick={() => onMoveDown(block.id)}
             >
@@ -316,7 +290,7 @@ export function SortableBlockItem({
             <Button
               type="button"
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               aria-label="Duplicate"
               onClick={() => onDuplicate(block.id)}
             >
@@ -325,7 +299,7 @@ export function SortableBlockItem({
             <Button
               type="button"
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               aria-label="Edit as JSON"
               onClick={() => setJsonOpen(true)}
             >
@@ -343,7 +317,7 @@ export function SortableBlockItem({
             <Button
               type="button"
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               aria-label="Delete"
               onClick={handleDelete}
               className="text-destructive hover:text-destructive"
@@ -406,86 +380,70 @@ export function SortableBlockItem({
 
             {definition ? (
               definition.propsSchema.length === 0 && !isContainer ? (
-                <p className="text-xs text-muted-foreground">
-                  This block has no editable props.
-                </p>
+                <p className="text-xs text-muted-foreground">This block has no editable props.</p>
               ) : (
-                groupVisibleFields(definition.propsSchema, block.props).map(
-                  (section) => (
-                    <div
-                      key={section.group ?? "__ungrouped__"}
-                      className={cn(
-                        section.group
-                          ? "rounded-md border border-border/50 bg-muted/20 p-3"
-                          : "contents",
-                      )}
-                    >
-                      {section.group ? (
-                        <div className="pb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                          {section.group}
-                        </div>
-                      ) : null}
-                      <div className="grid gap-4">
-                        {section.fields.map((field) => {
-                          // Required-missing checks the RAW prop, not the
-                          // value-with-defaults (#467 post-review).
-                          const rawValue = block.props[field.name];
-                          const value = getFieldValue(field, rawValue);
-                          const inputId = `${fieldIdPrefix}-${field.name}`;
-                          const isRequiredMissing =
-                            field.required === true &&
-                            (rawValue === undefined ||
-                              rawValue === "" ||
-                              rawValue === null);
-                          const lintMessage = lintFieldValue(field, value);
-                          return (
-                            <div key={field.name} className="grid gap-1.5">
-                              {field.type !== "boolean" ? (
-                                <Label
-                                  htmlFor={inputId}
-                                  className="flex items-center gap-1"
-                                >
-                                  <span>{field.label}</span>
-                                  {field.required ? (
-                                    <span
-                                      aria-label="required"
-                                      className="text-rose-500"
-                                    >
-                                      *
-                                    </span>
-                                  ) : null}
-                                </Label>
-                              ) : null}
-                              <FieldControl
-                                field={field}
-                                value={value}
-                                onChange={(next) =>
-                                  onUpdateProps(block.id, { [field.name]: next })
-                                }
-                                inputId={inputId}
-                              />
-                              {field.description ? (
-                                <p className="text-xs text-muted-foreground">
-                                  {field.description}
-                                </p>
-                              ) : null}
-                              {isRequiredMissing ? (
-                                <p className="text-xs text-rose-600 dark:text-rose-300">
-                                  {field.label} is required.
-                                </p>
-                              ) : null}
-                              {!isRequiredMissing && lintMessage ? (
-                                <p className="text-xs text-amber-600 dark:text-amber-400">
-                                  {lintMessage}
-                                </p>
-                              ) : null}
-                            </div>
-                          );
-                        })}
+                groupVisibleFields(definition.propsSchema, block.props).map((section) => (
+                  <div
+                    key={section.group ?? "__ungrouped__"}
+                    className={cn(
+                      section.group
+                        ? "rounded-md border border-border/50 bg-muted/20 p-3"
+                        : "contents",
+                    )}
+                  >
+                    {section.group ? (
+                      <div className="pb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                        {section.group}
                       </div>
+                    ) : null}
+                    <div className="grid gap-4">
+                      {section.fields.map((field) => {
+                        // Required-missing checks the RAW prop, not the
+                        // value-with-defaults (#467 post-review).
+                        const rawValue = block.props[field.name];
+                        const value = getFieldValue(field, rawValue);
+                        const inputId = `${fieldIdPrefix}-${field.name}`;
+                        const isRequiredMissing =
+                          field.required === true &&
+                          (rawValue === undefined || rawValue === "" || rawValue === null);
+                        const lintMessage = lintFieldValue(field, value);
+                        return (
+                          <div key={field.name} className="grid gap-1.5">
+                            {field.type !== "boolean" ? (
+                              <Label htmlFor={inputId} className="flex items-center gap-1">
+                                <span>{field.label}</span>
+                                {field.required ? (
+                                  <span aria-label="required" className="text-rose-500">
+                                    *
+                                  </span>
+                                ) : null}
+                              </Label>
+                            ) : null}
+                            <FieldControl
+                              field={field}
+                              value={value}
+                              onChange={(next) => onUpdateProps(block.id, { [field.name]: next })}
+                              inputId={inputId}
+                            />
+                            {field.description ? (
+                              <p className="text-xs text-muted-foreground">{field.description}</p>
+                            ) : null}
+                            {isRequiredMissing ? (
+                              <p className="text-xs text-rose-600 dark:text-rose-300">
+                                {field.label} is required.
+                              </p>
+                            ) : null}
+                            {!isRequiredMissing && lintMessage ? (
+                              <p className="text-xs text-amber-600 dark:text-amber-400">
+                                {lintMessage}
+                              </p>
+                            ) : null}
+                          </div>
+                        );
+                      })}
                     </div>
-                  ),
-                )
+                  </div>
+                ))
               )
             ) : (
               <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
@@ -538,11 +496,7 @@ interface ChildrenAreaProps {
   onUpdateProps: (id: string, props: Record<string, unknown>) => void;
   onReplaceProps: (id: string, props: Record<string, unknown>) => void;
   onAddChild: (parentId: string, blockType: string) => void;
-  onInsert: (
-    position: "before" | "after",
-    targetId: string,
-    blockType: string,
-  ) => void;
+  onInsert: (position: "before" | "after", targetId: string, blockType: string) => void;
   onMoveOut: (id: string) => void;
   onMoveInto: (id: string, targetParentId: string) => void;
   onWrapIn: (id: string, containerType: string) => void;
@@ -550,10 +504,7 @@ interface ChildrenAreaProps {
   isOpen: (id: string) => boolean;
   onOpenChange: (id: string, open: boolean) => void;
   isSelected: (id: string) => boolean;
-  onToggleSelected: (
-    id: string,
-    modifiers: { shift: boolean; meta: boolean },
-  ) => void;
+  onToggleSelected: (id: string, modifiers: { shift: boolean; meta: boolean }) => void;
 }
 
 function ChildrenArea({
@@ -621,10 +572,7 @@ function ChildrenArea({
           {min === 1 ? "" : "ren"}. Currently {children.length}.
         </p>
       ) : null}
-      <SortableContext
-        items={children.map((c) => c.id)}
-        strategy={verticalListSortingStrategy}
-      >
+      <SortableContext items={children.map((c) => c.id)} strategy={verticalListSortingStrategy}>
         <div className="grid gap-2">
           {children.length === 0 ? (
             <p className="rounded-md bg-background/50 px-3 py-4 text-center text-xs text-muted-foreground">

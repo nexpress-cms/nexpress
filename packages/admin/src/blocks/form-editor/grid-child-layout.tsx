@@ -3,22 +3,14 @@
 import type { NpBlockInstance } from "@nexpress/blocks";
 
 import { Label } from "../../ui/label.js";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../ui/select.js";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../ui/select.js";
 
 /**
  * Reads the `_layout` meta off a block's `props`. Centralizes the
  * defensive shape check in one place — block authors aren't
  * forced to type the meta carefully on every read.
  */
-export function getLayout(
-  props: Record<string, unknown>,
-): Record<string, unknown> | null {
+export function getLayout(props: Record<string, unknown>): Record<string, unknown> | null {
   const layout = props._layout;
   if (typeof layout === "object" && layout !== null && !Array.isArray(layout)) {
     return layout as Record<string, unknown>;
@@ -38,10 +30,7 @@ export interface GridChildLayoutControlProps {
    * cascade — lg → md → base). The base span is always present;
    * a `null` on base resets to the default 12.
    */
-  onChange: (
-    breakpoint: Breakpoint,
-    value: number | null,
-  ) => void;
+  onChange: (breakpoint: Breakpoint, value: number | null) => void;
 }
 
 const SPAN_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -64,11 +53,7 @@ function readSpan(
  * cares about "half-width on tablet+" can leave the desktop value
  * at "auto" and the cell inherits the tablet span.
  */
-export function GridChildLayoutControl({
-  block,
-  inputId,
-  onChange,
-}: GridChildLayoutControlProps) {
+export function GridChildLayoutControl({ block, inputId, onChange }: GridChildLayoutControlProps) {
   const layout = getLayout(block.props);
   const base = readSpan(layout, "colSpan") ?? 12;
   const md = readSpan(layout, "mdColSpan");
@@ -82,7 +67,7 @@ export function GridChildLayoutControl({
       >
         Grid column span
       </Label>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <BreakpointPicker
           inputId={`${inputId}-base`}
           label="Mobile"
@@ -106,8 +91,7 @@ export function GridChildLayoutControl({
         />
       </div>
       <p className="text-[10px] text-muted-foreground">
-        Tablet / Desktop fall back through the cascade when set to Auto
-        (Desktop → Tablet → Mobile).
+        Tablet / Desktop fall back through the cascade when set to Auto (Desktop → Tablet → Mobile).
       </p>
     </div>
   );
@@ -123,17 +107,14 @@ interface BreakpointPickerProps {
 
 const AUTO_VALUE = "__np_auto__";
 
-function BreakpointPicker({
-  inputId,
-  label,
-  value,
-  allowAuto,
-  onChange,
-}: BreakpointPickerProps) {
+function BreakpointPicker({ inputId, label, value, allowAuto, onChange }: BreakpointPickerProps) {
   const selectValue = value === null ? AUTO_VALUE : String(value);
   return (
     <div className="grid gap-1">
-      <Label htmlFor={inputId} className="text-[10px] uppercase tracking-wider text-muted-foreground">
+      <Label
+        htmlFor={inputId}
+        className="text-[10px] uppercase tracking-wider text-muted-foreground"
+      >
         {label}
       </Label>
       <Select
@@ -144,9 +125,7 @@ function BreakpointPicker({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {allowAuto ? (
-            <SelectItem value={AUTO_VALUE}>Auto</SelectItem>
-          ) : null}
+          {allowAuto ? <SelectItem value={AUTO_VALUE}>Auto</SelectItem> : null}
           {SPAN_OPTIONS.map((n) => (
             <SelectItem key={n} value={String(n)}>
               {n} of 12

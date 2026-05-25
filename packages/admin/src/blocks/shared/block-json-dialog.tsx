@@ -147,7 +147,7 @@ export function BlockJsonDialog({
             <code>props</code> object. Keys you remove here will be dropped on save.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="ghost" size="sm" onClick={handleFormat}>
             Format
           </Button>
@@ -170,7 +170,7 @@ export function BlockJsonDialog({
             setWarning(null);
           }}
           rows={16}
-          className="font-mono text-xs"
+          className="max-h-[45dvh] min-h-[14rem] resize-y font-mono text-xs"
           spellCheck={false}
         />
         {error ? (
