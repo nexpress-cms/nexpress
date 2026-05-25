@@ -76,12 +76,13 @@ export function FieldControl({ field, value, onChange, inputId }: FieldControlPr
           value={stringValue}
           onChange={(event) => onChange(event.currentTarget.value)}
           placeholder="collection slug"
+          className="min-w-0"
         />
       );
     }
     return (
       <Select value={stringValue} onValueChange={(v) => onChange(v)}>
-        <SelectTrigger id={inputId}>
+        <SelectTrigger id={inputId} className="min-w-0">
           <SelectValue placeholder="Pick a collection" />
         </SelectTrigger>
         <SelectContent>
@@ -103,6 +104,7 @@ export function FieldControl({ field, value, onChange, inputId }: FieldControlPr
         placeholder={field.placeholder}
         value={typeof value === "string" ? value : ""}
         onChange={(event) => onChange(event.currentTarget.value)}
+        className="min-w-0"
       />
     );
   }
@@ -177,7 +179,7 @@ export function FieldControl({ field, value, onChange, inputId }: FieldControlPr
           : "";
     return (
       <Select value={stringValue} onValueChange={(v) => onChange(v)}>
-        <SelectTrigger id={inputId}>
+        <SelectTrigger id={inputId} className="min-w-0">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -193,13 +195,13 @@ export function FieldControl({ field, value, onChange, inputId }: FieldControlPr
 
   if (field.type === "boolean") {
     return (
-      <div className="flex items-center gap-2">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
         <Switch
           id={inputId}
           checked={value === true}
           onCheckedChange={(checked) => onChange(checked)}
         />
-        <Label htmlFor={inputId} className="text-sm font-normal">
+        <Label htmlFor={inputId} className="min-w-0 break-words text-sm font-normal">
           {field.label}
         </Label>
       </div>
@@ -254,7 +256,9 @@ export function FieldControl({ field, value, onChange, inputId }: FieldControlPr
         (field.type === "text" || field.type === "url") && field.pattern ? field.pattern : undefined
       }
       aria-invalid={requiredMissing || undefined}
-      className={requiredMissing ? "border-rose-500/60 focus-visible:ring-rose-500/40" : undefined}
+      className={
+        requiredMissing ? "min-w-0 border-rose-500/60 focus-visible:ring-rose-500/40" : "min-w-0"
+      }
     />
   );
 }

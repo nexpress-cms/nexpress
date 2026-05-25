@@ -36,14 +36,16 @@ export function DeleteBlockDialog({
 }: DeleteBlockDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="min-w-0 max-w-md">
         <DialogHeader>
-          <DialogTitle>Delete this block?</DialogTitle>
+          <DialogTitle className="break-words">Delete this block?</DialogTitle>
           <DialogDescription asChild>
-            <div className="space-y-2">
-              <div>
-                <span className="font-semibold text-foreground">{label}</span>
-                {summary ? <span className="ml-1 text-muted-foreground">— {summary}</span> : null}
+            <div className="min-w-0 space-y-2 break-words">
+              <div className="min-w-0">
+                <span className="break-words font-semibold text-foreground">{label}</span>
+                {summary ? (
+                  <span className="ml-1 break-words text-muted-foreground">— {summary}</span>
+                ) : null}
               </div>
               {childCount > 0 ? (
                 <div className="text-sm text-muted-foreground">

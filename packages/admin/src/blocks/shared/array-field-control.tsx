@@ -119,16 +119,19 @@ export function ArrayFieldControl({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 space-y-2">
       {items.length === 0 ? (
-        <p className="text-xs text-muted-foreground italic">
+        <p className="break-words text-xs text-muted-foreground italic">
           No entries yet. Click &ldquo;Add&rdquo; below.
         </p>
       ) : null}
       {items.map((item, index) => (
-        <div key={index} className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <div
+          key={index}
+          className="min-w-0 space-y-2 rounded-md border border-border/60 bg-muted/30 p-3"
+        >
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+            <span className="min-w-0 break-words text-xs font-medium uppercase tracking-wide text-muted-foreground">
               #{index + 1}
             </span>
             <Button
@@ -145,8 +148,12 @@ export function ArrayFieldControl({
           {itemSchema.map((sub) => {
             const subInputId = `${inputId}-${index}-${sub.name}`;
             return (
-              <div key={sub.name} className="grid gap-1.5">
-                {sub.type !== "boolean" ? <Label htmlFor={subInputId}>{sub.label}</Label> : null}
+              <div key={sub.name} className="grid min-w-0 gap-1.5">
+                {sub.type !== "boolean" ? (
+                  <Label htmlFor={subInputId} className="break-words">
+                    {sub.label}
+                  </Label>
+                ) : null}
                 <FieldControl
                   field={sub}
                   value={item[sub.name]}
@@ -163,6 +170,7 @@ export function ArrayFieldControl({
         variant="outline"
         size="sm"
         onClick={() => onChange([...items, buildItemDefault()])}
+        className="w-full sm:w-auto"
       >
         <Plus className="size-3.5" />
         Add

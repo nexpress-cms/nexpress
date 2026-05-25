@@ -103,22 +103,23 @@ export function PatternLibraryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="grid max-h-[calc(100dvh-2rem)] max-w-4xl grid-rows-[auto_auto_minmax(0,1fr)] gap-3 overflow-hidden p-0">
-        <DialogHeader className="border-b border-border/60 px-4 py-3">
-          <DialogTitle>Pattern library</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="grid min-w-0 max-h-[calc(100dvh-2rem)] max-w-4xl grid-rows-[auto_auto_minmax(0,1fr)] gap-3 overflow-hidden p-0">
+        <DialogHeader className="min-w-0 border-b border-border/60 px-4 py-3">
+          <DialogTitle className="break-words">Pattern library</DialogTitle>
+          <DialogDescription className="break-words">
             Browse patterns shipped by your theme, plugins, and your saved snippets. Pick one to
             insert at the current position.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3 px-4 pt-1">
+        <div className="min-w-0 space-y-3 px-4 pt-1">
           <Input
             value={query}
             onChange={(e) => setQuery(e.currentTarget.value)}
             placeholder="Search patterns…"
             aria-label="Search patterns"
             autoFocus
+            className="min-w-0"
           />
           <div role="tablist" aria-label="Filter by source" className="flex flex-wrap gap-1">
             {SOURCE_FILTERS.map((f) => {
@@ -144,20 +145,20 @@ export function PatternLibraryDialog({
           </div>
         </div>
 
-        <div className="min-h-0 overflow-y-auto px-4 pb-4">
+        <div className="min-h-0 min-w-0 overflow-y-auto px-4 pb-4">
           {filtered.length === 0 ? (
             <p className="px-2 py-12 text-center text-sm text-muted-foreground">
               No patterns match.
             </p>
           ) : (
-            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <ul className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {filtered.map((pattern) => (
-                <li key={pattern.id}>
+                <li key={pattern.id} className="min-w-0">
                   <button
                     type="button"
                     onClick={() => pick(pattern)}
                     className={cn(
-                      "group flex w-full flex-col gap-2 rounded-lg border border-border/60 bg-background/70 p-2 text-left transition",
+                      "group flex min-w-0 w-full flex-col gap-2 rounded-lg border border-border/60 bg-background/70 p-2 text-left transition",
                       "hover:border-primary/60 hover:bg-background hover:shadow-sm",
                       "focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
                     )}
@@ -167,18 +168,20 @@ export function PatternLibraryDialog({
                       alt={`${pattern.label} preview`}
                       size="card"
                     />
-                    <div className="space-y-0.5 px-1 pb-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium">{pattern.label}</span>
+                    <div className="min-w-0 space-y-0.5 px-1 pb-1">
+                      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                        <span className="min-w-0 break-words text-sm font-medium">
+                          {pattern.label}
+                        </span>
                         <SourceBadge source={pattern.source} />
                       </div>
                       {pattern.description ? (
-                        <p className="line-clamp-2 text-xs text-muted-foreground">
+                        <p className="line-clamp-2 break-words text-xs text-muted-foreground">
                           {pattern.description}
                         </p>
                       ) : null}
                       {pattern.category ? (
-                        <code className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        <code className="break-all text-[10px] uppercase tracking-wider text-muted-foreground">
                           {pattern.category}
                         </code>
                       ) : null}
