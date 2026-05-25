@@ -88,6 +88,12 @@ describe("doctor output", () => {
           detail: "NP_STORAGE_ADAPTER=local",
         },
         {
+          id: "target.vercel.database_url",
+          state: "error",
+          label: "Vercel database URL",
+          detail: "DATABASE_URL host is 127.0.0.1",
+        },
+        {
           id: "target.vercel.jobs_worker",
           state: "warn",
           label: "Vercel jobs worker",
@@ -100,6 +106,14 @@ describe("doctor output", () => {
         id: "storage.configure_target_durable_storage",
         checkIds: ["target.vercel.storage"],
         commands: ["pnpm run deploy:plan -- --target vercel --json", "pnpm run setup"],
+      }),
+      expect.objectContaining({
+        id: "database.configure_target_postgres",
+        checkIds: ["target.vercel.database_url"],
+        commands: ["pnpm run deploy:plan -- --target vercel --json", "pnpm run setup"],
+        notes: expect.arrayContaining([
+          "Set DATABASE_URL to the hosted provider's public or pooler connection string.",
+        ]),
       }),
       expect.objectContaining({
         id: "jobs.add_target_worker_host",

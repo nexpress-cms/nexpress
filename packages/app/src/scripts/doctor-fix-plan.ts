@@ -161,6 +161,22 @@ function fixForCheck(result: CheckResult, target: DeployTarget | null): FixPlanT
           ],
         };
       }
+      if (result.id.startsWith("target.") && result.id.endsWith(".database_url")) {
+        return {
+          id: "database.configure_target_postgres",
+          title: "Configure a hosted Postgres DATABASE_URL for the selected deployment target",
+          risk: "medium",
+          requiresApproval: true,
+          commands: [
+            `pnpm run deploy:plan -- --target ${target ?? "vercel"} --json`,
+            "pnpm run setup",
+          ],
+          notes: [
+            "Set DATABASE_URL to the hosted provider's public or pooler connection string.",
+            "Localhost, Docker-only hosts, and private LAN IPs work locally but are not reachable from hosted deploy runtimes.",
+          ],
+        };
+      }
       if (result.id.startsWith("target.") && result.id.endsWith(".jobs_worker")) {
         return {
           id: "jobs.add_target_worker_host",
