@@ -106,12 +106,12 @@ export function MembershipsView({ siteId }: { siteId: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title={
-          <span className="flex items-center gap-2">
+          <span className="flex min-w-0 items-center gap-2">
             <Users className="size-5 text-neutral-500" />
-            Site members
+            <span className="min-w-0 break-words">Site members</span>
           </span>
         }
         description={
@@ -123,15 +123,16 @@ export function MembershipsView({ siteId }: { siteId: string }) {
             with explicit roles. Users not listed here fall back to their global default role.
           </>
         }
+        className="min-w-0"
         actions={
           <>
             <Link href="/admin/sites">
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" className="w-full sm:w-auto">
                 <ArrowLeft />
                 All sites
               </Button>
             </Link>
-            <Button onClick={() => setCreateOpen(true)}>
+            <Button onClick={() => setCreateOpen(true)} className="w-full sm:w-auto">
               <Plus />
               Grant membership
             </Button>
@@ -140,7 +141,7 @@ export function MembershipsView({ siteId }: { siteId: string }) {
       />
 
       {error ? (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       ) : null}
@@ -153,8 +154,8 @@ export function MembershipsView({ siteId }: { siteId: string }) {
           </CardContent>
         </Card>
       ) : memberships.length === 0 ? (
-        <Card>
-          <CardContent className="text-[13px] text-muted-foreground">
+        <Card className="min-w-0">
+          <CardContent className="break-words text-[13px] text-muted-foreground">
             No explicit memberships on this site. Grant one to start scoping roles per tenant.
           </CardContent>
         </Card>
@@ -170,7 +171,7 @@ export function MembershipsView({ siteId }: { siteId: string }) {
             {memberships.map((m) => (
               <div
                 key={m.userId}
-                className="grid gap-3 px-5 py-3 sm:flex sm:items-center sm:justify-between"
+                className="grid min-w-0 gap-3 px-5 py-3 sm:flex sm:items-center sm:justify-between"
               >
                 <div className="min-w-0 space-y-1">
                   <p className="break-all font-mono text-xs">{m.userId}</p>
@@ -178,7 +179,7 @@ export function MembershipsView({ siteId }: { siteId: string }) {
                     Granted {new Date(m.createdAt).toLocaleString()}
                   </p>
                 </div>
-                <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:gap-3">
+                <div className="grid min-w-0 grid-cols-2 items-center gap-2 sm:flex sm:gap-3">
                   <span className="justify-self-start rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary capitalize">
                     {m.role}
                   </span>
@@ -304,22 +305,26 @@ function GrantDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="min-w-0">
         <DialogHeader>
-          <DialogTitle>Grant membership on {siteId}</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="break-words">
+            Grant membership on <span className="break-all">{siteId}</span>
+          </DialogTitle>
+          <DialogDescription className="break-words">
             Search by email or name. Granting on a site overrides the user&apos;s global default
             role for queries scoped to this site.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="grant-user-search">User</Label>
+        <div className="min-w-0 space-y-4">
+          <div className="min-w-0 space-y-2">
+            <Label htmlFor="grant-user-search" className="break-words">
+              User
+            </Label>
             {selected ? (
-              <div className="grid gap-2 rounded-xl border border-border/70 bg-muted/30 px-3 py-2 sm:flex sm:items-center sm:justify-between">
+              <div className="grid min-w-0 gap-2 rounded-xl border border-border/70 bg-muted/30 px-3 py-2 sm:flex sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{selected.name}</p>
+                  <p className="break-words text-sm font-medium">{selected.name}</p>
                   <p className="break-all text-xs text-muted-foreground">{selected.email}</p>
                 </div>
                 <Button
@@ -342,9 +347,10 @@ function GrantDialog({
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Email or name…"
+                  className="min-w-0"
                 />
                 {search.trim() ? (
-                  <div className="rounded-xl border border-border/70 bg-background">
+                  <div className="min-w-0 rounded-xl border border-border/70 bg-background">
                     {searching ? (
                       <p className="px-3 py-2 text-xs text-muted-foreground">
                         <Loader2 className="size-3 animate-spin" />
@@ -358,7 +364,7 @@ function GrantDialog({
                           <li key={r.id}>
                             <button
                               type="button"
-                              className="grid w-full gap-1 px-3 py-2 text-left text-sm hover:bg-muted/40 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:items-center"
+                              className="grid min-w-0 w-full gap-1 px-3 py-2 text-left text-sm hover:bg-muted/40 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:items-center"
                               onClick={() => {
                                 setSelected(r);
                                 setSearch("");
@@ -378,10 +384,12 @@ function GrantDialog({
               </>
             )}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="grant-role">Role</Label>
+          <div className="min-w-0 space-y-2">
+            <Label htmlFor="grant-role" className="break-words">
+              Role
+            </Label>
             <Select value={role} onValueChange={(v) => setRole(v as (typeof ROLES)[number])}>
-              <SelectTrigger id="grant-role">
+              <SelectTrigger id="grant-role" className="min-w-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -394,7 +402,7 @@ function GrantDialog({
             </Select>
           </div>
           {error ? (
-            <p className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            <p className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
               {error}
             </p>
           ) : null}

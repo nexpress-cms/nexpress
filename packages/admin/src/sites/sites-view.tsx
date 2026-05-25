@@ -155,12 +155,13 @@ export function SitesView() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title="Sites"
         description="Each site is an independent tenant — its own content, navigation, settings. Requests are routed by hostname; unmatched hosts fall through to the default site."
+        className="min-w-0"
         actions={
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button onClick={() => setCreateOpen(true)} className="w-full sm:w-auto">
             <Plus />
             Add site
           </Button>
@@ -168,7 +169,7 @@ export function SitesView() {
       />
 
       {error ? (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       ) : null}
@@ -188,9 +189,9 @@ export function SitesView() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2">
           {sites.map((site) => (
-            <Card key={site.id}>
+            <Card key={site.id} className="min-w-0">
               <CardHeader className="pb-3">
                 <div className="grid gap-2 sm:flex sm:items-center sm:justify-between sm:gap-3">
                   <CardTitle className="flex min-w-0 items-center gap-2 text-base">
@@ -205,7 +206,7 @@ export function SitesView() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="space-y-1 text-xs text-muted-foreground">
+                <div className="min-w-0 space-y-1 text-xs text-muted-foreground">
                   <p>
                     <span className="font-mono uppercase tracking-wider opacity-70">ID</span>{" "}
                     <code className="break-all">{site.id}</code>
@@ -219,7 +220,7 @@ export function SitesView() {
                     )}
                   </p>
                   {site.description ? (
-                    <p className="pt-1 text-foreground">{site.description}</p>
+                    <p className="break-words pt-1 text-foreground">{site.description}</p>
                   ) : null}
                 </div>
                 <div className="grid gap-2 sm:flex sm:items-center sm:justify-end">
@@ -296,25 +297,27 @@ function DeleteSiteDialog({
         if (!next) onClose();
       }}
     >
-      <DialogContent>
+      <DialogContent className="min-w-0">
         <DialogHeader>
-          <DialogTitle>Delete site{state ? ` "${state.site.name}"` : ""}?</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="break-words">
+            Delete site{state ? ` "${state.site.name}"` : ""}?
+          </DialogTitle>
+          <DialogDescription className="break-words">
             This action removes the site from the registry. Site-scoped data is left in place unless
             you opt into cascade.
           </DialogDescription>
         </DialogHeader>
 
         {!state ? null : state.loading ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-3 animate-spin" />
             Loading usage…
           </p>
         ) : usage ? (
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             {hasData ? (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-100">
-                <p className="flex items-start gap-2 font-medium">
+              <div className="min-w-0 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-100">
+                <p className="flex min-w-0 items-start gap-2 break-words font-medium">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   This site has {usage.total} attached row(s) across{" "}
                   {Object.keys(usage.collections).length} collection(s) + system tables. Without
@@ -332,32 +335,35 @@ function DeleteSiteDialog({
                 {Object.entries(usage.collections)
                   .filter(([, count]) => count > 0)
                   .map(([slug, count]) => (
-                    <li key={slug} className="flex items-center justify-between py-1">
-                      <code className="font-mono">{slug}</code>
+                    <li
+                      key={slug}
+                      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1"
+                    >
+                      <code className="break-all font-mono">{slug}</code>
                       <span className="tabular-nums">{count}</span>
                     </li>
                   ))}
                 {usage.settings > 0 ? (
-                  <li className="flex items-center justify-between py-1">
-                    <code className="font-mono">np_settings</code>
+                  <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1">
+                    <code className="break-all font-mono">np_settings</code>
                     <span className="tabular-nums">{usage.settings}</span>
                   </li>
                 ) : null}
                 {usage.navigation > 0 ? (
-                  <li className="flex items-center justify-between py-1">
-                    <code className="font-mono">np_navigation</code>
+                  <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1">
+                    <code className="break-all font-mono">np_navigation</code>
                     <span className="tabular-nums">{usage.navigation}</span>
                   </li>
                 ) : null}
                 {usage.memberships > 0 ? (
-                  <li className="flex items-center justify-between py-1">
-                    <code className="font-mono">np_site_memberships</code>
+                  <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1">
+                    <code className="break-all font-mono">np_site_memberships</code>
                     <span className="tabular-nums">{usage.memberships}</span>
                   </li>
                 ) : null}
                 {usage.stringOverrides > 0 ? (
-                  <li className="flex items-center justify-between py-1">
-                    <code className="font-mono">np_string_overrides</code>
+                  <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1">
+                    <code className="break-all font-mono">np_string_overrides</code>
                     <span className="tabular-nums">{usage.stringOverrides}</span>
                   </li>
                 ) : null}
@@ -365,14 +371,14 @@ function DeleteSiteDialog({
             ) : null}
 
             {cascadeRequired ? (
-              <label className="flex items-start gap-2 text-sm">
+              <label className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-2 text-sm">
                 <input
                   type="checkbox"
                   checked={state.cascade}
                   onChange={(event) => onCascadeChange(event.target.checked)}
                   className="mt-0.5"
                 />
-                <span>
+                <span className="min-w-0 break-words">
                   Cascade-delete every row above. This is <strong>irreversible</strong> — there's no
                   soft-delete or archive.
                 </span>
@@ -459,61 +465,74 @@ function CreateSiteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="min-w-0">
         <DialogHeader>
-          <DialogTitle>Add a site</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="break-words">Add a site</DialogTitle>
+          <DialogDescription className="break-words">
             Each site is an independent tenant. The id is the stable handle used in URLs and the
             database; pick a short lowercase string.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="site-id">Site id</Label>
+        <div className="min-w-0 space-y-4">
+          <div className="min-w-0 space-y-2">
+            <Label htmlFor="site-id" className="break-words">
+              Site id
+            </Label>
             <Input
               id="site-id"
               value={id}
               onChange={(e) => setId(e.target.value)}
               placeholder="acme"
+              className="min-w-0"
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="break-words text-xs text-muted-foreground">
               Lowercase letters, digits, hyphens; must start with a letter.
             </p>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="site-name">Display name</Label>
+          <div className="min-w-0 space-y-2">
+            <Label htmlFor="site-name" className="break-words">
+              Display name
+            </Label>
             <Input
               id="site-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Acme Corp"
+              className="min-w-0"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="site-hostname">Hostname (optional)</Label>
+          <div className="min-w-0 space-y-2">
+            <Label htmlFor="site-hostname" className="break-words">
+              Hostname (optional)
+            </Label>
             <Input
               id="site-hostname"
               value={hostname}
               onChange={(e) => setHostname(e.target.value)}
               placeholder="acme.example.com"
+              className="min-w-0"
             />
-            <p className="text-xs text-muted-foreground">
-              Requests with this <code>Host</code> header route to this site. Leave blank for sites
-              you&apos;ll route by some other mechanism (path prefix, future support).
+            <p className="break-words text-xs text-muted-foreground">
+              Requests with this <code className="break-all">Host</code> header route to this site.
+              Leave blank for sites you&apos;ll route by some other mechanism (path prefix, future
+              support).
             </p>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="site-description">Description (optional)</Label>
+          <div className="min-w-0 space-y-2">
+            <Label htmlFor="site-description" className="break-words">
+              Description (optional)
+            </Label>
             <Textarea
               id="site-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
+              className="min-w-0"
             />
           </div>
           {error ? (
-            <p className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            <p className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
               {error}
             </p>
           ) : null}
