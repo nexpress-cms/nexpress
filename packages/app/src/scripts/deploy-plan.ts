@@ -25,6 +25,7 @@ function printHelp(): void {
 Usage:
   pnpm run deploy:plan
   pnpm run deploy:plan -- --target vercel
+  pnpm run deploy:plan -- --target vercel --brief --no-color
   pnpm run deploy:plan -- --target vercel --json
 
 Targets:
@@ -35,6 +36,7 @@ Options:
   --brief      Print only unresolved required env and ordered commands.
   --no-color   Disable ANSI color in human-readable output.
   --dry-run    Accepted for agent workflows; deploy:plan never applies changes.
+  --help, -h   Show this help.
 `);
 }
 
