@@ -5,12 +5,7 @@ import { Loader2, RotateCcw, Save, Search } from "lucide-react";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../ui/card.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Input } from "../ui/input.js";
 
 /**
@@ -57,8 +52,7 @@ export function StringsTab() {
         | null;
       if (!res.ok) {
         setError(
-          (body as { error?: { message?: string } })?.error?.message ??
-            "Unable to load strings.",
+          (body as { error?: { message?: string } })?.error?.message ?? "Unable to load strings.",
         );
         return;
       }
@@ -69,11 +63,7 @@ export function StringsTab() {
     }
   }
 
-  async function saveOverride(
-    key: string,
-    locale: string,
-    value: string,
-  ) {
+  async function saveOverride(key: string, locale: string, value: string) {
     setBusyKey(`${key}::${locale}`);
     setError(null);
     try {
@@ -83,9 +73,9 @@ export function StringsTab() {
         body: JSON.stringify({ key, locale, value }),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as
-          | { error?: { message?: string } }
-          | null;
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
         setError(body?.error?.message ?? "Unable to save override.");
         return;
       }
@@ -106,9 +96,9 @@ export function StringsTab() {
         { method: "DELETE" },
       );
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as
-          | { error?: { message?: string } }
-          | null;
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
         setError(body?.error?.message ?? "Unable to clear override.");
         return;
       }
@@ -132,11 +122,12 @@ export function StringsTab() {
       <CardHeader>
         <CardTitle>UI Strings</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Override plugin / theme UI strings without editing their code.
-          Overrides are scoped to the current site
+          Override plugin / theme UI strings without editing their code. Overrides are scoped to the
+          current site
           {data?.siteId ? (
             <>
-              {" "}(<code>{data.siteId}</code>)
+              {" "}
+              (<code>{data.siteId}</code>)
             </>
           ) : null}
           ; reverting an override drops back to the plugin/theme bundle.
@@ -166,8 +157,8 @@ export function StringsTab() {
           </p>
         ) : filteredKeys.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No keys registered (yet). Plugins / themes that ship i18n
-            bundles will surface their keys here.
+            No keys registered (yet). Plugins / themes that ship i18n bundles will surface their
+            keys here.
           </p>
         ) : (
           <div className="space-y-3">
@@ -182,11 +173,7 @@ export function StringsTab() {
                         override: null,
                       };
                       const draftKey = `${row.key}::${locale}`;
-                      const draftValue =
-                        drafts[draftKey] ??
-                        cell.override ??
-                        cell.base ??
-                        "";
+                      const draftValue = drafts[draftKey] ?? cell.override ?? cell.base ?? "";
                       const isOverridden = cell.override !== null;
                       const dirty =
                         drafts[draftKey] !== undefined &&
@@ -195,12 +182,10 @@ export function StringsTab() {
                       return (
                         <div
                           key={locale}
-                          className="grid grid-cols-[6rem_1fr_auto] items-center gap-3"
+                          className="grid gap-2 sm:grid-cols-[6rem_minmax(0,1fr)_auto] sm:items-center sm:gap-3"
                         >
                           <div className="flex items-center gap-2">
-                            <code className="font-mono text-xs uppercase">
-                              {locale}
-                            </code>
+                            <code className="font-mono text-xs uppercase">{locale}</code>
                             {isOverridden ? (
                               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                                 Override
@@ -218,18 +203,13 @@ export function StringsTab() {
                             }
                             disabled={busy}
                           />
-                          <div className="flex gap-1.5">
+                          <div className="grid grid-cols-2 gap-1.5 sm:flex">
                             <Button
                               size="sm"
                               variant="outline"
+                              className="w-full sm:w-auto"
                               disabled={!dirty || busy}
-                              onClick={() =>
-                                void saveOverride(
-                                  row.key,
-                                  locale,
-                                  draftValue,
-                                )
-                              }
+                              onClick={() => void saveOverride(row.key, locale, draftValue)}
                             >
                               {busy ? (
                                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -240,6 +220,7 @@ export function StringsTab() {
                             <Button
                               size="sm"
                               variant="outline"
+                              className="w-full sm:w-auto"
                               disabled={!isOverridden || busy}
                               onClick={() => void clearOverride(row.key, locale)}
                               title="Revert to bundle value"

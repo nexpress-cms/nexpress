@@ -15,17 +15,8 @@ import {
 } from "lucide-react";
 
 import { Button } from "../ui/button.js";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "../ui/card.js";
-import {
-  DashboardPluginWidgets,
-  type DashboardPluginWidget,
-} from "./plugin-widgets.js";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "../ui/card.js";
+import { DashboardPluginWidgets, type DashboardPluginWidget } from "./plugin-widgets.js";
 
 export type DashboardStats = {
   collections: Array<{ slug: string; label: string; count: number }>;
@@ -65,10 +56,7 @@ const todayFormatter = new Intl.DateTimeFormat("en", {
 export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
   const router = useRouter();
 
-  const totalContent = stats.collections.reduce(
-    (sum, collection) => sum + collection.count,
-    0,
-  );
+  const totalContent = stats.collections.reduce((sum, collection) => sum + collection.count, 0);
 
   const statCards = [
     {
@@ -116,11 +104,11 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
               View site
             </a>
           </Button>
-          <Button variant="outline" onClick={() => router.push("/admin/media") }>
+          <Button variant="outline" onClick={() => router.push("/admin/media")}>
             <Upload />
             Upload Media
           </Button>
-          <Button onClick={() => router.push("/admin/collections/posts/create") }>
+          <Button onClick={() => router.push("/admin/collections/posts/create")}>
             <Plus />
             New entry
           </Button>
@@ -154,10 +142,7 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
         const ob = stats.onboarding;
         if (!ob) return null;
         const allDone =
-          ob.siteNameSet &&
-          ob.hasPublishedPost &&
-          ob.themeCustomized &&
-          ob.productionDomainSet;
+          ob.siteNameSet && ob.hasPublishedPost && ob.themeCustomized && ob.productionDomainSet;
         if (allDone) return null;
         return <WelcomeCard router={router} onboarding={ob} />;
       })()}
@@ -179,7 +164,7 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
             </CardContent>
           ) : (
             <>
-              <div className="grid grid-cols-[1.4fr_1fr_0.7fr] gap-4 border-b border-neutral-200/70 bg-neutral-50/60 px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/40">
+              <div className="hidden grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(7rem,0.7fr)] gap-4 border-b border-neutral-200/70 bg-neutral-50/60 px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/40 md:grid">
                 <span>Entry</span>
                 <span>Where</span>
                 <span className="text-right">When</span>
@@ -188,7 +173,7 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
                 {stats.recentActivity.map((item) => (
                   <div
                     key={item.id}
-                    className="grid grid-cols-[1.4fr_1fr_0.7fr] items-center gap-4 px-4 py-3 text-[13px]"
+                    className="grid gap-2 px-4 py-3 text-[13px] md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(7rem,0.7fr)] md:items-center md:gap-4"
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium text-neutral-950 dark:text-neutral-50">
@@ -201,7 +186,7 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
                     <div className="font-mono text-[11.5px] text-neutral-700 dark:text-neutral-300">
                       {item.collection}
                     </div>
-                    <div className="text-right tabular-nums text-neutral-500 dark:text-neutral-400">
+                    <div className="tabular-nums text-neutral-500 dark:text-neutral-400 md:text-right">
                       {formatTimestamp(item.timestamp)}
                     </div>
                   </div>
@@ -300,8 +285,7 @@ function WelcomeCard({ router, onboarding }: WelcomeCardProps) {
     },
     {
       title: "Name your site",
-      description:
-        "Replace the placeholder “Default site” with your project's name.",
+      description: "Replace the placeholder “Default site” with your project's name.",
       done: onboarding.siteNameSet,
       onClick: () => router.push("/admin/sites"),
     },
@@ -340,8 +324,7 @@ function WelcomeCard({ router, onboarding }: WelcomeCardProps) {
           </span>
         </CardTitle>
         <p className="text-[12.5px] text-neutral-500 dark:text-neutral-400">
-          Five steps to a public, named, branded site. The card
-          disappears once every step is ✓.
+          Five steps to a public, named, branded site. The card disappears once every step is ✓.
         </p>
       </CardHeader>
       <CardContent>

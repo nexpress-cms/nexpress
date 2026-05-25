@@ -10,15 +10,7 @@ import {
   type CSSProperties,
 } from "react";
 import type { NpNavItem } from "@nexpress/core";
-import {
-  CornerDownRight,
-  GripVertical,
-  Loader2,
-  Pencil,
-  Plus,
-  Save,
-  Trash2,
-} from "lucide-react";
+import { CornerDownRight, GripVertical, Loader2, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import {
   DndContext,
   KeyboardSensor,
@@ -41,12 +33,7 @@ import { CSS } from "@dnd-kit/utilities";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../ui/card.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import {
   Dialog,
   DialogContent,
@@ -59,13 +46,7 @@ import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover.js";
 import { cn } from "../ui/utils.js";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select.js";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 
 const NO_PARENT = "__top__";
 
@@ -314,9 +295,7 @@ export function NavigationEditor() {
       const resolved = await Promise.all(
         unknown.map(async (id) => {
           try {
-            const res = await fetch(
-              `/api/collections/pages/${encodeURIComponent(id)}`,
-            );
+            const res = await fetch(`/api/collections/pages/${encodeURIComponent(id)}`);
             if (!res.ok) return null;
             const payload = (await res.json().catch(() => null)) as unknown;
             if (!isRecord(payload)) return null;
@@ -409,7 +388,11 @@ export function NavigationEditor() {
   }
 
   async function createLocation(rawSlug: string) {
-    const slug = rawSlug.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    const slug = rawSlug
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "");
     if (!slug) {
       setError("Location name must be lowercase letters, numbers, or hyphens.");
       return;
@@ -468,7 +451,11 @@ export function NavigationEditor() {
   }
 
   async function renameLocation(oldSlug: string, rawNew: string) {
-    const newSlug = rawNew.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    const newSlug = rawNew
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "");
     if (!newSlug) {
       setError("Location name must be lowercase letters, numbers, or hyphens.");
       return;
@@ -490,14 +477,11 @@ export function NavigationEditor() {
     setBusyLocation(oldSlug);
     setError(null);
     try {
-      const response = await npFetch(
-        `/api/navigation?location=${encodeURIComponent(oldSlug)}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ newLocation: newSlug }),
-        },
-      );
+      const response = await npFetch(`/api/navigation?location=${encodeURIComponent(oldSlug)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newLocation: newSlug }),
+      });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as unknown;
         setError(getErrorMessage(payload, "Unable to rename location."));
@@ -524,10 +508,9 @@ export function NavigationEditor() {
     setBusyLocation(slug);
     setError(null);
     try {
-      const response = await npFetch(
-        `/api/navigation?location=${encodeURIComponent(slug)}`,
-        { method: "DELETE" },
-      );
+      const response = await npFetch(`/api/navigation?location=${encodeURIComponent(slug)}`, {
+        method: "DELETE",
+      });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as unknown;
         setError(getErrorMessage(payload, "Unable to delete location."));
@@ -554,9 +537,7 @@ export function NavigationEditor() {
   }
 
   function updateItem(id: string, patch: Partial<EditableNavItem>) {
-    setItems((current) =>
-      current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-    );
+    setItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   }
 
   function changeParent(id: string, parentSelectValue: string) {
@@ -665,8 +646,7 @@ export function NavigationEditor() {
     const overItem = items.find((it) => it.id === overId);
     if (!activeItem || !overItem) return;
     const activeHasChildren = items.some((c) => c.parentId === activeId);
-    const willNest =
-      delta.x > NEST_THRESHOLD_X && !overItem.parentId && !activeHasChildren;
+    const willNest = delta.x > NEST_THRESHOLD_X && !overItem.parentId && !activeHasChildren;
     if (
       dragOverInfo?.activeId === activeId &&
       dragOverInfo.overId === overId &&
@@ -772,16 +752,13 @@ export function NavigationEditor() {
               sub-menu (one level deep). The Parent select still works for keyboard-driven changes.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+            <div className="col-span-2 grid gap-1 sm:flex sm:items-center sm:gap-2">
               <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
                 Location
               </Label>
-              <Select
-                value={location}
-                onValueChange={(value) => requestLocationChange(value)}
-              >
-                <SelectTrigger className="w-40">
+              <Select value={location} onValueChange={(value) => requestLocationChange(value)}>
+                <SelectTrigger className="w-full sm:w-40">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -794,18 +771,20 @@ export function NavigationEditor() {
                     + New location…
                   </SelectItem>
                   {locations.some((l) => !PROTECTED_LOCATIONS.has(l.value)) ? (
-                    <SelectItem value={MANAGE_LOCATIONS_SENTINEL}>
-                      Manage locations…
-                    </SelectItem>
+                    <SelectItem value={MANAGE_LOCATIONS_SENTINEL}>Manage locations…</SelectItem>
                   ) : null}
                 </SelectContent>
               </Select>
             </div>
-            <Button variant="outline" onClick={addItem}>
+            <Button variant="outline" className="w-full sm:w-auto" onClick={addItem}>
               <Plus className="size-3.5" />
               Add item
             </Button>
-            <Button onClick={() => void saveNavigation()} disabled={saving || loading}>
+            <Button
+              className="w-full sm:w-auto"
+              onClick={() => void saveNavigation()}
+              disabled={saving || loading}
+            >
               <Save className="size-3.5" />
               {saving ? "Saving..." : "Save"}
             </Button>
@@ -916,16 +895,13 @@ export function NavigationEditor() {
         open={pendingLocation !== null}
         onOpenChange={(open) => !open && setPendingLocation(null)}
       >
-        <DialogContent>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Discard unsaved changes?</DialogTitle>
             <DialogDescription>
-              You have unsaved edits in <strong>{labelFor(location, locations)}</strong>.
-              Switching to{" "}
-              <strong>
-                {pendingLocation ? labelFor(pendingLocation, locations) : ""}
-              </strong>{" "}
-              will discard them.
+              You have unsaved edits in <strong>{labelFor(location, locations)}</strong>. Switching
+              to <strong>{pendingLocation ? labelFor(pendingLocation, locations) : ""}</strong> will
+              discard them.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -952,9 +928,9 @@ export function NavigationEditor() {
           <DialogHeader>
             <DialogTitle>New navigation location</DialogTitle>
             <DialogDescription>
-              Add a custom slot for theme code or templates to render
-              (e.g. <code>sidebar</code>, <code>announcement-bar</code>). Themes consume locations
-              by name via <code>getCachedNavigation(&quot;your-slug&quot;)</code>.
+              Add a custom slot for theme code or templates to render (e.g. <code>sidebar</code>,{" "}
+              <code>announcement-bar</code>). Themes consume locations by name via{" "}
+              <code>getCachedNavigation(&quot;your-slug&quot;)</code>.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -1004,8 +980,8 @@ export function NavigationEditor() {
           <DialogHeader>
             <DialogTitle>Manage navigation locations</DialogTitle>
             <DialogDescription>
-              Rename or delete custom slots. The built-in <code>header</code>,{" "}
-              <code>footer</code>, and <code>main</code> are theme-baked and not editable here.
+              Rename or delete custom slots. The built-in <code>header</code>, <code>footer</code>,
+              and <code>main</code> are theme-baked and not editable here.
             </DialogDescription>
           </DialogHeader>
           <ul className="space-y-2">
@@ -1018,7 +994,7 @@ export function NavigationEditor() {
                 return (
                   <li
                     key={loc.value}
-                    className="flex items-center gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2"
+                    className="grid gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center"
                   >
                     {editing ? (
                       <Input
@@ -1028,27 +1004,25 @@ export function NavigationEditor() {
                         }
                         placeholder={loc.value}
                         autoFocus
-                        className="h-8"
+                        className="h-8 min-w-0"
                       />
                     ) : (
-                      <span className="flex-1 truncate font-mono text-sm">{loc.value}</span>
+                      <span className="min-w-0 truncate font-mono text-sm">{loc.value}</span>
                     )}
                     {editing ? (
                       <>
                         <Button
                           size="sm"
+                          className="w-full sm:w-auto"
                           onClick={() => void renameLocation(loc.value, draft)}
                           disabled={busy || !draft.trim()}
                         >
-                          {busy ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            "Save"
-                          )}
+                          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
+                          className="w-full sm:w-auto"
                           onClick={() =>
                             setRenameDrafts((d) => {
                               const copy = { ...d };
@@ -1065,18 +1039,18 @@ export function NavigationEditor() {
                       <>
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="icon-sm"
+                          className="justify-self-end"
                           aria-label={`Rename ${loc.value}`}
                           disabled={busy}
-                          onClick={() =>
-                            setRenameDrafts((d) => ({ ...d, [loc.value]: loc.value }))
-                          }
+                          onClick={() => setRenameDrafts((d) => ({ ...d, [loc.value]: loc.value }))}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="icon-sm"
+                          className="justify-self-end"
                           aria-label={`Delete ${loc.value}`}
                           disabled={busy}
                           onClick={() => {
@@ -1172,18 +1146,14 @@ function LocationAssignmentsPanel({
       <div className="space-y-1">
         <h3 className="text-sm font-semibold">Location assignments</h3>
         <p className="text-xs text-muted-foreground">
-          Slots your active theme expects you to fill. Click a card to edit
-          that location.
+          Slots your active theme expects you to fill. Click a card to edit that location.
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {themeLocations.map((loc) => {
           const isActive = loc.value === activeLocation;
-          const count = isActive
-            ? activeLocationLiveCount
-            : (loc.itemCount ?? 0);
-          const overLimit =
-            typeof loc.maxItems === "number" && count > loc.maxItems;
+          const count = isActive ? activeLocationLiveCount : (loc.itemCount ?? 0);
+          const overLimit = typeof loc.maxItems === "number" && count > loc.maxItems;
           const isEmpty = count === 0;
           return (
             <button
@@ -1193,15 +1163,13 @@ function LocationAssignmentsPanel({
               className={cn(
                 "group flex flex-col gap-2 rounded-lg border bg-background/70 p-3 text-left transition",
                 "hover:border-primary/60 hover:bg-background",
-                isActive
-                  ? "border-primary ring-2 ring-primary/30"
-                  : "border-border/60",
+                isActive ? "border-primary ring-2 ring-primary/30" : "border-border/60",
               )}
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="space-y-0.5">
-                  <div className="text-sm font-medium">{loc.label}</div>
-                  <code className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                <div className="min-w-0 space-y-0.5">
+                  <div className="truncate text-sm font-medium">{loc.label}</div>
+                  <code className="block truncate text-[10px] uppercase tracking-wider text-muted-foreground">
                     {loc.value}
                   </code>
                 </div>
@@ -1228,9 +1196,7 @@ function LocationAssignmentsPanel({
                 <p className="text-xs text-muted-foreground">{loc.description}</p>
               ) : null}
               {isActive ? (
-                <span className="text-[10px] uppercase tracking-wider text-primary">
-                  Editing
-                </span>
+                <span className="text-[10px] uppercase tracking-wider text-primary">Editing</span>
               ) : null}
             </button>
           );
@@ -1441,7 +1407,6 @@ function SortableRow({
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
-
     </div>
   );
 }
@@ -1535,8 +1500,7 @@ function toEditableNavItem(
       label,
       type: "page" as const,
       pageId: typeof item.pageId === "string" ? item.pageId : undefined,
-      collectionSlug:
-        typeof item.collectionSlug === "string" ? item.collectionSlug : undefined,
+      collectionSlug: typeof item.collectionSlug === "string" ? item.collectionSlug : undefined,
       parentId,
     };
   }
@@ -1572,13 +1536,7 @@ interface PagePickerProps {
 // with `?search=<term>&limit=20` on open and on debounced query
 // change. Selected pages get added to the parent's title cache so
 // subsequent renders of unrelated pickers can label them too.
-function PagePicker({
-  triggerId,
-  value,
-  cache,
-  onChange,
-  onCachePages,
-}: PagePickerProps) {
+function PagePicker({ triggerId, value, cache, onChange, onCachePages }: PagePickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -1701,9 +1659,7 @@ function PagePicker({
             aria-expanded={open}
             aria-controls={listboxId}
             aria-autocomplete="list"
-            aria-activedescendant={
-              results.length > 0 ? optionId(activeIndex) : undefined
-            }
+            aria-activedescendant={results.length > 0 ? optionId(activeIndex) : undefined}
             // Arrow keys move the highlighted row, Enter commits.
             // Radix Popover already handles Esc → close because the
             // input is the focused descendant; we don't override it.
@@ -1762,9 +1718,7 @@ function PagePicker({
                 className={cn(
                   "block w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent",
                   index === activeIndex ? "bg-accent" : "",
-                  page.id === value && index !== activeIndex
-                    ? "ring-1 ring-primary/30"
-                    : "",
+                  page.id === value && index !== activeIndex ? "ring-1 ring-primary/30" : "",
                 )}
               >
                 <div className="truncate">{page.title || page.slug || page.id}</div>
@@ -1794,11 +1748,12 @@ function extractUpdatedAt(payload: unknown): string | null {
 }
 
 function extractPages(payload: unknown): PageOption[] {
-  const docs = isRecord(payload) && Array.isArray(payload.docs)
-    ? payload.docs
-    : Array.isArray(payload)
-      ? payload
-      : [];
+  const docs =
+    isRecord(payload) && Array.isArray(payload.docs)
+      ? payload.docs
+      : Array.isArray(payload)
+        ? payload
+        : [];
   return docs.filter(isRecord).flatMap((doc) => {
     const id = typeof doc.id === "string" ? doc.id : null;
     if (!id) return [];
@@ -1809,11 +1764,12 @@ function extractPages(payload: unknown): PageOption[] {
 }
 
 function extractCollections(payload: unknown): CollectionOption[] {
-  const items = isRecord(payload) && Array.isArray(payload.items)
-    ? payload.items
-    : Array.isArray(payload)
-      ? payload
-      : [];
+  const items =
+    isRecord(payload) && Array.isArray(payload.items)
+      ? payload.items
+      : Array.isArray(payload)
+        ? payload
+        : [];
   return items.filter(isRecord).flatMap((entry) => {
     const slug = typeof entry.slug === "string" ? entry.slug : null;
     if (!slug) return [];

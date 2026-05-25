@@ -529,9 +529,9 @@ export function PluginsManager() {
       {state.kind === "ready" && state.items.length > 0 ? (
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between gap-3">
+            <div className="grid gap-1 sm:flex sm:items-center sm:justify-between sm:gap-3">
               <CardTitle>Installed</CardTitle>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-muted-foreground sm:text-right">
                 {summarizePluginCounts(state.items)}
               </span>
             </div>
@@ -811,7 +811,7 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="grid max-h-[calc(100dvh-2rem)] max-w-3xl grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Globe className="size-4" />
@@ -832,7 +832,7 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
         </DialogHeader>
 
         <form
-          className="flex gap-2"
+          className="grid gap-2 sm:flex"
           onSubmit={(event) => {
             event.preventDefault();
             void search(query);
@@ -843,8 +843,15 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             autoFocus
+            className="min-w-0"
           />
-          <Button type="submit" variant="outline" size="sm" disabled={loading}>
+          <Button
+            type="submit"
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-auto"
+            disabled={loading}
+          >
             {loading ? (
               <Loader2 className="size-3.5 animate-spin" />
             ) : (
@@ -854,7 +861,7 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
           </Button>
         </form>
 
-        <div className="max-h-[60vh] overflow-y-auto pr-1">
+        <div className="min-h-0 overflow-y-auto pr-1">
           {error ? <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
           {!error && loading && items === null ? (
             <div className="flex items-center gap-2 py-12 text-sm text-muted-foreground">
@@ -874,7 +881,7 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
                   key={plugin.name}
                   className="rounded-xl border border-border/60 bg-card/40 p-3"
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="grid gap-3 sm:flex sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
                         <span>{plugin.name}</span>
@@ -887,7 +894,7 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
                       {plugin.description ? (
                         <p className="text-xs text-muted-foreground">{plugin.description}</p>
                       ) : null}
-                      <p className="font-mono text-[10px] text-muted-foreground">
+                      <p className="break-all font-mono text-[10px] text-muted-foreground">
                         pnpm add {plugin.name}
                       </p>
                       {plugin.author || plugin.publishedAt ? (
@@ -900,18 +907,25 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
                         </p>
                       ) : null}
                     </div>
-                    <div className="flex shrink-0 flex-col gap-2">
+                    <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:flex-col">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
+                        className="w-full sm:w-auto"
                         onClick={() => void copy(plugin.name)}
                       >
                         <Copy className="size-3.5" />
                         {copied === plugin.name ? "Copied!" : "Copy install"}
                       </Button>
                       {plugin.npmUrl ? (
-                        <Button type="button" variant="outline" size="sm" asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="w-full sm:w-auto"
+                          asChild
+                        >
                           <a href={plugin.npmUrl} target="_blank" rel="noreferrer">
                             <ExternalLink className="size-3.5" />
                             npm
@@ -1009,12 +1023,15 @@ export default defineConfig({
                 </code>
                 .
               </p>
-              <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/40 px-3 py-2 font-mono text-xs">
-                <span className="flex-1 select-all">pnpm add @nexpress/plugin-&lt;name&gt;</span>
+              <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/40 px-3 py-2 font-mono text-xs sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                <span className="min-w-0 select-all break-all">
+                  pnpm add @nexpress/plugin-&lt;name&gt;
+                </span>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
+                  className="w-full sm:w-auto"
                   onClick={() => void copy("pnpm add @nexpress/plugin-<name>", "install")}
                   aria-label="Copy install command"
                 >
@@ -1040,12 +1057,13 @@ export default defineConfig({
                 a factory function — pass the options it expects.
               </p>
               <div className="rounded-lg border border-border/60 bg-muted/40">
-                <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-                  <span className="font-mono normal-case">nexpress.config.ts</span>
+                <div className="grid gap-2 border-b border-border/60 px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <span className="min-w-0 truncate font-mono normal-case">nexpress.config.ts</span>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
+                    className="w-full sm:w-auto"
                     onClick={() => void copy(configSnippet, "config")}
                     aria-label="Copy config snippet"
                   >

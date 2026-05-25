@@ -299,53 +299,58 @@ export function JobsView() {
         title="Background jobs"
         description="Inspect, retry, and cancel queued jobs. Failed jobs surface their last error inline so you can patch the upstream issue and re-run."
         actions={
-          <div className="flex items-center gap-2">
-          {isStateTab(tab) ? (
-            <div className="inline-flex h-8 rounded-lg bg-neutral-100 p-1 text-[12.5px] dark:bg-neutral-900">
-              <button
-                type="button"
-                onClick={() => setWindowMode("all")}
-                className={`rounded-md px-2.5 transition-colors ${
-                  windowMode === "all"
-                    ? "bg-white font-medium text-neutral-950 shadow-sm dark:bg-neutral-950 dark:text-neutral-50"
-                    : "text-neutral-500 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-neutral-50"
-                }`}
-              >
-                All time
-              </button>
-              <button
-                type="button"
-                onClick={() => setWindowMode("24h")}
-                className={`rounded-md px-2.5 transition-colors ${
-                  windowMode === "24h"
-                    ? "bg-white font-medium text-neutral-950 shadow-sm dark:bg-neutral-950 dark:text-neutral-50"
-                    : "text-neutral-500 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-neutral-50"
-                }`}
-              >
-                Last 24 h
-              </button>
-            </div>
-          ) : null}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              if (tab === "scheduled") {
-                void loadSchedules();
-              } else {
-                void load(tab, windowMode);
-              }
-            }}
-            disabled={refreshing}
+          <div
+            className={`grid w-full gap-2 sm:flex sm:w-auto sm:items-center ${
+              isStateTab(tab) ? "grid-cols-2" : "grid-cols-1"
+            }`}
           >
-            {refreshing ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="size-3.5" />
-            )}
-            Refresh
-          </Button>
-        </div>
+            {isStateTab(tab) ? (
+              <div className="col-span-2 inline-flex h-8 rounded-lg bg-neutral-100 p-1 text-[12.5px] dark:bg-neutral-900 sm:col-span-1">
+                <button
+                  type="button"
+                  onClick={() => setWindowMode("all")}
+                  className={`flex-1 rounded-md px-2.5 transition-colors sm:flex-none ${
+                    windowMode === "all"
+                      ? "bg-white font-medium text-neutral-950 shadow-sm dark:bg-neutral-950 dark:text-neutral-50"
+                      : "text-neutral-500 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-neutral-50"
+                  }`}
+                >
+                  All time
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWindowMode("24h")}
+                  className={`flex-1 rounded-md px-2.5 transition-colors sm:flex-none ${
+                    windowMode === "24h"
+                      ? "bg-white font-medium text-neutral-950 shadow-sm dark:bg-neutral-950 dark:text-neutral-50"
+                      : "text-neutral-500 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-neutral-50"
+                  }`}
+                >
+                  Last 24 h
+                </button>
+              </div>
+            ) : null}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full sm:w-auto"
+              onClick={() => {
+                if (tab === "scheduled") {
+                  void loadSchedules();
+                } else {
+                  void load(tab, windowMode);
+                }
+              }}
+              disabled={refreshing}
+            >
+              {refreshing ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="size-3.5" />
+              )}
+              Refresh
+            </Button>
+          </div>
         }
       />
 
@@ -368,7 +373,7 @@ export function JobsView() {
       <WorkerHealthCard />
 
       <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3 gap-2 md:w-auto md:grid-cols-6">
+        <TabsList className="grid h-auto w-full grid-cols-3 items-stretch gap-2 md:h-9 md:w-auto md:grid-cols-6 md:items-center">
           <TabsTrigger value="pending">Pending</TabsTrigger>
           <TabsTrigger value="active">Active</TabsTrigger>
           <TabsTrigger value="completed">Completed</TabsTrigger>
@@ -488,14 +493,14 @@ function WorkerHealthCard() {
   return (
     <Card>
       <CardContent className="flex flex-col gap-3 p-4 text-sm md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <span
             className={`inline-flex h-2.5 w-2.5 rounded-full ${
               alive > 0 ? "bg-emerald-500" : "bg-rose-500"
             }`}
             aria-hidden
           />
-          <div>
+          <div className="min-w-0">
             <p className="font-medium text-foreground">
               Workers: {alive} alive / {total} total
             </p>
@@ -506,7 +511,7 @@ function WorkerHealthCard() {
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 md:justify-end">
           {paused ? (
             <span className="rounded-md border border-amber-500/30/60 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-100">
               Queue paused
@@ -602,14 +607,11 @@ function SchedulesPanel({
             ) : (
               <ul className="divide-y divide-border/60">
                 {schedules.map((schedule) => (
-                  <li
-                    key={`${schedule.name}#${schedule.key}`}
-                    className="space-y-1 px-5 py-3"
-                  >
+                  <li key={`${schedule.name}#${schedule.key}`} className="space-y-1 px-5 py-3">
                     <div className="flex flex-wrap items-baseline gap-2">
-                      <code className="font-mono text-xs">{schedule.name}</code>
+                      <code className="break-all font-mono text-xs">{schedule.name}</code>
                       {schedule.key ? (
-                        <code className="rounded bg-muted px-1.5 py-0.5 text-[11px]">
+                        <code className="break-all rounded bg-muted px-1.5 py-0.5 text-[11px]">
                           {schedule.key}
                         </code>
                       ) : null}
@@ -648,7 +650,7 @@ function SchedulesPanel({
             ) : (
               <ul className="divide-y divide-border/60">
                 {handlers.map((name) => (
-                  <li key={name} className="px-5 py-2 font-mono text-xs text-foreground">
+                  <li key={name} className="break-all px-5 py-2 font-mono text-xs text-foreground">
                     {name}
                   </li>
                 ))}
@@ -764,12 +766,13 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
           <p className="text-xs text-emerald-700 dark:text-emerald-400">{message}</p>
         ) : null}
         <div className="flex justify-end">
-          <Button size="sm" disabled={busy || !type} onClick={() => void submit()}>
-            {busy ? (
-              <Loader2 className="size-3 animate-spin" />
-            ) : (
-              <Play className="size-3" />
-            )}
+          <Button
+            size="sm"
+            className="w-full sm:w-auto"
+            disabled={busy || !type}
+            onClick={() => void submit()}
+          >
+            {busy ? <Loader2 className="size-3 animate-spin" /> : <Play className="size-3" />}
             Enqueue
           </Button>
         </div>
@@ -820,18 +823,18 @@ function JobList({
       <CardContent className="divide-y divide-border/60 p-0">
         {jobs.map((job) => (
           <div key={job.id} className="space-y-2 px-5 py-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
+            <div className="grid gap-3 sm:flex sm:items-start sm:justify-between">
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
                   <StateBadge state={job.state} />
-                  <code className="font-mono text-xs">{job.name}</code>
+                  <code className="min-w-0 break-all font-mono text-xs">{job.name}</code>
                   {typeof job.retryCount === "number" && job.retryCount > 0 ? (
                     <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:text-amber-100">
                       {job.retryCount} retries
                     </span>
                   ) : null}
                 </div>
-                <p className="font-mono text-[11px] text-muted-foreground">{job.id}</p>
+                <p className="break-all font-mono text-[11px] text-muted-foreground">{job.id}</p>
                 <p className="text-[11px] text-muted-foreground">
                   Created {new Date(job.createdOn).toLocaleString()}
                   {job.completedOn
@@ -839,11 +842,12 @@ function JobList({
                     : null}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
                 {tab === "failed" ? (
                   <Button
                     size="sm"
                     variant="outline"
+                    className="w-full sm:w-auto"
                     disabled={busyJobId === job.id}
                     onClick={() => onRetry(job.id)}
                   >
@@ -859,6 +863,7 @@ function JobList({
                   <Button
                     size="sm"
                     variant="outline"
+                    className="w-full sm:w-auto"
                     disabled={busyJobId === job.id}
                     onClick={() => onCancel(job.id)}
                   >
@@ -946,7 +951,7 @@ function JobLogsSection({ jobId }: { jobId: string }) {
       className="text-[11px]"
       open={open}
       onToggle={(event) => {
-        const nowOpen = (event.currentTarget as HTMLDetailsElement).open;
+        const nowOpen = event.currentTarget.open;
         setOpen(nowOpen);
         // Self-review fix — reset to idle on collapse so the next
         // expand re-fetches. Without this, a still-running job's
