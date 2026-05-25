@@ -99,9 +99,7 @@ export function ThemeReseedDialog({
   onReseedComplete,
 }: ThemeReseedDialogProps) {
   const [preview, setPreview] = useState<PreviewCounts | null>(null);
-  const [phase, setPhase] = useState<"preview" | "running" | "done" | "error">(
-    "preview",
-  );
+  const [phase, setPhase] = useState<"preview" | "running" | "done" | "error">("preview");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ReseedResult | null>(null);
 
@@ -199,93 +197,81 @@ export function ThemeReseedDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="min-w-0 sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            Destructive — seed-marked demo content will be deleted before
-            the new theme's content is written. Operator-authored pages and
-            posts are not touched.
+          <DialogTitle className="break-words">{title}</DialogTitle>
+          <DialogDescription className="break-words">
+            Destructive — seed-marked demo content will be deleted before the new theme's content is
+            written. Operator-authored pages and posts are not touched.
           </DialogDescription>
         </DialogHeader>
 
         {phase === "preview" && preview ? (
-          <div className="space-y-3 text-sm">
-            <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
-              <p className="font-medium text-foreground">
+          <div className="min-w-0 space-y-3 text-sm">
+            <div className="min-w-0 rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
+              <p className="break-words font-medium text-foreground">
                 {preview.seedMarked.pages} page
-                {preview.seedMarked.pages === 1 ? "" : "s"} +{" "}
-                {preview.seedMarked.posts} post
+                {preview.seedMarked.pages === 1 ? "" : "s"} + {preview.seedMarked.posts} post
                 {preview.seedMarked.posts === 1 ? "" : "s"} will be deleted
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1 break-words text-xs text-muted-foreground">
                 These are rows the seeder created (carrying a{" "}
-                <code className="font-mono">seed_source</code> marker). Your
-                own pages and posts stay.
+                <code className="break-all font-mono">seed_source</code> marker). Your own pages and
+                posts stay.
               </p>
             </div>
-            {preview.legacyUnmarked.pages > 0 ||
-            preview.legacyUnmarked.posts > 0 ? (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            {preview.legacyUnmarked.pages > 0 || preview.legacyUnmarked.posts > 0 ? (
+              <div className="flex min-w-0 items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                <p>
-                  {preview.legacyUnmarked.pages +
-                    preview.legacyUnmarked.posts}{" "}
-                  row{preview.legacyUnmarked.pages + preview.legacyUnmarked.posts === 1 ? "" : "s"}{" "}
-                  on this site carry no <code>seed_source</code> marker — they
-                  may be operator-authored content, or legacy demo data from
-                  pre-0.2 installs. Reseed will leave them alone; if any
-                  share a slug with the new theme's pages, the seed will fail
-                  on the unique-slug constraint. Move them to the trash first
-                  if you hit that.
+                <p className="min-w-0 break-words">
+                  {preview.legacyUnmarked.pages + preview.legacyUnmarked.posts} row
+                  {preview.legacyUnmarked.pages + preview.legacyUnmarked.posts === 1 ? "" : "s"} on
+                  this site carry no <code className="break-all">seed_source</code> marker — they
+                  may be operator-authored content, or legacy demo data from pre-0.2 installs.
+                  Reseed will leave them alone; if any share a slug with the new theme's pages, the
+                  seed will fail on the unique-slug constraint. Move them to the trash first if you
+                  hit that.
                 </p>
               </div>
             ) : null}
-            <p className="text-xs text-muted-foreground">
-              The new theme's <code>seedContent</code> will then be written
-              {isCurrentlyActive
-                ? "."
-                : ", and the active theme will switch to "}
+            <p className="break-words text-xs text-muted-foreground">
+              The new theme's <code className="break-all">seedContent</code> will then be written
+              {isCurrentlyActive ? "." : ", and the active theme will switch to "}
               {isCurrentlyActive ? null : (
-                <strong className="text-foreground">{targetThemeName}</strong>
+                <strong className="break-words text-foreground">{targetThemeName}</strong>
               )}
               {isCurrentlyActive ? null : "."}
             </p>
           </div>
         ) : null}
 
-        {phase === "running" ? (
-          <RunningIndicator preview={preview} />
-        ) : null}
+        {phase === "running" ? <RunningIndicator preview={preview} /> : null}
 
         {phase === "done" && result ? (
-          <div className="space-y-2 text-sm">
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-emerald-700 dark:text-emerald-300">
+          <div className="min-w-0 space-y-2 text-sm">
+            <div className="min-w-0 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-emerald-700 dark:text-emerald-300">
               <p className="font-medium">Reseed complete.</p>
-              <p className="mt-1 text-xs">
+              <p className="mt-1 break-words text-xs">
                 Deleted {result.wiped.pages} page
-                {result.wiped.pages === 1 ? "" : "s"} +{" "}
-                {result.wiped.posts} post
-                {result.wiped.posts === 1 ? "" : "s"}. Wrote{" "}
-                {result.seeded.pages.created} page
-                {result.seeded.pages.created === 1 ? "" : "s"},{" "}
-                {result.seeded.posts.created} post
-                {result.seeded.posts.created === 1 ? "" : "s"},{" "}
-                {result.seeded.terms.tagsCreated} tag
+                {result.wiped.pages === 1 ? "" : "s"} + {result.wiped.posts} post
+                {result.wiped.posts === 1 ? "" : "s"}. Wrote {result.seeded.pages.created} page
+                {result.seeded.pages.created === 1 ? "" : "s"}, {result.seeded.posts.created} post
+                {result.seeded.posts.created === 1 ? "" : "s"}, {result.seeded.terms.tagsCreated}{" "}
+                tag
                 {result.seeded.terms.tagsCreated === 1 ? "" : "s"} +{" "}
                 {result.seeded.terms.categoriesCreated} categor
                 {result.seeded.terms.categoriesCreated === 1 ? "y" : "ies"}.
               </p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              The public site picks up the new theme on the next request —
-              caches were busted automatically.
+            <p className="break-words text-xs text-muted-foreground">
+              The public site picks up the new theme on the next request — caches were busted
+              automatically.
             </p>
           </div>
         ) : null}
 
         {phase === "error" && error ? (
-          <div className="whitespace-pre-line rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          <div className="whitespace-pre-line break-words rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
             {error}
           </div>
         ) : null}
@@ -348,9 +334,7 @@ function RunningIndicator({ preview }: { preview: PreviewCounts | null }) {
     return () => window.clearInterval(id);
   }, []);
 
-  const wipeCount = preview
-    ? preview.seedMarked.pages + preview.seedMarked.posts
-    : null;
+  const wipeCount = preview ? preview.seedMarked.pages + preview.seedMarked.posts : null;
   const totalWork = wipeCount ?? 0;
   // Roughly: wipe phase lasts 1s per 30 rows (each delete fires
   // hooks). Switch the message after that budget elapses, with a
@@ -364,12 +348,12 @@ function RunningIndicator({ preview }: { preview: PreviewCounts | null }) {
       : "Writing new theme content…";
 
   return (
-    <div className="space-y-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-3 text-sm text-muted-foreground">
-      <div className="flex items-center gap-2">
+    <div className="min-w-0 space-y-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-3 text-sm text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-2">
         <Loader2 className="h-4 w-4 animate-spin" />
-        <span>{phaseLabel}</span>
+        <span className="min-w-0 break-words">{phaseLabel}</span>
       </div>
-      <p className="text-xs">
+      <p className="break-words text-xs">
         This usually takes 5–10 seconds. Keep the tab open until it finishes.
       </p>
     </div>
