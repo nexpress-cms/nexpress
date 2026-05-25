@@ -266,15 +266,15 @@ function ConfigAutoFormCard({
       </CardHeader>
       <CardContent>
         {showBanner ? (
-          <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
-            <div>
+          <div className="mb-4 grid gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 sm:flex sm:items-start sm:justify-between">
+            <div className="min-w-0">
               <div className="font-medium">Saved settings were reset to defaults</div>
               <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
                 The persisted value didn&rsquo;t match the current schema (likely a plugin upgrade).
                 Saving will overwrite the stored value with what you see below.
               </p>
               {parseError ? (
-                <pre className="mt-2 max-h-24 overflow-auto rounded bg-amber-500/10 p-2 text-[11px] leading-snug">
+                <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded bg-amber-500/10 p-2 text-[11px] leading-snug">
                   {parseError}
                 </pre>
               ) : null}
@@ -284,6 +284,7 @@ function ConfigAutoFormCard({
               variant="ghost"
               size="sm"
               onClick={() => setBannerDismissed(true)}
+              className="w-full sm:w-auto"
             >
               Dismiss
             </Button>
@@ -301,13 +302,14 @@ function ConfigAutoFormCard({
           </div>
         ) : null}
         <ZodForm fields={fields} initialValue={initialValue} onChange={setValue} />
-        <div className="mt-4 flex justify-end">
+        <div className="mt-4 grid sm:flex sm:justify-end">
           <Button
             type="button"
             disabled={saving}
             onClick={() => {
               void handleSubmit();
             }}
+            className="w-full sm:w-auto"
           >
             {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
             Save settings
@@ -408,7 +410,7 @@ function SettingsCard({
                 control={form.control}
               />
             ))}
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" disabled={saving} className="w-full sm:w-auto">
               {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
               Save settings
             </Button>
@@ -479,7 +481,7 @@ function WidgetCard({ pluginId, widget }: { pluginId: string; widget: WidgetDef 
             ) : null}
           </div>
         ) : state.kind === "status" ? (
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             {state.level === "ok" ? (
               <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
             ) : state.level === "warn" ? (
@@ -487,7 +489,7 @@ function WidgetCard({ pluginId, widget }: { pluginId: string; widget: WidgetDef 
             ) : (
               <AlertTriangle className="h-5 w-5 text-rose-600 dark:text-rose-300" />
             )}
-            <span className="text-sm">{state.message}</span>
+            <span className="min-w-0 break-words text-sm">{state.message}</span>
           </div>
         ) : (
           <div className="text-xs text-rose-600 dark:text-rose-300">{state.message}</div>
@@ -522,24 +524,30 @@ function ActionRow({ pluginId, action }: { pluginId: string; action: ActionDef }
 
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-border/60 p-3 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <div className="text-sm font-medium">{action.label}</div>
+      <div className="min-w-0">
+        <div className="break-words text-sm font-medium">{action.label}</div>
         {action.description ? (
-          <div className="text-xs text-muted-foreground">{action.description}</div>
+          <div className="break-words text-xs text-muted-foreground">{action.description}</div>
         ) : null}
         {toast ? (
           <div
             className={
               toast.type === "success"
-                ? "mt-2 text-xs text-emerald-700 dark:text-emerald-200"
-                : "mt-2 text-xs text-rose-700 dark:text-rose-200"
+                ? "mt-2 break-words text-xs text-emerald-700 dark:text-emerald-200"
+                : "mt-2 break-words text-xs text-rose-700 dark:text-rose-200"
             }
           >
             {toast.message}
           </div>
         ) : null}
       </div>
-      <Button type="button" variant="outline" onClick={() => void run()} disabled={running}>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => void run()}
+        disabled={running}
+        className="w-full sm:w-auto"
+      >
         {running ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
         Run
       </Button>
@@ -577,8 +585,8 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <CardTitle>{table.label}</CardTitle>
+      <CardHeader className="grid gap-2 space-y-0 sm:flex sm:flex-row sm:items-center sm:justify-between">
+        <CardTitle className="min-w-0 break-words">{table.label}</CardTitle>
         {state.kind === "ready" ? <Badge variant="secondary">{state.total}</Badge> : null}
       </CardHeader>
       <CardContent>
@@ -589,33 +597,57 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
         ) : state.rows.length === 0 ? (
           <p className="py-4 text-sm text-muted-foreground">{table.emptyMessage ?? "No rows."}</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead>
-                <tr className="border-b border-neutral-200/70 dark:border-neutral-800/70">
+          <>
+            <div className="space-y-3 md:hidden">
+              {state.rows.map((row, index) => (
+                <dl
+                  key={String(row.id ?? index)}
+                  className="space-y-2 rounded-xl border border-border/60 bg-background/70 p-3 text-sm"
+                >
                   {table.columns.map((col) => (
-                    <th
+                    <div
                       key={col.name}
-                      className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400"
+                      className="grid grid-cols-[minmax(0,0.42fr)_minmax(0,1fr)] gap-3"
                     >
-                      {col.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {state.rows.map((row, index) => (
-                  <tr key={String(row.id ?? index)} className="border-b last:border-b-0">
-                    {table.columns.map((col) => (
-                      <td key={col.name} className="py-2 pr-4 align-top">
+                      <dt className="min-w-0 break-words text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                        {col.label}
+                      </dt>
+                      <dd className="min-w-0 break-words text-right text-foreground">
                         {renderCell(row[col.name])}
-                      </td>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto rounded-xl border border-border/60 md:block">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead>
+                  <tr className="border-b border-neutral-200/70 dark:border-neutral-800/70">
+                    {table.columns.map((col) => (
+                      <th
+                        key={col.name}
+                        className="h-9 px-3 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400"
+                      >
+                        {col.label}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {state.rows.map((row, index) => (
+                    <tr key={String(row.id ?? index)} className="border-b last:border-b-0">
+                      {table.columns.map((col) => (
+                        <td key={col.name} className="max-w-[24rem] px-3 py-2 align-top">
+                          <span className="break-words">{renderCell(row[col.name])}</span>
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </CardContent>
     </Card>
@@ -685,15 +717,20 @@ function SchedulesCard({ pluginId, schedules }: { pluginId: string; schedules: S
             key={schedule.taskId}
             className="flex flex-col gap-2 rounded-xl border border-border/60 p-3 sm:flex-row sm:items-start sm:justify-between"
           >
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                {schedule.taskId}
-                <Badge variant="secondary" className="font-mono text-[10px]">
+            <div className="min-w-0 space-y-1">
+              <div className="grid gap-2 text-sm font-medium sm:flex sm:items-center">
+                <span className="min-w-0 break-all">{schedule.taskId}</span>
+                <Badge
+                  variant="secondary"
+                  className="w-fit max-w-full break-all font-mono text-[10px]"
+                >
                   {schedule.cron}
                 </Badge>
               </div>
               {schedule.description ? (
-                <div className="text-xs text-muted-foreground">{schedule.description}</div>
+                <div className="break-words text-xs text-muted-foreground">
+                  {schedule.description}
+                </div>
               ) : null}
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-4">
                 <ScheduleStat label="Last run" value={formatTimestamp(schedule.lastRunAt)} />
@@ -718,6 +755,7 @@ function SchedulesCard({ pluginId, schedules }: { pluginId: string; schedules: S
               size="sm"
               onClick={() => void runNow(schedule.taskId)}
               disabled={busyTaskId !== null}
+              className="w-full sm:w-auto"
             >
               {busyTaskId === schedule.taskId ? (
                 <Loader2 className="size-3.5 animate-spin" />
@@ -746,7 +784,11 @@ function ScheduleStat({
     <div>
       <div className="text-[10px] font-medium uppercase tracking-[0.08em]">{label}</div>
       <div
-        className={highlight === "warn" ? "text-rose-600 dark:text-rose-300" : "text-foreground/80"}
+        className={
+          highlight === "warn"
+            ? "break-words text-rose-600 dark:text-rose-300"
+            : "break-words text-foreground/80"
+        }
       >
         {value}
       </div>
