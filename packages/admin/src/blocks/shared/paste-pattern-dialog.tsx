@@ -180,16 +180,19 @@ export function PastePatternDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="min-w-0 max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Paste blocks from JSON</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="break-words">Paste blocks from JSON</DialogTitle>
+          <DialogDescription className="break-words">
             Paste a single block, an array of blocks, or a pattern object. New ids are generated on
             insert so reuse never collides with existing rows.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-3">
-          <Label htmlFor="np-paste-pattern-input" className="text-xs uppercase tracking-wider">
+        <div className="grid min-w-0 gap-3">
+          <Label
+            htmlFor="np-paste-pattern-input"
+            className="break-words text-xs uppercase tracking-wider"
+          >
             JSON
           </Label>
           <Textarea
@@ -201,20 +204,20 @@ export function PastePatternDialog({
             }}
             rows={10}
             placeholder='[{"id":"…","type":"hero","props":{…}}]'
-            className="font-mono text-xs"
+            className="min-w-0 font-mono text-xs"
           />
           {result?.error ? (
-            <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <p className="break-words rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
               {result.error}
             </p>
           ) : null}
           {result?.warning ? (
-            <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            <p className="break-words rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
               {result.warning}
             </p>
           ) : null}
           {result?.ok && result.parsed ? (
-            <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+            <p className="break-words rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
               Validated — {result.parsed.length} block
               {result.parsed.length === 1 ? "" : "s"} ready to insert.
             </p>

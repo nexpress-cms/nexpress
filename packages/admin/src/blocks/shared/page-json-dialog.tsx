@@ -232,22 +232,29 @@ export function PageJsonDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="min-w-0 max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Edit page blocks as JSON</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="break-words">Edit page blocks as JSON</DialogTitle>
+          <DialogDescription className="break-words">
             Apply replaces the entire block tree. Use this for bulk edits, paste-from-another-page,
             or recovering from a corrupted state.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-          <Button type="button" variant="ghost" size="sm" onClick={handleFormat}>
+        <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full sm:w-auto"
+            onClick={handleFormat}
+          >
             Format
           </Button>
           <Button
             type="button"
             variant="ghost"
             size="sm"
+            className="w-full sm:w-auto"
             onClick={() => {
               void handleCopy();
             }}
@@ -265,7 +272,7 @@ export function PageJsonDialog({
             />
             <Label
               htmlFor="np-page-json-import-as-new"
-              className="min-w-0 flex-1 text-xs font-normal text-muted-foreground"
+              className="min-w-0 flex-1 break-words text-xs font-normal text-muted-foreground"
             >
               Import as new blocks (append, fresh ids)
             </Label>
@@ -280,13 +287,13 @@ export function PageJsonDialog({
             clearPreview();
           }}
           rows={20}
-          className="max-h-[45dvh] min-h-[16rem] resize-y font-mono text-xs"
+          className="max-h-[45dvh] min-h-[16rem] min-w-0 resize-y font-mono text-xs"
           spellCheck={false}
         />
         {error ? (
           <div
             role="alert"
-            className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+            className="break-words rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
           >
             {error}
           </div>
@@ -294,7 +301,7 @@ export function PageJsonDialog({
         {warning ? (
           <div
             role="status"
-            className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300"
+            className="break-words rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300"
           >
             {warning}
           </div>
@@ -302,7 +309,7 @@ export function PageJsonDialog({
         {pendingApply ? (
           <div
             role="status"
-            className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs"
+            className="min-w-0 break-words rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs"
           >
             <div className="font-medium uppercase tracking-wider text-primary">Apply preview</div>
             <div className="mt-1 text-foreground">

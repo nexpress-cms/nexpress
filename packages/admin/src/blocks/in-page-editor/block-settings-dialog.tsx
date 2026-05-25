@@ -61,9 +61,7 @@ export function BlockSettingsDialog({
   definition,
   dispatch,
 }: BlockSettingsDialogProps) {
-  const [draft, setDraft] = useState<Record<string, unknown>>(
-    block?.props ?? {},
-  );
+  const [draft, setDraft] = useState<Record<string, unknown>>(block?.props ?? {});
 
   // Reset the draft whenever the targeted block changes — without
   // this the dialog would carry edits from one block over to the
@@ -78,9 +76,7 @@ export function BlockSettingsDialog({
   // the operator toggles dependent props.
   const fields = useMemo(() => {
     if (!definition) return [];
-    return definition.propsSchema.filter(
-      (field) => !isFieldHidden(field, draft),
-    );
+    return definition.propsSchema.filter((field) => !isFieldHidden(field, draft));
   }, [definition, draft]);
 
   const handleSave = () => {
@@ -95,37 +91,38 @@ export function BlockSettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="min-w-0 max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex min-w-0 flex-wrap items-center gap-2">
             <BlockIcon
               icon={definition?.icon}
               kind={definition?.iconKind}
               className="text-muted-foreground"
             />
-            <span>{definition?.label ?? block?.type ?? "Block settings"}</span>
+            <span className="min-w-0 break-words">
+              {definition?.label ?? block?.type ?? "Block settings"}
+            </span>
             {block ? (
-              <code className="ml-auto rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+              <code className="min-w-0 break-all rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:ml-auto">
                 {block.type}
               </code>
             ) : null}
           </DialogTitle>
           {definition?.description ? (
-            <DialogDescription>{definition.description}</DialogDescription>
+            <DialogDescription className="break-words">{definition.description}</DialogDescription>
           ) : null}
         </DialogHeader>
 
-        <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+        <div className="max-h-[60vh] min-w-0 space-y-3 overflow-y-auto pr-1">
           {!definition ? (
-            <div className="rounded-lg border border-dashed border-amber-500/40 bg-amber-500/5 p-3 text-sm text-amber-700 dark:text-amber-300">
+            <div className="break-words rounded-lg border border-dashed border-amber-500/40 bg-amber-500/5 p-3 text-sm text-amber-700 dark:text-amber-300">
               No definition registered for{" "}
-              <code className="font-mono">{block?.type ?? "(unknown)"}</code>.
-              The plugin / theme that contributes this block isn&apos;t loaded
-              in the current bootstrap. Save the document and check that the
-              plugin is enabled, then reopen this view.
+              <code className="break-all font-mono">{block?.type ?? "(unknown)"}</code>. The plugin
+              / theme that contributes this block isn&apos;t loaded in the current bootstrap. Save
+              the document and check that the plugin is enabled, then reopen this view.
             </div>
           ) : fields.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border/60 bg-muted/30 p-3 text-sm text-muted-foreground">
+            <div className="break-words rounded-lg border border-dashed border-border/60 bg-muted/30 p-3 text-sm text-muted-foreground">
               This block has no editable props.
             </div>
           ) : (
@@ -140,11 +137,11 @@ export function BlockSettingsDialog({
               // association via `htmlFor`. (#524)
               const renderInlineLabel = field.type !== "boolean";
               return (
-                <div key={field.name} className="space-y-1.5">
+                <div key={field.name} className="min-w-0 space-y-1.5">
                   {renderInlineLabel ? (
                     <Label
                       htmlFor={inputId}
-                      className="flex items-center gap-1 text-xs font-medium text-foreground"
+                      className="flex min-w-0 items-center gap-1 break-words text-xs font-medium text-foreground"
                     >
                       {field.label ?? field.name}
                       {field.required ? (
@@ -163,7 +160,7 @@ export function BlockSettingsDialog({
                     inputId={inputId}
                   />
                   {field.description ? (
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="break-words text-[11px] text-muted-foreground">
                       {field.description}
                     </p>
                   ) : null}
@@ -177,11 +174,7 @@ export function BlockSettingsDialog({
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            type="button"
-            onClick={handleSave}
-            disabled={!block || !definition}
-          >
+          <Button type="button" onClick={handleSave} disabled={!block || !definition}>
             Save
           </Button>
         </DialogFooter>

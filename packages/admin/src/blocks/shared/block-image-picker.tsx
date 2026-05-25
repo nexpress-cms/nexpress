@@ -193,8 +193,8 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
   };
 
   return (
-    <div className="grid gap-2">
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+    <div className="grid min-w-0 gap-2">
+      <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:items-center">
         <Input
           id={inputId}
           type="url"
@@ -228,7 +228,7 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
       {value ? (
         <div className="overflow-hidden rounded-md border border-border/60 bg-muted/20">
           {previewBroken ? (
-            <div className="flex h-32 items-center justify-center px-3 text-xs text-amber-600 dark:text-amber-400">
+            <div className="flex h-32 items-center justify-center px-3 text-center text-xs text-amber-600 dark:text-amber-400">
               Image preview failed to load. Check the URL or pick from the library.
             </div>
           ) : (
@@ -243,14 +243,14 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
       ) : null}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="min-w-0 max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Select an image</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="break-words">Select an image</DialogTitle>
+            <DialogDescription className="break-words">
               Search the library, upload a new file, or paste a URL above.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
             <Input
               value={query}
               onChange={(e) => setQuery(e.currentTarget.value)}
@@ -282,12 +282,12 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
           {error ? (
             <p
               role="alert"
-              className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+              className="break-words rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
             >
               {error}
             </p>
           ) : null}
-          <div className="grid max-h-[min(28rem,55dvh)] grid-cols-1 gap-3 overflow-y-auto pr-1 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid min-w-0 max-h-[min(28rem,55dvh)] grid-cols-1 gap-3 overflow-y-auto pr-1 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
             {items.length === 0 && !loading ? (
               <div className="col-span-full px-2 py-6 text-center text-xs text-muted-foreground">
                 {debouncedQuery
@@ -303,7 +303,7 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
                   if (item.url) onChange(item.url);
                   setOpen(false);
                 }}
-                className="flex flex-col gap-1 overflow-hidden rounded-md border border-border/60 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                className="flex min-w-0 flex-col gap-1 overflow-hidden rounded-md border border-border/60 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 {item.url ? (
                   <img
@@ -320,13 +320,14 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
               </button>
             ))}
           </div>
-          <DialogFooter className="justify-between sm:justify-between">
-            <div className="flex items-center gap-2">
+          <DialogFooter className="gap-2 sm:justify-between">
+            <div className="grid w-full gap-2 sm:flex sm:w-auto sm:items-center">
               {hasMore ? (
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="w-full sm:w-auto"
                   disabled={loading}
                   onClick={() => void loadMedia(currentPage + 1, debouncedQuery, "append")}
                 >
@@ -334,10 +335,15 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
                 </Button>
               ) : null}
               {loading && !hasMore ? (
-                <span className="text-xs text-muted-foreground">Loading…</span>
+                <span className="break-words text-xs text-muted-foreground">Loading…</span>
               ) : null}
             </div>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={() => setOpen(false)}
+            >
               Cancel
             </Button>
           </DialogFooter>
