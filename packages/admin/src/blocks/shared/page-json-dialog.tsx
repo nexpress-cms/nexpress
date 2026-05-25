@@ -240,7 +240,7 @@ export function PageJsonDialog({
             or recovering from a corrupted state.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
           <Button type="button" variant="ghost" size="sm" onClick={handleFormat}>
             Format
           </Button>
@@ -254,7 +254,7 @@ export function PageJsonDialog({
           >
             {copied ? "Copied!" : "Copy"}
           </Button>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="col-span-2 flex min-w-0 items-center gap-2 sm:col-span-1 sm:ml-auto">
             <Switch
               id="np-page-json-import-as-new"
               checked={importAsNew}
@@ -265,7 +265,7 @@ export function PageJsonDialog({
             />
             <Label
               htmlFor="np-page-json-import-as-new"
-              className="text-xs font-normal text-muted-foreground"
+              className="min-w-0 flex-1 text-xs font-normal text-muted-foreground"
             >
               Import as new blocks (append, fresh ids)
             </Label>
@@ -280,7 +280,7 @@ export function PageJsonDialog({
             clearPreview();
           }}
           rows={20}
-          className="font-mono text-xs"
+          className="max-h-[45dvh] min-h-[16rem] resize-y font-mono text-xs"
           spellCheck={false}
         />
         {error ? (

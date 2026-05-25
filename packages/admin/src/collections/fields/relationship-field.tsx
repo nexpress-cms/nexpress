@@ -3,7 +3,14 @@ import type { NpFindResult } from "@nexpress/core";
 
 import { Badge } from "../../ui/badge.js";
 import { Button } from "../../ui/button.js";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../ui/dialog.js";
 
 interface RelatedDocument extends Record<string, unknown> {
   id: string;
@@ -16,7 +23,8 @@ interface RelationshipFieldProps {
   onChange: (value: string | string[]) => void;
 }
 
-const getRelationSlug = (relationTo: string | string[]): string => (Array.isArray(relationTo) ? relationTo[0] ?? "" : relationTo);
+const getRelationSlug = (relationTo: string | string[]): string =>
+  Array.isArray(relationTo) ? (relationTo[0] ?? "") : relationTo;
 
 const SYSTEM_ENDPOINTS: Record<string, string> = {
   users: "/api/users",
@@ -29,18 +37,27 @@ const getRelationEndpoint = (slug: string, limit: number): string => {
 };
 
 const getDocumentLabel = (doc: Record<string, unknown> & { id?: string }): string => {
-  const label = doc.title ?? doc.name ?? doc.label ?? doc.slug ?? doc.email ?? doc.filename ?? doc.id;
+  const label =
+    doc.title ?? doc.name ?? doc.label ?? doc.slug ?? doc.email ?? doc.filename ?? doc.id;
   return typeof label === "string" ? label : (doc.id ?? "Untitled item");
 };
 
-export function RelationshipField({ relationTo, hasMany, value, onChange }: RelationshipFieldProps) {
+export function RelationshipField({
+  relationTo,
+  hasMany,
+  value,
+  onChange,
+}: RelationshipFieldProps) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<RelatedDocument[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const relationSlug = getRelationSlug(relationTo);
-  const selectedValues = useMemo(() => (Array.isArray(value) ? value : value ? [value] : []), [value]);
+  const selectedValues = useMemo(
+    () => (Array.isArray(value) ? value : value ? [value] : []),
+    [value],
+  );
 
   useEffect(() => {
     if (!open || !relationSlug) {
@@ -70,7 +87,9 @@ export function RelationshipField({ relationTo, hasMany, value, onChange }: Rela
             : [];
         setItems(docs);
       } catch (fetchError) {
-        setError(fetchError instanceof Error ? fetchError.message : "Failed to load related items.");
+        setError(
+          fetchError instanceof Error ? fetchError.message : "Failed to load related items.",
+        );
       } finally {
         setIsLoading(false);
       }
@@ -87,7 +106,7 @@ export function RelationshipField({ relationTo, hasMany, value, onChange }: Rela
   return (
     <div className="space-y-3 rounded-xl border border-border/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {selectedItems.length > 0 ? (
             selectedItems.map((item) => <Badge key={item.id}>{getDocumentLabel(item)}</Badge>)
           ) : (
@@ -95,7 +114,12 @@ export function RelationshipField({ relationTo, hasMany, value, onChange }: Rela
           )}
         </div>
 
-        <Button type="button" variant="outline" onClick={() => setOpen(true)}>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full sm:w-auto"
+          onClick={() => setOpen(true)}
+        >
           Select
         </Button>
       </div>
@@ -137,18 +161,14 @@ export function RelationshipField({ relationTo, hasMany, value, onChange }: Rela
                   }}
                 >
                   <p className="font-medium text-foreground">{getDocumentLabel(item)}</p>
-                  <p className="mt-2 text-xs text-muted-foreground">ID: {item.id}</p>
+                  <p className="mt-2 break-all text-xs text-muted-foreground">ID: {item.id}</p>
                 </button>
               );
             })}
           </div>
 
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onChange(hasMany ? [] : "")}
-            >
+            <Button type="button" variant="outline" onClick={() => onChange(hasMany ? [] : "")}>
               Clear
             </Button>
             {hasMany ? (

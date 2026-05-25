@@ -66,20 +66,32 @@ export function ArrayFieldEditor({ field, control, name, renderField }: ArrayFie
     <FormItem>
       <div className="space-y-1">
         <FormLabel>{field.label ?? field.name}</FormLabel>
-        {field.admin?.description ? <FormDescription>{field.admin.description}</FormDescription> : null}
+        {field.admin?.description ? (
+          <FormDescription>{field.admin.description}</FormDescription>
+        ) : null}
       </div>
 
       <div className="space-y-4">
         {fields.map((item, index) => {
           const rowPrefix = `${name}.${index}`;
           const canRemove = field.minRows === undefined || fields.length > field.minRows;
-          const rowKey = typeof item === "object" && item !== null && "id" in item ? String(item.id) : `${name}-${index}`;
+          const rowKey =
+            typeof item === "object" && item !== null && "id" in item
+              ? String(item.id)
+              : `${name}-${index}`;
 
           return (
             <div key={rowKey} className="space-y-4 rounded-xl border border-border/60 p-4">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm font-medium text-foreground">Item {index + 1}</p>
-                <Button type="button" variant="outline" size="sm" onClick={() => remove(index)} disabled={!canRemove}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  onClick={() => remove(index)}
+                  disabled={!canRemove}
+                >
                   <Trash2 className="size-3.5" />
                   Remove
                 </Button>
@@ -88,7 +100,11 @@ export function ArrayFieldEditor({ field, control, name, renderField }: ArrayFie
               <div className="space-y-4">
                 {field.fields.map((nestedField, nestedIndex) => (
                   <div
-                    key={nestedField.type === "row" || nestedField.type === "collapsible" ? `${nestedField.type}-${nestedIndex}` : nestedField.name}
+                    key={
+                      nestedField.type === "row" || nestedField.type === "collapsible"
+                        ? `${nestedField.type}-${nestedIndex}`
+                        : nestedField.name
+                    }
                   >
                     {renderField({
                       field: nestedField,
@@ -105,7 +121,7 @@ export function ArrayFieldEditor({ field, control, name, renderField }: ArrayFie
         <Button
           type="button"
           variant="outline"
-          onClick={() => append(createEmptyRow(field.fields) as never)}
+          onClick={() => append(createEmptyRow(field.fields))}
           disabled={!canAdd}
         >
           <Plus className="size-3.5" />

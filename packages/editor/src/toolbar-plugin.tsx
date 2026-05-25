@@ -2,11 +2,20 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { $createCodeNode, $isCodeNode } from "@lexical/code";
 import { TOGGLE_LINK_COMMAND, $isLinkNode } from "@lexical/link";
-import { INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, $isListNode } from "@lexical/list";
+import {
+  INSERT_ORDERED_LIST_COMMAND,
+  INSERT_UNORDERED_LIST_COMMAND,
+  $isListNode,
+} from "@lexical/list";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
 import { $setBlocksType } from "@lexical/selection";
-import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode } from "@lexical/rich-text";
+import {
+  $createHeadingNode,
+  $createQuoteNode,
+  $isHeadingNode,
+  $isQuoteNode,
+} from "@lexical/rich-text";
 import {
   $createParagraphNode,
   $findMatchingParent,
@@ -80,10 +89,15 @@ function getBlockType(): Pick<ToolbarState, "blockType" | "link"> {
   const listNode = $isListNode(topLevelElement)
     ? topLevelElement
     : $findMatchingParent(anchorNode, $isListNode);
-  const linkNode = $isLinkNode(anchorNode) ? anchorNode : $findMatchingParent(anchorNode, $isLinkNode);
+  const linkNode = $isLinkNode(anchorNode)
+    ? anchorNode
+    : $findMatchingParent(anchorNode, $isLinkNode);
 
   if ($isListNode(listNode)) {
-    return { blockType: listNode.getListType() === "number" ? "number" : "bullet", link: $isLinkNode(linkNode) };
+    return {
+      blockType: listNode.getListType() === "number" ? "number" : "bullet",
+      link: $isLinkNode(linkNode),
+    };
   }
 
   if ($isHeadingNode(topLevelElement)) {
@@ -393,7 +407,7 @@ function InsertImageDialog({ onUploadImage, onCancel, onInsert }: InsertImageDia
       onClick={onCancel}
     >
       <form
-        className="flex w-full max-w-md flex-col gap-3 rounded-2xl border border-border/60 bg-card p-5 shadow-2xl"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col gap-3 overflow-y-auto rounded-2xl border border-border/60 bg-card p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         onSubmit={onSubmit}
       >
@@ -419,9 +433,7 @@ function InsertImageDialog({ onUploadImage, onCancel, onInsert }: InsertImageDia
               }}
               className="text-sm file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-xs file:font-medium hover:file:bg-muted/70"
             />
-            {uploading ? (
-              <small className="text-xs text-muted-foreground">Uploading…</small>
-            ) : null}
+            {uploading ? <small className="text-xs text-muted-foreground">Uploading…</small> : null}
           </label>
         ) : null}
         <label className="flex flex-col gap-1.5">
@@ -447,10 +459,10 @@ function InsertImageDialog({ onUploadImage, onCancel, onInsert }: InsertImageDia
             className={inputBase}
           />
         </label>
-        <div className="mt-2 flex items-center justify-end gap-2">
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
           <button
             type="button"
-            className="inline-flex h-9 items-center rounded-md border border-border/60 bg-background px-3 text-sm font-medium hover:bg-accent hover:text-foreground disabled:opacity-50"
+            className="inline-flex h-9 items-center justify-center rounded-md border border-border/60 bg-background px-3 text-sm font-medium hover:bg-accent hover:text-foreground disabled:opacity-50"
             onClick={onCancel}
             disabled={uploading}
           >
@@ -458,7 +470,7 @@ function InsertImageDialog({ onUploadImage, onCancel, onInsert }: InsertImageDia
           </button>
           <button
             type="submit"
-            className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             disabled={uploading || url.trim() === ""}
           >
             Insert

@@ -9,17 +9,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import {
-  Braces,
-  Copy,
-  Group,
-  LayoutGrid,
-  Plus,
-  Redo2,
-  Trash2,
-  Undo2,
-  X,
-} from "lucide-react";
+import { Braces, Copy, Group, LayoutGrid, Plus, Redo2, Trash2, Undo2, X } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -603,11 +593,7 @@ export function BlockPageEditor({
     // "Print this page") and over Cmd-L (which Chrome uses for
     // "Focus address bar"); Shift-P is unbound in Chrome / Safari
     // / Firefox out of the box.
-    if (
-      (event.metaKey || event.ctrlKey) &&
-      event.shiftKey &&
-      event.key.toLowerCase() === "p"
-    ) {
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "p") {
       event.preventDefault();
       setPatternLibraryOpen(true);
       return;
@@ -730,11 +716,12 @@ export function BlockPageEditor({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <ModeSwitch view={view} onViewChange={setView} scope={viewScope} />
-        <div className="flex items-center gap-1">
+        <div className="grid w-full grid-cols-3 gap-1 sm:flex sm:w-auto sm:items-center">
           <Button
             type="button"
             variant="ghost"
             size="sm"
+            className="w-full sm:w-auto"
             aria-label="Open pattern library (Cmd-Shift-P)"
             title="Pattern library (⌘⇧P)"
             onClick={() => setPatternLibraryOpen(true)}
@@ -746,6 +733,7 @@ export function BlockPageEditor({
             type="button"
             variant="ghost"
             size="sm"
+            className="w-full sm:w-auto"
             aria-label="Undo"
             onClick={undo}
             disabled={!canUndo}
@@ -757,6 +745,7 @@ export function BlockPageEditor({
             type="button"
             variant="ghost"
             size="sm"
+            className="w-full sm:w-auto"
             aria-label="Redo"
             onClick={redo}
             disabled={!canRedo}
@@ -777,12 +766,13 @@ export function BlockPageEditor({
           aria-label="Bulk block actions"
         >
           <span className="text-xs font-medium text-primary">{selectedIds.size} selected</span>
-          <div className="ml-auto flex flex-wrap items-center gap-1">
+          <div className="grid w-full grid-cols-2 gap-1 sm:ml-auto sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
             <div className="relative" ref={wrapPickerRef}>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
+                className="w-full sm:w-auto"
                 disabled={!wrapEligible}
                 onClick={() => setWrapPickerOpen((v) => !v)}
                 title={
@@ -796,7 +786,7 @@ export function BlockPageEditor({
               </Button>
               {wrapPickerOpen && wrapEligible ? (
                 <div
-                  className="absolute right-0 top-full z-30 mt-1 w-56 rounded-md border border-border/60 bg-popover p-1 shadow-md"
+                  className="absolute left-0 top-full z-30 mt-1 w-56 max-w-[calc(100vw-2rem)] rounded-md border border-border/60 bg-popover p-1 shadow-md sm:left-auto sm:right-0"
                   role="menu"
                 >
                   {containerDefinitions.length === 0 ? (
@@ -837,6 +827,7 @@ export function BlockPageEditor({
               type="button"
               variant="outline"
               size="sm"
+              className="w-full sm:w-auto"
               onClick={() => {
                 dispatch({
                   type: "DUPLICATE_MANY",
@@ -852,7 +843,7 @@ export function BlockPageEditor({
               type="button"
               variant="outline"
               size="sm"
-              className="text-destructive hover:text-destructive"
+              className="w-full text-destructive hover:text-destructive sm:w-auto"
               onClick={() => {
                 const confirmed = window.confirm(
                   `Delete ${selectedIds.size} selected block${
@@ -874,6 +865,7 @@ export function BlockPageEditor({
               type="button"
               variant="ghost"
               size="sm"
+              className="w-full sm:w-auto"
               onClick={clearSelection}
               aria-label="Clear selection"
             >
@@ -1011,18 +1003,24 @@ export function BlockPageEditor({
       ) : null}
 
       {view === "page" ? (
-        <div className="flex items-center justify-center gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-center">
           <BlockPalette
             availableBlocks={availableBlocks}
             onAdd={(type) => dispatch({ type: "ADD", blockType: type })}
             trigger={
-              <Button type="button" variant="outline" size="sm">
+              <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto">
                 <Plus className="mr-1.5 h-4 w-4" />
                 Add block
               </Button>
             }
           />
-          <Button type="button" variant="ghost" size="sm" onClick={() => setPageJsonOpen(true)}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full sm:w-auto"
+            onClick={() => setPageJsonOpen(true)}
+          >
             <Braces className="mr-1.5 h-4 w-4" />
             Edit JSON
           </Button>
