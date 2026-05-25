@@ -80,16 +80,16 @@ export function LocalesTab() {
 
   if (error) {
     return (
-      <Card className="border-destructive/30 bg-destructive/5">
-        <CardContent className="text-[13px] text-destructive">{error}</CardContent>
+      <Card className="min-w-0 border-destructive/30 bg-destructive/5">
+        <CardContent className="break-words text-[13px] text-destructive">{error}</CardContent>
       </Card>
     );
   }
 
   if (!config) {
     return (
-      <Card>
-        <CardContent>
+      <Card className="min-w-0">
+        <CardContent className="min-w-0">
           <div className="h-6 w-32 animate-pulse rounded bg-muted" />
           <div className="mt-3 h-16 w-full animate-pulse rounded bg-muted/50" />
         </CardContent>
@@ -99,26 +99,27 @@ export function LocalesTab() {
 
   if (!config.enabled) {
     return (
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex min-w-0 items-center gap-2">
             <Globe className="h-4 w-4" />
-            Locales
+            <span className="min-w-0 break-words">Locales</span>
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm text-muted-foreground">
-          <p>
-            i18n is not configured. To enable multi-language content, add an <code>i18n</code> block
-            to <code>nexpress.config.ts</code>:
+        <CardContent className="min-w-0 space-y-2 text-sm text-muted-foreground">
+          <p className="break-words">
+            i18n is not configured. To enable multi-language content, add an{" "}
+            <code className="break-all">i18n</code> block to{" "}
+            <code className="break-all">nexpress.config.ts</code>:
           </p>
-          <pre className="rounded-xl border border-border/70 bg-muted/40 p-4 font-mono text-xs leading-relaxed">{`i18n: {
+          <pre className="overflow-x-auto rounded-xl border border-border/70 bg-muted/40 p-4 font-mono text-xs leading-relaxed">{`i18n: {
   locales: ["en", "ko"],
   defaultLocale: "en",
 }`}</pre>
-          <p>
-            Then opt collections in with <code>i18n: true</code> in their{" "}
-            <code>defineCollection</code> config and run{" "}
-            <code>pnpm db:generate &amp;&amp; pnpm db:migrate</code>.
+          <p className="break-words">
+            Then opt collections in with <code className="break-all">i18n: true</code> in their{" "}
+            <code className="break-all">defineCollection</code> config and run{" "}
+            <code className="break-all">pnpm db:generate &amp;&amp; pnpm db:migrate</code>.
           </p>
         </CardContent>
       </Card>
@@ -126,20 +127,20 @@ export function LocalesTab() {
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
+    <div className="min-w-0 space-y-6">
+      <Card className="min-w-0">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex min-w-0 items-center gap-2">
             <Globe className="h-4 w-4" />
-            Locales
+            <span className="min-w-0 break-words">Locales</span>
           </CardTitle>
-          <p className="text-sm text-muted-foreground">
+          <p className="break-words text-sm text-muted-foreground">
             Configured at build time. To add or remove a locale, edit{" "}
-            <code>nexpress.config.ts</code> and redeploy.
+            <code className="break-all">nexpress.config.ts</code> and redeploy.
           </p>
         </CardHeader>
-        <CardContent>
-          <ul className="divide-y divide-border/60">
+        <CardContent className="min-w-0">
+          <ul className="min-w-0 divide-y divide-border/60">
             {(config.locales ?? []).map((locale) => {
               const isDefault = locale === config.defaultLocale;
               return (
@@ -147,8 +148,8 @@ export function LocalesTab() {
                   key={locale}
                   className="grid gap-2 py-3 sm:flex sm:items-center sm:justify-between"
                 >
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="rounded-md border border-border/70 bg-background px-2 py-0.5 font-mono text-xs uppercase">
+                  <div className="flex min-w-0 flex-wrap items-center gap-3">
+                    <span className="break-all rounded-md border border-border/70 bg-background px-2 py-0.5 font-mono text-xs uppercase">
                       {locale}
                     </span>
                     {isDefault ? (
@@ -157,7 +158,7 @@ export function LocalesTab() {
                       </span>
                     ) : null}
                   </div>
-                  <span className="text-xs text-muted-foreground sm:text-right">
+                  <span className="break-words text-xs text-muted-foreground sm:text-right">
                     {isDefault
                       ? "Used when no locale is requested or a translation is missing."
                       : "Available for translations."}
@@ -177,35 +178,36 @@ export function LocalesTab() {
 function TranslationProgressCard({ progress }: { progress: TranslationProgress }) {
   if (progress.collections.length === 0) {
     return (
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex min-w-0 items-center gap-2">
             <CheckCircle2 className="h-4 w-4" />
-            Translation progress
+            <span className="min-w-0 break-words">Translation progress</span>
           </CardTitle>
         </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          No i18n-enabled collections registered yet. Set <code>i18n: true</code> on a collection in{" "}
-          <code>defineCollection</code> to start tracking translations.
+        <CardContent className="break-words text-sm text-muted-foreground">
+          No i18n-enabled collections registered yet. Set{" "}
+          <code className="break-all">i18n: true</code> on a collection in{" "}
+          <code className="break-all">defineCollection</code> to start tracking translations.
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex min-w-0 items-center gap-2">
           <CheckCircle2 className="h-4 w-4" />
-          Translation progress
+          <span className="min-w-0 break-words">Translation progress</span>
         </CardTitle>
-        <p className="text-sm text-muted-foreground">
+        <p className="break-words text-sm text-muted-foreground">
           Each row is one i18n-enabled collection. Numbers are live row counts per locale; the
           missing badge shows how many translation groups still need a translation in that locale.
         </p>
       </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto">
+      <CardContent className="min-w-0">
+        <div className="min-w-0 overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="border-b border-neutral-200/70 dark:border-neutral-800/70">
@@ -228,7 +230,7 @@ function TranslationProgressCard({ progress }: { progress: TranslationProgress }
             <tbody>
               {progress.collections.map((row) => (
                 <tr key={row.collection} className="border-b border-border/40 last:border-0">
-                  <td className="py-3 pr-4 font-medium">{row.collection}</td>
+                  <td className="py-3 pr-4 font-medium break-words">{row.collection}</td>
                   <td className="py-3 pr-4 tabular-nums text-muted-foreground">
                     {row.totalGroups}
                   </td>

@@ -151,10 +151,10 @@ export function ThemeCleanupView() {
         </div>
       ) : null}
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader className="grid gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 space-y-1">
-            <CardTitle>Unknown block instances</CardTitle>
+            <CardTitle className="break-words">Unknown block instances</CardTitle>
             <p className="break-words text-sm text-muted-foreground">
               {loading
                 ? "Scanning collections…"

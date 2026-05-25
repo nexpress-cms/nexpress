@@ -118,55 +118,55 @@ export function StringsTab() {
   }, [data, filter]);
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
-        <CardTitle>UI Strings</CardTitle>
-        <p className="text-sm text-muted-foreground">
+        <CardTitle className="break-words">UI Strings</CardTitle>
+        <p className="break-words text-sm text-muted-foreground">
           Override plugin / theme UI strings without editing their code. Overrides are scoped to the
           current site
           {data?.siteId ? (
             <>
               {" "}
-              (<code>{data.siteId}</code>)
+              (<code className="break-all">{data.siteId}</code>)
             </>
           ) : null}
           ; reverting an override drops back to the plugin/theme bundle.
         </p>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="min-w-0 space-y-4">
         {error ? (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {error}
           </div>
         ) : null}
 
-        <div className="relative">
+        <div className="relative min-w-0">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
           <Input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filter keys (e.g. magazine.)"
-            className="pl-8"
+            className="min-w-0 pl-8"
           />
         </div>
 
         {!data ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="break-words text-sm text-muted-foreground">
             <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
             Loading…
           </p>
         ) : filteredKeys.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="break-words text-sm text-muted-foreground">
             No keys registered (yet). Plugins / themes that ship i18n bundles will surface their
             keys here.
           </p>
         ) : (
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             {filteredKeys.map((row) => (
-              <Card key={row.key} className="border-border/60 bg-background">
-                <CardContent className="space-y-3 pt-4">
-                  <code className="font-mono text-xs">{row.key}</code>
-                  <div className="space-y-2">
+              <Card key={row.key} className="min-w-0 border-border/60 bg-background">
+                <CardContent className="min-w-0 space-y-3 pt-4">
+                  <code className="break-all font-mono text-xs">{row.key}</code>
+                  <div className="min-w-0 space-y-2">
                     {data.locales.map((locale) => {
                       const cell = row.values[locale] ?? {
                         base: null,
@@ -182,10 +182,10 @@ export function StringsTab() {
                       return (
                         <div
                           key={locale}
-                          className="grid gap-2 sm:grid-cols-[6rem_minmax(0,1fr)_auto] sm:items-center sm:gap-3"
+                          className="grid min-w-0 gap-2 sm:grid-cols-[6rem_minmax(0,1fr)_auto] sm:items-center sm:gap-3"
                         >
-                          <div className="flex items-center gap-2">
-                            <code className="font-mono text-xs uppercase">{locale}</code>
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <code className="break-all font-mono text-xs uppercase">{locale}</code>
                             {isOverridden ? (
                               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                                 Override
@@ -202,6 +202,7 @@ export function StringsTab() {
                               }))
                             }
                             disabled={busy}
+                            className="min-w-0"
                           />
                           <div className="grid grid-cols-2 gap-1.5 sm:flex">
                             <Button

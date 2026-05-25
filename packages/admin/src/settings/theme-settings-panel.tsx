@@ -93,25 +93,25 @@ export function ThemeSettingsPanel({ themeId }: { themeId: string }) {
 
   if (!data && !error) {
     return (
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
-          <CardTitle>Theme settings</CardTitle>
+          <CardTitle className="break-words">Theme settings</CardTitle>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">Loading…</p>
+        <CardContent className="min-w-0">
+          <p className="break-words text-sm text-muted-foreground">Loading…</p>
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
-        <CardTitle>Theme settings</CardTitle>
+        <CardTitle className="break-words">Theme settings</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="min-w-0 space-y-4">
         {error ? (
-          <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          <div className="break-words rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
             {error}
           </div>
         ) : null}
@@ -120,7 +120,7 @@ export function ThemeSettingsPanel({ themeId }: { themeId: string }) {
           <div className="flex min-w-0 items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <div className="min-w-0">
-              <p className="font-medium">Settings reset to defaults.</p>
+              <p className="break-words font-medium">Settings reset to defaults.</p>
               <p className="break-words text-xs opacity-90">
                 The stored value didn't match the current schema, likely after a theme upgrade.
                 Review and save to persist new defaults.
@@ -130,7 +130,7 @@ export function ThemeSettingsPanel({ themeId }: { themeId: string }) {
         ) : null}
 
         {message ? (
-          <div className="rounded-md border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">
+          <div className="break-words rounded-md border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">
             {message}
           </div>
         ) : null}

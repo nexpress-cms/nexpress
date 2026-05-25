@@ -138,14 +138,15 @@ export function PluginAdminPage({
   if (schedules?.length) sections.push("schedules");
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title={pluginName}
         description="Plugin admin surface. Settings save to the plugin's DB config; widgets and actions dispatch the plugin's registered handlers."
+        className="min-w-0"
       />
 
       {admin.widgets && admin.widgets.length > 0 ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {admin.widgets.map((widget) => (
             <WidgetCard key={widget.id} pluginId={pluginId} widget={widget} />
           ))}
@@ -168,11 +169,11 @@ export function PluginAdminPage({
       ) : null}
 
       {admin.actions && admin.actions.length > 0 ? (
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
-            <CardTitle>Actions</CardTitle>
+            <CardTitle className="break-words">Actions</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="min-w-0 space-y-3">
             {admin.actions.map((action) => (
               <ActionRow key={action.id} pluginId={pluginId} action={action} />
             ))}
@@ -189,8 +190,8 @@ export function PluginAdminPage({
       ) : null}
 
       {sections.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+        <Card className="min-w-0">
+          <CardContent className="break-words py-10 text-center text-sm text-muted-foreground">
             This plugin doesn&rsquo;t declare any admin extensions.
           </CardContent>
         </Card>
@@ -260,16 +261,16 @@ function ConfigAutoFormCard({
   }, [pluginId, value]);
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
-        <CardTitle>Settings</CardTitle>
+        <CardTitle className="break-words">Settings</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-w-0">
         {showBanner ? (
-          <div className="mb-4 grid gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 sm:flex sm:items-start sm:justify-between">
+          <div className="mb-4 grid min-w-0 gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 sm:flex sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <div className="font-medium">Saved settings were reset to defaults</div>
-              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+              <div className="break-words font-medium">Saved settings were reset to defaults</div>
+              <p className="mt-1 break-words text-xs text-amber-700 dark:text-amber-300">
                 The persisted value didn&rsquo;t match the current schema (likely a plugin upgrade).
                 Saving will overwrite the stored value with what you see below.
               </p>
@@ -294,8 +295,8 @@ function ConfigAutoFormCard({
           <div
             className={
               toast.type === "success"
-                ? "mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-200"
-                : "mb-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-700 dark:text-rose-200"
+                ? "mb-4 break-words rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-200"
+                : "mb-4 break-words rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-700 dark:text-rose-200"
             }
           >
             {toast.message}
@@ -373,20 +374,20 @@ function SettingsCard({
   });
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
-        <CardTitle>{settings.title ?? "Settings"}</CardTitle>
+        <CardTitle className="break-words">{settings.title ?? "Settings"}</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-w-0">
         {settings.description ? (
-          <p className="mb-4 text-sm text-muted-foreground">{settings.description}</p>
+          <p className="mb-4 break-words text-sm text-muted-foreground">{settings.description}</p>
         ) : null}
         {toast ? (
           <div
             className={
               toast.type === "success"
-                ? "mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-200"
-                : "mb-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-700 dark:text-rose-200"
+                ? "mb-4 break-words rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-200"
+                : "mb-4 break-words rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-700 dark:text-rose-200"
             }
           >
             {toast.message}
@@ -397,7 +398,7 @@ function SettingsCard({
             onSubmit={(e) => {
               void onSubmit(e);
             }}
-            className="space-y-4"
+            className="min-w-0 space-y-4"
           >
             {settings.fields.map((field, index) => (
               <FieldRenderer
@@ -464,20 +465,22 @@ function WidgetCard({ pluginId, widget }: { pluginId: string; widget: WidgetDef 
   }, [load]);
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader className="border-b-0 pb-0">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{widget.label}</CardTitle>
+        <CardTitle className="break-words text-sm font-medium text-muted-foreground">
+          {widget.label}
+        </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-w-0">
         {state.kind === "loading" ? (
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         ) : state.kind === "metric" ? (
           <div>
-            <div className="text-[22px] font-semibold tracking-[-0.02em] tabular-nums text-neutral-950 dark:text-neutral-50">
+            <div className="break-words text-[22px] font-semibold tracking-[-0.02em] tabular-nums text-neutral-950 dark:text-neutral-50">
               {state.value}
             </div>
             {state.delta ? (
-              <div className="text-xs text-muted-foreground">{state.delta}</div>
+              <div className="break-words text-xs text-muted-foreground">{state.delta}</div>
             ) : null}
           </div>
         ) : state.kind === "status" ? (
@@ -492,10 +495,12 @@ function WidgetCard({ pluginId, widget }: { pluginId: string; widget: WidgetDef 
             <span className="min-w-0 break-words text-sm">{state.message}</span>
           </div>
         ) : (
-          <div className="text-xs text-rose-600 dark:text-rose-300">{state.message}</div>
+          <div className="break-words text-xs text-rose-600 dark:text-rose-300">
+            {state.message}
+          </div>
         )}
         {widget.description ? (
-          <p className="mt-2 text-xs text-muted-foreground">{widget.description}</p>
+          <p className="mt-2 break-words text-xs text-muted-foreground">{widget.description}</p>
         ) : null}
       </CardContent>
     </Card>
@@ -523,7 +528,7 @@ function ActionRow({ pluginId, action }: { pluginId: string; action: ActionDef }
   }, [pluginId, action]);
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="grid min-w-0 gap-2 rounded-xl border border-border/60 p-3 sm:flex sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <div className="break-words text-sm font-medium">{action.label}</div>
         {action.description ? (
@@ -584,18 +589,20 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
   }, [load]);
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader className="grid gap-2 space-y-0 sm:flex sm:flex-row sm:items-center sm:justify-between">
         <CardTitle className="min-w-0 break-words">{table.label}</CardTitle>
         {state.kind === "ready" ? <Badge variant="secondary">{state.total}</Badge> : null}
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-w-0">
         {state.kind === "loading" ? (
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         ) : state.kind === "error" ? (
-          <p className="text-sm text-rose-600 dark:text-rose-300">{state.message}</p>
+          <p className="break-words text-sm text-rose-600 dark:text-rose-300">{state.message}</p>
         ) : state.rows.length === 0 ? (
-          <p className="py-4 text-sm text-muted-foreground">{table.emptyMessage ?? "No rows."}</p>
+          <p className="break-words py-4 text-sm text-muted-foreground">
+            {table.emptyMessage ?? "No rows."}
+          </p>
         ) : (
           <>
             <div className="space-y-3 md:hidden">
@@ -693,20 +700,20 @@ function SchedulesCard({ pluginId, schedules }: { pluginId: string; schedules: S
   );
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex min-w-0 items-center gap-2">
           <Clock className="size-4" />
-          Scheduled tasks
+          <span className="min-w-0 break-words">Scheduled tasks</span>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="min-w-0 space-y-3">
         {toast ? (
           <div
             className={
               toast.type === "success"
-                ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-200"
-                : "rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-700 dark:text-rose-200"
+                ? "break-words rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-200"
+                : "break-words rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-700 dark:text-rose-200"
             }
           >
             {toast.message}

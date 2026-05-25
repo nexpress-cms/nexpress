@@ -189,7 +189,11 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
                 </span>
                 <div className="mt-1 flex flex-wrap gap-1">
                   {plugin.capabilities.map((cap) => (
-                    <Badge key={cap} variant="secondary" className="font-mono text-[10px]">
+                    <Badge
+                      key={cap}
+                      variant="secondary"
+                      className="max-w-full break-all font-mono text-[10px]"
+                    >
                       {cap}
                     </Badge>
                   ))}
@@ -524,8 +528,8 @@ export function PluginsManager() {
         <div
           className={
             toast.type === "success"
-              ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-200"
-              : "rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-700 dark:text-rose-200"
+              ? "break-words rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-200"
+              : "break-words rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-700 dark:text-rose-200"
           }
         >
           {toast.message}
@@ -533,38 +537,38 @@ export function PluginsManager() {
       ) : null}
 
       {state.kind === "loading" ? (
-        <div className="flex items-center gap-2 py-12 text-sm text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-2 py-12 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading plugins…
         </div>
       ) : null}
 
       {state.kind === "error" ? (
-        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200">
+        <div className="break-words rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200">
           {state.message}
         </div>
       ) : null}
 
       {state.kind === "ready" && state.items.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            No plugins installed. Add plugins to <code>plugins</code> in{" "}
-            <code>nexpress.config.ts</code> and restart.
+        <Card className="min-w-0">
+          <CardContent className="break-words py-10 text-center text-sm text-muted-foreground">
+            No plugins installed. Add plugins to <code className="break-all">plugins</code> in{" "}
+            <code className="break-all">nexpress.config.ts</code> and restart.
           </CardContent>
         </Card>
       ) : null}
 
       {state.kind === "ready" && state.items.length > 0 ? (
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <div className="grid gap-1 sm:flex sm:items-center sm:justify-between sm:gap-3">
-              <CardTitle>Installed</CardTitle>
-              <span className="text-xs text-muted-foreground sm:text-right">
+              <CardTitle className="break-words">Installed</CardTitle>
+              <span className="break-words text-xs text-muted-foreground sm:text-right">
                 {summarizePluginCounts(state.items)}
               </span>
             </div>
           </CardHeader>
-          <div className="border-t border-border/60">
+          <div className="min-w-0 border-t border-border/60">
             {state.items.map((plugin, index) => (
               <PluginRow
                 key={plugin.id}
@@ -625,7 +629,9 @@ export function PluginsManager() {
                 spellCheck={false}
               />
               {configError ? (
-                <p className="text-sm text-rose-600 dark:text-rose-300">{configError}</p>
+                <p className="break-words text-sm text-rose-600 dark:text-rose-300">
+                  {configError}
+                </p>
               ) : null}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setConfigPlugin(null)}>
@@ -732,7 +738,7 @@ function PluginConfigForm({
           />
         ))}
         {errorMessage ? (
-          <p className="text-sm text-rose-600 dark:text-rose-300">{errorMessage}</p>
+          <p className="break-words text-sm text-rose-600 dark:text-rose-300">{errorMessage}</p>
         ) : null}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onCancel}>
@@ -895,15 +901,17 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
         </form>
 
         <div className="min-h-0 min-w-0 overflow-y-auto pr-1">
-          {error ? <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
+          {error ? (
+            <p className="break-words text-sm text-rose-600 dark:text-rose-300">{error}</p>
+          ) : null}
           {!error && loading && items === null ? (
-            <div className="flex items-center gap-2 py-12 text-sm text-muted-foreground">
+            <div className="flex min-w-0 items-center gap-2 py-12 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               Searching the registry…
             </div>
           ) : null}
           {!error && items && items.length === 0 && !loading ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
+            <p className="break-words py-8 text-center text-sm text-muted-foreground">
               No matching plugins on the registry.
             </p>
           ) : null}
@@ -919,7 +927,10 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
                       <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
                         <span className="min-w-0 break-all">{plugin.name}</span>
                         {plugin.version ? (
-                          <Badge variant="secondary" className="font-mono text-[10px]">
+                          <Badge
+                            variant="secondary"
+                            className="max-w-full break-all font-mono text-[10px]"
+                          >
                             v{plugin.version}
                           </Badge>
                         ) : null}
@@ -933,7 +944,7 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
                         pnpm add {plugin.name}
                       </p>
                       {plugin.author || plugin.publishedAt ? (
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="break-words text-[11px] text-muted-foreground">
                           {plugin.author ? `by ${plugin.author}` : ""}
                           {plugin.author && plugin.publishedAt ? " · " : ""}
                           {plugin.publishedAt

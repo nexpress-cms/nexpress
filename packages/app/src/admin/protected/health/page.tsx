@@ -27,12 +27,16 @@ export default async function AdminHealthPage() {
   if (!user) redirect("/admin/login");
   if (!can(user, "admin.manage")) {
     return (
-      <div className="space-y-2">
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
+      <div className="min-w-0 space-y-2">
+        <h1 className="break-words text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
           Forbidden
         </h1>
-        <p className="text-[13.5px] text-neutral-500 dark:text-neutral-400">
-          You need <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-[12px] dark:bg-neutral-900">admin.manage</code> to view system health.
+        <p className="break-words text-[13.5px] text-neutral-500 dark:text-neutral-400">
+          You need{" "}
+          <code className="break-all rounded bg-neutral-100 px-1 py-0.5 font-mono text-[12px] dark:bg-neutral-900">
+            admin.manage
+          </code>{" "}
+          to view system health.
         </p>
       </div>
     );
@@ -42,21 +46,21 @@ export default async function AdminHealthPage() {
   const totalOk = summary.checks.length - summary.errorCount - summary.warnCount;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
+    <div className="flex min-w-0 flex-col gap-6">
+      <div className="flex min-w-0 flex-col gap-2">
+        <h1 className="break-words text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
           Health
         </h1>
-        <p className="max-w-[64ch] text-[13.5px] text-neutral-500 dark:text-neutral-400">
+        <p className="max-w-[64ch] break-words text-[13.5px] text-neutral-500 dark:text-neutral-400">
           Live runtime diagnostics. Pre-boot env? Run{" "}
-          <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-[12px] text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
+          <code className="break-all rounded bg-neutral-100 px-1 py-0.5 font-mono text-[12px] text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
             pnpm run doctor
           </code>{" "}
           on the server side. Generated {summary.generatedAt}.
         </p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid min-w-0 gap-3 md:grid-cols-3">
         <SummaryStat
           label="Healthy"
           value={totalOk}
@@ -77,11 +81,11 @@ export default async function AdminHealthPage() {
         />
       </div>
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
-          <CardTitle>Probes</CardTitle>
+          <CardTitle className="break-words">Probes</CardTitle>
         </CardHeader>
-        <div className="divide-y divide-neutral-100 dark:divide-neutral-900">
+        <div className="min-w-0 divide-y divide-neutral-100 dark:divide-neutral-900">
           {summary.checks.map((check) => (
             <CheckRow key={check.id} check={check} />
           ))}
@@ -112,17 +116,21 @@ function SummaryStat({
           : "text-neutral-950 dark:text-neutral-50";
 
   return (
-    <Card>
-      <CardContent>
-        <div className="flex items-center justify-between">
-          <span className="text-[12px] font-medium text-neutral-500 dark:text-neutral-400">
+    <Card className="min-w-0">
+      <CardContent className="min-w-0">
+        <div className="flex min-w-0 items-center justify-between">
+          <span className="break-words text-[12px] font-medium text-neutral-500 dark:text-neutral-400">
             {label}
           </span>
         </div>
-        <div className={`mt-3 text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] tabular-nums ${valueColor}`}>
+        <div
+          className={`mt-3 break-words text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] tabular-nums ${valueColor}`}
+        >
           {value}
         </div>
-        <p className="mt-1 text-[12px] text-neutral-500 dark:text-neutral-400">{helper}</p>
+        <p className="mt-1 break-words text-[12px] text-neutral-500 dark:text-neutral-400">
+          {helper}
+        </p>
       </CardContent>
     </Card>
   );
@@ -140,30 +148,27 @@ function CheckRow({ check }: { check: Check }) {
     check.state === "ok" ? "Healthy" : check.state === "warn" ? "Degraded" : "Error";
 
   return (
-    <div className="flex items-start gap-3 px-4 py-3">
-      <span
-        aria-hidden
-        className={`mt-1 size-2 shrink-0 rounded-full ${dotColor}`}
-      />
+    <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-3 px-4 py-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start">
+      <span aria-hidden className={`mt-1 size-2 shrink-0 rounded-full ${dotColor}`} />
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-2">
-          <span className="text-[13.5px] font-medium text-neutral-950 dark:text-neutral-50">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-2">
+          <span className="min-w-0 break-words text-[13.5px] font-medium text-neutral-950 dark:text-neutral-50">
             {check.label}
           </span>
           {check.detail ? (
-            <span className="text-[12.5px] text-neutral-500 dark:text-neutral-400">
+            <span className="min-w-0 break-words text-[12.5px] text-neutral-500 dark:text-neutral-400">
               {check.detail}
             </span>
           ) : null}
         </div>
         {check.hint && check.state !== "ok" ? (
-          <p className="mt-1 text-[12.5px] leading-[1.5] text-neutral-500 dark:text-neutral-400">
+          <p className="mt-1 break-words text-[12.5px] leading-[1.5] text-neutral-500 dark:text-neutral-400">
             {check.hint}
           </p>
         ) : null}
       </div>
       <span
-        className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.06em] ${
+        className={`col-start-2 w-fit shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.06em] sm:col-start-auto ${
           check.state === "ok"
             ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
             : check.state === "warn"
