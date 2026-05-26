@@ -288,12 +288,11 @@ const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
     "np-portfolio-members-error",
     "np-portfolio-members-not-found",
     "np-portfolio-not-found",
-    // VERIFIED_LANDMARK — nav-toggle / mobile-subnav sit inside
-    // the styled `.np-portfolio-nav*` family (styles.ts). Parents
-    // provide layout. Desktop subnav + per-item wrapper were
+    // VERIFIED_LANDMARK — mobile-subnav sits inside the styled
+    // `.np-portfolio-nav-drawer` family (styles.ts). Parent drawer
+    // provides layout. Desktop subnav + per-item wrapper were
     // dropped to match the design's flat single-level nav.
     "np-portfolio-mobile-subnav",
-    "np-portfolio-nav-toggle",
     // VERIFIED_LANDMARK — `.np-portfolio-page-default` IS styled
     // (styles.ts:688); `np-portfolio-page` is a parent hook.
     "np-portfolio-page",
@@ -338,4 +337,42 @@ describe("built-in themes — className ↔ CSS coverage", () => {
       ).toEqual(baseline);
     });
   }
+});
+
+describe("built-in themes — responsive contracts", () => {
+  it("default: mobile drawer uses the same breakpoint as desktop nav collapse", () => {
+    expect(defaultThemeCss).toMatch(
+      /@media \(max-width: 900px\) \{[\s\S]*\.np-site-nav-desktop \{ display: none; \}[\s\S]*\.np-mobile-nav-toggle \{ display: inline-flex; \}/,
+    );
+    expect(defaultThemeCss).toMatch(
+      /@media \(min-width: 901px\) \{[\s\S]*\.np-mobile-nav-drawer,[\s\S]*\.np-mobile-nav-overlay \{[\s\S]*display: none;/,
+    );
+  });
+
+  it("magazine: mobile drawer closes at the same breakpoint as section nav", () => {
+    expect(magazineCss).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*\.np-magazine-sections \{ display: none; \}[\s\S]*\.np-magazine-mobile-nav-toggle \{ display: inline-flex;/,
+    );
+    expect(magazineCss).toMatch(
+      /@media \(min-width: 761px\) \{[\s\S]*\.np-magazine-mobile-nav-drawer,[\s\S]*\.np-magazine-mobile-nav-drawer\[data-open="true"\],[\s\S]*\.np-magazine-mobile-nav-overlay \{[\s\S]*display: none;/,
+    );
+  });
+
+  it("portfolio: mobile drawer uses the same breakpoint as desktop nav collapse", () => {
+    expect(portfolioCss).toMatch(
+      /\.np-portfolio-nav-toggle \{[\s\S]*display: none;[\s\S]*\}/,
+    );
+    expect(portfolioCss).toMatch(
+      /@media \(max-width: 880px\) \{[\s\S]*\.np-portfolio-nav \{ display: none; \}[\s\S]*\.np-portfolio-nav-toggle \{ display: inline-flex; \}/,
+    );
+    expect(portfolioCss).toMatch(
+      /\.np-portfolio-nav-drawer \{[\s\S]*display: none;[\s\S]*\}/,
+    );
+    expect(portfolioCss).toMatch(
+      /\.np-portfolio-nav-drawer\[data-open="true"\] \{[\s\S]*display: flex;[\s\S]*\}/,
+    );
+    expect(portfolioCss).toMatch(
+      /@media \(min-width: 881px\) \{[\s\S]*\.np-portfolio-nav-drawer,[\s\S]*\.np-portfolio-nav-drawer\[data-open="true"\] \{[\s\S]*display: none;/,
+    );
+  });
 });
