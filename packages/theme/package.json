@@ -39,7 +39,7 @@
   },
   "peerDependencies": {
     "next": "^16.2.6",
-    "react": "^19.0.0",
+    "react": "^19.2.6",
     "react-dom": "^19.0.0"
   },
   "peerDependenciesMeta": {
@@ -52,10 +52,10 @@
     "@nexpress/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.2.15",
     "@types/react-dom": "^19.0.0",
     "next": "^16.2.6",
-    "react": "^19.0.0",
+    "react": "^19.2.6",
     "react-dom": "^19.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0"

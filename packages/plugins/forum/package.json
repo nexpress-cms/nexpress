@@ -42,7 +42,7 @@
   },
   "peerDependencies": {
     "next": ">=15",
-    "react": "^19.0.0"
+    "react": "^19.2.6"
   },
   "dependencies": {
     "@nexpress/blocks": "workspace:*",
@@ -54,9 +54,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.2.15",
     "next": "^16.2.6",
-    "react": "^19.0.0",
+    "react": "^19.2.6",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0"
   },

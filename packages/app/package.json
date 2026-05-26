@@ -148,7 +148,7 @@
     "next": "^15.0.0 || ^16.0.0",
     "pg": "^8.13.0",
     "pg-boss": "^10.0.0",
-    "react": "^19.0.0",
+    "react": "^19.2.6",
     "react-dom": "^19.0.0"
   },
   "peerDependenciesMeta": {
@@ -162,12 +162,12 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/pg": "^8.15.5",
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.2.15",
     "@types/react-dom": "^19.0.0",
     "drizzle-kit": "^0.31.10",
     "next": "^16.0.0",
     "pg": "^8.21.0",
-    "react": "^19.0.0",
+    "react": "^19.2.6",
     "react-dom": "^19.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0"
