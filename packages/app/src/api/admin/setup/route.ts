@@ -100,9 +100,7 @@ function validateBody(raw: unknown): SetupBody {
   return {
     email: (email as string).trim(),
     password: password as string,
-    ...(typeof name === "string" && name.trim().length > 0
-      ? { name: name.trim() }
-      : {}),
+    ...(typeof name === "string" && name.trim().length > 0 ? { name: name.trim() } : {}),
     ...(typeof siteName === "string" && siteName.trim().length > 0
       ? { siteName: siteName.trim() }
       : {}),
@@ -115,10 +113,7 @@ function validateBody(raw: unknown): SetupBody {
 
 async function adminCount(): Promise<number> {
   const db = getDb();
-  const rows = await db
-    .select({ value: count() })
-    .from(npUsers)
-    .where(eq(npUsers.role, "admin"));
+  const rows = await db.select({ value: count() }).from(npUsers).where(eq(npUsers.role, "admin"));
   return rows[0]?.value ?? 0;
 }
 
@@ -196,6 +191,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         password: passwordHash,
         name: body.name ?? "Admin",
         role: "admin",
+        isSuperAdmin: true,
       })
       .returning({
         id: npUsers.id,
@@ -321,12 +317,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
 
     const config = getAuthRuntimeConfig();
-    const access = await signToken(
-      created,
-      config.secret,
-      config.tokenExpiration,
-      "access",
-    );
+    const access = await signToken(created, config.secret, config.tokenExpiration, "access");
     const refresh = await signToken(
       created,
       config.secret,

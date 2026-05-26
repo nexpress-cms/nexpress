@@ -63,6 +63,7 @@ function resolveCollectionIcon(name: string | undefined): LucideIcon {
  */
 export interface AdminShellCapabilities {
   canManageAdmin: boolean;
+  canManageSites?: boolean;
   canPublish: boolean;
   canModerate: boolean;
 }
@@ -263,13 +264,18 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
       });
     }
 
+    const multiSiteItems: NavItem[] = [];
+    const canManageSites = caps.canManageSites ?? caps.canManageAdmin;
+    if (canManageSites) {
+      multiSiteItems.push({ href: "/admin/sites", label: "Sites", icon: Globe2 });
+    }
     if (caps.canManageAdmin) {
+      multiSiteItems.push({ href: "/admin/users", label: "Users", icon: Users });
+    }
+    if (multiSiteItems.length > 0) {
       result.push({
         eyebrow: "Multi-site",
-        items: [
-          { href: "/admin/sites", label: "Sites", icon: Globe2 },
-          { href: "/admin/users", label: "Users", icon: Users },
-        ],
+        items: multiSiteItems,
       });
     }
 
@@ -309,7 +315,13 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
     result.push({ eyebrow: "System", items: systemItems });
 
     return result;
-  }, [caps.canManageAdmin, caps.canModerate, caps.canPublish, collectionGroups]);
+  }, [
+    caps.canManageAdmin,
+    caps.canManageSites,
+    caps.canModerate,
+    caps.canPublish,
+    collectionGroups,
+  ]);
 
   return (
     <TooltipProvider delayDuration={120}>

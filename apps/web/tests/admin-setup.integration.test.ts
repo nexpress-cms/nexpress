@@ -26,9 +26,7 @@ describe.skipIf(skipIfNoTestDb())("first-boot Admin Setup wizard", () => {
 
   it("GET /api/admin/setup reports available=true on a fresh DB", async () => {
     const { GET } = await import("@/app/api/admin/setup/route");
-    const { status, body } = await readJson<{ available: boolean }>(
-      await GET(),
-    );
+    const { status, body } = await readJson<{ available: boolean }>(await GET());
     expect(status).toBe(200);
     expect(body.available).toBe(true);
   });
@@ -52,16 +50,19 @@ describe.skipIf(skipIfNoTestDb())("first-boot Admin Setup wizard", () => {
     expect(setCookie).toMatch(/np-csrf=/);
 
     const { getDb } = await import("@/lib/db");
-    const { npUsers, getSiteById, NP_DEFAULT_SITE_ID } = await import(
-      "@nexpress/core"
-    );
+    const { npUsers, getSiteById, NP_DEFAULT_SITE_ID } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const db = getDb();
     const rows = await db
-      .select({ email: npUsers.email, role: npUsers.role })
+      .select({
+        email: npUsers.email,
+        role: npUsers.role,
+        isSuperAdmin: npUsers.isSuperAdmin,
+      })
       .from(npUsers)
       .where(eq(npUsers.email, "founder@example.com"));
     expect(rows[0]?.role).toBe("admin");
+    expect(rows[0]?.isSuperAdmin).toBe(true);
     const site = await getSiteById(NP_DEFAULT_SITE_ID);
     expect(site?.name).toBe("Acme");
   });
