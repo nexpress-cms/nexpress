@@ -37,6 +37,8 @@ export const postsTable = pgTable(
     seoOgImage: uuid("seo_og_image").references(() => npMedia.id),
     seedSource: text("seed_source"),
     featured: boolean("featured"),
+    authorName: text("author_name"),
+    readingTime: text("reading_time"),
     heroImage: uuid("hero_image").references(() => npMedia.id),
     client: text("client"),
     year: doublePrecision("year"),

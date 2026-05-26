@@ -40,6 +40,8 @@ export interface PostsDocument {
   seoOgImage: string | null;
   seedSource: string | null;
   featured: boolean | null;
+  authorName: string | null;
+  readingTime: string | null;
   heroImage: string | null;
   client: string | null;
   year: number | null;

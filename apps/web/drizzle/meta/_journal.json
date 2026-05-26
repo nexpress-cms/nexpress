@@ -57,6 +57,13 @@
       "when": 1778989653947,
       "tag": "0007_legacy_seed_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779763944670,
+      "tag": "0008_greedy_jazinda",
+      "breakpoints": true
     }
   ]
 }

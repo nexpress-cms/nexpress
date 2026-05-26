@@ -1,3 +1,3 @@
 import "./globals.css";
 
-export { default } from "@nexpress/app/root/layout";
+export { default, viewport } from "@nexpress/app/root/layout";

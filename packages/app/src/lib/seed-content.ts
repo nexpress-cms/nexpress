@@ -555,6 +555,41 @@ export interface WipeSeededResult {
 interface SeededTarget {
   collection: "pages" | "posts";
   id: string;
+  parentId?: string | null;
+}
+
+function readSeededParentId(parent: unknown): string | null {
+  if (typeof parent === "string") return parent;
+  if (parent && typeof parent === "object" && "id" in parent) {
+    const id = (parent as { id?: unknown }).id;
+    return typeof id === "string" ? id : null;
+  }
+  return null;
+}
+
+function orderSeededTargetsForDelete(targets: SeededTarget[]): SeededTarget[] {
+  const byId = new Map(
+    targets.filter((t) => t.collection === "posts").map((t) => [t.id, t]),
+  );
+  const depthCache = new Map<string, number>();
+
+  const depth = (target: SeededTarget, visiting = new Set<string>()): number => {
+    if (target.collection !== "posts") return 0;
+    const cached = depthCache.get(target.id);
+    if (cached !== undefined) return cached;
+    if (visiting.has(target.id)) return 0;
+    const parent = target.parentId ? byId.get(target.parentId) : undefined;
+    const nextVisiting = new Set(visiting);
+    nextVisiting.add(target.id);
+    const value = parent ? depth(parent, nextVisiting) + 1 : 0;
+    depthCache.set(target.id, value);
+    return value;
+  };
+
+  return [...targets].sort((a, b) => {
+    if (a.collection !== b.collection) return a.collection === "posts" ? -1 : 1;
+    return depth(b) - depth(a);
+  });
 }
 
 /**
@@ -572,18 +607,22 @@ async function collectSeededTargets(
   for (const themeId of themeIds) {
     const seedSource = `theme:${themeId}`;
     for (const collection of ["pages", "posts"] as const) {
-      const result = await findDocuments<{ id: string; seedSource?: string }>(
+      const result = await findDocuments<{ id: string; seedSource?: string; parent?: unknown }>(
         collection,
         { where: { seedSource }, limit: 10_000 },
       );
       for (const doc of result.docs) {
         if (typeof doc.id === "string") {
-          targets.push({ collection, id: doc.id });
+          targets.push({
+            collection,
+            id: doc.id,
+            parentId: collection === "posts" ? readSeededParentId(doc.parent) : null,
+          });
         }
       }
     }
   }
-  return targets;
+  return orderSeededTargetsForDelete(targets);
 }
 
 export async function wipeSeededContent(

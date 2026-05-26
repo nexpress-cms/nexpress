@@ -831,6 +831,16 @@ export const magazineCss = `
   border: 1px solid var(--np-color-background, #f6f1e7);
   cursor: pointer;
 }
+@media (max-width: 420px) {
+  .np-magazine-subscribe-form {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .np-magazine-subscribe-form button {
+    width: 100%;
+    justify-content: center;
+  }
+}
 .np-magazine-subscribe-stats {
   margin-top: 1.5rem;
   font-family: var(--np-font-chrome, "Hanken Grotesk", sans-serif);
