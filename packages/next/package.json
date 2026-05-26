@@ -49,7 +49,7 @@
     "@nexpress/theme": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^25.9.1",
     "@types/react": "^19.0.0",
     "next": "^16.2.6",
     "react": "^19.0.0",
