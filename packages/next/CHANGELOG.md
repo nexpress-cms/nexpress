@@ -1,5 +1,22 @@
 # @nexpress/next
 
+## 0.3.14
+
+### Patch Changes
+
+- Updated dependencies [bf8ca4d]
+  - @nexpress/core@0.3.14
+  - @nexpress/blocks@0.3.14
+  - @nexpress/theme@0.3.14
+
+## 0.3.13
+
+### Patch Changes
+
+- @nexpress/blocks@0.3.13
+- @nexpress/core@0.3.13
+- @nexpress/theme@0.3.13
+
 ## 0.3.12
 
 ### Patch Changes
