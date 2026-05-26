@@ -60,16 +60,14 @@ never need to bump it.
 ## Release flow (maintainer)
 
 ```bash
-pnpm version    # consume pending changesets → bump versions + write CHANGELOG.md
-pnpm release    # build + npm publish (only if packages are public; many are still private)
+pnpm run version    # consume pending changesets → bump versions + write CHANGELOG.md
+pnpm run release    # build + npm publish
 ```
 
 ## Status today
 
-All `@nexpress/*` packages are currently `"private": true`. The changeset
-workflow is wired up so that as packages flip to public (Phase 22 follow-ups),
-their first release picks up the accumulated changeset entries. Until then,
-treat changeset files as the running CHANGELOG.
+Published `@nexpress/*` packages ship through the Release workflow on `main`.
+Use changeset files as the running CHANGELOG until a version PR consumes them.
 
 For background on how changesets work, see the
 [official docs](https://github.com/changesets/changesets).
