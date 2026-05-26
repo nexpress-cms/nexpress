@@ -91,10 +91,10 @@ jobs:
       # Pinned to an exact version, not `@latest`, to dodge the
       # self-upgrade race that left npm with a broken `arborist`
       # require chain ("Cannot find module 'promise-retry'") on the
-      # 0.1.1 attempt. Bump this manually when a new npm major
-      # introduces relevant TP fixes.
+      # 0.1.1 attempt. Bump this manually when npm ships relevant TP
+      # or provenance fixes.
       - name: Upgrade npm for Trusted Publishing support
-        run: npm install -g npm@11.5.1
+        run: npm install -g npm@11.15.0
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
