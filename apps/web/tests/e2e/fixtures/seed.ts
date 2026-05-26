@@ -45,6 +45,7 @@ export async function seedE2EAdmin(): Promise<void> {
       .set({
         password: passwordHash,
         role: "admin",
+        isSuperAdmin: true,
         name: E2E_ADMIN.name,
         loginAttempts: 0,
         lockUntil: null,
@@ -58,5 +59,6 @@ export async function seedE2EAdmin(): Promise<void> {
     password: passwordHash,
     name: E2E_ADMIN.name,
     role: "admin",
+    isSuperAdmin: true,
   });
 }

@@ -1,11 +1,7 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { count, eq } from "drizzle-orm";
-import {
-  can,
-  npUsers,
-  verifyTokenFull,
-} from "@nexpress/core";
+import { can, isSuperAdmin, npUsers, verifyTokenFull } from "@nexpress/core";
 import { AdminShell, BlocksRegistryProvider } from "@nexpress/admin/client";
 import {
   getRegisteredBlockMetadataForActiveSources,
@@ -17,11 +13,7 @@ import { ensureFor } from "../../lib/init-core";
 import { getAuthRuntimeConfig } from "../../lib/auth-helpers";
 import { getDb } from "../../lib/db";
 
-export default async function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   // `"plugins"` instead of `"read"` so plugin blocks land in the
   // shared registry before we snapshot it via
   // `getRegisteredBlockMetadata()` below — otherwise the admin's
@@ -34,10 +26,7 @@ export default async function AdminLayout({
     // No session AND no admin in the DB → first-boot wizard;
     // otherwise the regular login form.
     const db = getDb();
-    const rows = await db
-      .select({ value: count() })
-      .from(npUsers)
-      .where(eq(npUsers.role, "admin"));
+    const rows = await db.select({ value: count() }).from(npUsers).where(eq(npUsers.role, "admin"));
     if ((rows[0]?.value ?? 0) === 0) redirect("/admin/setup");
     redirect("/admin/login");
   }
@@ -57,10 +46,7 @@ export default async function AdminLayout({
     // self-recover from an old cookie.
   }
   if (!user) {
-    const rows = await db
-      .select({ value: count() })
-      .from(npUsers)
-      .where(eq(npUsers.role, "admin"));
+    const rows = await db.select({ value: count() }).from(npUsers).where(eq(npUsers.role, "admin"));
     if ((rows[0]?.value ?? 0) === 0) redirect("/admin/setup");
     redirect("/admin/login");
   }
@@ -123,8 +109,10 @@ export default async function AdminLayout({
   // (which pulls `pg`/`sharp`/`argon2`) out of the admin client
   // bundle. The shell mirrors the same gates client-side via the
   // `caps` prop. (#343)
+  const canManageSites = await isSuperAdmin(user);
   const caps = {
     canManageAdmin: can(user, "admin.manage"),
+    canManageSites,
     canPublish: can(user, "content.publish"),
     canModerate: can(user, "community.moderate"),
   };
