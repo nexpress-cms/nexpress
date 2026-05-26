@@ -42,10 +42,10 @@
     "arctic": "^3.7.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^25.9.1",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.7"
   },
   "scripts": {
     "build": "tsup",
