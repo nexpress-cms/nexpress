@@ -1,4 +1,5 @@
 import { getLocaleDirection } from "@nexpress/core";
+import type { Viewport } from "next";
 import { headers } from "next/headers";
 
 import { i18nConfig } from "@/i18n.config";
@@ -35,6 +36,11 @@ import { i18nConfig } from "@/i18n.config";
  * keep the door open for theme-level color-mode policies
  * without bleeding the policy into the framework.
  */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const headerList = await headers();
   const lang = headerList.get("x-np-locale") ?? i18nConfig.defaultLocale;

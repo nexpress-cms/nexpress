@@ -513,6 +513,9 @@ export const portfolioCss = `
   color: rgba(245, 241, 234, 0.18);
   letter-spacing: -0.03em;
   line-height: 1;
+  max-width: 90%;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 .np-portfolio-card-meta {
   display: flex;
