@@ -1,5 +1,11 @@
 # create-nexpress
 
+## 0.1.25
+
+### Patch Changes
+
+- fab81f0: Improve built-in theme mobile rendering by exporting the app viewport metadata through scaffolded layouts, tightening magazine subscribe form wrapping, constraining portfolio card display text, and making demo-content reseed delete hierarchical seeded posts child-first.
+
 ## 0.1.24
 
 ### Patch Changes

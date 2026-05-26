@@ -1,5 +1,12 @@
 # @nexpress/editor
 
+## 0.3.12
+
+### Patch Changes
+
+- f4c483c: Improve mobile ergonomics across admin edit screens, block-editor controls, and rich-text image insertion dialogs.
+- fb4ba86: Clamp collection editor columns and rich-text surfaces to the mobile viewport so toolbar content wraps instead of being clipped.
+
 ## 0.3.11
 
 ## 0.3.10

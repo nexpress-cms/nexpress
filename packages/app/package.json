@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/app",
-  "version": "0.3.11",
+  "version": "0.3.12",
   "description": "Shared Next.js page implementations for NexPress reference + scaffolded apps. Consumers import via thin re-export so both apps/web and `npx create-nexpress` projects render byte-identical UIs.",
   "license": "MIT",
   "author": "Nexpress",

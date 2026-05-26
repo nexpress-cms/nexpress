@@ -1,5 +1,64 @@
 # @nexpress/app
 
+## 0.3.12
+
+### Patch Changes
+
+- a3e9f50: Improve mobile wrapping and action layouts on member detail moderation panels.
+- abdb9d4: Improve mobile overflow handling across admin settings, plugins, themes, and health surfaces.
+- f3349a8: Improve admin mobile layout with an overlay navigation drawer, tighter topbar controls, mobile collection-list cards, safer dialog sizing, responsive admin tables, and a Next-safe admin theme bootstrap.
+- ad979b3: Treat the first-boot admin and E2E admin fixture as super-admins, and hide the Sites
+  admin entry for non-super admins so the multi-site screen matches the API gate.
+- fab81f0: Improve built-in theme mobile rendering by exporting the app viewport metadata through scaffolded layouts, tightening magazine subscribe form wrapping, constraining portfolio card display text, and making demo-content reseed delete hierarchical seeded posts child-first.
+- Updated dependencies [29c64b5]
+- Updated dependencies [2d960fb]
+- Updated dependencies [6f82c9f]
+- Updated dependencies [1645ed4]
+- Updated dependencies [226f3f1]
+- Updated dependencies [03118a1]
+- Updated dependencies [f4c483c]
+- Updated dependencies [fb4ba86]
+- Updated dependencies [1f9ac01]
+- Updated dependencies [7afa936]
+- Updated dependencies [86b2d4f]
+- Updated dependencies [11ab920]
+- Updated dependencies [a3e9f50]
+- Updated dependencies [ae79d5a]
+- Updated dependencies [9da5e4d]
+- Updated dependencies [2937c1c]
+- Updated dependencies [83417cb]
+- Updated dependencies [abdb9d4]
+- Updated dependencies [fcdb349]
+- Updated dependencies [8e6e29a]
+- Updated dependencies [f3349a8]
+- Updated dependencies [70bc0ee]
+- Updated dependencies [ad979b3]
+- Updated dependencies [3290e04]
+- Updated dependencies [fab81f0]
+  - @nexpress/admin@0.3.12
+  - @nexpress/editor@0.3.12
+  - @nexpress/theme-magazine@0.3.12
+  - @nexpress/theme-portfolio@0.3.12
+  - @nexpress/blocks@0.3.12
+  - @nexpress/plugin-forum@0.3.12
+  - @nexpress/theme-default@0.3.12
+  - @nexpress/theme-docs@0.3.12
+  - @nexpress/next@0.3.12
+  - @nexpress/plugin-sdk@0.3.12
+  - @nexpress/plugin-block-callout@0.3.12
+  - @nexpress/plugin-block-embed@0.3.12
+  - @nexpress/plugin-block-latest-posts@0.3.12
+  - @nexpress/plugin-block-newsletter@0.3.12
+  - @nexpress/plugin-block-pricing@0.3.12
+  - @nexpress/plugin-block-stats@0.3.12
+  - @nexpress/theme@0.3.12
+  - @nexpress/auth-pages@0.3.12
+  - @nexpress/plugin-oauth-github@0.3.12
+  - @nexpress/plugin-oauth-google@0.3.12
+  - @nexpress/plugin-reading-time@0.3.12
+  - @nexpress/plugin-seo-audit@0.3.12
+  - @nexpress/core@0.3.12
+
 ## 0.3.11
 
 ### Patch Changes
