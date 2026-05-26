@@ -1148,6 +1148,13 @@ export const magazineCss = `
   );
   z-index: 49;
 }
+@media (min-width: 761px) {
+  .np-magazine-mobile-nav-drawer,
+  .np-magazine-mobile-nav-drawer[data-open="true"],
+  .np-magazine-mobile-nav-overlay {
+    display: none;
+  }
+}
 .np-magazine-mobile-nav-drawer ul {
   list-style: none;
   padding: 0;

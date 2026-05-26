@@ -6,7 +6,7 @@ import type { NpNavItem } from "@nexpress/core";
 
 /**
  * Mobile-first nav drawer. The desktop header keeps its inline
- * link list visible above ~768px (CSS handles the hide/show);
+ * link list visible above 900px (CSS handles the hide/show);
  * below that breakpoint the inline nav is hidden by CSS and the
  * hamburger button + slide-in drawer take over.
  *
@@ -22,8 +22,23 @@ export interface MobileNavProps {
   label?: string;
 }
 
+const DESKTOP_NAV_QUERY = "(min-width: 901px)";
+
 export function MobileNav({ items, label = "Menu" }: MobileNavProps) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia(DESKTOP_NAV_QUERY);
+    const closeForDesktop = () => {
+      if (media.matches) setOpen(false);
+    };
+
+    closeForDesktop();
+    media.addEventListener("change", closeForDesktop);
+    return () => {
+      media.removeEventListener("change", closeForDesktop);
+    };
+  }, []);
 
   // Close on Escape and lock body scroll while open. Both effects
   // run only when the drawer is actually open so no listeners

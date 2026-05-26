@@ -12,8 +12,23 @@ export interface PortfolioMobileNavProps {
   items: NpNavItem[];
 }
 
+const DESKTOP_NAV_QUERY = "(min-width: 881px)";
+
 export function PortfolioMobileNav({ items }: PortfolioMobileNavProps) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia(DESKTOP_NAV_QUERY);
+    const closeForDesktop = () => {
+      if (media.matches) setOpen(false);
+    };
+
+    closeForDesktop();
+    media.addEventListener("change", closeForDesktop);
+    return () => {
+      media.removeEventListener("change", closeForDesktop);
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;

@@ -525,12 +525,6 @@ export const defaultThemeCss = `
   transition: opacity 0.15s ease;
 }
 .np-site-cta:hover { opacity: 0.9; }
-@media (max-width: 900px) {
-  .np-site-header-inner { grid-template-columns: auto auto; gap: 1rem; }
-  .np-site-nav-desktop { display: none; }
-  .np-site-search { display: none; }
-}
-
 /* Mobile drawer machinery */
 .np-mobile-nav-toggle {
   display: none;
@@ -628,17 +622,14 @@ export const defaultThemeCss = `
   background: var(--np-color-muted, #f8fafc);
 }
 
-@media (max-width: 768px) {
-  .np-site-nav-desktop,
-  .np-site-search,
-  .np-site-search-input {
-    display: none;
-  }
-  .np-mobile-nav-toggle {
-    display: inline-flex;
-  }
+@media (max-width: 900px) {
+  .np-site-header-inner { grid-template-columns: auto auto; gap: 1rem; }
+  .np-site-nav-desktop { display: none; }
+  .np-site-search { display: none; }
+  .np-site-search-input { display: none; }
+  .np-mobile-nav-toggle { display: inline-flex; }
 }
-@media (min-width: 769px) {
+@media (min-width: 901px) {
   .np-mobile-nav-drawer,
   .np-mobile-nav-overlay {
     display: none;

@@ -36,7 +36,7 @@ function parentColumn(table: PgTable): PgColumn {
   if (!key) {
     throw new Error("Parent column not found on posts tags table.");
   }
-  return columns[key]!;
+  return columns[key];
 }
 
 export async function loadTagIdsForPost(postId: string): Promise<string[]> {

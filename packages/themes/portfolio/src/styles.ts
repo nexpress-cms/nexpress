@@ -290,6 +290,25 @@ export const portfolioCss = `
   color: var(--np-color-muted-foreground, #8a857d);
   font-feature-settings: "tnum";
 }
+.np-portfolio-nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid color-mix(in oklab, var(--np-color-foreground, #f5f1ea) 24%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.np-portfolio-nav-toggle:hover {
+  border-color: var(--np-color-foreground, #f5f1ea);
+}
 .np-portfolio-cta {
   display: inline-flex;
   align-items: center;
@@ -316,6 +335,7 @@ export const portfolioCss = `
     gap: 1rem;
   }
   .np-portfolio-nav { display: none; }
+  .np-portfolio-nav-toggle { display: inline-flex; }
 }
 @media (max-width: 720px) {
   .np-portfolio-header-meta { display: none; }
@@ -822,10 +842,19 @@ export const portfolioCss = `
   background: var(--np-color-background, #0a0a0a);
   color: var(--np-color-foreground, #f5f1ea);
   padding: 1.5rem 2rem;
-  display: flex;
+  display: none;
   flex-direction: column;
   gap: 1rem;
   z-index: 50;
+}
+.np-portfolio-nav-drawer[data-open="true"] {
+  display: flex;
+}
+@media (min-width: 881px) {
+  .np-portfolio-nav-drawer,
+  .np-portfolio-nav-drawer[data-open="true"] {
+    display: none;
+  }
 }
 .np-portfolio-nav-drawer-list {
   list-style: none;
