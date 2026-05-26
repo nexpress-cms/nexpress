@@ -1,5 +1,13 @@
 # @nexpress/plugin-sdk
 
+## 0.3.14
+
+### Patch Changes
+
+- Updated dependencies [bf8ca4d]
+  - @nexpress/core@0.3.14
+  - @nexpress/blocks@0.3.14
+
 ## 0.3.13
 
 ### Patch Changes
