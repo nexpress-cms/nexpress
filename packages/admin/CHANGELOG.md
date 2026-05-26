@@ -1,5 +1,40 @@
 # @nexpress/admin
 
+## 0.3.12
+
+### Patch Changes
+
+- 29c64b5: Improve mobile overflow handling for auth, settings, users, and linked identity admin surfaces.
+- 2d960fb: Improve mobile overflow handling for the admin page builder and editor support panels.
+- 6f82c9f: Improve mobile overflow handling for collection list and edit admin views.
+- 1645ed4: Improve mobile wrapping and overflow handling across the community moderation admin views.
+- 226f3f1: Improve mobile overflow handling for the admin dashboard.
+- 03118a1: Improve mobile layouts for admin media lists, site membership panels, linked identity panels, and site cards.
+- f4c483c: Improve mobile ergonomics across admin edit screens, block-editor controls, and rich-text image insertion dialogs.
+- fb4ba86: Clamp collection editor columns and rich-text surfaces to the mobile viewport so toolbar content wraps instead of being clipped.
+- 1f9ac01: Improve mobile layout resilience for page-builder dialogs, including JSON editors, pattern browsing, block palette, block settings, media picker, and delete confirmations.
+- 7afa936: Improve mobile overflow handling for shared admin form controls and picker dialogs.
+- 86b2d4f: Improve mobile overflow handling for the jobs admin view.
+- 11ab920: Add mobile card layouts for admin members, moderation queues, audit logs, and user management lists.
+- a3e9f50: Improve mobile wrapping and action layouts on member detail moderation panels.
+- ae79d5a: Improve mobile overflow handling for members and media admin views.
+- 9da5e4d: Improve mobile layout resilience for the navigation editor and plugin manager, keeping nested rows, long plugin ids, registry dialogs, and action groups within narrow admin viewports.
+- 2937c1c: Improve plugin admin extension panels on mobile with card-style table rows, full-width action controls, and safer wrapping for long plugin output.
+- 83417cb: Constrain admin dialog, popover, dropdown, and select primitives on narrow mobile viewports.
+- abdb9d4: Improve mobile overflow handling across admin settings, plugins, themes, and health surfaces.
+- fcdb349: Tighten mobile layout for generated settings forms and theme controls so long labels, values, and action bars wrap inside narrow admin viewports.
+- 8e6e29a: Improve mobile layout resilience for admin settings, jobs, dashboard, plugin management, navigation, and media upload surfaces.
+- f3349a8: Improve admin mobile layout with an overlay navigation drawer, tighter topbar controls, mobile collection-list cards, safer dialog sizing, responsive admin tables, and a Next-safe admin theme bootstrap.
+- 70bc0ee: Improve mobile layout resilience for multi-site admin surfaces, including site cards, delete/create dialogs, membership grants, and the topbar site picker.
+- ad979b3: Treat the first-boot admin and E2E admin fixture as super-admins, and hide the Sites
+  admin entry for non-super admins so the multi-site screen matches the API gate.
+- 3290e04: Harden mobile layouts for theme switching, reseeding, and cleanup flows so long theme names, block types, requirement messages, and action groups stay inside narrow admin viewports.
+- Updated dependencies [f4c483c]
+- Updated dependencies [fb4ba86]
+  - @nexpress/editor@0.3.12
+  - @nexpress/blocks@0.3.12
+  - @nexpress/core@0.3.12
+
 ## 0.3.11
 
 ### Patch Changes
