@@ -35,9 +35,7 @@ import { portfolioCss } from "@nexpress/theme-portfolio";
  * magazine — is fully covered.
  */
 
-const THEME_SRC_ROOT = resolve(
-  fileURLToPath(new URL("../../../packages/themes", import.meta.url)),
-);
+const THEME_SRC_ROOT = resolve(fileURLToPath(new URL("../../../packages/themes", import.meta.url)));
 
 /**
  * Framework-provided class prefixes that themes use without
@@ -87,9 +85,7 @@ function listSourceFiles(dir: string): string[] {
  * switch to a real parser. Until then, regex is good enough.
  */
 function stripComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 }
 
 /**
@@ -310,10 +306,6 @@ const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
     "np-docs-members-error",
     "np-docs-members-not-found",
     "np-docs-not-found",
-    // VERIFIED_LANDMARK — child of `<article className="np-docs-page">`
-    // (styled, styles.ts). Parent article handles padding /
-    // max-width / typography; body div is a content hook.
-    "np-docs-page-body",
   ],
 };
 
@@ -359,15 +351,11 @@ describe("built-in themes — responsive contracts", () => {
   });
 
   it("portfolio: mobile drawer uses the same breakpoint as desktop nav collapse", () => {
-    expect(portfolioCss).toMatch(
-      /\.np-portfolio-nav-toggle \{[\s\S]*display: none;[\s\S]*\}/,
-    );
+    expect(portfolioCss).toMatch(/\.np-portfolio-nav-toggle \{[\s\S]*display: none;[\s\S]*\}/);
     expect(portfolioCss).toMatch(
       /@media \(max-width: 880px\) \{[\s\S]*\.np-portfolio-nav \{ display: none; \}[\s\S]*\.np-portfolio-nav-toggle \{ display: inline-flex; \}/,
     );
-    expect(portfolioCss).toMatch(
-      /\.np-portfolio-nav-drawer \{[\s\S]*display: none;[\s\S]*\}/,
-    );
+    expect(portfolioCss).toMatch(/\.np-portfolio-nav-drawer \{[\s\S]*display: none;[\s\S]*\}/);
     expect(portfolioCss).toMatch(
       /\.np-portfolio-nav-drawer\[data-open="true"\] \{[\s\S]*display: flex;[\s\S]*\}/,
     );
