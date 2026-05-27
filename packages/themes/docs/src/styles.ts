@@ -19,6 +19,8 @@ export const docsCss = `
 .np-docs-shell {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  min-width: 0;
   min-height: 100vh;
   background: var(--np-color-background);
   color: var(--np-color-foreground);
@@ -27,6 +29,12 @@ export const docsCss = `
   -webkit-font-smoothing: antialiased;
 }
 .np-docs-shell a { color: inherit; }
+.np-docs-header,
+.np-docs-shell .np-site-main {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
 .np-docs-shell code,
 .np-docs-shell pre,
 .np-docs-shell kbd {
@@ -293,10 +301,20 @@ export const docsCss = `
 }
 @media (max-width: 800px) {
   .np-docs-header-inner {
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.75rem;
+    padding-inline: 1rem;
   }
-  .np-docs-search-form { display: none; }
+  .np-docs-brand {
+    min-width: 0;
+  }
+  .np-docs-brand > span:not(.np-docs-brand-mark):not(.np-docs-brand-version) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .np-docs-search-form,
+  .np-docs-nav,
   .np-docs-primary-nav { display: none; }
 }
 
@@ -324,6 +342,10 @@ export const docsCss = `
   .np-docs-grid,
   .np-docs-body {
     grid-template-columns: 1fr;
+    min-width: 0;
+    max-width: 100%;
+    padding: 1.5rem 1rem 3rem;
+    gap: 1.5rem;
   }
   .np-docs-sidebar { display: none; }
 }
@@ -456,6 +478,23 @@ export const docsCss = `
   max-width: 760px;
   min-width: 0;
 }
+@media (max-width: 800px) {
+  .np-docs-page,
+  .np-docs-page-body,
+  .np-docs-breadcrumbs,
+  .np-docs-page-lede,
+  .np-docs-page-meta {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .np-docs-breadcrumbs,
+  .np-docs-page-meta {
+    overflow-wrap: anywhere;
+  }
+  .np-docs-page-meta a {
+    margin-left: 0;
+  }
+}
 .np-docs-breadcrumbs {
   display: flex;
   align-items: center;
@@ -557,6 +596,20 @@ export const docsCss = `
   border: 1px solid var(--np-color-border);
   border-radius: 4px;
 }
+.np-docs-page pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.np-docs-page pre code {
+  display: block;
+  max-width: 100%;
+}
+@media (max-width: 800px) {
+  .np-docs-page pre code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
 .np-docs-page strong { font-weight: 600; }
 .np-docs-page ul,
 .np-docs-page ol {
@@ -588,6 +641,12 @@ export const docsCss = `
 }
 .np-docs-page h2:hover .np-docs-anchor,
 .np-docs-page h3:hover .np-docs-anchor { opacity: 1; }
+@media (max-width: 800px) {
+  .np-docs-anchor {
+    left: auto;
+    right: 0;
+  }
+}
 
 /* ============================================================
  * Callouts — info (default) / note (indigo) / warn (amber) /
@@ -705,6 +764,12 @@ export const docsCss = `
   border: 0;
   padding: 0;
   color: inherit;
+}
+@media (max-width: 800px) {
+  .np-docs-code pre code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
 }
 .tk-c { color: #64748b; font-style: italic; }
 .tk-k { color: #c084fc; }

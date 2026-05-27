@@ -1142,6 +1142,17 @@ export const defaultThemeCss = `
   .np-post-hero {
     gap: 1.5rem;
   }
+  .np-post-cover {
+    aspect-ratio: 16 / 10;
+    border-radius: 18px;
+  }
+  .np-post-cover-fallback {
+    min-height: 12rem;
+  }
+  .np-post-cover-fallback strong {
+    font-size: clamp(4rem, 18vw, 7rem);
+    letter-spacing: -0.04em;
+  }
 }
 
 /* ----------------------------------------------------------------

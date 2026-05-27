@@ -364,6 +364,11 @@ export interface NpThemeSeedPage {
 
 export interface NpThemeSeedPost {
   title: string;
+  /**
+   * Override slug. Useful when seeded titles contain presentational
+   * markup or punctuation that should not leak into public URLs.
+   */
+  slug?: string;
   excerpt: string;
   /**
    * Lexical rich-text document — same opacity rationale as
