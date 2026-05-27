@@ -19,10 +19,7 @@ import type { NextRequest } from "next/server";
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
-import {
-  seedAll,
-  wipeSeededContent,
-} from "../../../../lib/seed-content";
+import { seedAll, wipeSeededContent } from "../../../../lib/seed-content";
 
 /**
  * Pull the offending slug out of a postgres unique-violation error.
@@ -144,39 +141,41 @@ export async function POST(request: NextRequest) {
       // discarded — no ghost audit-log entries or stale
       // afterDelete jobs for rows that ended up restored.
       const db = getDb();
-      return await withDeferredPostCommit(async () => db.transaction(async (innerTx) => {
-        const tx = innerTx as unknown as NpTransaction;
+      return await withDeferredPostCommit(async () =>
+        db.transaction(async (innerTx) => {
+          const tx = innerTx as unknown as NpTransaction;
 
-        // Wipe before activation so the slug uniqueness constraint
-        // on `/` doesn't collide between outgoing theme's home page
-        // and the new theme's home page seed.
-        const wiped = await wipeSeededContent(user, { tx });
+          // Wipe before activation so the slug uniqueness constraint
+          // on `/` doesn't collide between outgoing theme's home page
+          // and the new theme's home page seed.
+          const wiped = await wipeSeededContent(user, { tx });
 
-        // Activate the new theme inside the same tx so a downstream
-        // seed failure rolls back the activation too. We deliberately
-        // DO NOT call `getActiveTheme()` to verify the write — that
-        // helper reads through `getDb()` (the pool), which under PG
-        // read-committed isolation won't see the still-pending
-        // `np_settings.activeTheme` write inside this outer tx.
-        // `getThemeById(themeId)` resolves against the in-memory
-        // registry, which `setActiveThemeId` has already validated
-        // (line 116 above), so this is the same correctness gate
-        // the readback gave us — without the visibility hazard.
-        await setActiveThemeId(themeId, user.id, { tx });
+          // Activate the new theme inside the same tx so a downstream
+          // seed failure rolls back the activation too. We deliberately
+          // DO NOT call `getActiveTheme()` to verify the write — that
+          // helper reads through `getDb()` (the pool), which under PG
+          // read-committed isolation won't see the still-pending
+          // `np_settings.activeTheme` write inside this outer tx.
+          // `getThemeById(themeId)` resolves against the in-memory
+          // registry, which `setActiveThemeId` has already validated
+          // (line 116 above), so this is the same correctness gate
+          // the readback gave us — without the visibility hazard.
+          await setActiveThemeId(themeId, user.id, { tx });
 
-        try {
-          const seeded = await seedAll(user, target, { tx });
-          return { wiped, seeded };
-        } catch (error) {
-          const collisionSlug = parseSlugCollision(error);
-          if (collisionSlug) {
-            throw new NpConflictError(
-              `Cannot seed theme "${themeId}" — a page with slug "${collisionSlug}" already exists and isn't marked as framework seed. Delete or rename it and re-run reseed.`,
-            );
+          try {
+            const seeded = await seedAll(user, target, { tx });
+            return { wiped, seeded };
+          } catch (error) {
+            const collisionSlug = parseSlugCollision(error);
+            if (collisionSlug) {
+              throw new NpConflictError(
+                `Cannot seed theme "${themeId}" — content with slug "${collisionSlug}" already exists and isn't marked as framework seed. Delete or rename it and re-run reseed.`,
+              );
+            }
+            throw error;
           }
-          throw error;
-        }
-      }));
+        }),
+      );
     });
 
     // Bust theme + SEO + sitemap + feed caches so the next public
@@ -198,9 +197,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -261,8 +258,6 @@ export async function GET(request: NextRequest) {
       ...counts,
     });
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
