@@ -1550,6 +1550,7 @@ export const defaultThemeCss = `
   background: var(--np-color-foreground, #0a0a0c);
   color: var(--np-color-background, #fff);
   border-radius: var(--np-radius-xl, 20px);
+  box-sizing: border-box;
   display: grid;
   grid-template-columns: 1.1fr 1fr;
   gap: 3rem;
@@ -1585,11 +1586,14 @@ export const defaultThemeCss = `
 .np-newsletter-form {
   display: flex;
   gap: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
   position: relative;
   z-index: 1;
 }
 .np-newsletter-form input {
   flex: 1;
+  min-width: 0;
   padding: 0.85rem 1rem;
   font: inherit;
   font-size: 0.9375rem;
@@ -1623,6 +1627,17 @@ export const defaultThemeCss = `
     grid-template-columns: 1fr;
     padding: 2.25rem 1.75rem;
     gap: 1.5rem;
+  }
+}
+@media (max-width: 480px) {
+  .np-newsletter-inline {
+    padding: 2rem 1.25rem;
+  }
+  .np-newsletter-form {
+    flex-direction: column;
+  }
+  .np-newsletter-form button {
+    width: 100%;
   }
 }
 

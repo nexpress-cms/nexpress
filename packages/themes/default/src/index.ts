@@ -72,6 +72,7 @@ const daysAgo = (days: number): string => new Date(SEED_NOW.getTime() - days * D
 const SEED_POSTS: NpThemeSeedPost[] = [
   {
     title: "Read-your-writes without the asterisks.",
+    slug: "read-your-writes-without-the-asterisks",
     excerpt:
       "Postgres replicas are fast and cheap until a user writes a row, redirects, and reads stale data on a different replica. We rebuilt the routing layer to follow a write within the request, and kept p99 read latency under 12 ms.",
     content: lexicalDoc([
