@@ -192,6 +192,15 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
     setMobileOpen(false);
   }, [pathname]);
 
+  React.useEffect(() => {
+    if (!mobileOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileOpen]);
+
   const collectionGroups = React.useMemo(() => {
     return collections
       .filter((collection) => !collection.admin?.hidden)
@@ -330,16 +339,18 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
           <button
             type="button"
             aria-label="Close navigation"
-            className="fixed inset-0 z-30 bg-neutral-950/35 backdrop-blur-[1px] md:hidden"
+            className="fixed inset-0 z-30 bg-neutral-950/35 backdrop-blur-[1px] lg:hidden"
             onClick={() => setMobileOpen(false)}
           />
         ) : null}
 
         <aside
+          data-np-admin-sidebar
+          data-open={mobileOpen ? "true" : "false"}
           className={cn(
-            "fixed inset-y-0 left-0 z-40 flex h-dvh w-[min(18rem,calc(100vw-3rem))] max-w-[calc(100vw-3rem)] flex-col border-r border-neutral-200/70 bg-[#fbfbfa] shadow-2xl transition-transform duration-300 dark:border-neutral-800/70 dark:bg-neutral-950/95 md:sticky md:top-0 md:z-auto md:h-screen md:shrink-0 md:translate-x-0 md:shadow-none md:transition-[width]",
+            "fixed inset-y-0 left-0 z-40 flex h-dvh w-[min(18rem,calc(100vw-3rem))] max-w-[calc(100vw-3rem)] flex-col border-r border-neutral-200/70 bg-[#fbfbfa] shadow-2xl transition-transform duration-300 dark:border-neutral-800/70 dark:bg-neutral-950/95 lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:shrink-0 lg:translate-x-0 lg:shadow-none lg:transition-[width]",
             mobileOpen ? "translate-x-0" : "-translate-x-full",
-            collapsed ? "md:w-16" : "md:w-60",
+            collapsed ? "lg:w-16" : "lg:w-60",
           )}
         >
           <div className="flex h-14 items-center justify-between px-4">
@@ -358,7 +369,7 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
               type="button"
               variant="ghost"
               size="icon-sm"
-              className="md:hidden"
+              className="lg:hidden"
               onClick={() => setMobileOpen(false)}
               aria-label="Close navigation"
             >
@@ -369,7 +380,7 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                className="hidden md:inline-flex"
+                className="hidden lg:inline-flex"
                 onClick={() => setCollapsed(true)}
                 aria-label="Collapse sidebar"
               >
@@ -420,7 +431,7 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                className="ml-auto hidden md:inline-flex"
+                className="ml-auto hidden lg:inline-flex"
                 onClick={() => setCollapsed(false)}
                 aria-label="Expand sidebar"
               >

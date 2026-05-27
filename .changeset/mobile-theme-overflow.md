@@ -1,5 +1,6 @@
 ---
 "@nexpress/app": patch
+"@nexpress/admin": patch
 "@nexpress/theme": patch
 "@nexpress/theme-default": patch
 "@nexpress/theme-docs": patch

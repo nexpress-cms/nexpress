@@ -119,7 +119,7 @@ function AdminTopbar({ user, onOpenNavigation }: AdminTopbarProps) {
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="shrink-0 md:hidden"
+            className="shrink-0 lg:hidden"
             onClick={onOpenNavigation}
             aria-label="Open navigation"
           >
