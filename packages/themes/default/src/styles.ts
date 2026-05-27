@@ -558,12 +558,17 @@ export const defaultThemeCss = `
   border-inline-start: 1px solid var(--np-color-border, #e5e7eb);
   z-index: 50;
   transform: translateX(100%);
-  transition: transform 0.2s ease;
-  display: flex;
+  display: none;
   flex-direction: column;
 }
 .np-mobile-nav-drawer[data-open="true"] {
+  display: flex;
   transform: translateX(0);
+  animation: np-mobile-nav-drawer-in 0.2s ease both;
+}
+@keyframes np-mobile-nav-drawer-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
 }
 .np-mobile-nav-drawer-header {
   display: flex;
@@ -623,10 +628,32 @@ export const defaultThemeCss = `
 }
 
 @media (max-width: 900px) {
-  .np-site-header-inner { grid-template-columns: auto auto; gap: 1rem; }
+  .np-site-header-inner {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem;
+    padding-inline: 1rem;
+  }
+  .np-site-logo {
+    min-width: 0;
+  }
+  .np-site-logo span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .np-site-nav-desktop { display: none; }
+  .np-site-header-tools {
+    justify-self: end;
+    min-width: 0;
+    gap: 0.4rem;
+  }
   .np-site-search { display: none; }
   .np-site-search-input { display: none; }
+  .np-site-cta,
+  .np-language-picker,
+  .np-color-scheme-toggle,
+  .np-member-status {
+    display: none;
+  }
   .np-mobile-nav-toggle { display: inline-flex; }
 }
 @media (min-width: 901px) {
@@ -1300,12 +1327,27 @@ export const defaultThemeCss = `
   max-width: 30rem;
 }
 @media (max-width: 900px) {
+  .np-post-list-feature,
+  .np-post-card.np-post-card-feature,
+  .np-post-card.np-post-card-feature .np-post-card-link,
+  .np-post-card.np-post-card-feature .np-post-card-cover {
+    min-width: 0;
+    max-width: 100%;
+  }
   .np-post-card.np-post-card-feature .np-post-card-link {
     grid-template-columns: 1fr;
   }
   .np-post-card.np-post-card-feature .np-post-card-cover {
     min-height: 16rem;
     aspect-ratio: 16/10;
+  }
+  .np-post-card.np-post-card-feature .np-post-card-cover-figure {
+    font-size: clamp(3.5rem, 18vw, 6rem);
+  }
+  .np-post-card.np-post-card-feature .np-post-card-cover-overlay {
+    padding: 1.1rem 1.2rem;
+    gap: 0.75rem;
+    flex-wrap: wrap;
   }
   .np-post-card.np-post-card-feature .np-post-card-body {
     padding: 1.75rem;
