@@ -1,5 +1,12 @@
-import { getI18nConfig } from "@nexpress/core";
-import type { NpNavItem } from "@nexpress/core";
+import {
+  getDb,
+  getI18nConfig,
+  getMemberFromTokenPayload,
+  isTokenVerificationError,
+  verifyMemberToken,
+  type NpMemberAuthRow,
+  type NpNavItem,
+} from "@nexpress/core";
 import { getCachedNavigation, getCachedSite, resolveAvailableLocales } from "@nexpress/next";
 import Link from "next/link";
 
@@ -39,7 +46,11 @@ import { SearchKeyboardShortcut } from "./components/search-keyboard-shortcut.js
 const FALLBACK_SITE_NAME = "Equilibrium";
 
 export async function DefaultHeader() {
-  const [headerNav, site] = await Promise.all([getCachedNavigation("header"), getCachedSite()]);
+  const [headerNav, site, member] = await Promise.all([
+    getCachedNavigation("header"),
+    getCachedSite(),
+    resolveHeaderMember(),
+  ]);
   const siteName = site?.name?.trim() || FALLBACK_SITE_NAME;
   const i18n = getI18nConfig();
   const showLanguagePicker = (i18n?.locales.length ?? 0) > 1;
@@ -125,10 +136,36 @@ export async function DefaultHeader() {
             />
           ) : null}
           <DarkModeToggle />
-          <MemberStatusWidget />
+          <MemberStatusWidget initialMember={member} />
           <MobileNav items={headerNav} />
         </div>
       </div>
     </header>
   );
+}
+
+type HeaderMember = Pick<NpMemberAuthRow, "id" | "handle" | "displayName">;
+
+async function resolveHeaderMember(): Promise<HeaderMember | null> {
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const token = cookieStore.get("np-mb-session")?.value;
+  if (!token) return null;
+
+  const secret = process.env.NP_SECRET ?? process.env.NP_AUTH_SECRET ?? process.env.AUTH_SECRET;
+  if (!secret) return null;
+
+  try {
+    const payload = await verifyMemberToken(token, secret, "access");
+    const member = await getMemberFromTokenPayload(getDb(), payload, token);
+    if (!member || member.status !== "active") return null;
+    return {
+      id: member.id,
+      handle: member.handle,
+      displayName: member.displayName,
+    };
+  } catch (error) {
+    if (isTokenVerificationError(error)) return null;
+    throw error;
+  }
 }

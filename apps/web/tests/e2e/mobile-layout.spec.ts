@@ -26,7 +26,7 @@ interface ThemeScenario {
   routes: RouteCheck[];
   mobileNavSelector?: string;
   viewports?: readonly ViewportSize[];
-  waitForMemberStatus?: boolean;
+  expectNoMemberStatusLoading?: boolean;
 }
 
 interface ViewportSize {
@@ -44,7 +44,7 @@ const THEMES: ThemeScenario[] = [
     id: "default",
     mobileNavSelector: ".np-mobile-nav-toggle",
     viewports: [...MOBILE_VIEWPORTS, { width: 1024, height: 1365 }],
-    waitForMemberStatus: true,
+    expectNoMemberStatusLoading: true,
     routes: [
       { path: "/", label: "home post index" },
       {
@@ -144,8 +144,8 @@ async function assertRouteHasNoMobileOverflow(
   expect(response?.status(), `${theme.id} ${route.label} ${route.path}`).toBe(200);
   await expect(page.locator("body")).toBeVisible();
   await expect(page.locator("body")).not.toContainText(/Build Error|Runtime Error|Unhandled/i);
-  if (theme.waitForMemberStatus) {
-    await waitForMemberStatusHydration(page);
+  if (theme.expectNoMemberStatusLoading) {
+    await expectMemberStatusNotToRenderLoadingChrome(page);
   }
 
   await expectNoHorizontalOverflow(page, `${theme.id} ${route.label} closed`);
@@ -161,8 +161,9 @@ async function assertRouteHasNoMobileOverflow(
   await expectNoHorizontalOverflow(page, `${theme.id} ${route.label} after close`);
 }
 
-async function waitForMemberStatusHydration(page: Page): Promise<void> {
-  await page.waitForFunction(() => !document.querySelector(".np-member-status-loading"));
+async function expectMemberStatusNotToRenderLoadingChrome(page: Page): Promise<void> {
+  const loadingCount = await page.locator(".np-member-status-loading").count();
+  expect(loadingCount).toBe(0);
 }
 
 async function expectNoHorizontalOverflow(page: Page, label: string): Promise<void> {

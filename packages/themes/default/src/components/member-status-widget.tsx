@@ -10,24 +10,32 @@ interface MemberMe {
   displayName: string;
 }
 
+export interface MemberStatusWidgetProps {
+  initialMember?: MemberMe | null;
+}
+
 /**
- * Site header widget that probes `/api/members/me` on mount and
- * renders either signed-in (`@handle` + Sign out) or anonymous
+ * Site header widget that renders either signed-in (`@handle` + Sign out) or anonymous
  * (Sign in / Register links). Phase 11.2 moved this from
  * `apps/web/components` into the theme package — it's shipped
  * as a default-theme detail, not framework-level chrome, so
  * a theme that wants a different auth UX can omit or replace it.
  *
- * Client-side detection avoids re-rendering the entire (site)
- * layout when auth state changes — the existing pattern used
- * by the `<Comments />` and `<FollowButton />` components.
+ * DefaultHeader passes a server-resolved initial member so the
+ * header does not flicker from loading chrome into auth buttons.
+ * The client probe remains as a fallback for standalone consumers
+ * that render the widget without an initial value.
  */
-export function MemberStatusWidget() {
+export function MemberStatusWidget({ initialMember }: MemberStatusWidgetProps = {}) {
   const router = useRouter();
-  const [member, setMember] = useState<MemberMe | null | "loading">("loading");
+  const [member, setMember] = useState<MemberMe | null | "loading">(
+    initialMember === undefined ? "loading" : initialMember,
+  );
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
+    if (initialMember !== undefined) return;
+
     void (async () => {
       try {
         const res = await fetch("/api/members/me", { credentials: "include" });
@@ -35,16 +43,17 @@ export function MemberStatusWidget() {
           setMember(null);
           return;
         }
-        const body = (await res.json().catch(() => null)) as
-          | { data?: { member?: MemberMe }; member?: MemberMe }
-          | null;
+        const body = (await res.json().catch(() => null)) as {
+          data?: { member?: MemberMe };
+          member?: MemberMe;
+        } | null;
         const m = body?.data?.member ?? body?.member ?? null;
         setMember(m && m.id ? m : null);
       } catch {
         setMember(null);
       }
     })();
-  }, []);
+  }, [initialMember]);
 
   const onSignOut = async () => {
     setSigningOut(true);
@@ -64,12 +73,7 @@ export function MemberStatusWidget() {
   };
 
   if (member === "loading") {
-    return (
-      <span
-        className="np-member-status np-member-status-loading"
-        aria-hidden="true"
-      />
-    );
+    return <span className="np-member-status np-member-status-loading" aria-hidden="true" />;
   }
 
   if (member) {
