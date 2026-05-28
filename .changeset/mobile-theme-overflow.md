@@ -7,4 +7,5 @@
 "@nexpress/theme-portfolio": patch
 ---
 
-Fix bundled theme mobile overflow regressions and allow seeded posts to declare clean URL slugs.
+Fix bundled theme mobile overflow regressions, including the default header's auth-driven
+tablet overflow, and allow seeded posts to declare clean URL slugs.

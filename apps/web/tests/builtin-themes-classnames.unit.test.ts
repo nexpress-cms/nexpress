@@ -334,10 +334,10 @@ describe("built-in themes — className ↔ CSS coverage", () => {
 describe("built-in themes — responsive contracts", () => {
   it("default: mobile drawer uses the same breakpoint as desktop nav collapse", () => {
     expect(defaultThemeCss).toMatch(
-      /@media \(max-width: 900px\) \{[\s\S]*\.np-site-nav-desktop \{ display: none; \}[\s\S]*\.np-mobile-nav-toggle \{ display: inline-flex; \}/,
+      /@media \(max-width: 1180px\) \{[\s\S]*\.np-site-nav-desktop \{ display: none; \}[\s\S]*\.np-mobile-nav-toggle \{ display: inline-flex; \}/,
     );
     expect(defaultThemeCss).toMatch(
-      /@media \(min-width: 901px\) \{[\s\S]*\.np-mobile-nav-drawer,[\s\S]*\.np-mobile-nav-overlay \{[\s\S]*display: none;/,
+      /@media \(min-width: 1181px\) \{[\s\S]*\.np-mobile-nav-drawer,[\s\S]*\.np-mobile-nav-overlay \{[\s\S]*display: none;/,
     );
   });
 

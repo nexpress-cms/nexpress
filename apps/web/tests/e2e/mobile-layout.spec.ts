@@ -25,9 +25,16 @@ interface ThemeScenario {
   id: ThemeId;
   routes: RouteCheck[];
   mobileNavSelector?: string;
+  viewports?: readonly ViewportSize[];
+  waitForMemberStatus?: boolean;
 }
 
-const MOBILE_VIEWPORTS = [
+interface ViewportSize {
+  width: number;
+  height: number;
+}
+
+const MOBILE_VIEWPORTS: readonly ViewportSize[] = [
   { width: 390, height: 844 },
   { width: 430, height: 932 },
 ] as const;
@@ -36,6 +43,8 @@ const THEMES: ThemeScenario[] = [
   {
     id: "default",
     mobileNavSelector: ".np-mobile-nav-toggle",
+    viewports: [...MOBILE_VIEWPORTS, { width: 1024, height: 1365 }],
+    waitForMemberStatus: true,
     routes: [
       { path: "/", label: "home post index" },
       {
@@ -98,7 +107,7 @@ test.describe("bundled theme mobile layout", () => {
       await signInAsE2EAdmin(page);
       await reseedTheme(page, context, theme.id);
 
-      for (const viewport of MOBILE_VIEWPORTS) {
+      for (const viewport of theme.viewports ?? MOBILE_VIEWPORTS) {
         await page.setViewportSize(viewport);
 
         for (const route of theme.routes) {
@@ -135,6 +144,9 @@ async function assertRouteHasNoMobileOverflow(
   expect(response?.status(), `${theme.id} ${route.label} ${route.path}`).toBe(200);
   await expect(page.locator("body")).toBeVisible();
   await expect(page.locator("body")).not.toContainText(/Build Error|Runtime Error|Unhandled/i);
+  if (theme.waitForMemberStatus) {
+    await waitForMemberStatusHydration(page);
+  }
 
   await expectNoHorizontalOverflow(page, `${theme.id} ${route.label} closed`);
 
@@ -147,6 +159,10 @@ async function assertRouteHasNoMobileOverflow(
   await page.keyboard.press("Escape");
   await page.waitForTimeout(250);
   await expectNoHorizontalOverflow(page, `${theme.id} ${route.label} after close`);
+}
+
+async function waitForMemberStatusHydration(page: Page): Promise<void> {
+  await page.waitForFunction(() => !document.querySelector(".np-member-status-loading"));
 }
 
 async function expectNoHorizontalOverflow(page: Page, label: string): Promise<void> {

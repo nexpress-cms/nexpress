@@ -6,7 +6,7 @@ import type { NpNavItem } from "@nexpress/core";
 
 /**
  * Mobile-first nav drawer. The desktop header keeps its inline
- * link list visible above 900px (CSS handles the hide/show);
+ * link list visible above the tablet breakpoint (CSS handles the hide/show);
  * below that breakpoint the inline nav is hidden by CSS and the
  * hamburger button + slide-in drawer take over.
  *
@@ -22,7 +22,7 @@ export interface MobileNavProps {
   label?: string;
 }
 
-const DESKTOP_NAV_QUERY = "(min-width: 901px)";
+const DESKTOP_NAV_QUERY = "(min-width: 1181px)";
 
 export function MobileNav({ items, label = "Menu" }: MobileNavProps) {
   const [open, setOpen] = useState(false);
@@ -70,11 +70,7 @@ export function MobileNav({ items, label = "Menu" }: MobileNavProps) {
         {open ? <CloseIcon /> : <MenuIcon />}
       </button>
       {open ? (
-        <div
-          className="np-mobile-nav-overlay"
-          role="presentation"
-          onClick={() => setOpen(false)}
-        />
+        <div className="np-mobile-nav-overlay" role="presentation" onClick={() => setOpen(false)} />
       ) : null}
       <aside
         id="np-mobile-nav-drawer"

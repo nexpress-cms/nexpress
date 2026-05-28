@@ -382,6 +382,7 @@ export const defaultThemeCss = `
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 2rem;
+  min-width: 0;
 }
 .np-site-logo {
   display: inline-flex;
@@ -413,6 +414,7 @@ export const defaultThemeCss = `
 }
 .np-site-nav-desktop {
   justify-self: center;
+  min-width: 0;
 }
 .np-site-nav {
   display: flex;
@@ -470,6 +472,7 @@ export const defaultThemeCss = `
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
 }
 .np-site-search {
   display: inline-flex;
@@ -627,7 +630,7 @@ export const defaultThemeCss = `
   background: var(--np-color-muted, #f8fafc);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .np-site-header-inner {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.75rem;
@@ -643,6 +646,7 @@ export const defaultThemeCss = `
   .np-site-nav-desktop { display: none; }
   .np-site-header-tools {
     justify-self: end;
+    flex: none;
     min-width: 0;
     gap: 0.4rem;
   }
@@ -656,7 +660,7 @@ export const defaultThemeCss = `
   }
   .np-mobile-nav-toggle { display: inline-flex; }
 }
-@media (min-width: 901px) {
+@media (min-width: 1181px) {
   .np-mobile-nav-drawer,
   .np-mobile-nav-overlay {
     display: none;

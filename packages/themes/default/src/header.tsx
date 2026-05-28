@@ -22,11 +22,11 @@ import { SearchKeyboardShortcut } from "./components/search-keyboard-shortcut.js
  * `header` navigation menu and renders the desktop / mobile
  * surfaces in one go:
  *
- *   - Desktop (≥900px): logo mark + wordmark, centered nav,
+ *   - Desktop (≥1181px): logo mark + wordmark, centered nav,
  *     search pill with a ⌘K affordance, Subscribe CTA, plus
  *     the language picker / dark toggle / member widget when
  *     enabled.
- *   - Mobile (<900px): the nav + search collapse (CSS-only).
+ *   - Mobile (≤1180px): the nav + search collapse (CSS-only).
  *     A hamburger button opens a slide-in drawer (`<MobileNav />`,
  *     a small client component that owns its own open/closed
  *     state). The same nav items feed both surfaces — markup is
