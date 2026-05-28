@@ -90,6 +90,8 @@ export const defaultThemeCss = `
 .np-default-tag {
   --np-default-page-max: 1180px;
   max-width: var(--np-default-page-max);
+  width: 100%;
+  box-sizing: border-box;
   margin: 0 auto;
   padding: 4rem 1.75rem 5rem;
 }
@@ -1171,6 +1173,8 @@ export const defaultThemeCss = `
  * --------------------------------------------------------------- */
 .np-post-list {
   max-width: var(--np-content-max, 1180px);
+  width: 100%;
+  box-sizing: border-box;
   margin: 0 auto;
   padding: 0 1.75rem 4rem;
 }
@@ -1211,12 +1215,15 @@ export const defaultThemeCss = `
   flex-wrap: wrap;
   gap: 0.4rem;
   justify-content: center;
+  min-width: 0;
+  max-width: 100%;
   margin-top: 2rem;
 }
 .np-tax-strip a {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  min-width: 0;
   padding: 0.4rem 0.85rem;
   font-size: 0.8125rem;
   font-weight: 500;

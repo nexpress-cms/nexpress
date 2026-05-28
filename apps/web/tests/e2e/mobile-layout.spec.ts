@@ -25,6 +25,7 @@ interface ThemeScenario {
   id: ThemeId;
   routes: RouteCheck[];
   mobileNavSelector?: string;
+  mobileNavMaxWidth?: number;
   viewports?: readonly ViewportSize[];
   expectNoMemberStatusLoading?: boolean;
 }
@@ -39,10 +40,13 @@ const MOBILE_VIEWPORTS: readonly ViewportSize[] = [
   { width: 430, height: 932 },
 ] as const;
 
+const TABLET_VIEWPORT = { width: 820, height: 1180 } as const;
+
 const THEMES: ThemeScenario[] = [
   {
     id: "default",
     mobileNavSelector: ".np-mobile-nav-toggle",
+    mobileNavMaxWidth: 1180,
     viewports: [...MOBILE_VIEWPORTS, { width: 1024, height: 1365 }],
     expectNoMemberStatusLoading: true,
     routes: [
@@ -56,6 +60,7 @@ const THEMES: ThemeScenario[] = [
   },
   {
     id: "docs",
+    viewports: [...MOBILE_VIEWPORTS, TABLET_VIEWPORT, { width: 1024, height: 1365 }],
     routes: [
       { path: "/", label: "docs landing" },
       { path: "/docs/search", label: "docs search" },
@@ -65,6 +70,8 @@ const THEMES: ThemeScenario[] = [
   {
     id: "magazine",
     mobileNavSelector: ".np-magazine-mobile-nav-toggle",
+    mobileNavMaxWidth: 760,
+    viewports: [...MOBILE_VIEWPORTS, { width: 760, height: 1024 }, TABLET_VIEWPORT],
     routes: [
       { path: "/", label: "magazine front" },
       { path: "/features", label: "section archive" },
@@ -74,6 +81,8 @@ const THEMES: ThemeScenario[] = [
   {
     id: "portfolio",
     mobileNavSelector: ".np-portfolio-nav-toggle",
+    mobileNavMaxWidth: 880,
+    viewports: [...MOBILE_VIEWPORTS, TABLET_VIEWPORT, { width: 900, height: 1180 }],
     routes: [
       { path: "/", label: "portfolio work index" },
       { path: "/studio", label: "studio page" },
@@ -111,7 +120,7 @@ test.describe("bundled theme mobile layout", () => {
         await page.setViewportSize(viewport);
 
         for (const route of theme.routes) {
-          await assertRouteHasNoMobileOverflow(page, theme, route);
+          await assertRouteHasNoMobileOverflow(page, theme, route, viewport);
         }
       }
     });
@@ -139,6 +148,7 @@ async function assertRouteHasNoMobileOverflow(
   page: Page,
   theme: ThemeScenario,
   route: RouteCheck,
+  viewport: ViewportSize,
 ): Promise<void> {
   const response = await page.goto(route.path, { waitUntil: "domcontentloaded" });
   expect(response?.status(), `${theme.id} ${route.label} ${route.path}`).toBe(200);
@@ -152,7 +162,13 @@ async function assertRouteHasNoMobileOverflow(
 
   if (!theme.mobileNavSelector) return;
   const toggle = page.locator(theme.mobileNavSelector).first();
-  await expect(toggle, `${theme.id} mobile nav toggle`).toBeVisible();
+  const shouldShowToggle =
+    theme.mobileNavMaxWidth === undefined || viewport.width <= theme.mobileNavMaxWidth;
+  if (shouldShowToggle) {
+    await expect(toggle, `${theme.id} mobile nav toggle at ${viewport.width}px`).toBeVisible();
+  } else if (!(await toggle.isVisible())) {
+    return;
+  }
   await toggle.click();
   await page.waitForTimeout(250);
   await expectNoHorizontalOverflow(page, `${theme.id} ${route.label} drawer open`);
