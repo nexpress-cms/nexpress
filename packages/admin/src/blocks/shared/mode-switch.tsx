@@ -70,7 +70,7 @@ export function ModeSwitch({ view, onViewChange, scope, disabled }: ModeSwitchPr
     <div
       role="tablist"
       aria-label="Editor view"
-      className="inline-flex h-7 items-center gap-0 overflow-hidden rounded-md border border-neutral-200/80 bg-background dark:border-neutral-800/80"
+      className="inline-flex min-h-10 items-center gap-0 overflow-hidden rounded-md border border-neutral-200/80 bg-background dark:border-neutral-800/80 sm:h-7 sm:min-h-0"
     >
       <ToggleButton
         active={view === "doc"}
@@ -116,7 +116,7 @@ function ToggleButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "inline-flex h-7 items-center gap-1.5 px-2.5 text-xs transition-colors",
+        "inline-flex min-h-10 items-center gap-1.5 px-3 text-xs transition-colors sm:h-7 sm:min-h-0 sm:px-2.5",
         active
           ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
           : "text-muted-foreground hover:bg-accent",

@@ -172,39 +172,44 @@ export function SortableBlockItem({
               owns the range logic). Stop propagation so the click
               doesn't also fire focusin handlers that would change
               the preview-selection target. */}
-          <input
-            type="checkbox"
-            aria-label={
-              selfSelected
-                ? `Deselect ${definition?.label ?? block.type}`
-                : `Select ${definition?.label ?? block.type}`
-            }
-            checked={selfSelected}
-            onChange={() => {
-              /* handled in onClick to read modifiers */
-            }}
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleSelected(block.id, {
-                shift: event.shiftKey,
-                meta: event.metaKey || event.ctrlKey,
-              });
-            }}
-            className="h-3.5 w-3.5 cursor-pointer accent-primary"
-          />
+          <label
+            data-np-block-select-target
+            className="inline-flex size-10 cursor-pointer items-center justify-center sm:size-auto"
+          >
+            <input
+              type="checkbox"
+              aria-label={
+                selfSelected
+                  ? `Deselect ${definition?.label ?? block.type}`
+                  : `Select ${definition?.label ?? block.type}`
+              }
+              checked={selfSelected}
+              onChange={() => {
+                /* handled in onClick to read modifiers */
+              }}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleSelected(block.id, {
+                  shift: event.shiftKey,
+                  meta: event.metaKey || event.ctrlKey,
+                });
+              }}
+              className="size-5 cursor-pointer accent-primary sm:size-3.5"
+            />
+          </label>
           <button
             type="button"
             aria-label={`Drag ${definition?.label ?? block.type}`}
             {...attributes}
             {...listeners}
-            className="inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground active:cursor-grabbing"
+            className="inline-flex size-10 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground active:cursor-grabbing sm:size-7"
           >
             <GripVertical className="h-4 w-4" />
           </button>
           <CollapsibleTrigger asChild>
             <button
               type="button"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              className="inline-flex size-10 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground sm:size-7"
               aria-label={selfOpen ? "Collapse block" : "Expand block"}
             >
               {selfOpen ? (
@@ -263,7 +268,9 @@ export function SortableBlockItem({
                 </span>
               ) : null}
               {summary ? (
-                <span className="ml-2 font-normal text-muted-foreground">— {summary}</span>
+                <span className="ml-2 hidden font-normal text-muted-foreground min-[420px]:inline">
+                  — {summary}
+                </span>
               ) : null}
             </div>
             <div className="truncate font-mono text-xs text-muted-foreground">{block.type}</div>

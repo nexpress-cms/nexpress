@@ -178,11 +178,16 @@ export function RelationshipField({
           </div>
 
           <DialogFooter className="gap-2">
-            <Button type="button" variant="outline" onClick={() => onChange(hasMany ? [] : "")}>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={() => onChange(hasMany ? [] : "")}
+            >
               Clear
             </Button>
             {hasMany ? (
-              <Button type="button" onClick={() => setOpen(false)}>
+              <Button type="button" className="w-full sm:w-auto" onClick={() => setOpen(false)}>
                 Done
               </Button>
             ) : null}

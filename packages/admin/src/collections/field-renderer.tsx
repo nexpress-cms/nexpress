@@ -481,13 +481,17 @@ const renderNamedField = (
               <FormControl>
                 <fieldset className="space-y-3">
                   {field.options.map((option) => (
-                    <label key={option.value} className="flex min-w-0 items-center gap-3 text-sm">
+                    <label
+                      key={option.value}
+                      className="flex min-h-10 min-w-0 items-center gap-3 text-sm sm:min-h-0"
+                    >
                       <input
                         type="radio"
                         name={formField.name}
                         value={option.value}
                         checked={formField.value === option.value}
                         onChange={() => formField.onChange(option.value)}
+                        className="size-5 accent-primary sm:size-4"
                       />
                       <span className="min-w-0 break-words">{option.label}</span>
                     </label>
@@ -650,7 +654,7 @@ export function FieldRenderer({ field, control, namePrefix, collectionSlug }: Fi
   if (field.type === "collapsible") {
     return (
       <Collapsible className="min-w-0 overflow-hidden rounded-xl border border-border/60">
-        <CollapsibleTrigger className="flex min-w-0 w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium">
+        <CollapsibleTrigger className="flex min-h-12 min-w-0 w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium sm:min-h-0">
           <span className="min-w-0 break-words">{field.label}</span>
           <ChevronDown className="h-4 w-4 shrink-0" />
         </CollapsibleTrigger>

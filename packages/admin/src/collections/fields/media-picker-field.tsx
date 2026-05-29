@@ -111,7 +111,12 @@ export function MediaPickerField({ value, onChange, relationTo }: MediaPickerFie
           </div>
 
           <DialogFooter className="gap-2">
-            <Button type="button" variant="outline" onClick={() => onChange("")}>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={() => onChange("")}
+            >
               Clear
             </Button>
           </DialogFooter>
