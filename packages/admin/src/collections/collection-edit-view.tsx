@@ -1125,7 +1125,7 @@ function CollectionEditViewInner({
             ) : null}
           </div>
 
-          <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
+          <div className="grid min-w-0 grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
             {previewSlug ? (
               <Button type="button" variant="outline" className="w-full sm:w-auto" asChild>
                 <Link href={`/api/preview?path=/${collectionSlug}/${previewSlug}`} target="_blank">

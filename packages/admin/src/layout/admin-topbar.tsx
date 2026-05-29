@@ -128,14 +128,17 @@ function AdminTopbar({ user, onOpenNavigation }: AdminTopbarProps) {
         ) : null}
         <nav
           aria-label="Breadcrumb"
-          className="flex min-w-0 items-center gap-2 overflow-hidden text-[13px]"
+          className="flex min-w-0 items-center gap-1.5 overflow-hidden text-[13px] sm:gap-2"
         >
           {crumbs.map((crumb, i) => {
             const isLast = i === crumbs.length - 1;
             return (
               <React.Fragment key={`${crumb}-${i}`}>
                 {i > 0 ? (
-                  <span aria-hidden className="shrink-0 text-neutral-300 dark:text-neutral-700">
+                  <span
+                    aria-hidden
+                    className="hidden shrink-0 text-neutral-300 dark:text-neutral-700 sm:inline"
+                  >
                     /
                   </span>
                 ) : null}
@@ -143,7 +146,7 @@ function AdminTopbar({ user, onOpenNavigation }: AdminTopbarProps) {
                   className={
                     isLast
                       ? "truncate font-medium text-neutral-950 dark:text-neutral-50"
-                      : "shrink-0 text-neutral-500 dark:text-neutral-400"
+                      : "hidden shrink-0 text-neutral-500 dark:text-neutral-400 sm:inline"
                   }
                 >
                   {crumb}

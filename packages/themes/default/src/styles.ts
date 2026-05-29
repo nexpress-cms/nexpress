@@ -1797,19 +1797,6 @@ export const defaultThemeCss = `
 .np-member-status-handle {
   font-weight: 500;
 }
-.np-member-status-loading {
-  display: inline-block;
-  width: 5.5rem;
-  height: 1.1rem;
-  border-radius: 999px;
-  background: var(--np-color-muted, #f1f5f9);
-  opacity: 0.6;
-  animation: np-member-status-pulse 1.4s ease-in-out infinite;
-}
-@keyframes np-member-status-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.7; }
-}
 .np-button-primary {
   display: inline-flex;
   align-items: center;

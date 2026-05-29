@@ -78,7 +78,7 @@ export function MembersListView({
             id="np-members-status"
             name="status"
             defaultValue={filterStatus}
-            className="flex h-8 w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-2.5 text-[13px] text-neutral-950 outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50 sm:w-auto"
+            className="flex h-10 w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-3 text-[13px] text-neutral-950 outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50 sm:h-8 sm:w-auto sm:px-2.5"
           >
             <option value="">All</option>
             <option value="active">Active</option>

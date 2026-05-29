@@ -562,7 +562,7 @@ export function CollectionListView({
                             if (docIdStr) toggleOne(docIdStr);
                           }}
                           disabled={!docIdStr}
-                          className="mt-1 shrink-0"
+                          className="mt-1 size-5 shrink-0"
                         />
                         <div className="min-w-0 flex-1">
                           {doc.id !== undefined && doc.id !== null ? (

@@ -332,7 +332,7 @@ export function AuditLogView() {
           </div>
 
           <div className="hidden overflow-x-auto rounded-xl border border-border/60 md:block">
-            <table className="w-full min-w-[860px] text-sm">
+            <table className="w-full min-w-[720px] text-sm">
               <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
                 <tr>
                   <th className="h-9 px-3.5 font-medium">When</th>

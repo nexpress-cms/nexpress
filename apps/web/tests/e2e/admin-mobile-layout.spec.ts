@@ -7,11 +7,12 @@
  * consume horizontal space.
  */
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 
 const MOBILE_VIEWPORTS = [
+  { width: 360, height: 780 },
   { width: 390, height: 844 },
   { width: 820, height: 1180 },
 ] as const;
@@ -19,6 +20,18 @@ const MOBILE_VIEWPORTS = [
 const ADMIN_ROUTES = [
   { path: "/admin", label: "dashboard" },
   { path: "/admin/collections/pages", label: "pages list" },
+  { path: "/admin/collections/pages/create", label: "page editor" },
+  { path: "/admin/media", label: "media library" },
+  { path: "/admin/sites", label: "sites" },
+  { path: "/admin/users", label: "user management" },
+  { path: "/admin/members", label: "members" },
+  { path: "/admin/community/pending", label: "pending queue" },
+  { path: "/admin/community/reports", label: "reports queue" },
+  { path: "/admin/community/audit", label: "audit log" },
+  { path: "/admin/community/settings", label: "community settings" },
+  { path: "/admin/plugins", label: "plugins" },
+  { path: "/admin/jobs", label: "jobs" },
+  { path: "/admin/health", label: "health" },
   { path: "/admin/settings", label: "settings" },
 ] as const;
 
@@ -36,22 +49,128 @@ interface OverflowMetrics {
 }
 
 test.describe("admin mobile layout", () => {
-  test("keeps the sidebar as an overlay drawer on mobile and tablet widths", async ({
-    page,
-    context,
-  }) => {
-    await context.clearCookies();
-    await signInAsE2EAdmin(page);
+  for (const [viewportIndex, viewport] of MOBILE_VIEWPORTS.entries()) {
+    test(`keeps the sidebar as an overlay drawer at ${viewport.width}px`, async ({
+      page,
+      context,
+    }) => {
+      test.setTimeout(60_000);
 
-    for (const viewport of MOBILE_VIEWPORTS) {
+      await context.clearCookies();
+      // This spec hits many admin routes in one pass; isolate its
+      // proxy rate-limit bucket so later E2E specs do not inherit it.
+      await context.setExtraHTTPHeaders({
+        "x-forwarded-for": `192.0.2.${10 + viewportIndex}`,
+      });
+      await signInAsE2EAdmin(page);
       await page.setViewportSize(viewport);
 
       for (const route of ADMIN_ROUTES) {
         await assertAdminRouteHasNoMobileOverflow(page, route);
       }
-    }
+    });
+  }
+
+  test("keeps the page editor form controls tappable on narrow phones", async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(60_000);
+
+    await context.clearCookies();
+    await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.90" });
+    await signInAsE2EAdmin(page);
+    await page.setViewportSize({ width: 360, height: 780 });
+
+    const response = await page.goto("/admin/collections/pages/create", {
+      waitUntil: "domcontentloaded",
+    });
+    expect(response?.status(), "admin page editor create route").toBe(200);
+    await expectNoHorizontalOverflow(page, "admin page editor form initial", {
+      ignoreClosedSidebar: true,
+    });
+
+    const titleInput = page.getByLabel("title", { exact: true });
+    const saveDraftButton = page.getByRole("button", { name: /^Save as Draft$/ });
+    const scheduleButton = page.getByRole("button", { name: /^Schedule$/ });
+    const publishButton = page.locator('button[type="submit"]').filter({ hasText: /^Publish$/ });
+
+    await expect(titleInput).toBeVisible();
+    await expect(saveDraftButton).toBeEnabled();
+    await expect(scheduleButton).toBeEnabled();
+    await expect(publishButton).toBeEnabled();
+
+    await expectTouchTarget(titleInput, "title input");
+    await expectTouchTarget(saveDraftButton, "save draft button");
+    await expectTouchTarget(scheduleButton, "schedule button");
+    await expectTouchTarget(publishButton, "publish button");
+
+    const title = `Mobile editor draft ${Date.now()}`;
+    await titleInput.fill(title);
+    await page.getByLabel("seoDescription", { exact: true }).fill("mobile editor smoke");
+    await expectNoHorizontalOverflow(page, "admin page editor form after fill", {
+      ignoreClosedSidebar: true,
+    });
+
+    const draftResponse = page.waitForResponse(
+      (res) => res.url().endsWith("/api/collections/pages") && res.request().method() === "POST",
+    );
+    await saveDraftButton.click();
+    const createdResponse = await draftResponse;
+    expect(createdResponse.status()).toBe(201);
+    const created = (await createdResponse.json()) as { id?: unknown; title?: unknown };
+    expect(typeof created.id).toBe("string");
+    expect(created.title).toBe(title);
+  });
+
+  test("keeps operational list controls tappable on narrow phones", async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(60_000);
+
+    await context.clearCookies();
+    await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.91" });
+    await signInAsE2EAdmin(page);
+    await page.setViewportSize({ width: 360, height: 780 });
+
+    const membersResponse = await page.goto("/admin/members", { waitUntil: "domcontentloaded" });
+    expect(membersResponse?.status(), "admin members list route").toBe(200);
+    await expectNoHorizontalOverflow(page, "admin members filters", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(page.getByLabel("Search", { exact: true }), "members search input");
+    await expectTouchTarget(page.getByLabel("Status", { exact: true }), "members status select");
+    await expectTouchTarget(page.getByRole("button", { name: /^Apply$/ }), "members apply button");
+
+    const jobsResponse = await page.goto("/admin/jobs", { waitUntil: "domcontentloaded" });
+    expect(jobsResponse?.status(), "admin jobs route").toBe(200);
+    await expectNoHorizontalOverflow(page, "admin jobs controls", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(page.getByRole("tab", { name: /^Pending$/ }), "jobs pending tab");
+    await expectTouchTarget(page.getByRole("tab", { name: /^Scheduled$/ }), "jobs scheduled tab");
+    await expectTouchTarget(
+      page.getByRole("button", { name: /^Refresh$/ }).first(),
+      "jobs refresh button",
+    );
+
+    await page.getByRole("tab", { name: /^Scheduled$/ }).click();
+    const handlerSelect = page.locator("#np-job-enqueue-type");
+    const payloadTextarea = page.locator("#np-job-enqueue-data");
+    await expect(handlerSelect).toBeVisible();
+    await expect(payloadTextarea).toBeVisible();
+    await expectTouchTarget(handlerSelect, "jobs handler select");
+    await expectTouchTarget(payloadTextarea, "jobs payload textarea");
+    await expectTouchTarget(page.getByRole("button", { name: /^Enqueue$/ }), "jobs enqueue button");
   });
 });
+
+async function expectTouchTarget(locator: Locator, label: string): Promise<void> {
+  const box = await locator.boundingBox();
+  expect(box, label).not.toBeNull();
+  expect(Math.round(box?.height ?? 0), label).toBeGreaterThanOrEqual(40);
+}
 
 async function assertAdminRouteHasNoMobileOverflow(
   page: Page,
@@ -68,8 +187,13 @@ async function assertAdminRouteHasNoMobileOverflow(
     ignoreClosedSidebar: true,
   });
 
-  await openButton.click();
-  await expect(page.locator('[data-np-admin-sidebar][data-open="true"]')).toBeVisible();
+  const openSidebar = page.locator('[data-np-admin-sidebar][data-open="true"]');
+  await expect(async () => {
+    if (!(await openSidebar.isVisible().catch(() => false))) {
+      await openButton.click();
+    }
+    await expect(openSidebar).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 8_000 });
   await waitForSidebarToSettle(page, "open");
   await expectNoHorizontalOverflow(page, `admin ${route.label} drawer open`);
 
@@ -130,6 +254,12 @@ async function collectOverflowMetrics(
       .filter((element) => {
         if (!evaluateOptions.ignoreClosedSidebar) return true;
         return !element.closest('[data-np-admin-sidebar][data-open="false"]');
+      })
+      .filter((element) => {
+        const style = window.getComputedStyle(element);
+        return (
+          style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0
+        );
       })
       .map((element) => {
         const rect = element.getBoundingClientRect();
