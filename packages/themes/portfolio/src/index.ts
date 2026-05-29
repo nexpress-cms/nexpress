@@ -74,6 +74,7 @@ const ISO = (year: number, month = 1, day = 1): string =>
 const SEED_PROJECTS: NpThemeSeedPost[] = [
   {
     title: "Hanmi Gallery — <em>complete identity</em>",
+    slug: "hanmi-gallery-complete-identity",
     excerpt:
       "Identity, custom display type, and signage for a contemporary gallery in Mapo. A one-year engagement covering everything from the wordmark to the door hardware.",
     content: lexicalDoc([

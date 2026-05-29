@@ -270,6 +270,9 @@ export async function seedPosts(
   // parentSlug) ignore the second pass.
   const slugToId = new Map<string, string>();
   const pendingParents: Array<{ childId: string; parentSlug: string }> = [];
+  const writeHandle = (options.tx ?? getDb()) as {
+    execute(query: ReturnType<typeof sql>): Promise<unknown>;
+  };
 
   for (const sample of samples) {
     const tagRefs = (sample.tagNames ?? [])
@@ -282,6 +285,7 @@ export async function seedPosts(
       tagNames: _tagNames,
       categoryNames: _categoryNames,
       status,
+      slug,
       kind,
       parentSlug,
       order,
@@ -311,7 +315,13 @@ export async function seedPosts(
     const savedSlug =
       typeof saved.doc.slug === "string" ? saved.doc.slug : null;
     const savedId = typeof saved.doc.id === "string" ? saved.doc.id : null;
-    if (savedSlug && savedId) slugToId.set(savedSlug, savedId);
+    if (slug && savedId) {
+      await writeHandle.execute(
+        sql`update np_c_posts set slug = ${slug} where id = ${savedId}`,
+      );
+    }
+    const finalSlug = slug ?? savedSlug;
+    if (finalSlug && savedId) slugToId.set(finalSlug, savedId);
     if (parentSlug && savedId) {
       pendingParents.push({ childId: savedId, parentSlug });
     }
@@ -329,9 +339,6 @@ export async function seedPosts(
   // Use the outer tx (when provided) so the parent FK update joins
   // the same atomic scope as the saveDocument writes that created
   // the rows.
-  const writeHandle = (options.tx ?? getDb()) as {
-    execute(query: ReturnType<typeof sql>): Promise<unknown>;
-  };
   for (const { childId, parentSlug } of pendingParents) {
     const parentId = slugToId.get(parentSlug);
     if (!parentId) continue;
