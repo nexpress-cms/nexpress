@@ -1,5 +1,11 @@
 # @nexpress/xliff
 
+## 0.3.15
+
+### Patch Changes
+
+- @nexpress/core@0.3.15
+
 ## 0.3.14
 
 ### Patch Changes

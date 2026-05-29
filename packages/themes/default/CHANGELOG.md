@@ -1,5 +1,19 @@
 # @nexpress/theme-default
 
+## 0.3.15
+
+### Patch Changes
+
+- 225cf33: Fix mobile horizontal overflow from the default theme header, feature card, and closed drawer.
+- da32271: Fix bundled theme mobile overflow regressions, including the default header's auth-driven
+  tablet overflow, and allow seeded posts to declare clean URL slugs.
+- Updated dependencies [da32271]
+  - @nexpress/theme@0.3.15
+  - @nexpress/next@0.3.15
+  - @nexpress/blocks@0.3.15
+  - @nexpress/core@0.3.15
+  - @nexpress/editor@0.3.15
+
 ## 0.3.14
 
 ### Patch Changes

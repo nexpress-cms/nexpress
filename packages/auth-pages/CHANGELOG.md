@@ -1,5 +1,12 @@
 # @nexpress/auth-pages
 
+## 0.3.15
+
+### Patch Changes
+
+- @nexpress/next@0.3.15
+- @nexpress/core@0.3.15
+
 ## 0.3.14
 
 ### Patch Changes

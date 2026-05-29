@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/plugin-sdk",
-  "version": "0.3.14",
+  "version": "0.3.15",
   "description": "Plugin SDK for NexPress (definePlugin).",
   "license": "MIT",
   "author": "Nexpress",

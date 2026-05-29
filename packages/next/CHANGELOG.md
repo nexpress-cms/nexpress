@@ -1,5 +1,14 @@
 # @nexpress/next
 
+## 0.3.15
+
+### Patch Changes
+
+- Updated dependencies [da32271]
+  - @nexpress/theme@0.3.15
+  - @nexpress/blocks@0.3.15
+  - @nexpress/core@0.3.15
+
 ## 0.3.14
 
 ### Patch Changes
