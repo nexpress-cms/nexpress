@@ -123,10 +123,68 @@ test.describe("admin mobile layout", () => {
     expect(created.title).toBe(title);
   });
 
-  test("keeps operational list controls tappable on narrow phones", async ({
-    page,
-    context,
-  }) => {
+  test("keeps page-builder edit controls tappable on narrow phones", async ({ page, context }) => {
+    test.setTimeout(60_000);
+
+    await context.clearCookies();
+    await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.92" });
+    await signInAsE2EAdmin(page);
+    await page.setViewportSize({ width: 360, height: 780 });
+
+    const response = await page.goto("/admin/collections/pages/create", {
+      waitUntil: "domcontentloaded",
+    });
+    expect(response?.status(), "admin page editor create route").toBe(200);
+    await expectNoHorizontalOverflow(page, "admin page-builder initial controls", {
+      ignoreClosedSidebar: true,
+    });
+
+    await expectTouchTarget(
+      page.locator('[role="tablist"][aria-label="Editor view"]'),
+      "editor view toggle",
+    );
+    await expectTouchTarget(
+      page.getByRole("button", { name: /Open pattern library/ }),
+      "pattern library button",
+    );
+    await expectTouchTarget(page.getByRole("button", { name: /^Undo$/ }), "undo button");
+    await expectTouchTarget(page.getByRole("button", { name: /^Redo$/ }), "redo button");
+
+    await page.getByRole("button", { name: /^Hero$/ }).click();
+    const firstRow = page.locator("[data-np-block-row]").first();
+    await expect(firstRow).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin page-builder after adding block", {
+      ignoreClosedSidebar: true,
+    });
+
+    await expectTouchTarget(
+      firstRow.locator("[data-np-block-select-target]").first(),
+      "block select checkbox",
+    );
+    await expectTouchTarget(firstRow.getByRole("button", { name: /^Drag / }), "block drag handle");
+    await expectTouchTarget(
+      firstRow.getByRole("button", { name: /^Collapse block$/ }),
+      "block collapse button",
+    );
+    await expectTouchTarget(firstRow.getByRole("button", { name: /^Move up$/ }), "move up button");
+    await expectTouchTarget(
+      firstRow.getByRole("button", { name: /^Duplicate$/ }),
+      "duplicate button",
+    );
+    await expectTouchTarget(
+      firstRow.getByRole("button", { name: /^Edit as JSON$/ }),
+      "edit-json button",
+    );
+
+    await firstRow.getByRole("button", { name: /^Collapse block$/ }).click();
+    await expect(firstRow.getByRole("button", { name: /^Expand block$/ })).toBeVisible();
+    await expectTouchTarget(
+      firstRow.getByRole("button", { name: /^Expand block$/ }),
+      "block expand button",
+    );
+  });
+
+  test("keeps operational list controls tappable on narrow phones", async ({ page, context }) => {
     test.setTimeout(60_000);
 
     await context.clearCookies();
@@ -167,9 +225,13 @@ test.describe("admin mobile layout", () => {
 });
 
 async function expectTouchTarget(locator: Locator, label: string): Promise<void> {
-  const box = await locator.boundingBox();
-  expect(box, label).not.toBeNull();
-  expect(Math.round(box?.height ?? 0), label).toBeGreaterThanOrEqual(40);
+  await expect(locator, label).toBeVisible();
+  await expect(async () => {
+    const height = await locator.evaluate((element) =>
+      Math.round(element.getBoundingClientRect().height),
+    );
+    expect(height, label).toBeGreaterThanOrEqual(40);
+  }).toPass({ timeout: 5_000 });
 }
 
 async function assertAdminRouteHasNoMobileOverflow(

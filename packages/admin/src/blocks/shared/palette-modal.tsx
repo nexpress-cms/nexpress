@@ -93,7 +93,7 @@ export function PaletteModal({
             onChange={(event) => setQuery(event.currentTarget.value)}
             placeholder="Search blocks · type, category, keyword…"
             autoFocus
-            className="h-8 min-w-0 border-0 px-0 shadow-none focus-visible:ring-0"
+            className="h-10 min-w-0 border-0 px-0 shadow-none focus-visible:ring-0 sm:h-8"
           />
           <Button
             type="button"
@@ -168,7 +168,7 @@ function PaletteCard({ block, isFavorite, onPick, onToggleFavorite }: PaletteCar
         aria-label={isFavorite ? `Unpin ${block.label}` : `Pin ${block.label}`}
         aria-pressed={isFavorite}
         className={cn(
-          "absolute right-1.5 top-1.5 z-10 inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition",
+          "absolute right-1.5 top-1.5 z-10 inline-flex size-10 items-center justify-center rounded text-muted-foreground transition sm:size-6",
           "hover:bg-accent hover:text-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
           isFavorite
             ? "text-amber-500"

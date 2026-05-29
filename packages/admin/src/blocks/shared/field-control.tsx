@@ -222,7 +222,7 @@ export function FieldControl({ field, value, onChange, inputId }: FieldControlPr
           type="color"
           value={/^#([0-9a-fA-F]{6})$/.test(stringValue) ? stringValue : "#000000"}
           onChange={(event) => onChange(event.currentTarget.value)}
-          className="h-9 w-12 cursor-pointer rounded-md border border-input bg-background"
+          className="h-10 w-12 cursor-pointer rounded-md border border-input bg-background sm:h-9"
         />
         <Input
           value={stringValue}
