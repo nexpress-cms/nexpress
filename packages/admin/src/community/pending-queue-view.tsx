@@ -271,7 +271,7 @@ export function PendingQueueView() {
                       checked={selected.has(rowKey(row))}
                       onChange={() => toggleOne(row)}
                       disabled={bulkBusy !== null}
-                      className="mt-1"
+                      className="mt-1 size-5"
                     />
                     <div className="min-w-0 flex-1 space-y-1">
                       <Link

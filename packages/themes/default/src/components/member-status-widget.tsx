@@ -28,9 +28,7 @@ export interface MemberStatusWidgetProps {
  */
 export function MemberStatusWidget({ initialMember }: MemberStatusWidgetProps = {}) {
   const router = useRouter();
-  const [member, setMember] = useState<MemberMe | null | "loading">(
-    initialMember === undefined ? "loading" : initialMember,
-  );
+  const [member, setMember] = useState<MemberMe | null>(initialMember ?? null);
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
@@ -71,10 +69,6 @@ export function MemberStatusWidget({ initialMember }: MemberStatusWidgetProps = 
     router.push("/");
     router.refresh();
   };
-
-  if (member === "loading") {
-    return <span className="np-member-status np-member-status-loading" aria-hidden="true" />;
-  }
 
   if (member) {
     return (

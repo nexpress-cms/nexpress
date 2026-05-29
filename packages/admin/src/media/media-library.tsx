@@ -280,7 +280,7 @@ export function MediaLibrary() {
                       key={option.value}
                       type="button"
                       className={cn(
-                        "min-w-0 flex-1 rounded-md px-3 py-2 transition-colors sm:flex-none",
+                        "min-h-10 min-w-0 flex-1 rounded-md px-3 py-2.5 transition-colors sm:min-h-0 sm:flex-none sm:py-2",
                         uploaderFilter === option.value
                           ? "bg-foreground text-background"
                           : "text-muted-foreground hover:text-foreground",
@@ -296,7 +296,7 @@ export function MediaLibrary() {
                   <button
                     type="button"
                     className={cn(
-                      "flex-1 rounded-md px-3 py-2 text-sm transition-colors sm:flex-none",
+                      "min-h-10 flex-1 rounded-md px-3 py-2.5 text-sm transition-colors sm:min-h-0 sm:flex-none sm:py-2",
                       viewMode === "grid"
                         ? "bg-foreground text-background"
                         : "text-muted-foreground",
@@ -308,7 +308,7 @@ export function MediaLibrary() {
                   <button
                     type="button"
                     className={cn(
-                      "flex-1 rounded-md px-3 py-2 text-sm transition-colors sm:flex-none",
+                      "min-h-10 flex-1 rounded-md px-3 py-2.5 text-sm transition-colors sm:min-h-0 sm:flex-none sm:py-2",
                       viewMode === "list"
                         ? "bg-foreground text-background"
                         : "text-muted-foreground",
@@ -439,7 +439,7 @@ function GridView({
                 type="checkbox"
                 checked={checked}
                 onChange={() => onToggle(item.id)}
-                className="absolute left-3 top-3 z-10 h-4 w-4 rounded border-border"
+                className="absolute left-3 top-3 z-10 size-5 rounded border-border"
               />
               <div className="absolute right-3 top-3 z-10 rounded-full border border-border/70 bg-background/80 p-1 text-muted-foreground">
                 <MoreVertical className="h-4 w-4" />
@@ -540,7 +540,7 @@ function ListView({
               type="checkbox"
               checked={selectedItems.includes(item.id)}
               onChange={() => onToggle(item.id)}
-              className="mt-5 h-4 w-4 rounded border-border"
+              className="mt-5 size-5 rounded border-border"
             />
             <div className="h-14 w-14 overflow-hidden rounded-xl bg-muted/40">
               <MediaThumb item={item} compact />
@@ -678,7 +678,7 @@ function SidebarButton({
     <button
       type="button"
       className={cn(
-        "flex min-w-0 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+        "flex min-h-10 min-w-0 w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors sm:min-h-0 sm:py-2",
         active
           ? "bg-foreground text-background"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -711,7 +711,7 @@ function FolderTree({
       <button
         type="button"
         className={cn(
-          "flex min-w-0 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+          "flex min-h-10 min-w-0 w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors sm:min-h-0 sm:py-2",
           activeId === folder.id
             ? "bg-foreground text-background"
             : "text-muted-foreground hover:bg-muted hover:text-foreground",

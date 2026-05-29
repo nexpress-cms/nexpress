@@ -305,11 +305,11 @@ export function JobsView() {
             }`}
           >
             {isStateTab(tab) ? (
-              <div className="col-span-2 inline-flex h-8 min-w-0 rounded-lg bg-neutral-100 p-1 text-[12.5px] dark:bg-neutral-900 sm:col-span-1">
+              <div className="col-span-2 inline-flex min-h-12 min-w-0 rounded-lg bg-neutral-100 p-1 text-[12.5px] dark:bg-neutral-900 sm:col-span-1 sm:min-h-0 sm:h-8">
                 <button
                   type="button"
                   onClick={() => setWindowMode("all")}
-                  className={`flex-1 rounded-md px-2.5 transition-colors sm:flex-none ${
+                  className={`min-h-10 flex-1 rounded-md px-3 transition-colors sm:min-h-0 sm:flex-none sm:px-2.5 ${
                     windowMode === "all"
                       ? "bg-white font-medium text-neutral-950 shadow-sm dark:bg-neutral-950 dark:text-neutral-50"
                       : "text-neutral-500 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-neutral-50"
@@ -320,7 +320,7 @@ export function JobsView() {
                 <button
                   type="button"
                   onClick={() => setWindowMode("24h")}
-                  className={`flex-1 rounded-md px-2.5 transition-colors sm:flex-none ${
+                  className={`min-h-10 flex-1 rounded-md px-3 transition-colors sm:min-h-0 sm:flex-none sm:px-2.5 ${
                     windowMode === "24h"
                       ? "bg-white font-medium text-neutral-950 shadow-sm dark:bg-neutral-950 dark:text-neutral-50"
                       : "text-neutral-500 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-neutral-50"
@@ -750,7 +750,7 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
               id="np-job-enqueue-type"
               value={type}
               onChange={(event) => setType(event.target.value)}
-              className="flex h-8 w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-2.5 text-[13px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950"
+              className="flex h-10 w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-3 text-[13px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 sm:h-8 sm:px-2.5"
             >
               <option value="">Select…</option>
               {handlers.map((name) => (
@@ -773,7 +773,7 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
               onChange={(event) => setDataText(event.target.value)}
               rows={3}
               spellCheck={false}
-              className="w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-2.5 py-2 font-mono text-[12px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950"
+              className="min-h-28 w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-3 py-2.5 font-mono text-[12px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 sm:min-h-0 sm:px-2.5 sm:py-2"
               placeholder='{"docId": "..."}'
             />
           </div>
