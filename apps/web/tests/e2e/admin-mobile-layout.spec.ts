@@ -184,6 +184,62 @@ test.describe("admin mobile layout", () => {
     );
   });
 
+  test("keeps collection list cards and bulk controls tappable on narrow phones", async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(60_000);
+
+    await context.clearCookies();
+    await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.93" });
+    await signInAsE2EAdmin(page);
+    await page.setViewportSize({ width: 360, height: 780 });
+
+    const title = `Mobile list draft ${Date.now()}`;
+    await createDraftPage(page, title);
+
+    const response = await page.goto(
+      `/admin/collections/pages?search=${encodeURIComponent(title)}`,
+      {
+        waitUntil: "domcontentloaded",
+      },
+    );
+    expect(response?.status(), "admin pages list route").toBe(200);
+    await expectNoHorizontalOverflow(page, "admin collection list searched", {
+      ignoreClosedSidebar: true,
+    });
+
+    await expectTouchTarget(page.getByPlaceholder("Search pages..."), "pages search input");
+    await expectTouchTarget(page.getByRole("link", { name: /^Create$/ }), "pages create link");
+
+    const row = page.locator("[data-np-collection-mobile-row]").filter({ hasText: title });
+    await expect(row).toBeVisible();
+    await expectTouchTarget(
+      row.locator("[data-np-collection-row-select-target]"),
+      "collection row select checkbox",
+    );
+    await expectTouchTarget(row.getByRole("link", { name: `Open ${title}` }), "row open link");
+
+    await row.locator("[data-np-collection-row-select-target]").click();
+    await expect(page.getByText("1 selected")).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin collection list selected", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(page.getByRole("button", { name: /^Publish$/ }), "bulk publish");
+    await expectTouchTarget(page.getByRole("button", { name: /^Unpublish$/ }), "bulk unpublish");
+    await expectTouchTarget(page.getByRole("button", { name: /^Delete$/ }), "bulk delete");
+    await expectTouchTarget(page.getByRole("button", { name: /^Clear$/ }), "bulk clear");
+
+    await page.getByRole("button", { name: /^Delete$/ }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expectTouchTarget(page.getByRole("button", { name: /^Cancel$/ }), "delete cancel");
+    await expectTouchTarget(page.getByRole("button", { name: /^Delete 1$/ }), "delete confirm");
+    await page.getByRole("button", { name: /^Cancel$/ }).click();
+
+    await expectTouchTarget(page.getByRole("button", { name: /^Previous$/ }), "previous page");
+    await expectTouchTarget(page.getByRole("button", { name: /^Next$/ }), "next page");
+  });
+
   test("keeps operational list controls tappable on narrow phones", async ({ page, context }) => {
     test.setTimeout(60_000);
 
@@ -223,6 +279,34 @@ test.describe("admin mobile layout", () => {
     await expectTouchTarget(page.getByRole("button", { name: /^Enqueue$/ }), "jobs enqueue button");
   });
 });
+
+async function createDraftPage(page: Page, title: string): Promise<void> {
+  const response = await page.goto("/admin/collections/pages/create", {
+    waitUntil: "domcontentloaded",
+  });
+  expect(response?.status(), "admin page editor create route").toBe(200);
+
+  const saveDraftButton = page.getByRole("button", { name: /^Save as Draft$/ });
+  const titleInput = page.getByLabel("title", { exact: true });
+  const seoDescriptionInput = page.getByLabel("seoDescription", { exact: true });
+  await expect(saveDraftButton).toBeEnabled();
+  await expect(titleInput).toBeVisible();
+  await expect(seoDescriptionInput).toBeVisible();
+  await titleInput.fill(title);
+  await seoDescriptionInput.fill("mobile list smoke");
+  await expect(titleInput).toHaveValue(title);
+  await expect(seoDescriptionInput).toHaveValue("mobile list smoke");
+
+  const draftResponse = page.waitForResponse(
+    (res) => res.url().endsWith("/api/collections/pages") && res.request().method() === "POST",
+  );
+  await saveDraftButton.click();
+  const responseBody = await draftResponse;
+  expect(
+    responseBody.status(),
+    responseBody.status() === 201 ? undefined : await responseBody.text(),
+  ).toBe(201);
+}
 
 async function expectTouchTarget(locator: Locator, label: string): Promise<void> {
   await expect(locator, label).toBeVisible();
