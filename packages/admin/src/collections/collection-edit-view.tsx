@@ -1036,6 +1036,8 @@ function CollectionEditViewInner({
   };
   const isSaving = savingAs !== null;
   const isScheduled = currentStatus === "scheduled";
+  const scheduleLabel = isScheduled ? "Reschedule" : "Schedule";
+  const publishLabel = isScheduled ? "Publish now" : "Publish";
 
   const handleDelete = async () => {
     if (!doc?.id) {
@@ -1072,7 +1074,7 @@ function CollectionEditViewInner({
         onSubmit={(e) => {
           void handlePublish(e);
         }}
-        className="min-w-0 space-y-6"
+        className="min-w-0 space-y-6 pb-28 md:pb-0"
       >
         {toast ? (
           <div
@@ -1154,46 +1156,48 @@ function CollectionEditViewInner({
               </Button>
             ) : null}
 
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                void handleSaveDraft();
-              }}
-              disabled={isSaving}
-              className="w-full sm:w-auto"
-            >
-              {savingAs === "draft" ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <FileText className="size-3.5" />
-              )}
-              Save as Draft
-            </Button>
+            <div className="hidden md:contents">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  void handleSaveDraft();
+                }}
+                disabled={isSaving}
+                className="w-full sm:w-auto"
+              >
+                {savingAs === "draft" ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <FileText className="size-3.5" />
+                )}
+                Save as Draft
+              </Button>
 
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setScheduleOpen(true)}
-              disabled={isSaving}
-              className="w-full sm:w-auto"
-            >
-              {savingAs === "scheduled" || savingAs === "unschedule" ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <CalendarClock className="size-3.5" />
-              )}
-              {isScheduled ? "Reschedule" : "Schedule"}
-            </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setScheduleOpen(true)}
+                disabled={isSaving}
+                className="w-full sm:w-auto"
+              >
+                {savingAs === "scheduled" || savingAs === "unschedule" ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <CalendarClock className="size-3.5" />
+                )}
+                {scheduleLabel}
+              </Button>
 
-            <Button type="submit" disabled={isSaving} className="w-full sm:w-auto">
-              {savingAs === "published" ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Save className="size-3.5" />
-              )}
-              {isScheduled ? "Publish now" : "Publish"}
-            </Button>
+              <Button type="submit" disabled={isSaving} className="w-full sm:w-auto">
+                {savingAs === "published" ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Save className="size-3.5" />
+                )}
+                {publishLabel}
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -1205,6 +1209,61 @@ function CollectionEditViewInner({
           onSchedule={handleSchedule}
           onCancelSchedule={isScheduled ? handleCancelSchedule : undefined}
         />
+
+        <div
+          data-np-mobile-editor-actions
+          className="fixed inset-x-0 bottom-0 z-30 border-t border-neutral-200/80 bg-background/95 px-3 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] shadow-[0_-10px_28px_rgba(15,23,42,0.12)] backdrop-blur md:hidden dark:border-neutral-800 dark:bg-neutral-950/95"
+        >
+          <div className="mx-auto grid max-w-screen-sm min-w-0 grid-cols-3 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              aria-label="Save as Draft"
+              onClick={() => {
+                void handleSaveDraft();
+              }}
+              disabled={isSaving}
+              className="min-w-0 px-2"
+            >
+              {savingAs === "draft" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <FileText className="size-3.5" />
+              )}
+              <span className="min-w-0 truncate">Draft</span>
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              aria-label={scheduleLabel}
+              onClick={() => setScheduleOpen(true)}
+              disabled={isSaving}
+              className="min-w-0 px-2"
+            >
+              {savingAs === "scheduled" || savingAs === "unschedule" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <CalendarClock className="size-3.5" />
+              )}
+              <span className="min-w-0 truncate">{scheduleLabel}</span>
+            </Button>
+
+            <Button
+              type="submit"
+              aria-label={publishLabel}
+              disabled={isSaving}
+              className="min-w-0 px-2"
+            >
+              {savingAs === "published" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Save className="size-3.5" />
+              )}
+              <span className="min-w-0 truncate">{publishLabel}</span>
+            </Button>
+          </div>
+        </div>
 
         <div className="grid min-w-0 gap-6 xl:grid-cols-12">
           <div className="min-w-0 space-y-4 xl:col-span-8">

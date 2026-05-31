@@ -34,14 +34,13 @@ test.describe("publish a page", () => {
     await page.goto("/admin/collections/pages/create");
     await expect(page).toHaveURL(/\/admin\/collections\/pages\/create$/);
 
-    // Target the real <button type="submit"> directly. The admin
+    // Target the visible submit button directly. The admin
     // sidebar's "Publish" group header is a CardHeader rendered
     // as <div role="button"> for expand/collapse, so getByRole
-    // matches both. Scoping to <form> doesn't help — the sidebar
-    // group is rendered inside the same form. Tag + type pins
-    // the submit button unambiguously.
+    // matches both. Mobile also mounts its sticky publish action
+    // in the same form, so filter hidden breakpoint variants out.
     const publishButton = page
-      .locator('button[type="submit"]')
+      .locator('button[type="submit"]:visible')
       .filter({ hasText: /^Publish$/ });
 
     // Wait for the form to be interactive before filling — same
