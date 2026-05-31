@@ -151,8 +151,8 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
   };
 
   return (
-    <Card className="min-w-0">
-      <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+    <Card className="min-w-0" data-np-revisions-panel>
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
         <div className="flex min-w-0 items-center gap-2">
           <History className="h-5 w-5 shrink-0 text-muted-foreground" />
           <CardTitle className="break-words">Revision history</CardTitle>
@@ -197,7 +197,7 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
 
         {state.kind === "ready" && state.revisions.length > 0 ? (
           <ScrollArea className="max-h-96 pr-2">
-            <ul className="space-y-2">
+            <ul className="min-w-0 space-y-2">
               {state.revisions.map((revision) => (
                 <li
                   key={revision.id}
@@ -216,7 +216,7 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
                         {revision.status}
                       </Badge>
                     </div>
-                    <span className="break-words text-xs text-muted-foreground">
+                    <span className="max-w-full break-words text-xs text-muted-foreground">
                       {formatDate(revision.createdAt)}
                       {revision.changedFields.length > 0 ? (
                         <>
@@ -279,7 +279,12 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
             ) : null}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setSelected(null)}>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={() => setSelected(null)}
+            >
               Close
             </Button>
             {selected ? (
@@ -289,6 +294,7 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
                   void handleRestore(selected);
                 }}
                 disabled={restoringId !== null}
+                className="w-full sm:w-auto"
               >
                 {restoringId === selected.id ? (
                   <Loader2 className="size-3.5 animate-spin" />

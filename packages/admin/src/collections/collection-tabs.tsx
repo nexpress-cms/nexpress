@@ -64,14 +64,14 @@ export function CollectionTabs({ tabs, collection, documentId }: CollectionTabsP
   return (
     <>
       {tabs.map((tab) => (
-        <Card key={`${tab.pluginId}:${tab.id}`}>
+        <Card key={`${tab.pluginId}:${tab.id}`} className="min-w-0" data-np-collection-tab-panel>
           <CardHeader>
-            <CardTitle className="text-base">{tab.label}</CardTitle>
-            <p className="text-xs text-muted-foreground">{tab.pluginName}</p>
+            <CardTitle className="break-words text-base">{tab.label}</CardTitle>
+            <p className="break-words text-xs text-muted-foreground">{tab.pluginName}</p>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="min-w-0 space-y-4">
             {tab.description ? (
-              <p className="text-xs text-muted-foreground">{tab.description}</p>
+              <p className="break-words text-xs text-muted-foreground">{tab.description}</p>
             ) : null}
 
             {tab.widgets && tab.widgets.length > 0 ? (
@@ -161,35 +161,37 @@ function TabWidget({
   }, [load]);
 
   return (
-    <div className="rounded-lg border border-border/60 p-3">
-      <div className="text-xs font-medium text-muted-foreground">{widget.label}</div>
+    <div className="min-w-0 rounded-lg border border-border/60 p-3">
+      <div className="break-words text-xs font-medium text-muted-foreground">{widget.label}</div>
       <div className="mt-1">
         {state.kind === "loading" ? (
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
         ) : state.kind === "metric" ? (
-          <div>
-            <div className="text-xl font-semibold">{state.value}</div>
+          <div className="min-w-0">
+            <div className="break-words text-xl font-semibold">{state.value}</div>
             {state.delta ? (
-              <div className="text-xs text-muted-foreground">{state.delta}</div>
+              <div className="break-words text-xs text-muted-foreground">{state.delta}</div>
             ) : null}
           </div>
         ) : state.kind === "status" ? (
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-start gap-2">
             {state.level === "ok" ? (
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-300" />
             ) : state.level === "warn" ? (
-              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-300" />
             ) : (
-              <AlertTriangle className="h-4 w-4 text-rose-600 dark:text-rose-300" />
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-300" />
             )}
-            <span className="text-sm">{state.message}</span>
+            <span className="min-w-0 break-words text-sm">{state.message}</span>
           </div>
         ) : (
-          <div className="text-xs text-rose-600 dark:text-rose-300">{state.message}</div>
+          <div className="break-words text-xs text-rose-600 dark:text-rose-300">
+            {state.message}
+          </div>
         )}
       </div>
       {widget.description ? (
-        <p className="mt-2 text-xs text-muted-foreground">{widget.description}</p>
+        <p className="mt-2 break-words text-xs text-muted-foreground">{widget.description}</p>
       ) : null}
     </div>
   );
@@ -226,17 +228,18 @@ function TabAction({
   }, [pluginId, action, collection, documentId]);
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
-      <div>
-        <div className="text-sm font-medium">{action.label}</div>
+    <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-border/60 p-3">
+      <div className="min-w-0">
+        <div className="break-words text-sm font-medium">{action.label}</div>
         {action.description ? (
-          <div className="text-xs text-muted-foreground">{action.description}</div>
+          <div className="break-words text-xs text-muted-foreground">{action.description}</div>
         ) : null}
       </div>
       <Button
         type="button"
         variant="outline"
         size="sm"
+        className="w-full sm:w-auto"
         onClick={() => void run()}
         disabled={running}
       >
@@ -251,8 +254,8 @@ function TabAction({
         <div
           className={
             toast.type === "success"
-              ? "text-xs text-emerald-700 dark:text-emerald-200"
-              : "text-xs text-rose-700 dark:text-rose-200"
+              ? "break-words text-xs text-emerald-700 dark:text-emerald-200"
+              : "break-words text-xs text-rose-700 dark:text-rose-200"
           }
         >
           {toast.message}
