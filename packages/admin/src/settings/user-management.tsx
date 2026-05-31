@@ -257,7 +257,7 @@ export function UserManagement() {
       </CardContent>
 
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-        <DialogContent className="min-w-0">
+        <DialogContent data-np-user-create-dialog className="min-w-0">
           <DialogHeader>
             <DialogTitle className="break-words">Create user</DialogTitle>
             <DialogDescription className="break-words">
@@ -351,7 +351,7 @@ export function UserManagement() {
       </Dialog>
 
       <Dialog open={emailInviteOpen} onOpenChange={setEmailInviteOpen}>
-        <DialogContent className="min-w-0">
+        <DialogContent data-np-user-invite-dialog className="min-w-0">
           <DialogHeader>
             <DialogTitle className="break-words">Invite user</DialogTitle>
             <DialogDescription className="break-words">

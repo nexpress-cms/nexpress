@@ -11,6 +11,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { Buffer } from "node:buffer";
 
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
+import { E2E_ADMIN } from "./fixtures/seed.js";
 
 const MOBILE_VIEWPORTS = [
   { width: 360, height: 780 },
@@ -555,8 +556,11 @@ test.describe("admin mobile layout", () => {
     );
 
     await page.getByRole("button", { name: /^Invite user$/ }).click();
-    const inviteDialog = page.getByRole("dialog");
+    const inviteDialog = page.locator("[data-np-user-invite-dialog]");
     await expect(inviteDialog).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin settings invite user dialog", {
+      ignoreClosedSidebar: true,
+    });
     await expectTouchTarget(inviteDialog.getByLabel("Name"), "invite user name");
     await expectTouchTarget(inviteDialog.getByLabel("Email"), "invite user email");
     await expectTouchTarget(
@@ -571,8 +575,11 @@ test.describe("admin mobile layout", () => {
     await expect(inviteDialog).toBeHidden();
 
     await page.getByRole("button", { name: /^Create with password$/ }).click();
-    const createDialog = page.getByRole("dialog");
+    const createDialog = page.locator("[data-np-user-create-dialog]");
     await expect(createDialog).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin settings create user dialog", {
+      ignoreClosedSidebar: true,
+    });
     await expectTouchTarget(createDialog.getByLabel("Name"), "create user name");
     await expectTouchTarget(createDialog.getByLabel("Email"), "create user email");
     await expectTouchTarget(createDialog.getByLabel("Password"), "create user password");
@@ -584,6 +591,89 @@ test.describe("admin mobile layout", () => {
       createDialog.getByRole("button", { name: /^Create user$/ }),
       "create user submit",
     );
+    await createDialog.getByRole("button", { name: /^Cancel$/ }).click();
+    await expect(createDialog).toBeHidden();
+  });
+
+  test("keeps site and membership dialogs tappable on narrow phones", async ({ page, context }) => {
+    test.setTimeout(60_000);
+
+    await context.clearCookies();
+    await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.97" });
+    await signInAsE2EAdmin(page);
+    await page.setViewportSize({ width: 360, height: 780 });
+
+    const sitesResponse = await page.goto("/admin/sites", { waitUntil: "domcontentloaded" });
+    expect(sitesResponse?.status(), "admin sites route").toBe(200);
+    await expectNoHorizontalOverflow(page, "admin sites initial", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(page.getByRole("button", { name: /^Add site$/ }), "add site button");
+    await expectTouchTarget(
+      page
+        .locator("main")
+        .getByRole("link", { name: /^Members$/ })
+        .first(),
+      "members link",
+    );
+
+    await page.getByRole("button", { name: /^Add site$/ }).click();
+    const siteDialog = page.locator("[data-np-site-create-dialog]");
+    await expect(siteDialog).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin site create dialog", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(siteDialog.getByLabel("Site id"), "site id input");
+    await expectTouchTarget(siteDialog.getByLabel("Display name"), "site name input");
+    await expectTouchTarget(siteDialog.getByLabel("Hostname (optional)"), "site hostname input");
+    await expectTouchTarget(
+      siteDialog.getByLabel("Description (optional)"),
+      "site description input",
+    );
+    await expectTouchTarget(siteDialog.getByRole("button", { name: /^Cancel$/ }), "site cancel");
+    await expectTouchTarget(
+      siteDialog.getByRole("button", { name: /^Create site$/ }),
+      "site create",
+    );
+    await siteDialog.getByRole("button", { name: /^Cancel$/ }).click();
+    await expect(siteDialog).toBeHidden();
+
+    const membersResponse = await page.goto("/admin/sites/default/members", {
+      waitUntil: "domcontentloaded",
+    });
+    expect(membersResponse?.status(), "default site members route").toBe(200);
+    await expectNoHorizontalOverflow(page, "admin site members initial", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(page.getByRole("link", { name: /^All sites$/ }), "all sites link");
+    await expectTouchTarget(
+      page.getByRole("button", { name: /^Grant membership$/ }),
+      "grant membership",
+    );
+
+    await page.getByRole("button", { name: /^Grant membership$/ }).click();
+    const grantDialog = page.locator("[data-np-membership-grant-dialog]");
+    await expect(grantDialog).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin membership grant dialog", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(grantDialog.getByLabel("User"), "grant user search");
+    await expectTouchTarget(grantDialog.getByLabel("Role"), "grant role select");
+    await expectTouchTarget(grantDialog.getByRole("button", { name: /^Cancel$/ }), "grant cancel");
+    await expectTouchTarget(grantDialog.getByRole("button", { name: /^Grant$/ }), "grant submit");
+
+    await grantDialog.getByLabel("User").fill(E2E_ADMIN.email);
+    const result = grantDialog.getByRole("button", { name: new RegExp(E2E_ADMIN.email) });
+    await expect(result).toBeVisible({ timeout: 10_000 });
+    await expectTouchTarget(result, "grant user result");
+    await result.click();
+    await expect(grantDialog.getByText(E2E_ADMIN.email)).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin membership grant selected user", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(grantDialog.getByRole("button", { name: /^Change$/ }), "grant change");
+    await grantDialog.getByRole("button", { name: /^Cancel$/ }).click();
+    await expect(grantDialog).toBeHidden();
   });
 
   test("keeps operational list controls tappable on narrow phones", async ({ page, context }) => {
