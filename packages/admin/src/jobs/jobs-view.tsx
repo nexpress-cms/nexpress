@@ -309,6 +309,7 @@ export function JobsView() {
                 <button
                   type="button"
                   onClick={() => setWindowMode("all")}
+                  aria-pressed={windowMode === "all"}
                   className={`min-h-10 flex-1 rounded-md px-3 transition-colors sm:min-h-0 sm:flex-none sm:px-2.5 ${
                     windowMode === "all"
                       ? "bg-white font-medium text-neutral-950 shadow-sm dark:bg-neutral-950 dark:text-neutral-50"
@@ -320,6 +321,7 @@ export function JobsView() {
                 <button
                   type="button"
                   onClick={() => setWindowMode("24h")}
+                  aria-pressed={windowMode === "24h"}
                   className={`min-h-10 flex-1 rounded-md px-3 transition-colors sm:min-h-0 sm:flex-none sm:px-2.5 ${
                     windowMode === "24h"
                       ? "bg-white font-medium text-neutral-950 shadow-sm dark:bg-neutral-950 dark:text-neutral-50"
@@ -533,7 +535,13 @@ function WorkerHealthCard() {
               </span>
             </span>
           ) : null}
-          <Button variant="outline" size="sm" onClick={() => void load()} disabled={refreshing}>
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label="Refresh worker health"
+            onClick={() => void load()}
+            disabled={refreshing}
+          >
             {refreshing ? (
               <Loader2 className="h-3 w-3 animate-spin" />
             ) : (
