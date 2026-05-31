@@ -908,10 +908,14 @@ export function NavigationEditor() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPendingLocation(null)}>
+            <Button
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={() => setPendingLocation(null)}
+            >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={confirmDiscard}>
+            <Button variant="destructive" className="w-full sm:w-auto" onClick={confirmDiscard}>
               Discard and switch
             </Button>
           </DialogFooter>
@@ -953,6 +957,7 @@ export function NavigationEditor() {
           <DialogFooter>
             <Button
               variant="outline"
+              className="w-full sm:w-auto"
               onClick={() => {
                 setNewLocationDialogOpen(false);
                 setNewLocationInput("");
@@ -962,6 +967,7 @@ export function NavigationEditor() {
               Cancel
             </Button>
             <Button
+              className="w-full sm:w-auto"
               onClick={() => void createLocation(newLocationInput)}
               disabled={creatingLocation || !newLocationInput.trim()}
             >
@@ -1009,7 +1015,7 @@ export function NavigationEditor() {
                         }
                         placeholder={loc.value}
                         autoFocus
-                        className="h-8 min-w-0"
+                        className="min-w-0 sm:h-8"
                       />
                     ) : (
                       <span className="min-w-0 break-all font-mono text-sm">{loc.value}</span>
@@ -1094,6 +1100,7 @@ export function NavigationEditor() {
           <DialogFooter>
             <Button
               variant="outline"
+              className="w-full sm:w-auto"
               onClick={() => {
                 setManageLocationsOpen(false);
                 setRenameDrafts({});
@@ -1410,7 +1417,12 @@ function SortableRow({
       </div>
 
       <div className="flex justify-end">
-        <Button variant="outline" size="icon" onClick={() => onRemove(item.id)}>
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label="Remove navigation item"
+          onClick={() => onRemove(item.id)}
+        >
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
