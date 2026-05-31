@@ -311,10 +311,12 @@ test.describe("admin mobile layout", () => {
     await page.getByRole("button", { name: /^List view$/ }).click();
     const listCard = page.locator("[data-np-media-list-card]").filter({ hasText: filename });
     await expect(listCard).toBeVisible();
-    await expectTouchTarget(
-      listCard.locator("[data-np-media-select-target]"),
-      "media list select target",
-    );
+    const listSelectTarget = listCard.locator("[data-np-media-select-target]");
+    await expectTouchTarget(listSelectTarget, "media list select target");
+    const listCheckbox = listSelectTarget.getByRole("checkbox", { name: `Select ${filename}` });
+    await listCheckbox.check();
+    await expect(listCheckbox).toBeChecked();
+    await expect(page.getByText("1 item selected")).toBeVisible();
     await expectNoHorizontalOverflow(page, "admin media list selected", {
       ignoreClosedSidebar: true,
     });
@@ -398,6 +400,97 @@ test.describe("admin mobile layout", () => {
     await expectTouchTarget(
       page.getByRole("button", { name: /^Save config$/ }),
       "plugin config save",
+    );
+  });
+
+  test("keeps deep settings tabs tappable on narrow phones", async ({ page, context }) => {
+    test.setTimeout(60_000);
+
+    await context.clearCookies();
+    await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.96" });
+    await signInAsE2EAdmin(page);
+    await page.setViewportSize({ width: 360, height: 780 });
+
+    const response = await page.goto("/admin/settings", { waitUntil: "domcontentloaded" });
+    expect(response?.status(), "admin settings route").toBe(200);
+    await expectNoHorizontalOverflow(page, "admin deep settings initial", {
+      ignoreClosedSidebar: true,
+    });
+
+    await page.getByRole("tab", { name: /^Theme$/ }).click();
+    await expect(page.getByRole("heading", { name: /^Colors$/ })).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin settings theme tab", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(page.getByLabel("Primary", { exact: true }), "theme primary input");
+    await expectTouchTarget(page.getByRole("button", { name: /^Import JSON$/ }), "theme import");
+    await expectTouchTarget(page.getByRole("button", { name: /^Export JSON$/ }), "theme export");
+    await expectTouchTarget(
+      page.getByRole("button", { name: /^Reset to Defaults$/ }),
+      "theme reset defaults",
+    );
+    await expectTouchTarget(page.getByRole("button", { name: /^Save Theme$/ }), "theme save");
+
+    await page.getByRole("tab", { name: /^Navigation$/ }).click();
+    await expect(page.getByRole("heading", { name: /^Navigation structure$/ })).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin settings navigation tab", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(page.getByRole("button", { name: /^Add item$/ }), "nav add item");
+    await expectTouchTarget(page.getByRole("button", { name: /^Save$/ }), "nav save");
+    await page.getByRole("button", { name: /^Add item$/ }).click();
+    await expect(page.getByLabel("Label").last()).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin settings navigation item", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(page.getByLabel("Label").last(), "nav item label input");
+    await expectTouchTarget(page.getByLabel("URL").last(), "nav item url input");
+    await expectTouchTarget(
+      page.getByRole("button", { name: /^Drag to reorder$/ }).last(),
+      "nav drag handle",
+    );
+    await expectTouchTarget(
+      page.getByRole("button", { name: /^Remove navigation item$/ }).last(),
+      "nav remove item",
+    );
+
+    await page.getByRole("tab", { name: /^Users$/ }).click();
+    await expect(page.getByRole("heading", { name: /^User management$/ })).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin settings users tab", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(page.getByRole("button", { name: /^Invite user$/ }), "invite user");
+    await expectTouchTarget(
+      page.getByRole("button", { name: /^Create with password$/ }),
+      "create user with password",
+    );
+
+    await page.getByRole("button", { name: /^Invite user$/ }).click();
+    const inviteDialog = page.getByRole("dialog");
+    await expect(inviteDialog).toBeVisible();
+    await expectTouchTarget(inviteDialog.getByLabel("Name"), "invite user name");
+    await expectTouchTarget(inviteDialog.getByLabel("Email"), "invite user email");
+    await expectTouchTarget(inviteDialog.getByRole("button", { name: /^Cancel$/ }), "invite cancel");
+    await expectTouchTarget(
+      inviteDialog.getByRole("button", { name: /^Send invite$/ }),
+      "invite send",
+    );
+    await inviteDialog.getByRole("button", { name: /^Cancel$/ }).click();
+    await expect(inviteDialog).toBeHidden();
+
+    await page.getByRole("button", { name: /^Create with password$/ }).click();
+    const createDialog = page.getByRole("dialog");
+    await expect(createDialog).toBeVisible();
+    await expectTouchTarget(createDialog.getByLabel("Name"), "create user name");
+    await expectTouchTarget(createDialog.getByLabel("Email"), "create user email");
+    await expectTouchTarget(createDialog.getByLabel("Password"), "create user password");
+    await expectTouchTarget(
+      createDialog.getByRole("button", { name: /^Cancel$/ }),
+      "create user cancel",
+    );
+    await expectTouchTarget(
+      createDialog.getByRole("button", { name: /^Create user$/ }),
+      "create user submit",
     );
   });
 

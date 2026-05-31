@@ -167,7 +167,7 @@ export function UserManagement() {
             <span className="min-w-0 break-words">{emailInviteToast}</span>
             <button
               type="button"
-              className="justify-self-start text-xs uppercase tracking-wide text-emerald-700 hover:text-emerald-900 dark:text-emerald-200 dark:hover:text-emerald-100 sm:justify-self-auto"
+              className="inline-flex min-h-10 items-center justify-self-start text-xs uppercase tracking-wide text-emerald-700 hover:text-emerald-900 dark:text-emerald-200 dark:hover:text-emerald-100 sm:min-h-0 sm:justify-self-auto"
               onClick={() => setEmailInviteToast(null)}
             >
               dismiss
@@ -333,12 +333,17 @@ export function UserManagement() {
           <DialogFooter>
             <Button
               variant="outline"
+              className="w-full sm:w-auto"
               onClick={() => setInviteOpen(false)}
               disabled={inviteSubmitting}
             >
               Cancel
             </Button>
-            <Button onClick={() => void submitInvite()} disabled={inviteSubmitting}>
+            <Button
+              className="w-full sm:w-auto"
+              onClick={() => void submitInvite()}
+              disabled={inviteSubmitting}
+            >
               {inviteSubmitting ? "Creating..." : "Create user"}
             </Button>
           </DialogFooter>
@@ -410,12 +415,17 @@ export function UserManagement() {
           <DialogFooter>
             <Button
               variant="outline"
+              className="w-full sm:w-auto"
               onClick={() => setEmailInviteOpen(false)}
               disabled={emailInviteSubmitting}
             >
               Cancel
             </Button>
-            <Button onClick={() => void submitEmailInvite()} disabled={emailInviteSubmitting}>
+            <Button
+              className="w-full sm:w-auto"
+              onClick={() => void submitEmailInvite()}
+              disabled={emailInviteSubmitting}
+            >
               {emailInviteSubmitting ? "Sending..." : "Send invite"}
             </Button>
           </DialogFooter>
