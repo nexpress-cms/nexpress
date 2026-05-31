@@ -337,6 +337,70 @@ test.describe("admin mobile layout", () => {
     await expect(page.getByText(filename)).toBeHidden({ timeout: 10_000 });
   });
 
+  test("keeps settings and plugin controls tappable on narrow phones", async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(60_000);
+
+    await context.clearCookies();
+    await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.95" });
+    await signInAsE2EAdmin(page);
+    await page.setViewportSize({ width: 360, height: 780 });
+
+    const settingsResponse = await page.goto("/admin/settings", {
+      waitUntil: "domcontentloaded",
+    });
+    expect(settingsResponse?.status(), "admin settings route").toBe(200);
+    await expectNoHorizontalOverflow(page, "admin settings initial", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(page.getByRole("tab", { name: /^General$/ }), "settings general tab");
+    await expectTouchTarget(page.getByRole("tab", { name: /^SEO$/ }), "settings seo tab");
+    await expectTouchTarget(page.getByRole("tab", { name: /^Navigation$/ }), "settings nav tab");
+    await expectTouchTarget(page.getByLabel("Site name"), "settings site name input");
+    await expectTouchTarget(page.getByLabel("Site URL"), "settings site url input");
+    await expectTouchTarget(page.getByLabel("Description"), "settings description textarea");
+    await expectTouchTarget(page.getByRole("button", { name: /^Save$/ }), "settings save button");
+
+    const pluginsResponse = await page.goto("/admin/plugins", {
+      waitUntil: "domcontentloaded",
+    });
+    expect(pluginsResponse?.status(), "admin plugins route").toBe(200);
+    await expectNoHorizontalOverflow(page, "admin plugins initial", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(page.getByRole("button", { name: /^Reload all$/ }), "plugins reload");
+    await expectTouchTarget(
+      page.getByRole("button", { name: /^Browse registry$/ }),
+      "plugins browse registry",
+    );
+    await expectTouchTarget(
+      page.getByRole("button", { name: /^Install plugin$/ }),
+      "plugins install guide",
+    );
+
+    const detailsButton = page.getByRole("button", { name: /^Show details$/ }).first();
+    await expectTouchTarget(detailsButton, "plugin show details");
+    await detailsButton.click();
+    await expect(page.getByRole("button", { name: /^Hide details$/ }).first()).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin plugins details open", {
+      ignoreClosedSidebar: true,
+    });
+
+    await expectTouchTarget(page.getByRole("switch").first(), "plugin toggle switch");
+
+    const configureButton = page.getByRole("button", { name: /^Configure$/ }).first();
+    await expectTouchTarget(configureButton, "plugin configure button");
+    await configureButton.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expectTouchTarget(page.getByRole("button", { name: /^Cancel$/ }), "plugin config cancel");
+    await expectTouchTarget(
+      page.getByRole("button", { name: /^Save config$/ }),
+      "plugin config save",
+    );
+  });
+
   test("keeps operational list controls tappable on narrow phones", async ({ page, context }) => {
     test.setTimeout(60_000);
 

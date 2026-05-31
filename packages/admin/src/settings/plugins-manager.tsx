@@ -169,7 +169,7 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
           <button
             type="button"
             onClick={() => setDetailsOpen((v) => !v)}
-            className="mt-2 inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+            className="mt-2 inline-flex min-h-10 items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground sm:min-h-0"
             aria-expanded={detailsOpen}
           >
             {detailsOpen ? (
@@ -258,7 +258,7 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
           Configure
         </Button>
         <Switch
-          className="justify-self-end"
+          className="min-h-10 justify-self-end sm:min-h-0"
           checked={plugin.enabled}
           disabled={togglingId !== null}
           onCheckedChange={(checked) => {
@@ -634,11 +634,17 @@ export function PluginsManager() {
                 </p>
               ) : null}
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setConfigPlugin(null)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  onClick={() => setConfigPlugin(null)}
+                >
                   Cancel
                 </Button>
                 <Button
                   type="button"
+                  className="w-full sm:w-auto"
                   onClick={() => {
                     void saveConfig();
                   }}
@@ -741,10 +747,10 @@ function PluginConfigForm({
           <p className="break-words text-sm text-rose-600 dark:text-rose-300">{errorMessage}</p>
         ) : null}
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onCancel}>
+          <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" disabled={saving}>
+          <Button type="submit" className="w-full sm:w-auto" disabled={saving}>
             {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
             Save config
           </Button>
@@ -1149,7 +1155,12 @@ export default defineConfig({
         </ol>
 
         <DialogFooter>
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full sm:w-auto"
+            onClick={() => onOpenChange(false)}
+          >
             Close
           </Button>
         </DialogFooter>
