@@ -546,6 +546,7 @@ export function CollectionListView({
                   return (
                     <article
                       key={String(doc.id ?? index)}
+                      data-np-collection-mobile-row
                       className={cn(
                         "rounded-xl border border-border/60 bg-card px-3.5 py-3 shadow-sm",
                         isSelected &&
@@ -553,17 +554,22 @@ export function CollectionListView({
                       )}
                     >
                       <div className="flex items-start gap-3">
-                        <input
+                        <label
                           data-row-checkbox="1"
-                          type="checkbox"
-                          aria-label={`Select row ${docIdStr ?? index}`}
-                          checked={isSelected}
-                          onChange={() => {
-                            if (docIdStr) toggleOne(docIdStr);
-                          }}
-                          disabled={!docIdStr}
-                          className="mt-1 size-5 shrink-0"
-                        />
+                          data-np-collection-row-select-target
+                          className="-ml-2 -mt-2 inline-flex size-10 shrink-0 cursor-pointer items-center justify-center"
+                        >
+                          <input
+                            type="checkbox"
+                            aria-label={`Select row ${docIdStr ?? index}`}
+                            checked={isSelected}
+                            onChange={() => {
+                              if (docIdStr) toggleOne(docIdStr);
+                            }}
+                            disabled={!docIdStr}
+                            className="size-5 shrink-0 cursor-pointer accent-primary disabled:cursor-not-allowed"
+                          />
+                        </label>
                         <div className="min-w-0 flex-1">
                           {doc.id !== undefined && doc.id !== null ? (
                             <Link
@@ -606,6 +612,16 @@ export function CollectionListView({
                             );
                           })}
                         </dl>
+                      ) : null}
+
+                      {doc.id !== undefined && doc.id !== null ? (
+                        <div className="mt-3 border-t border-border/60 pt-3">
+                          <Button asChild variant="outline" size="sm" className="w-full">
+                            <Link href={href} aria-label={`Open ${title}`}>
+                              Open
+                            </Link>
+                          </Button>
+                        </div>
                       ) : null}
                     </article>
                   );
@@ -675,6 +691,7 @@ export function CollectionListView({
             <Button
               type="button"
               variant="outline"
+              className="w-full sm:w-auto"
               onClick={() => setConfirmDelete(false)}
               disabled={bulkBusy !== null}
             >
@@ -683,7 +700,7 @@ export function CollectionListView({
             <Button
               type="button"
               variant="outline"
-              className="text-rose-600 dark:text-rose-300"
+              className="w-full text-rose-600 dark:text-rose-300 sm:w-auto"
               onClick={() => void runBulk("delete")}
               disabled={bulkBusy !== null}
             >
