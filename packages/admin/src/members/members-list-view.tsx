@@ -91,12 +91,9 @@ export function MembersListView({
           Apply
         </Button>
         {isFiltered ? (
-          <a
-            href="/admin/members"
-            className="w-full text-center text-[12px] text-neutral-500 underline-offset-[3px] hover:underline dark:text-neutral-400 sm:w-auto"
-          >
-            Clear
-          </a>
+          <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto" asChild>
+            <a href="/admin/members">Clear</a>
+          </Button>
         ) : null}
       </form>
 

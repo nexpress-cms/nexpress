@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { ChevronDown, SlidersHorizontal } from "lucide-react";
 
 import { npFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
@@ -30,6 +31,26 @@ const ACTOR_BADGE: Record<AuditEventRow["actorKind"], string> = {
 
 const PAGE_SIZE = 50;
 
+type AuditFilters = {
+  targetType: string;
+  targetId: string;
+  actorUserId: string;
+  actorMemberId: string;
+  action: string;
+  since: string;
+  until: string;
+};
+
+const EMPTY_AUDIT_FILTERS: AuditFilters = {
+  targetType: "",
+  targetId: "",
+  actorUserId: "",
+  actorMemberId: "",
+  action: "",
+  since: "",
+  until: "",
+};
+
 /**
  * Append-only audit log viewer. Filters by target / actor are exposed
  * because the typical investigation starts from "what happened to this
@@ -39,16 +60,9 @@ export function AuditLogView() {
   const [events, setEvents] = useState<AuditEventRow[]>([]);
   const [totalDocs, setTotalDocs] = useState(0);
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState({
-    targetType: "",
-    targetId: "",
-    actorUserId: "",
-    actorMemberId: "",
-    action: "",
-    since: "",
-    until: "",
-  });
+  const [filters, setFilters] = useState<AuditFilters>(EMPTY_AUDIT_FILTERS);
   const [pendingFilters, setPendingFilters] = useState(filters);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -100,6 +114,20 @@ export function AuditLogView() {
   }, [refresh]);
 
   const totalPages = totalDocs === 0 ? 0 : Math.ceil(totalDocs / PAGE_SIZE);
+  const activeFilterCount = countActiveAuditFilters(filters);
+
+  const submitFilters = () => {
+    setPage(1);
+    setFilters(pendingFilters);
+    setMobileFiltersOpen(false);
+  };
+
+  const clearFilters = () => {
+    setPendingFilters(EMPTY_AUDIT_FILTERS);
+    setFilters(EMPTY_AUDIT_FILTERS);
+    setPage(1);
+    setMobileFiltersOpen(false);
+  };
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
@@ -114,122 +142,51 @@ export function AuditLogView() {
       />
 
       <Card className="min-w-0">
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
+        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <CardTitle className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0">Filters</span>
+            {activeFilterCount > 0 ? (
+              <Badge variant="secondary">{activeFilterCount} active</Badge>
+            ) : null}
+          </CardTitle>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full justify-between md:hidden"
+            aria-expanded={mobileFiltersOpen}
+            aria-controls="np-audit-mobile-filters"
+            onClick={() => setMobileFiltersOpen((open) => !open)}
+          >
+            <span className="inline-flex min-w-0 items-center gap-1.5">
+              <SlidersHorizontal className="size-3.5" aria-hidden />
+              <span>{mobileFiltersOpen ? "Hide filters" : "Show filters"}</span>
+            </span>
+            <ChevronDown
+              className={`size-3.5 transition-transform ${mobileFiltersOpen ? "rotate-180" : ""}`}
+              aria-hidden
+            />
+          </Button>
         </CardHeader>
         <CardContent className="min-w-0">
-          <form
-            className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setPage(1);
-              setFilters(pendingFilters);
-            }}
-          >
-            <div className="space-y-1.5">
-              <Label htmlFor="filter-targetType">Target type</Label>
-              <Input
-                id="filter-targetType"
-                value={pendingFilters.targetType}
-                onChange={(event) =>
-                  setPendingFilters((prev) => ({ ...prev, targetType: event.target.value }))
-                }
-                placeholder="comment / member / …"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="filter-targetId">Target id</Label>
-              <Input
-                id="filter-targetId"
-                value={pendingFilters.targetId}
-                onChange={(event) =>
-                  setPendingFilters((prev) => ({ ...prev, targetId: event.target.value }))
-                }
-                placeholder="uuid"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="filter-actorUserId">Actor user id (staff)</Label>
-              <Input
-                id="filter-actorUserId"
-                value={pendingFilters.actorUserId}
-                onChange={(event) =>
-                  setPendingFilters((prev) => ({ ...prev, actorUserId: event.target.value }))
-                }
-                placeholder="uuid"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="filter-actorMemberId">Actor member id</Label>
-              <Input
-                id="filter-actorMemberId"
-                value={pendingFilters.actorMemberId}
-                onChange={(event) =>
-                  setPendingFilters((prev) => ({ ...prev, actorMemberId: event.target.value }))
-                }
-                placeholder="uuid"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="filter-action">Action</Label>
-              <Input
-                id="filter-action"
-                value={pendingFilters.action}
-                onChange={(event) =>
-                  setPendingFilters((prev) => ({ ...prev, action: event.target.value }))
-                }
-                placeholder="member.ban.issue / comment.hide / …"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="filter-since">Since</Label>
-              <Input
-                id="filter-since"
-                type="datetime-local"
-                value={pendingFilters.since}
-                onChange={(event) =>
-                  setPendingFilters((prev) => ({ ...prev, since: event.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="filter-until">Until</Label>
-              <Input
-                id="filter-until"
-                type="datetime-local"
-                value={pendingFilters.until}
-                onChange={(event) =>
-                  setPendingFilters((prev) => ({ ...prev, until: event.target.value }))
-                }
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2 md:col-span-2 sm:flex sm:flex-wrap lg:col-span-4">
-              <Button type="submit" className="flex-1 sm:flex-none">
-                Apply
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1 sm:flex-none"
-                onClick={() => {
-                  const empty = {
-                    targetType: "",
-                    targetId: "",
-                    actorUserId: "",
-                    actorMemberId: "",
-                    action: "",
-                    since: "",
-                    until: "",
-                  };
-                  setPendingFilters(empty);
-                  setFilters(empty);
-                  setPage(1);
-                }}
-              >
-                Clear
-              </Button>
-            </div>
-          </form>
+          <div id="np-audit-mobile-filters" className={mobileFiltersOpen ? "md:hidden" : "hidden"}>
+            <AuditFiltersForm
+              idPrefix="mobile"
+              pendingFilters={pendingFilters}
+              setPendingFilters={setPendingFilters}
+              onSubmit={submitFilters}
+              onClear={clearFilters}
+            />
+          </div>
+          <div className="hidden md:block">
+            <AuditFiltersForm
+              idPrefix="desktop"
+              pendingFilters={pendingFilters}
+              setPendingFilters={setPendingFilters}
+              onSubmit={submitFilters}
+              onClear={clearFilters}
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -393,4 +350,120 @@ export function AuditLogView() {
       </Card>
     </div>
   );
+}
+
+function AuditFiltersForm({
+  idPrefix,
+  pendingFilters,
+  setPendingFilters,
+  onSubmit,
+  onClear,
+}: {
+  idPrefix: "desktop" | "mobile";
+  pendingFilters: AuditFilters;
+  setPendingFilters: Dispatch<SetStateAction<AuditFilters>>;
+  onSubmit: () => void;
+  onClear: () => void;
+}) {
+  const fieldId = (field: keyof AuditFilters) => `filter-${idPrefix}-${field}`;
+
+  return (
+    <form
+      className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 lg:grid-cols-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <div className="space-y-1.5">
+        <Label htmlFor={fieldId("targetType")}>Target type</Label>
+        <Input
+          id={fieldId("targetType")}
+          value={pendingFilters.targetType}
+          onChange={(event) =>
+            setPendingFilters((prev) => ({ ...prev, targetType: event.target.value }))
+          }
+          placeholder="comment / member / …"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor={fieldId("targetId")}>Target id</Label>
+        <Input
+          id={fieldId("targetId")}
+          value={pendingFilters.targetId}
+          onChange={(event) =>
+            setPendingFilters((prev) => ({ ...prev, targetId: event.target.value }))
+          }
+          placeholder="uuid"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor={fieldId("actorUserId")}>Actor user id (staff)</Label>
+        <Input
+          id={fieldId("actorUserId")}
+          value={pendingFilters.actorUserId}
+          onChange={(event) =>
+            setPendingFilters((prev) => ({ ...prev, actorUserId: event.target.value }))
+          }
+          placeholder="uuid"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor={fieldId("actorMemberId")}>Actor member id</Label>
+        <Input
+          id={fieldId("actorMemberId")}
+          value={pendingFilters.actorMemberId}
+          onChange={(event) =>
+            setPendingFilters((prev) => ({ ...prev, actorMemberId: event.target.value }))
+          }
+          placeholder="uuid"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor={fieldId("action")}>Action</Label>
+        <Input
+          id={fieldId("action")}
+          value={pendingFilters.action}
+          onChange={(event) =>
+            setPendingFilters((prev) => ({ ...prev, action: event.target.value }))
+          }
+          placeholder="member.ban.issue / comment.hide / …"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor={fieldId("since")}>Since</Label>
+        <Input
+          id={fieldId("since")}
+          type="datetime-local"
+          value={pendingFilters.since}
+          onChange={(event) =>
+            setPendingFilters((prev) => ({ ...prev, since: event.target.value }))
+          }
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor={fieldId("until")}>Until</Label>
+        <Input
+          id={fieldId("until")}
+          type="datetime-local"
+          value={pendingFilters.until}
+          onChange={(event) =>
+            setPendingFilters((prev) => ({ ...prev, until: event.target.value }))
+          }
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-2 md:col-span-2 sm:flex sm:flex-wrap lg:col-span-4">
+        <Button type="submit" className="flex-1 sm:flex-none">
+          Apply
+        </Button>
+        <Button type="button" variant="outline" className="flex-1 sm:flex-none" onClick={onClear}>
+          Clear
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function countActiveAuditFilters(filters: AuditFilters): number {
+  return Object.values(filters).filter((value) => value.trim().length > 0).length;
 }

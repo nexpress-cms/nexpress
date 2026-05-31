@@ -470,7 +470,10 @@ test.describe("admin mobile layout", () => {
     await expect(inviteDialog).toBeVisible();
     await expectTouchTarget(inviteDialog.getByLabel("Name"), "invite user name");
     await expectTouchTarget(inviteDialog.getByLabel("Email"), "invite user email");
-    await expectTouchTarget(inviteDialog.getByRole("button", { name: /^Cancel$/ }), "invite cancel");
+    await expectTouchTarget(
+      inviteDialog.getByRole("button", { name: /^Cancel$/ }),
+      "invite cancel",
+    );
     await expectTouchTarget(
       inviteDialog.getByRole("button", { name: /^Send invite$/ }),
       "invite send",
@@ -510,6 +513,54 @@ test.describe("admin mobile layout", () => {
     await expectTouchTarget(page.getByLabel("Search", { exact: true }), "members search input");
     await expectTouchTarget(page.getByLabel("Status", { exact: true }), "members status select");
     await expectTouchTarget(page.getByRole("button", { name: /^Apply$/ }), "members apply button");
+    await page.getByLabel("Search", { exact: true }).fill("mobile");
+    await page.getByRole("button", { name: /^Apply$/ }).click();
+    await expect(page).toHaveURL(/\/admin\/members\?q=mobile/);
+    await expectTouchTarget(page.getByRole("link", { name: /^Clear$/ }), "members clear link");
+
+    const auditResponse = await page.goto("/admin/community/audit", {
+      waitUntil: "domcontentloaded",
+    });
+    expect(auditResponse?.status(), "admin audit log route").toBe(200);
+    await expectNoHorizontalOverflow(page, "admin audit filters collapsed", {
+      ignoreClosedSidebar: true,
+    });
+    const auditFilterToggle = page.getByRole("button", { name: /^Show filters$/ });
+    await expectTouchTarget(auditFilterToggle, "audit filter toggle");
+    await auditFilterToggle.click();
+    await expect(page.getByRole("button", { name: /^Hide filters$/ })).toBeVisible();
+    const auditMobileFilters = page.locator("#np-audit-mobile-filters");
+    await expectTouchTarget(
+      auditMobileFilters.getByLabel("Target type"),
+      "audit target type input",
+    );
+    await expectTouchTarget(auditMobileFilters.getByLabel("Target id"), "audit target id input");
+    await expectTouchTarget(
+      auditMobileFilters.getByLabel("Actor user id (staff)"),
+      "audit actor user input",
+    );
+    await expectTouchTarget(
+      auditMobileFilters.getByLabel("Actor member id"),
+      "audit actor member input",
+    );
+    await expectTouchTarget(auditMobileFilters.getByLabel("Action"), "audit action input");
+    await expectTouchTarget(auditMobileFilters.getByLabel("Since"), "audit since input");
+    await expectTouchTarget(auditMobileFilters.getByLabel("Until"), "audit until input");
+    await auditMobileFilters.getByLabel("Action").fill("member.ban.issue");
+    await expectTouchTarget(
+      auditMobileFilters.getByRole("button", { name: /^Apply$/ }),
+      "audit apply button",
+    );
+    await expectTouchTarget(
+      auditMobileFilters.getByRole("button", { name: /^Clear$/ }),
+      "audit clear button",
+    );
+    await auditMobileFilters.getByRole("button", { name: /^Apply$/ }).click();
+    await expect(page.getByRole("button", { name: /^Show filters$/ })).toBeVisible();
+    await expect(page.getByText("1 active")).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin audit filters applied", {
+      ignoreClosedSidebar: true,
+    });
 
     const jobsResponse = await page.goto("/admin/jobs", { waitUntil: "domcontentloaded" });
     expect(jobsResponse?.status(), "admin jobs route").toBe(200);
