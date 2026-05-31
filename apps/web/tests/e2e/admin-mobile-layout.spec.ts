@@ -138,6 +138,38 @@ test.describe("admin mobile layout", () => {
     const created = (await createdResponse.json()) as { id?: unknown; title?: unknown };
     expect(typeof created.id).toBe("string");
     expect(created.title).toBe(title);
+
+    const editResponse = await page.goto(`/admin/collections/pages/${String(created.id)}`, {
+      waitUntil: "domcontentloaded",
+    });
+    expect(editResponse?.status(), "admin page editor edit route").toBe(200);
+    await expectNoHorizontalOverflow(page, "admin page editor edit initial", {
+      ignoreClosedSidebar: true,
+    });
+
+    const navPanel = page.locator("[data-np-nav-membership-panel]");
+    await navPanel.scrollIntoViewIfNeeded();
+    await expect(navPanel).toBeVisible();
+    await expectTouchTarget(navPanel.getByRole("button", { name: /^Add$/ }), "nav add button");
+    await expectNoHorizontalOverflow(page, "admin page editor navigation panel", {
+      ignoreClosedSidebar: true,
+    });
+
+    const revisionsPanel = page.locator("[data-np-revisions-panel]");
+    await revisionsPanel.scrollIntoViewIfNeeded();
+    await expect(revisionsPanel).toBeVisible();
+    await expect(async () => {
+      expect(
+        await revisionsPanel.getByRole("button", { name: /^Restore$/ }).count(),
+      ).toBeGreaterThan(0);
+    }).toPass({ timeout: 10_000 });
+    await expectTouchTarget(
+      revisionsPanel.getByRole("button", { name: /^Restore$/ }).first(),
+      "revision restore button",
+    );
+    await expectNoHorizontalOverflow(page, "admin page editor revisions panel", {
+      ignoreClosedSidebar: true,
+    });
   });
 
   test("keeps page-builder edit controls tappable on narrow phones", async ({ page, context }) => {
