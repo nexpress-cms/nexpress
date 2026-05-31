@@ -16,7 +16,15 @@ import {
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
-import { Dialog, DialogContent, DialogTrigger } from "../ui/dialog.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../ui/dialog.js";
 import { Input } from "../ui/input.js";
 import { ScrollArea } from "../ui/scroll-area.js";
 import { cn } from "../ui/utils.js";
@@ -66,6 +74,7 @@ export function MediaLibrary() {
   const [loadingFolders, setLoadingFolders] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
   const breadcrumbs = useMemo(() => {
     if (!currentFolder) {
@@ -164,6 +173,7 @@ export function MediaLibrary() {
       }
 
       await fetchMedia();
+      setConfirmBulkDelete(false);
     } catch {
       setError("Unable to delete selected media.");
     }
@@ -187,7 +197,7 @@ export function MediaLibrary() {
           </CardTitle>
         </CardHeader>
         <CardContent className="min-w-0">
-          <ScrollArea className="h-[540px] pr-4">
+          <ScrollArea className="h-auto max-h-64 pr-4 lg:h-[540px] lg:max-h-none">
             <div className="space-y-2">
               <SidebarButton
                 active={!currentFolder}
@@ -223,7 +233,7 @@ export function MediaLibrary() {
                 <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-muted-foreground">
                   <button
                     type="button"
-                    className="break-words transition-colors hover:text-foreground"
+                    className="min-h-10 break-words transition-colors hover:text-foreground lg:min-h-0"
                     onClick={() => setCurrentFolder(undefined)}
                   >
                     Media
@@ -233,7 +243,7 @@ export function MediaLibrary() {
                       <span className="shrink-0">/</span>
                       <button
                         type="button"
-                        className="min-w-0 break-all transition-colors hover:text-foreground"
+                        className="min-h-10 min-w-0 break-all transition-colors hover:text-foreground lg:min-h-0"
                         onClick={() => setCurrentFolder(folder.id)}
                       >
                         {folder.name}
@@ -295,6 +305,8 @@ export function MediaLibrary() {
                 <div className="flex min-w-0 w-full items-center rounded-lg border border-border/70 bg-background p-1 sm:w-auto">
                   <button
                     type="button"
+                    aria-label="Grid view"
+                    aria-pressed={viewMode === "grid"}
                     className={cn(
                       "min-h-10 flex-1 rounded-md px-3 py-2.5 text-sm transition-colors sm:min-h-0 sm:flex-none sm:py-2",
                       viewMode === "grid"
@@ -307,6 +319,8 @@ export function MediaLibrary() {
                   </button>
                   <button
                     type="button"
+                    aria-label="List view"
+                    aria-pressed={viewMode === "list"}
                     className={cn(
                       "min-h-10 flex-1 rounded-md px-3 py-2.5 text-sm transition-colors sm:min-h-0 sm:flex-none sm:py-2",
                       viewMode === "list"
@@ -327,6 +341,12 @@ export function MediaLibrary() {
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="min-w-0 max-w-3xl">
+                    <DialogHeader>
+                      <DialogTitle className="break-words">Upload media</DialogTitle>
+                      <DialogDescription className="break-words">
+                        Add images, videos, or documents to the current media folder.
+                      </DialogDescription>
+                    </DialogHeader>
                     <MediaUploadZone
                       folderId={currentFolder}
                       onUploadComplete={() => {
@@ -349,7 +369,7 @@ export function MediaLibrary() {
               <Button
                 variant="outline"
                 className="w-full sm:w-auto"
-                onClick={() => void handleBulkDelete()}
+                onClick={() => setConfirmBulkDelete(true)}
                 disabled={selectedItems.length === 0}
               >
                 <Trash2 className="size-3.5" />
@@ -381,6 +401,39 @@ export function MediaLibrary() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={confirmBulkDelete} onOpenChange={setConfirmBulkDelete}>
+        <DialogContent className="min-w-0">
+          <DialogHeader>
+            <DialogTitle className="break-words">
+              Delete {selectedItems.length} media item{selectedItems.length === 1 ? "" : "s"}?
+            </DialogTitle>
+            <DialogDescription className="break-words">
+              This permanently removes the selected files from the media library.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={() => setConfirmBulkDelete(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full text-rose-600 dark:text-rose-300 sm:w-auto"
+              onClick={() => void handleBulkDelete()}
+              disabled={selectedItems.length === 0}
+            >
+              <Trash2 className="size-3.5" />
+              Delete {selectedItems.length}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -425,22 +478,29 @@ function GridView({
         const checked = selectedItems.includes(item.id);
 
         return (
-          <label
+          <article
             key={item.id}
+            data-np-media-grid-card
             className={cn(
-              "group block cursor-pointer overflow-hidden rounded-xl border bg-background/80 transition-all",
+              "group block overflow-hidden rounded-xl border bg-background/80 transition-all",
               checked
                 ? "border-primary shadow-[0_0_0_1px_rgba(0,0,0,0.04)]"
                 : "border-border/70 hover:border-border",
             )}
           >
             <div className="relative aspect-square overflow-hidden bg-muted/40">
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => onToggle(item.id)}
-                className="absolute left-3 top-3 z-10 size-5 rounded border-border"
-              />
+              <label
+                data-np-media-select-target
+                className="absolute left-2 top-2 z-10 inline-flex size-10 cursor-pointer items-center justify-center rounded-lg bg-background/85 shadow-sm ring-1 ring-border/70"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => onToggle(item.id)}
+                  aria-label={`Select ${item.filename}`}
+                  className="size-5 cursor-pointer rounded border-border accent-primary"
+                />
+              </label>
               <div className="absolute right-3 top-3 z-10 rounded-full border border-border/70 bg-background/80 p-1 text-muted-foreground">
                 <MoreVertical className="h-4 w-4" />
               </div>
@@ -451,7 +511,7 @@ function GridView({
               <p className="break-words text-sm text-muted-foreground">{formatBytes(item.size)}</p>
               {item.uploader ? <UploaderBadge uploader={item.uploader} /> : null}
             </div>
-          </label>
+          </article>
         );
       })}
     </div>
@@ -527,21 +587,28 @@ function ListView({
     <>
       <div className="space-y-3 md:hidden">
         {items.map((item) => (
-          <label
+          <article
             key={item.id}
+            data-np-media-list-card
             className={cn(
-              "grid min-w-0 cursor-pointer grid-cols-[auto_56px_minmax(0,1fr)] gap-3 rounded-xl border bg-background/80 p-3 transition-all",
+              "grid min-w-0 grid-cols-[auto_56px_minmax(0,1fr)] gap-3 rounded-xl border bg-background/80 p-3 transition-all",
               selectedItems.includes(item.id)
                 ? "border-primary shadow-[0_0_0_1px_rgba(0,0,0,0.04)]"
                 : "border-border/70",
             )}
           >
-            <input
-              type="checkbox"
-              checked={selectedItems.includes(item.id)}
-              onChange={() => onToggle(item.id)}
-              className="mt-5 size-5 rounded border-border"
-            />
+            <label
+              data-np-media-select-target
+              className="-ml-2 -mt-2 inline-flex size-10 cursor-pointer items-center justify-center"
+            >
+              <input
+                type="checkbox"
+                checked={selectedItems.includes(item.id)}
+                onChange={() => onToggle(item.id)}
+                aria-label={`Select ${item.filename}`}
+                className="size-5 cursor-pointer rounded border-border accent-primary"
+              />
+            </label>
             <div className="h-14 w-14 overflow-hidden rounded-xl bg-muted/40">
               <MediaThumb item={item} compact />
             </div>
@@ -559,7 +626,7 @@ function ListView({
                 <span className="break-words">{formatDate(item.createdAt)}</span>
               </div>
             </div>
-          </label>
+          </article>
         ))}
       </div>
 

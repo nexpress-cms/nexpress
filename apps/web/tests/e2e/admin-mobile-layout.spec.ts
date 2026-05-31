@@ -8,6 +8,7 @@
  */
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { Buffer } from "node:buffer";
 
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 
@@ -238,6 +239,102 @@ test.describe("admin mobile layout", () => {
 
     await expectTouchTarget(page.getByRole("button", { name: /^Previous$/ }), "previous page");
     await expectTouchTarget(page.getByRole("button", { name: /^Next$/ }), "next page");
+  });
+
+  test("keeps media library controls tappable on narrow phones", async ({ page, context }) => {
+    test.setTimeout(60_000);
+
+    await context.clearCookies();
+    await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.94" });
+    await signInAsE2EAdmin(page);
+    await page.setViewportSize({ width: 360, height: 780 });
+
+    const response = await page.goto("/admin/media", { waitUntil: "domcontentloaded" });
+    expect(response?.status(), "admin media library route").toBe(200);
+    await expectNoHorizontalOverflow(page, "admin media library initial", {
+      ignoreClosedSidebar: true,
+    });
+
+    await expectTouchTarget(page.getByRole("button", { name: /^All media$/ }), "all media folder");
+    await expectTouchTarget(page.getByPlaceholder("Search media"), "media search input");
+    await expectTouchTarget(page.getByRole("button", { name: /^All$/ }), "uploader all filter");
+    await expectTouchTarget(page.getByRole("button", { name: /^Staff$/ }), "uploader staff filter");
+    await expectTouchTarget(
+      page.getByRole("button", { name: /^Members$/ }),
+      "uploader members filter",
+    );
+    await expectTouchTarget(page.getByRole("button", { name: /^Grid view$/ }), "grid view toggle");
+    await expectTouchTarget(page.getByRole("button", { name: /^List view$/ }), "list view toggle");
+    await expectTouchTarget(page.getByRole("button", { name: /^Upload$/ }), "media upload button");
+    await expectTouchTarget(
+      page.getByRole("button", { name: /^Delete selected$/ }),
+      "media delete selected button",
+    );
+
+    const filename = `mobile-media-${Date.now()}.png`;
+    await page.getByRole("button", { name: /^Upload$/ }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expectTouchTarget(page.getByRole("button", { name: /^Choose files$/ }), "choose files");
+    await expectTouchTarget(page.getByRole("button", { name: /^Close$/ }), "upload close");
+
+    const uploadResponse = page.waitForResponse(
+      (res) => res.url().endsWith("/api/media/upload") && res.request().method() === "POST",
+    );
+    await page.locator('input[type="file"]').setInputFiles({
+      name: filename,
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    });
+    expect((await uploadResponse).status()).toBeGreaterThanOrEqual(200);
+    await expect(page.getByRole("dialog")).toBeHidden({ timeout: 10_000 });
+
+    await page.getByPlaceholder("Search media").fill(filename);
+    const gridCard = page.locator("[data-np-media-grid-card]").filter({ hasText: filename });
+    await expect(gridCard).toBeVisible({ timeout: 10_000 });
+    await expectNoHorizontalOverflow(page, "admin media grid after upload", {
+      ignoreClosedSidebar: true,
+    });
+    const gridSelectTarget = gridCard.locator("[data-np-media-select-target]");
+    await expectTouchTarget(gridSelectTarget, "media grid select target");
+    const gridCheckbox = gridSelectTarget.getByRole("checkbox", { name: `Select ${filename}` });
+    await gridCheckbox.check();
+    await expect(gridCheckbox).toBeChecked();
+    await expect(page.getByText("1 item selected")).toBeVisible();
+    await expectTouchTarget(
+      page.getByRole("button", { name: /^Delete selected$/ }),
+      "media selected delete button",
+    );
+
+    await page.getByRole("button", { name: /^List view$/ }).click();
+    const listCard = page.locator("[data-np-media-list-card]").filter({ hasText: filename });
+    await expect(listCard).toBeVisible();
+    await expectTouchTarget(
+      listCard.locator("[data-np-media-select-target]"),
+      "media list select target",
+    );
+    await expectNoHorizontalOverflow(page, "admin media list selected", {
+      ignoreClosedSidebar: true,
+    });
+
+    await page.getByRole("button", { name: /^Delete selected$/ }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expectTouchTarget(page.getByRole("button", { name: /^Cancel$/ }), "media delete cancel");
+    await expectTouchTarget(
+      page.getByRole("button", { name: /^Delete 1$/ }),
+      "media delete confirm",
+    );
+
+    const deleteResponse = page.waitForResponse(
+      (res) =>
+        /\/api\/media\/[^/]+$/.test(new URL(res.url()).pathname) &&
+        res.request().method() === "DELETE",
+    );
+    await page.getByRole("button", { name: /^Delete 1$/ }).click();
+    expect((await deleteResponse).status()).toBe(200);
+    await expect(page.getByText(filename)).toBeHidden({ timeout: 10_000 });
   });
 
   test("keeps operational list controls tappable on narrow phones", async ({ page, context }) => {
