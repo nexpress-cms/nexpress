@@ -97,7 +97,7 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
           </p>
         </div>
 
-        <div className="grid min-w-0 gap-2 sm:flex sm:flex-wrap">
+        <div data-np-dashboard-shortcuts className="grid min-w-0 gap-2 sm:flex sm:flex-wrap">
           <Button variant="outline" className="w-full sm:w-auto" asChild>
             <a href="/" target="_blank" rel="noreferrer">
               <ExternalLink />
@@ -345,8 +345,8 @@ function WelcomeCard({ router, onboarding }: WelcomeCardProps) {
                 onClick={step.onClick}
                 className={
                   step.done
-                    ? "group flex min-w-0 w-full items-start gap-3 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 text-left transition-colors hover:border-emerald-500/50 dark:border-emerald-500/20"
-                    : "group flex min-w-0 w-full items-start gap-3 rounded-md border border-neutral-200/80 bg-background px-3 py-2.5 text-left transition-colors hover:border-[var(--np-color-brand)]/40 hover:bg-[var(--np-color-brand)]/5 dark:border-neutral-800/80"
+                    ? "group flex min-h-11 min-w-0 w-full items-start gap-3 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 text-left transition-colors hover:border-emerald-500/50 dark:border-emerald-500/20"
+                    : "group flex min-h-11 min-w-0 w-full items-start gap-3 rounded-md border border-neutral-200/80 bg-background px-3 py-2.5 text-left transition-colors hover:border-[var(--np-color-brand)]/40 hover:bg-[var(--np-color-brand)]/5 dark:border-neutral-800/80"
                 }
               >
                 <div
