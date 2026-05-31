@@ -126,12 +126,12 @@ export function MembershipsView({ siteId }: { siteId: string }) {
         className="min-w-0"
         actions={
           <>
-            <Link href="/admin/sites">
-              <Button variant="ghost" size="sm" className="w-full sm:w-auto">
+            <Button variant="ghost" size="sm" className="min-h-10 w-full sm:w-auto" asChild>
+              <Link href="/admin/sites">
                 <ArrowLeft />
                 All sites
-              </Button>
-            </Link>
+              </Link>
+            </Button>
             <Button onClick={() => setCreateOpen(true)} className="w-full sm:w-auto">
               <Plus />
               Grant membership
@@ -305,7 +305,7 @@ function GrantDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="min-w-0">
+      <DialogContent data-np-membership-grant-dialog className="min-w-0">
         <DialogHeader>
           <DialogTitle className="break-words">
             Grant membership on <span className="break-all">{siteId}</span>
@@ -364,7 +364,7 @@ function GrantDialog({
                           <li key={r.id}>
                             <button
                               type="button"
-                              className="grid min-w-0 w-full gap-1 px-3 py-2 text-left text-sm hover:bg-muted/40 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:items-center"
+                              className="grid min-h-10 min-w-0 w-full gap-1 px-3 py-2 text-left text-sm hover:bg-muted/40 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:items-center"
                               onClick={() => {
                                 setSelected(r);
                                 setSearch("");
@@ -409,10 +409,19 @@ function GrantDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            onClick={() => onOpenChange(false)}
+            disabled={submitting}
+          >
             Cancel
           </Button>
-          <Button onClick={() => void handleSubmit()} disabled={submitting || !selected}>
+          <Button
+            className="w-full sm:w-auto"
+            onClick={() => void handleSubmit()}
+            disabled={submitting || !selected}
+          >
             {submitting ? <Loader2 className="size-3.5 animate-spin" /> : null}
             Grant
           </Button>

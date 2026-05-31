@@ -224,12 +224,12 @@ export function SitesView() {
                   ) : null}
                 </div>
                 <div className="grid gap-2 sm:flex sm:items-center sm:justify-end">
-                  <Link href={`/admin/sites/${encodeURIComponent(site.id)}/members`}>
-                    <Button variant="outline" size="sm" className="w-full sm:w-auto">
+                  <Button variant="outline" size="sm" className="min-h-10 w-full sm:w-auto" asChild>
+                    <Link href={`/admin/sites/${encodeURIComponent(site.id)}/members`}>
                       <Users className="size-3" />
                       Members
-                    </Button>
-                  </Link>
+                    </Link>
+                  </Button>
                   {!site.isDefault ? (
                     <Button
                       variant="outline"
@@ -297,7 +297,7 @@ function DeleteSiteDialog({
         if (!next) onClose();
       }}
     >
-      <DialogContent className="min-w-0">
+      <DialogContent data-np-site-delete-dialog className="min-w-0">
         <DialogHeader>
           <DialogTitle className="break-words">
             Delete site{state ? ` "${state.site.name}"` : ""}?
@@ -388,11 +388,17 @@ function DeleteSiteDialog({
         ) : null}
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={state?.busy}>
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            onClick={onClose}
+            disabled={state?.busy}
+          >
             Cancel
           </Button>
           <Button
             variant="destructive"
+            className="w-full sm:w-auto"
             onClick={onConfirm}
             disabled={!state || state.loading || state.busy || (cascadeRequired && !state.cascade)}
           >
@@ -465,7 +471,7 @@ function CreateSiteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="min-w-0">
+      <DialogContent data-np-site-create-dialog className="min-w-0">
         <DialogHeader>
           <DialogTitle className="break-words">Add a site</DialogTitle>
           <DialogDescription className="break-words">
@@ -539,10 +545,19 @@ function CreateSiteDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            onClick={() => onOpenChange(false)}
+            disabled={submitting}
+          >
             Cancel
           </Button>
-          <Button onClick={() => void handleSubmit()} disabled={submitting || !id || !name}>
+          <Button
+            className="w-full sm:w-auto"
+            onClick={() => void handleSubmit()}
+            disabled={submitting || !id || !name}
+          >
             {submitting ? <Loader2 className="size-3.5 animate-spin" /> : null}
             Create site
           </Button>
