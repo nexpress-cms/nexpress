@@ -93,10 +93,10 @@ export function MediaUploadZone({ folderId, onUploadComplete, onClose }: MediaUp
   }
 
   return (
-    <div className="min-w-0 space-y-6">
+    <div data-np-media-upload-zone className="min-w-0 space-y-6">
       <div
         className={cn(
-          "rounded-xl border border-dashed px-6 py-12 text-center transition-colors",
+          "rounded-xl border border-dashed px-4 py-8 text-center transition-colors sm:px-6 sm:py-12",
           isDragging ? "border-primary bg-primary/5" : "border-border/80 bg-muted/25",
         )}
         onDragOver={handleDragOver}
@@ -158,7 +158,7 @@ export function MediaUploadZone({ folderId, onUploadComplete, onClose }: MediaUp
                 key={upload.id}
                 className="min-w-0 rounded-xl border border-border/70 bg-background/70 p-4"
               >
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                   <div className="min-w-0">
                     <p className="break-words font-medium text-foreground">{upload.name}</p>
                     <p className="break-words text-sm text-muted-foreground">

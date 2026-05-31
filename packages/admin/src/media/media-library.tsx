@@ -340,7 +340,7 @@ export function MediaLibrary() {
                       Upload
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="min-w-0 max-w-3xl">
+                  <DialogContent data-np-media-upload-dialog className="min-w-0 max-w-3xl">
                     <DialogHeader>
                       <DialogTitle className="break-words">Upload media</DialogTitle>
                       <DialogDescription className="break-words">
@@ -403,7 +403,7 @@ export function MediaLibrary() {
       </div>
 
       <Dialog open={confirmBulkDelete} onOpenChange={setConfirmBulkDelete}>
-        <DialogContent className="min-w-0">
+        <DialogContent data-np-media-delete-dialog className="min-w-0">
           <DialogHeader>
             <DialogTitle className="break-words">
               Delete {selectedItems.length} media item{selectedItems.length === 1 ? "" : "s"}?
@@ -473,7 +473,7 @@ function GridView({
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {items.map((item) => {
         const checked = selectedItems.includes(item.id);
 
@@ -482,7 +482,7 @@ function GridView({
             key={item.id}
             data-np-media-grid-card
             className={cn(
-              "group block overflow-hidden rounded-xl border bg-background/80 transition-all",
+              "group block min-w-0 overflow-hidden rounded-xl border bg-background/80 transition-all",
               checked
                 ? "border-primary shadow-[0_0_0_1px_rgba(0,0,0,0.04)]"
                 : "border-border/70 hover:border-border",

@@ -72,6 +72,39 @@ test.describe("admin mobile layout", () => {
     });
   }
 
+  test("keeps dashboard shortcuts tappable on narrow phones", async ({ page, context }) => {
+    test.setTimeout(60_000);
+
+    await context.clearCookies();
+    await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.89" });
+    await signInAsE2EAdmin(page);
+    await page.setViewportSize({ width: 360, height: 780 });
+
+    const response = await page.goto("/admin", { waitUntil: "domcontentloaded" });
+    expect(response?.status(), "admin dashboard route").toBe(200);
+    await expectNoHorizontalOverflow(page, "admin dashboard initial", {
+      ignoreClosedSidebar: true,
+    });
+
+    const shortcuts = page.locator("[data-np-dashboard-shortcuts]");
+    await expect(shortcuts).toBeVisible();
+    await expectTouchTarget(shortcuts.getByRole("link", { name: /^View site$/ }), "view site");
+    await expectTouchTarget(
+      shortcuts.getByRole("button", { name: /^Upload Media$/ }),
+      "dashboard upload media",
+    );
+    await expectTouchTarget(
+      shortcuts.getByRole("button", { name: /^New entry$/ }),
+      "dashboard new entry",
+    );
+
+    await shortcuts.getByRole("button", { name: /^Upload Media$/ }).click();
+    await expect(page).toHaveURL(/\/admin\/media$/);
+    await expectNoHorizontalOverflow(page, "admin dashboard shortcut navigation", {
+      ignoreClosedSidebar: true,
+    });
+  });
+
   test("keeps the page editor form controls tappable on narrow phones", async ({
     page,
     context,
@@ -321,7 +354,11 @@ test.describe("admin mobile layout", () => {
 
     const filename = `mobile-media-${Date.now()}.png`;
     await page.getByRole("button", { name: /^Upload$/ }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    const uploadDialog = page.locator("[data-np-media-upload-dialog]");
+    await expect(uploadDialog).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin media upload dialog", {
+      ignoreClosedSidebar: true,
+    });
     await expectTouchTarget(page.getByRole("button", { name: /^Choose files$/ }), "choose files");
     await expectTouchTarget(page.getByRole("button", { name: /^Close$/ }), "upload close");
 
@@ -370,7 +407,11 @@ test.describe("admin mobile layout", () => {
     });
 
     await page.getByRole("button", { name: /^Delete selected$/ }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    const deleteDialog = page.locator("[data-np-media-delete-dialog]");
+    await expect(deleteDialog).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin media delete dialog", {
+      ignoreClosedSidebar: true,
+    });
     await expectTouchTarget(page.getByRole("button", { name: /^Cancel$/ }), "media delete cancel");
     await expectTouchTarget(
       page.getByRole("button", { name: /^Delete 1$/ }),
