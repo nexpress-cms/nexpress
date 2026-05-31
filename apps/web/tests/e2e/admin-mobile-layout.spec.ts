@@ -92,21 +92,37 @@ test.describe("admin mobile layout", () => {
     });
 
     const titleInput = page.getByLabel("title", { exact: true });
-    const saveDraftButton = page.getByRole("button", { name: /^Save as Draft$/ });
-    const scheduleButton = page.getByRole("button", { name: /^Schedule$/ });
-    const publishButton = page.locator('button[type="submit"]').filter({ hasText: /^Publish$/ });
+    const mobileActions = page.locator("[data-np-mobile-editor-actions]");
+    const saveDraftButton = mobileActions.getByRole("button", { name: /^Save as Draft$/ });
+    const scheduleButton = mobileActions.getByRole("button", { name: /^Schedule$/ });
+    const publishButton = mobileActions.getByRole("button", { name: /^Publish$/ });
 
     await expect(titleInput).toBeVisible();
+    await expect(mobileActions).toBeVisible();
     await expect(saveDraftButton).toBeEnabled();
     await expect(scheduleButton).toBeEnabled();
     await expect(publishButton).toBeEnabled();
 
     await expectTouchTarget(titleInput, "title input");
+    await expectTouchTarget(mobileActions, "mobile editor action bar");
     await expectTouchTarget(saveDraftButton, "save draft button");
     await expectTouchTarget(scheduleButton, "schedule button");
     await expectTouchTarget(publishButton, "publish button");
 
+    await scheduleButton.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expectTouchTarget(page.getByRole("button", { name: /^Cancel$/ }), "schedule cancel");
+    await page.getByRole("button", { name: /^Cancel$/ }).click();
+    await expect(page.getByRole("dialog")).toBeHidden();
+
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await expect(mobileActions).toBeInViewport();
+    await expectNoHorizontalOverflow(page, "admin page editor form after deep scroll", {
+      ignoreClosedSidebar: true,
+    });
+
     const title = `Mobile editor draft ${Date.now()}`;
+    await titleInput.scrollIntoViewIfNeeded();
     await titleInput.fill(title);
     await page.getByLabel("seoDescription", { exact: true }).fill("mobile editor smoke");
     await expectNoHorizontalOverflow(page, "admin page editor form after fill", {
