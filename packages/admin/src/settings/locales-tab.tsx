@@ -207,7 +207,64 @@ function TranslationProgressCard({ progress }: { progress: TranslationProgress }
         </p>
       </CardHeader>
       <CardContent className="min-w-0">
-        <div className="min-w-0 overflow-x-auto">
+        <div className="grid min-w-0 gap-3 sm:hidden">
+          {progress.collections.map((row) => (
+            <div
+              key={row.collection}
+              className="min-w-0 rounded-lg border border-border/70 bg-background/60 p-3"
+            >
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="break-words text-sm font-medium">{row.collection}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {row.totalGroups} translation group{row.totalGroups === 1 ? "" : "s"}
+                  </p>
+                </div>
+              </div>
+              <dl className="mt-3 grid min-w-0 gap-2">
+                {progress.locales.map((locale) => {
+                  const cell = row.perLocale[locale];
+                  const complete = cell ? cell.missing === 0 && row.totalGroups > 0 : false;
+                  return (
+                    <div
+                      key={locale}
+                      className="flex min-w-0 items-center justify-between gap-3 rounded-md bg-muted/40 px-2.5 py-2"
+                    >
+                      <dt className="min-w-0 break-all font-mono text-[11px] font-medium uppercase text-muted-foreground">
+                        {locale}
+                      </dt>
+                      <dd className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-sm tabular-nums">
+                        {cell ? (
+                          <>
+                            <span
+                              className={
+                                complete
+                                  ? "font-medium text-emerald-600 dark:text-emerald-400"
+                                  : cell.missing > 0
+                                    ? "text-foreground"
+                                    : "text-muted-foreground"
+                              }
+                            >
+                              {cell.count}
+                            </span>
+                            {cell.missing > 0 ? (
+                              <span className="inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                                -{cell.missing}
+                              </span>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </dd>
+                    </div>
+                  );
+                })}
+              </dl>
+            </div>
+          ))}
+        </div>
+        <div className="hidden min-w-0 overflow-x-auto sm:block">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="border-b border-neutral-200/70 dark:border-neutral-800/70">

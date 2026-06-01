@@ -98,9 +98,16 @@ interface OverflowMetrics {
   bodyScrollWidth: number;
   offenders: Array<{
     selector: string;
+    parent: string;
     left: number;
     right: number;
     width: number;
+    display: string;
+    gap: string;
+    flexWrap: string;
+    whiteSpace: string;
+    overflowX: string;
+    fontFamily: string;
     text: string;
   }>;
 }
@@ -210,11 +217,19 @@ async function collectOverflowMetrics(page: Page): Promise<OverflowMetrics> {
     const offenders = Array.from(document.body.querySelectorAll("*"))
       .map((element) => {
         const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
         return {
           selector: selectorFor(element),
+          parent: element.parentElement ? selectorFor(element.parentElement) : "",
           left: Math.round(rect.left),
           right: Math.round(rect.right),
           width: Math.round(rect.width),
+          display: style.display,
+          gap: style.gap,
+          flexWrap: style.flexWrap,
+          whiteSpace: style.whiteSpace,
+          overflowX: style.overflowX,
+          fontFamily: style.fontFamily,
           text: (element.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 80),
         };
       })

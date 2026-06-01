@@ -49,11 +49,21 @@ export function MobileNav({ items, label = "Menu" }: MobileNavProps) {
       if (e.key === "Escape") setOpen(false);
     };
     document.addEventListener("keydown", onKey);
+    const root = document.documentElement;
+    const previousRootOverflowX = root.style.overflowX;
+    const previousRootMaxWidth = root.style.maxWidth;
     const previousOverflow = document.body.style.overflow;
+    const previousBodyMaxWidth = document.body.style.maxWidth;
+    root.style.overflowX = "hidden";
+    root.style.maxWidth = "100vw";
     document.body.style.overflow = "hidden";
+    document.body.style.maxWidth = "100vw";
     return () => {
       document.removeEventListener("keydown", onKey);
+      root.style.overflowX = previousRootOverflowX;
+      root.style.maxWidth = previousRootMaxWidth;
       document.body.style.overflow = previousOverflow;
+      document.body.style.maxWidth = previousBodyMaxWidth;
     };
   }, [open]);
 
