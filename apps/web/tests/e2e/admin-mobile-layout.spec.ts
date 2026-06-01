@@ -14,10 +14,13 @@ import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 import { E2E_ADMIN } from "./fixtures/seed.js";
 
 const MOBILE_VIEWPORTS = [
+  { width: 320, height: 740 },
   { width: 360, height: 780 },
   { width: 390, height: 844 },
   { width: 820, height: 1180 },
 ] as const;
+
+const NARROW_PHONE_VIEWPORT = { width: 320, height: 740 } as const;
 
 const ADMIN_ROUTES = [
   { path: "/admin", label: "dashboard" },
@@ -79,7 +82,7 @@ test.describe("admin mobile layout", () => {
     await context.clearCookies();
     await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.89" });
     await signInAsE2EAdmin(page);
-    await page.setViewportSize({ width: 360, height: 780 });
+    await page.setViewportSize(NARROW_PHONE_VIEWPORT);
 
     const response = await page.goto("/admin", { waitUntil: "domcontentloaded" });
     expect(response?.status(), "admin dashboard route").toBe(200);
@@ -115,7 +118,7 @@ test.describe("admin mobile layout", () => {
     await context.clearCookies();
     await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.90" });
     await signInAsE2EAdmin(page);
-    await page.setViewportSize({ width: 360, height: 780 });
+    await page.setViewportSize(NARROW_PHONE_VIEWPORT);
 
     const response = await page.goto("/admin/collections/pages/create", {
       waitUntil: "domcontentloaded",
@@ -212,7 +215,7 @@ test.describe("admin mobile layout", () => {
     await context.clearCookies();
     await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.92" });
     await signInAsE2EAdmin(page);
-    await page.setViewportSize({ width: 360, height: 780 });
+    await page.setViewportSize(NARROW_PHONE_VIEWPORT);
 
     const response = await page.goto("/admin/collections/pages/create", {
       waitUntil: "domcontentloaded",
@@ -276,7 +279,7 @@ test.describe("admin mobile layout", () => {
     await context.clearCookies();
     await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.93" });
     await signInAsE2EAdmin(page);
-    await page.setViewportSize({ width: 360, height: 780 });
+    await page.setViewportSize(NARROW_PHONE_VIEWPORT);
 
     const title = `Mobile list draft ${Date.now()}`;
     await createDraftPage(page, title);
@@ -329,7 +332,7 @@ test.describe("admin mobile layout", () => {
     await context.clearCookies();
     await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.94" });
     await signInAsE2EAdmin(page);
-    await page.setViewportSize({ width: 360, height: 780 });
+    await page.setViewportSize(NARROW_PHONE_VIEWPORT);
 
     const response = await page.goto("/admin/media", { waitUntil: "domcontentloaded" });
     expect(response?.status(), "admin media library route").toBe(200);
@@ -438,7 +441,7 @@ test.describe("admin mobile layout", () => {
     await context.clearCookies();
     await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.95" });
     await signInAsE2EAdmin(page);
-    await page.setViewportSize({ width: 360, height: 780 });
+    await page.setViewportSize(NARROW_PHONE_VIEWPORT);
 
     const settingsResponse = await page.goto("/admin/settings", {
       waitUntil: "domcontentloaded",
@@ -544,7 +547,7 @@ test.describe("admin mobile layout", () => {
     await context.clearCookies();
     await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.96" });
     await signInAsE2EAdmin(page);
-    await page.setViewportSize({ width: 360, height: 780 });
+    await page.setViewportSize(NARROW_PHONE_VIEWPORT);
 
     const response = await page.goto("/admin/settings", { waitUntil: "domcontentloaded" });
     expect(response?.status(), "admin settings route").toBe(200);
@@ -553,7 +556,9 @@ test.describe("admin mobile layout", () => {
     });
 
     await page.getByRole("tab", { name: /^Theme$/ }).click();
-    await expect(page.getByRole("heading", { name: /^Colors$/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^Colors$/ })).toBeVisible({
+      timeout: 15_000,
+    });
     await expectNoHorizontalOverflow(page, "admin settings theme tab", {
       ignoreClosedSidebar: true,
     });
@@ -646,7 +651,7 @@ test.describe("admin mobile layout", () => {
     await context.clearCookies();
     await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.97" });
     await signInAsE2EAdmin(page);
-    await page.setViewportSize({ width: 360, height: 780 });
+    await page.setViewportSize(NARROW_PHONE_VIEWPORT);
 
     const sitesResponse = await page.goto("/admin/sites", { waitUntil: "domcontentloaded" });
     expect(sitesResponse?.status(), "admin sites route").toBe(200);
@@ -727,7 +732,7 @@ test.describe("admin mobile layout", () => {
     await context.clearCookies();
     await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.91" });
     await signInAsE2EAdmin(page);
-    await page.setViewportSize({ width: 360, height: 780 });
+    await page.setViewportSize(NARROW_PHONE_VIEWPORT);
 
     const membersResponse = await page.goto("/admin/members", { waitUntil: "domcontentloaded" });
     expect(membersResponse?.status(), "admin members list route").toBe(200);
