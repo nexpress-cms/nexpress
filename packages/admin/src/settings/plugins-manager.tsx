@@ -238,7 +238,7 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
             type="button"
             variant="outline"
             size="sm"
-            className="col-span-2 w-full sm:w-auto"
+            className="col-span-2 min-h-10 w-full sm:min-h-0 sm:w-auto"
             asChild
           >
             <Link href={`/admin/plugins/${plugin.id}`}>
@@ -251,7 +251,7 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
           type="button"
           variant="outline"
           size="sm"
-          className="w-full sm:w-auto"
+          className="min-h-10 w-full sm:min-h-0 sm:w-auto"
           onClick={() => onOpenConfig(plugin)}
         >
           <Settings2 className="size-3.5" />
@@ -489,7 +489,7 @@ export function PluginsManager() {
             type="button"
             variant="outline"
             size="sm"
-            className="w-full sm:w-auto"
+            className="min-h-10 w-full sm:min-h-0 sm:w-auto"
             onClick={() => void reloadAllPlugins()}
             disabled={reloading}
             title="Reset the plugin registry and re-run setup() on every plugin"
@@ -505,7 +505,7 @@ export function PluginsManager() {
             type="button"
             variant="outline"
             size="sm"
-            className="w-full sm:w-auto"
+            className="min-h-10 w-full sm:min-h-0 sm:w-auto"
             onClick={() => setBrowseOpen(true)}
           >
             <Globe className="size-3.5" />
@@ -515,7 +515,7 @@ export function PluginsManager() {
             type="button"
             variant="default"
             size="sm"
-            className="w-full sm:w-auto"
+            className="min-h-10 w-full sm:min-h-0 sm:w-auto"
             onClick={() => setInstallGuideOpen(true)}
           >
             <Plus className="size-3.5" />
@@ -592,7 +592,7 @@ export function PluginsManager() {
           if (!open) setConfigPlugin(null);
         }}
       >
-        <DialogContent className="min-w-0 max-w-2xl">
+        <DialogContent className="min-w-0 max-w-2xl" data-np-plugin-config-dialog>
           <DialogHeader>
             <DialogTitle className="break-words">
               {configPlugin ? `${configPlugin.name} config` : "Config"}
@@ -637,14 +637,14 @@ export function PluginsManager() {
                 <Button
                   type="button"
                   variant="outline"
-                  className="w-full sm:w-auto"
+                  className="min-h-10 w-full sm:min-h-0 sm:w-auto"
                   onClick={() => setConfigPlugin(null)}
                 >
                   Cancel
                 </Button>
                 <Button
                   type="button"
-                  className="w-full sm:w-auto"
+                  className="min-h-10 w-full sm:min-h-0 sm:w-auto"
                   onClick={() => {
                     void saveConfig();
                   }}
@@ -747,10 +747,15 @@ function PluginConfigForm({
           <p className="break-words text-sm text-rose-600 dark:text-rose-300">{errorMessage}</p>
         ) : null}
         <DialogFooter>
-          <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={onCancel}>
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-10 w-full sm:min-h-0 sm:w-auto"
+            onClick={onCancel}
+          >
             Cancel
           </Button>
-          <Button type="submit" className="w-full sm:w-auto" disabled={saving}>
+          <Button type="submit" className="min-h-10 w-full sm:min-h-0 sm:w-auto" disabled={saving}>
             {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
             Save config
           </Button>
@@ -853,7 +858,10 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="grid min-w-0 max-h-[calc(100dvh-2rem)] max-w-3xl grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden">
+      <DialogContent
+        className="grid min-w-0 max-h-[calc(100dvh-2rem)] max-w-3xl grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden"
+        data-np-plugin-registry-dialog
+      >
         <DialogHeader>
           <DialogTitle className="flex min-w-0 items-center gap-2">
             <Globe className="size-4" />
@@ -894,7 +902,7 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
             type="submit"
             variant="outline"
             size="sm"
-            className="w-full sm:w-auto"
+            className="min-h-10 w-full sm:min-h-0 sm:w-auto"
             disabled={loading}
           >
             {loading ? (
@@ -964,7 +972,7 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="w-full sm:w-auto"
+                        className="min-h-10 w-full sm:min-h-0 sm:w-auto"
                         onClick={() => void copy(plugin.name)}
                       >
                         <Copy className="size-3.5" />
@@ -975,7 +983,7 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="w-full sm:w-auto"
+                          className="min-h-10 w-full sm:min-h-0 sm:w-auto"
                           asChild
                         >
                           <a href={plugin.npmUrl} target="_blank" rel="noreferrer">
@@ -1046,7 +1054,7 @@ export default defineConfig({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="min-w-0 max-w-2xl">
+      <DialogContent className="min-w-0 max-w-2xl" data-np-plugin-install-dialog>
         <DialogHeader>
           <DialogTitle className="flex min-w-0 items-center gap-2">
             <Plus className="size-4" />
@@ -1083,7 +1091,7 @@ export default defineConfig({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="w-full sm:w-auto"
+                  className="min-h-10 w-full sm:min-h-0 sm:w-auto"
                   onClick={() => void copy("pnpm add @nexpress/plugin-<name>", "install")}
                   aria-label="Copy install command"
                 >
@@ -1115,7 +1123,7 @@ export default defineConfig({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="w-full sm:w-auto"
+                    className="min-h-10 w-full sm:min-h-0 sm:w-auto"
                     onClick={() => void copy(configSnippet, "config")}
                     aria-label="Copy config snippet"
                   >
@@ -1158,7 +1166,7 @@ export default defineConfig({
           <Button
             type="button"
             variant="ghost"
-            className="w-full sm:w-auto"
+            className="min-h-10 w-full sm:min-h-0 sm:w-auto"
             onClick={() => onOpenChange(false)}
           >
             Close

@@ -276,7 +276,7 @@ export function AuditLogView() {
                     </div>
                   </dl>
                   <details className="text-xs">
-                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                    <summary className="inline-flex min-h-10 cursor-pointer items-center text-muted-foreground hover:text-foreground sm:min-h-0">
                       Payload
                     </summary>
                     <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/40 p-2 font-mono text-[11px]">

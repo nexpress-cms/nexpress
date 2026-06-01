@@ -214,7 +214,7 @@ export function PendingQueueView() {
               type="button"
               variant="outline"
               size="sm"
-              className="w-full sm:w-auto"
+              className="min-h-10 w-full sm:min-h-0 sm:w-auto"
               onClick={() => void runBulk("approve")}
               disabled={bulkBusy !== null}
             >
@@ -224,7 +224,7 @@ export function PendingQueueView() {
               type="button"
               variant="outline"
               size="sm"
-              className="w-full text-destructive hover:text-destructive sm:w-auto"
+              className="min-h-10 w-full text-destructive hover:text-destructive sm:min-h-0 sm:w-auto"
               onClick={() => void runBulk("reject")}
               disabled={bulkBusy !== null}
             >
@@ -234,7 +234,7 @@ export function PendingQueueView() {
               type="button"
               variant="ghost"
               size="sm"
-              className="col-span-2 w-full sm:col-span-1 sm:w-auto"
+              className="col-span-2 min-h-10 w-full sm:col-span-1 sm:min-h-0 sm:w-auto"
               onClick={() => setSelected(new Set())}
               disabled={bulkBusy !== null}
             >
@@ -461,7 +461,7 @@ export function PendingQueueView() {
 
       {actingOn ? (
         <Dialog open onOpenChange={(open) => !open && setActingOn(null)}>
-          <DialogContent className="min-w-0">
+          <DialogContent className="min-w-0" data-np-pending-action-dialog>
             <DialogHeader>
               <DialogTitle className="break-words">
                 {actingOn.verb === "approve" ? "Approve" : "Reject"}

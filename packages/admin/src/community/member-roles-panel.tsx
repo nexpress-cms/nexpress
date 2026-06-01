@@ -208,7 +208,7 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
             type="button"
             variant="outline"
             size="sm"
-            className="w-full sm:w-auto"
+            className="min-h-10 w-full sm:min-h-0 sm:w-auto"
             onClick={() => {
               setForm({
                 ...EMPTY_FORM,
@@ -279,7 +279,7 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="w-full sm:w-auto"
+                      className="min-h-10 w-full sm:min-h-0 sm:w-auto"
                       onClick={() => void revoke(g.id)}
                       disabled={revokingId === g.id}
                     >
@@ -295,7 +295,7 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
 
       {grantOpen ? (
         <Dialog open onOpenChange={(open) => !open && setGrantOpen(false)}>
-          <DialogContent className="min-w-0">
+          <DialogContent className="min-w-0" data-np-member-role-dialog>
             <DialogHeader>
               <DialogTitle className="break-words">Grant role to @{memberHandle}</DialogTitle>
               <DialogDescription className="break-words">

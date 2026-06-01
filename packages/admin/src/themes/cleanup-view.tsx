@@ -168,7 +168,7 @@ export function ThemeCleanupView() {
               type="button"
               variant="ghost"
               size="sm"
-              className="w-full sm:w-auto"
+              className="min-h-10 w-full sm:min-h-0 sm:w-auto"
               onClick={() => void refresh()}
               disabled={loading || busyType !== null}
             >
@@ -179,7 +179,7 @@ export function ThemeCleanupView() {
                 type="button"
                 variant="destructive"
                 size="sm"
-                className="w-full sm:w-auto"
+                className="min-h-10 w-full sm:min-h-0 sm:w-auto"
                 onClick={() => void cleanup(null)}
                 disabled={loading || busyType !== null}
               >
@@ -230,7 +230,7 @@ export function ThemeCleanupView() {
                         </p>
                         {affected.length > 0 ? (
                           <details className="min-w-0 text-xs text-muted-foreground">
-                            <summary className="cursor-pointer hover:text-foreground">
+                            <summary className="inline-flex min-h-10 cursor-pointer items-center hover:text-foreground sm:min-h-0">
                               Show docs
                             </summary>
                             <ul className="mt-1 min-w-0 space-y-0.5 pl-4">
@@ -257,7 +257,7 @@ export function ThemeCleanupView() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="w-full sm:w-auto"
+                        className="min-h-10 w-full sm:min-h-0 sm:w-auto"
                         onClick={() => void cleanup([row.type])}
                         disabled={loading || busyType !== null}
                       >

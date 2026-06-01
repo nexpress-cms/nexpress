@@ -472,6 +472,44 @@ test.describe("admin mobile layout", () => {
       "plugins install guide",
     );
 
+    await page.getByRole("button", { name: /^Browse registry$/ }).click();
+    const registryDialog = page.locator("[data-np-plugin-registry-dialog]");
+    await expect(registryDialog).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin plugin registry dialog", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(
+      registryDialog.getByPlaceholder("Filter by name or keyword (e.g. seo, oauth, forum)"),
+      "plugin registry search input",
+    );
+    await expectTouchTarget(
+      registryDialog.getByRole("button", { name: /^Search$/ }),
+      "plugin registry search button",
+    );
+    await page.keyboard.press("Escape");
+    await expect(registryDialog).toBeHidden();
+
+    await page.getByRole("button", { name: /^Install plugin$/ }).click();
+    const installDialog = page.locator("[data-np-plugin-install-dialog]");
+    await expect(installDialog).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin plugin install dialog", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(
+      installDialog.getByRole("button", { name: "Copy install command" }),
+      "plugin install copy command",
+    );
+    await expectTouchTarget(
+      installDialog.getByRole("button", { name: "Copy config snippet" }),
+      "plugin install copy config",
+    );
+    await expectTouchTarget(
+      installDialog.getByRole("button", { name: /^Close$/ }),
+      "plugin install close",
+    );
+    await installDialog.getByRole("button", { name: /^Close$/ }).click();
+    await expect(installDialog).toBeHidden();
+
     const detailsButton = page.getByRole("button", { name: /^Show details$/ }).first();
     await expectTouchTarget(detailsButton, "plugin show details");
     await detailsButton.click();
@@ -485,10 +523,17 @@ test.describe("admin mobile layout", () => {
     const configureButton = page.getByRole("button", { name: /^Configure$/ }).first();
     await expectTouchTarget(configureButton, "plugin configure button");
     await configureButton.click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-    await expectTouchTarget(page.getByRole("button", { name: /^Cancel$/ }), "plugin config cancel");
+    const configDialog = page.locator("[data-np-plugin-config-dialog]");
+    await expect(configDialog).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin plugin config dialog", {
+      ignoreClosedSidebar: true,
+    });
     await expectTouchTarget(
-      page.getByRole("button", { name: /^Save config$/ }),
+      configDialog.getByRole("button", { name: /^Cancel$/ }),
+      "plugin config cancel",
+    );
+    await expectTouchTarget(
+      configDialog.getByRole("button", { name: /^Save config$/ }),
       "plugin config save",
     );
   });
@@ -752,7 +797,6 @@ test.describe("admin mobile layout", () => {
       page.getByRole("button", { name: /^Refresh$/ }).first(),
       "jobs refresh button",
     );
-
     await page.getByRole("tab", { name: /^Scheduled$/ }).click();
     const handlerSelect = page.locator("#np-job-enqueue-type");
     const payloadTextarea = page.locator("#np-job-enqueue-data");
@@ -761,6 +805,9 @@ test.describe("admin mobile layout", () => {
     await expectTouchTarget(handlerSelect, "jobs handler select");
     await expectTouchTarget(payloadTextarea, "jobs payload textarea");
     await expectTouchTarget(page.getByRole("button", { name: /^Enqueue$/ }), "jobs enqueue button");
+    await expectNoHorizontalOverflow(page, "admin jobs scheduled controls", {
+      ignoreClosedSidebar: true,
+    });
   });
 });
 
