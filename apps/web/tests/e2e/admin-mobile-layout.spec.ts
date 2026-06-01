@@ -46,9 +46,15 @@ interface OverflowMetrics {
   bodyScrollWidth: number;
   offenders: Array<{
     selector: string;
+    parent: string;
     left: number;
     right: number;
     width: number;
+    display: string;
+    gap: string;
+    flexWrap: string;
+    whiteSpace: string;
+    overflowX: string;
     text: string;
   }>;
 }
@@ -551,14 +557,12 @@ test.describe("admin mobile layout", () => {
 
     const response = await page.goto("/admin/settings", { waitUntil: "domcontentloaded" });
     expect(response?.status(), "admin settings route").toBe(200);
+    await expect(page.getByRole("heading", { name: /^General settings$/ })).toBeVisible();
     await expectNoHorizontalOverflow(page, "admin deep settings initial", {
       ignoreClosedSidebar: true,
     });
 
-    await page.getByRole("tab", { name: /^Theme$/ }).click();
-    await expect(page.getByRole("heading", { name: /^Colors$/ })).toBeVisible({
-      timeout: 15_000,
-    });
+    await activateSettingsTab(page, "Theme", /^Colors$/);
     await expectNoHorizontalOverflow(page, "admin settings theme tab", {
       ignoreClosedSidebar: true,
     });
@@ -571,8 +575,7 @@ test.describe("admin mobile layout", () => {
     );
     await expectTouchTarget(page.getByRole("button", { name: /^Save Theme$/ }), "theme save");
 
-    await page.getByRole("tab", { name: /^Navigation$/ }).click();
-    await expect(page.getByRole("heading", { name: /^Navigation structure$/ })).toBeVisible();
+    await activateSettingsTab(page, "Navigation", /^Navigation structure$/);
     await expectNoHorizontalOverflow(page, "admin settings navigation tab", {
       ignoreClosedSidebar: true,
     });
@@ -594,8 +597,22 @@ test.describe("admin mobile layout", () => {
       "nav remove item",
     );
 
-    await page.getByRole("tab", { name: /^Users$/ }).click();
-    await expect(page.getByRole("heading", { name: /^User management$/ })).toBeVisible();
+    await activateSettingsTab(page, "Routes", /^Custom routes$/);
+    await expectNoHorizontalOverflow(page, "admin settings routes tab", {
+      ignoreClosedSidebar: true,
+    });
+
+    await activateSettingsTab(page, "Locales", /^Locales$/);
+    await expectNoHorizontalOverflow(page, "admin settings locales tab", {
+      ignoreClosedSidebar: true,
+    });
+
+    await activateSettingsTab(page, "Strings", /^UI Strings$/);
+    await expectNoHorizontalOverflow(page, "admin settings strings tab", {
+      ignoreClosedSidebar: true,
+    });
+
+    await activateSettingsTab(page, "Users", /^User management$/);
     await expectNoHorizontalOverflow(page, "admin settings users tab", {
       ignoreClosedSidebar: true,
     });
@@ -854,6 +871,23 @@ async function expectTouchTarget(locator: Locator, label: string): Promise<void>
   }).toPass({ timeout: 5_000 });
 }
 
+async function activateSettingsTab(
+  page: Page,
+  name: string,
+  expectedHeading: RegExp,
+): Promise<void> {
+  const tab = page.getByRole("tab", { name: new RegExp(`^${name}$`) });
+  await expect(tab, `settings ${name} tab`).toBeVisible();
+  await expect(tab, `settings ${name} tab`).toBeEnabled();
+  await expect(async () => {
+    await tab.click();
+    await expect(tab).toHaveAttribute("data-state", "active", { timeout: 1_000 });
+  }).toPass({ timeout: 8_000 });
+  await expect(page.getByRole("heading", { name: expectedHeading }).first()).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
 async function assertAdminRouteHasNoMobileOverflow(
   page: Page,
   route: (typeof ADMIN_ROUTES)[number],
@@ -945,11 +979,18 @@ async function collectOverflowMetrics(
       })
       .map((element) => {
         const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
         return {
           selector: selectorFor(element),
+          parent: element.parentElement ? selectorFor(element.parentElement) : "",
           left: Math.round(rect.left),
           right: Math.round(rect.right),
           width: Math.round(rect.width),
+          display: style.display,
+          gap: style.gap,
+          flexWrap: style.flexWrap,
+          whiteSpace: style.whiteSpace,
+          overflowX: style.overflowX,
           text: (element.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 80),
         };
       })

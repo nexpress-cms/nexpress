@@ -20,6 +20,8 @@ import { expect, type Page } from "@playwright/test";
 
 import { E2E_ADMIN } from "./seed.js";
 
+let apiLoginCounter = 0;
+
 export async function signInViaForm(page: Page): Promise<void> {
   await page.goto("/admin/login");
 
@@ -40,11 +42,14 @@ export async function signInViaForm(page: Page): Promise<void> {
 }
 
 export async function signInAsE2EAdmin(page: Page): Promise<void> {
+  const loginNumber = apiLoginCounter++;
+  const forwardedFor = `10.${64 + ((loginNumber >> 16) & 63)}.${(loginNumber >> 8) & 255}.${1 + (loginNumber % 254)}`;
   // page.request shares cookies with the browser context, so
   // any Set-Cookie from the login response is automatically
   // visible to subsequent page.goto / page.locator interactions.
   const response = await page.request.post("/api/auth/login", {
     data: { email: E2E_ADMIN.email, password: E2E_ADMIN.password },
+    headers: { "x-forwarded-for": forwardedFor },
   });
   if (!response.ok()) {
     throw new Error(
