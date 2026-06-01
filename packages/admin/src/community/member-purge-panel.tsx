@@ -132,7 +132,7 @@ export function MemberPurgePanel({ memberId, memberHandle }: MemberPurgePanelPro
 
       {confirming ? (
         <Dialog open onOpenChange={(open) => !open && setConfirming(false)}>
-          <DialogContent className="min-w-0">
+          <DialogContent className="min-w-0" data-np-member-purge-dialog>
             <DialogHeader>
               <DialogTitle className="break-words">
                 Delete all content by @{memberHandle}?

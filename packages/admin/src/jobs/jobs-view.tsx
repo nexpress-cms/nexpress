@@ -335,7 +335,7 @@ export function JobsView() {
             <Button
               variant="outline"
               size="sm"
-              className="w-full sm:w-auto"
+              className="min-h-10 w-full sm:min-h-0 sm:w-auto"
               onClick={() => {
                 if (tab === "scheduled") {
                   void loadSchedules();
@@ -395,7 +395,7 @@ export function JobsView() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="w-full sm:w-auto"
+                  className="min-h-10 w-full sm:min-h-0 sm:w-auto"
                   disabled={refreshing}
                   onClick={() => void retryAllFailed()}
                 >
@@ -539,6 +539,7 @@ function WorkerHealthCard() {
             variant="outline"
             size="sm"
             aria-label="Refresh worker health"
+            className="min-h-10 min-w-10 sm:min-h-0 sm:min-w-0"
             onClick={() => void load()}
             disabled={refreshing}
           >
@@ -793,7 +794,7 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
         <div className="flex min-w-0 justify-end">
           <Button
             size="sm"
-            className="w-full sm:w-auto"
+            className="min-h-10 w-full sm:min-h-0 sm:w-auto"
             disabled={busy || !type}
             onClick={() => void submit()}
           >
@@ -872,7 +873,7 @@ function JobList({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="w-full sm:w-auto"
+                    className="min-h-10 w-full sm:min-h-0 sm:w-auto"
                     disabled={busyJobId === job.id}
                     onClick={() => onRetry(job.id)}
                   >
@@ -888,7 +889,7 @@ function JobList({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="w-full sm:w-auto"
+                    className="min-h-10 w-full sm:min-h-0 sm:w-auto"
                     disabled={busyJobId === job.id}
                     onClick={() => onCancel(job.id)}
                   >
@@ -908,7 +909,7 @@ function JobList({
               </pre>
             ) : null}
             <details className="min-w-0 text-[11px]">
-              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+              <summary className="inline-flex min-h-10 cursor-pointer items-center text-muted-foreground hover:text-foreground sm:min-h-0">
                 Payload
               </summary>
               <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-muted/20 p-3 font-mono text-[11px]">
@@ -986,7 +987,7 @@ function JobLogsSection({ jobId }: { jobId: string }) {
         }
       }}
     >
-      <summary className="cursor-pointer break-words text-muted-foreground hover:text-foreground">
+      <summary className="inline-flex min-h-10 cursor-pointer items-center break-words text-muted-foreground hover:text-foreground sm:min-h-0">
         Logs
         {state.kind === "loaded" ? (
           <span className="ml-2 text-[10px] opacity-70">
@@ -1019,7 +1020,7 @@ function JobLogsSection({ jobId }: { jobId: string }) {
                   <span className="min-w-0 whitespace-pre-wrap break-words">{entry.message}</span>
                   {entry.context && Object.keys(entry.context).length > 0 ? (
                     <details className="ml-0 min-w-0 w-full sm:ml-6">
-                      <summary className="cursor-pointer opacity-70 hover:opacity-100">
+                      <summary className="inline-flex min-h-10 cursor-pointer items-center opacity-70 hover:opacity-100 sm:min-h-0">
                         context
                       </summary>
                       <pre className="mt-1 overflow-auto whitespace-pre-wrap break-words rounded border border-border/40 bg-background/40 p-2 text-[10px]">

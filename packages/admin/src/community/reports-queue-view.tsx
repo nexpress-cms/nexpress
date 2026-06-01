@@ -159,7 +159,7 @@ export function ReportsQueueView() {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="w-full"
+                      className="min-h-10 w-full sm:min-h-0"
                       onClick={() => setResolving(report)}
                     >
                       Resolve
@@ -220,7 +220,12 @@ export function ReportsQueueView() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         {report.resolvedAt ? null : (
-                          <Button size="sm" variant="outline" onClick={() => setResolving(report)}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="min-h-10 sm:min-h-0"
+                            onClick={() => setResolving(report)}
+                          >
                             Resolve
                           </Button>
                         )}
@@ -283,7 +288,7 @@ function ResolveDialog({ report, onClose, onResolved }: ResolveDialogProps) {
 
   return (
     <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
-      <DialogContent className="min-w-0">
+      <DialogContent className="min-w-0" data-np-report-resolve-dialog>
         <DialogHeader>
           <DialogTitle>Resolve report</DialogTitle>
           <DialogDescription className="break-words">

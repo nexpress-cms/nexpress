@@ -193,7 +193,7 @@ export function MemberBansPanel({ memberId, memberHandle, canModify }: MemberBan
             type="button"
             variant="outline"
             size="sm"
-            className="w-full sm:w-auto"
+            className="min-h-10 w-full sm:min-h-0 sm:w-auto"
             onClick={() => {
               setForm(EMPTY_FORM);
               setIssueOpen(true);
@@ -256,7 +256,7 @@ export function MemberBansPanel({ memberId, memberHandle, canModify }: MemberBan
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="w-full sm:w-auto"
+                    className="min-h-10 w-full sm:min-h-0 sm:w-auto"
                     onClick={() => void revoke(ban.id)}
                     disabled={revokingId === ban.id}
                   >
@@ -271,7 +271,7 @@ export function MemberBansPanel({ memberId, memberHandle, canModify }: MemberBan
 
       {issueOpen ? (
         <Dialog open onOpenChange={(open) => !open && setIssueOpen(false)}>
-          <DialogContent className="min-w-0">
+          <DialogContent className="min-w-0" data-np-member-ban-dialog>
             <DialogHeader>
               <DialogTitle className="break-words">Ban @{memberHandle}</DialogTitle>
               <DialogDescription className="break-words">
