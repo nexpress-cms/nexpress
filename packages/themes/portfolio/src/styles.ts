@@ -23,6 +23,8 @@ export const portfolioCss = `
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   color-scheme: dark;
+  max-width: 100%;
+  overflow-x: clip;
 }
 .np-portfolio a { color: inherit; }
 .np-portfolio img { max-width: 100%; display: block; }
@@ -331,14 +333,27 @@ export const portfolioCss = `
 .np-portfolio-cta:hover { opacity: 0.85; }
 @media (max-width: 880px) {
   .np-portfolio-header-inner {
-    grid-template-columns: auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 1rem;
   }
+  .np-portfolio-logo { min-width: 0; }
   .np-portfolio-nav { display: none; }
   .np-portfolio-nav-toggle { display: inline-flex; }
 }
 @media (max-width: 720px) {
   .np-portfolio-header-meta { display: none; }
+}
+@media (max-width: 640px) {
+  .np-portfolio-header-inner,
+  .np-portfolio-footer-inner {
+    padding-inline: 1rem;
+  }
+  .np-portfolio-header-tools {
+    gap: 0.5rem;
+  }
+}
+@media (max-width: 420px) {
+  .np-portfolio-cta { display: none; }
 }
 
 /* ============================================================

@@ -1153,7 +1153,7 @@ export const defaultThemeCss = `
     border-radius: 18px;
   }
   .np-post-cover-fallback {
-    min-height: 12rem;
+    min-height: min(12rem, 52vw);
   }
   .np-post-cover-fallback strong {
     font-size: clamp(4rem, 18vw, 7rem);

@@ -371,12 +371,12 @@ function NavigationCard({
   emptyHint: string;
 }) {
   return (
-    <div className="rounded-2xl border border-black/10 bg-white px-5 py-4">
-      <div className="flex items-baseline justify-between gap-2">
+    <div className="min-w-0 rounded-2xl border border-black/10 bg-white px-5 py-4">
+      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold uppercase tracking-wider opacity-70">
           {location === "header" ? "Header menu" : "Footer menu"}
         </h2>
-        <span className="font-mono text-xs opacity-60">
+        <span className="min-w-0 break-all font-mono text-xs opacity-60">
           getCachedNavigation(&quot;{location}&quot;)
         </span>
       </div>
@@ -385,8 +385,8 @@ function NavigationCard({
       ) : (
         <ul className="mt-3 space-y-1.5 text-sm">
           {items.map((item) => (
-            <li key={item.id} className="flex items-baseline justify-between gap-3">
-              <span>
+            <li key={item.id} className="flex min-w-0 items-baseline justify-between gap-3">
+              <span className="min-w-0 break-words">
                 {item.url ? (
                   <a className="underline-offset-4 hover:underline" href={item.url}>
                     {item.label}
@@ -401,7 +401,7 @@ function NavigationCard({
                   </span>
                 ) : null}
               </span>
-              <code className="font-mono text-xs opacity-60">{item.type}</code>
+              <code className="shrink-0 font-mono text-xs opacity-60">{item.type}</code>
             </li>
           ))}
         </ul>
