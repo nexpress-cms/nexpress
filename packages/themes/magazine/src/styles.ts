@@ -941,6 +941,16 @@ export const magazineCss = `
 .np-magazine-footer-bottom a { text-decoration: none; }
 .np-magazine-footer-bottom a:hover { color: var(--np-color-primary, #b04a26); }
 .np-magazine-footer-bottom-right { display: flex; gap: 1.5rem; }
+@media (max-width: 420px) {
+  .np-magazine-footer-bottom {
+    padding-inline: 1rem;
+  }
+  .np-magazine-footer-bottom-right {
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 0.65rem 1rem;
+  }
+}
 
 .np-magazine-footer-social {
   list-style: none;
