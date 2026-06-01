@@ -48,10 +48,12 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: useBuild
-      ? `pnpm exec next start --port ${port}`
-      : `pnpm exec next dev --port ${port}`,
-    url: `http://localhost:${port}`,
+    command: useBuild ? `pnpm exec next start --port ${port}` : `pnpm exec next dev --port ${port}`,
+    // Public `/` can intentionally be 404 before a theme reseed or
+    // content seed. Use an admin route that exists before test data
+    // setup so Playwright only waits for server readiness, not site
+    // content.
+    url: `http://localhost:${port}/admin/login`,
     reuseExistingServer: !process.env.CI,
     // Cold next dev boot is slow on first compile; give it a generous
     // window. CI has a faster cold path with `next start`.

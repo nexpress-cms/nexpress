@@ -112,6 +112,8 @@ test.describe("bundled theme mobile layout", () => {
       page,
       context,
     }) => {
+      test.setTimeout(120_000);
+
       await context.clearCookies();
       await signInAsE2EAdmin(page);
       await reseedTheme(page, context, theme.id);
