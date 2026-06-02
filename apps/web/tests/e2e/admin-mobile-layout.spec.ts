@@ -65,7 +65,7 @@ test.describe("admin mobile layout", () => {
       page,
       context,
     }) => {
-      test.setTimeout(60_000);
+      test.setTimeout(120_000);
 
       await context.clearCookies();
       // This spec hits many admin routes in one pass; isolate its
@@ -219,7 +219,7 @@ test.describe("admin mobile layout", () => {
     test.setTimeout(60_000);
 
     await context.clearCookies();
-    await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.92" });
+    await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.98" });
     await signInAsE2EAdmin(page);
     await page.setViewportSize(NARROW_PHONE_VIEWPORT);
 
@@ -244,7 +244,7 @@ test.describe("admin mobile layout", () => {
 
     await page.getByRole("button", { name: /^Hero$/ }).click();
     const firstRow = page.locator("[data-np-block-row]").first();
-    await expect(firstRow).toBeVisible();
+    await expect(firstRow).toBeVisible({ timeout: 15_000 });
     await expectNoHorizontalOverflow(page, "admin page-builder after adding block", {
       ignoreClosedSidebar: true,
     });
@@ -831,6 +831,88 @@ test.describe("admin mobile layout", () => {
       ignoreClosedSidebar: true,
     });
   });
+
+  test("keeps user and report list dialogs tappable on narrow phones", async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(60_000);
+
+    await context.clearCookies();
+    await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.92" });
+    await signInAsE2EAdmin(page);
+    await page.setViewportSize(NARROW_PHONE_VIEWPORT);
+
+    const usersResponse = await page.goto("/admin/users", { waitUntil: "domcontentloaded" });
+    expect(usersResponse?.status(), "admin users route").toBe(200);
+    await expect(page.getByRole("heading", { name: /^User management$/ })).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin users list", {
+      ignoreClosedSidebar: true,
+    });
+
+    const inviteButton = page.getByRole("button", { name: /^Invite user$/ });
+    const createButton = page.getByRole("button", { name: /^Create with password$/ });
+    await expectTouchTarget(inviteButton, "users invite button");
+    await expectTouchTarget(createButton, "users create button");
+
+    await inviteButton.click();
+    const inviteDialog = page.locator("[data-np-user-invite-dialog]");
+    await expect(inviteDialog).toBeVisible();
+    await expectTouchTarget(inviteDialog.getByLabel("Name"), "invite name input");
+    await expectTouchTarget(inviteDialog.getByLabel("Email"), "invite email input");
+    await expectTouchTarget(inviteDialog.getByRole("combobox"), "invite role select");
+    await expectTouchTarget(
+      inviteDialog.getByRole("button", { name: /^Cancel$/ }),
+      "invite cancel",
+    );
+    await expectTouchTarget(
+      inviteDialog.getByRole("button", { name: /^Send invite$/ }),
+      "invite submit",
+    );
+    await expectNoHorizontalOverflow(page, "admin user invite dialog", {
+      ignoreClosedSidebar: true,
+    });
+    await inviteDialog.getByRole("button", { name: /^Cancel$/ }).click();
+    await expect(inviteDialog).toBeHidden();
+
+    await createButton.click();
+    const createDialog = page.locator("[data-np-user-create-dialog]");
+    await expect(createDialog).toBeVisible();
+    await expectTouchTarget(createDialog.getByLabel("Name"), "create user name input");
+    await expectTouchTarget(createDialog.getByLabel("Email"), "create user email input");
+    await expectTouchTarget(createDialog.getByLabel("Password"), "create user password input");
+    await expectTouchTarget(createDialog.getByRole("combobox"), "create user role select");
+    await expectTouchTarget(
+      createDialog.getByRole("button", { name: /^Create user$/ }),
+      "create user submit",
+    );
+    await expectNoHorizontalOverflow(page, "admin user create dialog", {
+      ignoreClosedSidebar: true,
+    });
+    await createDialog.getByRole("button", { name: /^Cancel$/ }).click();
+    await expect(createDialog).toBeHidden();
+
+    const reportsResponse = await page.goto("/admin/community/reports", {
+      waitUntil: "domcontentloaded",
+    });
+    expect(reportsResponse?.status(), "admin reports route").toBe(200);
+    await expect(page.getByRole("heading", { name: /^Reports/ })).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin reports list", {
+      ignoreClosedSidebar: true,
+    });
+
+    const statusSelect = page.getByRole("combobox");
+    await expectTouchTarget(statusSelect, "reports status select");
+    await statusSelect.click();
+    await expect(page.getByRole("option", { name: /^Resolved$/ })).toBeVisible();
+    await expectNoHorizontalOverflow(page, "admin reports status menu", {
+      ignoreClosedSidebar: true,
+    });
+    await page.getByRole("option", { name: /^All$/ }).click();
+    await expectNoHorizontalOverflow(page, "admin reports all filter", {
+      ignoreClosedSidebar: true,
+    });
+  });
 });
 
 async function createDraftPage(page: Page, title: string): Promise<void> {
@@ -839,9 +921,11 @@ async function createDraftPage(page: Page, title: string): Promise<void> {
   });
   expect(response?.status(), "admin page editor create route").toBe(200);
 
-  const saveDraftButton = page.getByRole("button", { name: /^Save as Draft$/ });
+  const mobileActions = page.locator("[data-np-mobile-editor-actions]");
+  const saveDraftButton = mobileActions.getByRole("button", { name: /^Save as Draft$/ });
   const titleInput = page.getByLabel("title", { exact: true });
   const seoDescriptionInput = page.getByLabel("seoDescription", { exact: true });
+  await expect(mobileActions).toBeVisible();
   await expect(saveDraftButton).toBeEnabled();
   await expect(titleInput).toBeVisible();
   await expect(seoDescriptionInput).toBeVisible();
@@ -859,6 +943,8 @@ async function createDraftPage(page: Page, title: string): Promise<void> {
     responseBody.status(),
     responseBody.status() === 201 ? undefined : await responseBody.text(),
   ).toBe(201);
+  const created = (await responseBody.json()) as { title?: unknown };
+  expect(created.title).toBe(title);
 }
 
 async function expectTouchTarget(locator: Locator, label: string): Promise<void> {

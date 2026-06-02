@@ -96,7 +96,9 @@ export function ReportsQueueView() {
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Queue</CardTitle>
           <div className="grid min-w-0 gap-1 sm:flex sm:items-center sm:gap-2">
-            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Status</Label>
+            <Label className="min-w-0 text-xs uppercase tracking-wide text-muted-foreground">
+              Status
+            </Label>
             <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
               <SelectTrigger className="min-w-0 sm:w-40">
                 <SelectValue />
@@ -131,9 +133,9 @@ export function ReportsQueueView() {
               reports.map((report) => (
                 <div
                   key={report.id}
-                  className="space-y-3 rounded-xl border border-border/60 bg-background/70 p-4"
+                  className="min-w-0 space-y-3 rounded-xl border border-border/60 bg-background/70 p-4"
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="break-words font-medium">{report.targetType}</p>
                       <p className="break-all font-mono text-xs text-muted-foreground">
@@ -141,9 +143,13 @@ export function ReportsQueueView() {
                       </p>
                     </div>
                     {report.resolvedAt ? (
-                      <StatusBadge status={report.resolution ?? "resolved"} />
+                      <span className="shrink-0">
+                        <StatusBadge status={report.resolution ?? "resolved"} />
+                      </span>
                     ) : (
-                      <StatusBadge status="open" />
+                      <span className="shrink-0">
+                        <StatusBadge status="open" />
+                      </span>
                     )}
                   </div>
                   <div className="space-y-1">
