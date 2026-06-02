@@ -146,18 +146,18 @@ export function UserManagement() {
     <Card className="min-w-0">
       <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle className="break-words">User management</CardTitle>
-        <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
-          <Button className="w-full sm:w-auto" onClick={() => setEmailInviteOpen(true)}>
+        <div className="grid min-w-0 grid-cols-1 gap-2 sm:flex sm:flex-wrap">
+          <Button className="min-w-0 w-full sm:w-auto" onClick={() => setEmailInviteOpen(true)}>
             <MailPlus className="size-3.5" />
-            Invite user
+            <span className="min-w-0 truncate">Invite user</span>
           </Button>
           <Button
             variant="outline"
-            className="w-full sm:w-auto"
+            className="min-w-0 w-full sm:w-auto"
             onClick={() => setInviteOpen(true)}
           >
             <Plus className="size-3.5" />
-            Create with password
+            <span className="min-w-0 truncate">Create with password</span>
           </Button>
         </div>
       </CardHeader>
@@ -197,14 +197,16 @@ export function UserManagement() {
             users.map((user) => (
               <div
                 key={user.id}
-                className="space-y-3 rounded-xl border border-border/70 bg-background/70 p-4"
+                className="min-w-0 space-y-3 rounded-xl border border-border/70 bg-background/70 p-4"
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="break-words font-medium text-foreground">{user.name}</p>
                     <p className="break-all text-sm text-muted-foreground">{user.email}</p>
                   </div>
-                  <Badge variant="secondary">{user.role}</Badge>
+                  <Badge className="shrink-0" variant="secondary">
+                    {user.role}
+                  </Badge>
                 </div>
                 <Button variant="outline" size="sm" className="w-full" asChild>
                   <Link href={`/admin/users/${user.id}`}>Manage</Link>
