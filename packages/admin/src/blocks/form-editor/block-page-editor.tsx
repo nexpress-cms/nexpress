@@ -958,7 +958,7 @@ export function BlockPageEditor({
                     hero/heading and a paragraph or grid. We show
                     only blocks the host actually registered so a
                     plugin-light setup doesn't see broken buttons. */}
-                  <div className="flex min-w-0 flex-wrap justify-center gap-2">
+                  <div className="mx-auto grid min-w-0 w-full max-w-sm grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:max-w-none sm:flex-wrap sm:justify-center">
                     {(() => {
                       const preferred = ["hero", "heading", "text", "grid", "cta"];
                       const pickList: NpBlockMetadata[] = [];
@@ -981,6 +981,7 @@ export function BlockPageEditor({
                           type="button"
                           variant="outline"
                           size="sm"
+                          className="w-full sm:w-auto"
                           onClick={() => dispatch({ type: "ADD", blockType: def.type })}
                         >
                           <Plus className="mr-1.5 h-3.5 w-3.5" />

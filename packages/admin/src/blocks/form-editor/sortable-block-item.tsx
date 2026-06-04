@@ -275,7 +275,7 @@ export function SortableBlockItem({
             </div>
             <div className="truncate font-mono text-xs text-muted-foreground">{block.type}</div>
           </div>
-          <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1">
+          <div className="grid min-w-0 w-full grid-cols-6 gap-1 min-[420px]:ml-auto min-[420px]:flex min-[420px]:w-auto min-[420px]:shrink-0 min-[420px]:flex-wrap min-[420px]:items-center min-[420px]:justify-end">
             <Button
               type="button"
               variant="ghost"
@@ -417,8 +417,8 @@ export function SortableBlockItem({
                         return (
                           <div key={field.name} className="grid min-w-0 gap-1.5">
                             {field.type !== "boolean" ? (
-                              <Label htmlFor={inputId} className="flex items-center gap-1">
-                                <span>{field.label}</span>
+                              <Label htmlFor={inputId} className="flex min-w-0 items-center gap-1">
+                                <span className="min-w-0 break-words">{field.label}</span>
                                 {field.required ? (
                                   <span aria-label="required" className="text-rose-500">
                                     *
