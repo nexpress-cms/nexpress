@@ -194,14 +194,14 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
 
   return (
     <div className="grid min-w-0 gap-2">
-      <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:items-center">
+      <div className="grid min-w-0 grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:items-center">
         <Input
           id={inputId}
           type="url"
           value={value}
           onChange={(e) => onChange(e.currentTarget.value)}
           placeholder="https://… or pick from library"
-          className="col-span-2 min-w-0 sm:col-span-1 sm:flex-1"
+          className="min-w-0 min-[360px]:col-span-2 sm:col-span-1 sm:flex-1"
         />
         <Button
           type="button"
@@ -250,12 +250,12 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
               Search the library, upload a new file, or paste a URL above.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <div className="grid min-w-0 grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-wrap sm:items-center">
             <Input
               value={query}
               onChange={(e) => setQuery(e.currentTarget.value)}
               placeholder="Search by filename or alt text"
-              className="col-span-2 h-8 min-w-0 sm:col-span-1 sm:flex-1"
+              className="h-10 min-h-10 min-w-0 min-[360px]:col-span-2 sm:col-span-1 sm:flex-1"
               autoFocus
             />
             <input
@@ -320,8 +320,8 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
               </button>
             ))}
           </div>
-          <DialogFooter className="gap-2 sm:justify-between">
-            <div className="grid w-full gap-2 sm:flex sm:w-auto sm:items-center">
+          <DialogFooter className="min-w-0 gap-2 sm:justify-between">
+            <div className="grid min-w-0 w-full gap-2 sm:flex sm:w-auto sm:items-center">
               {hasMore ? (
                 <Button
                   type="button"

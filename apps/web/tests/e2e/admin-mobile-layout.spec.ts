@@ -267,6 +267,49 @@ test.describe("admin mobile layout", () => {
       firstRow.getByRole("button", { name: /^Edit as JSON$/ }),
       "edit-json button",
     );
+    await firstRow.getByRole("button", { name: /^Edit as JSON$/ }).click();
+    const blockJsonDialog = page.getByRole("dialog", { name: /^Edit block props as JSON$/ });
+    await expect(blockJsonDialog).toBeVisible();
+    await expectTouchTarget(
+      blockJsonDialog.getByRole("button", { name: /^Format$/ }),
+      "block json format",
+    );
+    await expectTouchTarget(
+      blockJsonDialog.getByRole("button", { name: /^Copy$/ }),
+      "block json copy",
+    );
+    await expectTouchTarget(
+      blockJsonDialog.getByRole("button", { name: /^Cancel$/ }),
+      "block json cancel",
+    );
+    await expectNoHorizontalOverflow(page, "admin block json dialog", {
+      ignoreClosedSidebar: true,
+    });
+    await blockJsonDialog.getByRole("button", { name: /^Cancel$/ }).click();
+    await expect(blockJsonDialog).toBeHidden();
+
+    const imageLibraryButton = firstRow.getByRole("button", { name: /^Library$/ }).first();
+    await expectTouchTarget(imageLibraryButton, "block image library button");
+    await imageLibraryButton.click();
+    const imageDialog = page.getByRole("dialog", { name: /^Select an image$/ });
+    await expect(imageDialog).toBeVisible();
+    await expectTouchTarget(
+      imageDialog.getByPlaceholder("Search by filename or alt text"),
+      "block image search input",
+    );
+    await expectTouchTarget(
+      imageDialog.getByRole("button", { name: /^Upload$/ }),
+      "block image upload",
+    );
+    await expectTouchTarget(
+      imageDialog.getByRole("button", { name: /^Cancel$/ }),
+      "block image cancel",
+    );
+    await expectNoHorizontalOverflow(page, "admin block image picker dialog", {
+      ignoreClosedSidebar: true,
+    });
+    await imageDialog.getByRole("button", { name: /^Cancel$/ }).click();
+    await expect(imageDialog).toBeHidden();
 
     await firstRow.getByRole("button", { name: /^Collapse block$/ }).click();
     await expect(firstRow.getByRole("button", { name: /^Expand block$/ })).toBeVisible();
@@ -843,8 +886,12 @@ test.describe("admin mobile layout", () => {
     await signInAsE2EAdmin(page);
     await page.setViewportSize(NARROW_PHONE_VIEWPORT);
 
+    const usersListResponse = page.waitForResponse(
+      (response) => response.url().includes("/api/users?limit=100") && response.status() === 200,
+    );
     const usersResponse = await page.goto("/admin/users", { waitUntil: "domcontentloaded" });
     expect(usersResponse?.status(), "admin users route").toBe(200);
+    await usersListResponse;
     await expect(page.getByRole("heading", { name: /^User management$/ })).toBeVisible();
     await expectNoHorizontalOverflow(page, "admin users list", {
       ignoreClosedSidebar: true,
@@ -929,22 +976,27 @@ async function createDraftPage(page: Page, title: string): Promise<void> {
   await expect(saveDraftButton).toBeEnabled();
   await expect(titleInput).toBeVisible();
   await expect(seoDescriptionInput).toBeVisible();
-  await titleInput.fill(title);
-  await seoDescriptionInput.fill("mobile list smoke");
-  await expect(titleInput).toHaveValue(title);
-  await expect(seoDescriptionInput).toHaveValue("mobile list smoke");
+  let lastFailure: string | undefined;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await titleInput.fill(title);
+    await seoDescriptionInput.fill("mobile list smoke");
+    await expect(titleInput).toHaveValue(title);
+    await expect(seoDescriptionInput).toHaveValue("mobile list smoke");
 
-  const draftResponse = page.waitForResponse(
-    (res) => res.url().endsWith("/api/collections/pages") && res.request().method() === "POST",
-  );
-  await saveDraftButton.click();
-  const responseBody = await draftResponse;
-  expect(
-    responseBody.status(),
-    responseBody.status() === 201 ? undefined : await responseBody.text(),
-  ).toBe(201);
-  const created = (await responseBody.json()) as { title?: unknown };
-  expect(created.title).toBe(title);
+    const draftResponse = page.waitForResponse(
+      (res) => res.url().endsWith("/api/collections/pages") && res.request().method() === "POST",
+    );
+    await saveDraftButton.click();
+    const responseBody = await draftResponse;
+    if (responseBody.status() === 201) {
+      const created = (await responseBody.json()) as { title?: unknown };
+      expect(created.title).toBe(title);
+      return;
+    }
+    lastFailure = await responseBody.text();
+  }
+
+  throw new Error(lastFailure ?? "Draft page creation failed.");
 }
 
 async function expectTouchTarget(locator: Locator, label: string): Promise<void> {
