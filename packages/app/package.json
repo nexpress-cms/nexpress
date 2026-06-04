@@ -162,12 +162,12 @@
   "devDependencies": {
     "@types/node": "^25.9.1",
     "@types/pg": "^8.15.5",
-    "@types/react": "^19.2.15",
+    "@types/react": "^19.2.16",
     "@types/react-dom": "^19.0.0",
     "drizzle-kit": "^0.31.10",
     "next": "^16.0.0",
     "pg": "^8.21.0",
-    "react": "^19.2.6",
+    "react": "^19.2.7",
     "react-dom": "^19.2.6",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0"

@@ -62,14 +62,14 @@
     "next": "^16.2.6",
     "nodemailer": "^8.0.5",
     "pg": "^8.21.0",
-    "react": "^19.2.6",
+    "react": "^19.2.7",
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.3.0",
     "@types/pg": "^8.15.5",
-    "@types/react": "^19.2.15",
+    "@types/react": "^19.2.16",
     "@types/react-dom": "^19.0.0",
     "concurrently": "^9.2.1",
     "dotenv": "^17.2.4",
