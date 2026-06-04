@@ -1,5 +1,53 @@
 # @nexpress/web
 
+## 0.0.27
+
+### Patch Changes
+
+- Updated dependencies [06417de]
+- Updated dependencies [6014f93]
+- Updated dependencies [4a9d9fb]
+- Updated dependencies [6d2c31a]
+- Updated dependencies [dfa4a0b]
+- Updated dependencies [bcb4509]
+- Updated dependencies [f6a770d]
+- Updated dependencies [b6c8834]
+- Updated dependencies [96c59d2]
+- Updated dependencies [401d23d]
+- Updated dependencies [9c95e89]
+- Updated dependencies [03080b8]
+- Updated dependencies [7996b9a]
+- Updated dependencies [30083fe]
+- Updated dependencies [a400d9d]
+- Updated dependencies [b1c8643]
+- Updated dependencies [7b29c8a]
+  - @nexpress/admin@0.3.16
+  - @nexpress/theme-default@0.3.16
+  - @nexpress/app@0.3.16
+  - @nexpress/theme-magazine@0.3.16
+  - @nexpress/theme-portfolio@0.3.16
+  - @nexpress/auth-pages@0.3.16
+  - @nexpress/blocks@0.3.16
+  - @nexpress/core@0.3.16
+  - @nexpress/editor@0.3.16
+  - @nexpress/next@0.3.16
+  - @nexpress/plugin-block-callout@0.3.16
+  - @nexpress/plugin-block-embed@0.3.16
+  - @nexpress/plugin-block-latest-posts@0.3.16
+  - @nexpress/plugin-block-newsletter@0.3.16
+  - @nexpress/plugin-block-pricing@0.3.16
+  - @nexpress/plugin-block-stats@0.3.16
+  - @nexpress/plugin-forum@0.3.16
+  - @nexpress/plugin-oauth-github@0.3.16
+  - @nexpress/plugin-oauth-google@0.3.16
+  - @nexpress/plugin-reading-time@0.3.16
+  - @nexpress/plugin-sdk@0.3.16
+  - @nexpress/plugin-seo-audit@0.3.16
+  - @nexpress/theme@0.3.16
+  - @nexpress/theme-docs@0.3.16
+  - @nexpress/wp-import@0.3.16
+  - @nexpress/xliff@0.3.16
+
 ## 0.0.26
 
 ### Patch Changes
