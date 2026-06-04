@@ -404,7 +404,7 @@ export function CommandMenu({
                             type="button"
                             onClick={() => runAction(action)}
                             className={cn(
-                              "flex min-w-0 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
+                              "flex min-h-10 min-w-0 w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm sm:min-h-0 sm:py-1.5",
                               "hover:bg-accent focus-visible:bg-accent focus-visible:outline-none",
                               action.hint === "destructive" && "text-destructive",
                             )}
