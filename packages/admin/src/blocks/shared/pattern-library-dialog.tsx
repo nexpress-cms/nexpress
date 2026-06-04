@@ -121,7 +121,11 @@ export function PatternLibraryDialog({
             autoFocus
             className="min-w-0"
           />
-          <div role="tablist" aria-label="Filter by source" className="flex flex-wrap gap-1">
+          <div
+            role="tablist"
+            aria-label="Filter by source"
+            className="grid min-w-0 grid-cols-2 gap-1 min-[420px]:flex min-[420px]:flex-wrap"
+          >
             {SOURCE_FILTERS.map((f) => {
               const active = filter === f.key;
               return (
@@ -132,7 +136,7 @@ export function PatternLibraryDialog({
                   aria-selected={active}
                   onClick={() => setFilter(f.key)}
                   className={cn(
-                    "rounded-full border px-3 py-1 text-xs font-medium transition",
+                    "min-h-10 rounded-full border px-3 py-2 text-xs font-medium transition min-[420px]:min-h-0 min-[420px]:py-1",
                     active
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border/60 bg-background text-muted-foreground hover:border-border hover:text-foreground",

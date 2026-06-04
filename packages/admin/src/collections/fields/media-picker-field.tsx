@@ -63,7 +63,10 @@ export function MediaPickerField({ value, onChange, relationTo }: MediaPickerFie
   const selectedItem = useMemo(() => items.find((item) => item.id === value), [items, value]);
 
   return (
-    <div className="min-w-0 space-y-3 rounded-xl border border-border/60 p-3 sm:p-4">
+    <div
+      className="min-w-0 space-y-3 rounded-xl border border-border/60 p-3 sm:p-4"
+      data-np-media-picker-field={relationTo}
+    >
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">
@@ -82,7 +85,7 @@ export function MediaPickerField({ value, onChange, relationTo }: MediaPickerFie
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="min-w-0 max-w-3xl">
+        <DialogContent className="min-w-0 max-w-3xl" data-np-media-picker-dialog>
           <DialogHeader className="min-w-0">
             <DialogTitle className="break-words">Select media</DialogTitle>
             <DialogDescription className="break-words">
@@ -93,7 +96,7 @@ export function MediaPickerField({ value, onChange, relationTo }: MediaPickerFie
           {isLoading ? <p className="text-sm text-muted-foreground">Loading media…</p> : null}
           {error ? <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
 
-          <div className="grid min-w-0 max-h-[28rem] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid min-w-0 max-h-[min(28rem,48dvh)] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((item) => (
               <button
                 key={item.id}
@@ -110,7 +113,7 @@ export function MediaPickerField({ value, onChange, relationTo }: MediaPickerFie
             ))}
           </div>
 
-          <DialogFooter className="gap-2">
+          <DialogFooter className="min-w-0 gap-2">
             <Button
               type="button"
               variant="outline"

@@ -104,7 +104,10 @@ export function RelationshipField({
   );
 
   return (
-    <div className="min-w-0 space-y-3 rounded-xl border border-border/60 p-3 sm:p-4">
+    <div
+      className="min-w-0 space-y-3 rounded-xl border border-border/60 p-3 sm:p-4"
+      data-np-relationship-field={relationSlug}
+    >
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {selectedItems.length > 0 ? (
@@ -131,7 +134,7 @@ export function RelationshipField({
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="min-w-0 max-w-3xl">
+        <DialogContent className="min-w-0 max-w-3xl" data-np-relationship-dialog>
           <DialogHeader className="min-w-0">
             <DialogTitle className="break-words">Select relation</DialogTitle>
             <DialogDescription className="break-words">
@@ -142,7 +145,7 @@ export function RelationshipField({
           {isLoading ? <p className="text-sm text-muted-foreground">Loading items…</p> : null}
           {error ? <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
 
-          <div className="grid min-w-0 max-h-[28rem] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+          <div className="grid min-w-0 max-h-[min(28rem,48dvh)] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
             {items.map((item) => {
               const isSelected = selectedValues.includes(item.id);
 
@@ -177,7 +180,7 @@ export function RelationshipField({
             })}
           </div>
 
-          <DialogFooter className="gap-2">
+          <DialogFooter className="min-w-0 gap-2">
             <Button
               type="button"
               variant="outline"

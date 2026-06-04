@@ -242,6 +242,21 @@ test.describe("admin mobile layout", () => {
     await expectTouchTarget(page.getByRole("button", { name: /^Undo$/ }), "undo button");
     await expectTouchTarget(page.getByRole("button", { name: /^Redo$/ }), "redo button");
 
+    await page.getByRole("button", { name: /Open pattern library/ }).click();
+    const patternDialog = page.getByRole("dialog", { name: /^Pattern library$/ });
+    await expect(patternDialog).toBeVisible();
+    await expectTouchTarget(patternDialog.getByLabel("Search patterns"), "pattern search input");
+    await expectTouchTarget(patternDialog.getByRole("tab", { name: /^All$/ }), "pattern all tab");
+    await expectTouchTarget(
+      patternDialog.getByRole("tab", { name: /^Built-in$/ }),
+      "pattern built-in tab",
+    );
+    await expectNoHorizontalOverflow(page, "admin pattern library dialog", {
+      ignoreClosedSidebar: true,
+    });
+    await page.keyboard.press("Escape");
+    await expect(patternDialog).toBeHidden();
+
     await page.getByRole("button", { name: /^Hero$/ }).click();
     const firstRow = page.locator("[data-np-block-row]").first();
     await expect(firstRow).toBeVisible({ timeout: 15_000 });
@@ -311,12 +326,126 @@ test.describe("admin mobile layout", () => {
     await imageDialog.getByRole("button", { name: /^Cancel$/ }).click();
     await expect(imageDialog).toBeHidden();
 
+    await page.getByRole("button", { name: /^Edit JSON$/ }).click();
+    const pageJsonDialog = page.getByRole("dialog", { name: /^Edit page blocks as JSON$/ });
+    await expect(pageJsonDialog).toBeVisible();
+    await expectTouchTarget(
+      pageJsonDialog.getByRole("button", { name: /^Format$/ }),
+      "page json format",
+    );
+    await expectTouchTarget(
+      pageJsonDialog.getByRole("button", { name: /^Copy$/ }),
+      "page json copy",
+    );
+    await expectTouchTarget(pageJsonDialog.getByRole("switch"), "page json import mode switch");
+    await expectTouchTarget(
+      pageJsonDialog.getByRole("button", { name: /^Preview$/ }),
+      "page json preview",
+    );
+    await expectTouchTarget(
+      pageJsonDialog.getByRole("button", { name: /^Cancel$/ }),
+      "page json cancel",
+    );
+    await expectNoHorizontalOverflow(page, "admin page json dialog", {
+      ignoreClosedSidebar: true,
+    });
+    await pageJsonDialog.getByRole("button", { name: /^Cancel$/ }).click();
+    await expect(pageJsonDialog).toBeHidden();
+
+    await firstRow.getByRole("button", { name: /^Collapse block$/ }).focus();
+    await page.keyboard.press("Control+K");
+    const commandDialog = page.getByRole("dialog", { name: /^Page-builder commands$/ });
+    await expect(commandDialog).toBeVisible();
+    await expectTouchTarget(commandDialog.getByLabel("Filter commands"), "command filter input");
+    await expectTouchTarget(
+      commandDialog.getByRole("button", { name: /^Paste blocks from JSON/ }),
+      "command paste action",
+    );
+    await expectNoHorizontalOverflow(page, "admin page-builder command dialog", {
+      ignoreClosedSidebar: true,
+    });
+    await commandDialog.getByRole("button", { name: /^Paste blocks from JSON/ }).click();
+    const pasteDialog = page.getByRole("dialog", { name: /^Paste blocks from JSON$/ });
+    await expect(pasteDialog).toBeVisible();
+    await expectTouchTarget(pasteDialog.getByLabel("JSON"), "paste json textarea");
+    await expectTouchTarget(pasteDialog.getByRole("button", { name: /^Cancel$/ }), "paste cancel");
+    await expectTouchTarget(
+      pasteDialog.getByRole("button", { name: /^Validate$/ }),
+      "paste validate",
+    );
+    await expectTouchTarget(
+      pasteDialog.getByRole("button", { name: /^Insert blocks$/ }),
+      "paste insert",
+    );
+    await expectNoHorizontalOverflow(page, "admin paste blocks dialog", {
+      ignoreClosedSidebar: true,
+    });
+    await pasteDialog.getByRole("button", { name: /^Cancel$/ }).click();
+    await expect(pasteDialog).toBeHidden();
+
     await firstRow.getByRole("button", { name: /^Collapse block$/ }).click();
     await expect(firstRow.getByRole("button", { name: /^Expand block$/ })).toBeVisible();
     await expectTouchTarget(
       firstRow.getByRole("button", { name: /^Expand block$/ }),
       "block expand button",
     );
+  });
+
+  test("keeps collection picker dialogs tappable on narrow phones", async ({ page, context }) => {
+    test.setTimeout(60_000);
+
+    await context.clearCookies();
+    await context.setExtraHTTPHeaders({ "x-forwarded-for": "192.0.2.99" });
+    await signInAsE2EAdmin(page);
+    await page.setViewportSize(NARROW_PHONE_VIEWPORT);
+
+    const response = await page.goto("/admin/collections/posts/create", {
+      waitUntil: "domcontentloaded",
+    });
+    expect(response?.status(), "admin post editor create route").toBe(200);
+    await expectNoHorizontalOverflow(page, "admin post editor picker fields initial", {
+      ignoreClosedSidebar: true,
+    });
+
+    const mediaPicker = page.locator("[data-np-media-picker-field='media']").first();
+    await mediaPicker.scrollIntoViewIfNeeded();
+    await expect(mediaPicker).toBeVisible();
+    await expectTouchTarget(
+      mediaPicker.getByRole("button", { name: /^Select$/ }),
+      "media picker select",
+    );
+    await mediaPicker.getByRole("button", { name: /^Select$/ }).click();
+    const mediaDialog = page.locator("[data-np-media-picker-dialog]");
+    await expect(mediaDialog).toBeVisible();
+    await expectTouchTarget(
+      mediaDialog.getByRole("button", { name: /^Clear$/ }),
+      "media picker clear",
+    );
+    await expectNoHorizontalOverflow(page, "admin collection media picker dialog", {
+      ignoreClosedSidebar: true,
+    });
+    await page.keyboard.press("Escape");
+    await expect(mediaDialog).toBeHidden();
+
+    const relationshipPicker = page.locator("[data-np-relationship-field='users']");
+    await relationshipPicker.scrollIntoViewIfNeeded();
+    await expect(relationshipPicker).toBeVisible();
+    await expectTouchTarget(
+      relationshipPicker.getByRole("button", { name: /^Select$/ }),
+      "relationship picker select",
+    );
+    await relationshipPicker.getByRole("button", { name: /^Select$/ }).click();
+    const relationshipDialog = page.locator("[data-np-relationship-dialog]");
+    await expect(relationshipDialog).toBeVisible();
+    await expectTouchTarget(
+      relationshipDialog.getByRole("button", { name: /^Clear$/ }),
+      "relationship picker clear",
+    );
+    await expectNoHorizontalOverflow(page, "admin collection relationship picker dialog", {
+      ignoreClosedSidebar: true,
+    });
+    await page.keyboard.press("Escape");
+    await expect(relationshipDialog).toBeHidden();
   });
 
   test("keeps collection list cards and bulk controls tappable on narrow phones", async ({
