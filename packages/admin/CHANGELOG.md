@@ -1,5 +1,30 @@
 # @nexpress/admin
 
+## 0.3.16
+
+### Patch Changes
+
+- 06417de: Improve mobile dashboard shortcuts and media dialog resilience.
+- 6014f93: Improve mobile touch targets in the admin collection editor and page builder controls.
+- 4a9d9fb: Keep draft, schedule, and publish actions reachable from a sticky mobile editor action bar.
+- 6d2c31a: Improve mobile resilience for collection editor side panels and plugin tab cards.
+- dfa4a0b: Polish mobile sizing for block editor rows, starter buttons, and image picker controls.
+- bcb4509: Finish mobile touch-target polish for editor dialogs, picker dialogs, and switch controls.
+- f6a770d: Improve mobile collection list card actions, selection targets, and bulk delete dialog controls.
+- b6c8834: Tighten mobile sizing for user-management actions and report queue cards.
+- 96c59d2: Improve mobile list filtering controls for admin members, audit logs, and jobs.
+- 401d23d: Render the settings locales progress table as mobile-friendly collection cards on narrow screens.
+  Keep the default theme mobile drawer from widening long article pages while open.
+- 9c95e89: Improve mobile media library controls, card selection targets, and bulk delete confirmation.
+- 03080b8: Finish admin mobile hardening across plugin, jobs, community, and theme cleanup operational controls.
+- 7996b9a: Improve mobile controls for deep admin settings tabs and navigation/user dialogs.
+- 30083fe: Improve mobile tap targets for admin plugin controls and config dialogs.
+- a400d9d: Improve mobile resilience for user, site, and membership management dialogs.
+- b1c8643: Improve admin mobile ergonomics by tightening narrow-screen shell spacing, simplifying topbar breadcrumbs on phones, and stacking editor actions on very small viewports. Also remove the default theme's member-status loading chrome so auth links do not flash on first render.
+  - @nexpress/blocks@0.3.16
+  - @nexpress/core@0.3.16
+  - @nexpress/editor@0.3.16
+
 ## 0.3.15
 
 ### Patch Changes

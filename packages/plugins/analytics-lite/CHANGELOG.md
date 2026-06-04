@@ -1,5 +1,11 @@
 # @nexpress/plugin-analytics-lite
 
+## 0.2.8
+
+### Patch Changes
+
+- @nexpress/plugin-sdk@0.3.16
+
 ## 0.2.7
 
 ### Patch Changes

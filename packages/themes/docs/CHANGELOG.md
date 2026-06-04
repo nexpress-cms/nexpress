@@ -1,5 +1,15 @@
 # @nexpress/theme-docs
 
+## 0.3.16
+
+### Patch Changes
+
+- @nexpress/blocks@0.3.16
+- @nexpress/core@0.3.16
+- @nexpress/editor@0.3.16
+- @nexpress/next@0.3.16
+- @nexpress/theme@0.3.16
+
 ## 0.3.15
 
 ### Patch Changes

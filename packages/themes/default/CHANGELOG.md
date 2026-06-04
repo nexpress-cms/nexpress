@@ -1,5 +1,19 @@
 # @nexpress/theme-default
 
+## 0.3.16
+
+### Patch Changes
+
+- 401d23d: Render the settings locales progress table as mobile-friendly collection cards on narrow screens.
+  Keep the default theme mobile drawer from widening long article pages while open.
+- b1c8643: Improve admin mobile ergonomics by tightening narrow-screen shell spacing, simplifying topbar breadcrumbs on phones, and stacking editor actions on very small viewports. Also remove the default theme's member-status loading chrome so auth links do not flash on first render.
+- 7b29c8a: Improve 320px mobile overflow resilience for the default empty-state landing page, default post cover fallback, magazine footer links, and portfolio masthead.
+  - @nexpress/blocks@0.3.16
+  - @nexpress/core@0.3.16
+  - @nexpress/editor@0.3.16
+  - @nexpress/next@0.3.16
+  - @nexpress/theme@0.3.16
+
 ## 0.3.15
 
 ### Patch Changes

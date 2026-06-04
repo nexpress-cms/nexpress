@@ -1,5 +1,16 @@
 # @nexpress/theme-magazine
 
+## 0.3.16
+
+### Patch Changes
+
+- 7b29c8a: Improve 320px mobile overflow resilience for the default empty-state landing page, default post cover fallback, magazine footer links, and portfolio masthead.
+  - @nexpress/blocks@0.3.16
+  - @nexpress/core@0.3.16
+  - @nexpress/editor@0.3.16
+  - @nexpress/next@0.3.16
+  - @nexpress/theme@0.3.16
+
 ## 0.3.15
 
 ### Patch Changes
