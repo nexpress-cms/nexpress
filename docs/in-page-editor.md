@@ -31,9 +31,13 @@ controls in the parent React tree.
 ### Hover affordances
 
 Hovering any block in the canvas highlights it with a primary-
-color ring and surfaces a small action rail in the top-right
-corner of the block:
+color ring and surfaces a compact action rail beside the block:
 
+- **Insert below (plus)** — opens the inline quick-insert bar
+  directly after the hovered block.
+- **Drag (grip)** — reorders top-level blocks in Document view.
+  Nested reordering still lives in Page builder where container
+  boundaries are visible.
 - **Settings (gear)** — opens a `BlockSettingsDialog` modal that
   walks the block's `propsSchema` and renders one `FieldControl`
   per field. The form respects `hiddenWhen` / `visibleWhen`
@@ -41,16 +45,21 @@ corner of the block:
   in a draft until Save; Cancel discards them.
 - **Delete (trash)** — dispatches `DELETE` for the hovered block.
 
-For deeper structural changes (drag-reorder, multi-select, wrap
-in container, undo across many edits) operators flip to **Page
-builder** view — the row-card layout still exposes the full
+For deeper structural changes (nested drag-reorder, multi-select,
+wrap in container, undo across many edits) operators flip to
+**Page builder** view — the row-card layout still exposes the full
 toolbox.
 
 ### Adding blocks
 
-The trailing **Add block** button below the preview opens the
-same `<PaletteModal>` Page builder uses. Doc and Page modes pick
-from one shared registry; there's no per-view block filter.
+Document view has a quick-insert bar at the end of the preview
+and can also open the same bar below a hovered block. Plain text
+submitted there creates a populated rich-text block. Typing `/`
+switches into the slash menu, which filters the shared block
+registry and inserts the selected structural block.
+
+The palette behind slash insertions is the same registry Page
+builder uses; there's no per-view block filter.
 
 ### Why no inline atom blocks
 
@@ -118,10 +127,9 @@ Behavior:
 
 ## Notes & limitations (v1)
 
-- **No drag-and-drop reorder in Document view** — preview iframe
-  doesn't expose the row layout the form-card editor's dnd-kit
-  uses. Use the row's actions popover Move-up / Move-down inside
-  Page builder, or switch to Page builder for full reorder.
+- **Document drag-and-drop is top-level only.** Nested reorder and
+  cross-container movement stay in Page builder so container
+  boundaries remain explicit.
 - **Settings dialog drives one block at a time.** Multi-select +
   bulk-edit lives in Page builder.
 - **Plugin blocks render via the server preview** — same path the
@@ -137,6 +145,11 @@ Pure-logic smoke tests live in
 - `REPLACE_TYPE` reducer cases (id preservation, parent
   contract rejection, container children carry / drop, unknown
   type no-op, missing id no-op).
+- `MOVE_WITHIN_PARENT` side semantics used by Document drag
+  indicators.
+- Quick-insert slash filtering.
+- Document-mode text metrics, including rich-text Lexical content
+  and nested structural copy.
 
 Run with `pnpm --filter @nexpress/web run test`. The unit suite
 runs without a database; the existing integration suite at

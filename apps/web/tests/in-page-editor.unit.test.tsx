@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  getDefaultBlocks,
-  type NpBlockDefinition,
-  type NpBlockInstance,
-} from "@nexpress/blocks";
+import { getDefaultBlocks, type NpBlockDefinition, type NpBlockInstance } from "@nexpress/blocks";
 
 // Engine reducer + factory — deep-imported because the public
 // `@nexpress/admin` exports only surface UI components today. The
@@ -14,6 +10,10 @@ import {
   createBlockInstance,
   createEditorReducer,
 } from "../../../packages/admin/src/blocks/editor-engine/reducer.js";
+import {
+  countBlockTreeWords,
+  estimateReadingMinutes,
+} from "../../../packages/admin/src/blocks/editor-engine/text-metrics.js";
 import type { EditorAction } from "../../../packages/admin/src/blocks/editor-engine/types.js";
 import {
   filterSlashMenuDefinitions,
@@ -33,9 +33,7 @@ import {
  */
 
 const defaults = getDefaultBlocks();
-const byType = new Map<string, NpBlockDefinition>(
-  defaults.map((d) => [d.type, d]),
-);
+const byType = new Map<string, NpBlockDefinition>(defaults.map((d) => [d.type, d]));
 
 describe("legacy built-in blocks migrated to Lucide", () => {
   const legacyTypes = [
@@ -77,14 +75,10 @@ describe("editor reducer — REPLACE_TYPE", () => {
   // below exercise the same definitions plugin authors and the
   // admin UI see at runtime.
   const reducer = createEditorReducer(defaults);
-  const apply = (
-    state: NpBlockInstance[],
-    action: EditorAction,
-  ): NpBlockInstance[] => reducer(state, action);
+  const apply = (state: NpBlockInstance[], action: EditorAction): NpBlockInstance[] =>
+    reducer(state, action);
 
-  const seedRichText = (
-    overrides: Partial<NpBlockInstance> = {},
-  ): NpBlockInstance => {
+  const seedRichText = (overrides: Partial<NpBlockInstance> = {}): NpBlockInstance => {
     const def = byType.get("rich-text") as NpBlockDefinition;
     const base = createBlockInstance(def);
     return {
@@ -373,15 +367,12 @@ describe("QuickInsertBar — filterSlashMenuDefinitions", () => {
   it("returns the first SLASH_MENU_LIMIT entries when query is empty", () => {
     // Synthesize a corpus larger than the cap so we can verify the
     // slice. Identity / order doesn't matter, only the cap.
-    const big: NpBlockDefinition[] = Array.from(
-      { length: SLASH_MENU_LIMIT + 5 },
-      (_, i) => ({
-        type: `b${i}`,
-        defaultProps: {},
-        propsSchema: [],
-        render: () => null,
-      }),
-    );
+    const big: NpBlockDefinition[] = Array.from({ length: SLASH_MENU_LIMIT + 5 }, (_, i) => ({
+      type: `b${i}`,
+      defaultProps: {},
+      propsSchema: [],
+      render: () => null,
+    }));
     const result = filterSlashMenuDefinitions(big, "");
     expect(result).toHaveLength(SLASH_MENU_LIMIT);
     expect(result[0].type).toBe("b0");
@@ -415,16 +406,76 @@ describe("QuickInsertBar — filterSlashMenuDefinitions", () => {
   it("caps results at SLASH_MENU_LIMIT even with a matching query", () => {
     // Build corpus where every entry matches "x" — verifies the cap
     // applies AFTER filtering, not just on the no-query branch.
-    const big: NpBlockDefinition[] = Array.from(
-      { length: SLASH_MENU_LIMIT + 8 },
-      (_, i) => ({
-        type: `xb${i}`,
-        defaultProps: {},
-        propsSchema: [],
-        render: () => null,
-      }),
-    );
+    const big: NpBlockDefinition[] = Array.from({ length: SLASH_MENU_LIMIT + 8 }, (_, i) => ({
+      type: `xb${i}`,
+      defaultProps: {},
+      propsSchema: [],
+      render: () => null,
+    }));
     const result = filterSlashMenuDefinitions(big, "x");
     expect(result).toHaveLength(SLASH_MENU_LIMIT);
+  });
+});
+
+describe("Document mode text metrics", () => {
+  it("counts words from rich-text Lexical content", () => {
+    const block: NpBlockInstance = {
+      id: "rich-1",
+      type: "rich-text",
+      props: {
+        content: {
+          root: {
+            children: [
+              {
+                type: "paragraph",
+                children: [
+                  { type: "text", text: "Hello document" },
+                  { type: "text", text: "mode" },
+                ],
+              },
+              {
+                type: "heading",
+                children: [{ type: "text", text: "Preview status" }],
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    expect(countBlockTreeWords([block])).toBe(5);
+  });
+
+  it("counts structural text props and nested children", () => {
+    const tree: NpBlockInstance[] = [
+      {
+        id: "hero-1",
+        type: "hero",
+        props: {
+          heading: "Launch faster",
+          items: ["Docs", "Preview polish"],
+        },
+        children: [
+          {
+            id: "caption-1",
+            type: "rich-text",
+            props: { caption: "Nested copy" },
+          },
+        ],
+      },
+    ];
+
+    expect(countBlockTreeWords(tree)).toBe(7);
+  });
+
+  it("ignores malformed content safely", () => {
+    const block: NpBlockInstance = {
+      id: "empty-1",
+      type: "rich-text",
+      props: { content: { root: { children: [{ type: "paragraph" }] } } },
+    };
+
+    expect(countBlockTreeWords([block])).toBe(0);
+    expect(estimateReadingMinutes(0)).toBe(1);
   });
 });

@@ -30,6 +30,8 @@ import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 import { BlockPalette } from "../block-palette.js";
 import {
   collectContainerCandidates,
+  countBlockTreeWords,
+  estimateReadingMinutes,
   evaluateContainerWarnings,
   findBlockInTreeFlat,
   locateBlock,
@@ -458,46 +460,17 @@ export function BlockPageEditor({
     return n;
   }, [blocks]);
 
-  // Doc-mode word count — flatten every atom block's text-shaped
-  // prop into one string and count whitespace-separated tokens.
-  // Mirrors the design's `EditorScreen` formula. Computed
-  // unconditionally (cheap), surfaced only in Doc view via the
-  // status bar's `wordCount` prop.
-  const docWordCount = useMemo(() => {
-    const collect = (arr: NpBlockInstance[]): string[] => {
-      const out: string[] = [];
-      for (const b of arr) {
-        const text = b.props.text;
-        if (typeof text === "string") out.push(text);
-        const heading = b.props.heading;
-        if (typeof heading === "string") out.push(heading);
-        const items = b.props.items;
-        if (Array.isArray(items)) {
-          for (const item of items) {
-            if (typeof item === "string") out.push(item);
-          }
-        }
-        const code = b.props.code;
-        if (typeof code === "string") out.push(code);
-        const caption = b.props.caption;
-        if (typeof caption === "string") out.push(caption);
-        if (b.children) out.push(...collect(b.children));
-      }
-      return out;
-    };
-    const joined = collect(blocks).join(" ").trim();
-    if (joined.length === 0) return 0;
-    return joined.split(/\s+/).filter(Boolean).length;
-  }, [blocks]);
+  // Doc-mode word count — rich-text blocks store Lexical JSON in
+  // `props.content`, while structural blocks still carry text-
+  // shaped props. The shared metric helper reads both so the Doc
+  // footer reflects the canonical content model.
+  const docWordCount = useMemo(() => countBlockTreeWords(blocks), [blocks]);
 
   // Reading-time minutes — the design uses 220 wpm
   // (`Math.max(1, Math.round(wordCount / 220))`). Stays at the
   // floor of 1 minute even for empty docs so the status bar reads
   // sensibly on first mount.
-  const docReadingMinutes = useMemo(
-    () => Math.max(1, Math.round(docWordCount / 220)),
-    [docWordCount],
-  );
+  const docReadingMinutes = useMemo(() => estimateReadingMinutes(docWordCount), [docWordCount]);
 
   const activeBlockMeta = selectedBlockId
     ? (definitions.get(findBlockInTreeFlat(blocks, selectedBlockId)?.type ?? "") ?? null)
