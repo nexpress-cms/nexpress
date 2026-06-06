@@ -87,6 +87,7 @@ describe("deploy plan core", () => {
 
     expect(output).toContain("NexPress deploy plan: Vercel");
     expect(output).toContain("[todo] NP_STORAGE_ADAPTER=s3");
+    expect(output).toContain("Set SITE_URL to the final https:// production domain");
     expect(output).toContain("Run before deploy");
     expect(output).toContain("Diagnostics");
     expect(output).toContain(

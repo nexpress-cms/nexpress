@@ -92,6 +92,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
         runtime: [
           "Import the project in Vercel after pushing the repo.",
           "Set the required env vars in Vercel Project Settings before the first production deploy.",
+          "Set SITE_URL to the final https:// production domain, not localhost.",
           "Run migrations against the same DATABASE_URL that Vercel will use.",
           "vercel.json already includes the scheduled-publish cron endpoint.",
           "Use a separate worker host if you need long-running pg-boss workers.",
@@ -115,6 +116,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
         ],
         runtime: [
           "Create one web service for `pnpm start`.",
+          "Set SITE_URL to the public HTTPS origin Railway routes to the web service.",
           "Create one worker service for `pnpm worker` when NP_ENABLE_JOBS=1.",
           "Run migrations before promoting the new image.",
         ],
@@ -137,6 +139,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
         ],
         runtime: [
           "Create a web service for the Docker image.",
+          "Set SITE_URL to the public HTTPS origin Render routes to the web service.",
           "Create a background worker for `pnpm worker` when NP_ENABLE_JOBS=1.",
           "Run migrations before the web service receives traffic.",
         ],
@@ -159,6 +162,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
         ],
         runtime: [
           "Run the web process from the Docker image.",
+          "Set SITE_URL to the public HTTPS origin Fly routes to the web machine.",
           "Run a separate worker process or machine for `pnpm worker` when jobs are enabled.",
           "Run migrations as a release step before promotion.",
         ],

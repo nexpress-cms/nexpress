@@ -32,6 +32,7 @@ import {
   checkSiteUrlProd,
   checkStorageProd,
   checkTargetDatabaseProd,
+  checkTargetSiteUrlProd,
   checkTargetStorageProd,
   checkTargetWorkerProd,
   type CheckResult,
@@ -554,6 +555,7 @@ async function main(): Promise<void> {
     ...checkTargetDatabaseProd(PROD_MODE, deployTarget, process.env),
     ...checkTargetStorageProd(PROD_MODE, deployTarget, process.env),
     checkSiteUrlProd(PROD_MODE, process.env),
+    ...checkTargetSiteUrlProd(PROD_MODE, deployTarget, process.env),
     checkSchedulerTokenProd(PROD_MODE, process.env),
     ...checkTargetWorkerProd(PROD_MODE, deployTarget, process.env),
   ]) {

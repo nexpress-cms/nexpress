@@ -95,6 +95,12 @@ describe("doctor output", () => {
           detail: "DATABASE_URL host is 127.0.0.1",
         },
         {
+          id: "target.vercel.site_url",
+          state: "error",
+          label: "Vercel SITE_URL",
+          detail: "SITE_URL host is localhost",
+        },
+        {
           id: "target.vercel.jobs_worker",
           state: "warn",
           label: "Vercel jobs worker",
@@ -114,6 +120,14 @@ describe("doctor output", () => {
         commands: ["pnpm run deploy:plan -- --target vercel --brief --no-color", "pnpm run setup"],
         notes: expect.arrayContaining([
           "Set DATABASE_URL to the hosted provider's public or pooler connection string.",
+        ]),
+      }),
+      expect.objectContaining({
+        id: "site.configure_target_public_url",
+        checkIds: ["target.vercel.site_url"],
+        commands: ["pnpm run deploy:plan -- --target vercel --brief --no-color", "pnpm run setup"],
+        notes: expect.arrayContaining([
+          "Use the final https:// origin, not localhost or a private network address.",
         ]),
       }),
       expect.objectContaining({
