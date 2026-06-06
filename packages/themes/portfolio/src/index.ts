@@ -262,11 +262,18 @@ const SEED_NAV = {
   header: [
     { id: "nav-portfolio-work", label: "Work", type: "link" as const, url: "/" },
     { id: "nav-portfolio-studio", label: "Studio", type: "link" as const, url: "/studio" },
+    { id: "nav-portfolio-gallery", label: "Gallery", type: "link" as const, url: "/gallery" },
     { id: "nav-portfolio-journal", label: "Journal", type: "link" as const, url: "/journal" },
   ],
   footer: [
     { id: "nav-portfolio-footer-index", label: "Index", type: "link" as const, url: "/" },
-    { id: "nav-portfolio-footer-colophon", label: "Studio", type: "link" as const, url: "/studio" },
+    { id: "nav-portfolio-footer-studio", label: "Studio", type: "link" as const, url: "/studio" },
+    {
+      id: "nav-portfolio-footer-gallery",
+      label: "Gallery",
+      type: "link" as const,
+      url: "/gallery",
+    },
   ],
 };
 
@@ -337,6 +344,41 @@ const SEED_PAGES: NpThemeSeedPage[] = [
     seoDescription: "About the studio — what we do, who we work with, and how we work.",
     blocks: [],
     template: "studio",
+  },
+  {
+    title: "Gallery",
+    slug: "gallery",
+    seoDescription:
+      "A visual archive of typographic systems, print details, signage studies, and studio references.",
+    blocks: [
+      {
+        type: "image-gallery",
+        id: "seed-portfolio-gallery",
+        props: {
+          heading: "Archive wall",
+          columns: 2,
+          images: [
+            {
+              src: "https://images.unsplash.com/photo-1523726491678-bf852e717f6a?auto=format&fit=crop&w=1200&q=80",
+              alt: "Pinned print references and typographic studies on a studio wall",
+            },
+            {
+              src: "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1200&q=80",
+              alt: "Studio desk with identity sketches and printed proofs",
+            },
+            {
+              src: "https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=1200&q=80",
+              alt: "Architectural facade detail used as signage inspiration",
+            },
+            {
+              src: "https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&w=1200&q=80",
+              alt: "Long studio table prepared for a client review",
+            },
+          ],
+        },
+      },
+    ],
+    template: "gallery",
   },
   {
     title: "Journal",

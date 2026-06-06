@@ -4,6 +4,7 @@ import { defaultTheme } from "@nexpress/theme-default";
 import { docsTheme } from "@nexpress/theme-docs";
 import { magazineTheme } from "@nexpress/theme-magazine";
 import { portfolioTheme } from "@nexpress/theme-portfolio";
+import { getDefaultBlocks } from "@nexpress/blocks";
 import type { NpThemeDefinition } from "@nexpress/theme";
 
 const FRAMEWORK_ROUTES = new Set(["/blog"]);
@@ -59,6 +60,28 @@ function assertLocalNavTargetsResolve(theme: NpThemeDefinition): void {
   expect(unresolved).toEqual([]);
 }
 
+function walkSeedBlockTypes(blocks: unknown[], seen: Set<string>): void {
+  for (const block of blocks) {
+    if (!block || typeof block !== "object") continue;
+    const typed = block as { type?: unknown; children?: unknown };
+    if (typeof typed.type === "string") seen.add(typed.type);
+    if (Array.isArray(typed.children)) walkSeedBlockTypes(typed.children, seen);
+  }
+}
+
+function assertSeedBlocksResolve(theme: NpThemeDefinition): void {
+  const registered = new Set([
+    ...getDefaultBlocks().map((block) => block.type),
+    ...(theme.impl.blocks ?? []).map((block) => block.type),
+  ]);
+  const used = new Set<string>();
+  for (const page of theme.impl.seedContent?.pages ?? []) {
+    walkSeedBlockTypes(page.blocks, used);
+  }
+  const unknown = [...used].filter((type) => !registered.has(type));
+  expect(unknown).toEqual([]);
+}
+
 describe("built-in theme seed parity", () => {
   it("default seeds the Equilibrium front page and points local nav at pages or routes", () => {
     const pages = defaultTheme.impl.seedContent?.pages ?? [];
@@ -75,6 +98,7 @@ describe("built-in theme seed parity", () => {
     expect(defaultTheme.impl.templates?.pages?.about).toBeDefined();
     expect(defaultTheme.impl.routes?.map((route) => route.pattern)).toContain("/tag/:slug");
     assertLocalNavTargetsResolve(defaultTheme);
+    assertSeedBlocksResolve(defaultTheme);
   });
 
   it("docs seeds API reference and changelog pages with dedicated templates", () => {
@@ -102,13 +126,17 @@ describe("built-in theme seed parity", () => {
     expect(docsTheme.impl.templates?.pages?.apiReference).toBeDefined();
     expect(docsTheme.impl.templates?.pages?.changelog).toBeDefined();
     assertLocalNavTargetsResolve(docsTheme);
+    assertSeedBlocksResolve(docsTheme);
   });
 
-  it("magazine seeds Masthead and routes every designed section archive", () => {
+  it("magazine seeds Masthead, cover page, and routes every designed section archive", () => {
     const pages = magazineTheme.impl.seedContent?.pages ?? [];
     const posts = magazineTheme.impl.seedContent?.posts ?? [];
     expect(pages).toEqual(
-      expect.arrayContaining([expect.objectContaining({ slug: "masthead", template: "masthead" })]),
+      expect.arrayContaining([
+        expect.objectContaining({ slug: "masthead", template: "masthead" }),
+        expect.objectContaining({ slug: "issue-12", template: "cover" }),
+      ]),
     );
     expect(posts[0]).toEqual(
       expect.objectContaining({
@@ -122,27 +150,32 @@ describe("built-in theme seed parity", () => {
       }),
     );
     expect(magazineTheme.impl.templates?.pages?.masthead).toBeDefined();
+    expect(magazineTheme.impl.templates?.pages?.cover).toBeDefined();
     expect(magazineTheme.impl.routes?.map((route) => route.pattern)).toContain(
       "/:section(features|dispatches|profiles|essays|photography)",
     );
     assertLocalNavTargetsResolve(magazineTheme);
+    assertSeedBlocksResolve(magazineTheme);
   });
 
-  it("portfolio seeds Studio and Journal and separates projects from journal posts", () => {
+  it("portfolio seeds Studio, Gallery, and Journal and separates projects from journal posts", () => {
     const pages = portfolioTheme.impl.seedContent?.pages ?? [];
     expect(pages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ slug: "studio", template: "studio" }),
+        expect.objectContaining({ slug: "gallery", template: "gallery" }),
         expect.objectContaining({ slug: "journal", template: "journal" }),
       ]),
     );
     expect(pages.map((page) => page.slug)).not.toContain("press");
     expect(portfolioTheme.impl.templates?.pages?.studio).toBeDefined();
+    expect(portfolioTheme.impl.templates?.pages?.gallery).toBeDefined();
     expect(portfolioTheme.impl.templates?.pages?.journal).toBeDefined();
 
     const posts = portfolioTheme.impl.seedContent?.posts ?? [];
     expect(posts.filter((post) => post.kind === "project").length).toBeGreaterThan(0);
     expect(posts.filter((post) => post.kind === "article").length).toBeGreaterThan(0);
     assertLocalNavTargetsResolve(portfolioTheme);
+    assertSeedBlocksResolve(portfolioTheme);
   });
 });
