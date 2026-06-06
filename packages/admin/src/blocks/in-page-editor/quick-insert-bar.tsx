@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { NpBlockMetadata } from "@nexpress/blocks";
 import { CornerDownLeft } from "lucide-react";
 
@@ -89,6 +89,8 @@ export function QuickInsertBar({
 }: QuickInsertBarProps) {
   const [value, setValue] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const inputId = useId();
+  const listboxId = `${inputId}-slash-listbox`;
   const inputRef = useRef<HTMLInputElement | null>(null);
   const activeOptionRef = useRef<HTMLButtonElement | null>(null);
 
@@ -116,7 +118,10 @@ export function QuickInsertBar({
   // Reset active index when the filter changes — clamping it to
   // the new length keeps the highlight on a real entry.
   useEffect(() => {
-    setActiveIndex((prev) => Math.min(prev, Math.max(0, filtered.length - 1)));
+    setActiveIndex((prev) => {
+      if (filtered.length === 0) return 0;
+      return Math.min(prev, filtered.length - 1);
+    });
   }, [filtered.length]);
 
   useEffect(() => {
@@ -137,6 +142,10 @@ export function QuickInsertBar({
     setActiveIndex(0);
     inputRef.current?.focus();
   };
+  const activeOptionId =
+    isSlashMode && filtered[activeIndex]
+      ? `${listboxId}-option-${filtered[activeIndex].type}`
+      : undefined;
 
   return (
     <div className={cn("relative", className)}>
@@ -154,6 +163,11 @@ export function QuickInsertBar({
         <Input
           ref={inputRef}
           type="text"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={isSlashMode && filtered.length > 0}
+          aria-controls={isSlashMode && filtered.length > 0 ? listboxId : undefined}
+          aria-activedescendant={activeOptionId}
           value={value}
           onChange={(e) => {
             setValue(e.target.value);
@@ -162,7 +176,10 @@ export function QuickInsertBar({
             if (isSlashMode) {
               if (e.key === "ArrowDown") {
                 e.preventDefault();
-                setActiveIndex((i) => Math.min(filtered.length - 1, i + 1));
+                setActiveIndex((i) => {
+                  if (filtered.length === 0) return 0;
+                  return Math.min(filtered.length - 1, i + 1);
+                });
               } else if (e.key === "ArrowUp") {
                 e.preventDefault();
                 setActiveIndex((i) => Math.max(0, i - 1));
@@ -216,12 +233,14 @@ export function QuickInsertBar({
             "dark:border-neutral-800 dark:bg-neutral-950",
           )}
           role="listbox"
+          id={listboxId}
         >
           {filtered.map((def, idx) => {
             const isActive = idx === activeIndex;
             return (
               <button
                 key={def.type}
+                id={`${listboxId}-option-${def.type}`}
                 ref={isActive ? activeOptionRef : undefined}
                 type="button"
                 role="option"

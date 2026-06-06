@@ -106,6 +106,7 @@ export function DocCanvas({
   // document mounts. Tracking load count instead means the
   // attach always runs against the freshly-parsed document.
   const [iframeLoadCount, setIframeLoadCount] = useState(0);
+  const railFitsLeft = (hoverRect?.left ?? 0) >= 56;
 
   // 120 ms hide debounce with a "pin while cursor is on the rail"
   // escape hatch — see use-hover-debounce.ts for the race
@@ -407,9 +408,10 @@ export function DocCanvas({
           <div className="pointer-events-none absolute inset-0 rounded-md outline outline-2 outline-primary/40" />
           <div
             className={cn(
-              "pointer-events-auto absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5",
+              "pointer-events-auto absolute flex items-center gap-0.5",
               "rounded-full border border-neutral-200/80 bg-background/95 px-1 py-1 shadow-md backdrop-blur",
               "dark:border-neutral-800/80",
+              railFitsLeft ? "-left-12 top-1/2 -translate-y-1/2 flex-col" : "left-2 top-2 flex-row",
             )}
             onMouseEnter={() => {
               pinHover();
