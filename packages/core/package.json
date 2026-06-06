@@ -119,7 +119,7 @@
     "@types/pg": "^8.20.0",
     "drizzle-kit": "^0.31.10",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.0"
+    "typescript": "^6.0.3"
   },
   "scripts": {
     "build": "tsup",
