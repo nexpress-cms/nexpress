@@ -200,12 +200,12 @@ export interface NpBlockPropField {
     | "collection"
     /**
      * Repeating list of nested fields. Stores `unknown[]` on the block
-     * props; the admin renderer shows an Add / Remove / Reorder UI and
+     * props; the admin renderer shows an Add / Remove UI and
      * recurses into `itemSchema` for each entry. Use for things like a
      * pricing table's tiers, a feature-grid's items, or a CTA strip's
-     * buttons. `itemSchema` cannot itself contain another `array`
-     * (one level of nesting in v1) — keeps the renderer + storage
-     * shape predictable.
+     * buttons. `itemSchema` may contain nested `array` fields for
+     * rectangular data such as API tables (`rows[].cells[]`), but
+     * authors should keep those shapes shallow and predictable.
      */
     | "array"
     /**
@@ -289,7 +289,7 @@ export interface NpBlockPropField {
    * For `type: "array"`. Schema applied to every entry in the stored
    * `unknown[]`. The admin renderer recurses through this list when an
    * operator clicks "Add" — fields here use the same `NpBlockPropField`
-   * shape minus a second-level `array` (rejected by the renderer).
+   * shape, including shallow nested `array` fields.
    */
   itemSchema?: NpBlockPropField[];
   /**

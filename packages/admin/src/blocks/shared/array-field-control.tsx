@@ -12,9 +12,9 @@ import { Label } from "../../ui/label.js";
  * Renders an `array`-typed prop field. Each entry is a record
  * matching `field.itemSchema`. `+ Add` pushes `field.itemDefault`
  * (or a record derived from each `itemSchema[].defaultValue`);
- * the remove button splices the entry out. v1 is intentionally
- * light — no drag reorder, no nested arrays — to keep the
- * renderer + storage shape predictable.
+ * the remove button splices the entry out. Nested arrays are
+ * rendered by recursing back into FieldControl; this keeps blocks
+ * like docs API tables editable without falling back to JSON.
  *
  * Takes the inner `FieldControl` as a prop to avoid the
  * `field-control.tsx` ↔ `array-field-control.tsx` import cycle.
@@ -88,6 +88,10 @@ export function normalizeArrayValue(
   return out;
 }
 
+export function getEditableArrayItemSchema(field: NpBlockPropField): readonly NpBlockPropField[] {
+  return field.itemSchema ?? [];
+}
+
 export function ArrayFieldControl({
   field,
   value,
@@ -95,7 +99,7 @@ export function ArrayFieldControl({
   inputId,
   FieldControl,
 }: ArrayFieldControlProps) {
-  const itemSchema = (field.itemSchema ?? []).filter((sub) => sub.type !== "array");
+  const itemSchema = getEditableArrayItemSchema(field);
   const items = normalizeArrayValue(value, itemSchema);
 
   const buildItemDefault = (): Record<string, unknown> => {
