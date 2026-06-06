@@ -8,6 +8,7 @@ import {
   checkSiteUrlProd,
   checkStorageProd,
   checkTargetDatabaseProd,
+  checkTargetSiteUrlProd,
   checkTargetStorageProd,
   checkTargetWorkerProd,
 } from "./doctor-readiness.js";
@@ -35,6 +36,9 @@ describe("doctor production target readiness", () => {
       checkTargetDatabaseProd(false, "vercel", { DATABASE_URL: "postgres://u:p@localhost/db" }),
     ).toEqual([]);
     expect(checkTargetWorkerProd(false, "vercel", { NP_ENABLE_JOBS: "1" })).toEqual([]);
+    expect(checkTargetSiteUrlProd(false, "vercel", { SITE_URL: "http://localhost:3000" })).toEqual(
+      [],
+    );
     expect(checkStorageProd(false, "docker", { NP_MULTI_NODE: "true" })).toBeNull();
   });
 
@@ -53,6 +57,16 @@ describe("doctor production target readiness", () => {
     );
     expect(checkSchedulerTokenProd(true, { NP_SCHEDULER_TOKEN: "0123456789abcdef" })).toEqual(
       expect.objectContaining({ id: "prod.scheduler_token" }),
+    );
+  });
+
+  it("errors when production SITE_URL is not an http(s) URL", () => {
+    expect(checkSiteUrlProd(true, { SITE_URL: "demo.example.com" })).toEqual(
+      expect.objectContaining({
+        id: "prod.site_url_https",
+        state: "error",
+        detail: "not an http(s) URL",
+      }),
     );
   });
 
@@ -146,6 +160,33 @@ describe("doctor production target readiness", () => {
         DATABASE_URL: "postgres://nexpress:nexpress@localhost:5433/nexpress",
       }),
     ).toEqual([]);
+  });
+
+  it("blocks local or private SITE_URL values for hosted deploy targets", () => {
+    for (const target of ["vercel", "railway", "render", "fly"] as const) {
+      expect(checkTargetSiteUrlProd(true, target, { SITE_URL: "http://localhost:3000" })).toEqual([
+        expect.objectContaining({
+          id: `target.${target}.site_url`,
+          state: "error",
+          detail: "SITE_URL host is localhost",
+        }),
+      ]);
+    }
+
+    expect(checkTargetSiteUrlProd(true, "vercel", { SITE_URL: "https://192.168.1.10" })).toEqual([
+      expect.objectContaining({
+        id: "target.vercel.site_url",
+        state: "error",
+        detail: "SITE_URL host is 192.168.1.10",
+      }),
+    ]);
+
+    expect(
+      checkTargetSiteUrlProd(true, "vercel", { SITE_URL: "https://demo.example.com" }),
+    ).toEqual([]);
+    expect(checkTargetSiteUrlProd(true, "docker", { SITE_URL: "http://localhost:3000" })).toEqual(
+      [],
+    );
   });
 
   it("warns when Vercel jobs are enabled without a long-running worker host", () => {

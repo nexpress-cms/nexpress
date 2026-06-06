@@ -175,6 +175,19 @@ function fixForCheck(result: CheckResult, target: DeployTarget | null): FixPlanT
           ],
         };
       }
+      if (result.id.startsWith("target.") && result.id.endsWith(".site_url")) {
+        return {
+          id: "site.configure_target_public_url",
+          title: "Point SITE_URL at the selected deployment target's public origin",
+          risk: "low",
+          requiresApproval: false,
+          commands: [targetDeployPlanCommand(target, "vercel"), "pnpm run setup"],
+          notes: [
+            "Use the final https:// origin, not localhost or a private network address.",
+            "SITE_URL is used for auth redirects, email links, SEO metadata, and canonical URLs.",
+          ],
+        };
+      }
       if (result.id.startsWith("target.") && result.id.endsWith(".jobs_worker")) {
         return {
           id: "jobs.add_target_worker_host",

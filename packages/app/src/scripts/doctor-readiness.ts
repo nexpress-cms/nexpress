@@ -91,6 +91,15 @@ export function checkSiteUrlProd(prodMode: boolean, env: DoctorEnv): CheckResult
       hint: "Production cookies are Secure-flagged when SITE_URL is https://. Switch once your deploy has TLS.",
     };
   }
+  if (url) {
+    return {
+      id: "prod.site_url_https",
+      state: "error",
+      label: "SITE_URL is https",
+      detail: "not an http(s) URL",
+      hint: "Set SITE_URL to the full public origin, for example `https://example.com`.",
+    };
+  }
   // Already covered by checkRequiredVar; don't double-error.
   return {
     id: "prod.site_url_https",
@@ -253,7 +262,7 @@ function ipv4Parts(host: string): [number, number, number, number] | null {
   return parts as [number, number, number, number];
 }
 
-function isLoopbackDatabaseHost(host: string): boolean {
+function isLoopbackHost(host: string): boolean {
   const parts = ipv4Parts(host);
   return (
     host === "localhost" ||
@@ -264,7 +273,7 @@ function isLoopbackDatabaseHost(host: string): boolean {
   );
 }
 
-function isPrivateIpDatabaseHost(host: string): boolean {
+function isPrivateIpHost(host: string): boolean {
   const parts = ipv4Parts(host);
   if (!parts) return false;
   const [a, b] = parts;
@@ -274,6 +283,16 @@ function isPrivateIpDatabaseHost(host: string): boolean {
     (a === 192 && b === 168) ||
     (a === 169 && b === 254)
   );
+}
+
+function siteUrlHost(env: DoctorEnv): string | null {
+  const value = env.SITE_URL;
+  if (!value) return null;
+  try {
+    return new URL(value).hostname.toLowerCase().replace(/^\[(.*)\]$/, "$1");
+  } catch {
+    return null;
+  }
 }
 
 export function checkTargetDatabaseProd(
@@ -288,7 +307,7 @@ export function checkTargetDatabaseProd(
   const targetTitle = deployTargetTitle(target);
   const label = `${targetTitle} database URL`;
   const detail = `DATABASE_URL host is ${host}`;
-  if (isLoopbackDatabaseHost(host)) {
+  if (isLoopbackHost(host)) {
     return [
       {
         id: `target.${target}.database_url`,
@@ -300,7 +319,7 @@ export function checkTargetDatabaseProd(
     ];
   }
 
-  if (target === "vercel" && isPrivateIpDatabaseHost(host)) {
+  if (target === "vercel" && isPrivateIpHost(host)) {
     return [
       {
         id: "target.vercel.database_url",
@@ -318,6 +337,28 @@ export function checkTargetDatabaseProd(
       state: "ok",
       label,
       detail: host,
+    },
+  ];
+}
+
+export function checkTargetSiteUrlProd(
+  prodMode: boolean,
+  target: DeployTarget | null,
+  env: DoctorEnv,
+): CheckResult[] {
+  if (!prodMode || !target || target === "docker") return [];
+  const host = siteUrlHost(env);
+  if (!host) return [];
+  if (!isLoopbackHost(host) && !isPrivateIpHost(host)) return [];
+
+  const targetTitle = deployTargetTitle(target);
+  return [
+    {
+      id: `target.${target}.site_url`,
+      state: "error",
+      label: `${targetTitle} SITE_URL`,
+      detail: `SITE_URL host is ${host}`,
+      hint: `Set SITE_URL to the public HTTPS origin that visitors and auth callbacks will use on ${targetTitle}. Localhost and private IPs only work on your machine.`,
     },
   ];
 }
