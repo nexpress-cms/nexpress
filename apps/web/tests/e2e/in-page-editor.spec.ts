@@ -13,7 +13,10 @@ test.describe("in-page block editor", () => {
     await page.goto("/admin/collections/pages/create");
     await expect(page).toHaveURL(/\/admin\/collections\/pages\/create$/);
 
-    await page.getByRole("tab", { name: "Document view" }).click();
+    const documentTab = page.getByRole("tab", { name: "Document view" });
+    await expect(documentTab).toBeVisible();
+    await documentTab.click();
+    await expect(documentTab).toHaveAttribute("aria-selected", "true");
 
     const quickInsert = page.getByPlaceholder("Write something, or type / to insert a block");
     await expect(quickInsert).toBeVisible();
@@ -22,5 +25,12 @@ test.describe("in-page block editor", () => {
 
     await expect(page.getByText("3 words")).toBeVisible();
     await expect(page.getByText("1 blocks")).toBeVisible();
+
+    await quickInsert.fill("/hero");
+    await expect(quickInsert).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByRole("listbox")).toBeVisible();
+    await quickInsert.press("Enter");
+
+    await expect(page.getByText("2 blocks")).toBeVisible();
   });
 });
