@@ -769,6 +769,16 @@ pnpm run deploy:plan -- --target vercel --brief --no-color
 pnpm run doctor:prod -- --target vercel --brief --no-color
 \`\`\`
 
+For agent or CI handoff, use JSON:
+
+\`\`\`bash
+pnpm run deploy:plan -- --target vercel --json
+pnpm run doctor:prod -- --target vercel --json --fix-plan
+\`\`\`
+
+\`deploy:plan\` includes \`summary\` and \`nextCommands\`; \`doctor:prod\`
+includes \`blocksDeploy\`, \`nextCommand\`, and \`fixPlan[].nextCommand\`.
+
 Tightens the dev defaults: \`NP_SECRET\` < 32 chars becomes an error,
 \`http://\` SITE_URL warns, missing \`NP_ENABLE_JOBS\` warns,
 \`local\` storage on a multi-node platform errors. Wire this into
@@ -855,6 +865,8 @@ pnpm run doctor:prod -- --target vercel --fix-plan
 
 Use \`--brief --no-color\` on \`deploy:plan\` and \`doctor:prod\` when
 the output is going into CI logs or an issue comment.
+Use \`--json\` when another tool should read \`summary\`,
+\`nextCommands\`, \`blocksDeploy\`, or \`fixPlan[].nextCommand\`.
 
 Vercel's filesystem is ephemeral, so media uploads require S3/R2/MinIO
 or another S3-compatible store. For scheduled publishing, add

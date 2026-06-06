@@ -13,6 +13,8 @@ export { buildDoctorFixPlan, type DoctorFixPlanItem };
 export interface DoctorJsonOutput {
   schemaVersion: "np.doctor.v1";
   ok: boolean;
+  blocksDeploy: boolean;
+  nextCommand: string | null;
   mode: "dev" | "prod";
   target: DeployTarget | null;
   summary: DoctorSummary;
@@ -58,13 +60,18 @@ export function buildDoctorJson(args: {
   const report: DoctorJsonOutput = {
     schemaVersion: "np.doctor.v1",
     ok: summary.errors === 0,
+    blocksDeploy: summary.errors > 0,
+    nextCommand: null,
     mode: args.prodMode ? "prod" : "dev",
     target: args.target,
     summary,
     checks: args.checks,
   };
   if (args.includeFixPlan) {
-    report.fixPlan = buildDoctorFixPlan({ checks: args.checks, target: args.target });
+    const fixPlan = buildDoctorFixPlan({ checks: args.checks, target: args.target });
+    report.nextCommand =
+      fixPlan.find((item) => item.blocksDeploy)?.nextCommand ?? fixPlan[0]?.nextCommand ?? null;
+    report.fixPlan = fixPlan;
   }
   return report;
 }
@@ -142,8 +149,9 @@ export function renderDoctorFixPlan(
   fixPlan.forEach((item, index) => {
     const approval = item.requiresApproval ? "approval required" : "no approval needed";
     lines.push(`${String(index + 1)}. ${item.title}`);
-    lines.push(`   risk: ${item.risk}; ${approval}`);
+    lines.push(`   severity: ${item.severity}; risk: ${item.risk}; ${approval}`);
     lines.push(`   checks: ${item.checkIds.join(", ")}`);
+    if (item.nextCommand) lines.push(`   next: ${item.nextCommand}`);
     for (const command of item.commands) lines.push(`   command: ${command}`);
     for (const note of item.notes ?? []) lines.push(`   note: ${note}`);
   });

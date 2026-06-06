@@ -29,6 +29,21 @@ describe("deploy plan core", () => {
       }),
     );
     expect(json.commands).toContain("pnpm run doctor:prod -- --target vercel");
+    expect(json.summary).toEqual({
+      requiredEnv: {
+        total: 6,
+        set: 4,
+        unresolved: 2,
+      },
+      recommendedEnv: {
+        total: 2,
+        set: 0,
+        unresolved: 2,
+      },
+    });
+    expect(json.nextCommands).toEqual([
+      "pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan",
+    ]);
     expect(json.diagnostics).toContain(
       "Run pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan for ordered remediation.",
     );
@@ -55,6 +70,25 @@ describe("deploy plan core", () => {
       variable: "NP_S3_REGION",
       status: "missing",
     });
+  });
+
+  it("builds migration-first next commands when required env is ready", () => {
+    const json = buildDeployPlanJson(buildDeployPlan("docker"), false, {
+      DATABASE_URL: "postgres://user:pass@example.com:5432/nexpress",
+      NP_SECRET: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+      SITE_URL: "https://demo.example.com",
+    });
+
+    expect(json.summary.requiredEnv).toEqual({
+      total: 3,
+      set: 3,
+      unresolved: 0,
+    });
+    expect(json.nextCommands).toEqual([
+      "pnpm db:migrate -- --status",
+      "pnpm db:migrate",
+      "pnpm run doctor:prod -- --target docker --brief --no-color --fix-plan",
+    ]);
   });
 
   it("checks env requirements without leaking set secret values", () => {
