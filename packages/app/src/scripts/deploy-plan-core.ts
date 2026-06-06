@@ -22,18 +22,31 @@ export interface EnvRequirementCheck {
   status: EnvRequirementStatus;
 }
 
+export interface DeployPlanEnvSummary {
+  total: number;
+  set: number;
+  unresolved: number;
+}
+
+export interface DeployPlanSummary {
+  requiredEnv: DeployPlanEnvSummary;
+  recommendedEnv: DeployPlanEnvSummary;
+}
+
 export interface DeployPlanJson {
   schemaVersion: "np.deploy-plan.v1";
   target: DeployTarget;
   title: string;
   inferred: boolean;
   dryRun: boolean;
+  summary: DeployPlanSummary;
   fit: string[];
   requiredEnv: EnvRequirementCheck[];
   recommendedEnv: EnvRequirementCheck[];
   storage: string[];
   runtime: string[];
   commands: string[];
+  nextCommands: string[];
   diagnostics: string[];
 }
 
@@ -226,23 +239,54 @@ export function checkEnvRequirement(
   };
 }
 
+function summarizeEnvRequirements(checks: EnvRequirementCheck[]): DeployPlanEnvSummary {
+  const set = checks.filter((check) => check.status === "set").length;
+  return {
+    total: checks.length,
+    set,
+    unresolved: checks.length - set,
+  };
+}
+
+function buildDeployPlanNextCommands(
+  plan: TargetPlan,
+  requiredEnv: EnvRequirementCheck[],
+): string[] {
+  const doctorCommand = `pnpm run doctor:prod -- --target ${plan.target} --brief --no-color --fix-plan`;
+  const hasUnresolvedRequiredEnv = requiredEnv.some((check) => check.status !== "set");
+
+  if (hasUnresolvedRequiredEnv) {
+    return [doctorCommand];
+  }
+
+  return ["pnpm db:migrate -- --status", "pnpm db:migrate", doctorCommand];
+}
+
 export function buildDeployPlanJson(
   plan: TargetPlan,
   inferred: boolean,
   env: DeployPlanEnv = process.env,
 ): DeployPlanJson {
+  const requiredEnv = plan.requiredEnv.map((name) => checkEnvRequirement(name, env));
+  const recommendedEnv = plan.recommendedEnv.map((name) => checkEnvRequirement(name, env));
+
   return {
     schemaVersion: "np.deploy-plan.v1",
     target: plan.target,
     title: plan.title,
     inferred,
     dryRun: true,
+    summary: {
+      requiredEnv: summarizeEnvRequirements(requiredEnv),
+      recommendedEnv: summarizeEnvRequirements(recommendedEnv),
+    },
     fit: plan.fit,
-    requiredEnv: plan.requiredEnv.map((name) => checkEnvRequirement(name, env)),
-    recommendedEnv: plan.recommendedEnv.map((name) => checkEnvRequirement(name, env)),
+    requiredEnv,
+    recommendedEnv,
     storage: plan.storage,
     runtime: plan.runtime,
     commands: plan.commands,
+    nextCommands: buildDeployPlanNextCommands(plan, requiredEnv),
     diagnostics: plan.diagnostics ?? [],
   };
 }

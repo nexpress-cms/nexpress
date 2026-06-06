@@ -5,13 +5,19 @@ export interface DoctorFixPlanItem {
   id: string;
   checkIds: string[];
   title: string;
+  severity: "info" | "warning" | "blocking";
+  blocksDeploy: boolean;
   risk: "low" | "medium" | "high";
   requiresApproval: boolean;
+  nextCommand: string | null;
   commands: string[];
   notes?: string[];
 }
 
-type FixPlanTemplate = Omit<DoctorFixPlanItem, "checkIds">;
+type FixPlanTemplate = Omit<
+  DoctorFixPlanItem,
+  "blocksDeploy" | "checkIds" | "nextCommand" | "severity"
+>;
 
 function targetDeployPlanCommand(target: DeployTarget | null, fallback: DeployTarget): string {
   return `pnpm run deploy:plan -- --target ${target ?? fallback} --brief --no-color`;
@@ -19,15 +25,28 @@ function targetDeployPlanCommand(target: DeployTarget | null, fallback: DeployTa
 
 function mergeFixPlanItem(
   plan: DoctorFixPlanItem[],
-  checkId: string,
+  result: CheckResult,
   template: FixPlanTemplate,
 ): void {
+  const severity =
+    result.state === "error" ? "blocking" : result.state === "warn" ? "warning" : "info";
+  const blocksDeploy = result.state === "error";
   const existing = plan.find((item) => item.id === template.id);
   if (existing) {
-    if (!existing.checkIds.includes(checkId)) existing.checkIds.push(checkId);
+    if (!existing.checkIds.includes(result.id)) existing.checkIds.push(result.id);
+    if (blocksDeploy) {
+      existing.blocksDeploy = true;
+      existing.severity = "blocking";
+    }
     return;
   }
-  plan.push({ ...template, checkIds: [checkId] });
+  plan.push({
+    ...template,
+    blocksDeploy,
+    checkIds: [result.id],
+    nextCommand: template.commands[0] ?? null,
+    severity,
+  });
 }
 
 function fixForCheck(result: CheckResult, target: DeployTarget | null): FixPlanTemplate | null {
@@ -209,7 +228,7 @@ export function buildDoctorFixPlan(args: {
   for (const result of args.checks) {
     if (result.state === "ok") continue;
     const template = fixForCheck(result, args.target);
-    if (template) mergeFixPlanItem(plan, result.id, template);
+    if (template) mergeFixPlanItem(plan, result, template);
   }
   return plan;
 }

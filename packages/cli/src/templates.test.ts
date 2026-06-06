@@ -351,6 +351,10 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("pnpm run doctor:prod -- --target vercel --fix-plan");
     expect(readme).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
     expect(readme).toContain("pnpm run doctor:prod -- --target vercel --brief --no-color");
+    expect(readme).toContain("pnpm run deploy:plan -- --target vercel --json");
+    expect(readme).toContain("pnpm run doctor:prod -- --target vercel --json --fix-plan");
+    expect(readme).toContain("nextCommands");
+    expect(readme).toContain("fixPlan[].nextCommand");
     expect(readme).toContain("Deploy with Vercel");
     expect(readme).toContain("https://vercel.com/new?utm_source=nexpress");
     expect(readme).toContain("NP_STORAGE_ADAPTER=s3");
