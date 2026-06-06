@@ -303,13 +303,33 @@ const SEED_PAGES: NpThemeSeedPage[] = [
     template: "masthead",
   },
   {
+    title: "Issue Twelve",
+    slug: "issue-12",
+    seoDescription:
+      "The Northbound Review issue twelve — cover note, table of contents, and editor's letter.",
+    blocks: [
+      {
+        type: "rich-text",
+        id: "seed-mag-issue-12-body",
+        props: {
+          content: lexicalDoc([
+            "Issue Twelve opens with a city that keeps redrawing itself, then moves outward: a piano workshop above a noodle shop, a courtyard full of bicycle repairmen, a library reading room in Daegu, and a theatre that refuses to close.",
+            "The cover line is deliberately quiet because the work inside is not. Every piece in this issue follows someone keeping a craft alive after the obvious market for it has moved on.",
+            "For operators evaluating NexPress, this page is a seeded example of the magazine cover template: a full-width title treatment with editable body blocks beneath it.",
+          ]),
+        },
+      },
+    ],
+    template: "cover",
+  },
+  {
     title: "Colophon",
     slug: "colophon",
     seoDescription:
       "About The Northbound Review — its founding, its editors, and the type and paper it's set in.",
     blocks: [
       {
-        type: "richText",
+        type: "rich-text",
         id: "seed-mag-colophon-body",
         props: {
           content: lexicalDoc([
@@ -328,7 +348,7 @@ const SEED_PAGES: NpThemeSeedPage[] = [
       "How to reach The Northbound Review — pitches, subscriptions, press, and the address for letters.",
     blocks: [
       {
-        type: "richText",
+        type: "rich-text",
         id: "seed-mag-contact-body",
         props: {
           content: lexicalDoc([

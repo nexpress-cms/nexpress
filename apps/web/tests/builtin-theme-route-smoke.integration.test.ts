@@ -208,6 +208,9 @@ describe.skipIf(skipIfNoTestDb())("built-in theme public route smoke", () => {
 
     await renderPageTemplate(fixture, "/", "np-magazine-lead");
     await renderPageTemplate(fixture, "masthead", "np-magazine-masthead");
+    await renderPageTemplate(fixture, "issue-12", "np-magazine-cover");
+    await renderPageTemplate(fixture, "colophon", "np-block-rich-text");
+    await renderPageTemplate(fixture, "contact", "np-block-rich-text");
     await renderThemeRoute(fixture, "/features", "np-magazine-section-list");
     await renderThemeRoute(fixture, "/category/features", "np-magazine-archive");
   });
@@ -218,6 +221,7 @@ describe.skipIf(skipIfNoTestDb())("built-in theme public route smoke", () => {
 
     await renderPageTemplate(fixture, "/", "np-portfolio-grid");
     await renderPageTemplate(fixture, "studio", "np-portfolio-studio-page");
+    await renderPageTemplate(fixture, "gallery", "np-portfolio-gallery");
     await renderPageTemplate(fixture, "journal", "np-portfolio-journal-page");
     const { findDocuments } = await import("@nexpress/core");
     const projects = await findDocuments<Record<string, unknown>>("posts", {
