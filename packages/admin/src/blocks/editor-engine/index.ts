@@ -32,10 +32,7 @@ export {
 
 export { canAcceptChild } from "./contracts.js";
 
-export {
-  evaluateContainerWarnings,
-  type ContainerWarning,
-} from "./container-warnings.js";
+export { evaluateContainerWarnings, type ContainerWarning } from "./container-warnings.js";
 
 export { createBlockInstance, createEditorReducer } from "./reducer.js";
 
@@ -53,6 +50,8 @@ export {
 } from "./validation.js";
 
 export { getRowSummary } from "./summary.js";
+
+export { countBlockTreeWords, estimateReadingMinutes } from "./text-metrics.js";
 
 export { collectContainerCandidates } from "./candidates.js";
 
