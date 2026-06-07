@@ -793,6 +793,16 @@ function CollectionEditViewInner({
   // only fires when there *were* candidates to begin with — a
   // collection with no main-position fields stays empty silently.
   const mainHiddenByKind = !showAllFields && mainCandidates.length > 0 && mainFields.length === 0;
+  const currentKindValue =
+    typeof formValues === "object" &&
+    formValues !== null &&
+    typeof (formValues as Record<string, unknown>).kind === "string"
+      ? (formValues as Record<string, string>).kind
+      : null;
+  const currentKindLabel = currentKindValue
+    ? (config.admin?.kinds?.[currentKindValue]?.label ?? currentKindValue)
+    : null;
+  const conditionScopeLabel = currentKindLabel ? `"${currentKindLabel}"` : "this kind";
 
   // Group sidebar fields by `admin.group`, preserving the first-
   // seen order of groups so operators control layout by ordering
@@ -1305,7 +1315,7 @@ function CollectionEditViewInner({
               <Card className="min-w-0">
                 <CardContent className="flex min-w-0 flex-col items-start gap-3 px-4 py-5">
                   <p className="break-words text-[13px] text-muted-foreground">
-                    Every editor field is hidden for this kind. Toggle{" "}
+                    Every editor field is hidden for {conditionScopeLabel}. Toggle{" "}
                     <button
                       type="button"
                       onClick={() => setShowAllFields(true)}
@@ -1430,13 +1440,15 @@ function CollectionEditViewInner({
                     htmlFor="np-show-all-fields-toggle"
                     className="cursor-pointer select-none break-words text-muted-foreground"
                   >
-                    {showAllFields ? "Showing all fields" : "Showing fields relevant to this kind"}
+                    {showAllFields
+                      ? "Showing all fields"
+                      : `Showing fields relevant to ${conditionScopeLabel}`}
                   </label>
                   <Switch
                     id="np-show-all-fields-toggle"
                     checked={showAllFields}
                     onCheckedChange={setShowAllFields}
-                    aria-label="Show all fields, including ones hidden by the current kind"
+                    aria-label={`Show all fields, including ones hidden by ${conditionScopeLabel}`}
                   />
                 </div>
               ) : null}
@@ -1492,7 +1504,7 @@ function CollectionEditViewInner({
                 <Card className="min-w-0">
                   <CardContent className="flex min-w-0 flex-col items-start gap-3 px-4 py-5">
                     <p className="break-words text-[13px] text-muted-foreground">
-                      Every sidebar field is hidden for this kind. Toggle{" "}
+                      Every sidebar field is hidden for {conditionScopeLabel}. Toggle{" "}
                       <button
                         type="button"
                         onClick={() => setShowAllFields(true)}
