@@ -34,6 +34,7 @@ function mergeFixPlanItem(
   const existing = plan.find((item) => item.id === template.id);
   if (existing) {
     if (!existing.checkIds.includes(result.id)) existing.checkIds.push(result.id);
+    existing.notes = mergeNotes(existing.notes, result.hint ? [result.hint] : undefined);
     if (blocksDeploy) {
       existing.blocksDeploy = true;
       existing.severity = "blocking";
@@ -46,7 +47,16 @@ function mergeFixPlanItem(
     checkIds: [result.id],
     nextCommand: template.commands[0] ?? null,
     severity,
+    notes: mergeNotes(template.notes, result.hint ? [result.hint] : undefined),
   });
+}
+
+function mergeNotes(base: string[] | undefined, extra: string[] | undefined): string[] | undefined {
+  const notes = [...(base ?? [])];
+  for (const note of extra ?? []) {
+    if (!notes.includes(note)) notes.push(note);
+  }
+  return notes.length > 0 ? notes : undefined;
 }
 
 function fixForCheck(result: CheckResult, target: DeployTarget | null): FixPlanTemplate | null {

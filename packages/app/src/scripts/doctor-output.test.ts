@@ -72,6 +72,10 @@ describe("doctor output", () => {
             blocksDeploy: false,
             nextCommand: "openssl rand -hex 32",
             commands: ["openssl rand -hex 32"],
+            notes: expect.arrayContaining([
+              "Set it when scheduled publishing is enabled.",
+              "Set NP_SCHEDULER_TOKEN to the generated value and send Authorization: Bearer <token> from the scheduler.",
+            ]),
           }),
           expect.objectContaining({
             id: "env.run_setup",
@@ -80,6 +84,7 @@ describe("doctor output", () => {
             blocksDeploy: true,
             nextCommand: "pnpm run setup",
             commands: ["pnpm run setup"],
+            notes: ["Set DATABASE_URL first."],
           }),
         ],
         nextCommand: "pnpm run setup",
