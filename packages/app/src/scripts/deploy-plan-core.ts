@@ -20,6 +20,7 @@ export interface EnvRequirementCheck {
   expectedValue?: string;
   actualValue?: string;
   status: EnvRequirementStatus;
+  hint?: string;
 }
 
 export interface DeployPlanEnvSummary {
@@ -214,12 +215,14 @@ export function checkEnvRequirement(
   const [variable, ...expectedParts] = name.split("=");
   const expectedValue = expectedParts.length > 0 ? expectedParts.join("=") : undefined;
   const value = env[variable!];
+  const hint = envRequirementHint(variable!, expectedValue);
   if (!value) {
     return {
       name,
       variable: variable!,
       ...(expectedValue ? { expectedValue } : {}),
       status: "missing",
+      ...(hint ? { hint } : {}),
     };
   }
   if (expectedValue && value !== expectedValue) {
@@ -229,6 +232,7 @@ export function checkEnvRequirement(
       expectedValue,
       actualValue: value,
       status: "mismatch",
+      ...(hint ? { hint } : {}),
     };
   }
   return {
@@ -237,6 +241,30 @@ export function checkEnvRequirement(
     ...(expectedValue ? { expectedValue } : {}),
     status: "set",
   };
+}
+
+function envRequirementHint(variable: string, expectedValue: string | undefined): string | null {
+  if (expectedValue) return `Set ${variable}=${expectedValue}.`;
+  switch (variable) {
+    case "DATABASE_URL":
+      return "Use the public or pooler Postgres connection string for the deploy target.";
+    case "NP_SECRET":
+      return "Generate a 32+ character secret, for example `openssl rand -base64 48`.";
+    case "SITE_URL":
+      return "Set this to the final public HTTPS origin, for example `https://example.com`.";
+    case "NP_S3_BUCKET":
+      return "Set the durable media bucket name for S3, R2, MinIO, or another S3-compatible provider.";
+    case "NP_S3_REGION":
+      return "Set the bucket region; use `auto` for providers such as Cloudflare R2 when appropriate.";
+    case "NP_S3_ENDPOINT":
+      return "Set this for R2, MinIO, or non-AWS S3-compatible storage.";
+    case "NP_ENABLE_JOBS":
+      return "Set to `1` on the runtime that owns scheduled publishing, email, and background jobs.";
+    case "NP_SCHEDULER_TOKEN":
+      return "Set a random token if an external cron calls internal scheduled endpoints.";
+    default:
+      return null;
+  }
 }
 
 function summarizeEnvRequirements(checks: EnvRequirementCheck[]): DeployPlanEnvSummary {
@@ -293,11 +321,12 @@ export function buildDeployPlanJson(
 
 export function formatEnvRequirement(check: EnvRequirementCheck, color = true): string {
   const c = color ? ANSI : EMPTY_ANSI;
-  if (check.status === "missing") return `${c.yellow}[todo]${c.reset} ${check.name}`;
+  const hint = check.hint ? ` ${c.dim}- ${check.hint}${c.reset}` : "";
+  if (check.status === "missing") return `${c.yellow}[todo]${c.reset} ${check.name}${hint}`;
   if (check.status === "mismatch") {
     return (
       `${c.yellow}[check]${c.reset} ${check.name} ` +
-      `${c.dim}(currently ${check.variable}=${check.actualValue ?? ""})${c.reset}`
+      `${c.dim}(currently ${check.variable}=${check.actualValue ?? ""})${c.reset}${hint}`
     );
   }
   return `${c.green}[set]${c.reset} ${check.name}`;
