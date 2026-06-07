@@ -3,13 +3,7 @@ import * as React from "react";
 import { Badge } from "./badge.js";
 import { cn } from "./utils.js";
 
-export type StatusTone =
-  | "success"
-  | "warning"
-  | "info"
-  | "danger"
-  | "neutral"
-  | "muted";
+export type StatusTone = "success" | "warning" | "info" | "danger" | "neutral" | "muted";
 
 interface StatusDotProps {
   tone?: StatusTone;
@@ -78,10 +72,10 @@ interface StatusBadgeProps {
  * mapping for unknown statuses so callers don't have to guard.
  */
 export function StatusBadge({ status, override, className }: StatusBadgeProps) {
-  const fallback = DEFAULT_STATUS_MAP[status.toLowerCase()] ?? {
-    variant: "secondary" as const,
+  const fallback: StatusBadgeMapping = DEFAULT_STATUS_MAP[status.toLowerCase()] ?? {
+    variant: "secondary",
     label: status,
-    tone: "neutral" as StatusTone,
+    tone: "neutral",
   };
   const mapping = { ...fallback, ...override };
 
