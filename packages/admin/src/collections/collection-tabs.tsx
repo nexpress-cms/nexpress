@@ -157,7 +157,10 @@ function TabWidget({
   }, [pluginId, widget, collection, documentId]);
 
   useEffect(() => {
-    void load();
+    const frame = window.requestAnimationFrame(() => {
+      void load();
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [load]);
 
   return (

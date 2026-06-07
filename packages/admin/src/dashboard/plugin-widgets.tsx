@@ -89,7 +89,10 @@ function PluginWidgetCard({ widget }: { widget: DashboardPluginWidget }) {
   }, [widget]);
 
   useEffect(() => {
-    void load();
+    const frame = window.requestAnimationFrame(() => {
+      void load();
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [load]);
 
   return (

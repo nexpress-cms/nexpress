@@ -77,7 +77,10 @@ export function ReportsQueueView() {
   }, [status]);
 
   useEffect(() => {
-    void refresh();
+    const frame = window.requestAnimationFrame(() => {
+      void refresh();
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [refresh]);
 
   return (

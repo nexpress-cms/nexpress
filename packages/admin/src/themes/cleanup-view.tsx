@@ -82,7 +82,10 @@ export function ThemeCleanupView() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    const frame = window.requestAnimationFrame(() => {
+      void refresh();
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [refresh]);
 
   async function cleanup(types: string[] | null) {

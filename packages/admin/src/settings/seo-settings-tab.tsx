@@ -38,10 +38,6 @@ export function SeoSettingsTab() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    void load();
-  }, []);
-
   async function load() {
     setLoading(true);
     setError(null);
@@ -67,6 +63,13 @@ export function SeoSettingsTab() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      void load();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   async function save() {
     setSaving(true);

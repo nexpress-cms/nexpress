@@ -93,7 +93,10 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
   }, [collectionSlug, documentId]);
 
   useEffect(() => {
-    void loadRevisions();
+    const frame = window.requestAnimationFrame(() => {
+      void loadRevisions();
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [loadRevisions]);
 
   const handleOpenDetail = async (revision: RevisionSummary) => {
