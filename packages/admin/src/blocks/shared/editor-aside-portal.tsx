@@ -37,23 +37,25 @@ export function EditorAsidePortal({
 
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const el = document.getElementById(targetId);
-    if (!el) {
-      // Dev hint — production sites would intentionally omit the
-      // target if they don't want the aside; emitting only at
-      // module-eval time once would miss the case where the
-      // editor mounts after the form. Log on every mount keeps
-      // the signal alive across re-mounts.
-      if (process.env.NODE_ENV !== "production") {
-        // eslint-disable-next-line no-console
-        console.warn(
-          `[np] EditorAsidePortal: target #${targetId} not found in the DOM. Outline / warnings will not render. Mount a <div id="${targetId}" /> in your form sidebar.`,
-        );
+    const frame = window.requestAnimationFrame(() => {
+      const el = document.getElementById(targetId);
+      if (!el) {
+        // Dev hint — production sites would intentionally omit the
+        // target if they don't want the aside; emitting only at
+        // module-eval time once would miss the case where the
+        // editor mounts after the form. Log on every mount keeps
+        // the signal alive across re-mounts.
+        if (process.env.NODE_ENV !== "production") {
+          console.warn(
+            `[np] EditorAsidePortal: target #${targetId} not found in the DOM. Outline / warnings will not render. Mount a <div id="${targetId}" /> in your form sidebar.`,
+          );
+        }
+        setTarget(null);
+        return;
       }
-      setTarget(null);
-      return;
-    }
-    setTarget(el);
+      setTarget(el);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [targetId]);
 
   if (target === null) return null;

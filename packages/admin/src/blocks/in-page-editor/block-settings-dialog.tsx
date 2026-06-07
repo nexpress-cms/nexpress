@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type Dispatch } from "react";
+import { useMemo, useState, type Dispatch } from "react";
 import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 
 import { isFieldHidden, type EditorAction } from "../editor-engine/index.js";
@@ -61,14 +61,26 @@ export function BlockSettingsDialog({
   definition,
   dispatch,
 }: BlockSettingsDialogProps) {
-  const [draft, setDraft] = useState<Record<string, unknown>>(block?.props ?? {});
+  return (
+    <BlockSettingsDialogInner
+      key={block?.id ?? "none"}
+      open={open}
+      onOpenChange={onOpenChange}
+      block={block}
+      definition={definition}
+      dispatch={dispatch}
+    />
+  );
+}
 
-  // Reset the draft whenever the targeted block changes — without
-  // this the dialog would carry edits from one block over to the
-  // next when the operator clicks settings on a different row.
-  useEffect(() => {
-    if (block) setDraft({ ...block.props });
-  }, [block]);
+function BlockSettingsDialogInner({
+  open,
+  onOpenChange,
+  block,
+  definition,
+  dispatch,
+}: BlockSettingsDialogProps) {
+  const [draft, setDraft] = useState<Record<string, unknown>>(block?.props ?? {});
 
   // Filter out fields whose `hiddenWhen` / `visibleWhen` predicate
   // doesn't match the current draft — same gate the form-card

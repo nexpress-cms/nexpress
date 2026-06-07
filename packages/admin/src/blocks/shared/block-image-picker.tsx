@@ -55,7 +55,7 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [previewBroken, setPreviewBroken] = useState(false);
+  const [brokenPreviewUrl, setBrokenPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const loadAbortRef = useRef<AbortController | null>(null);
 
@@ -66,12 +66,7 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
     return () => window.clearTimeout(timer);
   }, [query]);
 
-  // Reset broken-state when the URL changes — operator may have
-  // pasted a valid URL after a broken one. The <img onError> hook
-  // re-flips it to true if the new URL also fails.
-  useEffect(() => {
-    setPreviewBroken(false);
-  }, [value]);
+  const previewBroken = value.length > 0 && brokenPreviewUrl === value;
 
   const loadMedia = useCallback(async (page: number, query: string, mode: "replace" | "append") => {
     // Cancel any in-flight request so a slow earlier query can't
@@ -118,7 +113,10 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
   // instead of slicing the loaded page client-side.
   useEffect(() => {
     if (!open) return;
-    void loadMedia(1, debouncedQuery, "replace");
+    const frame = window.requestAnimationFrame(() => {
+      void loadMedia(1, debouncedQuery, "replace");
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [open, debouncedQuery, loadMedia]);
 
   const currentPage = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
@@ -236,7 +234,7 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
               src={value}
               alt=""
               className="block max-h-32 w-full object-cover"
-              onError={() => setPreviewBroken(true)}
+              onError={() => setBrokenPreviewUrl(value)}
             />
           )}
         </div>

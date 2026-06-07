@@ -115,18 +115,14 @@ export function QuickInsertBar({
     return filterSlashMenuDefinitions(allDefinitions, slashQuery);
   }, [isSlashMode, slashQuery, allDefinitions]);
 
-  // Reset active index when the filter changes — clamping it to
-  // the new length keeps the highlight on a real entry.
-  useEffect(() => {
-    setActiveIndex((prev) => {
-      if (filtered.length === 0) return 0;
-      return Math.min(prev, filtered.length - 1);
-    });
-  }, [filtered.length]);
+  // Clamp at render time so query changes never leave the highlight
+  // pointing past the filtered list.
+  const effectiveActiveIndex =
+    filtered.length === 0 ? 0 : Math.min(activeIndex, filtered.length - 1);
 
   useEffect(() => {
     activeOptionRef.current?.scrollIntoView({ block: "nearest" });
-  }, [activeIndex, filtered]);
+  }, [effectiveActiveIndex, filtered]);
 
   const commitSlash = (def: NpBlockMetadata | undefined) => {
     if (!def) return;
@@ -143,8 +139,8 @@ export function QuickInsertBar({
     inputRef.current?.focus();
   };
   const activeOptionId =
-    isSlashMode && filtered[activeIndex]
-      ? `${listboxId}-option-${filtered[activeIndex].type}`
+    isSlashMode && filtered[effectiveActiveIndex]
+      ? `${listboxId}-option-${filtered[effectiveActiveIndex].type}`
       : undefined;
 
   return (
@@ -185,7 +181,7 @@ export function QuickInsertBar({
                 setActiveIndex((i) => Math.max(0, i - 1));
               } else if (e.key === "Enter") {
                 e.preventDefault();
-                commitSlash(filtered[activeIndex]);
+                commitSlash(filtered[effectiveActiveIndex]);
               } else if (e.key === "Escape") {
                 e.preventDefault();
                 setValue("");
@@ -236,7 +232,7 @@ export function QuickInsertBar({
           id={listboxId}
         >
           {filtered.map((def, idx) => {
-            const isActive = idx === activeIndex;
+            const isActive = idx === effectiveActiveIndex;
             return (
               <button
                 key={def.type}

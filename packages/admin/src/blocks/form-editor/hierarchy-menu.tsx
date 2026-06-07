@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 
@@ -47,11 +47,7 @@ export function HierarchyMenu({
   getMoveIntoCandidates,
 }: HierarchyMenuProps) {
   const [open, setOpen] = useState(false);
-  const [candidates, setCandidates] = useState<ContainerCandidate[]>([]);
-
-  useEffect(() => {
-    if (open) setCandidates(getMoveIntoCandidates(block.id));
-  }, [open, block.id, getMoveIntoCandidates]);
+  const candidates = open ? getMoveIntoCandidates(block.id) : [];
 
   // Wrap-in targets — every container block except the source's
   // own type. We compute this every render because availableBlocks

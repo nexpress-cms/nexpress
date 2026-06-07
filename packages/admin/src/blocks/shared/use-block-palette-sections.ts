@@ -181,10 +181,12 @@ export function useBlockPaletteSections({
   const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => {
       setRecent(readRecent());
       setFavorites(readFavorites());
-    }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [open]);
 
   const sections = useMemo(

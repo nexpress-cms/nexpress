@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { NpBlockPropField } from "@nexpress/blocks";
 
 import { Button } from "../../ui/button.js";
@@ -74,23 +74,32 @@ export function BlockJsonDialog({
   propsSchema,
   onApply,
 }: BlockJsonDialogProps) {
-  const [text, setText] = useState("");
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {open ? (
+        <BlockJsonDialogContent
+          blockType={blockType}
+          props={props}
+          propsSchema={propsSchema}
+          onApply={onApply}
+          onOpenChange={onOpenChange}
+        />
+      ) : null}
+    </Dialog>
+  );
+}
+
+function BlockJsonDialogContent({
+  blockType,
+  props,
+  propsSchema,
+  onOpenChange,
+  onApply,
+}: Omit<BlockJsonDialogProps, "open">) {
+  const [text, setText] = useState(() => JSON.stringify(props, null, 2));
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-
-  // Reseed the textarea every time the dialog opens, so closing
-  // and reopening reflects the latest committed state — operators
-  // who tweak via the field form between JSON edits expect the
-  // dialog to catch up.
-  useEffect(() => {
-    if (open) {
-      setText(JSON.stringify(props, null, 2));
-      setError(null);
-      setWarning(null);
-      setCopied(false);
-    }
-  }, [open, props]);
 
   function handleFormat() {
     try {
@@ -138,74 +147,72 @@ export function BlockJsonDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="min-w-0 max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="break-words">Edit block props as JSON</DialogTitle>
-          <DialogDescription className="break-words">
-            <span className="break-all font-mono">{blockType}</span> — Apply replaces the entire{" "}
-            <code className="break-all">props</code> object. Keys you remove here will be dropped on
-            save.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid min-w-0 grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-wrap sm:items-center">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="w-full sm:w-auto"
-            onClick={handleFormat}
-          >
-            Format
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="w-full sm:w-auto"
-            onClick={() => {
-              void handleCopy();
-            }}
-          >
-            {copied ? "Copied!" : "Copy"}
-          </Button>
-        </div>
-        <Textarea
-          value={text}
-          onChange={(e) => {
-            setText(e.currentTarget.value);
-            setError(null);
-            setWarning(null);
+    <DialogContent className="min-w-0 max-w-2xl">
+      <DialogHeader>
+        <DialogTitle className="break-words">Edit block props as JSON</DialogTitle>
+        <DialogDescription className="break-words">
+          <span className="break-all font-mono">{blockType}</span> — Apply replaces the entire{" "}
+          <code className="break-all">props</code> object. Keys you remove here will be dropped on
+          save.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="grid min-w-0 grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-wrap sm:items-center">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-full sm:w-auto"
+          onClick={handleFormat}
+        >
+          Format
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-full sm:w-auto"
+          onClick={() => {
+            void handleCopy();
           }}
-          rows={16}
-          className="max-h-[45dvh] min-h-[14rem] min-w-0 resize-y font-mono text-xs"
-          spellCheck={false}
-        />
-        {error ? (
-          <div
-            role="alert"
-            className="break-words rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
-          >
-            {error}
-          </div>
-        ) : null}
-        {warning ? (
-          <div
-            role="status"
-            className="break-words rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300"
-          >
-            Schema warning: {warning}. Click Apply again to commit anyway.
-          </div>
-        ) : null}
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button type="button" onClick={handleApply}>
-            {warning ? "Apply anyway" : "Apply"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        >
+          {copied ? "Copied!" : "Copy"}
+        </Button>
+      </div>
+      <Textarea
+        value={text}
+        onChange={(e) => {
+          setText(e.currentTarget.value);
+          setError(null);
+          setWarning(null);
+        }}
+        rows={16}
+        className="max-h-[45dvh] min-h-[14rem] min-w-0 resize-y font-mono text-xs"
+        spellCheck={false}
+      />
+      {error ? (
+        <div
+          role="alert"
+          className="break-words rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+        >
+          {error}
+        </div>
+      ) : null}
+      {warning ? (
+        <div
+          role="status"
+          className="break-words rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300"
+        >
+          Schema warning: {warning}. Click Apply again to commit anyway.
+        </div>
+      ) : null}
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          Cancel
+        </Button>
+        <Button type="button" onClick={handleApply}>
+          {warning ? "Apply anyway" : "Apply"}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
   );
 }

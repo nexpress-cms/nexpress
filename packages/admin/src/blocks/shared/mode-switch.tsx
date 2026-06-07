@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AlignLeft, Layers } from "lucide-react";
 
 import { cn } from "../../ui/utils.js";
@@ -136,15 +136,7 @@ export function usePersistedView(
   scope?: string,
   defaultView: EditorView = "page",
 ): [EditorView, (next: EditorView) => void] {
-  const [view, setView] = useState<EditorView>(defaultView);
-  // Hydrate from storage post-mount so SSR doesn't choke on
-  // `window`. The default render is whichever view the orchestrator
-  // passes — operators see one frame of "page" before the toggle
-  // hydrates if their saved choice is "doc".
-  useEffect(() => {
-    const persisted = readPersistedView(scope);
-    if (persisted) setView(persisted);
-  }, [scope]);
+  const [view, setView] = useState<EditorView>(() => readPersistedView(scope) ?? defaultView);
   const set = (next: EditorView) => {
     setView(next);
     writePersistedView(scope, next);
