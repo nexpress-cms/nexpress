@@ -37,7 +37,7 @@ import {
   User,
   type LucideIcon,
 } from "lucide-react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 
 import { CollectionTabs, type CollectionTabDescriptor } from "./collection-tabs.js";
@@ -455,19 +455,30 @@ function SidebarGroupCard({
   description?: string;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState<boolean>(true);
-  // Hydrate from localStorage on mount. Two-stage default so SSR
-  // and first paint stay consistent (open) regardless of what
-  // the operator previously stored — the snap-to-stored happens
-  // post-mount and Radix animates the collapse if needed.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  const [open, setOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
     try {
       const stored = window.localStorage.getItem(storageKey);
-      if (stored === "closed") setOpen(false);
+      return stored !== "closed";
+    } catch {
+      // see other localStorage call sites
+      return true;
+    }
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let frame: number | null = null;
+    try {
+      const stored = window.localStorage.getItem(storageKey);
+      frame = window.requestAnimationFrame(() => {
+        setOpen(stored !== "closed");
+      });
     } catch {
       // see other localStorage call sites
     }
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
   }, [storageKey]);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -624,15 +635,19 @@ function CollectionEditViewInner({
     resolver,
     defaultValues,
   });
+  const autosaveValues = useWatch({ control: form.control });
+  const autosaveValuesKey = useMemo(() => JSON.stringify(autosaveValues ?? {}), [autosaveValues]);
+  const autosaveBaselineRef = useRef<string | null>(null);
 
   // Sync form inputs with server state after saves, revision restores, or any
   // other refresh that swaps the `doc` prop — react-hook-form's defaultValues
   // is consumed only on mount, so the form would otherwise show stale values.
   useEffect(() => {
     form.reset(defaultValues);
+    autosaveBaselineRef.current = JSON.stringify(defaultValues);
   }, [defaultValues, form]);
 
-  const slugValue = form.watch("slug");
+  const slugValue = useWatch({ control: form.control, name: "slug" });
   const previewSlug =
     typeof slugValue === "string" ? slugValue : typeof doc?.slug === "string" ? doc.slug : "";
   const currentStatus = typeof doc?.status === "string" ? doc.status : null;
@@ -654,15 +669,13 @@ function CollectionEditViewInner({
   >({ kind: "idle" });
 
   // Hold the pending debounce handle in a ref so each keystroke can clear
-  // the previous timer — react-hook-form's `watch` callback ignores any
-  // value its subscriber returns, so a `return () => clearTimeout(...)`
-  // inside the callback would be silently dropped. Without this ref the
-  // user's first edit queues a timeout, the second queues another, and so
-  // on; after the debounce window every queued timer fires and floods the
-  // endpoint. The server dedups, but the network spam is wasteful.
+  // the previous timer. Without this ref the user's first edit queues a
+  // timeout, the second queues another, and so on; after the debounce
+  // window every queued timer fires and floods the endpoint. The server
+  // dedups, but the network spam is wasteful.
   const autosaveTimer = useRef<number | null>(null);
   // `savingAs` is read inside the timer callback below; capture it via a
-  // ref so we don't have to re-subscribe form.watch every time it changes.
+  // ref so we don't reschedule autosave every time the manual save state changes.
   const savingAsRef = useRef(savingAs);
   useEffect(() => {
     savingAsRef.current = savingAs;
@@ -670,59 +683,59 @@ function CollectionEditViewInner({
 
   useEffect(() => {
     if (!autosaveEnabled || !doc?.id) return;
+    if (autosaveBaselineRef.current === null) {
+      autosaveBaselineRef.current = autosaveValuesKey;
+      return;
+    }
+    if (autosaveBaselineRef.current === autosaveValuesKey) return;
+    autosaveBaselineRef.current = autosaveValuesKey;
 
-    const subscription = form.watch((values, { type }) => {
-      // Only react to user edits — `reset()` after a real save would
-      // otherwise re-trigger autosave with the same data we just persisted.
-      if (type !== "change") return;
-      const documentId = String(doc.id);
-      const snapshot = JSON.parse(JSON.stringify(values)) as Record<string, unknown>;
+    const documentId = String(doc.id);
+    const snapshot = JSON.parse(autosaveValuesKey) as Record<string, unknown>;
 
-      if (autosaveTimer.current !== null) {
-        window.clearTimeout(autosaveTimer.current);
-      }
-      const runAutosave = async () => {
-        autosaveTimer.current = null;
-        // Skip when a manual Draft/Publish/Schedule save is in flight —
-        // they'll write a real revision themselves.
-        if (savingAsRef.current !== null) return;
-        try {
-          setAutosaveStatus({ kind: "saving" });
-          const response = await npFetch(
-            `/api/collections/${collectionSlug}/${documentId}/autosave`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(snapshot),
-            },
-          );
-          if (!response.ok) {
-            const body = (await response.json().catch(() => null)) as {
-              error?: { message?: string };
-            } | null;
-            throw new Error(body?.error?.message ?? `HTTP ${response.status}`);
-          }
-          setAutosaveStatus({ kind: "saved", at: Date.now() });
-        } catch (error) {
-          setAutosaveStatus({
-            kind: "error",
-            message: error instanceof Error ? error.message : "Autosave failed",
-          });
+    if (autosaveTimer.current !== null) {
+      window.clearTimeout(autosaveTimer.current);
+    }
+    const runAutosave = async () => {
+      autosaveTimer.current = null;
+      // Skip when a manual Draft/Publish/Schedule save is in flight —
+      // they'll write a real revision themselves.
+      if (savingAsRef.current !== null) return;
+      try {
+        setAutosaveStatus({ kind: "saving" });
+        const response = await npFetch(
+          `/api/collections/${collectionSlug}/${documentId}/autosave`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(snapshot),
+          },
+        );
+        if (!response.ok) {
+          const body = (await response.json().catch(() => null)) as {
+            error?: { message?: string };
+          } | null;
+          throw new Error(body?.error?.message ?? `HTTP ${response.status}`);
         }
-      };
-      autosaveTimer.current = window.setTimeout(() => {
-        void runAutosave();
-      }, autosaveInterval);
-    });
+        setAutosaveStatus({ kind: "saved", at: Date.now() });
+      } catch (error) {
+        setAutosaveStatus({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Autosave failed",
+        });
+      }
+    };
+    autosaveTimer.current = window.setTimeout(() => {
+      void runAutosave();
+    }, autosaveInterval);
 
     return () => {
-      subscription.unsubscribe();
       if (autosaveTimer.current !== null) {
         window.clearTimeout(autosaveTimer.current);
         autosaveTimer.current = null;
       }
     };
-  }, [autosaveEnabled, autosaveInterval, collectionSlug, doc?.id, form]);
+  }, [autosaveEnabled, autosaveInterval, autosaveValuesKey, collectionSlug, doc?.id]);
 
   // Tick once per second so the "saved Xs ago" label refreshes without a re-save.
   const [, setTickNow] = useState(0);
@@ -740,13 +753,19 @@ function CollectionEditViewInner({
   const [showAllFields, setShowAllFields] = useState<boolean>(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
+    let frame: number | null = null;
     try {
       const stored = window.localStorage.getItem(showAllStorageKey);
-      if (stored === "1") setShowAllFields(true);
+      frame = window.requestAnimationFrame(() => {
+        setShowAllFields(stored === "1");
+      });
     } catch {
       // localStorage access can throw in restricted contexts
       // (private mode, sandboxed iframes). Silent fallback.
     }
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
   }, [showAllStorageKey]);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -757,12 +776,10 @@ function CollectionEditViewInner({
     }
   }, [showAllStorageKey, showAllFields]);
 
-  // Live form values for `admin.condition` evaluation. `form.watch()`
-  // returns the current snapshot and resubscribes on render —
-  // expensive on big forms, but the form values are small JSON
-  // and the alternative (per-field subscriptions) would scatter
-  // the condition logic across renderers.
-  const formValues = form.watch();
+  // Live form values for `admin.condition` evaluation. Reuse the
+  // React Hook Form subscription that autosave already needs so the
+  // condition logic stays centralized.
+  const formValues = autosaveValues;
 
   const visibleFields = effectiveFields.filter(isVisibleField);
   const passes = (field: NpFieldConfig): boolean =>

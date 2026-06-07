@@ -71,10 +71,12 @@ export function ScheduleDialog({
   // Reset the picker each time the dialog opens so a stale value from a
   // previous edit doesn't carry over.
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => {
       setLocalValue(localFromIso(initialPublishedAt));
       setError(null);
-    }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [open, initialPublishedAt]);
 
   const handleSubmit = () => {

@@ -947,28 +947,31 @@ function JobLogsSection({ jobId }: { jobId: string }) {
   useEffect(() => {
     if (!open || state.kind !== "idle") return;
     let cancelled = false;
-    setState({ kind: "loading" });
-    void (async () => {
-      try {
-        const res = await npFetch(`/api/admin/jobs/${encodeURIComponent(jobId)}/logs?limit=500`);
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
+    const frame = window.requestAnimationFrame(() => {
+      setState({ kind: "loading" });
+      void (async () => {
+        try {
+          const res = await npFetch(`/api/admin/jobs/${encodeURIComponent(jobId)}/logs?limit=500`);
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
+          const data = (await res.json()) as JobLogsResponse;
+          if (!cancelled) {
+            setState({ kind: "loaded", total: data.total, entries: data.entries });
+          }
+        } catch (err) {
+          if (!cancelled) {
+            setState({
+              kind: "error",
+              message: err instanceof Error ? err.message : "Failed to load logs",
+            });
+          }
         }
-        const data = (await res.json()) as JobLogsResponse;
-        if (!cancelled) {
-          setState({ kind: "loaded", total: data.total, entries: data.entries });
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setState({
-            kind: "error",
-            message: err instanceof Error ? err.message : "Failed to load logs",
-          });
-        }
-      }
-    })();
+      })();
+    });
     return () => {
       cancelled = true;
+      window.cancelAnimationFrame(frame);
     };
   }, [open, jobId, state.kind]);
 

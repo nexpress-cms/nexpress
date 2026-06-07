@@ -243,13 +243,15 @@ function GrantDialog({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) {
+    if (open) return;
+    const frame = window.requestAnimationFrame(() => {
       setSearch("");
       setResults([]);
       setSelected(null);
       setRole("editor");
       setError(null);
-    }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [open]);
 
   // Phase 15.8 — debounced user search via the existing
@@ -257,27 +259,34 @@ function GrantDialog({
   // typing experience responsive without blasting the DB.
   useEffect(() => {
     if (!open || selected || !search.trim()) {
-      setResults([]);
-      return;
+      const frame = window.requestAnimationFrame(() => {
+        setResults([]);
+      });
+      return () => window.cancelAnimationFrame(frame);
     }
+    let cancelled = false;
     const runSearch = async () => {
       setSearching(true);
       try {
         const res = await npFetch(`/api/users?search=${encodeURIComponent(search.trim())}&limit=8`);
+        if (cancelled) return;
         if (!res.ok) {
           setResults([]);
           return;
         }
         const body = (await res.json().catch(() => null)) as { docs?: UserSearchResult[] } | null;
-        setResults(body?.docs ?? []);
+        if (!cancelled) setResults(body?.docs ?? []);
       } finally {
-        setSearching(false);
+        if (!cancelled) setSearching(false);
       }
     };
-    const handle = setTimeout(() => {
+    const handle = window.setTimeout(() => {
       void runSearch();
     }, 250);
-    return () => clearTimeout(handle);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
   }, [search, selected, open]);
 
   async function handleSubmit() {

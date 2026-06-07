@@ -189,7 +189,10 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
   React.useEffect(() => {
-    setMobileOpen(false);
+    const frame = window.requestAnimationFrame(() => {
+      setMobileOpen(false);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [pathname]);
 
   React.useEffect(() => {

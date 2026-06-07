@@ -105,7 +105,10 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
   // a scope flip to `site` and the API rejects the grant.
   useEffect(() => {
     if (form.role && !eligibleRoles.some((r) => r.role === form.role)) {
-      setForm((f) => ({ ...f, role: eligibleRoles[0]?.role ?? "" }));
+      const frame = window.requestAnimationFrame(() => {
+        setForm((f) => ({ ...f, role: eligibleRoles[0]?.role ?? "" }));
+      });
+      return () => window.cancelAnimationFrame(frame);
     }
   }, [eligibleRoles, form.role]);
 

@@ -49,7 +49,10 @@ function compareValues(left: unknown, right: unknown) {
   });
 }
 
-function resolveCellValue<TData extends Record<string, unknown>>(row: TData, key: DataTableColumn<TData>["key"]) {
+function resolveCellValue<TData extends Record<string, unknown>>(
+  row: TData,
+  key: DataTableColumn<TData>["key"],
+) {
   if (typeof key === "string" && key in row) {
     return row[key as keyof TData];
   }
@@ -101,12 +104,6 @@ function DataTable<TData extends Record<string, unknown>>({
   const pageCount = Math.max(1, Math.ceil(sortedData.length / pageSize));
   const currentPage = Math.min(page, pageCount - 1);
 
-  React.useEffect(() => {
-    if (page !== currentPage) {
-      setPage(currentPage);
-    }
-  }, [currentPage, page]);
-
   const paginatedData = React.useMemo(() => {
     const start = currentPage * pageSize;
     return sortedData.slice(start, start + pageSize);
@@ -152,7 +149,10 @@ function DataTable<TData extends Record<string, unknown>>({
                         >
                           {column.header}
                           <ArrowUpDown
-                            className={cn("size-4", isSorted && "text-neutral-950 dark:text-neutral-50")}
+                            className={cn(
+                              "size-4",
+                              isSorted && "text-neutral-950 dark:text-neutral-50",
+                            )}
                           />
                         </Button>
                       ) : (
@@ -173,16 +173,24 @@ function DataTable<TData extends Record<string, unknown>>({
                     {columns.map((column) => (
                       <td
                         key={String(column.key)}
-                        className={cn("px-3.5 py-2.5 align-middle text-neutral-700 dark:text-neutral-200", column.cellClassName)}
+                        className={cn(
+                          "px-3.5 py-2.5 align-middle text-neutral-700 dark:text-neutral-200",
+                          column.cellClassName,
+                        )}
                       >
-                        {column.cell ? column.cell(row) : String(resolveCellValue(row, column.key) ?? "")}
+                        {column.cell
+                          ? column.cell(row)
+                          : String(resolveCellValue(row, column.key) ?? "")}
                       </td>
                     ))}
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={columns.length} className="h-28 px-4 text-center text-neutral-500 dark:text-neutral-400">
+                  <td
+                    colSpan={columns.length}
+                    className="h-28 px-4 text-center text-neutral-500 dark:text-neutral-400"
+                  >
                     {emptyMessage}
                   </td>
                 </tr>
@@ -202,7 +210,7 @@ function DataTable<TData extends Record<string, unknown>>({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => setPage((value) => Math.max(0, value - 1))}
+            onClick={() => setPage(Math.max(0, currentPage - 1))}
             disabled={currentPage === 0}
           >
             <ChevronLeft className="size-3.5" />
@@ -215,7 +223,7 @@ function DataTable<TData extends Record<string, unknown>>({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}
+            onClick={() => setPage(Math.min(pageCount - 1, currentPage + 1))}
             disabled={currentPage >= pageCount - 1}
           >
             Next

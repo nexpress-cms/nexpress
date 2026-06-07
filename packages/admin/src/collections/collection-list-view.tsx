@@ -178,11 +178,17 @@ export function CollectionListView({
   // Reset selection whenever the underlying page changes — stale ids from a
   // prior page would silently target docs the user can't see anymore.
   useEffect(() => {
-    setSelectedIds(new Set());
+    const frame = globalThis.requestAnimationFrame(() => {
+      setSelectedIds(new Set());
+    });
+    return () => globalThis.cancelAnimationFrame(frame);
   }, [docs]);
 
   useEffect(() => {
-    setSearchValue(searchParams.get("search") ?? "");
+    const frame = globalThis.requestAnimationFrame(() => {
+      setSearchValue(searchParams.get("search") ?? "");
+    });
+    return () => globalThis.cancelAnimationFrame(frame);
   }, [searchParams]);
 
   useEffect(() => {

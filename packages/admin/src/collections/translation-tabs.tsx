@@ -51,11 +51,6 @@ export function TranslationTabs({
   const [error, setError] = useState<string | null>(null);
   const [creatingFor, setCreatingFor] = useState<string | null>(null);
 
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collectionSlug, documentId]);
-
   async function load() {
     setError(null);
     try {
@@ -66,9 +61,10 @@ export function TranslationTabs({
         ),
       ]);
       const configBody = (await configRes.json().catch(() => null)) as I18nConfig | null;
-      const translationsBody = (await translationsRes.json().catch(() => null)) as
-        | { docs?: TranslationRow[]; error?: { message?: string } }
-        | null;
+      const translationsBody = (await translationsRes.json().catch(() => null)) as {
+        docs?: TranslationRow[];
+        error?: { message?: string };
+      } | null;
       if (configBody?.enabled === false) {
         setConfig({ enabled: false });
         return;
@@ -88,6 +84,14 @@ export function TranslationTabs({
     }
   }
 
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      void load();
+    });
+    return () => window.cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collectionSlug, documentId]);
+
   async function createForLocale(locale: string) {
     setCreatingFor(locale);
     setError(null);
@@ -100,9 +104,10 @@ export function TranslationTabs({
           body: JSON.stringify({ targetLocale: locale }),
         },
       );
-      const body = (await res.json().catch(() => null)) as
-        | { id?: string; error?: { message?: string } }
-        | null;
+      const body = (await res.json().catch(() => null)) as {
+        id?: string;
+        error?: { message?: string };
+      } | null;
       if (!res.ok || !body?.id) {
         setError(body?.error?.message ?? "Unable to create translation.");
         return;
@@ -157,15 +162,9 @@ export function TranslationTabs({
                     `/admin/collections/${encodeURIComponent(collectionSlug)}/${encodeURIComponent(sibling.id)}`,
                   )
                 }
-                title={
-                  isCurrent
-                    ? "Currently editing"
-                    : `Open ${locale} translation`
-                }
+                title={isCurrent ? "Currently editing" : `Open ${locale} translation`}
               >
-                {isCurrent ? (
-                  <Check className="size-3" />
-                ) : null}
+                {isCurrent ? <Check className="size-3" /> : null}
                 {locale.toUpperCase()}
                 <span className="ml-1.5 text-[11px] opacity-70">
                   {sibling.status === "published" ? "live" : "draft"}
@@ -192,9 +191,7 @@ export function TranslationTabs({
           );
         })}
       </div>
-      {error ? (
-        <p className="text-xs text-destructive">{error}</p>
-      ) : null}
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
   );
 }
