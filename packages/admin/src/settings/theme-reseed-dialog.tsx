@@ -106,45 +106,48 @@ export function ThemeReseedDialog({
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
-    setPhase("preview");
-    setPreview(null);
-    setResult(null);
-    setError(null);
-    void (async () => {
-      try {
-        const res = await npFetch(
-          `/api/admin/themes/reseed?themeId=${encodeURIComponent(targetThemeId)}`,
-          { signal: controller.signal },
-        );
-        const payload = (await res.json().catch(() => null)) as
-          | (PreviewCounts & { error?: { message?: string } })
-          | null;
-        if (controller.signal.aborted) return;
-        if (!res.ok) {
-          setError(payload?.error?.message ?? "Unable to read current state.");
+    const frame = window.requestAnimationFrame(() => {
+      setPhase("preview");
+      setPreview(null);
+      setResult(null);
+      setError(null);
+      void (async () => {
+        try {
+          const res = await npFetch(
+            `/api/admin/themes/reseed?themeId=${encodeURIComponent(targetThemeId)}`,
+            { signal: controller.signal },
+          );
+          const payload = (await res.json().catch(() => null)) as
+            | (PreviewCounts & { error?: { message?: string } })
+            | null;
+          if (controller.signal.aborted) return;
+          if (!res.ok) {
+            setError(payload?.error?.message ?? "Unable to read current state.");
+            setPhase("error");
+            return;
+          }
+          if (!payload || !payload.seedMarked || !payload.legacyUnmarked) {
+            setError("Empty preview response.");
+            setPhase("error");
+            return;
+          }
+          setPreview({
+            target: payload.target,
+            seedMarked: payload.seedMarked,
+            legacyUnmarked: payload.legacyUnmarked,
+          });
+        } catch (err) {
+          // AbortError when the dialog closed mid-flight — not a
+          // real failure, just skip the setState.
+          if (controller.signal.aborted) return;
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          setError("Unable to read current state.");
           setPhase("error");
-          return;
         }
-        if (!payload || !payload.seedMarked || !payload.legacyUnmarked) {
-          setError("Empty preview response.");
-          setPhase("error");
-          return;
-        }
-        setPreview({
-          target: payload.target,
-          seedMarked: payload.seedMarked,
-          legacyUnmarked: payload.legacyUnmarked,
-        });
-      } catch (err) {
-        // AbortError when the dialog closed mid-flight — not a
-        // real failure, just skip the setState.
-        if (controller.signal.aborted) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setError("Unable to read current state.");
-        setPhase("error");
-      }
-    })();
+      })();
+    });
     return () => {
+      window.cancelAnimationFrame(frame);
       controller.abort();
     };
   }, [open, targetThemeId]);

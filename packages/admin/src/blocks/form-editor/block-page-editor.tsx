@@ -305,7 +305,12 @@ export function BlockPageEditor({
       if (live.has(id)) next.add(id);
       else changed = true;
     }
-    if (changed) setSelectedIds(next);
+    if (changed) {
+      const frame = window.requestAnimationFrame(() => {
+        setSelectedIds(next);
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
   }, [blocks, selectedIds]);
   // Section patterns (#467 phase 4 + follow-up).
   //
@@ -667,7 +672,12 @@ export function BlockPageEditor({
   // back — without the operator clicking. Pin the state to the
   // gate so "open" only ever means "currently visible".
   useEffect(() => {
-    if (!wrapEligible && wrapPickerOpen) setWrapPickerOpen(false);
+    if (!wrapEligible && wrapPickerOpen) {
+      const frame = window.requestAnimationFrame(() => {
+        setWrapPickerOpen(false);
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
   }, [wrapEligible, wrapPickerOpen]);
   // Outside-click dismiss. The ref wraps both the trigger button
   // and the popup, so clicks on either count as "inside" and

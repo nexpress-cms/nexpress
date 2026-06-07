@@ -56,18 +56,13 @@ export function useEditorState({
   availableBlocks,
   onChange,
 }: UseEditorStateOptions): EditorState {
-  const innerReducer = useMemo(
-    () => createEditorReducer(availableBlocks),
-    [availableBlocks],
-  );
-  const historyReducer = useMemo(
-    () => createHistoryReducer(innerReducer),
-    [innerReducer],
-  );
+  const innerReducer = useMemo(() => createEditorReducer(availableBlocks), [availableBlocks]);
+  const historyReducer = useMemo(() => createHistoryReducer(innerReducer), [innerReducer]);
   const [history, historyDispatch] = useReducer(historyReducer, {
     past: [],
     present: initialBlocks,
     future: [],
+    lastUpdate: null,
   } as HistoryState<NpBlockInstance[]>);
   const blocks = history.present;
   const canUndo = history.past.length > 0;
@@ -93,17 +88,13 @@ export function useEditorState({
   // (route nav, server reload). We compare on a stable key
   // (JSON snapshot) instead of reference identity since the
   // parent often passes a freshly-built array on every render.
-  const initialBlocksKey = useMemo(
-    () => JSON.stringify(initialBlocks),
-    [initialBlocks],
-  );
+  const initialBlocksKey = useMemo(() => JSON.stringify(initialBlocks), [initialBlocks]);
   useEffect(() => {
     // Self-echo guard: when the new initialBlocks already matches
     // our current present, the parent is just bouncing our own
     // dispatch back. Skip the reset so undo/redo stays intact.
     if (initialBlocksKey === presentKeyRef.current) return;
     historyDispatch({ type: "RESET_HISTORY", blocks: initialBlocks });
-    lastUpdateRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialBlocksKey]);
 
@@ -118,41 +109,27 @@ export function useEditorState({
     onChange(blocks);
   }, [blocks, onChange]);
 
-  // Coalescing window for typing. Consecutive UPDATE_PROPS calls
-  // to the same block within this window collapse into a single
-  // undo step so a sentence-long edit doesn't bury earlier
-  // history.
-  const lastUpdateRef = useRef<{ time: number; id: string } | null>(null);
+  // Coalescing window for typing. The history reducer owns the
+  // last-update metadata so reset/undo/redo and DO stay in one
+  // state transition.
   const dispatch = useCallback((action: EditorAction) => {
-    let coalesce = false;
-    if (action.type === "UPDATE_PROPS") {
-      const now = Date.now();
-      const last = lastUpdateRef.current;
-      if (last && last.id === action.id && now - last.time < COALESCE_WINDOW_MS) {
-        coalesce = true;
-      }
-      lastUpdateRef.current = { time: now, id: action.id };
-    } else {
-      lastUpdateRef.current = null;
-    }
-    historyDispatch({ type: "DO", action, coalesce });
+    historyDispatch({
+      type: "DO",
+      action,
+      now: Date.now(),
+      coalesceWindowMs: COALESCE_WINDOW_MS,
+    });
   }, []);
 
-  // Clearing `lastUpdateRef` on undo/redo prevents the next
-  // typing burst from being coalesced into the post-undo state —
-  // without this, an edit made within 600 ms of an undo would
-  // replace `present` without growing `past`, so it couldn't be
-  // undone.
+  // Undo/redo/reset clear the reducer's coalescing metadata so the
+  // next typing burst starts a fresh undo step.
   const undo = useCallback(() => {
-    lastUpdateRef.current = null;
     historyDispatch({ type: "UNDO" });
   }, []);
   const redo = useCallback(() => {
-    lastUpdateRef.current = null;
     historyDispatch({ type: "REDO" });
   }, []);
   const resetHistory = useCallback((nextBlocks: NpBlockInstance[]) => {
-    lastUpdateRef.current = null;
     historyDispatch({ type: "RESET_HISTORY", blocks: nextBlocks });
   }, []);
 

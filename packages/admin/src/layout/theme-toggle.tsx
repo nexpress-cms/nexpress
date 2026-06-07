@@ -39,14 +39,9 @@ function applyMode(mode: Mode): void {
 }
 
 export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }): React.JSX.Element {
-  const [mode, setMode] = React.useState<Mode>("system");
+  const [mode, setMode] = React.useState<Mode>(() => readMode());
 
-  // Hydrate from localStorage on mount, and keep the .dark class in
-  // sync with the OS preference when mode === "system".
-  React.useEffect(() => {
-    setMode(readMode());
-  }, []);
-
+  // Keep the .dark class in sync with the OS preference when mode === "system".
   React.useEffect(() => {
     applyMode(mode);
     if (mode !== "system") return;
@@ -94,4 +89,3 @@ export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }): Rea
     </Tooltip>
   );
 }
-

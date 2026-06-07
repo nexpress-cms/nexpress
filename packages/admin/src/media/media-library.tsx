@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   File,
   FolderOpen,
@@ -94,15 +94,7 @@ export function MediaLibrary() {
     return chain;
   }, [currentFolder, folders]);
 
-  useEffect(() => {
-    void fetchFolders();
-  }, []);
-
-  useEffect(() => {
-    void fetchMedia();
-  }, [currentFolder, searchQuery, uploaderFilter]);
-
-  async function fetchFolders() {
+  const fetchFolders = useCallback(async () => {
     setLoadingFolders(true);
 
     try {
@@ -120,9 +112,9 @@ export function MediaLibrary() {
     } finally {
       setLoadingFolders(false);
     }
-  }
+  }, []);
 
-  async function fetchMedia() {
+  const fetchMedia = useCallback(async () => {
     setLoadingMedia(true);
     setError(null);
 
@@ -156,7 +148,21 @@ export function MediaLibrary() {
     } finally {
       setLoadingMedia(false);
     }
-  }
+  }, [currentFolder, searchQuery, uploaderFilter]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      void fetchFolders();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [fetchFolders]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      void fetchMedia();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [fetchMedia]);
 
   async function handleBulkDelete() {
     if (selectedItems.length === 0) {

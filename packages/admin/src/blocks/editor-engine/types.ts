@@ -124,6 +124,7 @@ export interface HistoryState<T> {
   past: T[];
   present: T;
   future: T[];
+  lastUpdate: { time: number; id: string } | null;
 }
 
 /**
@@ -133,7 +134,7 @@ export interface HistoryState<T> {
  * undo step.
  */
 export type HistoryAction =
-  | { type: "DO"; action: EditorAction; coalesce: boolean }
+  | { type: "DO"; action: EditorAction; now: number; coalesceWindowMs: number }
   | { type: "UNDO" }
   | { type: "REDO" }
   | { type: "RESET_HISTORY"; blocks: NpBlockInstance[] };
