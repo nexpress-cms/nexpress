@@ -22,6 +22,7 @@ import {
   renderBriefDoctorReport,
   renderDoctorCheck,
   renderDoctorFixPlan,
+  renderDoctorNextCommand,
   renderDoctorSummary,
 } from "./doctor-output.js";
 import {
@@ -573,7 +574,12 @@ async function main(): Promise<void> {
   } else if (BRIEF_MODE) {
     console.log(
       renderBriefDoctorReport(
-        { prodMode: PROD_MODE, target: deployTarget, checks },
+        {
+          prodMode: PROD_MODE,
+          target: deployTarget,
+          checks,
+          nextCommand: FIX_PLAN_MODE ? null : report.nextCommand,
+        },
         { color: COLOR_MODE },
       ),
     );
@@ -588,6 +594,9 @@ async function main(): Promise<void> {
     if (FIX_PLAN_MODE) {
       console.log("");
       console.log(renderDoctorFixPlan(report.fixPlan ?? [], { color: COLOR_MODE }));
+    } else {
+      const nextLine = renderDoctorNextCommand(report.nextCommand, { color: COLOR_MODE });
+      if (nextLine) console.log(nextLine);
     }
   }
   process.exit(report.ok ? 0 : 1);

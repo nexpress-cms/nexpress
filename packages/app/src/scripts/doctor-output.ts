@@ -72,8 +72,16 @@ export function buildDoctorJson(args: {
     report.nextCommand =
       fixPlan.find((item) => item.blocksDeploy)?.nextCommand ?? fixPlan[0]?.nextCommand ?? null;
     report.fixPlan = fixPlan;
+  } else if (summary.errors > 0 || summary.warnings > 0) {
+    report.nextCommand = buildDoctorFixPlanCommand(args.prodMode, args.target);
   }
   return report;
+}
+
+export function buildDoctorFixPlanCommand(prodMode: boolean, target: DeployTarget | null): string {
+  if (!prodMode) return "pnpm run doctor -- --fix-plan";
+  const targetArg = target ? ` --target ${target}` : "";
+  return `pnpm run doctor:prod --${targetArg} --fix-plan`;
 }
 
 export function renderDoctorCheck(
@@ -126,6 +134,7 @@ export function renderBriefDoctorReport(
     prodMode: boolean;
     target: DeployTarget | null;
     checks: CheckResult[];
+    nextCommand?: string | null;
   },
   options: RenderOptions = { color: true },
 ): string {
@@ -135,6 +144,7 @@ export function renderBriefDoctorReport(
   const lines = [`${c.dim}NexPress doctor: ${mode}${targetDetail}${c.reset}`];
   lines.push(renderDoctorSummary(args.checks, options));
   for (const result of args.checks) lines.push(renderBriefDoctorCheck(result, options));
+  if (args.nextCommand) lines.push(`Next: ${args.nextCommand}`);
   return lines.join("\n");
 }
 
@@ -156,6 +166,15 @@ export function renderDoctorFixPlan(
     for (const note of item.notes ?? []) lines.push(`   note: ${note}`);
   });
   return lines.join("\n");
+}
+
+export function renderDoctorNextCommand(
+  nextCommand: string | null,
+  options: RenderOptions = { color: true },
+): string | null {
+  if (!nextCommand) return null;
+  const c = options.color ? ANSI : EMPTY_ANSI;
+  return `${c.dim}Next: ${nextCommand}${c.reset}`;
 }
 
 export function dim(text: string, color = true): string {
