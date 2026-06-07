@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDoctorFixPlan,
+  buildDoctorFixPlanCommand,
   buildDoctorJson,
   renderBriefDoctorReport,
   renderDoctorCheck,
   renderDoctorFixPlan,
+  renderDoctorNextCommand,
   renderDoctorSummary,
   summarizeChecks,
 } from "./doctor-output.js";
@@ -43,7 +45,7 @@ describe("doctor output", () => {
       schemaVersion: "np.doctor.v1",
       ok: false,
       blocksDeploy: true,
-      nextCommand: null,
+      nextCommand: "pnpm run doctor:prod -- --target vercel --fix-plan",
       mode: "prod",
       target: "vercel",
       summary: {
@@ -56,8 +58,8 @@ describe("doctor output", () => {
   });
 
   it("adds fix-plan actions only when requested", () => {
-    expect(buildDoctorJson({ prodMode: true, target: "vercel", checks })).not.toHaveProperty(
-      "fixPlan",
+    expect(buildDoctorJson({ prodMode: true, target: "vercel", checks })).toEqual(
+      expect.not.objectContaining({ fixPlan: expect.anything() }),
     );
 
     expect(
@@ -90,6 +92,21 @@ describe("doctor output", () => {
         nextCommand: "pnpm run setup",
       }),
     );
+  });
+
+  it("builds follow-up fix-plan commands without materializing the fix plan", () => {
+    expect(buildDoctorFixPlanCommand(false, null)).toBe("pnpm run doctor -- --fix-plan");
+    expect(buildDoctorFixPlanCommand(true, null)).toBe("pnpm run doctor:prod -- --fix-plan");
+    expect(buildDoctorFixPlanCommand(true, "vercel")).toBe(
+      "pnpm run doctor:prod -- --target vercel --fix-plan",
+    );
+    expect(
+      buildDoctorJson({
+        prodMode: false,
+        target: null,
+        checks: [{ id: "node.version", state: "ok", label: "Node.js >= 20" }],
+      }).nextCommand,
+    ).toBeNull();
   });
 
   it("builds target-specific fix-plan actions for deployment checks", () => {
@@ -187,6 +204,23 @@ describe("doctor output", () => {
         "[warn] prod.scheduler_token NP_SCHEDULER_TOKEN - not set",
         "[error] env.database_url DATABASE_URL - not set",
       ].join("\n"),
+    );
+  });
+
+  it("renders compact doctor follow-up commands", () => {
+    expect(
+      renderBriefDoctorReport(
+        {
+          prodMode: true,
+          target: "vercel",
+          checks,
+          nextCommand: "pnpm run doctor:prod -- --target vercel --fix-plan",
+        },
+        { color: false },
+      ),
+    ).toContain("Next: pnpm run doctor:prod -- --target vercel --fix-plan");
+    expect(renderDoctorNextCommand("pnpm run doctor -- --fix-plan", { color: false })).toBe(
+      "Next: pnpm run doctor -- --fix-plan",
     );
   });
 
