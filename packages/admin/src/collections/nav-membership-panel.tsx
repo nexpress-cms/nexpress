@@ -102,8 +102,11 @@ export function NavMembershipPanel({
   }, [pageId, collectionSlug]);
 
   useEffect(() => {
-    void loadMemberships();
-    void loadLocations();
+    const frame = window.requestAnimationFrame(() => {
+      void loadMemberships();
+      void loadLocations();
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [loadMemberships, loadLocations]);
 
   // Auto-dismiss the success flash after a beat so it doesn't

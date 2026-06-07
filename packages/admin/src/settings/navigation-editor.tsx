@@ -332,12 +332,15 @@ export function NavigationEditor() {
   }
 
   useEffect(() => {
-    if (items.some((item) => item.type === "page" && item.pageId)) {
-      void resolveUnknownPageTitles(items);
-    }
-    if (items.some((item) => item.type === "collection") && collections.length === 0) {
-      void ensureCollectionsLoaded();
-    }
+    const needsPageTitles = items.some((item) => item.type === "page" && item.pageId);
+    const needsCollections =
+      items.some((item) => item.type === "collection") && collections.length === 0;
+    if (!needsPageTitles && !needsCollections) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (needsPageTitles) void resolveUnknownPageTitles(items);
+      if (needsCollections) void ensureCollectionsLoaded();
+    });
+    return () => window.cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
 
@@ -1589,15 +1592,20 @@ function PagePicker({ triggerId, value, cache, onChange, onCachePages }: PagePic
   // Reset query when the popover closes so reopening shows the
   // default (most-recent) results, not the last search state.
   useEffect(() => {
-    if (!open) {
+    if (open) return;
+    const frame = window.requestAnimationFrame(() => {
       setQuery("");
       setDebouncedQuery("");
       setActiveIndex(0);
-    }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [open]);
 
   useEffect(() => {
-    setActiveIndex(0);
+    const frame = window.requestAnimationFrame(() => {
+      setActiveIndex(0);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [results]);
 
   // Keep the highlighted row visible. `block: "nearest"` is the
@@ -1612,34 +1620,37 @@ function PagePicker({ triggerId, value, cache, onChange, onCachePages }: PagePic
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    const params = new URLSearchParams({ limit: "20", sort: "title" });
-    const trimmed = debouncedQuery.trim();
-    if (trimmed) params.set("search", trimmed);
-    fetch(`/api/collections/pages?${params.toString()}`)
-      .then(async (res) => {
-        const payload = (await res.json().catch(() => null)) as unknown;
-        if (cancelled) return;
-        if (!res.ok) {
-          setError(getErrorMessage(payload, "Unable to load pages."));
+    const frame = window.requestAnimationFrame(() => {
+      setLoading(true);
+      setError(null);
+      const params = new URLSearchParams({ limit: "20", sort: "title" });
+      const trimmed = debouncedQuery.trim();
+      if (trimmed) params.set("search", trimmed);
+      fetch(`/api/collections/pages?${params.toString()}`)
+        .then(async (res) => {
+          const payload = (await res.json().catch(() => null)) as unknown;
+          if (cancelled) return;
+          if (!res.ok) {
+            setError(getErrorMessage(payload, "Unable to load pages."));
+            setResults([]);
+            return;
+          }
+          const next = extractPages(payload);
+          setResults(next);
+          onCachePages(next);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setError("Unable to load pages.");
           setResults([]);
-          return;
-        }
-        const next = extractPages(payload);
-        setResults(next);
-        onCachePages(next);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setError("Unable to load pages.");
-        setResults([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    });
     return () => {
       cancelled = true;
+      window.cancelAnimationFrame(frame);
     };
   }, [open, debouncedQuery, onCachePages]);
 

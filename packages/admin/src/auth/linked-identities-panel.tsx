@@ -97,7 +97,10 @@ export function LinkedIdentitiesPanel({
   }, [basePath]);
 
   useEffect(() => {
-    void refresh();
+    const frame = window.requestAnimationFrame(() => {
+      void refresh();
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [refresh]);
 
   async function handleRevoke() {

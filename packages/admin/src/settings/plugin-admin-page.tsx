@@ -461,7 +461,10 @@ function WidgetCard({ pluginId, widget }: { pluginId: string; widget: WidgetDef 
   }, [pluginId, widget]);
 
   useEffect(() => {
-    void load();
+    const frame = window.requestAnimationFrame(() => {
+      void load();
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [load]);
 
   return (
@@ -585,7 +588,10 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
   }, [pluginId, table]);
 
   useEffect(() => {
-    void load();
+    const frame = window.requestAnimationFrame(() => {
+      void load();
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [load]);
 
   return (

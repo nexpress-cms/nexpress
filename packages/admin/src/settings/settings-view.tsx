@@ -38,10 +38,6 @@ export function SettingsView() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    void fetchSettings();
-  }, []);
-
   async function fetchSettings() {
     setLoading(true);
     setError(null);
@@ -62,6 +58,13 @@ export function SettingsView() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      void fetchSettings();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   async function saveSettings() {
     setSaving(true);

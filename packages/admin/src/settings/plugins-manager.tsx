@@ -336,7 +336,10 @@ export function PluginsManager() {
   }, []);
 
   useEffect(() => {
-    void loadPlugins();
+    const frame = window.requestAnimationFrame(() => {
+      void loadPlugins();
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [loadPlugins]);
 
   const handleToggle = async (plugin: PluginItem, nextEnabled: boolean) => {
@@ -837,9 +840,11 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
   // re-fetch on every reopen; the result set is stable enough
   // that operators can refresh manually via the search button.
   useEffect(() => {
-    if (open && items === null && !loading) {
+    if (!open || items !== null || loading) return;
+    const frame = window.requestAnimationFrame(() => {
       void search("");
-    }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [open, items, loading, search]);
 
   const copy = async (packageName: string) => {
