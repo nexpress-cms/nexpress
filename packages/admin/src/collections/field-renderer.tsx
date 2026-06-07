@@ -164,6 +164,25 @@ const formatDateValue = (value: unknown, includeTime: boolean): string => {
 const renderDescription = (description?: string) =>
   description ? <FormDescription>{description}</FormDescription> : null;
 
+const renderTextDescription = (
+  description: string | undefined,
+  value: unknown,
+  maxLength: number | undefined,
+) => {
+  if (!description && maxLength === undefined) return null;
+  const length = typeof value === "string" ? value.length : 0;
+  return (
+    <FormDescription className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+      {description ? <span className="min-w-0 break-words">{description}</span> : <span />}
+      {maxLength !== undefined ? (
+        <span className="shrink-0 tabular-nums">
+          {length}/{maxLength}
+        </span>
+      ) : null}
+    </FormDescription>
+  );
+};
+
 interface BlocksFieldRenderProps {
   control: Control<Record<string, unknown>>;
   name: string;
@@ -249,10 +268,12 @@ const renderNamedField = (
               <FormControl>
                 <Input
                   {...formField}
+                  minLength={field.minLength}
+                  maxLength={field.maxLength}
                   value={typeof formField.value === "string" ? formField.value : ""}
                 />
               </FormControl>
-              {renderDescription(field.admin?.description)}
+              {renderTextDescription(field.admin?.description, formField.value, field.maxLength)}
               <FormMessage />
             </FormItem>
           )}
@@ -269,11 +290,13 @@ const renderNamedField = (
               <FormControl>
                 <Textarea
                   {...formField}
+                  minLength={field.minLength}
+                  maxLength={field.maxLength}
                   rows={field.rows ?? 5}
                   value={typeof formField.value === "string" ? formField.value : ""}
                 />
               </FormControl>
-              {renderDescription(field.admin?.description)}
+              {renderTextDescription(field.admin?.description, formField.value, field.maxLength)}
               <FormMessage />
             </FormItem>
           )}
@@ -719,6 +742,8 @@ export function FieldRenderer({ field, control, namePrefix, collectionSlug }: Fi
             <FormControl>
               <input
                 {...rhField}
+                minLength={field.minLength}
+                maxLength={field.maxLength}
                 value={typeof rhField.value === "string" ? rhField.value : ""}
                 placeholder={field.admin?.placeholder ?? "Untitled"}
                 aria-label={field.label ?? field.name}
@@ -726,6 +751,7 @@ export function FieldRenderer({ field, control, namePrefix, collectionSlug }: Fi
                 disabled={field.admin?.readOnly}
               />
             </FormControl>
+            {renderTextDescription(undefined, rhField.value, field.maxLength)}
             <FormMessage />
           </FormItem>
         )}
