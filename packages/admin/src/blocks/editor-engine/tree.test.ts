@@ -16,11 +16,7 @@ import {
 
 // Compact builders so test bodies stay focused on the tree shape
 // rather than NpBlockInstance boilerplate.
-const block = (
-  id: string,
-  type: string,
-  children?: NpBlockInstance[],
-): NpBlockInstance => ({
+const block = (id: string, type: string, children?: NpBlockInstance[]): NpBlockInstance => ({
   id,
   type,
   props: {},
@@ -30,9 +26,7 @@ const block = (
 describe("createBlockId", () => {
   it("returns a UUID-shaped string", () => {
     const id = createBlockId();
-    expect(id).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-    );
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
   });
 
   it("returns a fresh value on every call", () => {
@@ -73,10 +67,7 @@ describe("arrayMove", () => {
 
 describe("mapTree", () => {
   it("walks every block depth-first and applies the mapper", () => {
-    const tree = [
-      block("a", "row", [block("b", "para"), block("c", "para")]),
-      block("d", "para"),
-    ];
+    const tree = [block("a", "row", [block("b", "para"), block("c", "para")]), block("d", "para")];
     const out = mapTree(tree, (b) => ({ ...b, type: b.type.toUpperCase() }));
     expect(out[0].type).toBe("ROW");
     expect(out[0].children?.[0].type).toBe("PARA");
@@ -128,9 +119,7 @@ describe("locateBlock", () => {
   });
 
   it("locates a nested block with the correct parentId", () => {
-    const tree = [
-      block("row", "row", [block("a", "para"), block("b", "para")]),
-    ];
+    const tree = [block("row", "row", [block("a", "para"), block("b", "para")])];
     expect(locateBlock(tree, "b")).toEqual({ parentId: "row", index: 1 });
   });
 
@@ -163,10 +152,7 @@ describe("updateContainerChildren", () => {
 
   it("preserves identity of unchanged sibling lists (cheap immutability)", () => {
     const innerChildren = [block("a", "para")];
-    const tree = [
-      block("row", "row", innerChildren),
-      block("solo", "para"),
-    ];
+    const tree = [block("row", "row", innerChildren), block("solo", "para")];
     const out = updateContainerChildren(tree, "row", (siblings) => siblings);
     // The mutate function is identity, so the inner children array should
     // be reused. updateContainerChildren rebuilds the outer array though,
@@ -181,7 +167,7 @@ describe("cloneBlockDeep", () => {
   beforeEach(() => {
     counter = 0;
     vi.spyOn(globalThis.crypto, "randomUUID").mockImplementation(
-      () => `00000000-0000-0000-0000-${String(counter++).padStart(12, "0")}` as `${string}-${string}-${string}-${string}-${string}`,
+      () => `00000000-0000-0000-0000-${String(counter++).padStart(12, "0")}`,
     );
   });
 
@@ -230,9 +216,7 @@ describe("findBlockInTreeFlat", () => {
   });
 
   it("finds nested blocks at any depth", () => {
-    const tree = [
-      block("row", "row", [block("inner", "row", [block("deep", "para")])]),
-    ];
+    const tree = [block("row", "row", [block("inner", "row", [block("deep", "para")])])];
     expect(findBlockInTreeFlat(tree, "deep")?.id).toBe("deep");
   });
 
@@ -243,10 +227,7 @@ describe("findBlockInTreeFlat", () => {
 
 describe("isDescendantOf", () => {
   const tree = [
-    block("row", "row", [
-      block("inner", "row", [block("deep", "para")]),
-      block("sibling", "para"),
-    ]),
+    block("row", "row", [block("inner", "row", [block("deep", "para")]), block("sibling", "para")]),
     block("solo", "para"),
   ];
 
@@ -271,9 +252,7 @@ describe("isDescendantOf", () => {
 
 describe("detachBlock", () => {
   it("removes the block and returns it", () => {
-    const tree = [
-      block("row", "row", [block("a", "para"), block("b", "para")]),
-    ];
+    const tree = [block("row", "row", [block("a", "para"), block("b", "para")])];
     const result = detachBlock(tree, "a");
     expect(result).not.toBeNull();
     expect(result!.removed.id).toBe("a");
@@ -282,9 +261,7 @@ describe("detachBlock", () => {
   });
 
   it("removes the block's entire subtree", () => {
-    const tree = [
-      block("row", "row", [block("inner", "row", [block("deep", "para")])]),
-    ];
+    const tree = [block("row", "row", [block("inner", "row", [block("deep", "para")])])];
     const result = detachBlock(tree, "inner");
     expect(result!.removed.children?.[0].id).toBe("deep");
     expect(result!.tree[0].children).toHaveLength(0);

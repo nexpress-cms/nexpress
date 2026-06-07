@@ -75,6 +75,7 @@ export function DocCanvas({
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [insertAfterId, setInsertAfterId] = useState<string | null>(null);
   const [inlineInsertAfterId, setInlineInsertAfterId] = useState<string | null>(null);
+  const [inlineInsertRect, setInlineInsertRect] = useState<OverlayPosition | null>(null);
 
   // Walk every recursive block in the tree so the overlay can
   // resolve a hovered id to its definition + parent context.
@@ -235,20 +236,42 @@ export function DocCanvas({
     [getAllowedBlocksForInsertAfter, inlineInsertAfterId],
   );
 
-  const inlineInsertRect = useMemo(() => {
-    if (!inlineInsertAfterId) return null;
+  const updateInlineInsertRect = useCallback(() => {
+    if (!inlineInsertAfterId) {
+      setInlineInsertRect(null);
+      return;
+    }
     const iframe = iframeRef.current;
     const doc = iframe?.contentDocument;
-    if (!iframe || !doc) return null;
+    if (!iframe || !doc) {
+      setInlineInsertRect(null);
+      return;
+    }
     const blockEl = doc.querySelector<HTMLElement>(`[data-np-block-id="${inlineInsertAfterId}"]`);
-    if (!blockEl) return null;
+    if (!blockEl) {
+      setInlineInsertRect(null);
+      return;
+    }
     const projected = projectIntoContainer(
       unionVisibleRect(blockEl),
       iframe.getBoundingClientRect(),
     );
-    if (!projected) return null;
-    return projected;
-  }, [inlineInsertAfterId, hoverRect, iframeLoadCount, projectIntoContainer]);
+    setInlineInsertRect(projected);
+  }, [inlineInsertAfterId, projectIntoContainer]);
+
+  useEffect(() => {
+    updateInlineInsertRect();
+  }, [hoverRect, iframeLoadCount, updateInlineInsertRect]);
+
+  useEffect(() => {
+    if (!inlineInsertAfterId) return;
+    window.addEventListener("scroll", updateInlineInsertRect, true);
+    window.addEventListener("resize", updateInlineInsertRect);
+    return () => {
+      window.removeEventListener("scroll", updateInlineInsertRect, true);
+      window.removeEventListener("resize", updateInlineInsertRect);
+    };
+  }, [inlineInsertAfterId, updateInlineInsertRect]);
 
   // Closing the inline prompt after structural changes keeps the
   // parent overlay from pointing at a stale block id.
