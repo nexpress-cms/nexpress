@@ -64,11 +64,13 @@ describe("deploy plan core", () => {
       expectedValue: "s3",
       actualValue: "local",
       status: "mismatch",
+      hint: "Set NP_STORAGE_ADAPTER=s3.",
     });
     expect(json.requiredEnv).toContainEqual({
       name: "NP_S3_REGION",
       variable: "NP_S3_REGION",
       status: "missing",
+      hint: "Set the bucket region; use `auto` for providers such as Cloudflare R2 when appropriate.",
     });
   });
 
@@ -104,6 +106,7 @@ describe("deploy plan core", () => {
       expectedValue: "1",
       actualValue: "true",
       status: "mismatch",
+      hint: "Set NP_ENABLE_JOBS=1.",
     });
   });
 
@@ -120,7 +123,7 @@ describe("deploy plan core", () => {
     );
 
     expect(output).toContain("NexPress deploy plan: Vercel");
-    expect(output).toContain("[todo] NP_STORAGE_ADAPTER=s3");
+    expect(output).toContain("[todo] NP_STORAGE_ADAPTER=s3 - Set NP_STORAGE_ADAPTER=s3.");
     expect(output).toContain("Set SITE_URL to the final https:// production domain");
     expect(output).toContain("Run before deploy");
     expect(output).toContain("Diagnostics");
@@ -142,7 +145,9 @@ describe("deploy plan core", () => {
 
     expect(output).toContain("No --target supplied; inferred docker.");
     expect(output).toContain("Required env: 1/3 set");
-    expect(output).toContain("[todo] NP_SECRET");
+    expect(output).toContain(
+      "[todo] NP_SECRET - Generate a 32+ character secret, for example `openssl rand -base64 48`.",
+    );
     expect(output).toContain("pnpm db:migrate -- --status");
     expect(output).toContain("pnpm run doctor:prod -- --target docker");
     expect(output).toContain("If blocked:");
