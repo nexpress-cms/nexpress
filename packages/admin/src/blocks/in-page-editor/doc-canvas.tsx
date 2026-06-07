@@ -231,13 +231,16 @@ export function DocCanvas({
     [getAllowedBlocksForInsertAfter, insertAfterId],
   );
 
+  const effectiveInlineInsertAfterId =
+    inlineInsertAfterId && blocksById.has(inlineInsertAfterId) ? inlineInsertAfterId : null;
+
   const inlineInsertBlocks = useMemo(
-    () => getAllowedBlocksForInsertAfter(inlineInsertAfterId),
-    [getAllowedBlocksForInsertAfter, inlineInsertAfterId],
+    () => getAllowedBlocksForInsertAfter(effectiveInlineInsertAfterId),
+    [getAllowedBlocksForInsertAfter, effectiveInlineInsertAfterId],
   );
 
   const updateInlineInsertRect = useCallback(() => {
-    if (!inlineInsertAfterId) {
+    if (!effectiveInlineInsertAfterId) {
       setInlineInsertRect(null);
       return;
     }
@@ -247,7 +250,9 @@ export function DocCanvas({
       setInlineInsertRect(null);
       return;
     }
-    const blockEl = doc.querySelector<HTMLElement>(`[data-np-block-id="${inlineInsertAfterId}"]`);
+    const blockEl = doc.querySelector<HTMLElement>(
+      `[data-np-block-id="${effectiveInlineInsertAfterId}"]`,
+    );
     if (!blockEl) {
       setInlineInsertRect(null);
       return;
@@ -257,28 +262,22 @@ export function DocCanvas({
       iframe.getBoundingClientRect(),
     );
     setInlineInsertRect(projected);
-  }, [inlineInsertAfterId, projectIntoContainer]);
+  }, [effectiveInlineInsertAfterId, projectIntoContainer]);
 
   useEffect(() => {
-    updateInlineInsertRect();
+    const frame = window.requestAnimationFrame(updateInlineInsertRect);
+    return () => window.cancelAnimationFrame(frame);
   }, [hoverRect, iframeLoadCount, updateInlineInsertRect]);
 
   useEffect(() => {
-    if (!inlineInsertAfterId) return;
+    if (!effectiveInlineInsertAfterId) return;
     window.addEventListener("scroll", updateInlineInsertRect, true);
     window.addEventListener("resize", updateInlineInsertRect);
     return () => {
       window.removeEventListener("scroll", updateInlineInsertRect, true);
       window.removeEventListener("resize", updateInlineInsertRect);
     };
-  }, [inlineInsertAfterId, updateInlineInsertRect]);
-
-  // Closing the inline prompt after structural changes keeps the
-  // parent overlay from pointing at a stale block id.
-  useEffect(() => {
-    if (!inlineInsertAfterId || blocksById.has(inlineInsertAfterId)) return;
-    setInlineInsertAfterId(null);
-  }, [blocksById, inlineInsertAfterId]);
+  }, [effectiveInlineInsertAfterId, updateInlineInsertRect]);
 
   // Palette insertion appends to the top level by default. When a
   // target id is set, the picked type slots in after that block.
@@ -505,7 +504,7 @@ export function DocCanvas({
         </div>
       ) : null}
 
-      {inlineInsertAfterId && inlineInsertRect && !isDragging ? (
+      {effectiveInlineInsertAfterId && inlineInsertRect && !isDragging ? (
         <div
           className="pointer-events-auto absolute z-20"
           style={{
@@ -520,12 +519,12 @@ export function DocCanvas({
             onInsertBlock={(blockType) => {
               dispatch({
                 type: "INSERT_AFTER",
-                targetId: inlineInsertAfterId,
+                targetId: effectiveInlineInsertAfterId,
                 blockType,
               });
               setInlineInsertAfterId(null);
             }}
-            onInsertText={(text) => insertTextBlock(text, inlineInsertAfterId)}
+            onInsertText={(text) => insertTextBlock(text, effectiveInlineInsertAfterId)}
             placeholder="Write below, or type / for blocks"
             autoFocus
             onCancel={() => setInlineInsertAfterId(null)}

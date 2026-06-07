@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { NpBlockInstance } from "@nexpress/blocks";
 
 import { cloneBlockDeep } from "../editor-engine/index.js";
@@ -110,7 +110,27 @@ export function PageJsonDialog({
   knownTypes,
   onApply,
 }: PageJsonDialogProps) {
-  const [text, setText] = useState("");
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {open ? (
+        <PageJsonDialogContent
+          blocks={blocks}
+          knownTypes={knownTypes}
+          onApply={onApply}
+          onOpenChange={onOpenChange}
+        />
+      ) : null}
+    </Dialog>
+  );
+}
+
+function PageJsonDialogContent({
+  blocks,
+  knownTypes,
+  onOpenChange,
+  onApply,
+}: Omit<PageJsonDialogProps, "open">) {
+  const [text, setText] = useState(() => JSON.stringify(blocks, null, 2));
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -120,17 +140,6 @@ export function PageJsonDialog({
     diff: ApplyDiff;
     warning: string | null;
   } | null>(null);
-
-  useEffect(() => {
-    if (open) {
-      setText(JSON.stringify(blocks, null, 2));
-      setError(null);
-      setWarning(null);
-      setCopied(false);
-      setImportAsNew(false);
-      setPendingApply(null);
-    }
-  }, [open, blocks]);
 
   function validateBlock(value: unknown, path: string): NpBlockInstance | string {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -231,128 +240,125 @@ export function PageJsonDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="min-w-0 max-w-3xl">
-        <DialogHeader>
-          <DialogTitle className="break-words">Edit page blocks as JSON</DialogTitle>
-          <DialogDescription className="break-words">
-            Apply replaces the entire block tree. Use this for bulk edits, paste-from-another-page,
-            or recovering from a corrupted state.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid min-w-0 grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-wrap sm:items-center">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="w-full sm:w-auto"
-            onClick={handleFormat}
-          >
-            Format
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="w-full sm:w-auto"
-            onClick={() => {
-              void handleCopy();
+    <DialogContent className="min-w-0 max-w-3xl">
+      <DialogHeader>
+        <DialogTitle className="break-words">Edit page blocks as JSON</DialogTitle>
+        <DialogDescription className="break-words">
+          Apply replaces the entire block tree. Use this for bulk edits, paste-from-another-page, or
+          recovering from a corrupted state.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="grid min-w-0 grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-wrap sm:items-center">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-full sm:w-auto"
+          onClick={handleFormat}
+        >
+          Format
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-full sm:w-auto"
+          onClick={() => {
+            void handleCopy();
+          }}
+        >
+          {copied ? "Copied!" : "Copy"}
+        </Button>
+        <div className="col-span-1 flex min-w-0 items-center gap-2 min-[360px]:col-span-2 sm:col-span-1 sm:ml-auto">
+          <Switch
+            id="np-page-json-import-as-new"
+            checked={importAsNew}
+            onCheckedChange={(checked) => {
+              setImportAsNew(checked);
+              clearPreview();
             }}
+          />
+          <Label
+            htmlFor="np-page-json-import-as-new"
+            className="min-w-0 flex-1 break-words text-xs font-normal text-muted-foreground"
           >
-            {copied ? "Copied!" : "Copy"}
-          </Button>
-          <div className="col-span-1 flex min-w-0 items-center gap-2 min-[360px]:col-span-2 sm:col-span-1 sm:ml-auto">
-            <Switch
-              id="np-page-json-import-as-new"
-              checked={importAsNew}
-              onCheckedChange={(checked) => {
-                setImportAsNew(checked);
-                clearPreview();
-              }}
-            />
-            <Label
-              htmlFor="np-page-json-import-as-new"
-              className="min-w-0 flex-1 break-words text-xs font-normal text-muted-foreground"
-            >
-              Import as new blocks (append, fresh ids)
-            </Label>
+            Import as new blocks (append, fresh ids)
+          </Label>
+        </div>
+      </div>
+      <Textarea
+        value={text}
+        onChange={(e) => {
+          setText(e.currentTarget.value);
+          setError(null);
+          setWarning(null);
+          clearPreview();
+        }}
+        rows={20}
+        className="max-h-[45dvh] min-h-[16rem] min-w-0 resize-y font-mono text-xs"
+        spellCheck={false}
+      />
+      {error ? (
+        <div
+          role="alert"
+          className="break-words rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+        >
+          {error}
+        </div>
+      ) : null}
+      {warning ? (
+        <div
+          role="status"
+          className="break-words rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300"
+        >
+          {warning}
+        </div>
+      ) : null}
+      {pendingApply ? (
+        <div
+          role="status"
+          className="min-w-0 break-words rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs"
+        >
+          <div className="font-medium uppercase tracking-wider text-primary">Apply preview</div>
+          <div className="mt-1 text-foreground">
+            {pendingApply.diff.totalBefore} block
+            {pendingApply.diff.totalBefore === 1 ? "" : "s"} → {pendingApply.diff.totalAfter} block
+            {pendingApply.diff.totalAfter === 1 ? "" : "s"} (
+            <span className="text-emerald-600 dark:text-emerald-400">
+              +{pendingApply.diff.added}
+            </span>{" "}
+            <span className="text-rose-600 dark:text-rose-400">−{pendingApply.diff.removed}</span>{" "}
+            <span className="text-amber-600 dark:text-amber-400">
+              ~{pendingApply.diff.modified}
+            </span>
+            )
+          </div>
+          <div className="mt-1 text-muted-foreground">
+            {importAsNew
+              ? "Import-as-new mode — validated input appends with fresh ids."
+              : "Replace mode — current tree is overwritten."}
           </div>
         </div>
-        <Textarea
-          value={text}
-          onChange={(e) => {
-            setText(e.currentTarget.value);
-            setError(null);
-            setWarning(null);
-            clearPreview();
-          }}
-          rows={20}
-          className="max-h-[45dvh] min-h-[16rem] min-w-0 resize-y font-mono text-xs"
-          spellCheck={false}
-        />
-        {error ? (
-          <div
-            role="alert"
-            className="break-words rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
-          >
-            {error}
-          </div>
-        ) : null}
-        {warning ? (
-          <div
-            role="status"
-            className="break-words rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300"
-          >
-            {warning}
-          </div>
-        ) : null}
+      ) : null}
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          Cancel
+        </Button>
         {pendingApply ? (
-          <div
-            role="status"
-            className="min-w-0 break-words rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs"
-          >
-            <div className="font-medium uppercase tracking-wider text-primary">Apply preview</div>
-            <div className="mt-1 text-foreground">
-              {pendingApply.diff.totalBefore} block
-              {pendingApply.diff.totalBefore === 1 ? "" : "s"} → {pendingApply.diff.totalAfter}{" "}
-              block
-              {pendingApply.diff.totalAfter === 1 ? "" : "s"} (
-              <span className="text-emerald-600 dark:text-emerald-400">
-                +{pendingApply.diff.added}
-              </span>{" "}
-              <span className="text-rose-600 dark:text-rose-400">−{pendingApply.diff.removed}</span>{" "}
-              <span className="text-amber-600 dark:text-amber-400">
-                ~{pendingApply.diff.modified}
-              </span>
-              )
-            </div>
-            <div className="mt-1 text-muted-foreground">
-              {importAsNew
-                ? "Import-as-new mode — validated input appends with fresh ids."
-                : "Replace mode — current tree is overwritten."}
-            </div>
-          </div>
-        ) : null}
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          {pendingApply ? (
-            <>
-              <Button type="button" variant="outline" onClick={clearPreview}>
-                Edit more
-              </Button>
-              <Button type="button" onClick={handleConfirm}>
-                Confirm apply
-              </Button>
-            </>
-          ) : (
-            <Button type="button" onClick={handlePreview}>
-              Preview
+          <>
+            <Button type="button" variant="outline" onClick={clearPreview}>
+              Edit more
             </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            <Button type="button" onClick={handleConfirm}>
+              Confirm apply
+            </Button>
+          </>
+        ) : (
+          <Button type="button" onClick={handlePreview}>
+            Preview
+          </Button>
+        )}
+      </DialogFooter>
+    </DialogContent>
   );
 }

@@ -169,10 +169,12 @@ export function CommandMenu({
   // freezing it gives a stable "context block" so the menu's
   // labels don't flicker if focus shifts mid-typing.
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => {
       setQuery("");
       setFocusedBlockId(readFocusedBlockId());
-    }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [open, readFocusedBlockId]);
 
   // Dialog content auto-focuses its first focusable child, which

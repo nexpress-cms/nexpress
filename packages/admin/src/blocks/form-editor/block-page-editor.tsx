@@ -342,7 +342,11 @@ export function BlockPageEditor({
     setCustomPatterns([...finalServer, ...localOnly]);
   }, []);
   useEffect(() => {
-    if (commandOpen) void refreshPatterns();
+    if (!commandOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      void refreshPatterns();
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [commandOpen, refreshPatterns]);
   // Plugin / theme contributed patterns flow through the
   // registry-context (server-populated by the bootstrap). They sit
