@@ -556,8 +556,8 @@ importers:
   packages/core:
     dependencies:
       '@aws-sdk/client-s3':
-        specifier: ^3.1058.0
-        version: 3.1058.0
+        specifier: ^3.1063.0
+        version: 3.1063.0
       '@node-rs/argon2':
         specifier: ^2.0.2
         version: 2.0.2
@@ -1356,8 +1356,8 @@ packages:
     resolution: {integrity: sha512-PIha+kauTbp6IRmOpYktPTrlfrrSqDVixvhO/EUOFOf62DPX81CaJoHJreuA1m9HYpSKyXf99BKjU1dvJPeUfw==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-s3@3.1058.0':
-    resolution: {integrity: sha512-AfED3hhaBZ121NuiBImgnlF98kQRMk6hGPMGfj/Oo1hSaoMFRzM+N4nlICCasUSM2R8QaIRZRYGpZ3fy0ilGZQ==}
+  '@aws-sdk/client-s3@3.1063.0':
+    resolution: {integrity: sha512-ETn+vvmZVK1MmOZwVBXmWANpmD5iTbzojIqyEIoZ86qo+8oWy35S8QyQNE/ZDI+WHgMU1dS+VSYbpRl1QkEySg==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/core@3.974.18':
@@ -1396,28 +1396,12 @@ packages:
     resolution: {integrity: sha512-IYx1lN38MnnPXv+NBLpuATu0cZakbZ321TAfjW+aVkw7HIJF38YnEwdeEO55MSl3pl7hIX1IvvnD6EmnAzmAJw==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/middleware-bucket-endpoint@3.972.21':
-    resolution: {integrity: sha512-9hkf6r6GIovTMi3gl/9TZLokp4R27PrZ1t0yejQqDZ49bLGiVmRnbklU2uMjtuot9yBskIquvinEoYGpZ0wMKw==}
-    engines: {node: '>=20.0.0'}
-
-  '@aws-sdk/middleware-expect-continue@3.972.17':
-    resolution: {integrity: sha512-MzrvtvWEedwi4sg0DXT9SOiP8dFTfopnPBaOpQQcchMasCpZ/3v1EWzEi2RIAb8UiQKPQWzNvUARlGmlWuyZzQ==}
-    engines: {node: '>=20.0.0'}
-
   '@aws-sdk/middleware-flexible-checksums@3.974.27':
     resolution: {integrity: sha512-bZqezPLdllFC4VAeV/f+EIc/hz56ab3TD/+4zNCgOgmG5ZHAE5dMHrX1gtTwdcQXbPr3KR7x3zTC3zuCTE6+ng==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/middleware-location-constraint@3.972.14':
-    resolution: {integrity: sha512-FcHrGhxZCFbWvkZ6VXSbjzAthO79NSvnjzHTvH6ai1ncyXJgZiqepgAwCUq1MxakIAHwjid+WJvkMUmQtyGtuA==}
-    engines: {node: '>=20.0.0'}
-
   '@aws-sdk/middleware-sdk-s3@3.972.48':
     resolution: {integrity: sha512-MRTqx8wD/T3REt6LTT3/yN8rrp6+xIHrbUekkDYJTYWVch70mwtdJBovR4qKJz1jIPlbN+9R/Sn6R04BfsglzA==}
-    engines: {node: '>=20.0.0'}
-
-  '@aws-sdk/middleware-ssec@3.972.14':
-    resolution: {integrity: sha512-T29abTnUuKa0Wt3DjXcx5vK/0OkNruLhiP9rbo668nxGXpyeulpxT3gpN22j/51MPFi8dAsgtz4Bpya1NT4EhQ==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/nested-clients@3.997.17':
@@ -5492,19 +5476,15 @@ snapshots:
       '@smithy/types': 4.14.3
       tslib: 2.8.1
 
-  '@aws-sdk/client-s3@3.1058.0':
+  '@aws-sdk/client-s3@3.1063.0':
     dependencies:
       '@aws-crypto/sha1-browser': 5.2.0
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
       '@aws-sdk/core': 3.974.18
       '@aws-sdk/credential-provider-node': 3.972.52
-      '@aws-sdk/middleware-bucket-endpoint': 3.972.21
-      '@aws-sdk/middleware-expect-continue': 3.972.17
       '@aws-sdk/middleware-flexible-checksums': 3.974.27
-      '@aws-sdk/middleware-location-constraint': 3.972.14
       '@aws-sdk/middleware-sdk-s3': 3.972.48
-      '@aws-sdk/middleware-ssec': 3.972.14
       '@aws-sdk/signature-v4-multi-region': 3.996.32
       '@aws-sdk/types': 3.973.11
       '@smithy/core': 3.24.6
@@ -5608,24 +5588,9 @@ snapshots:
       '@smithy/types': 4.14.3
       tslib: 2.8.1
 
-  '@aws-sdk/middleware-bucket-endpoint@3.972.21':
-    dependencies:
-      '@aws-sdk/middleware-sdk-s3': 3.972.48
-      tslib: 2.8.1
-
-  '@aws-sdk/middleware-expect-continue@3.972.17':
-    dependencies:
-      '@aws-sdk/middleware-sdk-s3': 3.972.48
-      tslib: 2.8.1
-
   '@aws-sdk/middleware-flexible-checksums@3.974.27':
     dependencies:
       '@aws-sdk/checksums': 3.1000.2
-      tslib: 2.8.1
-
-  '@aws-sdk/middleware-location-constraint@3.972.14':
-    dependencies:
-      '@aws-sdk/middleware-sdk-s3': 3.972.48
       tslib: 2.8.1
 
   '@aws-sdk/middleware-sdk-s3@3.972.48':
@@ -5635,11 +5600,6 @@ snapshots:
       '@aws-sdk/types': 3.973.11
       '@smithy/core': 3.24.6
       '@smithy/types': 4.14.3
-      tslib: 2.8.1
-
-  '@aws-sdk/middleware-ssec@3.972.14':
-    dependencies:
-      '@aws-sdk/middleware-sdk-s3': 3.972.48
       tslib: 2.8.1
 
   '@aws-sdk/nested-clients@3.997.17':
