@@ -74,12 +74,10 @@ export function RegisterForm() {
           pattern="[a-z0-9][a-z0-9_-]{2,29}"
           autoComplete="username"
           value={fields.handle.value}
-          onChange={(e) =>
-            fields.handle.onChange({
-              ...e,
-              target: { ...e.target, value: e.target.value.toLowerCase() },
-            } as typeof e)
-          }
+          onChange={(e) => {
+            e.currentTarget.value = e.currentTarget.value.toLowerCase();
+            fields.handle.onChange(e);
+          }}
           disabled={isSubmitting}
           className="np-form-input"
         />

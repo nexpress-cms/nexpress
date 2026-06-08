@@ -113,6 +113,9 @@
   ],
   "scripts": {
     "build": "tsup",
+    "lint": "pnpm run lint:routes && pnpm run lint:shared",
+    "lint:routes": "NODE_OPTIONS='--max-old-space-size=4096' eslint src/admin src/api src/member src/proxy src/root src/site --cache --cache-location node_modules/.cache/eslint-routes",
+    "lint:shared": "NODE_OPTIONS='--max-old-space-size=4096' eslint src/collections src/components src/config/drizzle-config.ts src/config/postcss-config.ts src/i18n-config.ts src/index.ts src/lib --cache --cache-location node_modules/.cache/eslint-shared",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
