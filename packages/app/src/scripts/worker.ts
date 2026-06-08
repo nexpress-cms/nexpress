@@ -60,7 +60,7 @@ export async function runWorker({ ensureFor }: RunWorkerOptions): Promise<void> 
         principal: { kind: "staff", user },
       };
     },
-    async resolveContentAfterDeleteContext({ collection, documentId, userId }) {
+    resolveContentAfterDeleteContext({ collection, documentId, userId }) {
       const config = getCollectionConfig(collection);
       const user = {
         id: userId,
@@ -69,12 +69,12 @@ export async function runWorker({ ensureFor }: RunWorkerOptions): Promise<void> 
         role: "admin" as const,
         tokenVersion: 0,
       };
-      return {
+      return Promise.resolve({
         collectionConfig: config,
         data: { id: documentId },
         user,
         principal: { kind: "staff", user },
-      };
+      });
     },
   });
 

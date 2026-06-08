@@ -34,14 +34,13 @@ export function validateBody(raw: Partial<SetupBody>): { body: SetupBody } | { e
   // Parse beyond the protocol prefix — catches `postgres://` (no
   // host) and similar shapes that the regex accepts but the pg
   // connector would crash on at first use.
-  let dbHost: string | null = null;
   try {
-    dbHost = new URL(databaseUrl).hostname || null;
+    const dbHost = new URL(databaseUrl).hostname || null;
+    if (!dbHost) {
+      return { error: "DATABASE_URL is missing the host portion" };
+    }
   } catch {
     return { error: "DATABASE_URL is not a valid URL — check the host/port portion" };
-  }
-  if (!dbHost) {
-    return { error: "DATABASE_URL is missing the host portion" };
   }
 
   const npSecret = (raw.npSecret ?? "").trim();
@@ -71,14 +70,13 @@ export function validateBody(raw: Partial<SetupBody>): { body: SetupBody } | { e
   // empty hostname — rejecting here means the SITE_URL we write
   // can be parsed by the safety check (#597) and the email-link
   // builders (#598).
-  let siteHost: string | null = null;
   try {
-    siteHost = new URL(siteUrl).hostname || null;
+    const siteHost = new URL(siteUrl).hostname || null;
+    if (!siteHost) {
+      return { error: "SITE_URL is missing the host portion (e.g. https://example.com)" };
+    }
   } catch {
     return { error: "SITE_URL is not a valid URL — check the host portion" };
-  }
-  if (!siteHost) {
-    return { error: "SITE_URL is missing the host portion (e.g. https://example.com)" };
   }
 
   const storage = raw.storage === "s3" ? "s3" : "local";

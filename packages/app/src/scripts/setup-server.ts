@@ -458,7 +458,7 @@ async function loadProjectPg(): Promise<PgModuleLike | null> {
     // hoisting finds the consumer-installed copy reliably.
     const require = createRequire(resolve(PROJECT_DIR, "package.json"));
     const resolved = require.resolve("pg");
-    return (await import(resolved)) as unknown as PgModuleLike;
+    return await import(resolved);
   } catch {
     return null;
   }
@@ -1117,7 +1117,7 @@ async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
         const text = Buffer.concat(chunks).toString("utf8");
         resolveBody(text ? (JSON.parse(text) as T) : ({} as T));
       } catch (err) {
-        rejectBody(err);
+        rejectBody(err instanceof Error ? err : new Error(String(err)));
       }
     });
     req.on("error", rejectBody);
@@ -1133,7 +1133,8 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 function getArg(name: string): string | undefined {
   const idx = args.findIndex((a) => a === name || a.startsWith(`${name}=`));
   if (idx < 0) return undefined;
-  const arg = args[idx]!;
+  const arg = args[idx];
+  if (!arg) return undefined;
   if (arg.includes("=")) return arg.slice(name.length + 1);
   return args[idx + 1];
 }

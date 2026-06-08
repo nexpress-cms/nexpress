@@ -14,7 +14,8 @@ export function isDeployTarget(value: string): value is DeployTarget {
 
 export function parseDeployTargetArg(argv: string[]): DeployTarget | null {
   for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i]!;
+    const arg = argv[i];
+    if (!arg) continue;
     if (arg === "--target") {
       const next = argv[i + 1];
       if (!next || !isDeployTarget(next)) {
