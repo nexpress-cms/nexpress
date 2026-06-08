@@ -79,7 +79,7 @@ async function checkMigrations(): Promise<Check> {
     const result = (await db.$client.query<{ table_name: string }>(
       `select table_name from information_schema.tables
        where table_schema = 'public' and table_name = ANY($1::text[])`,
-      [FRAMEWORK_TABLES as unknown as string[]],
+      [FRAMEWORK_TABLES],
     )) as { rows: Array<{ table_name: string }> };
     const present = new Set(result.rows.map((r) => r.table_name));
     const missing = FRAMEWORK_TABLES.filter((t) => !present.has(t));

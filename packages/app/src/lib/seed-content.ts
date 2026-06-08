@@ -466,6 +466,10 @@ export interface SeedAllOptions {
   tx?: NpTransaction;
 }
 
+function hasThemeSeedContent(value: unknown): value is { seedContent?: NpThemeSeedContent } {
+  return !!value && typeof value === "object";
+}
+
 export async function seedAll(
   actor: NpAuthUser,
   theme?: NpRegisteredTheme | null,
@@ -474,9 +478,9 @@ export async function seedAll(
   // `NpRegisteredTheme.impl` is typed as opaque `unknown` in core
   // (themes opt into the typed `NpThemeImpl` view by importing
   // `@nexpress/theme`); narrow at the boundary so the seeder
-  // sees the typed shape. The structural cast is benign — both
-  // sides go through the `defineTheme` author surface.
-  const impl = (theme?.impl ?? null) as { seedContent?: NpThemeSeedContent } | null;
+  // sees the typed shape.
+  const rawImpl = theme?.impl ?? null;
+  const impl = hasThemeSeedContent(rawImpl) ? rawImpl : null;
   const themed: NpThemeSeedContent = impl?.seedContent ?? {};
   const themeId =
     typeof theme?.manifest?.id === "string" && theme.manifest.id.length > 0

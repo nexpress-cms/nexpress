@@ -749,6 +749,13 @@ presence, required env vars, Postgres reachability, whether
 migrations are applied. Green \`✓\` / yellow \`⚠\` / red \`✗\` with a
 one-line hint for each non-OK line.
 
+When the doctor prints \`Next: ...\`, run that command exactly. It will
+usually ask for an ordered fix plan:
+
+\`\`\`bash
+pnpm run doctor -- --fix-plan
+\`\`\`
+
 Before deploying, run the production-readiness pass:
 
 \`\`\`bash
@@ -756,17 +763,20 @@ pnpm run deploy:plan -- --target vercel
 pnpm run doctor:prod -- --target vercel
 \`\`\`
 
-If the production doctor fails, ask it for an ordered fix plan:
+If the production doctor fails, ask it for an ordered fix plan. The
+same command is also printed as \`Next:\` in the failed doctor output:
 
 \`\`\`bash
 pnpm run doctor:prod -- --target vercel --fix-plan
 \`\`\`
 
-For compact CI logs, append \`--brief --no-color\`:
+For compact CI logs, append \`--brief --no-color\`. Add \`--fix-plan\`
+when you want the log to include ordered remediation steps:
 
 \`\`\`bash
 pnpm run deploy:plan -- --target vercel --brief --no-color
 pnpm run doctor:prod -- --target vercel --brief --no-color
+pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan
 \`\`\`
 
 For agent or CI handoff, use JSON:
@@ -776,8 +786,9 @@ pnpm run deploy:plan -- --target vercel --json
 pnpm run doctor:prod -- --target vercel --json --fix-plan
 \`\`\`
 
-\`deploy:plan\` includes \`summary\` and \`nextCommands\`; \`doctor:prod\`
-includes \`blocksDeploy\`, \`nextCommand\`, and \`fixPlan[].nextCommand\`.
+\`deploy:plan\` includes \`summary\` and \`nextCommands\`; \`doctor\` /
+\`doctor:prod\` include \`nextCommand\`, and \`doctor:prod --fix-plan\`
+includes \`blocksDeploy\` plus \`fixPlan[].nextCommand\`.
 
 Tightens the dev defaults: \`NP_SECRET\` < 32 chars becomes an error,
 \`http://\` SITE_URL warns, missing \`NP_ENABLE_JOBS\` warns,
@@ -794,7 +805,8 @@ optional sample content — no manual \`pnpm seed:admin\` needed.
 2. Start \`pnpm dev\` and open \`/admin\`.
 3. Name the site, pick a theme, and seed sample content if useful.
 4. Publish the first page or post, then open it on the public site.
-5. Run \`pnpm run doctor:prod -- --target vercel\` before deploying.
+5. Run \`pnpm run deploy:plan -- --target vercel\`, then
+   \`pnpm run doctor:prod -- --target vercel\` before deploying.
 
 ### Manual flow (no wizard)
 

@@ -128,7 +128,7 @@ function validatePayload(body: unknown): ImportPayload {
     }
   }
 
-  return body as unknown as ImportPayload;
+  return body;
 }
 
 function replaceMediaRefs(value: unknown, mediaMap: ReadonlyMap<string, string | null>): unknown {
