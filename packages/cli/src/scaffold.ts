@@ -52,7 +52,11 @@ async function ensureTargetDirectory(targetDir: string): Promise<void> {
   }
 }
 
-function printSuccess(projectName: string, dockerSetup: boolean, localMode: boolean): void {
+export function buildSuccessLines(
+  projectName: string,
+  dockerSetup: boolean,
+  localMode: boolean,
+): string[] {
   const installStep = localMode
     ? "  pnpm install         (run from the monorepo root — uses workspace:* links)"
     : "  pnpm install        (or npm install)";
@@ -69,27 +73,34 @@ function printSuccess(projectName: string, dockerSetup: boolean, localMode: bool
     setupStep,
     devStep,
   ];
-
-  console.log(`${pc.green("✓")} Project created at ./${projectName}`);
+  const lines = [`${pc.green("✓")} Project created at ./${projectName}`];
 
   if (localMode) {
-    console.log(
+    lines.push(
       pc.yellow(
         "  Local mode: @nexpress/* deps use workspace:*. Scaffold inside a NexPress monorepo app folder.",
       ),
     );
   }
 
-  console.log("\nNext steps:");
-
-  for (const step of nextSteps) {
-    console.log(step);
-  }
-
-  console.log(
-    "\nAdmin: http://localhost:3000/admin (the first-boot wizard collects your admin account)",
+  lines.push("", "Next steps:", ...nextSteps);
+  lines.push(
+    "",
+    "Admin: http://localhost:3000/admin (the first-boot wizard collects your admin account)",
+    "Stuck? pnpm run doctor",
+    "",
+    "Deploy preflight:",
+    "  pnpm run deploy:plan -- --target vercel",
+    "  pnpm run doctor:prod -- --target vercel",
+    "  pnpm run doctor:prod -- --target vercel --fix-plan   # if blocked",
+    "Deploy guide: https://github.com/nexpress-cms/nexpress/blob/main/docs/deployment.md",
   );
-  console.log("Deploy plan: pnpm run deploy:plan -- --target vercel");
-  console.log("Before deploying: pnpm run doctor:prod -- --target vercel");
-  console.log("Deploy guide: https://github.com/nexpress-cms/nexpress/blob/main/docs/deployment.md");
+
+  return lines;
+}
+
+function printSuccess(projectName: string, dockerSetup: boolean, localMode: boolean): void {
+  for (const line of buildSuccessLines(projectName, dockerSetup, localMode)) {
+    console.log(line);
+  }
 }
