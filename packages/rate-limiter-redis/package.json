@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "@nexpress/core": "workspace:*",
-    "ioredis": "^5.11.0"
+    "ioredis": "^5.11.1"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
