@@ -8,6 +8,8 @@ import {
   renderDeployPlan,
 } from "./deploy-plan-core.js";
 
+const ANSI_ESCAPE_RE = new RegExp(String.raw`\x1b\[`);
+
 describe("deploy plan core", () => {
   it("builds a stable JSON plan for agent-operated Vercel deploys", () => {
     const plan = buildDeployPlan("vercel");
@@ -130,7 +132,7 @@ describe("deploy plan core", () => {
     expect(output).toContain(
       "pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan",
     );
-    expect(output).not.toMatch(/\x1b\[/);
+    expect(output).not.toMatch(ANSI_ESCAPE_RE);
   });
 
   it("renders a compact brief with only unresolved required env and commands", () => {
@@ -155,6 +157,6 @@ describe("deploy plan core", () => {
       "pnpm run doctor:prod -- --target docker --brief --no-color --fix-plan",
     );
     expect(output).not.toContain("Fit");
-    expect(output).not.toMatch(/\x1b\[/);
+    expect(output).not.toMatch(ANSI_ESCAPE_RE);
   });
 });

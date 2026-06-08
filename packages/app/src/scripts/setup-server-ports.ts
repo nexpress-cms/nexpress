@@ -62,7 +62,6 @@ export async function findFreePort(
     // Stay inside the usable user-port range. Above 65535 is invalid;
     // below 1024 is privileged on most platforms.
     if (port < 1024 || port > 65535) continue;
-    // eslint-disable-next-line no-await-in-loop -- sequential by intent
     if (await isPortFree(port)) return port;
   }
   return null;

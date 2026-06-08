@@ -212,14 +212,14 @@ export function checkEnvRequirement(
   name: string,
   env: DeployPlanEnv = process.env,
 ): EnvRequirementCheck {
-  const [variable, ...expectedParts] = name.split("=");
+  const [variable = "", ...expectedParts] = name.split("=");
   const expectedValue = expectedParts.length > 0 ? expectedParts.join("=") : undefined;
-  const value = env[variable!];
-  const hint = envRequirementHint(variable!, expectedValue);
+  const value = env[variable];
+  const hint = envRequirementHint(variable, expectedValue);
   if (!value) {
     return {
       name,
-      variable: variable!,
+      variable,
       ...(expectedValue ? { expectedValue } : {}),
       status: "missing",
       ...(hint ? { hint } : {}),
@@ -228,7 +228,7 @@ export function checkEnvRequirement(
   if (expectedValue && value !== expectedValue) {
     return {
       name,
-      variable: variable!,
+      variable,
       expectedValue,
       actualValue: value,
       status: "mismatch",
@@ -237,7 +237,7 @@ export function checkEnvRequirement(
   }
   return {
     name,
-    variable: variable!,
+    variable,
     ...(expectedValue ? { expectedValue } : {}),
     status: "set",
   };

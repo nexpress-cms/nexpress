@@ -123,7 +123,7 @@ interface PgModuleLike {
   };
 }
 
-async function checkNodeVersion(): Promise<CheckResult> {
+function checkNodeVersion(): CheckResult {
   const major = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
   if (Number.isNaN(major) || major < 20) {
     return {
@@ -137,7 +137,7 @@ async function checkNodeVersion(): Promise<CheckResult> {
   return { id: "node.version", state: "ok", label: "Node.js >= 20", detail: process.versions.node };
 }
 
-async function checkPnpmVersion(): Promise<CheckResult> {
+function checkPnpmVersion(): CheckResult {
   // We check the version pnpm itself reports through `npm_config_user_agent`
   // when run via `pnpm doctor`. Falls back to "unknown" in other shells —
   // a soft warn is enough; the real boot path would crash if pnpm were
@@ -153,7 +153,8 @@ async function checkPnpmVersion(): Promise<CheckResult> {
       hint: "Run via `pnpm doctor` (not `node scripts/doctor.ts`) for a real check.",
     };
   }
-  const [major, minor] = match[1]!.split(".").map((n) => Number.parseInt(n, 10));
+  const version = match[1] ?? "";
+  const [major = 0, minor = 0] = version.split(".").map((n) => Number.parseInt(n, 10));
   if ((major ?? 0) < 10 || (major === 10 && (minor ?? 0) < 33)) {
     return {
       id: "pnpm.version",
@@ -374,7 +375,7 @@ async function checkLocalStorage(): Promise<CheckResult> {
   }
 }
 
-async function checkS3Vars(): Promise<CheckResult | null> {
+function checkS3Vars(): CheckResult | null {
   if ((process.env.NP_STORAGE_ADAPTER ?? "").toLowerCase() !== "s3") return null;
   const missing: string[] = [];
   if (!process.env.NP_S3_BUCKET) missing.push("NP_S3_BUCKET");
@@ -507,7 +508,7 @@ async function checkMigrationsApplied(prodMode: boolean): Promise<CheckResult> {
   }
 }
 
-async function checkEnvExampleSync(): Promise<CheckResult> {
+function checkEnvExampleSync(): CheckResult {
   // Soft check — flag obvious placeholders that survived a manual edit.
   const value = process.env.NP_SECRET ?? "";
   if (value === "change-me-in-production" || value === "change-me-to-a-random-string") {
@@ -537,12 +538,12 @@ async function main(): Promise<void> {
     console.log("");
   }
   const checks: Array<CheckResult> = [];
-  checks.push(await checkNodeVersion());
-  checks.push(await checkPnpmVersion());
+  checks.push(checkNodeVersion());
+  checks.push(checkPnpmVersion());
   checks.push(await checkEnvFile());
   for (const spec of REQUIRED_VARS) checks.push(checkRequiredVar(spec));
-  checks.push(await checkEnvExampleSync());
-  const s3 = await checkS3Vars();
+  checks.push(checkEnvExampleSync());
+  const s3 = checkS3Vars();
   if (s3) checks.push(s3);
   checks.push(await checkLocalStorage());
   checks.push(await checkDatabase());
