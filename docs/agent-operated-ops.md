@@ -349,6 +349,12 @@ Implementation status:
   `nexpress ops plugins doctor --json` emit
   `schemaVersion: "np.ops-plugins.v1"` with plugin inventory plus duplicate
   plugin ID, block type, API route, and page route warnings.
+- `nexpress release check --target <host> --json` emits
+  `schemaVersion: "np.release.v1"` by composing preflight, jobs, storage, and
+  plugin diagnostics into a single pre-release gate.
+- `nexpress release verify --url <origin> --json` emits the same
+  `np.release.v1` envelope by composing health, jobs, storage, and plugin
+  diagnostics into a post-release readiness gate.
 - v1 checks cover Node, `.env`, required env, database reachability,
   migration status, storage adapter sanity, jobs enablement, worker heartbeat
   when jobs are enabled, and `SITE_URL`.
@@ -619,6 +625,20 @@ migrations, backups, and readiness.
 - `release apply` should only run commands included in the previous plan or a
   freshly generated equivalent plan.
 - Persist an audit artifact for each release attempt.
+
+Implementation status:
+
+- `nexpress release check --target <host> --json` now composes
+  `ops:preflight`, `ops:jobs`, `ops:storage`, and `ops:plugins doctor` as
+  `np.release.v1`.
+- `nexpress release verify --url <origin> --json` now composes
+  `ops:health`, `ops:jobs`, `ops:storage`, and `ops:plugins doctor` as
+  `np.release.v1`.
+- `nexpress ops release check|verify` delegates to the same project-side
+  script for agents that stay inside the ops namespace.
+- `release plan`, `release apply`, and persisted audit artifacts remain future
+  work; apply must remain approval-gated because it can run deploy,
+  migration, or publishing actions.
 
 **Acceptance criteria:**
 

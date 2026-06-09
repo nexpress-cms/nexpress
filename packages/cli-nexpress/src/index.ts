@@ -44,6 +44,8 @@ Usage:
   nexpress ops storage status [--json|--brief]        Report storage adapter and media file drift
   nexpress ops plugins list [--json|--brief]          List configured plugins
   nexpress ops plugins doctor [--json|--brief]        Report plugin ID/block/route conflicts
+  nexpress release check [--target <host>] [--json]   Run the pre-release readiness gate
+  nexpress release verify [--url <origin>] [--json]   Run the post-release readiness gate
   nexpress create block-plugin <slug>                 Scaffold a static block plugin
   nexpress create block-plugin <slug> --interactive   Scaffold with a "use client" form
   nexpress create hook-plugin <slug>                  Scaffold a content-hook plugin
@@ -337,6 +339,18 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     }
     process.stderr.write(`Unknown subcommand: ops ${sub ?? ""}\n${HELP_TEXT}`);
+    return 2;
+  }
+
+  if (args[0] === "release") {
+    const sub = args[1];
+    if (sub === "check" || sub === "verify") {
+      const cwd = process.cwd();
+      const manager = detectPackageManager(cwd);
+      await runProjectScript(manager, "release", args.slice(1), cwd);
+      return 0;
+    }
+    process.stderr.write(`Unknown subcommand: release ${sub ?? ""}\n${HELP_TEXT}`);
     return 2;
   }
 

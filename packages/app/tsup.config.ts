@@ -46,6 +46,8 @@ const scriptEntries = {
   "scripts/ops-storage": "src/scripts/ops-storage.ts",
   "scripts/ops-storage-core": "src/scripts/ops-storage-core.ts",
   "scripts/postinstall-notice": "src/scripts/postinstall-notice.ts",
+  "scripts/release": "src/scripts/release.ts",
+  "scripts/release-core": "src/scripts/release-core.ts",
   "scripts/run-migrations": "src/scripts/run-migrations.ts",
   "scripts/seed-admin": "src/scripts/seed-admin.ts",
   "scripts/setup-server": "src/scripts/setup-server.ts",
