@@ -8,7 +8,14 @@ export function buildRunScriptArgs(
 }
 
 export interface OpsScriptInvocation {
-  script: "ops:status" | "doctor" | "ops:preflight" | "ops:health" | "ops:jobs";
+  script:
+    | "ops:status"
+    | "doctor"
+    | "ops:preflight"
+    | "ops:health"
+    | "ops:jobs"
+    | "ops:storage"
+    | "ops:plugins";
   args: string[];
 }
 
@@ -28,6 +35,12 @@ export function resolveOpsScriptInvocation(
     case "jobs":
       if (passthrough[0] !== "status") return null;
       return { script: "ops:jobs", args: passthrough.slice(1) };
+    case "storage":
+      if (passthrough[0] !== "status") return null;
+      return { script: "ops:storage", args: passthrough.slice(1) };
+    case "plugins":
+      if (passthrough[0] !== "list" && passthrough[0] !== "doctor") return null;
+      return { script: "ops:plugins", args: passthrough };
     default:
       return null;
   }

@@ -17,10 +17,7 @@ describe("buildRunScriptArgs", () => {
       "--brief",
       "--no-color",
     ]);
-    expect(buildRunScriptArgs("yarn", "ops:status", ["--json"])).toEqual([
-      "ops:status",
-      "--json",
-    ]);
+    expect(buildRunScriptArgs("yarn", "ops:status", ["--json"])).toEqual(["ops:status", "--json"]);
   });
 
   it("maps ops subcommands to project scripts", () => {
@@ -44,7 +41,21 @@ describe("buildRunScriptArgs", () => {
       script: "ops:jobs",
       args: ["--json"],
     });
+    expect(resolveOpsScriptInvocation("storage", ["status", "--json"])).toEqual({
+      script: "ops:storage",
+      args: ["--json"],
+    });
+    expect(resolveOpsScriptInvocation("plugins", ["list", "--json"])).toEqual({
+      script: "ops:plugins",
+      args: ["list", "--json"],
+    });
+    expect(resolveOpsScriptInvocation("plugins", ["doctor", "--brief"])).toEqual({
+      script: "ops:plugins",
+      args: ["doctor", "--brief"],
+    });
     expect(resolveOpsScriptInvocation("jobs", ["queues", "--json"])).toBeNull();
+    expect(resolveOpsScriptInvocation("storage", ["verify", "--json"])).toBeNull();
+    expect(resolveOpsScriptInvocation("plugins", ["enable", "demo"])).toBeNull();
     expect(resolveOpsScriptInvocation("wat", [])).toBeNull();
   });
 });
