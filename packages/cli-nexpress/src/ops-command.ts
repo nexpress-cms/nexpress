@@ -16,7 +16,8 @@ export interface OpsScriptInvocation {
     | "ops:jobs"
     | "ops:storage"
     | "ops:plugins"
-    | "release";
+    | "release"
+    | "runbook";
   args: string[];
 }
 
@@ -45,6 +46,9 @@ export function resolveOpsScriptInvocation(
     case "release":
       if (passthrough[0] !== "check" && passthrough[0] !== "verify") return null;
       return { script: "release", args: passthrough };
+    case "runbook":
+      if (!passthrough[0] || passthrough[0].startsWith("--")) return null;
+      return { script: "runbook", args: passthrough };
     default:
       return null;
   }

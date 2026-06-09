@@ -355,6 +355,9 @@ Implementation status:
 - `nexpress release verify --url <origin> --json` emits the same
   `np.release.v1` envelope by composing health, jobs, storage, and plugin
   diagnostics into a post-release readiness gate.
+- `nexpress runbook <name> --json` emits `schemaVersion: "np.runbook.v1"`
+  for common read-only incident recipes with evidence, diagnosis, next
+  commands, risk, rollback notes, and docs links.
 - v1 checks cover Node, `.env`, required env, database reachability,
   migration status, storage adapter sanity, jobs enablement, worker heartbeat
   when jobs are enabled, and `SITE_URL`.
@@ -667,4 +670,20 @@ diagnosis, evidence, next commands, risk, and rollback notes.
 
 - `nexpress runbook worker-not-draining --json` reports heartbeat age, queue
   backlog, likely cause, and next commands.
-- Runbooks share the same `np.ops.v1` envelope.
+- Runbooks share the same `np.runbook.v1` envelope.
+
+Implementation status:
+
+- `nexpress runbook worker-not-draining --json` now composes jobs evidence into
+  `np.runbook.v1`.
+- `nexpress runbook storage-local-to-s3 --json` now composes storage and Vercel
+  preflight evidence into `np.runbook.v1`.
+- `nexpress runbook backup-restore-drill --json` now composes ops status and
+  release check evidence into `np.runbook.v1`.
+- `nexpress runbook migration-crashed --json` now composes ops status evidence
+  into `np.runbook.v1`.
+- `nexpress ops runbook <name> --json` delegates to the same project-side
+  script for agents staying inside the ops namespace.
+- Runbooks are intentionally read-only in this pass. Automated pause/resume,
+  retry, restore, migration apply, or local-to-S3 mutation remains future
+  approval-gated work.

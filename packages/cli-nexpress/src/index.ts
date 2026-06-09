@@ -46,6 +46,7 @@ Usage:
   nexpress ops plugins doctor [--json|--brief]        Report plugin ID/block/route conflicts
   nexpress release check [--target <host>] [--json]   Run the pre-release readiness gate
   nexpress release verify [--url <origin>] [--json]   Run the post-release readiness gate
+  nexpress runbook <name> [--json|--brief]            Diagnose a common incident runbook
   nexpress create block-plugin <slug>                 Scaffold a static block plugin
   nexpress create block-plugin <slug> --interactive   Scaffold with a "use client" form
   nexpress create hook-plugin <slug>                  Scaffold a content-hook plugin
@@ -351,6 +352,18 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     }
     process.stderr.write(`Unknown subcommand: release ${sub ?? ""}\n${HELP_TEXT}`);
+    return 2;
+  }
+
+  if (args[0] === "runbook") {
+    const runbook = args[1];
+    if (runbook) {
+      const cwd = process.cwd();
+      const manager = detectPackageManager(cwd);
+      await runProjectScript(manager, "runbook", args.slice(1), cwd);
+      return 0;
+    }
+    process.stderr.write(`Missing runbook name.\n${HELP_TEXT}`);
     return 2;
   }
 

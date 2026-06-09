@@ -328,6 +328,7 @@ describe("getProjectFiles", () => {
     expect(pkg.scripts["ops:status"]).toBe("tsx scripts/ops-status.ts");
     expect(pkg.scripts["ops:storage"]).toBe("tsx scripts/ops-storage.ts");
     expect(pkg.scripts.release).toBe("tsx scripts/release.ts");
+    expect(pkg.scripts.runbook).toBe("tsx scripts/runbook.ts");
   });
 
   it("ops scripts are thin wrappers over @nexpress/app's shared ops scripts", () => {
@@ -339,6 +340,7 @@ describe("getProjectFiles", () => {
     const opsPlugins = files["scripts/ops-plugins.ts"];
     const opsStorage = files["scripts/ops-storage.ts"];
     const release = files["scripts/release.ts"];
+    const runbook = files["scripts/runbook.ts"];
     expect(opsStatus).toBeDefined();
     expect(opsPreflight).toBeDefined();
     expect(opsHealth).toBeDefined();
@@ -346,6 +348,7 @@ describe("getProjectFiles", () => {
     expect(opsPlugins).toBeDefined();
     expect(opsStorage).toBeDefined();
     expect(release).toBeDefined();
+    expect(runbook).toBeDefined();
     expect(opsStatus).toMatch(/@nexpress\/app\/scripts\/ops-status/);
     expect(opsPreflight).toMatch(/@nexpress\/app\/scripts\/ops-preflight/);
     expect(opsHealth).toMatch(/@nexpress\/app\/scripts\/ops-health/);
@@ -353,6 +356,7 @@ describe("getProjectFiles", () => {
     expect(opsPlugins).toMatch(/@nexpress\/app\/scripts\/ops-plugins/);
     expect(opsStorage).toMatch(/@nexpress\/app\/scripts\/ops-storage/);
     expect(release).toMatch(/@nexpress\/app\/scripts\/release/);
+    expect(runbook).toMatch(/@nexpress\/app\/scripts\/runbook/);
     for (const script of [
       opsStatus,
       opsPreflight,
@@ -361,6 +365,7 @@ describe("getProjectFiles", () => {
       opsPlugins,
       opsStorage,
       release,
+      runbook,
     ]) {
       expect(
         script.split("\n").filter((line) => line.trim().length > 0).length,
@@ -401,6 +406,7 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("pnpm run ops:plugins -- doctor --json");
     expect(readme).toContain("pnpm run release -- check --target vercel --json");
     expect(readme).toContain("pnpm run release -- verify --url http://localhost:3000 --json");
+    expect(readme).toContain("pnpm run runbook -- worker-not-draining --json");
     expect(readme).toContain('schemaVersion: "np.ops.v1"');
     expect(readme).toContain("pnpm run deploy:plan -- --target vercel");
     expect(readme).toContain("pnpm run doctor:prod -- --target vercel");

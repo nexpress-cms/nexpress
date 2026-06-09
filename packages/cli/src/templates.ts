@@ -70,6 +70,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "scripts/ops-storage.ts": utf8(opsStorageScriptTemplate()),
     "scripts/postinstall-notice.ts": utf8(postinstallNoticeScriptTemplate()),
     "scripts/release.ts": utf8(releaseScriptTemplate()),
+    "scripts/runbook.ts": utf8(runbookScriptTemplate()),
     "scripts/seed-admin.ts": utf8(seedAdminScriptTemplate()),
     "scripts/seed-content.ts": utf8(seedContentScriptTemplate()),
     "scripts/setup-server.ts": utf8(setupServerScriptTemplate()),
@@ -156,6 +157,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "ops:storage": "tsx scripts/ops-storage.ts",
         postinstall: "tsx scripts/postinstall-notice.ts",
         release: "tsx scripts/release.ts",
+        runbook: "tsx scripts/runbook.ts",
         "schema:gen": "tsx scripts/generate-schema.ts",
         "seed:admin": "tsx scripts/seed-admin.ts",
         "seed:content": "tsx scripts/seed-content.ts",
@@ -525,6 +527,10 @@ function releaseScriptTemplate(): string {
   return `import "@nexpress/app/scripts/release";\n`;
 }
 
+function runbookScriptTemplate(): string {
+  return `import "@nexpress/app/scripts/runbook";\n`;
+}
+
 function deployPlanScriptTemplate(): string {
   return `import "@nexpress/app/scripts/deploy-plan";\n`;
 }
@@ -792,6 +798,7 @@ pnpm run ops:storage -- --json
 pnpm run ops:plugins -- doctor --json
 pnpm run release -- check --target vercel --json
 pnpm run release -- verify --url http://localhost:3000 --json
+pnpm run runbook -- worker-not-draining --json
 \`\`\`
 
 \`ops:status\` is the low-token handoff for agents and CI. It emits
@@ -803,7 +810,8 @@ running local or hosted site. \`ops:jobs\` reports worker heartbeat, pause
 state, and pg-boss queue counts. \`ops:storage\` reports storage adapter
 readiness and local media drift; \`ops:plugins\` reports plugin inventory
 and route/block conflicts. \`release check\` composes the pre-deploy gate;
-\`release verify\` composes the post-deploy readiness gate.
+\`release verify\` composes the post-deploy readiness gate. \`runbook\`
+turns common incidents into evidence-backed diagnosis and next commands.
 
 ### Stuck? Run the doctor.
 
