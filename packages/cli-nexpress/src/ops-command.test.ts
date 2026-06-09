@@ -53,9 +53,20 @@ describe("buildRunScriptArgs", () => {
       script: "ops:plugins",
       args: ["doctor", "--brief"],
     });
+    expect(resolveOpsScriptInvocation("release", ["check", "--target", "vercel"])).toEqual({
+      script: "release",
+      args: ["check", "--target", "vercel"],
+    });
+    expect(
+      resolveOpsScriptInvocation("release", ["verify", "--url", "https://example.com"]),
+    ).toEqual({
+      script: "release",
+      args: ["verify", "--url", "https://example.com"],
+    });
     expect(resolveOpsScriptInvocation("jobs", ["queues", "--json"])).toBeNull();
     expect(resolveOpsScriptInvocation("storage", ["verify", "--json"])).toBeNull();
     expect(resolveOpsScriptInvocation("plugins", ["enable", "demo"])).toBeNull();
+    expect(resolveOpsScriptInvocation("release", ["apply", "--yes"])).toBeNull();
     expect(resolveOpsScriptInvocation("wat", [])).toBeNull();
   });
 });

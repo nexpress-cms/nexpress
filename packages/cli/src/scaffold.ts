@@ -91,6 +91,7 @@ export function buildSuccessLines(
     "Jobs: pnpm run ops:jobs -- --brief --no-color",
     "Storage: pnpm run ops:storage -- --brief --no-color",
     "Plugins: pnpm run ops:plugins -- doctor --brief --no-color",
+    "Release: pnpm run release -- check --target vercel --brief --no-color",
     "Stuck? pnpm run doctor",
     "",
     "Deploy preflight:",
