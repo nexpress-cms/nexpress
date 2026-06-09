@@ -333,6 +333,12 @@ Implementation status:
   `schemaVersion: "np.ops.v1"` status contract from generated apps.
 - `nexpress ops status --json` delegates to the project-side
   `ops:status` script so operators and agents can use the same entry.
+- `nexpress ops doctor --prod --json --fix-plan` delegates to the
+  project-side doctor while preserving its stable `np.doctor.v1` output.
+- `nexpress ops preflight --target <host> --json` combines deploy-plan and
+  production doctor evidence into `schemaVersion: "np.ops-preflight.v1"`.
+- `nexpress ops health --url <origin> --json` probes `/api/health/ready`
+  and emits `schemaVersion: "np.ops-health.v1"` for a running site.
 - v1 checks cover Node, `.env`, required env, database reachability,
   migration status, storage adapter sanity, jobs enablement, and `SITE_URL`.
 - Deeper ordered remediation remains in `pnpm run doctor -- --fix-plan`,

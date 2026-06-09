@@ -91,8 +91,8 @@ export function buildSuccessLines(
     "Stuck? pnpm run doctor",
     "",
     "Deploy preflight:",
-    "  pnpm run deploy:plan -- --target vercel",
-    "  pnpm run doctor:prod -- --target vercel",
+    "  pnpm run ops:preflight -- --target vercel --brief --no-color",
+    "  pnpm run ops:health -- --url http://localhost:3000 --brief --no-color",
     "  pnpm run doctor:prod -- --target vercel --fix-plan   # if blocked",
     "Deploy guide: https://github.com/nexpress-cms/nexpress/blob/main/docs/deployment.md",
   );
