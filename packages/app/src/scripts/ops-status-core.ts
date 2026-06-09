@@ -10,6 +10,7 @@ import {
   readLocalMigrationEntries,
 } from "./migration-status.js";
 import { checkMigrationStatusReadiness } from "./doctor-readiness.js";
+import { collectOpsJobsStatus } from "./ops-jobs-core.js";
 
 type OpsEnv = Record<string, string | undefined>;
 
@@ -119,6 +120,7 @@ export async function collectOpsStatusChecks(env: OpsEnv = process.env): Promise
   checks.push(checkRequiredEnv("SITE_URL", /^https?:\/\//, env));
   checks.push(checkSiteUrl(env));
   checks.push(checkJobs(env));
+  checks.push(await checkWorkerHeartbeat(env));
   checks.push(await checkStorage(env));
   checks.push(await checkDatabase(env));
   checks.push(await checkMigrations(env));
@@ -231,6 +233,43 @@ function checkJobs(env: OpsEnv): CheckResult {
     label: "Jobs enabled",
     detail: "NP_ENABLE_JOBS not set",
     hint: "Set NP_ENABLE_JOBS=1 and run `pnpm worker` when scheduled publishing or async jobs matter.",
+  };
+}
+
+async function checkWorkerHeartbeat(env: OpsEnv): Promise<CheckResult> {
+  const enabled = env.NP_ENABLE_JOBS === "1" || env.NP_ENABLE_JOBS === "true";
+  if (!enabled) {
+    return {
+      id: "jobs.worker",
+      state: "ok",
+      label: "Worker heartbeat",
+      detail: "skipped (jobs disabled)",
+    };
+  }
+  const report = await collectOpsJobsStatus(env);
+  if (report.status === "ready") {
+    return {
+      id: "jobs.worker",
+      state: "ok",
+      label: "Worker heartbeat",
+      detail: `${report.summary.workersAlive.toString()}/${report.summary.workersTotal.toString()} workers alive`,
+    };
+  }
+  if (report.status === "blocked") {
+    return {
+      id: "jobs.worker_stale",
+      state: "error",
+      label: "Worker heartbeat",
+      detail: `${report.summary.workersAlive.toString()}/${report.summary.workersTotal.toString()} workers alive`,
+      hint: report.nextCommand ?? "Start or resume the worker process.",
+    };
+  }
+  return {
+    id: "jobs.worker_stale",
+    state: "warn",
+    label: "Worker heartbeat",
+    detail: `${report.summary.workersAlive.toString()}/${report.summary.workersTotal.toString()} workers alive`,
+    hint: report.nextCommand ?? "Run `nexpress ops jobs status --json` for details.",
   };
 }
 

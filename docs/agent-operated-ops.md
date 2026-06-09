@@ -339,8 +339,12 @@ Implementation status:
   production doctor evidence into `schemaVersion: "np.ops-preflight.v1"`.
 - `nexpress ops health --url <origin> --json` probes `/api/health/ready`
   and emits `schemaVersion: "np.ops-health.v1"` for a running site.
+- `nexpress ops jobs status --json` emits
+  `schemaVersion: "np.ops-jobs.v1"` with worker heartbeat, pause state,
+  and pg-boss queue counts.
 - v1 checks cover Node, `.env`, required env, database reachability,
-  migration status, storage adapter sanity, jobs enablement, and `SITE_URL`.
+  migration status, storage adapter sanity, jobs enablement, worker heartbeat
+  when jobs are enabled, and `SITE_URL`.
 - Deeper ordered remediation remains in `pnpm run doctor -- --fix-plan`,
   which is surfaced as `nextCommand` whenever status is blocked or needs
   attention.
@@ -570,6 +574,13 @@ stale workers, media drift, and plugin conflicts.
 - Add `ops plugins list|inspect|doctor|enable|disable|upgrade-plan`.
 - Use shared `np.ops.v1` result envelope and check IDs.
 - Document which plugin actions require rebuild / restart in v1.
+
+Implementation status:
+
+- `nexpress ops jobs status --json` now reports worker heartbeat, pause
+  state, and queue counts as `np.ops-jobs.v1`.
+- Queue mutation commands (`pause`, `resume`, `retry`, `drain`) remain future
+  work and should keep requiring explicit operator approval.
 
 **Acceptance criteria:**
 

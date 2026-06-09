@@ -63,6 +63,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "scripts/doctor.ts": utf8(doctorScriptTemplate()),
     "scripts/generate-schema.ts": utf8(generateSchemaScriptTemplate()),
     "scripts/ops-health.ts": utf8(opsHealthScriptTemplate()),
+    "scripts/ops-jobs.ts": utf8(opsJobsScriptTemplate()),
     "scripts/ops-preflight.ts": utf8(opsPreflightScriptTemplate()),
     "scripts/ops-status.ts": utf8(opsStatusScriptTemplate()),
     "scripts/postinstall-notice.ts": utf8(postinstallNoticeScriptTemplate()),
@@ -145,6 +146,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         doctor: "tsx scripts/doctor.ts",
         "doctor:prod": "tsx scripts/doctor.ts --prod",
         "ops:health": "tsx scripts/ops-health.ts",
+        "ops:jobs": "tsx scripts/ops-jobs.ts",
         "ops:preflight": "tsx scripts/ops-preflight.ts",
         "ops:status": "tsx scripts/ops-status.ts",
         postinstall: "tsx scripts/postinstall-notice.ts",
@@ -501,6 +503,10 @@ function opsHealthScriptTemplate(): string {
   return `import "@nexpress/app/scripts/ops-health";\n`;
 }
 
+function opsJobsScriptTemplate(): string {
+  return `import "@nexpress/app/scripts/ops-jobs";\n`;
+}
+
 function deployPlanScriptTemplate(): string {
   return `import "@nexpress/app/scripts/deploy-plan";\n`;
 }
@@ -763,6 +769,7 @@ pnpm run ops:status -- --json
 pnpm run ops:status -- --brief --no-color
 pnpm run ops:preflight -- --target vercel --json
 pnpm run ops:health -- --url http://localhost:3000 --brief --no-color
+pnpm run ops:jobs -- --json
 \`\`\`
 
 \`ops:status\` is the low-token handoff for agents and CI. It emits
@@ -770,7 +777,8 @@ pnpm run ops:health -- --url http://localhost:3000 --brief --no-color
 \`checks[].id\`, and a \`nextCommand\` when the site needs follow-up.
 \`ops:preflight\` combines \`deploy:plan\` and the production doctor into a
 single deployment gate. \`ops:health\` checks \`/api/health/ready\` for a
-running local or hosted site.
+running local or hosted site. \`ops:jobs\` reports worker heartbeat, pause
+state, and pg-boss queue counts.
 
 ### Stuck? Run the doctor.
 

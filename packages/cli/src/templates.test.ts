@@ -322,6 +322,7 @@ describe("getProjectFiles", () => {
     };
     expect(pkg.scripts["doctor:prod"]).toBe("tsx scripts/doctor.ts --prod");
     expect(pkg.scripts["ops:health"]).toBe("tsx scripts/ops-health.ts");
+    expect(pkg.scripts["ops:jobs"]).toBe("tsx scripts/ops-jobs.ts");
     expect(pkg.scripts["ops:preflight"]).toBe("tsx scripts/ops-preflight.ts");
     expect(pkg.scripts["ops:status"]).toBe("tsx scripts/ops-status.ts");
   });
@@ -331,13 +332,16 @@ describe("getProjectFiles", () => {
     const opsStatus = files["scripts/ops-status.ts"];
     const opsPreflight = files["scripts/ops-preflight.ts"];
     const opsHealth = files["scripts/ops-health.ts"];
+    const opsJobs = files["scripts/ops-jobs.ts"];
     expect(opsStatus).toBeDefined();
     expect(opsPreflight).toBeDefined();
     expect(opsHealth).toBeDefined();
+    expect(opsJobs).toBeDefined();
     expect(opsStatus).toMatch(/@nexpress\/app\/scripts\/ops-status/);
     expect(opsPreflight).toMatch(/@nexpress\/app\/scripts\/ops-preflight/);
     expect(opsHealth).toMatch(/@nexpress\/app\/scripts\/ops-health/);
-    for (const script of [opsStatus, opsPreflight, opsHealth]) {
+    expect(opsJobs).toMatch(/@nexpress\/app\/scripts\/ops-jobs/);
+    for (const script of [opsStatus, opsPreflight, opsHealth, opsJobs]) {
       expect(script.split("\n").filter((line) => line.trim().length > 0).length).toBeLessThanOrEqual(
         3,
       );
@@ -372,6 +376,7 @@ describe("getProjectFiles", () => {
     expect(readme).toContain(
       "pnpm run ops:health -- --url http://localhost:3000 --brief --no-color",
     );
+    expect(readme).toContain("pnpm run ops:jobs -- --json");
     expect(readme).toContain('schemaVersion: "np.ops.v1"');
     expect(readme).toContain("pnpm run deploy:plan -- --target vercel");
     expect(readme).toContain("pnpm run doctor:prod -- --target vercel");

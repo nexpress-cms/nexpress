@@ -40,6 +40,7 @@ Usage:
   nexpress ops doctor [--prod|--json|--fix-plan]      Run the project doctor through the ops namespace
   nexpress ops preflight --target <host> [--json]     Run deploy-plan + production doctor as one gate
   nexpress ops health [--url <origin>] [--json]       Probe /api/health/ready on a running site
+  nexpress ops jobs status [--json|--brief]           Report worker heartbeat and queue counts
   nexpress create block-plugin <slug>                 Scaffold a static block plugin
   nexpress create block-plugin <slug> --interactive   Scaffold with a "use client" form
   nexpress create hook-plugin <slug>                  Scaffold a content-hook plugin
