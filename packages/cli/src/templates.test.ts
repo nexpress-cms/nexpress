@@ -321,17 +321,27 @@ describe("getProjectFiles", () => {
       scripts: Record<string, string>;
     };
     expect(pkg.scripts["doctor:prod"]).toBe("tsx scripts/doctor.ts --prod");
+    expect(pkg.scripts["ops:health"]).toBe("tsx scripts/ops-health.ts");
+    expect(pkg.scripts["ops:preflight"]).toBe("tsx scripts/ops-preflight.ts");
     expect(pkg.scripts["ops:status"]).toBe("tsx scripts/ops-status.ts");
   });
 
-  it("ops-status.ts is a thin wrapper over @nexpress/app's shared ops status", () => {
+  it("ops scripts are thin wrappers over @nexpress/app's shared ops scripts", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const opsStatus = files["scripts/ops-status.ts"];
+    const opsPreflight = files["scripts/ops-preflight.ts"];
+    const opsHealth = files["scripts/ops-health.ts"];
     expect(opsStatus).toBeDefined();
+    expect(opsPreflight).toBeDefined();
+    expect(opsHealth).toBeDefined();
     expect(opsStatus).toMatch(/@nexpress\/app\/scripts\/ops-status/);
-    expect(
-      opsStatus.split("\n").filter((line) => line.trim().length > 0).length,
-    ).toBeLessThanOrEqual(3);
+    expect(opsPreflight).toMatch(/@nexpress\/app\/scripts\/ops-preflight/);
+    expect(opsHealth).toMatch(/@nexpress\/app\/scripts\/ops-health/);
+    for (const script of [opsStatus, opsPreflight, opsHealth]) {
+      expect(script.split("\n").filter((line) => line.trim().length > 0).length).toBeLessThanOrEqual(
+        3,
+      );
+    }
   });
 
   it("package.json exposes a deploy plan script backed by @nexpress/app", () => {
@@ -358,6 +368,10 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("pnpm run setup");
     expect(readme).toContain("## First-site checklist");
     expect(readme).toContain("pnpm run ops:status -- --json");
+    expect(readme).toContain("pnpm run ops:preflight -- --target vercel --json");
+    expect(readme).toContain(
+      "pnpm run ops:health -- --url http://localhost:3000 --brief --no-color",
+    );
     expect(readme).toContain('schemaVersion: "np.ops.v1"');
     expect(readme).toContain("pnpm run deploy:plan -- --target vercel");
     expect(readme).toContain("pnpm run doctor:prod -- --target vercel");

@@ -18,7 +18,7 @@ import {
   scaffoldScheduledPlugin,
 } from "./scaffold-plugin-types.js";
 import type { ScaffoldKind, ScaffoldResult } from "./scaffold-utils.js";
-import { buildRunScriptArgs } from "./ops-command.js";
+import { buildRunScriptArgs, resolveOpsScriptInvocation } from "./ops-command.js";
 import { runThemeAdd } from "./theme-add/run.js";
 import { runThemeUninstall } from "./theme-uninstall/run.js";
 
@@ -37,6 +37,9 @@ Usage:
   nexpress theme:uninstall <package> --with-collections  Also delete collection FILES that match the theme's spec exactly
   nexpress theme:uninstall <package> --apply          Same, but auto-chain db:migrate after generate (DROP COLUMN runs)
   nexpress ops status [--json|--brief|--no-color]     Print read-only runtime status for operators and agents
+  nexpress ops doctor [--prod|--json|--fix-plan]      Run the project doctor through the ops namespace
+  nexpress ops preflight --target <host> [--json]     Run deploy-plan + production doctor as one gate
+  nexpress ops health [--url <origin>] [--json]       Probe /api/health/ready on a running site
   nexpress create block-plugin <slug>                 Scaffold a static block plugin
   nexpress create block-plugin <slug> --interactive   Scaffold with a "use client" form
   nexpress create hook-plugin <slug>                  Scaffold a content-hook plugin
@@ -324,10 +327,11 @@ async function main(argv: string[]): Promise<number> {
 
   if (args[0] === "ops") {
     const sub = args[1];
-    if (sub === "status") {
+    const invocation = resolveOpsScriptInvocation(sub, args.slice(2));
+    if (invocation) {
       const cwd = process.cwd();
       const manager = detectPackageManager(cwd);
-      await runProjectScript(manager, "ops:status", args.slice(2), cwd);
+      await runProjectScript(manager, invocation.script, invocation.args, cwd);
       return 0;
     }
     process.stderr.write(`Unknown subcommand: ops ${sub ?? ""}\n${HELP_TEXT}`);

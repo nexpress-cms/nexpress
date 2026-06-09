@@ -15,8 +15,10 @@ describe("buildSuccessLines", () => {
     expect(output).toContain("Status: pnpm run ops:status -- --brief --no-color");
     expect(output).toContain("Stuck? pnpm run doctor");
     expect(output).toContain("Deploy preflight:");
-    expect(output).toContain("pnpm run deploy:plan -- --target vercel");
-    expect(output).toContain("pnpm run doctor:prod -- --target vercel");
+    expect(output).toContain("pnpm run ops:preflight -- --target vercel --brief --no-color");
+    expect(output).toContain(
+      "pnpm run ops:health -- --url http://localhost:3000 --brief --no-color",
+    );
     expect(output).toContain("pnpm run doctor:prod -- --target vercel --fix-plan");
     expect(output).not.toContain("Before deploying:");
   });

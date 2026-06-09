@@ -62,6 +62,8 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "scripts/dev-notice.ts": utf8(devNoticeScriptTemplate()),
     "scripts/doctor.ts": utf8(doctorScriptTemplate()),
     "scripts/generate-schema.ts": utf8(generateSchemaScriptTemplate()),
+    "scripts/ops-health.ts": utf8(opsHealthScriptTemplate()),
+    "scripts/ops-preflight.ts": utf8(opsPreflightScriptTemplate()),
     "scripts/ops-status.ts": utf8(opsStatusScriptTemplate()),
     "scripts/postinstall-notice.ts": utf8(postinstallNoticeScriptTemplate()),
     "scripts/seed-admin.ts": utf8(seedAdminScriptTemplate()),
@@ -142,6 +144,8 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "deploy:plan": "tsx scripts/deploy-plan.ts",
         doctor: "tsx scripts/doctor.ts",
         "doctor:prod": "tsx scripts/doctor.ts --prod",
+        "ops:health": "tsx scripts/ops-health.ts",
+        "ops:preflight": "tsx scripts/ops-preflight.ts",
         "ops:status": "tsx scripts/ops-status.ts",
         postinstall: "tsx scripts/postinstall-notice.ts",
         "schema:gen": "tsx scripts/generate-schema.ts",
@@ -489,6 +493,14 @@ function opsStatusScriptTemplate(): string {
   return `import "@nexpress/app/scripts/ops-status";\n`;
 }
 
+function opsPreflightScriptTemplate(): string {
+  return `import "@nexpress/app/scripts/ops-preflight";\n`;
+}
+
+function opsHealthScriptTemplate(): string {
+  return `import "@nexpress/app/scripts/ops-health";\n`;
+}
+
 function deployPlanScriptTemplate(): string {
   return `import "@nexpress/app/scripts/deploy-plan";\n`;
 }
@@ -749,11 +761,16 @@ Non-interactive mode reads \`DATABASE_URL\` (required), and optional
 \`\`\`bash
 pnpm run ops:status -- --json
 pnpm run ops:status -- --brief --no-color
+pnpm run ops:preflight -- --target vercel --json
+pnpm run ops:health -- --url http://localhost:3000 --brief --no-color
 \`\`\`
 
 \`ops:status\` is the low-token handoff for agents and CI. It emits
 \`schemaVersion: "np.ops.v1"\`, \`status\`, \`summary\`, stable
 \`checks[].id\`, and a \`nextCommand\` when the site needs follow-up.
+\`ops:preflight\` combines \`deploy:plan\` and the production doctor into a
+single deployment gate. \`ops:health\` checks \`/api/health/ready\` for a
+running local or hosted site.
 
 ### Stuck? Run the doctor.
 

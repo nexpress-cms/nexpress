@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildRunScriptArgs } from "./ops-command.js";
+import { buildRunScriptArgs, resolveOpsScriptInvocation } from "./ops-command.js";
 
 describe("buildRunScriptArgs", () => {
   it("passes ops status flags through package-manager run scripts", () => {
@@ -21,5 +21,25 @@ describe("buildRunScriptArgs", () => {
       "ops:status",
       "--json",
     ]);
+  });
+
+  it("maps ops subcommands to project scripts", () => {
+    expect(resolveOpsScriptInvocation("status", ["--json"])).toEqual({
+      script: "ops:status",
+      args: ["--json"],
+    });
+    expect(resolveOpsScriptInvocation("doctor", ["--prod", "--json"])).toEqual({
+      script: "doctor",
+      args: ["--prod", "--json"],
+    });
+    expect(resolveOpsScriptInvocation("preflight", ["--target", "vercel"])).toEqual({
+      script: "ops:preflight",
+      args: ["--target", "vercel"],
+    });
+    expect(resolveOpsScriptInvocation("health", ["--url", "http://localhost:3000"])).toEqual({
+      script: "ops:health",
+      args: ["--url", "http://localhost:3000"],
+    });
+    expect(resolveOpsScriptInvocation("wat", [])).toBeNull();
   });
 });
