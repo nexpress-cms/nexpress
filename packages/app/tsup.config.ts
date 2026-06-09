@@ -48,6 +48,8 @@ const scriptEntries = {
   "scripts/postinstall-notice": "src/scripts/postinstall-notice.ts",
   "scripts/release": "src/scripts/release.ts",
   "scripts/release-core": "src/scripts/release-core.ts",
+  "scripts/runbook": "src/scripts/runbook.ts",
+  "scripts/runbook-core": "src/scripts/runbook-core.ts",
   "scripts/run-migrations": "src/scripts/run-migrations.ts",
   "scripts/seed-admin": "src/scripts/seed-admin.ts",
   "scripts/setup-server": "src/scripts/setup-server.ts",

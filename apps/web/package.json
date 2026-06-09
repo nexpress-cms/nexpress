@@ -28,6 +28,7 @@
     "ops:storage": "tsx scripts/ops-storage.ts",
     "postinstall": "tsx scripts/postinstall-notice.ts",
     "release": "tsx scripts/release.ts",
+    "runbook": "tsx scripts/runbook.ts",
     "schema:gen": "tsx scripts/generate-schema.ts",
     "seed:admin": "tsx scripts/seed-admin.ts",
     "seed:content": "tsx scripts/seed-content.ts",
