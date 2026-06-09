@@ -36,6 +36,8 @@ const scriptEntries = {
   "scripts/doctor-readiness": "src/scripts/doctor-readiness.ts",
   "scripts/generate-schema": "src/scripts/generate-schema.ts",
   "scripts/ops-health": "src/scripts/ops-health.ts",
+  "scripts/ops-jobs": "src/scripts/ops-jobs.ts",
+  "scripts/ops-jobs-core": "src/scripts/ops-jobs-core.ts",
   "scripts/ops-preflight": "src/scripts/ops-preflight.ts",
   "scripts/ops-status": "src/scripts/ops-status.ts",
   "scripts/ops-status-core": "src/scripts/ops-status-core.ts",

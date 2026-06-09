@@ -40,6 +40,11 @@ describe("buildRunScriptArgs", () => {
       script: "ops:health",
       args: ["--url", "http://localhost:3000"],
     });
+    expect(resolveOpsScriptInvocation("jobs", ["status", "--json"])).toEqual({
+      script: "ops:jobs",
+      args: ["--json"],
+    });
+    expect(resolveOpsScriptInvocation("jobs", ["queues", "--json"])).toBeNull();
     expect(resolveOpsScriptInvocation("wat", [])).toBeNull();
   });
 });

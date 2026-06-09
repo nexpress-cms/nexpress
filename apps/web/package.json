@@ -21,6 +21,7 @@
     "doctor": "tsx scripts/doctor.ts",
     "doctor:prod": "tsx scripts/doctor.ts --prod",
     "ops:health": "tsx scripts/ops-health.ts",
+    "ops:jobs": "tsx scripts/ops-jobs.ts",
     "ops:preflight": "tsx scripts/ops-preflight.ts",
     "ops:status": "tsx scripts/ops-status.ts",
     "postinstall": "tsx scripts/postinstall-notice.ts",

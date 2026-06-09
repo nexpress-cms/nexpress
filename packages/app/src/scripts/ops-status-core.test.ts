@@ -40,6 +40,10 @@ describe("ops status core", () => {
     });
   });
 
+  it("includes the worker heartbeat check in the stable summary count", () => {
+    expect(buildOpsStatusJson(checks).summary.total).toBe(3);
+  });
+
   it("omits nextCommand when the site is ready", () => {
     expect(
       buildOpsStatusJson([{ id: "runtime.node", state: "ok", label: "Node.js >= 20" }]),

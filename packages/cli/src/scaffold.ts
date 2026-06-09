@@ -88,6 +88,7 @@ export function buildSuccessLines(
     "",
     "Admin: http://localhost:3000/admin (the first-boot wizard collects your admin account)",
     "Status: pnpm run ops:status -- --brief --no-color",
+    "Jobs: pnpm run ops:jobs -- --brief --no-color",
     "Stuck? pnpm run doctor",
     "",
     "Deploy preflight:",

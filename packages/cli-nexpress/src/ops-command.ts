@@ -8,7 +8,7 @@ export function buildRunScriptArgs(
 }
 
 export interface OpsScriptInvocation {
-  script: "ops:status" | "doctor" | "ops:preflight" | "ops:health";
+  script: "ops:status" | "doctor" | "ops:preflight" | "ops:health" | "ops:jobs";
   args: string[];
 }
 
@@ -25,6 +25,9 @@ export function resolveOpsScriptInvocation(
       return { script: "ops:preflight", args: passthrough };
     case "health":
       return { script: "ops:health", args: passthrough };
+    case "jobs":
+      if (passthrough[0] !== "status") return null;
+      return { script: "ops:jobs", args: passthrough.slice(1) };
     default:
       return null;
   }
