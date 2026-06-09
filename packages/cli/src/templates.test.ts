@@ -321,6 +321,17 @@ describe("getProjectFiles", () => {
       scripts: Record<string, string>;
     };
     expect(pkg.scripts["doctor:prod"]).toBe("tsx scripts/doctor.ts --prod");
+    expect(pkg.scripts["ops:status"]).toBe("tsx scripts/ops-status.ts");
+  });
+
+  it("ops-status.ts is a thin wrapper over @nexpress/app's shared ops status", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const opsStatus = files["scripts/ops-status.ts"];
+    expect(opsStatus).toBeDefined();
+    expect(opsStatus).toMatch(/@nexpress\/app\/scripts\/ops-status/);
+    expect(
+      opsStatus.split("\n").filter((line) => line.trim().length > 0).length,
+    ).toBeLessThanOrEqual(3);
   });
 
   it("package.json exposes a deploy plan script backed by @nexpress/app", () => {
@@ -346,6 +357,8 @@ describe("getProjectFiles", () => {
     const readme = files["README.md"];
     expect(readme).toContain("pnpm run setup");
     expect(readme).toContain("## First-site checklist");
+    expect(readme).toContain("pnpm run ops:status -- --json");
+    expect(readme).toContain('schemaVersion: "np.ops.v1"');
     expect(readme).toContain("pnpm run deploy:plan -- --target vercel");
     expect(readme).toContain("pnpm run doctor:prod -- --target vercel");
     expect(readme).toContain("pnpm run doctor -- --fix-plan");

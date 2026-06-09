@@ -35,6 +35,8 @@ const scriptEntries = {
   "scripts/doctor-output": "src/scripts/doctor-output.ts",
   "scripts/doctor-readiness": "src/scripts/doctor-readiness.ts",
   "scripts/generate-schema": "src/scripts/generate-schema.ts",
+  "scripts/ops-status": "src/scripts/ops-status.ts",
+  "scripts/ops-status-core": "src/scripts/ops-status-core.ts",
   "scripts/postinstall-notice": "src/scripts/postinstall-notice.ts",
   "scripts/run-migrations": "src/scripts/run-migrations.ts",
   "scripts/seed-admin": "src/scripts/seed-admin.ts",

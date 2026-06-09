@@ -87,6 +87,7 @@ export function buildSuccessLines(
   lines.push(
     "",
     "Admin: http://localhost:3000/admin (the first-boot wizard collects your admin account)",
+    "Status: pnpm run ops:status -- --brief --no-color",
     "Stuck? pnpm run doctor",
     "",
     "Deploy preflight:",

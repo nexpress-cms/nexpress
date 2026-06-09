@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
 import {
   addPluginToConfig,
@@ -18,6 +18,7 @@ import {
   scaffoldScheduledPlugin,
 } from "./scaffold-plugin-types.js";
 import type { ScaffoldKind, ScaffoldResult } from "./scaffold-utils.js";
+import { buildRunScriptArgs } from "./ops-command.js";
 import { runThemeAdd } from "./theme-add/run.js";
 import { runThemeUninstall } from "./theme-uninstall/run.js";
 
@@ -35,6 +36,7 @@ Usage:
   nexpress theme:uninstall <package> --yes            Same, but skip the destructive confirm prompt
   nexpress theme:uninstall <package> --with-collections  Also delete collection FILES that match the theme's spec exactly
   nexpress theme:uninstall <package> --apply          Same, but auto-chain db:migrate after generate (DROP COLUMN runs)
+  nexpress ops status [--json|--brief|--no-color]     Print read-only runtime status for operators and agents
   nexpress create block-plugin <slug>                 Scaffold a static block plugin
   nexpress create block-plugin <slug> --interactive   Scaffold with a "use client" form
   nexpress create hook-plugin <slug>                  Scaffold a content-hook plugin
@@ -90,8 +92,14 @@ function resolveConfigPath(cwd: string): string {
 }
 
 function detectPackageManager(cwd: string): "pnpm" | "npm" | "yarn" {
-  if (existsSync(resolve(cwd, "pnpm-lock.yaml"))) return "pnpm";
-  if (existsSync(resolve(cwd, "yarn.lock"))) return "yarn";
+  let current = cwd;
+  while (true) {
+    if (existsSync(resolve(current, "pnpm-lock.yaml"))) return "pnpm";
+    if (existsSync(resolve(current, "yarn.lock"))) return "yarn";
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
   return "npm";
 }
 
@@ -114,6 +122,23 @@ function runPackageManager(
       : manager === "pnpm"
         ? [action === "add" ? "add" : "remove", packageName]
         : [action === "add" ? "install" : "uninstall", packageName];
+  return new Promise((resolveFn, reject) => {
+    const child = spawn(manager, args, { cwd, stdio: "inherit" });
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      if (code === 0) resolveFn();
+      else reject(new Error(`${manager} ${args.join(" ")} exited with code ${code ?? "null"}`));
+    });
+  });
+}
+
+function runProjectScript(
+  manager: "pnpm" | "npm" | "yarn",
+  script: string,
+  passthrough: string[],
+  cwd: string,
+): Promise<void> {
+  const args = buildRunScriptArgs(manager, script, passthrough);
   return new Promise((resolveFn, reject) => {
     const child = spawn(manager, args, { cwd, stdio: "inherit" });
     child.on("error", reject);
@@ -295,6 +320,18 @@ async function main(argv: string[]): Promise<number> {
       themePackage,
       flags: { dryRun, yes, withCollections, apply },
     });
+  }
+
+  if (args[0] === "ops") {
+    const sub = args[1];
+    if (sub === "status") {
+      const cwd = process.cwd();
+      const manager = detectPackageManager(cwd);
+      await runProjectScript(manager, "ops:status", args.slice(2), cwd);
+      return 0;
+    }
+    process.stderr.write(`Unknown subcommand: ops ${sub ?? ""}\n${HELP_TEXT}`);
+    return 2;
   }
 
   if (args[0] === "plugin") {

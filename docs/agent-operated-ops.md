@@ -327,6 +327,18 @@ Use stable IDs that can be documented and grepped. Suggested initial catalog:
 
 Ship the smallest useful contract first.
 
+Implementation status:
+
+- `pnpm run ops:status -- --json` emits the initial
+  `schemaVersion: "np.ops.v1"` status contract from generated apps.
+- `nexpress ops status --json` delegates to the project-side
+  `ops:status` script so operators and agents can use the same entry.
+- v1 checks cover Node, `.env`, required env, database reachability,
+  migration status, storage adapter sanity, jobs enablement, and `SITE_URL`.
+- Deeper ordered remediation remains in `pnpm run doctor -- --fix-plan`,
+  which is surfaced as `nextCommand` whenever status is blocked or needs
+  attention.
+
 Scope:
 
 - Create the `nexpress` runtime CLI entrypoint or extend the current CLI
