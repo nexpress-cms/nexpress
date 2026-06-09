@@ -12,6 +12,7 @@ describe("buildSuccessLines", () => {
     expect(output).toContain("docker compose -f docker/docker-compose.yml up -d db");
     expect(output).toContain("pnpm run setup      (wizard: DB / secret / storage / migrations)");
     expect(output).toContain("pnpm dev");
+    expect(output).toContain("Status: pnpm run ops:status -- --brief --no-color");
     expect(output).toContain("Stuck? pnpm run doctor");
     expect(output).toContain("Deploy preflight:");
     expect(output).toContain("pnpm run deploy:plan -- --target vercel");

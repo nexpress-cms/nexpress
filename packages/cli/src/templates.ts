@@ -62,6 +62,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "scripts/dev-notice.ts": utf8(devNoticeScriptTemplate()),
     "scripts/doctor.ts": utf8(doctorScriptTemplate()),
     "scripts/generate-schema.ts": utf8(generateSchemaScriptTemplate()),
+    "scripts/ops-status.ts": utf8(opsStatusScriptTemplate()),
     "scripts/postinstall-notice.ts": utf8(postinstallNoticeScriptTemplate()),
     "scripts/seed-admin.ts": utf8(seedAdminScriptTemplate()),
     "scripts/seed-content.ts": utf8(seedContentScriptTemplate()),
@@ -141,6 +142,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "deploy:plan": "tsx scripts/deploy-plan.ts",
         doctor: "tsx scripts/doctor.ts",
         "doctor:prod": "tsx scripts/doctor.ts --prod",
+        "ops:status": "tsx scripts/ops-status.ts",
         postinstall: "tsx scripts/postinstall-notice.ts",
         "schema:gen": "tsx scripts/generate-schema.ts",
         "seed:admin": "tsx scripts/seed-admin.ts",
@@ -483,6 +485,10 @@ function doctorScriptTemplate(): string {
   return `import "@nexpress/app/scripts/doctor";\n`;
 }
 
+function opsStatusScriptTemplate(): string {
+  return `import "@nexpress/app/scripts/ops-status";\n`;
+}
+
 function deployPlanScriptTemplate(): string {
   return `import "@nexpress/app/scripts/deploy-plan";\n`;
 }
@@ -737,6 +743,17 @@ Non-interactive mode reads \`DATABASE_URL\` (required), and optional
 \`NP_SECRET\` (auto-generated if absent), \`SITE_URL\`,
 \`NP_STORAGE_ADAPTER\`, \`NP_S3_*\`, \`NP_SETUP_RUN_MIGRATIONS\` (set to
 \`false\` to write only \`.env\` without running migrations).
+
+### Check runtime status.
+
+\`\`\`bash
+pnpm run ops:status -- --json
+pnpm run ops:status -- --brief --no-color
+\`\`\`
+
+\`ops:status\` is the low-token handoff for agents and CI. It emits
+\`schemaVersion: "np.ops.v1"\`, \`status\`, \`summary\`, stable
+\`checks[].id\`, and a \`nextCommand\` when the site needs follow-up.
 
 ### Stuck? Run the doctor.
 

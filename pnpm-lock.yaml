@@ -65,6 +65,9 @@ importers:
       '@nexpress/blocks':
         specifier: workspace:*
         version: link:../../packages/blocks
+      '@nexpress/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli-nexpress
       '@nexpress/core':
         specifier: workspace:*
         version: link:../../packages/core
