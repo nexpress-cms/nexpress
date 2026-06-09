@@ -14,6 +14,8 @@ describe("buildSuccessLines", () => {
     expect(output).toContain("pnpm dev");
     expect(output).toContain("Status: pnpm run ops:status -- --brief --no-color");
     expect(output).toContain("Jobs: pnpm run ops:jobs -- --brief --no-color");
+    expect(output).toContain("Storage: pnpm run ops:storage -- --brief --no-color");
+    expect(output).toContain("Plugins: pnpm run ops:plugins -- doctor --brief --no-color");
     expect(output).toContain("Stuck? pnpm run doctor");
     expect(output).toContain("Deploy preflight:");
     expect(output).toContain("pnpm run ops:preflight -- --target vercel --brief --no-color");

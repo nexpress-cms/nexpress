@@ -64,8 +64,10 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "scripts/generate-schema.ts": utf8(generateSchemaScriptTemplate()),
     "scripts/ops-health.ts": utf8(opsHealthScriptTemplate()),
     "scripts/ops-jobs.ts": utf8(opsJobsScriptTemplate()),
+    "scripts/ops-plugins.ts": utf8(opsPluginsScriptTemplate()),
     "scripts/ops-preflight.ts": utf8(opsPreflightScriptTemplate()),
     "scripts/ops-status.ts": utf8(opsStatusScriptTemplate()),
+    "scripts/ops-storage.ts": utf8(opsStorageScriptTemplate()),
     "scripts/postinstall-notice.ts": utf8(postinstallNoticeScriptTemplate()),
     "scripts/seed-admin.ts": utf8(seedAdminScriptTemplate()),
     "scripts/seed-content.ts": utf8(seedContentScriptTemplate()),
@@ -147,8 +149,10 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "doctor:prod": "tsx scripts/doctor.ts --prod",
         "ops:health": "tsx scripts/ops-health.ts",
         "ops:jobs": "tsx scripts/ops-jobs.ts",
+        "ops:plugins": "tsx scripts/ops-plugins.ts",
         "ops:preflight": "tsx scripts/ops-preflight.ts",
         "ops:status": "tsx scripts/ops-status.ts",
+        "ops:storage": "tsx scripts/ops-storage.ts",
         postinstall: "tsx scripts/postinstall-notice.ts",
         "schema:gen": "tsx scripts/generate-schema.ts",
         "seed:admin": "tsx scripts/seed-admin.ts",
@@ -507,6 +511,14 @@ function opsJobsScriptTemplate(): string {
   return `import "@nexpress/app/scripts/ops-jobs";\n`;
 }
 
+function opsPluginsScriptTemplate(): string {
+  return `import "@nexpress/app/scripts/ops-plugins";\n`;
+}
+
+function opsStorageScriptTemplate(): string {
+  return `import "@nexpress/app/scripts/ops-storage";\n`;
+}
+
 function deployPlanScriptTemplate(): string {
   return `import "@nexpress/app/scripts/deploy-plan";\n`;
 }
@@ -770,6 +782,8 @@ pnpm run ops:status -- --brief --no-color
 pnpm run ops:preflight -- --target vercel --json
 pnpm run ops:health -- --url http://localhost:3000 --brief --no-color
 pnpm run ops:jobs -- --json
+pnpm run ops:storage -- --json
+pnpm run ops:plugins -- doctor --json
 \`\`\`
 
 \`ops:status\` is the low-token handoff for agents and CI. It emits
@@ -778,7 +792,9 @@ pnpm run ops:jobs -- --json
 \`ops:preflight\` combines \`deploy:plan\` and the production doctor into a
 single deployment gate. \`ops:health\` checks \`/api/health/ready\` for a
 running local or hosted site. \`ops:jobs\` reports worker heartbeat, pause
-state, and pg-boss queue counts.
+state, and pg-boss queue counts. \`ops:storage\` reports storage adapter
+readiness and local media drift; \`ops:plugins\` reports plugin inventory
+and route/block conflicts.
 
 ### Stuck? Run the doctor.
 

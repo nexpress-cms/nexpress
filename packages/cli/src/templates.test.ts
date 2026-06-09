@@ -323,8 +323,10 @@ describe("getProjectFiles", () => {
     expect(pkg.scripts["doctor:prod"]).toBe("tsx scripts/doctor.ts --prod");
     expect(pkg.scripts["ops:health"]).toBe("tsx scripts/ops-health.ts");
     expect(pkg.scripts["ops:jobs"]).toBe("tsx scripts/ops-jobs.ts");
+    expect(pkg.scripts["ops:plugins"]).toBe("tsx scripts/ops-plugins.ts");
     expect(pkg.scripts["ops:preflight"]).toBe("tsx scripts/ops-preflight.ts");
     expect(pkg.scripts["ops:status"]).toBe("tsx scripts/ops-status.ts");
+    expect(pkg.scripts["ops:storage"]).toBe("tsx scripts/ops-storage.ts");
   });
 
   it("ops scripts are thin wrappers over @nexpress/app's shared ops scripts", () => {
@@ -333,18 +335,24 @@ describe("getProjectFiles", () => {
     const opsPreflight = files["scripts/ops-preflight.ts"];
     const opsHealth = files["scripts/ops-health.ts"];
     const opsJobs = files["scripts/ops-jobs.ts"];
+    const opsPlugins = files["scripts/ops-plugins.ts"];
+    const opsStorage = files["scripts/ops-storage.ts"];
     expect(opsStatus).toBeDefined();
     expect(opsPreflight).toBeDefined();
     expect(opsHealth).toBeDefined();
     expect(opsJobs).toBeDefined();
+    expect(opsPlugins).toBeDefined();
+    expect(opsStorage).toBeDefined();
     expect(opsStatus).toMatch(/@nexpress\/app\/scripts\/ops-status/);
     expect(opsPreflight).toMatch(/@nexpress\/app\/scripts\/ops-preflight/);
     expect(opsHealth).toMatch(/@nexpress\/app\/scripts\/ops-health/);
     expect(opsJobs).toMatch(/@nexpress\/app\/scripts\/ops-jobs/);
-    for (const script of [opsStatus, opsPreflight, opsHealth, opsJobs]) {
-      expect(script.split("\n").filter((line) => line.trim().length > 0).length).toBeLessThanOrEqual(
-        3,
-      );
+    expect(opsPlugins).toMatch(/@nexpress\/app\/scripts\/ops-plugins/);
+    expect(opsStorage).toMatch(/@nexpress\/app\/scripts\/ops-storage/);
+    for (const script of [opsStatus, opsPreflight, opsHealth, opsJobs, opsPlugins, opsStorage]) {
+      expect(
+        script.split("\n").filter((line) => line.trim().length > 0).length,
+      ).toBeLessThanOrEqual(3);
     }
   });
 
@@ -377,6 +385,8 @@ describe("getProjectFiles", () => {
       "pnpm run ops:health -- --url http://localhost:3000 --brief --no-color",
     );
     expect(readme).toContain("pnpm run ops:jobs -- --json");
+    expect(readme).toContain("pnpm run ops:storage -- --json");
+    expect(readme).toContain("pnpm run ops:plugins -- doctor --json");
     expect(readme).toContain('schemaVersion: "np.ops.v1"');
     expect(readme).toContain("pnpm run deploy:plan -- --target vercel");
     expect(readme).toContain("pnpm run doctor:prod -- --target vercel");

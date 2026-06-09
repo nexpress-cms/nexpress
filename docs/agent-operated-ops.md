@@ -342,6 +342,13 @@ Implementation status:
 - `nexpress ops jobs status --json` emits
   `schemaVersion: "np.ops-jobs.v1"` with worker heartbeat, pause state,
   and pg-boss queue counts.
+- `nexpress ops storage status --json` emits
+  `schemaVersion: "np.ops-storage.v1"` with adapter readiness, media row
+  counts, and local missing/orphaned file drift when local storage is used.
+- `nexpress ops plugins list --json` and
+  `nexpress ops plugins doctor --json` emit
+  `schemaVersion: "np.ops-plugins.v1"` with plugin inventory plus duplicate
+  plugin ID, block type, API route, and page route warnings.
 - v1 checks cover Node, `.env`, required env, database reachability,
   migration status, storage adapter sanity, jobs enablement, worker heartbeat
   when jobs are enabled, and `SITE_URL`.
@@ -579,7 +586,15 @@ Implementation status:
 
 - `nexpress ops jobs status --json` now reports worker heartbeat, pause
   state, and queue counts as `np.ops-jobs.v1`.
+- `nexpress ops storage status --json` now reports local/S3 adapter
+  readiness, media index counts, and local missing/orphaned media drift as
+  `np.ops-storage.v1`.
+- `nexpress ops plugins list|doctor --json` now reports configured plugin
+  inventory and static conflicts as `np.ops-plugins.v1`.
 - Queue mutation commands (`pause`, `resume`, `retry`, `drain`) remain future
+  work and should keep requiring explicit operator approval.
+- Active storage probes/migration commands (`test`, `verify`, `migrate`) and
+  plugin mutation commands (`enable`, `disable`, `upgrade-plan`) remain future
   work and should keep requiring explicit operator approval.
 
 **Acceptance criteria:**

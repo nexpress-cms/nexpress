@@ -41,6 +41,9 @@ Usage:
   nexpress ops preflight --target <host> [--json]     Run deploy-plan + production doctor as one gate
   nexpress ops health [--url <origin>] [--json]       Probe /api/health/ready on a running site
   nexpress ops jobs status [--json|--brief]           Report worker heartbeat and queue counts
+  nexpress ops storage status [--json|--brief]        Report storage adapter and media file drift
+  nexpress ops plugins list [--json|--brief]          List configured plugins
+  nexpress ops plugins doctor [--json|--brief]        Report plugin ID/block/route conflicts
   nexpress create block-plugin <slug>                 Scaffold a static block plugin
   nexpress create block-plugin <slug> --interactive   Scaffold with a "use client" form
   nexpress create hook-plugin <slug>                  Scaffold a content-hook plugin
@@ -205,9 +208,7 @@ async function pluginAdd(packageName: string, cwd: string): Promise<number> {
     return 0;
   }
   if (result.kind === "no-op") {
-    process.stdout.write(
-      `· Package installed; ${result.reason}. No config change needed.\n`,
-    );
+    process.stdout.write(`· Package installed; ${result.reason}. No config change needed.\n`);
     return 0;
   }
 
@@ -343,9 +344,7 @@ async function main(argv: string[]): Promise<number> {
     const sub = args[1];
     const target = args[2];
     if (!sub || !target) {
-      process.stderr.write(
-        `Missing arguments. Usage: nexpress plugin add|remove <package>\n`,
-      );
+      process.stderr.write(`Missing arguments. Usage: nexpress plugin add|remove <package>\n`);
       return 2;
     }
     const cwd = process.cwd();
@@ -422,8 +421,7 @@ async function main(argv: string[]): Promise<number> {
         }
       }
 
-      const labelPrefix =
-        meta.kind === "block" && interactive ? "interactive block" : meta.label;
+      const labelPrefix = meta.kind === "block" && interactive ? "interactive block" : meta.label;
       process.stdout.write(
         `\n✓ Scaffolded ${labelPrefix} plugin in ${result.pluginDir}\n` +
           `  Files written:\n` +
