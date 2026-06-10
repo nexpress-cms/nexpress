@@ -356,6 +356,9 @@ Implementation status:
 - `nexpress release plan --target <host> --json` emits
   `schemaVersion: "np.release-plan.v1"` and writes the same plan/audit artifact
   under `.nexpress/releases/` by default.
+- `nexpress release apply --plan <artifact> --json` emits
+  `schemaVersion: "np.release-apply.v1"` and writes an apply audit artifact.
+  It dry-runs by default; execution requires `--execute --approve <planId>`.
 - `nexpress release verify --url <origin> --json` emits the same
   `np.release.v1` envelope by composing health, jobs, storage, and plugin
   diagnostics into a post-release readiness gate.
@@ -648,13 +651,16 @@ Implementation status:
   `np.release-plan.v1` artifact with the release check snapshot, ordered
   remediation / release / verify commands, approval flags, and apply
   preconditions.
+- `nexpress release apply --plan <artifact> --json` now validates that artifact
+  and persists `np.release-apply.v1`; it only runs plan commands when both
+  `--execute` and `--approve <planId>` are present.
 - `nexpress release verify --url <origin> --json` now composes
   `ops:health`, `ops:jobs`, `ops:storage`, and `ops:plugins doctor` as
   `np.release.v1`.
 - `nexpress ops release check|verify` delegates to the same project-side
   script for agents that stay inside the ops namespace.
-- `release apply` remains future work; apply must remain approval-gated because
-  it can run deploy, migration, or publishing actions.
+- `release apply` remains intentionally approval-gated because it can run
+  deploy, migration, or publishing actions.
 
 **Acceptance criteria:**
 
@@ -662,6 +668,9 @@ Implementation status:
   failing command output artifacts.
 - Pending migrations and stale / missing / unverified backups block production
   release checks through dedicated migration and backup evidence steps.
+- `release plan --json` persists a replayable plan artifact, and
+  `release apply --plan <artifact> --json` records a dry-run or execution audit
+  artifact.
 - `release verify --json` can run after deployment and report readiness.
 
 ### Issue 7 — Add executable runbook commands

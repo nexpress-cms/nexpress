@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildReleaseApplyJson,
   buildReleaseJson,
   buildReleasePlanJson,
+  renderBriefReleaseApply,
   renderBriefReleasePlan,
   renderBriefReleaseReport,
   type ReleaseStep,
@@ -240,6 +242,135 @@ describe("release core", () => {
     expect(renderBriefReleasePlan(plan, { color: false })).toContain("NexPress release plan");
     expect(renderBriefReleasePlan(plan, { color: false })).toContain(
       "artifact: .nexpress/releases/release-test.json",
+    );
+  });
+
+  it("builds a dry-run release apply audit without requiring approval", () => {
+    const check = buildReleaseJson({ mode: "check", target: "docker", steps: [readyStep] });
+    const plan = buildReleasePlanJson({
+      planId: "release-test",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      target: "docker",
+      artifactPath: ".nexpress/releases/release-test.json",
+      check,
+    });
+    const apply = buildReleaseApplyJson({
+      plan,
+      createdAt: "2026-06-10T00:01:00.000Z",
+      mode: "dry-run",
+      approved: false,
+      artifactPath: ".nexpress/releases/release-test-apply.json",
+    });
+
+    expect(apply).toEqual(
+      expect.objectContaining({
+        schemaVersion: "np.release-apply.v1",
+        ok: true,
+        mode: "dry-run",
+        status: "ready",
+        approved: false,
+      }),
+    );
+    expect(apply.commands).toEqual([
+      expect.objectContaining({
+        command: "nexpress release verify --json",
+        status: "pending",
+      }),
+    ]);
+  });
+
+  it("blocks release apply execution without the plan approval token", () => {
+    const check = buildReleaseJson({ mode: "check", target: "docker", steps: [readyStep] });
+    const plan = buildReleasePlanJson({
+      planId: "release-test",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      target: "docker",
+      artifactPath: ".nexpress/releases/release-test.json",
+      check,
+    });
+    const apply = buildReleaseApplyJson({
+      plan,
+      createdAt: "2026-06-10T00:01:00.000Z",
+      mode: "execute",
+      approved: false,
+    });
+
+    expect(apply.ok).toBe(false);
+    expect(apply.status).toBe("blocked");
+    expect(apply.blockedReason).toBe("release apply requires --approve release-test");
+  });
+
+  it("blocks release apply when the plan itself is blocked", () => {
+    const check = buildReleaseJson({
+      mode: "check",
+      target: "docker",
+      steps: [
+        {
+          ...readyStep,
+          ok: false,
+          exitCode: 1,
+          status: "blocked",
+          report: { schemaVersion: "np.ops-backup.v1", ok: false, status: "blocked" },
+        },
+      ],
+    });
+    const plan = buildReleasePlanJson({
+      planId: "release-blocked",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      target: "docker",
+      artifactPath: ".nexpress/releases/release-blocked.json",
+      check,
+    });
+    const apply = buildReleaseApplyJson({
+      plan,
+      createdAt: "2026-06-10T00:01:00.000Z",
+      mode: "execute",
+      approved: true,
+    });
+
+    expect(apply.ok).toBe(false);
+    expect(apply.status).toBe("blocked");
+    expect(apply.blockedReason).toBe(
+      "release check is not ready; run remediation commands and regenerate the plan",
+    );
+  });
+
+  it("summarizes executed release apply results", () => {
+    const check = buildReleaseJson({ mode: "check", target: "docker", steps: [readyStep] });
+    const plan = buildReleasePlanJson({
+      planId: "release-test",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      target: "docker",
+      artifactPath: ".nexpress/releases/release-test.json",
+      check,
+    });
+    const apply = buildReleaseApplyJson({
+      plan,
+      createdAt: "2026-06-10T00:01:00.000Z",
+      mode: "execute",
+      approved: true,
+      commandResults: [
+        {
+          ...plan.commands[0],
+          status: "success",
+          exitCode: 0,
+          stdout: "{}",
+          stderr: "",
+        },
+      ],
+    });
+
+    expect(apply.ok).toBe(true);
+    expect(apply.status).toBe("applied");
+    expect(apply.summary).toEqual({
+      commands: 1,
+      pending: 0,
+      skipped: 0,
+      success: 1,
+      failed: 0,
+    });
+    expect(renderBriefReleaseApply(apply, { color: false })).toContain(
+      "applied: plan: release-test",
     );
   });
 });
