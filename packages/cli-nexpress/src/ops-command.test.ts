@@ -73,6 +73,10 @@ describe("buildRunScriptArgs", () => {
       script: "release",
       args: ["plan", "--target", "vercel"],
     });
+    expect(resolveOpsScriptInvocation("release", ["apply", "--plan", "release.json"])).toEqual({
+      script: "release",
+      args: ["apply", "--plan", "release.json"],
+    });
     expect(
       resolveOpsScriptInvocation("release", ["verify", "--url", "https://example.com"]),
     ).toEqual({
@@ -88,7 +92,6 @@ describe("buildRunScriptArgs", () => {
     expect(resolveOpsScriptInvocation("migrate", ["apply", "--safe"])).toBeNull();
     expect(resolveOpsScriptInvocation("storage", ["verify", "--json"])).toBeNull();
     expect(resolveOpsScriptInvocation("plugins", ["enable", "demo"])).toBeNull();
-    expect(resolveOpsScriptInvocation("release", ["apply", "--yes"])).toBeNull();
     expect(resolveOpsScriptInvocation("runbook", ["--json"])).toBeNull();
     expect(resolveOpsScriptInvocation("wat", [])).toBeNull();
   });

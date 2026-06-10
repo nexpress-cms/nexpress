@@ -81,6 +81,37 @@ export interface ReleasePlanJson {
   check: ReleaseJson;
 }
 
+export interface ReleaseApplyCommandResult extends ReleasePlanCommand {
+  status: "pending" | "skipped" | "success" | "failed";
+  exitCode: number | null;
+  stdout?: string;
+  stderr?: string;
+}
+
+export interface ReleaseApplyJson {
+  schemaVersion: "np.release-apply.v1";
+  ok: boolean;
+  planId: string;
+  createdAt: string;
+  mode: "dry-run" | "execute";
+  status: "ready" | "blocked" | "applied" | "failed";
+  approved: boolean;
+  summary: {
+    commands: number;
+    pending: number;
+    skipped: number;
+    success: number;
+    failed: number;
+  };
+  blockedReason: string | null;
+  audit: {
+    planArtifactPath: string | null;
+    artifactPath: string | null;
+  };
+  commands: ReleaseApplyCommandResult[];
+  plan: ReleasePlanJson;
+}
+
 interface RenderOptions {
   color: boolean;
 }
@@ -237,6 +268,65 @@ export function buildReleasePlanJson(args: {
   };
 }
 
+export function buildReleaseApplyJson(args: {
+  plan: ReleasePlanJson;
+  createdAt: string;
+  mode: ReleaseApplyJson["mode"];
+  approved: boolean;
+  artifactPath?: string | null;
+  planArtifactPath?: string | null;
+  commandResults?: ReleaseApplyCommandResult[];
+}): ReleaseApplyJson {
+  const planBlockedReason = args.plan.apply.allowed ? null : args.plan.apply.blockedReason;
+  const approvalBlockedReason =
+    args.mode === "execute" && !args.approved
+      ? `release apply requires --approve ${args.plan.planId}`
+      : null;
+  const blockedReason = planBlockedReason ?? approvalBlockedReason;
+  const commands =
+    args.commandResults ??
+    args.plan.commands.map<ReleaseApplyCommandResult>((command) => ({
+      ...command,
+      status: command.required ? "pending" : "skipped",
+      exitCode: null,
+    }));
+  const failed = commands.filter((command) => command.status === "failed").length;
+  const success = commands.filter((command) => command.status === "success").length;
+  const skipped = commands.filter((command) => command.status === "skipped").length;
+  const pending = commands.filter((command) => command.status === "pending").length;
+  const status: ReleaseApplyJson["status"] = blockedReason
+    ? "blocked"
+    : failed > 0
+      ? "failed"
+      : args.mode === "execute"
+        ? "applied"
+        : "ready";
+
+  return {
+    schemaVersion: "np.release-apply.v1",
+    ok: !blockedReason && failed === 0,
+    planId: args.plan.planId,
+    createdAt: args.createdAt,
+    mode: args.mode,
+    status,
+    approved: args.approved,
+    summary: {
+      commands: commands.length,
+      pending,
+      skipped,
+      success,
+      failed,
+    },
+    blockedReason,
+    audit: {
+      planArtifactPath: args.planArtifactPath ?? args.plan.audit.artifactPath ?? null,
+      artifactPath: args.artifactPath ?? null,
+    },
+    commands,
+    plan: args.plan,
+  };
+}
+
 function formatState(state: ReleaseJson["status"], color: boolean): string {
   const c = color ? ANSI : EMPTY_ANSI;
   if (state === "ready") return `${c.green}ready${c.reset}`;
@@ -294,5 +384,31 @@ export function renderBriefReleasePlan(
     lines.push(`  - [${command.phase}${approval}] ${command.command}`);
   }
   if (plan.apply.nextCommand) lines.push(`Next: ${plan.apply.nextCommand}`);
+  return lines.join("\n");
+}
+
+export function renderBriefReleaseApply(
+  apply: ReleaseApplyJson,
+  options: RenderOptions = { color: true },
+): string {
+  const c = options.color ? ANSI : EMPTY_ANSI;
+  const statusColor =
+    apply.status === "blocked" || apply.status === "failed"
+      ? c.red
+      : apply.status === "ready"
+        ? c.yellow
+        : c.green;
+  const lines = [
+    `${c.dim}NexPress release apply${c.reset}`,
+    `${statusColor}${apply.status}${c.reset}: plan: ${apply.planId}`,
+    `mode: ${apply.mode}${apply.approved ? " approved" : ""}`,
+    `commands: ${apply.summary.success.toString()} success, ${apply.summary.failed.toString()} failed, ${apply.summary.pending.toString()} pending, ${apply.summary.skipped.toString()} skipped`,
+  ];
+  if (apply.audit.planArtifactPath) lines.push(`plan artifact: ${apply.audit.planArtifactPath}`);
+  if (apply.audit.artifactPath) lines.push(`apply artifact: ${apply.audit.artifactPath}`);
+  if (apply.blockedReason) lines.push(`blocked: ${apply.blockedReason}`);
+  for (const command of apply.commands) {
+    lines.push(`  - [${command.status}] ${command.command}`);
+  }
   return lines.join("\n");
 }

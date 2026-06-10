@@ -58,7 +58,12 @@ export function resolveOpsScriptInvocation(
       if (passthrough[0] !== "list" && passthrough[0] !== "doctor") return null;
       return { script: "ops:plugins", args: passthrough };
     case "release":
-      if (passthrough[0] !== "check" && passthrough[0] !== "plan" && passthrough[0] !== "verify") {
+      if (
+        passthrough[0] !== "apply" &&
+        passthrough[0] !== "check" &&
+        passthrough[0] !== "plan" &&
+        passthrough[0] !== "verify"
+      ) {
         return null;
       }
       return { script: "release", args: passthrough };

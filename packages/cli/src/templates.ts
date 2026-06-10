@@ -812,6 +812,7 @@ pnpm run ops:storage -- --json
 pnpm run ops:plugins -- doctor --json
 pnpm run release -- check --target vercel --json
 pnpm run release -- plan --target vercel --json
+pnpm run release -- apply --plan .nexpress/releases/<plan>.json --json
 pnpm run release -- verify --url http://localhost:3000 --json
 pnpm run runbook -- worker-not-draining --json
 \`\`\`
@@ -828,8 +829,10 @@ pg-boss queue counts. \`ops:storage\` reports storage adapter readiness and
 local media drift; \`ops:plugins\` reports plugin inventory and route/block
 conflicts. \`release check\` composes the pre-deploy gate; \`release plan\`
 persists that gate as a replayable audit artifact under \`.nexpress/releases\`;
-\`release verify\` composes the post-deploy readiness gate. \`runbook\` turns
-common incidents into evidence-backed diagnosis and next commands.
+\`release apply\` validates the artifact and only executes commands with
+\`--execute --approve <planId>\`; \`release verify\` composes the post-deploy
+readiness gate. \`runbook\` turns common incidents into evidence-backed
+diagnosis and next commands.
 
 ### Stuck? Run the doctor.
 

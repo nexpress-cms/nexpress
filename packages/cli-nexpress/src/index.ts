@@ -50,6 +50,7 @@ Usage:
   nexpress ops plugins doctor [--json|--brief]        Report plugin ID/block/route conflicts
   nexpress release check [--target <host>] [--json]   Run the pre-release readiness gate
   nexpress release plan [--target <host>] [--json]    Persist a release plan artifact
+  nexpress release apply --plan <path> [--json]       Validate or execute a release plan
   nexpress release verify [--url <origin>] [--json]   Run the post-release readiness gate
   nexpress runbook <name> [--json|--brief]            Diagnose a common incident runbook
   nexpress create block-plugin <slug>                 Scaffold a static block plugin
@@ -350,7 +351,7 @@ async function main(argv: string[]): Promise<number> {
 
   if (args[0] === "release") {
     const sub = args[1];
-    if (sub === "check" || sub === "plan" || sub === "verify") {
+    if (sub === "apply" || sub === "check" || sub === "plan" || sub === "verify") {
       const cwd = process.cwd();
       const manager = detectPackageManager(cwd);
       await runProjectScript(manager, "release", args.slice(1), cwd);
