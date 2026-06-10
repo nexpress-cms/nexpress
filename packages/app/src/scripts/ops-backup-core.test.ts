@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildOpsBackupJson,
   collectOpsBackupReport,
+  createOpsBackupManifest,
   parseBackupManifest,
 } from "./ops-backup-core.js";
 
@@ -103,5 +104,57 @@ describe("ops backup core", () => {
   it("rejects invalid manifests", () => {
     expect(parseBackupManifest({ id: "backup-1" })).toBeNull();
     expect(parseBackupManifest({ id: "backup-1", createdAt: "not-a-date" })).toBeNull();
+  });
+
+  it("creates a backup manifest in NP_BACKUP_DIR", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "np-backups-"));
+    mkdirSync(join(dir, "artifacts"));
+    writeFileSync(join(dir, "artifacts", "db.dump"), "dump");
+
+    const report = await createOpsBackupManifest({
+      env: { NP_BACKUP_DIR: dir },
+      databasePath: "artifacts/db.dump",
+      verified: true,
+      now: new Date("2026-06-10T00:00:00.000Z"),
+      id: "backup-created",
+    });
+
+    expect(report.mode).toBe("create");
+    expect(report.createdManifest).toEqual(
+      expect.objectContaining({
+        id: "backup-created",
+        verified: true,
+      }),
+    );
+    expect(report.summary.latestId).toBe("backup-created");
+  });
+
+  it("rejects created backup artifact paths outside NP_BACKUP_DIR", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "np-backups-"));
+
+    await expect(
+      createOpsBackupManifest({
+        env: { NP_BACKUP_DIR: dir },
+        databasePath: "../db.dump",
+      }),
+    ).rejects.toThrow(`Backup artifact must be inside ${dir}`);
+  });
+
+  it("treats restore-verified created manifests as verified", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "np-backups-"));
+
+    const report = await createOpsBackupManifest({
+      env: { NP_BACKUP_DIR: dir },
+      restoreVerified: true,
+      now: new Date("2026-06-10T00:00:00.000Z"),
+      id: "backup-restore-verified",
+    });
+
+    expect(report.createdManifest).toEqual(
+      expect.objectContaining({
+        verified: true,
+        restoreVerified: true,
+      }),
+    );
   });
 });

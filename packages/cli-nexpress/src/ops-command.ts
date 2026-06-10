@@ -38,6 +38,7 @@ export function resolveOpsScriptInvocation(
       return { script: "ops:health", args: passthrough };
     case "backup":
       if (
+        passthrough[0] !== "create" &&
         passthrough[0] !== "status" &&
         passthrough[0] !== "list" &&
         !(passthrough[0] === "verify" && passthrough[1] === "latest")
@@ -46,8 +47,17 @@ export function resolveOpsScriptInvocation(
       }
       return { script: "ops:backup", args: passthrough };
     case "jobs":
-      if (passthrough[0] !== "status") return null;
-      return { script: "ops:jobs", args: passthrough.slice(1) };
+      if (
+        passthrough[0] !== "pause" &&
+        passthrough[0] !== "resume" &&
+        passthrough[0] !== "status"
+      ) {
+        return null;
+      }
+      return {
+        script: "ops:jobs",
+        args: passthrough[0] === "status" ? passthrough.slice(1) : passthrough,
+      };
     case "migrate":
       if (passthrough[0] !== "status" && passthrough[0] !== "plan") return null;
       return { script: "ops:migrate", args: passthrough };
