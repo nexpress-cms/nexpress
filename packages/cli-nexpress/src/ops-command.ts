@@ -58,7 +58,9 @@ export function resolveOpsScriptInvocation(
       if (passthrough[0] !== "list" && passthrough[0] !== "doctor") return null;
       return { script: "ops:plugins", args: passthrough };
     case "release":
-      if (passthrough[0] !== "check" && passthrough[0] !== "verify") return null;
+      if (passthrough[0] !== "check" && passthrough[0] !== "plan" && passthrough[0] !== "verify") {
+        return null;
+      }
       return { script: "release", args: passthrough };
     case "runbook":
       if (!passthrough[0] || passthrough[0].startsWith("--")) return null;

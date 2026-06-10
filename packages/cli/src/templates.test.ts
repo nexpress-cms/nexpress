@@ -417,6 +417,7 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("pnpm run ops:storage -- --json");
     expect(readme).toContain("pnpm run ops:plugins -- doctor --json");
     expect(readme).toContain("pnpm run release -- check --target vercel --json");
+    expect(readme).toContain("pnpm run release -- plan --target vercel --json");
     expect(readme).toContain("pnpm run release -- verify --url http://localhost:3000 --json");
     expect(readme).toContain("pnpm run runbook -- worker-not-draining --json");
     expect(readme).toContain('schemaVersion: "np.ops.v1"');

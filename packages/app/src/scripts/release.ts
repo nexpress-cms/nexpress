@@ -1,16 +1,21 @@
 // Must be first so child scripts see the same environment shape.
 import "./_load-env.js";
 
+import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import { DEPLOY_TARGETS, parseDeployTargetArg, type DeployTarget } from "./deploy-targets.js";
 import {
   buildReleaseJson,
+  buildReleasePlanJson,
+  renderBriefReleasePlan,
   renderBriefReleaseReport,
   type ReleaseJson,
   type ReleaseMode,
+  type ReleasePlanJson,
   type ReleaseStep,
   type ReleaseStepId,
   type ReleaseStepReport,
@@ -27,7 +32,7 @@ interface CapturedCommand {
 
 const RAW_ARGV = process.argv.slice(2);
 const ARGV = RAW_ARGV[0] === "--" ? RAW_ARGV.slice(1) : RAW_ARGV;
-const MODE: ReleaseMode = ARGV[0] === "verify" ? "verify" : "check";
+const MODE: ReleaseMode = ARGV[0] === "verify" ? "verify" : ARGV[0] === "plan" ? "plan" : "check";
 const JSON_MODE = ARGV.includes("--json");
 const COLOR_MODE = !JSON_MODE && !ARGV.includes("--no-color") && !process.env.NO_COLOR;
 
@@ -36,8 +41,10 @@ function printHelp(): void {
 
 Usage:
   pnpm run release -- check --target vercel --json
+  pnpm run release -- plan --target vercel --json
   pnpm run release -- verify --url https://example.com --json
   nexpress release check --target vercel --brief --no-color
+  nexpress release plan --target vercel --brief --no-color
   nexpress release verify --url https://example.com --brief --no-color
 
 Targets:
@@ -45,6 +52,7 @@ Targets:
 
 Options:
   --target <host> Deployment target for release check. Defaults to docker.
+  --out <path>    Artifact path for release plan. Defaults to .nexpress/releases/<plan>.json.
   --url <origin>  Deployed origin for release verify. Defaults to SITE_URL, then localhost.
   --json          Print the stable machine-readable release report.
   --brief         Print compact human output. This is the default.
@@ -62,6 +70,15 @@ function readUrlArg(argv: string[]): string | null {
     const arg = argv[i];
     if (arg === "--url") return argv[i + 1] ?? null;
     if (arg?.startsWith("--url=")) return arg.slice("--url=".length);
+  }
+  return null;
+}
+
+function readOutArg(argv: string[]): string | null {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--out") return argv[i + 1] ?? null;
+    if (arg?.startsWith("--out=")) return arg.slice("--out=".length);
   }
   return null;
 }
@@ -185,10 +202,10 @@ function verifyRuns(manager: PackageManager, url: string | null): Array<Promise<
 
 async function runRelease(): Promise<ReleaseJson> {
   const manager = detectPackageManager(process.cwd());
-  if (MODE === "check") {
+  if (MODE === "check" || MODE === "plan") {
     const target = parseDeployTargetArg(ARGV) ?? "docker";
     const steps = await Promise.all(checkRuns(manager, target));
-    return buildReleaseJson({ mode: MODE, target, steps });
+    return buildReleaseJson({ mode: MODE === "plan" ? "check" : MODE, target, steps });
   }
 
   const url = readUrlArg(ARGV);
@@ -196,10 +213,40 @@ async function runRelease(): Promise<ReleaseJson> {
   return buildReleaseJson({ mode: MODE, url, steps });
 }
 
+function defaultPlanArtifactPath(planId: string): string {
+  return resolve(process.cwd(), ".nexpress", "releases", `${planId}.json`);
+}
+
+async function writeReleasePlanArtifact(plan: ReleasePlanJson, outPath: string): Promise<void> {
+  await mkdir(dirname(outPath), { recursive: true });
+  await writeFile(outPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+}
+
+async function runReleasePlan(): Promise<ReleasePlanJson> {
+  const check = await runRelease();
+  const target = check.target ?? parseDeployTargetArg(ARGV) ?? "docker";
+  const createdAt = new Date().toISOString();
+  const planId = `release-${createdAt.replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
+  const artifactPath = resolve(process.cwd(), readOutArg(ARGV) ?? defaultPlanArtifactPath(planId));
+  const plan = buildReleasePlanJson({ planId, createdAt, target, artifactPath, check });
+  await writeReleasePlanArtifact(plan, artifactPath);
+  return plan;
+}
+
 async function main(): Promise<void> {
   if (shouldPrintHelp(ARGV)) {
     printHelp();
     return;
+  }
+
+  if (MODE === "plan") {
+    const plan = await runReleasePlan();
+    if (JSON_MODE) {
+      console.log(JSON.stringify(plan, null, 2));
+    } else {
+      console.log(renderBriefReleasePlan(plan, { color: COLOR_MODE }));
+    }
+    process.exit(plan.ok ? 0 : 1);
   }
 
   const report = await runRelease();
