@@ -33,6 +33,12 @@ export interface OpsJobsJson {
   ok: boolean;
   status: "ready" | "attention" | "blocked" | "disabled";
   enabled: boolean;
+  mutation?: {
+    action: "pause" | "resume";
+    applied: boolean;
+    reason: string | null;
+    error: string | null;
+  } | null;
   summary: {
     workersAlive: number;
     workersTotal: number;
@@ -159,6 +165,7 @@ export function buildOpsJobsJson(args: {
   pause: OpsJobsPauseState;
   counts: OpsJobsCounts;
   workers: OpsJobsWorker[];
+  mutation?: OpsJobsJson["mutation"];
 }): OpsJobsJson {
   const workersAlive = args.workers.filter((worker) => worker.alive).length;
   const workersTotal = args.workers.length;
@@ -180,6 +187,7 @@ export function buildOpsJobsJson(args: {
     ok: status === "ready" || status === "disabled" || status === "attention",
     status,
     enabled: args.enabled,
+    mutation: args.mutation ?? null,
     summary: {
       workersAlive,
       workersTotal,
@@ -298,6 +306,106 @@ export async function collectOpsJobsStatus(
   }
 }
 
+async function writePauseState(
+  client: PgClientLike,
+  paused: boolean,
+  reason: string | null,
+): Promise<OpsJobsPauseState> {
+  const next: OpsJobsPauseState = {
+    paused,
+    changedAt: new Date().toISOString(),
+    changedByUserId: null,
+    reason,
+  };
+  await client.query(
+    `insert into np_settings (site_id, key, value, updated_at)
+          values ('_system', 'jobs.paused', $1::jsonb, now())
+          on conflict (site_id, key)
+          do update set value = excluded.value, updated_at = now()`,
+    [JSON.stringify(next)],
+  );
+  return next;
+}
+
+export async function applyOpsJobsPauseMutation(args: {
+  action: "pause" | "resume";
+  reason?: string | null;
+  env?: OpsJobsEnv;
+  now?: Date;
+}): Promise<OpsJobsJson> {
+  const env = args.env ?? process.env;
+  const url = env.DATABASE_URL;
+  const fallback = await collectOpsJobsStatus(env, args.now ?? new Date());
+  if (!url) {
+    return {
+      ...fallback,
+      ok: false,
+      status: "blocked",
+      nextCommand: "Set DATABASE_URL and rerun nexpress ops jobs status --json",
+      mutation: {
+        action: args.action,
+        applied: false,
+        reason: args.reason ?? null,
+        error: "DATABASE_URL is not set",
+      },
+    };
+  }
+
+  let pg: PgModuleLike;
+  try {
+    pg = await loadPg();
+  } catch (error) {
+    return {
+      ...fallback,
+      ok: false,
+      status: "blocked",
+      nextCommand: "Install pg and rerun nexpress ops jobs status --json",
+      mutation: {
+        action: args.action,
+        applied: false,
+        reason: args.reason ?? null,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+
+  const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
+  try {
+    await client.connect();
+    await writePauseState(client, args.action === "pause", args.reason ?? null);
+    await client.end();
+  } catch (error) {
+    try {
+      await client.end();
+    } catch {
+      /* swallow */
+    }
+    return {
+      ...fallback,
+      ok: false,
+      status: "blocked",
+      nextCommand: "Check DATABASE_URL and rerun nexpress ops jobs status --json",
+      mutation: {
+        action: args.action,
+        applied: false,
+        reason: args.reason ?? null,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+
+  const report = await collectOpsJobsStatus(env, args.now ?? new Date());
+  return {
+    ...report,
+    mutation: {
+      action: args.action,
+      applied: true,
+      reason: args.reason ?? null,
+      error: null,
+    },
+  };
+}
+
 export function renderBriefOpsJobsStatus(
   report: OpsJobsJson,
   options: RenderOptions = { color: true },
@@ -318,6 +426,11 @@ export function renderBriefOpsJobsStatus(
     `jobs: ${report.summary.created.toString()} created, ${report.summary.active.toString()} active, ${report.summary.retry.toString()} retry, ${report.summary.failed.toString()} failed/expired`,
   ];
   if (report.pause.paused) lines.push(`paused: ${report.pause.reason ?? "yes"}`);
+  if (report.mutation) {
+    lines.push(
+      `mutation: ${report.mutation.action} applied=${String(report.mutation.applied)}${report.mutation.error ? ` error=${report.mutation.error}` : ""}`,
+    );
+  }
   for (const worker of report.workers.slice(0, 5)) {
     lines.push(
       `${worker.alive ? "[alive]" : "[stale]"} ${worker.id} - last seen ${worker.lastSeenAgoMs.toString()}ms ago`,

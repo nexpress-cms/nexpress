@@ -413,7 +413,11 @@ describe("getProjectFiles", () => {
     );
     expect(readme).toContain("pnpm run ops:migrate -- plan --json");
     expect(readme).toContain("pnpm run ops:backup -- status --json");
+    expect(readme).toContain("pnpm run ops:backup -- create --json");
+    expect(readme).toContain("pnpm run ops:backup -- verify latest --json");
     expect(readme).toContain("pnpm run ops:jobs -- --json");
+    expect(readme).toContain('pnpm run ops:jobs -- pause --reason "maintenance" --json');
+    expect(readme).toContain("pnpm run ops:jobs -- resume --json");
     expect(readme).toContain("pnpm run ops:storage -- --json");
     expect(readme).toContain("pnpm run ops:plugins -- doctor --json");
     expect(readme).toContain("pnpm run release -- check --target vercel --json");

@@ -1,11 +1,12 @@
-import { access, readdir, readFile, stat } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { access, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 import type { CheckResult } from "./doctor-readiness.js";
 
 type OpsBackupEnv = Record<string, string | undefined>;
 
-export type OpsBackupMode = "status" | "list" | "verify";
+export type OpsBackupMode = "create" | "status" | "list" | "verify";
 
 export interface BackupManifest {
   id: string;
@@ -57,6 +58,7 @@ export interface OpsBackupJson {
   maxAgeHours: number;
   summary: OpsBackupSummary;
   nextCommand: string | null;
+  createdManifest?: BackupManifestSummary | null;
   manifests: BackupManifestSummary[];
   checks: CheckResult[];
 }
@@ -178,6 +180,7 @@ export function buildOpsBackupJson(args: {
   required: boolean;
   maxAgeHours: number;
   manifests: BackupManifestSummary[];
+  createdManifest?: BackupManifestSummary | null;
   checks?: CheckResult[];
 }): OpsBackupJson {
   const manifests = [...args.manifests].sort(newestFirst);
@@ -267,6 +270,7 @@ export function buildOpsBackupJson(args: {
         : args.mode === "verify"
           ? "nexpress ops backup verify latest --json"
           : "nexpress ops backup status --required --json",
+    createdManifest: args.createdManifest ?? null,
     manifests,
     checks,
   };
@@ -365,6 +369,60 @@ export async function collectOpsBackupReport(args: {
   });
 }
 
+function backupArtifactManifestPath(backupDir: string, input: string): string {
+  const resolved = isAbsolute(input) ? resolve(input) : resolve(backupDir, input);
+  const rel = relative(backupDir, resolved);
+  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
+    throw new Error(`Backup artifact must be inside ${backupDir}: ${input}`);
+  }
+  return rel;
+}
+
+export async function createOpsBackupManifest(args: {
+  env?: OpsBackupEnv;
+  databasePath?: string | null;
+  mediaPath?: string | null;
+  verified?: boolean;
+  restoreVerified?: boolean;
+  now?: Date;
+  id?: string;
+}): Promise<OpsBackupJson> {
+  const env = args.env ?? process.env;
+  const backupDir = backupDirFromEnv(env);
+  const now = args.now ?? new Date();
+  const id =
+    args.id ?? `backup-${now.toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
+  const createdAt = now.toISOString();
+  const verified = Boolean(args.verified || args.restoreVerified);
+  await mkdir(backupDir, { recursive: true });
+
+  const manifest: BackupManifest = {
+    id,
+    createdAt,
+    ...(args.databasePath
+      ? { database: { path: backupArtifactManifestPath(backupDir, args.databasePath) } }
+      : {}),
+    ...(args.mediaPath
+      ? { media: { path: backupArtifactManifestPath(backupDir, args.mediaPath) } }
+      : {}),
+    ...(verified || args.restoreVerified
+      ? {
+          verification: {
+            ...(verified ? { verifiedAt: createdAt, status: "verified" } : {}),
+            ...(args.restoreVerified ? { restoreVerifiedAt: createdAt } : {}),
+          },
+        }
+      : {}),
+  };
+
+  await writeFile(join(backupDir, `${id}.json`), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  const report = await collectOpsBackupReport({ mode: "create", env });
+  return {
+    ...report,
+    createdManifest: manifestSummary(manifest),
+  };
+}
+
 function formatState(state: OpsBackupJson["status"], color: boolean): string {
   const c = color ? ANSI : EMPTY_ANSI;
   if (state === "ready") return `${c.green}ready${c.reset}`;
@@ -393,6 +451,7 @@ export function renderBriefOpsBackupReport(
     `${c.dim}NexPress ops backup ${report.mode}${c.reset}`,
     `${formatState(report.status, options.color)}: ${report.summary.manifests.toString()} manifests, latest ${report.summary.latestId ?? "none"}`,
   ];
+  if (report.createdManifest) lines.push(`created: ${report.createdManifest.id}`);
   for (const check of report.checks) lines.push(formatCheck(check, options.color));
   if (report.manifests.length > 0) {
     lines.push("manifests:");

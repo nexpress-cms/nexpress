@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  buildOpsJobsJson,
-  renderBriefOpsJobsStatus,
-  type OpsJobsCounts,
-} from "./ops-jobs-core.js";
+import { buildOpsJobsJson, renderBriefOpsJobsStatus, type OpsJobsCounts } from "./ops-jobs-core.js";
 
 const emptyCounts: OpsJobsCounts = {
   created: 0,
@@ -71,5 +67,30 @@ describe("ops jobs core", () => {
     expect(report.status).toBe("attention");
     expect(report.ok).toBe(true);
     expect(renderBriefOpsJobsStatus(report, { color: false })).toContain("attention: enabled");
+  });
+
+  it("includes mutation audit details in jobs reports", () => {
+    const report = buildOpsJobsJson({
+      enabled: true,
+      pause: { ...pause, paused: true, reason: "maintenance" },
+      counts: emptyCounts,
+      workers: [],
+      mutation: {
+        action: "pause",
+        applied: true,
+        reason: "maintenance",
+        error: null,
+      },
+    });
+
+    expect(report.mutation).toEqual(
+      expect.objectContaining({
+        action: "pause",
+        applied: true,
+      }),
+    );
+    expect(renderBriefOpsJobsStatus(report, { color: false })).toContain(
+      "mutation: pause applied=true",
+    );
   });
 });

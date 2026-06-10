@@ -172,9 +172,9 @@ nexpress ops restore smoke-test latest
 
 ```bash
 nexpress ops jobs status --json
+nexpress ops jobs pause --reason "maintenance"
+nexpress ops jobs resume
 nexpress ops jobs queues --json
-nexpress ops jobs pause <queue>
-nexpress ops jobs resume <queue>
 nexpress ops jobs retry <jobId>
 nexpress ops jobs drain --timeout 120s
 nexpress ops jobs heartbeat --json
@@ -368,9 +368,12 @@ Implementation status:
 - `nexpress ops migrate status|plan --json` emits
   `schemaVersion: "np.ops-migrate.v1"` with local/applied migration state,
   pending migrations, drift, unknown applied rows, and destructive SQL findings.
-- `nexpress ops backup status|list|verify latest --json` emits
+- `nexpress ops backup create|status|list|verify latest --json` emits
   `schemaVersion: "np.ops-backup.v1"` with backup manifest freshness,
-  verification state, and latest artifact checks.
+  manifest creation, verification state, and latest artifact checks.
+- `nexpress ops jobs pause|resume --json` persists the same global
+  `jobs.paused` state used by workers and returns `np.ops-jobs.v1` with a
+  mutation audit block.
 - v1 checks cover Node, `.env`, required env, database reachability,
   migration status, storage adapter sanity, jobs enablement, worker heartbeat
   when jobs are enabled, and `SITE_URL`.
@@ -608,6 +611,12 @@ Implementation status:
 
 - `nexpress ops jobs status --json` now reports worker heartbeat, pause
   state, and queue counts as `np.ops-jobs.v1`.
+- `nexpress ops jobs pause|resume --json` now writes the global pause state in
+  `np_settings("_system", "jobs.paused")` and returns the updated status with a
+  mutation audit block.
+- `nexpress ops backup create --json` now records an operator-provided backup
+  manifest in `NP_BACKUP_DIR` / `.nexpress/backups`; it does not perform a DB
+  dump.
 - `nexpress ops storage status --json` now reports local/S3 adapter
   readiness, media index counts, and local missing/orphaned media drift as
   `np.ops-storage.v1`.
