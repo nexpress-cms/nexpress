@@ -69,6 +69,10 @@ describe("buildRunScriptArgs", () => {
       script: "release",
       args: ["check", "--target", "vercel"],
     });
+    expect(resolveOpsScriptInvocation("release", ["plan", "--target", "vercel"])).toEqual({
+      script: "release",
+      args: ["plan", "--target", "vercel"],
+    });
     expect(
       resolveOpsScriptInvocation("release", ["verify", "--url", "https://example.com"]),
     ).toEqual({
