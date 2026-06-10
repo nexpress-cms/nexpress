@@ -350,14 +350,21 @@ Implementation status:
   `schemaVersion: "np.ops-plugins.v1"` with plugin inventory plus duplicate
   plugin ID, block type, API route, and page route warnings.
 - `nexpress release check --target <host> --json` emits
-  `schemaVersion: "np.release.v1"` by composing preflight, jobs, storage, and
-  plugin diagnostics into a single pre-release gate.
+  `schemaVersion: "np.release.v1"` by composing preflight, migration plan,
+  required backup readiness, jobs, storage, and plugin diagnostics into a
+  single pre-release gate.
 - `nexpress release verify --url <origin> --json` emits the same
   `np.release.v1` envelope by composing health, jobs, storage, and plugin
   diagnostics into a post-release readiness gate.
 - `nexpress runbook <name> --json` emits `schemaVersion: "np.runbook.v1"`
   for common read-only incident recipes with evidence, diagnosis, next
   commands, risk, rollback notes, and docs links.
+- `nexpress ops migrate status|plan --json` emits
+  `schemaVersion: "np.ops-migrate.v1"` with local/applied migration state,
+  pending migrations, drift, unknown applied rows, and destructive SQL findings.
+- `nexpress ops backup status|list|verify latest --json` emits
+  `schemaVersion: "np.ops-backup.v1"` with backup manifest freshness,
+  verification state, and latest artifact checks.
 - v1 checks cover Node, `.env`, required env, database reachability,
   migration status, storage adapter sanity, jobs enablement, worker heartbeat
   when jobs are enabled, and `SITE_URL`.
@@ -632,8 +639,8 @@ migrations, backups, and readiness.
 Implementation status:
 
 - `nexpress release check --target <host> --json` now composes
-  `ops:preflight`, `ops:jobs`, `ops:storage`, and `ops:plugins doctor` as
-  `np.release.v1`.
+  `ops:preflight`, `ops:migrate plan`, `ops:backup status --required`,
+  `ops:jobs`, `ops:storage`, and `ops:plugins doctor` as `np.release.v1`.
 - `nexpress release verify --url <origin> --json` now composes
   `ops:health`, `ops:jobs`, `ops:storage`, and `ops:plugins doctor` as
   `np.release.v1`.
@@ -647,7 +654,8 @@ Implementation status:
 
 - `release check --json` returns a compact pass / fail summary with links to
   failing command output artifacts.
-- Pending migrations and stale backups block production release plans.
+- Pending migrations and stale / missing / unverified backups block production
+  release checks through dedicated migration and backup evidence steps.
 - `release verify --json` can run after deployment and report readiness.
 
 ### Issue 7 — Add executable runbook commands
@@ -678,10 +686,10 @@ Implementation status:
   `np.runbook.v1`.
 - `nexpress runbook storage-local-to-s3 --json` now composes storage and Vercel
   preflight evidence into `np.runbook.v1`.
-- `nexpress runbook backup-restore-drill --json` now composes ops status and
-  release check evidence into `np.runbook.v1`.
-- `nexpress runbook migration-crashed --json` now composes ops status evidence
-  into `np.runbook.v1`.
+- `nexpress runbook backup-restore-drill --json` now composes
+  `ops:backup verify latest` and release check evidence into `np.runbook.v1`.
+- `nexpress runbook migration-crashed --json` now composes
+  `ops:migrate status` and `ops:migrate plan` evidence into `np.runbook.v1`.
 - `nexpress ops runbook <name> --json` delegates to the same project-side
   script for agents staying inside the ops namespace.
 - Runbooks are intentionally read-only in this pass. Automated pause/resume,

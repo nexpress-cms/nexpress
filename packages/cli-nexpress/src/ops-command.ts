@@ -13,7 +13,9 @@ export interface OpsScriptInvocation {
     | "doctor"
     | "ops:preflight"
     | "ops:health"
+    | "ops:backup"
     | "ops:jobs"
+    | "ops:migrate"
     | "ops:storage"
     | "ops:plugins"
     | "release"
@@ -34,9 +36,21 @@ export function resolveOpsScriptInvocation(
       return { script: "ops:preflight", args: passthrough };
     case "health":
       return { script: "ops:health", args: passthrough };
+    case "backup":
+      if (
+        passthrough[0] !== "status" &&
+        passthrough[0] !== "list" &&
+        !(passthrough[0] === "verify" && passthrough[1] === "latest")
+      ) {
+        return null;
+      }
+      return { script: "ops:backup", args: passthrough };
     case "jobs":
       if (passthrough[0] !== "status") return null;
       return { script: "ops:jobs", args: passthrough.slice(1) };
+    case "migrate":
+      if (passthrough[0] !== "status" && passthrough[0] !== "plan") return null;
+      return { script: "ops:migrate", args: passthrough };
     case "storage":
       if (passthrough[0] !== "status") return null;
       return { script: "ops:storage", args: passthrough.slice(1) };
