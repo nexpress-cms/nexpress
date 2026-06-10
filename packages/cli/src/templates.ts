@@ -62,8 +62,10 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "scripts/dev-notice.ts": utf8(devNoticeScriptTemplate()),
     "scripts/doctor.ts": utf8(doctorScriptTemplate()),
     "scripts/generate-schema.ts": utf8(generateSchemaScriptTemplate()),
+    "scripts/ops-backup.ts": utf8(opsBackupScriptTemplate()),
     "scripts/ops-health.ts": utf8(opsHealthScriptTemplate()),
     "scripts/ops-jobs.ts": utf8(opsJobsScriptTemplate()),
+    "scripts/ops-migrate.ts": utf8(opsMigrateScriptTemplate()),
     "scripts/ops-plugins.ts": utf8(opsPluginsScriptTemplate()),
     "scripts/ops-preflight.ts": utf8(opsPreflightScriptTemplate()),
     "scripts/ops-status.ts": utf8(opsStatusScriptTemplate()),
@@ -149,8 +151,10 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "deploy:plan": "tsx scripts/deploy-plan.ts",
         doctor: "tsx scripts/doctor.ts",
         "doctor:prod": "tsx scripts/doctor.ts --prod",
+        "ops:backup": "tsx scripts/ops-backup.ts",
         "ops:health": "tsx scripts/ops-health.ts",
         "ops:jobs": "tsx scripts/ops-jobs.ts",
+        "ops:migrate": "tsx scripts/ops-migrate.ts",
         "ops:plugins": "tsx scripts/ops-plugins.ts",
         "ops:preflight": "tsx scripts/ops-preflight.ts",
         "ops:status": "tsx scripts/ops-status.ts",
@@ -511,8 +515,16 @@ function opsHealthScriptTemplate(): string {
   return `import "@nexpress/app/scripts/ops-health";\n`;
 }
 
+function opsBackupScriptTemplate(): string {
+  return `import "@nexpress/app/scripts/ops-backup";\n`;
+}
+
 function opsJobsScriptTemplate(): string {
   return `import "@nexpress/app/scripts/ops-jobs";\n`;
+}
+
+function opsMigrateScriptTemplate(): string {
+  return `import "@nexpress/app/scripts/ops-migrate";\n`;
 }
 
 function opsPluginsScriptTemplate(): string {
@@ -793,6 +805,8 @@ pnpm run ops:status -- --json
 pnpm run ops:status -- --brief --no-color
 pnpm run ops:preflight -- --target vercel --json
 pnpm run ops:health -- --url http://localhost:3000 --brief --no-color
+pnpm run ops:migrate -- plan --json
+pnpm run ops:backup -- status --json
 pnpm run ops:jobs -- --json
 pnpm run ops:storage -- --json
 pnpm run ops:plugins -- doctor --json
@@ -806,12 +820,14 @@ pnpm run runbook -- worker-not-draining --json
 \`checks[].id\`, and a \`nextCommand\` when the site needs follow-up.
 \`ops:preflight\` combines \`deploy:plan\` and the production doctor into a
 single deployment gate. \`ops:health\` checks \`/api/health/ready\` for a
-running local or hosted site. \`ops:jobs\` reports worker heartbeat, pause
-state, and pg-boss queue counts. \`ops:storage\` reports storage adapter
-readiness and local media drift; \`ops:plugins\` reports plugin inventory
-and route/block conflicts. \`release check\` composes the pre-deploy gate;
-\`release verify\` composes the post-deploy readiness gate. \`runbook\`
-turns common incidents into evidence-backed diagnosis and next commands.
+running local or hosted site. \`ops:migrate\` reports local/applied migration
+state and destructive SQL risk; \`ops:backup\` reports manifest freshness and
+verification state. \`ops:jobs\` reports worker heartbeat, pause state, and
+pg-boss queue counts. \`ops:storage\` reports storage adapter readiness and
+local media drift; \`ops:plugins\` reports plugin inventory and route/block
+conflicts. \`release check\` composes the pre-deploy gate; \`release verify\`
+composes the post-deploy readiness gate. \`runbook\` turns common incidents
+into evidence-backed diagnosis and next commands.
 
 ### Stuck? Run the doctor.
 

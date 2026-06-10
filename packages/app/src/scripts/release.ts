@@ -147,6 +147,12 @@ function checkRuns(manager: PackageManager, target: DeployTarget): Array<Promise
     capture(manager, runArgs(manager, "ops:preflight", ["--target", target, "--json"])).then(
       (run) => stepFromRun("ops.preflight", run),
     ),
+    capture(manager, runArgs(manager, "ops:migrate", ["plan", "--json"])).then((run) =>
+      stepFromRun("ops.migrate", run),
+    ),
+    capture(manager, runArgs(manager, "ops:backup", ["status", "--required", "--json"])).then(
+      (run) => stepFromRun("ops.backup", run),
+    ),
     capture(manager, runArgs(manager, "ops:jobs", ["--json"])).then((run) =>
       stepFromRun("ops.jobs", run),
     ),

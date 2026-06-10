@@ -37,9 +37,21 @@ describe("buildRunScriptArgs", () => {
       script: "ops:health",
       args: ["--url", "http://localhost:3000"],
     });
+    expect(resolveOpsScriptInvocation("backup", ["status", "--json"])).toEqual({
+      script: "ops:backup",
+      args: ["status", "--json"],
+    });
+    expect(resolveOpsScriptInvocation("backup", ["verify", "latest", "--json"])).toEqual({
+      script: "ops:backup",
+      args: ["verify", "latest", "--json"],
+    });
     expect(resolveOpsScriptInvocation("jobs", ["status", "--json"])).toEqual({
       script: "ops:jobs",
       args: ["--json"],
+    });
+    expect(resolveOpsScriptInvocation("migrate", ["plan", "--json"])).toEqual({
+      script: "ops:migrate",
+      args: ["plan", "--json"],
     });
     expect(resolveOpsScriptInvocation("storage", ["status", "--json"])).toEqual({
       script: "ops:storage",
@@ -68,6 +80,8 @@ describe("buildRunScriptArgs", () => {
       args: ["worker-not-draining", "--json"],
     });
     expect(resolveOpsScriptInvocation("jobs", ["queues", "--json"])).toBeNull();
+    expect(resolveOpsScriptInvocation("backup", ["create", "--json"])).toBeNull();
+    expect(resolveOpsScriptInvocation("migrate", ["apply", "--safe"])).toBeNull();
     expect(resolveOpsScriptInvocation("storage", ["verify", "--json"])).toBeNull();
     expect(resolveOpsScriptInvocation("plugins", ["enable", "demo"])).toBeNull();
     expect(resolveOpsScriptInvocation("release", ["apply", "--yes"])).toBeNull();

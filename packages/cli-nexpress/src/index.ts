@@ -40,7 +40,11 @@ Usage:
   nexpress ops doctor [--prod|--json|--fix-plan]      Run the project doctor through the ops namespace
   nexpress ops preflight --target <host> [--json]     Run deploy-plan + production doctor as one gate
   nexpress ops health [--url <origin>] [--json]       Probe /api/health/ready on a running site
+  nexpress ops backup status [--json|--brief]         Report backup manifest freshness and verification
+  nexpress ops backup verify latest [--json|--brief]  Verify latest backup manifest artifact presence
   nexpress ops jobs status [--json|--brief]           Report worker heartbeat and queue counts
+  nexpress ops migrate status [--json|--brief]        Report local vs applied migrations
+  nexpress ops migrate plan [--json|--brief]          Plan migration safety and destructive SQL risk
   nexpress ops storage status [--json|--brief]        Report storage adapter and media file drift
   nexpress ops plugins list [--json|--brief]          List configured plugins
   nexpress ops plugins doctor [--json|--brief]        Report plugin ID/block/route conflicts

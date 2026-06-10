@@ -161,8 +161,8 @@ function evidenceRuns(
       ];
     case "backup-restore-drill":
       return [
-        capture(manager, runArgs(manager, "ops:status", ["--json"])).then((run) =>
-          evidenceFromRun("ops.status", run),
+        capture(manager, runArgs(manager, "ops:backup", ["verify", "latest", "--json"])).then(
+          (run) => evidenceFromRun("ops.backup.verify", run),
         ),
         capture(
           manager,
@@ -171,8 +171,11 @@ function evidenceRuns(
       ];
     case "migration-crashed":
       return [
-        capture(manager, runArgs(manager, "ops:status", ["--json"])).then((run) =>
-          evidenceFromRun("ops.status", run),
+        capture(manager, runArgs(manager, "ops:migrate", ["status", "--json"])).then((run) =>
+          evidenceFromRun("ops.migrate.status", run),
+        ),
+        capture(manager, runArgs(manager, "ops:migrate", ["plan", "--json"])).then((run) =>
+          evidenceFromRun("ops.migrate.plan", run),
         ),
       ];
   }

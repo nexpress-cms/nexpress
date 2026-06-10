@@ -321,8 +321,10 @@ describe("getProjectFiles", () => {
       scripts: Record<string, string>;
     };
     expect(pkg.scripts["doctor:prod"]).toBe("tsx scripts/doctor.ts --prod");
+    expect(pkg.scripts["ops:backup"]).toBe("tsx scripts/ops-backup.ts");
     expect(pkg.scripts["ops:health"]).toBe("tsx scripts/ops-health.ts");
     expect(pkg.scripts["ops:jobs"]).toBe("tsx scripts/ops-jobs.ts");
+    expect(pkg.scripts["ops:migrate"]).toBe("tsx scripts/ops-migrate.ts");
     expect(pkg.scripts["ops:plugins"]).toBe("tsx scripts/ops-plugins.ts");
     expect(pkg.scripts["ops:preflight"]).toBe("tsx scripts/ops-preflight.ts");
     expect(pkg.scripts["ops:status"]).toBe("tsx scripts/ops-status.ts");
@@ -336,7 +338,9 @@ describe("getProjectFiles", () => {
     const opsStatus = files["scripts/ops-status.ts"];
     const opsPreflight = files["scripts/ops-preflight.ts"];
     const opsHealth = files["scripts/ops-health.ts"];
+    const opsBackup = files["scripts/ops-backup.ts"];
     const opsJobs = files["scripts/ops-jobs.ts"];
+    const opsMigrate = files["scripts/ops-migrate.ts"];
     const opsPlugins = files["scripts/ops-plugins.ts"];
     const opsStorage = files["scripts/ops-storage.ts"];
     const release = files["scripts/release.ts"];
@@ -344,7 +348,9 @@ describe("getProjectFiles", () => {
     expect(opsStatus).toBeDefined();
     expect(opsPreflight).toBeDefined();
     expect(opsHealth).toBeDefined();
+    expect(opsBackup).toBeDefined();
     expect(opsJobs).toBeDefined();
+    expect(opsMigrate).toBeDefined();
     expect(opsPlugins).toBeDefined();
     expect(opsStorage).toBeDefined();
     expect(release).toBeDefined();
@@ -352,7 +358,9 @@ describe("getProjectFiles", () => {
     expect(opsStatus).toMatch(/@nexpress\/app\/scripts\/ops-status/);
     expect(opsPreflight).toMatch(/@nexpress\/app\/scripts\/ops-preflight/);
     expect(opsHealth).toMatch(/@nexpress\/app\/scripts\/ops-health/);
+    expect(opsBackup).toMatch(/@nexpress\/app\/scripts\/ops-backup/);
     expect(opsJobs).toMatch(/@nexpress\/app\/scripts\/ops-jobs/);
+    expect(opsMigrate).toMatch(/@nexpress\/app\/scripts\/ops-migrate/);
     expect(opsPlugins).toMatch(/@nexpress\/app\/scripts\/ops-plugins/);
     expect(opsStorage).toMatch(/@nexpress\/app\/scripts\/ops-storage/);
     expect(release).toMatch(/@nexpress\/app\/scripts\/release/);
@@ -361,7 +369,9 @@ describe("getProjectFiles", () => {
       opsStatus,
       opsPreflight,
       opsHealth,
+      opsBackup,
       opsJobs,
+      opsMigrate,
       opsPlugins,
       opsStorage,
       release,
@@ -401,6 +411,8 @@ describe("getProjectFiles", () => {
     expect(readme).toContain(
       "pnpm run ops:health -- --url http://localhost:3000 --brief --no-color",
     );
+    expect(readme).toContain("pnpm run ops:migrate -- plan --json");
+    expect(readme).toContain("pnpm run ops:backup -- status --json");
     expect(readme).toContain("pnpm run ops:jobs -- --json");
     expect(readme).toContain("pnpm run ops:storage -- --json");
     expect(readme).toContain("pnpm run ops:plugins -- doctor --json");

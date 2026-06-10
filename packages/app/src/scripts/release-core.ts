@@ -2,7 +2,9 @@ export type ReleaseMode = "check" | "verify";
 export type ReleaseStepId =
   | "ops.preflight"
   | "ops.health"
+  | "ops.backup"
   | "ops.jobs"
+  | "ops.migrate"
   | "ops.storage"
   | "ops.plugins";
 

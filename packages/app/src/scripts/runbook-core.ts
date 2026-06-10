@@ -143,7 +143,10 @@ export function buildRunbookJson(args: {
         nextCommands:
           evidenceCommands.length > 0
             ? evidenceCommands
-            : ["nexpress ops status --json", "nexpress release check --target docker --json"],
+            : [
+                "nexpress ops backup verify latest --json",
+                "nexpress release check --target docker --json",
+              ],
         rollbackNotes: [
           "Run restore drills against an isolated database and media snapshot, never production.",
           "Record the migration version, app commit, and media manifest with every backup artifact.",
@@ -166,7 +169,7 @@ export function buildRunbookJson(args: {
         nextCommands:
           evidenceCommands.length > 0
             ? evidenceCommands
-            : ["pnpm db:migrate -- --status", "nexpress ops status --json"],
+            : ["nexpress ops migrate status --json", "nexpress ops migrate plan --json"],
         rollbackNotes: [
           "Do not edit applied migration SQL to match a failed database by hand.",
           "Restore the database or migration files from the matching commit before retrying apply.",
