@@ -1,5 +1,16 @@
 # @nexpress/theme-docs
 
+## 0.3.17
+
+### Patch Changes
+
+- Updated dependencies [6d55e54]
+  - @nexpress/blocks@0.3.17
+  - @nexpress/next@0.3.17
+  - @nexpress/theme@0.3.17
+  - @nexpress/core@0.3.17
+  - @nexpress/editor@0.3.17
+
 ## 0.3.16
 
 ### Patch Changes

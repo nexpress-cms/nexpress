@@ -1,5 +1,22 @@
 # @nexpress/admin
 
+## 0.3.17
+
+### Patch Changes
+
+- 9342083: Reduce admin React compiler warnings in settings, plugin, navigation, and async loader surfaces by deferring load-triggered state updates outside synchronous effects.
+- e0fffb6: Improve collection editor field affordances with text length counters, native length limits, and clearer condition-hidden field guidance.
+- 456cfbd: Keep the admin package lintable with content-based ESLint caching and remove remaining lint errors in the document editor helpers.
+- 44520a5: Reduce React compiler warnings in the admin block editor by moving open-time resets and DOM projection updates out of synchronous effects.
+- e6eb968: Reduce admin React compiler warnings across dialog reset, media loading, navigation shell, data table pagination, and collection list surfaces.
+- 6d55e54: Keep nested array block props editable in the block editor so docs API table rows can edit their cells without JSON fallback.
+- fef3414: Polish Document-mode quick insert accessibility and keep hover controls inside the viewport on narrow canvases.
+- f257223: Count rich-text content in the Document-mode status bar and align the in-page editor docs with the implemented quick insert and top-level drag controls.
+- Updated dependencies [6d55e54]
+  - @nexpress/blocks@0.3.17
+  - @nexpress/core@0.3.17
+  - @nexpress/editor@0.3.17
+
 ## 0.3.16
 
 ### Patch Changes

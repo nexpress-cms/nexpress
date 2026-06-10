@@ -1,5 +1,11 @@
 # @nexpress/plugin-seo-audit
 
+## 0.3.17
+
+### Patch Changes
+
+- @nexpress/plugin-sdk@0.3.17
+
 ## 0.3.16
 
 ### Patch Changes
