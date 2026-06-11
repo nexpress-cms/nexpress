@@ -614,17 +614,26 @@ Implementation status:
 - `nexpress ops jobs pause|resume --json` now writes the global pause state in
   `np_settings("_system", "jobs.paused")` and returns the updated status with a
   mutation audit block.
+- `nexpress ops jobs retry-all --json` now dry-runs retryable archived jobs by
+  default, and `--execute --approve retry-all` re-enqueues failed / cancelled /
+  expired jobs with a mutation audit block.
+- `nexpress ops jobs drain --json` now reports drain readiness by default, and
+  `--execute --approve drain` starts a safe drain by pausing new job claims and
+  returning the remaining active / created / retry counts.
 - `nexpress ops backup create --json` now records an operator-provided backup
   manifest in `NP_BACKUP_DIR` / `.nexpress/backups`; it does not perform a DB
   dump.
 - `nexpress ops storage status --json` now reports local/S3 adapter
   readiness, media index counts, and local missing/orphaned media drift as
   `np.ops-storage.v1`.
+- `nexpress ops storage verify --json` now re-runs the same integrity gate
+  explicitly, and `nexpress ops storage test --execute --approve storage-test`
+  runs an upload / exists / delete probe through the configured adapter.
 - `nexpress ops plugins list|doctor --json` now reports configured plugin
   inventory and static conflicts as `np.ops-plugins.v1`.
-- Queue mutation commands (`pause`, `resume`, `retry`, `drain`) remain future
+- Queue destructive commands beyond bounded retry and drain start remain future
   work and should keep requiring explicit operator approval.
-- Active storage probes/migration commands (`test`, `verify`, `migrate`) and
+- Storage migration commands (`migrate`) and
   plugin mutation commands (`enable`, `disable`, `upgrade-plan`) remain future
   work and should keep requiring explicit operator approval.
 

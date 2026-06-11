@@ -93,4 +93,33 @@ describe("ops jobs core", () => {
       "mutation: pause applied=true",
     );
   });
+
+  it("describes retry-all dry-run audits without marking them applied", () => {
+    const report = buildOpsJobsJson({
+      enabled: true,
+      pause,
+      counts: { ...emptyCounts, failed: 2 },
+      workers: [],
+      mutation: {
+        action: "retry-all",
+        applied: false,
+        mode: "dry-run",
+        reason: "state=failed",
+        error: null,
+        target: { state: "failed", name: null, limit: 200 },
+        result: { matched: 2, planned: 2, remaining: 0 },
+      },
+    });
+
+    expect(report.mutation).toEqual(
+      expect.objectContaining({
+        action: "retry-all",
+        mode: "dry-run",
+        applied: false,
+      }),
+    );
+    expect(renderBriefOpsJobsStatus(report, { color: false })).toContain(
+      "mutation: retry-all applied=false",
+    );
+  });
 });

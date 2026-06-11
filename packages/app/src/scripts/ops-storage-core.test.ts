@@ -21,6 +21,7 @@ describe("ops storage core", () => {
         schemaVersion: "np.ops-storage.v1",
         ok: true,
         status: "ready",
+        operation: "status",
         nextCommand: null,
       }),
     );
@@ -71,10 +72,65 @@ describe("ops storage core", () => {
     expect(renderBriefOpsStorageStatus(report, { color: false })).toBe(
       [
         "NexPress ops storage",
-        "ready: s3",
+        "ready: s3 (status)",
         "media: 0 rows, 0 indexed objects",
         "[ok] storage.s3_config S3 storage config",
       ].join("\n"),
+    );
+  });
+
+  it("builds verify reports with verify follow-up commands", () => {
+    const report = buildOpsStorageJson({
+      adapter: "local",
+      operation: "verify",
+      summary: {
+        mediaRows: 0,
+        indexedObjects: 0,
+        localFiles: null,
+        missingFiles: 0,
+        orphanedFiles: 0,
+      },
+      checks: [
+        {
+          id: "storage.local_directory",
+          state: "warn",
+          label: "Local storage directory",
+        },
+      ],
+    });
+
+    expect(report).toEqual(
+      expect.objectContaining({
+        operation: "verify",
+        status: "attention",
+        nextCommand: "nexpress ops storage verify --json",
+      }),
+    );
+  });
+
+  it("renders storage test mutation audits", () => {
+    const report = buildOpsStorageJson({
+      adapter: "local",
+      operation: "test",
+      summary: {
+        mediaRows: 0,
+        indexedObjects: 0,
+        localFiles: 0,
+        missingFiles: 0,
+        orphanedFiles: 0,
+      },
+      checks: [{ id: "storage.adapter", state: "ok", label: "Storage adapter" }],
+      mutation: {
+        action: "test",
+        applied: false,
+        mode: "dry-run",
+        error: null,
+        result: { probe: "dry-run" },
+      },
+    });
+
+    expect(renderBriefOpsStorageStatus(report, { color: false })).toContain(
+      "mutation: test applied=false",
     );
   });
 });

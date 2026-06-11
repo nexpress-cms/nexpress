@@ -2,7 +2,9 @@
 import "./_load-env.js";
 
 import {
+  applyOpsJobsDrainMutation,
   applyOpsJobsPauseMutation,
+  applyOpsJobsRetryAllMutation,
   collectOpsJobsStatus,
   renderBriefOpsJobsStatus,
 } from "./ops-jobs-core.js";
@@ -21,12 +23,22 @@ Usage:
   pnpm run ops:jobs -- --json
   pnpm run ops:jobs -- pause --reason "maintenance" --json
   pnpm run ops:jobs -- resume --json
+  pnpm run ops:jobs -- retry-all --state failed --json
+  pnpm run ops:jobs -- retry-all --state failed --execute --approve retry-all --json
+  pnpm run ops:jobs -- drain --execute --approve drain --json
   nexpress ops jobs status --json
   nexpress ops jobs pause --reason "maintenance" --json
   nexpress ops jobs resume --json
+  nexpress ops jobs retry-all --state failed --execute --approve retry-all --json
+  nexpress ops jobs drain --execute --approve drain --json
 
 Options:
-  --reason <text>  Optional reason stored with pause/resume changes.
+  --reason <text>  Optional reason stored with pause/resume/drain changes.
+  --state <state>  Retry-all state: failed, cancelled, or expired. Defaults to failed.
+  --name <queue>   Narrow retry-all to one pg-boss queue name.
+  --limit <n>      Maximum retry-all rows to process. Defaults to 200, caps at 500.
+  --execute        Apply retry-all/drain. Without this, those commands dry-run.
+  --approve <id>   Required with --execute: retry-all or drain.
   --json       Print the stable machine-readable jobs report.
   --brief      Print compact human output. This is the default.
   --no-color   Disable ANSI color in human-readable output.
@@ -39,12 +51,29 @@ function shouldPrintHelp(argv: string[]): boolean {
 }
 
 function readReasonArg(): string | null {
+  return readStringArg("--reason");
+}
+
+function readStringArg(name: string): string | null {
   for (let i = 0; i < ARGV.length; i += 1) {
     const arg = ARGV[i];
-    if (arg === "--reason") return ARGV[i + 1] ?? null;
-    if (arg?.startsWith("--reason=")) return arg.slice("--reason=".length);
+    if (arg === name) return ARGV[i + 1] ?? null;
+    if (arg?.startsWith(`${name}=`)) return arg.slice(name.length + 1);
   }
   return null;
+}
+
+function readRetryStateArg(): "failed" | "cancelled" | "expired" | undefined {
+  const state = readStringArg("--state");
+  if (state === "failed" || state === "cancelled" || state === "expired") return state;
+  return undefined;
+}
+
+function readLimitArg(): number | undefined {
+  const raw = readStringArg("--limit");
+  if (!raw) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 async function main(): Promise<void> {
@@ -52,7 +81,13 @@ async function main(): Promise<void> {
     printHelp();
     return;
   }
-  if (SUBCOMMAND !== "status" && SUBCOMMAND !== "pause" && SUBCOMMAND !== "resume") {
+  if (
+    SUBCOMMAND !== "status" &&
+    SUBCOMMAND !== "pause" &&
+    SUBCOMMAND !== "resume" &&
+    SUBCOMMAND !== "retry-all" &&
+    SUBCOMMAND !== "drain"
+  ) {
     printHelp();
     process.exit(2);
   }
@@ -60,7 +95,21 @@ async function main(): Promise<void> {
   const report =
     SUBCOMMAND === "pause" || SUBCOMMAND === "resume"
       ? await applyOpsJobsPauseMutation({ action: SUBCOMMAND, reason: readReasonArg() })
-      : await collectOpsJobsStatus();
+      : SUBCOMMAND === "retry-all"
+        ? await applyOpsJobsRetryAllMutation({
+            state: readRetryStateArg(),
+            name: readStringArg("--name"),
+            limit: readLimitArg(),
+            execute: ARGV.includes("--execute"),
+            approve: readStringArg("--approve"),
+          })
+        : SUBCOMMAND === "drain"
+          ? await applyOpsJobsDrainMutation({
+              execute: ARGV.includes("--execute"),
+              approve: readStringArg("--approve"),
+              reason: readReasonArg(),
+            })
+          : await collectOpsJobsStatus();
   if (JSON_MODE) {
     console.log(JSON.stringify(report, null, 2));
   } else {

@@ -2,6 +2,8 @@ import { createRequire } from "node:module";
 import { access, readdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
+import { createStorageAdapter } from "@nexpress/core";
+
 import type { CheckResult } from "./doctor-readiness.js";
 
 type OpsStorageEnv = Record<string, string | undefined>;
@@ -39,6 +41,14 @@ export interface OpsStorageJson {
   ok: boolean;
   status: "ready" | "attention" | "blocked";
   adapter: "local" | "s3" | "unknown";
+  operation: "status" | "verify" | "test";
+  mutation?: {
+    action: "test";
+    applied: boolean;
+    mode: "dry-run" | "execute";
+    error: string | null;
+    result?: Record<string, string | boolean | null>;
+  } | null;
   summary: OpsStorageSummary;
   nextCommand: string | null;
   checks: CheckResult[];
@@ -164,6 +174,8 @@ export function buildOpsStorageJson(args: {
   adapter: OpsStorageJson["adapter"];
   summary: OpsStorageSummary;
   checks: CheckResult[];
+  operation?: OpsStorageJson["operation"];
+  mutation?: OpsStorageJson["mutation"];
 }): OpsStorageJson {
   const counts = countChecks(args.checks);
   const status = counts.errors > 0 ? "blocked" : counts.warnings > 0 ? "attention" : "ready";
@@ -172,14 +184,22 @@ export function buildOpsStorageJson(args: {
     ok: counts.errors === 0,
     status,
     adapter: args.adapter,
+    operation: args.operation ?? "status",
+    mutation: args.mutation ?? null,
     summary: args.summary,
-    nextCommand: status === "ready" ? null : "nexpress ops storage status --json",
+    nextCommand:
+      status === "ready"
+        ? null
+        : args.operation === "verify"
+          ? "nexpress ops storage verify --json"
+          : "nexpress ops storage status --json",
     checks: args.checks,
   };
 }
 
 export async function collectOpsStorageStatus(
   env: OpsStorageEnv = process.env,
+  operation: OpsStorageJson["operation"] = "status",
 ): Promise<OpsStorageJson> {
   const adapter = parseAdapter(env);
   const checks: CheckResult[] = [];
@@ -199,7 +219,7 @@ export async function collectOpsStorageStatus(
       detail: env.NP_STORAGE_ADAPTER ?? "unknown",
       hint: "Use NP_STORAGE_ADAPTER=local or NP_STORAGE_ADAPTER=s3.",
     });
-    return buildOpsStorageJson({ adapter, summary, checks });
+    return buildOpsStorageJson({ adapter, summary, checks, operation });
   }
 
   checks.push({ id: "storage.adapter", state: "ok", label: "Storage adapter", detail: adapter });
@@ -263,7 +283,7 @@ export async function collectOpsStorageStatus(
             ? "pg package unavailable"
             : "could not query np_media",
     });
-    return buildOpsStorageJson({ adapter, summary, checks });
+    return buildOpsStorageJson({ adapter, summary, checks, operation });
   }
 
   const indexed = new Set<string>();
@@ -321,7 +341,121 @@ export async function collectOpsStorageStatus(
     );
   }
 
-  return buildOpsStorageJson({ adapter, summary, checks });
+  return buildOpsStorageJson({ adapter, summary, checks, operation });
+}
+
+function buildStorageConfig(env: OpsStorageEnv, adapter: "local" | "s3") {
+  if (adapter === "local") {
+    return {
+      adapter,
+      local: {
+        directory: resolve(process.cwd(), env.NP_STORAGE_DIR ?? "./public/media"),
+        baseUrl: env.NP_STORAGE_URL ?? "/media",
+      },
+    } as const;
+  }
+
+  return {
+    adapter,
+    s3: {
+      bucket: env.NP_S3_BUCKET ?? "",
+      region: env.NP_S3_REGION ?? "us-east-1",
+      endpoint: env.NP_S3_ENDPOINT,
+    },
+  } as const;
+}
+
+export async function runOpsStorageTest(args: {
+  execute?: boolean;
+  approve?: string | null;
+  env?: OpsStorageEnv;
+}): Promise<OpsStorageJson> {
+  const env = args.env ?? process.env;
+  const base = await collectOpsStorageStatus(env, "test");
+  const adapter = base.adapter;
+  const mode = args.execute ? "execute" : "dry-run";
+  if (adapter === "unknown") {
+    return {
+      ...base,
+      operation: "test",
+      mutation: {
+        action: "test",
+        applied: false,
+        mode,
+        error: "Storage adapter is unknown",
+      },
+    };
+  }
+
+  if (!args.execute) {
+    return {
+      ...base,
+      operation: "test",
+      nextCommand: "nexpress ops storage test --execute --approve storage-test --json",
+      mutation: {
+        action: "test",
+        applied: false,
+        mode,
+        error: null,
+        result: { probe: "dry-run" },
+      },
+    };
+  }
+
+  if (args.approve !== "storage-test") {
+    return {
+      ...base,
+      ok: false,
+      status: "blocked",
+      operation: "test",
+      nextCommand: "nexpress ops storage test --execute --approve storage-test --json",
+      mutation: {
+        action: "test",
+        applied: false,
+        mode,
+        error: "Missing --approve storage-test",
+      },
+    };
+  }
+
+  const key = `.nexpress-ops/probe-${Date.now().toString(36)}.txt`;
+  const storage = createStorageAdapter(buildStorageConfig(env, adapter));
+  try {
+    await storage.upload(key, Buffer.from("nexpress storage probe\n", "utf8"), {
+      contentType: "text/plain; charset=utf-8",
+      contentLength: Buffer.byteLength("nexpress storage probe\n"),
+      originalFilename: "probe.txt",
+    });
+    const exists = await storage.exists(key);
+    await storage.delete(key);
+    const report = await collectOpsStorageStatus(env, "verify");
+    return {
+      ...report,
+      operation: "test",
+      mutation: {
+        action: "test",
+        applied: exists,
+        mode,
+        error: exists ? null : "Probe upload did not become readable",
+        result: { key, exists, deleted: true },
+      },
+    };
+  } catch (error) {
+    return {
+      ...base,
+      ok: false,
+      status: "blocked",
+      operation: "test",
+      nextCommand: "Check storage credentials and rerun nexpress ops storage test --json",
+      mutation: {
+        action: "test",
+        applied: false,
+        mode,
+        error: error instanceof Error ? error.message : String(error),
+        result: { key, exists: false, deleted: false },
+      },
+    };
+  }
 }
 
 function formatBriefState(state: CheckResult["state"], color: boolean): string {
@@ -344,7 +478,7 @@ export function renderBriefOpsStorageStatus(
         : `${c.red}blocked${c.reset}`;
   const lines = [
     `${c.dim}NexPress ops storage${c.reset}`,
-    `${state}: ${report.adapter}`,
+    `${state}: ${report.adapter} (${report.operation})`,
     `media: ${report.summary.mediaRows.toString()} rows, ${report.summary.indexedObjects.toString()} indexed objects`,
   ];
   if (report.summary.localFiles !== null) {
@@ -358,5 +492,10 @@ export function renderBriefOpsStorageStatus(
     lines.push(parts.join(" "));
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  if (report.mutation) {
+    lines.push(
+      `mutation: ${report.mutation.action} applied=${String(report.mutation.applied)}${report.mutation.error ? ` error=${report.mutation.error}` : ""}`,
+    );
+  }
   return lines.join("\n");
 }
