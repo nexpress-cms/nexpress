@@ -349,6 +349,14 @@ Implementation status:
   `nexpress ops plugins doctor --json` emit
   `schemaVersion: "np.ops-plugins.v1"` with plugin inventory plus duplicate
   plugin ID, block type, API route, and page route warnings.
+- `nexpress ops plugins inspect <pluginId> --json` emits the same
+  `np.ops-plugins.v1` envelope narrowed to one configured plugin, including
+  manifest metadata, declared capabilities, plugin-owned contracts, and related
+  diagnostics.
+- `nexpress ops plugins upgrade-plan [pluginId] --json` emits
+  `schemaVersion: "np.ops-plugins-upgrade-plan.v1"` with package inference,
+  inspect / outdated / upgrade / verify commands, and approval flags. It does
+  not install packages or rewrite config.
 - `nexpress release check --target <host> --json` emits
   `schemaVersion: "np.release.v1"` by composing preflight, migration plan,
   required backup readiness, jobs, storage, and plugin diagnostics into a
@@ -634,16 +642,19 @@ Implementation status:
   `nexpress ops storage migrate plan --target s3 --json` returns a read-only
   local-to-S3 migration plan with inspect, prepare, and approval-gated future
   apply commands.
-- `nexpress ops plugins list|doctor --json` now reports configured plugin
-  inventory and static conflicts as `np.ops-plugins.v1`.
+- `nexpress ops plugins list|inspect|doctor --json` now reports configured
+  plugin inventory, single-plugin manifest details, and static conflicts as
+  `np.ops-plugins.v1`; `nexpress ops plugins upgrade-plan --json` now emits a
+  read-only `np.ops-plugins-upgrade-plan.v1` plan for package review, rebuild,
+  and post-upgrade verification.
 - `nexpress ops status`, release plans, and executable runbooks now promote
   actionable `nextCommand` guidance from the underlying jobs / storage evidence,
   including dry-run retry, drain, storage verify, and storage probe commands.
 - Queue destructive commands beyond bounded retry and drain start remain future
   work and should keep requiring explicit operator approval.
 - Storage migration apply commands and plugin mutation commands (`enable`,
-  `disable`, `upgrade-plan`) remain future work and should keep requiring
-  explicit operator approval.
+  `disable`) remain future work and should keep requiring explicit operator
+  approval.
 
 **Acceptance criteria:**
 

@@ -823,6 +823,8 @@ pnpm run ops:storage -- migrate plan --target s3 --json
 pnpm run ops:storage -- test --json
 pnpm run ops:storage -- test --execute --approve storage-test --json
 pnpm run ops:plugins -- doctor --json
+pnpm run ops:plugins -- inspect reading-time --json
+pnpm run ops:plugins -- upgrade-plan --json
 pnpm run release -- check --target vercel --json
 pnpm run release -- plan --target vercel --json
 pnpm run release -- apply --plan .nexpress/releases/<plan>.json --json
@@ -844,8 +846,8 @@ start a drain by pausing new claims. \`ops:storage\`
 reports storage adapter readiness and local media drift, while \`verify\`
 re-runs the integrity gate, drift-list commands show the concrete missing /
 orphaned paths, \`migrate plan\` prepares a read-only local-to-S3 checklist, and \`test\` can run an approval-gated storage probe; \`ops:plugins\`
-reports plugin inventory and route/block conflicts. \`release check\` composes
-the pre-deploy gate; \`release plan\`
+reports plugin inventory, single-plugin manifests, route/block conflicts, and
+read-only upgrade plans. \`release check\` composes the pre-deploy gate; \`release plan\`
 persists that gate as a replayable audit artifact under \`.nexpress/releases\`;
 \`release apply\` validates the artifact and only executes commands with
 \`--execute --approve <planId>\`; \`release verify\` composes the post-deploy

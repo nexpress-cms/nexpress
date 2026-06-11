@@ -1,15 +1,25 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import type { CheckResult } from "./doctor-readiness.js";
 
 interface PluginManifestLike {
+  apiVersion?: unknown;
   id?: unknown;
   name?: unknown;
   version?: unknown;
   description?: unknown;
+  author?: unknown;
+  license?: unknown;
+  nexpress?: unknown;
   capabilities?: unknown;
+  allowedHosts?: unknown;
+  requires?: unknown;
+  provides?: unknown;
+  agent?: unknown;
+  usesTokens?: unknown;
+  styleSlots?: unknown;
 }
 
 interface PluginLike {
@@ -25,11 +35,38 @@ interface ConfigLike {
 }
 
 export interface OpsPluginEntry {
+  index: number;
   id: string;
+  apiVersion: string | null;
   name: string;
   version: string | null;
   description: string | null;
+  author: string | null;
+  license: string | null;
+  nexpress: {
+    minVersion: string | null;
+    maxVersion: string | null;
+  };
   capabilities: string[];
+  allowedHosts: string[];
+  requires: string[];
+  provides: {
+    blocks: string[];
+    fields: string[];
+    collections: string[];
+    adminExtensions: string[];
+    apiRoutes: string[];
+    pageRoutes: string[];
+    scheduledTasks: string[];
+    hooks: string[];
+  };
+  agent: {
+    description: string | null;
+    category: string | null;
+    tags: string[];
+  };
+  usesTokens: string[];
+  styleSlots: string[];
   blocks: string[];
   routes: string[];
   pageRoutes: string[];
@@ -54,6 +91,50 @@ export interface OpsPluginsJson {
   nextCommand: string | null;
   checks: CheckResult[];
   plugins: OpsPluginEntry[];
+}
+
+export interface OpsPluginInspectJson extends Omit<OpsPluginsJson, "plugins"> {
+  mode: "inspect";
+  pluginId: string;
+  plugin: OpsPluginEntry | null;
+  relatedChecks: CheckResult[];
+  plugins: OpsPluginEntry[];
+}
+
+export interface OpsPluginPackageRef {
+  pluginId: string;
+  packageName: string | null;
+  currentRange: string | null;
+  dependencyField: "dependencies" | "devDependencies" | "optionalDependencies" | null;
+  confidence: "exact" | "inferred" | "unknown";
+}
+
+export interface OpsPluginUpgradeStep {
+  id: string;
+  pluginId: string;
+  packageName: string | null;
+  status: "ready" | "manual";
+  required: boolean;
+  requiresApproval: boolean;
+  command: string;
+  note: string;
+}
+
+export interface OpsPluginsUpgradePlanJson {
+  schemaVersion: "np.ops-plugins-upgrade-plan.v1";
+  ok: boolean;
+  status: "ready" | "attention" | "blocked";
+  pluginId: string | null;
+  summary: {
+    plugins: number;
+    packages: number;
+    manual: number;
+    commands: number;
+  };
+  nextCommand: string | null;
+  checks: CheckResult[];
+  packages: OpsPluginPackageRef[];
+  steps: OpsPluginUpgradeStep[];
 }
 
 interface RenderOptions {
@@ -82,6 +163,8 @@ const CONFIG_CANDIDATES = [
   "apps/web/src/nexpress.config.ts",
 ];
 
+const PACKAGE_JSON_CANDIDATES = ["package.json", "apps/web/package.json"];
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
@@ -97,6 +180,53 @@ function readArray(value: unknown): unknown[] {
 function readCapabilities(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string");
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+function readStringRecordKeys(value: unknown): string[] {
+  if (!isObject(value)) return [];
+  return Object.keys(value).sort();
+}
+
+function readAuthor(value: unknown): string | null {
+  if (typeof value === "string") return value.length > 0 ? value : null;
+  if (!isObject(value)) return null;
+  return readString(value.name);
+}
+
+function readNexpress(value: unknown): OpsPluginEntry["nexpress"] {
+  if (!isObject(value)) return { minVersion: null, maxVersion: null };
+  return {
+    minVersion: readString(value.minVersion),
+    maxVersion: readString(value.maxVersion),
+  };
+}
+
+function readProvides(value: unknown): OpsPluginEntry["provides"] {
+  const source = isObject(value) ? value : {};
+  return {
+    blocks: readStringArray(source.blocks),
+    fields: readStringArray(source.fields),
+    collections: readStringArray(source.collections),
+    adminExtensions: readStringArray(source.adminExtensions),
+    apiRoutes: readStringArray(source.apiRoutes),
+    pageRoutes: readStringArray(source.pageRoutes),
+    scheduledTasks: readStringArray(source.scheduledTasks),
+    hooks: readStringArray(source.hooks),
+  };
+}
+
+function readAgent(value: unknown): OpsPluginEntry["agent"] {
+  if (!isObject(value)) return { description: null, category: null, tags: [] };
+  return {
+    description: readString(value.description),
+    category: readString(value.category),
+    tags: readStringArray(value.tags),
+  };
 }
 
 function routeKey(route: unknown): string | null {
@@ -161,11 +291,22 @@ function normalizePlugin(plugin: PluginLike, index: number): OpsPluginEntry {
   const manifest = plugin.manifest ?? {};
   const id = readString(manifest.id) ?? `plugin-${index.toString()}`;
   return {
+    index,
     id,
+    apiVersion: readString(manifest.apiVersion),
     name: readString(manifest.name) ?? id,
     version: readString(manifest.version),
     description: readString(manifest.description),
+    author: readAuthor(manifest.author),
+    license: readString(manifest.license),
+    nexpress: readNexpress(manifest.nexpress),
     capabilities: readCapabilities(manifest.capabilities),
+    allowedHosts: readStringArray(manifest.allowedHosts),
+    requires: readStringArray(manifest.requires),
+    provides: readProvides(manifest.provides),
+    agent: readAgent(manifest.agent),
+    usesTokens: readStringArray(manifest.usesTokens),
+    styleSlots: readStringRecordKeys(manifest.styleSlots),
     blocks: readArray(plugin.blocks)
       .map(blockKey)
       .filter((key): key is string => Boolean(key)),
@@ -195,6 +336,60 @@ export function buildOpsPluginsJson(args: {
     nextCommand: status === "ready" ? null : "nexpress ops plugins doctor --json",
     checks: args.checks,
     plugins: args.plugins,
+  };
+}
+
+function checkMentionsPlugin(check: CheckResult, pluginId: string): boolean {
+  return (
+    check.id === "plugins.config_file" ||
+    check.id === "plugins.config" ||
+    check.detail?.includes(pluginId) === true
+  );
+}
+
+export function buildOpsPluginInspectJson(
+  report: OpsPluginsJson,
+  pluginId: string,
+): OpsPluginInspectJson {
+  const plugin = report.plugins.find((entry) => entry.id === pluginId) ?? null;
+  const missingPluginChecks: CheckResult[] = [
+    {
+      id: "plugins.inspect.not_found",
+      state: "error",
+      label: "Plugin inspect",
+      detail: `No configured plugin has id ${pluginId}`,
+    },
+  ];
+  const relatedChecks: CheckResult[] = plugin
+    ? report.checks.filter((check) => checkMentionsPlugin(check, pluginId))
+    : missingPluginChecks;
+  const checks = plugin ? report.checks : [...report.checks, ...relatedChecks];
+  const summary = plugin
+    ? summarize(relatedChecks, [plugin])
+    : {
+        plugins: 0,
+        blocks: 0,
+        routes: 0,
+        pageRoutes: 0,
+        scheduled: 0,
+        warnings: relatedChecks.filter((check) => check.state === "warn").length,
+        errors: relatedChecks.filter((check) => check.state === "error").length,
+      };
+  const status = summary.errors > 0 ? "blocked" : summary.warnings > 0 ? "attention" : "ready";
+  return {
+    schemaVersion: "np.ops-plugins.v1",
+    mode: "inspect",
+    ok: plugin !== null && summary.errors === 0,
+    status,
+    summary,
+    nextCommand: plugin
+      ? `nexpress ops plugins upgrade-plan ${plugin.id} --json`
+      : "nexpress ops plugins list --json",
+    checks,
+    relatedChecks,
+    pluginId,
+    plugin,
+    plugins: plugin ? [plugin] : [],
   };
 }
 
@@ -328,6 +523,211 @@ export async function collectOpsPluginsStatus(cwd = process.cwd()): Promise<OpsP
   }
 }
 
+function readPackageDependencies(
+  cwd = process.cwd(),
+): Record<string, { range: string; field: OpsPluginPackageRef["dependencyField"] }> {
+  const result: Record<string, { range: string; field: OpsPluginPackageRef["dependencyField"] }> =
+    {};
+  const fields: Array<NonNullable<OpsPluginPackageRef["dependencyField"]>> = [
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+  ];
+  for (const candidate of PACKAGE_JSON_CANDIDATES) {
+    const packageJsonPath = resolve(cwd, candidate);
+    if (!existsSync(packageJsonPath)) continue;
+    try {
+      const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8")) as Record<string, unknown>;
+      // Later candidates are closer to generated app runtime (`apps/web` in the monorepo),
+      // so they intentionally override root workspace ranges when both exist.
+      for (const field of fields) {
+        const deps = pkg[field];
+        if (!isObject(deps)) continue;
+        for (const [name, range] of Object.entries(deps)) {
+          if (typeof range === "string") result[name] = { range, field };
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return result;
+}
+
+function pluginPackageCandidates(pluginId: string): string[] {
+  if (pluginId.startsWith("@")) return [pluginId];
+  return [`@nexpress/plugin-${pluginId}`, `@nexpress/${pluginId}`, `plugin-${pluginId}`, pluginId];
+}
+
+function inferPluginPackage(
+  plugin: OpsPluginEntry,
+  dependencies: Record<string, { range: string; field: OpsPluginPackageRef["dependencyField"] }>,
+): OpsPluginPackageRef {
+  for (const candidate of pluginPackageCandidates(plugin.id)) {
+    const dependency = dependencies[candidate];
+    if (!dependency) continue;
+    return {
+      pluginId: plugin.id,
+      packageName: candidate,
+      currentRange: dependency.range,
+      dependencyField: dependency.field,
+      confidence: candidate === plugin.id ? "exact" : "inferred",
+    };
+  }
+  return {
+    pluginId: plugin.id,
+    packageName: null,
+    currentRange: null,
+    dependencyField: null,
+    confidence: "unknown",
+  };
+}
+
+function buildUpgradeSteps(packageRef: OpsPluginPackageRef): OpsPluginUpgradeStep[] {
+  const inspectCommand = `nexpress ops plugins inspect ${packageRef.pluginId} --json`;
+  if (!packageRef.packageName) {
+    return [
+      {
+        id: `${packageRef.pluginId}.inspect`,
+        pluginId: packageRef.pluginId,
+        packageName: null,
+        status: "manual",
+        required: true,
+        requiresApproval: false,
+        command: inspectCommand,
+        note: "Inspect the configured plugin before resolving its package name manually.",
+      },
+      {
+        id: `${packageRef.pluginId}.package`,
+        pluginId: packageRef.pluginId,
+        packageName: null,
+        status: "manual",
+        required: true,
+        requiresApproval: true,
+        command: "pnpm add <plugin-package>@latest",
+        note: "No matching package dependency was found for this plugin id.",
+      },
+    ];
+  }
+  return [
+    {
+      id: `${packageRef.pluginId}.inspect`,
+      pluginId: packageRef.pluginId,
+      packageName: packageRef.packageName,
+      status: "ready",
+      required: true,
+      requiresApproval: false,
+      command: inspectCommand,
+      note: "Capture the current manifest and plugin-owned contracts before upgrading.",
+    },
+    {
+      id: `${packageRef.pluginId}.outdated`,
+      pluginId: packageRef.pluginId,
+      packageName: packageRef.packageName,
+      status: "ready",
+      required: true,
+      requiresApproval: false,
+      command: `pnpm outdated ${packageRef.packageName}`,
+      note: "Check the latest compatible package version.",
+    },
+    {
+      id: `${packageRef.pluginId}.upgrade`,
+      pluginId: packageRef.pluginId,
+      packageName: packageRef.packageName,
+      status: "ready",
+      required: true,
+      requiresApproval: true,
+      command: `pnpm add ${packageRef.packageName}@latest`,
+      note: "Changing plugin package code requires dependency review, rebuild, and redeploy.",
+    },
+    {
+      id: `${packageRef.pluginId}.build`,
+      pluginId: packageRef.pluginId,
+      packageName: packageRef.packageName,
+      status: "ready",
+      required: true,
+      requiresApproval: false,
+      command: "pnpm build",
+      note: "v1 plugins are loaded at boot, so rebuild and restart/deploy after dependency changes.",
+    },
+    {
+      id: `${packageRef.pluginId}.doctor`,
+      pluginId: packageRef.pluginId,
+      packageName: packageRef.packageName,
+      status: "ready",
+      required: true,
+      requiresApproval: false,
+      command: "nexpress ops plugins doctor --json",
+      note: "Verify plugin-owned routes, page routes, and blocks after rebuilding.",
+    },
+    {
+      id: `${packageRef.pluginId}.release-check`,
+      pluginId: packageRef.pluginId,
+      packageName: packageRef.packageName,
+      status: "ready",
+      required: true,
+      requiresApproval: false,
+      command: "nexpress release check --json",
+      note: "Run the full pre-release gate before deploying the upgraded plugin.",
+    },
+  ];
+}
+
+export function buildOpsPluginsUpgradePlanJson(args: {
+  report: OpsPluginsJson;
+  cwd?: string;
+  pluginId?: string | null;
+}): OpsPluginsUpgradePlanJson {
+  const selectedPlugins = args.pluginId
+    ? args.report.plugins.filter((plugin) => plugin.id === args.pluginId)
+    : args.report.plugins;
+  const checks: CheckResult[] = [...args.report.checks];
+  if (args.pluginId && selectedPlugins.length === 0) {
+    checks.push({
+      id: "plugins.upgrade_plan.not_found",
+      state: "error",
+      label: "Plugin upgrade plan",
+      detail: `No configured plugin has id ${args.pluginId}`,
+    });
+  }
+  const dependencies = readPackageDependencies(args.cwd);
+  const packages = selectedPlugins.map((plugin) => inferPluginPackage(plugin, dependencies));
+  const manualPackages = packages.filter((item) => item.confidence === "unknown");
+  if (manualPackages.length > 0) {
+    checks.push({
+      id: "plugins.upgrade_plan.package_inference",
+      state: "warn",
+      label: "Plugin package inference",
+      detail: manualPackages.map((item) => item.pluginId).join(", "),
+    });
+  }
+  const steps = packages.flatMap(buildUpgradeSteps);
+  const blocked = checks.some((check) => check.state === "error");
+  const attention = checks.some((check) => check.state === "warn") || manualPackages.length > 0;
+  const status = blocked ? "blocked" : attention ? "attention" : "ready";
+  return {
+    schemaVersion: "np.ops-plugins-upgrade-plan.v1",
+    ok: !blocked,
+    status,
+    pluginId: args.pluginId ?? null,
+    summary: {
+      plugins: selectedPlugins.length,
+      packages: packages.filter((item) => item.packageName).length,
+      manual: manualPackages.length,
+      commands: steps.length,
+    },
+    nextCommand:
+      status === "blocked"
+        ? "nexpress ops plugins list --json"
+        : (steps.find((step) => step.status === "manual")?.command ??
+          steps.find((step) => step.requiresApproval)?.command ??
+          null),
+    checks,
+    packages,
+    steps,
+  };
+}
+
 function formatBriefState(state: CheckResult["state"], color: boolean): string {
   const c = color ? ANSI : EMPTY_ANSI;
   if (state === "ok") return `${c.green}[ok]${c.reset}`;
@@ -336,8 +736,8 @@ function formatBriefState(state: CheckResult["state"], color: boolean): string {
 }
 
 export function renderBriefOpsPluginsStatus(
-  report: OpsPluginsJson,
-  mode: "list" | "doctor",
+  report: OpsPluginsJson | OpsPluginInspectJson,
+  mode: "list" | "doctor" | "inspect",
   options: RenderOptions = { color: true },
 ): string {
   const c = options.color ? ANSI : EMPTY_ANSI;
@@ -356,11 +756,67 @@ export function renderBriefOpsPluginsStatus(
       const version = plugin.version ? `@${plugin.version}` : "";
       lines.push(`- ${plugin.id}${version}: ${plugin.name}`);
     }
+  } else if (mode === "inspect") {
+    const inspectReport = report as OpsPluginInspectJson;
+    if (!inspectReport.plugin) {
+      lines.push(`missing: ${inspectReport.pluginId}`);
+    } else {
+      const plugin = inspectReport.plugin;
+      const version = plugin.version ? `@${plugin.version}` : "";
+      lines.push(`${plugin.id}${version}: ${plugin.name}`);
+      if (plugin.description) lines.push(`description: ${plugin.description}`);
+      if (plugin.capabilities.length > 0)
+        lines.push(`capabilities: ${plugin.capabilities.join(", ")}`);
+      if (plugin.requires.length > 0) lines.push(`requires: ${plugin.requires.join(", ")}`);
+      if (plugin.blocks.length > 0) lines.push(`blocks: ${plugin.blocks.join(", ")}`);
+      if (plugin.routes.length > 0) lines.push(`routes: ${plugin.routes.join(", ")}`);
+      if (plugin.pageRoutes.length > 0) lines.push(`page routes: ${plugin.pageRoutes.join(", ")}`);
+      if (plugin.scheduled.length > 0) lines.push(`scheduled: ${plugin.scheduled.join(", ")}`);
+      if (inspectReport.relatedChecks.length > 0) {
+        lines.push("checks:");
+        for (const check of inspectReport.relatedChecks) {
+          const parts = [`  ${formatBriefState(check.state, options.color)}`, check.id];
+          if (check.detail) parts.push(`- ${check.detail.replace(/\s+/g, " ")}`);
+          lines.push(parts.join(" "));
+        }
+      }
+    }
   } else {
     for (const check of report.checks) {
       const parts = [formatBriefState(check.state, options.color), check.id, check.label];
       if (check.detail) parts.push(`- ${check.detail.replace(/\s+/g, " ")}`);
       lines.push(parts.join(" "));
+    }
+  }
+  if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  return lines.join("\n");
+}
+
+export function renderBriefOpsPluginsUpgradePlan(
+  report: OpsPluginsUpgradePlanJson,
+  options: RenderOptions = { color: true },
+): string {
+  const c = options.color ? ANSI : EMPTY_ANSI;
+  const state =
+    report.status === "ready"
+      ? `${c.green}ready${c.reset}`
+      : report.status === "attention"
+        ? `${c.yellow}attention${c.reset}`
+        : `${c.red}blocked${c.reset}`;
+  const lines = [
+    `${c.dim}NexPress ops plugins upgrade-plan${c.reset}`,
+    `${state}: ${report.summary.plugins.toString()} plugins, ${report.summary.packages.toString()} packages, ${report.summary.commands.toString()} commands`,
+  ];
+  for (const packageRef of report.packages) {
+    const name = packageRef.packageName ?? "<manual package>";
+    const range = packageRef.currentRange ? ` ${packageRef.currentRange}` : "";
+    lines.push(`- ${packageRef.pluginId}: ${name}${range} (${packageRef.confidence})`);
+  }
+  if (report.steps.length > 0) {
+    lines.push("steps:");
+    for (const step of report.steps) {
+      const approval = step.requiresApproval ? " approval" : "";
+      lines.push(`  - ${step.command}${approval}`);
     }
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
