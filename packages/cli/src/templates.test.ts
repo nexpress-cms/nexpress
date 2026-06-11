@@ -418,7 +418,17 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("pnpm run ops:jobs -- --json");
     expect(readme).toContain('pnpm run ops:jobs -- pause --reason "maintenance" --json');
     expect(readme).toContain("pnpm run ops:jobs -- resume --json");
+    expect(readme).toContain("pnpm run ops:jobs -- retry-all --state failed --json");
+    expect(readme).toContain(
+      "pnpm run ops:jobs -- retry-all --state failed --execute --approve retry-all --json",
+    );
+    expect(readme).toContain("pnpm run ops:jobs -- drain --execute --approve drain --json");
     expect(readme).toContain("pnpm run ops:storage -- --json");
+    expect(readme).toContain("pnpm run ops:storage -- verify --json");
+    expect(readme).toContain("pnpm run ops:storage -- test --json");
+    expect(readme).toContain(
+      "pnpm run ops:storage -- test --execute --approve storage-test --json",
+    );
     expect(readme).toContain("pnpm run ops:plugins -- doctor --json");
     expect(readme).toContain("pnpm run release -- check --target vercel --json");
     expect(readme).toContain("pnpm run release -- plan --target vercel --json");

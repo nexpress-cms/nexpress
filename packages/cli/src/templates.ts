@@ -812,7 +812,13 @@ pnpm run ops:backup -- verify latest --json
 pnpm run ops:jobs -- --json
 pnpm run ops:jobs -- pause --reason "maintenance" --json
 pnpm run ops:jobs -- resume --json
+pnpm run ops:jobs -- retry-all --state failed --json
+pnpm run ops:jobs -- retry-all --state failed --execute --approve retry-all --json
+pnpm run ops:jobs -- drain --execute --approve drain --json
 pnpm run ops:storage -- --json
+pnpm run ops:storage -- verify --json
+pnpm run ops:storage -- test --json
+pnpm run ops:storage -- test --execute --approve storage-test --json
 pnpm run ops:plugins -- doctor --json
 pnpm run release -- check --target vercel --json
 pnpm run release -- plan --target vercel --json
@@ -830,8 +836,10 @@ running local or hosted site. \`ops:migrate\` reports local/applied migration
 state and destructive SQL risk; \`ops:backup\` reports manifest freshness,
 records operator-provided backup manifests, and verifies artifact presence.
 \`ops:jobs\` reports worker heartbeat, pause state, and pg-boss queue counts,
-and can pause/resume processing for maintenance windows. \`ops:storage\`
-reports storage adapter readiness and local media drift; \`ops:plugins\`
+can pause/resume processing for maintenance windows, dry-run bulk retries, and
+start a drain by pausing new claims. \`ops:storage\`
+reports storage adapter readiness and local media drift, while \`verify\`
+re-runs the integrity gate and \`test\` can run an approval-gated storage probe; \`ops:plugins\`
 reports plugin inventory and route/block conflicts. \`release check\` composes
 the pre-deploy gate; \`release plan\`
 persists that gate as a replayable audit artifact under \`.nexpress/releases\`;
