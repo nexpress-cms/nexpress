@@ -105,6 +105,9 @@ function workerRunbookCommands(evidence: RunbookEvidence[]): string[] {
 function storageRunbookCommands(evidence: RunbookEvidence[]): string[] {
   const commands = evidenceNextCommands(evidence);
   commands.push("nexpress ops storage verify --json");
+  commands.push("nexpress ops storage missing-files --json");
+  commands.push("nexpress ops storage orphaned-files --json");
+  commands.push("nexpress ops storage migrate plan --target s3 --json");
   commands.push("nexpress ops storage test --json");
   commands.push("nexpress ops preflight --target vercel --json");
   return uniqueCommands(commands);

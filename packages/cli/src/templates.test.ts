@@ -425,6 +425,9 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("pnpm run ops:jobs -- drain --execute --approve drain --json");
     expect(readme).toContain("pnpm run ops:storage -- --json");
     expect(readme).toContain("pnpm run ops:storage -- verify --json");
+    expect(readme).toContain("pnpm run ops:storage -- missing-files --json");
+    expect(readme).toContain("pnpm run ops:storage -- orphaned-files --json");
+    expect(readme).toContain("pnpm run ops:storage -- migrate plan --target s3 --json");
     expect(readme).toContain("pnpm run ops:storage -- test --json");
     expect(readme).toContain(
       "pnpm run ops:storage -- test --execute --approve storage-test --json",

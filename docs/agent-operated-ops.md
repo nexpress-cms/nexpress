@@ -629,6 +629,11 @@ Implementation status:
 - `nexpress ops storage verify --json` now re-runs the same integrity gate
   explicitly, and `nexpress ops storage test --execute --approve storage-test`
   runs an upload / exists / delete probe through the configured adapter.
+- `nexpress ops storage missing-files|orphaned-files --json` now returns
+  concrete local drift lists, and
+  `nexpress ops storage migrate plan --target s3 --json` returns a read-only
+  local-to-S3 migration plan with inspect, prepare, and approval-gated future
+  apply commands.
 - `nexpress ops plugins list|doctor --json` now reports configured plugin
   inventory and static conflicts as `np.ops-plugins.v1`.
 - `nexpress ops status`, release plans, and executable runbooks now promote
@@ -636,9 +641,9 @@ Implementation status:
   including dry-run retry, drain, storage verify, and storage probe commands.
 - Queue destructive commands beyond bounded retry and drain start remain future
   work and should keep requiring explicit operator approval.
-- Storage migration commands (`migrate`) and
-  plugin mutation commands (`enable`, `disable`, `upgrade-plan`) remain future
-  work and should keep requiring explicit operator approval.
+- Storage migration apply commands and plugin mutation commands (`enable`,
+  `disable`, `upgrade-plan`) remain future work and should keep requiring
+  explicit operator approval.
 
 **Acceptance criteria:**
 
