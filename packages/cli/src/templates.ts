@@ -817,6 +817,9 @@ pnpm run ops:jobs -- retry-all --state failed --execute --approve retry-all --js
 pnpm run ops:jobs -- drain --execute --approve drain --json
 pnpm run ops:storage -- --json
 pnpm run ops:storage -- verify --json
+pnpm run ops:storage -- missing-files --json
+pnpm run ops:storage -- orphaned-files --json
+pnpm run ops:storage -- migrate plan --target s3 --json
 pnpm run ops:storage -- test --json
 pnpm run ops:storage -- test --execute --approve storage-test --json
 pnpm run ops:plugins -- doctor --json
@@ -839,7 +842,8 @@ records operator-provided backup manifests, and verifies artifact presence.
 can pause/resume processing for maintenance windows, dry-run bulk retries, and
 start a drain by pausing new claims. \`ops:storage\`
 reports storage adapter readiness and local media drift, while \`verify\`
-re-runs the integrity gate and \`test\` can run an approval-gated storage probe; \`ops:plugins\`
+re-runs the integrity gate, drift-list commands show the concrete missing /
+orphaned paths, \`migrate plan\` prepares a read-only local-to-S3 checklist, and \`test\` can run an approval-gated storage probe; \`ops:plugins\`
 reports plugin inventory and route/block conflicts. \`release check\` composes
 the pre-deploy gate; \`release plan\`
 persists that gate as a replayable audit artifact under \`.nexpress/releases\`;

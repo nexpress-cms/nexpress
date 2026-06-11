@@ -155,6 +155,16 @@ function evidenceRuns(
         capture(manager, runArgs(manager, "ops:storage", ["--json"])).then((run) =>
           evidenceFromRun("ops.storage", run),
         ),
+        capture(manager, runArgs(manager, "ops:storage", ["missing-files", "--json"])).then((run) =>
+          evidenceFromRun("ops.storage.missing", run),
+        ),
+        capture(manager, runArgs(manager, "ops:storage", ["orphaned-files", "--json"])).then(
+          (run) => evidenceFromRun("ops.storage.orphaned", run),
+        ),
+        capture(
+          manager,
+          runArgs(manager, "ops:storage", ["migrate", "plan", "--target", "s3", "--json"]),
+        ).then((run) => evidenceFromRun("ops.storage.migrate-plan", run)),
         capture(manager, runArgs(manager, "ops:preflight", ["--target", "vercel", "--json"])).then(
           (run) => evidenceFromRun("ops.preflight.vercel", run),
         ),

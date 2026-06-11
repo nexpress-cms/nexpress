@@ -102,6 +102,9 @@ describe("runbook core", () => {
 
     expect(report.nextCommands).toEqual([
       "nexpress ops storage verify --json",
+      "nexpress ops storage missing-files --json",
+      "nexpress ops storage orphaned-files --json",
+      "nexpress ops storage migrate plan --target s3 --json",
       "nexpress ops storage test --json",
       "nexpress ops preflight --target vercel --json",
     ]);

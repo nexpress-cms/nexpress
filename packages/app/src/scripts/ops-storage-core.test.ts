@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { buildOpsStorageJson, renderBriefOpsStorageStatus } from "./ops-storage-core.js";
+import {
+  buildOpsStorageMigrationPlan,
+  buildOpsStorageJson,
+  collectOpsStorageDriftList,
+  renderBriefOpsStorageStatus,
+} from "./ops-storage-core.js";
 
 describe("ops storage core", () => {
   it("builds a ready storage report", () => {
@@ -131,6 +136,73 @@ describe("ops storage core", () => {
 
     expect(renderBriefOpsStorageStatus(report, { color: false })).toContain(
       "mutation: test applied=false",
+    );
+  });
+
+  it("blocks local drift lists when the active adapter is not local", async () => {
+    const report = await collectOpsStorageDriftList({
+      operation: "missing-files",
+      env: { NP_STORAGE_ADAPTER: "s3" },
+    });
+
+    expect(report).toEqual(
+      expect.objectContaining({
+        schemaVersion: "np.ops-storage-list.v1",
+        ok: false,
+        status: "blocked",
+        adapter: "s3",
+        operation: "missing-files",
+        items: [],
+      }),
+    );
+  });
+
+  it("builds a read-only local-to-S3 migration plan contract", async () => {
+    const report = await buildOpsStorageMigrationPlan({
+      env: {
+        NP_STORAGE_ADAPTER: "local",
+        NP_S3_BUCKET: "media",
+        NP_S3_REGION: "us-east-1",
+      },
+    });
+
+    expect(report).toEqual(
+      expect.objectContaining({
+        schemaVersion: "np.ops-storage-migration-plan.v1",
+        source: "local",
+        target: "s3",
+      }),
+    );
+    expect(report.commands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          phase: "apply",
+          requiresApproval: true,
+        }),
+      ]),
+    );
+  });
+
+  it("blocks unsupported storage migration targets", async () => {
+    const report = await buildOpsStorageMigrationPlan({
+      target: "ftp",
+      env: { NP_STORAGE_ADAPTER: "local" },
+    });
+
+    expect(report).toEqual(
+      expect.objectContaining({
+        ok: false,
+        status: "blocked",
+        target: "ftp",
+      }),
+    );
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "storage.migration_target",
+          state: "error",
+        }),
+      ]),
     );
   });
 });

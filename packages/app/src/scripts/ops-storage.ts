@@ -2,7 +2,9 @@
 import "./_load-env.js";
 
 import {
+  buildOpsStorageMigrationPlan,
   collectOpsStorageStatus,
+  collectOpsStorageDriftList,
   renderBriefOpsStorageStatus,
   runOpsStorageTest,
 } from "./ops-storage-core.js";
@@ -19,13 +21,21 @@ Usage:
   pnpm run ops:storage
   pnpm run ops:storage -- --json
   pnpm run ops:storage -- verify --json
+  pnpm run ops:storage -- missing-files --json
+  pnpm run ops:storage -- orphaned-files --json
+  pnpm run ops:storage -- migrate plan --target s3 --json
   pnpm run ops:storage -- test --json
   pnpm run ops:storage -- test --execute --approve storage-test --json
   nexpress ops storage status --json
   nexpress ops storage verify --json
+  nexpress ops storage missing-files --json
+  nexpress ops storage orphaned-files --json
+  nexpress ops storage migrate plan --target s3 --json
   nexpress ops storage test --execute --approve storage-test --json
 
 Options:
+  --target <id>  Migration plan target. Currently only s3.
+  --limit <n>    Maximum drift-list rows to return. Defaults to 100, caps at 1000.
   --execute      Apply the storage test probe. Without this, test dry-runs.
   --approve <id> Required with --execute: storage-test.
   --json       Print the stable machine-readable storage report.
@@ -48,12 +58,45 @@ function readStringArg(name: string): string | null {
   return null;
 }
 
+function readLimitArg(): number | undefined {
+  const raw = readStringArg("--limit");
+  if (!raw) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function renderBriefGeneric(report: {
+  schemaVersion: string;
+  status: string;
+  nextCommand: string | null;
+  summary: unknown;
+}): string {
+  const lines = [
+    `NexPress ${report.schemaVersion}`,
+    `${report.status}`,
+    `summary: ${JSON.stringify(report.summary)}`,
+  ];
+  if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  return lines.join("\n");
+}
+
 async function main(): Promise<void> {
   if (shouldPrintHelp(ARGV)) {
     printHelp();
     return;
   }
-  if (SUBCOMMAND !== "status" && SUBCOMMAND !== "verify" && SUBCOMMAND !== "test") {
+  if (
+    SUBCOMMAND !== "status" &&
+    SUBCOMMAND !== "verify" &&
+    SUBCOMMAND !== "test" &&
+    SUBCOMMAND !== "missing-files" &&
+    SUBCOMMAND !== "orphaned-files" &&
+    SUBCOMMAND !== "migrate"
+  ) {
+    printHelp();
+    process.exit(2);
+  }
+  if (SUBCOMMAND === "migrate" && ARGV[1] !== "plan") {
     printHelp();
     process.exit(2);
   }
@@ -64,11 +107,22 @@ async function main(): Promise<void> {
           execute: ARGV.includes("--execute"),
           approve: readStringArg("--approve"),
         })
-      : await collectOpsStorageStatus(process.env, SUBCOMMAND);
+      : SUBCOMMAND === "missing-files" || SUBCOMMAND === "orphaned-files"
+        ? await collectOpsStorageDriftList({
+            operation: SUBCOMMAND,
+            limit: readLimitArg(),
+          })
+        : SUBCOMMAND === "migrate"
+          ? await buildOpsStorageMigrationPlan({
+              target: readStringArg("--target") ?? "s3",
+            })
+          : await collectOpsStorageStatus(process.env, SUBCOMMAND);
   if (JSON_MODE) {
     console.log(JSON.stringify(report, null, 2));
-  } else {
+  } else if (report.schemaVersion === "np.ops-storage.v1") {
     console.log(renderBriefOpsStorageStatus(report, { color: COLOR_MODE }));
+  } else {
+    console.log(renderBriefGeneric(report));
   }
   process.exit(report.ok ? 0 : 1);
 }

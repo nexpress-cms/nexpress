@@ -28,12 +28,56 @@ interface MediaRow {
   sizes: unknown;
 }
 
+export interface OpsStorageDriftItem {
+  key: string;
+  kind: "missing" | "orphaned";
+  path: string | null;
+}
+
 export interface OpsStorageSummary {
   mediaRows: number;
   indexedObjects: number;
   localFiles: number | null;
   missingFiles: number;
   orphanedFiles: number;
+}
+
+export interface OpsStorageDriftListJson {
+  schemaVersion: "np.ops-storage-list.v1";
+  ok: boolean;
+  status: "ready" | "attention" | "blocked";
+  adapter: "local" | "s3" | "unknown";
+  operation: "missing-files" | "orphaned-files";
+  summary: OpsStorageSummary & {
+    total: number;
+    returned: number;
+    limit: number;
+    truncated: boolean;
+    invalidStorageKeys: number;
+  };
+  nextCommand: string | null;
+  checks: CheckResult[];
+  items: OpsStorageDriftItem[];
+}
+
+export interface OpsStorageMigrationPlanJson {
+  schemaVersion: "np.ops-storage-migration-plan.v1";
+  ok: boolean;
+  status: "ready" | "attention" | "blocked";
+  source: "local";
+  target: string;
+  summary: OpsStorageSummary & {
+    copyCandidates: number;
+    invalidStorageKeys: number;
+  };
+  nextCommand: string | null;
+  checks: CheckResult[];
+  commands: Array<{
+    phase: "inspect" | "prepare" | "apply";
+    command: string;
+    required: boolean;
+    requiresApproval: boolean;
+  }>;
 }
 
 export interface OpsStorageJson {
@@ -52,6 +96,18 @@ export interface OpsStorageJson {
   summary: OpsStorageSummary;
   nextCommand: string | null;
   checks: CheckResult[];
+}
+
+interface LocalStorageInventory {
+  adapter: OpsStorageJson["adapter"];
+  root: string;
+  summary: OpsStorageSummary;
+  checks: CheckResult[];
+  indexed: Set<string>;
+  files: string[];
+  missing: OpsStorageDriftItem[];
+  orphaned: OpsStorageDriftItem[];
+  invalidStorageKeys: number;
 }
 
 interface RenderOptions {
@@ -170,6 +226,193 @@ function resolveStorageKey(root: string, key: string): string | null {
   return full;
 }
 
+function emptySummary(): OpsStorageSummary {
+  return {
+    mediaRows: 0,
+    indexedObjects: 0,
+    localFiles: null,
+    missingFiles: 0,
+    orphanedFiles: 0,
+  };
+}
+
+function limitItems<T>(items: T[], limit: number): { returned: T[]; truncated: boolean } {
+  return { returned: items.slice(0, limit), truncated: items.length > limit };
+}
+
+function normalizeLimit(value: number | undefined): number {
+  if (!value || !Number.isFinite(value) || value <= 0) return 100;
+  return Math.min(Math.floor(value), 1_000);
+}
+
+async function collectLocalStorageInventory(
+  env: OpsStorageEnv = process.env,
+): Promise<LocalStorageInventory> {
+  const adapter = parseAdapter(env);
+  const checks: CheckResult[] = [];
+  const summary = emptySummary();
+  const indexed = new Set<string>();
+  const root = resolve(process.cwd(), env.NP_STORAGE_DIR ?? "./public/media");
+  let files: string[] = [];
+  let localDirectoryReady = false;
+  let invalidStorageKeys = 0;
+
+  if (adapter !== "local") {
+    checks.push({
+      id: "storage.local_source",
+      state: "error",
+      label: "Local storage source",
+      detail: adapter === "s3" ? "active adapter is s3" : "unknown adapter",
+      hint: "Set NP_STORAGE_ADAPTER=local when inspecting local media drift.",
+    });
+    return {
+      adapter,
+      root,
+      summary,
+      checks,
+      indexed,
+      files,
+      missing: [],
+      orphaned: [],
+      invalidStorageKeys,
+    };
+  }
+
+  checks.push({ id: "storage.adapter", state: "ok", label: "Storage adapter", detail: "local" });
+
+  try {
+    const storageStat = await stat(root);
+    if (storageStat.isDirectory()) {
+      localDirectoryReady = true;
+      checks.push({
+        id: "storage.local_directory",
+        state: "ok",
+        label: "Local storage directory",
+        detail: root,
+      });
+    } else {
+      checks.push({
+        id: "storage.local_directory",
+        state: "error",
+        label: "Local storage directory",
+        detail: `${root} is not a directory`,
+      });
+    }
+  } catch {
+    checks.push({
+      id: "storage.local_directory",
+      state: "warn",
+      label: "Local storage directory",
+      detail: `${root} does not exist yet`,
+    });
+  }
+
+  const media = await readMediaRows(env);
+  if (!media.ok) {
+    checks.push({
+      id: "storage.media_index",
+      state: "warn",
+      label: "Media database index",
+      detail:
+        media.reason === "missing-url"
+          ? "DATABASE_URL not set"
+          : media.reason === "pg-unavailable"
+            ? "pg package unavailable"
+            : "could not query np_media",
+    });
+    return {
+      adapter,
+      root,
+      summary,
+      checks,
+      indexed,
+      files,
+      missing: [],
+      orphaned: [],
+      invalidStorageKeys,
+    };
+  }
+
+  for (const row of media.rows) {
+    indexed.add(row.storage_key);
+    for (const key of collectSizeStorageKeys(row.sizes)) indexed.add(key);
+  }
+  summary.mediaRows = media.rows.length;
+  summary.indexedObjects = indexed.size;
+  checks.push({
+    id: "storage.media_index",
+    state: "ok",
+    label: "Media database index",
+    detail: `${summary.mediaRows.toString()} rows, ${summary.indexedObjects.toString()} objects`,
+  });
+
+  const missing: OpsStorageDriftItem[] = [];
+  if (localDirectoryReady) {
+    for (const key of indexed) {
+      const full = resolveStorageKey(root, key);
+      if (!full) {
+        invalidStorageKeys += 1;
+        continue;
+      }
+      if (!(await existsAt(full))) {
+        missing.push({ key, kind: "missing", path: full });
+      }
+    }
+    files = await listFilesRecursive(root);
+    summary.localFiles = files.length;
+  }
+  const orphaned = files
+    .filter((file) => !indexed.has(file))
+    .map<OpsStorageDriftItem>((file) => ({
+      key: file,
+      kind: "orphaned",
+      path: resolve(root, file),
+    }));
+  summary.missingFiles = missing.length;
+  summary.orphanedFiles = orphaned.length;
+
+  if (invalidStorageKeys > 0) {
+    checks.push({
+      id: "storage.local_keys",
+      state: "warn",
+      label: "Local media keys",
+      detail: `${invalidStorageKeys.toString()} indexed keys resolve outside the storage directory`,
+      hint: "Review np_media.storage_key values before trusting local media drift counts.",
+    });
+  }
+  const drift = summary.missingFiles + summary.orphanedFiles;
+  if (localDirectoryReady && media.ok) {
+    checks.push(
+      drift === 0
+        ? {
+            id: "storage.local_integrity",
+            state: "ok",
+            label: "Local media files",
+            detail: `${files.length.toString()} files match the media index`,
+          }
+        : {
+            id: "storage.local_integrity",
+            state: "warn",
+            label: "Local media files",
+            detail: `${summary.missingFiles.toString()} missing, ${summary.orphanedFiles.toString()} orphaned`,
+            hint: "Inspect the media table and storage directory before deleting or re-uploading assets.",
+          },
+    );
+  }
+
+  return {
+    adapter,
+    root,
+    summary,
+    checks,
+    indexed,
+    files,
+    missing,
+    orphaned,
+    invalidStorageKeys,
+  };
+}
+
 export function buildOpsStorageJson(args: {
   adapter: OpsStorageJson["adapter"];
   summary: OpsStorageSummary;
@@ -206,13 +449,7 @@ export async function collectOpsStorageStatus(
 ): Promise<OpsStorageJson> {
   const adapter = parseAdapter(env);
   const checks: CheckResult[] = [];
-  const summary: OpsStorageSummary = {
-    mediaRows: 0,
-    indexedObjects: 0,
-    localFiles: null,
-    missingFiles: 0,
-    orphanedFiles: 0,
-  };
+  const summary = emptySummary();
 
   if (adapter === "unknown") {
     checks.push({
@@ -345,6 +582,147 @@ export async function collectOpsStorageStatus(
   }
 
   return buildOpsStorageJson({ adapter, summary, checks, operation });
+}
+
+export async function collectOpsStorageDriftList(args: {
+  operation: "missing-files" | "orphaned-files";
+  limit?: number;
+  env?: OpsStorageEnv;
+}): Promise<OpsStorageDriftListJson> {
+  const limit = normalizeLimit(args.limit);
+  const inventory = await collectLocalStorageInventory(args.env ?? process.env);
+  const items = args.operation === "missing-files" ? inventory.missing : inventory.orphaned;
+  const limited = limitItems(items, limit);
+  const counts = countChecks(inventory.checks);
+  const status =
+    counts.errors > 0 ? "blocked" : items.length > 0 || counts.warnings > 0 ? "attention" : "ready";
+  return {
+    schemaVersion: "np.ops-storage-list.v1",
+    ok: counts.errors === 0,
+    status,
+    adapter: inventory.adapter,
+    operation: args.operation,
+    summary: {
+      ...inventory.summary,
+      total: items.length,
+      returned: limited.returned.length,
+      limit,
+      truncated: limited.truncated,
+      invalidStorageKeys: inventory.invalidStorageKeys,
+    },
+    nextCommand:
+      status === "ready"
+        ? null
+        : args.operation === "missing-files"
+          ? "nexpress ops storage orphaned-files --json"
+          : "nexpress ops storage migrate plan --target s3 --json",
+    checks: inventory.checks,
+    items: limited.returned,
+  };
+}
+
+export async function buildOpsStorageMigrationPlan(args: {
+  target?: string | null;
+  env?: OpsStorageEnv;
+}): Promise<OpsStorageMigrationPlanJson> {
+  const env = args.env ?? process.env;
+  const inventory = await collectLocalStorageInventory(env);
+  const checks = [...inventory.checks];
+  const target = args.target ?? "s3";
+  if (target !== "s3") {
+    checks.push({
+      id: "storage.migration_target",
+      state: "error",
+      label: "Storage migration target",
+      detail: String(target),
+      hint: "Only --target s3 is supported by the read-only migration plan.",
+    });
+  } else {
+    const missing = ["NP_S3_BUCKET", "NP_S3_REGION"].filter((name) => !env[name]);
+    checks.push(
+      missing.length === 0
+        ? { id: "storage.s3_config", state: "ok", label: "S3 storage config" }
+        : {
+            id: "storage.s3_config",
+            state: "error",
+            label: "S3 storage config",
+            detail: `missing ${missing.join(", ")}`,
+            hint: "Set NP_S3_BUCKET and NP_S3_REGION before planning local-to-S3 migration.",
+          },
+    );
+  }
+  if (inventory.summary.missingFiles > 0) {
+    checks.push({
+      id: "storage.migration_missing_files",
+      state: "error",
+      label: "Migration source files",
+      detail: `${inventory.summary.missingFiles.toString()} indexed local files are missing`,
+      hint: "Run `nexpress ops storage missing-files --json` and restore missing files before migration.",
+    });
+  }
+  if (inventory.summary.orphanedFiles > 0) {
+    checks.push({
+      id: "storage.migration_orphaned_files",
+      state: "warn",
+      label: "Orphaned local files",
+      detail: `${inventory.summary.orphanedFiles.toString()} local files are not referenced by np_media`,
+      hint: "Run `nexpress ops storage orphaned-files --json` before deciding whether to keep or archive them.",
+    });
+  }
+  const counts = countChecks(checks);
+  const status = counts.errors > 0 ? "blocked" : counts.warnings > 0 ? "attention" : "ready";
+  const copyCandidates = Math.max(
+    0,
+    inventory.summary.indexedObjects -
+      inventory.summary.missingFiles -
+      inventory.invalidStorageKeys,
+  );
+  return {
+    schemaVersion: "np.ops-storage-migration-plan.v1",
+    ok: counts.errors === 0,
+    status,
+    source: "local",
+    target,
+    summary: {
+      ...inventory.summary,
+      copyCandidates,
+      invalidStorageKeys: inventory.invalidStorageKeys,
+    },
+    nextCommand:
+      status === "ready"
+        ? "nexpress ops storage test --json"
+        : (checks
+            .find((check) => check.state === "error" && check.hint)
+            ?.hint?.match(/`([^`]+)`/)?.[1] ?? "nexpress ops storage verify --json"),
+    checks,
+    commands: [
+      {
+        phase: "inspect",
+        command: "nexpress ops storage missing-files --json",
+        required: inventory.summary.missingFiles > 0,
+        requiresApproval: false,
+      },
+      {
+        phase: "inspect",
+        command: "nexpress ops storage orphaned-files --json",
+        required: inventory.summary.orphanedFiles > 0,
+        requiresApproval: false,
+      },
+      {
+        phase: "prepare",
+        command: "nexpress ops storage test --json",
+        required: true,
+        requiresApproval: false,
+      },
+      {
+        phase: "apply",
+        command:
+          "nexpress ops storage migrate apply --target s3 --execute --approve storage-migrate",
+        required: true,
+        requiresApproval: true,
+      },
+    ],
+  };
 }
 
 function buildStorageConfig(env: OpsStorageEnv, adapter: "local" | "s3") {
