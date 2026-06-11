@@ -229,6 +229,37 @@ describe("release core", () => {
     );
   });
 
+  it("marks approval-gated ops execution commands as approval-required", () => {
+    const check = buildReleaseJson({
+      mode: "check",
+      target: "docker",
+      steps: [
+        {
+          ...readyStep,
+          ok: false,
+          exitCode: 1,
+          status: "blocked",
+          nextCommand: "nexpress ops storage test --execute --approve storage-test --json",
+          report: { schemaVersion: "np.ops-storage.v1", ok: false, status: "blocked" },
+        },
+      ],
+    });
+    const plan = buildReleasePlanJson({
+      planId: "release-ops-approval",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      target: "docker",
+      artifactPath: ".nexpress/releases/release-ops-approval.json",
+      check,
+    });
+
+    expect(plan.commands[0]).toEqual(
+      expect.objectContaining({
+        command: "nexpress ops storage test --execute --approve storage-test --json",
+        requiresApproval: true,
+      }),
+    );
+  });
+
   it("renders compact release plan output", () => {
     const check = buildReleaseJson({ mode: "check", target: "docker", steps: [readyStep] });
     const plan = buildReleasePlanJson({

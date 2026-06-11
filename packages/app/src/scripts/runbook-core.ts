@@ -72,6 +72,44 @@ function evidenceNextCommands(evidence: RunbookEvidence[]): string[] {
   ];
 }
 
+function uniqueCommands(commands: string[]): string[] {
+  return [...new Set(commands.filter((command) => command.length > 0))];
+}
+
+function summaryNumber(summary: unknown, key: string): number {
+  if (!summary || typeof summary !== "object") return 0;
+  const value = (summary as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function workerRunbookCommands(evidence: RunbookEvidence[]): string[] {
+  const commands = evidenceNextCommands(evidence);
+  const jobs = evidence.find((item) => item.id === "ops.jobs");
+  if (jobs) {
+    if (summaryNumber(jobs.summary, "failed") > 0) {
+      commands.push("nexpress ops jobs retry-all --state failed --json");
+    }
+    if (
+      summaryNumber(jobs.summary, "created") > 0 ||
+      summaryNumber(jobs.summary, "active") > 0 ||
+      summaryNumber(jobs.summary, "retry") > 0
+    ) {
+      commands.push("nexpress ops jobs drain --json");
+    }
+  }
+  return uniqueCommands(
+    commands.length > 0 ? commands : ["nexpress ops jobs status --json", "pnpm worker"],
+  );
+}
+
+function storageRunbookCommands(evidence: RunbookEvidence[]): string[] {
+  const commands = evidenceNextCommands(evidence);
+  commands.push("nexpress ops storage verify --json");
+  commands.push("nexpress ops storage test --json");
+  commands.push("nexpress ops preflight --target vercel --json");
+  return uniqueCommands(commands);
+}
+
 export function buildRunbookJson(args: {
   runbook: RunbookId;
   evidence: RunbookEvidence[];
@@ -91,10 +129,7 @@ export function buildRunbookJson(args: {
             ? "Worker and queue evidence does not show a drain blocker."
             : "Jobs evidence needs operator attention before queue drain can be trusted.",
         risk: status === "blocked" ? "high" : "medium",
-        nextCommands:
-          evidenceCommands.length > 0
-            ? evidenceCommands
-            : ["nexpress ops jobs status --json", "pnpm worker"],
+        nextCommands: workerRunbookCommands(args.evidence),
         rollbackNotes: [
           "Do not retry or drain jobs blindly; inspect failed/retry counts first.",
           "If a deploy introduced the backlog, roll back the app version before retrying destructive jobs.",
@@ -114,13 +149,7 @@ export function buildRunbookJson(args: {
             ? "Storage evidence is ready for planning a local-to-S3 migration."
             : "Storage evidence needs cleanup or configuration review before migration planning.",
         risk: "high",
-        nextCommands:
-          evidenceCommands.length > 0
-            ? evidenceCommands
-            : [
-                "nexpress ops storage status --json",
-                "nexpress ops preflight --target vercel --json",
-              ],
+        nextCommands: storageRunbookCommands(args.evidence),
         rollbackNotes: [
           "Keep local media read-only until S3 object counts and sampled URLs are verified.",
           "Do not delete local uploads until a restore path from the S3 bucket has been tested.",

@@ -179,6 +179,14 @@ export function buildOpsStorageJson(args: {
 }): OpsStorageJson {
   const counts = countChecks(args.checks);
   const status = counts.errors > 0 ? "blocked" : counts.warnings > 0 ? "attention" : "ready";
+  const nextCommand =
+    status === "ready"
+      ? null
+      : status === "attention"
+        ? args.operation === "verify"
+          ? "nexpress ops storage test --json"
+          : "nexpress ops storage verify --json"
+        : "nexpress ops storage status --json";
   return {
     schemaVersion: "np.ops-storage.v1",
     ok: counts.errors === 0,
@@ -187,12 +195,7 @@ export function buildOpsStorageJson(args: {
     operation: args.operation ?? "status",
     mutation: args.mutation ?? null,
     summary: args.summary,
-    nextCommand:
-      status === "ready"
-        ? null
-        : args.operation === "verify"
-          ? "nexpress ops storage verify --json"
-          : "nexpress ops storage status --json",
+    nextCommand,
     checks: args.checks,
   };
 }

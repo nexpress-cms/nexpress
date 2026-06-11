@@ -195,7 +195,12 @@ function releaseCommandsFromCheck(check: ReleaseJson): string[] {
 }
 
 function commandRequiresApproval(command: string): boolean {
-  return command.includes("db:migrate") || command.includes("setup");
+  return (
+    command.includes("db:migrate") ||
+    command.includes("setup") ||
+    command.includes("--execute") ||
+    command.includes("--approve")
+  );
 }
 
 function remediationCommandsFromCheck(check: ReleaseJson): string[] {

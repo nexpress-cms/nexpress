@@ -210,10 +210,16 @@ export function buildOpsJobsJson(args: {
     nextCommand:
       status === "blocked"
         ? args.pause.paused
-          ? "nexpress ops jobs status --json"
+          ? "nexpress ops jobs resume --json"
           : "pnpm worker"
         : status === "attention"
-          ? "pnpm worker"
+          ? hasFailures
+            ? "nexpress ops jobs retry-all --state failed --json"
+            : workersAlive === 0
+              ? "pnpm worker"
+              : hasRetry
+                ? "nexpress ops jobs drain --json"
+                : "nexpress ops jobs status --json"
           : null,
     pause: args.pause,
     counts: args.counts,

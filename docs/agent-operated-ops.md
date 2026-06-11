@@ -631,6 +631,9 @@ Implementation status:
   runs an upload / exists / delete probe through the configured adapter.
 - `nexpress ops plugins list|doctor --json` now reports configured plugin
   inventory and static conflicts as `np.ops-plugins.v1`.
+- `nexpress ops status`, release plans, and executable runbooks now promote
+  actionable `nextCommand` guidance from the underlying jobs / storage evidence,
+  including dry-run retry, drain, storage verify, and storage probe commands.
 - Queue destructive commands beyond bounded retry and drain start remain future
   work and should keep requiring explicit operator approval.
 - Storage migration commands (`migrate`) and
