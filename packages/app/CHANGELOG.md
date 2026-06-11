@@ -1,5 +1,101 @@
 # @nexpress/app
 
+## 0.3.17
+
+### Patch Changes
+
+- 3d69724: Add the first agent-operated ops status contract, scaffold wiring, and `nexpress ops status` handoff.
+- d3da33b: Expose deploy-plan and production-doctor JSON next-action fields for agent and CI handoff.
+- 9e32359: Preserve readiness-check hints in doctor fix-plan notes so remediation output keeps the original diagnostic guidance.
+- 65fddab: Expose doctor follow-up commands before fix-plan expansion so JSON, brief, and human output can point operators to the next remediation step.
+- ec64d83: Add read-only executable runbooks.
+
+  Generated apps now include a `runbook` script. `nexpress runbook <name>` emits
+  `schemaVersion: "np.runbook.v1"` with evidence, diagnosis, risk, next commands,
+  rollback notes, and docs links for worker drain, storage migration, backup drill,
+  and migration-crash incident paths.
+
+- 93370bd: Add read-only migration and backup readiness checks for agent-operated release gates.
+
+  Projects now get `ops:migrate` and `ops:backup` scripts, exposed through
+  `nexpress ops migrate status|plan` and `nexpress ops backup status|list|verify
+latest`. `release check` includes migration safety and required backup
+  readiness evidence, while migration and backup runbooks use the dedicated checks.
+
+- 3e06060: Clarify scaffolded project onboarding around doctor next commands, deploy preflight checks, and setup wizard completion guidance.
+- 581d0e9: Add actionable hints to deploy-plan environment checks in JSON, brief, and human-readable output.
+- 55b9834: Add the agent-operated jobs status check with worker heartbeat, pause state,
+  and queue count reporting.
+- 696129f: Expand the agent-operated ops loop with `ops preflight`, `ops health`, and
+  `nexpress ops doctor` handoffs for generated projects.
+- 1fedc19: Add initial ops mutation adapters.
+
+  `nexpress ops backup create` now records an operator-provided backup manifest,
+  and `nexpress ops jobs pause|resume` now persists the global jobs pause state
+  with mutation audit details in the `np.ops-jobs.v1` report.
+
+- 9d2b25d: Add read-only ops storage and plugin diagnostics.
+
+  Generated apps now include `ops:storage` and `ops:plugins` scripts. The
+  project CLI delegates `nexpress ops storage status`, `nexpress ops plugins
+list`, and `nexpress ops plugins doctor` to those scripts so agents and
+  operators can inspect storage readiness, local media drift, plugin inventory,
+  and static plugin conflicts through stable JSON contracts.
+
+- 164889c: Add approval-gated release apply audit artifacts.
+
+  `nexpress release apply --plan <artifact>` now validates a release plan and
+  writes a stable `np.release-apply.v1` audit artifact. It dry-runs by default,
+  and command execution requires both `--execute` and `--approve <planId>`.
+
+- d704baf: Add release plan audit artifacts.
+
+  `nexpress release plan --target <host>` now runs the pre-release gate and writes
+  a stable `np.release-plan.v1` artifact under `.nexpress/releases/` by default,
+  including remediation, release, and verify commands plus apply preconditions.
+
+- c602c0f: Add read-only release readiness gates.
+
+  Generated apps now include a `release` script. `nexpress release check`
+  combines deploy preflight, jobs, storage, and plugin diagnostics into
+  `schemaVersion: "np.release.v1"` before a release. `nexpress release verify`
+  combines health, jobs, storage, and plugin diagnostics into the same stable
+  envelope after deployment.
+
+- 1997753: Block hosted production deploys when SITE_URL still points at localhost or a private network address, and include the public-origin fix in doctor fix plans.
+- Updated dependencies [9342083]
+- Updated dependencies [e0fffb6]
+- Updated dependencies [456cfbd]
+- Updated dependencies [44520a5]
+- Updated dependencies [e6eb968]
+- Updated dependencies [6d55e54]
+- Updated dependencies [fef3414]
+- Updated dependencies [f257223]
+- Updated dependencies [bbfe126]
+  - @nexpress/admin@0.3.17
+  - @nexpress/blocks@0.3.17
+  - @nexpress/theme-magazine@0.3.17
+  - @nexpress/theme-portfolio@0.3.17
+  - @nexpress/next@0.3.17
+  - @nexpress/plugin-sdk@0.3.17
+  - @nexpress/plugin-block-callout@0.3.17
+  - @nexpress/plugin-block-embed@0.3.17
+  - @nexpress/plugin-block-latest-posts@0.3.17
+  - @nexpress/plugin-block-newsletter@0.3.17
+  - @nexpress/plugin-block-pricing@0.3.17
+  - @nexpress/plugin-block-stats@0.3.17
+  - @nexpress/plugin-forum@0.3.17
+  - @nexpress/theme@0.3.17
+  - @nexpress/theme-default@0.3.17
+  - @nexpress/theme-docs@0.3.17
+  - @nexpress/auth-pages@0.3.17
+  - @nexpress/plugin-oauth-github@0.3.17
+  - @nexpress/plugin-oauth-google@0.3.17
+  - @nexpress/plugin-reading-time@0.3.17
+  - @nexpress/plugin-seo-audit@0.3.17
+  - @nexpress/core@0.3.17
+  - @nexpress/editor@0.3.17
+
 ## 0.3.16
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @nexpress/plugin-block-latest-posts
 
+## 0.3.17
+
+### Patch Changes
+
+- Updated dependencies [6d55e54]
+  - @nexpress/blocks@0.3.17
+  - @nexpress/plugin-sdk@0.3.17
+
 ## 0.3.16
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @nexpress/blocks
 
+## 0.3.17
+
+### Patch Changes
+
+- 6d55e54: Keep nested array block props editable in the block editor so docs API table rows can edit their cells without JSON fallback.
+  - @nexpress/core@0.3.17
+  - @nexpress/editor@0.3.17
+
 ## 0.3.16
 
 ### Patch Changes

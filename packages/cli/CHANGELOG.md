@@ -1,5 +1,66 @@
 # create-nexpress
 
+## 0.1.26
+
+### Patch Changes
+
+- 3d69724: Add the first agent-operated ops status contract, scaffold wiring, and `nexpress ops status` handoff.
+- d3da33b: Expose deploy-plan and production-doctor JSON next-action fields for agent and CI handoff.
+- ec64d83: Add read-only executable runbooks.
+
+  Generated apps now include a `runbook` script. `nexpress runbook <name>` emits
+  `schemaVersion: "np.runbook.v1"` with evidence, diagnosis, risk, next commands,
+  rollback notes, and docs links for worker drain, storage migration, backup drill,
+  and migration-crash incident paths.
+
+- 93370bd: Add read-only migration and backup readiness checks for agent-operated release gates.
+
+  Projects now get `ops:migrate` and `ops:backup` scripts, exposed through
+  `nexpress ops migrate status|plan` and `nexpress ops backup status|list|verify
+latest`. `release check` includes migration safety and required backup
+  readiness evidence, while migration and backup runbooks use the dedicated checks.
+
+- 3e06060: Clarify scaffolded project onboarding around doctor next commands, deploy preflight checks, and setup wizard completion guidance.
+- 55b9834: Add the agent-operated jobs status check with worker heartbeat, pause state,
+  and queue count reporting.
+- 696129f: Expand the agent-operated ops loop with `ops preflight`, `ops health`, and
+  `nexpress ops doctor` handoffs for generated projects.
+- 1fedc19: Add initial ops mutation adapters.
+
+  `nexpress ops backup create` now records an operator-provided backup manifest,
+  and `nexpress ops jobs pause|resume` now persists the global jobs pause state
+  with mutation audit details in the `np.ops-jobs.v1` report.
+
+- 9d2b25d: Add read-only ops storage and plugin diagnostics.
+
+  Generated apps now include `ops:storage` and `ops:plugins` scripts. The
+  project CLI delegates `nexpress ops storage status`, `nexpress ops plugins
+list`, and `nexpress ops plugins doctor` to those scripts so agents and
+  operators can inspect storage readiness, local media drift, plugin inventory,
+  and static plugin conflicts through stable JSON contracts.
+
+- 164889c: Add approval-gated release apply audit artifacts.
+
+  `nexpress release apply --plan <artifact>` now validates a release plan and
+  writes a stable `np.release-apply.v1` audit artifact. It dry-runs by default,
+  and command execution requires both `--execute` and `--approve <planId>`.
+
+- d704baf: Add release plan audit artifacts.
+
+  `nexpress release plan --target <host>` now runs the pre-release gate and writes
+  a stable `np.release-plan.v1` artifact under `.nexpress/releases/` by default,
+  including remediation, release, and verify commands plus apply preconditions.
+
+- c602c0f: Add read-only release readiness gates.
+
+  Generated apps now include a `release` script. `nexpress release check`
+  combines deploy preflight, jobs, storage, and plugin diagnostics into
+  `schemaVersion: "np.release.v1"` before a release. `nexpress release verify`
+  combines health, jobs, storage, and plugin diagnostics into the same stable
+  envelope after deployment.
+
+- ce954c8: Refresh the scaffold completion message with setup-first troubleshooting and deploy preflight guidance.
+
 ## 0.1.25
 
 ### Patch Changes
