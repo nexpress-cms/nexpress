@@ -74,16 +74,32 @@ export function summarizeOpsChecks(checks: CheckResult[]): OpsStatusSummary {
 
 export function buildOpsStatusJson(checks: CheckResult[]): OpsStatusJson {
   const summary = summarizeOpsChecks(checks);
-  const status =
-    summary.errors > 0 ? "blocked" : summary.warnings > 0 ? "attention" : "ready";
+  const status = summary.errors > 0 ? "blocked" : summary.warnings > 0 ? "attention" : "ready";
+  const nextCommand =
+    status === "ready" ? null : (commandFromChecks(checks) ?? "pnpm run doctor -- --fix-plan");
   return {
     schemaVersion: "np.ops.v1",
     ok: summary.errors === 0,
     status,
     summary,
-    nextCommand: status === "ready" ? null : "pnpm run doctor -- --fix-plan",
+    nextCommand,
     checks,
   };
+}
+
+function commandFromChecks(checks: CheckResult[]): string | null {
+  const actionable = checks.find((check) => check.state === "error" && extractCommand(check.hint));
+  if (actionable) return extractCommand(actionable.hint);
+  const warning = checks.find((check) => check.state === "warn" && extractCommand(check.hint));
+  return warning ? extractCommand(warning.hint) : null;
+}
+
+function extractCommand(hint: string | undefined): string | null {
+  if (!hint) return null;
+  const match = hint.match(/`([^`]+)`/);
+  if (match?.[1]) return match[1];
+  const trimmed = hint.trim();
+  return /^(nexpress|pnpm|npm|yarn)\s/.test(trimmed) ? trimmed : null;
 }
 
 function formatBriefState(state: CheckResult["state"], color: boolean): string {

@@ -51,7 +51,7 @@ describe("ops storage core", () => {
       expect.objectContaining({
         ok: true,
         status: "attention",
-        nextCommand: "nexpress ops storage status --json",
+        nextCommand: "nexpress ops storage verify --json",
       }),
     );
   });
@@ -103,7 +103,7 @@ describe("ops storage core", () => {
       expect.objectContaining({
         operation: "verify",
         status: "attention",
-        nextCommand: "nexpress ops storage verify --json",
+        nextCommand: "nexpress ops storage test --json",
       }),
     );
   });

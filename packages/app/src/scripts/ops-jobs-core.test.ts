@@ -66,7 +66,24 @@ describe("ops jobs core", () => {
     });
     expect(report.status).toBe("attention");
     expect(report.ok).toBe(true);
+    expect(report.nextCommand).toBe("nexpress ops jobs retry-all --state failed --json");
     expect(renderBriefOpsJobsStatus(report, { color: false })).toContain("attention: enabled");
+  });
+
+  it("points paused queues at resume instead of a passive status check", () => {
+    const report = buildOpsJobsJson({
+      enabled: true,
+      pause: { ...pause, paused: true, reason: "maintenance" },
+      counts: emptyCounts,
+      workers: [],
+    });
+
+    expect(report).toEqual(
+      expect.objectContaining({
+        status: "blocked",
+        nextCommand: "nexpress ops jobs resume --json",
+      }),
+    );
   });
 
   it("includes mutation audit details in jobs reports", () => {

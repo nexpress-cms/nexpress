@@ -61,4 +61,49 @@ describe("runbook core", () => {
     expect(renderBriefRunbook(report, { color: false })).toContain("ready: Worker not draining");
     expect(renderBriefRunbook(report, { color: false })).toContain("- [ok] ops.jobs ready");
   });
+
+  it("suggests bounded retry and drain probes from worker evidence", () => {
+    const report = buildRunbookJson({
+      runbook: "worker-not-draining",
+      evidence: [
+        {
+          ...readyEvidence,
+          status: "attention",
+          summary: {
+            failed: 2,
+            retry: 1,
+            created: 3,
+            active: 0,
+          },
+          nextCommand: "nexpress ops jobs retry-all --state failed --json",
+        },
+      ],
+    });
+
+    expect(report.nextCommands).toEqual([
+      "nexpress ops jobs retry-all --state failed --json",
+      "nexpress ops jobs drain --json",
+    ]);
+  });
+
+  it("suggests verify and probe commands for storage migration runbooks", () => {
+    const report = buildRunbookJson({
+      runbook: "storage-local-to-s3",
+      evidence: [
+        {
+          id: "ops.storage",
+          command: "pnpm run ops:storage -- --json",
+          ok: true,
+          status: "attention",
+          nextCommand: "nexpress ops storage verify --json",
+        },
+      ],
+    });
+
+    expect(report.nextCommands).toEqual([
+      "nexpress ops storage verify --json",
+      "nexpress ops storage test --json",
+      "nexpress ops preflight --target vercel --json",
+    ]);
+  });
 });

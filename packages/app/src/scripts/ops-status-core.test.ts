@@ -56,6 +56,24 @@ describe("ops status core", () => {
     );
   });
 
+  it("promotes actionable check hints into the low-token next command", () => {
+    const report = buildOpsStatusJson([
+      {
+        id: "jobs.worker_stale",
+        state: "warn",
+        label: "Worker heartbeat",
+        hint: "nexpress ops jobs retry-all --state failed --json",
+      },
+    ]);
+
+    expect(report).toEqual(
+      expect.objectContaining({
+        status: "attention",
+        nextCommand: "nexpress ops jobs retry-all --state failed --json",
+      }),
+    );
+  });
+
   it("renders compact human output", () => {
     expect(renderBriefOpsStatus(buildOpsStatusJson(checks), { color: false })).toBe(
       [
