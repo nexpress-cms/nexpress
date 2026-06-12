@@ -2,14 +2,17 @@
 import "./_load-env.js";
 
 import {
+  collectOpsMigrateRollbackPlan,
   collectOpsMigrateReport,
   renderBriefOpsMigrateReport,
+  renderBriefOpsMigrateRollbackPlan,
   type OpsMigrateMode,
 } from "./ops-migrate-core.js";
 
 const RAW_ARGV = process.argv.slice(2);
 const ARGV = RAW_ARGV[0] === "--" ? RAW_ARGV.slice(1) : RAW_ARGV;
 const MODE: OpsMigrateMode = ARGV[0] === "plan" ? "plan" : "status";
+const ROLLBACK_PLAN_MODE = ARGV[0] === "rollback-plan";
 const JSON_MODE = ARGV.includes("--json");
 const COLOR_MODE = !JSON_MODE && !ARGV.includes("--no-color") && !process.env.NO_COLOR;
 
@@ -19,8 +22,10 @@ function printHelp(): void {
 Usage:
   pnpm run ops:migrate -- status --json
   pnpm run ops:migrate -- plan --brief --no-color
+  pnpm run ops:migrate -- rollback-plan --json
   nexpress ops migrate status --json
   nexpress ops migrate plan --json
+  nexpress ops migrate rollback-plan --json
 
 Options:
   --json       Print the stable machine-readable migration report.
@@ -38,6 +43,16 @@ async function main(): Promise<void> {
   if (shouldPrintHelp(ARGV)) {
     printHelp();
     return;
+  }
+
+  if (ROLLBACK_PLAN_MODE) {
+    const report = await collectOpsMigrateRollbackPlan({});
+    if (JSON_MODE) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderBriefOpsMigrateRollbackPlan(report, { color: COLOR_MODE }));
+    }
+    process.exit(report.ok ? 0 : 1);
   }
 
   const report = await collectOpsMigrateReport({ mode: MODE });

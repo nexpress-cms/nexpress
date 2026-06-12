@@ -47,7 +47,12 @@ describe("runbook core", () => {
         ok: false,
         status: "blocked",
         risk: "high",
-        nextCommands: ["pnpm run doctor -- --fix-plan"],
+        nextCommands: [
+          "pnpm run doctor -- --fix-plan",
+          "nexpress ops migrate status --json",
+          "nexpress ops migrate plan --json",
+          "nexpress ops migrate rollback-plan --json",
+        ],
       }),
     );
   });
