@@ -11,10 +11,10 @@ NexPress has two stores of record. They must be backed up together and
 restored in order, otherwise the system is left referencing data that
 isn't there.
 
-| Store               | What it holds                                                       | Backup mechanism             |
-| ------------------- | ------------------------------------------------------------------- | ---------------------------- |
-| **Postgres**        | Users, content, revisions, jobs, settings, audit log, media records | `pg_dump`                    |
-| **Media storage**   | The actual binary files referenced by `np_media.path`               | S3 versioning OR file backup |
+| Store             | What it holds                                                       | Backup mechanism             |
+| ----------------- | ------------------------------------------------------------------- | ---------------------------- |
+| **Postgres**      | Users, content, revisions, jobs, settings, audit log, media records | `pg_dump`                    |
+| **Media storage** | The actual binary files referenced by `np_media.path`               | S3 versioning OR file backup |
 
 The Postgres tables `np_media` (media records) and `np_media_refs`
 (content → media references) are what tie the two stores together. A
@@ -33,11 +33,11 @@ Pick the cadence that matches your RPO (recovery point objective — how
 much data you're willing to lose) and RTO (recovery time objective —
 how long you can be down).
 
-| RPO target | DB cadence            | Media cadence           |
-| ---------- | --------------------- | ----------------------- |
-| < 1 hour   | streaming replication | S3 versioning + replication |
+| RPO target | DB cadence            | Media cadence                 |
+| ---------- | --------------------- | ----------------------------- |
+| < 1 hour   | streaming replication | S3 versioning + replication   |
 | < 1 day    | hourly `pg_dump`      | S3 versioning OR hourly rsync |
-| < 1 week   | nightly `pg_dump`     | nightly rsync           |
+| < 1 week   | nightly `pg_dump`     | nightly rsync                 |
 
 For most self-hosted deploys, **nightly `pg_dump` + S3 versioning** is
 the sweet spot: simple, durable, and the restore procedure is the same
@@ -72,19 +72,19 @@ pg_dump \
 The dump captures every NexPress table. The ones that matter for
 disaster recovery:
 
-| Table family               | Why it matters                                                                |
-| -------------------------- | ----------------------------------------------------------------------------- |
-| `np_users`, `np_sessions`  | Staff accounts. After restore, every user keeps their `tokenVersion`.        |
-| `np_members`, `np_member_*` | Member accounts and identities.                                              |
-| `np_c_*`                   | Collection content (posts, pages, taxonomies, discussions, …).                |
-| `np_revisions`             | Per-document version history.                                                 |
-| `np_media`, `np_media_refs`| Media records and their content references — must match the file store.      |
-| `np_settings`              | Site settings, active theme, plugin enable/disable.                           |
-| `np_audit_events`          | Compliance log; required for forensic review of past incidents.               |
-| `np_navigation`            | Header / footer menus per site.                                               |
-| `np_sites`, `np_site_memberships` | Multi-tenant configuration; preserves per-site staff mappings.         |
-| `np_plugin_storage`        | Plugin-owned data; restoring without it can leave plugins in inconsistent state. |
-| `np_worker_heartbeats`     | Job worker liveness; ignored on restore (next worker start overwrites).       |
+| Table family                      | Why it matters                                                                   |
+| --------------------------------- | -------------------------------------------------------------------------------- |
+| `np_users`, `np_sessions`         | Staff accounts. After restore, every user keeps their `tokenVersion`.            |
+| `np_members`, `np_member_*`       | Member accounts and identities.                                                  |
+| `np_c_*`                          | Collection content (posts, pages, taxonomies, discussions, …).                   |
+| `np_revisions`                    | Per-document version history.                                                    |
+| `np_media`, `np_media_refs`       | Media records and their content references — must match the file store.          |
+| `np_settings`                     | Site settings, active theme, plugin enable/disable.                              |
+| `np_audit_events`                 | Compliance log; required for forensic review of past incidents.                  |
+| `np_navigation`                   | Header / footer menus per site.                                                  |
+| `np_sites`, `np_site_memberships` | Multi-tenant configuration; preserves per-site staff mappings.                   |
+| `np_plugin_storage`               | Plugin-owned data; restoring without it can leave plugins in inconsistent state. |
+| `np_worker_heartbeats`            | Job worker liveness; ignored on restore (next worker start overwrites).          |
 
 The pg-boss tables (`job`, `job_common`, `archive`, …) restore along
 with the rest. Jobs that were in flight at backup time will be
@@ -108,7 +108,7 @@ quarter (the [DR drill](#disaster-recovery-drill) section below).
 
 ### S3 (recommended for production)
 
-Enable versioning on the bucket *before* you start writing to it.
+Enable versioning on the bucket _before_ you start writing to it.
 Versioning is what makes "delete a file" recoverable — without it, a
 delete is permanent.
 
@@ -171,7 +171,7 @@ If restoring across major Postgres versions, use the higher version's
 
 ### 2. Media
 
-Restore the file store *to match the DB you just restored*. Mismatched
+Restore the file store _to match the DB you just restored_. Mismatched
 backups cause silent breakage:
 
 - Files newer than the DB restore point → orphaned files, no broken
@@ -213,17 +213,17 @@ fly scale count 2
 
 Run the smoke test before you tell anyone the restore is done.
 
-| Check                                              | Pass criteria                                          |
-| -------------------------------------------------- | ------------------------------------------------------ |
-| `GET /` — public home page                         | 200, content matches expected version                  |
-| `GET /admin/login` — admin login                   | 200                                                    |
-| Sign in as an existing admin                       | Lands on `/admin`, no token mismatch                   |
-| `/admin/collections/posts` — list view             | Existing posts shown                                   |
-| Open the most recently published post              | Body content + media render without 404s               |
-| `/admin/jobs` — job admin                          | Worker shows online in heartbeat widget                |
-| Trigger a small job (e.g. media re-process)        | Completes, appears in archive                          |
-| `/api/health` (if configured)                      | 200                                                    |
-| Server logs                                        | No `MEDIA_NOT_FOUND` or `verifyTokenFull` errors       |
+| Check                                       | Pass criteria                                    |
+| ------------------------------------------- | ------------------------------------------------ |
+| `GET /` — public home page                  | 200, content matches expected version            |
+| `GET /admin/login` — admin login            | 200                                              |
+| Sign in as an existing admin                | Lands on `/admin`, no token mismatch             |
+| `/admin/collections/posts` — list view      | Existing posts shown                             |
+| Open the most recently published post       | Body content + media render without 404s         |
+| `/admin/jobs` — job admin                   | Worker shows online in heartbeat widget          |
+| Trigger a small job (e.g. media re-process) | Completes, appears in archive                    |
+| `/api/health` (if configured)               | 200                                              |
+| Server logs                                 | No `MEDIA_NOT_FOUND` or `verifyTokenFull` errors |
 
 If any check fails, **do not run `pnpm db:migrate`** as a fix. The
 schema is already at the correct version (see [Dump](#dump) above).
@@ -259,6 +259,19 @@ verification checklist. The drill catches:
 
 A drill that finds nothing is the drill working as intended; budget
 the time anyway.
+
+Before touching an isolated database, generate the read-only restore plan:
+
+```bash
+nexpress ops backup verify latest --json
+nexpress ops backup restore-plan latest --json
+```
+
+`restore-plan` reads the backup manifest, checks that recorded database and
+media artifacts are still present, and prints the ordered restore / verify /
+record steps with approval flags. It never drops databases, runs `pg_restore`,
+or mutates media storage; use it as the operator checklist for the isolated
+drill.
 
 ## Automation snippets
 
