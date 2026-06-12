@@ -1,3 +1,5 @@
+import { toProjectCommand } from "./ops-command-format.js";
+
 export type ReleaseMode = "check" | "plan" | "verify";
 export type ReleaseStepId =
   | "ops.preflight"
@@ -51,6 +53,7 @@ export interface ReleaseJson {
 export interface ReleasePlanCommand {
   phase: "remediate" | "release" | "verify";
   command: string;
+  projectCommand: string;
   required: boolean;
   requiresApproval: boolean;
 }
@@ -73,6 +76,7 @@ export interface ReleasePlanJson {
     requiresApproval: true;
     blockedReason: string | null;
     nextCommand: string | null;
+    projectNextCommand: string | null;
   };
   audit: {
     artifactPath: string | null;
@@ -207,6 +211,20 @@ function commandRequiresApproval(command: string): boolean {
   );
 }
 
+function releasePlanCommand(
+  phase: ReleasePlanCommand["phase"],
+  command: string,
+  required: boolean,
+): ReleasePlanCommand {
+  return {
+    phase,
+    command,
+    projectCommand: toProjectCommand(command),
+    required,
+    requiresApproval: commandRequiresApproval(command),
+  };
+}
+
 function remediationCommandsFromCheck(check: ReleaseJson): string[] {
   const blockedCommands = check.steps
     .filter(stepBlocked)
@@ -224,34 +242,22 @@ export function buildReleasePlanJson(args: {
   artifactPath?: string | null;
   check: ReleaseJson;
 }): ReleasePlanJson {
-  const remediation = remediationCommandsFromCheck(args.check).map<ReleasePlanCommand>(
-    (command) => ({
-      phase: "remediate",
-      command,
-      required: !args.check.ok,
-      requiresApproval: commandRequiresApproval(command),
-    }),
+  const remediation = remediationCommandsFromCheck(args.check).map<ReleasePlanCommand>((command) =>
+    releasePlanCommand("remediate", command, !args.check.ok),
   );
   const release = (
     args.check.ok ? releaseCommandsFromCheck(args.check) : []
-  ).map<ReleasePlanCommand>((command) => ({
-    phase: "release",
-    command,
-    required: true,
-    requiresApproval: commandRequiresApproval(command),
-  }));
+  ).map<ReleasePlanCommand>((command) => releasePlanCommand("release", command, true));
   const verify: ReleasePlanCommand[] = [
-    {
-      phase: "verify",
-      command: "nexpress release verify --json",
-      required: true,
-      requiresApproval: false,
-    },
+    releasePlanCommand("verify", "nexpress release verify --json", true),
   ];
   const commands = [...remediation, ...release, ...verify];
   const blockedReason = args.check.ok
     ? null
     : "release check is not ready; run remediation commands and regenerate the plan";
+  const nextCommand = args.check.ok
+    ? `nexpress release apply --plan ${args.artifactPath ?? "<plan>"}`
+    : args.check.nextCommand;
 
   return {
     schemaVersion: "np.release-plan.v1",
@@ -270,9 +276,8 @@ export function buildReleasePlanJson(args: {
       allowed: args.check.ok,
       requiresApproval: true,
       blockedReason,
-      nextCommand: args.check.ok
-        ? `nexpress release apply --plan ${args.artifactPath ?? "<plan>"}`
-        : args.check.nextCommand,
+      nextCommand,
+      projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
     },
     audit: {
       artifactPath: args.artifactPath ?? null,

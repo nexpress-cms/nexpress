@@ -51,6 +51,8 @@ function printHelp(): void {
   console.log(`NexPress runbook
 
 Usage:
+  pnpm run ops:runbook -- worker-not-draining --json
+  pnpm run ops:runbook -- migration-crashed --json --out .nexpress/runbooks/migration-crashed.json
   pnpm run runbook -- worker-not-draining --json
   pnpm run runbook -- storage-local-to-s3 --brief --no-color
   nexpress runbook migration-crashed --json

@@ -378,6 +378,12 @@ Implementation status:
   source report `schemaVersion` and nested `plan.nextCommands` when present.
   Use `--out <path>` to write a clean JSON artifact without pnpm lifecycle
   banner/footer text around stdout.
+- In this monorepo, use `pnpm run ops:release -- ...` and
+  `pnpm run ops:runbook -- ...` for the project-side ops commands. The root
+  `pnpm run release` script is reserved for npm publishing.
+- Release plans include both global `command` strings and generated-app
+  `projectCommand` strings. Runbooks include `nextCommands` and
+  `projectNextCommands` for the same reason.
 - `nexpress ops migrate status|plan --json` emits
   `schemaVersion: "np.ops-migrate.v1"` with local/applied migration state,
   pending migrations, drift, unknown applied rows, and destructive SQL findings.

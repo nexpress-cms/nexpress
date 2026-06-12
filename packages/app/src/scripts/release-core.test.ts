@@ -158,6 +158,15 @@ describe("release core", () => {
       "pnpm run doctor:prod",
       "nexpress release verify --json",
     ]);
+    expect(plan.apply.projectNextCommand).toBe(
+      "pnpm run ops:release -- apply --plan .nexpress/releases/release-test.json",
+    );
+    expect(plan.commands.map((command) => command.projectCommand)).toEqual([
+      "pnpm install",
+      "pnpm db:migrate",
+      "pnpm run doctor:prod",
+      "pnpm run ops:release -- verify --json",
+    ]);
     expect(plan.commands.find((command) => command.command === "pnpm db:migrate")).toEqual(
       expect.objectContaining({ requiresApproval: true }),
     );
@@ -245,6 +254,11 @@ describe("release core", () => {
       "nexpress ops migrate rollback-plan --json",
       "nexpress ops backup restore-plan latest --json",
       "nexpress release verify --json",
+    ]);
+    expect(plan.commands.map((command) => command.projectCommand)).toEqual([
+      "pnpm run ops:migrate -- rollback-plan --json",
+      "pnpm run ops:backup -- restore-plan latest --json",
+      "pnpm run ops:release -- verify --json",
     ]);
     expect(plan.summary.remediationCommands).toBe(2);
   });
