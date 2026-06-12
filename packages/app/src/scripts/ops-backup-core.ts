@@ -63,6 +63,37 @@ export interface OpsBackupJson {
   checks: CheckResult[];
 }
 
+export interface OpsBackupRestorePlanStep {
+  id: string;
+  phase: "inspect" | "prepare" | "restore" | "verify" | "record";
+  command: string;
+  required: boolean;
+  requiresApproval: boolean;
+  note: string;
+}
+
+export interface OpsBackupRestorePlanJson {
+  schemaVersion: "np.ops-backup-restore-plan.v1";
+  ok: boolean;
+  status: "ready" | "attention" | "blocked";
+  backupDir: string;
+  target: "isolated";
+  manifestId: string | null;
+  summary: {
+    manifests: number;
+    selected: boolean;
+    verified: boolean;
+    restoreVerified: boolean;
+    databaseArtifact: boolean;
+    mediaArtifact: boolean;
+    commands: number;
+  };
+  nextCommand: string | null;
+  manifest: BackupManifestSummary | null;
+  checks: CheckResult[];
+  steps: OpsBackupRestorePlanStep[];
+}
+
 interface RenderOptions {
   color: boolean;
 }
@@ -165,6 +196,10 @@ function resolveBackupArtifactPath(backupDir: string, path: string): string | nu
 }
 
 function newestFirst(a: BackupManifestSummary, b: BackupManifestSummary): number {
+  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+}
+
+function newestManifestFirst(a: BackupManifest, b: BackupManifest): number {
   return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 }
 
@@ -280,6 +315,7 @@ export async function collectOpsBackupReport(args: {
   mode: OpsBackupMode;
   required?: boolean;
   env?: OpsBackupEnv;
+  manifestId?: string | null;
 }): Promise<OpsBackupJson> {
   const env = args.env ?? process.env;
   const backupDir = backupDirFromEnv(env);
@@ -335,16 +371,26 @@ export async function collectOpsBackupReport(args: {
   const parsed = await Promise.all(files.map(readManifestFile));
   const manifests = parsed.filter((manifest): manifest is BackupManifest => Boolean(manifest));
   const summaries = manifests.map(manifestSummary);
-  const latest = summaries.sort(newestFirst)[0];
-  if (args.mode === "verify" && latest) {
+  const selectedManifest = selectBackupManifest(manifests, args.manifestId ?? "latest");
+  const selectedSummary = selectedManifest ? manifestSummary(selectedManifest) : null;
+  if (args.mode === "verify" && args.manifestId && !selectedManifest) {
+    checks.push({
+      id: "backup.verify.selection",
+      state: "error",
+      label: "Backup verification target",
+      detail: `manifest ${args.manifestId} was not found`,
+    });
+  }
+  if (args.mode === "verify" && selectedSummary) {
     const missing: string[] = [];
-    if (latest.databasePath) {
-      const databasePath = resolveBackupArtifactPath(backupDir, latest.databasePath);
-      if (!databasePath || !(await pathExists(databasePath))) missing.push(latest.databasePath);
+    if (selectedSummary.databasePath) {
+      const databasePath = resolveBackupArtifactPath(backupDir, selectedSummary.databasePath);
+      if (!databasePath || !(await pathExists(databasePath)))
+        missing.push(selectedSummary.databasePath);
     }
-    if (latest.mediaPath) {
-      const mediaPath = resolveBackupArtifactPath(backupDir, latest.mediaPath);
-      if (!mediaPath || !(await pathExists(mediaPath))) missing.push(latest.mediaPath);
+    if (selectedSummary.mediaPath) {
+      const mediaPath = resolveBackupArtifactPath(backupDir, selectedSummary.mediaPath);
+      if (!mediaPath || !(await pathExists(mediaPath))) missing.push(selectedSummary.mediaPath);
     }
     if (missing.length > 0) {
       checks.push({
@@ -354,7 +400,7 @@ export async function collectOpsBackupReport(args: {
         detail: `missing ${missing.join(", ")}`,
         hint: "Restore or recreate the missing backup artifacts before relying on this manifest.",
       });
-    } else if (latest.databasePath || latest.mediaPath) {
+    } else if (selectedSummary.databasePath || selectedSummary.mediaPath) {
       checks.push({ id: "backup.artifacts", state: "ok", label: "Backup artifacts" });
     }
   }
@@ -367,6 +413,289 @@ export async function collectOpsBackupReport(args: {
     manifests: summaries,
     checks,
   });
+}
+
+async function collectBackupManifests(env: OpsBackupEnv): Promise<{
+  backupDir: string;
+  maxAgeHours: number;
+  manifests: BackupManifest[];
+  checks: CheckResult[];
+}> {
+  const backupDir = backupDirFromEnv(env);
+  const maxAgeHours = maxAgeHoursFromEnv(env);
+  const checks: CheckResult[] = [];
+
+  try {
+    const dirStat = await stat(backupDir);
+    if (!dirStat.isDirectory()) {
+      return {
+        backupDir,
+        maxAgeHours,
+        manifests: [],
+        checks: [
+          {
+            id: "backup.directory",
+            state: "error",
+            label: "Backup directory",
+            detail: `${backupDir} is not a directory`,
+          },
+        ],
+      };
+    }
+    checks.push({
+      id: "backup.directory",
+      state: "ok",
+      label: "Backup directory",
+      detail: backupDir,
+    });
+  } catch {
+    return {
+      backupDir,
+      maxAgeHours,
+      manifests: [],
+      checks: [
+        {
+          id: "backup.directory",
+          state: "error",
+          label: "Backup directory",
+          detail: `${backupDir} does not exist`,
+          hint: "Set NP_BACKUP_DIR or create backup manifests in .nexpress/backups.",
+        },
+      ],
+    };
+  }
+
+  const files = await listManifestFiles(backupDir);
+  const parsed = await Promise.all(files.map(readManifestFile));
+  return {
+    backupDir,
+    maxAgeHours,
+    manifests: parsed.filter((manifest): manifest is BackupManifest => Boolean(manifest)),
+    checks,
+  };
+}
+
+function selectBackupManifest(
+  manifests: BackupManifest[],
+  manifestId: string | null,
+): BackupManifest | null {
+  const sorted = [...manifests].sort(newestManifestFirst);
+  if (!manifestId || manifestId === "latest") return sorted[0] ?? null;
+  return sorted.find((manifest) => manifest.id === manifestId) ?? null;
+}
+
+async function artifactCheck(args: {
+  backupDir: string;
+  id: string;
+  label: string;
+  path: string | null;
+  required: boolean;
+}): Promise<CheckResult> {
+  if (!args.path) {
+    return {
+      id: args.id,
+      state: args.required ? "error" : "warn",
+      label: args.label,
+      detail: "not recorded in backup manifest",
+    };
+  }
+  const resolved = resolveBackupArtifactPath(args.backupDir, args.path);
+  if (!resolved || !(await pathExists(resolved))) {
+    return {
+      id: args.id,
+      state: "error",
+      label: args.label,
+      detail: `missing ${args.path}`,
+      hint: "Restore or recreate the missing backup artifact before restore drills.",
+    };
+  }
+  return {
+    id: args.id,
+    state: "ok",
+    label: args.label,
+    detail: args.path,
+  };
+}
+
+function restorePlanSteps(manifest: BackupManifestSummary | null): OpsBackupRestorePlanStep[] {
+  if (!manifest) {
+    return [
+      {
+        id: "backup.create",
+        phase: "prepare",
+        command: "nexpress ops backup create --database artifacts/db.dump --verified --json",
+        required: true,
+        requiresApproval: false,
+        note: "Record a backup manifest before planning a restore drill.",
+      },
+    ];
+  }
+
+  const database = manifest.databasePath ?? "<database-dump>";
+  const media = manifest.mediaPath ?? "<media-snapshot>";
+  return [
+    {
+      id: "backup.verify",
+      phase: "inspect",
+      command: `nexpress ops backup verify ${manifest.id} --json`,
+      required: true,
+      requiresApproval: false,
+      note: "Verify manifest artifacts before creating an isolated restore target.",
+    },
+    {
+      id: "restore.target",
+      phase: "prepare",
+      command: "createdb nexpress_restore_drill",
+      required: true,
+      requiresApproval: true,
+      note: "Create an isolated database; never run restore drills against production.",
+    },
+    {
+      id: "restore.database",
+      phase: "restore",
+      command: `pg_restore --dbname="$RESTORE_DATABASE_URL" --jobs=4 --no-owner --no-privileges ${database}`,
+      required: true,
+      requiresApproval: true,
+      note: "Restore the database dump into the isolated target.",
+    },
+    {
+      id: "restore.media",
+      phase: "restore",
+      command: `rsync -a --delete ${media}/ "$RESTORE_STORAGE_DIR"/`,
+      required: Boolean(manifest.mediaPath),
+      requiresApproval: Boolean(manifest.mediaPath),
+      note: "Restore media that matches the database snapshot; adapt for S3 versioned restores.",
+    },
+    {
+      id: "restore.smoke",
+      phase: "verify",
+      command: "SITE_URL=$RESTORE_SITE_URL nexpress ops health --url $RESTORE_SITE_URL --json",
+      required: true,
+      requiresApproval: false,
+      note: "Run app health checks against the restored environment.",
+    },
+    {
+      id: "restore.record",
+      phase: "record",
+      command: `nexpress ops backup create --database ${database} --restore-verified --json`,
+      required: true,
+      requiresApproval: false,
+      note: "Record restore verification once the isolated drill passes.",
+    },
+  ];
+}
+
+export async function collectOpsBackupRestorePlan(args: {
+  env?: OpsBackupEnv;
+  manifestId?: string | null;
+}): Promise<OpsBackupRestorePlanJson> {
+  const env = args.env ?? process.env;
+  const collected = await collectBackupManifests(env);
+  const checks: CheckResult[] = [...collected.checks];
+  const selected = selectBackupManifest(collected.manifests, args.manifestId ?? "latest");
+  const summary = selected ? manifestSummary(selected) : null;
+
+  if (collected.manifests.length === 0) {
+    checks.push({
+      id: "backup.manifest",
+      state: "error",
+      label: "Backup manifests",
+      detail: "none found",
+      hint: "Create and verify a backup before restore planning.",
+    });
+  } else {
+    checks.push({
+      id: "backup.manifest",
+      state: "ok",
+      label: "Backup manifests",
+      detail: `${collected.manifests.length.toString()} found`,
+    });
+  }
+
+  if (!selected) {
+    checks.push({
+      id: "backup.restore_plan.selection",
+      state: "error",
+      label: "Restore-plan manifest",
+      detail:
+        args.manifestId && args.manifestId !== "latest"
+          ? `manifest ${args.manifestId} was not found`
+          : "no latest manifest",
+    });
+  } else {
+    checks.push({
+      id: "backup.restore_plan.selection",
+      state: "ok",
+      label: "Restore-plan manifest",
+      detail: selected.id,
+    });
+
+    if (!summary?.verified) {
+      checks.push({
+        id: "backup.verified",
+        state: "warn",
+        label: "Backup verification",
+        detail: "selected backup has not been verified",
+        hint: "Run artifact verification before restore drills.",
+      });
+    }
+    if (!summary?.restoreVerified) {
+      checks.push({
+        id: "backup.restore_verified",
+        state: "warn",
+        label: "Restore verification",
+        detail: "selected backup has not passed restore verification",
+      });
+    }
+    checks.push(
+      await artifactCheck({
+        backupDir: collected.backupDir,
+        id: "backup.database_artifact",
+        label: "Database artifact",
+        path: summary?.databasePath ?? null,
+        required: true,
+      }),
+    );
+    checks.push(
+      await artifactCheck({
+        backupDir: collected.backupDir,
+        id: "backup.media_artifact",
+        label: "Media artifact",
+        path: summary?.mediaPath ?? null,
+        required: false,
+      }),
+    );
+  }
+
+  const counts = countChecks(checks);
+  const status = counts.errors > 0 ? "blocked" : counts.warnings > 0 ? "attention" : "ready";
+  const steps = restorePlanSteps(summary);
+  const firstApproval = steps.find((step) => step.requiresApproval);
+
+  return {
+    schemaVersion: "np.ops-backup-restore-plan.v1",
+    ok: counts.errors === 0,
+    status,
+    backupDir: collected.backupDir,
+    target: "isolated",
+    manifestId: summary?.id ?? args.manifestId ?? null,
+    summary: {
+      manifests: collected.manifests.length,
+      selected: Boolean(summary),
+      verified: summary?.verified ?? false,
+      restoreVerified: summary?.restoreVerified ?? false,
+      databaseArtifact: Boolean(summary?.databasePath),
+      mediaArtifact: Boolean(summary?.mediaPath),
+      commands: steps.length,
+    },
+    nextCommand:
+      status === "blocked"
+        ? "nexpress ops backup status --required --json"
+        : (firstApproval?.command ?? null),
+    manifest: summary,
+    checks,
+    steps,
+  };
 }
 
 function backupArtifactManifestPath(backupDir: string, input: string): string {
@@ -459,6 +788,28 @@ export function renderBriefOpsBackupReport(
       lines.push(
         `  - ${manifest.id} ${manifest.createdAt} verified=${String(manifest.verified)} restore=${String(manifest.restoreVerified)}`,
       );
+    }
+  }
+  if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  return lines.join("\n");
+}
+
+export function renderBriefOpsBackupRestorePlan(
+  report: OpsBackupRestorePlanJson,
+  options: RenderOptions = { color: true },
+): string {
+  const c = options.color ? ANSI : EMPTY_ANSI;
+  const lines = [
+    `${c.dim}NexPress ops backup restore-plan${c.reset}`,
+    `${formatState(report.status, options.color)}: manifest ${report.manifest?.id ?? "none"}, ${report.summary.commands.toString()} commands`,
+    `target: ${report.target}`,
+  ];
+  for (const check of report.checks) lines.push(formatCheck(check, options.color));
+  if (report.steps.length > 0) {
+    lines.push("steps:");
+    for (const step of report.steps) {
+      const approval = step.requiresApproval ? " approval" : "";
+      lines.push(`  - [${step.phase}] ${step.command}${approval}`);
     }
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);

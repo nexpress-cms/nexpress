@@ -113,6 +113,14 @@ function storageRunbookCommands(evidence: RunbookEvidence[]): string[] {
   return uniqueCommands(commands);
 }
 
+function backupRestoreRunbookCommands(evidence: RunbookEvidence[]): string[] {
+  const commands = evidenceNextCommands(evidence);
+  commands.push("nexpress ops backup verify latest --json");
+  commands.push("nexpress ops backup restore-plan latest --json");
+  commands.push("nexpress release check --target docker --json");
+  return uniqueCommands(commands);
+}
+
 export function buildRunbookJson(args: {
   runbook: RunbookId;
   evidence: RunbookEvidence[];
@@ -172,13 +180,7 @@ export function buildRunbookJson(args: {
             ? "Current ops evidence is ready enough to schedule a restore drill."
             : "Readiness evidence should be cleaned up before trusting a backup restore drill.",
         risk: "high",
-        nextCommands:
-          evidenceCommands.length > 0
-            ? evidenceCommands
-            : [
-                "nexpress ops backup verify latest --json",
-                "nexpress release check --target docker --json",
-              ],
+        nextCommands: backupRestoreRunbookCommands(args.evidence),
         rollbackNotes: [
           "Run restore drills against an isolated database and media snapshot, never production.",
           "Record the migration version, app commit, and media manifest with every backup artifact.",

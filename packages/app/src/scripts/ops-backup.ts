@@ -3,8 +3,10 @@ import "./_load-env.js";
 
 import {
   collectOpsBackupReport,
+  collectOpsBackupRestorePlan,
   createOpsBackupManifest,
   renderBriefOpsBackupReport,
+  renderBriefOpsBackupRestorePlan,
   type OpsBackupMode,
 } from "./ops-backup-core.js";
 
@@ -19,6 +21,7 @@ const MODE: OpsBackupMode =
       : SUBCOMMAND === "verify"
         ? "verify"
         : "status";
+const RESTORE_PLAN_MODE = SUBCOMMAND === "restore-plan";
 const JSON_MODE = ARGV.includes("--json");
 const REQUIRED_MODE = ARGV.includes("--required");
 const VERIFIED_MODE = ARGV.includes("--verified");
@@ -35,9 +38,12 @@ Usage:
   pnpm run ops:backup -- status --required --json
   pnpm run ops:backup -- list --brief --no-color
   pnpm run ops:backup -- verify latest --json
+  pnpm run ops:backup -- verify <manifestId> --json
+  pnpm run ops:backup -- restore-plan [latest|manifestId] --json
   nexpress ops backup create --json
   nexpress ops backup status --json
   nexpress ops backup verify latest --json
+  nexpress ops backup restore-plan latest --json
 
 Options:
   --database <path>       Register a database artifact path inside the backup dir.
@@ -58,8 +64,14 @@ function shouldPrintHelp(argv: string[]): boolean {
 
 function invalidSubcommand(): boolean {
   if (SUBCOMMAND === "create" || SUBCOMMAND === "status" || SUBCOMMAND === "list") return false;
-  if (SUBCOMMAND === "verify") return ARGV[1] !== "latest";
+  if (SUBCOMMAND === "verify") return !readPositional(1);
+  if (SUBCOMMAND === "restore-plan") return false;
   return true;
+}
+
+function readPositional(index: number): string | null {
+  const positionals = ARGV.filter((arg) => !arg.startsWith("--"));
+  return positionals[index] ?? null;
 }
 
 function readArgValue(name: string): string | null {
@@ -81,6 +93,16 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
+  if (RESTORE_PLAN_MODE) {
+    const report = await collectOpsBackupRestorePlan({ manifestId: readPositional(1) ?? "latest" });
+    if (JSON_MODE) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderBriefOpsBackupRestorePlan(report, { color: COLOR_MODE }));
+    }
+    process.exit(report.ok ? 0 : 1);
+  }
+
   const report =
     MODE === "create"
       ? await createOpsBackupManifest({
@@ -89,7 +111,11 @@ async function main(): Promise<void> {
           verified: VERIFIED_MODE,
           restoreVerified: RESTORE_VERIFIED_MODE,
         })
-      : await collectOpsBackupReport({ mode: MODE, required: REQUIRED_MODE });
+      : await collectOpsBackupReport({
+          mode: MODE,
+          required: REQUIRED_MODE,
+          manifestId: MODE === "verify" ? (readPositional(1) ?? "latest") : null,
+        });
   if (JSON_MODE) {
     console.log(JSON.stringify(report, null, 2));
   } else {

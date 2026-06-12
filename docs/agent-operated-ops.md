@@ -163,7 +163,7 @@ nexpress ops migrate rollback-plan --json
 nexpress ops backup create --json
 nexpress ops backup list --json
 nexpress ops backup verify latest --json
-nexpress ops restore plan latest --json
+nexpress ops backup restore-plan latest --json
 nexpress ops restore apply latest --confirm-production
 nexpress ops restore smoke-test latest
 ```
@@ -379,6 +379,9 @@ Implementation status:
 - `nexpress ops backup create|status|list|verify latest --json` emits
   `schemaVersion: "np.ops-backup.v1"` with backup manifest freshness,
   manifest creation, verification state, and latest artifact checks.
+- `nexpress ops backup restore-plan [latest|manifestId] --json` emits
+  `schemaVersion: "np.ops-backup-restore-plan.v1"` with a read-only isolated
+  restore drill plan, ordered restore / verify steps, and approval flags.
 - `nexpress ops jobs pause|resume --json` persists the same global
   `jobs.paused` state used by workers and returns `np.ops-jobs.v1` with a
   mutation audit block.
@@ -587,18 +590,19 @@ and verifiable.
 **Scope:**
 
 - Add `backup create`, `backup list`, `backup verify latest`.
-- Add `restore plan latest`, `restore apply latest`, and `restore smoke-test`.
+- Add `backup restore-plan latest`; keep destructive `restore apply latest`
+  and `restore smoke-test` as future approval-gated work.
 - Generate a manifest containing backup ID, DB dump path, media snapshot,
   migration version, app version, created-at timestamp, and verification state.
 - Support local uploads archives and S3 snapshot / sync manifests.
-- Require `--confirm-production` for destructive production restore.
+- Require `--confirm-production` for future destructive production restore.
 
 **Acceptance criteria:**
 
 - Backups tie DB and media artifacts to one manifest.
 - `verify latest --json` reports whether DB dump and media artifacts are
   present and restorable enough for a smoke test.
-- Restore plan prints exact ordered steps before apply.
+- Restore plan prints exact ordered steps before any future apply command.
 
 ### Issue 5 — Add jobs / storage / plugin ops checks
 

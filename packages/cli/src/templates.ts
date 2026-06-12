@@ -809,6 +809,7 @@ pnpm run ops:migrate -- plan --json
 pnpm run ops:backup -- status --json
 pnpm run ops:backup -- create --json
 pnpm run ops:backup -- verify latest --json
+pnpm run ops:backup -- restore-plan latest --json
 pnpm run ops:jobs -- --json
 pnpm run ops:jobs -- pause --reason "maintenance" --json
 pnpm run ops:jobs -- resume --json
@@ -839,7 +840,8 @@ pnpm run runbook -- worker-not-draining --json
 single deployment gate. \`ops:health\` checks \`/api/health/ready\` for a
 running local or hosted site. \`ops:migrate\` reports local/applied migration
 state and destructive SQL risk; \`ops:backup\` reports manifest freshness,
-records operator-provided backup manifests, and verifies artifact presence.
+records operator-provided backup manifests, verifies artifact presence, and
+produces read-only restore drill plans for isolated targets.
 \`ops:jobs\` reports worker heartbeat, pause state, and pg-boss queue counts,
 can pause/resume processing for maintenance windows, dry-run bulk retries, and
 start a drain by pausing new claims. \`ops:storage\`

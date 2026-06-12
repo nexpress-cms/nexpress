@@ -174,6 +174,9 @@ function evidenceRuns(
         capture(manager, runArgs(manager, "ops:backup", ["verify", "latest", "--json"])).then(
           (run) => evidenceFromRun("ops.backup.verify", run),
         ),
+        capture(manager, runArgs(manager, "ops:backup", ["restore-plan", "latest", "--json"])).then(
+          (run) => evidenceFromRun("ops.backup.restore-plan", run),
+        ),
         capture(
           manager,
           runArgs(manager, "release", ["check", "--target", "docker", "--json"]),
