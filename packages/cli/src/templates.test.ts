@@ -454,6 +454,7 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("pnpm run doctor:prod -- --target vercel --json --fix-plan");
     expect(readme).toContain("nextCommands");
     expect(readme).toContain("nextCommand");
+    expect(readme).toContain("plan.nextCommands");
     expect(readme).toContain("fixPlan[].nextCommand");
     expect(readme).toContain("Deploy with Vercel");
     expect(readme).toContain("https://vercel.com/new?utm_source=nexpress");

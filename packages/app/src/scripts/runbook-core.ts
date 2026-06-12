@@ -7,10 +7,12 @@ export type RunbookId =
 export interface RunbookEvidence {
   id: string;
   command: string;
+  schemaVersion?: string;
   ok: boolean;
   status: string;
   summary?: unknown;
   nextCommand?: string | null;
+  nextCommands?: string[];
   error?: string;
 }
 
@@ -66,7 +68,7 @@ function evidenceNextCommands(evidence: RunbookEvidence[]): string[] {
   return [
     ...new Set(
       evidence
-        .map((item) => item.nextCommand)
+        .flatMap((item) => [item.nextCommand, ...(item.nextCommands ?? [])])
         .filter((command): command is string => Boolean(command)),
     ),
   ];

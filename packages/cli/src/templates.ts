@@ -856,7 +856,10 @@ persists that gate as a replayable audit artifact under \`.nexpress/releases\`;
 \`release apply\` validates the artifact and only executes commands with
 \`--execute --approve <planId>\`; \`release verify\` composes the post-deploy
 readiness gate. \`runbook\` turns common incidents into evidence-backed
-diagnosis and next commands.
+diagnosis and next commands. Release plans and runbooks preserve nested
+\`plan.nextCommands\` from migration rollback, backup restore, storage
+migration, and plugin upgrade evidence so agent handoffs keep the concrete
+follow-up sequence.
 
 ### Stuck? Run the doctor.
 

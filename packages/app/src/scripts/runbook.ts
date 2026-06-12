@@ -22,10 +22,14 @@ interface CapturedCommand {
 }
 
 interface OpsReport {
+  schemaVersion?: string;
   ok?: boolean;
   status?: string;
   summary?: unknown;
   nextCommand?: string | null;
+  plan?: {
+    nextCommands?: unknown;
+  };
 }
 
 const RUNBOOKS: RunbookId[] = [
@@ -121,16 +125,24 @@ function parseJson(run: CapturedCommand): OpsReport | null {
   }
 }
 
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
 function evidenceFromRun(id: string, run: CapturedCommand): RunbookEvidence {
   const report = parseJson(run);
+  const nextCommands = readStringArray(report?.plan?.nextCommands);
   return {
     id,
     command: run.command,
+    ...(typeof report?.schemaVersion === "string" ? { schemaVersion: report.schemaVersion } : {}),
     ok: report?.ok ?? run.exitCode === 0,
     status:
       typeof report?.status === "string" ? report.status : run.exitCode === 0 ? "ready" : "blocked",
     ...(report?.summary ? { summary: report.summary } : {}),
     nextCommand: typeof report?.nextCommand === "string" ? report.nextCommand : null,
+    ...(nextCommands.length > 0 ? { nextCommands } : {}),
     ...(report
       ? {}
       : {

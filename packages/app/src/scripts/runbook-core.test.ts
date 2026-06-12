@@ -57,6 +57,41 @@ describe("runbook core", () => {
     );
   });
 
+  it("preserves nested evidence next commands in runbook order", () => {
+    const report = buildRunbookJson({
+      runbook: "backup-restore-drill",
+      evidence: [
+        {
+          id: "ops.backup.restore-plan",
+          command: "pnpm run ops:backup -- restore-plan latest --json",
+          schemaVersion: "np.ops-backup-restore-plan.v1",
+          ok: false,
+          status: "blocked",
+          nextCommand: "nexpress ops backup restore-plan latest --json",
+          nextCommands: [
+            "nexpress ops backup verify latest --json",
+            "nexpress release check --target docker --json",
+          ],
+        },
+      ],
+    });
+
+    expect(report.nextCommands).toEqual([
+      "nexpress ops backup restore-plan latest --json",
+      "nexpress ops backup verify latest --json",
+      "nexpress release check --target docker --json",
+    ]);
+    expect(report.evidence[0]).toEqual(
+      expect.objectContaining({
+        schemaVersion: "np.ops-backup-restore-plan.v1",
+        nextCommands: [
+          "nexpress ops backup verify latest --json",
+          "nexpress release check --target docker --json",
+        ],
+      }),
+    );
+  });
+
   it("renders compact human output", () => {
     const report = buildRunbookJson({
       runbook: "worker-not-draining",
