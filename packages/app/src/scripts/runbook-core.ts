@@ -27,6 +27,9 @@ export interface RunbookJson {
   nextCommands: string[];
   rollbackNotes: string[];
   docs: string[];
+  audit: {
+    artifactPath: string | null;
+  };
   evidence: RunbookEvidence[];
 }
 
@@ -134,8 +137,10 @@ function migrationRunbookCommands(evidence: RunbookEvidence[]): string[] {
 export function buildRunbookJson(args: {
   runbook: RunbookId;
   evidence: RunbookEvidence[];
+  artifactPath?: string | null;
 }): RunbookJson {
   const status = summarizeEvidence(args.evidence);
+  const audit = { artifactPath: args.artifactPath ?? null };
   switch (args.runbook) {
     case "worker-not-draining":
       return {
@@ -155,6 +160,7 @@ export function buildRunbookJson(args: {
           "If a deploy introduced the backlog, roll back the app version before retrying destructive jobs.",
         ],
         docs: ["docs/agent-operated-ops.md#issue-7--add-executable-runbook-commands"],
+        audit,
         evidence: args.evidence,
       };
     case "storage-local-to-s3":
@@ -175,6 +181,7 @@ export function buildRunbookJson(args: {
           "Do not delete local uploads until a restore path from the S3 bucket has been tested.",
         ],
         docs: ["docs/agent-operated-ops.md#issue-5--add-jobs--storage--plugin-ops-checks"],
+        audit,
         evidence: args.evidence,
       };
     case "backup-restore-drill":
@@ -195,6 +202,7 @@ export function buildRunbookJson(args: {
           "Record the migration version, app commit, and media manifest with every backup artifact.",
         ],
         docs: ["docs/agent-operated-ops.md#issue-4--add-backup--restore-cli"],
+        audit,
         evidence: args.evidence,
       };
     case "migration-crashed":
@@ -215,6 +223,7 @@ export function buildRunbookJson(args: {
           "Restore the database or migration files from the matching commit before retrying apply.",
         ],
         docs: ["docs/agent-operated-ops.md#issue-3--add-safe-migration-workflow"],
+        audit,
         evidence: args.evidence,
       };
   }
@@ -242,6 +251,7 @@ export function renderBriefRunbook(
   for (const item of report.evidence) {
     lines.push(`  - ${item.ok ? "[ok]" : "[blocked]"} ${item.id} ${item.status}`);
   }
+  if (report.audit.artifactPath) lines.push(`artifact: ${report.audit.artifactPath}`);
   if (report.nextCommands.length > 0) {
     lines.push("next:");
     for (const command of report.nextCommands) lines.push(`  - ${command}`);

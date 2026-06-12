@@ -232,7 +232,9 @@ export function buildReleasePlanJson(args: {
       requiresApproval: commandRequiresApproval(command),
     }),
   );
-  const release = releaseCommandsFromCheck(args.check).map<ReleasePlanCommand>((command) => ({
+  const release = (
+    args.check.ok ? releaseCommandsFromCheck(args.check) : []
+  ).map<ReleasePlanCommand>((command) => ({
     phase: "release",
     command,
     required: true,
