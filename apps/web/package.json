@@ -26,6 +26,8 @@
     "ops:migrate": "tsx scripts/ops-migrate.ts",
     "ops:plugins": "tsx scripts/ops-plugins.ts",
     "ops:preflight": "tsx scripts/ops-preflight.ts",
+    "ops:release": "tsx scripts/release.ts",
+    "ops:runbook": "tsx scripts/runbook.ts",
     "ops:status": "tsx scripts/ops-status.ts",
     "ops:storage": "tsx scripts/ops-storage.ts",
     "postinstall": "tsx scripts/postinstall-notice.ts",

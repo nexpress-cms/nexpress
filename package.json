@@ -24,6 +24,8 @@
     "db:migrate": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run db:migrate",
     "setup": "pnpm --filter @nexpress/web run setup",
     "doctor": "pnpm --filter @nexpress/web run doctor",
+    "ops:release": "pnpm --filter @nexpress/web run release",
+    "ops:runbook": "pnpm --filter @nexpress/web run runbook",
     "seed:admin": "pnpm --filter @nexpress/web seed:admin",
     "seed:content": "pnpm --filter @nexpress/web seed:content",
     "ux-audit": "tsx scripts/ux-audit.mts",

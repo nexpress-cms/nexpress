@@ -55,6 +55,12 @@ describe("runbook core", () => {
           "nexpress ops migrate plan --json",
           "nexpress ops migrate rollback-plan --json",
         ],
+        projectNextCommands: [
+          "pnpm run doctor -- --fix-plan",
+          "pnpm run ops:migrate -- status --json",
+          "pnpm run ops:migrate -- plan --json",
+          "pnpm run ops:migrate -- rollback-plan --json",
+        ],
       }),
     );
   });
@@ -82,6 +88,11 @@ describe("runbook core", () => {
       "nexpress ops backup restore-plan latest --json",
       "nexpress ops backup verify latest --json",
       "nexpress release check --target docker --json",
+    ]);
+    expect(report.projectNextCommands).toEqual([
+      "pnpm run ops:backup -- restore-plan latest --json",
+      "pnpm run ops:backup -- verify latest --json",
+      "pnpm run ops:release -- check --target docker --json",
     ]);
     expect(report.evidence[0]).toEqual(
       expect.objectContaining({
@@ -137,6 +148,10 @@ describe("runbook core", () => {
     expect(report.nextCommands).toEqual([
       "nexpress ops jobs retry-all --state failed --json",
       "nexpress ops jobs drain --json",
+    ]);
+    expect(report.projectNextCommands).toEqual([
+      "pnpm run ops:jobs -- retry-all --state failed --json",
+      "pnpm run ops:jobs -- drain --json",
     ]);
   });
 

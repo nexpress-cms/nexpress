@@ -53,6 +53,10 @@ function printHelp(): void {
   console.log(`NexPress release
 
 Usage:
+  pnpm run ops:release -- check --target vercel --json
+  pnpm run ops:release -- plan --target vercel --json
+  pnpm run ops:release -- apply --plan .nexpress/releases/<plan>.json --json
+  pnpm run ops:release -- verify --url https://example.com --json
   pnpm run release -- check --target vercel --json
   pnpm run release -- plan --target vercel --json
   pnpm run release -- apply --plan .nexpress/releases/<plan>.json --json

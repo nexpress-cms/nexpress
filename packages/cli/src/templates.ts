@@ -157,6 +157,8 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "ops:migrate": "tsx scripts/ops-migrate.ts",
         "ops:plugins": "tsx scripts/ops-plugins.ts",
         "ops:preflight": "tsx scripts/ops-preflight.ts",
+        "ops:release": "tsx scripts/release.ts",
+        "ops:runbook": "tsx scripts/runbook.ts",
         "ops:status": "tsx scripts/ops-status.ts",
         "ops:storage": "tsx scripts/ops-storage.ts",
         postinstall: "tsx scripts/postinstall-notice.ts",
@@ -827,12 +829,12 @@ pnpm run ops:storage -- test --execute --approve storage-test --json
 pnpm run ops:plugins -- doctor --json
 pnpm run ops:plugins -- inspect reading-time --json
 pnpm run ops:plugins -- upgrade-plan --json
-pnpm run release -- check --target vercel --json
-pnpm run release -- plan --target vercel --json
-pnpm run release -- apply --plan .nexpress/releases/<plan>.json --json
-pnpm run release -- verify --url http://localhost:3000 --json
-pnpm run runbook -- worker-not-draining --json
-pnpm run runbook -- migration-crashed --json --out .nexpress/runbooks/migration-crashed.json
+pnpm run ops:release -- check --target vercel --json
+pnpm run ops:release -- plan --target vercel --json
+pnpm run ops:release -- apply --plan .nexpress/releases/<plan>.json --json
+pnpm run ops:release -- verify --url http://localhost:3000 --json
+pnpm run ops:runbook -- worker-not-draining --json
+pnpm run ops:runbook -- migration-crashed --json --out .nexpress/runbooks/migration-crashed.json
 \`\`\`
 
 \`ops:status\` is the low-token handoff for agents and CI. It emits
@@ -857,10 +859,12 @@ persists that gate as a replayable audit artifact under \`.nexpress/releases\`;
 \`release apply\` validates the artifact and only executes commands with
 \`--execute --approve <planId>\`; \`release verify\` composes the post-deploy
 readiness gate. \`runbook --out <path>\` writes a clean JSON artifact for common
-incidents with evidence-backed diagnosis and next commands. Release plans and runbooks preserve nested
-\`plan.nextCommands\` from migration rollback, backup restore, storage
-migration, and plugin upgrade evidence so agent handoffs keep the concrete
-follow-up sequence.
+incidents with evidence-backed diagnosis and next commands. Release plans
+include global \`command\` values plus local \`projectCommand\` values; runbooks
+include \`nextCommands\` plus \`projectNextCommands\`. Both preserve nested
+\`plan.nextCommands\` from migration rollback, backup restore, storage migration,
+and plugin upgrade evidence so agent handoffs keep the concrete follow-up
+sequence.
 
 ### Stuck? Run the doctor.
 

@@ -327,6 +327,8 @@ describe("getProjectFiles", () => {
     expect(pkg.scripts["ops:migrate"]).toBe("tsx scripts/ops-migrate.ts");
     expect(pkg.scripts["ops:plugins"]).toBe("tsx scripts/ops-plugins.ts");
     expect(pkg.scripts["ops:preflight"]).toBe("tsx scripts/ops-preflight.ts");
+    expect(pkg.scripts["ops:release"]).toBe("tsx scripts/release.ts");
+    expect(pkg.scripts["ops:runbook"]).toBe("tsx scripts/runbook.ts");
     expect(pkg.scripts["ops:status"]).toBe("tsx scripts/ops-status.ts");
     expect(pkg.scripts["ops:storage"]).toBe("tsx scripts/ops-storage.ts");
     expect(pkg.scripts.release).toBe("tsx scripts/release.ts");
@@ -433,15 +435,15 @@ describe("getProjectFiles", () => {
       "pnpm run ops:storage -- test --execute --approve storage-test --json",
     );
     expect(readme).toContain("pnpm run ops:plugins -- doctor --json");
-    expect(readme).toContain("pnpm run release -- check --target vercel --json");
-    expect(readme).toContain("pnpm run release -- plan --target vercel --json");
+    expect(readme).toContain("pnpm run ops:release -- check --target vercel --json");
+    expect(readme).toContain("pnpm run ops:release -- plan --target vercel --json");
     expect(readme).toContain(
-      "pnpm run release -- apply --plan .nexpress/releases/<plan>.json --json",
+      "pnpm run ops:release -- apply --plan .nexpress/releases/<plan>.json --json",
     );
-    expect(readme).toContain("pnpm run release -- verify --url http://localhost:3000 --json");
-    expect(readme).toContain("pnpm run runbook -- worker-not-draining --json");
+    expect(readme).toContain("pnpm run ops:release -- verify --url http://localhost:3000 --json");
+    expect(readme).toContain("pnpm run ops:runbook -- worker-not-draining --json");
     expect(readme).toContain(
-      "pnpm run runbook -- migration-crashed --json --out .nexpress/runbooks/migration-crashed.json",
+      "pnpm run ops:runbook -- migration-crashed --json --out .nexpress/runbooks/migration-crashed.json",
     );
     expect(readme).toContain('schemaVersion: "np.ops.v1"');
     expect(readme).toContain("pnpm run deploy:plan -- --target vercel");

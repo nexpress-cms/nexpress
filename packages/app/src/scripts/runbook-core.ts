@@ -1,3 +1,5 @@
+import { toProjectCommand } from "./ops-command-format.js";
+
 export type RunbookId =
   | "worker-not-draining"
   | "storage-local-to-s3"
@@ -25,6 +27,7 @@ export interface RunbookJson {
   diagnosis: string;
   risk: "low" | "medium" | "high";
   nextCommands: string[];
+  projectNextCommands: string[];
   rollbackNotes: string[];
   docs: string[];
   audit: {
@@ -141,6 +144,10 @@ export function buildRunbookJson(args: {
 }): RunbookJson {
   const status = summarizeEvidence(args.evidence);
   const audit = { artifactPath: args.artifactPath ?? null };
+  const withProjectCommands = (nextCommands: string[]) => ({
+    nextCommands,
+    projectNextCommands: nextCommands.map(toProjectCommand),
+  });
   switch (args.runbook) {
     case "worker-not-draining":
       return {
@@ -154,7 +161,7 @@ export function buildRunbookJson(args: {
             ? "Worker and queue evidence does not show a drain blocker."
             : "Jobs evidence needs operator attention before queue drain can be trusted.",
         risk: status === "blocked" ? "high" : "medium",
-        nextCommands: workerRunbookCommands(args.evidence),
+        ...withProjectCommands(workerRunbookCommands(args.evidence)),
         rollbackNotes: [
           "Do not retry or drain jobs blindly; inspect failed/retry counts first.",
           "If a deploy introduced the backlog, roll back the app version before retrying destructive jobs.",
@@ -175,7 +182,7 @@ export function buildRunbookJson(args: {
             ? "Storage evidence is ready for planning a local-to-S3 migration."
             : "Storage evidence needs cleanup or configuration review before migration planning.",
         risk: "high",
-        nextCommands: storageRunbookCommands(args.evidence),
+        ...withProjectCommands(storageRunbookCommands(args.evidence)),
         rollbackNotes: [
           "Keep local media read-only until S3 object counts and sampled URLs are verified.",
           "Do not delete local uploads until a restore path from the S3 bucket has been tested.",
@@ -196,7 +203,7 @@ export function buildRunbookJson(args: {
             ? "Current ops evidence is ready enough to schedule a restore drill."
             : "Readiness evidence should be cleaned up before trusting a backup restore drill.",
         risk: "high",
-        nextCommands: backupRestoreRunbookCommands(args.evidence),
+        ...withProjectCommands(backupRestoreRunbookCommands(args.evidence)),
         rollbackNotes: [
           "Run restore drills against an isolated database and media snapshot, never production.",
           "Record the migration version, app commit, and media manifest with every backup artifact.",
@@ -217,7 +224,7 @@ export function buildRunbookJson(args: {
             ? "Migration evidence does not show drift or missing readiness."
             : "Migration or readiness evidence is blocked; inspect migration status before retrying.",
         risk: status === "blocked" ? "high" : "medium",
-        nextCommands: migrationRunbookCommands(args.evidence),
+        ...withProjectCommands(migrationRunbookCommands(args.evidence)),
         rollbackNotes: [
           "Do not edit applied migration SQL to match a failed database by hand.",
           "Restore the database or migration files from the matching commit before retrying apply.",
@@ -255,6 +262,10 @@ export function renderBriefRunbook(
   if (report.nextCommands.length > 0) {
     lines.push("next:");
     for (const command of report.nextCommands) lines.push(`  - ${command}`);
+  }
+  if (report.projectNextCommands.some((command, index) => command !== report.nextCommands[index])) {
+    lines.push("project next:");
+    for (const command of report.projectNextCommands) lines.push(`  - ${command}`);
   }
   if (report.rollbackNotes.length > 0) {
     lines.push("rollback notes:");
