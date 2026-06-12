@@ -376,6 +376,10 @@ Implementation status:
 - `nexpress ops migrate status|plan --json` emits
   `schemaVersion: "np.ops-migrate.v1"` with local/applied migration state,
   pending migrations, drift, unknown applied rows, and destructive SQL findings.
+- `nexpress ops migrate rollback-plan --json` emits
+  `schemaVersion: "np.ops-migrate-rollback-plan.v1"` with a read-only
+  backup-restore rollback plan, ordered inspect / prepare / rollback / verify
+  steps, and approval flags.
 - `nexpress ops backup create|status|list|verify latest --json` emits
   `schemaVersion: "np.ops-backup.v1"` with backup manifest freshness,
   manifest creation, verification state, and latest artifact checks.
@@ -565,12 +569,12 @@ blind destructive changes.
 
 **Scope:**
 
-- Add `migrate status`, `migrate plan`, `migrate apply --safe`, and
-  `migrate rollback-plan`.
+- Add `migrate status`, `migrate plan`, and `migrate rollback-plan`; keep
+  `migrate apply --safe` as future approval-gated work.
 - Detect pending migrations and current database migration version.
 - Flag destructive SQL patterns for manual approval.
-- Acquire an advisory migration lock before apply.
-- Require a fresh backup or an explicit override for production apply.
+- For future apply, acquire an advisory migration lock before touching the DB.
+- Require a fresh backup or an explicit override for any future production apply.
 - Verify readiness after apply.
 
 **Acceptance criteria:**
@@ -745,7 +749,8 @@ Implementation status:
 - `nexpress runbook backup-restore-drill --json` now composes
   `ops:backup verify latest` and release check evidence into `np.runbook.v1`.
 - `nexpress runbook migration-crashed --json` now composes
-  `ops:migrate status` and `ops:migrate plan` evidence into `np.runbook.v1`.
+  `ops:migrate status`, `ops:migrate plan`, and `ops:migrate rollback-plan`
+  evidence into `np.runbook.v1`.
 - `nexpress ops runbook <name> --json` delegates to the same project-side
   script for agents staying inside the ops namespace.
 - Runbooks are intentionally read-only in this pass. Automated pause/resume,

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildOpsMigrateRollbackPlanJson,
   buildOpsMigrateJson,
   scanDestructiveSql,
   type DestructiveSqlFinding,
@@ -80,5 +81,88 @@ describe("ops migrate core", () => {
         line: 1,
       }) as DestructiveSqlFinding,
     ]);
+  });
+
+  it("builds a rollback plan for pending migrations", () => {
+    const report = buildOpsMigrateRollbackPlanJson({
+      migrationsFolder: "./drizzle",
+      status: {
+        ...migrated,
+        pending: [{ index: 2, tag: "0002_comments", createdAt: 1_700_000_020_000, hash: "h2" }],
+      },
+      destructiveFindings: [],
+    });
+
+    expect(report).toEqual(
+      expect.objectContaining({
+        schemaVersion: "np.ops-migrate-rollback-plan.v1",
+        ok: false,
+        status: "blocked",
+        summary: expect.objectContaining({
+          pending: 1,
+          commands: 7,
+          safeToPlan: false,
+        }),
+        nextCommand: "nexpress ops backup status --required --json",
+      }),
+    );
+    expect(report.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "backup.restore-plan",
+          command: "nexpress ops backup restore-plan latest --json",
+        }),
+        expect.objectContaining({
+          id: "rollback.database",
+          requiresApproval: true,
+        }),
+      ]),
+    );
+  });
+
+  it("requires manual approval when rollback planning sees destructive SQL", () => {
+    const report = buildOpsMigrateRollbackPlanJson({
+      migrationsFolder: "./drizzle",
+      status: {
+        ...migrated,
+        pending: [{ index: 2, tag: "0002_drop", createdAt: 1_700_000_020_000, hash: "h2" }],
+      },
+      destructiveFindings: [
+        {
+          migration: "0002_drop",
+          pattern: "drop-column",
+          line: 1,
+          sql: "ALTER TABLE posts DROP COLUMN old_title",
+        },
+      ],
+    });
+
+    expect(report.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "migrate.destructive-review",
+          requiresApproval: true,
+        }),
+      ]),
+    );
+  });
+
+  it("does not suggest rollback approval when there is no migration risk", () => {
+    const report = buildOpsMigrateRollbackPlanJson({
+      migrationsFolder: "./drizzle",
+      status: migrated,
+      destructiveFindings: [],
+    });
+
+    expect(report.status).toBe("attention");
+    expect(report.nextCommand).toBeNull();
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "migrate.rollback_plan.noop",
+          state: "warn",
+        }),
+      ]),
+    );
   });
 });

@@ -121,12 +121,19 @@ function backupRestoreRunbookCommands(evidence: RunbookEvidence[]): string[] {
   return uniqueCommands(commands);
 }
 
+function migrationRunbookCommands(evidence: RunbookEvidence[]): string[] {
+  const commands = evidenceNextCommands(evidence);
+  commands.push("nexpress ops migrate status --json");
+  commands.push("nexpress ops migrate plan --json");
+  commands.push("nexpress ops migrate rollback-plan --json");
+  return uniqueCommands(commands);
+}
+
 export function buildRunbookJson(args: {
   runbook: RunbookId;
   evidence: RunbookEvidence[];
 }): RunbookJson {
   const status = summarizeEvidence(args.evidence);
-  const evidenceCommands = evidenceNextCommands(args.evidence);
   switch (args.runbook) {
     case "worker-not-draining":
       return {
@@ -200,10 +207,7 @@ export function buildRunbookJson(args: {
             ? "Migration evidence does not show drift or missing readiness."
             : "Migration or readiness evidence is blocked; inspect migration status before retrying.",
         risk: status === "blocked" ? "high" : "medium",
-        nextCommands:
-          evidenceCommands.length > 0
-            ? evidenceCommands
-            : ["nexpress ops migrate status --json", "nexpress ops migrate plan --json"],
+        nextCommands: migrationRunbookCommands(args.evidence),
         rollbackNotes: [
           "Do not edit applied migration SQL to match a failed database by hand.",
           "Restore the database or migration files from the matching commit before retrying apply.",

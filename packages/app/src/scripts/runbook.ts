@@ -190,6 +190,9 @@ function evidenceRuns(
         capture(manager, runArgs(manager, "ops:migrate", ["plan", "--json"])).then((run) =>
           evidenceFromRun("ops.migrate.plan", run),
         ),
+        capture(manager, runArgs(manager, "ops:migrate", ["rollback-plan", "--json"])).then((run) =>
+          evidenceFromRun("ops.migrate.rollback-plan", run),
+        ),
       ];
   }
 }

@@ -28,6 +28,13 @@ interface PgModuleLike {
   };
 }
 
+interface CollectedOpsMigrateState {
+  migrationsFolder: string;
+  status: MigrationStatus;
+  destructiveFindings: DestructiveSqlFinding[];
+  checks: CheckResult[];
+}
+
 export type OpsMigrateMode = "status" | "plan";
 
 export interface DestructiveSqlFinding {
@@ -58,6 +65,32 @@ export interface OpsMigrateJson {
   pending: Array<{ tag: string; createdAt: number; hash: string }>;
   destructiveFindings: DestructiveSqlFinding[];
   checks: CheckResult[];
+}
+
+export interface OpsMigrateRollbackPlanStep {
+  id: string;
+  phase: "inspect" | "prepare" | "rollback" | "verify";
+  command: string;
+  required: boolean;
+  requiresApproval: boolean;
+  note: string;
+}
+
+export interface OpsMigrateRollbackPlanJson {
+  schemaVersion: "np.ops-migrate-rollback-plan.v1";
+  ok: boolean;
+  status: "ready" | "attention" | "blocked";
+  migrationsFolder: string;
+  migrationTable: string;
+  summary: OpsMigrateSummary & {
+    commands: number;
+    safeToPlan: boolean;
+  };
+  nextCommand: string | null;
+  pending: OpsMigrateJson["pending"];
+  destructiveFindings: DestructiveSqlFinding[];
+  checks: CheckResult[];
+  steps: OpsMigrateRollbackPlanStep[];
 }
 
 interface RenderOptions {
@@ -248,11 +281,157 @@ export function buildOpsMigrateJson(args: {
   };
 }
 
-export async function collectOpsMigrateReport(args: {
-  mode: OpsMigrateMode;
+function rollbackPlanSteps(args: {
+  status: MigrationStatus;
+  destructiveFindings: DestructiveSqlFinding[];
+}): OpsMigrateRollbackPlanStep[] {
+  const steps: OpsMigrateRollbackPlanStep[] = [
+    {
+      id: "migrate.status",
+      phase: "inspect",
+      command: "nexpress ops migrate status --json",
+      required: true,
+      requiresApproval: false,
+      note: "Capture local/applied migration state before planning rollback.",
+    },
+    {
+      id: "backup.required",
+      phase: "prepare",
+      command: "nexpress ops backup status --required --json",
+      required: true,
+      requiresApproval: false,
+      note: "Confirm a fresh verified backup exists before any migration apply or rollback.",
+    },
+    {
+      id: "backup.restore-plan",
+      phase: "prepare",
+      command: "nexpress ops backup restore-plan latest --json",
+      required: true,
+      requiresApproval: false,
+      note: "Confirm the backup can be restored into an isolated environment.",
+    },
+  ];
+
+  if (args.status.pending.length > 0) {
+    steps.push({
+      id: "migrate.pending-review",
+      phase: "inspect",
+      command: "nexpress ops migrate plan --json",
+      required: true,
+      requiresApproval: false,
+      note: "Review pending migration hashes and destructive SQL findings before applying.",
+    });
+  }
+
+  if (args.destructiveFindings.length > 0) {
+    steps.push({
+      id: "migrate.destructive-review",
+      phase: "inspect",
+      command: "review pending SQL manually and document the rollback decision",
+      required: true,
+      requiresApproval: true,
+      note: "Destructive SQL requires a human rollback decision before apply.",
+    });
+  }
+
+  steps.push(
+    {
+      id: "rollback.database",
+      phase: "rollback",
+      command: "restore the selected backup into the production database",
+      required: true,
+      requiresApproval: true,
+      note: "NexPress does not auto-generate down migrations; rollback is backup restore.",
+    },
+    {
+      id: "rollback.media",
+      phase: "rollback",
+      command: "restore the matching media snapshot for the selected backup",
+      required: true,
+      requiresApproval: true,
+      note: "Database rows and media files must come from the same backup window.",
+    },
+    {
+      id: "rollback.verify",
+      phase: "verify",
+      command: "nexpress release verify --json",
+      required: true,
+      requiresApproval: false,
+      note: "Verify the site after rollback before resuming normal writes.",
+    },
+  );
+
+  return steps;
+}
+
+export function buildOpsMigrateRollbackPlanJson(args: {
+  migrationsFolder: string;
+  status: MigrationStatus;
+  destructiveFindings: DestructiveSqlFinding[];
+  checks?: CheckResult[];
+}): OpsMigrateRollbackPlanJson {
+  const plan = buildOpsMigrateJson({
+    mode: "plan",
+    migrationsFolder: args.migrationsFolder,
+    status: args.status,
+    destructiveFindings: args.destructiveFindings,
+    checks: args.checks,
+  });
+  const checks = [...plan.checks];
+  if (args.status.pending.length === 0 && args.destructiveFindings.length === 0) {
+    checks.push({
+      id: "migrate.rollback_plan.noop",
+      state: "warn",
+      label: "Rollback plan",
+      detail: "no pending migration risk detected",
+      hint: "Keep the plan for incident prep, but no migration rollback action is currently needed.",
+    });
+  } else {
+    checks.push({
+      id: "migrate.rollback_plan",
+      state: "ok",
+      label: "Rollback plan",
+      detail: "backup-restore rollback path documented",
+    });
+  }
+  const counts = countChecks(checks);
+  const status = counts.errors > 0 ? "blocked" : counts.warnings > 0 ? "attention" : "ready";
+  const steps = rollbackPlanSteps({
+    status: args.status,
+    destructiveFindings: args.destructiveFindings,
+  });
+  const hasMigrationRisk =
+    args.status.pending.length > 0 ||
+    args.status.drifted.length > 0 ||
+    args.status.unknownApplied.length > 0 ||
+    args.destructiveFindings.length > 0;
+  return {
+    schemaVersion: "np.ops-migrate-rollback-plan.v1",
+    ok: counts.errors === 0,
+    status,
+    migrationsFolder: args.migrationsFolder,
+    migrationTable: MIGRATIONS_TABLE_NAME,
+    summary: {
+      ...plan.summary,
+      commands: steps.length,
+      safeToPlan: counts.errors === 0,
+    },
+    nextCommand: !hasMigrationRisk
+      ? null
+      : status === "blocked"
+        ? "nexpress ops backup status --required --json"
+        : (steps.find((step) => step.requiresApproval)?.command ?? null),
+    pending: plan.pending,
+    destructiveFindings: args.destructiveFindings,
+    checks,
+    steps,
+  };
+}
+
+async function collectOpsMigrateState(args: {
   env?: OpsMigrateEnv;
   migrationsFolder?: string;
-}): Promise<OpsMigrateJson> {
+}): Promise<CollectedOpsMigrateState> {
   const env = args.env ?? process.env;
   const migrationsFolder = args.migrationsFolder ?? "./drizzle";
   const local = readLocalMigrationEntries(migrationsFolder);
@@ -260,11 +439,9 @@ export async function collectOpsMigrateReport(args: {
 
   const databaseUrl = env.DATABASE_URL;
   if (!databaseUrl) {
-    const emptyStatus = buildMigrationStatus(local, []);
-    return buildOpsMigrateJson({
-      mode: args.mode,
+    return {
       migrationsFolder,
-      status: emptyStatus,
+      status: buildMigrationStatus(local, []),
       destructiveFindings: [],
       checks: [
         {
@@ -275,18 +452,16 @@ export async function collectOpsMigrateReport(args: {
           hint: "Set DATABASE_URL before inspecting applied migrations.",
         },
       ],
-    });
+    };
   }
 
   let pg: PgModuleLike;
   try {
     pg = await loadPg();
   } catch {
-    const emptyStatus = buildMigrationStatus(local, []);
-    return buildOpsMigrateJson({
-      mode: args.mode,
+    return {
       migrationsFolder,
-      status: emptyStatus,
+      status: buildMigrationStatus(local, []),
       destructiveFindings: [],
       checks: [
         {
@@ -297,7 +472,7 @@ export async function collectOpsMigrateReport(args: {
           hint: "Install project dependencies before inspecting applied migrations.",
         },
       ],
-    });
+    };
   }
 
   const client = new pg.default.Client({
@@ -311,25 +486,22 @@ export async function collectOpsMigrateReport(args: {
     checks.push({ id: "migrate.database", state: "ok", label: "Database connection" });
     const status = buildMigrationStatus(local, applied);
     const destructiveFindings = await scanDestructiveSql(migrationsFolder, status);
-    return buildOpsMigrateJson({
-      mode: args.mode,
+    return {
       migrationsFolder,
       status,
       destructiveFindings,
       checks,
-    });
+    };
   } catch (error) {
     try {
       await client.end();
     } catch {
       /* swallow */
     }
-    const emptyStatus = buildMigrationStatus(local, []);
     const detail = error instanceof Error && error.message ? error.message : String(error);
-    return buildOpsMigrateJson({
-      mode: args.mode,
+    return {
       migrationsFolder,
-      status: emptyStatus,
+      status: buildMigrationStatus(local, []),
       destructiveFindings: [],
       checks: [
         {
@@ -340,8 +512,39 @@ export async function collectOpsMigrateReport(args: {
           hint: "Check DATABASE_URL and database reachability.",
         },
       ],
-    });
+    };
   }
+}
+
+export async function collectOpsMigrateReport(args: {
+  mode: OpsMigrateMode;
+  env?: OpsMigrateEnv;
+  migrationsFolder?: string;
+}): Promise<OpsMigrateJson> {
+  const collected = await collectOpsMigrateState(args);
+  return buildOpsMigrateJson({
+    mode: args.mode,
+    migrationsFolder: collected.migrationsFolder,
+    status: collected.status,
+    destructiveFindings: collected.destructiveFindings,
+    checks: collected.checks,
+  });
+}
+
+export async function collectOpsMigrateRollbackPlan(args: {
+  env?: OpsMigrateEnv;
+  migrationsFolder?: string;
+}): Promise<OpsMigrateRollbackPlanJson> {
+  const collected = await collectOpsMigrateState({
+    env: args.env,
+    migrationsFolder: args.migrationsFolder,
+  });
+  return buildOpsMigrateRollbackPlanJson({
+    migrationsFolder: collected.migrationsFolder,
+    status: collected.status,
+    destructiveFindings: collected.destructiveFindings,
+    checks: collected.checks,
+  });
 }
 
 function formatState(state: OpsMigrateJson["status"], color: boolean): string {
@@ -380,6 +583,30 @@ export function renderBriefOpsMigrateReport(
     lines.push("destructive SQL:");
     for (const finding of report.destructiveFindings) {
       lines.push(`  - ${finding.migration}:${finding.line.toString()} ${finding.pattern}`);
+    }
+  }
+  if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  return lines.join("\n");
+}
+
+export function renderBriefOpsMigrateRollbackPlan(
+  report: OpsMigrateRollbackPlanJson,
+  options: RenderOptions = { color: true },
+): string {
+  const lines = [
+    `${options.color ? ANSI.dim : ""}NexPress ops migrate rollback-plan${options.color ? ANSI.reset : ""}`,
+    `${formatState(report.status, options.color)}: ${report.summary.pending.toString()} pending, ${report.summary.destructiveFindings.toString()} destructive findings, ${report.summary.commands.toString()} commands`,
+  ];
+  for (const check of report.checks) lines.push(formatCheck(check, options.color));
+  if (report.pending.length > 0) {
+    lines.push("pending:");
+    for (const migration of report.pending) lines.push(`  - ${migration.tag}`);
+  }
+  if (report.steps.length > 0) {
+    lines.push("steps:");
+    for (const step of report.steps) {
+      const approval = step.requiresApproval ? " approval" : "";
+      lines.push(`  - [${step.phase}] ${step.command}${approval}`);
     }
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
