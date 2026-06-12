@@ -197,6 +197,81 @@ describe("release core", () => {
     );
   });
 
+  it("promotes blocked step plan next commands into release plans", () => {
+    const check = buildReleaseJson({
+      mode: "check",
+      target: "docker",
+      steps: [
+        readyStep,
+        {
+          id: "ops.migrate",
+          command: "pnpm run ops:migrate -- rollback-plan --json",
+          ok: false,
+          exitCode: 1,
+          status: "blocked",
+          nextCommand: "nexpress ops migrate rollback-plan --json",
+          report: {
+            schemaVersion: "np.ops-migrate-rollback-plan.v1",
+            ok: false,
+            status: "blocked",
+            plan: {
+              nextCommands: [
+                "nexpress ops backup restore-plan latest --json",
+                "nexpress ops migrate rollback-plan --json",
+              ],
+            },
+          },
+        },
+      ],
+    });
+    const plan = buildReleasePlanJson({
+      planId: "release-nested-remediation",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      target: "docker",
+      artifactPath: ".nexpress/releases/release-nested-remediation.json",
+      check,
+    });
+
+    expect(plan.commands.map((command) => command.command)).toEqual([
+      "nexpress ops migrate rollback-plan --json",
+      "nexpress ops backup restore-plan latest --json",
+      "nexpress release verify --json",
+    ]);
+    expect(plan.summary.remediationCommands).toBe(2);
+  });
+
+  it("does not add nested next commands from ready steps as remediation", () => {
+    const check = buildReleaseJson({
+      mode: "check",
+      target: "docker",
+      steps: [
+        {
+          ...readyStep,
+          report: {
+            schemaVersion: "np.ops-plugins-upgrade-plan.v1",
+            ok: true,
+            status: "ready",
+            plan: {
+              nextCommands: ["nexpress ops plugins upgrade-plan --json"],
+            },
+          },
+        },
+      ],
+    });
+    const plan = buildReleasePlanJson({
+      planId: "release-ready-nested",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      target: "docker",
+      artifactPath: ".nexpress/releases/release-ready-nested.json",
+      check,
+    });
+
+    expect(plan.commands.map((command) => command.command)).toEqual([
+      "nexpress release verify --json",
+    ]);
+    expect(plan.summary.remediationCommands).toBe(0);
+  });
+
   it("marks risky remediation commands as approval-required", () => {
     const check = buildReleaseJson({
       mode: "check",

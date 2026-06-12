@@ -363,7 +363,9 @@ Implementation status:
   single pre-release gate.
 - `nexpress release plan --target <host> --json` emits
   `schemaVersion: "np.release-plan.v1"` and writes the same plan/audit artifact
-  under `.nexpress/releases/` by default.
+  under `.nexpress/releases/` by default. Blocked and attention steps preserve
+  nested `plan.nextCommands` from migration rollback, backup restore, storage
+  migration, and plugin upgrade evidence as ordered remediation commands.
 - `nexpress release apply --plan <artifact> --json` emits
   `schemaVersion: "np.release-apply.v1"` and writes an apply audit artifact.
   It dry-runs by default; execution requires `--execute --approve <planId>`.
@@ -372,7 +374,8 @@ Implementation status:
   diagnostics into a post-release readiness gate.
 - `nexpress runbook <name> --json` emits `schemaVersion: "np.runbook.v1"`
   for common read-only incident recipes with evidence, diagnosis, next
-  commands, risk, rollback notes, and docs links.
+  commands, risk, rollback notes, and docs links. Captured evidence keeps the
+  source report `schemaVersion` and nested `plan.nextCommands` when present.
 - `nexpress ops migrate status|plan --json` emits
   `schemaVersion: "np.ops-migrate.v1"` with local/applied migration state,
   pending migrations, drift, unknown applied rows, and destructive SQL findings.

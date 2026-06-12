@@ -194,6 +194,10 @@ function releaseCommandsFromCheck(check: ReleaseJson): string[] {
   return readStringArray(preflight?.report?.plan?.commands);
 }
 
+function stepPlanNextCommands(step: ReleaseStep): string[] {
+  return readStringArray(step.report?.plan?.nextCommands);
+}
+
 function commandRequiresApproval(command: string): boolean {
   return (
     command.includes("db:migrate") ||
@@ -204,10 +208,13 @@ function commandRequiresApproval(command: string): boolean {
 }
 
 function remediationCommandsFromCheck(check: ReleaseJson): string[] {
-  const stepCommands = check.steps.map((step) => step.nextCommand);
-  const preflight = check.steps.find((step) => step.id === "ops.preflight");
-  const planNextCommands = readStringArray(preflight?.report?.plan?.nextCommands);
-  return uniqueStrings([check.nextCommand, ...stepCommands, ...planNextCommands]);
+  const blockedCommands = check.steps
+    .filter(stepBlocked)
+    .flatMap((step) => [step.nextCommand, ...stepPlanNextCommands(step)]);
+  const attentionCommands = check.steps
+    .filter(stepAttention)
+    .flatMap((step) => [step.nextCommand, ...stepPlanNextCommands(step)]);
+  return uniqueStrings([check.nextCommand, ...blockedCommands, ...attentionCommands]);
 }
 
 export function buildReleasePlanJson(args: {
