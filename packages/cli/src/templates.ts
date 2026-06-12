@@ -832,6 +832,7 @@ pnpm run release -- plan --target vercel --json
 pnpm run release -- apply --plan .nexpress/releases/<plan>.json --json
 pnpm run release -- verify --url http://localhost:3000 --json
 pnpm run runbook -- worker-not-draining --json
+pnpm run runbook -- migration-crashed --json --out .nexpress/runbooks/migration-crashed.json
 \`\`\`
 
 \`ops:status\` is the low-token handoff for agents and CI. It emits
@@ -855,8 +856,8 @@ read-only upgrade plans. \`release check\` composes the pre-deploy gate; \`relea
 persists that gate as a replayable audit artifact under \`.nexpress/releases\`;
 \`release apply\` validates the artifact and only executes commands with
 \`--execute --approve <planId>\`; \`release verify\` composes the post-deploy
-readiness gate. \`runbook\` turns common incidents into evidence-backed
-diagnosis and next commands. Release plans and runbooks preserve nested
+readiness gate. \`runbook --out <path>\` writes a clean JSON artifact for common
+incidents with evidence-backed diagnosis and next commands. Release plans and runbooks preserve nested
 \`plan.nextCommands\` from migration rollback, backup restore, storage
 migration, and plugin upgrade evidence so agent handoffs keep the concrete
 follow-up sequence.

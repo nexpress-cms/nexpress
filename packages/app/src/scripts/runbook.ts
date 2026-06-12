@@ -3,6 +3,7 @@ import "./_load-env.js";
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import {
@@ -10,6 +11,7 @@ import {
   renderBriefRunbook,
   type RunbookEvidence,
   type RunbookId,
+  type RunbookJson,
 } from "./runbook-core.js";
 
 type PackageManager = "pnpm" | "npm" | "yarn";
@@ -59,6 +61,7 @@ Runbooks:
 Options:
   --json       Print the stable machine-readable runbook report.
   --brief      Print compact human output. This is the default.
+  --out <path> Write the stable machine-readable runbook artifact to a JSON file.
   --no-color   Disable ANSI color in human-readable output.
   --help, -h   Show this help.
 `);
@@ -66,6 +69,15 @@ Options:
 
 function shouldPrintHelp(argv: string[]): boolean {
   return argv.includes("--help") || argv.includes("-h");
+}
+
+function readOutArg(argv: string[]): string | null {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--out") return argv[i + 1] ?? null;
+    if (arg?.startsWith("--out=")) return arg.slice("--out=".length);
+  }
+  return null;
 }
 
 function detectPackageManager(cwd: string): PackageManager {
@@ -209,6 +221,11 @@ function evidenceRuns(
   }
 }
 
+async function writeRunbookArtifact(report: RunbookJson, outPath: string): Promise<void> {
+  await mkdir(dirname(outPath), { recursive: true });
+  await writeFile(outPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+}
+
 async function main(): Promise<void> {
   if (shouldPrintHelp(ARGV)) {
     printHelp();
@@ -221,7 +238,10 @@ async function main(): Promise<void> {
 
   const manager = detectPackageManager(process.cwd());
   const evidence = await Promise.all(evidenceRuns(manager, RUNBOOK));
-  const report = buildRunbookJson({ runbook: RUNBOOK, evidence });
+  const outArg = readOutArg(ARGV);
+  const artifactPath = outArg ? resolve(process.cwd(), outArg) : null;
+  const report = buildRunbookJson({ runbook: RUNBOOK, evidence, artifactPath });
+  if (artifactPath) await writeRunbookArtifact(report, artifactPath);
   if (JSON_MODE) {
     console.log(JSON.stringify(report, null, 2));
   } else {

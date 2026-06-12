@@ -16,6 +16,7 @@ describe("runbook core", () => {
       buildRunbookJson({
         runbook: "worker-not-draining",
         evidence: [readyEvidence],
+        artifactPath: ".nexpress/runbooks/worker.json",
       }),
     ).toEqual(
       expect.objectContaining({
@@ -24,6 +25,7 @@ describe("runbook core", () => {
         status: "ready",
         runbook: "worker-not-draining",
         risk: "medium",
+        audit: { artifactPath: ".nexpress/runbooks/worker.json" },
       }),
     );
   });
@@ -100,6 +102,18 @@ describe("runbook core", () => {
 
     expect(renderBriefRunbook(report, { color: false })).toContain("ready: Worker not draining");
     expect(renderBriefRunbook(report, { color: false })).toContain("- [ok] ops.jobs ready");
+  });
+
+  it("renders runbook artifact paths in brief output", () => {
+    const report = buildRunbookJson({
+      runbook: "worker-not-draining",
+      evidence: [readyEvidence],
+      artifactPath: ".nexpress/runbooks/worker.json",
+    });
+
+    expect(renderBriefRunbook(report, { color: false })).toContain(
+      "artifact: .nexpress/runbooks/worker.json",
+    );
   });
 
   it("suggests bounded retry and drain probes from worker evidence", () => {

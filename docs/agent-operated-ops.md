@@ -376,6 +376,8 @@ Implementation status:
   for common read-only incident recipes with evidence, diagnosis, next
   commands, risk, rollback notes, and docs links. Captured evidence keeps the
   source report `schemaVersion` and nested `plan.nextCommands` when present.
+  Use `--out <path>` to write a clean JSON artifact without pnpm lifecycle
+  banner/footer text around stdout.
 - `nexpress ops migrate status|plan --json` emits
   `schemaVersion: "np.ops-migrate.v1"` with local/applied migration state,
   pending migrations, drift, unknown applied rows, and destructive SQL findings.
@@ -719,6 +721,8 @@ Implementation status:
 - `release plan --json` persists a replayable plan artifact, and
   `release apply --plan <artifact> --json` records a dry-run or execution audit
   artifact.
+- A blocked `release plan` only lists remediation and verify commands; release
+  phase commands are regenerated once the check is ready.
 - `release verify --json` can run after deployment and report readiness.
 
 ### Issue 7 — Add executable runbook commands

@@ -440,6 +440,9 @@ describe("getProjectFiles", () => {
     );
     expect(readme).toContain("pnpm run release -- verify --url http://localhost:3000 --json");
     expect(readme).toContain("pnpm run runbook -- worker-not-draining --json");
+    expect(readme).toContain(
+      "pnpm run runbook -- migration-crashed --json --out .nexpress/runbooks/migration-crashed.json",
+    );
     expect(readme).toContain('schemaVersion: "np.ops.v1"');
     expect(readme).toContain("pnpm run deploy:plan -- --target vercel");
     expect(readme).toContain("pnpm run doctor:prod -- --target vercel");

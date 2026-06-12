@@ -174,7 +174,14 @@ describe("release core", () => {
           exitCode: 1,
           status: "blocked",
           nextCommand: "pnpm run doctor:prod -- --fix-plan",
-          report: { schemaVersion: "np.ops-preflight.v1", ok: false, status: "blocked" },
+          report: {
+            schemaVersion: "np.ops-preflight.v1",
+            ok: false,
+            status: "blocked",
+            plan: {
+              commands: ["pnpm install", "pnpm db:migrate", "pnpm run doctor:prod"],
+            },
+          },
         },
       ],
     });
@@ -195,6 +202,8 @@ describe("release core", () => {
         command: "pnpm run doctor:prod -- --fix-plan",
       }),
     );
+    expect(plan.summary.releaseCommands).toBe(0);
+    expect(plan.commands.map((command) => command.command)).not.toContain("pnpm db:migrate");
   });
 
   it("promotes blocked step plan next commands into release plans", () => {
