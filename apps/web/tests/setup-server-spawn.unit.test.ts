@@ -30,8 +30,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 // Fixed 64-char NP_SECRET with enough distinct characters to pass the
 // wizard's low-entropy guard (rejects strings with < 8 distinct chars).
-const TEST_SECRET =
-  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const TEST_SECRET = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 const SETUP_SERVER_PATH = fileURLToPath(
   new URL("../../../packages/app/src/scripts/setup-server.ts", import.meta.url),
@@ -58,29 +57,25 @@ interface RunOptions {
 
 async function runWizard(opts: RunOptions): Promise<SpawnResult> {
   return new Promise<SpawnResult>((resolvePromise) => {
-    const proc = spawn(
-      "node",
-      ["--import", TSX_LOADER, SETUP_SERVER_PATH, ...(opts.args ?? [])],
-      {
-        env: {
-          // Strip the OUTER process.env so the host's DATABASE_URL /
-          // NP_SECRET don't bleed into the wizard. `PATH` / `HOME` /
-          // tsx-needed bits stay.
-          PATH: process.env.PATH ?? "",
-          HOME: process.env.HOME ?? "",
-          NODE_OPTIONS: "",
-          // The wizard reads NP_SETUP_ENV_PATH to know where to
-          // write .env. Without this it'd write to process.cwd()/.env.
-          NP_SETUP_ENV_PATH: opts.envPath,
-          // Force a known DB-name default so the test isn't sensitive
-          // to whatever the tmp dir is named.
-          NP_SETUP_DB_NAME: "testproj",
-          ...opts.env,
-        },
-        // cwd doesn't matter — env vars steer the script.
-        cwd: dirname(opts.envPath),
+    const proc = spawn("node", ["--import", TSX_LOADER, SETUP_SERVER_PATH, ...(opts.args ?? [])], {
+      env: {
+        // Strip the OUTER process.env so the host's DATABASE_URL /
+        // NP_SECRET don't bleed into the wizard. `PATH` / `HOME` /
+        // tsx-needed bits stay.
+        PATH: process.env.PATH ?? "",
+        HOME: process.env.HOME ?? "",
+        NODE_OPTIONS: "",
+        // The wizard reads NP_SETUP_ENV_PATH to know where to
+        // write .env. Without this it'd write to process.cwd()/.env.
+        NP_SETUP_ENV_PATH: opts.envPath,
+        // Force a known DB-name default so the test isn't sensitive
+        // to whatever the tmp dir is named.
+        NP_SETUP_DB_NAME: "testproj",
+        ...opts.env,
       },
-    );
+      // cwd doesn't matter — env vars steer the script.
+      cwd: dirname(opts.envPath),
+    });
 
     let stdout = "";
     let stderr = "";
@@ -104,9 +99,7 @@ async function runWizard(opts: RunOptions): Promise<SpawnResult> {
         code,
         stdout,
         stderr,
-        envContent: existsSync(opts.envPath)
-          ? readFileSync(opts.envPath, "utf8")
-          : null,
+        envContent: existsSync(opts.envPath) ? readFileSync(opts.envPath, "utf8") : null,
       });
     });
   });
@@ -198,9 +191,37 @@ describe("setup-server.ts end-to-end (spawn)", () => {
         },
       });
       expect(result.code, result.stderr).toBe(0);
-      expect(result.envContent).toMatch(
-        /TEST_DATABASE_URL=postgres:\/\/.*:5433\/testproj_test/,
+      expect(result.envContent).toMatch(/TEST_DATABASE_URL=postgres:\/\/.*:5433\/testproj_test/);
+    });
+
+    it("uses existing .env values as non-interactive defaults", async () => {
+      writeFileSync(
+        envPath,
+        [
+          "DATABASE_URL=postgres://nexpress:nexpress@localhost:6138/existingproj",
+          "TEST_DATABASE_URL=postgres://nexpress:nexpress@localhost:6138/existingproj_test",
+          `NP_SECRET=${TEST_SECRET}`,
+          "SITE_URL=http://localhost:4010",
+          "NP_SETUP_RUN_MIGRATIONS=false",
+          "NP_SETUP_CREATE_ADMIN=false",
+          "",
+        ].join("\n"),
+        "utf8",
       );
+
+      const result = await runWizard({
+        envPath,
+        env: {
+          NP_SETUP_NONINTERACTIVE: "1",
+        },
+      });
+
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.envContent).toMatch(
+        /DATABASE_URL=postgres:\/\/nexpress:nexpress@localhost:6138\/existingproj/,
+      );
+      expect(result.envContent).toMatch(/^NEXPRESS_DB_PORT=6138$/m);
+      expect(result.envContent).toMatch(/^SITE_URL=http:\/\/localhost:4010$/m);
     });
 
     it("exits non-zero with a helpful error when DATABASE_URL is missing", async () => {
