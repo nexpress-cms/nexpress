@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/plugin-oauth-github",
-  "version": "0.3.18",
+  "version": "0.3.19",
   "description": "GitHub OAuth provider plugin for NexPress.",
   "license": "MIT",
   "author": "Nexpress",
