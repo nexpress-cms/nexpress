@@ -8,6 +8,7 @@ import { dirname, resolve } from "node:path";
 import { DEPLOY_TARGETS, parseDeployTargetArg, type DeployTarget } from "./deploy-targets.js";
 import type { DeployPlanJson } from "./deploy-plan-core.js";
 import type { DoctorJsonOutput } from "./doctor-output.js";
+import { toProjectCommand } from "./ops-command-format.js";
 
 interface OpsPreflightJson {
   schemaVersion: "np.ops-preflight.v1";
@@ -20,9 +21,11 @@ interface OpsPreflightJson {
     doctorWarnings: number;
   };
   nextCommand: string | null;
+  projectNextCommand: string | null;
   steps: Array<{
     id: "deploy.plan" | "doctor.prod";
     command: string;
+    projectCommand: string;
     ok: boolean;
     exitCode: number;
   }>;
@@ -153,10 +156,11 @@ function buildReport(args: {
   const planUnresolvedRequiredEnv = args.plan.summary.requiredEnv.unresolved;
   const blocksDeploy = planUnresolvedRequiredEnv > 0 || !args.doctor.ok;
   const needsAttention = args.doctor.summary.warnings > 0;
-  const nextCommand = !blocksDeploy && !needsAttention
-    ? null
-    : args.doctor.nextCommand ??
-      `pnpm run doctor:prod -- --target ${args.target} --brief --no-color --fix-plan`;
+  const nextCommand =
+    !blocksDeploy && !needsAttention
+      ? null
+      : (args.doctor.nextCommand ??
+        `pnpm run doctor:prod -- --target ${args.target} --brief --no-color --fix-plan`);
 
   return {
     schemaVersion: "np.ops-preflight.v1",
@@ -169,16 +173,19 @@ function buildReport(args: {
       doctorWarnings: args.doctor.summary.warnings,
     },
     nextCommand,
+    projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
     steps: [
       {
         id: "deploy.plan",
         command: args.planRun.command,
+        projectCommand: toProjectCommand(args.planRun.command),
         ok: args.planRun.exitCode === 0 && planUnresolvedRequiredEnv === 0,
         exitCode: args.planRun.exitCode,
       },
       {
         id: "doctor.prod",
         command: args.doctorRun.command,
+        projectCommand: toProjectCommand(args.doctorRun.command),
         ok: args.doctor.ok,
         exitCode: args.doctorRun.exitCode,
       },
@@ -206,6 +213,9 @@ function renderBrief(report: OpsPreflightJson, color: boolean): string {
     lines.push(`${step.ok ? "[ok]" : "[blocked]"} ${step.id} - ${step.command}`);
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
+    lines.push(`Project next: ${report.projectNextCommand}`);
+  }
   return lines.join("\n");
 }
 

@@ -1,6 +1,8 @@
 // Must be first so SITE_URL is available before selecting the probe URL.
 import "./_load-env.js";
 
+import { toProjectCommand } from "./ops-command-format.js";
+
 interface OpsHealthJson {
   schemaVersion: "np.ops-health.v1";
   ok: boolean;
@@ -8,6 +10,7 @@ interface OpsHealthJson {
   url: string;
   httpStatus: number | null;
   nextCommand: string | null;
+  projectNextCommand: string | null;
   response: unknown;
   error?: string;
 }
@@ -82,23 +85,27 @@ async function probe(url: string): Promise<OpsHealthJson> {
     } catch {
       body = await response.text();
     }
+    const nextCommand = response.ok ? null : "nexpress ops status --json";
     return {
       schemaVersion: "np.ops-health.v1",
       ok: response.ok,
       status: response.ok ? "ready" : "degraded",
       url,
       httpStatus: response.status,
-      nextCommand: response.ok ? null : "nexpress ops status --json",
+      nextCommand,
+      projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
       response: body,
     };
   } catch (error) {
+    const nextCommand = "nexpress ops status --json";
     return {
       schemaVersion: "np.ops-health.v1",
       ok: false,
       status: "unreachable",
       url,
       httpStatus: null,
-      nextCommand: "nexpress ops status --json",
+      nextCommand,
+      projectNextCommand: toProjectCommand(nextCommand),
       response: null,
       error: error instanceof Error ? error.message : String(error),
     };
@@ -120,6 +127,9 @@ function renderBrief(report: OpsHealthJson, color: boolean): string {
   ];
   if (report.error) lines.push(`error: ${report.error}`);
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
+    lines.push(`Project next: ${report.projectNextCommand}`);
+  }
   return lines.join("\n");
 }
 

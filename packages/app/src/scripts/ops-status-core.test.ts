@@ -36,6 +36,7 @@ describe("ops status core", () => {
       status: "blocked",
       summary: { total: 3, errors: 1, warnings: 1 },
       nextCommand: "pnpm run doctor -- --fix-plan",
+      projectNextCommand: "pnpm run doctor -- --fix-plan",
       checks,
     });
   });
@@ -70,6 +71,7 @@ describe("ops status core", () => {
       expect.objectContaining({
         status: "attention",
         nextCommand: "nexpress ops jobs retry-all --state failed --json",
+        projectNextCommand: "pnpm run ops:jobs -- retry-all --state failed --json",
       }),
     );
   });

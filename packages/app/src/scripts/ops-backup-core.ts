@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { access, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
+import { toProjectCommand } from "./ops-command-format.js";
 import type { CheckResult } from "./doctor-readiness.js";
 
 type OpsBackupEnv = Record<string, string | undefined>;
@@ -58,6 +59,7 @@ export interface OpsBackupJson {
   maxAgeHours: number;
   summary: OpsBackupSummary;
   nextCommand: string | null;
+  projectNextCommand: string | null;
   createdManifest?: BackupManifestSummary | null;
   manifests: BackupManifestSummary[];
   checks: CheckResult[];
@@ -67,6 +69,7 @@ export interface OpsBackupRestorePlanStep {
   id: string;
   phase: "inspect" | "prepare" | "restore" | "verify" | "record";
   command: string;
+  projectCommand: string;
   required: boolean;
   requiresApproval: boolean;
   note: string;
@@ -89,6 +92,7 @@ export interface OpsBackupRestorePlanJson {
     commands: number;
   };
   nextCommand: string | null;
+  projectNextCommand: string | null;
   manifest: BackupManifestSummary | null;
   checks: CheckResult[];
   steps: OpsBackupRestorePlanStep[];
@@ -283,6 +287,12 @@ export function buildOpsBackupJson(args: {
 
   const counts = countChecks(checks);
   const status = counts.errors > 0 ? "blocked" : counts.warnings > 0 ? "attention" : "ready";
+  const nextCommand =
+    status === "ready"
+      ? null
+      : args.mode === "verify"
+        ? "nexpress ops backup verify latest --json"
+        : "nexpress ops backup status --required --json";
   return {
     schemaVersion: "np.ops-backup.v1",
     ok: counts.errors === 0,
@@ -299,12 +309,8 @@ export function buildOpsBackupJson(args: {
       latestCreatedAt: latest?.createdAt ?? null,
       stale,
     },
-    nextCommand:
-      status === "ready"
-        ? null
-        : args.mode === "verify"
-          ? "nexpress ops backup verify latest --json"
-          : "nexpress ops backup status --required --json",
+    nextCommand,
+    projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
     createdManifest: args.createdManifest ?? null,
     manifests,
     checks,
@@ -518,8 +524,13 @@ async function artifactCheck(args: {
 }
 
 function restorePlanSteps(manifest: BackupManifestSummary | null): OpsBackupRestorePlanStep[] {
+  const withProjectCommands = (
+    steps: Array<Omit<OpsBackupRestorePlanStep, "projectCommand">>,
+  ): OpsBackupRestorePlanStep[] =>
+    steps.map((step) => ({ ...step, projectCommand: toProjectCommand(step.command) }));
+
   if (!manifest) {
-    return [
+    return withProjectCommands([
       {
         id: "backup.create",
         phase: "prepare",
@@ -528,12 +539,12 @@ function restorePlanSteps(manifest: BackupManifestSummary | null): OpsBackupRest
         requiresApproval: false,
         note: "Record a backup manifest before planning a restore drill.",
       },
-    ];
+    ]);
   }
 
   const database = manifest.databasePath ?? "<database-dump>";
   const media = manifest.mediaPath ?? "<media-snapshot>";
-  return [
+  return withProjectCommands([
     {
       id: "backup.verify",
       phase: "inspect",
@@ -582,7 +593,7 @@ function restorePlanSteps(manifest: BackupManifestSummary | null): OpsBackupRest
       requiresApproval: false,
       note: "Record restore verification once the isolated drill passes.",
     },
-  ];
+  ]);
 }
 
 export async function collectOpsBackupRestorePlan(args: {
@@ -671,6 +682,10 @@ export async function collectOpsBackupRestorePlan(args: {
   const status = counts.errors > 0 ? "blocked" : counts.warnings > 0 ? "attention" : "ready";
   const steps = restorePlanSteps(summary);
   const firstApproval = steps.find((step) => step.requiresApproval);
+  const nextCommand =
+    status === "blocked"
+      ? "nexpress ops backup status --required --json"
+      : (firstApproval?.command ?? null);
 
   return {
     schemaVersion: "np.ops-backup-restore-plan.v1",
@@ -688,10 +703,8 @@ export async function collectOpsBackupRestorePlan(args: {
       mediaArtifact: Boolean(summary?.mediaPath),
       commands: steps.length,
     },
-    nextCommand:
-      status === "blocked"
-        ? "nexpress ops backup status --required --json"
-        : (firstApproval?.command ?? null),
+    nextCommand,
+    projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
     manifest: summary,
     checks,
     steps,
@@ -791,6 +804,9 @@ export function renderBriefOpsBackupReport(
     }
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
+    lines.push(`Project next: ${report.projectNextCommand}`);
+  }
   return lines.join("\n");
 }
 
@@ -813,5 +829,8 @@ export function renderBriefOpsBackupRestorePlan(
     }
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
+    lines.push(`Project next: ${report.projectNextCommand}`);
+  }
   return lines.join("\n");
 }

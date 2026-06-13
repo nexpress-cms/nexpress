@@ -863,9 +863,11 @@ incidents with evidence-backed diagnosis and next commands. Release plans
 include global \`command\` values plus local \`projectCommand\` values; release
 apply artifacts include \`execution.nextCommand\` plus
 \`execution.projectNextCommand\`; runbooks include \`nextCommands\` plus
-\`projectNextCommands\`. All preserve nested \`plan.nextCommands\` from migration
-rollback, backup restore, storage migration, and plugin upgrade evidence so
-agent handoffs keep the concrete follow-up sequence.
+\`projectNextCommands\`. Ops reports and executable plans include
+\`projectNextCommand\`, and plan steps include \`projectCommand\` when a
+generated-app script form exists. All preserve nested \`plan.nextCommands\` from
+migration rollback, backup restore, storage migration, and plugin upgrade
+evidence so agent handoffs keep the concrete follow-up sequence.
 
 ### Stuck? Run the doctor.
 

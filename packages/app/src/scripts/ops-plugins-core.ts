@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { toProjectCommand } from "./ops-command-format.js";
 import type { CheckResult } from "./doctor-readiness.js";
 
 interface PluginManifestLike {
@@ -89,6 +90,7 @@ export interface OpsPluginsJson {
   status: "ready" | "attention" | "blocked";
   summary: OpsPluginsSummary;
   nextCommand: string | null;
+  projectNextCommand: string | null;
   checks: CheckResult[];
   plugins: OpsPluginEntry[];
 }
@@ -117,6 +119,7 @@ export interface OpsPluginUpgradeStep {
   required: boolean;
   requiresApproval: boolean;
   command: string;
+  projectCommand: string;
   note: string;
 }
 
@@ -132,6 +135,7 @@ export interface OpsPluginsUpgradePlanJson {
     commands: number;
   };
   nextCommand: string | null;
+  projectNextCommand: string | null;
   checks: CheckResult[];
   packages: OpsPluginPackageRef[];
   steps: OpsPluginUpgradeStep[];
@@ -328,12 +332,14 @@ export function buildOpsPluginsJson(args: {
 }): OpsPluginsJson {
   const summary = summarize(args.checks, args.plugins);
   const status = summary.errors > 0 ? "blocked" : summary.warnings > 0 ? "attention" : "ready";
+  const nextCommand = status === "ready" ? null : "nexpress ops plugins doctor --json";
   return {
     schemaVersion: "np.ops-plugins.v1",
     ok: summary.errors === 0,
     status,
     summary,
-    nextCommand: status === "ready" ? null : "nexpress ops plugins doctor --json",
+    nextCommand,
+    projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
     checks: args.checks,
     plugins: args.plugins,
   };
@@ -376,15 +382,17 @@ export function buildOpsPluginInspectJson(
         errors: relatedChecks.filter((check) => check.state === "error").length,
       };
   const status = summary.errors > 0 ? "blocked" : summary.warnings > 0 ? "attention" : "ready";
+  const nextCommand = plugin
+    ? `nexpress ops plugins upgrade-plan ${plugin.id} --json`
+    : "nexpress ops plugins list --json";
   return {
     schemaVersion: "np.ops-plugins.v1",
     mode: "inspect",
     ok: plugin !== null && summary.errors === 0,
     status,
     summary,
-    nextCommand: plugin
-      ? `nexpress ops plugins upgrade-plan ${plugin.id} --json`
-      : "nexpress ops plugins list --json",
+    nextCommand,
+    projectNextCommand: toProjectCommand(nextCommand),
     checks,
     relatedChecks,
     pluginId,
@@ -585,8 +593,12 @@ function inferPluginPackage(
 
 function buildUpgradeSteps(packageRef: OpsPluginPackageRef): OpsPluginUpgradeStep[] {
   const inspectCommand = `nexpress ops plugins inspect ${packageRef.pluginId} --json`;
+  const withProjectCommands = (
+    steps: Array<Omit<OpsPluginUpgradeStep, "projectCommand">>,
+  ): OpsPluginUpgradeStep[] =>
+    steps.map((step) => ({ ...step, projectCommand: toProjectCommand(step.command) }));
   if (!packageRef.packageName) {
-    return [
+    return withProjectCommands([
       {
         id: `${packageRef.pluginId}.inspect`,
         pluginId: packageRef.pluginId,
@@ -607,9 +619,9 @@ function buildUpgradeSteps(packageRef: OpsPluginPackageRef): OpsPluginUpgradeSte
         command: "pnpm add <plugin-package>@latest",
         note: "No matching package dependency was found for this plugin id.",
       },
-    ];
+    ]);
   }
-  return [
+  return withProjectCommands([
     {
       id: `${packageRef.pluginId}.inspect`,
       pluginId: packageRef.pluginId,
@@ -670,7 +682,7 @@ function buildUpgradeSteps(packageRef: OpsPluginPackageRef): OpsPluginUpgradeSte
       command: "nexpress release check --json",
       note: "Run the full pre-release gate before deploying the upgraded plugin.",
     },
-  ];
+  ]);
 }
 
 export function buildOpsPluginsUpgradePlanJson(args: {
@@ -705,6 +717,12 @@ export function buildOpsPluginsUpgradePlanJson(args: {
   const blocked = checks.some((check) => check.state === "error");
   const attention = checks.some((check) => check.state === "warn") || manualPackages.length > 0;
   const status = blocked ? "blocked" : attention ? "attention" : "ready";
+  const nextCommand =
+    status === "blocked"
+      ? "nexpress ops plugins list --json"
+      : (steps.find((step) => step.status === "manual")?.command ??
+        steps.find((step) => step.requiresApproval)?.command ??
+        null);
   return {
     schemaVersion: "np.ops-plugins-upgrade-plan.v1",
     ok: !blocked,
@@ -716,12 +734,8 @@ export function buildOpsPluginsUpgradePlanJson(args: {
       manual: manualPackages.length,
       commands: steps.length,
     },
-    nextCommand:
-      status === "blocked"
-        ? "nexpress ops plugins list --json"
-        : (steps.find((step) => step.status === "manual")?.command ??
-          steps.find((step) => step.requiresApproval)?.command ??
-          null),
+    nextCommand,
+    projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
     checks,
     packages,
     steps,
@@ -789,6 +803,9 @@ export function renderBriefOpsPluginsStatus(
     }
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
+    lines.push(`Project next: ${report.projectNextCommand}`);
+  }
   return lines.join("\n");
 }
 
@@ -820,5 +837,8 @@ export function renderBriefOpsPluginsUpgradePlan(
     }
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
+    lines.push(`Project next: ${report.projectNextCommand}`);
+  }
   return lines.join("\n");
 }

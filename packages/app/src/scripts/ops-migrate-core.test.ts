@@ -60,6 +60,7 @@ describe("ops migrate core", () => {
     expect(report.ok).toBe(false);
     expect(report.status).toBe("blocked");
     expect(report.nextCommand).toBe("nexpress ops backup status --required --json");
+    expect(report.projectNextCommand).toBe("pnpm run ops:backup -- status --required --json");
   });
 
   it("detects destructive SQL in pending migration files", async () => {
@@ -104,6 +105,7 @@ describe("ops migrate core", () => {
           safeToPlan: false,
         }),
         nextCommand: "nexpress ops backup status --required --json",
+        projectNextCommand: "pnpm run ops:backup -- status --required --json",
       }),
     );
     expect(report.steps).toEqual(
@@ -111,6 +113,7 @@ describe("ops migrate core", () => {
         expect.objectContaining({
           id: "backup.restore-plan",
           command: "nexpress ops backup restore-plan latest --json",
+          projectCommand: "pnpm run ops:backup -- restore-plan latest --json",
         }),
         expect.objectContaining({
           id: "rollback.database",

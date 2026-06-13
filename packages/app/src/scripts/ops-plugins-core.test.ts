@@ -141,6 +141,7 @@ describe("ops plugins core", () => {
     expect(inspect.status).toBe("blocked");
     expect(inspect.plugin).toBeNull();
     expect(inspect.nextCommand).toBe("nexpress ops plugins list --json");
+    expect(inspect.projectNextCommand).toBe("pnpm run ops:plugins -- list --json");
     expect(inspect.relatedChecks).toEqual([
       expect.objectContaining({ id: "plugins.inspect.not_found", state: "error" }),
     ]);
@@ -187,6 +188,7 @@ describe("ops plugins core", () => {
         expect.objectContaining({
           pluginId: "reading-time",
           command: "pnpm add @nexpress/plugin-reading-time@latest",
+          projectCommand: "pnpm add @nexpress/plugin-reading-time@latest",
           requiresApproval: true,
         }),
       ]),
@@ -201,5 +203,6 @@ describe("ops plugins core", () => {
     expect(plan.status).toBe("attention");
     expect(plan.summary.manual).toBe(1);
     expect(plan.nextCommand).toBe("nexpress ops plugins inspect custom --json");
+    expect(plan.projectNextCommand).toBe("pnpm run ops:plugins -- inspect custom --json");
   });
 });

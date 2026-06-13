@@ -54,6 +54,7 @@ describe("doctor output", () => {
       ok: false,
       blocksDeploy: true,
       nextCommand: "pnpm run doctor:prod -- --target vercel --fix-plan",
+      projectNextCommand: "pnpm run doctor:prod -- --target vercel --fix-plan",
       mode: "prod",
       target: "vercel",
       summary: {
@@ -81,7 +82,9 @@ describe("doctor output", () => {
             severity: "warning",
             blocksDeploy: false,
             nextCommand: "openssl rand -hex 32",
+            projectNextCommand: "openssl rand -hex 32",
             commands: ["openssl rand -hex 32"],
+            projectCommands: ["openssl rand -hex 32"],
             notes: expect.arrayContaining([
               "Set it when scheduled publishing is enabled.",
               "Set NP_SCHEDULER_TOKEN to the generated value and send Authorization: Bearer <token> from the scheduler.",
@@ -93,11 +96,14 @@ describe("doctor output", () => {
             severity: "blocking",
             blocksDeploy: true,
             nextCommand: "pnpm run setup",
+            projectNextCommand: "pnpm run setup",
             commands: ["pnpm run setup"],
+            projectCommands: ["pnpm run setup"],
             notes: ["Set DATABASE_URL first."],
           }),
         ],
         nextCommand: "pnpm run setup",
+        projectNextCommand: "pnpm run setup",
       }),
     );
   });
@@ -247,7 +253,12 @@ describe("doctor output", () => {
             risk: "medium",
             requiresApproval: true,
             nextCommand: "pnpm run deploy:plan -- --target vercel --brief --no-color",
+            projectNextCommand: "pnpm run deploy:plan -- --target vercel --brief --no-color",
             commands: [
+              "pnpm run deploy:plan -- --target vercel --brief --no-color",
+              "pnpm run setup",
+            ],
+            projectCommands: [
               "pnpm run deploy:plan -- --target vercel --brief --no-color",
               "pnpm run setup",
             ],

@@ -28,6 +28,7 @@ describe("ops storage core", () => {
         status: "ready",
         operation: "status",
         nextCommand: null,
+        projectNextCommand: null,
       }),
     );
   });
@@ -57,6 +58,7 @@ describe("ops storage core", () => {
         ok: true,
         status: "attention",
         nextCommand: "nexpress ops storage verify --json",
+        projectNextCommand: "pnpm run ops:storage -- verify --json",
       }),
     );
   });
@@ -177,6 +179,10 @@ describe("ops storage core", () => {
       expect.arrayContaining([
         expect.objectContaining({
           phase: "apply",
+          command:
+            "nexpress ops storage migrate apply --target s3 --execute --approve storage-migrate",
+          projectCommand:
+            "pnpm run ops:storage -- migrate apply --target s3 --execute --approve storage-migrate",
           requiresApproval: true,
         }),
       ]),

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import type { CheckResult } from "./doctor-readiness.js";
+import { toProjectCommand } from "./ops-command-format.js";
 import {
   buildMigrationStatus,
   MIGRATIONS_TABLE_NAME,
@@ -62,6 +63,7 @@ export interface OpsMigrateJson {
   migrationTable: string;
   summary: OpsMigrateSummary;
   nextCommand: string | null;
+  projectNextCommand: string | null;
   pending: Array<{ tag: string; createdAt: number; hash: string }>;
   destructiveFindings: DestructiveSqlFinding[];
   checks: CheckResult[];
@@ -71,6 +73,7 @@ export interface OpsMigrateRollbackPlanStep {
   id: string;
   phase: "inspect" | "prepare" | "rollback" | "verify";
   command: string;
+  projectCommand: string;
   required: boolean;
   requiresApproval: boolean;
   note: string;
@@ -87,6 +90,7 @@ export interface OpsMigrateRollbackPlanJson {
     safeToPlan: boolean;
   };
   nextCommand: string | null;
+  projectNextCommand: string | null;
   pending: OpsMigrateJson["pending"];
   destructiveFindings: DestructiveSqlFinding[];
   checks: CheckResult[];
@@ -250,6 +254,12 @@ export function buildOpsMigrateJson(args: {
 
   const counts = countChecks(checks);
   const status = counts.errors > 0 ? "blocked" : counts.warnings > 0 ? "attention" : "ready";
+  const nextCommand =
+    status === "ready"
+      ? null
+      : args.mode === "plan"
+        ? "nexpress ops backup status --required --json"
+        : "nexpress ops migrate plan --json";
   return {
     schemaVersion: "np.ops-migrate.v1",
     ok: counts.errors === 0,
@@ -265,12 +275,8 @@ export function buildOpsMigrateJson(args: {
       unknownApplied: args.status.unknownApplied.length,
       destructiveFindings: args.destructiveFindings.length,
     },
-    nextCommand:
-      status === "ready"
-        ? null
-        : args.mode === "plan"
-          ? "nexpress ops backup status --required --json"
-          : "nexpress ops migrate plan --json",
+    nextCommand,
+    projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
     pending: args.status.pending.map((migration) => ({
       tag: migration.tag,
       createdAt: migration.createdAt,
@@ -285,7 +291,7 @@ function rollbackPlanSteps(args: {
   status: MigrationStatus;
   destructiveFindings: DestructiveSqlFinding[];
 }): OpsMigrateRollbackPlanStep[] {
-  const steps: OpsMigrateRollbackPlanStep[] = [
+  const steps: Array<Omit<OpsMigrateRollbackPlanStep, "projectCommand">> = [
     {
       id: "migrate.status",
       phase: "inspect",
@@ -361,7 +367,7 @@ function rollbackPlanSteps(args: {
     },
   );
 
-  return steps;
+  return steps.map((step) => ({ ...step, projectCommand: toProjectCommand(step.command) }));
 }
 
 export function buildOpsMigrateRollbackPlanJson(args: {
@@ -405,6 +411,11 @@ export function buildOpsMigrateRollbackPlanJson(args: {
     args.status.drifted.length > 0 ||
     args.status.unknownApplied.length > 0 ||
     args.destructiveFindings.length > 0;
+  const nextCommand = !hasMigrationRisk
+    ? null
+    : status === "blocked"
+      ? "nexpress ops backup status --required --json"
+      : (steps.find((step) => step.requiresApproval)?.command ?? null);
   return {
     schemaVersion: "np.ops-migrate-rollback-plan.v1",
     ok: counts.errors === 0,
@@ -416,11 +427,8 @@ export function buildOpsMigrateRollbackPlanJson(args: {
       commands: steps.length,
       safeToPlan: counts.errors === 0,
     },
-    nextCommand: !hasMigrationRisk
-      ? null
-      : status === "blocked"
-        ? "nexpress ops backup status --required --json"
-        : (steps.find((step) => step.requiresApproval)?.command ?? null),
+    nextCommand,
+    projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
     pending: plan.pending,
     destructiveFindings: args.destructiveFindings,
     checks,
@@ -586,6 +594,9 @@ export function renderBriefOpsMigrateReport(
     }
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
+    lines.push(`Project next: ${report.projectNextCommand}`);
+  }
   return lines.join("\n");
 }
 
@@ -610,5 +621,8 @@ export function renderBriefOpsMigrateRollbackPlan(
     }
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
+    lines.push(`Project next: ${report.projectNextCommand}`);
+  }
   return lines.join("\n");
 }

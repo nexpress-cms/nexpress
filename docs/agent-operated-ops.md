@@ -388,6 +388,9 @@ Implementation status:
 - Release plans include both global `command` strings and generated-app
   `projectCommand` strings. Runbooks include `nextCommands` and
   `projectNextCommands` for the same reason.
+- Ops reports and executable plans expose `projectNextCommand` beside
+  `nextCommand`; restore, rollback, storage migration, and plugin upgrade plan
+  steps also include `projectCommand` beside `command`.
 - `nexpress ops migrate status|plan --json` emits
   `schemaVersion: "np.ops-migrate.v1"` with local/applied migration state,
   pending migrations, drift, unknown applied rows, and destructive SQL findings.
@@ -733,6 +736,9 @@ Implementation status:
   artifact.
 - `release apply` dry-run artifacts include the exact approval-gated execution
   command in both global and project-local forms.
+- Ops/runbook/release artifacts preserve project-local next commands so a
+  generated app can execute the same remediation sequence without translating
+  `nexpress ...` global CLI calls by hand.
 - A blocked `release plan` only lists remediation and verify commands; release
   phase commands are regenerated once the check is ready.
 - `release verify --json` can run after deployment and report readiness.

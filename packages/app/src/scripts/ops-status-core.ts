@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import { toProjectCommand } from "./ops-command-format.js";
 import { messageForConnectionError } from "./setup-server-errors.js";
 import type { CheckResult } from "./doctor-readiness.js";
 import {
@@ -41,6 +42,7 @@ export interface OpsStatusJson {
   status: "ready" | "attention" | "blocked";
   summary: OpsStatusSummary;
   nextCommand: string | null;
+  projectNextCommand: string | null;
   checks: CheckResult[];
 }
 
@@ -83,6 +85,7 @@ export function buildOpsStatusJson(checks: CheckResult[]): OpsStatusJson {
     status,
     summary,
     nextCommand,
+    projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
     checks,
   };
 }
@@ -124,6 +127,9 @@ export function renderBriefOpsStatus(
     lines.push(parts.join(" "));
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
+    lines.push(`Project next: ${report.projectNextCommand}`);
+  }
   return lines.join("\n");
 }
 

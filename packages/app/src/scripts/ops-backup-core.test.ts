@@ -207,9 +207,12 @@ describe("ops backup core", () => {
           id: "restore.record",
           command:
             "nexpress ops backup create --database artifacts/db.dump --restore-verified --json",
+          projectCommand:
+            "pnpm run ops:backup -- create --database artifacts/db.dump --restore-verified --json",
         }),
       ]),
     );
+    expect(plan.projectNextCommand).toBe("createdb nexpress_restore_drill");
   });
 
   it("blocks restore plans when no manifest exists", async () => {
@@ -220,6 +223,7 @@ describe("ops backup core", () => {
     expect(plan.ok).toBe(false);
     expect(plan.status).toBe("blocked");
     expect(plan.nextCommand).toBe("nexpress ops backup status --required --json");
+    expect(plan.projectNextCommand).toBe("pnpm run ops:backup -- status --required --json");
     expect(plan.checks).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "backup.manifest", state: "error" })]),
     );
