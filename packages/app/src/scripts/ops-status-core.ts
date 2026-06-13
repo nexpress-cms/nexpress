@@ -91,8 +91,10 @@ export function buildOpsStatusJson(checks: CheckResult[]): OpsStatusJson {
 }
 
 function commandFromChecks(checks: CheckResult[]): string | null {
-  const actionable = checks.find((check) => check.state === "error" && extractCommand(check.hint));
+  const errors = checks.filter((check) => check.state === "error");
+  const actionable = errors.find((check) => extractCommand(check.hint));
   if (actionable) return extractCommand(actionable.hint);
+  if (errors.length > 0) return null;
   const warning = checks.find((check) => check.state === "warn" && extractCommand(check.hint));
   return warning ? extractCommand(warning.hint) : null;
 }
