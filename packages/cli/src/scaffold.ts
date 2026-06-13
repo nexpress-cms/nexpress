@@ -8,7 +8,7 @@ import { getProjectFiles } from "./templates.js";
 import { dbPortFromProject, generateSecret } from "./utils.js";
 
 export async function scaffoldProject(config: ProjectConfig): Promise<void> {
-  const targetDir = path.resolve(process.cwd(), config.projectName);
+  const targetDir = path.resolve(process.cwd(), config.projectPath);
 
   await ensureTargetDirectory(targetDir);
 
@@ -30,7 +30,12 @@ export async function scaffoldProject(config: ProjectConfig): Promise<void> {
     }
   }
 
-  printSuccess(config.projectName, config.dockerSetup, config.localMode ?? false);
+  printSuccess(
+    config.projectName,
+    config.projectPath,
+    config.dockerSetup,
+    config.localMode ?? false,
+  );
 }
 
 async function ensureTargetDirectory(targetDir: string): Promise<void> {
@@ -54,6 +59,7 @@ async function ensureTargetDirectory(targetDir: string): Promise<void> {
 
 export function buildSuccessLines(
   projectName: string,
+  projectPath: string,
   dockerSetup: boolean,
   localMode: boolean,
 ): string[] {
@@ -67,13 +73,14 @@ export function buildSuccessLines(
     : "  pnpm run setup      (wizard: DB / secret / storage / migrations)";
   const devStep = localMode ? `  pnpm --filter ${projectName} dev` : "  pnpm dev";
   const nextSteps = [
-    `  cd ${projectName}`,
+    `  cd ${projectPath}`,
     installStep,
     ...(dockerSetup ? ["  docker compose -f docker/docker-compose.yml up -d db"] : []),
     setupStep,
     devStep,
   ];
-  const lines = [`${pc.green("✓")} Project created at ./${projectName}`];
+  const displayPath = path.isAbsolute(projectPath) ? projectPath : `./${projectPath}`;
+  const lines = [`${pc.green("✓")} Project created at ${displayPath}`];
 
   if (localMode) {
     lines.push(
@@ -105,8 +112,13 @@ export function buildSuccessLines(
   return lines;
 }
 
-function printSuccess(projectName: string, dockerSetup: boolean, localMode: boolean): void {
-  for (const line of buildSuccessLines(projectName, dockerSetup, localMode)) {
+function printSuccess(
+  projectName: string,
+  projectPath: string,
+  dockerSetup: boolean,
+  localMode: boolean,
+): void {
+  for (const line of buildSuccessLines(projectName, projectPath, dockerSetup, localMode)) {
     console.log(line);
   }
 }

@@ -23,6 +23,7 @@ const CORE_PACKAGE_VERSION: string = (
 
 const baseConfig = {
   projectName: "test-site",
+  projectPath: "test-site",
   dockerSetup: true,
   localMode: true,
   secret: "test-secret-32characters-min-aaaaaaaaaaaa",
@@ -156,10 +157,12 @@ describe("getProjectFiles", () => {
     const families = [
       "@nexpress/admin",
       "@nexpress/app",
+      "@nexpress/auth-pages",
       "@nexpress/blocks",
       "@nexpress/core",
       "@nexpress/editor",
       "@nexpress/next",
+      "@nexpress/plugin-sdk",
       "@nexpress/theme",
       "@nexpress/theme-default",
       "@nexpress/theme-docs",
@@ -171,6 +174,11 @@ describe("getProjectFiles", () => {
         `"${dep}": "${CORE_PACKAGE_VERSION}"`,
       );
     }
+  });
+
+  it("pins the project-side @nexpress/cli dev dependency to the family version", () => {
+    const remote = textFiles(getProjectFiles({ ...baseConfig, localMode: false }));
+    expect(remote["package.json"]).toContain(`"@nexpress/cli": "${CORE_PACKAGE_VERSION}"`);
   });
 
   it("emits NP_ADMIN_THEME only as a commented hint — the picker lives in the wizard", () => {

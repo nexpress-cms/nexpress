@@ -4,7 +4,7 @@ import { buildSuccessLines } from "./scaffold.js";
 
 describe("buildSuccessLines", () => {
   it("prints setup-first next steps and deploy preflight guidance", () => {
-    const output = buildSuccessLines("demo-site", true, false).join("\n");
+    const output = buildSuccessLines("demo-site", "demo-site", true, false).join("\n");
 
     expect(output).toContain("Project created at ./demo-site");
     expect(output).toContain("cd demo-site");
@@ -31,14 +31,15 @@ describe("buildSuccessLines", () => {
   });
 
   it("keeps local-mode commands workspace-aware", () => {
-    const output = buildSuccessLines("apps/demo-site", false, true).join("\n");
+    const output = buildSuccessLines("demo-site", "apps/demo-site", false, true).join("\n");
 
     expect(output).toContain("Local mode: @nexpress/* deps use workspace:*");
     expect(output).toContain(
       "pnpm install         (run from the monorepo root — uses workspace:* links)",
     );
-    expect(output).toContain("pnpm --filter apps/demo-site run setup");
-    expect(output).toContain("pnpm --filter apps/demo-site dev");
+    expect(output).toContain("cd apps/demo-site");
+    expect(output).toContain("pnpm --filter demo-site run setup");
+    expect(output).toContain("pnpm --filter demo-site dev");
     expect(output).not.toContain("docker compose -f docker/docker-compose.yml up -d db");
   });
 });

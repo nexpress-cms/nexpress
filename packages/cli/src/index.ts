@@ -51,7 +51,7 @@ Usage:
   pnpm create nexpress [name] [flags]
 
 Positional:
-  name                 project directory name (default: my-nexpress-site)
+  name                 project directory name or path (default: my-nexpress-site)
 
 Flags:
   --yes, -y            skip prompts; use defaults (also implied when stdin is not a TTY)

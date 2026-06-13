@@ -76,6 +76,31 @@ describe("ops status core", () => {
     );
   });
 
+  it("does not let warning commands hide a blocking error without an action", () => {
+    const report = buildOpsStatusJson([
+      {
+        id: "database.reachable",
+        state: "error",
+        label: "Postgres reachable",
+        detail: "ECONNREFUSED",
+      },
+      {
+        id: "jobs.enabled",
+        state: "warn",
+        label: "Jobs enabled",
+        hint: "Set NP_ENABLE_JOBS=1 and run `pnpm worker` when scheduled publishing matters.",
+      },
+    ]);
+
+    expect(report).toEqual(
+      expect.objectContaining({
+        status: "blocked",
+        nextCommand: "pnpm run doctor -- --fix-plan",
+        projectNextCommand: "pnpm run doctor -- --fix-plan",
+      }),
+    );
+  });
+
   it("renders compact human output", () => {
     expect(renderBriefOpsStatus(buildOpsStatusJson(checks), { color: false })).toBe(
       [
