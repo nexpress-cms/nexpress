@@ -169,8 +169,8 @@ function fixForCheck(result: CheckResult, target: DeployTarget | null): FixPlanT
         title: "Enable and run the background worker",
         risk: "low",
         requiresApproval: false,
-        commands: ["pnpm worker"],
-        notes: ["Set NP_ENABLE_JOBS=1 on the runtime that owns the long-running worker."],
+        commands: ["NP_ENABLE_JOBS=1 pnpm run worker"],
+        notes: ["Keep NP_ENABLE_JOBS=1 on the runtime that owns the long-running worker."],
       };
     case "prod.site_url_https":
       return {
@@ -233,7 +233,7 @@ function fixForCheck(result: CheckResult, target: DeployTarget | null): FixPlanT
           title: "Add a worker runtime for the selected deployment target",
           risk: "medium",
           requiresApproval: true,
-          commands: [targetDeployPlanCommand(target, "docker"), "pnpm worker"],
+          commands: [targetDeployPlanCommand(target, "docker"), "NP_ENABLE_JOBS=1 pnpm run worker"],
         };
       }
       return null;

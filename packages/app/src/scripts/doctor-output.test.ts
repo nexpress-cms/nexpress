@@ -190,7 +190,10 @@ describe("doctor output", () => {
         severity: "warning",
         blocksDeploy: false,
         nextCommand: "pnpm run deploy:plan -- --target vercel --brief --no-color",
-        commands: ["pnpm run deploy:plan -- --target vercel --brief --no-color", "pnpm worker"],
+        commands: [
+          "pnpm run deploy:plan -- --target vercel --brief --no-color",
+          "NP_ENABLE_JOBS=1 pnpm run worker",
+        ],
       }),
     ]);
   });

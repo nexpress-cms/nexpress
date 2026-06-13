@@ -131,7 +131,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
         runtime: [
           "Create one web service for `pnpm start`.",
           "Set SITE_URL to the public HTTPS origin Railway routes to the web service.",
-          "Create one worker service for `pnpm worker` when NP_ENABLE_JOBS=1.",
+          "Create one worker service for `pnpm run worker` with NP_ENABLE_JOBS=1.",
           "Run migrations before promoting the new image.",
         ],
         commands: commonCommands,
@@ -154,7 +154,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
         runtime: [
           "Create a web service for the Docker image.",
           "Set SITE_URL to the public HTTPS origin Render routes to the web service.",
-          "Create a background worker for `pnpm worker` when NP_ENABLE_JOBS=1.",
+          "Create a background worker for `pnpm run worker` with NP_ENABLE_JOBS=1.",
           "Run migrations before the web service receives traffic.",
         ],
         commands: commonCommands,
@@ -177,7 +177,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
         runtime: [
           "Run the web process from the Docker image.",
           "Set SITE_URL to the public HTTPS origin Fly routes to the web machine.",
-          "Run a separate worker process or machine for `pnpm worker` when jobs are enabled.",
+          "Run a separate worker process or machine for `pnpm run worker` when jobs are enabled.",
           "Run migrations as a release step before promotion.",
         ],
         commands: commonCommands,
@@ -199,7 +199,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
         ],
         runtime: [
           "Run one web container for `pnpm start`.",
-          "Run one worker container for `pnpm worker` when NP_ENABLE_JOBS=1.",
+          "Run one worker container for `pnpm run worker` with NP_ENABLE_JOBS=1.",
           "Terminate TLS at Caddy, NGINX, or your platform load balancer.",
         ],
         commands: commonCommands,

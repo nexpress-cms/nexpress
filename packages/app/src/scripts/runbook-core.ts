@@ -106,7 +106,9 @@ function workerRunbookCommands(evidence: RunbookEvidence[]): string[] {
     }
   }
   return uniqueCommands(
-    commands.length > 0 ? commands : ["nexpress ops jobs status --json", "pnpm worker"],
+    commands.length > 0
+      ? commands
+      : ["nexpress ops jobs status --json", "NP_ENABLE_JOBS=1 pnpm run worker"],
   );
 }
 

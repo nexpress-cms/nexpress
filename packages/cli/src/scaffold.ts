@@ -65,7 +65,7 @@ export function buildSuccessLines(
 ): string[] {
   const installStep = localMode
     ? "  pnpm install         (run from the monorepo root — uses workspace:* links)"
-    : "  pnpm install        (or npm install)";
+    : "  pnpm install";
   // `pnpm run setup`, not `pnpm setup` — `pnpm setup` is a pnpm
   // built-in (installs pnpm itself) and shadows our package script.
   const setupStep = localMode
@@ -94,18 +94,17 @@ export function buildSuccessLines(
   lines.push(
     "",
     "Admin: http://localhost:3000/admin (the first-boot wizard collects your admin account)",
-    "Status: pnpm run ops:status -- --brief --no-color",
-    "Jobs: pnpm run ops:jobs -- --brief --no-color",
-    "Storage: pnpm run ops:storage -- --brief --no-color",
-    "Plugins: pnpm run ops:plugins -- doctor --brief --no-color",
-    "Release: pnpm run release -- check --target vercel --brief --no-color",
-    "Runbook: pnpm run runbook -- worker-not-draining --brief --no-color",
-    "Stuck? pnpm run doctor",
     "",
-    "Deploy preflight:",
+    "Useful checks:",
+    "  pnpm run ops:status -- --brief --no-color",
+    "  pnpm run doctor",
+    "",
+    "Before deploy:",
     "  pnpm run ops:preflight -- --target vercel --brief --no-color",
     "  pnpm run ops:health -- --url http://localhost:3000 --brief --no-color",
     "  pnpm run doctor:prod -- --target vercel --fix-plan   # if blocked",
+    "",
+    "More ops commands live in README.md once you need jobs, storage, plugins, or runbooks.",
     "Deploy guide: https://github.com/nexpress-cms/nexpress/blob/main/docs/deployment.md",
   );
 

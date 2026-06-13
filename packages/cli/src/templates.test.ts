@@ -286,6 +286,17 @@ describe("getProjectFiles", () => {
     expect(pkg.packageManager).toBe("pnpm@10.33.0");
   });
 
+  it("README documents .env-backed non-interactive setup and executable worker startup", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const readme = files["README.md"];
+    expect(readme).toContain("read existing .env, then env overrides");
+    expect(readme).toContain("reads the existing `.env` first");
+    expect(readme).toContain("NP_ENABLE_JOBS=1 pnpm run worker");
+    expect(readme).toContain("run `pnpm run worker` on a separate worker host");
+    expect(readme).not.toContain("read everything from env vars");
+    expect(readme).not.toContain("Non-interactive mode reads `DATABASE_URL` (required)");
+  });
+
   it(".env.example points NP_SMTP_* at Mailpit by default", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const env = files[".env.example"];

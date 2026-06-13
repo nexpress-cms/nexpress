@@ -256,7 +256,7 @@ function checkJobs(env: OpsEnv): CheckResult {
     state: "warn",
     label: "Jobs enabled",
     detail: "NP_ENABLE_JOBS not set",
-    hint: "Set NP_ENABLE_JOBS=1 and run `pnpm worker` when scheduled publishing or async jobs matter.",
+    hint: "Set NP_ENABLE_JOBS=1 and run `pnpm run worker` when scheduled publishing or async jobs matter.",
   };
 }
 

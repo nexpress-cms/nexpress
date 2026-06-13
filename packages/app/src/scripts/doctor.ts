@@ -45,7 +45,7 @@ import {
 } from "./migration-status.js";
 
 /**
- * `pnpm doctor` — best-effort diagnosis of the env / runtime
+ * `pnpm run doctor` — best-effort diagnosis of the env / runtime
  * surface NexPress depends on. Designed to give a new operator a
  * single command to answer "why doesn't `pnpm dev` work?" without
  * grepping through stack traces.
@@ -139,7 +139,7 @@ function checkNodeVersion(): CheckResult {
 
 function checkPnpmVersion(): CheckResult {
   // We check the version pnpm itself reports through `npm_config_user_agent`
-  // when run via `pnpm doctor`. Falls back to "unknown" in other shells —
+  // when run via `pnpm run doctor`. Falls back to "unknown" in other shells —
   // a soft warn is enough; the real boot path would crash if pnpm were
   // wrong.
   const ua = process.env.npm_config_user_agent ?? "";
@@ -150,7 +150,7 @@ function checkPnpmVersion(): CheckResult {
       state: "warn",
       label: "pnpm 10.33+",
       detail: "couldn't read pnpm version from env",
-      hint: "Run via `pnpm doctor` (not `node scripts/doctor.ts`) for a real check.",
+      hint: "Run via `pnpm run doctor` (not `node scripts/doctor.ts`) for a real check.",
     };
   }
   const version = match[1] ?? "";
@@ -302,7 +302,7 @@ async function checkDatabase(): Promise<CheckResult> {
     } catch {
       /* swallow */
     }
-    // Reuse the wizard's friendly error decoder so `pnpm doctor` and
+    // Reuse the wizard's friendly error decoder so `pnpm run doctor` and
     // the browser wizard speak the same language on the common
     // first-boot failure shapes (3D000 / 28P01 / 28000 / ECONNREFUSED).
     // For port-collision codes also scan for a free port nearby so

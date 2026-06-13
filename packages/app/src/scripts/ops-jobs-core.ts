@@ -120,6 +120,7 @@ const EMPTY_ANSI = {
   dim: "",
   reset: "",
 };
+const START_WORKER_COMMAND = "NP_ENABLE_JOBS=1 pnpm run worker";
 
 const DEFAULT_PAUSE: OpsJobsPauseState = {
   paused: false,
@@ -199,12 +200,12 @@ export function buildOpsJobsJson(args: {
     status === "blocked"
       ? args.pause.paused
         ? "nexpress ops jobs resume --json"
-        : "pnpm worker"
+        : START_WORKER_COMMAND
       : status === "attention"
         ? hasFailures
           ? "nexpress ops jobs retry-all --state failed --json"
           : workersAlive === 0
-            ? "pnpm worker"
+            ? START_WORKER_COMMAND
             : hasRetry
               ? "nexpress ops jobs drain --json"
               : "nexpress ops jobs status --json"

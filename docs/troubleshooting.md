@@ -48,8 +48,12 @@ exist or has different credentials).
 **Fix.** Pick one:
 
 - **Stop the conflicting service** (`docker compose down` in the
-  other project's directory) and re-run `docker compose -f
-  docker/docker-compose.yml up -d db` here.
+  other project's directory) and re-run this command here:
+
+  ```bash
+  docker compose -f docker/docker-compose.yml up -d db
+  ```
+
 - **Free a port for this scaffold**: edit `.env`, set
   `NEXPRESS_DB_PORT=<free port>` and update `DATABASE_URL`'s port
   to match, then re-run setup.
@@ -133,14 +137,14 @@ pnpm db:migrate     # applies the SQL migration
 someone.
 
 **Fix.** Either complete the first-boot setup wizard
-(`pnpm setup` → fill in the admin step), or seed an admin
+(`pnpm run setup` → fill in the admin step), or seed an admin
 non-interactively:
 
 ```bash
 NP_ADMIN_EMAIL=admin@example.com \
   NP_ADMIN_PASSWORD=<at least 12 chars> \
   NP_ADMIN_NAME=Admin \
-  pnpm seed:admin
+  pnpm run seed:admin
 ```
 
 ### `pnpm run seed:content`: "No active theme"
@@ -150,7 +154,7 @@ first-boot setup wizard writes one when the operator picks a theme;
 if you skipped the wizard, no theme is active yet.
 
 **Fix.** Pick a theme from the admin UI's Appearance page, or
-re-run `pnpm setup` and complete the theme step. For headless
+re-run `pnpm run setup` and complete the theme step. For headless
 installs, set `NP_ADMIN_THEME=<theme-id>` in `.env` and re-run
 the wizard's first-boot path.
 
@@ -178,11 +182,11 @@ Or re-scaffold.
 **Diagnosis.** The CLI auto-detects HTTP vs CLI mode by checking
 for `DISPLAY` / `WAYLAND_DISPLAY` / `SSH_TTY`. On some Linux
 desktop environments the display env vars aren't inherited into
-the shell that runs `pnpm setup`, so the wizard falls back to CLI
+the shell that runs `pnpm run setup`, so the wizard falls back to CLI
 mode silently.
 
-**Fix.** Force HTTP mode with `pnpm setup -- --no-cli`, or run
-the CLI mode explicitly with `pnpm setup -- --cli` if you prefer
+**Fix.** Force HTTP mode with `pnpm run setup -- --no-cli`, or run
+the CLI mode explicitly with `pnpm run setup -- --cli` if you prefer
 the terminal flow.
 
 ## After the wizard completes but the site renders nothing
@@ -195,17 +199,17 @@ during the wizard or run `pnpm seed:content` afterwards.
 **Fix.** Either re-run setup and tick the box, or:
 
 ```bash
-pnpm seed:content      # seeds the active theme's demo pages/posts
+pnpm run seed:content  # seeds the active theme's demo pages/posts
 ```
 
 ## Still stuck?
 
-- Run `pnpm doctor` for a structured health-check of your `.env`,
+- Run `pnpm run doctor` for a structured health-check of your `.env`,
   DB connection, migrations state, etc.
 - Look in the project's `docker/docker-compose.yml`'s `mailpit`
   service inbox at <http://localhost:8025> — verification emails,
   password-reset emails, and notification mails all land there
   during dev.
 - Check [open issues](https://github.com/nexpress-cms/nexpress/issues)
-  or file a new one with the output of `pnpm doctor` + the failing
+  or file a new one with the output of `pnpm run doctor` + the failing
   command's full stderr.
