@@ -1,5 +1,6 @@
 import type { DeployTarget } from "./deploy-targets.js";
 import type { CheckResult } from "./doctor-readiness.js";
+import { toProjectCommand } from "./ops-command-format.js";
 
 export interface DoctorFixPlanItem {
   id: string;
@@ -10,13 +11,20 @@ export interface DoctorFixPlanItem {
   risk: "low" | "medium" | "high";
   requiresApproval: boolean;
   nextCommand: string | null;
+  projectNextCommand: string | null;
   commands: string[];
+  projectCommands: string[];
   notes?: string[];
 }
 
 type FixPlanTemplate = Omit<
   DoctorFixPlanItem,
-  "blocksDeploy" | "checkIds" | "nextCommand" | "severity"
+  | "blocksDeploy"
+  | "checkIds"
+  | "nextCommand"
+  | "projectNextCommand"
+  | "projectCommands"
+  | "severity"
 >;
 
 function targetDeployPlanCommand(target: DeployTarget | null, fallback: DeployTarget): string {
@@ -46,6 +54,8 @@ function mergeFixPlanItem(
     blocksDeploy,
     checkIds: [result.id],
     nextCommand: template.commands[0] ?? null,
+    projectNextCommand: template.commands[0] ? toProjectCommand(template.commands[0]) : null,
+    projectCommands: template.commands.map(toProjectCommand),
     severity,
     notes: mergeNotes(template.notes, result.hint ? [result.hint] : undefined),
   });

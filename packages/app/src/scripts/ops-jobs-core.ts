@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 
 import { PgBossAdapter } from "@nexpress/core/jobs";
 
+import { toProjectCommand } from "./ops-command-format.js";
+
 export interface OpsJobsWorker {
   id: string;
   status: string;
@@ -53,6 +55,7 @@ export interface OpsJobsJson {
     active: number;
   };
   nextCommand: string | null;
+  projectNextCommand: string | null;
   pause: OpsJobsPauseState;
   counts: OpsJobsCounts;
   workers: OpsJobsWorker[];
@@ -192,6 +195,20 @@ export function buildOpsJobsJson(args: {
       : attention
         ? "attention"
         : "ready";
+  const nextCommand =
+    status === "blocked"
+      ? args.pause.paused
+        ? "nexpress ops jobs resume --json"
+        : "pnpm worker"
+      : status === "attention"
+        ? hasFailures
+          ? "nexpress ops jobs retry-all --state failed --json"
+          : workersAlive === 0
+            ? "pnpm worker"
+            : hasRetry
+              ? "nexpress ops jobs drain --json"
+              : "nexpress ops jobs status --json"
+        : null;
 
   return {
     schemaVersion: "np.ops-jobs.v1",
@@ -207,20 +224,8 @@ export function buildOpsJobsJson(args: {
       created: args.counts.created,
       active: args.counts.active,
     },
-    nextCommand:
-      status === "blocked"
-        ? args.pause.paused
-          ? "nexpress ops jobs resume --json"
-          : "pnpm worker"
-        : status === "attention"
-          ? hasFailures
-            ? "nexpress ops jobs retry-all --state failed --json"
-            : workersAlive === 0
-              ? "pnpm worker"
-              : hasRetry
-                ? "nexpress ops jobs drain --json"
-                : "nexpress ops jobs status --json"
-          : null,
+    nextCommand,
+    projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
     pause: args.pause,
     counts: args.counts,
     workers: args.workers,
@@ -404,6 +409,7 @@ export async function applyOpsJobsPauseMutation(args: {
       ok: false,
       status: "blocked",
       nextCommand: "Set DATABASE_URL and rerun nexpress ops jobs status --json",
+      projectNextCommand: "Set DATABASE_URL and rerun nexpress ops jobs status --json",
       mutation: {
         action: args.action,
         applied: false,
@@ -422,6 +428,7 @@ export async function applyOpsJobsPauseMutation(args: {
       ok: false,
       status: "blocked",
       nextCommand: "Install pg and rerun nexpress ops jobs status --json",
+      projectNextCommand: "Install pg and rerun nexpress ops jobs status --json",
       mutation: {
         action: args.action,
         applied: false,
@@ -447,6 +454,7 @@ export async function applyOpsJobsPauseMutation(args: {
       ok: false,
       status: "blocked",
       nextCommand: "Check DATABASE_URL and rerun nexpress ops jobs status --json",
+      projectNextCommand: "Check DATABASE_URL and rerun nexpress ops jobs status --json",
       mutation: {
         action: args.action,
         applied: false,
@@ -492,6 +500,7 @@ export async function applyOpsJobsRetryAllMutation(args: {
       ok: false,
       status: "blocked",
       nextCommand: "Set DATABASE_URL and rerun nexpress ops jobs retry-all --json",
+      projectNextCommand: "Set DATABASE_URL and rerun nexpress ops jobs retry-all --json",
       mutation: {
         action: "retry-all",
         applied: false,
@@ -512,6 +521,7 @@ export async function applyOpsJobsRetryAllMutation(args: {
       ok: false,
       status: "blocked",
       nextCommand: "Install pg and rerun nexpress ops jobs retry-all --json",
+      projectNextCommand: "Install pg and rerun nexpress ops jobs retry-all --json",
       mutation: {
         action: "retry-all",
         applied: false,
@@ -530,12 +540,14 @@ export async function applyOpsJobsRetryAllMutation(args: {
     await client.end();
 
     if (!args.execute) {
+      const nextCommand =
+        listed.jobs.length > 0
+          ? `nexpress ops jobs retry-all --state ${state} --execute --approve retry-all --json`
+          : fallback.nextCommand;
       return {
         ...fallback,
-        nextCommand:
-          listed.jobs.length > 0
-            ? `nexpress ops jobs retry-all --state ${state} --execute --approve retry-all --json`
-            : fallback.nextCommand,
+        nextCommand,
+        projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
         mutation: {
           action: "retry-all",
           applied: false,
@@ -558,6 +570,9 @@ export async function applyOpsJobsRetryAllMutation(args: {
         ok: false,
         status: "blocked",
         nextCommand: `nexpress ops jobs retry-all --state ${state} --execute --approve retry-all --json`,
+        projectNextCommand: toProjectCommand(
+          `nexpress ops jobs retry-all --state ${state} --execute --approve retry-all --json`,
+        ),
         mutation: {
           action: "retry-all",
           applied: false,
@@ -618,6 +633,7 @@ export async function applyOpsJobsRetryAllMutation(args: {
       ok: false,
       status: "blocked",
       nextCommand: "Check DATABASE_URL and rerun nexpress ops jobs retry-all --json",
+      projectNextCommand: "Check DATABASE_URL and rerun nexpress ops jobs retry-all --json",
       mutation: {
         action: "retry-all",
         applied: false,
@@ -642,6 +658,9 @@ export async function applyOpsJobsDrainMutation(args: {
     return {
       ...report,
       nextCommand: "nexpress ops jobs drain --execute --approve drain --json",
+      projectNextCommand: toProjectCommand(
+        "nexpress ops jobs drain --execute --approve drain --json",
+      ),
       mutation: {
         action: "drain",
         applied: false,
@@ -665,6 +684,9 @@ export async function applyOpsJobsDrainMutation(args: {
       ok: false,
       status: "blocked",
       nextCommand: "nexpress ops jobs drain --execute --approve drain --json",
+      projectNextCommand: toProjectCommand(
+        "nexpress ops jobs drain --execute --approve drain --json",
+      ),
       mutation: {
         action: "drain",
         applied: false,
@@ -681,12 +703,14 @@ export async function applyOpsJobsDrainMutation(args: {
     env: args.env,
     now: args.now,
   });
+  const nextCommand =
+    report.counts.active > 0 || report.counts.created > 0 || report.counts.retry > 0
+      ? "nexpress ops jobs status --json"
+      : report.nextCommand;
   return {
     ...report,
-    nextCommand:
-      report.counts.active > 0 || report.counts.created > 0 || report.counts.retry > 0
-        ? "nexpress ops jobs status --json"
-        : report.nextCommand,
+    nextCommand,
+    projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
     mutation: {
       action: "drain",
       applied: report.mutation?.applied ?? false,
@@ -734,5 +758,8 @@ export function renderBriefOpsJobsStatus(
     );
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
+    lines.push(`Project next: ${report.projectNextCommand}`);
+  }
   return lines.join("\n");
 }

@@ -1,6 +1,7 @@
 import type { DeployTarget } from "./deploy-targets.js";
 import { buildDoctorFixPlan, type DoctorFixPlanItem } from "./doctor-fix-plan.js";
 import type { CheckResult } from "./doctor-readiness.js";
+import { toProjectCommand } from "./ops-command-format.js";
 
 export interface DoctorSummary {
   total: number;
@@ -15,6 +16,7 @@ export interface DoctorJsonOutput {
   ok: boolean;
   blocksDeploy: boolean;
   nextCommand: string | null;
+  projectNextCommand: string | null;
   mode: "dev" | "prod";
   target: DeployTarget | null;
   summary: DoctorSummary;
@@ -62,6 +64,7 @@ export function buildDoctorJson(args: {
     ok: summary.errors === 0,
     blocksDeploy: summary.errors > 0,
     nextCommand: null,
+    projectNextCommand: null,
     mode: args.prodMode ? "prod" : "dev",
     target: args.target,
     summary,
@@ -71,9 +74,11 @@ export function buildDoctorJson(args: {
     const fixPlan = buildDoctorFixPlan({ checks: args.checks, target: args.target });
     report.nextCommand =
       fixPlan.find((item) => item.blocksDeploy)?.nextCommand ?? fixPlan[0]?.nextCommand ?? null;
+    report.projectNextCommand = report.nextCommand ? toProjectCommand(report.nextCommand) : null;
     report.fixPlan = fixPlan;
   } else if (summary.errors > 0 || summary.warnings > 0) {
     report.nextCommand = buildDoctorFixPlanCommand(args.prodMode, args.target);
+    report.projectNextCommand = toProjectCommand(report.nextCommand);
   }
   return report;
 }
@@ -145,6 +150,10 @@ export function renderBriefDoctorReport(
   lines.push(renderDoctorSummary(args.checks, options));
   for (const result of args.checks) lines.push(renderBriefDoctorCheck(result, options));
   if (args.nextCommand) lines.push(`Next: ${args.nextCommand}`);
+  if (args.nextCommand) {
+    const projectNextCommand = toProjectCommand(args.nextCommand);
+    if (projectNextCommand !== args.nextCommand) lines.push(`Project next: ${projectNextCommand}`);
+  }
   return lines.join("\n");
 }
 
@@ -162,7 +171,15 @@ export function renderDoctorFixPlan(
     lines.push(`   severity: ${item.severity}; risk: ${item.risk}; ${approval}`);
     lines.push(`   checks: ${item.checkIds.join(", ")}`);
     if (item.nextCommand) lines.push(`   next: ${item.nextCommand}`);
+    if (item.projectNextCommand && item.projectNextCommand !== item.nextCommand) {
+      lines.push(`   project next: ${item.projectNextCommand}`);
+    }
     for (const command of item.commands) lines.push(`   command: ${command}`);
+    for (const command of item.projectCommands.filter((command, commandIndex) => {
+      return command !== item.commands[commandIndex];
+    })) {
+      lines.push(`   project command: ${command}`);
+    }
     for (const note of item.notes ?? []) lines.push(`   note: ${note}`);
   });
   return lines.join("\n");

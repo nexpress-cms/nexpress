@@ -27,6 +27,7 @@ describe("ops jobs core", () => {
         ok: true,
         status: "disabled",
         nextCommand: null,
+        projectNextCommand: null,
       }),
     );
   });
@@ -67,6 +68,7 @@ describe("ops jobs core", () => {
     expect(report.status).toBe("attention");
     expect(report.ok).toBe(true);
     expect(report.nextCommand).toBe("nexpress ops jobs retry-all --state failed --json");
+    expect(report.projectNextCommand).toBe("pnpm run ops:jobs -- retry-all --state failed --json");
     expect(renderBriefOpsJobsStatus(report, { color: false })).toContain("attention: enabled");
   });
 
@@ -82,6 +84,7 @@ describe("ops jobs core", () => {
       expect.objectContaining({
         status: "blocked",
         nextCommand: "nexpress ops jobs resume --json",
+        projectNextCommand: "pnpm run ops:jobs -- resume --json",
       }),
     );
   });

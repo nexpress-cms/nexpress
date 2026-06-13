@@ -4,6 +4,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { createStorageAdapter } from "@nexpress/core";
 
+import { toProjectCommand } from "./ops-command-format.js";
 import type { CheckResult } from "./doctor-readiness.js";
 
 type OpsStorageEnv = Record<string, string | undefined>;
@@ -56,6 +57,7 @@ export interface OpsStorageDriftListJson {
     invalidStorageKeys: number;
   };
   nextCommand: string | null;
+  projectNextCommand: string | null;
   checks: CheckResult[];
   items: OpsStorageDriftItem[];
 }
@@ -71,10 +73,12 @@ export interface OpsStorageMigrationPlanJson {
     invalidStorageKeys: number;
   };
   nextCommand: string | null;
+  projectNextCommand: string | null;
   checks: CheckResult[];
   commands: Array<{
     phase: "inspect" | "prepare" | "apply";
     command: string;
+    projectCommand: string;
     required: boolean;
     requiresApproval: boolean;
   }>;
@@ -95,6 +99,7 @@ export interface OpsStorageJson {
   } | null;
   summary: OpsStorageSummary;
   nextCommand: string | null;
+  projectNextCommand: string | null;
   checks: CheckResult[];
 }
 
@@ -439,6 +444,7 @@ export function buildOpsStorageJson(args: {
     mutation: args.mutation ?? null,
     summary: args.summary,
     nextCommand,
+    projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
     checks: args.checks,
   };
 }
@@ -596,6 +602,12 @@ export async function collectOpsStorageDriftList(args: {
   const counts = countChecks(inventory.checks);
   const status =
     counts.errors > 0 ? "blocked" : items.length > 0 || counts.warnings > 0 ? "attention" : "ready";
+  const nextCommand =
+    status === "ready"
+      ? null
+      : args.operation === "missing-files"
+        ? "nexpress ops storage orphaned-files --json"
+        : "nexpress ops storage migrate plan --target s3 --json";
   return {
     schemaVersion: "np.ops-storage-list.v1",
     ok: counts.errors === 0,
@@ -610,12 +622,8 @@ export async function collectOpsStorageDriftList(args: {
       truncated: limited.truncated,
       invalidStorageKeys: inventory.invalidStorageKeys,
     },
-    nextCommand:
-      status === "ready"
-        ? null
-        : args.operation === "missing-files"
-          ? "nexpress ops storage orphaned-files --json"
-          : "nexpress ops storage migrate plan --target s3 --json",
+    nextCommand,
+    projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
     checks: inventory.checks,
     items: limited.returned,
   };
@@ -677,6 +685,38 @@ export async function buildOpsStorageMigrationPlan(args: {
       inventory.summary.missingFiles -
       inventory.invalidStorageKeys,
   );
+  const nextCommand =
+    status === "ready"
+      ? "nexpress ops storage test --json"
+      : (checks
+          .find((check) => check.state === "error" && check.hint)
+          ?.hint?.match(/`([^`]+)`/)?.[1] ?? "nexpress ops storage verify --json");
+  const commands = [
+    {
+      phase: "inspect" as const,
+      command: "nexpress ops storage missing-files --json",
+      required: inventory.summary.missingFiles > 0,
+      requiresApproval: false,
+    },
+    {
+      phase: "inspect" as const,
+      command: "nexpress ops storage orphaned-files --json",
+      required: inventory.summary.orphanedFiles > 0,
+      requiresApproval: false,
+    },
+    {
+      phase: "prepare" as const,
+      command: "nexpress ops storage test --json",
+      required: true,
+      requiresApproval: false,
+    },
+    {
+      phase: "apply" as const,
+      command: "nexpress ops storage migrate apply --target s3 --execute --approve storage-migrate",
+      required: true,
+      requiresApproval: true,
+    },
+  ].map((command) => ({ ...command, projectCommand: toProjectCommand(command.command) }));
   return {
     schemaVersion: "np.ops-storage-migration-plan.v1",
     ok: counts.errors === 0,
@@ -688,40 +728,10 @@ export async function buildOpsStorageMigrationPlan(args: {
       copyCandidates,
       invalidStorageKeys: inventory.invalidStorageKeys,
     },
-    nextCommand:
-      status === "ready"
-        ? "nexpress ops storage test --json"
-        : (checks
-            .find((check) => check.state === "error" && check.hint)
-            ?.hint?.match(/`([^`]+)`/)?.[1] ?? "nexpress ops storage verify --json"),
+    nextCommand,
+    projectNextCommand: toProjectCommand(nextCommand),
     checks,
-    commands: [
-      {
-        phase: "inspect",
-        command: "nexpress ops storage missing-files --json",
-        required: inventory.summary.missingFiles > 0,
-        requiresApproval: false,
-      },
-      {
-        phase: "inspect",
-        command: "nexpress ops storage orphaned-files --json",
-        required: inventory.summary.orphanedFiles > 0,
-        requiresApproval: false,
-      },
-      {
-        phase: "prepare",
-        command: "nexpress ops storage test --json",
-        required: true,
-        requiresApproval: false,
-      },
-      {
-        phase: "apply",
-        command:
-          "nexpress ops storage migrate apply --target s3 --execute --approve storage-migrate",
-        required: true,
-        requiresApproval: true,
-      },
-    ],
+    commands,
   };
 }
 
@@ -773,6 +783,9 @@ export async function runOpsStorageTest(args: {
       ...base,
       operation: "test",
       nextCommand: "nexpress ops storage test --execute --approve storage-test --json",
+      projectNextCommand: toProjectCommand(
+        "nexpress ops storage test --execute --approve storage-test --json",
+      ),
       mutation: {
         action: "test",
         applied: false,
@@ -790,6 +803,9 @@ export async function runOpsStorageTest(args: {
       status: "blocked",
       operation: "test",
       nextCommand: "nexpress ops storage test --execute --approve storage-test --json",
+      projectNextCommand: toProjectCommand(
+        "nexpress ops storage test --execute --approve storage-test --json",
+      ),
       mutation: {
         action: "test",
         applied: false,
@@ -828,6 +844,7 @@ export async function runOpsStorageTest(args: {
       status: "blocked",
       operation: "test",
       nextCommand: "Check storage credentials and rerun nexpress ops storage test --json",
+      projectNextCommand: "Check storage credentials and rerun nexpress ops storage test --json",
       mutation: {
         action: "test",
         applied: false,
@@ -873,6 +890,9 @@ export function renderBriefOpsStorageStatus(
     lines.push(parts.join(" "));
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
+    lines.push(`Project next: ${report.projectNextCommand}`);
+  }
   if (report.mutation) {
     lines.push(
       `mutation: ${report.mutation.action} applied=${String(report.mutation.applied)}${report.mutation.error ? ` error=${report.mutation.error}` : ""}`,
