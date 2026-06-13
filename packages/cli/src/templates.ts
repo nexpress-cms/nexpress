@@ -860,11 +860,12 @@ persists that gate as a replayable audit artifact under \`.nexpress/releases\`;
 \`--execute --approve <planId>\`; \`release verify\` composes the post-deploy
 readiness gate. \`runbook --out <path>\` writes a clean JSON artifact for common
 incidents with evidence-backed diagnosis and next commands. Release plans
-include global \`command\` values plus local \`projectCommand\` values; runbooks
-include \`nextCommands\` plus \`projectNextCommands\`. Both preserve nested
-\`plan.nextCommands\` from migration rollback, backup restore, storage migration,
-and plugin upgrade evidence so agent handoffs keep the concrete follow-up
-sequence.
+include global \`command\` values plus local \`projectCommand\` values; release
+apply artifacts include \`execution.nextCommand\` plus
+\`execution.projectNextCommand\`; runbooks include \`nextCommands\` plus
+\`projectNextCommands\`. All preserve nested \`plan.nextCommands\` from migration
+rollback, backup restore, storage migration, and plugin upgrade evidence so
+agent handoffs keep the concrete follow-up sequence.
 
 ### Stuck? Run the doctor.
 

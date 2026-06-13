@@ -369,6 +369,10 @@ Implementation status:
 - `nexpress release apply --plan <artifact> --json` emits
   `schemaVersion: "np.release-apply.v1"` and writes an apply audit artifact.
   It dry-runs by default; execution requires `--execute --approve <planId>`.
+  Dry-run and blocked artifacts include `execution.nextCommand` and
+  `execution.projectNextCommand` so the next safe command is explicit. When an
+  apply is blocked before execution, every plan command is marked `blocked`
+  instead of `pending`.
 - `nexpress release verify --url <origin> --json` emits the same
   `np.release.v1` envelope by composing health, jobs, storage, and plugin
   diagnostics into a post-release readiness gate.
@@ -727,6 +731,8 @@ Implementation status:
 - `release plan --json` persists a replayable plan artifact, and
   `release apply --plan <artifact> --json` records a dry-run or execution audit
   artifact.
+- `release apply` dry-run artifacts include the exact approval-gated execution
+  command in both global and project-local forms.
 - A blocked `release plan` only lists remediation and verify commands; release
   phase commands are regenerated once the check is ready.
 - `release verify --json` can run after deployment and report readiness.
