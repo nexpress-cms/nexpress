@@ -36,8 +36,8 @@ workflow (`.github/workflows/release.yml`) runs on every push to
 2. **Queued changesets, no Version PR yet** → opens / updates the
    "Version Packages" PR. The PR carries the cumulative diff
    (`CHANGELOG.md` per package + `package.json` version bumps).
-3. **Version PR merged** → `pnpm release` (= `pnpm build && changeset
-   publish`) pushes the new tarballs to npm with Sigstore provenance.
+3. **Version PR merged** → `pnpm release` (= `pnpm build && changeset publish`)
+   pushes the new tarballs to npm with Sigstore provenance.
 
 The root `release` script lives in `package.json`. Changesets reads
 `.changeset/config.json`, where `access: "public"` makes scoped
@@ -117,6 +117,52 @@ pnpm ux-audit          # fresh-scaffold smoke (boots a generated app)
 If both pass, the PR is safe to merge — the next push to `main` will
 publish.
 
+### Version PR merge gate
+
+Version PRs still need explicit maintainer approval before merge. Do not merge
+or auto-merge them just because the Changesets PR exists; first confirm that
+the queued release is the batch you intended to publish.
+
+The default branch is guarded by a repository ruleset, not the legacy branch
+protection endpoint. If `gh api repos/nexpress-cms/nexpress/branches/main/protection`
+returns `Branch not protected`, inspect rulesets instead:
+
+```bash
+gh api repos/nexpress-cms/nexpress/rulesets \
+  --jq '.[] | select(.target == "branch") | {name,enforcement,conditions,rules}'
+```
+
+The active `main branch protection` ruleset requires these PR checks:
+
+- `typecheck + build + test`
+- `integration tests (Postgres)`
+- `E2E (Playwright)`
+
+Before merging the Version PR, verify GitHub has attached those checks to the
+current `changeset-release/main` head:
+
+```bash
+gh pr view <version-pr> \
+  --json mergeStateStatus,mergeable,statusCheckRollup,reviewDecision,headRefName
+gh pr checks <version-pr> --watch
+```
+
+If `statusCheckRollup` is empty or the PR remains `BLOCKED` after CI is green,
+the merge gate is stale or GitHub has not associated the required checks with
+the latest Changesets commit yet. Wait for the Release workflow to finish
+updating the Version PR, then re-run or wait for PR CI again. Only use an admin
+merge after the required checks are visibly green and the maintainer has
+approved publishing this batch.
+
+```bash
+gh pr merge <version-pr> --squash --delete-branch
+# Fallback only after the checks above are green and approval is explicit:
+gh pr merge <version-pr> --squash --delete-branch --admin
+```
+
+Avoid `--auto` for Version PRs. In practice it can stay queued behind a stale
+ruleset state while the publish decision looks complete to the operator.
+
 ## Post-publish verification
 
 After the publish workflow run finishes:
@@ -127,6 +173,47 @@ After the publish workflow run finishes:
    runs without errors (clean up after).
 3. `npm view @nexpress/core --json | jq '.dist.attestations'` —
    should show a non-null attestation block (provenance).
+
+If npm did not change after a merged Version PR, check the push-to-`main`
+Release run first:
+
+```bash
+gh run list --workflow Release --branch main --limit 5
+gh run view <run-id> --log-failed
+```
+
+Then confirm no orphan changesets are left on `main`:
+
+```bash
+ls .changeset | grep -vE '^(README\.md|config\.json)$' || true
+```
+
+Any orphan file means the Version PR was merged from a stale head. Let the
+freshly updated Version PR absorb it, or merge a follow-up PR that clears the
+orphan before trying to publish again.
+
+## Hosted demo update
+
+After npm publishes, update the public demo repo before starting the next large
+feature batch:
+
+```bash
+cd ../nexpress-hosted-demo
+pnpm up '@nexpress/*@<version>' '@nexpress/cli@<version>' --save-exact
+pnpm install
+pnpm typecheck
+pnpm build
+pnpm db:check
+```
+
+If `pnpm db:check` reports schema drift, run `pnpm db:generate`, review and
+commit the generated migration, then apply it to the managed demo database
+before merging the demo PR. Once the demo PR merges, verify production:
+
+```bash
+curl -I -L https://nexpress-hosted-demo.vercel.app/api/health/ready
+curl -I -L https://nexpress-hosted-demo.vercel.app
+```
 
 ## Package Checklist
 
