@@ -1,5 +1,67 @@
 # create-nexpress
 
+## 0.1.27
+
+### Patch Changes
+
+- 6e73011: Add read-only backup restore planning.
+
+  Generated apps can now run `ops:backup restore-plan [latest|manifestId]` to
+  produce an isolated restore drill plan with artifact checks, ordered restore /
+  verify / record steps, and approval flags. `ops:backup verify` can also target a
+  specific manifest id instead of only `latest`.
+
+- 8d77729: Add read-only migration rollback planning.
+
+  Generated apps can now run `ops:migrate rollback-plan --json` to produce a
+  backup-restore rollback checklist for pending or risky migrations. The plan
+  includes inspect, backup, restore-plan, rollback, and verification steps with
+  approval flags, while destructive migration apply remains future work.
+
+- cbe770f: Complete project-local command guidance across ops artifacts, including
+  projectNextCommand fields and plan-step projectCommand values for generated app
+  workflows.
+- c6d1eac: Improve release and runbook artifact quality: blocked release plans now list
+  only remediation plus verify commands, and executable runbooks can write clean
+  JSON artifacts with `--out <path>`.
+- 086b2c5: Improve ops command ergonomics by adding generated-app command variants to
+  release/runbook artifacts and exposing `ops:release` / `ops:runbook` scripts
+  alongside the existing direct `release` and `runbook` entries.
+- 5c8b062: Expand the agent-operated ops execution loop.
+
+  `nexpress ops jobs retry-all` now dry-runs retryable archived jobs by default,
+  then requires `--execute --approve retry-all` before re-enqueuing failed,
+  cancelled, or expired jobs with a mutation audit block. `nexpress ops jobs
+drain` now reports drain readiness by default, and `--execute --approve drain`
+  starts a safe drain by pausing new job claims while reporting remaining active,
+  created, and retry counts.
+
+  `nexpress ops storage verify` now exposes an explicit integrity gate, and
+  `nexpress ops storage test --execute --approve storage-test` runs an upload /
+  exists / delete probe through the configured local or S3 adapter. Fresh
+  scaffolds document the new commands in the generated README.
+
+- d1c17d0: Add read-only plugin ops inspection and upgrade planning.
+
+  Generated apps can now run `ops:plugins inspect <pluginId>` to inspect one
+  configured plugin and `ops:plugins upgrade-plan [pluginId]` to produce package
+  review, upgrade, rebuild, and verification steps without mutating dependencies or
+  configuration.
+
+- d027bf4: Improve release apply dry-run artifacts with explicit execution guidance,
+  including global and project-local next commands for approval-gated applies.
+- 5ad4949: Preserve nested ops `plan.nextCommands` in release plans and executable
+  runbooks so migration rollback, backup restore, storage migration, and plugin
+  upgrade evidence keep their concrete follow-up commands in agent handoffs.
+- 97fb4d0: Add read-only storage drift and migration planning commands.
+
+  `nexpress ops storage missing-files --json` and `orphaned-files --json` now
+  return concrete local media drift lists. `nexpress ops storage migrate plan
+--target s3 --json` produces a read-only local-to-S3 migration plan with
+  inspect, prepare, and approval-gated future apply commands. The
+  `storage-local-to-s3` runbook now collects the new drift and migration-plan
+  evidence, and freshly scaffolded READMEs list the new commands.
+
 ## 0.1.26
 
 ### Patch Changes
