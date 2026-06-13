@@ -1,13 +1,15 @@
 # Agent-operated ops CLI plan
 
-**Status:** planning backlog, not implemented. This page turns the product
-positioning from the agent integration guide into executable work items for a
-future `nexpress ops` / `nexpress deploy` / `nexpress release` CLI surface.
+**Status:** implemented operating track with remaining backlog. This page
+started as the planning backlog for the agent-operated CLI surface; it now
+documents the shipped `nexpress ops`, `nexpress runbook`, and `nexpress release`
+contracts plus the follow-up items that have not yet graduated into code.
 
 NexPress already exposes agent-friendly content APIs through OpenAPI, auth,
-plugin discovery, and stable error codes. The missing piece is the operating
-surface after a site is live: status checks, deployment planning, migration
-safety, backups, worker health, storage verification, and incident runbooks.
+plugin discovery, and stable error codes. The operating surface after a site is
+live now has deterministic JSON contracts for status checks, deployment
+planning, migration safety, backups, worker health, storage verification,
+plugin inspection, release gates, and incident runbooks.
 
 The goal is a low-token operating contract:
 
@@ -50,9 +52,11 @@ surfaces:
 - The agent integration guide documents OpenAPI, auth, plugin discovery, and
   content read/write flows.
 
-The gap is that these are spread across scripts, docs, and app endpoints. An
-agent still has to spend tokens discovering which commands apply, how to parse
-output, which failures are blocking, and which actions are safe to retry.
+The original gap was that these were spread across scripts, docs, and app
+endpoints. The shipped ops / runbook / release commands now provide the
+low-token entry points for the common lifecycle; the remaining work is to keep
+expanding typed plans and approval-gated mutations without turning the CLI into
+an unsafe autopilot.
 
 ---
 
