@@ -1,5 +1,41 @@
 # @nexpress/app
 
+## 0.3.19
+
+### Patch Changes
+
+- 9ef9e96: Ensure release builds regenerate the scaffold package whenever the NexPress
+  family version changes, so fresh projects pin the intended `@nexpress/*`
+  versions. `create-nexpress` also accepts absolute or relative target paths while
+  deriving the package-safe project name from the final path segment.
+
+  Also keep `nexpress ops status` focused on blocking errors: warning-level
+  follow-up commands no longer hide a database or environment blocker that needs
+  the doctor fix plan first.
+  - @nexpress/admin@0.3.19
+  - @nexpress/auth-pages@0.3.19
+  - @nexpress/blocks@0.3.19
+  - @nexpress/core@0.3.19
+  - @nexpress/editor@0.3.19
+  - @nexpress/next@0.3.19
+  - @nexpress/plugin-block-callout@0.3.19
+  - @nexpress/plugin-block-embed@0.3.19
+  - @nexpress/plugin-block-latest-posts@0.3.19
+  - @nexpress/plugin-block-newsletter@0.3.19
+  - @nexpress/plugin-block-pricing@0.3.19
+  - @nexpress/plugin-block-stats@0.3.19
+  - @nexpress/plugin-forum@0.3.19
+  - @nexpress/plugin-oauth-github@0.3.19
+  - @nexpress/plugin-oauth-google@0.3.19
+  - @nexpress/plugin-reading-time@0.3.19
+  - @nexpress/plugin-sdk@0.3.19
+  - @nexpress/plugin-seo-audit@0.3.19
+  - @nexpress/theme@0.3.19
+  - @nexpress/theme-default@0.3.19
+  - @nexpress/theme-docs@0.3.19
+  - @nexpress/theme-magazine@0.3.19
+  - @nexpress/theme-portfolio@0.3.19
+
 ## 0.3.18
 
 ### Patch Changes

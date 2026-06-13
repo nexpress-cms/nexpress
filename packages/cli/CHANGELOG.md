@@ -1,5 +1,18 @@
 # create-nexpress
 
+## 0.1.28
+
+### Patch Changes
+
+- 9ef9e96: Ensure release builds regenerate the scaffold package whenever the NexPress
+  family version changes, so fresh projects pin the intended `@nexpress/*`
+  versions. `create-nexpress` also accepts absolute or relative target paths while
+  deriving the package-safe project name from the final path segment.
+
+  Also keep `nexpress ops status` focused on blocking errors: warning-level
+  follow-up commands no longer hide a database or environment blocker that needs
+  the doctor fix plan first.
+
 ## 0.1.27
 
 ### Patch Changes
