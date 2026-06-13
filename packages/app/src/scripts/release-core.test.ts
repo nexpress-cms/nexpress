@@ -389,6 +389,7 @@ describe("release core", () => {
       mode: "dry-run",
       approved: false,
       artifactPath: ".nexpress/releases/release-test-apply.json",
+      planArtifactPath: ".nexpress/releases/release-test.json",
     });
 
     expect(apply).toEqual(
@@ -403,9 +404,21 @@ describe("release core", () => {
     expect(apply.commands).toEqual([
       expect.objectContaining({
         command: "nexpress release verify --json",
+        projectCommand: "pnpm run ops:release -- verify --json",
         status: "pending",
       }),
     ]);
+    expect(apply.execution).toEqual({
+      nextCommand:
+        "nexpress release apply --plan .nexpress/releases/release-test.json --execute --approve release-test --json",
+      projectNextCommand:
+        "pnpm run ops:release -- apply --plan .nexpress/releases/release-test.json --execute --approve release-test --json",
+      requiresApproval: true,
+      approved: false,
+    });
+    expect(renderBriefReleaseApply(apply, { color: false })).toContain(
+      "Project next: pnpm run ops:release -- apply --plan .nexpress/releases/release-test.json --execute --approve release-test --json",
+    );
   });
 
   it("blocks release apply execution without the plan approval token", () => {
@@ -427,6 +440,11 @@ describe("release core", () => {
     expect(apply.ok).toBe(false);
     expect(apply.status).toBe("blocked");
     expect(apply.blockedReason).toBe("release apply requires --approve release-test");
+    expect(apply.summary.blocked).toBe(apply.commands.length);
+    expect(apply.commands[0]).toEqual(expect.objectContaining({ status: "blocked" }));
+    expect(apply.execution.nextCommand).toBe(
+      "nexpress release apply --plan .nexpress/releases/release-test.json --execute --approve release-test --json",
+    );
   });
 
   it("blocks release apply when the plan itself is blocked", () => {
@@ -462,6 +480,14 @@ describe("release core", () => {
     expect(apply.blockedReason).toBe(
       "release check is not ready; run remediation commands and regenerate the plan",
     );
+    expect(apply.summary.blocked).toBe(apply.commands.length);
+    expect(apply.commands[0]).toEqual(expect.objectContaining({ status: "blocked" }));
+    expect(apply.execution).toEqual({
+      nextCommand: "nexpress release check --json",
+      projectNextCommand: "pnpm run ops:release -- check --json",
+      requiresApproval: false,
+      approved: true,
+    });
   });
 
   it("summarizes executed release apply results", () => {
@@ -497,6 +523,7 @@ describe("release core", () => {
       skipped: 0,
       success: 1,
       failed: 0,
+      blocked: 0,
     });
     expect(renderBriefReleaseApply(apply, { color: false })).toContain(
       "applied: plan: release-test",

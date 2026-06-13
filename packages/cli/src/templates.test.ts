@@ -460,6 +460,7 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("nextCommands");
     expect(readme).toContain("nextCommand");
     expect(readme).toContain("plan.nextCommands");
+    expect(readme).toContain("execution.projectNextCommand");
     expect(readme).toContain("fixPlan[].nextCommand");
     expect(readme).toContain("Deploy with Vercel");
     expect(readme).toContain("https://vercel.com/new?utm_source=nexpress");

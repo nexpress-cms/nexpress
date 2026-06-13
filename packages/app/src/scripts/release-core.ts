@@ -86,7 +86,7 @@ export interface ReleasePlanJson {
 }
 
 export interface ReleaseApplyCommandResult extends ReleasePlanCommand {
-  status: "pending" | "skipped" | "success" | "failed";
+  status: "pending" | "skipped" | "success" | "failed" | "blocked";
   exitCode: number | null;
   stdout?: string;
   stderr?: string;
@@ -106,8 +106,15 @@ export interface ReleaseApplyJson {
     skipped: number;
     success: number;
     failed: number;
+    blocked: number;
   };
   blockedReason: string | null;
+  execution: {
+    nextCommand: string | null;
+    projectNextCommand: string | null;
+    requiresApproval: boolean;
+    approved: boolean;
+  };
   audit: {
     planArtifactPath: string | null;
     artifactPath: string | null;
@@ -302,17 +309,24 @@ export function buildReleaseApplyJson(args: {
       ? `release apply requires --approve ${args.plan.planId}`
       : null;
   const blockedReason = planBlockedReason ?? approvalBlockedReason;
+  const planArtifactPath = args.planArtifactPath ?? args.plan.audit.artifactPath ?? "<plan>";
+  const executionNextCommand = planBlockedReason
+    ? args.plan.apply.nextCommand
+    : args.mode === "execute" && args.approved && !approvalBlockedReason
+      ? null
+      : `nexpress release apply --plan ${planArtifactPath} --execute --approve ${args.plan.planId} --json`;
   const commands =
     args.commandResults ??
     args.plan.commands.map<ReleaseApplyCommandResult>((command) => ({
       ...command,
-      status: command.required ? "pending" : "skipped",
+      status: blockedReason ? "blocked" : command.required ? "pending" : "skipped",
       exitCode: null,
     }));
   const failed = commands.filter((command) => command.status === "failed").length;
   const success = commands.filter((command) => command.status === "success").length;
   const skipped = commands.filter((command) => command.status === "skipped").length;
   const pending = commands.filter((command) => command.status === "pending").length;
+  const blocked = commands.filter((command) => command.status === "blocked").length;
   const status: ReleaseApplyJson["status"] = blockedReason
     ? "blocked"
     : failed > 0
@@ -335,8 +349,15 @@ export function buildReleaseApplyJson(args: {
       skipped,
       success,
       failed,
+      blocked,
     },
     blockedReason,
+    execution: {
+      nextCommand: executionNextCommand,
+      projectNextCommand: executionNextCommand ? toProjectCommand(executionNextCommand) : null,
+      requiresApproval: !planBlockedReason,
+      approved: args.approved,
+    },
     audit: {
       planArtifactPath: args.planArtifactPath ?? args.plan.audit.artifactPath ?? null,
       artifactPath: args.artifactPath ?? null,
@@ -421,11 +442,18 @@ export function renderBriefReleaseApply(
     `${c.dim}NexPress release apply${c.reset}`,
     `${statusColor}${apply.status}${c.reset}: plan: ${apply.planId}`,
     `mode: ${apply.mode}${apply.approved ? " approved" : ""}`,
-    `commands: ${apply.summary.success.toString()} success, ${apply.summary.failed.toString()} failed, ${apply.summary.pending.toString()} pending, ${apply.summary.skipped.toString()} skipped`,
+    `commands: ${apply.summary.success.toString()} success, ${apply.summary.failed.toString()} failed, ${apply.summary.pending.toString()} pending, ${apply.summary.blocked.toString()} blocked, ${apply.summary.skipped.toString()} skipped`,
   ];
   if (apply.audit.planArtifactPath) lines.push(`plan artifact: ${apply.audit.planArtifactPath}`);
   if (apply.audit.artifactPath) lines.push(`apply artifact: ${apply.audit.artifactPath}`);
   if (apply.blockedReason) lines.push(`blocked: ${apply.blockedReason}`);
+  if (apply.execution.nextCommand) lines.push(`Next: ${apply.execution.nextCommand}`);
+  if (
+    apply.execution.projectNextCommand &&
+    apply.execution.projectNextCommand !== apply.execution.nextCommand
+  ) {
+    lines.push(`Project next: ${apply.execution.projectNextCommand}`);
+  }
   for (const command of apply.commands) {
     lines.push(`  - [${command.status}] ${command.command}`);
   }
