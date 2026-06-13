@@ -175,6 +175,29 @@ async function getFormDefaults(): Promise<FormDefaults> {
   };
 }
 
+async function readExistingEnvValues(): Promise<Record<string, string>> {
+  let raw: string;
+  try {
+    raw = await readFile(ENV_PATH, "utf8");
+  } catch {
+    return {};
+  }
+  const values: Record<string, string> = {};
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match) continue;
+    let value = match[2] ?? "";
+    const quote = value[0];
+    if ((quote === `"` || quote === "'") && value.endsWith(quote)) {
+      value = value.slice(1, -1);
+    }
+    values[match[1]] = value;
+  }
+  return values;
+}
+
 const args = process.argv.slice(2);
 const PORT = Number(getArg("--port") ?? "3001");
 const TOKEN = randomUUID();
@@ -1272,24 +1295,28 @@ async function runCli(): Promise<void> {
 }
 
 async function runNonInteractive(): Promise<void> {
-  // Reads from real `process.env` so a CI / dotfile / fly secrets
-  // flow can dictate everything without a TTY. Reuses the
-  // operator-facing env-var names (`DATABASE_URL`, `NP_SECRET`,
-  // `SITE_URL`, `NP_STORAGE_ADAPTER`, `NP_S3_*`) plus one wizard-
-  // specific knob (`NP_SETUP_RUN_MIGRATIONS`).
+  // Reads the existing `.env` first so a freshly scaffolded project
+  // can run headlessly without re-exporting every generated default.
+  // Real `process.env` wins, so CI / dotfile / fly secrets flows can
+  // still dictate everything without a TTY. Reuses the operator-facing
+  // env-var names (`DATABASE_URL`, `NP_SECRET`, `SITE_URL`,
+  // `NP_STORAGE_ADAPTER`, `NP_S3_*`) plus setup-specific knobs such as
+  // `NP_SETUP_RUN_MIGRATIONS`.
   console.log("");
   console.log("  NexPress setup (non-interactive mode)");
   console.log("  -------------------------------------");
   console.log(`  Will write .env → ${ENV_PATH}`);
   console.log("");
 
-  const body = buildNonInteractiveSetupBody(process.env, generatedSecret);
+  const existingEnv = await readExistingEnvValues();
+  const body = buildNonInteractiveSetupBody({ ...existingEnv, ...process.env }, generatedSecret);
 
   const validated = validateBody(body);
   if ("error" in validated) {
     console.error(`✗ Invalid setup input: ${validated.error}`);
     console.error("");
-    console.error("Required env vars for non-interactive mode:");
+    console.error("Non-interactive mode reads existing .env first, then process env overrides.");
+    console.error("Required when neither source provides it:");
     console.error("  DATABASE_URL              postgres://...");
     console.error("Optional:");
     console.error("  NP_SECRET                 (auto-generated if absent; ≥32 chars)");

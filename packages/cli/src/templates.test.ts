@@ -272,6 +272,20 @@ describe("getProjectFiles", () => {
     expect(compose).toMatch(/1025/);
   });
 
+  it("docker-compose pins a project-specific Compose name", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const compose = files["docker/docker-compose.yml"];
+    expect(compose).toBeDefined();
+    expect(compose).toMatch(/^name: test-site$/m);
+    expect(compose).not.toMatch(/^name: docker$/m);
+  });
+
+  it("package.json pins the pnpm package manager used by the scaffold", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const pkg = JSON.parse(files["package.json"]) as { packageManager?: string };
+    expect(pkg.packageManager).toBe("pnpm@10.33.0");
+  });
+
   it(".env.example points NP_SMTP_* at Mailpit by default", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const env = files[".env.example"];

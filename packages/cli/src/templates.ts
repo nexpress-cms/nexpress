@@ -142,6 +142,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
       version: "0.1.0",
       private: true,
       type: "module",
+      packageManager: "pnpm@10.33.0",
       scripts: {
         predev: "tsx scripts/dev-notice.ts",
         dev: "next dev",
@@ -583,8 +584,14 @@ function dockerComposeTemplate(config: TemplateConfig): string {
   // producing a confusing "connection refused" or "wrong DB" cascade.
   // Operator can still override by exporting NEXPRESS_DB_PORT in their
   // shell or by passing `--env-file .env` to docker compose.
+  //
+  // Finally, pin the Compose project name. With `docker compose -f
+  // docker/docker-compose.yml`, Compose otherwise derives the project
+  // from the compose file directory (`docker`), so every scaffold on
+  // the machine shares `docker-db-1` and `docker_pgdata`.
   const dbName = dbNameFromProject(config.projectName);
   return readTemplate("docker/docker-compose.yml")
+    .replace(/^services:\s*$/m, `name: ${config.projectName}\n\nservices:`)
     .replace(/^(\s*POSTGRES_DB:\s*)nexpress\s*$/m, `$1${dbName}`)
     .replace(/\$\{NEXPRESS_DB_PORT:-5433\}/g, `\${NEXPRESS_DB_PORT:-${config.dbPort}}`);
 }
