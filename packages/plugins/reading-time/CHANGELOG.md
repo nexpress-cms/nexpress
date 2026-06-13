@@ -1,5 +1,11 @@
 # @nexpress/plugin-reading-time
 
+## 0.3.18
+
+### Patch Changes
+
+- @nexpress/plugin-sdk@0.3.18
+
 ## 0.3.17
 
 ### Patch Changes

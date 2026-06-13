@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/plugin-block-newsletter",
-  "version": "0.3.17",
+  "version": "0.3.18",
   "description": "Newsletter signup block + plugin route + plugin-storage subscriber list. End-to-end dogfood of the v0.1 plugin surface.",
   "license": "MIT",
   "author": "Nexpress",
