@@ -108,7 +108,7 @@
     "@node-rs/argon2": "^2.0.2",
     "arctic": "^3.7.0",
     "drizzle-orm": "^0.45.2",
-    "intl-messageformat": "^11.2.4",
+    "intl-messageformat": "^11.2.8",
     "jose": "^6.2.3",
     "pg": "^8.21.0",
     "pg-boss": "^12.18.2",
