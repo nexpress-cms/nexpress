@@ -61,6 +61,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.templates.json",
     "lint": "eslint . --cache --cache-location node_modules/.cache/eslint",
     "test": "vitest run",
+    "check-snapshot": "tsx scripts/check-snapshot.ts",
     "sync-snapshot": "tsx scripts/sync-snapshot.ts"
   }
 }
