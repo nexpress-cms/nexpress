@@ -1718,7 +1718,7 @@ function renderHtml(defaults: FormDefaults): string {
                 <div class="nextcard"><div class="nextcard-top"><span class="nextcard-ico" data-icon="terminal"></span><span class="mono">next</span></div><b>Run the dev server</b><span class="mono">pnpm dev</span></div>
                 <div class="nextcard"><div class="nextcard-top"><span class="nextcard-ico" data-icon="logo"></span><span class="mono">then</span></div><b>Open the admin</b><span class="mono">http://localhost:3000/admin</span></div>
                 <div class="nextcard"><div class="nextcard-top"><span class="nextcard-ico" data-icon="layers"></span><span class="mono">edit</span></div><b>Edit collections</b><span class="mono">src/nexpress.config.ts</span></div>
-                <div class="nextcard"><div class="nextcard-top"><span class="nextcard-ico" data-icon="shield"></span><span class="mono">deploy</span></div><b>Preflight deploy</b><span class="mono">pnpm run deploy:plan -- --target vercel</span></div>
+                <div class="nextcard"><div class="nextcard-top"><span class="nextcard-ico" data-icon="shield"></span><span class="mono">deploy</span></div><b>Run deploy bridge</b><span class="mono">pnpm run ops:preflight -- --target vercel</span></div>
               </div>
               <div class="codepanel" style="width:100%"><div class="code-head"><span>terminal · pnpm run setup</span><span style="color:#79c87f">exited 0</span></div><div class="code-body" id="doneLog"></div></div>
             </div>
@@ -1997,9 +1997,11 @@ function renderHtml(defaults: FormDefaults): string {
       '<span class="c">  -> ' + (body.firstBoot && !body.firstBoot.skipped ? "first admin ready" : "first admin skipped") + '</span>\\n' +
       '<span class="c">  -> theme ' + (firstBootReady && !themeSkipped ? "activated" : "skipped") + '</span>\\n' +
       '<span class="c">  -> demo content ' + (firstBootReady && !seedSkipped ? "seeded" : "skipped") + '</span>\\n' +
-      '<span class="c">  -> next deploy plan: pnpm run deploy:plan -- --target vercel</span>\\n' +
-      '<span class="c">  -> next production doctor: pnpm run doctor:prod -- --target vercel</span>\\n' +
-      '<span class="c">  -> if blocked: pnpm run doctor:prod -- --target vercel --fix-plan</span>\\n' +
+      '<span class="c">  -> deploy plan: pnpm run deploy:plan -- --target vercel --brief --no-color</span>\\n' +
+      '<span class="c">  -> migration: pnpm db:migrate</span>\\n' +
+      '<span class="c">  -> preflight: pnpm run ops:preflight -- --target vercel --brief --no-color</span>\\n' +
+      '<span class="c">  -> release check: pnpm run ops:release -- check --target vercel --json</span>\\n' +
+      '<span class="c">  -> after deploy: pnpm run ops:release -- verify --url https://your-domain.example --json</span>\\n' +
       '<span class="v">  ✓ done — run pnpm dev, then open /admin</span>';
     goto(6);
   }

@@ -16,12 +16,14 @@ describe("buildSuccessLines", () => {
     expect(output).toContain("Useful checks:");
     expect(output).toContain("pnpm run ops:status -- --brief --no-color");
     expect(output).toContain("pnpm run doctor");
-    expect(output).toContain("Before deploy:");
+    expect(output).toContain("Deploy bridge:");
+    expect(output).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
+    expect(output).toContain("pnpm db:migrate");
     expect(output).toContain("pnpm run ops:preflight -- --target vercel --brief --no-color");
+    expect(output).toContain("pnpm run ops:release -- check --target vercel --json");
     expect(output).toContain(
-      "pnpm run ops:health -- --url http://localhost:3000 --brief --no-color",
+      "pnpm run ops:release -- verify --url https://your-domain.example --json",
     );
-    expect(output).toContain("pnpm run doctor:prod -- --target vercel --fix-plan");
     expect(output).toContain("More ops commands live in docs/ops.md");
     expect(output).not.toContain("Jobs: pnpm run ops:jobs");
     expect(output).not.toContain("Before deploying:");

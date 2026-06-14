@@ -46,8 +46,10 @@ and optional demo content.
 Before deploy:
 
 ```bash
-pnpm run deploy:plan -- --target vercel
-pnpm run doctor:prod -- --target vercel
+pnpm run deploy:plan -- --target vercel --brief --no-color
+pnpm db:migrate
+pnpm run ops:preflight -- --target vercel --brief --no-color
+pnpm run ops:release -- check --target vercel --json
 ```
 
 For the fastest hosted path, push the scaffold to GitHub and import it from

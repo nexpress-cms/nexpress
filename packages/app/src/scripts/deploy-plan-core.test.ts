@@ -31,6 +31,33 @@ describe("deploy plan core", () => {
       }),
     );
     expect(json.commands).toContain("pnpm run doctor:prod -- --target vercel");
+    expect(json.bridge).toEqual(
+      expect.objectContaining({
+        title: "Vercel deploy bridge",
+        importUrl: "https://vercel.com/new?utm_source=nexpress&utm_campaign=oss",
+      }),
+    );
+    expect(json.bridge.steps.map((step) => step.id)).toEqual([
+      "plan",
+      "configure-env",
+      "migrate",
+      "preflight",
+      "release-check",
+      "deploy",
+      "verify",
+    ]);
+    expect(json.bridge.steps).toContainEqual(
+      expect.objectContaining({
+        id: "preflight",
+        command: "pnpm run ops:preflight -- --target vercel --brief --no-color",
+      }),
+    );
+    expect(json.bridge.steps).toContainEqual(
+      expect.objectContaining({
+        id: "verify",
+        command: "pnpm run ops:release -- verify --url https://your-domain.example --json",
+      }),
+    );
     expect(json.summary).toEqual({
       requiredEnv: {
         total: 6,
@@ -128,6 +155,10 @@ describe("deploy plan core", () => {
     expect(output).toContain("[todo] NP_STORAGE_ADAPTER=s3 - Set NP_STORAGE_ADAPTER=s3.");
     expect(output).toContain("Set SITE_URL to the final https:// production domain");
     expect(output).toContain("Run before deploy");
+    expect(output).toContain("Deploy bridge");
+    expect(output).toContain("Plan the target:");
+    expect(output).toContain("pnpm run ops:preflight -- --target vercel --brief --no-color");
+    expect(output).toContain("https://vercel.com/new?utm_source=nexpress&utm_campaign=oss");
     expect(output).toContain("Diagnostics");
     expect(output).toContain(
       "pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan",
@@ -152,6 +183,10 @@ describe("deploy plan core", () => {
     );
     expect(output).toContain("pnpm db:migrate -- --status");
     expect(output).toContain("pnpm run doctor:prod -- --target docker");
+    expect(output).toContain("Deploy bridge:");
+    expect(output).toContain("Configure hosted env:");
+    expect(output).toContain("pnpm run ops:preflight -- --target docker --brief --no-color");
+    expect(output).toContain("pnpm run ops:release -- check --target docker --json");
     expect(output).toContain("If blocked:");
     expect(output).toContain(
       "pnpm run doctor:prod -- --target docker --brief --no-color --fix-plan",
