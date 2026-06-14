@@ -17,6 +17,7 @@ const [, , scaffoldDirArg] = process.argv;
 const scaffoldDir = scaffoldDirArg ? resolve(scaffoldDirArg) : process.cwd();
 const pkg = JSON.parse(readFileSync(resolve(scaffoldDir, "package.json"), "utf8"));
 const readme = readFileSync(resolve(scaffoldDir, "README.md"), "utf8");
+const opsDoc = readFileSync(resolve(scaffoldDir, "docs/ops.md"), "utf8");
 
 const REQUIRED_SCRIPTS = [
   "setup",
@@ -304,13 +305,24 @@ if (!fixPlanCommands.includes("pnpm run deploy:plan -- --target vercel --brief -
 }
 console.log("✓ doctor:prod JSON fix-plan stays machine-readable inside the scaffold journey");
 
-assertIncludes(readme, "Deploy with Vercel", "README");
-assertIncludes(readme, "https://vercel.com/new?utm_source=nexpress", "README");
-assertIncludes(readme, "NP_STORAGE_ADAPTER=s3", "README");
-assertIncludes(readme, "NP_S3_ENDPOINT", "README");
-assertIncludes(readme, "pnpm db:migrate", "README");
+assertIncludes(readme, "## Quickstart", "README");
+assertIncludes(readme, "## First Site", "README");
+assertIncludes(readme, "[docs/ops.md](docs/ops.md)", "README");
+assertIncludes(readme, "pnpm run deploy:plan -- --target vercel", "README");
 assertIncludes(readme, "pnpm run doctor:prod -- --target vercel", "README");
-assertIncludes(readme, "pnpm run doctor:prod -- --target vercel --fix-plan", "README");
-assertIncludes(readme, "pnpm run deploy:plan -- --target vercel --brief --no-color", "README");
-assertIncludes(readme, "pnpm run doctor:prod -- --target vercel --brief --no-color", "README");
-console.log("✓ README exposes the Vercel deploy entrypoint");
+assertNotIncludes(readme, "Deploy with Vercel", "README");
+assertNotIncludes(readme, "pnpm run doctor:prod -- --target vercel --fix-plan", "README");
+if (readme.split(/\r?\n/).length > 100) {
+  fail("README should stay focused on the first-run path", readme);
+}
+
+assertIncludes(opsDoc, "Deploy with Vercel", "docs/ops.md");
+assertIncludes(opsDoc, "https://vercel.com/new?utm_source=nexpress", "docs/ops.md");
+assertIncludes(opsDoc, "NP_STORAGE_ADAPTER=s3", "docs/ops.md");
+assertIncludes(opsDoc, "NP_S3_ENDPOINT", "docs/ops.md");
+assertIncludes(opsDoc, "pnpm db:migrate", "docs/ops.md");
+assertIncludes(opsDoc, "pnpm run doctor:prod -- --target vercel", "docs/ops.md");
+assertIncludes(opsDoc, "pnpm run doctor:prod -- --target vercel --fix-plan", "docs/ops.md");
+assertIncludes(opsDoc, "pnpm run deploy:plan -- --target vercel --brief --no-color", "docs/ops.md");
+assertIncludes(opsDoc, "pnpm run doctor:prod -- --target vercel --brief --no-color", "docs/ops.md");
+console.log("✓ README links to the ops guide and the ops guide exposes the Vercel entrypoint");

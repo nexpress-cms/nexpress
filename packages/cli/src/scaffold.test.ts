@@ -22,7 +22,7 @@ describe("buildSuccessLines", () => {
       "pnpm run ops:health -- --url http://localhost:3000 --brief --no-color",
     );
     expect(output).toContain("pnpm run doctor:prod -- --target vercel --fix-plan");
-    expect(output).toContain("More ops commands live in README.md");
+    expect(output).toContain("More ops commands live in docs/ops.md");
     expect(output).not.toContain("Jobs: pnpm run ops:jobs");
     expect(output).not.toContain("Before deploying:");
   });

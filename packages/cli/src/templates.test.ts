@@ -95,6 +95,7 @@ describe("getProjectFiles", () => {
       ".env",
       ".env.example",
       ".gitignore",
+      "docs/ops.md",
       "next.config.ts",
       "tsconfig.json",
       "drizzle.config.ts",
@@ -289,10 +290,11 @@ describe("getProjectFiles", () => {
   it("README documents .env-backed non-interactive setup and executable worker startup", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const readme = files["README.md"];
+    const ops = files["docs/ops.md"];
     expect(readme).toContain("read existing .env, then env overrides");
     expect(readme).toContain("reads the existing `.env` first");
     expect(readme).toContain("NP_ENABLE_JOBS=1 pnpm run worker");
-    expect(readme).toContain("run `pnpm run worker` on a separate worker host");
+    expect(ops).toContain("`pnpm run worker` on a separate worker host");
     expect(readme).not.toContain("read everything from env vars");
     expect(readme).not.toContain("Non-interactive mode reads `DATABASE_URL` (required)");
   });
@@ -439,70 +441,74 @@ describe("getProjectFiles", () => {
   it("scaffold README follows the current setup-first onboarding path", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const readme = files["README.md"];
+    const ops = files["docs/ops.md"];
     expect(readme).toContain("pnpm run setup");
-    expect(readme).toContain("## First-site checklist");
-    expect(readme).toContain("pnpm run ops:status -- --json");
-    expect(readme).toContain("pnpm run ops:preflight -- --target vercel --json");
-    expect(readme).toContain(
-      "pnpm run ops:health -- --url http://localhost:3000 --brief --no-color",
-    );
-    expect(readme).toContain("pnpm run ops:migrate -- plan --json");
-    expect(readme).toContain("pnpm run ops:backup -- status --json");
-    expect(readme).toContain("pnpm run ops:backup -- create --json");
-    expect(readme).toContain("pnpm run ops:backup -- verify latest --json");
-    expect(readme).toContain("pnpm run ops:jobs -- --json");
-    expect(readme).toContain('pnpm run ops:jobs -- pause --reason "maintenance" --json');
-    expect(readme).toContain("pnpm run ops:jobs -- resume --json");
-    expect(readme).toContain("pnpm run ops:jobs -- retry-all --state failed --json");
-    expect(readme).toContain(
-      "pnpm run ops:jobs -- retry-all --state failed --execute --approve retry-all --json",
-    );
-    expect(readme).toContain("pnpm run ops:jobs -- drain --execute --approve drain --json");
-    expect(readme).toContain("pnpm run ops:storage -- --json");
-    expect(readme).toContain("pnpm run ops:storage -- verify --json");
-    expect(readme).toContain("pnpm run ops:storage -- missing-files --json");
-    expect(readme).toContain("pnpm run ops:storage -- orphaned-files --json");
-    expect(readme).toContain("pnpm run ops:storage -- migrate plan --target s3 --json");
-    expect(readme).toContain("pnpm run ops:storage -- test --json");
-    expect(readme).toContain(
-      "pnpm run ops:storage -- test --execute --approve storage-test --json",
-    );
-    expect(readme).toContain("pnpm run ops:plugins -- doctor --json");
-    expect(readme).toContain("pnpm run ops:release -- check --target vercel --json");
-    expect(readme).toContain("pnpm run ops:release -- plan --target vercel --json");
-    expect(readme).toContain(
-      "pnpm run ops:release -- apply --plan .nexpress/releases/<plan>.json --json",
-    );
-    expect(readme).toContain("pnpm run ops:release -- verify --url http://localhost:3000 --json");
-    expect(readme).toContain("pnpm run ops:runbook -- worker-not-draining --json");
-    expect(readme).toContain(
-      "pnpm run ops:runbook -- migration-crashed --json --out .nexpress/runbooks/migration-crashed.json",
-    );
-    expect(readme).toContain('schemaVersion: "np.ops.v1"');
+    expect(readme).toContain("## Quickstart");
+    expect(readme).toContain("## First Site");
+    expect(readme).toContain("## Useful Checks");
+    expect(readme).toContain("[docs/ops.md](docs/ops.md)");
+    expect(readme).toContain("pnpm run ops:status -- --brief --no-color");
+    expect(readme).toContain("pnpm run doctor");
     expect(readme).toContain("pnpm run deploy:plan -- --target vercel");
     expect(readme).toContain("pnpm run doctor:prod -- --target vercel");
-    expect(readme).toContain("pnpm run doctor -- --fix-plan");
-    expect(readme).toContain("pnpm run doctor:prod -- --target vercel --fix-plan");
-    expect(readme).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
-    expect(readme).toContain("pnpm run doctor:prod -- --target vercel --brief --no-color");
-    expect(readme).toContain(
-      "pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan",
+    expect(readme).not.toContain("pnpm run ops:backup -- status --json");
+    expect(readme).not.toContain('schemaVersion: "np.ops.v1"');
+    expect(readme.split(/\r?\n/).length).toBeLessThanOrEqual(100);
+
+    expect(ops).toContain("pnpm run ops:status -- --json");
+    expect(ops).toContain("pnpm run ops:preflight -- --target vercel --json");
+    expect(ops).toContain("pnpm run ops:health -- --url http://localhost:3000 --brief --no-color");
+    expect(ops).toContain("pnpm run ops:migrate -- plan --json");
+    expect(ops).toContain("pnpm run ops:backup -- status --json");
+    expect(ops).toContain("pnpm run ops:backup -- create --json");
+    expect(ops).toContain("pnpm run ops:backup -- verify latest --json");
+    expect(ops).toContain("pnpm run ops:jobs -- --json");
+    expect(ops).toContain('pnpm run ops:jobs -- pause --reason "maintenance" --json');
+    expect(ops).toContain("pnpm run ops:jobs -- resume --json");
+    expect(ops).toContain("pnpm run ops:jobs -- retry-all --state failed --json");
+    expect(ops).toContain(
+      "pnpm run ops:jobs -- retry-all --state failed --execute --approve retry-all --json",
     );
-    expect(readme).toContain("pnpm run deploy:plan -- --target vercel --json");
-    expect(readme).toContain("pnpm run doctor:prod -- --target vercel --json --fix-plan");
-    expect(readme).toContain("nextCommands");
-    expect(readme).toContain("nextCommand");
-    expect(readme).toContain("plan.nextCommands");
-    expect(readme).toContain("execution.projectNextCommand");
-    expect(readme).toContain("projectCommand");
-    expect(readme).toContain("projectNextCommand");
-    expect(readme).toContain("fixPlan[].nextCommand");
-    expect(readme).toContain("Deploy with Vercel");
-    expect(readme).toContain("https://vercel.com/new?utm_source=nexpress");
-    expect(readme).toContain("NP_STORAGE_ADAPTER=s3");
-    expect(readme).toContain("NP_S3_ENDPOINT");
-    expect(readme).toContain("pnpm db:migrate");
-    expect(readme).toContain("Other hosting choices");
+    expect(ops).toContain("pnpm run ops:jobs -- drain --execute --approve drain --json");
+    expect(ops).toContain("pnpm run ops:storage -- --json");
+    expect(ops).toContain("pnpm run ops:storage -- verify --json");
+    expect(ops).toContain("pnpm run ops:storage -- missing-files --json");
+    expect(ops).toContain("pnpm run ops:storage -- orphaned-files --json");
+    expect(ops).toContain("pnpm run ops:storage -- migrate plan --target s3 --json");
+    expect(ops).toContain("pnpm run ops:storage -- test --json");
+    expect(ops).toContain("pnpm run ops:storage -- test --execute --approve storage-test --json");
+    expect(ops).toContain("pnpm run ops:plugins -- doctor --json");
+    expect(ops).toContain("pnpm run ops:release -- check --target vercel --json");
+    expect(ops).toContain("pnpm run ops:release -- plan --target vercel --json");
+    expect(ops).toContain(
+      "pnpm run ops:release -- apply --plan .nexpress/releases/<plan>.json --json",
+    );
+    expect(ops).toContain("pnpm run ops:release -- verify --url http://localhost:3000 --json");
+    expect(ops).toContain("pnpm run ops:runbook -- worker-not-draining --json");
+    expect(ops).toContain(
+      "pnpm run ops:runbook -- migration-crashed --json --out .nexpress/runbooks/migration-crashed.json",
+    );
+    expect(ops).toContain('schemaVersion: "np.ops.v1"');
+    expect(ops).toContain("pnpm run doctor -- --fix-plan");
+    expect(ops).toContain("pnpm run doctor:prod -- --target vercel --fix-plan");
+    expect(ops).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
+    expect(ops).toContain("pnpm run doctor:prod -- --target vercel --brief --no-color");
+    expect(ops).toContain("pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan");
+    expect(ops).toContain("pnpm run deploy:plan -- --target vercel --json");
+    expect(ops).toContain("pnpm run doctor:prod -- --target vercel --json --fix-plan");
+    expect(ops).toContain("nextCommands");
+    expect(ops).toContain("nextCommand");
+    expect(ops).toContain("plan.nextCommands");
+    expect(ops).toContain("execution.projectNextCommand");
+    expect(ops).toContain("projectCommand");
+    expect(ops).toContain("projectNextCommand");
+    expect(ops).toContain("fixPlan[].nextCommand");
+    expect(ops).toContain("Deploy with Vercel");
+    expect(ops).toContain("https://vercel.com/new?utm_source=nexpress");
+    expect(ops).toContain("NP_STORAGE_ADAPTER=s3");
+    expect(ops).toContain("NP_S3_ENDPOINT");
+    expect(ops).toContain("pnpm db:migrate");
+    expect(ops).toContain("Other Hosting Choices");
     expect(readme).not.toMatch(/cp \.env\.example \.env\s*\n\s*pnpm build\s*\n\s*pnpm dev/);
   });
 
