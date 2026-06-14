@@ -218,14 +218,14 @@ import { buildNonInteractiveSetupBody } from "./setup-non-interactive.js";
  *   - **cli** — terminal prompts via `readline/promises`. Picks up
  *     automatically when run on a headless / SSH session, or
  *     forced via `--cli`.
- *   - **non-interactive** — reads everything from env vars, no
- *     prompts. Forced via `--non-interactive` or env var
- *     `NP_SETUP_NONINTERACTIVE=1`. Required env: `DATABASE_URL`.
- *     Optional: `NP_SECRET` (auto-generated if absent), `SITE_URL`
- *     (defaults to http://localhost:3000), `NP_STORAGE_ADAPTER`
- *     (`local` | `s3`, default `local`), `NP_S3_*` (when storage
- *     is `s3`), `NP_SETUP_RUN_MIGRATIONS` (`true` | `false`,
- *     default `true`).
+ *   - **non-interactive** — reads an existing `.env` first, then
+ *     process env overrides, with no prompts. Forced via
+ *     `--non-interactive` or env var `NP_SETUP_NONINTERACTIVE=1`.
+ *     Required from either source: `DATABASE_URL`. Optional:
+ *     `NP_SECRET` (auto-generated if absent), `SITE_URL` (defaults
+ *     to http://localhost:3000), `NP_STORAGE_ADAPTER` (`local` |
+ *     `s3`, default `local`), `NP_S3_*` (when storage is `s3`),
+ *     `NP_SETUP_RUN_MIGRATIONS` (`true` | `false`, default `true`).
  */
 type Mode = "http" | "cli" | "non-interactive";
 
@@ -274,7 +274,9 @@ if (mode === "non-interactive") {
     console.log(`  Writes .env → ${ENV_PATH}`);
     console.log("  (IDE may hide gitignored files)");
     console.log("  (server binds 127.0.0.1 only; press Ctrl+C to abort)");
-    console.log("  (no browser? use `pnpm setup --cli` or `pnpm setup --non-interactive`)");
+    console.log(
+      "  (no browser? use `pnpm run setup -- --cli` or `pnpm run setup -- --non-interactive`)",
+    );
     console.log("");
   });
 }
@@ -519,7 +521,7 @@ async function probeExistingFrameworkTables(url: string): Promise<{ existing: nu
     // If drizzle has already migrated this DB (regardless of
     // hash match), assume it belongs to this project and let
     // drizzle-kit handle idempotency. Catches the "operator
-    // re-runs `pnpm setup`" case that previously false-
+    // re-runs `pnpm run setup`" case that previously false-
     // positived. The table only exists once drizzle-kit migrate
     // has succeeded at least once.
     let trackedCount = 0;

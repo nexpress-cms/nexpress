@@ -88,7 +88,7 @@ describe("ops status core", () => {
         id: "jobs.enabled",
         state: "warn",
         label: "Jobs enabled",
-        hint: "Set NP_ENABLE_JOBS=1 and run `pnpm worker` when scheduled publishing matters.",
+        hint: "Set NP_ENABLE_JOBS=1 and run `pnpm run worker` when scheduled publishing matters.",
       },
     ]);
 

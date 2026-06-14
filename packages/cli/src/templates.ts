@@ -799,13 +799,15 @@ falls back to terminal prompts. To force it:
 
 \`\`\`bash
 pnpm run setup -- --cli              # terminal prompts, no browser
-pnpm run setup -- --non-interactive  # read everything from env vars
+pnpm run setup -- --non-interactive  # read existing .env, then env overrides
 \`\`\`
 
-Non-interactive mode reads \`DATABASE_URL\` (required), and optional
-\`NP_SECRET\` (auto-generated if absent), \`SITE_URL\`,
-\`NP_STORAGE_ADAPTER\`, \`NP_S3_*\`, \`NP_SETUP_RUN_MIGRATIONS\` (set to
-\`false\` to write only \`.env\` without running migrations).
+Non-interactive mode reads the existing \`.env\` first, then lets process
+environment variables override those values. It needs \`DATABASE_URL\`
+from one of those sources, and accepts optional \`NP_SECRET\`
+(auto-generated if absent), \`SITE_URL\`, \`NP_STORAGE_ADAPTER\`,
+\`NP_S3_*\`, and \`NP_SETUP_RUN_MIGRATIONS\` (set to \`false\` to write
+only \`.env\` without running migrations).
 
 ### Check runtime status.
 
@@ -974,7 +976,7 @@ image post-processing.
 NP_ENABLE_JOBS=1
 
 # in a second terminal
-pnpm worker
+NP_ENABLE_JOBS=1 pnpm run worker
 \`\`\`
 
 With jobs off, \`enqueueJob\` is a no-op — simpler dev, fewer moving parts.
@@ -1027,9 +1029,9 @@ value; \`vercel.json\` already points cron at
 If you don't use scheduled publishing, the cron entry is a no-op (the
 endpoint short-circuits when \`NP_SCHEDULER_TOKEN\` is unset).
 
-If you need long-running background jobs, run \`pnpm worker\` on a
-separate worker host and set \`NP_ENABLE_JOBS=1\` there. Vercel cron
-handles scheduled HTTP calls, but not a long-lived pg-boss worker.
+If you need long-running background jobs, set \`NP_ENABLE_JOBS=1\` and
+run \`pnpm run worker\` on a separate worker host. Vercel cron handles
+scheduled HTTP calls, but not a long-lived pg-boss worker.
 
 ### Other hosting choices
 

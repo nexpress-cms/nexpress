@@ -14,7 +14,7 @@ import {
  *
  * Tests pin the registration + dispatch contract; the actual
  * pg-boss cron firing is exercised by the worker process and
- * left to manual smoke tests on `pnpm worker`.
+ * left to manual smoke tests on `NP_ENABLE_JOBS=1 pnpm run worker`.
  */
 describe.skipIf(skipIfNoTestDb())("Phase 19 — plugin scheduled tasks", () => {
   beforeAll(async () => {

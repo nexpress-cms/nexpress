@@ -43,7 +43,8 @@ describe("ops jobs core", () => {
       expect.objectContaining({
         ok: false,
         status: "blocked",
-        nextCommand: "pnpm worker",
+        nextCommand: "NP_ENABLE_JOBS=1 pnpm run worker",
+        projectNextCommand: "NP_ENABLE_JOBS=1 pnpm run worker",
       }),
     );
   });

@@ -283,6 +283,23 @@ describe("setup-server.ts end-to-end (spawn)", () => {
     });
   });
 
+  describe("HTTP mode", () => {
+    it("prints copy-pasteable setup mode fallbacks", async () => {
+      const result = await runWizard({
+        envPath,
+        env: {
+          DISPLAY: ":99",
+        },
+        timeoutMs: 1_000,
+      });
+
+      expect(result.stdout).toContain("pnpm run setup -- --cli");
+      expect(result.stdout).toContain("pnpm run setup -- --non-interactive");
+      expect(result.stdout).not.toContain("pnpm setup --cli");
+      expect(result.stdout).not.toContain("pnpm setup --non-interactive");
+    });
+  });
+
   describe("CLI mode", () => {
     it("default DATABASE_URL prompt is read from the existing .env", async () => {
       // Regression for #829: pre-fix, CLI mode used

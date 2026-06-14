@@ -389,7 +389,7 @@ export function checkTargetWorkerProd(
       id: `target.${target}.jobs_worker`,
       state: "ok",
       label: `${targetTitle} jobs worker`,
-      detail: "NP_ENABLE_JOBS is set; run a separate `pnpm worker` process/service",
+      detail: "NP_ENABLE_JOBS is set; run a separate `pnpm run worker` process/service",
     },
   ];
 }

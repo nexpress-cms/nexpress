@@ -127,6 +127,16 @@ describe("runbook core", () => {
     );
   });
 
+  it("suggests an executable worker command when no worker evidence exists", () => {
+    const report = buildRunbookJson({
+      runbook: "worker-not-draining",
+      evidence: [],
+    });
+
+    expect(report.nextCommands).toContain("NP_ENABLE_JOBS=1 pnpm run worker");
+    expect(report.projectNextCommands).toContain("NP_ENABLE_JOBS=1 pnpm run worker");
+  });
+
   it("suggests bounded retry and drain probes from worker evidence", () => {
     const report = buildRunbookJson({
       runbook: "worker-not-draining",
