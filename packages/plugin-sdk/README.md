@@ -47,7 +47,7 @@ import readingTime from "@nexpress/plugin-reading-time";
 
 export default defineConfig({
   // ...
-  plugins: [readingTime()],
+  plugins: [readingTime],
 });
 ```
 

@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
+import { buildPluginInstallHints, type PluginInstallHints } from "./install-hints";
 
 /**
  * Phase 5.3 — discover plugins on the npm registry. Wraps
@@ -41,6 +42,7 @@ interface DiscoveredPlugin {
   homepageUrl: string | null;
   publishedAt: string | null;
   author: string | null;
+  install: PluginInstallHints;
 }
 
 const REGISTRY_URL = "https://registry.npmjs.org/-/v1/search";
@@ -69,7 +71,11 @@ export async function GET(request: NextRequest) {
     try {
       const response = await fetch(searchUrl, { signal: controller.signal });
       if (!response.ok) {
-        return npSuccessResponse({ items: [], total: 0, error: `npm registry returned ${response.status}` });
+        return npSuccessResponse({
+          items: [],
+          total: 0,
+          error: `npm registry returned ${response.status}`,
+        });
       }
       payload = (await response.json()) as NpmSearchResponse;
     } finally {
@@ -90,6 +96,7 @@ export async function GET(request: NextRequest) {
           homepageUrl: pkg.links?.homepage ?? null,
           publishedAt: pkg.date ?? null,
           author: pkg.publisher?.username ?? null,
+          install: buildPluginInstallHints(pkg.name),
         };
       })
       .filter((entry): entry is DiscoveredPlugin => entry !== null);

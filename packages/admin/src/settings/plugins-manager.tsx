@@ -786,6 +786,14 @@ interface DiscoveredPlugin {
   homepageUrl: string | null;
   publishedAt: string | null;
   author: string | null;
+  install?: {
+    packageName: string;
+    installCommand: string;
+    registerSnippet: string;
+    verifyCommand: string;
+    projectVerifyCommand: string;
+    note: string;
+  };
 }
 
 interface BrowseRegistryDialogProps {
@@ -847,12 +855,11 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
     return () => window.cancelAnimationFrame(frame);
   }, [open, items, loading, search]);
 
-  const copy = async (packageName: string) => {
-    const command = `pnpm add ${packageName}`;
+  const copy = async (text: string, key: string) => {
     try {
       if (typeof navigator !== "undefined" && navigator.clipboard) {
-        await navigator.clipboard.writeText(command);
-        setCopied(packageName);
+        await navigator.clipboard.writeText(text);
+        setCopied(key);
         setTimeout(() => setCopied(null), 2_000);
       }
     } catch {
@@ -936,71 +943,97 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
           ) : null}
           {items && items.length > 0 ? (
             <div className="space-y-2">
-              {items.map((plugin) => (
-                <div
-                  key={plugin.name}
-                  className="min-w-0 rounded-xl border border-border/60 bg-card/40 p-3"
-                >
-                  <div className="grid gap-3 sm:flex sm:items-start sm:justify-between">
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                        <span className="min-w-0 break-all">{plugin.name}</span>
-                        {plugin.version ? (
-                          <Badge
-                            variant="secondary"
-                            className="max-w-full break-all font-mono text-[10px]"
-                          >
-                            v{plugin.version}
-                          </Badge>
+              {items.map((plugin) => {
+                const installCommand = plugin.install?.installCommand ?? `pnpm add ${plugin.name}`;
+                const configSnippet =
+                  plugin.install?.registerSnippet ??
+                  `import { defineConfig } from "@nexpress/core";\nimport plugin from "${plugin.name}";\n\nexport default defineConfig({\n  plugins: [plugin],\n});`;
+                return (
+                  <div
+                    key={plugin.name}
+                    className="min-w-0 rounded-xl border border-border/60 bg-card/40 p-3"
+                  >
+                    <div className="grid gap-3 sm:flex sm:items-start sm:justify-between">
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                          <span className="min-w-0 break-all">{plugin.name}</span>
+                          {plugin.version ? (
+                            <Badge
+                              variant="secondary"
+                              className="max-w-full break-all font-mono text-[10px]"
+                            >
+                              v{plugin.version}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        {plugin.description ? (
+                          <p className="break-words text-xs text-muted-foreground">
+                            {plugin.description}
+                          </p>
+                        ) : null}
+                        <p className="break-all font-mono text-[10px] text-muted-foreground">
+                          {installCommand}
+                        </p>
+                        {plugin.install?.projectVerifyCommand ? (
+                          <p className="break-all font-mono text-[10px] text-muted-foreground">
+                            verify: {plugin.install.projectVerifyCommand}
+                          </p>
+                        ) : null}
+                        {plugin.install?.note ? (
+                          <p className="break-words text-[11px] text-muted-foreground">
+                            {plugin.install.note}
+                          </p>
+                        ) : null}
+                        {plugin.author || plugin.publishedAt ? (
+                          <p className="break-words text-[11px] text-muted-foreground">
+                            {plugin.author ? `by ${plugin.author}` : ""}
+                            {plugin.author && plugin.publishedAt ? " · " : ""}
+                            {plugin.publishedAt
+                              ? `published ${new Date(plugin.publishedAt).toLocaleDateString()}`
+                              : ""}
+                          </p>
                         ) : null}
                       </div>
-                      {plugin.description ? (
-                        <p className="break-words text-xs text-muted-foreground">
-                          {plugin.description}
-                        </p>
-                      ) : null}
-                      <p className="break-all font-mono text-[10px] text-muted-foreground">
-                        pnpm add {plugin.name}
-                      </p>
-                      {plugin.author || plugin.publishedAt ? (
-                        <p className="break-words text-[11px] text-muted-foreground">
-                          {plugin.author ? `by ${plugin.author}` : ""}
-                          {plugin.author && plugin.publishedAt ? " · " : ""}
-                          {plugin.publishedAt
-                            ? `published ${new Date(plugin.publishedAt).toLocaleDateString()}`
-                            : ""}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className="grid grid-cols-1 gap-2 sm:flex sm:shrink-0 sm:flex-col">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="min-h-10 w-full sm:min-h-0 sm:w-auto"
-                        onClick={() => void copy(plugin.name)}
-                      >
-                        <Copy className="size-3.5" />
-                        {copied === plugin.name ? "Copied!" : "Copy install"}
-                      </Button>
-                      {plugin.npmUrl ? (
+                      <div className="grid grid-cols-1 gap-2 sm:flex sm:shrink-0 sm:flex-col">
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
                           className="min-h-10 w-full sm:min-h-0 sm:w-auto"
-                          asChild
+                          onClick={() => void copy(installCommand, `${plugin.name}:install`)}
                         >
-                          <a href={plugin.npmUrl} target="_blank" rel="noreferrer">
-                            <ExternalLink className="size-3.5" />
-                            npm
-                          </a>
+                          <Copy className="size-3.5" />
+                          {copied === `${plugin.name}:install` ? "Copied!" : "Copy install"}
                         </Button>
-                      ) : null}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="min-h-10 w-full sm:min-h-0 sm:w-auto"
+                          onClick={() => void copy(configSnippet, `${plugin.name}:config`)}
+                        >
+                          <Copy className="size-3.5" />
+                          {copied === `${plugin.name}:config` ? "Copied!" : "Copy config"}
+                        </Button>
+                        {plugin.npmUrl ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="min-h-10 w-full sm:min-h-0 sm:w-auto"
+                            asChild
+                          >
+                            <a href={plugin.npmUrl} target="_blank" rel="noreferrer">
+                              <ExternalLink className="size-3.5" />
+                              npm
+                            </a>
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : null}
         </div>
@@ -1049,7 +1082,7 @@ function InstallGuideDialog({ open, onOpenChange }: InstallGuideDialogProps) {
   // Configure dialog (handlers receive them via `ctx.config`),
   // NOT as a factory-call argument here.
   const configSnippet = `import { defineConfig } from "@nexpress/core";
-import { yourPlugin } from "@nexpress/plugin-your-name";
+import yourPlugin from "@nexpress/plugin-your-name";
 
 export default defineConfig({
   plugins: [
@@ -1118,8 +1151,9 @@ export default defineConfig({
             </div>
             <div className="ml-7 min-w-0 space-y-1.5">
               <p className="text-xs text-muted-foreground">
-                Add it to the <code className="font-mono">plugins</code> array. Most plugins export
-                a factory function — pass the options it expects.
+                Add the exported plugin object to the <code className="font-mono">plugins</code>{" "}
+                array. Runtime options belong in the plugin&apos;s admin config form when it
+                declares one.
               </p>
               <div className="rounded-lg border border-border/60 bg-muted/40">
                 <div className="grid gap-2 border-b border-border/60 px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
