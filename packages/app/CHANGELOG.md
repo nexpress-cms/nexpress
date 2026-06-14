@@ -1,5 +1,52 @@
 # @nexpress/app
 
+## 0.3.20
+
+### Patch Changes
+
+- 5586dbc: Polish fresh-project and ops developer UX. Scaffold success output now keeps the
+  first-run path focused on the next useful commands, generated README guidance
+  matches the `.env` fallback behavior of non-interactive setup, setup-server
+  prints copy-pasteable `pnpm run setup -- ...` fallback commands, and worker
+  fix-plan/runbook suggestions include `NP_ENABLE_JOBS=1` with the project-side
+  worker script.
+- d76b9e4: Harden the freshly scaffolded site path after dogfooding the published CLI.
+  Generated Docker Compose files now pin a project-specific Compose name so
+  different NexPress projects do not share `docker-db-1` / `docker_pgdata`, and
+  generated `package.json` files pin the supported pnpm version for reproducible
+  installs. Non-interactive setup now falls back to the existing `.env` before
+  reading process environment overrides, so headless setup works from the
+  defaults that `create-nexpress` already wrote.
+- 769473f: Improve plugin authoring/install UX in the admin registry. The discover API now returns install,
+  registration, and verification hints for each npm result, and the admin Browse registry dialog can
+  copy both the install command and the matching `nexpress.config.ts` registration snippet. Plugin
+  author docs now reflect the current auto-form `.refine()` support and plugin object registration
+  shape.
+- Updated dependencies [769473f]
+  - @nexpress/admin@0.3.20
+  - @nexpress/plugin-sdk@0.3.20
+  - @nexpress/plugin-block-callout@0.3.20
+  - @nexpress/plugin-block-embed@0.3.20
+  - @nexpress/plugin-block-latest-posts@0.3.20
+  - @nexpress/plugin-block-newsletter@0.3.20
+  - @nexpress/plugin-block-pricing@0.3.20
+  - @nexpress/plugin-block-stats@0.3.20
+  - @nexpress/plugin-forum@0.3.20
+  - @nexpress/plugin-oauth-github@0.3.20
+  - @nexpress/plugin-oauth-google@0.3.20
+  - @nexpress/plugin-reading-time@0.3.20
+  - @nexpress/plugin-seo-audit@0.3.20
+  - @nexpress/auth-pages@0.3.20
+  - @nexpress/blocks@0.3.20
+  - @nexpress/core@0.3.20
+  - @nexpress/editor@0.3.20
+  - @nexpress/next@0.3.20
+  - @nexpress/theme@0.3.20
+  - @nexpress/theme-default@0.3.20
+  - @nexpress/theme-docs@0.3.20
+  - @nexpress/theme-magazine@0.3.20
+  - @nexpress/theme-portfolio@0.3.20
+
 ## 0.3.19
 
 ### Patch Changes

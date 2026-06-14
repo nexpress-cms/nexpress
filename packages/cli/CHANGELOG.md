@@ -1,5 +1,31 @@
 # create-nexpress
 
+## 0.1.29
+
+### Patch Changes
+
+- 5586dbc: Polish fresh-project and ops developer UX. Scaffold success output now keeps the
+  first-run path focused on the next useful commands, generated README guidance
+  matches the `.env` fallback behavior of non-interactive setup, setup-server
+  prints copy-pasteable `pnpm run setup -- ...` fallback commands, and worker
+  fix-plan/runbook suggestions include `NP_ENABLE_JOBS=1` with the project-side
+  worker script.
+- d76b9e4: Harden the freshly scaffolded site path after dogfooding the published CLI.
+  Generated Docker Compose files now pin a project-specific Compose name so
+  different NexPress projects do not share `docker-db-1` / `docker_pgdata`, and
+  generated `package.json` files pin the supported pnpm version for reproducible
+  installs. Non-interactive setup now falls back to the existing `.env` before
+  reading process environment overrides, so headless setup works from the
+  defaults that `create-nexpress` already wrote.
+- 7a88eb5: Slim the generated project README so the first-run path stays focused. Detailed
+  ops, release, runbook, storage, jobs, and deploy command references now live in
+  the generated `docs/ops.md`, with README linking there once operators need the
+  deeper surface.
+- 0e726cd: Strengthen scaffold snapshot drift detection. The snapshot sync logic now lives
+  behind one reusable module shared by the local check command, unit tests, and
+  CI, so changes to `apps/web/src` fail earlier when the generated scaffold
+  snapshot has not been refreshed.
+
 ## 0.1.28
 
 ### Patch Changes
