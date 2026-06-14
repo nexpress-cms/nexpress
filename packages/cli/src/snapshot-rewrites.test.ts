@@ -16,15 +16,9 @@ describe("rewriteScaffoldGlobalsCss", () => {
 
     const out = rewriteScaffoldGlobalsCss(input);
 
-    expect(out).toContain(
-      '@source "../../node_modules/@nexpress/admin/dist/**/*.js";',
-    );
-    expect(out).toContain(
-      '@source "../../node_modules/@nexpress/blocks/dist/**/*.js";',
-    );
-    expect(out).toContain(
-      '@source "../../node_modules/@nexpress/editor/dist/**/*.js";',
-    );
+    expect(out).toContain('@source "../../node_modules/@nexpress/admin/dist/**/*.js";');
+    expect(out).toContain('@source "../../node_modules/@nexpress/blocks/dist/**/*.js";');
+    expect(out).toContain('@source "../../node_modules/@nexpress/editor/dist/**/*.js";');
     // Untouched lines pass through.
     expect(out).toContain('@import "tailwindcss";');
     expect(out).toContain("@variant dark (&:where(.dark, .dark *));");
@@ -35,12 +29,8 @@ describe("rewriteScaffoldGlobalsCss", () => {
   });
 
   it("is resilient to the prefix depth (apps/web could move)", () => {
-    const out = rewriteScaffoldGlobalsCss(
-      '@source "../../packages/admin/src/**/*.{ts,tsx}";',
-    );
-    expect(out).toContain(
-      '@source "../../node_modules/@nexpress/admin/dist/**/*.js";',
-    );
+    const out = rewriteScaffoldGlobalsCss('@source "../../packages/admin/src/**/*.{ts,tsx}";');
+    expect(out).toContain('@source "../../node_modules/@nexpress/admin/dist/**/*.js";');
     expect(out).not.toMatch(/@source "\.\.\/\.\.\/packages\//);
   });
 
@@ -66,7 +56,7 @@ describe("rewriteScaffoldGlobalsCss", () => {
     );
     // Comment must precede the @source line, not sit somewhere else.
     const commentIdx = out.indexOf("Scaffold variant —");
-    const sourceIdx = out.indexOf("@source \"../../node_modules");
+    const sourceIdx = out.indexOf('@source "../../node_modules');
     expect(commentIdx).toBeGreaterThanOrEqual(0);
     expect(sourceIdx).toBeGreaterThan(commentIdx);
   });
@@ -83,7 +73,16 @@ describe("rewriteScaffoldGlobalsCss", () => {
     );
     expect(out).toContain("Scaffold variant —");
     const commentIdx = out.indexOf("Scaffold variant —");
-    const firstSourceIdx = out.indexOf("@source \"../../node_modules");
+    const firstSourceIdx = out.indexOf('@source "../../node_modules');
     expect(firstSourceIdx).toBeGreaterThan(commentIdx);
+  });
+
+  it("inserts the comment when only the app source path is present", () => {
+    const out = rewriteScaffoldGlobalsCss('@source "../../../../packages/app/src/**/*.{ts,tsx}";');
+    expect(out).toContain("Scaffold variant —");
+    expect(out).toContain('@source "../../node_modules/@nexpress/app/src/**/*.{ts,tsx}";');
+    const commentIdx = out.indexOf("Scaffold variant —");
+    const sourceIdx = out.indexOf('@source "../../node_modules');
+    expect(sourceIdx).toBeGreaterThan(commentIdx);
   });
 });

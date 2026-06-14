@@ -70,7 +70,7 @@ export function rewriteScaffoldGlobalsCss(css: string): string {
   // silently strip the comment while the rewrite itself still
   // succeeds on the remaining lines.
   return rewritten.replace(
-    /(@source "\.\.\/\.\.\/node_modules\/@nexpress\/(?:admin|app|blocks|editor)\/dist[^"]*";)/,
+    /(@source "\.\.\/\.\.\/node_modules\/@nexpress\/(?:admin|app|blocks|editor)\/[^"]*";)/,
     SCAFFOLD_VARIANT_COMMENT + "$1",
   );
 }

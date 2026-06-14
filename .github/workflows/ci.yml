@@ -255,16 +255,10 @@ jobs:
       # gets a new route file, but whoever added it forgot to run
       # `pnpm --filter create-nexpress run sync-snapshot`. Result is a
       # scaffolded site that 404s the new URL even though the apps/web
-      # reference renders it fine. Running sync-snapshot here is
-      # idempotent; the diff-check fails the job when it would have
-      # changed any file.
+      # reference renders it fine. The check is non-mutating and uses the
+      # same snapshot-sync module as the local unit test and sync command.
       - name: Verify scaffold snapshot is in sync with apps/web
-        run: |
-          pnpm --filter create-nexpress run sync-snapshot
-          if ! git diff --exit-code packages/cli/templates/snapshot/; then
-            echo "::error::Scaffold snapshot drift detected. Run \`pnpm --filter create-nexpress run sync-snapshot\` locally and commit the result alongside the apps/web change."
-            exit 1
-          fi
+        run: pnpm --filter create-nexpress run check-snapshot
 
       - name: Build (CLI + every package the scaffold pulls in)
         run: pnpm build
