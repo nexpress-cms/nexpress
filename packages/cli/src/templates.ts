@@ -25,6 +25,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     ".env": utf8(envTemplate(config)),
     ".gitignore": utf8(gitignoreTemplate()),
     "README.md": utf8(readmeTemplate(config)),
+    "docs/ops.md": utf8(opsGuideTemplate()),
     "drizzle.config.ts": utf8(drizzleConfigTemplate()),
     "next.config.ts": utf8(nextConfigTemplate()),
     "package.json": utf8(packageJsonTemplate(config)),
@@ -777,9 +778,9 @@ function readmeTemplate(config: TemplateConfig): string {
 
   return `# ${config.projectName}
 
-Scaffolded with create-nexpress.
+A NexPress site ready to customize, publish, and deploy.
 
-## Getting started
+## Quickstart
 
 \`\`\`bash
 pnpm install
@@ -792,7 +793,26 @@ pnpm dev
 > and \`pnpm init\` are all pnpm built-ins that shadow our package
 > scripts of the same name. Invoke ours with \`pnpm run <name>\`.
 
-#### Headless / SSH / CI?
+## First Site
+
+1. Run \`pnpm run setup\` and let it apply migrations.
+2. Start \`pnpm dev\` and open \`http://localhost:3000/admin\`.
+3. Create the first admin, name the site, pick a theme, and seed sample
+   content if useful.
+4. Publish the first page or post, then open it on the public site.
+
+## Useful Checks
+
+\`\`\`bash
+pnpm run ops:status -- --brief --no-color
+pnpm run doctor
+\`\`\`
+
+\`ops:status\` is the compact "what needs attention?" command. \`doctor\`
+explains setup/runtime problems with concrete next commands. The full
+operations command reference lives in [docs/ops.md](docs/ops.md).
+
+## Headless / SSH / CI
 
 \`pnpm run setup\` auto-detects an SSH session or headless Linux and
 falls back to terminal prompts. To force it:
@@ -809,25 +829,104 @@ from one of those sources, and accepts optional \`NP_SECRET\`
 \`NP_S3_*\`, and \`NP_SETUP_RUN_MIGRATIONS\` (set to \`false\` to write
 only \`.env\` without running migrations).
 
-### Check runtime status.
+## Background Jobs
+
+\`\`\`bash
+NP_ENABLE_JOBS=1 pnpm run worker
+\`\`\`
+
+Jobs are optional during local development. Leave them off until you need
+scheduled publishing, async hooks, pruning, or image post-processing.
+
+## Deploy
+
+\`\`\`bash
+pnpm run deploy:plan -- --target vercel
+pnpm db:migrate
+pnpm run doctor:prod -- --target vercel
+\`\`\`
+
+For full Vercel / Railway / Render / Fly / Docker notes, see
+[docs/ops.md](docs/ops.md) and the upstream
+[deployment guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/deployment.md).
+
+## Local URLs
+
+- Site: http://localhost:3000
+- Admin: http://localhost:3000/admin
+- OpenAPI spec: http://localhost:3000/api/openapi.json
+
+## Manual Setup
+
+\`\`\`bash
+cp .env.example .env    # then edit DATABASE_URL / NP_SECRET / SITE_URL
+pnpm db:generate
+pnpm db:migrate
+pnpm run seed:admin     # create first admin interactively
+pnpm dev
+\`\`\`
+`;
+}
+
+function opsGuideTemplate(): string {
+  return `# Operations
+
+This file is the detailed command reference. Keep the root README focused on
+the first-run path; come here when you need agent handoffs, deploy checks,
+jobs, storage, plugins, releases, or incident runbooks.
+
+## Runtime Status
 
 \`\`\`bash
 pnpm run ops:status -- --json
 pnpm run ops:status -- --brief --no-color
 pnpm run ops:preflight -- --target vercel --json
 pnpm run ops:health -- --url http://localhost:3000 --brief --no-color
+\`\`\`
+
+\`ops:status\` is the low-token handoff for agents and CI. It emits
+\`schemaVersion: "np.ops.v1"\`, \`status\`, \`summary\`, stable
+\`checks[].id\`, and a \`nextCommand\` when the site needs follow-up.
+\`ops:preflight\` combines \`deploy:plan\` and the production doctor into a
+single deployment gate. \`ops:health\` checks \`/api/health/ready\` for a
+running local or hosted site.
+
+## Migrations And Backups
+
+\`\`\`bash
 pnpm run ops:migrate -- plan --json
 pnpm run ops:migrate -- rollback-plan --json
 pnpm run ops:backup -- status --json
 pnpm run ops:backup -- create --json
 pnpm run ops:backup -- verify latest --json
 pnpm run ops:backup -- restore-plan latest --json
+\`\`\`
+
+\`ops:migrate\` reports local/applied migration state, destructive SQL risk,
+and backup-restore rollback plans. \`ops:backup\` reports manifest freshness,
+records operator-provided backup manifests, verifies artifact presence, and
+produces read-only restore drill plans for isolated targets.
+
+## Jobs
+
+\`\`\`bash
 pnpm run ops:jobs -- --json
 pnpm run ops:jobs -- pause --reason "maintenance" --json
 pnpm run ops:jobs -- resume --json
 pnpm run ops:jobs -- retry-all --state failed --json
 pnpm run ops:jobs -- retry-all --state failed --execute --approve retry-all --json
 pnpm run ops:jobs -- drain --execute --approve drain --json
+NP_ENABLE_JOBS=1 pnpm run worker
+\`\`\`
+
+\`ops:jobs\` reports worker heartbeat, pause state, and pg-boss queue counts,
+can pause/resume processing for maintenance windows, dry-run bulk retries, and
+start a drain by pausing new claims. Jobs are optional locally; set
+\`NP_ENABLE_JOBS=1\` on the process that owns the long-running worker.
+
+## Storage
+
+\`\`\`bash
 pnpm run ops:storage -- --json
 pnpm run ops:storage -- verify --json
 pnpm run ops:storage -- missing-files --json
@@ -835,9 +934,27 @@ pnpm run ops:storage -- orphaned-files --json
 pnpm run ops:storage -- migrate plan --target s3 --json
 pnpm run ops:storage -- test --json
 pnpm run ops:storage -- test --execute --approve storage-test --json
+\`\`\`
+
+\`ops:storage\` reports storage adapter readiness and local media drift, while
+\`verify\` re-runs the integrity gate. Drift-list commands show concrete
+missing/orphaned paths, \`migrate plan\` prepares a read-only local-to-S3
+checklist, and \`test\` can run an approval-gated storage probe.
+
+## Plugins
+
+\`\`\`bash
 pnpm run ops:plugins -- doctor --json
 pnpm run ops:plugins -- inspect reading-time --json
 pnpm run ops:plugins -- upgrade-plan --json
+\`\`\`
+
+\`ops:plugins\` reports plugin inventory, single-plugin manifests,
+route/block conflicts, and read-only upgrade plans.
+
+## Release And Runbooks
+
+\`\`\`bash
 pnpm run ops:release -- check --target vercel --json
 pnpm run ops:release -- plan --target vercel --json
 pnpm run ops:release -- apply --plan .nexpress/releases/<plan>.json --json
@@ -846,152 +963,50 @@ pnpm run ops:runbook -- worker-not-draining --json
 pnpm run ops:runbook -- migration-crashed --json --out .nexpress/runbooks/migration-crashed.json
 \`\`\`
 
-\`ops:status\` is the low-token handoff for agents and CI. It emits
-\`schemaVersion: "np.ops.v1"\`, \`status\`, \`summary\`, stable
-\`checks[].id\`, and a \`nextCommand\` when the site needs follow-up.
-\`ops:preflight\` combines \`deploy:plan\` and the production doctor into a
-single deployment gate. \`ops:health\` checks \`/api/health/ready\` for a
-running local or hosted site. \`ops:migrate\` reports local/applied migration
-state, destructive SQL risk, and backup-restore rollback plans; \`ops:backup\`
-reports manifest freshness, records operator-provided backup manifests,
-verifies artifact presence, and produces read-only restore drill plans for
-isolated targets.
-\`ops:jobs\` reports worker heartbeat, pause state, and pg-boss queue counts,
-can pause/resume processing for maintenance windows, dry-run bulk retries, and
-start a drain by pausing new claims. \`ops:storage\`
-reports storage adapter readiness and local media drift, while \`verify\`
-re-runs the integrity gate, drift-list commands show the concrete missing /
-orphaned paths, \`migrate plan\` prepares a read-only local-to-S3 checklist, and \`test\` can run an approval-gated storage probe; \`ops:plugins\`
-reports plugin inventory, single-plugin manifests, route/block conflicts, and
-read-only upgrade plans. \`release check\` composes the pre-deploy gate; \`release plan\`
-persists that gate as a replayable audit artifact under \`.nexpress/releases\`;
+\`release check\` composes the pre-deploy gate. \`release plan\` persists
+that gate as a replayable audit artifact under \`.nexpress/releases\`.
 \`release apply\` validates the artifact and only executes commands with
-\`--execute --approve <planId>\`; \`release verify\` composes the post-deploy
-readiness gate. \`runbook --out <path>\` writes a clean JSON artifact for common
-incidents with evidence-backed diagnosis and next commands. Release plans
-include global \`command\` values plus local \`projectCommand\` values; release
-apply artifacts include \`execution.nextCommand\` plus
-\`execution.projectNextCommand\`; runbooks include \`nextCommands\` plus
+\`--execute --approve <planId>\`. \`release verify\` composes the post-deploy
+readiness gate. \`runbook --out <path>\` writes a clean JSON artifact for
+common incidents with evidence-backed diagnosis and next commands.
+
+Release plans include global \`command\` values plus local \`projectCommand\`
+values. Release apply artifacts include \`execution.nextCommand\` plus
+\`execution.projectNextCommand\`. Runbooks include \`nextCommands\` plus
 \`projectNextCommands\`. Ops reports and executable plans include
 \`projectNextCommand\`, and plan steps include \`projectCommand\` when a
-generated-app script form exists. All preserve nested \`plan.nextCommands\` from
-migration rollback, backup restore, storage migration, and plugin upgrade
-evidence so agent handoffs keep the concrete follow-up sequence.
+generated-app script form exists. All preserve nested \`plan.nextCommands\`
+from migration rollback, backup restore, storage migration, and plugin
+upgrade evidence so agent handoffs keep the concrete follow-up sequence.
 
-### Stuck? Run the doctor.
+## Doctor And Deploy Readiness
 
 \`\`\`bash
 pnpm run doctor
-\`\`\`
-
-A read-only diagnosis of the runtime: Node / pnpm versions, \`.env\`
-presence, required env vars, Postgres reachability, whether
-migrations are applied. Green \`✓\` / yellow \`⚠\` / red \`✗\` with a
-one-line hint for each non-OK line.
-
-When the doctor prints \`Next: ...\`, run that command exactly. It will
-usually ask for an ordered fix plan:
-
-\`\`\`bash
 pnpm run doctor -- --fix-plan
-\`\`\`
-
-Before deploying, run the production-readiness pass:
-
-\`\`\`bash
 pnpm run deploy:plan -- --target vercel
 pnpm run doctor:prod -- --target vercel
-\`\`\`
-
-If the production doctor fails, ask it for an ordered fix plan. The
-same command is also printed as \`Next:\` in the failed doctor output:
-
-\`\`\`bash
 pnpm run doctor:prod -- --target vercel --fix-plan
-\`\`\`
-
-For compact CI logs, append \`--brief --no-color\`. Add \`--fix-plan\`
-when you want the log to include ordered remediation steps:
-
-\`\`\`bash
 pnpm run deploy:plan -- --target vercel --brief --no-color
 pnpm run doctor:prod -- --target vercel --brief --no-color
 pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan
-\`\`\`
-
-For agent or CI handoff, use JSON:
-
-\`\`\`bash
 pnpm run deploy:plan -- --target vercel --json
 pnpm run doctor:prod -- --target vercel --json --fix-plan
 \`\`\`
 
-\`deploy:plan\` includes \`summary\` and \`nextCommands\`; \`doctor\` /
+\`deploy:plan\` includes \`summary\` and \`nextCommands\`. \`doctor\` /
 \`doctor:prod\` include \`nextCommand\`, and \`doctor:prod --fix-plan\`
-includes \`blocksDeploy\` plus \`fixPlan[].nextCommand\`.
+includes \`blocksDeploy\` plus \`fixPlan[].nextCommand\`. The production
+doctor tightens defaults: \`NP_SECRET\` < 32 chars becomes an error,
+\`http://\` SITE_URL warns, missing \`NP_ENABLE_JOBS\` warns, and \`local\`
+storage on a multi-node platform errors.
 
-Tightens the dev defaults: \`NP_SECRET\` < 32 chars becomes an error,
-\`http://\` SITE_URL warns, missing \`NP_ENABLE_JOBS\` warns,
-\`local\` storage on a multi-node platform errors. Wire this into
-your release pipeline so a bad config fails CI before it ships.
-
-The first time you visit \`http://localhost:3000/admin\` on an empty
-DB, a 2-step wizard collects your admin account, site name, and
-optional sample content — no manual \`pnpm seed:admin\` needed.
-
-## First-site checklist
-
-1. Run \`pnpm run setup\` and let it apply migrations.
-2. Start \`pnpm dev\` and open \`/admin\`.
-3. Name the site, pick a theme, and seed sample content if useful.
-4. Publish the first page or post, then open it on the public site.
-5. Run \`pnpm run deploy:plan -- --target vercel\`, then
-   \`pnpm run doctor:prod -- --target vercel\` before deploying.
-
-### Manual flow (no wizard)
-
-\`\`\`bash
-cp .env.example .env    # then edit DATABASE_URL / NP_SECRET / SITE_URL
-pnpm db:generate        # regen collection schema and SQL migrations
-pnpm db:migrate         # apply migrations
-pnpm seed:admin         # create first admin (interactive)
-pnpm dev
-\`\`\`
-
-## Options
-
-- Docker setup: ${config.dockerSetup ? "Yes" : "No"}
-
-- Site: http://localhost:3000
-- Admin: http://localhost:3000/admin
-- OpenAPI spec: http://localhost:3000/api/openapi.json
-
-## Background jobs (pg-boss)
-
-Optional. Enable when you want async content hooks, scheduled pruning, or
-image post-processing.
-
-\`\`\`bash
-# in .env
-NP_ENABLE_JOBS=1
-
-# in a second terminal
-NP_ENABLE_JOBS=1 pnpm run worker
-\`\`\`
-
-With jobs off, \`enqueueJob\` is a no-op — simpler dev, fewer moving parts.
-
-## Deploy
-
-See [docs/deployment.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/deployment.md)
-for full Docker / Vercel / Fly.io recipes plus multi-node notes.
-
-### Vercel checklist
+## Vercel Checklist
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new?utm_source=nexpress&utm_campaign=oss)
 
 Push this scaffold to GitHub, click the button, and import your repo in
-Vercel. Set these env vars in Vercel before the first production deploy:
+Vercel. Set these env vars before the first production deploy:
 
 - \`DATABASE_URL\`
 - \`NP_SECRET\`
@@ -1001,7 +1016,7 @@ Vercel. Set these env vars in Vercel before the first production deploy:
 - \`NP_S3_REGION\`
 - \`NP_S3_ENDPOINT\` when using R2, MinIO, or another non-AWS S3 provider
 
-Then run the readiness commands against the same production env:
+Then run:
 
 \`\`\`bash
 pnpm run deploy:plan -- --target vercel
@@ -1009,31 +1024,17 @@ pnpm db:migrate
 pnpm run doctor:prod -- --target vercel
 \`\`\`
 
-If readiness fails, print ordered remediation:
+Vercel's filesystem is ephemeral, so media uploads require S3/R2/MinIO or
+another S3-compatible store. For scheduled publishing, add \`CRON_SECRET\` in
+Vercel and set \`NP_SCHEDULER_TOKEN\` to the same value. \`vercel.json\`
+already points cron at \`/api/internal/publish-scheduled\`.
 
-\`\`\`bash
-pnpm run doctor:prod -- --target vercel --fix-plan
-\`\`\`
+If you don't use scheduled publishing, the cron entry is a no-op. If you need
+long-running background jobs, set \`NP_ENABLE_JOBS=1\` and run
+\`pnpm run worker\` on a separate worker host. Vercel cron handles scheduled
+HTTP calls, but not a long-lived pg-boss worker.
 
-Use \`--brief --no-color\` on \`deploy:plan\` and \`doctor:prod\` when
-the output is going into CI logs or an issue comment.
-Use \`--json\` when another tool should read \`summary\`,
-\`nextCommands\`, \`blocksDeploy\`, or \`fixPlan[].nextCommand\`.
-
-Vercel's filesystem is ephemeral, so media uploads require S3/R2/MinIO
-or another S3-compatible store. For scheduled publishing, add
-\`CRON_SECRET\` in Vercel and set \`NP_SCHEDULER_TOKEN\` to the same
-value; \`vercel.json\` already points cron at
-\`/api/internal/publish-scheduled\`.
-
-If you don't use scheduled publishing, the cron entry is a no-op (the
-endpoint short-circuits when \`NP_SCHEDULER_TOKEN\` is unset).
-
-If you need long-running background jobs, set \`NP_ENABLE_JOBS=1\` and
-run \`pnpm run worker\` on a separate worker host. Vercel cron handles
-scheduled HTTP calls, but not a long-lived pg-boss worker.
-
-### Other hosting choices
+## Other Hosting Choices
 
 - **Vercel** — fastest app hosting path, but requires S3-compatible storage
   for media because the filesystem is ephemeral.

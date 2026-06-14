@@ -104,7 +104,7 @@ export function buildSuccessLines(
     "  pnpm run ops:health -- --url http://localhost:3000 --brief --no-color",
     "  pnpm run doctor:prod -- --target vercel --fix-plan   # if blocked",
     "",
-    "More ops commands live in README.md once you need jobs, storage, plugins, or runbooks.",
+    "More ops commands live in docs/ops.md once you need jobs, storage, plugins, or runbooks.",
     "Deploy guide: https://github.com/nexpress-cms/nexpress/blob/main/docs/deployment.md",
   );
 
