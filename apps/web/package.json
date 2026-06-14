@@ -91,7 +91,7 @@
     "drizzle-kit": "^0.31.10",
     "postcss": "^8.5.15",
     "tailwindcss": "^4.3.0",
-    "tsx": "^4.20.6",
+    "tsx": "^4.22.4",
     "typescript": "^5.8.0"
   }
 }
