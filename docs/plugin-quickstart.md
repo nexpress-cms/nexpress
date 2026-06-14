@@ -245,7 +245,7 @@ export default definePlugin<MyPluginConfig>({
 | `z.boolean()` | `<Switch>` |
 | `z.enum([...])` | `<select>` |
 | `z.array(z.object({...}))` | repeated nested object form |
-| `z.array(z.string())` | one-item-per-line `<textarea>` (post-G follow-up) |
+| `z.array(z.string())` | one-item-per-line `<textarea>` |
 | `z.object({...})` | nested fieldset |
 
 Anything else introspects as `unsupported` and falls back to a
@@ -254,10 +254,10 @@ value, but as JSON literal rather than a typed widget. The
 schema still validates the parsed value on save. Known gaps
 where a typed widget would be friendlier are tracked in
 [`docs/design/plugin-config-auto-form.md`](design/plugin-config-auto-form.md)
-§ 10:
-- `.refine()` cross-field validation — deferred introspector
-  follow-up; the refine wrapper currently breaks introspection
-  entirely (see seo-audit's inline note for the workaround)
+§ 10. Cross-field `.refine()` validation is safe to use: Zod 4
+keeps object refinements on the same object node, so the
+introspector still renders the object fields and validation runs
+on save.
 
 ### Schema migrations (configVersion / configMigrate)
 
