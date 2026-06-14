@@ -1,5 +1,18 @@
 # @nexpress/admin
 
+## 0.3.20
+
+### Patch Changes
+
+- 769473f: Improve plugin authoring/install UX in the admin registry. The discover API now returns install,
+  registration, and verification hints for each npm result, and the admin Browse registry dialog can
+  copy both the install command and the matching `nexpress.config.ts` registration snippet. Plugin
+  author docs now reflect the current auto-form `.refine()` support and plugin object registration
+  shape.
+  - @nexpress/blocks@0.3.20
+  - @nexpress/core@0.3.20
+  - @nexpress/editor@0.3.20
+
 ## 0.3.19
 
 ### Patch Changes
