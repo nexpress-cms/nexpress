@@ -55,10 +55,11 @@ A Next.js 16 App Router project with:
 - Run the first-boot wizard: `pnpm run setup`
 - Start the site: `pnpm dev`, then open `/admin`
 - Publish your first page or post from the admin
-- Generate a host-specific deploy checklist: `pnpm run deploy:plan -- --target vercel`
-- Check production readiness before hosting: `pnpm run doctor:prod -- --target vercel`
-- Get ordered remediation when readiness fails: `pnpm run doctor:prod -- --target vercel --fix-plan`
-- Keep CI logs compact: `pnpm run doctor:prod -- --target vercel --brief --no-color`
+- Plan the deploy target: `pnpm run deploy:plan -- --target vercel --brief --no-color`
+- Apply production migrations: `pnpm db:migrate`
+- Run the pre-deploy gate: `pnpm run ops:preflight -- --target vercel --brief --no-color`
+- Capture release evidence: `pnpm run ops:release -- check --target vercel --json`
+- Verify after deploy: `pnpm run ops:release -- verify --url https://your-domain.example --json`
 - Deploy on Vercel: push your scaffold to GitHub, then import it from
   [Vercel New Project](https://vercel.com/new?utm_source=nexpress&utm_campaign=oss)
 - Add a collection: edit `src/collections/<name>.ts`, run `pnpm db:generate && pnpm db:migrate`

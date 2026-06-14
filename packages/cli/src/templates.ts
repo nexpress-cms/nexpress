@@ -838,12 +838,14 @@ NP_ENABLE_JOBS=1 pnpm run worker
 Jobs are optional during local development. Leave them off until you need
 scheduled publishing, async hooks, pruning, or image post-processing.
 
-## Deploy
+## Deploy Bridge
 
 \`\`\`bash
-pnpm run deploy:plan -- --target vercel
+pnpm run deploy:plan -- --target vercel --brief --no-color
 pnpm db:migrate
-pnpm run doctor:prod -- --target vercel
+pnpm run ops:preflight -- --target vercel --brief --no-color
+pnpm run ops:release -- check --target vercel --json
+pnpm run ops:release -- verify --url https://your-domain.example --json
 \`\`\`
 
 For full Vercel / Railway / Render / Fly / Docker notes, see
@@ -874,6 +876,24 @@ function opsGuideTemplate(): string {
 This file is the detailed command reference. Keep the root README focused on
 the first-run path; come here when you need agent handoffs, deploy checks,
 jobs, storage, plugins, releases, or incident runbooks.
+
+## Deploy Bridge
+
+Use this order when moving from local setup to a hosted site:
+
+\`\`\`bash
+pnpm run deploy:plan -- --target vercel --brief --no-color
+pnpm db:migrate
+pnpm run ops:preflight -- --target vercel --brief --no-color
+pnpm run ops:release -- check --target vercel --json
+# deploy / promote in your host
+pnpm run ops:release -- verify --url https://your-domain.example --json
+\`\`\`
+
+\`deploy:plan\` explains host env, storage, runtime, and import/deploy steps.
+\`ops:preflight\` is the blocking pre-deploy gate. \`ops:release check\`
+captures the same evidence for CI or agent handoff. \`ops:release verify\`
+is the first post-deploy probe against the live URL.
 
 ## Runtime Status
 
@@ -1019,9 +1039,10 @@ Vercel. Set these env vars before the first production deploy:
 Then run:
 
 \`\`\`bash
-pnpm run deploy:plan -- --target vercel
+pnpm run deploy:plan -- --target vercel --brief --no-color
 pnpm db:migrate
-pnpm run doctor:prod -- --target vercel
+pnpm run ops:preflight -- --target vercel --brief --no-color
+pnpm run ops:release -- check --target vercel --json
 \`\`\`
 
 Vercel's filesystem is ephemeral, so media uploads require S3/R2/MinIO or

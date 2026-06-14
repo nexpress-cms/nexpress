@@ -449,12 +449,26 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("[docs/ops.md](docs/ops.md)");
     expect(readme).toContain("pnpm run ops:status -- --brief --no-color");
     expect(readme).toContain("pnpm run doctor");
-    expect(readme).toContain("pnpm run deploy:plan -- --target vercel");
-    expect(readme).toContain("pnpm run doctor:prod -- --target vercel");
+    expect(readme).toContain("## Deploy Bridge");
+    expect(readme).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
+    expect(readme).toContain("pnpm db:migrate");
+    expect(readme).toContain("pnpm run ops:preflight -- --target vercel --brief --no-color");
+    expect(readme).toContain("pnpm run ops:release -- check --target vercel --json");
+    expect(readme).toContain(
+      "pnpm run ops:release -- verify --url https://your-domain.example --json",
+    );
     expect(readme).not.toContain("pnpm run ops:backup -- status --json");
     expect(readme).not.toContain('schemaVersion: "np.ops.v1"');
     expect(readme.split(/\r?\n/).length).toBeLessThanOrEqual(100);
 
+    expect(ops).toContain("## Deploy Bridge");
+    expect(ops).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
+    expect(ops).toContain("pnpm db:migrate");
+    expect(ops).toContain("pnpm run ops:preflight -- --target vercel --brief --no-color");
+    expect(ops).toContain("pnpm run ops:release -- check --target vercel --json");
+    expect(ops).toContain(
+      "pnpm run ops:release -- verify --url https://your-domain.example --json",
+    );
     expect(ops).toContain("pnpm run ops:status -- --json");
     expect(ops).toContain("pnpm run ops:preflight -- --target vercel --json");
     expect(ops).toContain("pnpm run ops:health -- --url http://localhost:3000 --brief --no-color");

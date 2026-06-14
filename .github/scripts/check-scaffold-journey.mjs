@@ -308,19 +308,40 @@ console.log("✓ doctor:prod JSON fix-plan stays machine-readable inside the sca
 assertIncludes(readme, "## Quickstart", "README");
 assertIncludes(readme, "## First Site", "README");
 assertIncludes(readme, "[docs/ops.md](docs/ops.md)", "README");
-assertIncludes(readme, "pnpm run deploy:plan -- --target vercel", "README");
-assertIncludes(readme, "pnpm run doctor:prod -- --target vercel", "README");
+assertIncludes(readme, "## Deploy Bridge", "README");
+assertIncludes(readme, "pnpm run deploy:plan -- --target vercel --brief --no-color", "README");
+assertIncludes(readme, "pnpm db:migrate", "README");
+assertIncludes(readme, "pnpm run ops:preflight -- --target vercel --brief --no-color", "README");
+assertIncludes(readme, "pnpm run ops:release -- check --target vercel --json", "README");
+assertIncludes(
+  readme,
+  "pnpm run ops:release -- verify --url https://your-domain.example --json",
+  "README",
+);
 assertNotIncludes(readme, "Deploy with Vercel", "README");
+assertNotIncludes(readme, "pnpm run doctor:prod -- --target vercel", "README");
 assertNotIncludes(readme, "pnpm run doctor:prod -- --target vercel --fix-plan", "README");
 if (readme.split(/\r?\n/).length > 100) {
   fail("README should stay focused on the first-run path", readme);
 }
 
+assertIncludes(opsDoc, "## Deploy Bridge", "docs/ops.md");
 assertIncludes(opsDoc, "Deploy with Vercel", "docs/ops.md");
 assertIncludes(opsDoc, "https://vercel.com/new?utm_source=nexpress", "docs/ops.md");
 assertIncludes(opsDoc, "NP_STORAGE_ADAPTER=s3", "docs/ops.md");
 assertIncludes(opsDoc, "NP_S3_ENDPOINT", "docs/ops.md");
 assertIncludes(opsDoc, "pnpm db:migrate", "docs/ops.md");
+assertIncludes(
+  opsDoc,
+  "pnpm run ops:preflight -- --target vercel --brief --no-color",
+  "docs/ops.md",
+);
+assertIncludes(opsDoc, "pnpm run ops:release -- check --target vercel --json", "docs/ops.md");
+assertIncludes(
+  opsDoc,
+  "pnpm run ops:release -- verify --url https://your-domain.example --json",
+  "docs/ops.md",
+);
 assertIncludes(opsDoc, "pnpm run doctor:prod -- --target vercel", "docs/ops.md");
 assertIncludes(opsDoc, "pnpm run doctor:prod -- --target vercel --fix-plan", "docs/ops.md");
 assertIncludes(opsDoc, "pnpm run deploy:plan -- --target vercel --brief --no-color", "docs/ops.md");
