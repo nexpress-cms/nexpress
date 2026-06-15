@@ -340,7 +340,8 @@ Implementation status:
 - `nexpress ops doctor --prod --json --fix-plan` delegates to the
   project-side doctor while preserving its stable `np.doctor.v1` output.
 - `nexpress ops preflight --target <host> --json` combines deploy-plan and
-  production doctor evidence into `schemaVersion: "np.ops-preflight.v1"`.
+  production doctor evidence plus `ops migrate plan` evidence into
+  `schemaVersion: "np.ops-preflight.v1"`.
 - `pnpm run deploy:plan -- --target <host> --json` emits
   `schemaVersion: "np.deploy-plan.v1"` with a `bridge` section that orders the
   local setup -> host env -> migration -> preflight -> release check -> deploy
@@ -401,7 +402,8 @@ Implementation status:
   steps also include `projectCommand` beside `command`.
 - `nexpress ops migrate status|plan --json` emits
   `schemaVersion: "np.ops-migrate.v1"` with local/applied migration state,
-  pending migrations, drift, unknown applied rows, and destructive SQL findings.
+  pending migrations, drift, unknown applied rows, destructive SQL findings,
+  and backup/apply/verify handoff actions.
 - `nexpress ops migrate rollback-plan --json` emits
   `schemaVersion: "np.ops-migrate-rollback-plan.v1"` with a read-only
   backup-restore rollback plan, ordered inspect / prepare / rollback / verify

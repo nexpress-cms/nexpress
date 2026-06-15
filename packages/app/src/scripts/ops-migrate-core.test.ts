@@ -59,8 +59,63 @@ describe("ops migrate core", () => {
 
     expect(report.ok).toBe(false);
     expect(report.status).toBe("blocked");
+    expect(report.summary).toEqual(
+      expect.objectContaining({
+        inspectionBlocked: false,
+        backupRequired: true,
+        manualReviewRequired: false,
+        canApplyAfterBackup: true,
+      }),
+    );
     expect(report.nextCommand).toBe("nexpress ops backup status --required --json");
     expect(report.projectNextCommand).toBe("pnpm run ops:backup -- status --required --json");
+    expect(report.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "backup.required",
+          projectCommand: "pnpm run ops:backup -- status --required --json",
+        }),
+        expect.objectContaining({
+          id: "migrate.apply_pending",
+          command: "pnpm db:migrate",
+          requiresApproval: true,
+          blockedBy: ["backup.required"],
+        }),
+        expect.objectContaining({
+          id: "release.verify",
+          projectCommand: "pnpm run ops:release -- verify --json",
+        }),
+      ]),
+    );
+  });
+
+  it("does not suggest migration apply when database inspection failed", () => {
+    const report = buildOpsMigrateJson({
+      mode: "plan",
+      migrationsFolder: "./drizzle",
+      status: {
+        ...migrated,
+        applied: [],
+        latestApplied: null,
+        pending: migrated.local,
+      },
+      destructiveFindings: [],
+      checks: [
+        {
+          id: "migrate.database",
+          state: "error",
+          label: "Database connection",
+          detail: "connection refused",
+        },
+      ],
+    });
+
+    expect(report.status).toBe("blocked");
+    expect(report.summary.inspectionBlocked).toBe(true);
+    expect(report.summary.backupRequired).toBe(false);
+    expect(report.summary.canApplyAfterBackup).toBe(false);
+    expect(report.nextCommand).toBe("nexpress ops migrate status --json");
+    expect(report.actions).toEqual([]);
   });
 
   it("detects destructive SQL in pending migration files", async () => {
@@ -70,18 +125,39 @@ describe("ops migrate core", () => {
       join(folder, "0002_drop_column.sql"),
       "ALTER TABLE posts DROP COLUMN old_title;\n",
     );
+    writeFileSync(join(folder, "0003_drop_index.sql"), "DROP INDEX posts_title_idx;\n");
+    writeFileSync(
+      join(folder, "0004_set_not_null.sql"),
+      "ALTER TABLE posts ALTER COLUMN title SET NOT NULL;\n",
+    );
     const findings = await scanDestructiveSql(folder, {
       ...migrated,
-      pending: [{ index: 2, tag: "0002_drop_column", createdAt: 1_700_000_020_000, hash: "h2" }],
+      pending: [
+        { index: 2, tag: "0002_drop_column", createdAt: 1_700_000_020_000, hash: "h2" },
+        { index: 3, tag: "0003_drop_index", createdAt: 1_700_000_030_000, hash: "h3" },
+        { index: 4, tag: "0004_set_not_null", createdAt: 1_700_000_040_000, hash: "h4" },
+      ],
     });
 
-    expect(findings).toEqual<DestructiveSqlFinding[]>([
-      expect.objectContaining({
-        migration: "0002_drop_column",
-        pattern: "drop-column",
-        line: 1,
-      }) as DestructiveSqlFinding,
-    ]);
+    expect(findings).toEqual<DestructiveSqlFinding[]>(
+      expect.arrayContaining([
+        expect.objectContaining({
+          migration: "0002_drop_column",
+          pattern: "drop-column",
+          line: 1,
+        }) as DestructiveSqlFinding,
+        expect.objectContaining({
+          migration: "0003_drop_index",
+          pattern: "drop-index",
+          line: 1,
+        }) as DestructiveSqlFinding,
+        expect.objectContaining({
+          migration: "0004_set_not_null",
+          pattern: "set-not-null",
+          line: 1,
+        }) as DestructiveSqlFinding,
+      ]),
+    );
   });
 
   it("builds a rollback plan for pending migrations", () => {
@@ -124,22 +200,41 @@ describe("ops migrate core", () => {
   });
 
   it("requires manual approval when rollback planning sees destructive SQL", () => {
+    const destructiveFindings = [
+      {
+        migration: "0002_drop",
+        pattern: "drop-column",
+        line: 1,
+        sql: "ALTER TABLE posts DROP COLUMN old_title",
+      },
+    ];
+    const status: MigrationStatus = {
+      ...migrated,
+      pending: [{ index: 2, tag: "0002_drop", createdAt: 1_700_000_020_000, hash: "h2" }],
+    };
+    const plan = buildOpsMigrateJson({
+      mode: "plan",
+      migrationsFolder: "./drizzle",
+      status,
+      destructiveFindings,
+    });
     const report = buildOpsMigrateRollbackPlanJson({
       migrationsFolder: "./drizzle",
-      status: {
-        ...migrated,
-        pending: [{ index: 2, tag: "0002_drop", createdAt: 1_700_000_020_000, hash: "h2" }],
-      },
-      destructiveFindings: [
-        {
-          migration: "0002_drop",
-          pattern: "drop-column",
-          line: 1,
-          sql: "ALTER TABLE posts DROP COLUMN old_title",
-        },
-      ],
+      status,
+      destructiveFindings,
     });
 
+    expect(plan.summary.manualReviewRequired).toBe(true);
+    expect(plan.summary.canApplyAfterBackup).toBe(false);
+    expect(plan.nextCommand).toBe("nexpress ops backup status --required --json");
+    expect(plan.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "migrate.review_destructive_sql",
+          requiresApproval: true,
+        }),
+      ]),
+    );
     expect(report.steps).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -148,6 +243,7 @@ describe("ops migrate core", () => {
         }),
       ]),
     );
+    expect(report.nextCommand).toBe("nexpress ops backup status --required --json");
   });
 
   it("does not suggest rollback approval when there is no migration risk", () => {

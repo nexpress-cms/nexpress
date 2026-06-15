@@ -52,6 +52,27 @@ export interface OpsMigrateSummary {
   drifted: number;
   unknownApplied: number;
   destructiveFindings: number;
+  inspectionBlocked: boolean;
+  backupRequired: boolean;
+  manualReviewRequired: boolean;
+  canApplyAfterBackup: boolean;
+}
+
+export interface OpsMigrateAction {
+  id:
+    | "backup.required"
+    | "migrate.review_drift"
+    | "migrate.review_unknown_applied"
+    | "migrate.review_destructive_sql"
+    | "migrate.apply_pending"
+    | "release.verify";
+  phase: "prepare" | "review" | "apply" | "verify";
+  command: string;
+  projectCommand: string;
+  required: boolean;
+  requiresApproval: boolean;
+  blockedBy: string[];
+  note: string;
 }
 
 export interface OpsMigrateJson {
@@ -66,6 +87,7 @@ export interface OpsMigrateJson {
   projectNextCommand: string | null;
   pending: Array<{ tag: string; createdAt: number; hash: string }>;
   destructiveFindings: DestructiveSqlFinding[];
+  actions: OpsMigrateAction[];
   checks: CheckResult[];
 }
 
@@ -118,11 +140,20 @@ const EMPTY_ANSI = {
 };
 
 const DESTRUCTIVE_PATTERNS: Array<{ id: string; pattern: RegExp }> = [
+  { id: "drop-schema", pattern: /\bdrop\s+schema\b/i },
   { id: "drop-table", pattern: /\bdrop\s+table\b/i },
+  { id: "drop-index", pattern: /\bdrop\s+index\b/i },
   { id: "drop-column", pattern: /\bdrop\s+column\b/i },
+  { id: "drop-constraint", pattern: /\bdrop\s+constraint\b/i },
   { id: "truncate", pattern: /\btruncate\b/i },
   { id: "delete-without-where", pattern: /^\s*delete\s+from\b(?![\s\S]*\bwhere\b)/i },
   { id: "alter-type", pattern: /\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\btype\b/i },
+  {
+    id: "set-not-null",
+    pattern: /\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\bset\s+not\s+null\b/i,
+  },
+  { id: "rename-table", pattern: /\balter\s+table\b[\s\S]*\brename\s+to\b/i },
+  { id: "rename-column", pattern: /\balter\s+table\b[\s\S]*\brename\s+column\b/i },
 ];
 
 async function loadPg(): Promise<PgModuleLike> {
@@ -140,6 +171,104 @@ function countChecks(checks: CheckResult[]): { errors: number; warnings: number 
 
 function migrationSqlFileName(tag: string): string {
   return `${tag}.sql`;
+}
+
+function withProjectCommand<T extends { command: string }>(
+  action: T,
+): T & { projectCommand: string } {
+  return { ...action, projectCommand: toProjectCommand(action.command) };
+}
+
+function buildOpsMigrateActions(args: {
+  status: MigrationStatus;
+  destructiveFindings: DestructiveSqlFinding[];
+  inspectionBlocked: boolean;
+}): OpsMigrateAction[] {
+  if (args.inspectionBlocked) return [];
+
+  const actions: OpsMigrateAction[] = [];
+  const hasPending = args.status.pending.length > 0;
+
+  if (args.status.drifted.length > 0) {
+    actions.push(
+      withProjectCommand({
+        id: "migrate.review_drift",
+        phase: "review",
+        command: "restore the matching migration files from git before applying more migrations",
+        required: true,
+        requiresApproval: true,
+        blockedBy: [],
+        note: "Applied migration hashes differ from local files; applying more migrations can compound drift.",
+      }),
+    );
+  }
+
+  if (args.status.unknownApplied.length > 0) {
+    actions.push(
+      withProjectCommand({
+        id: "migrate.review_unknown_applied",
+        phase: "review",
+        command: "confirm DATABASE_URL points at the intended NexPress database and codebase",
+        required: true,
+        requiresApproval: true,
+        blockedBy: [],
+        note: "The database has applied migrations that are not present in this checkout.",
+      }),
+    );
+  }
+
+  if (args.destructiveFindings.length > 0) {
+    actions.push(
+      withProjectCommand({
+        id: "migrate.review_destructive_sql",
+        phase: "review",
+        command: "review pending SQL manually and confirm the rollback decision",
+        required: true,
+        requiresApproval: true,
+        blockedBy: [],
+        note: "Potentially destructive SQL requires human review before migration apply.",
+      }),
+    );
+  }
+
+  if (hasPending) {
+    actions.push(
+      withProjectCommand({
+        id: "backup.required",
+        phase: "prepare",
+        command: "nexpress ops backup status --required --json",
+        required: true,
+        requiresApproval: false,
+        blockedBy: [],
+        note: "Confirm a fresh verified backup before applying pending migrations.",
+      }),
+      withProjectCommand({
+        id: "migrate.apply_pending",
+        phase: "apply",
+        command: "pnpm db:migrate",
+        required: true,
+        requiresApproval: true,
+        blockedBy: [
+          "backup.required",
+          ...(args.status.drifted.length > 0 ? ["migrate.review_drift"] : []),
+          ...(args.status.unknownApplied.length > 0 ? ["migrate.review_unknown_applied"] : []),
+          ...(args.destructiveFindings.length > 0 ? ["migrate.review_destructive_sql"] : []),
+        ],
+        note: "Apply pending migrations only after backup and required reviews are complete.",
+      }),
+      withProjectCommand({
+        id: "release.verify",
+        phase: "verify",
+        command: "nexpress release verify --json",
+        required: true,
+        requiresApproval: false,
+        blockedBy: ["migrate.apply_pending"],
+        note: "Verify the live site after migrations and deploy promotion.",
+      }),
+    );
+  }
+
+  return actions;
 }
 
 export async function scanDestructiveSql(
@@ -254,12 +383,38 @@ export function buildOpsMigrateJson(args: {
 
   const counts = countChecks(checks);
   const status = counts.errors > 0 ? "blocked" : counts.warnings > 0 ? "attention" : "ready";
+  const inspectionBlocked = checks.some(
+    (check) =>
+      check.state === "error" &&
+      (check.id === "migrate.database" || check.id === "migrate.local_migrations"),
+  );
+  const actions = buildOpsMigrateActions({
+    status: args.status,
+    destructiveFindings: args.destructiveFindings,
+    inspectionBlocked,
+  });
+  const backupRequired = !inspectionBlocked && args.status.pending.length > 0;
+  const manualReviewRequired =
+    args.status.drifted.length > 0 ||
+    args.status.unknownApplied.length > 0 ||
+    args.destructiveFindings.length > 0;
+  const blockingErrorsBeyondPending = checks.filter(
+    (check) => check.state === "error" && check.id !== "migrate.pending",
+  ).length;
+  const nextPlanCommand =
+    args.status.pending.length > 0
+      ? "nexpress ops backup status --required --json"
+      : manualReviewRequired
+        ? "nexpress ops migrate rollback-plan --json"
+        : "nexpress ops backup status --required --json";
   const nextCommand =
     status === "ready"
       ? null
-      : args.mode === "plan"
-        ? "nexpress ops backup status --required --json"
-        : "nexpress ops migrate plan --json";
+      : inspectionBlocked
+        ? "nexpress ops migrate status --json"
+        : args.mode === "plan"
+          ? nextPlanCommand
+          : "nexpress ops migrate plan --json";
   return {
     schemaVersion: "np.ops-migrate.v1",
     ok: counts.errors === 0,
@@ -274,6 +429,11 @@ export function buildOpsMigrateJson(args: {
       drifted: args.status.drifted.length,
       unknownApplied: args.status.unknownApplied.length,
       destructiveFindings: args.destructiveFindings.length,
+      inspectionBlocked,
+      backupRequired,
+      manualReviewRequired,
+      canApplyAfterBackup:
+        backupRequired && !manualReviewRequired && blockingErrorsBeyondPending === 0,
     },
     nextCommand,
     projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
@@ -283,6 +443,7 @@ export function buildOpsMigrateJson(args: {
       hash: migration.hash,
     })),
     destructiveFindings: args.destructiveFindings,
+    actions,
     checks,
   };
 }
@@ -580,10 +741,12 @@ export function renderBriefOpsMigrateReport(
 ): string {
   const lines = [
     `${options.color ? ANSI.dim : ""}NexPress ops migrate ${report.mode}${options.color ? ANSI.reset : ""}`,
-    `${formatState(report.status, options.color)}: ${report.summary.pending.toString()} pending, ${report.summary.destructiveFindings.toString()} destructive findings`,
+    report.summary.inspectionBlocked
+      ? `${formatState(report.status, options.color)}: applied migration state unavailable`
+      : `${formatState(report.status, options.color)}: ${report.summary.pending.toString()} pending, ${report.summary.destructiveFindings.toString()} destructive findings`,
   ];
   for (const check of report.checks) lines.push(formatCheck(check, options.color));
-  if (report.pending.length > 0) {
+  if (!report.summary.inspectionBlocked && report.pending.length > 0) {
     lines.push("pending:");
     for (const migration of report.pending) lines.push(`  - ${migration.tag}`);
   }
@@ -591,6 +754,13 @@ export function renderBriefOpsMigrateReport(
     lines.push("destructive SQL:");
     for (const finding of report.destructiveFindings) {
       lines.push(`  - ${finding.migration}:${finding.line.toString()} ${finding.pattern}`);
+    }
+  }
+  if (report.actions.length > 0) {
+    lines.push("migration handoff:");
+    for (const action of report.actions) {
+      const approval = action.requiresApproval ? " approval" : "";
+      lines.push(`  - [${action.phase}] ${action.command}${approval}`);
     }
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);

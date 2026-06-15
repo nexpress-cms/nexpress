@@ -9,8 +9,9 @@ import { DEPLOY_TARGETS, parseDeployTargetArg, type DeployTarget } from "./deplo
 import type { DeployPlanJson } from "./deploy-plan-core.js";
 import type { DoctorJsonOutput } from "./doctor-output.js";
 import { toProjectCommand } from "./ops-command-format.js";
+import type { OpsMigrateJson } from "./ops-migrate-core.js";
 
-interface OpsPreflightJson {
+export interface OpsPreflightJson {
   schemaVersion: "np.ops-preflight.v1";
   ok: boolean;
   status: "ready" | "attention" | "blocked";
@@ -19,11 +20,16 @@ interface OpsPreflightJson {
     planUnresolvedRequiredEnv: number;
     doctorErrors: number;
     doctorWarnings: number;
+    migrationErrors: number;
+    migrationWarnings: number;
+    migrationPending: number;
+    migrationDestructiveFindings: number;
+    migrationInspectionBlocked: boolean;
   };
   nextCommand: string | null;
   projectNextCommand: string | null;
   steps: Array<{
-    id: "deploy.plan" | "doctor.prod";
+    id: "deploy.plan" | "doctor.prod" | "ops.migrate";
     command: string;
     projectCommand: string;
     ok: boolean;
@@ -31,6 +37,7 @@ interface OpsPreflightJson {
   }>;
   plan: DeployPlanJson | null;
   doctor: DoctorJsonOutput | null;
+  migrate: OpsMigrateJson | null;
 }
 
 type PackageManager = "pnpm" | "npm" | "yarn";
@@ -146,21 +153,27 @@ function parseJson<T>(run: CapturedCommand, label: string): T {
   }
 }
 
-function buildReport(args: {
+export function buildOpsPreflightReport(args: {
   target: DeployTarget;
   planRun: CapturedCommand;
   doctorRun: CapturedCommand;
+  migrateRun: CapturedCommand;
   plan: DeployPlanJson;
   doctor: DoctorJsonOutput;
+  migrate: OpsMigrateJson;
 }): OpsPreflightJson {
   const planUnresolvedRequiredEnv = args.plan.summary.requiredEnv.unresolved;
-  const blocksDeploy = planUnresolvedRequiredEnv > 0 || !args.doctor.ok;
-  const needsAttention = args.doctor.summary.warnings > 0;
+  const migrationErrors = args.migrate.checks.filter((check) => check.state === "error").length;
+  const migrationWarnings = args.migrate.checks.filter((check) => check.state === "warn").length;
+  const blocksDeploy = planUnresolvedRequiredEnv > 0 || !args.doctor.ok || !args.migrate.ok;
+  const needsAttention = args.doctor.summary.warnings > 0 || migrationWarnings > 0;
   const nextCommand =
     !blocksDeploy && !needsAttention
       ? null
-      : (args.doctor.nextCommand ??
-        `pnpm run doctor:prod -- --target ${args.target} --brief --no-color --fix-plan`);
+      : planUnresolvedRequiredEnv > 0 || !args.doctor.ok
+        ? (args.doctor.nextCommand ??
+          `pnpm run doctor:prod -- --target ${args.target} --brief --no-color --fix-plan`)
+        : (args.migrate.nextCommand ?? "pnpm run ops:migrate -- plan --json");
 
   return {
     schemaVersion: "np.ops-preflight.v1",
@@ -171,6 +184,11 @@ function buildReport(args: {
       planUnresolvedRequiredEnv,
       doctorErrors: args.doctor.summary.errors,
       doctorWarnings: args.doctor.summary.warnings,
+      migrationErrors,
+      migrationWarnings,
+      migrationPending: args.migrate.summary.pending,
+      migrationDestructiveFindings: args.migrate.summary.destructiveFindings,
+      migrationInspectionBlocked: args.migrate.summary.inspectionBlocked,
     },
     nextCommand,
     projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
@@ -189,13 +207,21 @@ function buildReport(args: {
         ok: args.doctor.ok,
         exitCode: args.doctorRun.exitCode,
       },
+      {
+        id: "ops.migrate",
+        command: args.migrateRun.command,
+        projectCommand: toProjectCommand(args.migrateRun.command),
+        ok: args.migrate.ok,
+        exitCode: args.migrateRun.exitCode,
+      },
     ],
     plan: args.plan,
     doctor: args.doctor,
+    migrate: args.migrate,
   };
 }
 
-function renderBrief(report: OpsPreflightJson, color: boolean): string {
+export function renderBriefOpsPreflightReport(report: OpsPreflightJson, color: boolean): string {
   const c = color ? ANSI : EMPTY_ANSI;
   const state =
     report.status === "ready"
@@ -208,6 +234,9 @@ function renderBrief(report: OpsPreflightJson, color: boolean): string {
     `${state}: ${report.target}`,
     `required env unresolved: ${report.summary.planUnresolvedRequiredEnv.toString()}`,
     `doctor: ${report.summary.doctorErrors.toString()} errors, ${report.summary.doctorWarnings.toString()} warnings`,
+    report.summary.migrationInspectionBlocked
+      ? `migrate: inspection blocked, ${report.summary.migrationErrors.toString()} errors, ${report.summary.migrationWarnings.toString()} warnings`
+      : `migrate: ${report.summary.migrationPending.toString()} pending, ${report.summary.migrationDestructiveFindings.toString()} destructive findings, ${report.summary.migrationErrors.toString()} errors, ${report.summary.migrationWarnings.toString()} warnings`,
   ];
   for (const step of report.steps) {
     lines.push(`${step.ok ? "[ok]" : "[blocked]"} ${step.id} - ${step.command}`);
@@ -230,18 +259,28 @@ async function main(): Promise<void> {
   const passthrough = ["--target", target, "--json"];
   const doctorPassthrough = ["--target", target, "--json", "--fix-plan"];
 
-  const [planRun, doctorRun] = await Promise.all([
+  const [planRun, doctorRun, migrateRun] = await Promise.all([
     capture(manager, runArgs(manager, "deploy:plan", passthrough)),
     capture(manager, runArgs(manager, "doctor:prod", doctorPassthrough)),
+    capture(manager, runArgs(manager, "ops:migrate", ["plan", "--json"])),
   ]);
   const plan = parseJson<DeployPlanJson>(planRun, "deploy:plan");
   const doctor = parseJson<DoctorJsonOutput>(doctorRun, "doctor:prod");
-  const report = buildReport({ target, planRun, doctorRun, plan, doctor });
+  const migrate = parseJson<OpsMigrateJson>(migrateRun, "ops:migrate plan");
+  const report = buildOpsPreflightReport({
+    target,
+    planRun,
+    doctorRun,
+    migrateRun,
+    plan,
+    doctor,
+    migrate,
+  });
 
   if (JSON_MODE) {
     console.log(JSON.stringify(report, null, 2));
   } else {
-    console.log(renderBrief(report, COLOR_MODE));
+    console.log(renderBriefOpsPreflightReport(report, COLOR_MODE));
   }
   process.exit(report.ok ? 0 : 1);
 }
