@@ -25,6 +25,10 @@ describe("buildRunScriptArgs", () => {
       script: "ops:status",
       args: ["--json"],
     });
+    expect(resolveOpsScriptInvocation("contracts", ["--json"])).toEqual({
+      script: "ops:contracts",
+      args: ["--json"],
+    });
     expect(resolveOpsScriptInvocation("doctor", ["--prod", "--json"])).toEqual({
       script: "doctor",
       args: ["--prod", "--json"],
@@ -49,6 +53,10 @@ describe("buildRunScriptArgs", () => {
       script: "ops:backup",
       args: ["verify", "latest", "--json"],
     });
+    expect(resolveOpsScriptInvocation("backup", ["restore-plan", "latest", "--json"])).toEqual({
+      script: "ops:backup",
+      args: ["restore-plan", "latest", "--json"],
+    });
     expect(resolveOpsScriptInvocation("jobs", ["status", "--json"])).toEqual({
       script: "ops:jobs",
       args: ["--json"],
@@ -61,13 +69,57 @@ describe("buildRunScriptArgs", () => {
       script: "ops:jobs",
       args: ["resume", "--json"],
     });
+    expect(
+      resolveOpsScriptInvocation("jobs", ["retry-all", "--state", "failed", "--json"]),
+    ).toEqual({
+      script: "ops:jobs",
+      args: ["retry-all", "--state", "failed", "--json"],
+    });
+    expect(resolveOpsScriptInvocation("jobs", ["drain", "--json"])).toEqual({
+      script: "ops:jobs",
+      args: ["drain", "--json"],
+    });
     expect(resolveOpsScriptInvocation("migrate", ["plan", "--json"])).toEqual({
       script: "ops:migrate",
       args: ["plan", "--json"],
     });
+    expect(resolveOpsScriptInvocation("migrate", ["rollback-plan", "--json"])).toEqual({
+      script: "ops:migrate",
+      args: ["rollback-plan", "--json"],
+    });
     expect(resolveOpsScriptInvocation("storage", ["status", "--json"])).toEqual({
       script: "ops:storage",
       args: ["--json"],
+    });
+    expect(resolveOpsScriptInvocation("storage", ["verify", "--json"])).toEqual({
+      script: "ops:storage",
+      args: ["verify", "--json"],
+    });
+    expect(resolveOpsScriptInvocation("storage", ["missing-files", "--json"])).toEqual({
+      script: "ops:storage",
+      args: ["missing-files", "--json"],
+    });
+    expect(resolveOpsScriptInvocation("storage", ["orphaned-files", "--json"])).toEqual({
+      script: "ops:storage",
+      args: ["orphaned-files", "--json"],
+    });
+    expect(
+      resolveOpsScriptInvocation("storage", ["migrate", "plan", "--target", "s3", "--json"]),
+    ).toEqual({
+      script: "ops:storage",
+      args: ["migrate", "plan", "--target", "s3", "--json"],
+    });
+    expect(
+      resolveOpsScriptInvocation("storage", [
+        "test",
+        "--execute",
+        "--approve",
+        "storage-test",
+        "--json",
+      ]),
+    ).toEqual({
+      script: "ops:storage",
+      args: ["test", "--execute", "--approve", "storage-test", "--json"],
     });
     expect(resolveOpsScriptInvocation("plugins", ["list", "--json"])).toEqual({
       script: "ops:plugins",
@@ -76,6 +128,14 @@ describe("buildRunScriptArgs", () => {
     expect(resolveOpsScriptInvocation("plugins", ["doctor", "--brief"])).toEqual({
       script: "ops:plugins",
       args: ["doctor", "--brief"],
+    });
+    expect(resolveOpsScriptInvocation("plugins", ["inspect", "reading-time", "--json"])).toEqual({
+      script: "ops:plugins",
+      args: ["inspect", "reading-time", "--json"],
+    });
+    expect(resolveOpsScriptInvocation("plugins", ["upgrade-plan", "--json"])).toEqual({
+      script: "ops:plugins",
+      args: ["upgrade-plan", "--json"],
     });
     expect(resolveOpsScriptInvocation("release", ["check", "--target", "vercel"])).toEqual({
       script: "release",
@@ -101,9 +161,13 @@ describe("buildRunScriptArgs", () => {
     });
     expect(resolveOpsScriptInvocation("jobs", ["queues", "--json"])).toBeNull();
     expect(resolveOpsScriptInvocation("backup", ["delete", "--json"])).toBeNull();
+    expect(resolveOpsScriptInvocation("backup", ["verify", "--json"])).toBeNull();
     expect(resolveOpsScriptInvocation("migrate", ["apply", "--safe"])).toBeNull();
-    expect(resolveOpsScriptInvocation("storage", ["verify", "--json"])).toBeNull();
+    expect(
+      resolveOpsScriptInvocation("storage", ["migrate", "apply", "--target", "s3"]),
+    ).toBeNull();
     expect(resolveOpsScriptInvocation("plugins", ["enable", "demo"])).toBeNull();
+    expect(resolveOpsScriptInvocation("plugins", ["inspect", "--json"])).toBeNull();
     expect(resolveOpsScriptInvocation("runbook", ["--json"])).toBeNull();
     expect(resolveOpsScriptInvocation("wat", [])).toBeNull();
   });

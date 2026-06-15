@@ -10,6 +10,7 @@ export function buildRunScriptArgs(
 export interface OpsScriptInvocation {
   script:
     | "ops:status"
+    | "ops:contracts"
     | "doctor"
     | "ops:preflight"
     | "ops:health"
@@ -30,6 +31,8 @@ export function resolveOpsScriptInvocation(
   switch (subcommand) {
     case "status":
       return { script: "ops:status", args: passthrough };
+    case "contracts":
+      return { script: "ops:contracts", args: passthrough };
     case "doctor":
       return { script: "doctor", args: passthrough };
     case "preflight":
@@ -41,7 +44,12 @@ export function resolveOpsScriptInvocation(
         passthrough[0] !== "create" &&
         passthrough[0] !== "status" &&
         passthrough[0] !== "list" &&
-        !(passthrough[0] === "verify" && passthrough[1] === "latest")
+        !(
+          passthrough[0] === "verify" &&
+          Boolean(passthrough[1]) &&
+          !passthrough[1]?.startsWith("--")
+        ) &&
+        passthrough[0] !== "restore-plan"
       ) {
         return null;
       }
@@ -50,7 +58,9 @@ export function resolveOpsScriptInvocation(
       if (
         passthrough[0] !== "pause" &&
         passthrough[0] !== "resume" &&
-        passthrough[0] !== "status"
+        passthrough[0] !== "status" &&
+        passthrough[0] !== "retry-all" &&
+        passthrough[0] !== "drain"
       ) {
         return null;
       }
@@ -59,13 +69,41 @@ export function resolveOpsScriptInvocation(
         args: passthrough[0] === "status" ? passthrough.slice(1) : passthrough,
       };
     case "migrate":
-      if (passthrough[0] !== "status" && passthrough[0] !== "plan") return null;
+      if (
+        passthrough[0] !== "status" &&
+        passthrough[0] !== "plan" &&
+        passthrough[0] !== "rollback-plan"
+      ) {
+        return null;
+      }
       return { script: "ops:migrate", args: passthrough };
     case "storage":
-      if (passthrough[0] !== "status") return null;
-      return { script: "ops:storage", args: passthrough.slice(1) };
+      if (passthrough[0] === "status") {
+        return { script: "ops:storage", args: passthrough.slice(1) };
+      }
+      if (
+        passthrough[0] === "verify" ||
+        passthrough[0] === "missing-files" ||
+        passthrough[0] === "orphaned-files" ||
+        passthrough[0] === "test" ||
+        (passthrough[0] === "migrate" && passthrough[1] === "plan")
+      ) {
+        return { script: "ops:storage", args: passthrough };
+      }
+      return null;
     case "plugins":
-      if (passthrough[0] !== "list" && passthrough[0] !== "doctor") return null;
+      if (
+        passthrough[0] !== "list" &&
+        passthrough[0] !== "doctor" &&
+        !(
+          passthrough[0] === "inspect" &&
+          Boolean(passthrough[1]) &&
+          !passthrough[1]?.startsWith("--")
+        ) &&
+        passthrough[0] !== "upgrade-plan"
+      ) {
+        return null;
+      }
       return { script: "ops:plugins", args: passthrough };
     case "release":
       if (

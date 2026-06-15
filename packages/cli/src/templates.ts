@@ -64,6 +64,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "scripts/doctor.ts": utf8(doctorScriptTemplate()),
     "scripts/generate-schema.ts": utf8(generateSchemaScriptTemplate()),
     "scripts/ops-backup.ts": utf8(opsBackupScriptTemplate()),
+    "scripts/ops-contracts.ts": utf8(opsContractsScriptTemplate()),
     "scripts/ops-health.ts": utf8(opsHealthScriptTemplate()),
     "scripts/ops-jobs.ts": utf8(opsJobsScriptTemplate()),
     "scripts/ops-migrate.ts": utf8(opsMigrateScriptTemplate()),
@@ -154,6 +155,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         doctor: "tsx scripts/doctor.ts",
         "doctor:prod": "tsx scripts/doctor.ts --prod",
         "ops:backup": "tsx scripts/ops-backup.ts",
+        "ops:contracts": "tsx scripts/ops-contracts.ts",
         "ops:health": "tsx scripts/ops-health.ts",
         "ops:jobs": "tsx scripts/ops-jobs.ts",
         "ops:migrate": "tsx scripts/ops-migrate.ts",
@@ -521,6 +523,10 @@ function opsHealthScriptTemplate(): string {
 
 function opsBackupScriptTemplate(): string {
   return `import "@nexpress/app/scripts/ops-backup";\n`;
+}
+
+function opsContractsScriptTemplate(): string {
+  return `import "@nexpress/app/scripts/ops-contracts";\n`;
 }
 
 function opsJobsScriptTemplate(): string {
@@ -900,6 +906,7 @@ post-deploy probe against the live URL.
 
 \`\`\`bash
 pnpm run ops:status -- --json
+pnpm run ops:contracts -- --json
 pnpm run ops:status -- --brief --no-color
 pnpm run ops:preflight -- --target vercel --json
 pnpm run ops:health -- --url http://localhost:3000 --brief --no-color
@@ -908,6 +915,9 @@ pnpm run ops:health -- --url http://localhost:3000 --brief --no-color
 \`ops:status\` is the low-token handoff for agents and CI. It emits
 \`schemaVersion: "np.ops.v1"\`, \`status\`, \`summary\`, stable
 \`checks[].id\`, and a \`nextCommand\` when the site needs follow-up.
+\`ops:contracts\` emits \`schemaVersion: "np.ops-contracts.v1"\` with the shipped
+local ops commands, artifact behavior, approval requirements, and explicitly
+deferred destructive surfaces.
 \`ops:preflight\` combines \`deploy:plan\`, the production doctor, and
 \`ops:migrate plan\` into a single deployment gate. \`ops:health\` checks
 \`/api/health/ready\` for a running local or hosted site.
