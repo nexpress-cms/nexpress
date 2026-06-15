@@ -12,6 +12,7 @@ import {
   buildReleaseApplyJson,
   buildReleaseJson,
   buildReleasePlanJson,
+  getReleaseApplyCommandSpec,
   renderBriefReleaseApply,
   renderBriefReleasePlan,
   renderBriefReleaseReport,
@@ -144,36 +145,21 @@ function commandText(manager: PackageManager, args: string[]): string {
   return `${manager} ${args.join(" ")}`;
 }
 
-function capture(manager: PackageManager, args: string[]): Promise<CapturedCommand> {
-  return new Promise((resolveFn, reject) => {
-    const child = spawn(manager, args, { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
-      stdout += chunk;
-    });
-    child.stderr.on("data", (chunk: string) => {
-      stderr += chunk;
-    });
-    child.on("error", reject);
-    child.on("exit", (code) => {
-      resolveFn({
-        command: commandText(manager, args),
-        stdout,
-        stderr,
-        exitCode: code ?? 1,
-      });
-    });
-  });
-}
-
-function captureShell(command: string): Promise<CapturedCommand> {
-  return new Promise((resolveFn, reject) => {
-    const child = spawn(command, {
+function captureProcess(
+  executable: string,
+  args: string[],
+  displayCommand: string,
+): Promise<CapturedCommand> {
+  return new Promise((resolveFn) => {
+    let settled = false;
+    const finish = (run: CapturedCommand): void => {
+      if (settled) return;
+      settled = true;
+      resolveFn(run);
+    };
+    const child = spawn(executable, args, {
       cwd: process.cwd(),
-      shell: true,
+      shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
@@ -186,16 +172,27 @@ function captureShell(command: string): Promise<CapturedCommand> {
     child.stderr.on("data", (chunk: string) => {
       stderr += chunk;
     });
-    child.on("error", reject);
+    child.on("error", (error) => {
+      finish({
+        command: displayCommand,
+        stdout,
+        stderr: error.message,
+        exitCode: 127,
+      });
+    });
     child.on("exit", (code) => {
-      resolveFn({
-        command,
+      finish({
+        command: displayCommand,
         stdout,
         stderr,
         exitCode: code ?? 1,
       });
     });
   });
+}
+
+function capture(manager: PackageManager, args: string[]): Promise<CapturedCommand> {
+  return captureProcess(manager, args, commandText(manager, args));
 }
 
 function parseJson(run: CapturedCommand): ReleaseStepReport | null {
@@ -304,14 +301,57 @@ async function writeReleaseApplyArtifact(apply: ReleaseApplyJson, outPath: strin
   await writeFile(outPath, `${JSON.stringify(apply, null, 2)}\n`, "utf8");
 }
 
-function isReleasePlanJson(value: unknown): value is ReleasePlanJson {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<ReleasePlanJson>;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStringOrNull(value: unknown): value is string | null {
+  return typeof value === "string" || value === null;
+}
+
+function isReleaseStatus(value: unknown): value is ReleaseJson["status"] {
+  return value === "ready" || value === "attention" || value === "blocked";
+}
+
+function isReleasePlanSummary(value: unknown): value is ReleasePlanJson["summary"] {
   return (
-    candidate.schemaVersion === "np.release-plan.v1" &&
-    typeof candidate.planId === "string" &&
-    typeof candidate.apply === "object" &&
-    Array.isArray(candidate.commands)
+    isRecord(value) &&
+    typeof value.commands === "number" &&
+    typeof value.remediationCommands === "number" &&
+    typeof value.releaseCommands === "number" &&
+    typeof value.verifyCommands === "number"
+  );
+}
+
+function isReleasePlanApply(value: unknown): value is ReleasePlanJson["apply"] {
+  return (
+    isRecord(value) &&
+    typeof value.allowed === "boolean" &&
+    value.requiresApproval === true &&
+    isStringOrNull(value.blockedReason) &&
+    isStringOrNull(value.nextCommand) &&
+    isStringOrNull(value.projectNextCommand)
+  );
+}
+
+function isReleasePlanAudit(value: unknown): value is ReleasePlanJson["audit"] {
+  return isRecord(value) && isStringOrNull(value.artifactPath);
+}
+
+function isReleasePlanJson(value: unknown): value is ReleasePlanJson {
+  return (
+    isRecord(value) &&
+    value.schemaVersion === "np.release-plan.v1" &&
+    typeof value.ok === "boolean" &&
+    typeof value.planId === "string" &&
+    typeof value.createdAt === "string" &&
+    typeof value.target === "string" &&
+    isReleaseStatus(value.status) &&
+    isReleasePlanSummary(value.summary) &&
+    isReleasePlanApply(value.apply) &&
+    isReleasePlanAudit(value.audit) &&
+    Array.isArray(value.commands) &&
+    isRecord(value.check)
   );
 }
 
@@ -344,7 +384,24 @@ async function executeReleasePlanCommands(
       results.push({ ...command, status: "skipped", exitCode: null });
       continue;
     }
-    const run = await captureShell(command.command);
+    const spec = getReleaseApplyCommandSpec(command.command, plan.target);
+    if (!spec) {
+      results.push({
+        ...command,
+        status: "blocked",
+        exitCode: null,
+        stderr: "release apply command did not match the executable allowlist",
+      });
+      for (const remaining of plan.commands.slice(index + 1)) {
+        results.push({
+          ...remaining,
+          status: remaining.required ? "pending" : "skipped",
+          exitCode: null,
+        });
+      }
+      break;
+    }
+    const run = await captureProcess(spec.executable, spec.args, command.command);
     const status = run.exitCode === 0 ? "success" : "failed";
     results.push({
       ...command,

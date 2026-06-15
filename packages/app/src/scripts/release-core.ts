@@ -92,6 +92,11 @@ export interface ReleaseApplyCommandResult extends ReleasePlanCommand {
   stderr?: string;
 }
 
+export interface ReleaseApplyCommandSpec {
+  executable: string;
+  args: string[];
+}
+
 export interface ReleaseApplySafetyFinding {
   index: number;
   command: string;
@@ -255,18 +260,32 @@ function displayCommandText(command: string): string {
   return normalizeCommand(command).length === 0 ? "<missing>" : command;
 }
 
-function releaseApplyCommandAllowed(command: string, target: string): boolean {
+export function getReleaseApplyCommandSpec(
+  command: string,
+  target: string,
+): ReleaseApplyCommandSpec | null {
   const normalized = normalizeCommand(command);
   const targetAllowed = RELEASE_APPLY_TARGETS.has(target);
-  return (
-    normalized === "pnpm install" ||
-    normalized === "pnpm run setup -- --non-interactive" ||
-    normalized === "pnpm db:migrate -- --status" ||
-    normalized === "pnpm db:migrate" ||
-    normalized === "pnpm run doctor:prod" ||
-    (targetAllowed && normalized === targetDoctorCommand(target)) ||
-    normalized === "nexpress release verify --json"
-  );
+
+  if (normalized === "pnpm install") return { executable: "pnpm", args: ["install"] };
+  if (normalized === "pnpm run setup -- --non-interactive") {
+    return { executable: "pnpm", args: ["run", "setup", "--", "--non-interactive"] };
+  }
+  if (normalized === "pnpm db:migrate -- --status") {
+    return { executable: "pnpm", args: ["db:migrate", "--", "--status"] };
+  }
+  if (normalized === "pnpm db:migrate") return { executable: "pnpm", args: ["db:migrate"] };
+  if (normalized === "pnpm run doctor:prod") {
+    return { executable: "pnpm", args: ["run", "doctor:prod"] };
+  }
+  if (targetAllowed && normalized === targetDoctorCommand(target)) {
+    return { executable: "pnpm", args: ["run", "doctor:prod", "--", "--target", target] };
+  }
+  if (normalized === "nexpress release verify --json") {
+    return { executable: "nexpress", args: ["release", "verify", "--json"] };
+  }
+
+  return null;
 }
 
 function releasePlanRegenerateCommand(target: string): string {
@@ -310,7 +329,7 @@ export function validateReleaseApplySafety(plan: ReleasePlanJson): ReleaseApplyS
     if (requiresApproval !== commandRequiresApproval(commandText)) {
       reasons.push("requiresApproval does not match the command risk classification");
     }
-    if (!releaseApplyCommandAllowed(commandText, plan.target)) {
+    if (!getReleaseApplyCommandSpec(commandText, plan.target)) {
       reasons.push("command is not in the NexPress release apply allowlist");
     }
 

@@ -382,9 +382,10 @@ Implementation status:
   `execution.projectNextCommand` so the next safe command is explicit. Before
   dry-run or execution, the plan commands must pass the release-apply
   allowlist; tampered commands, unsupported targets, malformed command entries,
-  or mismatched project command metadata block even with approval. When an apply
-  is blocked before execution, every plan command is marked `blocked` instead
-  of `pending`.
+  or mismatched project command metadata block even with approval. Approved
+  execution uses structured argv specs rather than a shell. When an apply is
+  blocked before execution, every plan command is marked `blocked` instead of
+  `pending`.
 - `nexpress release verify --url <origin> --json` emits the same
   `np.release.v1` envelope by composing health, jobs, storage, and plugin
   diagnostics into a post-release readiness gate.
@@ -738,7 +739,7 @@ Implementation status:
 - `nexpress release apply --plan <artifact> --json` now validates that artifact
   and persists `np.release-apply.v1`; it only runs plan commands when both
   `--execute` and `--approve <planId>` are present and every command passes the
-  release-apply allowlist.
+  release-apply allowlist, then executes the matched argv spec without a shell.
 - `nexpress release verify --url <origin> --json` now composes
   `ops:health`, `ops:jobs`, `ops:storage`, and `ops:plugins doctor` as
   `np.release.v1`.
@@ -761,6 +762,8 @@ Implementation status:
 - `release apply` blocks tampered artifacts before execution when commands,
   targets, command metadata, or project command translations do not match the
   generated release plan contract.
+- `release apply` executes approved commands through structured argv specs
+  instead of shell command strings.
 - Ops/runbook/release artifacts preserve project-local next commands so a
   generated app can execute the same remediation sequence without translating
   `nexpress ...` global CLI calls by hand.

@@ -991,9 +991,10 @@ pnpm run ops:runbook -- migration-crashed --json --out .nexpress/runbooks/migrat
 that gate as a replayable audit artifact under \`.nexpress/releases\`.
 \`release apply\` validates the artifact and only executes commands with
 \`--execute --approve <planId>\` after every command passes the NexPress
-release-apply allowlist. \`release verify\` composes the post-deploy readiness
-gate. \`runbook --out <path>\` writes a clean JSON artifact for common
-incidents with evidence-backed diagnosis and next commands.
+release-apply allowlist; execution uses structured argv specs rather than a
+shell. \`release verify\` composes the post-deploy readiness gate. \`runbook
+--out <path>\` writes a clean JSON artifact for common incidents with
+evidence-backed diagnosis and next commands.
 
 Release plans include global \`command\` values plus local \`projectCommand\`
 values. Release apply artifacts include \`execution.nextCommand\` plus

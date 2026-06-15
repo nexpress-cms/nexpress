@@ -4,6 +4,7 @@ import {
   buildReleaseApplyJson,
   buildReleaseJson,
   buildReleasePlanJson,
+  getReleaseApplyCommandSpec,
   renderBriefReleaseApply,
   renderBriefReleasePlan,
   renderBriefReleaseReport,
@@ -513,6 +514,27 @@ describe("release core", () => {
     expect(apply.ok).toBe(true);
     expect(apply.safety).toEqual({ allowed: true, blockedReason: null, findings: [] });
     expect(apply.summary.pending).toBe(6);
+  });
+
+  it("parses release apply commands into structured executable specs", () => {
+    expect(getReleaseApplyCommandSpec("pnpm install", "docker")).toEqual({
+      executable: "pnpm",
+      args: ["install"],
+    });
+    expect(getReleaseApplyCommandSpec("pnpm run doctor:prod -- --target vercel", "vercel")).toEqual(
+      {
+        executable: "pnpm",
+        args: ["run", "doctor:prod", "--", "--target", "vercel"],
+      },
+    );
+    expect(getReleaseApplyCommandSpec("nexpress release verify --json", "docker")).toEqual({
+      executable: "nexpress",
+      args: ["release", "verify", "--json"],
+    });
+    expect(getReleaseApplyCommandSpec("pnpm install && touch /tmp/pwned", "docker")).toBeNull();
+    expect(
+      getReleaseApplyCommandSpec("pnpm run doctor:prod -- --target docker", "vercel"),
+    ).toBeNull();
   });
 
   it("blocks tampered release apply commands before approval or execution", () => {
