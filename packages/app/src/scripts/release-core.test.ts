@@ -263,6 +263,54 @@ describe("release core", () => {
     expect(plan.summary.remediationCommands).toBe(2);
   });
 
+  it("promotes blocked backup handoff commands into release plans", () => {
+    const check = buildReleaseJson({
+      mode: "check",
+      target: "vercel",
+      steps: [
+        readyStep,
+        {
+          id: "ops.backup",
+          command: "pnpm run ops:backup -- status --required --json",
+          ok: false,
+          exitCode: 1,
+          status: "blocked",
+          nextCommand: "nexpress ops backup create --database artifacts/db.dump --verified --json",
+          report: {
+            schemaVersion: "np.ops-backup.v1",
+            ok: false,
+            status: "blocked",
+            plan: {
+              nextCommands: [
+                "nexpress ops backup create --database artifacts/db.dump --verified --json",
+                "nexpress ops backup verify latest --json",
+              ],
+            },
+          },
+        },
+      ],
+    });
+    const plan = buildReleasePlanJson({
+      planId: "release-backup-remediation",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      target: "vercel",
+      artifactPath: ".nexpress/releases/release-backup-remediation.json",
+      check,
+    });
+
+    expect(plan.commands.map((command) => command.command)).toEqual([
+      "nexpress ops backup create --database artifacts/db.dump --verified --json",
+      "nexpress ops backup verify latest --json",
+      "nexpress release verify --json",
+    ]);
+    expect(plan.commands.map((command) => command.projectCommand)).toEqual([
+      "pnpm run ops:backup -- create --database artifacts/db.dump --verified --json",
+      "pnpm run ops:backup -- verify latest --json",
+      "pnpm run ops:release -- verify --json",
+    ]);
+    expect(plan.summary.remediationCommands).toBe(2);
+  });
+
   it("does not add nested next commands from ready steps as remediation", () => {
     const check = buildReleaseJson({
       mode: "check",

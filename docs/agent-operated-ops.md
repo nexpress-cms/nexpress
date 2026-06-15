@@ -410,10 +410,13 @@ Implementation status:
   steps, and approval flags.
 - `nexpress ops backup create|status|list|verify latest --json` emits
   `schemaVersion: "np.ops-backup.v1"` with backup manifest freshness,
-  manifest creation, verification state, and latest artifact checks.
+  manifest creation, verification state, latest artifact checks,
+  record/verify/restore handoff actions, and `plan.nextCommands` for release
+  remediation.
 - `nexpress ops backup restore-plan [latest|manifestId] --json` emits
   `schemaVersion: "np.ops-backup-restore-plan.v1"` with a read-only isolated
-  restore drill plan, ordered restore / verify steps, and approval flags.
+  restore drill plan, ordered restore / verify steps, approval flags, and
+  `plan.nextCommands` / `projectNextCommands`.
 - `nexpress ops jobs pause|resume --json` persists the same global
   `jobs.paused` state used by workers and returns `np.ops-jobs.v1` with a
   mutation audit block.
@@ -471,6 +474,11 @@ Scope:
 ### Phase D — backup and restore
 
 Make disaster recovery runnable instead of only documented.
+
+Current status: backup reports now bridge release and migration gates to the
+operator-owned backup process. They expose record / verify / restore actions,
+project-local commands, artifact verification, and restore drill plans without
+performing destructive restores automatically.
 
 Scope:
 

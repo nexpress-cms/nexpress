@@ -926,8 +926,10 @@ pnpm run ops:backup -- restore-plan latest --json
 \`ops:migrate\` reports local/applied migration state, destructive SQL risk,
 backup/apply/verify handoff actions, and backup-restore rollback plans.
 \`ops:backup\` reports manifest freshness, records operator-provided backup
-manifests, verifies artifact presence, and produces read-only restore drill
-plans for isolated targets.
+manifests, verifies artifact presence, exposes record/verify/restore handoff
+actions, and produces read-only restore drill plans for isolated targets.
+Backup and restore reports also include \`plan.nextCommands\` so release plans
+and agent handoffs preserve the exact follow-up sequence.
 
 ## Jobs
 
