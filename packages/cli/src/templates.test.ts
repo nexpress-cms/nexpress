@@ -471,8 +471,10 @@ describe("getProjectFiles", () => {
     );
     expect(ops).toContain("pnpm run ops:status -- --json");
     expect(ops).toContain("pnpm run ops:preflight -- --target vercel --json");
+    expect(ops).toContain("`ops:preflight` combines `deploy:plan`, the production doctor, and");
     expect(ops).toContain("pnpm run ops:health -- --url http://localhost:3000 --brief --no-color");
     expect(ops).toContain("pnpm run ops:migrate -- plan --json");
+    expect(ops).toContain("backup/apply/verify handoff actions");
     expect(ops).toContain("pnpm run ops:backup -- status --json");
     expect(ops).toContain("pnpm run ops:backup -- create --json");
     expect(ops).toContain("pnpm run ops:backup -- verify latest --json");

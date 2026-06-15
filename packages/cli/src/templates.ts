@@ -891,9 +891,10 @@ pnpm run ops:release -- verify --url https://your-domain.example --json
 \`\`\`
 
 \`deploy:plan\` explains host env, storage, runtime, and import/deploy steps.
-\`ops:preflight\` is the blocking pre-deploy gate. \`ops:release check\`
-captures the same evidence for CI or agent handoff. \`ops:release verify\`
-is the first post-deploy probe against the live URL.
+\`ops:preflight\` is the blocking pre-deploy gate for deploy-plan, production
+doctor, and migration-plan evidence. \`ops:release check\` captures the same
+evidence for CI or agent handoff. \`ops:release verify\` is the first
+post-deploy probe against the live URL.
 
 ## Runtime Status
 
@@ -907,9 +908,9 @@ pnpm run ops:health -- --url http://localhost:3000 --brief --no-color
 \`ops:status\` is the low-token handoff for agents and CI. It emits
 \`schemaVersion: "np.ops.v1"\`, \`status\`, \`summary\`, stable
 \`checks[].id\`, and a \`nextCommand\` when the site needs follow-up.
-\`ops:preflight\` combines \`deploy:plan\` and the production doctor into a
-single deployment gate. \`ops:health\` checks \`/api/health/ready\` for a
-running local or hosted site.
+\`ops:preflight\` combines \`deploy:plan\`, the production doctor, and
+\`ops:migrate plan\` into a single deployment gate. \`ops:health\` checks
+\`/api/health/ready\` for a running local or hosted site.
 
 ## Migrations And Backups
 
@@ -923,9 +924,10 @@ pnpm run ops:backup -- restore-plan latest --json
 \`\`\`
 
 \`ops:migrate\` reports local/applied migration state, destructive SQL risk,
-and backup-restore rollback plans. \`ops:backup\` reports manifest freshness,
-records operator-provided backup manifests, verifies artifact presence, and
-produces read-only restore drill plans for isolated targets.
+backup/apply/verify handoff actions, and backup-restore rollback plans.
+\`ops:backup\` reports manifest freshness, records operator-provided backup
+manifests, verifies artifact presence, and produces read-only restore drill
+plans for isolated targets.
 
 ## Jobs
 
