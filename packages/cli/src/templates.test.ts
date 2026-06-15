@@ -502,6 +502,7 @@ describe("getProjectFiles", () => {
       "pnpm run ops:release -- apply --plan .nexpress/releases/<plan>.json --json",
     );
     expect(ops).toContain("release-apply allowlist");
+    expect(ops).toContain("structured argv specs");
     expect(ops).toContain("pnpm run ops:release -- verify --url http://localhost:3000 --json");
     expect(ops).toContain("pnpm run ops:runbook -- worker-not-draining --json");
     expect(ops).toContain(
