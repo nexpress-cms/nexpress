@@ -104,7 +104,13 @@ function commandText(manager: PackageManager, args: string[]): string {
 }
 
 function capture(manager: PackageManager, args: string[]): Promise<CapturedCommand> {
-  return new Promise((resolveFn, reject) => {
+  return new Promise((resolveFn) => {
+    let settled = false;
+    const finish = (run: CapturedCommand): void => {
+      if (settled) return;
+      settled = true;
+      resolveFn(run);
+    };
     const child = spawn(manager, args, { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
@@ -116,9 +122,16 @@ function capture(manager: PackageManager, args: string[]): Promise<CapturedComma
     child.stderr.on("data", (chunk: string) => {
       stderr += chunk;
     });
-    child.on("error", reject);
+    child.on("error", (error) => {
+      finish({
+        command: commandText(manager, args),
+        stdout,
+        stderr: error.message,
+        exitCode: 127,
+      });
+    });
     child.on("exit", (code) => {
-      resolveFn({
+      finish({
         command: commandText(manager, args),
         stdout,
         stderr,
@@ -144,24 +157,46 @@ function readStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string" && item.length > 0);
 }
 
+function cleanErrorText(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => !line.startsWith("$ "))
+    .join("\n")
+    .trim();
+}
+
+function evidenceError(run: CapturedCommand, report: OpsReport | null): string | null {
+  if (report && run.exitCode === 0) return null;
+  const stderr = cleanErrorText(run.stderr);
+  if (stderr.length > 0) return stderr;
+  if (!report) return cleanErrorText(run.stdout || "command did not return JSON");
+  return `command exited with status ${run.exitCode}`;
+}
+
 function evidenceFromRun(id: string, run: CapturedCommand): RunbookEvidence {
   const report = parseJson(run);
   const nextCommands = readStringArray(report?.plan?.nextCommands);
+  const commandOk = run.exitCode === 0;
+  const ok = (report?.ok ?? commandOk) && commandOk;
+  const status =
+    commandOk && typeof report?.status === "string"
+      ? report.status
+      : commandOk
+        ? "ready"
+        : "blocked";
+  const error = evidenceError(run, report);
   return {
     id,
     command: run.command,
+    exitCode: run.exitCode,
     ...(typeof report?.schemaVersion === "string" ? { schemaVersion: report.schemaVersion } : {}),
-    ok: report?.ok ?? run.exitCode === 0,
-    status:
-      typeof report?.status === "string" ? report.status : run.exitCode === 0 ? "ready" : "blocked",
+    ok,
+    status,
     ...(report?.summary ? { summary: report.summary } : {}),
     nextCommand: typeof report?.nextCommand === "string" ? report.nextCommand : null,
     ...(nextCommands.length > 0 ? { nextCommands } : {}),
-    ...(report
-      ? {}
-      : {
-          error: (run.stderr || run.stdout || "command did not return JSON").trim(),
-        }),
+    ...(error ? { error } : {}),
   };
 }
 
