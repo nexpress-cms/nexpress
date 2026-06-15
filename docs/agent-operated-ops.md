@@ -341,6 +341,10 @@ Implementation status:
   project-side doctor while preserving its stable `np.doctor.v1` output.
 - `nexpress ops preflight --target <host> --json` combines deploy-plan and
   production doctor evidence into `schemaVersion: "np.ops-preflight.v1"`.
+- `pnpm run deploy:plan -- --target <host> --json` emits
+  `schemaVersion: "np.deploy-plan.v1"` with a `bridge` section that orders the
+  local setup -> host env -> migration -> preflight -> release check -> deploy
+  -> post-deploy verify handoff.
 - `nexpress ops health --url <origin> --json` probes `/api/health/ready`
   and emits `schemaVersion: "np.ops-health.v1"` for a running site.
 - `nexpress ops jobs status --json` emits

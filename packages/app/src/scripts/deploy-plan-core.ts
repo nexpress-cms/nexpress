@@ -4,6 +4,7 @@ export interface TargetPlan {
   target: DeployTarget;
   title: string;
   fit: string[];
+  bridge: DeployPlanBridge;
   requiredEnv: string[];
   recommendedEnv: string[];
   storage: string[];
@@ -34,6 +35,29 @@ export interface DeployPlanSummary {
   recommendedEnv: DeployPlanEnvSummary;
 }
 
+export type DeployPlanBridgeStepId =
+  | "plan"
+  | "configure-env"
+  | "migrate"
+  | "preflight"
+  | "release-check"
+  | "deploy"
+  | "verify";
+
+export interface DeployPlanBridgeStep {
+  id: DeployPlanBridgeStepId;
+  label: string;
+  description: string;
+  command?: string;
+}
+
+export interface DeployPlanBridge {
+  title: string;
+  summary: string;
+  importUrl?: string;
+  steps: DeployPlanBridgeStep[];
+}
+
 export interface DeployPlanJson {
   schemaVersion: "np.deploy-plan.v1";
   target: DeployTarget;
@@ -42,6 +66,7 @@ export interface DeployPlanJson {
   dryRun: boolean;
   summary: DeployPlanSummary;
   fit: string[];
+  bridge: DeployPlanBridge;
   requiredEnv: EnvRequirementCheck[];
   recommendedEnv: EnvRequirementCheck[];
   storage: string[];
@@ -77,6 +102,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
   const commonRequired = ["DATABASE_URL", "NP_SECRET", "SITE_URL"];
   const commonRecommended = ["NP_ENABLE_JOBS=1", "NP_SCHEDULER_TOKEN"];
   const doctorCommand = `pnpm run doctor:prod -- --target ${target}`;
+  const bridge = buildDeployBridge(target);
   const commonCommands = [
     "pnpm install",
     "pnpm run setup -- --non-interactive",
@@ -97,6 +123,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
           "Fastest hosted app path for a scaffolded Next.js site.",
           "Best when media is stored in S3/R2 and scheduled publishing uses vercel.json cron.",
         ],
+        bridge,
         requiredEnv: [...commonRequired, "NP_STORAGE_ADAPTER=s3", "NP_S3_BUCKET", "NP_S3_REGION"],
         recommendedEnv: commonRecommended,
         storage: [
@@ -122,6 +149,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
           "Good Docker deploy path with managed Postgres.",
           "Best when web and worker run as separate services from the same image.",
         ],
+        bridge,
         requiredEnv: commonRequired,
         recommendedEnv: [...commonRecommended, "NP_STORAGE_ADAPTER=s3"],
         storage: [
@@ -145,6 +173,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
           "Good Docker deploy path with managed Postgres.",
           "Best when a background worker service is allowed to run beside the web service.",
         ],
+        bridge,
         requiredEnv: commonRequired,
         recommendedEnv: [...commonRecommended, "NP_STORAGE_ADAPTER=s3"],
         storage: [
@@ -168,6 +197,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
           "Good Docker self-hosting path when you want control over machines and regions.",
           "Works with local storage only for a single-machine deployment with attached volume.",
         ],
+        bridge,
         requiredEnv: commonRequired,
         recommendedEnv: commonRecommended,
         storage: [
@@ -191,6 +221,7 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
           "Best when you own the host, reverse proxy, Postgres, and storage policy.",
           "The simplest single-node path can use local media storage.",
         ],
+        bridge,
         requiredEnv: commonRequired,
         recommendedEnv: commonRecommended,
         storage: [
@@ -206,6 +237,65 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
         diagnostics: commonDiagnostics,
       };
   }
+}
+
+function buildDeployBridge(target: DeployTarget): DeployPlanBridge {
+  const title = deployTargetTitle(target);
+  const importUrl =
+    target === "vercel" ? "https://vercel.com/new?utm_source=nexpress&utm_campaign=oss" : undefined;
+
+  return {
+    title: `${title} deploy bridge`,
+    summary:
+      "One ordered handoff from local setup to host env, preflight, release check, deploy, and post-deploy verify.",
+    ...(importUrl ? { importUrl } : {}),
+    steps: [
+      {
+        id: "plan",
+        label: "Plan the target",
+        description: "Print the host-specific env, storage, runtime, and command checklist.",
+        command: `pnpm run deploy:plan -- --target ${target} --brief --no-color`,
+      },
+      {
+        id: "configure-env",
+        label: "Configure hosted env",
+        description:
+          "Set the required env vars in the host before the first production build starts.",
+      },
+      {
+        id: "migrate",
+        label: "Apply migrations",
+        description: "Apply database migrations against the same DATABASE_URL the host will use.",
+        command: "pnpm db:migrate",
+      },
+      {
+        id: "preflight",
+        label: "Run preflight",
+        description: "Compose deploy plan and production doctor into the blocking pre-deploy gate.",
+        command: `pnpm run ops:preflight -- --target ${target} --brief --no-color`,
+      },
+      {
+        id: "release-check",
+        label: "Capture release evidence",
+        description:
+          "Write or inspect the release gate before promoting the deploy. Use JSON for CI and agents.",
+        command: `pnpm run ops:release -- check --target ${target} --json`,
+      },
+      {
+        id: "deploy",
+        label: "Deploy",
+        description: "Push/import the app, then promote only after the previous gates are ready.",
+        ...(importUrl ? { command: importUrl } : {}),
+      },
+      {
+        id: "verify",
+        label: "Verify production",
+        description:
+          "Probe the live site after deploy with health, jobs, storage, and plugin checks.",
+        command: "pnpm run ops:release -- verify --url https://your-domain.example --json",
+      },
+    ],
+  };
 }
 
 export function checkEnvRequirement(
@@ -309,6 +399,7 @@ export function buildDeployPlanJson(
       recommendedEnv: summarizeEnvRequirements(recommendedEnv),
     },
     fit: plan.fit,
+    bridge: plan.bridge,
     requiredEnv,
     recommendedEnv,
     storage: plan.storage,
@@ -376,6 +467,7 @@ export function renderDeployPlan(
   pushSection(lines, "Storage", plan.storage, options);
   pushSection(lines, "Runtime", plan.runtime, options);
   pushSection(lines, "Run before deploy", plan.commands, options);
+  pushSection(lines, "Deploy bridge", renderBridgeItems(plan.bridge), options);
   if (diagnostics.length > 0) pushSection(lines, "Diagnostics", diagnostics, options);
 
   lines.push(
@@ -404,9 +496,22 @@ export function renderBriefDeployPlan(
   for (const check of unresolved) lines.push(`  - ${formatEnvRequirement(check, options.color)}`);
   lines.push("", "Run before deploy:");
   for (const command of plan.commands) lines.push(`  - ${command}`);
+  lines.push("", "Deploy bridge:");
+  for (const step of plan.bridge.steps) {
+    lines.push(`  - ${step.label}: ${step.command ?? step.description}`);
+  }
   if (diagnostics.length > 0) {
     lines.push("", "If blocked:");
     for (const diagnostic of diagnostics) lines.push(`  - ${diagnostic}`);
   }
   return lines.join("\n");
+}
+
+function renderBridgeItems(bridge: DeployPlanBridge): string[] {
+  const items = bridge.steps.map((step) => {
+    const command = step.command ? ` Command: ${step.command}` : "";
+    return `${step.label}: ${step.description}${command}`;
+  });
+  if (bridge.importUrl) items.push(`Import URL: ${bridge.importUrl}`);
+  return items;
 }
