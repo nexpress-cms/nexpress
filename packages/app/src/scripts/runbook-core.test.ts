@@ -115,6 +115,17 @@ describe("runbook core", () => {
     expect(renderBriefRunbook(report, { color: false })).toContain("- [ok] ops.jobs ready");
   });
 
+  it("renders failed evidence exit codes in compact human output", () => {
+    const report = buildRunbookJson({
+      runbook: "worker-not-draining",
+      evidence: [{ ...readyEvidence, ok: false, status: "blocked", exitCode: 3 }],
+    });
+
+    expect(renderBriefRunbook(report, { color: false })).toContain(
+      "- [blocked] ops.jobs blocked exit=3",
+    );
+  });
+
   it("renders runbook artifact paths in brief output", () => {
     const report = buildRunbookJson({
       runbook: "worker-not-draining",

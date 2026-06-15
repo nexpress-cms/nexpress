@@ -9,6 +9,7 @@ export type RunbookId =
 export interface RunbookEvidence {
   id: string;
   command: string;
+  exitCode?: number;
   schemaVersion?: string;
   ok: boolean;
   status: string;
@@ -258,7 +259,9 @@ export function renderBriefRunbook(
     "evidence:",
   ];
   for (const item of report.evidence) {
-    lines.push(`  - ${item.ok ? "[ok]" : "[blocked]"} ${item.id} ${item.status}`);
+    const exit =
+      typeof item.exitCode === "number" && item.exitCode !== 0 ? ` exit=${item.exitCode}` : "";
+    lines.push(`  - ${item.ok ? "[ok]" : "[blocked]"} ${item.id} ${item.status}${exit}`);
   }
   if (report.audit.artifactPath) lines.push(`artifact: ${report.audit.artifactPath}`);
   if (report.nextCommands.length > 0) {

@@ -806,6 +806,9 @@ Implementation status:
   evidence into `np.runbook.v1`.
 - `nexpress ops runbook <name> --json` delegates to the same project-side
   script for agents staying inside the ops namespace.
+- Runbook evidence records command exit codes and treats non-zero exits as
+  blocked even if the command wrote a partial JSON report, so crash-after-report
+  failures remain visible in the artifact.
 - Runbooks are intentionally read-only in this pass. Automated pause/resume,
   retry, restore, migration apply, or local-to-S3 mutation remains future
   approval-gated work.
