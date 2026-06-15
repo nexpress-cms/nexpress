@@ -47,6 +47,24 @@ export interface OpsBackupSummary {
   latestId: string | null;
   latestCreatedAt: string | null;
   stale: boolean;
+  backupRequired: boolean;
+  verificationRequired: boolean;
+  restoreDrillRecommended: boolean;
+}
+
+export interface OpsBackupAction {
+  id:
+    | "backup.record_manifest"
+    | "backup.verify_artifacts"
+    | "backup.record_verified_manifest"
+    | "backup.restore_plan";
+  phase: "record" | "verify" | "drill";
+  command: string;
+  projectCommand: string;
+  required: boolean;
+  requiresApproval: boolean;
+  blockedBy: string[];
+  note: string;
 }
 
 export interface OpsBackupJson {
@@ -60,8 +78,13 @@ export interface OpsBackupJson {
   summary: OpsBackupSummary;
   nextCommand: string | null;
   projectNextCommand: string | null;
+  plan: {
+    nextCommands: string[];
+    projectNextCommands: string[];
+  };
   createdManifest?: BackupManifestSummary | null;
   manifests: BackupManifestSummary[];
+  actions: OpsBackupAction[];
   checks: CheckResult[];
 }
 
@@ -93,6 +116,10 @@ export interface OpsBackupRestorePlanJson {
   };
   nextCommand: string | null;
   projectNextCommand: string | null;
+  plan: {
+    nextCommands: string[];
+    projectNextCommands: string[];
+  };
   manifest: BackupManifestSummary | null;
   checks: CheckResult[];
   steps: OpsBackupRestorePlanStep[];
@@ -199,6 +226,12 @@ function resolveBackupArtifactPath(backupDir: string, path: string): string | nu
   return resolved;
 }
 
+function withProjectCommand<T extends { command: string }>(
+  action: T,
+): T & { projectCommand: string } {
+  return { ...action, projectCommand: toProjectCommand(action.command) };
+}
+
 function newestFirst(a: BackupManifestSummary, b: BackupManifestSummary): number {
   return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 }
@@ -213,17 +246,110 @@ function isStale(latest: BackupManifestSummary | undefined, maxAgeHours: number)
   return ageMs > maxAgeHours * 60 * 60 * 1000;
 }
 
+function recordManifestCommand(latest: BackupManifestSummary | undefined): string {
+  const database = latest?.databasePath ?? "artifacts/db.dump";
+  const media = latest?.mediaPath ? ` --media ${latest.mediaPath}` : "";
+  return `nexpress ops backup create --database ${database}${media} --verified --json`;
+}
+
+function verifyManifestCommand(manifest: BackupManifestSummary | undefined): string {
+  return `nexpress ops backup verify ${manifest?.id ?? "latest"} --json`;
+}
+
+function buildOpsBackupActions(args: {
+  required: boolean;
+  latest: BackupManifestSummary | undefined;
+  actionManifest: BackupManifestSummary | undefined;
+  stale: boolean;
+  checks: CheckResult[];
+}): OpsBackupAction[] {
+  const actions: OpsBackupAction[] = [];
+  const needsBackup = !args.latest || args.stale;
+  const needsVerification = Boolean(args.latest && !args.latest.verified);
+  const verificationFailed = args.checks.some(
+    (check) =>
+      check.state === "error" &&
+      (check.id === "backup.artifacts" || check.id === "backup.verify.selection"),
+  );
+  const recordCommand = recordManifestCommand(args.actionManifest);
+  const verifyCommand = verifyManifestCommand(args.actionManifest);
+
+  if (needsBackup) {
+    actions.push(
+      withProjectCommand({
+        id: "backup.record_manifest",
+        phase: "record",
+        command: recordCommand,
+        required: args.required,
+        requiresApproval: false,
+        blockedBy: [],
+        note: "Capture a provider or pg_dump backup first, place artifacts under NP_BACKUP_DIR, then record the manifest.",
+      }),
+    );
+  }
+
+  if (needsBackup || needsVerification || verificationFailed) {
+    actions.push(
+      withProjectCommand({
+        id: "backup.verify_artifacts",
+        phase: "verify",
+        command: verifyCommand,
+        required: args.required || verificationFailed,
+        requiresApproval: false,
+        blockedBy: needsBackup ? ["backup.record_manifest"] : [],
+        note: "Verify declared database and media artifacts exist before release promotion.",
+      }),
+    );
+  }
+
+  if (needsVerification) {
+    actions.push(
+      withProjectCommand({
+        id: "backup.record_verified_manifest",
+        phase: "record",
+        command: recordCommand,
+        required: args.required,
+        requiresApproval: false,
+        blockedBy: ["backup.verify_artifacts"],
+        note: "After artifact verification passes, record a verified manifest for release gates.",
+      }),
+    );
+  }
+
+  if (args.latest && args.latest.verified && !args.latest.restoreVerified) {
+    actions.push(
+      withProjectCommand({
+        id: "backup.restore_plan",
+        phase: "drill",
+        command: `nexpress ops backup restore-plan ${args.latest.id} --json`,
+        required: false,
+        requiresApproval: false,
+        blockedBy: [],
+        note: "Prepare an isolated restore drill so the backup is proven before an incident.",
+      }),
+    );
+  }
+
+  return actions;
+}
+
+function requiredActionCommands(actions: OpsBackupAction[]): string[] {
+  return [...new Set(actions.filter((action) => action.required).map((action) => action.command))];
+}
+
 export function buildOpsBackupJson(args: {
   mode: OpsBackupMode;
   backupDir: string;
   required: boolean;
   maxAgeHours: number;
   manifests: BackupManifestSummary[];
+  selectedManifest?: BackupManifestSummary | null;
   createdManifest?: BackupManifestSummary | null;
   checks?: CheckResult[];
 }): OpsBackupJson {
   const manifests = [...args.manifests].sort(newestFirst);
   const latest = manifests[0];
+  const actionManifest = args.selectedManifest ?? latest;
   const stale = isStale(latest, args.maxAgeHours);
   const checks = [...(args.checks ?? [])];
 
@@ -287,12 +413,18 @@ export function buildOpsBackupJson(args: {
 
   const counts = countChecks(checks);
   const status = counts.errors > 0 ? "blocked" : counts.warnings > 0 ? "attention" : "ready";
-  const nextCommand =
-    status === "ready"
-      ? null
-      : args.mode === "verify"
-        ? "nexpress ops backup verify latest --json"
-        : "nexpress ops backup status --required --json";
+  const backupRequired = args.required && (!latest || stale);
+  const verificationRequired = args.required && Boolean(latest && !latest.verified);
+  const restoreDrillRecommended = Boolean(latest && latest.verified && !latest.restoreVerified);
+  const actions = buildOpsBackupActions({
+    required: args.required,
+    latest,
+    actionManifest,
+    stale,
+    checks,
+  });
+  const nextCommands = requiredActionCommands(actions);
+  const nextCommand = status === "ready" ? null : (actions[0]?.command ?? null);
   return {
     schemaVersion: "np.ops-backup.v1",
     ok: counts.errors === 0,
@@ -308,11 +440,19 @@ export function buildOpsBackupJson(args: {
       latestId: latest?.id ?? null,
       latestCreatedAt: latest?.createdAt ?? null,
       stale,
+      backupRequired,
+      verificationRequired,
+      restoreDrillRecommended,
     },
     nextCommand,
     projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
+    plan: {
+      nextCommands,
+      projectNextCommands: nextCommands.map(toProjectCommand),
+    },
     createdManifest: args.createdManifest ?? null,
     manifests,
+    actions,
     checks,
   };
 }
@@ -417,6 +557,7 @@ export async function collectOpsBackupReport(args: {
     required,
     maxAgeHours,
     manifests: summaries,
+    selectedManifest: args.mode === "verify" ? selectedSummary : null,
     checks,
   });
 }
@@ -686,6 +827,7 @@ export async function collectOpsBackupRestorePlan(args: {
     status === "blocked"
       ? "nexpress ops backup status --required --json"
       : (firstApproval?.command ?? null);
+  const nextCommands = steps.filter((step) => step.required).map((step) => step.command);
 
   return {
     schemaVersion: "np.ops-backup-restore-plan.v1",
@@ -705,6 +847,10 @@ export async function collectOpsBackupRestorePlan(args: {
     },
     nextCommand,
     projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
+    plan: {
+      nextCommands,
+      projectNextCommands: nextCommands.map(toProjectCommand),
+    },
     manifest: summary,
     checks,
     steps,
@@ -716,6 +862,18 @@ function backupArtifactManifestPath(backupDir: string, input: string): string {
   const rel = relative(backupDir, resolved);
   if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
     throw new Error(`Backup artifact must be inside ${backupDir}: ${input}`);
+  }
+  return rel;
+}
+
+async function checkedBackupArtifactManifestPath(
+  backupDir: string,
+  input: string,
+): Promise<string> {
+  const rel = backupArtifactManifestPath(backupDir, input);
+  const artifactPath = resolve(backupDir, rel);
+  if (!(await pathExists(artifactPath))) {
+    throw new Error(`Backup artifact does not exist inside ${backupDir}: ${rel}`);
   }
   return rel;
 }
@@ -742,10 +900,14 @@ export async function createOpsBackupManifest(args: {
     id,
     createdAt,
     ...(args.databasePath
-      ? { database: { path: backupArtifactManifestPath(backupDir, args.databasePath) } }
+      ? {
+          database: {
+            path: await checkedBackupArtifactManifestPath(backupDir, args.databasePath),
+          },
+        }
       : {}),
     ...(args.mediaPath
-      ? { media: { path: backupArtifactManifestPath(backupDir, args.mediaPath) } }
+      ? { media: { path: await checkedBackupArtifactManifestPath(backupDir, args.mediaPath) } }
       : {}),
     ...(verified || args.restoreVerified
       ? {
@@ -801,6 +963,13 @@ export function renderBriefOpsBackupReport(
       lines.push(
         `  - ${manifest.id} ${manifest.createdAt} verified=${String(manifest.verified)} restore=${String(manifest.restoreVerified)}`,
       );
+    }
+  }
+  if (report.actions.length > 0) {
+    lines.push("actions:");
+    for (const action of report.actions) {
+      const required = action.required ? " required" : "";
+      lines.push(`  - [${action.phase}${required}] ${action.command}`);
     }
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);

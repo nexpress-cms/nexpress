@@ -28,9 +28,17 @@ describe("ops backup core", () => {
         schemaVersion: "np.ops-backup.v1",
         ok: true,
         status: "attention",
-        summary: expect.objectContaining({ manifests: 0, stale: true }),
+        summary: expect.objectContaining({
+          manifests: 0,
+          stale: true,
+          backupRequired: false,
+        }),
       }),
     );
+    expect(report.nextCommand).toBe(
+      "nexpress ops backup create --database artifacts/db.dump --verified --json",
+    );
+    expect(report.plan.nextCommands).toEqual([]);
   });
 
   it("blocks release-required backup checks when no manifest exists", () => {
@@ -44,6 +52,34 @@ describe("ops backup core", () => {
 
     expect(report.ok).toBe(false);
     expect(report.status).toBe("blocked");
+    expect(report.summary).toEqual(
+      expect.objectContaining({
+        backupRequired: true,
+        verificationRequired: false,
+        restoreDrillRecommended: false,
+      }),
+    );
+    expect(report.nextCommand).toBe(
+      "nexpress ops backup create --database artifacts/db.dump --verified --json",
+    );
+    expect(report.plan.nextCommands).toEqual([
+      "nexpress ops backup create --database artifacts/db.dump --verified --json",
+      "nexpress ops backup verify latest --json",
+    ]);
+    expect(report.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "backup.record_manifest",
+          phase: "record",
+          projectCommand:
+            "pnpm run ops:backup -- create --database artifacts/db.dump --verified --json",
+        }),
+        expect.objectContaining({
+          id: "backup.verify_artifacts",
+          blockedBy: ["backup.record_manifest"],
+        }),
+      ]),
+    );
   });
 
   it("reads a verified manifest from NP_BACKUP_DIR", async () => {
@@ -71,6 +107,46 @@ describe("ops backup core", () => {
 
     expect(report.ok).toBe(true);
     expect(report.summary.latestId).toBe("backup-1");
+    expect(report.plan.nextCommands).toEqual([]);
+  });
+
+  it("turns unverified manifests into verify and record handoff actions", () => {
+    const report = buildOpsBackupJson({
+      mode: "status",
+      backupDir: ".nexpress/backups",
+      required: true,
+      maxAgeHours: 24,
+      manifests: [
+        {
+          id: "backup-unverified",
+          createdAt: new Date().toISOString(),
+          verified: false,
+          restoreVerified: false,
+          databasePath: "artifacts/db.dump",
+          mediaPath: null,
+        },
+      ],
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.summary.verificationRequired).toBe(true);
+    expect(report.nextCommand).toBe("nexpress ops backup verify backup-unverified --json");
+    expect(report.plan.nextCommands).toEqual([
+      "nexpress ops backup verify backup-unverified --json",
+      "nexpress ops backup create --database artifacts/db.dump --verified --json",
+    ]);
+    expect(report.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "backup.verify_artifacts",
+          required: true,
+        }),
+        expect.objectContaining({
+          id: "backup.record_verified_manifest",
+          blockedBy: ["backup.verify_artifacts"],
+        }),
+      ]),
+    );
   });
 
   it("does not verify artifact paths outside NP_BACKUP_DIR", async () => {
@@ -139,6 +215,17 @@ describe("ops backup core", () => {
         databasePath: "../db.dump",
       }),
     ).rejects.toThrow(`Backup artifact must be inside ${dir}`);
+  });
+
+  it("rejects created backup artifact paths that do not exist", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "np-backups-"));
+
+    await expect(
+      createOpsBackupManifest({
+        env: { NP_BACKUP_DIR: dir },
+        databasePath: "artifacts/missing.dump",
+      }),
+    ).rejects.toThrow(`Backup artifact does not exist inside ${dir}: artifacts/missing.dump`);
   });
 
   it("treats restore-verified created manifests as verified", async () => {
@@ -213,6 +300,17 @@ describe("ops backup core", () => {
       ]),
     );
     expect(plan.projectNextCommand).toBe("createdb nexpress_restore_drill");
+    expect(plan.plan.nextCommands).toEqual([
+      "nexpress ops backup verify backup-ready --json",
+      "createdb nexpress_restore_drill",
+      'pg_restore --dbname="$RESTORE_DATABASE_URL" --jobs=4 --no-owner --no-privileges artifacts/db.dump',
+      'rsync -a --delete artifacts/uploads/ "$RESTORE_STORAGE_DIR"/',
+      "SITE_URL=$RESTORE_SITE_URL nexpress ops health --url $RESTORE_SITE_URL --json",
+      "nexpress ops backup create --database artifacts/db.dump --restore-verified --json",
+    ]);
+    expect(plan.plan.projectNextCommands).toContain(
+      "pnpm run ops:backup -- verify backup-ready --json",
+    );
   });
 
   it("blocks restore plans when no manifest exists", async () => {
@@ -255,11 +353,12 @@ describe("ops backup core", () => {
     const report = await collectOpsBackupReport({
       mode: "verify",
       required: true,
-      env: { NP_BACKUP_DIR: dir },
+      env: { NP_BACKUP_DIR: dir, NP_BACKUP_MAX_AGE_HOURS: "100000" },
       manifestId: "older",
     });
 
     expect(report.ok).toBe(false);
+    expect(report.nextCommand).toBe("nexpress ops backup verify older --json");
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

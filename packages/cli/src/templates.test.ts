@@ -478,6 +478,8 @@ describe("getProjectFiles", () => {
     expect(ops).toContain("pnpm run ops:backup -- status --json");
     expect(ops).toContain("pnpm run ops:backup -- create --json");
     expect(ops).toContain("pnpm run ops:backup -- verify latest --json");
+    expect(ops).toContain("record/verify/restore handoff");
+    expect(ops).toContain("Backup and restore reports also include `plan.nextCommands`");
     expect(ops).toContain("pnpm run ops:jobs -- --json");
     expect(ops).toContain('pnpm run ops:jobs -- pause --reason "maintenance" --json');
     expect(ops).toContain("pnpm run ops:jobs -- resume --json");
