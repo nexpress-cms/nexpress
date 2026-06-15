@@ -1,5 +1,58 @@
 # create-nexpress
 
+## 0.1.29
+
+### Patch Changes
+
+- f50967f: Strengthen the backup and restore bridge. Backup reports now expose
+  record/verify/restore handoff actions plus `plan.nextCommands`, restore drill
+  plans preserve project-local follow-up commands, and generated ops docs explain
+  the safer backup evidence path before release promotion.
+- 5586dbc: Polish fresh-project and ops developer UX. Scaffold success output now keeps the
+  first-run path focused on the next useful commands, generated README guidance
+  matches the `.env` fallback behavior of non-interactive setup, setup-server
+  prints copy-pasteable `pnpm run setup -- ...` fallback commands, and worker
+  fix-plan/runbook suggestions include `NP_ENABLE_JOBS=1` with the project-side
+  worker script.
+- f0aba7d: Add a local ops contract registry. Generated projects now include `ops:contracts`,
+  which reports shipped ops/release/runbook JSON contracts, artifact behavior,
+  approval requirements, and explicitly deferred destructive surfaces. The
+  project-side `nexpress ops` CLI now delegates the shipped local ops commands
+  covered by that registry, while the agent-operated ops docs mark the v0.x local
+  CLI track complete and record the remaining remote/destructive work as
+  deferred.
+- d76b9e4: Harden the freshly scaffolded site path after dogfooding the published CLI.
+  Generated Docker Compose files now pin a project-specific Compose name so
+  different NexPress projects do not share `docker-db-1` / `docker_pgdata`, and
+  generated `package.json` files pin the supported pnpm version for reproducible
+  installs. Non-interactive setup now falls back to the existing `.env` before
+  reading process environment overrides, so headless setup works from the
+  defaults that `create-nexpress` already wrote.
+- 070dcfd: Bridge the first deploy path across generated projects and ops commands. The
+  deploy-plan JSON now includes an ordered deploy bridge, and scaffold success
+  output, generated README/ops docs, setup completion copy, and package README all
+  point operators through deploy plan, migration, preflight, release check, and
+  post-deploy verify.
+- fecd909: Harden release apply execution. Release apply now validates plan artifacts
+  against a NexPress command allowlist before dry-run or execution, blocks
+  tampered commands and metadata even with approval, and documents the safer
+  artifact execution gate in generated ops docs.
+- 830aed8: Harden release apply execution again. Approved release apply commands now run
+  through structured executable/argv specs instead of shell command strings, and
+  release plan artifact loading verifies required top-level fields before the
+  apply pipeline starts.
+- 79d0789: Strengthen the deploy migration bridge. Preflight now includes migration-plan
+  evidence, migration reports expose backup/apply/verify handoff actions, and
+  generated ops docs describe the safer migration path before release promotion.
+- 7a88eb5: Slim the generated project README so the first-run path stays focused. Detailed
+  ops, release, runbook, storage, jobs, and deploy command references now live in
+  the generated `docs/ops.md`, with README linking there once operators need the
+  deeper surface.
+- 0e726cd: Strengthen scaffold snapshot drift detection. The snapshot sync logic now lives
+  behind one reusable module shared by the local check command, unit tests, and
+  CI, so changes to `apps/web/src` fail earlier when the generated scaffold
+  snapshot has not been refreshed.
+
 ## 0.1.28
 
 ### Patch Changes

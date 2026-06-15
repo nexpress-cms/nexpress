@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/wp-import",
-  "version": "0.3.19",
+  "version": "0.3.20",
   "description": "WordPress (WXR) importer for NexPress — HTML to Lexical conversion, media pipeline, taxonomies, comments.",
   "license": "MIT",
   "author": "Nexpress",
