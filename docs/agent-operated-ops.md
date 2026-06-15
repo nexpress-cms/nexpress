@@ -1,9 +1,9 @@
 # Agent-operated ops CLI plan
 
-**Status:** implemented operating track with remaining backlog. This page
+**Status:** local CLI operating track complete for v0.x. This page
 started as the planning backlog for the agent-operated CLI surface; it now
 documents the shipped `nexpress ops`, `nexpress runbook`, and `nexpress release`
-contracts plus the follow-up items that have not yet graduated into code.
+contracts plus the explicitly deferred destructive / remote follow-up items.
 
 NexPress already exposes agent-friendly content APIs through OpenAPI, auth,
 plugin discovery, and stable error codes. The operating surface after a site is
@@ -54,9 +54,10 @@ surfaces:
 
 The original gap was that these were spread across scripts, docs, and app
 endpoints. The shipped ops / runbook / release commands now provide the
-low-token entry points for the common lifecycle; the remaining work is to keep
-expanding typed plans and approval-gated mutations without turning the CLI into
-an unsafe autopilot.
+low-token entry points for the common lifecycle. The v0.x local track is
+intentionally closed around read-only plans, bounded approval-gated probes, and
+release / runbook artifacts; broader destructive apply flows stay deferred
+rather than turning the CLI into an unsafe autopilot.
 
 ---
 
@@ -346,6 +347,10 @@ Implementation status:
   `schemaVersion: "np.deploy-plan.v1"` with a `bridge` section that orders the
   local setup -> host env -> migration -> preflight -> release check -> deploy
   -> post-deploy verify handoff.
+- `pnpm run ops:contracts -- --json` emits
+  `schemaVersion: "np.ops-contracts.v1"` as a local registry of the shipped
+  ops / release / runbook contracts, including artifact behavior, approval
+  requirements, and destructive surfaces that are deliberately deferred.
 - `nexpress ops health --url <origin> --json` probes `/api/health/ready`
   and emits `schemaVersion: "np.ops-health.v1"` for a running site.
 - `nexpress ops jobs status --json` emits
@@ -506,6 +511,51 @@ Scope:
 - `release check` that composes typecheck, tests, build, migration status,
   env readiness, storage safety, worker readiness, and backup recency.
 - Executable runbooks that diagnose incident states and return next commands.
+
+---
+
+## v0.x local ops closure
+
+The local agent-operated operations track is complete when evaluated against
+the original product promise: a generated project can expose deterministic
+commands for setup handoff, deploy planning, preflight checks, migrations,
+backups, jobs, storage, plugin diagnostics, release gates, and incident
+runbooks without requiring an agent to re-read long-form prose first.
+
+The contract registry is the source of truth for the closing boundary:
+
+```bash
+pnpm run ops:contracts -- --json
+```
+
+Key shipped contracts:
+
+| Area              | Command                                                                        | Schema / artifact                                                                                           |
+| ----------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| Deploy bridge     | `pnpm run deploy:plan -- --target <host> --json`                               | `np.deploy-plan.v1`                                                                                         |
+| Local status      | `pnpm run ops:status -- --json`                                                | `np.ops.v1`                                                                                                 |
+| Contract registry | `pnpm run ops:contracts -- --json`                                             | `np.ops-contracts.v1`                                                                                       |
+| Preflight         | `pnpm run ops:preflight -- --target <host> --json`                             | `np.ops-preflight.v1`                                                                                       |
+| Health            | `pnpm run ops:health -- --url <origin> --json`                                 | `np.ops-health.v1`                                                                                          |
+| Migrations        | `pnpm run ops:migrate -- status / plan / rollback-plan --json`                 | `np.ops-migrate.v1`, `np.ops-migrate-rollback-plan.v1`                                                      |
+| Backups           | `pnpm run ops:backup -- status / create / verify / restore-plan --json`        | `np.ops-backup.v1`, `np.ops-backup-restore-plan.v1`                                                         |
+| Jobs              | `pnpm run ops:jobs -- status / pause / resume / retry-all / drain --json`      | `np.ops-jobs.v1`                                                                                            |
+| Storage           | `pnpm run ops:storage -- status / verify / drift / migrate plan / test --json` | `np.ops-storage.v1`, `np.ops-storage-list.v1`, `np.ops-storage-migration-plan.v1`                           |
+| Plugins           | `pnpm run ops:plugins -- list / inspect / doctor / upgrade-plan --json`        | `np.ops-plugins.v1`, `np.ops-plugins-upgrade-plan.v1`                                                       |
+| Release           | `pnpm run ops:release -- check / plan / apply / verify --json`                 | `np.release.v1`, `np.release-plan.v1`, `np.release-apply.v1`; release artifacts under `.nexpress/releases/` |
+| Runbooks          | `pnpm run ops:runbook -- <incident> --json --out <path>`                       | `np.runbook.v1`; operator-provided artifact path                                                            |
+
+Deferred on purpose:
+
+- `ops migrate apply --safe`
+- `ops storage migrate apply --target s3`
+- `ops backup restore apply`
+- `ops plugins enable|disable`
+- remote `/api/admin/ops/*`
+
+Those surfaces are destructive or security-sensitive. They should only reopen
+after a real operator need pins the confirmation, audit, rollback, and
+multi-instance semantics tightly enough to implement safely.
 
 ---
 

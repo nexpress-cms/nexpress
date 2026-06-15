@@ -37,6 +37,8 @@ const scriptEntries = {
   "scripts/generate-schema": "src/scripts/generate-schema.ts",
   "scripts/ops-backup": "src/scripts/ops-backup.ts",
   "scripts/ops-backup-core": "src/scripts/ops-backup-core.ts",
+  "scripts/ops-contracts": "src/scripts/ops-contracts.ts",
+  "scripts/ops-contracts-core": "src/scripts/ops-contracts-core.ts",
   "scripts/ops-health": "src/scripts/ops-health.ts",
   "scripts/ops-jobs": "src/scripts/ops-jobs.ts",
   "scripts/ops-jobs-core": "src/scripts/ops-jobs-core.ts",

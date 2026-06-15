@@ -357,6 +357,7 @@ describe("getProjectFiles", () => {
     };
     expect(pkg.scripts["doctor:prod"]).toBe("tsx scripts/doctor.ts --prod");
     expect(pkg.scripts["ops:backup"]).toBe("tsx scripts/ops-backup.ts");
+    expect(pkg.scripts["ops:contracts"]).toBe("tsx scripts/ops-contracts.ts");
     expect(pkg.scripts["ops:health"]).toBe("tsx scripts/ops-health.ts");
     expect(pkg.scripts["ops:jobs"]).toBe("tsx scripts/ops-jobs.ts");
     expect(pkg.scripts["ops:migrate"]).toBe("tsx scripts/ops-migrate.ts");
@@ -376,6 +377,7 @@ describe("getProjectFiles", () => {
     const opsPreflight = files["scripts/ops-preflight.ts"];
     const opsHealth = files["scripts/ops-health.ts"];
     const opsBackup = files["scripts/ops-backup.ts"];
+    const opsContracts = files["scripts/ops-contracts.ts"];
     const opsJobs = files["scripts/ops-jobs.ts"];
     const opsMigrate = files["scripts/ops-migrate.ts"];
     const opsPlugins = files["scripts/ops-plugins.ts"];
@@ -386,6 +388,7 @@ describe("getProjectFiles", () => {
     expect(opsPreflight).toBeDefined();
     expect(opsHealth).toBeDefined();
     expect(opsBackup).toBeDefined();
+    expect(opsContracts).toBeDefined();
     expect(opsJobs).toBeDefined();
     expect(opsMigrate).toBeDefined();
     expect(opsPlugins).toBeDefined();
@@ -396,6 +399,7 @@ describe("getProjectFiles", () => {
     expect(opsPreflight).toMatch(/@nexpress\/app\/scripts\/ops-preflight/);
     expect(opsHealth).toMatch(/@nexpress\/app\/scripts\/ops-health/);
     expect(opsBackup).toMatch(/@nexpress\/app\/scripts\/ops-backup/);
+    expect(opsContracts).toMatch(/@nexpress\/app\/scripts\/ops-contracts/);
     expect(opsJobs).toMatch(/@nexpress\/app\/scripts\/ops-jobs/);
     expect(opsMigrate).toMatch(/@nexpress\/app\/scripts\/ops-migrate/);
     expect(opsPlugins).toMatch(/@nexpress\/app\/scripts\/ops-plugins/);
@@ -407,6 +411,7 @@ describe("getProjectFiles", () => {
       opsPreflight,
       opsHealth,
       opsBackup,
+      opsContracts,
       opsJobs,
       opsMigrate,
       opsPlugins,
@@ -470,7 +475,9 @@ describe("getProjectFiles", () => {
       "pnpm run ops:release -- verify --url https://your-domain.example --json",
     );
     expect(ops).toContain("pnpm run ops:status -- --json");
+    expect(ops).toContain("pnpm run ops:contracts -- --json");
     expect(ops).toContain("pnpm run ops:preflight -- --target vercel --json");
+    expect(ops).toContain('schemaVersion: "np.ops-contracts.v1"');
     expect(ops).toContain("`ops:preflight` combines `deploy:plan`, the production doctor, and");
     expect(ops).toContain("pnpm run ops:health -- --url http://localhost:3000 --brief --no-color");
     expect(ops).toContain("pnpm run ops:migrate -- plan --json");

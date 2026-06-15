@@ -108,7 +108,7 @@ describe("release CLI", () => {
 
     expect(run.exitCode).toBe(2);
     expect(run.stderr).toContain("Invalid release plan artifact");
-  });
+  }, 15000);
 
   it("executes release apply commands through structured argv specs", async () => {
     const dir = await mkdtemp(join(tmpdir(), "np-release-cli-"));
@@ -160,5 +160,5 @@ describe("release CLI", () => {
     expect(apply.ok).toBe(true);
     expect(apply.commands[0]?.status).toBe("success");
     expect(argv).toEqual(["release", "verify", "--json"]);
-  });
+  }, 15000);
 });

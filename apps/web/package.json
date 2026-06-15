@@ -21,6 +21,7 @@
     "doctor": "tsx scripts/doctor.ts",
     "doctor:prod": "tsx scripts/doctor.ts --prod",
     "ops:backup": "tsx scripts/ops-backup.ts",
+    "ops:contracts": "tsx scripts/ops-contracts.ts",
     "ops:health": "tsx scripts/ops-health.ts",
     "ops:jobs": "tsx scripts/ops-jobs.ts",
     "ops:migrate": "tsx scripts/ops-migrate.ts",

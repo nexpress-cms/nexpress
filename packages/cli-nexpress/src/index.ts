@@ -36,20 +36,28 @@ Usage:
   nexpress theme:uninstall <package> --yes            Same, but skip the destructive confirm prompt
   nexpress theme:uninstall <package> --with-collections  Also delete collection FILES that match the theme's spec exactly
   nexpress theme:uninstall <package> --apply          Same, but auto-chain db:migrate after generate (DROP COLUMN runs)
+  nexpress deploy plan --target <host> [--json]       Print a deployment bridge plan
   nexpress ops status [--json|--brief|--no-color]     Print read-only runtime status for operators and agents
+  nexpress ops contracts [--json|--brief]             Print the shipped local ops contract registry
   nexpress ops doctor [--prod|--json|--fix-plan]      Run the project doctor through the ops namespace
   nexpress ops preflight --target <host> [--json]     Run deploy-plan + production doctor as one gate
   nexpress ops health [--url <origin>] [--json]       Probe /api/health/ready on a running site
   nexpress ops backup status [--json|--brief]         Report backup manifest freshness and verification
   nexpress ops backup create [--json|--brief]         Register a backup manifest
   nexpress ops backup verify latest [--json|--brief]  Verify latest backup manifest artifact presence
+  nexpress ops backup restore-plan latest [--json]    Print a read-only restore drill plan
   nexpress ops jobs status [--json|--brief]           Report worker heartbeat and queue counts
   nexpress ops jobs pause|resume [--json|--brief]     Pause or resume job processing
+  nexpress ops jobs retry-all|drain [--json]          Dry-run or approval-gate bounded queue actions
   nexpress ops migrate status [--json|--brief]        Report local vs applied migrations
   nexpress ops migrate plan [--json|--brief]          Plan migration safety and destructive SQL risk
+  nexpress ops migrate rollback-plan [--json]         Print a read-only rollback handoff
   nexpress ops storage status [--json|--brief]        Report storage adapter and media file drift
+  nexpress ops storage verify|missing-files|orphaned-files [--json]  Inspect media drift
+  nexpress ops storage migrate plan --target s3       Print a read-only local-to-S3 migration plan
   nexpress ops plugins list [--json|--brief]          List configured plugins
   nexpress ops plugins doctor [--json|--brief]        Report plugin ID/block/route conflicts
+  nexpress ops plugins inspect|upgrade-plan [id]      Inspect plugin details or upgrade plans
   nexpress release check [--target <host>] [--json]   Run the pre-release readiness gate
   nexpress release plan [--target <host>] [--json]    Persist a release plan artifact
   nexpress release apply --plan <path> [--json]       Validate or execute a release plan
@@ -348,6 +356,18 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     }
     process.stderr.write(`Unknown subcommand: ops ${sub ?? ""}\n${HELP_TEXT}`);
+    return 2;
+  }
+
+  if (args[0] === "deploy") {
+    const sub = args[1];
+    if (sub === "plan") {
+      const cwd = process.cwd();
+      const manager = detectPackageManager(cwd);
+      await runProjectScript(manager, "deploy:plan", args.slice(2), cwd);
+      return 0;
+    }
+    process.stderr.write(`Unknown subcommand: deploy ${sub ?? ""}\n${HELP_TEXT}`);
     return 2;
   }
 
