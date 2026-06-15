@@ -469,6 +469,231 @@ describe("release core", () => {
     );
   });
 
+  it("allows generated release apply commands", () => {
+    const check = buildReleaseJson({
+      mode: "check",
+      target: "vercel",
+      steps: [
+        {
+          ...readyStep,
+          id: "ops.preflight",
+          report: {
+            schemaVersion: "np.ops-preflight.v1",
+            ok: true,
+            status: "ready",
+            plan: {
+              commands: [
+                "pnpm install",
+                "pnpm run setup -- --non-interactive",
+                "pnpm db:migrate -- --status",
+                "pnpm db:migrate",
+                "pnpm run doctor:prod -- --target vercel",
+              ],
+            },
+          },
+        },
+      ],
+    });
+    const plan = buildReleasePlanJson({
+      planId: "release-generated",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      target: "vercel",
+      artifactPath: ".nexpress/releases/release-generated.json",
+      check,
+    });
+    const apply = buildReleaseApplyJson({
+      plan,
+      createdAt: "2026-06-10T00:01:00.000Z",
+      mode: "dry-run",
+      approved: false,
+      artifactPath: ".nexpress/releases/release-generated-apply.json",
+      planArtifactPath: ".nexpress/releases/release-generated.json",
+    });
+
+    expect(apply.ok).toBe(true);
+    expect(apply.safety).toEqual({ allowed: true, blockedReason: null, findings: [] });
+    expect(apply.summary.pending).toBe(6);
+  });
+
+  it("blocks tampered release apply commands before approval or execution", () => {
+    const check = buildReleaseJson({ mode: "check", target: "docker", steps: [readyStep] });
+    const plan = buildReleasePlanJson({
+      planId: "release-tampered",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      target: "docker",
+      artifactPath: ".nexpress/releases/release-tampered.json",
+      check,
+    });
+    const tampered = {
+      ...plan,
+      commands: [
+        ...plan.commands,
+        {
+          phase: "release" as const,
+          command: 'node -e "process.exit(0)"',
+          projectCommand: 'node -e "process.exit(0)"',
+          required: true,
+          requiresApproval: false,
+        },
+      ],
+    };
+    const apply = buildReleaseApplyJson({
+      plan: tampered,
+      createdAt: "2026-06-10T00:01:00.000Z",
+      mode: "execute",
+      approved: true,
+      artifactPath: ".nexpress/releases/release-tampered-apply.json",
+      planArtifactPath: ".nexpress/releases/release-tampered.json",
+    });
+
+    expect(apply.ok).toBe(false);
+    expect(apply.status).toBe("blocked");
+    expect(apply.blockedReason).toBe(
+      "release plan contains commands that are not safe for release apply",
+    );
+    expect(apply.execution).toEqual({
+      nextCommand: "nexpress release plan --target docker --json",
+      projectNextCommand: "pnpm run ops:release -- plan --target docker --json",
+      requiresApproval: false,
+      approved: true,
+    });
+    expect(apply.summary.blocked).toBe(apply.commands.length);
+    expect(apply.safety.findings).toEqual([
+      expect.objectContaining({
+        index: 1,
+        command: 'node -e "process.exit(0)"',
+        reason: "command is not in the NexPress release apply allowlist",
+      }),
+    ]);
+    expect(renderBriefReleaseApply(apply, { color: false })).toContain(
+      "safety: command[1] command is not in the NexPress release apply allowlist",
+    );
+  });
+
+  it("blocks release apply plans with tampered project command metadata", () => {
+    const check = buildReleaseJson({ mode: "check", target: "docker", steps: [readyStep] });
+    const plan = buildReleasePlanJson({
+      planId: "release-project-command-tampered",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      target: "docker",
+      artifactPath: ".nexpress/releases/release-project-command-tampered.json",
+      check,
+    });
+    const tampered = {
+      ...plan,
+      commands: [
+        {
+          ...plan.commands[0],
+          projectCommand: 'pnpm run ops:release -- verify --json && node -e "process.exit(0)"',
+        },
+      ],
+    };
+    const apply = buildReleaseApplyJson({
+      plan: tampered,
+      createdAt: "2026-06-10T00:01:00.000Z",
+      mode: "dry-run",
+      approved: false,
+    });
+
+    expect(apply.ok).toBe(false);
+    expect(apply.status).toBe("blocked");
+    expect(apply.safety.findings).toEqual([
+      expect.objectContaining({
+        index: 0,
+        reason: "projectCommand does not match the command",
+      }),
+    ]);
+  });
+
+  it("blocks release apply plans with tampered targets", () => {
+    const check = buildReleaseJson({ mode: "check", target: "docker", steps: [readyStep] });
+    const plan = buildReleasePlanJson({
+      planId: "release-target-tampered",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      target: "docker",
+      artifactPath: ".nexpress/releases/release-target-tampered.json",
+      check,
+    });
+    const tampered = {
+      ...plan,
+      target: "docker && node -e process.exit(0)",
+      commands: [
+        {
+          ...plan.commands[0],
+          command: "pnpm run doctor:prod -- --target docker && node -e process.exit(0)",
+          projectCommand: "pnpm run doctor:prod -- --target docker && node -e process.exit(0)",
+          requiresApproval: false,
+        },
+      ],
+    };
+    const apply = buildReleaseApplyJson({
+      plan: tampered,
+      createdAt: "2026-06-10T00:01:00.000Z",
+      mode: "execute",
+      approved: true,
+    });
+
+    expect(apply.ok).toBe(false);
+    expect(apply.execution).toEqual({
+      nextCommand: "nexpress release plan --json",
+      projectNextCommand: "pnpm run ops:release -- plan --json",
+      requiresApproval: false,
+      approved: true,
+    });
+    expect(apply.safety.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          index: -1,
+          reason: "release plan target is not supported",
+        }),
+        expect.objectContaining({
+          index: 0,
+          reason: "command is not in the NexPress release apply allowlist",
+        }),
+      ]),
+    );
+  });
+
+  it("blocks malformed release apply command entries without throwing", () => {
+    const check = buildReleaseJson({ mode: "check", target: "docker", steps: [readyStep] });
+    const plan = buildReleasePlanJson({
+      planId: "release-malformed-command",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      target: "docker",
+      artifactPath: ".nexpress/releases/release-malformed-command.json",
+      check,
+    });
+    const tampered = {
+      ...plan,
+      commands: [null],
+    } as unknown as typeof plan;
+    const apply = buildReleaseApplyJson({
+      plan: tampered,
+      createdAt: "2026-06-10T00:01:00.000Z",
+      mode: "dry-run",
+      approved: false,
+    });
+
+    expect(apply.ok).toBe(false);
+    expect(apply.status).toBe("blocked");
+    expect(apply.safety.findings).toEqual([
+      expect.objectContaining({
+        index: 0,
+        command: "<missing>",
+        reason: expect.stringContaining("command must be a non-empty string"),
+      }),
+    ]);
+    expect(apply.commands[0]).toEqual({
+      phase: "release",
+      command: "<missing>",
+      projectCommand: "<missing>",
+      required: true,
+      requiresApproval: false,
+      status: "blocked",
+      exitCode: null,
+    });
+  });
+
   it("blocks release apply execution without the plan approval token", () => {
     const check = buildReleaseJson({ mode: "check", target: "docker", steps: [readyStep] });
     const plan = buildReleasePlanJson({

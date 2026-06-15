@@ -92,6 +92,18 @@ export interface ReleaseApplyCommandResult extends ReleasePlanCommand {
   stderr?: string;
 }
 
+export interface ReleaseApplySafetyFinding {
+  index: number;
+  command: string;
+  reason: string;
+}
+
+export interface ReleaseApplySafety {
+  allowed: boolean;
+  blockedReason: string | null;
+  findings: ReleaseApplySafetyFinding[];
+}
+
 export interface ReleaseApplyJson {
   schemaVersion: "np.release-apply.v1";
   ok: boolean;
@@ -115,6 +127,7 @@ export interface ReleaseApplyJson {
     requiresApproval: boolean;
     approved: boolean;
   };
+  safety: ReleaseApplySafety;
   audit: {
     planArtifactPath: string | null;
     artifactPath: string | null;
@@ -142,6 +155,8 @@ const EMPTY_ANSI = {
   dim: "",
   reset: "",
 };
+
+const RELEASE_APPLY_TARGETS = new Set(["docker", "vercel", "fly", "railway", "render"]);
 
 function stepBlocked(step: ReleaseStep): boolean {
   if (step.report && step.report.ok === false) return true;
@@ -216,6 +231,127 @@ function commandRequiresApproval(command: string): boolean {
     command.includes("--execute") ||
     command.includes("--approve")
   );
+}
+
+function normalizeCommand(command: string): string {
+  return command.trim().replace(/\s+/g, " ");
+}
+
+function targetDoctorCommand(target: string): string {
+  return `pnpm run doctor:prod -- --target ${target}`;
+}
+
+function readReleasePlanCommand(rawCommand: unknown): Partial<ReleasePlanCommand> {
+  if (typeof rawCommand !== "object" || rawCommand === null) return {};
+  return rawCommand;
+}
+
+function readReleasePlanCommandPhase(value: unknown): ReleasePlanCommand["phase"] {
+  if (value === "remediate" || value === "release" || value === "verify") return value;
+  return "release";
+}
+
+function displayCommandText(command: string): string {
+  return normalizeCommand(command).length === 0 ? "<missing>" : command;
+}
+
+function releaseApplyCommandAllowed(command: string, target: string): boolean {
+  const normalized = normalizeCommand(command);
+  const targetAllowed = RELEASE_APPLY_TARGETS.has(target);
+  return (
+    normalized === "pnpm install" ||
+    normalized === "pnpm run setup -- --non-interactive" ||
+    normalized === "pnpm db:migrate -- --status" ||
+    normalized === "pnpm db:migrate" ||
+    normalized === "pnpm run doctor:prod" ||
+    (targetAllowed && normalized === targetDoctorCommand(target)) ||
+    normalized === "nexpress release verify --json"
+  );
+}
+
+function releasePlanRegenerateCommand(target: string): string {
+  if (!RELEASE_APPLY_TARGETS.has(target)) return "nexpress release plan --json";
+  return `nexpress release plan --target ${target} --json`;
+}
+
+export function validateReleaseApplySafety(plan: ReleasePlanJson): ReleaseApplySafety {
+  const findings: ReleaseApplySafetyFinding[] = [];
+
+  if (!RELEASE_APPLY_TARGETS.has(plan.target)) {
+    findings.push({
+      index: -1,
+      command: `target:${plan.target}`,
+      reason: "release plan target is not supported",
+    });
+  }
+
+  for (const [index, rawCommand] of plan.commands.entries()) {
+    const command = readReleasePlanCommand(rawCommand);
+    const reasons: string[] = [];
+    const phase = typeof command.phase === "string" ? command.phase : "";
+    const commandText = typeof command.command === "string" ? command.command : "";
+    const projectCommand = typeof command.projectCommand === "string" ? command.projectCommand : "";
+    const required = typeof command.required === "boolean" ? command.required : false;
+    const requiresApproval =
+      typeof command.requiresApproval === "boolean" ? command.requiresApproval : false;
+
+    if (phase !== "release" && phase !== "verify") {
+      reasons.push("release apply only executes release and verify phase commands");
+    }
+    if (typeof command.command !== "string" || normalizeCommand(command.command).length === 0) {
+      reasons.push("command must be a non-empty string");
+    }
+    if (!required) {
+      reasons.push("release apply artifacts may not include optional executable commands");
+    }
+    if (projectCommand !== toProjectCommand(commandText)) {
+      reasons.push("projectCommand does not match the command");
+    }
+    if (requiresApproval !== commandRequiresApproval(commandText)) {
+      reasons.push("requiresApproval does not match the command risk classification");
+    }
+    if (!releaseApplyCommandAllowed(commandText, plan.target)) {
+      reasons.push("command is not in the NexPress release apply allowlist");
+    }
+
+    if (reasons.length > 0) {
+      findings.push({
+        index,
+        command: displayCommandText(commandText),
+        reason: reasons.join("; "),
+      });
+    }
+  }
+
+  return {
+    allowed: findings.length === 0,
+    blockedReason:
+      findings.length === 0
+        ? null
+        : "release plan contains commands that are not safe for release apply",
+    findings,
+  };
+}
+
+function blockedReleaseApplyCommand(rawCommand: unknown): ReleaseApplyCommandResult {
+  const command = readReleasePlanCommand(rawCommand);
+  const commandText =
+    typeof command.command === "string" ? displayCommandText(command.command) : "<missing>";
+  return {
+    phase: readReleasePlanCommandPhase(command.phase),
+    command: commandText,
+    projectCommand:
+      typeof command.projectCommand === "string"
+        ? command.projectCommand
+        : toProjectCommand(commandText),
+    required: typeof command.required === "boolean" ? command.required : true,
+    requiresApproval:
+      typeof command.requiresApproval === "boolean"
+        ? command.requiresApproval
+        : commandRequiresApproval(commandText),
+    status: "blocked",
+    exitCode: null,
+  };
 }
 
 function releasePlanCommand(
@@ -304,24 +440,31 @@ export function buildReleaseApplyJson(args: {
   commandResults?: ReleaseApplyCommandResult[];
 }): ReleaseApplyJson {
   const planBlockedReason = args.plan.apply.allowed ? null : args.plan.apply.blockedReason;
+  const safety = validateReleaseApplySafety(args.plan);
+  const safetyBlockedReason = safety.allowed ? null : safety.blockedReason;
   const approvalBlockedReason =
     args.mode === "execute" && !args.approved
       ? `release apply requires --approve ${args.plan.planId}`
       : null;
-  const blockedReason = planBlockedReason ?? approvalBlockedReason;
+  const blockedReason = planBlockedReason ?? safetyBlockedReason ?? approvalBlockedReason;
   const planArtifactPath = args.planArtifactPath ?? args.plan.audit.artifactPath ?? "<plan>";
   const executionNextCommand = planBlockedReason
     ? args.plan.apply.nextCommand
-    : args.mode === "execute" && args.approved && !approvalBlockedReason
-      ? null
-      : `nexpress release apply --plan ${planArtifactPath} --execute --approve ${args.plan.planId} --json`;
-  const commands =
-    args.commandResults ??
-    args.plan.commands.map<ReleaseApplyCommandResult>((command) => ({
-      ...command,
-      status: blockedReason ? "blocked" : command.required ? "pending" : "skipped",
-      exitCode: null,
-    }));
+    : safetyBlockedReason
+      ? releasePlanRegenerateCommand(args.plan.target)
+      : args.mode === "execute" && args.approved && !approvalBlockedReason
+        ? null
+        : `nexpress release apply --plan ${planArtifactPath} --execute --approve ${args.plan.planId} --json`;
+  const commands = blockedReason
+    ? args.plan.commands.map<ReleaseApplyCommandResult>((command) =>
+        blockedReleaseApplyCommand(command),
+      )
+    : (args.commandResults ??
+      args.plan.commands.map<ReleaseApplyCommandResult>((command) => ({
+        ...command,
+        status: command.required ? "pending" : "skipped",
+        exitCode: null,
+      })));
   const failed = commands.filter((command) => command.status === "failed").length;
   const success = commands.filter((command) => command.status === "success").length;
   const skipped = commands.filter((command) => command.status === "skipped").length;
@@ -355,9 +498,10 @@ export function buildReleaseApplyJson(args: {
     execution: {
       nextCommand: executionNextCommand,
       projectNextCommand: executionNextCommand ? toProjectCommand(executionNextCommand) : null,
-      requiresApproval: !planBlockedReason,
+      requiresApproval: !planBlockedReason && !safetyBlockedReason,
       approved: args.approved,
     },
+    safety,
     audit: {
       planArtifactPath: args.planArtifactPath ?? args.plan.audit.artifactPath ?? null,
       artifactPath: args.artifactPath ?? null,
@@ -447,6 +591,11 @@ export function renderBriefReleaseApply(
   if (apply.audit.planArtifactPath) lines.push(`plan artifact: ${apply.audit.planArtifactPath}`);
   if (apply.audit.artifactPath) lines.push(`apply artifact: ${apply.audit.artifactPath}`);
   if (apply.blockedReason) lines.push(`blocked: ${apply.blockedReason}`);
+  if (!apply.safety.allowed) {
+    for (const finding of apply.safety.findings) {
+      lines.push(`safety: command[${finding.index.toString()}] ${finding.reason}`);
+    }
+  }
   if (apply.execution.nextCommand) lines.push(`Next: ${apply.execution.nextCommand}`);
   if (
     apply.execution.projectNextCommand &&

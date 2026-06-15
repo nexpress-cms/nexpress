@@ -379,9 +379,12 @@ Implementation status:
   `schemaVersion: "np.release-apply.v1"` and writes an apply audit artifact.
   It dry-runs by default; execution requires `--execute --approve <planId>`.
   Dry-run and blocked artifacts include `execution.nextCommand` and
-  `execution.projectNextCommand` so the next safe command is explicit. When an
-  apply is blocked before execution, every plan command is marked `blocked`
-  instead of `pending`.
+  `execution.projectNextCommand` so the next safe command is explicit. Before
+  dry-run or execution, the plan commands must pass the release-apply
+  allowlist; tampered commands, unsupported targets, malformed command entries,
+  or mismatched project command metadata block even with approval. When an apply
+  is blocked before execution, every plan command is marked `blocked` instead
+  of `pending`.
 - `nexpress release verify --url <origin> --json` emits the same
   `np.release.v1` envelope by composing health, jobs, storage, and plugin
   diagnostics into a post-release readiness gate.
@@ -734,7 +737,8 @@ Implementation status:
   preconditions.
 - `nexpress release apply --plan <artifact> --json` now validates that artifact
   and persists `np.release-apply.v1`; it only runs plan commands when both
-  `--execute` and `--approve <planId>` are present.
+  `--execute` and `--approve <planId>` are present and every command passes the
+  release-apply allowlist.
 - `nexpress release verify --url <origin> --json` now composes
   `ops:health`, `ops:jobs`, `ops:storage`, and `ops:plugins doctor` as
   `np.release.v1`.
@@ -754,6 +758,9 @@ Implementation status:
   artifact.
 - `release apply` dry-run artifacts include the exact approval-gated execution
   command in both global and project-local forms.
+- `release apply` blocks tampered artifacts before execution when commands,
+  targets, command metadata, or project command translations do not match the
+  generated release plan contract.
 - Ops/runbook/release artifacts preserve project-local next commands so a
   generated app can execute the same remediation sequence without translating
   `nexpress ...` global CLI calls by hand.
