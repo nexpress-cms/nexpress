@@ -1,5 +1,82 @@
 # @nexpress/app
 
+## 0.3.20
+
+### Patch Changes
+
+- f50967f: Strengthen the backup and restore bridge. Backup reports now expose
+  record/verify/restore handoff actions plus `plan.nextCommands`, restore drill
+  plans preserve project-local follow-up commands, and generated ops docs explain
+  the safer backup evidence path before release promotion.
+- 5586dbc: Polish fresh-project and ops developer UX. Scaffold success output now keeps the
+  first-run path focused on the next useful commands, generated README guidance
+  matches the `.env` fallback behavior of non-interactive setup, setup-server
+  prints copy-pasteable `pnpm run setup -- ...` fallback commands, and worker
+  fix-plan/runbook suggestions include `NP_ENABLE_JOBS=1` with the project-side
+  worker script.
+- f0aba7d: Add a local ops contract registry. Generated projects now include `ops:contracts`,
+  which reports shipped ops/release/runbook JSON contracts, artifact behavior,
+  approval requirements, and explicitly deferred destructive surfaces. The
+  project-side `nexpress ops` CLI now delegates the shipped local ops commands
+  covered by that registry, while the agent-operated ops docs mark the v0.x local
+  CLI track complete and record the remaining remote/destructive work as
+  deferred.
+- d76b9e4: Harden the freshly scaffolded site path after dogfooding the published CLI.
+  Generated Docker Compose files now pin a project-specific Compose name so
+  different NexPress projects do not share `docker-db-1` / `docker_pgdata`, and
+  generated `package.json` files pin the supported pnpm version for reproducible
+  installs. Non-interactive setup now falls back to the existing `.env` before
+  reading process environment overrides, so headless setup works from the
+  defaults that `create-nexpress` already wrote.
+- 769473f: Improve plugin authoring/install UX in the admin registry. The discover API now returns install,
+  registration, and verification hints for each npm result, and the admin Browse registry dialog can
+  copy both the install command and the matching `nexpress.config.ts` registration snippet. Plugin
+  author docs now reflect the current auto-form `.refine()` support and plugin object registration
+  shape.
+- 070dcfd: Bridge the first deploy path across generated projects and ops commands. The
+  deploy-plan JSON now includes an ordered deploy bridge, and scaffold success
+  output, generated README/ops docs, setup completion copy, and package README all
+  point operators through deploy plan, migration, preflight, release check, and
+  post-deploy verify.
+- fecd909: Harden release apply execution. Release apply now validates plan artifacts
+  against a NexPress command allowlist before dry-run or execution, blocks
+  tampered commands and metadata even with approval, and documents the safer
+  artifact execution gate in generated ops docs.
+- 830aed8: Harden release apply execution again. Approved release apply commands now run
+  through structured executable/argv specs instead of shell command strings, and
+  release plan artifact loading verifies required top-level fields before the
+  apply pipeline starts.
+- d662da3: Harden runbook artifacts. Runbook evidence now records command exit codes,
+  treats non-zero evidence command exits as blocked even when partial JSON was
+  printed, and keeps the runbook artifact writable for failed evidence commands.
+- 79d0789: Strengthen the deploy migration bridge. Preflight now includes migration-plan
+  evidence, migration reports expose backup/apply/verify handoff actions, and
+  generated ops docs describe the safer migration path before release promotion.
+- Updated dependencies [769473f]
+  - @nexpress/admin@0.3.20
+  - @nexpress/plugin-sdk@0.3.20
+  - @nexpress/plugin-block-callout@0.3.20
+  - @nexpress/plugin-block-embed@0.3.20
+  - @nexpress/plugin-block-latest-posts@0.3.20
+  - @nexpress/plugin-block-newsletter@0.3.20
+  - @nexpress/plugin-block-pricing@0.3.20
+  - @nexpress/plugin-block-stats@0.3.20
+  - @nexpress/plugin-forum@0.3.20
+  - @nexpress/plugin-oauth-github@0.3.20
+  - @nexpress/plugin-oauth-google@0.3.20
+  - @nexpress/plugin-reading-time@0.3.20
+  - @nexpress/plugin-seo-audit@0.3.20
+  - @nexpress/auth-pages@0.3.20
+  - @nexpress/blocks@0.3.20
+  - @nexpress/core@0.3.20
+  - @nexpress/editor@0.3.20
+  - @nexpress/next@0.3.20
+  - @nexpress/theme@0.3.20
+  - @nexpress/theme-default@0.3.20
+  - @nexpress/theme-docs@0.3.20
+  - @nexpress/theme-magazine@0.3.20
+  - @nexpress/theme-portfolio@0.3.20
+
 ## 0.3.19
 
 ### Patch Changes

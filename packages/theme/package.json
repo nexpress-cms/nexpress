@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/theme",
-  "version": "0.3.19",
+  "version": "0.3.20",
   "description": "Theme engine for NexPress — CSS custom property generation from design tokens.",
   "license": "MIT",
   "author": "Nexpress",
