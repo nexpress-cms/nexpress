@@ -5,6 +5,14 @@ import { buildRunScriptArgs, resolveOpsScriptInvocation } from "./ops-command.js
 describe("buildRunScriptArgs", () => {
   it("passes ops status flags through package-manager run scripts", () => {
     expect(buildRunScriptArgs("pnpm", "ops:status", ["--json"])).toEqual([
+      "--silent",
+      "run",
+      "ops:status",
+      "--",
+      "--json",
+    ]);
+    expect(buildRunScriptArgs("npm", "ops:status", ["--json"])).toEqual([
+      "--silent",
       "run",
       "ops:status",
       "--",

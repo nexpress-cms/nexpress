@@ -23,9 +23,9 @@ function printHelp(): void {
 
 Usage:
   pnpm run ops:plugins -- list
-  pnpm run ops:plugins -- inspect <pluginId> --json
-  pnpm run ops:plugins -- doctor --json
-  pnpm run ops:plugins -- upgrade-plan [pluginId] --json
+  pnpm --silent run ops:plugins -- inspect <pluginId> --json
+  pnpm --silent run ops:plugins -- doctor --json
+  pnpm --silent run ops:plugins -- upgrade-plan [pluginId] --json
   nexpress ops plugins list --json
   nexpress ops plugins inspect <pluginId> --json
   nexpress ops plugins doctor --json

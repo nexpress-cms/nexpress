@@ -8,7 +8,7 @@ function printHelp(): void {
   console.log(`NexPress ops contracts
 
 Usage:
-  pnpm run ops:contracts -- --json
+  pnpm --silent run ops:contracts -- --json
   pnpm run ops:contracts -- --brief --no-color
   nexpress ops contracts --json
 

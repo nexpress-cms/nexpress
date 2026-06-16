@@ -72,7 +72,7 @@ describe("ops backup core", () => {
           id: "backup.record_manifest",
           phase: "record",
           projectCommand:
-            "pnpm run ops:backup -- create --database artifacts/db.dump --verified --json",
+            "pnpm --silent run ops:backup -- create --database artifacts/db.dump --verified --json",
         }),
         expect.objectContaining({
           id: "backup.verify_artifacts",
@@ -295,7 +295,7 @@ describe("ops backup core", () => {
           command:
             "nexpress ops backup create --database artifacts/db.dump --restore-verified --json",
           projectCommand:
-            "pnpm run ops:backup -- create --database artifacts/db.dump --restore-verified --json",
+            "pnpm --silent run ops:backup -- create --database artifacts/db.dump --restore-verified --json",
         }),
       ]),
     );
@@ -309,7 +309,7 @@ describe("ops backup core", () => {
       "nexpress ops backup create --database artifacts/db.dump --restore-verified --json",
     ]);
     expect(plan.plan.projectNextCommands).toContain(
-      "pnpm run ops:backup -- verify backup-ready --json",
+      "pnpm --silent run ops:backup -- verify backup-ready --json",
     );
   });
 
@@ -321,7 +321,7 @@ describe("ops backup core", () => {
     expect(plan.ok).toBe(false);
     expect(plan.status).toBe("blocked");
     expect(plan.nextCommand).toBe("nexpress ops backup status --required --json");
-    expect(plan.projectNextCommand).toBe("pnpm run ops:backup -- status --required --json");
+    expect(plan.projectNextCommand).toBe("pnpm --silent run ops:backup -- status --required --json");
     expect(plan.checks).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "backup.manifest", state: "error" })]),
     );

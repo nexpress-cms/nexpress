@@ -66,7 +66,7 @@ function validReleasePlan(command: string): object {
       {
         phase: "verify",
         command,
-        projectCommand: "pnpm run ops:release -- verify --json",
+        projectCommand: "pnpm --silent run ops:release -- verify --json",
         required: true,
         requiresApproval: false,
       },

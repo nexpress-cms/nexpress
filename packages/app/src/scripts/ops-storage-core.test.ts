@@ -58,7 +58,7 @@ describe("ops storage core", () => {
         ok: true,
         status: "attention",
         nextCommand: "nexpress ops storage verify --json",
-        projectNextCommand: "pnpm run ops:storage -- verify --json",
+        projectNextCommand: "pnpm --silent run ops:storage -- verify --json",
       }),
     );
   });

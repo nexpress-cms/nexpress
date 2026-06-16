@@ -26,7 +26,7 @@ Usage:
   pnpm run deploy:plan
   pnpm run deploy:plan -- --target vercel
   pnpm run deploy:plan -- --target vercel --brief --no-color
-  pnpm run deploy:plan -- --target vercel --json
+  pnpm --silent run deploy:plan -- --target vercel --json
 
 Targets:
   ${DEPLOY_TARGETS.join(", ")}

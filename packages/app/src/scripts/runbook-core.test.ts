@@ -4,7 +4,7 @@ import { buildRunbookJson, renderBriefRunbook, type RunbookEvidence } from "./ru
 
 const readyEvidence: RunbookEvidence = {
   id: "ops.jobs",
-  command: "pnpm run ops:jobs -- --json",
+  command: "pnpm --silent run ops:jobs -- --json",
   ok: true,
   status: "ready",
   nextCommand: null,
@@ -36,7 +36,7 @@ describe("runbook core", () => {
       evidence: [
         {
           id: "ops.status",
-          command: "pnpm run ops:status -- --json",
+          command: "pnpm --silent run ops:status -- --json",
           ok: false,
           status: "blocked",
           nextCommand: "pnpm run doctor -- --fix-plan",
@@ -57,9 +57,9 @@ describe("runbook core", () => {
         ],
         projectNextCommands: [
           "pnpm run doctor -- --fix-plan",
-          "pnpm run ops:migrate -- status --json",
-          "pnpm run ops:migrate -- plan --json",
-          "pnpm run ops:migrate -- rollback-plan --json",
+          "pnpm --silent run ops:migrate -- status --json",
+          "pnpm --silent run ops:migrate -- plan --json",
+          "pnpm --silent run ops:migrate -- rollback-plan --json",
         ],
       }),
     );
@@ -71,7 +71,7 @@ describe("runbook core", () => {
       evidence: [
         {
           id: "ops.backup.restore-plan",
-          command: "pnpm run ops:backup -- restore-plan latest --json",
+          command: "pnpm --silent run ops:backup -- restore-plan latest --json",
           schemaVersion: "np.ops-backup-restore-plan.v1",
           ok: false,
           status: "blocked",
@@ -90,9 +90,9 @@ describe("runbook core", () => {
       "nexpress release check --target docker --json",
     ]);
     expect(report.projectNextCommands).toEqual([
-      "pnpm run ops:backup -- restore-plan latest --json",
-      "pnpm run ops:backup -- verify latest --json",
-      "pnpm run ops:release -- check --target docker --json",
+      "pnpm --silent run ops:backup -- restore-plan latest --json",
+      "pnpm --silent run ops:backup -- verify latest --json",
+      "pnpm --silent run ops:release -- check --target docker --json",
     ]);
     expect(report.evidence[0]).toEqual(
       expect.objectContaining({
@@ -171,8 +171,8 @@ describe("runbook core", () => {
       "nexpress ops jobs drain --json",
     ]);
     expect(report.projectNextCommands).toEqual([
-      "pnpm run ops:jobs -- retry-all --state failed --json",
-      "pnpm run ops:jobs -- drain --json",
+      "pnpm --silent run ops:jobs -- retry-all --state failed --json",
+      "pnpm --silent run ops:jobs -- drain --json",
     ]);
   });
 
@@ -182,7 +182,7 @@ describe("runbook core", () => {
       evidence: [
         {
           id: "ops.storage",
-          command: "pnpm run ops:storage -- --json",
+          command: "pnpm --silent run ops:storage -- --json",
           ok: true,
           status: "attention",
           nextCommand: "nexpress ops storage verify --json",

@@ -19,13 +19,13 @@ function printHelp(): void {
 
 Usage:
   pnpm run ops:storage
-  pnpm run ops:storage -- --json
-  pnpm run ops:storage -- verify --json
-  pnpm run ops:storage -- missing-files --json
-  pnpm run ops:storage -- orphaned-files --json
-  pnpm run ops:storage -- migrate plan --target s3 --json
-  pnpm run ops:storage -- test --json
-  pnpm run ops:storage -- test --execute --approve storage-test --json
+  pnpm --silent run ops:storage -- --json
+  pnpm --silent run ops:storage -- verify --json
+  pnpm --silent run ops:storage -- missing-files --json
+  pnpm --silent run ops:storage -- orphaned-files --json
+  pnpm --silent run ops:storage -- migrate plan --target s3 --json
+  pnpm --silent run ops:storage -- test --json
+  pnpm --silent run ops:storage -- test --execute --approve storage-test --json
   nexpress ops storage status --json
   nexpress ops storage verify --json
   nexpress ops storage missing-files --json

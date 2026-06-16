@@ -88,7 +88,7 @@ Usage:
   pnpm run doctor -- --prod --target vercel
   pnpm run doctor:prod -- --target vercel --brief --no-color
   pnpm run doctor:prod -- --target vercel --fix-plan
-  pnpm run doctor:prod -- --target vercel --json --fix-plan
+  pnpm --silent run doctor:prod -- --target vercel --json --fix-plan
 
 Targets:
   ${DEPLOY_TARGETS.join(", ")}

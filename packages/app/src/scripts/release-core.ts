@@ -1,4 +1,4 @@
-import { toProjectCommand } from "./ops-command-format.js";
+import { isMatchingProjectCommand, toProjectCommand } from "./ops-command-format.js";
 
 export type ReleaseMode = "check" | "plan" | "verify";
 export type ReleaseStepId =
@@ -323,7 +323,7 @@ export function validateReleaseApplySafety(plan: ReleasePlanJson): ReleaseApplyS
     if (!required) {
       reasons.push("release apply artifacts may not include optional executable commands");
     }
-    if (projectCommand !== toProjectCommand(commandText)) {
+    if (!isMatchingProjectCommand(commandText, projectCommand)) {
       reasons.push("projectCommand does not match the command");
     }
     if (requiresApproval !== commandRequiresApproval(commandText)) {

@@ -74,7 +74,7 @@ function printHelp(): void {
 
 Usage:
   pnpm run ops:preflight -- --target vercel
-  pnpm run ops:preflight -- --target vercel --json
+  pnpm --silent run ops:preflight -- --target vercel --json
   nexpress ops preflight --target vercel --json
 
 Targets:
@@ -107,6 +107,7 @@ function detectPackageManager(cwd: string): PackageManager {
 
 function runArgs(manager: PackageManager, script: string, passthrough: string[]): string[] {
   if (manager === "yarn") return [script, ...passthrough];
+  if (passthrough.includes("--json")) return ["--silent", "run", script, "--", ...passthrough];
   return ["run", script, "--", ...passthrough];
 }
 
@@ -173,7 +174,7 @@ export function buildOpsPreflightReport(args: {
       : planUnresolvedRequiredEnv > 0 || !args.doctor.ok
         ? (args.doctor.nextCommand ??
           `pnpm run doctor:prod -- --target ${args.target} --brief --no-color --fix-plan`)
-        : (args.migrate.nextCommand ?? "pnpm run ops:migrate -- plan --json");
+        : (args.migrate.nextCommand ?? "pnpm --silent run ops:migrate -- plan --json");
 
   return {
     schemaVersion: "np.ops-preflight.v1",

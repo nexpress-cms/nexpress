@@ -17,7 +17,7 @@ function printHelp(): void {
 
 Usage:
   pnpm run ops:status
-  pnpm run ops:status -- --json
+  pnpm --silent run ops:status -- --json
   pnpm run ops:status -- --brief --no-color
   nexpress ops status --json
 

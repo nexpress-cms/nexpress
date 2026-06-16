@@ -334,7 +334,7 @@ Ship the smallest useful contract first.
 
 Implementation status:
 
-- `pnpm run ops:status -- --json` emits the initial
+- `pnpm --silent run ops:status -- --json` emits the initial
   `schemaVersion: "np.ops.v1"` status contract from generated apps.
 - `nexpress ops status --json` delegates to the project-side
   `ops:status` script so operators and agents can use the same entry.
@@ -343,11 +343,11 @@ Implementation status:
 - `nexpress ops preflight --target <host> --json` combines deploy-plan and
   production doctor evidence plus `ops migrate plan` evidence into
   `schemaVersion: "np.ops-preflight.v1"`.
-- `pnpm run deploy:plan -- --target <host> --json` emits
+- `pnpm --silent run deploy:plan -- --target <host> --json` emits
   `schemaVersion: "np.deploy-plan.v1"` with a `bridge` section that orders the
   local setup -> host env -> migration -> preflight -> release check -> deploy
   -> post-deploy verify handoff.
-- `pnpm run ops:contracts -- --json` emits
+- `pnpm --silent run ops:contracts -- --json` emits
   `schemaVersion: "np.ops-contracts.v1"` as a local registry of the shipped
   ops / release / runbook contracts, including artifact behavior, approval
   requirements, and destructive surfaces that are deliberately deferred.
@@ -525,25 +525,25 @@ runbooks without requiring an agent to re-read long-form prose first.
 The contract registry is the source of truth for the closing boundary:
 
 ```bash
-pnpm run ops:contracts -- --json
+pnpm --silent run ops:contracts -- --json
 ```
 
 Key shipped contracts:
 
-| Area              | Command                                                                        | Schema / artifact                                                                                           |
-| ----------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| Deploy bridge     | `pnpm run deploy:plan -- --target <host> --json`                               | `np.deploy-plan.v1`                                                                                         |
-| Local status      | `pnpm run ops:status -- --json`                                                | `np.ops.v1`                                                                                                 |
-| Contract registry | `pnpm run ops:contracts -- --json`                                             | `np.ops-contracts.v1`                                                                                       |
-| Preflight         | `pnpm run ops:preflight -- --target <host> --json`                             | `np.ops-preflight.v1`                                                                                       |
-| Health            | `pnpm run ops:health -- --url <origin> --json`                                 | `np.ops-health.v1`                                                                                          |
-| Migrations        | `pnpm run ops:migrate -- status / plan / rollback-plan --json`                 | `np.ops-migrate.v1`, `np.ops-migrate-rollback-plan.v1`                                                      |
-| Backups           | `pnpm run ops:backup -- status / create / verify / restore-plan --json`        | `np.ops-backup.v1`, `np.ops-backup-restore-plan.v1`                                                         |
-| Jobs              | `pnpm run ops:jobs -- status / pause / resume / retry-all / drain --json`      | `np.ops-jobs.v1`                                                                                            |
-| Storage           | `pnpm run ops:storage -- status / verify / drift / migrate plan / test --json` | `np.ops-storage.v1`, `np.ops-storage-list.v1`, `np.ops-storage-migration-plan.v1`                           |
-| Plugins           | `pnpm run ops:plugins -- list / inspect / doctor / upgrade-plan --json`        | `np.ops-plugins.v1`, `np.ops-plugins-upgrade-plan.v1`                                                       |
-| Release           | `pnpm run ops:release -- check / plan / apply / verify --json`                 | `np.release.v1`, `np.release-plan.v1`, `np.release-apply.v1`; release artifacts under `.nexpress/releases/` |
-| Runbooks          | `pnpm run ops:runbook -- <incident> --json --out <path>`                       | `np.runbook.v1`; operator-provided artifact path                                                            |
+| Area              | Command                                                                                 | Schema / artifact                                                                                           |
+| ----------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Deploy bridge     | `pnpm --silent run deploy:plan -- --target <host> --json`                               | `np.deploy-plan.v1`                                                                                         |
+| Local status      | `pnpm --silent run ops:status -- --json`                                                | `np.ops.v1`                                                                                                 |
+| Contract registry | `pnpm --silent run ops:contracts -- --json`                                             | `np.ops-contracts.v1`                                                                                       |
+| Preflight         | `pnpm --silent run ops:preflight -- --target <host> --json`                             | `np.ops-preflight.v1`                                                                                       |
+| Health            | `pnpm --silent run ops:health -- --url <origin> --json`                                 | `np.ops-health.v1`                                                                                          |
+| Migrations        | `pnpm --silent run ops:migrate -- status / plan / rollback-plan --json`                 | `np.ops-migrate.v1`, `np.ops-migrate-rollback-plan.v1`                                                      |
+| Backups           | `pnpm --silent run ops:backup -- status / create / verify / restore-plan --json`        | `np.ops-backup.v1`, `np.ops-backup-restore-plan.v1`                                                         |
+| Jobs              | `pnpm --silent run ops:jobs -- status / pause / resume / retry-all / drain --json`      | `np.ops-jobs.v1`                                                                                            |
+| Storage           | `pnpm --silent run ops:storage -- status / verify / drift / migrate plan / test --json` | `np.ops-storage.v1`, `np.ops-storage-list.v1`, `np.ops-storage-migration-plan.v1`                           |
+| Plugins           | `pnpm --silent run ops:plugins -- list / inspect / doctor / upgrade-plan --json`        | `np.ops-plugins.v1`, `np.ops-plugins-upgrade-plan.v1`                                                       |
+| Release           | `pnpm --silent run ops:release -- check / plan / apply / verify --json`                 | `np.release.v1`, `np.release-plan.v1`, `np.release-apply.v1`; release artifacts under `.nexpress/releases/` |
+| Runbooks          | `pnpm --silent run ops:runbook -- <incident> --json --out <path>`                       | `np.runbook.v1`; operator-provided artifact path                                                            |
 
 Deferred on purpose:
 

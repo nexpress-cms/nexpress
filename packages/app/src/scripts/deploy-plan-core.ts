@@ -279,7 +279,7 @@ function buildDeployBridge(target: DeployTarget): DeployPlanBridge {
         label: "Capture release evidence",
         description:
           "Write or inspect the release gate before promoting the deploy. Use JSON for CI and agents.",
-        command: `pnpm run ops:release -- check --target ${target} --json`,
+        command: `pnpm --silent run ops:release -- check --target ${target} --json`,
       },
       {
         id: "deploy",
@@ -292,7 +292,7 @@ function buildDeployBridge(target: DeployTarget): DeployPlanBridge {
         label: "Verify production",
         description:
           "Probe the live site after deploy with health, jobs, storage, and plugin checks.",
-        command: "pnpm run ops:release -- verify --url https://your-domain.example --json",
+        command: "pnpm --silent run ops:release -- verify --url https://your-domain.example --json",
       },
     ],
   };

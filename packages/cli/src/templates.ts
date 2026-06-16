@@ -850,8 +850,8 @@ scheduled publishing, async hooks, pruning, or image post-processing.
 pnpm run deploy:plan -- --target vercel --brief --no-color
 pnpm db:migrate
 pnpm run ops:preflight -- --target vercel --brief --no-color
-pnpm run ops:release -- check --target vercel --json
-pnpm run ops:release -- verify --url https://your-domain.example --json
+pnpm --silent run ops:release -- check --target vercel --json
+pnpm --silent run ops:release -- verify --url https://your-domain.example --json
 \`\`\`
 
 For full Vercel / Railway / Render / Fly / Docker notes, see
@@ -891,9 +891,9 @@ Use this order when moving from local setup to a hosted site:
 pnpm run deploy:plan -- --target vercel --brief --no-color
 pnpm db:migrate
 pnpm run ops:preflight -- --target vercel --brief --no-color
-pnpm run ops:release -- check --target vercel --json
+pnpm --silent run ops:release -- check --target vercel --json
 # deploy / promote in your host
-pnpm run ops:release -- verify --url https://your-domain.example --json
+pnpm --silent run ops:release -- verify --url https://your-domain.example --json
 \`\`\`
 
 \`deploy:plan\` explains host env, storage, runtime, and import/deploy steps.
@@ -905,10 +905,10 @@ post-deploy probe against the live URL.
 ## Runtime Status
 
 \`\`\`bash
-pnpm run ops:status -- --json
-pnpm run ops:contracts -- --json
+pnpm --silent run ops:status -- --json
+pnpm --silent run ops:contracts -- --json
 pnpm run ops:status -- --brief --no-color
-pnpm run ops:preflight -- --target vercel --json
+pnpm --silent run ops:preflight -- --target vercel --json
 pnpm run ops:health -- --url http://localhost:3000 --brief --no-color
 \`\`\`
 
@@ -925,12 +925,12 @@ deferred destructive surfaces.
 ## Migrations And Backups
 
 \`\`\`bash
-pnpm run ops:migrate -- plan --json
-pnpm run ops:migrate -- rollback-plan --json
-pnpm run ops:backup -- status --json
-pnpm run ops:backup -- create --json
-pnpm run ops:backup -- verify latest --json
-pnpm run ops:backup -- restore-plan latest --json
+pnpm --silent run ops:migrate -- plan --json
+pnpm --silent run ops:migrate -- rollback-plan --json
+pnpm --silent run ops:backup -- status --json
+pnpm --silent run ops:backup -- create --json
+pnpm --silent run ops:backup -- verify latest --json
+pnpm --silent run ops:backup -- restore-plan latest --json
 \`\`\`
 
 \`ops:migrate\` reports local/applied migration state, destructive SQL risk,
@@ -944,12 +944,12 @@ and agent handoffs preserve the exact follow-up sequence.
 ## Jobs
 
 \`\`\`bash
-pnpm run ops:jobs -- --json
-pnpm run ops:jobs -- pause --reason "maintenance" --json
-pnpm run ops:jobs -- resume --json
-pnpm run ops:jobs -- retry-all --state failed --json
-pnpm run ops:jobs -- retry-all --state failed --execute --approve retry-all --json
-pnpm run ops:jobs -- drain --execute --approve drain --json
+pnpm --silent run ops:jobs -- --json
+pnpm --silent run ops:jobs -- pause --reason "maintenance" --json
+pnpm --silent run ops:jobs -- resume --json
+pnpm --silent run ops:jobs -- retry-all --state failed --json
+pnpm --silent run ops:jobs -- retry-all --state failed --execute --approve retry-all --json
+pnpm --silent run ops:jobs -- drain --execute --approve drain --json
 NP_ENABLE_JOBS=1 pnpm run worker
 \`\`\`
 
@@ -961,13 +961,13 @@ start a drain by pausing new claims. Jobs are optional locally; set
 ## Storage
 
 \`\`\`bash
-pnpm run ops:storage -- --json
-pnpm run ops:storage -- verify --json
-pnpm run ops:storage -- missing-files --json
-pnpm run ops:storage -- orphaned-files --json
-pnpm run ops:storage -- migrate plan --target s3 --json
-pnpm run ops:storage -- test --json
-pnpm run ops:storage -- test --execute --approve storage-test --json
+pnpm --silent run ops:storage -- --json
+pnpm --silent run ops:storage -- verify --json
+pnpm --silent run ops:storage -- missing-files --json
+pnpm --silent run ops:storage -- orphaned-files --json
+pnpm --silent run ops:storage -- migrate plan --target s3 --json
+pnpm --silent run ops:storage -- test --json
+pnpm --silent run ops:storage -- test --execute --approve storage-test --json
 \`\`\`
 
 \`ops:storage\` reports storage adapter readiness and local media drift, while
@@ -978,9 +978,9 @@ checklist, and \`test\` can run an approval-gated storage probe.
 ## Plugins
 
 \`\`\`bash
-pnpm run ops:plugins -- doctor --json
-pnpm run ops:plugins -- inspect reading-time --json
-pnpm run ops:plugins -- upgrade-plan --json
+pnpm --silent run ops:plugins -- doctor --json
+pnpm --silent run ops:plugins -- inspect reading-time --json
+pnpm --silent run ops:plugins -- upgrade-plan --json
 \`\`\`
 
 \`ops:plugins\` reports plugin inventory, single-plugin manifests,
@@ -989,12 +989,12 @@ route/block conflicts, and read-only upgrade plans.
 ## Release And Runbooks
 
 \`\`\`bash
-pnpm run ops:release -- check --target vercel --json
-pnpm run ops:release -- plan --target vercel --json
-pnpm run ops:release -- apply --plan .nexpress/releases/<plan>.json --json
-pnpm run ops:release -- verify --url http://localhost:3000 --json
-pnpm run ops:runbook -- worker-not-draining --json
-pnpm run ops:runbook -- migration-crashed --json --out .nexpress/runbooks/migration-crashed.json
+pnpm --silent run ops:release -- check --target vercel --json
+pnpm --silent run ops:release -- plan --target vercel --json
+pnpm --silent run ops:release -- apply --plan .nexpress/releases/<plan>.json --json
+pnpm --silent run ops:release -- verify --url http://localhost:3000 --json
+pnpm --silent run ops:runbook -- worker-not-draining --json
+pnpm --silent run ops:runbook -- migration-crashed --json --out .nexpress/runbooks/migration-crashed.json
 \`\`\`
 
 \`release check\` composes the pre-deploy gate. \`release plan\` persists
@@ -1026,8 +1026,8 @@ pnpm run doctor:prod -- --target vercel --fix-plan
 pnpm run deploy:plan -- --target vercel --brief --no-color
 pnpm run doctor:prod -- --target vercel --brief --no-color
 pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan
-pnpm run deploy:plan -- --target vercel --json
-pnpm run doctor:prod -- --target vercel --json --fix-plan
+pnpm --silent run deploy:plan -- --target vercel --json
+pnpm --silent run doctor:prod -- --target vercel --json --fix-plan
 \`\`\`
 
 \`deploy:plan\` includes \`summary\` and \`nextCommands\`. \`doctor\` /
@@ -1058,7 +1058,7 @@ Then run:
 pnpm run deploy:plan -- --target vercel --brief --no-color
 pnpm db:migrate
 pnpm run ops:preflight -- --target vercel --brief --no-color
-pnpm run ops:release -- check --target vercel --json
+pnpm --silent run ops:release -- check --target vercel --json
 \`\`\`
 
 Vercel's filesystem is ephemeral, so media uploads require S3/R2/MinIO or

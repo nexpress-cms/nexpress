@@ -74,19 +74,19 @@ describe("ops preflight", () => {
     const report = buildOpsPreflightReport({
       target: "vercel",
       planRun: {
-        command: "pnpm run deploy:plan -- --target vercel --json",
+        command: "pnpm --silent run deploy:plan -- --target vercel --json",
         stdout: "{}",
         stderr: "",
         exitCode: 0,
       },
       doctorRun: {
-        command: "pnpm run doctor:prod -- --target vercel --json --fix-plan",
+        command: "pnpm --silent run doctor:prod -- --target vercel --json --fix-plan",
         stdout: "{}",
         stderr: "",
         exitCode: 0,
       },
       migrateRun: {
-        command: "pnpm run ops:migrate -- plan --json",
+        command: "pnpm --silent run ops:migrate -- plan --json",
         stdout: "{}",
         stderr: "",
         exitCode: 0,
@@ -116,7 +116,7 @@ describe("ops preflight", () => {
         expect.objectContaining({
           id: "ops.migrate",
           ok: true,
-          projectCommand: "pnpm run ops:migrate -- plan --json",
+          projectCommand: "pnpm --silent run ops:migrate -- plan --json",
         }),
       ]),
     );
@@ -137,14 +137,14 @@ describe("ops preflight", () => {
         canApplyAfterBackup: true,
       },
       nextCommand: "nexpress ops backup status --required --json",
-      projectNextCommand: "pnpm run ops:backup -- status --required --json",
+      projectNextCommand: "pnpm --silent run ops:backup -- status --required --json",
       pending: [{ tag: "0002_posts", createdAt: 1_700_000_020_000, hash: "h2" }],
       actions: [
         {
           id: "backup.required",
           phase: "prepare",
           command: "nexpress ops backup status --required --json",
-          projectCommand: "pnpm run ops:backup -- status --required --json",
+          projectCommand: "pnpm --silent run ops:backup -- status --required --json",
           required: true,
           requiresApproval: false,
           blockedBy: [],
@@ -157,19 +157,19 @@ describe("ops preflight", () => {
     const report = buildOpsPreflightReport({
       target: "vercel",
       planRun: {
-        command: "pnpm run deploy:plan -- --target vercel --json",
+        command: "pnpm --silent run deploy:plan -- --target vercel --json",
         stdout: "{}",
         stderr: "",
         exitCode: 0,
       },
       doctorRun: {
-        command: "pnpm run doctor:prod -- --target vercel --json --fix-plan",
+        command: "pnpm --silent run doctor:prod -- --target vercel --json --fix-plan",
         stdout: "{}",
         stderr: "",
         exitCode: 0,
       },
       migrateRun: {
-        command: "pnpm run ops:migrate -- plan --json",
+        command: "pnpm --silent run ops:migrate -- plan --json",
         stdout: "{}",
         stderr: "",
         exitCode: 1,
@@ -182,7 +182,9 @@ describe("ops preflight", () => {
     expect(report.ok).toBe(false);
     expect(report.status).toBe("blocked");
     expect(report.nextCommand).toBe("nexpress ops backup status --required --json");
-    expect(report.projectNextCommand).toBe("pnpm run ops:backup -- status --required --json");
+    expect(report.projectNextCommand).toBe(
+      "pnpm --silent run ops:backup -- status --required --json",
+    );
     expect(report.summary.migrationPending).toBe(1);
     expect(report.steps.find((step) => step.id === "ops.migrate")).toEqual(
       expect.objectContaining({ ok: false, exitCode: 1 }),
