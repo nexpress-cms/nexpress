@@ -40,7 +40,7 @@ function printHelp(): void {
 
 Usage:
   pnpm run ops:health
-  pnpm run ops:health -- --url https://example.com --json
+  pnpm --silent run ops:health -- --url https://example.com --json
   nexpress ops health --url http://localhost:3000 --brief --no-color
 
 Options:

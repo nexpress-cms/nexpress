@@ -13,7 +13,7 @@ import {
 
 const readyStep: ReleaseStep = {
   id: "ops.plugins",
-  command: "pnpm run ops:plugins -- doctor --json",
+  command: "pnpm --silent run ops:plugins -- doctor --json",
   ok: true,
   exitCode: 0,
   status: "ready",
@@ -50,7 +50,7 @@ describe("release core", () => {
         readyStep,
         {
           id: "ops.preflight",
-          command: "pnpm run ops:preflight -- --target vercel --json",
+          command: "pnpm --silent run ops:preflight -- --target vercel --json",
           ok: false,
           exitCode: 1,
           status: "blocked",
@@ -78,7 +78,7 @@ describe("release core", () => {
         readyStep,
         {
           id: "ops.storage",
-          command: "pnpm run ops:storage -- --json",
+          command: "pnpm --silent run ops:storage -- --json",
           ok: true,
           exitCode: 0,
           status: "attention",
@@ -105,7 +105,7 @@ describe("release core", () => {
         "NexPress release check",
         "ready: target: docker",
         "steps: 1 ready, 0 attention, 0 blocked",
-        "[ok] ops.plugins ready - pnpm run ops:plugins -- doctor --json",
+        "[ok] ops.plugins ready - pnpm --silent run ops:plugins -- doctor --json",
       ].join("\n"),
     );
   });
@@ -166,7 +166,7 @@ describe("release core", () => {
       "pnpm install",
       "pnpm db:migrate",
       "pnpm run doctor:prod",
-      "pnpm run ops:release -- verify --json",
+      "pnpm --silent run ops:release -- verify --json",
     ]);
     expect(plan.commands.find((command) => command.command === "pnpm db:migrate")).toEqual(
       expect.objectContaining({ requiresApproval: true }),
@@ -224,7 +224,7 @@ describe("release core", () => {
         readyStep,
         {
           id: "ops.migrate",
-          command: "pnpm run ops:migrate -- rollback-plan --json",
+          command: "pnpm --silent run ops:migrate -- rollback-plan --json",
           ok: false,
           exitCode: 1,
           status: "blocked",
@@ -257,9 +257,9 @@ describe("release core", () => {
       "nexpress release verify --json",
     ]);
     expect(plan.commands.map((command) => command.projectCommand)).toEqual([
-      "pnpm run ops:migrate -- rollback-plan --json",
-      "pnpm run ops:backup -- restore-plan latest --json",
-      "pnpm run ops:release -- verify --json",
+      "pnpm --silent run ops:migrate -- rollback-plan --json",
+      "pnpm --silent run ops:backup -- restore-plan latest --json",
+      "pnpm --silent run ops:release -- verify --json",
     ]);
     expect(plan.summary.remediationCommands).toBe(2);
   });
@@ -272,7 +272,7 @@ describe("release core", () => {
         readyStep,
         {
           id: "ops.backup",
-          command: "pnpm run ops:backup -- status --required --json",
+          command: "pnpm --silent run ops:backup -- status --required --json",
           ok: false,
           exitCode: 1,
           status: "blocked",
@@ -305,9 +305,9 @@ describe("release core", () => {
       "nexpress release verify --json",
     ]);
     expect(plan.commands.map((command) => command.projectCommand)).toEqual([
-      "pnpm run ops:backup -- create --database artifacts/db.dump --verified --json",
-      "pnpm run ops:backup -- verify latest --json",
-      "pnpm run ops:release -- verify --json",
+      "pnpm --silent run ops:backup -- create --database artifacts/db.dump --verified --json",
+      "pnpm --silent run ops:backup -- verify latest --json",
+      "pnpm --silent run ops:release -- verify --json",
     ]);
     expect(plan.summary.remediationCommands).toBe(2);
   });
@@ -453,7 +453,7 @@ describe("release core", () => {
     expect(apply.commands).toEqual([
       expect.objectContaining({
         command: "nexpress release verify --json",
-        projectCommand: "pnpm run ops:release -- verify --json",
+        projectCommand: "pnpm --silent run ops:release -- verify --json",
         status: "pending",
       }),
     ]);
@@ -461,12 +461,12 @@ describe("release core", () => {
       nextCommand:
         "nexpress release apply --plan .nexpress/releases/release-test.json --execute --approve release-test --json",
       projectNextCommand:
-        "pnpm run ops:release -- apply --plan .nexpress/releases/release-test.json --execute --approve release-test --json",
+        "pnpm --silent run ops:release -- apply --plan .nexpress/releases/release-test.json --execute --approve release-test --json",
       requiresApproval: true,
       approved: false,
     });
     expect(renderBriefReleaseApply(apply, { color: false })).toContain(
-      "Project next: pnpm run ops:release -- apply --plan .nexpress/releases/release-test.json --execute --approve release-test --json",
+      "Project next: pnpm --silent run ops:release -- apply --plan .nexpress/releases/release-test.json --execute --approve release-test --json",
     );
   });
 
@@ -514,6 +514,37 @@ describe("release core", () => {
     expect(apply.ok).toBe(true);
     expect(apply.safety).toEqual({ allowed: true, blockedReason: null, findings: [] });
     expect(apply.summary.pending).toBe(6);
+  });
+
+  it("accepts legacy non-silent project commands in existing release plans", () => {
+    const check = buildReleaseJson({ mode: "check", target: "docker", steps: [readyStep] });
+    const plan = buildReleasePlanJson({
+      planId: "release-legacy-project-command",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      target: "docker",
+      artifactPath: ".nexpress/releases/release-legacy-project-command.json",
+      check,
+    });
+    const legacyPlan = {
+      ...plan,
+      commands: plan.commands.map((command) =>
+        command.command === "nexpress release verify --json"
+          ? { ...command, projectCommand: "pnpm run ops:release -- verify --json" }
+          : command,
+      ),
+    };
+    const apply = buildReleaseApplyJson({
+      plan: legacyPlan,
+      createdAt: "2026-06-10T00:01:00.000Z",
+      mode: "dry-run",
+      approved: false,
+      artifactPath: ".nexpress/releases/release-legacy-project-command-apply.json",
+      planArtifactPath: ".nexpress/releases/release-legacy-project-command.json",
+    });
+
+    expect(apply.ok).toBe(true);
+    expect(apply.safety).toEqual({ allowed: true, blockedReason: null, findings: [] });
+    expect(apply.commands[0]?.projectCommand).toBe("pnpm run ops:release -- verify --json");
   });
 
   it("parses release apply commands into structured executable specs", () => {
@@ -575,7 +606,7 @@ describe("release core", () => {
     );
     expect(apply.execution).toEqual({
       nextCommand: "nexpress release plan --target docker --json",
-      projectNextCommand: "pnpm run ops:release -- plan --target docker --json",
+      projectNextCommand: "pnpm --silent run ops:release -- plan --target docker --json",
       requiresApproval: false,
       approved: true,
     });
@@ -606,7 +637,8 @@ describe("release core", () => {
       commands: [
         {
           ...plan.commands[0],
-          projectCommand: 'pnpm run ops:release -- verify --json && node -e "process.exit(0)"',
+          projectCommand:
+            'pnpm --silent run ops:release -- verify --json && node -e "process.exit(0)"',
         },
       ],
     };
@@ -658,7 +690,7 @@ describe("release core", () => {
     expect(apply.ok).toBe(false);
     expect(apply.execution).toEqual({
       nextCommand: "nexpress release plan --json",
-      projectNextCommand: "pnpm run ops:release -- plan --json",
+      projectNextCommand: "pnpm --silent run ops:release -- plan --json",
       requiresApproval: false,
       approved: true,
     });
@@ -779,7 +811,7 @@ describe("release core", () => {
     expect(apply.commands[0]).toEqual(expect.objectContaining({ status: "blocked" }));
     expect(apply.execution).toEqual({
       nextCommand: "nexpress release check --json",
-      projectNextCommand: "pnpm run ops:release -- check --json",
+      projectNextCommand: "pnpm --silent run ops:release -- check --json",
       requiresApproval: false,
       approved: true,
     });

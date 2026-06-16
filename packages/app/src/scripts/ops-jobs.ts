@@ -20,12 +20,12 @@ function printHelp(): void {
 
 Usage:
   pnpm run ops:jobs
-  pnpm run ops:jobs -- --json
-  pnpm run ops:jobs -- pause --reason "maintenance" --json
-  pnpm run ops:jobs -- resume --json
-  pnpm run ops:jobs -- retry-all --state failed --json
-  pnpm run ops:jobs -- retry-all --state failed --execute --approve retry-all --json
-  pnpm run ops:jobs -- drain --execute --approve drain --json
+  pnpm --silent run ops:jobs -- --json
+  pnpm --silent run ops:jobs -- pause --reason "maintenance" --json
+  pnpm --silent run ops:jobs -- resume --json
+  pnpm --silent run ops:jobs -- retry-all --state failed --json
+  pnpm --silent run ops:jobs -- retry-all --state failed --execute --approve retry-all --json
+  pnpm --silent run ops:jobs -- drain --execute --approve drain --json
   nexpress ops jobs status --json
   nexpress ops jobs pause --reason "maintenance" --json
   nexpress ops jobs resume --json

@@ -2000,8 +2000,8 @@ function renderHtml(defaults: FormDefaults): string {
       '<span class="c">  -> deploy plan: pnpm run deploy:plan -- --target vercel --brief --no-color</span>\\n' +
       '<span class="c">  -> migration: pnpm db:migrate</span>\\n' +
       '<span class="c">  -> preflight: pnpm run ops:preflight -- --target vercel --brief --no-color</span>\\n' +
-      '<span class="c">  -> release check: pnpm run ops:release -- check --target vercel --json</span>\\n' +
-      '<span class="c">  -> after deploy: pnpm run ops:release -- verify --url https://your-domain.example --json</span>\\n' +
+      '<span class="c">  -> release check: pnpm --silent run ops:release -- check --target vercel --json</span>\\n' +
+      '<span class="c">  -> after deploy: pnpm --silent run ops:release -- verify --url https://your-domain.example --json</span>\\n' +
       '<span class="v">  ✓ done — run pnpm dev, then open /admin</span>';
     goto(6);
   }

@@ -55,7 +55,7 @@ describe("deploy plan core", () => {
     expect(json.bridge.steps).toContainEqual(
       expect.objectContaining({
         id: "verify",
-        command: "pnpm run ops:release -- verify --url https://your-domain.example --json",
+        command: "pnpm --silent run ops:release -- verify --url https://your-domain.example --json",
       }),
     );
     expect(json.summary).toEqual({
@@ -186,7 +186,7 @@ describe("deploy plan core", () => {
     expect(output).toContain("Deploy bridge:");
     expect(output).toContain("Configure hosted env:");
     expect(output).toContain("pnpm run ops:preflight -- --target docker --brief --no-color");
-    expect(output).toContain("pnpm run ops:release -- check --target docker --json");
+    expect(output).toContain("pnpm --silent run ops:release -- check --target docker --json");
     expect(output).toContain("If blocked:");
     expect(output).toContain(
       "pnpm run doctor:prod -- --target docker --brief --no-color --fix-plan",

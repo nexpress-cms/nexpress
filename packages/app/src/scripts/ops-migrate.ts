@@ -20,9 +20,9 @@ function printHelp(): void {
   console.log(`NexPress ops migrate
 
 Usage:
-  pnpm run ops:migrate -- status --json
+  pnpm --silent run ops:migrate -- status --json
   pnpm run ops:migrate -- plan --brief --no-color
-  pnpm run ops:migrate -- rollback-plan --json
+  pnpm --silent run ops:migrate -- rollback-plan --json
   nexpress ops migrate status --json
   nexpress ops migrate plan --json
   nexpress ops migrate rollback-plan --json

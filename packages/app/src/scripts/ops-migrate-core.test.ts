@@ -68,12 +68,12 @@ describe("ops migrate core", () => {
       }),
     );
     expect(report.nextCommand).toBe("nexpress ops backup status --required --json");
-    expect(report.projectNextCommand).toBe("pnpm run ops:backup -- status --required --json");
+    expect(report.projectNextCommand).toBe("pnpm --silent run ops:backup -- status --required --json");
     expect(report.actions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: "backup.required",
-          projectCommand: "pnpm run ops:backup -- status --required --json",
+          projectCommand: "pnpm --silent run ops:backup -- status --required --json",
         }),
         expect.objectContaining({
           id: "migrate.apply_pending",
@@ -83,7 +83,7 @@ describe("ops migrate core", () => {
         }),
         expect.objectContaining({
           id: "release.verify",
-          projectCommand: "pnpm run ops:release -- verify --json",
+          projectCommand: "pnpm --silent run ops:release -- verify --json",
         }),
       ]),
     );
@@ -181,7 +181,7 @@ describe("ops migrate core", () => {
           safeToPlan: false,
         }),
         nextCommand: "nexpress ops backup status --required --json",
-        projectNextCommand: "pnpm run ops:backup -- status --required --json",
+        projectNextCommand: "pnpm --silent run ops:backup -- status --required --json",
       }),
     );
     expect(report.steps).toEqual(
@@ -189,7 +189,7 @@ describe("ops migrate core", () => {
         expect.objectContaining({
           id: "backup.restore-plan",
           command: "nexpress ops backup restore-plan latest --json",
-          projectCommand: "pnpm run ops:backup -- restore-plan latest --json",
+          projectCommand: "pnpm --silent run ops:backup -- restore-plan latest --json",
         }),
         expect.objectContaining({
           id: "rollback.database",

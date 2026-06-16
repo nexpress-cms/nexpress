@@ -54,14 +54,14 @@ function printHelp(): void {
   console.log(`NexPress release
 
 Usage:
-  pnpm run ops:release -- check --target vercel --json
-  pnpm run ops:release -- plan --target vercel --json
-  pnpm run ops:release -- apply --plan .nexpress/releases/<plan>.json --json
-  pnpm run ops:release -- verify --url https://example.com --json
-  pnpm run release -- check --target vercel --json
-  pnpm run release -- plan --target vercel --json
-  pnpm run release -- apply --plan .nexpress/releases/<plan>.json --json
-  pnpm run release -- verify --url https://example.com --json
+  pnpm --silent run ops:release -- check --target vercel --json
+  pnpm --silent run ops:release -- plan --target vercel --json
+  pnpm --silent run ops:release -- apply --plan .nexpress/releases/<plan>.json --json
+  pnpm --silent run ops:release -- verify --url https://example.com --json
+  pnpm --silent run release -- check --target vercel --json
+  pnpm --silent run release -- plan --target vercel --json
+  pnpm --silent run release -- apply --plan .nexpress/releases/<plan>.json --json
+  pnpm --silent run release -- verify --url https://example.com --json
   nexpress release check --target vercel --brief --no-color
   nexpress release plan --target vercel --brief --no-color
   nexpress release apply --plan .nexpress/releases/<plan>.json --execute --approve <planId>
@@ -138,6 +138,7 @@ function detectPackageManager(cwd: string): PackageManager {
 
 function runArgs(manager: PackageManager, script: string, passthrough: string[]): string[] {
   if (manager === "yarn") return [script, ...passthrough];
+  if (passthrough.includes("--json")) return ["--silent", "run", script, "--", ...passthrough];
   return ["run", script, "--", ...passthrough];
 }
 

@@ -312,10 +312,10 @@ assertIncludes(readme, "## Deploy Bridge", "README");
 assertIncludes(readme, "pnpm run deploy:plan -- --target vercel --brief --no-color", "README");
 assertIncludes(readme, "pnpm db:migrate", "README");
 assertIncludes(readme, "pnpm run ops:preflight -- --target vercel --brief --no-color", "README");
-assertIncludes(readme, "pnpm run ops:release -- check --target vercel --json", "README");
+assertIncludes(readme, "pnpm --silent run ops:release -- check --target vercel --json", "README");
 assertIncludes(
   readme,
-  "pnpm run ops:release -- verify --url https://your-domain.example --json",
+  "pnpm --silent run ops:release -- verify --url https://your-domain.example --json",
   "README",
 );
 assertNotIncludes(readme, "Deploy with Vercel", "README");
@@ -336,10 +336,14 @@ assertIncludes(
   "pnpm run ops:preflight -- --target vercel --brief --no-color",
   "docs/ops.md",
 );
-assertIncludes(opsDoc, "pnpm run ops:release -- check --target vercel --json", "docs/ops.md");
 assertIncludes(
   opsDoc,
-  "pnpm run ops:release -- verify --url https://your-domain.example --json",
+  "pnpm --silent run ops:release -- check --target vercel --json",
+  "docs/ops.md",
+);
+assertIncludes(
+  opsDoc,
+  "pnpm --silent run ops:release -- verify --url https://your-domain.example --json",
   "docs/ops.md",
 );
 assertIncludes(opsDoc, "pnpm run doctor:prod -- --target vercel", "docs/ops.md");

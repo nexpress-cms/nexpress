@@ -71,7 +71,7 @@ describe("ops status core", () => {
       expect.objectContaining({
         status: "attention",
         nextCommand: "nexpress ops jobs retry-all --state failed --json",
-        projectNextCommand: "pnpm run ops:jobs -- retry-all --state failed --json",
+        projectNextCommand: "pnpm --silent run ops:jobs -- retry-all --state failed --json",
       }),
     );
   });

@@ -32,14 +32,14 @@ function printHelp(): void {
   console.log(`NexPress ops backup
 
 Usage:
-  pnpm run ops:backup -- create --json
-  pnpm run ops:backup -- create --database artifacts/db.dump --verified --json
-  pnpm run ops:backup -- status --json
-  pnpm run ops:backup -- status --required --json
+  pnpm --silent run ops:backup -- create --json
+  pnpm --silent run ops:backup -- create --database artifacts/db.dump --verified --json
+  pnpm --silent run ops:backup -- status --json
+  pnpm --silent run ops:backup -- status --required --json
   pnpm run ops:backup -- list --brief --no-color
-  pnpm run ops:backup -- verify latest --json
-  pnpm run ops:backup -- verify <manifestId> --json
-  pnpm run ops:backup -- restore-plan [latest|manifestId] --json
+  pnpm --silent run ops:backup -- verify latest --json
+  pnpm --silent run ops:backup -- verify <manifestId> --json
+  pnpm --silent run ops:backup -- restore-plan [latest|manifestId] --json
   nexpress ops backup create --json
   nexpress ops backup status --json
   nexpress ops backup verify latest --json

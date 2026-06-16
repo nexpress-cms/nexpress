@@ -20,9 +20,9 @@ describe("buildSuccessLines", () => {
     expect(output).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
     expect(output).toContain("pnpm db:migrate");
     expect(output).toContain("pnpm run ops:preflight -- --target vercel --brief --no-color");
-    expect(output).toContain("pnpm run ops:release -- check --target vercel --json");
+    expect(output).toContain("pnpm --silent run ops:release -- check --target vercel --json");
     expect(output).toContain(
-      "pnpm run ops:release -- verify --url https://your-domain.example --json",
+      "pnpm --silent run ops:release -- verify --url https://your-domain.example --json",
     );
     expect(output).toContain("More ops commands live in docs/ops.md");
     expect(output).not.toContain("Jobs: pnpm run ops:jobs");

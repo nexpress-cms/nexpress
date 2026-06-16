@@ -458,11 +458,11 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
     expect(readme).toContain("pnpm db:migrate");
     expect(readme).toContain("pnpm run ops:preflight -- --target vercel --brief --no-color");
-    expect(readme).toContain("pnpm run ops:release -- check --target vercel --json");
+    expect(readme).toContain("pnpm --silent run ops:release -- check --target vercel --json");
     expect(readme).toContain(
-      "pnpm run ops:release -- verify --url https://your-domain.example --json",
+      "pnpm --silent run ops:release -- verify --url https://your-domain.example --json",
     );
-    expect(readme).not.toContain("pnpm run ops:backup -- status --json");
+    expect(readme).not.toContain("pnpm --silent run ops:backup -- status --json");
     expect(readme).not.toContain('schemaVersion: "np.ops.v1"');
     expect(readme.split(/\r?\n/).length).toBeLessThanOrEqual(100);
 
@@ -470,50 +470,54 @@ describe("getProjectFiles", () => {
     expect(ops).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
     expect(ops).toContain("pnpm db:migrate");
     expect(ops).toContain("pnpm run ops:preflight -- --target vercel --brief --no-color");
-    expect(ops).toContain("pnpm run ops:release -- check --target vercel --json");
+    expect(ops).toContain("pnpm --silent run ops:release -- check --target vercel --json");
     expect(ops).toContain(
-      "pnpm run ops:release -- verify --url https://your-domain.example --json",
+      "pnpm --silent run ops:release -- verify --url https://your-domain.example --json",
     );
-    expect(ops).toContain("pnpm run ops:status -- --json");
-    expect(ops).toContain("pnpm run ops:contracts -- --json");
-    expect(ops).toContain("pnpm run ops:preflight -- --target vercel --json");
+    expect(ops).toContain("pnpm --silent run ops:status -- --json");
+    expect(ops).toContain("pnpm --silent run ops:contracts -- --json");
+    expect(ops).toContain("pnpm --silent run ops:preflight -- --target vercel --json");
     expect(ops).toContain('schemaVersion: "np.ops-contracts.v1"');
     expect(ops).toContain("`ops:preflight` combines `deploy:plan`, the production doctor, and");
     expect(ops).toContain("pnpm run ops:health -- --url http://localhost:3000 --brief --no-color");
-    expect(ops).toContain("pnpm run ops:migrate -- plan --json");
+    expect(ops).toContain("pnpm --silent run ops:migrate -- plan --json");
     expect(ops).toContain("backup/apply/verify handoff actions");
-    expect(ops).toContain("pnpm run ops:backup -- status --json");
-    expect(ops).toContain("pnpm run ops:backup -- create --json");
-    expect(ops).toContain("pnpm run ops:backup -- verify latest --json");
+    expect(ops).toContain("pnpm --silent run ops:backup -- status --json");
+    expect(ops).toContain("pnpm --silent run ops:backup -- create --json");
+    expect(ops).toContain("pnpm --silent run ops:backup -- verify latest --json");
     expect(ops).toContain("record/verify/restore handoff");
     expect(ops).toContain("Backup and restore reports also include `plan.nextCommands`");
-    expect(ops).toContain("pnpm run ops:jobs -- --json");
-    expect(ops).toContain('pnpm run ops:jobs -- pause --reason "maintenance" --json');
-    expect(ops).toContain("pnpm run ops:jobs -- resume --json");
-    expect(ops).toContain("pnpm run ops:jobs -- retry-all --state failed --json");
+    expect(ops).toContain("pnpm --silent run ops:jobs -- --json");
+    expect(ops).toContain('pnpm --silent run ops:jobs -- pause --reason "maintenance" --json');
+    expect(ops).toContain("pnpm --silent run ops:jobs -- resume --json");
+    expect(ops).toContain("pnpm --silent run ops:jobs -- retry-all --state failed --json");
     expect(ops).toContain(
-      "pnpm run ops:jobs -- retry-all --state failed --execute --approve retry-all --json",
+      "pnpm --silent run ops:jobs -- retry-all --state failed --execute --approve retry-all --json",
     );
-    expect(ops).toContain("pnpm run ops:jobs -- drain --execute --approve drain --json");
-    expect(ops).toContain("pnpm run ops:storage -- --json");
-    expect(ops).toContain("pnpm run ops:storage -- verify --json");
-    expect(ops).toContain("pnpm run ops:storage -- missing-files --json");
-    expect(ops).toContain("pnpm run ops:storage -- orphaned-files --json");
-    expect(ops).toContain("pnpm run ops:storage -- migrate plan --target s3 --json");
-    expect(ops).toContain("pnpm run ops:storage -- test --json");
-    expect(ops).toContain("pnpm run ops:storage -- test --execute --approve storage-test --json");
-    expect(ops).toContain("pnpm run ops:plugins -- doctor --json");
-    expect(ops).toContain("pnpm run ops:release -- check --target vercel --json");
-    expect(ops).toContain("pnpm run ops:release -- plan --target vercel --json");
+    expect(ops).toContain("pnpm --silent run ops:jobs -- drain --execute --approve drain --json");
+    expect(ops).toContain("pnpm --silent run ops:storage -- --json");
+    expect(ops).toContain("pnpm --silent run ops:storage -- verify --json");
+    expect(ops).toContain("pnpm --silent run ops:storage -- missing-files --json");
+    expect(ops).toContain("pnpm --silent run ops:storage -- orphaned-files --json");
+    expect(ops).toContain("pnpm --silent run ops:storage -- migrate plan --target s3 --json");
+    expect(ops).toContain("pnpm --silent run ops:storage -- test --json");
     expect(ops).toContain(
-      "pnpm run ops:release -- apply --plan .nexpress/releases/<plan>.json --json",
+      "pnpm --silent run ops:storage -- test --execute --approve storage-test --json",
+    );
+    expect(ops).toContain("pnpm --silent run ops:plugins -- doctor --json");
+    expect(ops).toContain("pnpm --silent run ops:release -- check --target vercel --json");
+    expect(ops).toContain("pnpm --silent run ops:release -- plan --target vercel --json");
+    expect(ops).toContain(
+      "pnpm --silent run ops:release -- apply --plan .nexpress/releases/<plan>.json --json",
     );
     expect(ops).toContain("release-apply allowlist");
     expect(ops).toContain("structured argv specs");
-    expect(ops).toContain("pnpm run ops:release -- verify --url http://localhost:3000 --json");
-    expect(ops).toContain("pnpm run ops:runbook -- worker-not-draining --json");
     expect(ops).toContain(
-      "pnpm run ops:runbook -- migration-crashed --json --out .nexpress/runbooks/migration-crashed.json",
+      "pnpm --silent run ops:release -- verify --url http://localhost:3000 --json",
+    );
+    expect(ops).toContain("pnpm --silent run ops:runbook -- worker-not-draining --json");
+    expect(ops).toContain(
+      "pnpm --silent run ops:runbook -- migration-crashed --json --out .nexpress/runbooks/migration-crashed.json",
     );
     expect(ops).toContain('schemaVersion: "np.ops.v1"');
     expect(ops).toContain("pnpm run doctor -- --fix-plan");
@@ -521,8 +525,8 @@ describe("getProjectFiles", () => {
     expect(ops).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
     expect(ops).toContain("pnpm run doctor:prod -- --target vercel --brief --no-color");
     expect(ops).toContain("pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan");
-    expect(ops).toContain("pnpm run deploy:plan -- --target vercel --json");
-    expect(ops).toContain("pnpm run doctor:prod -- --target vercel --json --fix-plan");
+    expect(ops).toContain("pnpm --silent run deploy:plan -- --target vercel --json");
+    expect(ops).toContain("pnpm --silent run doctor:prod -- --target vercel --json --fix-plan");
     expect(ops).toContain("nextCommands");
     expect(ops).toContain("nextCommand");
     expect(ops).toContain("plan.nextCommands");
