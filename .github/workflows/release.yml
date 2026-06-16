@@ -44,9 +44,11 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write       # changesets bot pushes the "Version Packages" PR
-  pull-requests: write  # … and opens / updates it
-  id-token: write       # npm provenance attestation
+  contents: write # changesets bot pushes the "Version Packages" PR
+  pull-requests: write # … and opens / updates it
+  actions: write # dispatch CI for GITHUB_TOKEN-created Version PRs
+  statuses: write # mirror required CI jobs onto the Version PR commit
+  id-token: write # npm provenance attestation
 
 jobs:
   release:
@@ -146,6 +148,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
+
+      # `changesets/action` uses `GITHUB_TOKEN`, and GitHub suppresses
+      # automatic workflow triggers for commits created with that token.
+      # Without this bridge, the Version PR can sit with an empty
+      # statusCheckRollup even though the branch is mergeable by content,
+      # forcing an admin bypass. Dispatch CI manually and mirror the
+      # required job conclusions as commit statuses with the exact names
+      # the main-branch ruleset requires.
+      - name: Bridge Version PR CI into required checks
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_PR_NUMBER: ${{ steps.changesets.outputs.pullRequestNumber }}
+          VERSION_PR_BRANCH: changeset-release/main
+          VERSION_PR_BASE: main
+          CI_WORKFLOW_FILE: ci.yml
+        run: node scripts/bridge-version-pr-ci.mjs
 
       # Race guard: the Version PR's merge commit (titled
       # `chore(release): version packages`) is supposed to trigger
