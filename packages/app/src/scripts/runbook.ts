@@ -96,6 +96,7 @@ function detectPackageManager(cwd: string): PackageManager {
 
 function runArgs(manager: PackageManager, script: string, passthrough: string[]): string[] {
   if (manager === "yarn") return [script, ...passthrough];
+  if (passthrough.includes("--json")) return ["--silent", "run", script, "--", ...passthrough];
   return ["run", script, "--", ...passthrough];
 }
 
