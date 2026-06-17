@@ -90,12 +90,12 @@ web container without dropping in-flight jobs.
 // `apps/web/scripts/worker.ts` in the monorepo. The framework's stock
 // runner handles the boilerplate below; this is what it does
 // underneath if you ever need to roll your own.
-import { startWorker } from "@nexpress/core";
+import { startWorker } from "@nexpress/core/jobs";
 
 await startWorker(process.env.DATABASE_URL!);
 
 process.on("SIGTERM", async () => {
-  const { stopWorker } = await import("@nexpress/core");
+  const { stopWorker } = await import("@nexpress/core/jobs");
   await stopWorker();
   process.exit(0);
 });
@@ -141,7 +141,7 @@ key is a string (typically `"namespace:action"`).
 
 ```ts
 // In a plugin
-import { registerJobHandler } from "@nexpress/core";
+import { registerJobHandler } from "@nexpress/core/jobs";
 
 registerJobHandler("myplugin:cleanup", async (data) => {
   const { sites } = data as { sites: string[] };
@@ -171,7 +171,7 @@ the configured error reporter (`getErrorReporter()`) — see
 ## 6. Enqueueing Jobs
 
 ```ts
-import { enqueueJob } from "@nexpress/core";
+import { enqueueJob } from "@nexpress/core/jobs";
 
 const id = await enqueueJob("media:processImage", {
   mediaId: "01HM...",

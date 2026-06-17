@@ -179,17 +179,18 @@ metadata to their user for trust review.
 
 ## 5. Rate limits
 
-Middleware enforces per-IP per-pattern buckets:
+The Next 16 proxy (`src/proxy.ts`, implemented in `@nexpress/app/proxy`)
+enforces per-IP per-pattern buckets:
 
-| Route prefix             | Limit        |
-|--------------------------|--------------|
-| `/api/auth/*`            | 10 / min     |
-| `/api/media/upload`      | 20 / min     |
-| `/api/import`            | 5 / min      |
-| `/api/collections/*`     | 100 / min    |
-| `/api/plugins*`          | 60 / min     |
-| `/api/users*`            | 30 / min     |
-| `/api/search*`           | 60 / min     |
+| Route prefix         | Limit     |
+| -------------------- | --------- |
+| `/api/auth/*`        | 10 / min  |
+| `/api/media/upload`  | 20 / min  |
+| `/api/import`        | 5 / min   |
+| `/api/collections/*` | 100 / min |
+| `/api/plugins*`      | 60 / min  |
+| `/api/users*`        | 30 / min  |
+| `/api/search*`       | 60 / min  |
 
 When exceeded the response is `429` with a `Retry-After` header.
 

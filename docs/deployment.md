@@ -8,11 +8,11 @@ three concrete paths plus the env-var surface you need on all of them.
 
 ## Required environment
 
-| Variable | Purpose | Notes |
-|---|---|---|
-| `DATABASE_URL` | Postgres DSN | At least one DB role with DDL — drizzle-kit migrations create tables on first deploy. |
-| `NP_SECRET` | JWT signing key | **≥ 32 random chars in production.** Rotating logs every user out. |
-| `SITE_URL` | Canonical site origin | Used in `og:url`, password-reset links, OpenAPI `servers`. |
+| Variable       | Purpose               | Notes                                                                                 |
+| -------------- | --------------------- | ------------------------------------------------------------------------------------- |
+| `DATABASE_URL` | Postgres DSN          | At least one DB role with DDL — drizzle-kit migrations create tables on first deploy. |
+| `NP_SECRET`    | JWT signing key       | **≥ 32 random chars in production.** Rotating logs every user out.                    |
+| `SITE_URL`     | Canonical site origin | Used in `og:url`, password-reset links, OpenAPI `servers`.                            |
 
 Optional (defaults shown in `.env.example`):
 
@@ -297,7 +297,7 @@ logger, unwrap that file and install your adapter next to the
 email-adapter setup before re-exporting:
 
 ```ts
-import { setLogger } from "@nexpress/core";
+import { setLogger } from "@nexpress/core/observability";
 import pino from "pino";
 
 const root = pino({ level: process.env.LOG_LEVEL ?? "info" });
@@ -337,7 +337,7 @@ For a Sentry / pino / Datadog-specific recipe and the matching
 - **`LocalStorageAdapter` is not multi-node safe.** Different nodes will
   see different `./uploads` directories. Use S3 (or any object store) in
   HA topologies. Boot emits a `multi_node_local_storage` warning when
-  either `NP_MULTI_NODE=true` is set or `NODE_ENV=production` *and* a
+  either `NP_MULTI_NODE=true` is set or `NODE_ENV=production` _and_ a
   managed-container env var is detected (`KUBERNETES_SERVICE_HOST`,
   `FLY_REGION`, `RENDER_INSTANCE_ID`, `RAILWAY_ENVIRONMENT_NAME`).
   Set `NP_STORAGE_ADAPTER=s3` to
@@ -367,7 +367,6 @@ For a Sentry / pino / Datadog-specific recipe and the matching
   `/api/auth/login` lets through 40 requests on a 4-node cluster.
   Pick one of the multi-node options below before you scale past
   one app process:
-
   - **`@nexpress/rate-limiter-redis`** — first-party reference adapter.
     A single Lua script issues `INCR` + `PTTL` + conditional
     `PEXPIRE` in one round trip per request, so an unlucky crash
@@ -391,6 +390,7 @@ For a Sentry / pino / Datadog-specific recipe and the matching
     (one client, one connection pool). See the package
     [README](https://github.com/nexpress-cms/nexpress/tree/main/packages/rate-limiter-redis)
     for cluster / sentinel / shared-client patterns.
+
   - **CDN / edge rate limiter** — Cloudflare / Vercel rules at the
     edge. The in-process default becomes defense-in-depth.
   - **NGINX / Caddy** — `limit_req_zone` (NGINX) or the

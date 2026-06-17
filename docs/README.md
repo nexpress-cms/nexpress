@@ -12,6 +12,7 @@ behavior they describe changes.
 | File                                                   | Topic                                                                  |
 | ------------------------------------------------------ | ---------------------------------------------------------------------- |
 | [agent-integration.md](agent-integration.md)           | Agent / LLM integration surface                                        |
+| [agent-operated-ops.md](agent-operated-ops.md)         | Shipped agent-operated ops CLI contracts plus deferred follow-ups      |
 | [api-error-codes.md](api-error-codes.md)               | Stable `code` strings on error responses                               |
 | [backup-restore.md](backup-restore.md)                 | Backup procedures, restore order, DR drill                             |
 | [caching.md](caching.md)                               | Cache strategy and invalidation                                        |
@@ -35,21 +36,26 @@ behavior they describe changes.
 | [testing.md](testing.md)                               | Unit + integration test setup                                          |
 | [theme-and-page-authors.md](theme-and-page-authors.md) | Cookbook — what to call from a custom page or theme                    |
 | [theme-authoring.md](theme-authoring.md)               | Authoring a theme                                                      |
+| [troubleshooting.md](troubleshooting.md)               | First-boot and scaffold troubleshooting                                |
 | [wordpress-import-guide.md](wordpress-import-guide.md) | Running the WP importer                                                |
 
 The single live "architecture" entry point is [`AGENTS.md`](../AGENTS.md) at
-the repo root (symlinked as `CLAUDE.md`). It is the only file in the repo
-that should claim to be a current architectural overview.
+the repo root. `CLAUDE.md` is intentionally ignored as a local compatibility
+file for Claude-style tooling; do not put current architecture guidance
+there. `AGENTS.md` is the only file in the repo that should claim to be a
+current architectural overview.
 
 ## Roadmap
 
-[`roadmap.md`](roadmap.md) — the working roadmap from 0.1 toward 1.0.
-Updated as work lands. The v0.1 stability _contract_ is in `AGENTS.md`;
-the roadmap is what we plan to do _next_.
+[`roadmap.md`](roadmap.md) — historical pre-publish roadmap snapshot. It is
+kept for context and category vocabulary, not as the current work queue. The
+v0.1 stability _contract_ is in `AGENTS.md`; current behavior lives in the
+focused live guides above.
 
-[`agent-operated-ops.md`](agent-operated-ops.md) — a planning backlog for
-agent-friendly deployment and post-deploy operations CLI work. It is not a
-live behavior guide yet.
+[`agent-operated-ops.md`](agent-operated-ops.md) started as a planning
+backlog, but now documents the shipped `nexpress ops`, `nexpress release`,
+and `nexpress runbook` JSON contracts. Its issue sections are retained as
+implementation history and deferred follow-up notes.
 
 ## Design snapshots — frozen
 

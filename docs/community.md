@@ -280,7 +280,7 @@ a comment cascades reactions on it.
 Three optional adapters; default to no-op:
 
 ```ts
-import { setSpamAdapter, setProfanityAdapter, setReputationAdapter } from "@nexpress/core";
+import { setSpamAdapter, setProfanityAdapter, setReputationAdapter } from "@nexpress/core/community";
 
 setSpamAdapter({
   check: async ({ text, member }) => {
@@ -400,7 +400,7 @@ reference is polymorphic: staff (`user.id`), member
 Phase 17 added a nullable `site_id` column to `np_audit_events`
 and an index on `(site_id, created_at)`. `recordAuditEvent`
 fills it from the current request's site (resolved by the
-multi-site middleware), so multi-tenant operators can now
+multi-site proxy), so multi-tenant operators can now
 filter audit events by site without joining through the
 target. Events that don't belong to a single site
 (super-admin actions, scripts, background jobs without a

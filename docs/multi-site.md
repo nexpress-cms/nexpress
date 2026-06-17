@@ -94,11 +94,11 @@ np_sites          ← one row per tenant
 
 Per-request, in priority order:
 
-1. **`x-np-admin-site` header** — the middleware forwards
+1. **`x-np-admin-site` header** — the proxy forwards
    the `np-admin-site` cookie (set by the admin site-picker)
    on `/admin` and `/api/admin` paths only. Lets a super-
    admin operate on any site without changing the URL.
-2. **`x-np-host` header** — middleware forwards the request
+2. **`x-np-host` header** — the proxy forwards the request
    `Host`. The bootstrap resolver does
    `resolveSiteForHostname()` which queries `np_sites` for
    a matching row.
@@ -177,7 +177,7 @@ from `@nexpress/core/auth` (`"admin.manage"`,
 `"content.publish"`, `"content.author"`,
 `"community.moderate"`). The legacy global `hasRole(user,
 minRole)` was retired in #273; capability strings replace it
-because they describe the *behavior* a route gates on rather
+because they describe the _behavior_ a route gates on rather
 than a role-rank comparison.
 
 ---
@@ -186,7 +186,7 @@ than a role-rank comparison.
 
 **Create a site** — Settings → Sites tab → "Add site". Set
 the id (URL handle), name, and hostname. The hostname is
-what the middleware matches request `Host` headers against.
+what the proxy matches request `Host` headers against.
 
 **Switch site context** — admin topbar's site picker
 (visible to super-admins always, and to non-super users when

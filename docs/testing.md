@@ -225,22 +225,21 @@ pending.
 
 ## CI
 
-`.github/workflows/ci.yml` defines three jobs on Ubuntu (Node 22, pnpm
-10.33):
+`.github/workflows/ci.yml` runs on every pull request, manual
+`workflow_dispatch`, and selected `push: main` changes (docs-only and
+changeset-only pushes are ignored on `main`). It defines four jobs on Ubuntu
+(Node 22, pnpm 10.33):
 
-1. `checks` — install → build → typecheck → `pnpm test` (unit suite).
-2. `integration` — boots a Postgres 16 service container, sets
+1. `typecheck + build + test` — install → build → typecheck → `pnpm test`.
+2. `integration tests (Postgres)` — boots a Postgres 16 service container, sets
    `TEST_DATABASE_URL=postgres://nexpress:nexpress@localhost:5432/nexpress_test`,
    and runs `pnpm test:integration` (#275). Covers the pipeline /
    write-path code that mock-based unit tests can't.
-3. `e2e` — separate Postgres service container (DB
+3. `E2E (Playwright)` — separate Postgres service container (DB
    `nexpress_e2e`), `playwright install --with-deps chromium`,
    `pnpm build`, then `pnpm --filter @nexpress/web test:e2e` with
-   `PLAYWRIGHT_USE_BUILD=1`. Uploads the Playwright report as a
-   build artifact on failure.
-
-Currently `workflow_dispatch` only while the repo's Actions billing is being
-resolved — push / pull_request triggers will be re-enabled without other
-changes once that's settled. After the integration + e2e jobs have been
-green for a few PR runs in normal mode, mark them required for merges to
-`main`.
+   `PLAYWRIGHT_USE_BUILD=1`. Runs on pull requests and manual dispatch, not
+   push-to-main. Uploads the Playwright report as a build artifact on failure.
+4. `scaffold smoke (fresh scaffold journey)` — packs the workspace packages,
+   scaffolds a temp project outside the monorepo, installs it, typechecks it,
+   and runs the deploy-readiness journey smoke.

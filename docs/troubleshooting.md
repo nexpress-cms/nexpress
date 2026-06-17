@@ -119,9 +119,9 @@ copy the new versions of `scripts/seed-content.ts` and
 
 **Diagnosis.** You haven't run `pnpm db:generate` yet — the Drizzle
 schema for the scaffold's collections doesn't exist on disk. The
-bootstrap chain runs `ensureCoreServices()`, which tries to wire each
-collection to its generated table, and fails when the table isn't
-exported from `src/db/generated/collections.ts`.
+bootstrap chain runs `ensureFor("read")`, which wires collections to
+their generated tables, and fails when the table isn't exported from
+`src/db/generated/collections.ts`.
 
 **Fix.**
 

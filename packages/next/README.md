@@ -1,7 +1,7 @@
 # @nexpress/next
 
-Next.js integration helpers for [NexPress](https://github.com/hahabsw/nexpress) —
-the Next.js-based CMS. Wires `@nexpress/core` into a Next.js 15 App Router
+Next.js integration helpers for [NexPress](https://github.com/nexpress-cms/nexpress) —
+the Next.js-based CMS. Wires `@nexpress/core` into a Next.js 16 App Router
 site: bootstrap singletons, auth helpers, collection helpers, cache
 invalidation.
 
@@ -70,10 +70,10 @@ await revalidateCollection("posts");
 
 ## Links
 
-- [Repository](https://github.com/hahabsw/nexpress)
-- [AGENTS.md](https://github.com/hahabsw/nexpress/blob/main/AGENTS.md) — architecture overview
-- [docs/caching.md](https://github.com/hahabsw/nexpress/blob/main/docs/caching.md)
-- [docs/deployment.md](https://github.com/hahabsw/nexpress/blob/main/docs/deployment.md)
+- [Repository](https://github.com/nexpress-cms/nexpress)
+- [AGENTS.md](https://github.com/nexpress-cms/nexpress/blob/main/AGENTS.md) — architecture overview
+- [docs/caching.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/caching.md)
+- [docs/deployment.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/deployment.md)
 
 ## License
 
