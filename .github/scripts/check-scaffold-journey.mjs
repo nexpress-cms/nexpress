@@ -26,6 +26,11 @@ const REQUIRED_SCRIPTS = [
   "db:generate",
   "db:migrate",
   "db:push",
+  "ops:contracts",
+  "ops:preflight",
+  "ops:release",
+  "ops:runbook",
+  "ops:status",
 ];
 
 const EXACT_SCRIPTS = {
@@ -86,6 +91,23 @@ function parseJsonOutput(text, label) {
   }
 }
 
+function parseJsonStdout(run, label) {
+  try {
+    return JSON.parse(run.stdout);
+  } catch {
+    fail(
+      `${label} stdout should be strict parseable JSON`,
+      [
+        "stdout:",
+        run.stdout.split("\n").slice(-40).join("\n"),
+        "",
+        "stderr:",
+        run.stderr.split("\n").slice(-40).join("\n"),
+      ].join("\n"),
+    );
+  }
+}
+
 function runTsx(script, args) {
   const result = spawnSync(resolve(scaffoldDir, "node_modules/.bin/tsx"), [script, ...args], {
     cwd: scaffoldDir,
@@ -98,6 +120,44 @@ function runTsx(script, args) {
     code: result.status ?? 1,
     output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
   };
+}
+
+function runPnpm(args) {
+  const result = spawnSync("pnpm", args, {
+    cwd: scaffoldDir,
+    env: { ...process.env, ...JOURNEY_ENV },
+    encoding: "utf8",
+    timeout: 60_000,
+    shell: false,
+  });
+  return {
+    code: result.status ?? 1,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
+  };
+}
+
+function runProjectJson(label, args, schemaVersion) {
+  const run = runPnpm(["--silent", "run", ...args]);
+  assertNoResolverCrash(run.output, label);
+  const json = parseJsonStdout(run, label);
+  if (json.schemaVersion !== schemaVersion) {
+    fail(`${label} should emit ${schemaVersion}`, run.stdout);
+  }
+  return { run, json };
+}
+
+function assertProjectJsonCommand(command, label) {
+  if (typeof command !== "string") {
+    fail(`${label} should include a project command string`);
+  }
+  if (!command.startsWith("pnpm --silent run ")) {
+    fail(`${label} should use pnpm --silent for JSON project commands`, command);
+  }
+  if (!command.includes("--json")) {
+    fail(`${label} should preserve --json in project commands`, command);
+  }
 }
 
 for (const name of REQUIRED_SCRIPTS) {
@@ -304,6 +364,98 @@ if (!fixPlanCommands.includes("pnpm run deploy:plan -- --target vercel --brief -
   fail("doctor:prod --json --fix-plan should point target actions at human deploy-plan output");
 }
 console.log("✓ doctor:prod JSON fix-plan stays machine-readable inside the scaffold journey");
+
+const contractsJson = runProjectJson(
+  "pnpm ops:contracts --json",
+  ["ops:contracts", "--", "--json"],
+  "np.ops-contracts.v1",
+);
+if (contractsJson.run.code !== 0) {
+  fail("ops:contracts --json should exit 0", contractsJson.run.output);
+}
+if (!Array.isArray(contractsJson.json.contracts)) {
+  fail("ops:contracts --json should list the shipped ops commands", contractsJson.run.stdout);
+}
+console.log("✓ pnpm --silent ops:contracts emits strict JSON stdout");
+
+const statusJson = runProjectJson(
+  "pnpm ops:status --json",
+  ["ops:status", "--", "--json"],
+  "np.ops.v1",
+);
+if (typeof statusJson.json.ok !== "boolean" || !Array.isArray(statusJson.json.checks)) {
+  fail("ops:status --json should include ok + checks", statusJson.run.stdout);
+}
+console.log("✓ pnpm --silent ops:status emits strict JSON stdout");
+
+const preflightJson = runProjectJson(
+  "pnpm ops:preflight --json",
+  ["ops:preflight", "--", "--target", "vercel", "--json"],
+  "np.ops-preflight.v1",
+);
+if (preflightJson.run.code === 0) {
+  fail("ops:preflight should block against the intentional closed DB/local Vercel storage env");
+}
+for (const step of preflightJson.json.steps ?? []) {
+  assertProjectJsonCommand(step.command, `ops:preflight step ${step.id} command`);
+}
+console.log("✓ pnpm --silent ops:preflight keeps child JSON commands silent");
+
+const releaseCheckJson = runProjectJson(
+  "pnpm ops:release check --json",
+  ["ops:release", "--", "check", "--target", "vercel", "--json"],
+  "np.release.v1",
+);
+if (releaseCheckJson.run.code === 0) {
+  fail("release check should block against the intentional closed DB/local Vercel storage env");
+}
+for (const step of releaseCheckJson.json.steps ?? []) {
+  assertProjectJsonCommand(step.command, `release check step ${step.id} command`);
+}
+console.log("✓ pnpm --silent release check keeps child JSON commands silent");
+
+const releasePlanOut = ".nexpress/releases/scaffold-ci-release-plan.json";
+const releasePlanJson = runProjectJson(
+  "pnpm ops:release plan --json --out",
+  ["ops:release", "--", "plan", "--target", "vercel", "--out", releasePlanOut, "--json"],
+  "np.release-plan.v1",
+);
+const releasePlanArtifact = parseJsonOutput(
+  readFileSync(resolve(scaffoldDir, releasePlanOut), "utf8"),
+  "release plan artifact",
+);
+if (JSON.stringify(releasePlanArtifact) !== JSON.stringify(releasePlanJson.json)) {
+  fail("release plan --out artifact should match stdout JSON", releasePlanJson.run.stdout);
+}
+for (const [index, command] of (releasePlanJson.json.commands ?? []).entries()) {
+  if (command?.command?.includes("--json")) {
+    assertProjectJsonCommand(command.projectCommand, `release plan command ${index.toString()}`);
+  }
+}
+console.log("✓ pnpm --silent release plan writes a matching JSON artifact");
+
+const runbookOut = ".nexpress/runbooks/migration-crashed.json";
+const runbookJson = runProjectJson(
+  "pnpm ops:runbook migration-crashed --json --out",
+  ["ops:runbook", "--", "migration-crashed", "--json", "--out", runbookOut],
+  "np.runbook.v1",
+);
+const runbookArtifact = parseJsonOutput(
+  readFileSync(resolve(scaffoldDir, runbookOut), "utf8"),
+  "runbook artifact",
+);
+if (JSON.stringify(runbookArtifact) !== JSON.stringify(runbookJson.json)) {
+  fail("runbook --out artifact should match stdout JSON", runbookJson.run.stdout);
+}
+for (const evidence of runbookJson.json.evidence ?? []) {
+  assertProjectJsonCommand(evidence.command, `runbook evidence ${evidence.id} command`);
+}
+for (const [index, command] of (runbookJson.json.projectNextCommands ?? []).entries()) {
+  if (command.includes("--json")) {
+    assertProjectJsonCommand(command, `runbook projectNextCommands[${index.toString()}]`);
+  }
+}
+console.log("✓ pnpm --silent runbook writes a matching JSON artifact with silent evidence");
 
 assertIncludes(readme, "## Quickstart", "README");
 assertIncludes(readme, "## First Site", "README");

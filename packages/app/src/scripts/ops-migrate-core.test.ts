@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildOpsMigrateRollbackPlanJson,
   buildOpsMigrateJson,
+  collectOpsMigrateReport,
   scanDestructiveSql,
   type DestructiveSqlFinding,
 } from "./ops-migrate-core.js";
@@ -68,7 +69,9 @@ describe("ops migrate core", () => {
       }),
     );
     expect(report.nextCommand).toBe("nexpress ops backup status --required --json");
-    expect(report.projectNextCommand).toBe("pnpm --silent run ops:backup -- status --required --json");
+    expect(report.projectNextCommand).toBe(
+      "pnpm --silent run ops:backup -- status --required --json",
+    );
     expect(report.actions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -116,6 +119,46 @@ describe("ops migrate core", () => {
     expect(report.summary.canApplyAfterBackup).toBe(false);
     expect(report.nextCommand).toBe("nexpress ops migrate status --json");
     expect(report.actions).toEqual([]);
+  });
+
+  it("returns a blocked JSON report when local Drizzle metadata is missing", async () => {
+    const folder = mkdtempSync(join(tmpdir(), "np-ops-migrate-missing-meta-"));
+
+    const report = await collectOpsMigrateReport({
+      mode: "plan",
+      migrationsFolder: folder,
+      env: {
+        DATABASE_URL: "postgres://nexpress:nexpress@127.0.0.1:55432/ci_unreachable",
+      },
+    });
+
+    expect(report).toEqual(
+      expect.objectContaining({
+        schemaVersion: "np.ops-migrate.v1",
+        ok: false,
+        status: "blocked",
+        nextCommand: "pnpm db:generate",
+        projectNextCommand: "pnpm db:generate",
+        actions: [],
+      }),
+    );
+    expect(report.summary).toEqual(
+      expect.objectContaining({
+        local: 0,
+        inspectionBlocked: true,
+        backupRequired: false,
+        canApplyAfterBackup: false,
+      }),
+    );
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "migrate.local_migrations",
+          state: "error",
+          detail: expect.stringContaining("_journal.json"),
+        }),
+      ]),
+    );
   });
 
   it("detects destructive SQL in pending migration files", async () => {

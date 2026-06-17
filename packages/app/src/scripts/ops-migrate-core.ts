@@ -312,7 +312,8 @@ export function buildOpsMigrateJson(args: {
   checks?: CheckResult[];
 }): OpsMigrateJson {
   const checks = [...(args.checks ?? [])];
-  if (args.status.local.length === 0) {
+  const hasLocalMigrationCheck = checks.some((check) => check.id === "migrate.local_migrations");
+  if (!hasLocalMigrationCheck && args.status.local.length === 0) {
     checks.push({
       id: "migrate.local_migrations",
       state: "error",
@@ -388,6 +389,12 @@ export function buildOpsMigrateJson(args: {
       check.state === "error" &&
       (check.id === "migrate.database" || check.id === "migrate.local_migrations"),
   );
+  const localInspectionBlocked = checks.some(
+    (check) => check.state === "error" && check.id === "migrate.local_migrations",
+  );
+  const databaseInspectionBlocked = checks.some(
+    (check) => check.state === "error" && check.id === "migrate.database",
+  );
   const actions = buildOpsMigrateActions({
     status: args.status,
     destructiveFindings: args.destructiveFindings,
@@ -410,11 +417,13 @@ export function buildOpsMigrateJson(args: {
   const nextCommand =
     status === "ready"
       ? null
-      : inspectionBlocked
-        ? "nexpress ops migrate status --json"
-        : args.mode === "plan"
-          ? nextPlanCommand
-          : "nexpress ops migrate plan --json";
+      : localInspectionBlocked
+        ? "pnpm db:generate"
+        : databaseInspectionBlocked
+          ? "nexpress ops migrate status --json"
+          : args.mode === "plan"
+            ? nextPlanCommand
+            : "nexpress ops migrate plan --json";
   return {
     schemaVersion: "np.ops-migrate.v1",
     ok: counts.errors === 0,
@@ -603,7 +612,26 @@ async function collectOpsMigrateState(args: {
 }): Promise<CollectedOpsMigrateState> {
   const env = args.env ?? process.env;
   const migrationsFolder = args.migrationsFolder ?? "./drizzle";
-  const local = readLocalMigrationEntries(migrationsFolder);
+  let local: ReturnType<typeof readLocalMigrationEntries>;
+  try {
+    local = readLocalMigrationEntries(migrationsFolder);
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? error.message : String(error);
+    return {
+      migrationsFolder,
+      status: buildMigrationStatus([], []),
+      destructiveFindings: [],
+      checks: [
+        {
+          id: "migrate.local_migrations",
+          state: "error",
+          label: "Local migrations",
+          detail: detail && detail !== "[object Object]" ? detail : "metadata unavailable",
+          hint: "Run `pnpm db:generate`, review the SQL, then re-run this plan.",
+        },
+      ],
+    };
+  }
   const checks: CheckResult[] = [];
 
   const databaseUrl = env.DATABASE_URL;

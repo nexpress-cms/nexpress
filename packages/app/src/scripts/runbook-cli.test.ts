@@ -89,7 +89,12 @@ console.log(JSON.stringify({
     expect(report.schemaVersion).toBe("np.runbook.v1");
     expect(report.ok).toBe(true);
     expect(report.evidence[0]).toEqual(
-      expect.objectContaining({ exitCode: 0, ok: true, status: "ready" }),
+      expect.objectContaining({
+        command: "pnpm --silent run ops:jobs -- --json",
+        exitCode: 0,
+        ok: true,
+        status: "ready",
+      }),
     );
     expect(artifact).toEqual(report);
   }, 15_000);
@@ -120,6 +125,7 @@ process.exit(3);
     expect(report.status).toBe("blocked");
     expect(report.evidence[0]).toEqual(
       expect.objectContaining({
+        command: "pnpm --silent run ops:jobs -- --json",
         exitCode: 3,
         ok: false,
         status: "blocked",
