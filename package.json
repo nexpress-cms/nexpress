@@ -52,9 +52,12 @@
   },
   "pnpm": {
     "overrides": {
+      "@babel/core": "7.29.7",
       "esbuild": "0.28.1",
+      "js-yaml": "4.2.0",
       "postcss": "8.5.15",
-      "shell-quote": "1.8.4"
+      "shell-quote": "1.8.4",
+      "vite": "7.3.5"
     },
     "onlyBuiltDependencies": [
       "@node-rs/argon2",
@@ -65,6 +68,9 @@
       "ignoreMissing": [
         "@playwright/test"
       ]
+    },
+    "patchedDependencies": {
+      "read-yaml-file@1.1.0": "patches/read-yaml-file@1.1.0.patch"
     }
   }
 }
