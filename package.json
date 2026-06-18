@@ -44,7 +44,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.6.0",
     "prettier": "^3.5.0",
-    "tsx": "^4.20.6",
+    "tsx": "^4.22.4",
     "turbo": "^2.9.16",
     "typescript": "^5.8.0",
     "typescript-eslint": "^8.60.1",
