@@ -241,7 +241,7 @@ export async function scaffoldAdminPlugin(options: ScaffoldOptions): Promise<Sca
  * Admin-extension plugin scaffold. Demonstrates the three most useful
  * declarative surfaces:
  *   - \`settings\` — a typed form rendered by the admin's FieldRenderer.
- *     Values round-trip through GET / PATCH \`/api/plugins/:id\`.
+ *     Values persist as plugin config via PUT \`/api/admin/plugins/:id/config\`.
  *   - \`widgets\` — small status / metric cards shown on the plugin's
  *     dashboard at \`/admin/plugins/<id>\`.
  *   - \`actions\` — buttons that dispatch a registered action handler
@@ -251,8 +251,9 @@ export async function scaffoldAdminPlugin(options: ScaffoldOptions): Promise<Sca
  * which the \`setup(ctx)\` block below registers. Click the action
  * button OR re-render the widget and the same handler runs.
  *
- * Settings persist into \`np_plugins.config\`; read them back via
- * \`ctx.config\` (typed by the generic on \`definePlugin<TConfig>\`).
+ * Settings persist into \`np_settings\` under \`plugin.config:<id>\`;
+ * read them back via \`ctx.config\` (typed by the generic on
+ * \`definePlugin<TConfig>\`).
  */
 interface ${names.componentName}Config {
   apiKey: string;

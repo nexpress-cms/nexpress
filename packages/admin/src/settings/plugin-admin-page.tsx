@@ -84,8 +84,8 @@ interface PluginAdminPageProps {
   /** G.1 — initial value for the auto-form. Comes from
    *  `getPluginConfig(pluginId)` (versioned envelope unwrapped,
    *  schema defaults filled in for unsaved fields). Distinct from
-   *  `initialConfig` (legacy `np_plugins.config` style) although
-   *  both currently mirror each other. */
+   *  `initialConfig`, which is the same persisted value shaped for the
+   *  legacy `admin.settings.fields` form. */
   initialAutoConfig?: unknown;
   /** G.1 — set when the persisted config failed `safeParse`
    *  (buggy migrator, schema drift the migrator didn't cover).
@@ -350,10 +350,10 @@ function SettingsCard({
     setSaving(true);
     setToast(null);
     try {
-      const response = await npFetch(`/api/plugins/${pluginId}`, {
-        method: "PATCH",
+      const response = await npFetch(`/api/admin/plugins/${pluginId}/config`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ config: values }),
+        body: JSON.stringify({ value: values }),
       });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as {

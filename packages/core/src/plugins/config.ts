@@ -44,9 +44,7 @@ export interface NpVersionedPluginConfig {
   __npSettings: unknown;
 }
 
-export function isVersionedPluginConfig(
-  value: unknown,
-): value is NpVersionedPluginConfig {
+export function isVersionedPluginConfig(value: unknown): value is NpVersionedPluginConfig {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<NpVersionedPluginConfig>;
   return (
@@ -138,9 +136,7 @@ export async function getPluginConfig(pluginId: string): Promise<unknown> {
   return result.value;
 }
 
-export async function getPluginConfigWithStatus(
-  pluginId: string,
-): Promise<NpPluginConfigResult> {
+export async function getPluginConfigWithStatus(pluginId: string): Promise<NpPluginConfigResult> {
   // Registration is consulted for schema-driven validation + defaults
   // when present, but a missing registration MUST NOT short-circuit the
   // DB read. `ctx.settings.setPlugin` writes to `np_settings` for any
@@ -158,9 +154,7 @@ export async function getPluginConfigWithStatus(
     const rows = (await db
       .select()
       .from(npSettings)
-      .where(
-        and(eq(npSettings.siteId, siteId), eq(npSettings.key, configKey(pluginId))),
-      )
+      .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, configKey(pluginId))))
       .limit(1)) as Array<{ value: unknown }>;
     row = rows[0];
   } catch {
@@ -230,9 +224,10 @@ function defaultsFromSchema(schema: ZodTypeAny): Record<string, unknown> {
 }
 
 /**
- * Validate and persist a plugin's config. Throws `NpValidationError` when
- * `value` doesn't pass the schema — the admin form must surface
- * field-level errors before calling this.
+ * Validate and persist a plugin's config when the plugin declares a
+ * `configSchema`. Plugins without `configSchema` are legacy declarative
+ * `admin.settings.fields` users; persist their value in the same envelope
+ * without schema validation so old admin settings panels keep working.
  *
  * **Cache invalidation is the caller's responsibility.** This function
  * writes to `np_settings` only; it doesn't import `next/cache`. The
@@ -257,12 +252,15 @@ export async function setPluginConfig(
   }
   const schema = registration.configSchema as ZodTypeAny | undefined;
   if (!schema) {
-    throw new NpValidationError("Invalid input", [
-      {
-        field: "pluginId",
-        message: `Plugin '${pluginId}' does not declare a configSchema.`,
-      },
-    ]);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new NpValidationError("Invalid input", [
+        {
+          field: "value",
+          message: "Plugin config must be an object when configSchema is not declared.",
+        },
+      ]);
+    }
+    return persistPluginConfigEnvelope(pluginId, value, 1, updatedBy);
   }
 
   const parsed = schema.safeParse(value);
@@ -276,11 +274,24 @@ export async function setPluginConfig(
     );
   }
 
-  const wrapped: NpVersionedPluginConfig = {
-    __npVersion: registration.configVersion ?? 1,
-    __npSettings: parsed.data,
-  };
+  return persistPluginConfigEnvelope(
+    pluginId,
+    parsed.data,
+    registration.configVersion ?? 1,
+    updatedBy,
+  );
+}
 
+async function persistPluginConfigEnvelope(
+  pluginId: string,
+  value: unknown,
+  version: number,
+  updatedBy: string | null,
+): Promise<unknown> {
+  const wrapped: NpVersionedPluginConfig = {
+    __npVersion: version,
+    __npSettings: value,
+  };
   const db = getDb();
   const now = new Date();
   const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
@@ -297,8 +308,7 @@ export async function setPluginConfig(
       target: [npSettings.siteId, npSettings.key],
       set: { value: wrapped, updatedAt: now, updatedBy },
     });
-
-  return parsed.data;
+  return value;
 }
 
 /** Cache tag for a plugin's config invalidation. Per the prefix policy

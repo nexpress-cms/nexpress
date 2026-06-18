@@ -145,7 +145,12 @@ If the collection declares `versions.drafts: true`:
     `/api/plugins/{id}{path}`.
   - `enabled` / `loaded` flags.
 - `GET /api/plugins/{id}` — single plugin's manifest + state.
-- `POST /api/plugins/{id}` with `{ enabled, config }` — admin-only.
+- `PATCH /api/plugins/{id}` with `{ enabled }` — admin-only enable
+  toggle.
+- `GET /api/admin/plugins/{id}/config` — admin-only config form
+  metadata + current value.
+- `PUT /api/admin/plugins/{id}/config` with `{ value }` — admin-only
+  config save.
 - `GET /api/admin/plugins/discover?q=<query>` — admin-only npm
   registry search for packages tagged `nexpress-plugin`. Each result
   includes an `install` block with `installCommand`,

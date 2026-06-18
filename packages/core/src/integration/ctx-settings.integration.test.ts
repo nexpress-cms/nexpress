@@ -1,14 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { npPlugins, npSettings } from "../db/schema/system.js";
+import { getPluginConfig, setPluginConfig } from "../plugins/config.js";
 import { createPluginRuntimeContext } from "../plugins/context.js";
-import {
-  closeTestDb,
-  ensureMigrated,
-  getTestDb,
-  skipIfNoTestDb,
-  truncateAll,
-} from "./setup.js";
+import { loadPlugins, resetPlugins } from "../plugins/host.js";
+import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } from "./setup.js";
 
 describe.skipIf(skipIfNoTestDb())("ctx.settings / ctx.theme (integration)", () => {
   beforeAll(async () => {
@@ -16,10 +12,12 @@ describe.skipIf(skipIfNoTestDb())("ctx.settings / ctx.theme (integration)", () =
   });
 
   beforeEach(async () => {
+    resetPlugins();
     await truncateAll();
   });
 
   afterAll(async () => {
+    resetPlugins();
     await closeTestDb();
   });
 
@@ -83,6 +81,46 @@ describe.skipIf(skipIfNoTestDb())("ctx.settings / ctx.theme (integration)", () =
     expect(await ctx.settings.getPlugin()).toEqual({
       apiKey: "abc",
       refreshInterval: 60,
+    });
+  });
+
+  it("setPluginConfig persists legacy admin.settings plugins without configSchema", async () => {
+    await loadPlugins([
+      {
+        manifest: {
+          id: "legacy-settings",
+          name: "Legacy Settings",
+          version: "0.1.0",
+          capabilities: ["admin:panel"],
+        },
+        admin: {
+          settings: {
+            fields: [{ type: "text", name: "apiKey", label: "API key" }],
+          },
+        },
+      },
+    ]);
+
+    await expect(
+      setPluginConfig("legacy-settings", { apiKey: "abc", enabled: true }, null),
+    ).resolves.toEqual({ apiKey: "abc", enabled: true });
+
+    expect(await getPluginConfig("legacy-settings")).toEqual({
+      apiKey: "abc",
+      enabled: true,
+    });
+
+    await expect(
+      setPluginConfig("legacy-settings", "not-an-object", "user-1"),
+    ).rejects.toMatchObject({
+      name: "NpValidationError",
+      message: "Invalid input",
+      errors: [
+        {
+          field: "value",
+          message: "Plugin config must be an object when configSchema is not declared.",
+        },
+      ],
     });
   });
 

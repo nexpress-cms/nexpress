@@ -176,8 +176,9 @@ export interface NpFieldRegistration {
 /**
  * Plugin settings form. Reuses the same `NpFieldConfig` shape the
  * collection editor renders, so the admin primitives can be used directly
- * via FieldRenderer. Values round-trip through `GET /api/plugins/:id` and
- * `PATCH /api/plugins/:id`.
+ * via FieldRenderer. Values persist as plugin config in `np_settings`
+ * under `plugin.config:<id>` and save through
+ * `PUT /api/admin/plugins/:id/config`.
  */
 export interface NpAdminSettingsExtension {
   title?: string;
@@ -769,10 +770,9 @@ export interface NpPluginDefinition<TConfig = Record<string, unknown>> {
    * `NpThemeRoute` so the dispatcher walks both lists with the
    * same matcher. Each entry adds two plugin-specific knobs:
    *
-   *   - `surface: "site" | "member"` — which theme shell wraps
-   *     the rendered component. `"member"` triggers the
-   *     existing membership gate (unauthenticated requests
-   *     redirect to `/members/login?next=…`).
+   *   - `surface: "site" | "member"` — which theme shell wraps the
+   *     rendered component. `"member"` selects member-facing chrome only;
+   *     the route component is still responsible for any member-auth gate.
    *   - `locale: "auto" | "none"` — when the site is i18n-
    *     enabled, `"auto"` (default) makes the route reachable
    *     at `/<path>` AND `/<locale>/<path>` for every
@@ -809,8 +809,8 @@ export interface NpPluginPageRouteRegistration {
   metadata?: unknown;
   /**
    * Which shell wraps the rendered component. Defaults to
-   * `"site"` (theme's `impl.shell`). `"member"` triggers the
-   * membership gate.
+   * `"site"` (theme's `impl.shell`). `"member"` selects member-facing
+   * chrome only; it is not an auth gate.
    */
   surface?: "site" | "member";
   /**

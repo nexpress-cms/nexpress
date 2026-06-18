@@ -9,12 +9,12 @@ import type { NpPluginCapability, NpPluginDefinition, NpResolvedPlugin } from ".
  * analysis of `setup` / route handler bodies, which is fragile and risks
  * silently granting privilege the author didn't ask for. So:
  *
- *   - Any `routes: [...]` entry → `api:route`. The host gates route
- *     registration on this capability already; failing to declare it is
- *     a guaranteed boot crash, so adding it is strictly correctness.
- *   - Any `hooks: { "<ns>:<event>": ... }` key → `hooks:<ns>`. Same
- *     story — `host.ts:hookCapabilityFor()` requires `hooks:<ns>`
- *     before allowing the registration to land.
+ *   - Any `routes: [...]` entry → `api:route`.
+ *   - Any `pageRoutes: [...]` entry → `site:route`.
+ *   - Any `scheduled: [...]` entry → `hooks:scheduled`.
+ *   - Any `hooks: { "<ns>:<event>": ... }` key → `hooks:<ns>`.
+ *   - Any declarative admin panel / collection-tab / dashboard-widget
+ *     surface → the matching `admin:*` capability.
  *
  * Author-declared capabilities keep their slot and merge with the
  * derived set — listing more (e.g. the always-explicit `storage:kv`

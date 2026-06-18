@@ -16,7 +16,7 @@ my-site/
 ├── src/
 │   ├── nexpress.config.ts   ← site identity, plugins, themes (31 lines)
 │   ├── i18n.config.ts       ← thin wrapper, locales list
-│   ├── proxy.ts             ← thin wrapper, Next.js middleware
+│   ├── proxy.ts             ← thin wrapper, Next.js proxy
 │   ├── collections/         ← thin wrappers for posts/pages/categories/tags
 │   ├── lib/                 ← thin wrappers (bootstrap, init-core, db, …)
 │   ├── app/                 ← thin wrappers (every page + route)
@@ -73,8 +73,9 @@ any other.
 ### Themes
 
 Built-in packs already wired by the scaffold:
-`@nexpress/theme-default`, `theme-magazine`, `theme-portfolio`,
-`theme-docs`. Switch the active one from admin → Appearance.
+`@nexpress/theme-default`, `@nexpress/theme-magazine`,
+`@nexpress/theme-portfolio`, `@nexpress/theme-docs`. Switch the active
+one from admin → Appearance.
 
 To install a third-party theme, one command from the project root:
 
@@ -168,7 +169,7 @@ file."
 
 ```css
 @import "tailwindcss";
-@import "@nexpress/app/styles/globals.css";   /* framework layers, tokens */
+@import "@nexpress/app/styles/globals.css"; /* framework layers, tokens */
 @source "../../node_modules/@nexpress/admin/dist/**/*.js";
 @source "../../node_modules/@nexpress/app/src/**/*.{ts,tsx}";
 @source "../../node_modules/@nexpress/blocks/dist/**/*.js";
@@ -225,7 +226,7 @@ fixes on the same release.
 
 If you find yourself wanting to edit a file under `node_modules/@nexpress/...`
 to debug something, that's the signal to clone the monorepo and
-work there. Set-up steps are in the [root README](../README.md#track-b--contribute-to-the-framework-monorepo).
+work there. Set-up steps are in the [root README](../README.md#monorepo).
 
 Once you have a fix, the contribution path is in
 [CONTRIBUTING.md](../CONTRIBUTING.md).

@@ -5,6 +5,24 @@ Example NexPress plugin that shows two common extension points together:
 - content lifecycle hooks (`content:afterCreate`, `content:afterUpdate`)
 - plugin API routes (`/api/plugins/seo-audit/analyze`)
 
+## Install
+
+```bash
+pnpm add @nexpress/plugin-seo-audit
+```
+
+## Usage
+
+```ts
+// nexpress.config.ts
+import seoAudit from "@nexpress/plugin-seo-audit";
+
+export default defineConfig({
+  // ...
+  plugins: [seoAudit],
+});
+```
+
 ## What it does
 
 - inspects a document's title, excerpt, and rich-text content
@@ -16,14 +34,14 @@ Example NexPress plugin that shows two common extension points together:
 
 Open `/admin/plugins/seo-audit` after the framework boots. The G.1 auto-form renders the operator-tunable thresholds:
 
-| Field                 | Type    | Default | Range       |
-|-----------------------|---------|---------|-------------|
-| Title min             | number  | 30      | 0 – 200     |
-| Title max             | number  | 60      | 10 – 300    |
-| Description min       | number  | 70      | 0 – 500     |
-| Description max       | number  | 160     | 50 – 500    |
-| Min body words        | number  | 250     | 0 – 10000   |
-| Include description   | boolean | true    | —           |
+| Field               | Type    | Default | Range     |
+| ------------------- | ------- | ------- | --------- |
+| Title min           | number  | 30      | 0 – 200   |
+| Title max           | number  | 60      | 10 – 300  |
+| Description min     | number  | 70      | 0 – 500   |
+| Description max     | number  | 160     | 50 – 500  |
+| Min body words      | number  | 250     | 0 – 10000 |
+| Include description | boolean | true    | —         |
 
 Saved values persist to `np_settings (key="plugin.config:seo-audit")` and are read by the audit logic on every hook / route fire (no restart needed for threshold changes — operator-tunable in real time).
 
@@ -48,3 +66,7 @@ curl -X POST "http://localhost:3000/api/plugins/seo-audit/analyze" \
     "content": "Start with your audience intent..."
   }'
 ```
+
+## License
+
+MIT
