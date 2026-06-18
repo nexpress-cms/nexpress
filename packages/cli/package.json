@@ -40,7 +40,7 @@
     "@nexpress/core": "workspace:*",
     "@nexpress/next": "workspace:*",
     "@nexpress/theme": "workspace:*",
-    "@types/node": "^25.9.1",
+    "@types/node": "^25.9.3",
     "@types/pg": "^8.15.5",
     "@types/prompts": "^2.4.9",
     "@types/react": "^19.2.16",
