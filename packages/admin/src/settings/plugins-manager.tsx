@@ -401,10 +401,10 @@ export function PluginsManager() {
     }
 
     try {
-      const response = await npFetch(`/api/plugins/${configPlugin.id}`, {
-        method: "PATCH",
+      const response = await npFetch(`/api/admin/plugins/${configPlugin.id}/config`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ config: parsed }),
+        body: JSON.stringify({ value: parsed }),
       });
       const payload = (await response.json().catch(() => null)) as unknown;
       if (!response.ok) {
@@ -704,10 +704,10 @@ function PluginConfigForm({
     setSaving(true);
     setErrorMessage(null);
     try {
-      const response = await npFetch(`/api/plugins/${pluginId}`, {
-        method: "PATCH",
+      const response = await npFetch(`/api/admin/plugins/${pluginId}/config`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ config: values }),
+        body: JSON.stringify({ value: values }),
       });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as {

@@ -88,8 +88,8 @@ export default async function PluginAdminRoute({ params }: PageProps) {
   // (no schema, hand-rolled `admin.settings.fields`) still need
   // their saved values pre-populated in the SettingsCard form;
   // skipping this read for them would cause every operator to
-  // see an empty form after the np_plugins.config → np_settings
-  // migration, even though the data is intact.
+  // see an empty form after plugin config moved into np_settings,
+  // even though the data is intact.
   const configStatus = await getPluginConfigWithStatus(pluginId);
   const configValue =
     configStatus.value && typeof configStatus.value === "object"

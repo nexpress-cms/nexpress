@@ -108,8 +108,9 @@ supported in collections works here: `text`, `textarea`, `number`,
 `checkbox`, `date`, `select`, `radio`, `relationship`, `array`, `group`,
 and layout fields (`row`, `collapsible`).
 
-Values round-trip through `GET /api/plugins/:id` (load) and
-`PATCH /api/plugins/:id` (save). The admin calls both automatically.
+Values persist as plugin config in `np_settings` under
+`plugin.config:<id>`. The admin reads the current value from plugin state
+and saves through `PUT /api/admin/plugins/:id/config` automatically.
 
 ### `widgets` — dashboard cards
 
@@ -239,8 +240,9 @@ hatch is under consideration — open an issue if you hit the limit.
 - Plugin manifest is validated with Zod at `definePlugin` time — typos
   in widget kinds or missing field properties fail the plugin build,
   not the user's page load.
-- Action dispatch requires `admin` role + CSRF token. Non-admin users
-  can't trigger plugin actions even if they guess an actionId.
-- Settings values are persisted in `np_plugins.config` via the existing
-  `PATCH /api/plugins/:id` path — same guardrails as the plugin
-  config editor in `/admin/plugins`.
+- Action dispatch requires a staff session with `admin.manage` + CSRF
+  token. Non-admin users can't trigger plugin actions even if they
+  guess an actionId.
+- Settings values are persisted in `np_settings` under
+  `plugin.config:<id>` via the dedicated admin config route — same
+  guardrails as the plugin config editor in `/admin/plugins`.

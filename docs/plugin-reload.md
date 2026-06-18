@@ -32,16 +32,16 @@ The admin toast renders a one-line summary:
 
 ## What reload does
 
-| Surface | Reload picks it up? | How |
-|---|---|---|
-| `np_plugins.enabled` toggle | Already live | Caches via `enabled-gate.ts` (5s TTL); `updatePluginState` invalidates the gate so the very next dispatch sees the new value. Doesn't even need a reload. |
-| `np_plugins.config` edits | Yes | `setup(ctx)` re-runs against the freshly-read `ctx.config`. Hooks read from `ctx.config` already see the new value on every invocation. |
-| Hook / route / action registry | Yes | The host calls `resetPlugins()` (clears `globalHooks`, `globalRoutes`, `pluginRegistry`) before running `loadPlugins(enabled)` again. |
-| Block metadata | Yes | Plugin-contributed blocks land back in the shared registry. Re-registration overwrites by `type` so HMR-style flicker doesn't double-register. |
-| `pgboss.schedule` rows | Yes (added / updated / removed counts in the response) | `reconcilePluginSchedules()` diffs the registry against rows under `plugin.scheduledTask.*` and applies the delta. |
-| pg-boss **work loops** for new schedules | **No** (multi-process limit) | `boss.work()` registrations live in the worker process. The web process can update cron rows but can't install / drop work loops in another process — you must restart the worker for newly-added schedules to actually be processed. |
-| Plugin handler code edits | **No** | Reload doesn't touch the Node module cache. `setup` / route handlers / hook handlers retain whatever they were when the process imported them. |
-| New plugin packages added to `nexpress.config.ts` | **No** | `nexpress.config.ts` is imported once at boot. Adding entries needs a server restart so the new modules get loaded. |
+| Surface                                                  | Reload picks it up?                                    | How                                                                                                                                                                                                                                   |
+| -------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `np_plugins.enabled` toggle                              | Already live                                           | Caches via `enabled-gate.ts` (5s TTL); `updatePluginState` invalidates the gate so the very next dispatch sees the new value. Doesn't even need a reload.                                                                             |
+| `np_settings` plugin config edits (`plugin.config:<id>`) | Yes                                                    | `setup(ctx)` re-runs against the freshly-read `ctx.config`. Hooks read from `ctx.config` already see the new value on every invocation.                                                                                               |
+| Hook / route / action registry                           | Yes                                                    | The host calls `resetPlugins()` (clears `globalHooks`, `globalRoutes`, `pluginRegistry`) before running `loadPlugins(enabled)` again.                                                                                                 |
+| Block metadata                                           | Yes                                                    | Plugin-contributed blocks land back in the shared registry. Re-registration overwrites by `type` so HMR-style flicker doesn't double-register.                                                                                        |
+| `pgboss.schedule` rows                                   | Yes (added / updated / removed counts in the response) | `reconcilePluginSchedules()` diffs the registry against rows under `plugin.scheduledTask.*` and applies the delta.                                                                                                                    |
+| pg-boss **work loops** for new schedules                 | **No** (multi-process limit)                           | `boss.work()` registrations live in the worker process. The web process can update cron rows but can't install / drop work loops in another process — you must restart the worker for newly-added schedules to actually be processed. |
+| Plugin handler code edits                                | **No**                                                 | Reload doesn't touch the Node module cache. `setup` / route handlers / hook handlers retain whatever they were when the process imported them.                                                                                        |
+| New plugin packages added to `nexpress.config.ts`        | **No**                                                 | `nexpress.config.ts` is imported once at boot. Adding entries needs a server restart so the new modules get loaded.                                                                                                                   |
 
 ## Why work loops can't reconcile across processes
 
@@ -56,7 +56,7 @@ In a typical production deploy:
   `boss.work(queueName, handler)` loop live.
 
 When an operator clicks "Reload all" in the admin, the call lands on
-the *web* process. The web's boss instance can write new rows to
+the _web_ process. The web's boss instance can write new rows to
 `pgboss.schedule` (so the cron will fire) and unschedule stale ones,
 but the work loops that actually pick up the resulting jobs live in
 the **worker** process. The web server has no way to install a work
@@ -75,8 +75,8 @@ The admin toast adapts to the situation:
   inlined): no warning. The reconcile rebuilds schedules; the work
   loops belong to the same boss instance and survive the rebuild.
 - **Web ≠ worker** (the production case) AND a schedule was added: the
-  toast appends *"Note: this process isn't the worker — restart your
-  worker process to pick up newly-added schedules"*. Removed schedules
+  toast appends _"Note: this process isn't the worker — restart your
+  worker process to pick up newly-added schedules"_. Removed schedules
   don't need a worker restart because the worker simply never receives
   more jobs for that name.
 
