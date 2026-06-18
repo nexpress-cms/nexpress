@@ -1,79 +1,85 @@
 # apps/web — AGENTS.md
 
-Next.js 15 reference app. Wires all `@nexpress/*` packages into a working CMS.
+Next.js 16 reference app. This app is intentionally thin: most route
+handlers, pages, scripts, proxy behavior, and setup flows are re-exported
+from `@nexpress/app`, while `apps/web` supplies the local config,
+collections, generated schema, and package wiring used for monorepo
+development.
 
-**Generated:** 2026-04-22 | **Commit:** 2e07135
+## Structure
 
-## STRUCTURE
-
-```
+```text
 src/
 ├── app/
-│   ├── (site)/             # Public site routes
-│   │   ├── [[...slug]]/    # Catch-all page renderer (renderBlocks)
-│   │   ├── blog/           # Blog listing + [slug] detail
-│   │   └── layout.tsx      # Calls ensureCoreServices, reads theme/nav
-│   ├── (admin)/admin/      # Admin UI
-│   │   ├── login/          # Login page (public)
-│   │   └── (protected)/    # Server-guarded admin shell (verifyTokenFull)
-│   └── api/                # REST endpoints (12 route dirs)
-│       ├── auth/           # login, logout, refresh, me, change-password
-│       ├── collections/    # [slug]/ and [slug]/[id]/ CRUD
-│       ├── media/          # upload, list, [id], folders
-│       ├── plugins/        # [pluginId]/[...path] proxy to plugin routes
-│       ├── settings/       # theme, general settings
-│       ├── navigation/     # nav tree CRUD
-│       ├── meta/           # collections + plugins manifests for admin UI
-│       ├── import/ export/ # Bulk import/export (257 lines in import)
-│       ├── preview/        # Draft preview
-│       ├── health/         # Health check
-│       └── openapi.json/   # OpenAPI spec
+│   ├── (site)/             # Public route wrappers
+│   ├── (member)/           # Member-auth route wrappers
+│   ├── (admin)/admin/      # Admin login + protected shell wrappers
+│   ├── api/                # API route wrappers around @nexpress/app
+│   ├── sitemap.xml/        # Root SEO route wrapper
+│   ├── feed.xml/           # Root feed route wrapper
+│   └── robots.txt/         # Root robots route wrapper
 ├── lib/
-│   ├── bootstrap.ts        # createBootstrap({ config, generatedSchema }) — THE singleton factory
-│   ├── init-core.ts        # Re-exports ensureCoreServices/ensurePluginsLoaded
-│   ├── auth-helpers.ts     # createAuthHelpers: requireAuth, requireCsrf, cookies
-│   ├── collection-helpers.ts # createCollectionHelpers: find/save/delete wrappers
-│   ├── manifest.ts         # Builds admin meta JSON from configs
-│   ├── db.ts               # getDb re-export
-│   └── revalidate.ts       # revalidateCollection (wraps next/cache)
-├── collections/            # defineCollection configs (posts.ts, pages.ts)
-├── db/generated/           # AUTO-GENERATED — collections.ts (Drizzle tables)
-├── middleware.ts            # Security headers + in-memory rate limiter
-├── nexpress.config.ts      # Site config (defineConfig)
+│   ├── bootstrap.ts        # createBootstrap({ config, generatedSchema })
+│   ├── init-core.ts        # Re-exports @nexpress/app/lib/init-core
+│   ├── auth-helpers.ts     # Staff auth helper re-export
+│   ├── member-auth-helpers.ts # Member auth helper re-export
+│   ├── collection-helpers.ts  # Collection helper re-export
+│   └── revalidate.ts       # revalidateCollection wrapper
+├── collections/            # defineCollection configs
+├── db/generated/           # AUTO-GENERATED Drizzle tables/types
+├── proxy.ts                # Next 16 proxy re-export from @nexpress/app/proxy
+├── nexpress.config.ts      # Site config
 └── globals.css
 ```
 
-## WHERE TO LOOK
+## Where To Look
 
-| Task                            | File(s)                               | Notes                                                                            |
-| ------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------- |
-| Change bootstrap / service init | `src/lib/bootstrap.ts`                | Calls `createBootstrap` from `@nexpress/next`                                    |
-| Add/change a collection         | `src/collections/*.ts`                | Then run `pnpm db:generate && pnpm db:migrate`                                   |
-| Add API endpoint                | `src/app/api/<name>/route.ts`         | Call `ensureCoreServices()` first; use `requireAuth`/`requireCsrf` for mutations |
-| Change rate limits or CSP       | `src/middleware.ts`                   | In-memory Map; per-regex-path limits                                             |
-| Change auth cookie behavior     | `src/lib/auth-helpers.ts`             | Wraps `createAuthHelpers` from `@nexpress/next`                                  |
-| Add admin page/route            | `src/app/(admin)/admin/(protected)/`  | Server layout guards auth; client components via `@nexpress/admin/client`        |
-| Change site rendering           | `src/app/(site)/[[...slug]]/page.tsx` | Uses `getPageBySlug` + `renderBlocks`                                            |
-| Debug auth flow                 | `src/app/api/auth/login/route.ts`     | Credential check → signToken → setAuthCookies                                    |
+| Task                                                         | File(s)                                                                                                             | Notes                                                                                    |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Change bootstrap / service wiring                            | `src/lib/bootstrap.ts`, `packages/next/src/bootstrap.ts`, `packages/app/src/lib/init-core.ts`                       | App routes should call `ensureFor(...)`, not the low-level bootstrap exports directly.   |
+| Add/change a collection                                      | `src/collections/*.ts`                                                                                              | Then run `pnpm db:generate` and review/apply the migration.                              |
+| Change shared app route behavior                             | `packages/app/src/**`                                                                                               | `apps/web/src/app/**` is mostly wrappers; edit the shared implementation first.          |
+| Add a project-only route wrapper                             | `src/app/**/route.ts` or `src/app/**/page.tsx`                                                                      | Prefer a two-line re-export from `@nexpress/app` when the behavior is shared.            |
+| Change rate limits, CSRF exemptions, CSP, or request headers | `src/proxy.ts`, `packages/app/src/proxy/index.ts`                                                                   | `src/proxy.ts` re-exports the shared Next 16 proxy.                                      |
+| Change staff auth cookies/helpers                            | `src/lib/auth-helpers.ts`, `packages/app/src/lib/auth-helpers.ts`, `packages/next/src/auth.ts`                      | CSRF enforcement is centralized in proxy for API mutations.                              |
+| Change member auth helpers                                   | `src/lib/member-auth-helpers.ts`, `packages/app/src/lib/member-auth-helpers.ts`, `packages/next/src/member-auth.ts` | Member cookies use the `np-mb-*` namespace.                                              |
+| Change site rendering                                        | `packages/app/src/site/**`, theme packages                                                                          | Public catch-all dispatches page slug, slug redirects, theme routes, then plugin routes. |
+| Change admin surfaces                                        | `packages/app/src/admin/**`, `packages/admin/src/**`                                                                | Client components come from `@nexpress/admin/client`.                                    |
 
-## AUTH FLOW
+## Bootstrap Convention
 
-1. **Login**: POST `/api/auth/login` → verify password → `signToken` (access + refresh) → `setAuthCookies` (np-session, np-refresh, np-csrf)
-2. **Refresh**: POST `/api/auth/refresh` → read np-refresh cookie → `verifyTokenFull` → reissue tokens
-3. **Admin guard**: `(protected)/layout.tsx` reads np-session cookie server-side → `verifyTokenFull` → redirect to `/admin/login` if invalid
-4. **API protection**: Handlers call `requireAuth(request)` → throws `NpAuthError` if unauthorized; `requireCsrf(request)` on state-changing ops
-5. **Invalidation**: `invalidateAllSessions` bumps `tokenVersion` in DB; all existing tokens become invalid
+Use the intent-based entry point from `@/lib/init-core`:
 
-## CONVENTIONS
+```ts
+import { ensureFor } from "@/lib/init-core";
 
-- Every server-entry route/layout must call `ensureCoreServices()` before using core APIs.
-- Plugin routes are proxied at `/api/plugins/[pluginId]/[...path]` — `ensurePluginsLoaded()` is called before dispatch.
-- Collection API routes call `ensureReady()` from collection-helpers (which calls both `ensureCoreServices` + `ensurePluginsLoaded`).
-- `next.config.ts`: `transpilePackages` for UI packages, `serverExternalPackages` for core + native modules. Do not swap these.
+await ensureFor("read"); // DB + storage + collections
+await ensureFor("plugins"); // read + plugin loading
+await ensureFor("write"); // plugins + email + job producer
+```
 
-## ANTI-PATTERNS
+The low-level exports in `src/lib/bootstrap.ts`
+(`ensureCoreServices`, `ensurePluginsLoaded`, `ensureJobProducer`) exist for
+the shared app adapter. New route/page code should use `ensureFor(...)`.
 
-- **Never import `@nexpress/core` in client components** — only in server components, layouts, and API routes.
-- **Never import `@nexpress/admin` from `(site)/*`** — leaks admin bundle to public pages.
-- **Never edit `src/db/generated/collections.ts`** — it is auto-generated. Edit collection configs and re-run generators.
-- **Never create a second DB connection** — use `getDb()` from bootstrap. One pool per process.
+## Auth And CSRF
+
+- Staff login flows use `np-session`, `np-refresh`, and `np-csrf`.
+- Member login flows use the member auth helpers and `np-mb-*` cookies.
+- State-changing `/api/*` requests are CSRF-checked in
+  `packages/app/src/proxy/index.ts`; do not add ad-hoc per-handler
+  `requireCsrf()` calls unless a route deliberately bypasses the shared proxy.
+- Server parents resolve capability flags with `can(user, capability)` and
+  pass booleans to client shells. Do not import `@nexpress/core` into client
+  components.
+
+## Anti-Patterns
+
+- Do not edit `src/db/generated/collections.ts` by hand.
+- Do not create another DB pool; use `getDb()` from bootstrap after
+  `ensureFor(...)`.
+- Do not import `@nexpress/admin` from public `(site)` routes.
+- Do not import `next/cache` directly from app code; use
+  `revalidateCollection()` or the shared cache helpers.
+- Do not copy a large `@nexpress/app` implementation into `apps/web` unless
+  the reference app truly needs to diverge.

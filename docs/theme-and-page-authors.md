@@ -46,9 +46,9 @@ The companion docs:
 9. [Theme tokens & active theme](#9-theme-tokens)
 10. [Block & rich-text rendering](#10-block-rendering)
 11. [SEO — metadata, sitemap, JSON-LD, feeds](#11-seo)
-11. [Pagination](#115-pagination)
-12. [What NOT to import from a theme / page](#12-anti-patterns)
-13. [Where to ask for new helpers](#13-feedback)
+12. [Pagination](#12-pagination)
+13. [What NOT to import from a theme / page](#13-anti-patterns)
+14. [Where to ask for new helpers](#14-feedback)
 
 ---
 
@@ -71,11 +71,11 @@ export default async function BlogIndex() {
 
 The three intents:
 
-| Intent | Use when |
-| --- | --- |
-| `"read"` | Read-only RSC pages and `GET` API routes (most of this guide). |
+| Intent      | Use when                                                                                  |
+| ----------- | ----------------------------------------------------------------------------------------- |
+| `"read"`    | Read-only RSC pages and `GET` API routes (most of this guide).                            |
 | `"plugins"` | When render needs `runHook` to fire (block / site pages with plugin-augmented rendering). |
-| `"write"` | Mutating routes / server actions / import scripts. |
+| `"write"`   | Mutating routes / server actions / import scripts.                                        |
 
 Custom pages are almost always `"read"`. Use `"plugins"` if your
 page renders blocks that plugins extend.
@@ -84,16 +84,16 @@ page renders blocks that plugins extend.
 
 ## 2. Reading content
 
-| Symbol | Use for |
-| --- | --- |
-| `getPageBySlug(slug, { draft?, locale? })` | One CMS page document (`pages` collection). |
-| `getPostBySlug(slug, { draft? })` | One post document (`posts` collection). |
-| `getDocumentById(collection, id)` | Any document by id, any collection. |
-| `findDocuments(collection, options)` | Listing with `where`, `sort`, `page`, `limit`, `locale`, `search`. |
-| `findPosts(options)` | Sugar over `findDocuments("posts", options)`. |
-| `getAllPageSlugs()` | Static path generation. |
-| `findSlugRedirect(oldSlug)` | Resolve a historic slug → `{ slug, status }`. |
-| `searchCollections({ query, limit, ... })` | Full-text search across registered collections. |
+| Symbol                                     | Use for                                                            |
+| ------------------------------------------ | ------------------------------------------------------------------ |
+| `getPageBySlug(slug, { draft?, locale? })` | One CMS page document (`pages` collection).                        |
+| `getPostBySlug(slug, { draft? })`          | One post document (`posts` collection).                            |
+| `getDocumentById(collection, id)`          | Any document by id, any collection.                                |
+| `findDocuments(collection, options)`       | Listing with `where`, `sort`, `page`, `limit`, `locale`, `search`. |
+| `findPosts(options)`                       | Sugar over `findDocuments("posts", options)`.                      |
+| `getAllPageSlugs()`                        | Static path generation.                                            |
+| `findSlugRedirect(oldSlug)`                | Resolve a historic slug → `{ slug, status }`.                      |
+| `searchCollections({ query, limit, ... })` | Full-text search across registered collections.                    |
 
 > `getPageBySlug` / `getPostBySlug` / `findPosts` /
 > `getAllPageSlugs` are convenience helpers hardcoded to the
@@ -144,8 +144,8 @@ import type { NpFindWhere } from "@nexpress/core";
 import type { DiscussionsDocument } from "@/db/generated/documents";
 
 const where: NpFindWhere<DiscussionsDocument> = {
-  memberAuthorId: member.id,  // typed (collection field)
-  visibility: "*",            // typed (system token)
+  memberAuthorId: member.id, // typed (collection field)
+  visibility: "*", // typed (system token)
 };
 ```
 
@@ -158,8 +158,9 @@ wrappers.
 
 ```ts
 // app/(site)/blog/page.tsx
-import { findPosts, getCurrentLocale } from "@nexpress/core";
+import { getCurrentLocale } from "@nexpress/core/i18n";
 import { ensureFor } from "@/lib/init-core";
+import { findPosts } from "@/db/generated/documents";
 
 export default async function BlogIndex({
   searchParams,
@@ -271,7 +272,7 @@ the `findDocuments` gates manually:
 ## 3. Media & images
 
 ```ts
-import { getMediaById, getMediaUrl } from "@nexpress/core";
+import { getMediaById, getMediaUrl } from "@nexpress/core/media";
 
 // Resolve a media id (from a document field) to a public URL.
 const heroUrl = await getMediaUrl(post.heroImageId);
@@ -411,17 +412,18 @@ const fallback = tSync("home.hero.fallback", locale);
 
 Three flavors of "current user," depending on what you need:
 
-| Helper | Returns | When |
-| --- | --- | --- |
-| `requireAuth(request)` | `NpAuthUser` (throws on absence) | Staff-gated **API routes** (need a `NextRequest`). From the per-app `createAuthHelpers()` output. |
-| `optionalAuth(request)` | `NpAuthUser \| null` | API routes that render differently for staff but don't require it. |
-| `getSiteMember()` | `NpMemberAuthRow \| null` | RSC pages that show member-only content. App-level helper around `optionalMember(request)`. |
+| Helper                  | Returns                          | When                                                                                              |
+| ----------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `requireAuth(request)`  | `NpAuthUser` (throws on absence) | Staff-gated **API routes** (need a `NextRequest`). From the per-app `createAuthHelpers()` output. |
+| `optionalAuth(request)` | `NpAuthUser \| null`             | API routes that render differently for staff but don't require it.                                |
+| `getSiteMember()`       | `NpMemberAuthRow \| null`        | RSC pages that show member-only content. App-level helper around `optionalMember(request)`.       |
 
 API routes get the request directly:
 
 ```ts
 // app/api/posts/draft/route.ts
-import { can, NpForbiddenError } from "@nexpress/core";
+import { NpForbiddenError } from "@nexpress/core";
+import { can } from "@nexpress/core/auth";
 import { requireAuth } from "@/lib/auth-helpers";
 import type { NextRequest } from "next/server";
 
@@ -456,7 +458,8 @@ Capability checks for staff routes use `can(user, capability)`
 from `@nexpress/core/auth`:
 
 ```ts
-import { can, NpForbiddenError } from "@nexpress/core";
+import { NpForbiddenError } from "@nexpress/core";
+import { can } from "@nexpress/core/auth";
 const user = await requireAuth(request);
 if (!can(user, "admin.manage")) throw new NpForbiddenError("settings", "view");
 ```
@@ -578,11 +581,8 @@ common providers — Google, GitHub, Discord. Each takes
 ready for `registerOAuthProvider()`:
 
 ```ts
-import { registerOAuthProvider } from "@nexpress/core";
-import {
-  createGoogleOAuthProvider,
-  createDiscordOAuthProvider,
-} from "@nexpress/oauth-providers";
+import { registerOAuthProvider } from "@nexpress/core/auth";
+import { createGoogleOAuthProvider, createDiscordOAuthProvider } from "@nexpress/oauth-providers";
 
 if (process.env.NP_OAUTH_GOOGLE_CLIENT_ID && process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET) {
   registerOAuthProvider(
@@ -631,8 +631,11 @@ import { createStaffAuthRoutes } from "@nexpress/auth-pages/server";
 import { getDb } from "@/lib/bootstrap";
 import { ensureFor, nexpressConfig } from "@/lib/init-core";
 import {
-  clearAuthCookies, getAuthRuntimeConfig,
-  optionalAuth, requireAuth, setAuthCookies,
+  clearAuthCookies,
+  getAuthRuntimeConfig,
+  optionalAuth,
+  requireAuth,
+  setAuthCookies,
 } from "@/lib/auth-helpers";
 
 export const staffAuthRoutes = createStaffAuthRoutes({
@@ -707,7 +710,7 @@ isn't yours, Zod-parse the result before trusting the shape.
 
 > Don't call `runHook` from a theme/page. Hooks run during the
 > content pipeline (`saveDocument` etc.); themes consume the
-> output, not the lifecycle. Use `getPluginConfig` to *react*
+> output, not the lifecycle. Use `getPluginConfig` to _react_
 > to plugin presence; let the plugin's own routes / blocks /
 > render hooks contribute the actual rendering.
 
@@ -716,7 +719,7 @@ isn't yours, Zod-parse the result before trusting the shape.
 ## 8. Member profiles
 
 ```ts
-import { getMemberProfile } from "@nexpress/core";
+import { getMemberProfile } from "@nexpress/core/community";
 
 // Accepts either id or handle in one argument.
 const profile = await getMemberProfile(handle);
@@ -749,7 +752,7 @@ thread with M authors"), looping `getMemberProfile` would fire
 N queries. Use the batch form instead:
 
 ```ts
-import { getMemberProfiles } from "@nexpress/core";
+import { getMemberProfiles } from "@nexpress/core/community";
 
 const authorIds = result.docs
   .map((d) => d.memberAuthorId as string | null)
@@ -791,7 +794,7 @@ deduplicates by argument tuple, so wrap once at the app boundary:
 ```ts
 // src/lib/cached-content.ts (a new file you author in your site —
 // not a framework wrapper).
-import { getMemberProfile } from "@nexpress/core";
+import { getMemberProfile } from "@nexpress/core/community";
 import { cache } from "react";
 
 export const getCachedMemberProfile: typeof getMemberProfile = cache(getMemberProfile);
@@ -880,7 +883,7 @@ import {
   buildWebSiteJsonLd,
   buildAtomFeed,
   buildSitemap,
-} from "@nexpress/core";
+} from "@nexpress/core/seo";
 import { buildPageMetadata } from "@nexpress/next";
 import type { Metadata } from "next";
 
@@ -938,7 +941,7 @@ shape in `apps/web`).
 
 ---
 
-## 11.5 Pagination
+## 12. Pagination
 
 `NpFindResult` already gives you everything: `page`, `totalPages`,
 `hasPrevPage`, `hasNextPage`. The framework intentionally doesn't
@@ -957,7 +960,7 @@ import { PaginationNav } from "@/components/pagination-nav";
   hasPrevPage={result.hasPrevPage}
   hasNextPage={result.hasNextPage}
   hrefForPage={(p) => `/discussions?page=${p}`}
-/>
+/>;
 ```
 
 The caller composes URLs (so extra search params like
@@ -966,7 +969,7 @@ when `totalPages <= 1` — no need to gate the include.
 
 ---
 
-## 12. Anti-patterns
+## 13. Anti-patterns
 
 These will compile but break the build, leak admin code, or
 quietly produce wrong output:
@@ -994,7 +997,7 @@ quietly produce wrong output:
 
 ---
 
-## 13. Feedback
+## 14. Feedback
 
 If a recipe you needed isn't here, open an issue with the
 "page-author" label describing what you were trying to do. The
@@ -1002,7 +1005,7 @@ shortest path to a new primitive is a concrete page that's awkward
 to write today; abstract suggestions tend to produce surfaces no
 one calls.
 
-For surface that *is* documented but feels rough, the same applies —
+For surface that _is_ documented but feels rough, the same applies —
 include the call site and the rough edge in the issue. The doc
 isn't a contract; it's a pointer to the contract (`AGENTS.md`'s
 **Stability** section), so DX issues here are fixable.

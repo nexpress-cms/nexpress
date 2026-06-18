@@ -2,7 +2,17 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-05-05 (post `np` prefix migration — every `nx`/`Nx`/`NX_`/`nx_`/`nx-`/`--nx-` is now `np`/`Np`/`NP_`/`np_`/`np-`/`--np-`. Package names `@nexpress/*` are unchanged. See `.changeset/breaking-np-prefix-rename.md` for the migration runbook.)
+**Last refreshed:** 2026-06-17 (docs-currentness pass — `CLAUDE.md`
+now delegates here, `apps/web/AGENTS.md` reflects the thin
+`@nexpress/app` wrapper structure, CI/Release notes match the active
+GitHub workflows, and plugin `surface: "member"` route docs reflect
+the shipped member-shell wrapping.)
+
+**Earlier:** 2026-05-05 (post `np` prefix migration — every public
+framework-owned `nx`/`Nx`/`NX_`/`nx_`/`nx-`/`--nx-` identifier moved to
+`np`/`Np`/`NP_`/`np_`/`np-`/`--np-`. Package names `@nexpress/*` are
+unchanged. See `.changeset/breaking-np-prefix-rename.md` for the migration
+runbook.)
 
 ## Naming convention
 
@@ -10,18 +20,23 @@ The framework reserves a single prefix for every symbol/identifier it
 owns: **`np` / `Np` / `NP_` / `np_` / `np-` / `--np-`**. The choice of
 casing follows the host language:
 
-| Layer | Form | Example |
-|-------|------|---------|
-| TypeScript type / interface / class | `Np<Capital>` | `NpAuthUser`, `NpForbiddenError`, `NpBlockDefinition` |
-| Runtime variable / function | `np<Capital>` | `npFetch`, `npUsers` (Drizzle), `npMedia` |
-| Environment variable | `NP_<UPPER>` | `NP_SECRET`, `NP_S3_BUCKET` |
-| Database table | `np_<lower>` | `np_users`, `np_settings`, `np_c_posts` |
-| Cookie / HTTP header | `np-<lower>` / `x-np-<lower>` | `np-session`, `x-np-admin-site` |
-| CSS custom property | `--np-<lower>` | `--np-color-primary`, `--np-radius-md` |
-| CSS class / `@layer` / `data-` attribute | `np-<lower>` / `@layer np-<lower>` / `data-np-<lower>` | `.np-form-input`, `@layer np-theme`, `data-np-theme` |
+| Layer                                    | Form                                                   | Example                                               |
+| ---------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------- |
+| TypeScript type / interface / class      | `Np<Capital>`                                          | `NpAuthUser`, `NpForbiddenError`, `NpBlockDefinition` |
+| Runtime variable / function              | `np<Capital>`                                          | `npFetch`, `npUsers` (Drizzle), `npMedia`             |
+| Environment variable                     | `NP_<UPPER>`                                           | `NP_SECRET`, `NP_S3_BUCKET`                           |
+| Database table                           | `np_<lower>`                                           | `np_users`, `np_settings`, `np_c_posts`               |
+| Cookie / HTTP header                     | `np-<lower>` / `x-np-<lower>`                          | `np-session`, `x-np-admin-site`                       |
+| CSS custom property                      | `--np-<lower>`                                         | `--np-color-primary`, `--np-radius-md`                |
+| CSS class / `@layer` / `data-` attribute | `np-<lower>` / `@layer np-<lower>` / `data-np-<lower>` | `.np-form-input`, `@layer np-theme`, `data-np-theme`  |
 
 Package names use the brand name `@nexpress/*` and stay as-is — they're
 orthogonal to the `np` prefix.
+
+Compatibility exception: older internal Next data-cache tags and Redis
+rate-limit keys still use the `nx:*` namespace (`nx:sitemap`,
+`nx:theme:<siteId>`, `nx:rl:`, etc.). Keep those where the implementation
+and docs already name them; do not introduce new public `nx` identifiers.
 
 ## Commands
 
@@ -67,7 +82,7 @@ When a leaf package changes and you used the default `pnpm dev`, the leaf's `dis
 - `pnpm db:generate` / `pnpm db:migrate` — Drizzle migrations (turbo tasks; wired per-app)
 - `pnpm format` / `pnpm format:check` — Prettier
 - `pnpm test` runs the vitest unit suite across every workspace (no DB required). `pnpm test:integration` runs the Postgres-backed suite, gated on `TEST_DATABASE_URL` (skips silently when unset). See `docs/testing.md` for setup.
-- `pnpm verify` — pre-merge gate. Runs `turbo run build typecheck test` in one shot. CI is `workflow_dispatch`-only on this private repo (see NOTES below), so this is the local equivalent — run it before merging anything that touches schema, migrations, codegen, or risky surface a typecheck-only pass might miss (#586). Cheap thanks to turbo caching when you've been building during dev.
+- `pnpm verify` — pre-merge gate. Runs `turbo run build typecheck test` in one shot. CI also runs on PRs and selected `push: main` changes (see NOTES below), but this is still the fastest local equivalent — run it before merging anything that touches schema, migrations, codegen, or risky surface a typecheck-only pass might miss (#586). Cheap thanks to turbo caching when you've been building during dev.
 - `pnpm changeset` opens the changesets prompt — run it whenever you make a user-facing change to a `@nexpress/*` package (Phase 22.1). The generated file in `.changeset/` is committed with the code. See `.changeset/README.md` for the rule of thumb on when a changeset is needed.
 
 Running a single package's build/typecheck:
@@ -79,7 +94,7 @@ pnpm --filter @nexpress/core typecheck # tsc --noEmit for just that package
 
 ## Architecture
 
-Monorepo: `packages/*` (library code) + `apps/web` (Next.js 15 reference app). Workspaces are declared in `pnpm-workspace.yaml`. Turborepo orchestrates builds; `^build` in `turbo.json` means dependent packages are built first.
+Monorepo: `packages/*` (library code) + `apps/web` (Next.js 16 reference app). Workspaces are declared in `pnpm-workspace.yaml`. Turborepo orchestrates builds; `^build` in `turbo.json` means dependent packages are built first.
 
 ### Dependency graph
 
@@ -97,16 +112,16 @@ cli  (standalone scaffolder, no workspace deps)
 
 `@nexpress/core` exposes domain-bounded subpath entries (Phase 22.6). New code should reach in through the subpath that fits the call site rather than the catch-all root, so the v1 commitment surface is bounded by domain:
 
-| Subpath                       | Domain                                                                  |
-| ----------------------------- | ----------------------------------------------------------------------- |
-| `@nexpress/core/auth`         | capability checks, JWT/OAuth, password, sessions, principal             |
-| `@nexpress/core/community`    | comments, reactions, follows, reports, bans, audit, mentions, digests   |
-| `@nexpress/core/db`           | connection factory, runtime accessors, schema codegen                   |
-| `@nexpress/core/i18n`         | locale registry, translations, formatting, per-site overrides           |
-| `@nexpress/core/jobs`         | pg-boss adapter, handlers, worker, heartbeat, pause state, job logs     |
-| `@nexpress/core/media`        | media service, processor, ref tracking                                  |
-| `@nexpress/core/observability`| logger, error reporter, `verifyStartupSafety`                           |
-| `@nexpress/core/seo`          | sitemap, page metadata, Atom feeds, JSON-LD                             |
+| Subpath                        | Domain                                                                |
+| ------------------------------ | --------------------------------------------------------------------- |
+| `@nexpress/core/auth`          | capability checks, JWT/OAuth, password, sessions, principal           |
+| `@nexpress/core/community`     | comments, reactions, follows, reports, bans, audit, mentions, digests |
+| `@nexpress/core/db`            | connection factory, runtime accessors, schema codegen                 |
+| `@nexpress/core/i18n`          | locale registry, translations, formatting, per-site overrides         |
+| `@nexpress/core/jobs`          | pg-boss adapter, handlers, worker, heartbeat, pause state, job logs   |
+| `@nexpress/core/media`         | media service, processor, ref tracking                                |
+| `@nexpress/core/observability` | logger, error reporter, `verifyStartupSafety`                         |
+| `@nexpress/core/seo`           | sitemap, page metadata, Atom feeds, JSON-LD                           |
 
 The root `@nexpress/core` keeps re-exporting everything for back-compat; existing call sites are not forced to migrate. Treat the root as the lowest-common-denominator surface and the subpaths as the canonical domain APIs.
 
@@ -121,7 +136,7 @@ import { foo } from "./bar"; // breaks the build
 
 Package-to-package imports use the bare specifier (e.g. `from "@nexpress/core"`) and resolve through each package's `exports` map to `dist/`. That means **consumers need `dist/` to exist** — if a package rebuild hasn't finished, sibling packages will fail to type-check. Run `pnpm build` once after fresh clone; `pnpm dev` keeps dists fresh with `tsup --watch`.
 
-Dev watch reads `NP_DEV_FAST` from `.env` (default `1`); when set, each package's `tsup.config.ts` skips dts emit and sourcemaps during the watch loop (the dts step alone runs a full type emit per package and dominates startup). Sibling packages keep using the `.d.ts` files from the last `pnpm build` — runtime is unaffected, but if you change an exported type's *signature* during dev, IDE/typecheck won't see it across packages until the next `pnpm build` (or a targeted `pnpm --filter @nexpress/<pkg> build`). `pnpm build` defensively prefixes `NP_DEV_FAST=0`, so the published `dist/` always ships with full dts regardless of `.env`.
+Dev watch reads `NP_DEV_FAST` from `.env` (default `1`); when set, each package's `tsup.config.ts` skips dts emit and sourcemaps during the watch loop (the dts step alone runs a full type emit per package and dominates startup). Sibling packages keep using the `.d.ts` files from the last `pnpm build` — runtime is unaffected, but if you change an exported type's _signature_ during dev, IDE/typecheck won't see it across packages until the next `pnpm build` (or a targeted `pnpm --filter @nexpress/<pkg> build`). `pnpm build` defensively prefixes `NP_DEV_FAST=0`, so the published `dist/` always ships with full dts regardless of `.env`.
 
 ### Core service singletons (critical)
 
@@ -134,11 +149,18 @@ Dev watch reads `NP_DEV_FAST` from `.env` (default `1`); when set, each package'
 
 The reference app wires these up in `apps/web/src/lib/init-core.ts`. New code should use the single intent-based entry point `ensureFor("read" | "plugins" | "write")`:
 
-  - `await ensureFor("read")` — DB + storage + collections (read-only RSC, GET routes).
-  - `await ensureFor("plugins")` — read + plugin loading (render paths that need `runHook` to fire).
-  - `await ensureFor("write")` — plugins + email + pg-boss producer (any mutating API route / server action / import).
+- `await ensureFor("read")` — DB + storage + collections (read-only RSC, GET routes).
+- `await ensureFor("plugins")` — read + plugin loading (render paths that need `runHook` to fire).
+- `await ensureFor("write")` — plugins + email + pg-boss producer (any mutating API route / server action / import).
 
-All routes use `ensureFor` directly — the legacy four functions (`ensureCoreServices` / `ensurePluginsLoaded` / `ensureJobProducer` / `ensureWriteReady`) were retired in #266. Any route or server component touching collections, media, or plugins MUST initialize before reading the singletons; otherwise they're null. Don't create parallel DB connections from elsewhere.
+All app routes use `ensureFor` directly — the old route-level pattern of
+choosing among `ensureCoreServices` / `ensurePluginsLoaded` /
+`ensureJobProducer` / `ensureWriteReady` was retired in #266. The
+`createBootstrap()` result still exposes low-level compatibility helpers for
+the app adapter, but new route or server-component code should not call them
+directly. Any route or server component touching collections, media, or
+plugins MUST initialize before reading the singletons; otherwise they're null.
+Don't create parallel DB connections from elsewhere.
 
 ### Collections = codegen, not runtime
 
@@ -159,7 +181,7 @@ Plugin-contributed blocks merge into the same shared registry as the built-ins (
 
 Plugin wiring is centralized in `packages/core/src/plugins/host.ts` (registry + `runHook`) and surfaced via `loadPlugins()` / `runHook()` / `getPluginRoutes()` exports. The catch-all plugin route (`/api/plugins/<id>/<...>` for paths other than `/actions`) is rate-limited at the framework level by `apps/web/src/proxy.ts` (#316) — the conservative default applies to anything matching the catch-all pattern, so plugin authors get a sane floor automatically. A plugin that needs a higher ceiling for a specific endpoint must add its own per-handler rate-limiter on top.
 
-Plugin **page routes** (`pageRoutes` field — #623) let a plugin own public-site URLs end-to-end. The host catch-all (`apps/web/src/app/(site)/[[...slug]]/page.tsx`) calls `dispatchPluginRoute()` from `@nexpress/next` after the page-slug + slug-redirect + theme-route lookups; a matched plugin component receives `{ params, searchParams, blockCtx }` and renders into the same site shell as any operator-authored page. Server / client boundaries follow the same pattern as `@nexpress/admin`: route components (server) import client widgets via the package's own `./client` subpath (e.g. `@nexpress/plugin-forum/client`), which is marked external in the index entry's tsup config so the bundle preserves the `"use client"` directive. Reference: `packages/plugins/forum/` migrated 2026-05-10. Author docs in `docs/plugin-pages.md`. **Deferred to v0.2**: `surface: "member"` shell wrap (today the field is accepted but member-surface routes still render in the site shell — see `docs/design/plugin-routes.md` § 5.1).
+Plugin **page routes** (`pageRoutes` field — #623) let a plugin own public-site URLs end-to-end. The host catch-all (`apps/web/src/app/(site)/[[...slug]]/page.tsx`) calls `dispatchPluginRoute()` from `@nexpress/next` after the page-slug + slug-redirect + theme-route lookups; a matched plugin component receives `{ params, searchParams, blockCtx }` and renders into the active shell. `surface: "site"` routes use the site shell; `surface: "member"` routes use `impl.members.shell` with the member-surface fallback chain. The flag controls chrome only and is not an auth gate. Server / client boundaries follow the same pattern as `@nexpress/admin`: route components (server) import client widgets via the package's own `./client` subpath (e.g. `@nexpress/plugin-forum/client`), which is marked external in the index entry's tsup config so the bundle preserves the `"use client"` directive. Reference: `packages/plugins/forum/` migrated 2026-05-10. Author docs in `docs/plugin-pages.md`.
 
 ### Next.js app structure (`apps/web/src/app`)
 
@@ -183,11 +205,11 @@ CSRF on state-changing API routes is applied automatically by `apps/web/src/prox
 
 Packages that contain React UI split exports to keep client-only code out of RSC bundles:
 
-| Package            | Root export (server-safe)               | `./client` export               | `./server` export |
-| ------------------ | --------------------------------------- | ------------------------------- | ----------------- |
-| `@nexpress/editor` | types + renderRichText                  | NpRichTextEditor, ToolbarPlugin | renderRichText    |
-| `@nexpress/blocks` | types, registry, renderBlocks, blocks/* | —                               | —                 |
-| `@nexpress/admin`  | types + views                           | AdminShell, all client views    | —                 |
+| Package            | Root export (server-safe)                | `./client` export               | `./server` export |
+| ------------------ | ---------------------------------------- | ------------------------------- | ----------------- |
+| `@nexpress/editor` | types + renderRichText                   | NpRichTextEditor, ToolbarPlugin | renderRichText    |
+| `@nexpress/blocks` | types, registry, renderBlocks, blocks/\* | —                               | —                 |
+| `@nexpress/admin`  | types + views                            | AdminShell, all client views    | —                 |
 
 `@nexpress/blocks` is server-safe end-to-end now (registry, renderBlocks, block definitions). The page-builder UI itself lives in `@nexpress/admin/src/blocks/` so it can use admin's Radix/Tailwind primitives directly. The old `@nexpress/blocks/client` export was removed when the editor moved.
 
@@ -213,27 +235,27 @@ A separate package (not part of `@nexpress/core`) that ingests a WXR export end-
 
 ## WHERE TO LOOK
 
-| Task                                             | Location                                                | Notes                                                                                                                                                                           |
-| ------------------------------------------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Add/modify a collection                          | `apps/web/src/collections/*.ts`                         | Drizzle schema codegen reruns automatically in `pnpm dev`; if column shapes changed, also run `pnpm db:generate && pnpm db:migrate`                                              |
-| Change content pipeline (ACL, hooks, validation) | `packages/core/src/collections/pipeline.ts`             | 1043 lines — the critical write path                                                                                                                                            |
-| Add a block type                                 | `packages/blocks/src/blocks/`                           | Register in `registry.ts` `getDefaultBlocks()`                                                                                                                                  |
-| Modify rich-text rendering (SSR)                 | `packages/editor/src/render-rich-text.tsx`              | Server-safe; used by blocks and site pages                                                                                                                                      |
-| Add editor toolbar features                      | `packages/editor/src/toolbar-plugin.tsx`                | Client-only; exports via `./client`                                                                                                                                             |
-| Add admin UI field type                          | `packages/admin/src/collections/field-renderer.tsx`     | Add component in `fields/`, update renderer switch                                                                                                                              |
-| Add admin UI primitive                           | `packages/admin/src/ui/`                                | shadcn pattern: Radix + cva + cn()                                                                                                                                              |
-| Write a plugin                                   | Copy `packages/plugins/reading-time/src/index.ts`       | Use `definePlugin()` from `@nexpress/plugin-sdk`. New plugin packages live under `packages/plugins/<name>/`; the SDK itself stays at `packages/plugin-sdk` (it's not a plugin). |
-| Add public routes to a plugin                    | `packages/plugins/forum/src/routes/`                    | `pageRoutes` array on `definePlugin`. Server-component routes import client widgets via the package's own `./client` subpath (NOT relative paths — relative bypasses RSC banner). Forum is the reference impl. Docs: `docs/plugin-pages.md`. Dispatcher: `packages/next/src/route-dispatcher.ts` |
-| Change auth flow                                 | `packages/core/src/auth/` + `packages/next/src/auth.ts` | JWT sign/verify in core; cookie helpers in next                                                                                                                                 |
-| Change middleware (rate limits, CSP)             | `apps/web/src/proxy.ts`                                 | In-memory rate limiter, security headers (Next 16 renamed `middleware.ts` → `proxy.ts`)                                                                                         |
-| Modify bootstrap / service wiring                | `packages/next/src/bootstrap.ts`                        | `createBootstrap()` — the singleton factory                                                                                                                                     |
-| Change DB schema (system tables)                 | `packages/core/src/db/schema/`                          | npUsers, npMedia, npRevisions, npSettings                                                                                                                                       |
-| Scaffold templates (create-nexpress)             | `packages/cli/templates/` (real .ts files) + `packages/cli/src/templates.ts` (loader) | 7-PR split (#268) moved templates to on-disk files with their own `tsconfig.templates.json`; loader is the 384-line orchestrator. Edit the file, not a string literal           |
-| Modify worker shutdown / signal handling         | `packages/core/src/jobs/worker.ts`                      | Owns SIGINT/SIGTERM, drains in-flight jobs, cleans up partial state on setup failure (#318)                                                                                     |
-| Run a WordPress import                           | `packages/wp-import/src/`                               | `parse/`, `convert/`, `media/`, `apply/`, `cli/`. Long-running pg-boss job; surfaces in `/admin/jobs`                                                                          |
-| Admin jobs UI (enqueue / pause / archive)        | `apps/web/src/app/(admin)/admin/(protected)/jobs/`      | Phase 20.1–20.4. Capability `admin.manage` required                                                                                                                              |
-| Theme token → CSS mapping                        | `packages/theme/src/generate-css.ts`                    | Custom properties under `:root`                                                                                                                                                 |
-| Docker / deployment                              | `docker/Dockerfile`                                     | Multi-stage, uses Next standalone output                                                                                                                                        |
+| Task                                             | Location                                                                              | Notes                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Add/modify a collection                          | `apps/web/src/collections/*.ts`                                                       | Drizzle schema codegen reruns automatically in `pnpm dev`; if column shapes changed, also run `pnpm db:generate && pnpm db:migrate`                                                                                                                                                              |
+| Change content pipeline (ACL, hooks, validation) | `packages/core/src/collections/pipeline.ts`                                           | 1043 lines — the critical write path                                                                                                                                                                                                                                                             |
+| Add a block type                                 | `packages/blocks/src/blocks/`                                                         | Register in `registry.ts` `getDefaultBlocks()`                                                                                                                                                                                                                                                   |
+| Modify rich-text rendering (SSR)                 | `packages/editor/src/render-rich-text.tsx`                                            | Server-safe; used by blocks and site pages                                                                                                                                                                                                                                                       |
+| Add editor toolbar features                      | `packages/editor/src/toolbar-plugin.tsx`                                              | Client-only; exports via `./client`                                                                                                                                                                                                                                                              |
+| Add admin UI field type                          | `packages/admin/src/collections/field-renderer.tsx`                                   | Add component in `fields/`, update renderer switch                                                                                                                                                                                                                                               |
+| Add admin UI primitive                           | `packages/admin/src/ui/`                                                              | shadcn pattern: Radix + cva + cn()                                                                                                                                                                                                                                                               |
+| Write a plugin                                   | Copy `packages/plugins/reading-time/src/index.ts`                                     | Use `definePlugin()` from `@nexpress/plugin-sdk`. New plugin packages live under `packages/plugins/<name>/`; the SDK itself stays at `packages/plugin-sdk` (it's not a plugin).                                                                                                                  |
+| Add public routes to a plugin                    | `packages/plugins/forum/src/routes/`                                                  | `pageRoutes` array on `definePlugin`. Server-component routes import client widgets via the package's own `./client` subpath (NOT relative paths — relative bypasses RSC banner). Forum is the reference impl. Docs: `docs/plugin-pages.md`. Dispatcher: `packages/next/src/route-dispatcher.ts` |
+| Change auth flow                                 | `packages/core/src/auth/` + `packages/next/src/auth.ts`                               | JWT sign/verify in core; cookie helpers in next                                                                                                                                                                                                                                                  |
+| Change middleware (rate limits, CSP)             | `apps/web/src/proxy.ts`                                                               | In-memory rate limiter, security headers (Next 16 renamed `middleware.ts` → `proxy.ts`)                                                                                                                                                                                                          |
+| Modify bootstrap / service wiring                | `packages/next/src/bootstrap.ts`                                                      | `createBootstrap()` — the singleton factory                                                                                                                                                                                                                                                      |
+| Change DB schema (system tables)                 | `packages/core/src/db/schema/`                                                        | npUsers, npMedia, npRevisions, npSettings                                                                                                                                                                                                                                                        |
+| Scaffold templates (create-nexpress)             | `packages/cli/templates/` (real .ts files) + `packages/cli/src/templates.ts` (loader) | 7-PR split (#268) moved templates to on-disk files with their own `tsconfig.templates.json`; loader is the 384-line orchestrator. Edit the file, not a string literal                                                                                                                            |
+| Modify worker shutdown / signal handling         | `packages/core/src/jobs/worker.ts`                                                    | Owns SIGINT/SIGTERM, drains in-flight jobs, cleans up partial state on setup failure (#318)                                                                                                                                                                                                      |
+| Run a WordPress import                           | `packages/wp-import/src/`                                                             | `parse/`, `convert/`, `media/`, `apply/`, `cli/`. Long-running pg-boss job; surfaces in `/admin/jobs`                                                                                                                                                                                            |
+| Admin jobs UI (enqueue / pause / archive)        | `apps/web/src/app/(admin)/admin/(protected)/jobs/`                                    | Phase 20.1–20.4. Capability `admin.manage` required                                                                                                                                                                                                                                              |
+| Theme token → CSS mapping                        | `packages/theme/src/generate-css.ts`                                                  | Custom properties under `:root`                                                                                                                                                                                                                                                                  |
+| Docker / deployment                              | `docker/Dockerfile`                                                                   | Multi-stage, uses Next standalone output                                                                                                                                                                                                                                                         |
 
 ## Conventions
 
@@ -291,8 +313,8 @@ These exist on the published surface but are explicitly NOT covered by the rules
 
 - **Lexical content shape** — `NpRichTextContent` is whatever Lexical's serializer emits. We track Lexical upstream; their JSON shape is not part of NexPress's commitment.
 - **`_layout` meta convention on grid children** — children of a `gridBlock` carry `props._layout: { colSpan: 1–12 }`. Today only the built-in `gridBlock` reads it; if more container blocks land before 1.0 the convention may move to a top-level `NpBlockInstance.layout?` field instead of being nested inside `props`.
-- **Block prop field types** — the `propsSchema` field type set (`text` / `textarea` / `number` / `boolean` / `select` / `url` / `richtext` / `image`) is what the admin renders today. Adding new types is non-breaking; existing ones won't be renamed in 0.x but the *editor renderer* for a type may upgrade visually (e.g. phase 5 swapped the `richtext` JSON-textarea for a Lexical editor without changing the wire format).
-- **Theme token names** — `colors`, `fonts`, `radii`, etc. are stable as a *category*, but specific token keys may be renamed if a token system overhaul lands before 1.0.
+- **Block prop field types** — the `propsSchema` field type set (`text` / `textarea` / `number` / `boolean` / `select` / `url` / `richtext` / `image`) is what the admin renders today. Adding new types is non-breaking; existing ones won't be renamed in 0.x but the _editor renderer_ for a type may upgrade visually (e.g. phase 5 swapped the `richtext` JSON-textarea for a Lexical editor without changing the wire format).
+- **Theme token names** — `colors`, `fonts`, `radii`, etc. are stable as a _category_, but specific token keys may be renamed if a token system overhaul lands before 1.0.
 - **WordPress import internals** — the CLI surface (`packages/wp-import/src/cli/`) is stable; `parse/` / `convert/` / `media/` / `apply/` modules are not a public API. Importing from them will break.
 - **Generated schema output** — `apps/web/src/db/generated/collections.ts` and friends are codegen artifacts. Don't import from generated paths in user code outside the file Drizzle expects.
 - **Bootstrap singletons exposed at the root** — `setDb`, `getDb`, `setStorageAdapter`, `setJobQueue`, `loadPlugins`, `runHook`, `createDbConnection`. Required for `@nexpress/next`'s `createBootstrap()`; not intended for app-level use. May move to an `@internal` or `@nexpress/core/bootstrap` subpath in a later 0.x.
@@ -310,13 +332,21 @@ It's not a roadmap. It says what's pinned today, not what 1.0 will look like. Th
 
 ## NOTES
 
-- **CI** — `.github/workflows/ci.yml` defines three jobs on Ubuntu (Node 22, pnpm 10.33). When active they run on `push: main`, every `pull_request`, and manual `workflow_dispatch`:
-  1. `checks` — install → build → typecheck → `pnpm test` (unit suites only — `apps/web`'s `test` script is a no-op because that package's vitest config holds only integration specs).
-  2. `integration` — Postgres 16 service container + `pnpm test:integration` against `TEST_DATABASE_URL` (#275). Covers the pipeline / write-path code that mocked unit tests can't.
-  3. `e2e` — Postgres 16 + Playwright + `next start` against the built bundle. Golden-path coverage that matches production output rather than dev transpile.
-
-  **Currently `workflow_dispatch`-only.** This private repo bills Actions minutes per run, and the `push` + `pull_request` triggers were generating ~5 workflow runs per PR. They're commented out in `ci.yml` until the repo is open-sourced; restore both lines when flipping public.
-- **Release** — `.github/workflows/release.yml` runs the changesets action: opens a "Version Packages" PR when there are queued changesets and (once `publish: pnpm release` is wired and `NPM_TOKEN` is provisioned) publishes to npm with `--provenance` attestation. **Currently `workflow_dispatch`-only** for the same cost-savings reason as CI; restore the `push: main` trigger alongside `ci.yml`'s restoration when the repo flips public.
+- **CI** — `.github/workflows/ci.yml` runs on every `pull_request`,
+  manual `workflow_dispatch`, and selected `push: main` changes (docs-only
+  and changeset-only pushes are ignored on `main`; PR triggers stay
+  unconditional so required checks are never missing):
+  1. `typecheck + build + test` — install → build → typecheck → `pnpm test`.
+  2. `integration tests (Postgres)` — Postgres 16 service container + `pnpm test:integration` against `TEST_DATABASE_URL` (#275). Covers the pipeline / write-path code that mocked unit tests can't.
+  3. `E2E (Playwright)` — Postgres 16 + Playwright + `next start` against the built bundle. Runs on PRs and manual dispatch, not push-to-main.
+  4. `scaffold smoke (fresh scaffold journey)` — packs the workspace packages, scaffolds a temp project outside the monorepo, installs it, typechecks it, and runs the deploy-readiness journey smoke.
+- **Release** — `.github/workflows/release.yml` runs on `push: main`
+  and manual `workflow_dispatch`. It uses `changesets/action` to open/update
+  the "Version Packages" PR when changesets are queued, and publishes via
+  `pnpm run release` after that PR lands. npm auth uses Trusted Publishing
+  (OIDC, `id-token: write`, `NPM_CONFIG_PROVENANCE=true`), not `NPM_TOKEN`.
+  The workflow also dispatches CI for GITHUB_TOKEN-created Version PRs and
+  mirrors required job conclusions onto the Version PR commit.
 - **No pre-commit hooks** — no husky or lint-staged configured.
 - **`@nexpress/next` package name** — not the framework. It's NexPress's Next.js integration helpers (`createBootstrap`, `createAuthHelpers`, `createCollectionHelpers`).
 - **LocalStorageAdapter** is not multi-node safe. Use S3 for production deployments with multiple instances.

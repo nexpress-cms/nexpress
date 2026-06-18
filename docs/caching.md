@@ -38,14 +38,14 @@ walk. Tagged so writes can invalidate selectively.
 
 **Tagged routes**
 
-| Route                    | Tag(s)                                         | Revalidate |
-| ------------------------ | ---------------------------------------------- | ---------- |
-| `/sitemap.xml`           | `nx:sitemap`                                   | 600s       |
-| `/feed.xml` (default)    | `nx:feed`, `nx:feed:posts`                     | 600s       |
-| `/feed.xml?collection=…` | `nx:feed`, `nx:feed:{collection}` (when added) | 600s       |
-| `getCachedTheme()`       | `nx:theme:<siteId>`                            | 600s       |
-| `getCachedActiveThemeId()` | `nx:theme:<siteId>` (shared)                 | 600s       |
-| `getCachedNavigation(loc)` | `nx:nav:<siteId>:<location>`                 | 600s       |
+| Route                      | Tag(s)                                                                                 | Revalidate |
+| -------------------------- | -------------------------------------------------------------------------------------- | ---------- |
+| `/sitemap.xml`             | `nx:sitemap:<siteId>`, `nx:sitemap`                                                    | 600s       |
+| `/feed.xml` (default)      | `nx:feed:<siteId>`, `nx:feed:<siteId>:posts`, `nx:feed`, `nx:feed:posts`               | 600s       |
+| `/feed.xml?collection=…`   | `nx:feed:<siteId>`, `nx:feed:<siteId>:{collection}`, `nx:feed`, `nx:feed:{collection}` | 600s       |
+| `getCachedTheme()`         | `nx:theme:<siteId>`                                                                    | 600s       |
+| `getCachedActiveThemeId()` | `nx:theme:<siteId>` (shared)                                                           | 600s       |
+| `getCachedNavigation(loc)` | `nx:nav:<siteId>:<location>`                                                           | 600s       |
 
 **Invalidation**
 
@@ -56,11 +56,20 @@ and calls `revalidateTag` on each. Default rules:
 ```ts
 posts: {
   paths: ["/blog", "/blog/{slug}"],
-  tags: ["nx:posts", "nx:sitemap", "nx:feed:posts"],
+  tags: [
+    "nx:posts",
+    "nx:sitemap",
+    "nx:feed:posts",
+    "nx:search",
+    "nx:sitemap:{siteId}",
+    "nx:feed:{siteId}:posts",
+    "nx:feed:{siteId}",
+    "nx:search:{siteId}",
+  ],
 },
 pages: {
   paths: ["/{slug}", "/"],
-  tags: ["nx:pages", "nx:sitemap"],
+  tags: ["nx:pages", "nx:sitemap", "nx:search", "nx:sitemap:{siteId}", "nx:search:{siteId}"],
 },
 ```
 
@@ -90,16 +99,18 @@ the rendered output even when the origin's data cache is hot.
 
 **Public read-only routes**
 
-| Route          | Cache-Control                          |
-| -------------- | -------------------------------------- |
-| `/sitemap.xml` | `public, max-age=600, s-maxage=600`    |
-| `/feed.xml`    | `public, max-age=600, s-maxage=600`    |
-| `/robots.txt`  | `public, max-age=3600, s-maxage=3600`  |
+| Route          | Cache-Control                         |
+| -------------- | ------------------------------------- |
+| `/sitemap.xml` | `public, max-age=600, s-maxage=600`   |
+| `/feed.xml`    | `public, max-age=600, s-maxage=600`   |
+| `/robots.txt`  | `public, max-age=3600, s-maxage=3600` |
 
-**Private routes (middleware-applied)**
+**Private routes (proxy-applied)**
 
-The middleware applies `Cache-Control: private, no-store,
+The Next 16 proxy (`src/proxy.ts`, implemented in `@nexpress/app/proxy`)
+applies `Cache-Control: private, no-store,
 must-revalidate` to:
+
 - `/admin/*`
 - `/api/admin/*`
 - `/api/auth/*`
@@ -112,7 +123,7 @@ dashboard or a user's session response.
 
 **Public site `Vary`**
 
-The middleware sets `Vary: Cookie, Accept-Language` on
+The proxy sets `Vary: Cookie, Accept-Language` on
 public site routes that don't define their own
 `Cache-Control`. This stops a CDN from serving a logged-in
 user's rendered page (member-status-widget, draft banner) to
@@ -128,10 +139,10 @@ under `/uploads/`. Production deployments should:
 
 1. Serve `./uploads/` via a CDN (Cloudflare, Fastly, S3 +
    CloudFront) rather than via the Next.js origin.
-2. Set a long `Cache-Control: public, max-age=31536000,
-   immutable` on those responses (media URLs include the
-   uuid, which makes them effectively immutable — a "delete
-   then re-upload" produces a different id).
+2. Set long immutable cache headers (`Cache-Control: public,
+max-age=31536000, immutable`) on those responses (media URLs include
+   the uuid, which makes them effectively immutable — a "delete then
+   re-upload" produces a different id).
 
 The `S3StorageAdapter` makes this easier — point a CDN at
 the bucket directly. Local dev relies on Next's static-file
@@ -139,7 +150,7 @@ serving with no CDN; that's fine for development.
 
 ---
 
-## What's NOT cached (yet)
+## Known tradeoffs / follow-ups
 
 - **Catch-all page render** (`/[[...slug]]`) — every (site)
   route is dynamic because the **root layout** (`app/layout.tsx`)
@@ -158,16 +169,18 @@ serving with no CDN; that's fine for development.
   theme's shell) that runs entirely client-side, so themes can
   ship saved-choice dark mode without forcing the root layout
   dynamic.
+
 - **Search responses** (`/api/search`) — query strings make
   caching tricky; the pluggable adapter from 10.6 may handle
   its own cache. A simple short-TTL wrapper for the
   hot-query case is a candidate follow-up.
-- **Multi-site sitemap / feed cache keys** — current tags
-  (`nx:sitemap`, `nx:feed:posts`) are global. In a multi-
-  tenant deploy where the same worker pool serves several
-  sites, a write to site A invalidates site B's cache too.
-  Site-scoped tags (`nx:sitemap:<siteId>`) would mirror the
-  Phase 14.3 theme/nav pattern.
+- **Global fallback tags still over-invalidate** — sitemap,
+  feed, and search caches now carry site-scoped tags
+  (`nx:sitemap:<siteId>`, `nx:feed:<siteId>`, `nx:search:<siteId>`)
+  alongside legacy global tags (`nx:sitemap`, `nx:feed:posts`,
+  `nx:search`). Multi-tenant writes hit the site-scoped tags
+  for precision, while the global tags remain as a compatibility
+  hammer for older plugins and external purgers.
 - **CDN cache invalidation** — `revalidateTag` only flushes
   the Next data cache, not a downstream CDN. Sites running
   Cloudflare / Fastly need their own purge call. A pluggable
@@ -181,12 +194,12 @@ serving with no CDN; that's fine for development.
   the boundary. Sites without a CDN still hit the cache-miss
   spike on the origin.
 
-These are tracked as 14.x follow-ups.
+Keep these in mind when tuning production deployments.
 
 ## Already cached (Phase 14 retrospective)
 
 - 14.1 — `sitemap.xml` and `feed.xml` (tag-based ISR)
-- 14.2 — `Cache-Control` + `Vary` middleware
+- 14.2 — `Cache-Control` + `Vary` proxy
 - 14.3 — `getCachedTheme()`, `getCachedActiveThemeId()`,
   `getCachedNavigation()` with site-scoped tags
 - 14.5 — plugin-contributed page templates (separate concern,

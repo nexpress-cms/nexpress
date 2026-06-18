@@ -12,8 +12,8 @@ framework taking on a Sentry / Datadog / Axiom dependency:
   Default is a no-op, so users who don't need error tracking pay
   nothing.
 
-Both APIs are exported from `@nexpress/core`. Install your adapters
-once at app boot — the framework's bootstrap lives in
+Both APIs are exported from `@nexpress/core/observability`. Install your
+adapters once at app boot — the framework's bootstrap lives in
 `@nexpress/app/lib/init-core` and is surfaced through a thin wrapper
 at `src/lib/init-core.ts` in every site (and `apps/web/src/lib/init-core.ts`
 in the monorepo). Unwrap that file and install the adapters next to
@@ -24,7 +24,7 @@ the email setup; every downstream call site picks them up.
 ## Logger
 
 ```ts
-import { setLogger, type NpLogger } from "@nexpress/core";
+import { setLogger, type NpLogger } from "@nexpress/core/observability";
 
 setLogger({
   debug: (msg, ctx) => myLogger.debug({ ctx }, msg),
@@ -41,18 +41,18 @@ Every log call carries the message string plus an optional
 `Record<string, unknown>` of structured context. The framework adds
 its own keys at known call sites:
 
-| Call site | Context keys |
-|---|---|
-| Plugin `ctx.log` | `pluginId` |
-| pg-boss handler error | `type`, `jobId`, `error`, `stack` |
-| `revalidateCollection` skip | `target`, `error` |
-| `npErrorResponse` 500 | `name`, `message`, `stack` |
+| Call site                   | Context keys                      |
+| --------------------------- | --------------------------------- |
+| Plugin `ctx.log`            | `pluginId`                        |
+| pg-boss handler error       | `type`, `jobId`, `error`, `stack` |
+| `revalidateCollection` skip | `target`, `error`                 |
+| `npErrorResponse` 500       | `name`, `message`, `stack`        |
 
 ### pino example
 
 ```ts
 import pino from "pino";
-import { setLogger } from "@nexpress/core";
+import { setLogger } from "@nexpress/core/observability";
 
 const root = pino({ level: process.env.LOG_LEVEL ?? "info" });
 setLogger({
@@ -77,7 +77,7 @@ setLogger({
 ## Error reporter
 
 ```ts
-import { setErrorReporter, type NpErrorReporter } from "@nexpress/core";
+import { setErrorReporter, type NpErrorReporter } from "@nexpress/core/observability";
 
 const reporter: NpErrorReporter = {
   captureException(error, context) {
@@ -100,7 +100,7 @@ failures via `console.error` (bypassing the logger to avoid a loop).
 
 ```ts
 import * as Sentry from "@sentry/node";
-import { setErrorReporter } from "@nexpress/core";
+import { setErrorReporter } from "@nexpress/core/observability";
 
 Sentry.init({ dsn: process.env.SENTRY_DSN });
 
@@ -119,11 +119,11 @@ setErrorReporter({
 
 ## Where errors get reported
 
-| Boundary | What's reported | Tags |
-|---|---|---|
-| API route 500 | Any non-`NpError` thrown from a handler. `NpValidationError`, `NpForbiddenError`, etc. are intentional 4xx responses and are **not** reported. | `source: "api"` |
-| pg-boss job handler | Anything the registered handler throws. Re-thrown after reporting so pg-boss applies its retry policy. | `source: "worker"`, `jobType` |
-| Plugin hook handler | Propagates to whoever called `runHook` / `runHookAndCollect`; reaches the API boundary above when a content write triggers it. | `source: "api"` |
+| Boundary            | What's reported                                                                                                                                | Tags                          |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| API route 500       | Any non-`NpError` thrown from a handler. `NpValidationError`, `NpForbiddenError`, etc. are intentional 4xx responses and are **not** reported. | `source: "api"`               |
+| pg-boss job handler | Anything the registered handler throws. Re-thrown after reporting so pg-boss applies its retry policy.                                         | `source: "worker"`, `jobType` |
+| Plugin hook handler | Propagates to whoever called `runHook` / `runHookAndCollect`; reaches the API boundary above when a content write triggers it.                 | `source: "api"`               |
 
 ---
 
@@ -150,19 +150,19 @@ issue tracker calls out that this can confuse new operators, so the
 matrix below is the canonical reference until / unless they get
 unified into one subsystem.
 
-| Question                                            | Look here                                | Retention env                                                                                       |
-| --------------------------------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Is a job pending / completed / failed right now?    | pg-boss tables (`pgboss.job` + archive)  | pg-boss internal — controlled by pg-boss config, not NexPress envs                                  |
-| Is *any* worker process actually attached?          | `np_worker_heartbeats`                   | `NP_WORKER_STALE_THRESHOLD_SECONDS` (default 90) — rows older than `STALE × 10` get GC'd by `purgeStaleWorkers` |
-| What did handler X log while processing job Y?      | `np_job_logs`                            | `NP_JOB_LOG_RETENTION_DAYS` (default 14) — pruned by the `system:jobLogPrune` recurring job          |
+| Question                                         | Look here                               | Retention env                                                                                                   |
+| ------------------------------------------------ | --------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Is a job pending / completed / failed right now? | pg-boss tables (`pgboss.job` + archive) | pg-boss internal — controlled by pg-boss config, not NexPress envs                                              |
+| Is _any_ worker process actually attached?       | `np_worker_heartbeats`                  | `NP_WORKER_STALE_THRESHOLD_SECONDS` (default 90) — rows older than `STALE × 10` get GC'd by `purgeStaleWorkers` |
+| What did handler X log while processing job Y?   | `np_job_logs`                           | `NP_JOB_LOG_RETENTION_DAYS` (default 14) — pruned by the `system:jobLogPrune` recurring job                     |
 
 ### Cadence envs
 
-| Env                              | Default | Effect                                                                  |
-| -------------------------------- | ------- | ----------------------------------------------------------------------- |
-| `NP_WORKER_HEARTBEAT_SECONDS`    | `30`    | How often a running worker upserts its `np_worker_heartbeats` row.       |
-| `NP_WORKER_STALE_THRESHOLD_SECONDS` | `90` | After this with no heartbeat, the worker reports `unhealthy`.            |
-| `NP_JOB_LOG_RETENTION_DAYS`      | `14`    | Prune `np_job_logs` rows older than this (recurring job).                |
+| Env                                 | Default | Effect                                                             |
+| ----------------------------------- | ------- | ------------------------------------------------------------------ |
+| `NP_WORKER_HEARTBEAT_SECONDS`       | `30`    | How often a running worker upserts its `np_worker_heartbeats` row. |
+| `NP_WORKER_STALE_THRESHOLD_SECONDS` | `90`    | After this with no heartbeat, the worker reports `unhealthy`.      |
+| `NP_JOB_LOG_RETENTION_DAYS`         | `14`    | Prune `np_job_logs` rows older than this (recurring job).          |
 
 If you tune retention, tune all three to the same window if your
 storage policy is uniform, or document the divergence — they don't
@@ -176,8 +176,8 @@ won't hold if `NP_JOB_LOG_RETENTION_DAYS` is still 14.
   attached; pg-boss alone won't tell you that.
 - **"A job failed but the API response was vague"** — query
   `np_job_logs` for that `jobId`. The structured `level` + `message`
-  + `context` triple is what `getLogger()` calls inside the handler
-  tee'd into.
+  - `context` triple is what `getLogger()` calls inside the handler
+    tee'd into.
 - **"A job completed but the side effect didn't fire"** — first check
   pg-boss state (`completed` vs. `expired`). If the job ran, then
   read `np_job_logs` for the handler's own diagnostics.

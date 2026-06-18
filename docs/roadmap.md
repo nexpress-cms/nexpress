@@ -1,16 +1,23 @@
-# Roadmap
+# Roadmap Historical Snapshot
 
-**Last updated:** 2026-05-02
+**Last reviewed:** 2026-06-17.
 
-This is the working roadmap from 0.1 toward 1.0. It is not a contract — it is
-the running shortlist that captures _what's done_, _what's next_, and _what's
-deferred_. Update it as work lands or priorities shift.
+This file is preserved as the pre-publish roadmap snapshot from 2026-05-02.
+It is no longer the current work queue: the npm publish path, CI triggers,
+hosted demo work, mobile hardening, and agent-operated ops track have all moved
+past the assumptions below.
+
+Use this document for historical context and category vocabulary only. Current
+implementation contracts live in the focused guides linked from
+[`docs/README.md`](README.md), especially [`agent-operated-ops.md`](agent-operated-ops.md),
+[`releasing.md`](releasing.md), [`deployment.md`](deployment.md), and
+[`testing.md`](testing.md).
 
 For the v0.1 stability commitments themselves, see the **STABILITY (v0.1)**
 section in [`AGENTS.md`](../AGENTS.md) at the repo root. This file is the
-roadmap; that section is the contract.
+historical roadmap; that section is the contract.
 
-## Where we are (0.1 in flight)
+## Archived context — 0.1 in flight
 
 The 0.1 surface is feature-frozen on the published `@nexpress/*` packages.
 Everything below is shipped and merged on `main`:
@@ -35,10 +42,9 @@ Everything below is shipped and merged on `main`:
   README stubs, README v1 surface refresh, author attribution rename,
   build/dev split (`NP_DEV_FAST`).
 
-The blocker on the actual `npm publish` is the GitHub Actions billing lock
-(`workflow_dispatch`-only on `ci.yml` and `release.yml`); see the **NOTES**
-section in `AGENTS.md`. When billing clears, the changeset queue ships and
-the first 0.1 release is published with provenance.
+Historical note: this snapshot predated the active Release workflow with npm
+Trusted Publishing and the restored PR/push CI triggers. For the current
+publish flow, read [`releasing.md`](releasing.md) and `AGENTS.md` "NOTES".
 
 ## Categories of work between 0.1 and 1.0
 
@@ -349,7 +355,7 @@ which covers only axes 2-3. The realistic shape is
 What this pulls in:
 
 - **Data model** — `np_user_permissions(user_id, site_id?, collection?,
-  kind?, board_id?, capability, granted)` (or similar). Wildcards + deny
+kind?, board_id?, capability, granted)` (or similar). Wildcards + deny
   rules. Inheritance: does a site admin auto-cover every collection on
   that site? Tree vs flat.
 - **Performance** — `can()` is on every authz check, must not DB-hit.
@@ -388,8 +394,9 @@ risks locking in the wrong API.
 
 ## Open questions
 
-These are the load-bearing decisions that should be made before Phase 23
-formally opens, because they shape the work inside it.
+These were the load-bearing decisions that shaped the Phase 23 planning window.
+Several are now resolved; keep this list as context, not as an active blocker
+list.
 
 - **CI billing** — is there an estimated unlock date, or should we plan
   Phase 23 work assuming `workflow_dispatch`-only?

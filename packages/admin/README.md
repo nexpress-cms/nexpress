@@ -25,13 +25,13 @@ import { AdminShell, CollectionListView } from "@nexpress/admin/client";
 Importing the wrong subpath breaks the build (RSC sees `"use client"` ;
 client gets server-only deps). The reference app's protected admin
 layout is the canonical pattern — see
-[`apps/web/src/app/(admin)/admin/(protected)/layout.tsx`](https://github.com/nexpress-cms/nexpress/blob/main/apps/web/src/app/(admin)/admin/(protected)/layout.tsx).
+[`apps/web/src/app/(admin)/admin/(protected)/layout.tsx`](<https://github.com/nexpress-cms/nexpress/blob/main/apps/web/src/app/(admin)/admin/(protected)/layout.tsx>).
 
 ## Quick example
 
 ```tsx
 // app/(admin)/admin/(protected)/layout.tsx
-import { can, verifyTokenFull } from "@nexpress/core";
+import { can } from "@nexpress/core/auth";
 import { AdminShell } from "@nexpress/admin/client";
 
 export default async function AdminLayout({ children }) {
