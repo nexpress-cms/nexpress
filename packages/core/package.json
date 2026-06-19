@@ -104,7 +104,7 @@
     }
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1063.0",
+    "@aws-sdk/client-s3": "^3.1072.0",
     "@node-rs/argon2": "^2.0.2",
     "arctic": "^3.7.0",
     "drizzle-orm": "^0.45.2",
