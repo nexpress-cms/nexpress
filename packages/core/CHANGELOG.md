@@ -1,5 +1,13 @@
 # @nexpress/core
 
+## 0.3.21
+
+### Patch Changes
+
+- edfc9ae: Raise the optional Nodemailer peer range for v9 compatibility and move the
+  WordPress importer to the Undici 8.5.0 security release.
+- b5b9074: Restore legacy plugin settings saves through the dedicated plugin config route while keeping schema-backed plugin config validation intact.
+
 ## 0.3.20
 
 ## 0.3.19

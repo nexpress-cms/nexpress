@@ -1,5 +1,13 @@
 # create-nexpress
 
+## 0.1.30
+
+### Patch Changes
+
+- 20611f6: Emit and document silent pnpm project commands for machine-readable ops,
+  release, and runbook JSON flows so copied `--json` commands produce parseable
+  stdout without package-manager banners.
+
 ## 0.1.29
 
 ### Patch Changes
