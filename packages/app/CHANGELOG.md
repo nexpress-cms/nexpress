@@ -1,5 +1,41 @@
 # @nexpress/app
 
+## 0.3.21
+
+### Patch Changes
+
+- 20611f6: Emit and document silent pnpm project commands for machine-readable ops,
+  release, and runbook JSON flows so copied `--json` commands produce parseable
+  stdout without package-manager banners.
+- 6b2491b: Runbook evidence commands now use silent package-manager execution for JSON
+  subcommands, and the fresh scaffold smoke verifies strict JSON stdout plus
+  release/runbook artifact round-trips for the agent-operated ops flow.
+- Updated dependencies [edfc9ae]
+- Updated dependencies [b5b9074]
+  - @nexpress/core@0.3.21
+  - @nexpress/admin@0.3.21
+  - @nexpress/auth-pages@0.3.21
+  - @nexpress/blocks@0.3.21
+  - @nexpress/next@0.3.21
+  - @nexpress/plugin-sdk@0.3.21
+  - @nexpress/plugin-forum@0.3.21
+  - @nexpress/plugin-oauth-github@0.3.21
+  - @nexpress/plugin-oauth-google@0.3.21
+  - @nexpress/theme@0.3.21
+  - @nexpress/theme-default@0.3.21
+  - @nexpress/theme-docs@0.3.21
+  - @nexpress/theme-magazine@0.3.21
+  - @nexpress/theme-portfolio@0.3.21
+  - @nexpress/plugin-block-callout@0.3.21
+  - @nexpress/plugin-block-embed@0.3.21
+  - @nexpress/plugin-block-latest-posts@0.3.21
+  - @nexpress/plugin-block-newsletter@0.3.21
+  - @nexpress/plugin-block-pricing@0.3.21
+  - @nexpress/plugin-block-stats@0.3.21
+  - @nexpress/plugin-reading-time@0.3.21
+  - @nexpress/plugin-seo-audit@0.3.21
+  - @nexpress/editor@0.3.21
+
 ## 0.3.20
 
 ### Patch Changes

@@ -1,5 +1,16 @@
 # @nexpress/admin
 
+## 0.3.21
+
+### Patch Changes
+
+- b5b9074: Restore legacy plugin settings saves through the dedicated plugin config route while keeping schema-backed plugin config validation intact.
+- Updated dependencies [edfc9ae]
+- Updated dependencies [b5b9074]
+  - @nexpress/core@0.3.21
+  - @nexpress/blocks@0.3.21
+  - @nexpress/editor@0.3.21
+
 ## 0.3.20
 
 ### Patch Changes

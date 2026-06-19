@@ -1,5 +1,16 @@
 # @nexpress/cli
 
+## 0.3.21
+
+### Patch Changes
+
+- 20611f6: Emit and document silent pnpm project commands for machine-readable ops,
+  release, and runbook JSON flows so copied `--json` commands produce parseable
+  stdout without package-manager banners.
+- Updated dependencies [edfc9ae]
+- Updated dependencies [b5b9074]
+  - @nexpress/core@0.3.21
+
 ## 0.3.20
 
 ### Patch Changes
