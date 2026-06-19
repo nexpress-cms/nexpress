@@ -47,7 +47,18 @@ try {
     process.exit(0);
   }
 
-  currentHeadSha = versionPr.head.sha;
+  const prHeadSha = versionPr.head.sha;
+  const branchHeadSha = await resolveBranchHeadSha(versionPr.head.ref);
+  currentHeadSha = branchHeadSha || prHeadSha;
+
+  if (branchHeadSha && branchHeadSha !== prHeadSha) {
+    console.log(
+      `[version-pr-ci] PR head API reported ${prHeadSha.slice(0, 8)}, ` +
+        `but ${versionPr.head.ref} currently points at ${branchHeadSha.slice(0, 8)}; ` +
+        "using branch ref HEAD.",
+    );
+  }
+
   console.log(
     `[version-pr-ci] bridging CI for PR #${versionPr.number} ` +
       `(${versionPr.head.ref} @ ${currentHeadSha.slice(0, 8)})`,
@@ -132,6 +143,20 @@ async function dispatchCi(ref) {
     method: "POST",
     body: JSON.stringify({ ref }),
   });
+}
+
+async function resolveBranchHeadSha(ref) {
+  try {
+    const gitRef = await request(`/git/ref/heads/${encodeGitRef(ref)}`);
+    return normalized(gitRef?.object?.sha);
+  } catch (error) {
+    console.warn(
+      `[version-pr-ci] failed to resolve branch ref ${ref}: ${
+        error instanceof Error ? error.message : String(error)
+      }; falling back to PR head SHA.`,
+    );
+    return "";
+  }
 }
 
 async function waitForWorkflowRun(branch, headSha) {
@@ -269,6 +294,10 @@ function normalized(value) {
     return "";
   }
   return value;
+}
+
+function encodeGitRef(ref) {
+  return ref.split("/").map(encodeURIComponent).join("/");
 }
 
 function sleep(ms) {
