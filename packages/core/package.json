@@ -96,7 +96,7 @@
     "node": ">=20"
   },
   "peerDependencies": {
-    "nodemailer": "^8.0.9"
+    "nodemailer": "^8.0.9 || ^9.0.0"
   },
   "peerDependenciesMeta": {
     "nodemailer": {

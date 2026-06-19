@@ -76,7 +76,7 @@
     "@nexpress/xliff": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "next": "^16.2.7",
-    "nodemailer": "^8.0.9",
+    "nodemailer": "^9.0.1",
     "pg": "^8.21.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
