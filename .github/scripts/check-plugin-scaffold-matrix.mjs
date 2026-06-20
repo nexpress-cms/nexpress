@@ -159,6 +159,21 @@ for (const entry of matrix) {
 }
 console.log("✓ generated plugin packages typecheck and build");
 
+run("register generated local plugin", ["exec", "nexpress", "plugin", "add", "smoke-hook"], {
+  timeout: 180_000,
+});
+const registeredPkg = readJson(resolve(scaffoldDir, "package.json"), "scaffold package.json");
+if (registeredPkg.dependencies?.["smoke-hook"] !== "workspace:*") {
+  fail(
+    "local plugin registration should add the workspace dependency",
+    `actual: ${registeredPkg.dependencies?.["smoke-hook"] ?? "(missing)"}`,
+  );
+}
+const configSource = readFileSync(resolve(scaffoldDir, "src/nexpress.config.ts"), "utf8");
+assertIncludes(configSource, 'import smokeHook from "smoke-hook";', "nexpress.config.ts");
+assertIncludes(configSource, "smokeHook,", "nexpress.config.ts");
+console.log("✓ generated local plugin registers through nexpress plugin add");
+
 const interactiveClient = resolve(pluginsDir, "smoke-interactive/dist/client.js");
 if (!existsSync(interactiveClient)) {
   fail("interactive block build should emit dist/client.js");

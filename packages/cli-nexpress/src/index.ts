@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 
 import {
   addPluginToConfig,
@@ -20,6 +20,12 @@ import {
 import { resolveScaffoldDependencyRanges } from "./scaffold-utils.js";
 import type { ScaffoldKind, ScaffoldResult } from "./scaffold-utils.js";
 import { buildRunScriptArgs, resolveOpsScriptInvocation } from "./ops-command.js";
+import {
+  buildPackageManagerArgs,
+  findLocalPluginWorkspaceDir,
+  type NpPackageManager,
+  type NpPackageManagerOptions,
+} from "./package-manager.js";
 import { runThemeAdd } from "./theme-add/run.js";
 import { runThemeUninstall } from "./theme-uninstall/run.js";
 
@@ -82,7 +88,7 @@ Notes:
   - "create *-plugin" writes a starter package to the current directory. In a
     create-nexpress project, run it from packages/plugins so pnpm can discover
     the local plugin workspace, then run pnpm install + pnpm --filter
-    <packageName> build before importing.
+    <packageName> build before registering with "nexpress plugin add".
   - --interactive (block kind only) emits a second client entry with the boundary
     wiring (splitting off, self-import external, DOM lib) pre-configured.
   - The config file must include marker comments for automated edits:
@@ -95,7 +101,7 @@ Notes:
 
 interface ResolvedProject {
   configPath: string;
-  packageManager: "pnpm" | "npm" | "yarn";
+  packageManager: NpPackageManager;
 }
 
 /**
@@ -119,7 +125,7 @@ function resolveConfigPath(cwd: string): string {
   );
 }
 
-function detectPackageManager(cwd: string): "pnpm" | "npm" | "yarn" {
+function detectPackageManager(cwd: string): NpPackageManager {
   let current = cwd;
   while (true) {
     if (existsSync(resolve(current, "pnpm-lock.yaml"))) return "pnpm";
@@ -139,17 +145,13 @@ function resolveProject(cwd: string): ResolvedProject {
 }
 
 function runPackageManager(
-  manager: "pnpm" | "npm" | "yarn",
+  manager: NpPackageManager,
   action: "add" | "remove",
   packageName: string,
   cwd: string,
+  options: NpPackageManagerOptions = {},
 ): Promise<void> {
-  const args =
-    manager === "yarn"
-      ? [action === "add" ? "add" : "remove", packageName]
-      : manager === "pnpm"
-        ? [action === "add" ? "add" : "remove", packageName]
-        : [action === "add" ? "install" : "uninstall", packageName];
+  const args = buildPackageManagerArgs(manager, action, packageName, options);
   return new Promise((resolveFn, reject) => {
     const child = spawn(manager, args, { cwd, stdio: "inherit" });
     child.on("error", reject);
@@ -161,7 +163,7 @@ function runPackageManager(
 }
 
 function runProjectScript(
-  manager: "pnpm" | "npm" | "yarn",
+  manager: NpPackageManager,
   script: string,
   passthrough: string[],
   cwd: string,
@@ -212,8 +214,18 @@ async function pluginAdd(packageName: string, cwd: string): Promise<number> {
     return 1;
   }
 
+  const localWorkspaceDir =
+    project.packageManager === "pnpm" ? findLocalPluginWorkspaceDir(cwd, packageName) : null;
+
   process.stdout.write(`\n→ Installing ${packageName} via ${project.packageManager}…\n`);
-  await runPackageManager(project.packageManager, "add", packageName, cwd);
+  if (localWorkspaceDir) {
+    process.stdout.write(
+      `  Detected local workspace package at ${relative(cwd, localWorkspaceDir)}; using pnpm --workspace.\n`,
+    );
+  }
+  await runPackageManager(project.packageManager, "add", packageName, cwd, {
+    localWorkspace: Boolean(localWorkspaceDir),
+  });
 
   // Re-read after install — formatters / lockfile updates rarely touch the
   // config, but if anything did the dry-run is no longer authoritative.
@@ -485,10 +497,10 @@ async function main(argv: string[]): Promise<number> {
           `  Files written:\n` +
           result.files.map((f) => `    - ${f}\n`).join("") +
           `\n  Next:\n` +
-          `    1. Keep the directory in a pnpm workspace (e.g. packages/plugins/${slug}/).\n` +
-          `    2. pnpm install\n` +
+          `    1. Keep the directory in a pnpm workspace (e.g. packages/plugins/<name>/).\n` +
+          `    2. From the project root, run pnpm install\n` +
           `    3. pnpm --filter <packageName> build\n` +
-          `    4. Import the plugin in nexpress.config.ts and add it to plugins: [...].\n`,
+          `    4. pnpm exec nexpress plugin add ${slug}\n`,
       );
       return 0;
     } catch (error) {

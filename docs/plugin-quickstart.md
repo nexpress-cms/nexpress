@@ -80,8 +80,8 @@ cd my-plugin
 Each generator writes the same baseline:
 `package.json`, `tsconfig.json`, `tsup.config.ts`, `README.md`, and
 `src/index.tsx` with a heavily commented `definePlugin()` body that
-explains _why_ each field is there. Edit the body, build, register in
-`nexpress.config.ts` — that's it.
+explains _why_ each field is there. Edit the body, build, register
+with `pnpm exec nexpress plugin add <packageName>` — that's it.
 
 > **Without the CLI?** You can copy `packages/plugins/reading-time` by
 > hand and edit `package.json` + `src/index.ts`. The CLI just removes
@@ -101,16 +101,15 @@ site's installed `@nexpress/blocks` and `@nexpress/plugin-sdk`
 ranges, so the local plugin workspace installs against the same
 framework version as the app.
 
-Then add it to `nexpress.config.ts`:
+Then register it from the project root:
 
-```ts
-import { myPluginPlugin } from "@nexpress/plugin-my-plugin";
-
-export default defineConfig({
-  // ...
-  plugins: [myPluginPlugin],
-});
+```bash
+pnpm exec nexpress plugin add my-plugin
 ```
+
+For a generated local workspace package, that command uses
+`pnpm add my-plugin --workspace` and updates the plugin marker
+sections in `nexpress.config.ts`.
 
 Restart the dev server (or click "Reload all" in `/admin/plugins` for
 config / state changes — see [`plugin-reload.md`](plugin-reload.md) for
@@ -304,11 +303,24 @@ keep working independently.
 
 ## Step 3 — Wire it into the app
 
-Open `apps/web/src/nexpress.config.ts` and add your plugin to the
-`plugins` array:
+Run the registration command from the project root:
+
+```bash
+pnpm exec nexpress plugin add my-plugin
+```
+
+The CLI installs the package and rewrites the
+`// @nexpress:plugins-imports-*` and
+`// @nexpress:plugins-list-*` marker sections in
+`nexpress.config.ts`. For local plugins under `packages/plugins`,
+pnpm projects get a workspace dependency (`"my-plugin":
+"workspace:*"`) instead of a registry lookup.
+
+The manual equivalent is still just an import plus a `plugins` array
+entry:
 
 ```ts
-import { myPluginPlugin } from "@nexpress/plugin-my-plugin";
+import myPlugin from "my-plugin";
 
 export default defineConfig({
   // …
@@ -318,7 +330,7 @@ export default defineConfig({
     forumPlugin,
     githubOAuthPlugin,
     googleOAuthPlugin,
-    myPluginPlugin,
+    myPlugin,
   ],
 });
 ```
