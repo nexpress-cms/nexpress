@@ -73,17 +73,22 @@ describe("non-block scaffold generators", () => {
       expect(source).toMatch(/method: "GET"/);
       expect(source).toMatch(/path: "\/health"/);
       expect(source).toMatch(/auth: false/);
+      expect(source).not.toMatch(/from "zod"/);
     });
   });
 
   describe("admin plugin", () => {
     commonAssertions("admin", scaffoldAdminPlugin);
 
-    it("declares settings + widget + action wired through typed status registration", async () => {
+    it("declares configSchema + widget + action wired through typed status registration", async () => {
       const result = await scaffoldAdminPlugin({ slug: "status-card", outDir: workdir });
       const source = await readFile(join(result.pluginDir, "src/index.tsx"), "utf-8");
       // All three admin surface kinds.
-      expect(source).toMatch(/settings:\s*{/);
+      expect(source).toMatch(/import \{ z \} from "zod"/);
+      expect(source).toMatch(/const configSchema = z\.object/);
+      expect(source).toMatch(/configSchema,/);
+      expect(source).not.toMatch(/settings:\s*{/);
+      expect(source).not.toMatch(/fields:\s*\[/);
       expect(source).toMatch(/widgets:\s*\[/);
       expect(source).toMatch(/actions:\s*\[/);
       // Setup hook registers the shared action handler.
@@ -97,6 +102,14 @@ describe("non-block scaffold generators", () => {
       const result = await scaffoldAdminPlugin({ slug: "ui", outDir: workdir });
       const source = await readFile(join(result.pluginDir, "src/index.tsx"), "utf-8");
       expect(source).not.toMatch(/capabilities: \["admin:panel"\]/);
+    });
+
+    it("adds zod because the admin starter imports configSchema", async () => {
+      const result = await scaffoldAdminPlugin({ slug: "config-form", outDir: workdir });
+      const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+        dependencies: Record<string, string>;
+      };
+      expect(pkg.dependencies.zod).toBe("^4.4.3");
     });
   });
 

@@ -236,11 +236,12 @@ export async function scaffoldAdminPlugin(options: ScaffoldOptions): Promise<Sca
 
   const description = `Admin extension plugin: ${names.packageName}`;
   const indexSource = `import { definePlugin, npAdminStatus } from "@nexpress/plugin-sdk";
+import { z } from "zod";
 
 /**
  * Admin-extension plugin scaffold. Demonstrates the three most useful
  * declarative surfaces:
- *   - \`settings\` — a typed form rendered by the admin's FieldRenderer.
+ *   - \`configSchema\` — a typed auto-form rendered by the admin.
  *     Values persist as plugin config via PUT \`/api/admin/plugins/:id/config\`.
  *   - \`widgets\` — small status / metric cards shown on the plugin's
  *     dashboard at \`/admin/plugins/<id>\`.
@@ -255,10 +256,12 @@ export async function scaffoldAdminPlugin(options: ScaffoldOptions): Promise<Sca
  * read them back via \`ctx.config\` (typed by the generic on
  * \`definePlugin<TConfig>\`).
  */
-interface ${names.componentName}Config {
-  apiKey: string;
-  enabled: boolean;
-}
+const configSchema = z.object({
+  apiKey: z.string().default("").describe("API key"),
+  enabled: z.boolean().default(true).describe("Enable"),
+});
+
+export type ${names.componentName}Config = z.infer<typeof configSchema>;
 
 export const ${names.exportName} = definePlugin<${names.componentName}Config>({
   manifest: {
@@ -270,24 +273,8 @@ export const ${names.exportName} = definePlugin<${names.componentName}Config>({
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
   },
+  configSchema,
   admin: {
-    settings: {
-      title: "${names.componentName} settings",
-      description: "Configure how this plugin connects to its upstream service.",
-      fields: [
-        {
-          type: "text",
-          name: "apiKey",
-          label: "API key",
-          required: true,
-        },
-        {
-          type: "checkbox",
-          name: "enabled",
-          label: "Enable",
-        },
-      ],
-    },
     widgets: [
       {
         id: "status",
@@ -332,7 +319,7 @@ An admin-extension plugin scaffolded by \`nexpress create admin-plugin\`.
 
 The starter ships:
 
-- a settings form (\`apiKey\`, \`enabled\`)
+- a configSchema-powered settings form (\`apiKey\`, \`enabled\`)
 - a status widget that shows up / down
 - a manual "Ping now" action button
 
@@ -342,7 +329,9 @@ call to make this plugin do something.
 `;
 
   const files: Record<string, string> = {
-    "package.json": basePackageJson(names.packageName, description),
+    "package.json": basePackageJson(names.packageName, description, {
+      extraDependencies: { zod: "^4.4.3" },
+    }),
     "tsconfig.json": baseTsconfig(),
     "tsup.config.ts": SERVER_TSUP_CONFIG,
     "README.md": readmeTop + fillReadme(README_FOOTER, names.packageName, names.exportName),

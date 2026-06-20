@@ -16,19 +16,13 @@ import { z } from "zod";
  * studies cluster around 220-250 wpm).
  */
 const configSchema = z.object({
-  wordsPerMinute: z
-    .number()
-    .int()
-    .min(50)
-    .max(800)
-    .default(220)
-    .describe("Words per minute"),
+  wordsPerMinute: z.number().int().min(50).max(800).default(220).describe("Words per minute"),
 });
 
 // Plugin-owned type — no `Np` prefix (the framework reserves that
-// for its own identifiers per CLAUDE.md "Naming convention"). Sets
-// the precedent for upcoming G.2 migrations (oauth, newsletter,
-// seo-audit) which export their own `<Plugin>Config` aliases.
+// for its own identifiers per CLAUDE.md "Naming convention"). Every
+// migrated configSchema plugin exports its own `<Plugin>Config` alias
+// instead of leaking a framework-owned type name into plugin code.
 export type ReadingTimeConfig = z.infer<typeof configSchema>;
 
 function extractText(node: unknown): string {

@@ -72,12 +72,7 @@ export interface ScaffoldResult {
   interactive: boolean;
 }
 
-export type ScaffoldKind =
-  | "block"
-  | "hook"
-  | "route"
-  | "admin"
-  | "scheduled";
+export type ScaffoldKind = "block" | "hook" | "route" | "admin" | "scheduled";
 
 export interface ScaffoldNames {
   packageName: string;
@@ -125,7 +120,10 @@ export function assertDirAvailable(pluginDir: string): void {
 export function basePackageJson(
   packageName: string,
   description: string,
-  options: { extraExports?: Record<string, { types: string; import: string }> } = {},
+  options: {
+    extraDependencies?: Record<string, string>;
+    extraExports?: Record<string, { types: string; import: string }>;
+  } = {},
 ): string {
   const exportsBlock: Record<string, { types: string; import: string }> = {
     ".": {
@@ -153,6 +151,7 @@ export function basePackageJson(
         dependencies: {
           "@nexpress/blocks": "workspace:*",
           "@nexpress/plugin-sdk": "workspace:*",
+          ...(options.extraDependencies ?? {}),
         },
         devDependencies: {
           "@types/node": "^22.0.0",
