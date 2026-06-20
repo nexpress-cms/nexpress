@@ -11,11 +11,11 @@ import type { ZodTypeAny } from "zod";
  * metadata as plain JSON, and the admin renders form fields
  * from the metadata. The browser doesn't need zod at runtime.
  *
- * Coverage in v0.2: text, url, color (regex heuristic), number,
- * boolean, enum, array(object), object. Anything else
- * introspects as `{ type: "unsupported" }` so the form generator
- * can render a JSON textarea fallback (operator can still edit;
- * a follow-up phase widens coverage).
+ * Coverage in v0.2: text, textarea, password, url, color (regex
+ * heuristic), number, boolean, enum, array(object), array(string),
+ * object. Anything else introspects as `{ type: "unsupported" }`
+ * so the form generator can render a JSON textarea fallback
+ * (operator can still edit; later phases can widen coverage).
  */
 
 export type NpThemeSettingsField =
@@ -90,11 +90,9 @@ export interface NpThemeSettingsArrayField extends NpThemeSettingsFieldBase {
   element: NpThemeSettingsField[];
 }
 
-/** Phase G follow-up — `z.array(z.string())`. Renders as a
- *  one-item-per-line input. Surfaced for OAuth scopes and
- *  similar string-list configs that don't fit the object-array
- *  shape; previously fell through to the JSON-textarea
- *  `unsupported` fallback. */
+/** `z.array(z.string())`. Renders as a one-item-per-line input.
+ *  Surfaced for OAuth scopes and similar string-list configs that
+ *  don't fit the object-array shape. */
 export interface NpThemeSettingsStringArrayField extends NpThemeSettingsFieldBase {
   type: "string-array";
 }
@@ -124,7 +122,9 @@ const COLOR_REGEX_PATTERNS = [
 ];
 
 interface ZodCheck {
-  _zod?: { def?: { format?: string; pattern?: { source: string }; check?: string; value?: number } };
+  _zod?: {
+    def?: { format?: string; pattern?: { source: string }; check?: string; value?: number };
+  };
 }
 
 interface ZodDef {
@@ -165,7 +165,7 @@ function unwrap(node: ZodNode): {
         typeof current._def.defaultValue === "function"
           ? (current._def.defaultValue as () => unknown)()
           : current._def.defaultValue;
-      current = (current._def.innerType) ?? current;
+      current = current._def.innerType ?? current;
       if (!current._def.innerType) break;
       continue;
     }
@@ -182,9 +182,7 @@ function unwrap(node: ZodNode): {
   return { inner: current, defaultValue, required };
 }
 
-function detectStringFormat(
-  checks: ZodCheck[] | undefined,
-): "url" | "color" | "text" {
+function detectStringFormat(checks: ZodCheck[] | undefined): "url" | "color" | "text" {
   if (!checks) return "text";
   for (const c of checks) {
     const fmt = c._zod?.def?.format;
@@ -200,11 +198,10 @@ function detectStringFormat(
 }
 
 /**
- * Phase F.3 follow-up — pull `.meta()` off a Zod node when
- * present. Used to read theme-author hints like
- * `{ widget: "textarea", rows: 6 }` that don't fit Zod's
- * narrow widget matrix (z.string() has no textarea variant
- * built in).
+ * Pull `.meta()` off a Zod node when present. Used to read
+ * author hints like `{ widget: "textarea", rows: 6 }` that don't
+ * fit Zod's narrow widget matrix (z.string() has no textarea
+ * variant built in).
  */
 function readMeta(node: ZodNode): Record<string, unknown> | undefined {
   const fn = (node as unknown as { meta?: () => unknown }).meta;
@@ -213,29 +210,26 @@ function readMeta(node: ZodNode): Record<string, unknown> | undefined {
   return out && typeof out === "object" ? (out as Record<string, unknown>) : undefined;
 }
 
-function detectNumberConstraints(
-  checks: ZodCheck[] | undefined,
-): { int?: boolean; min?: number; max?: number } {
+function detectNumberConstraints(checks: ZodCheck[] | undefined): {
+  int?: boolean;
+  min?: number;
+  max?: number;
+} {
   const out: { int?: boolean; min?: number; max?: number } = {};
   if (!checks) return out;
   for (const c of checks) {
     const def = c._zod?.def;
     if (!def) continue;
     if (def.format === "safeint" || def.check === "int") out.int = true;
-    if (def.check === "greater_than" && typeof def.value === "number")
-      out.min = def.value;
-    if (def.check === "less_than" && typeof def.value === "number")
-      out.max = def.value;
+    if (def.check === "greater_than" && typeof def.value === "number") out.min = def.value;
+    if (def.check === "less_than" && typeof def.value === "number") out.max = def.value;
   }
   return out;
 }
 
-function introspectField(
-  name: string,
-  node: ZodNode,
-): NpThemeSettingsField {
-  const description = node.description;
+function introspectField(name: string, node: ZodNode): NpThemeSettingsField {
   const { inner, defaultValue, required } = unwrap(node);
+  const description = node.description ?? inner.description;
   const innerDef = inner._def;
   const base: NpThemeSettingsFieldBase = {
     name,
@@ -247,10 +241,10 @@ function introspectField(
 
   switch (innerDef.type) {
     case "string": {
-      // Phase F.3 follow-up — `.meta({ widget: "textarea" })`
-      // opts a `z.string()` into multi-line rendering. Theme
-      // authors pair it with `.describe()` for the field
-      // label; row count is optional (defaults to 4).
+      // `.meta({ widget: "textarea" })` opts a `z.string()`
+      // into multi-line rendering. Authors pair it with
+      // `.describe()` for the field label; row count is optional
+      // (defaults to 4).
       //
       // Check `node` (outer) first then `inner` because Zod v4's
       // `.meta()` returns a new instance, so the meta lives at
@@ -265,10 +259,7 @@ function introspectField(
         return { ...base, type: "password" };
       }
       if (meta && meta.widget === "textarea") {
-        const rows =
-          typeof meta.rows === "number" && meta.rows > 0
-            ? meta.rows
-            : undefined;
+        const rows = typeof meta.rows === "number" && meta.rows > 0 ? meta.rows : undefined;
         return {
           ...base,
           type: "textarea",
@@ -289,16 +280,17 @@ function introspectField(
       return { ...base, type: "enum", options: Object.values(entries) };
     }
     case "array": {
-      const element = innerDef.element;
+      const rawElement = innerDef.element;
+      const element = rawElement ? unwrap(rawElement).inner : undefined;
       // v0.2 supports z.array(z.object(...)) — typed nested form
       // for each item.
       if (element?._def.type === "object" && element._def.shape) {
         const childFields = introspectShape(element._def.shape);
         return { ...base, type: "array", element: childFields };
       }
-      // Phase G follow-up — z.array(z.string()) gets a dedicated
-      // string-array widget (one item per line). Surfaced for
-      // OAuth scopes and similar string-list configs.
+      // z.array(z.string()) gets a dedicated string-array widget
+      // (one item per line). Surfaced for OAuth scopes and similar
+      // string-list configs.
       if (element?._def.type === "string") {
         return { ...base, type: "string-array" };
       }

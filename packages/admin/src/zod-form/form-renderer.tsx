@@ -10,6 +10,11 @@ import { Label } from "../ui/label.js";
 import { Textarea } from "../ui/textarea.js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 import { Switch } from "../ui/switch.js";
+import {
+  formatStringArrayValue,
+  getStringArrayRows,
+  parseStringArrayDraft,
+} from "./string-array.js";
 
 export type ZodFormValue = Record<string, unknown>;
 
@@ -17,6 +22,7 @@ export interface ZodFormProps {
   fields: NpThemeSettingsField[];
   initialValue: ZodFormValue;
   onChange: (next: ZodFormValue) => void;
+  emptyMessage?: string;
 }
 
 /**
@@ -31,7 +37,7 @@ export interface ZodFormProps {
  * source schema, parents must remount via `key={...}`. The
  * theme settings panel keys on `themeId` for this reason.
  */
-export function ZodForm({ fields, initialValue, onChange }: ZodFormProps) {
+export function ZodForm({ fields, initialValue, onChange, emptyMessage }: ZodFormProps) {
   const [value, setValue] = useState<ZodFormValue>(initialValue);
 
   // Mirror the live value into a ref so `update` can compute
@@ -63,7 +69,7 @@ export function ZodForm({ fields, initialValue, onChange }: ZodFormProps) {
   if (fields.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        This theme doesn't expose any operator settings.
+        {emptyMessage ?? "No operator settings are exposed."}
       </p>
     );
   }
@@ -380,8 +386,6 @@ function ArrayField({ field, value, onChange }: FieldProps) {
 }
 
 function StringArrayField({ field, value, onChange }: FieldProps) {
-  // Phase G follow-up — `z.array(z.string())` editor.
-  //
   // Renders one item per line in a `<textarea>`. Empty lines are
   // dropped on **blur**, not on every keystroke (#599): while
   // the operator is mid-edit, the textarea owns its content
@@ -395,32 +399,25 @@ function StringArrayField({ field, value, onChange }: FieldProps) {
   // — for the common OAuth-scopes / category-list / tag-
   // allowlist case the line-buffer shape is the simplest
   // operator-readable representation.
-  const items = Array.isArray(value)
-    ? (value as unknown[]).filter((v): v is string => typeof v === "string")
-    : [];
   // `draft` is null while the textarea is in sync with `value`,
   // and a raw string while the operator is mid-edit. The
   // display value falls back to the parsed-from-value joined
   // string so external resets (parent re-renders with a new
   // value) take effect when no edit is pending.
   const [draft, setDraft] = useState<string | null>(null);
-  const displayValue = draft ?? items.join("\n");
+  const displayValue = draft ?? formatStringArrayValue(value);
   return (
     <FieldShell name={field.name} description={field.description ?? field.name}>
       <Textarea
         id={field.name}
-        rows={Math.max(3, items.length + 1)}
+        rows={getStringArrayRows(value, draft)}
         value={displayValue}
         onChange={(e) => {
           setDraft(e.target.value);
         }}
         onBlur={() => {
           if (draft === null) return;
-          const lines = draft
-            .split(/\r?\n/)
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0);
-          onChange(lines);
+          onChange(parseStringArrayDraft(draft));
           setDraft(null);
         }}
         placeholder="One item per line"

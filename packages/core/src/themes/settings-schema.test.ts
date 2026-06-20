@@ -13,9 +13,7 @@ describe("introspectThemeSettingsSchema", () => {
   });
 
   it("introspects a string field as text", () => {
-    const fields = introspectThemeSettingsSchema(
-      z.object({ title: z.string() }),
-    );
+    const fields = introspectThemeSettingsSchema(z.object({ title: z.string() }));
     expect(fields).toHaveLength(1);
     expect(fields[0]).toMatchObject({
       name: "title",
@@ -25,9 +23,7 @@ describe("introspectThemeSettingsSchema", () => {
   });
 
   it("detects url format", () => {
-    const fields = introspectThemeSettingsSchema(
-      z.object({ link: z.string().url() }),
-    );
+    const fields = introspectThemeSettingsSchema(z.object({ link: z.string().url() }));
     expect(fields[0]?.type).toBe("url");
   });
 
@@ -52,9 +48,7 @@ describe("introspectThemeSettingsSchema", () => {
   });
 
   it("introspects boolean", () => {
-    const fields = introspectThemeSettingsSchema(
-      z.object({ enabled: z.boolean() }),
-    );
+    const fields = introspectThemeSettingsSchema(z.object({ enabled: z.boolean() }));
     expect(fields[0]).toMatchObject({ name: "enabled", type: "boolean" });
   });
 
@@ -78,9 +72,7 @@ describe("introspectThemeSettingsSchema", () => {
   });
 
   it("marks .optional() as required: false", () => {
-    const fields = introspectThemeSettingsSchema(
-      z.object({ tag: z.string().optional() }),
-    );
+    const fields = introspectThemeSettingsSchema(z.object({ tag: z.string().optional() }));
     expect(fields[0]?.required).toBe(false);
   });
 
@@ -89,6 +81,19 @@ describe("introspectThemeSettingsSchema", () => {
       z.object({ tag: z.string().describe("A tag name") }),
     );
     expect(fields[0]?.description).toBe("A tag name");
+  });
+
+  it("captures description through optional/default wrappers", () => {
+    const fields = introspectThemeSettingsSchema(
+      z.object({
+        tag: z.string().describe("A tag name").optional().default("news"),
+      }),
+    );
+    expect(fields[0]).toMatchObject({
+      name: "tag",
+      description: "A tag name",
+      type: "text",
+    });
   });
 
   it("introspects nested object", () => {
@@ -128,10 +133,10 @@ describe("introspectThemeSettingsSchema", () => {
   });
 
   it("returns unsupported for non-object, non-string array element", () => {
-    // Phase G follow-up changed `z.array(z.string())` from
-    // `unsupported` → `string-array` (covered separately below).
-    // Other element types (numbers, enums, nested arrays) still
-    // fall through to the JSON-textarea fallback.
+    // `z.array(z.string())` has its own `string-array` widget
+    // (covered separately below). Other element types (numbers,
+    // enums, nested arrays) still fall through to the JSON-textarea
+    // fallback.
     const fields = introspectThemeSettingsSchema(
       z.object({ counts: z.array(z.array(z.string())) }),
     );
@@ -139,9 +144,7 @@ describe("introspectThemeSettingsSchema", () => {
   });
 
   it("returns unsupported for unrecognized types", () => {
-    const fields = introspectThemeSettingsSchema(
-      z.object({ when: z.date() }),
-    );
+    const fields = introspectThemeSettingsSchema(z.object({ when: z.date() }));
     expect(fields[0]?.type).toBe("unsupported");
   });
 
@@ -154,9 +157,7 @@ describe("introspectThemeSettingsSchema", () => {
   });
 
   it("unwraps top-level .optional() wrapper around the schema", () => {
-    const fields = introspectThemeSettingsSchema(
-      z.object({ tag: z.string() }).optional(),
-    );
+    const fields = introspectThemeSettingsSchema(z.object({ tag: z.string() }).optional());
     expect(fields).toHaveLength(1);
     expect(fields[0]?.name).toBe("tag");
   });
@@ -189,10 +190,7 @@ describe("introspectThemeSettingsSchema", () => {
   it("textarea unwraps through .default() and .optional()", () => {
     const fields = introspectThemeSettingsSchema(
       z.object({
-        bio: z
-          .string()
-          .meta({ widget: "textarea" })
-          .default(""),
+        bio: z.string().meta({ widget: "textarea" }).default(""),
       }),
     );
     expect(fields[0]?.type).toBe("textarea");
@@ -215,10 +213,7 @@ describe("introspectThemeSettingsSchema", () => {
     //   z.string().optional().meta({...})
     const fields = introspectThemeSettingsSchema(
       z.object({
-        bio: z
-          .string()
-          .optional()
-          .meta({ widget: "textarea", rows: 8 }),
+        bio: z.string().optional().meta({ widget: "textarea", rows: 8 }),
       }),
     );
     expect(fields[0]).toMatchObject({
@@ -232,11 +227,7 @@ describe("introspectThemeSettingsSchema", () => {
   it("emits password field when meta({ sensitive: true }) is set", () => {
     const fields = introspectThemeSettingsSchema(
       z.object({
-        clientSecret: z
-          .string()
-          .min(1)
-          .meta({ sensitive: true })
-          .describe("OAuth client secret"),
+        clientSecret: z.string().min(1).meta({ sensitive: true }).describe("OAuth client secret"),
       }),
     );
     expect(fields[0]).toMatchObject({
@@ -251,9 +242,7 @@ describe("introspectThemeSettingsSchema", () => {
     // masking guarantee matters more than the line-count UX.
     const fields = introspectThemeSettingsSchema(
       z.object({
-        privateKey: z
-          .string()
-          .meta({ sensitive: true, widget: "textarea", rows: 6 }),
+        privateKey: z.string().meta({ sensitive: true, widget: "textarea", rows: 6 }),
       }),
     );
     expect(fields[0]?.type).toBe("password");
@@ -262,19 +251,15 @@ describe("introspectThemeSettingsSchema", () => {
   it("password unwraps through .optional() and .default()", () => {
     const fields = introspectThemeSettingsSchema(
       z.object({
-        token: z
-          .string()
-          .meta({ sensitive: true })
-          .optional()
-          .default(""),
+        token: z.string().meta({ sensitive: true }).optional().default(""),
       }),
     );
     expect(fields[0]?.type).toBe("password");
   });
 
-  // Phase G follow-up — `z.array(z.string())` gets its own
-  // dedicated widget, distinct from the existing
-  // `z.array(z.object(...))` typed-row form.
+  // `z.array(z.string())` gets its own dedicated widget,
+  // distinct from the existing `z.array(z.object(...))`
+  // typed-row form.
   it("emits string-array for z.array(z.string())", () => {
     const fields = introspectThemeSettingsSchema(
       z.object({
@@ -286,6 +271,37 @@ describe("introspectThemeSettingsSchema", () => {
       type: "string-array",
       default: ["read:user"],
     });
+  });
+
+  it("emits string-array when the string element is wrapped", () => {
+    const fields = introspectThemeSettingsSchema(
+      z.object({
+        scopes: z.array(z.string().min(1).default("read:user")),
+      }),
+    );
+    expect(fields[0]).toMatchObject({
+      name: "scopes",
+      type: "string-array",
+    });
+  });
+
+  it("emits object array when the object element is wrapped", () => {
+    const fields = introspectThemeSettingsSchema(
+      z.object({
+        links: z.array(
+          z
+            .object({
+              label: z.string(),
+              href: z.string().url(),
+            })
+            .default({ label: "", href: "https://example.com" }),
+        ),
+      }),
+    );
+    expect(fields[0]?.type).toBe("array");
+    if (fields[0]?.type === "array") {
+      expect(fields[0].element.map((field) => field.name)).toEqual(["label", "href"]);
+    }
   });
 
   it("string-array vs array discriminator on element type", () => {
@@ -301,17 +317,15 @@ describe("introspectThemeSettingsSchema", () => {
 
   it("array of unrecognized element types still falls through to unsupported", () => {
     // z.array(z.number()) isn't covered by either widget today.
-    const fields = introspectThemeSettingsSchema(
-      z.object({ counts: z.array(z.number()) }),
-    );
+    const fields = introspectThemeSettingsSchema(z.object({ counts: z.array(z.number()) }));
     expect(fields[0]?.type).toBe("unsupported");
   });
 
-  // Phase G follow-up — `.refine()` is a no-op for introspection
-  // because Zod 4 implements it as a `checks` array on the same
-  // object (NOT an effects/pipe wrapper). The introspector walks
-  // the shape unchanged. Pin this so future Zod upgrades don't
-  // regress quietly.
+  // `.refine()` is a no-op for introspection because Zod 4
+  // implements it as a `checks` array on the same object (NOT an
+  // effects/pipe wrapper). The introspector walks the shape
+  // unchanged. Pin this so future Zod upgrades don't regress
+  // quietly.
   it("introspects a `.refine()` schema like a plain object", () => {
     const schema = z
       .object({

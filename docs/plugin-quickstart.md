@@ -228,6 +228,7 @@ export default definePlugin<MyPluginConfig>({
 
 | Surface | Behavior |
 |---|---|
+| `/admin/plugins` | Configure dialog uses the same auto-form for plugins with `configSchema`; legacy plugins without a schema fall back to their `admin.settings.fields` form or raw JSON. |
 | `/admin/plugins/<id>` | Auto-form rendered above any other admin extensions, persists to `np_settings (key="plugin.config:<id>")` on save. |
 | `ctx.config` (in hooks / routes / actions) | Typed `Readonly<MyPluginConfig>`. The framework reads + validates on every dispatch (no restart for config changes). |
 | Reading from outside the plugin | `import { getPluginConfig } from "@nexpress/core"; const c = (await getPluginConfig("my-plugin")) as MyPluginConfig;` |

@@ -302,7 +302,12 @@ function ConfigAutoFormCard({
             {toast.message}
           </div>
         ) : null}
-        <ZodForm fields={fields} initialValue={initialValue} onChange={setValue} />
+        <ZodForm
+          fields={fields}
+          initialValue={initialValue}
+          onChange={setValue}
+          emptyMessage="This plugin's config schema doesn't expose any editable fields."
+        />
         <div className="mt-4 grid sm:flex sm:justify-end">
           <Button
             type="button"

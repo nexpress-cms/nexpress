@@ -13,25 +13,27 @@ dashboards): serve a separate page from a plugin route and link to it.
 
 ## Declaring the extension
 
-In `definePlugin(...)`, add an `admin` block. All four sections are
-optional; declare what you actually need.
+In `definePlugin(...)`, put operator-tunable runtime config in the
+definition-level `configSchema` field. Put non-config admin surfaces
+in the `admin` block. Every `admin` section is optional; declare what
+you actually need.
 
 ```ts
 import { definePlugin } from "@nexpress/plugin-sdk";
+import { z } from "zod";
+
+const configSchema = z.object({
+  apiKey: z.string().min(1).meta({ sensitive: true }).describe("API key"),
+  syncOnSave: z.boolean().default(true).describe("Sync on save"),
+});
 
 export default definePlugin({
   manifest: {
     /* ... */
   },
+  configSchema,
 
   admin: {
-    settings: {
-      title: "API credentials",
-      fields: [
-        { type: "text", name: "apiKey", label: "API key", required: true },
-        { type: "checkbox", name: "syncOnSave", defaultValue: true },
-      ],
-    },
     widgets: [
       { id: "quota", label: "Remaining quota", kind: "metric", actionId: "getQuota" },
       { id: "health", label: "Provider status", kind: "status", actionId: "healthCheck" },
@@ -99,18 +101,27 @@ export default definePlugin({
 
 ---
 
-## The six extension kinds
+## Admin surfaces
 
-### `settings` — configuration form
+### Configuration forms
 
-Reuses the collection field system (`NpFieldConfig`), so every field type
-supported in collections works here: `text`, `textarea`, `number`,
-`checkbox`, `date`, `select`, `radio`, `relationship`, `array`, `group`,
-and layout fields (`row`, `collapsible`).
+New plugins should use definition-level `configSchema`. The host
+introspects the Zod schema into the same auto-form on both
+`/admin/plugins` (Configure dialog) and `/admin/plugins/<id>`
+(detail page), then saves through
+`PUT /api/admin/plugins/:id/config`.
 
 Values persist as plugin config in `np_settings` under
 `plugin.config:<id>`. The admin reads the current value from plugin state
 and saves through `PUT /api/admin/plugins/:id/config` automatically.
+
+`admin.settings.fields` is the legacy declarative form for plugins
+authored before `configSchema`. It reuses the collection field system
+(`NpFieldConfig`) and still renders when a plugin does not declare
+`configSchema`. When both are declared on the same plugin, the
+`configSchema` auto-form wins and `admin.settings.fields` is ignored at
+render time with a startup warning. Remove `admin.settings.fields` in
+the same diff that adds `configSchema`.
 
 ### `widgets` — dashboard cards
 

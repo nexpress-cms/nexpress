@@ -151,6 +151,7 @@ export function ThemeSettingsPanel({ themeId }: { themeId: string }) {
               fields={data.fields}
               initialValue={data.value}
               onChange={setDraft}
+              emptyMessage="This theme doesn't expose any operator settings."
             />
             {data.fields.length > 0 ? (
               <div className="grid sm:flex sm:justify-end">
