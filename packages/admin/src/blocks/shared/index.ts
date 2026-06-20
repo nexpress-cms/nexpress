@@ -1,8 +1,7 @@
 /**
  * Shared editor UI — components both the form-card editor and
- * the (future) in-page editor mount. Each component is layout-
- * agnostic and reads from / writes to the engine via the
- * `EditorAction` contract.
+ * Doc view mount. Each component is layout-agnostic and reads from
+ * / writes to the engine via the `EditorAction` contract.
  *
  * What lives here:
  * - Field controls (`FieldControl`, `ArrayFieldControl`) — the
@@ -37,10 +36,7 @@ export {
   ContainerWarningsPanel,
   type ContainerWarningsPanelProps,
 } from "./container-warnings-panel.js";
-export {
-  EditorAsidePortal,
-  type EditorAsidePortalProps,
-} from "./editor-aside-portal.js";
+export { EditorAsidePortal, type EditorAsidePortalProps } from "./editor-aside-portal.js";
 export { StatusBar, type StatusBarProps, type AutosaveStatus } from "./status-bar.js";
 export {
   ModeSwitch,
@@ -63,8 +59,5 @@ export { DeleteBlockDialog, type DeleteBlockDialogProps } from "./delete-block-d
 export { FieldControl, type FieldControlProps } from "./field-control.js";
 export { PageJsonDialog, type PageJsonDialogProps } from "./page-json-dialog.js";
 export { PastePatternDialog, type PastePatternDialogProps } from "./paste-pattern-dialog.js";
-export {
-  PatternLibraryDialog,
-  type PatternLibraryDialogProps,
-} from "./pattern-library-dialog.js";
+export { PatternLibraryDialog, type PatternLibraryDialogProps } from "./pattern-library-dialog.js";
 export { PatternPreview, type PatternPreviewProps } from "./pattern-preview.js";

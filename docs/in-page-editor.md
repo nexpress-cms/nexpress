@@ -96,8 +96,7 @@ pass applied across the board:
 ## Engine extension — `REPLACE_TYPE`
 
 The editor engine (`packages/admin/src/blocks/editor-engine/`)
-exposes one type-swap action used by the form-card editor's
-"Convert to" affordance:
+keeps one type-swap action available for convert-type affordances:
 
 ```ts
 | {

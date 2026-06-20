@@ -9,7 +9,7 @@
     "dev": "concurrently -n next,schema -c blue,magenta -k \"next dev\" \"NP_SCHEMA_WATCH=1 tsx watch --watch-path=src/collections --watch-path=src/nexpress.config.ts scripts/generate-schema.ts\"",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "lint": "NODE_OPTIONS='--max-old-space-size=6144' eslint . --cache --cache-location node_modules/.cache/eslint",
+    "lint": "NODE_OPTIONS='--max-old-space-size=6144' eslint . --cache --cache-location node_modules/.cache/eslint --cache-strategy content",
     "clean": "rm -rf .next",
     "test": "vitest run --config vitest.unit.config.ts",
     "test:integration": "vitest run",

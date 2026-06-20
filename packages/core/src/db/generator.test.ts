@@ -17,7 +17,7 @@ describe("generateDrizzleSchema", () => {
       collection("posts", [{ type: "text", name: "title", required: true }]),
     ]);
 
-    expect(out).toContain('export const postsTable = pgTable(');
+    expect(out).toContain("export const postsTable = pgTable(");
     expect(out).toContain('"np_c_posts"');
   });
 
@@ -61,8 +61,17 @@ describe("generateDrizzleSchema", () => {
       ]),
     ]);
 
-    expect(out).toContain('cover: uuid("cover").references(() => npMedia.id)');
-    expect(out).toContain('author: uuid("author").references(() => npUsers.id)');
+    expect(out).toContain('cover: uuid("cover").references((): AnyPgColumn => npMedia.id)');
+    expect(out).toContain('author: uuid("author").references((): AnyPgColumn => npUsers.id)');
+  });
+
+  it("annotates FK callbacks so self-referential tables typecheck", () => {
+    const out = generateDrizzleSchema([
+      collection("posts", [{ type: "relationship", name: "parent", relationTo: "posts" }]),
+    ]);
+
+    expect(out).toContain("type AnyPgColumn");
+    expect(out).toContain('parent: uuid("parent").references((): AnyPgColumn => postsTable.id)');
   });
 
   it("routes number fields to integer vs doublePrecision based on integerOnly", () => {
@@ -88,8 +97,10 @@ describe("generateDrizzleSchema", () => {
       ]),
     ]);
 
-    expect(out).toContain('export const postsTagsTable = pgTable(');
-    expect(out).toContain('parentId: uuid("parent_id").notNull().references(() => postsTable.id');
+    expect(out).toContain("export const postsTagsTable = pgTable(");
+    expect(out).toContain(
+      'parentId: uuid("parent_id").notNull().references((): AnyPgColumn => postsTable.id',
+    );
   });
 
   it("allows overriding the schema import specifier", () => {
@@ -97,9 +108,7 @@ describe("generateDrizzleSchema", () => {
       schemaImport: "../../some/relative/schema.js",
     });
 
-    expect(out).toContain(
-      'import { npMedia, npUsers } from "../../some/relative/schema.js";',
-    );
+    expect(out).toContain('import { npMedia, npUsers } from "../../some/relative/schema.js";');
   });
 
   // Universal-content-model Phase U.1 (#748): generator honors
@@ -158,9 +167,7 @@ describe("generateDrizzleSchema", () => {
 
     it("escapes embedded quotes + backslashes in string defaults", () => {
       const out = generateDrizzleSchema([
-        collection("posts", [
-          { type: "text", name: "s", defaultValue: 'has "quote" and \\ back' },
-        ]),
+        collection("posts", [{ type: "text", name: "s", defaultValue: 'has "quote" and \\ back' }]),
       ]);
       // The generator's output is TS source compiled by tsc; an
       // unescaped embedded quote would break the build.
@@ -187,9 +194,7 @@ describe("generateDrizzleSchema", () => {
 
     it('emits .defaultNow() for date fields with `defaultValue: "now"`', () => {
       const out = generateDrizzleSchema([
-        collection("posts", [
-          { type: "date", name: "publishedAt", defaultValue: "now" },
-        ]),
+        collection("posts", [{ type: "date", name: "publishedAt", defaultValue: "now" }]),
       ]);
       expect(out).toContain(
         'publishedAt: timestamp("published_at", { withTimezone: true }).defaultNow()',

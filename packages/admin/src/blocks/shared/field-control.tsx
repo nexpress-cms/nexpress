@@ -52,8 +52,8 @@ export interface FieldControlProps {
 /**
  * Switch on field type → renders the appropriate input. Pure
  * presentational layer over the engine's parse/validate helpers.
- * Both the form-card editor and the (future) in-page floating
- * panel mount this component to render a single block prop.
+ * Both the form-card editor and Doc view's settings dialog mount
+ * this component to render a single block prop.
  */
 export function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
   // Hooks must run unconditionally so the React rules of hooks

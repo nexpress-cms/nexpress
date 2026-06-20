@@ -9,10 +9,10 @@
  * layout — they hard-assume row-card UI (sortable card, header
  * action bar, inline children area).
  *
- * In-page editor work (planned): a sibling `in-page-editor/`
- * directory will expose its own entry point that mounts the same
- * `useEditorState` hook + the same shared/ widgets but with a
- * different row-render surface.
+ * Document view lives in the sibling `in-page-editor/` directory.
+ * The orchestrator here owns the shared engine state and chooses
+ * between the form-card layout and the server-rendered preview
+ * canvas.
  */
 
 export { BlockPageEditor } from "./block-page-editor.js";

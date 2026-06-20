@@ -28,8 +28,7 @@ import {
  *
  *   - Legacy block metadata invariants (Lucide migration).
  *   - REPLACE_TYPE reducer contract — still part of the engine,
- *     surfaced by Page builder's bulk actions and any future
- *     "convert this block" affordance.
+ *     reserved for any future "convert this block" affordance.
  */
 
 const defaults = getDefaultBlocks();

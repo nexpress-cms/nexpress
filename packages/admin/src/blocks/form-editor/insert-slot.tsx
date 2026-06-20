@@ -12,9 +12,8 @@ import { BlockPalette } from "../block-palette.js";
  * right INSERT_BEFORE / INSERT_AFTER action with the right target.
  *
  * Form-editor specific: the slot's vertical spacing assumes the
- * row-card layout. An in-page editor would surface "insert" via a
- * different affordance (drop zones, hover toolbar, etc.) and not
- * reuse this component.
+ * row-card layout. Doc view surfaces "insert" via the hover rail
+ * and QuickInsertBar, and does not reuse this component.
  */
 
 export interface InsertSlotProps {
@@ -23,11 +22,7 @@ export interface InsertSlotProps {
   ariaLabel?: string;
 }
 
-export function InsertSlot({
-  availableBlocks,
-  onInsert,
-  ariaLabel,
-}: InsertSlotProps) {
+export function InsertSlot({ availableBlocks, onInsert, ariaLabel }: InsertSlotProps) {
   return (
     <div className="group/slot relative -my-1.5 flex h-4 items-center justify-center">
       {/* Hairline that fades in alongside the button so the slot

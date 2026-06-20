@@ -22,9 +22,9 @@ import {
  * lazily on dropdown open via `getMoveIntoCandidates(id)` so we
  * don't pay the tree-walk cost on every render.
  *
- * Form-editor specific: the menu is anchored to a row card. An
- * in-page editor would surface the same actions via a hovering
- * floating toolbar.
+ * Form-editor specific: the menu is anchored to a row card. Doc
+ * view keeps deeper hierarchy moves in Page builder where
+ * container boundaries are visible.
  */
 
 export interface HierarchyMenuProps {

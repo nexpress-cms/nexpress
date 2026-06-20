@@ -6,6 +6,12 @@ import { npFetch } from "../../lib/api-client.js";
 const PREVIEW_ENDPOINT = "/api/admin/preview-blocks";
 const DEFAULT_DEBOUNCE_MS = 400;
 
+function isAbortError(err: unknown): boolean {
+  return typeof err === "object" && err !== null && "name" in err
+    ? err.name === "AbortError"
+    : false;
+}
+
 export interface BlockPreviewState {
   /** Server-rendered HTML, ready to drop into an iframe `srcDoc`. */
   html: string | null;
@@ -41,6 +47,19 @@ export function useBlockPreview(
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    return () => {
+      if (debounceRef.current !== null) {
+        window.clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+      if (abortRef.current) {
+        abortRef.current.abort();
+        abortRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (debounceRef.current !== null) {
       window.clearTimeout(debounceRef.current);
     }
@@ -69,7 +88,7 @@ export function useBlockPreview(
           setError(null);
         })
         .catch((err: unknown) => {
-          if (err instanceof DOMException && err.name === "AbortError") return;
+          if (isAbortError(err)) return;
           setError(err instanceof Error ? err.message : "Preview fetch failed.");
         })
         .finally(() => {
