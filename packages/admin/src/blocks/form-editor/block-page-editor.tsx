@@ -77,9 +77,9 @@ import { SortableBlockItem } from "./sortable-block-item.js";
  * keyboard shortcuts (Cmd-K, Undo/Redo), and renders the row-card
  * UI plus the shared dialogs / preview / command menu.
  *
- * An in-page editor would mount `useEditorState` the same way and
- * dispatch the same `EditorAction`s, but with its own row-render
- * surface (page-as-canvas instead of card list).
+ * The same orchestrator also mounts Doc view's server-rendered
+ * preview canvas; both surfaces dispatch the same `EditorAction`s
+ * against one shared block tree.
  */
 
 interface BlockPageEditorProps {

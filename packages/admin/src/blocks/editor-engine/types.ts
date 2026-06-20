@@ -8,9 +8,8 @@ import type { NpPattern } from "../patterns.js";
  * Cmd-K, and the row dropdown all funnel into this set — no
  * UI layer dispatches anything else.
  *
- * In-page-editor refactor (#467 follow-up): the engine is
- * intentionally UI-agnostic. Whatever surface eventually adds
- * blocks (form-card, in-page floating panel, third-party
+ * The engine is intentionally UI-agnostic. Any surface that adds
+ * or edits blocks (form-card Page builder, Doc view, third-party
  * extension) just needs to dispatch one of these actions. dnd-kit
  * lives in the form-editor layer, not in the engine.
  */
@@ -96,10 +95,9 @@ export type EditorAction =
   | { type: "WRAP_MANY"; ids: string[]; containerType: string }
   | { type: "UPDATE_PROPS"; id: string; props: Record<string, unknown> }
   | { type: "REPLACE_PROPS"; id: string; props: Record<string, unknown> }
-  // Replace a block's type in place. Used by the in-page editor's
-  // "Turn into…" affordance and the sticky toolbar's block-level
-  // buttons (Pilcrow / H1-3 / Quote / Code / List / HR). The id
-  // stays the same so undo/redo lands the operator on the same row.
+  // Replace a block's type in place. Retained for convert-type
+  // affordances; the id stays the same so undo/redo lands the
+  // operator on the same row.
   //
   // `preserveText` (default true): when both blocks expose a string-
   // shaped primary text prop (paragraph `text`, heading `text`, quote
@@ -152,8 +150,8 @@ export interface ContainerCandidate {
 /**
  * Bucket used by `groupVisibleFields` — partitioning a block's
  * `propsSchema` by `group` while filtering `hiddenWhen`. The form
- * editor renders one section per bucket; the in-page floating
- * panel will read the same shape.
+ * editor renders one section per bucket; Doc view's settings
+ * dialog reads the same field model directly.
  */
 export interface FieldGroupSection<TField> {
   group: string | null;

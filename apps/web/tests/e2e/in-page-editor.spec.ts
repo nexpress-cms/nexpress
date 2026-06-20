@@ -2,11 +2,21 @@ import { expect, test } from "@playwright/test";
 
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 
+interface CreatedBlock {
+  type?: string;
+  props?: Record<string, unknown>;
+}
+
+interface CreatedPage {
+  id?: number | string;
+  blocks?: CreatedBlock[];
+}
+
 test.describe("in-page block editor", () => {
-  test("Document view inserts rich text and updates the footer metrics", async ({
-    page,
-    context,
-  }) => {
+  test("Document view edits preview blocks and persists them", async ({ page, context }) => {
+    const title = `E2E document editor ${Date.now()}`;
+    const heroTitle = "Document mode hero";
+
     await context.clearCookies();
     await signInAsE2EAdmin(page);
 
@@ -32,5 +42,52 @@ test.describe("in-page block editor", () => {
     await quickInsert.press("Enter");
 
     await expect(page.getByText("2 blocks")).toBeVisible();
+
+    const preview = page.frameLocator('iframe[title="Document preview"]');
+    await expect(preview.getByText("Build pages block by block")).toBeVisible({
+      timeout: 10_000,
+    });
+
+    await preview.getByText("Build pages block by block").hover();
+    await page.getByRole("button", { name: "Settings for Hero" }).click();
+
+    const dialog = page.getByRole("dialog", { name: /Hero/ });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("textbox", { name: /^Title/ }).fill(heroTitle);
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    await expect(preview.getByText(heroTitle)).toBeVisible({ timeout: 10_000 });
+
+    const publishButton = page
+      .locator('button[type="submit"]:visible')
+      .filter({ hasText: /^Publish$/ });
+    await page.getByLabel("title", { exact: true }).fill(title);
+
+    const publishResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/collections/pages") && response.request().method() === "POST",
+    );
+    await publishButton.click();
+    const apiRes = await publishResponse;
+    expect(apiRes.status()).toBe(201);
+
+    const created = (await apiRes.json()) as CreatedPage;
+    if (created.id === undefined || created.id === null) {
+      throw new Error("Created page response did not include an id.");
+    }
+    if (!Array.isArray(created.blocks)) {
+      throw new Error("Created page response did not include persisted blocks.");
+    }
+
+    const createdHero = created.blocks.find((block) => block.type === "hero");
+    expect(createdHero?.props?.title).toBe(heroTitle);
+
+    await page.goto(`/admin/collections/pages/${created.id}`);
+    const reopenedDocumentTab = page.getByRole("tab", { name: "Document view" });
+    await expect(reopenedDocumentTab).toBeVisible();
+    await reopenedDocumentTab.click();
+
+    const reopenedPreview = page.frameLocator('iframe[title="Document preview"]');
+    await expect(reopenedPreview.getByText(heroTitle)).toBeVisible({ timeout: 10_000 });
   });
 });

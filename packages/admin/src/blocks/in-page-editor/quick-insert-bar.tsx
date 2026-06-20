@@ -167,6 +167,7 @@ export function QuickInsertBar({
           value={value}
           onChange={(e) => {
             setValue(e.target.value);
+            setActiveIndex(0);
           }}
           onKeyDown={(e) => {
             if (isSlashMode) {

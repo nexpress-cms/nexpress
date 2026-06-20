@@ -16,9 +16,8 @@ export interface UseEditorStateOptions {
   availableBlocks: NpBlockMetadata[];
   /**
    * Called whenever the present tree changes (after the first
-   * render). The form editor wires this to a parent `onChange`
-   * prop; the in-page editor would do the same against whatever
-   * persistence surface it owns.
+   * render). The editor wires this to a parent `onChange` prop so
+   * both Page builder and Doc view update the same form field.
    */
   onChange: (blocks: NpBlockInstance[]) => void;
 }
@@ -47,9 +46,9 @@ export interface EditorState {
  * onChange effect + dispatch coalescing into a single state
  * surface.
  *
- * Designed so different editor UIs (form-card editor today, in-page
- * editor later) can share the same state machine — this hook plus
- * the `EditorAction` set is the contract between engine and UI.
+ * Designed so different editor UIs can share the same state machine
+ * — this hook plus the `EditorAction` set is the contract between
+ * engine and UI.
  */
 export function useEditorState({
   initialBlocks,

@@ -10,7 +10,8 @@ import { isDescendantOf } from "./tree.js";
  * would create a cycle).
  *
  * Both the form-editor's row-header dropdown and Cmd-K read this
- * list — the in-page editor will too.
+ * list. Doc view keeps cross-hierarchy moves in Page builder where
+ * container boundaries are visible.
  */
 export function collectContainerCandidates(
   blocks: NpBlockInstance[],
