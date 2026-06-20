@@ -31,11 +31,12 @@ can exercise code paths that unit tests can't fake — drizzle SQL,
 multi-statement transactions, pg-boss wiring, route-handler request /
 response shape, etc.
 
-Integration tests truncate every shared table in `beforeEach`, so the
-root `pnpm test:integration` runs packages **sequentially**
-(`--concurrency=1`) to avoid different packages wiping each other's
-data mid-test. Each package internally serialises files via vitest's
-`singleFork` (core) or `fileParallelism: false` (apps/web).
+The root `pnpm test:integration` runs packages **sequentially**
+(`--concurrency=1`) so different packages do not wipe each other's
+tables mid-test. Inside each package, Vitest can still run files in
+parallel: global setup prepares a migrated `${TEST_DATABASE_URL}_template`
+database once, then each fork lazily clones it into its own `_wN`
+database and truncates only that worker database in `beforeEach`.
 
 The default `pnpm test` excludes `*.integration.test.ts` from the core
 package so unit tests stay parallel and fast — run integration suites
@@ -66,12 +67,13 @@ with `pnpm test:integration` (or per-package `pnpm test:integration`).
 
 ### Behaviour
 
-- Tests run **sequentially** in a single fork so they can share tables
-  without stepping on each other.
-- Each test truncates every table it touches in `beforeEach`, so order
-  doesn't matter and state never leaks.
+- Root-level integration tests run one package at a time. Within a
+  package, files run in forked workers against isolated cloned databases.
+- Each test truncates every framework table it touches in `beforeEach`, so
+  order doesn't matter and state never leaks inside a worker database.
 - Migrations (everything under `apps/web/drizzle/*.sql`) are applied once
-  per test run. Re-runs are idempotent.
+  to the template database per test run. Worker databases are cloned from
+  that migrated template.
 - When `TEST_DATABASE_URL` is unset, every integration test is skipped
   (reads as "skipped" in vitest output, not "failed"). Safe to run in
   any environment.
@@ -146,8 +148,10 @@ losing its void wrapper.
 | `collections.integration.test.ts` (3)   | `/api/collections/[slug]` + `/[id]` — POST/GET round-trip, PATCH, DELETE, 401 without auth       |
 | `import-export.integration.test.ts` (7) | export full / partial / unknown-slug / non-admin; import dry-run / partial filter / unknown-slug |
 
-Run the API suite with the same `TEST_DATABASE_URL` — `pnpm test`
-from the repo root fans out to every workspace, including `apps/web`.
+Run the API suite with the same `TEST_DATABASE_URL` via
+`pnpm --filter @nexpress/web test:integration` or the root
+`pnpm test:integration` fan-out. The root `pnpm test` command runs unit
+tests only.
 The harness lives at `apps/web/tests/harness.ts` and reuses the same
 core setup (`ensureMigrated`, `truncateAll`) plus app-side helpers
 (`seedUser`, `buildRequest`, `readJson`). Route handlers are invoked
@@ -159,14 +163,18 @@ test-only fixture (`src/integration/fixtures.ts`). Core's main tsconfig
 excludes `src/integration/` so the cross-directory import doesn't trip
 `tsc --noEmit`; vitest handles the TS resolution at test run time.
 
-### Not yet covered (follow-ups)
+### Follow-up coverage
 
-- **SMTP adapter against a real relay** — use a mail-capturing service
-  (Mailtrap, Ethereal, or a local MailHog) rather than a production SMTP.
-- **Search vector ranking** — would need seeded docs with varied
-  full-text content and `ts_rank` assertions.
-- **pg-boss queue** — add a test that enqueues a job, waits for the
-  worker to pick it up, and asserts the handler ran.
+- **SMTP adapter against a real relay** — covered by
+  `packages/core/src/email/smtp.test.ts`, which starts an in-process
+  SMTP-speaking relay and sends through `SmtpEmailAdapter`.
+- **Search vector ranking** — covered by
+  `apps/web/tests/search-quality.integration.test.ts`, including field
+  weighting and reindex behaviour.
+- **pg-boss queue pickup** — covered by
+  `packages/core/src/integration/pg-boss-worker.integration.test.ts`,
+  which starts the real worker, enqueues a job, and asserts that the
+  registered handler ran with the expected job context.
 
 ## E2E tests (`pnpm --filter @nexpress/web test:e2e`)
 
