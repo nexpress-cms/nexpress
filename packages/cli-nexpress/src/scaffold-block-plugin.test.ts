@@ -75,6 +75,23 @@ describe("scaffoldBlockPlugin", () => {
     });
   });
 
+  it("can inherit framework dependency ranges from a project scaffold", async () => {
+    const result = await scaffoldBlockPlugin({
+      slug: "project-ranges",
+      outDir: workdir,
+      dependencyRanges: {
+        "@nexpress/blocks": "file:/tmp/nexpress-blocks-0.4.0.tgz",
+        "@nexpress/plugin-sdk": "0.4.0",
+      },
+    });
+    const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+      dependencies: Record<string, string>;
+    };
+
+    expect(pkg.dependencies["@nexpress/blocks"]).toBe("file:/tmp/nexpress-blocks-0.4.0.tgz");
+    expect(pkg.dependencies["@nexpress/plugin-sdk"]).toBe("0.4.0");
+  });
+
   it("preserves npm scope when the slug already has one", async () => {
     const result = await scaffoldBlockPlugin({
       slug: "@acme/banner",
@@ -105,6 +122,7 @@ describe("scaffoldBlockPlugin", () => {
 
     expect(result.interactive).toBe(true);
     expect(result.files).toContain("src/client.tsx");
+    expect(result.files).toContain("src/self-shim.d.ts");
 
     // package.json gains a `./client` export so the index file can self-
     // import through the package's own subpath.
@@ -133,6 +151,9 @@ describe("scaffoldBlockPlugin", () => {
     expect(indexSrc).toMatch(/from "mixer\/client"/);
     const clientSrc = await readFile(join(result.pluginDir, "src/client.tsx"), "utf-8");
     expect(clientSrc.split("\n")[0]).toBe(`"use client";`);
+    const selfShim = await readFile(join(result.pluginDir, "src/self-shim.d.ts"), "utf-8");
+    expect(selfShim).toContain('declare module "mixer/client"');
+    expect(selfShim).toContain('export { MixerForm } from "./client.js";');
   });
 
   it("static (default) mode omits the client entry", async () => {

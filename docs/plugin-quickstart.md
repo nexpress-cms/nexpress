@@ -48,13 +48,13 @@ It cannot:
   - **The monorepo** — `git clone` and `pnpm install`, then build
     once with `pnpm build`. Your plugin lives under
     `packages/plugins/<name>/`.
-  - **A `create-nexpress` project** — your plugin lives wherever
-    you publish it from (a sibling repo or workspace) and is
-    installed via `pnpm add @your-scope/plugin-<name>`.
+  - **A `create-nexpress` project** — local plugins can live under
+    `packages/plugins/<name>/`; published plugins can still live in a
+    sibling repo and install via `pnpm add @your-scope/plugin-<name>`.
 
-The walkthrough below uses the monorepo path because it's faster to
-iterate against. The **External projects** section at the bottom
-covers the npm-publish variant.
+The walkthrough below uses the local workspace path because it's
+faster to iterate against. The **External projects** section at the
+bottom covers the npm-publish variant.
 
 ## Step 1 — Scaffold
 
@@ -71,6 +71,7 @@ the right starter for what you're building:
 | `nexpress create scheduled-plugin <slug>`           | One nightly cron task at 02:00.                                                                                    |
 
 ```bash
+mkdir -p packages/plugins
 cd packages/plugins
 pnpm exec nexpress create hook-plugin my-plugin
 cd my-plugin
@@ -93,6 +94,12 @@ type-check against the new dist:
 pnpm install
 pnpm --filter <packageName> build
 ```
+
+In the NexPress monorepo the generated package uses `workspace:*`
+for framework deps. In a `create-nexpress` project it inherits the
+site's installed `@nexpress/blocks` and `@nexpress/plugin-sdk`
+ranges, so the local plugin workspace installs against the same
+framework version as the app.
 
 Then add it to `nexpress.config.ts`:
 
@@ -371,7 +378,8 @@ If neither shows up:
 
 ## External projects
 
-If you're not in the monorepo, the steps differ slightly:
+If you're not using the local `packages/plugins` workspace, the steps
+differ slightly:
 
 1. Create a new package somewhere convenient (workspace, sibling
    repo, monorepo elsewhere). Use a private scope you control.

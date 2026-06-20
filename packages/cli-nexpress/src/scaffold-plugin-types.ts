@@ -17,6 +17,7 @@ import {
   basePackageJson,
   baseTsconfig,
   deriveNames,
+  resolveTsconfigExtends,
   SERVER_TSUP_CONFIG,
   writePluginFiles,
   type ScaffoldOptions,
@@ -55,7 +56,7 @@ function fillReadme(template: string, packageName: string, exportName: string): 
 // ────────────────────────────────────────────────────────────────────────
 
 export async function scaffoldHookPlugin(options: ScaffoldOptions): Promise<ScaffoldResult> {
-  const { slug, outDir } = options;
+  const { slug, outDir, dependencyRanges } = options;
   const names = deriveNames(slug, outDir);
   assertDirAvailable(names.pluginDir);
 
@@ -120,8 +121,8 @@ search indexing, notifications.
 `;
 
   const files: Record<string, string> = {
-    "package.json": basePackageJson(names.packageName, description),
-    "tsconfig.json": baseTsconfig(),
+    "package.json": basePackageJson(names.packageName, description, { dependencyRanges }),
+    "tsconfig.json": baseTsconfig({ extendsPath: resolveTsconfigExtends(names.pluginDir) }),
     "tsup.config.ts": SERVER_TSUP_CONFIG,
     "README.md": readmeTop + fillReadme(README_FOOTER, names.packageName, names.exportName),
     "src/index.tsx": indexSource,
@@ -140,7 +141,7 @@ search indexing, notifications.
 // ────────────────────────────────────────────────────────────────────────
 
 export async function scaffoldRoutePlugin(options: ScaffoldOptions): Promise<ScaffoldResult> {
-  const { slug, outDir } = options;
+  const { slug, outDir, dependencyRanges } = options;
   const names = deriveNames(slug, outDir);
   assertDirAvailable(names.pluginDir);
 
@@ -210,8 +211,8 @@ or chain in your own auth / validation.
 `;
 
   const files: Record<string, string> = {
-    "package.json": basePackageJson(names.packageName, description),
-    "tsconfig.json": baseTsconfig(),
+    "package.json": basePackageJson(names.packageName, description, { dependencyRanges }),
+    "tsconfig.json": baseTsconfig({ extendsPath: resolveTsconfigExtends(names.pluginDir) }),
     "tsup.config.ts": SERVER_TSUP_CONFIG,
     "README.md": readmeTop + fillReadme(README_FOOTER, names.packageName, names.exportName),
     "src/index.tsx": indexSource,
@@ -230,7 +231,7 @@ or chain in your own auth / validation.
 // ────────────────────────────────────────────────────────────────────────
 
 export async function scaffoldAdminPlugin(options: ScaffoldOptions): Promise<ScaffoldResult> {
-  const { slug, outDir } = options;
+  const { slug, outDir, dependencyRanges } = options;
   const names = deriveNames(slug, outDir);
   assertDirAvailable(names.pluginDir);
 
@@ -330,9 +331,10 @@ call to make this plugin do something.
 
   const files: Record<string, string> = {
     "package.json": basePackageJson(names.packageName, description, {
+      dependencyRanges,
       extraDependencies: { zod: "^4.4.3" },
     }),
-    "tsconfig.json": baseTsconfig(),
+    "tsconfig.json": baseTsconfig({ extendsPath: resolveTsconfigExtends(names.pluginDir) }),
     "tsup.config.ts": SERVER_TSUP_CONFIG,
     "README.md": readmeTop + fillReadme(README_FOOTER, names.packageName, names.exportName),
     "src/index.tsx": indexSource,
@@ -351,7 +353,7 @@ call to make this plugin do something.
 // ────────────────────────────────────────────────────────────────────────
 
 export async function scaffoldScheduledPlugin(options: ScaffoldOptions): Promise<ScaffoldResult> {
-  const { slug, outDir } = options;
+  const { slug, outDir, dependencyRanges } = options;
   const names = deriveNames(slug, outDir);
   assertDirAvailable(names.pluginDir);
 
@@ -365,7 +367,7 @@ export async function scaffoldScheduledPlugin(options: ScaffoldOptions): Promise
  *
  * Cron expressions follow standard 5-field syntax (m h dom mon dow). A
  * quick reference:
- *   - \`*/15 * * * *\` — every 15 minutes
+ *   - every 15 minutes — use a step value in the minute field
  *   - \`0 * * * *\`    — top of every hour
  *   - \`0 2 * * *\`    — every day at 02:00
  *   - \`0 9 * * 1\`    — every Monday at 09:00
@@ -423,8 +425,8 @@ worker queue.
 `;
 
   const files: Record<string, string> = {
-    "package.json": basePackageJson(names.packageName, description),
-    "tsconfig.json": baseTsconfig(),
+    "package.json": basePackageJson(names.packageName, description, { dependencyRanges }),
+    "tsconfig.json": baseTsconfig({ extendsPath: resolveTsconfigExtends(names.pluginDir) }),
     "tsup.config.ts": SERVER_TSUP_CONFIG,
     "README.md": readmeTop + fillReadme(README_FOOTER, names.packageName, names.exportName),
     "src/index.tsx": indexSource,
