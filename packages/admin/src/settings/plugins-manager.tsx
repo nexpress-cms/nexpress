@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import type { NpFieldConfig } from "@nexpress/core";
+import type { NpFieldConfig, NpThemeSettingsField } from "@nexpress/core";
 import {
   ChevronDown,
   ChevronRight,
@@ -36,6 +36,7 @@ import { Input } from "../ui/input.js";
 import { Switch } from "../ui/switch.js";
 import { Textarea } from "../ui/textarea.js";
 import { PageHeader } from "../layout/page-header.js";
+import { ZodForm, type ZodFormValue } from "../zod-form/index.js";
 
 interface PluginAdminSettings {
   title?: string;
@@ -54,10 +55,17 @@ interface PluginItem {
   hasAdmin?: boolean;
   /**
    * When the plugin declares `admin.settings.fields`, the dialog renders a
-   * typed form via `FieldRenderer` instead of the JSON textarea fallback.
-   * Null means "no schema" — the textarea is the only honest UI then.
+   * legacy typed form via `FieldRenderer` instead of the JSON textarea
+   * fallback. New plugins should prefer `configFields` from configSchema.
    */
   adminSettings?: PluginAdminSettings | null;
+  /**
+   * Metadata introspected from definition-level `configSchema`. `null` means
+   * no configSchema; `[]` means the plugin deliberately exposes an empty
+   * schema and should render the auto-form empty state.
+   */
+  configFields?: NpThemeSettingsField[] | null;
+  configParseError?: string | null;
   enabled: boolean;
   config: Record<string, unknown>;
   installedAt: string;
@@ -253,6 +261,7 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
           size="sm"
           className="min-h-10 w-full sm:min-h-0 sm:w-auto"
           onClick={() => onOpenConfig(plugin)}
+          aria-label={`Configure ${plugin.name}`}
         >
           <Settings2 className="size-3.5" />
           Configure
@@ -479,6 +488,9 @@ export function PluginsManager() {
     }
   };
 
+  const configUsesAutoForm =
+    configPlugin?.configFields !== undefined && configPlugin.configFields !== null;
+
   return (
     <div className="flex min-w-0 flex-col gap-5">
       <div className="grid min-w-0 gap-3 sm:flex sm:items-start sm:justify-between">
@@ -601,12 +613,35 @@ export function PluginsManager() {
               {configPlugin ? `${configPlugin.name} config` : "Config"}
             </DialogTitle>
             <DialogDescription className="break-words">
-              {configPlugin?.adminSettings
-                ? "Edit the plugin's settings. Changes apply immediately to new requests; already-loaded handlers see the new config on their next call."
-                : "Edit the plugin's JSON config. Changes apply immediately to new requests, but already-loaded plugin code may need a restart."}
+              {configUsesAutoForm
+                ? "Edit the plugin's schema-backed settings. Changes apply immediately to new requests; already-loaded handlers see the new config on their next call."
+                : configPlugin?.adminSettings
+                  ? "Edit the plugin's settings. Changes apply immediately to new requests; already-loaded handlers see the new config on their next call."
+                  : "Edit the plugin's JSON config. Changes apply immediately to new requests, but already-loaded plugin code may need a restart."}
             </DialogDescription>
           </DialogHeader>
-          {configPlugin?.adminSettings ? (
+          {configPlugin && configUsesAutoForm ? (
+            <PluginAutoConfigForm
+              key={configPlugin.id}
+              pluginId={configPlugin.id}
+              fields={configPlugin.configFields ?? []}
+              initialConfig={
+                configPlugin.config && typeof configPlugin.config === "object"
+                  ? configPlugin.config
+                  : {}
+              }
+              parseError={configPlugin.configParseError ?? undefined}
+              onSaved={() => {
+                setToast({
+                  type: "success",
+                  message: `Updated ${configPlugin.name} config.`,
+                });
+                setConfigPlugin(null);
+                void loadPlugins();
+              }}
+              onCancel={() => setConfigPlugin(null)}
+            />
+          ) : configPlugin?.adminSettings ? (
             <PluginConfigForm
               key={configPlugin.id}
               pluginId={configPlugin.id}
@@ -661,6 +696,119 @@ export function PluginsManager() {
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/**
+ * Renders the configSchema-backed auto-form inside the inline plugin
+ * list dialog. The dedicated detail page uses the same `ZodForm`; this
+ * keeps "Configure" behavior consistent across both entry points.
+ */
+function PluginAutoConfigForm({
+  pluginId,
+  fields,
+  initialConfig,
+  parseError,
+  onSaved,
+  onCancel,
+}: {
+  pluginId: string;
+  fields: NpThemeSettingsField[];
+  initialConfig: ZodFormValue;
+  parseError?: string;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState<ZodFormValue>(initialConfig);
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const showBanner = !bannerDismissed && Boolean(parseError);
+
+  const save = async () => {
+    setSaving(true);
+    setErrorMessage(null);
+    try {
+      const response = await npFetch(`/api/admin/plugins/${pluginId}/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value }),
+      });
+      const payload = (await response.json().catch(() => null)) as unknown;
+      if (!response.ok) {
+        setErrorMessage(getErrorMessage(payload, "Failed to save settings."));
+        return;
+      }
+      setBannerDismissed(true);
+      onSaved();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to save settings.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="min-w-0 space-y-4">
+      {showBanner ? (
+        <div className="grid min-w-0 gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 sm:flex sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="break-words font-medium">Saved settings were reset to defaults</div>
+            <p className="mt-1 break-words text-xs text-amber-700 dark:text-amber-300">
+              The persisted value didn&rsquo;t match the current schema. Saving will overwrite the
+              stored value with what you see below.
+            </p>
+            {parseError ? (
+              <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded bg-amber-500/10 p-2 text-[11px] leading-snug">
+                {parseError}
+              </pre>
+            ) : null}
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setBannerDismissed(true)}
+            className="w-full sm:w-auto"
+          >
+            Dismiss
+          </Button>
+        </div>
+      ) : null}
+
+      <ZodForm
+        fields={fields}
+        initialValue={initialConfig}
+        onChange={setValue}
+        emptyMessage="This plugin's config schema doesn't expose any editable fields."
+      />
+
+      {errorMessage ? (
+        <p className="break-words text-sm text-rose-600 dark:text-rose-300">{errorMessage}</p>
+      ) : null}
+
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-10 w-full sm:min-h-0 sm:w-auto"
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          className="min-h-10 w-full sm:min-h-0 sm:w-auto"
+          onClick={() => {
+            void save();
+          }}
+          disabled={saving}
+        >
+          {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
+          Save config
+        </Button>
+      </DialogFooter>
     </div>
   );
 }

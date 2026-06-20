@@ -21,6 +21,13 @@ interface PluginDetail {
   };
 }
 
+interface PluginListResponse {
+  items: Array<{
+    id: string;
+    configFields?: Array<{ name: string; type: string }> | null;
+  }>;
+}
+
 async function csrfHeaders(context: BrowserContext): Promise<Record<string, string>> {
   const token = (await context.cookies()).find((cookie) => cookie.name === "np-csrf")?.value;
   if (!token) {
@@ -97,6 +104,14 @@ test.describe("plugin admin and config", () => {
   });
 
   test("lists installed plugins and renders the config-backed detail page", async ({ page }) => {
+    const listResponse = await page.request.get("/api/plugins");
+    expect(listResponse.status()).toBe(200);
+    const list = (await listResponse.json()) as PluginListResponse;
+    const readingTime = list.items.find((plugin) => plugin.id === PLUGIN_ID);
+    expect(readingTime?.configFields).toContainEqual(
+      expect.objectContaining({ name: "wordsPerMinute", type: "number" }),
+    );
+
     await page.goto("/admin/plugins");
     await expect(page.getByRole("heading", { name: "Plugins" })).toBeVisible();
     await expect(page.getByText("Reading Time", { exact: true })).toBeVisible();
@@ -105,6 +120,33 @@ test.describe("plugin admin and config", () => {
     await expect(page.getByRole("heading", { name: "Reading Time" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
     await expect(page.getByLabel("Words per minute")).toHaveValue("220");
+  });
+
+  test("renders the configSchema auto-form in the plugin list Configure dialog", async ({
+    page,
+  }) => {
+    await page.goto("/admin/plugins");
+
+    await page.getByLabel("Configure Reading Time").click();
+    const dialog = page.getByRole("dialog", { name: "Reading Time config" });
+    await expect(dialog).toBeVisible();
+
+    const wordsPerMinute = dialog.getByLabel("Words per minute");
+    await expect(wordsPerMinute).toHaveValue("220");
+    await wordsPerMinute.fill("180");
+
+    const savePromise = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/admin/plugins/${PLUGIN_ID}/config`) &&
+        response.request().method() === "PUT",
+    );
+    await dialog.getByRole("button", { name: "Save config" }).click();
+    const saveResponse = await savePromise;
+    expect(saveResponse.status()).toBe(200);
+    await expect(dialog).toBeHidden();
+
+    const detail = await getReadingTimeDetail(page);
+    expect(detail.config?.wordsPerMinute).toBe(180);
   });
 
   test("saves config through the dedicated route and applies it during plugin dispatch", async ({

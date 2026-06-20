@@ -1,7 +1,8 @@
 import {
   NpForbiddenError,
-  getPluginConfig,
+  getPluginConfigWithStatus,
   getPluginRegistration,
+  introspectThemeSettingsSchema,
   listPluginStates,
   can,
 } from "@nexpress/core";
@@ -24,13 +25,20 @@ export async function GET(request: NextRequest) {
     const states = await listPluginStates(getDb());
 
     // G.1 — plugin config now lives in np_settings; resolve per-plugin
-    // via `getPluginConfig` (envelope-unwrapped) so the listing keeps
-    // its existing `config` field for the admin index UI.
+    // via `getPluginConfigWithStatus` (envelope-unwrapped) so the listing
+    // keeps its existing `config` field for the admin index UI while also
+    // carrying configSchema metadata for the inline Configure dialog.
     const items = (
       await Promise.all(
         states.map(async (state) => {
           const reg = getPluginRegistration(state.id);
-          const config = (await getPluginConfig(state.id)) ?? {};
+          const configStatus = await getPluginConfigWithStatus(state.id);
+          const config = configStatus.value ?? {};
+          const configFields = reg?.configSchema
+            ? introspectThemeSettingsSchema(
+                reg.configSchema as Parameters<typeof introspectThemeSettingsSchema>[0],
+              )
+            : null;
           return {
             id: state.id,
             name: reg?.name ?? state.id,
@@ -45,12 +53,15 @@ export async function GET(request: NextRequest) {
                 }))
               : [],
             hasAdmin: reg?.admin !== undefined,
-            // The settings sub-tree (if declared) is forwarded so the inline
-            // config dialog in `/admin/plugins` can render a typed form via
-            // FieldRenderer instead of falling back to a raw JSON textarea.
-            // When absent, the dialog keeps the textarea as the only honest
-            // option — we don't synthesize a schema we can't trust.
+            // Legacy settings sub-tree (if declared). New configSchema-backed
+            // plugins use `configFields` below; this remains for plugins that
+            // have not migrated off `admin.settings.fields`.
             adminSettings: reg?.admin?.settings ?? null,
+            // `null` means no configSchema. An empty array is meaningful:
+            // the plugin declared an empty configSchema, so the inline dialog
+            // should render the auto-form empty state instead of raw JSON.
+            configFields,
+            configParseError: configStatus.parseError ?? null,
             enabled: state.enabled,
             config,
             installedAt: state.installedAt,
