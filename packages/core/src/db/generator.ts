@@ -90,11 +90,9 @@ export function generateDrizzleSchema(
     const memberAuthored = Boolean(collection.community?.memberWrite?.create);
     if (memberAuthored) {
       columns.push(
-        'memberAuthorId: uuid("member_author_id").references(() => npMembers.id, { onDelete: "set null" })',
+        'memberAuthorId: uuid("member_author_id").references((): AnyPgColumn => npMembers.id, { onDelete: "set null" })',
       );
-      indexes.push(
-        `index("${tableName}_member_author_idx").on(table.memberAuthorId)`,
-      );
+      indexes.push(`index("${tableName}_member_author_idx").on(table.memberAuthorId)`);
       relations.push({
         key: "memberAuthor",
         kind: "one",
@@ -125,21 +123,15 @@ export function generateDrizzleSchema(
           `uniqueIndex("${tableName}_site_locale_slug_idx").on(table.siteId, table.locale, table.slug)`,
         );
       } else {
-        indexes.push(
-          `uniqueIndex("${tableName}_site_slug_idx").on(table.siteId, table.slug)`,
-        );
+        indexes.push(`uniqueIndex("${tableName}_site_slug_idx").on(table.siteId, table.slug)`);
       }
     }
 
     if (collection.i18n) {
       columns.push('locale: text("locale").notNull()');
       columns.push('translationGroupId: uuid("translation_group_id").notNull()');
-      indexes.push(
-        `index("${tableName}_translation_group_idx").on(table.translationGroupId)`,
-      );
-      indexes.push(
-        `index("${tableName}_locale_idx").on(table.locale)`,
-      );
+      indexes.push(`index("${tableName}_translation_group_idx").on(table.translationGroupId)`);
+      indexes.push(`index("${tableName}_locale_idx").on(table.locale)`);
     }
 
     // Phase 15.2 — multi-site scoping column. Default is
@@ -153,9 +145,7 @@ export function generateDrizzleSchema(
     // create the default site row first; the framework
     // invariant (default site always exists post-migration)
     // gives us the same safety without the schema-level FK.
-    columns.push(
-      'siteId: text("site_id").default("default").notNull()',
-    );
+    columns.push('siteId: text("site_id").default("default").notNull()');
     indexes.push(`index("${tableName}_site_idx").on(table.siteId)`);
 
     if (hasDraftVersions(collection)) {
@@ -195,15 +185,15 @@ export function generateDrizzleSchema(
 
   return [
     'import { relations } from "drizzle-orm";',
-    'import { boolean, customType, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";',
+    'import { boolean, customType, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";',
     `import { ${schemaImports.join(", ")} } from "${schemaImport}";`,
-    '',
-    'const tsvector = customType<{ data: string }>({',
-    '  dataType() {',
+    "",
+    "const tsvector = customType<{ data: string }>({",
+    "  dataType() {",
     '    return "tsvector";',
-    '  },',
-    '});',
-    '',
+    "  },",
+    "});",
+    "",
     body,
   ].join("\n");
 }
@@ -232,7 +222,11 @@ function createNestedTables(
 
     if (field.type === "relationship" && field.hasMany && typeof field.relationTo === "string") {
       tables.push(
-        createHasManyJoinTable(context, { ...field, relationTo: field.relationTo, hasMany: true }, collectionTables),
+        createHasManyJoinTable(
+          context,
+          { ...field, relationTo: field.relationTo, hasMany: true },
+          collectionTables,
+        ),
       );
     }
   }
@@ -249,7 +243,7 @@ function createArrayTable(
   const identifier = getNestedTableIdentifier(context.collectionSlug, path);
   const columns = [
     'id: uuid("id").defaultRandom().primaryKey()',
-    `parentId: uuid("parent_id").notNull().references(() => ${context.tableIdentifier}.id, { onDelete: "cascade" })`,
+    `parentId: uuid("parent_id").notNull().references((): AnyPgColumn => ${context.tableIdentifier}.id, { onDelete: "cascade" })`,
     'order: integer("order").default(0).notNull()',
   ];
   const relations: TableRelation[] = [
@@ -295,15 +289,16 @@ function createHasManyJoinTable(
   const tableName = `np_c_${context.collectionSlug}__${path.join("__")}`;
   const identifier = getNestedTableIdentifier(context.collectionSlug, path);
   const targetIdentifier = resolveRelationTarget(field.relationTo, collectionTables);
-  const parentReferenceName = context.fieldPath.length === 0 ? `${toCamelCase(context.collectionSlug)}Id` : "parentId";
+  const parentReferenceName =
+    context.fieldPath.length === 0 ? `${toCamelCase(context.collectionSlug)}Id` : "parentId";
 
   return {
     identifier,
     tableName,
     columns: [
       'id: uuid("id").defaultRandom().primaryKey()',
-      `${parentReferenceName}: uuid("${toSnakeCase(parentReferenceName)}").notNull().references(() => ${context.tableIdentifier}.id, { onDelete: "cascade" })`,
-      `targetId: uuid("target_id").notNull().references(() => ${targetIdentifier}.id, { onDelete: "cascade" })`,
+      `${parentReferenceName}: uuid("${toSnakeCase(parentReferenceName)}").notNull().references((): AnyPgColumn => ${context.tableIdentifier}.id, { onDelete: "cascade" })`,
+      `targetId: uuid("target_id").notNull().references((): AnyPgColumn => ${targetIdentifier}.id, { onDelete: "cascade" })`,
       'order: integer("order").default(0).notNull()',
     ],
     indexes: [
@@ -376,7 +371,7 @@ function collectScalarColumns(
 }
 
 function buildScalarColumn(
-  field: Exclude<NpFieldConfig, { type: "row" | "collapsible" | "group" | "array" }> ,
+  field: Exclude<NpFieldConfig, { type: "row" | "collapsible" | "group" | "array" }>,
   propertyName: string,
   columnName: string,
   collectionTables: Map<string, string>,
@@ -404,7 +399,13 @@ function buildScalarColumn(
   // mismatched scalars).
   const defaultClause = ((): string => {
     if (field.defaultValue === undefined || field.defaultValue === null) return "";
-    if (field.type === "text" || field.type === "textarea" || field.type === "email" || field.type === "select" || field.type === "radio") {
+    if (
+      field.type === "text" ||
+      field.type === "textarea" ||
+      field.type === "email" ||
+      field.type === "select" ||
+      field.type === "radio"
+    ) {
       if (typeof field.defaultValue !== "string") return "";
       // Escape `\` and `"` so the emitted TS literal is a valid
       // double-quoted string. The generator's output is consumed
@@ -442,17 +443,26 @@ function buildScalarColumn(
     case "email":
     case "select":
     case "radio":
-      return { columns: [`${propertyName}: text("${columnName}")${defaultClause}${notNull}`], relations: [] };
+      return {
+        columns: [`${propertyName}: text("${columnName}")${defaultClause}${notNull}`],
+        relations: [],
+      };
     case "number": {
       const builder = field.integerOnly ? "integer" : "doublePrecision";
-      return { columns: [`${propertyName}: ${builder}("${columnName}")${defaultClause}${notNull}`], relations: [] };
+      return {
+        columns: [`${propertyName}: ${builder}("${columnName}")${defaultClause}${notNull}`],
+        relations: [],
+      };
     }
     case "richText":
     case "blocks":
     case "json":
       return { columns: [`${propertyName}: jsonb("${columnName}")${notNull}`], relations: [] };
     case "checkbox":
-      return { columns: [`${propertyName}: boolean("${columnName}")${defaultClause}${notNull}`], relations: [] };
+      return {
+        columns: [`${propertyName}: boolean("${columnName}")${defaultClause}${notNull}`],
+        relations: [],
+      };
     case "date":
       return {
         columns: [
@@ -462,7 +472,9 @@ function buildScalarColumn(
       };
     case "upload": {
       return {
-        columns: [`${propertyName}: uuid("${columnName}").references(() => npMedia.id)${notNull}`],
+        columns: [
+          `${propertyName}: uuid("${columnName}").references((): AnyPgColumn => npMedia.id)${notNull}`,
+        ],
         relations: [
           {
             key: propertyName,
@@ -481,7 +493,9 @@ function buildScalarColumn(
 
       const targetIdentifier = resolveRelationTarget(field.relationTo, collectionTables);
       return {
-        columns: [`${propertyName}: uuid("${columnName}").references(() => ${targetIdentifier}.id)${notNull}`],
+        columns: [
+          `${propertyName}: uuid("${columnName}").references((): AnyPgColumn => ${targetIdentifier}.id)${notNull}`,
+        ],
         relations: [
           {
             key: propertyName,
@@ -507,8 +521,8 @@ function getBaseColumns(collection: NpCollectionConfig): string[] {
 
   columns.push('createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()');
   columns.push('updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()');
-  columns.push('createdBy: uuid("created_by").references(() => npUsers.id)');
-  columns.push('updatedBy: uuid("updated_by").references(() => npUsers.id)');
+  columns.push('createdBy: uuid("created_by").references((): AnyPgColumn => npUsers.id)');
+  columns.push('updatedBy: uuid("updated_by").references((): AnyPgColumn => npUsers.id)');
 
   // Phase 21.17 — per-doc visibility flag. Orthogonal to
   // `status` (workflow state): a row can be published-public,
@@ -555,9 +569,7 @@ function renderRelation(relation: TableRelation, ownerIdentifier: string): strin
     return `  ${relation.key}: many(${relation.targetIdentifier}),`;
   }
 
-  const fields = (relation.fields ?? [])
-    .map((field) => `${ownerIdentifier}.${field}`)
-    .join(", ");
+  const fields = (relation.fields ?? []).map((field) => `${ownerIdentifier}.${field}`).join(", ");
   const references = (relation.references ?? [])
     .map((reference) => `${relation.targetIdentifier}.${reference}`)
     .join(", ");
@@ -573,10 +585,7 @@ function hasDraftVersions(collection: NpCollectionConfig): boolean {
   return Boolean(collection.versions?.drafts);
 }
 
-function resolveRelationTarget(
-  relationTo: string,
-  collectionTables: Map<string, string>,
-): string {
+function resolveRelationTarget(relationTo: string, collectionTables: Map<string, string>): string {
   if (relationTo === "media") {
     return "npMedia";
   }
@@ -601,7 +610,9 @@ function getFlattenedFieldName(prefix: string[], name: string): string {
     return toCamelCase(name);
   }
 
-  return `${prefix.map(toPascalCase).join("")}${toPascalCase(name)}`.replace(/^./u, (char) => char.toLowerCase());
+  return `${prefix.map(toPascalCase).join("")}${toPascalCase(name)}`.replace(/^./u, (char) =>
+    char.toLowerCase(),
+  );
 }
 
 function toCamelCase(value: string): string {
