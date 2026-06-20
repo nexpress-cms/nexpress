@@ -50,6 +50,15 @@ describe("scaffoldBlockPlugin", () => {
     expect(source).toMatch(/type: "myCallout\.example"/);
   });
 
+  it("documents CLI registration for local workspace plugins", async () => {
+    const result = await scaffoldBlockPlugin({ slug: "my-callout", outDir: workdir });
+    const readme = await readFile(join(result.pluginDir, "README.md"), "utf-8");
+    expect(readme).toContain("cd ../../..");
+    expect(readme).toContain("pnpm exec nexpress plugin add my-callout");
+    expect(readme).toContain('import myCalloutPlugin from "my-callout";');
+    expect(readme).toContain("plugins: [myCalloutPlugin]");
+  });
+
   it("keeps static block package metadata aligned with the shared plugin baseline", async () => {
     const result = await scaffoldBlockPlugin({ slug: "baseline-block", outDir: workdir });
     const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {

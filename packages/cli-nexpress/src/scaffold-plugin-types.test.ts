@@ -45,6 +45,15 @@ describe("non-block scaffold generators", () => {
       expect(source).toMatch(/export const myDemoPlugin = definePlugin/);
     });
 
+    it(`${kind} — documents CLI registration for local workspace plugins`, async () => {
+      const result = await generator({ slug: "my-demo", outDir: workdir });
+      const readme = await readFile(join(result.pluginDir, "README.md"), "utf-8");
+      expect(readme).toContain("cd ../../..");
+      expect(readme).toContain("pnpm exec nexpress plugin add my-demo");
+      expect(readme).toContain('import myDemoPlugin from "my-demo";');
+      expect(readme).toContain("plugins: [myDemoPlugin]");
+    });
+
     it(`${kind} — refuses to overwrite existing dirs`, async () => {
       await generator({ slug: "twice", outDir: workdir });
       await expect(generator({ slug: "twice", outDir: workdir })).rejects.toThrow(

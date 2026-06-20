@@ -57,18 +57,20 @@ The `pnpm run setup` wizard writes the `.env`; manual edits work too.
 ### Plugins
 
 ```bash
-pnpm nexpress plugin add @scope/plugin-foo
-pnpm nexpress plugin remove @scope/plugin-foo
+pnpm exec nexpress plugin add @scope/plugin-foo
+pnpm exec nexpress plugin remove @scope/plugin-foo
 ```
 
 This rewrites the `// @nexpress:plugins-imports-*` and
 `// @nexpress:plugins-list-*` markers in your `nexpress.config.ts`
 automatically — keep those marker comments in place.
 
-Authoring a plugin: separate npm package, scaffolded with
-[plugin-quickstart](./plugin-quickstart.md). The plugin lives outside
-your site, and you `pnpm add` + `pnpm nexpress plugin add` it like
-any other.
+Authoring a plugin: separate package, scaffolded with
+[plugin-quickstart](./plugin-quickstart.md). Local plugins can live
+under `packages/plugins/<name>`; from the project root,
+`pnpm exec nexpress plugin add <packageName>` registers them as
+workspace dependencies. Published plugins install the same way and
+resolve through the npm registry.
 
 ### Themes
 

@@ -34,10 +34,16 @@ pnpm --filter <packageName> build  # one-shot
 
 ## Register in your project
 
-\`\`\`ts
-// nexpress.config.ts
-import { <exportName> } from "<packageName>";
+\`\`\`bash
+cd ../../..
+pnpm exec nexpress plugin add <packageName>
+\`\`\`
 
+That command installs the local workspace package and adds it to
+\`nexpress.config.ts\`. The manual equivalent is:
+
+\`\`\`ts
+import <exportName> from "<packageName>";
 export default defineConfig({
   // ...
   plugins: [<exportName>],
