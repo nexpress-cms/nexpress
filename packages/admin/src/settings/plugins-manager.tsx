@@ -154,6 +154,7 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
 
   return (
     <div
+      data-np-plugin-id={plugin.id}
       className={cn(
         "flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:gap-4 sm:px-6 sm:py-4",
         !isFirst && "border-t border-border/60",
@@ -261,7 +262,6 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
           size="sm"
           className="min-h-10 w-full sm:min-h-0 sm:w-auto"
           onClick={() => onOpenConfig(plugin)}
-          aria-label={`Configure ${plugin.name}`}
         >
           <Settings2 className="size-3.5" />
           Configure

@@ -127,7 +127,10 @@ test.describe("plugin admin and config", () => {
   }) => {
     await page.goto("/admin/plugins");
 
-    await page.getByLabel("Configure Reading Time").click();
+    await page
+      .locator(`[data-np-plugin-id="${PLUGIN_ID}"]`)
+      .getByRole("button", { name: "Configure" })
+      .click();
     const dialog = page.getByRole("dialog", { name: "Reading Time config" });
     await expect(dialog).toBeVisible();
 
