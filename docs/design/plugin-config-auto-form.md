@@ -4,10 +4,11 @@
 > Date: 2026-05-10
 > Status: G.1 / G.2.1 / G.2.2 / G.2.3 / G.docs merged. G.3 (hybrid composition) deferred without a real consumer; see § 5.3 for re-lock criteria.
 > Prerequisites:
->   - F.3 introspector (`packages/core/src/themes/settings-schema.ts`)
->     — already shipping for theme settings
->   - `docs/plugin-manifest.md` (existing plugin manifest contract)
->   - `docs/plugin-quickstart.md` (existing plugin author surface)
+>
+> - F.3 introspector (`packages/core/src/themes/settings-schema.ts`)
+>   — already shipping for theme settings
+> - `docs/plugin-manifest.md` (existing plugin manifest contract)
+> - `docs/plugin-quickstart.md` (existing plugin author surface)
 
 ---
 
@@ -51,27 +52,30 @@ imperative actions like "test webhook", custom tables); the
 `fields` part of `admin.settings` becomes a one-or-the-other
 choice with `manifest.configSchema` (see § 5.1.1).
 
-Inventory: 11 plugins in repo, 8 with admin settings. See § 1.
+Inventory below is the G-track entry inventory from 2026-05-10.
+The repo has grown since then; later bundled plugins such as
+`analytics-lite` and `webhook-relay` already use the shipped
+`configSchema` path.
 
 ## 1. Inventory of the surface
 
-Existing plugins by config UI shape:
+Existing plugins by config UI shape at G-track entry:
 
-| Plugin | Has admin config? | Form complexity |
-|---|---|---|
-| forum | Yes (`/admin/forum/settings`) | Medium — categories list, moderator picker |
-| block-callout | No (block props only) | n/a |
-| block-embed | No (block props only) | n/a |
-| block-latest-posts | No (block props only) | n/a |
-| block-newsletter | No (block-only — per-instance `propsSchema`) | n/a (revised after code inspection) |
-| block-pricing | No (block props only) | n/a |
-| block-stats | No | n/a |
-| oauth-github | Yes | Small — client id + secret + scopes |
-| oauth-google | Yes | Small — client id + secret + scopes |
-| reading-time | Yes (read speed) | Tiny — single number field |
-| seo-audit | Yes (rule toggles) | Medium — checkbox grid |
+| Plugin             | Has admin config?                            | Form complexity                            |
+| ------------------ | -------------------------------------------- | ------------------------------------------ |
+| forum              | Yes (`/admin/forum/settings`)                | Medium — categories list, moderator picker |
+| block-callout      | No (block props only)                        | n/a                                        |
+| block-embed        | No (block props only)                        | n/a                                        |
+| block-latest-posts | No (block props only)                        | n/a                                        |
+| block-newsletter   | No (block-only — per-instance `propsSchema`) | n/a (revised after code inspection)        |
+| block-pricing      | No (block props only)                        | n/a                                        |
+| block-stats        | No                                           | n/a                                        |
+| oauth-github       | Yes                                          | Small — client id + secret + scopes        |
+| oauth-google       | Yes                                          | Small — client id + secret + scopes        |
+| reading-time       | Yes (read speed)                             | Tiny — single number field                 |
+| seo-audit          | Yes (rule toggles)                           | Medium — checkbox grid                     |
 
-Eight of eleven plugins have an admin config UI; six are
+At entry, eight of eleven plugins had an admin config UI; six were
 small-to-medium shapes that map cleanly to F.3's introspector
 output (text / number / boolean / enum / array of objects).
 
@@ -80,14 +84,14 @@ output (text / number / boolean / enum / array of objects).
 Locked 2026-05-09. See § 11 for the four open-question answers
 that fed into these.
 
-| # | Decision | Choice | Rationale |
-|---|----------|--------|-----------|
-| A | Plugin manifest gains optional `configSchema` field | **Yes** | The whole point of the project. |
-| B | Existing hand-coded plugin UIs work unchanged | **Yes** | Migration is per-plugin, not forced. Plugins that opt in delete their hand-coded UI; ones that don't keep theirs. |
-| C | Auto-form supports the same widget set as theme F.3 + new `sensitive` hint | **Yes** | Reuse the `NpThemeSettingsField` introspector verbatim. G.1 also adds `.meta({ sensitive: true })` → `<Input type="password">` so G.2.2 oauth migrations don't carry the introspector change. |
-| D | Plugin can mix auto-form + custom panels | **Yes — via a G.3-defined slot in `PluginAdminExtension`** | A plugin with mostly-simple config + one bespoke "test webhook" button stays partially auto-formed. The exact slot shape is locked at G.3 entry, not now (see § 5.3). |
-| E | Settings persistence layer | **Drop `np_plugins.config`, store under `np_settings` with key `plugin.config:<id>`** | Repo is pre-1.0 / private — migrating now (data copy + column drop in one migration) trades ~150 LOC for permanent symmetry with theme settings (`theme.settings:<id>`), shared internal helpers (e.g. `getCachedSetting<T>(key)`), and matching function signatures (`getThemeSettings` ↔ `getPluginConfig`). After v1.0 this asymmetry would be locked in. `np_plugins` stays as a lean meta row (`id`, `enabled`, `last_seen`). |
-| F | Versioned envelope (D from v0.3) | **Yes — same `__npVersion` / `__npSettings` shape** | Plugins deserve the same migration story themes got. |
+| #   | Decision                                                                   | Choice                                                                                | Rationale                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| --- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A   | Plugin manifest gains optional `configSchema` field                        | **Yes**                                                                               | The whole point of the project.                                                                                                                                                                                                                                                                                                                                                                                                    |
+| B   | Existing hand-coded plugin UIs work unchanged                              | **Yes**                                                                               | Migration is per-plugin, not forced. Plugins that opt in delete their hand-coded UI; ones that don't keep theirs.                                                                                                                                                                                                                                                                                                                  |
+| C   | Auto-form supports the same widget set as theme F.3 + new `sensitive` hint | **Yes**                                                                               | Reuse the `NpThemeSettingsField` introspector verbatim. G.1 also adds `.meta({ sensitive: true })` → `<Input type="password">` so G.2.2 oauth migrations don't carry the introspector change.                                                                                                                                                                                                                                      |
+| D   | Plugin can mix auto-form + custom panels                                   | **Yes — via a G.3-defined slot in `PluginAdminExtension`**                            | A plugin with mostly-simple config + one bespoke "test webhook" button stays partially auto-formed. The exact slot shape is locked at G.3 entry, not now (see § 5.3).                                                                                                                                                                                                                                                              |
+| E   | Settings persistence layer                                                 | **Drop `np_plugins.config`, store under `np_settings` with key `plugin.config:<id>`** | Repo is pre-1.0 / private — migrating now (data copy + column drop in one migration) trades ~150 LOC for permanent symmetry with theme settings (`theme.settings:<id>`), shared internal helpers (e.g. `getCachedSetting<T>(key)`), and matching function signatures (`getThemeSettings` ↔ `getPluginConfig`). After v1.0 this asymmetry would be locked in. `np_plugins` stays as a lean meta row (`id`, `enabled`, `last_seen`). |
+| F   | Versioned envelope (D from v0.3)                                           | **Yes — same `__npVersion` / `__npSettings` shape**                                   | Plugins deserve the same migration story themes got.                                                                                                                                                                                                                                                                                                                                                                               |
 
 ## 3. Goals
 
@@ -146,11 +150,10 @@ interface NpPluginManifest {
    * type="password">` (added in G.1 — used by oauth client
    * secrets, etc.).
    */
-  configSchema?: unknown; // typed as unknown for the same
-                          // reason theme settingsSchema is —
-                          // avoids forcing zod into the public
-                          // surface; framework narrows at the
-                          // call site
+  // Typed as unknown for the same reason theme settingsSchema is:
+  // avoid forcing zod into the public surface; framework narrows
+  // at the call site.
+  configSchema?: unknown;
 
   /**
    * v0.3 D pattern reused — operator settings persist in a
@@ -208,10 +211,10 @@ Both are declarative settings sources. The two paths
 **coexist without conflict** because they answer different
 questions:
 
-| Source | Lives on | Purpose |
-|---|---|---|
-| `manifest.configSchema` (new) | manifest (boot-time) | Validation + storage shape + zod-driven auto-form |
-| `admin.settings.fields` (existing) | runtime `PluginAdminExtension` | Hand-rolled field list for the admin form only |
+| Source                             | Lives on                       | Purpose                                           |
+| ---------------------------------- | ------------------------------ | ------------------------------------------------- |
+| `manifest.configSchema` (new)      | manifest (boot-time)           | Validation + storage shape + zod-driven auto-form |
+| `admin.settings.fields` (existing) | runtime `PluginAdminExtension` | Hand-rolled field list for the admin form only    |
 
 Precedence in the admin renderer (locked):
 
@@ -244,15 +247,16 @@ inside the G-track; that's a v1.0 cleanup.
 
 Pilot the surface against simple plugins:
 
-| Plugin | Schema |
-|---|---|
-| `reading-time` | `z.object({ wordsPerMinute: z.number().int().min(50).max(800).default(220) })` |
-| `oauth-github` | `z.object({ clientId, clientSecret, scopes })` |
-| `oauth-google` | same shape |
-| ~~`block-newsletter`~~ | _Removed during G.2.3 — code inspection showed the plugin is block-only with per-instance `propsSchema`. No plugin-global config to migrate._ |
-| `seo-audit` | `z.object({ titleMin: z.number().int().min(0).max(200).default(30), titleMax: z.number().int().min(10).max(300).default(60), descriptionMin / Max, minBodyWords: z.number().default(250), includeDescription: z.boolean().default(true) })` |
+| Plugin                 | Schema                                                                                                                                                                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reading-time`         | `z.object({ wordsPerMinute: z.number().int().min(50).max(800).default(220) })`                                                                                                                                                              |
+| `oauth-github`         | `z.object({ clientId, clientSecret, scopes })`                                                                                                                                                                                              |
+| `oauth-google`         | same shape                                                                                                                                                                                                                                  |
+| ~~`block-newsletter`~~ | _Removed during G.2.3 — code inspection showed the plugin is block-only with per-instance `propsSchema`. No plugin-global config to migrate._                                                                                               |
+| `seo-audit`            | `z.object({ titleMin: z.number().int().min(0).max(200).default(30), titleMax: z.number().int().min(10).max(300).default(60), descriptionMin / Max, minBodyWords: z.number().default(250), includeDescription: z.boolean().default(true) })` |
 
 Each migration:
+
 1. Add `configSchema` to the manifest
 2. Delete the hand-coded admin UI component
 3. Update tests to assert the auto-form renders the right
@@ -320,8 +324,8 @@ Sequence:
 3. **G.2 oauth-github + oauth-google** — proves the
    `sensitive` widget end-to-end (clientSecret masked). One
    PR for both since they share the schema shape.
-4. **G.2 remaining plugins** — seo-audit only (newsletter dropped
-   per § 1 inventory revision).
+4. **G.2 final plugin migration** — seo-audit only (newsletter
+   dropped per § 1 inventory revision).
 5. **G.3 forum hybrid — DEFERRED**. Audit at G.3 entry found no
    real hybrid consumer; see § 5.3 for the re-lock criteria when
    one lands.
@@ -337,9 +341,9 @@ New tag: `np:plugin:<id>`. Read paths wrap in `unstable_cache`
 with this tag; save paths bust it.
 
 `cachedPluginFetch` (parallel to `cachedThemeFetch` from v0.3
-H) — plugin route handlers can wrap their own data fetches
-with the same per-key cache shape, auto-tagged with
-`np:plugin:<id>`. Out of scope for G.1; tracked as a follow-up.
+H) shipped in #629. Plugin route handlers can wrap their own
+data fetches with the same per-key cache shape, auto-tagged
+with `np:plugin:<id>`.
 
 > **Prefix note.** Per the framework's owned-identifier policy
 > (CLAUDE.md "Naming convention"), every new framework-owned
@@ -352,40 +356,39 @@ with the same per-key cache shape, auto-tagged with
 
 ## 8. Risk register
 
-| Risk | Severity | Mitigation |
-|---|---|---|
-| Plugin author needs a widget the F.3 introspector doesn't support (file upload, color picker, …) | 🟡 Medium | Pre-G.3-deferral plan was a custom-panel slot; today the workaround is the existing `admin.actions` array (button-style with confirmation) and a separate page if a richer surface is needed. The custom-panel slot re-locks at the next hybrid plugin (§ 5.3). |
-| Sensitive fields (secrets, tokens) need masked input | 🟢 Resolved | G.1 adds `.meta({ sensitive: true })` to the F.3 introspector + form-renderer (~30 LOC). Locked answer Q1. |
-| Plugin schema evolution leaves data behind | 🟢 Low | configMigrate / configVersion mirror theme settings v0.3 D — same migration story |
-| Plugins that DON'T migrate look out of place next to migrated peers | 🟢 Low | Both surfaces work; admin lists "uses auto-form" / "custom panel" tag for transparency. Migration is incremental |
-| Mount-keyword vocabulary grows unwieldy past G.3 | 🟢 Low | G.1 ships only `"auto-form"` (locked answer Q4). G.3 locks any additional keywords at its own entry. Plugin admin extensions today have ≤2-3 panels per plugin, so a small named-slot vocabulary suffices |
+| Risk                                                                                             | Severity    | Mitigation                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Plugin author needs a widget the F.3 introspector doesn't support (file upload, color picker, …) | 🟡 Medium   | Pre-G.3-deferral plan was a custom-panel slot; today the workaround is the existing `admin.actions` array (button-style with confirmation) and a separate page if a richer surface is needed. The custom-panel slot re-locks at the next hybrid plugin (§ 5.3). |
+| Sensitive fields (secrets, tokens) need masked input                                             | 🟢 Resolved | G.1 adds `.meta({ sensitive: true })` to the F.3 introspector + form-renderer (~30 LOC). Locked answer Q1.                                                                                                                                                      |
+| Plugin schema evolution leaves data behind                                                       | 🟢 Low      | configMigrate / configVersion mirror theme settings v0.3 D — same migration story                                                                                                                                                                               |
+| Plugins that DON'T migrate look out of place next to migrated peers                              | 🟢 Low      | Both surfaces work; admin lists "uses auto-form" / "custom panel" tag for transparency. Migration is incremental                                                                                                                                                |
+| Mount-keyword vocabulary grows unwieldy past G.3                                                 | 🟢 Low      | G.1 ships only `"auto-form"` (locked answer Q4). G.3 locks any additional keywords at its own entry. Plugin admin extensions today have ≤2-3 panels per plugin, so a small named-slot vocabulary suffices                                                       |
 
 ## 9. Phasing
 
-| Phase | Scope | PR-size estimate |
-|---|---|---|
-| **G.1** | Manifest fields (`configSchema` / `configVersion` / `configMigrate`); `getPluginConfig` + `getPluginConfigWithStatus` + `setPluginConfig` + `getCachedPluginConfig`; `np_plugins.config` → `np_settings` storage migration; `sensitive` widget hint; auto-form injection into the existing plugin detail page | 1 PR, ~750 LOC |
-| **G.2.1** | Pilot — `reading-time` migration | 1 PR, ~150 LOC |
-| **G.2.2** | OAuth plugins (github + google together) — exercises the `sensitive` widget end-to-end | 1 PR, ~250 LOC |
-| **G.2.3** | seo-audit (newsletter dropped — block-only, no plugin config) | 1 PR, ~300 LOC |
-| ~~**G.3**~~ | ~~Hybrid composition (forum)~~ — **deferred 2026-05-10**; no real consumer in repo | — |
-| **G.docs** | plugin-quickstart.md + plugin-manifest.md updates + design-doc closeout | 1 PR, ~200 LOC |
+| Phase       | Scope                                                                                                                                                                                                                                                                                                         | PR-size estimate |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| **G.1**     | Manifest fields (`configSchema` / `configVersion` / `configMigrate`); `getPluginConfig` + `getPluginConfigWithStatus` + `setPluginConfig` + `getCachedPluginConfig`; `np_plugins.config` → `np_settings` storage migration; `sensitive` widget hint; auto-form injection into the existing plugin detail page | 1 PR, ~750 LOC   |
+| **G.2.1**   | Pilot — `reading-time` migration                                                                                                                                                                                                                                                                              | 1 PR, ~150 LOC   |
+| **G.2.2**   | OAuth plugins (github + google together) — exercises the `sensitive` widget end-to-end                                                                                                                                                                                                                        | 1 PR, ~250 LOC   |
+| **G.2.3**   | seo-audit (newsletter dropped — block-only, no plugin config)                                                                                                                                                                                                                                                 | 1 PR, ~300 LOC   |
+| ~~**G.3**~~ | ~~Hybrid composition (forum)~~ — **deferred 2026-05-10**; no real consumer in repo                                                                                                                                                                                                                            | —                |
+| **G.docs**  | plugin-quickstart.md + plugin-manifest.md updates + design-doc closeout                                                                                                                                                                                                                                       | 1 PR, ~200 LOC   |
 
 Total: 5 PRs shipped, ~1650 LOC. G.3 deferred per § 5.3 — re-locks
 when a real hybrid plugin lands.
 
 ## 10. Deferred (recorded, not abandoned)
 
-- **`cachedPluginFetch` helper** — plugin parallel to v0.3 H's
-  `cachedThemeFetch`. Trivial implementation once the tag
-  exists, but no plugin currently needs it badly enough to
-  bundle into G.1.
+- ~~**`cachedPluginFetch` helper**~~ — **shipped in #629** as the
+  plugin parallel to v0.3 H's `cachedThemeFetch`.
 - **Plugin discovery + install UI** — listing available config
   fields on the marketplace before install. Roadmap category 9
   (plugin marketplace).
 - **Cross-plugin config dependencies** — plugin A's config
   depending on plugin B being installed. Not needed for the
-  current 11 plugins; would constrain phase G.1 if added now.
+  G-track entry plugin set; would have constrained phase G.1 if
+  added then.
 - **Per-site plugin config** — today plugin config is
   site-scoped via `np_settings`. The discriminator only matters
   if multi-site sites want different per-site config. Already
@@ -411,11 +414,11 @@ when a real hybrid plugin lands.
 Locked 2026-05-09 alongside § 2.
 
 1. **`.meta({ sensitive: true })` for secret fields** — F.3's
-   introspector today supports `text / textarea / url / color
-   / number / boolean / enum / object / array / unsupported`
-   only (`packages/core/src/themes/settings-schema.ts` widget
-   matrix). **Decision: G.1 adds `sensitive` as a `.meta()`
-   hint** → introspector emits `{ type: "password" }`,
+   introspector today supports `text`, `textarea`, `url`,
+   `color`, `number`, `boolean`, `enum`, `object`, `array`, and
+   `unsupported` only (`packages/core/src/themes/settings-schema.ts`
+   widget matrix). **Decision: G.1 adds `sensitive` as a
+   `.meta()` hint** → introspector emits `{ type: "password" }`,
    form-renderer dispatches to `<Input type="password">`.
    ~30 LOC. Done in G.1 so G.2.2 oauth migrations stay
    single-concern.
@@ -445,9 +448,9 @@ Locked 2026-05-09 alongside § 2.
       `parseError` surfaced via the status variant
       (`getPluginConfigWithStatus`) so the admin can render a
       "settings were reset" banner.
-   The read path **does not re-save** the migrated value —
-   themes don't either. Persistence happens only on the next
-   operator save through `setPluginConfig`.
+      The read path **does not re-save** the migrated value —
+      themes don't either. Persistence happens only on the next
+      operator save through `setPluginConfig`.
 4. **Custom panel `mountAfter` keyword space** — **Decision:
    G.1 ships `"auto-form"` only**. `"top"` / `"bottom"` are
    not reserved — defining slot keywords without a real
@@ -468,10 +471,11 @@ Locked 2026-05-09 alongside § 2.
 
 ## 13. Success criteria
 
-- A new plugin scaffolded via `nexpress create hook-plugin
-  <slug>` ships with an empty `configSchema: z.object({})`;
-  opening `/admin/plugins/[pluginId]` shows the auto-form
-  region rendering an empty form (no code needed).
+- A new plugin scaffolded via `nexpress create admin-plugin <slug>`
+  ships with a real `configSchema` for its starter `apiKey` /
+  `enabled` settings; opening
+  `/admin/plugins/[pluginId]` shows the auto-form with no
+  hand-rolled `admin.settings.fields` form.
 - `reading-time` migration deletes its hand-coded UI and the
   admin settings page renders the same wordsPerMinute field
   via auto-form.

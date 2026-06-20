@@ -7,7 +7,7 @@ whenever a post is created and exposes a tiny HTTP endpoint — the
 same shape as the bundled `@nexpress/plugin-reading-time`, which
 this guide pulls from.
 
-For the *why* behind the plugin model, see
+For the _why_ behind the plugin model, see
 [`AGENTS.md`](../AGENTS.md) (the **Plugin model (v1)** section); for
 deeper hook semantics see [`plugin-render.md`](plugin-render.md).
 This document is the procedure, not the design.
@@ -61,14 +61,14 @@ covers the npm-publish variant.
 The fastest path is the `nexpress create *-plugin` generator. It picks
 the right starter for what you're building:
 
-| Command | Starter shape |
-|---|---|
-| `nexpress create block-plugin <slug>` | One static page-builder block. |
+| Command                                             | Starter shape                                                                                                      |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `nexpress create block-plugin <slug>`               | One static page-builder block.                                                                                     |
 | `nexpress create block-plugin <slug> --interactive` | Static block + a `"use client"` form, with the directive / `splitting: false` / self-import wiring pre-configured. |
-| `nexpress create hook-plugin <slug>` | One `content:afterCreate` hook handler. |
-| `nexpress create route-plugin <slug>` | One public `GET /health` route. |
-| `nexpress create admin-plugin <slug>` | Settings form + status widget + manual action, all wired through `ctx.actions.register`. |
-| `nexpress create scheduled-plugin <slug>` | One nightly cron task at 02:00. |
+| `nexpress create hook-plugin <slug>`                | One `content:afterCreate` hook handler.                                                                            |
+| `nexpress create route-plugin <slug>`               | One public `GET /health` route.                                                                                    |
+| `nexpress create admin-plugin <slug>`               | `configSchema` settings form + status widget + manual action, all wired through `ctx.actions.register`.            |
+| `nexpress create scheduled-plugin <slug>`           | One nightly cron task at 02:00.                                                                                    |
 
 ```bash
 cd packages/plugins
@@ -79,7 +79,7 @@ cd my-plugin
 Each generator writes the same baseline:
 `package.json`, `tsconfig.json`, `tsup.config.ts`, `README.md`, and
 `src/index.tsx` with a heavily commented `definePlugin()` body that
-explains *why* each field is there. Edit the body, build, register in
+explains _why_ each field is there. Edit the body, build, register in
 `nexpress.config.ts` — that's it.
 
 > **Without the CLI?** You can copy `packages/plugins/reading-time` by
@@ -180,7 +180,7 @@ the rest: `capabilities` is derived from the surface (the
 catalog metadata, and the optional metadata blocks (`agent`,
 `allowedHosts`, `usesTokens`, `styleSlots`, `requires`,
 `apiVersion`) all default to empty/sensible values. You add them
-explicitly only when you *need* them — see
+explicitly only when you _need_ them — see
 [`plugin-manifest.md`](plugin-manifest.md) for the full field
 reference and [`plugin-capabilities.md`](plugin-capabilities.md) for
 the capabilities `definePlugin` can't auto-derive (such as
@@ -195,24 +195,23 @@ definition. The framework introspects it into a labeled form on
 `/admin/plugins/[pluginId]` — no per-plugin form component
 required.
 
+The `nexpress create admin-plugin <slug>` starter uses this pattern
+by default, then layers widgets and actions beside the auto-form.
+
 ```ts
 import { definePlugin } from "@nexpress/plugin-sdk";
 import { z } from "zod";
 
 const configSchema = z.object({
-  wordsPerMinute: z
-    .number()
-    .int()
-    .min(50)
-    .max(800)
-    .default(220)
-    .describe("Words per minute"),
+  wordsPerMinute: z.number().int().min(50).max(800).default(220).describe("Words per minute"),
 });
 
 export type MyPluginConfig = z.infer<typeof configSchema>;
 
 export default definePlugin<MyPluginConfig>({
-  manifest: { /* ... */ },
+  manifest: {
+    /* ... */
+  },
   configSchema,
   hooks: {
     "content:afterCreate": ({ data, ctx }) => {
@@ -226,28 +225,28 @@ export default definePlugin<MyPluginConfig>({
 
 ### What you get
 
-| Surface | Behavior |
-|---|---|
-| `/admin/plugins` | Configure dialog uses the same auto-form for plugins with `configSchema`; legacy plugins without a schema fall back to their `admin.settings.fields` form or raw JSON. |
-| `/admin/plugins/<id>` | Auto-form rendered above any other admin extensions, persists to `np_settings (key="plugin.config:<id>")` on save. |
-| `ctx.config` (in hooks / routes / actions) | Typed `Readonly<MyPluginConfig>`. The framework reads + validates on every dispatch (no restart for config changes). |
-| Reading from outside the plugin | `import { getPluginConfig } from "@nexpress/core"; const c = (await getPluginConfig("my-plugin")) as MyPluginConfig;` |
+| Surface                                    | Behavior                                                                                                                                                               |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/admin/plugins`                           | Configure dialog uses the same auto-form for plugins with `configSchema`; legacy plugins without a schema fall back to their `admin.settings.fields` form or raw JSON. |
+| `/admin/plugins/<id>`                      | Auto-form rendered above any other admin extensions, persists to `np_settings (key="plugin.config:<id>")` on save.                                                     |
+| `ctx.config` (in hooks / routes / actions) | Typed `Readonly<MyPluginConfig>`. The framework reads + validates on every dispatch (no restart for config changes).                                                   |
+| Reading from outside the plugin            | `import { getPluginConfig } from "@nexpress/core"; const c = (await getPluginConfig("my-plugin")) as MyPluginConfig;`                                                  |
 
 ### Field types the introspector supports today
 
-| Zod node | Form widget |
-|---|---|
-| `z.string()` | `<input type="text">` |
-| `z.string().url()` | `<input type="url">` |
-| `z.string().regex(/^#…/)` matching a hex pattern | `<input type="color">` + companion hex text input |
-| `z.string().meta({ widget: "textarea", rows: N })` | `<textarea>` |
-| `z.string().meta({ sensitive: true })` | `<input type="password">` |
-| `z.number().int().min().max()` | `<input type="number">` with bounds |
-| `z.boolean()` | `<Switch>` |
-| `z.enum([...])` | `<select>` |
-| `z.array(z.object({...}))` | repeated nested object form |
-| `z.array(z.string())` | one-item-per-line `<textarea>` |
-| `z.object({...})` | nested fieldset |
+| Zod node                                           | Form widget                                       |
+| -------------------------------------------------- | ------------------------------------------------- |
+| `z.string()`                                       | `<input type="text">`                             |
+| `z.string().url()`                                 | `<input type="url">`                              |
+| `z.string().regex(/^#…/)` matching a hex pattern   | `<input type="color">` + companion hex text input |
+| `z.string().meta({ widget: "textarea", rows: N })` | `<textarea>`                                      |
+| `z.string().meta({ sensitive: true })`             | `<input type="password">`                         |
+| `z.number().int().min().max()`                     | `<input type="number">` with bounds               |
+| `z.boolean()`                                      | `<Switch>`                                        |
+| `z.enum([...])`                                    | `<select>`                                        |
+| `z.array(z.object({...}))`                         | repeated nested object form                       |
+| `z.array(z.string())`                              | one-item-per-line `<textarea>`                    |
+| `z.object({...})`                                  | nested fieldset                                   |
 
 Anything else introspects as `unsupported` and falls back to a
 **raw-JSON textarea editor** — the operator CAN still edit the
@@ -270,7 +269,9 @@ mirroring the theme-settings migration pipeline.
 
 ```ts
 definePlugin<MyPluginConfig>({
-  manifest: { /* ... */ },
+  manifest: {
+    /* ... */
+  },
   configSchema,
   configVersion: 2,
   configMigrate: (old, fromVersion) => {
@@ -409,7 +410,7 @@ The reference docs go deeper on each surface:
 
 - [`plugin-manifest.md`](plugin-manifest.md) — every manifest field,
   what it defaults to, and how `definePlugin` auto-derives `provides`
-  + `capabilities` from your declared surface.
+  and `capabilities` from your declared surface.
 - [`plugin-capabilities.md`](plugin-capabilities.md) — capability ↔
   `ctx.*` method mapping table, runtime error messages, authoring
   tips for `network:fetch` / `storage:kv` / `media:write`.
@@ -430,9 +431,9 @@ The reference docs go deeper on each surface:
 The bundled plugins are the best reference for "how is this done in
 practice":
 
-| Plugin                                             | Demonstrates                                                       |
-| -------------------------------------------------- | ------------------------------------------------------------------ |
-| `packages/plugins/reading-time`                    | Hooks, routes, plain handler, **`configSchema` (single-field auto-form)** |
-| `packages/plugins/seo-audit`                       | More elaborate routes, admin extension, capabilities, **`configSchema` (mixed number / boolean fields)** |
-| `packages/plugins/forum`                           | Defining a collection from a plugin (`defineDiscussionsCollection`)|
-| `packages/plugins/oauth-github`, `oauth-google`    | OAuth provider wiring through plugin routes, **`configSchema` with `.meta({ sensitive: true })` masked secret + hybrid env-or-admin credentials** |
+| Plugin                                          | Demonstrates                                                                                                                                      |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/plugins/reading-time`                 | Hooks, routes, plain handler, **`configSchema` (single-field auto-form)**                                                                         |
+| `packages/plugins/seo-audit`                    | More elaborate routes, admin extension, capabilities, **`configSchema` (mixed number / boolean fields)**                                          |
+| `packages/plugins/forum`                        | Defining a collection from a plugin (`defineDiscussionsCollection`)                                                                               |
+| `packages/plugins/oauth-github`, `oauth-google` | OAuth provider wiring through plugin routes, **`configSchema` with `.meta({ sensitive: true })` masked secret + hybrid env-or-admin credentials** |
