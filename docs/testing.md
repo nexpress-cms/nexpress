@@ -212,6 +212,9 @@ transpile cost. Browsers install via
 | `auth.spec.ts`                | Sign in via form, /admin lands, logout entry visible, POST /api/auth/logout clears session, `/admin` redirects to login. Plus a negative-path "wrong password stays on login" check. |
 | `admin-mobile-layout.spec.ts` | 320/360/390px admin shell, drawer open/closed overflow, narrow-phone tap targets, settings tabs, dialogs, and operational admin surfaces.                                            |
 | `mobile-layout.spec.ts`       | 320/390/430px public bundled themes, mobile drawers, and no hidden horizontal scroll on representative public routes.                                                                |
+| `publish.spec.ts`             | Admin-created page publish flow, public route availability, and the published document appearing back in the admin collection list.                                                  |
+| `theme.spec.ts`               | Settings → Theme activation for an inactive bundled theme, followed by cleanup back to the canonical default theme.                                                                  |
+| `plugins.spec.ts`             | Installed plugin enumeration, config-schema admin detail rendering, dedicated plugin config save, runtime plugin-route config usage, and legacy config PATCH rejection.              |
 
 Mobile E2E should keep the assertion strict: pages must not grow
 `documentElement.scrollWidth` beyond the viewport, including when a
@@ -219,9 +222,8 @@ drawer is closed. If a failure is font- or platform-specific, fix the
 layout and keep the diagnostic metrics rather than widening the
 allowed overflow.
 
-Publish flow + theme switch + plugin enumeration are tracked under
-Phase 23.6.1; the infra is in place, only the spec files are
-pending.
+Publish flow, theme switching, and plugin config regression coverage
+are now part of the Playwright suite.
 
 ## CI
 

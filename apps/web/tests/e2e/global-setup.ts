@@ -38,5 +38,7 @@ export default async function globalSetup(): Promise<void> {
     fetch(`${baseURL}/admin/login`),
     fetch(`${baseURL}/admin/collections/pages/create`),
     fetch(`${baseURL}/admin/settings`),
+    fetch(`${baseURL}/admin/plugins`),
+    fetch(`${baseURL}/admin/plugins/reading-time`),
   ]);
 }
