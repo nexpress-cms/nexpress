@@ -245,12 +245,11 @@ function packageJsonTemplate(config: TemplateConfig): string {
 }
 
 /**
- * Scaffold's `pnpm-workspace.yaml`. The scaffold itself is NOT a
- * monorepo, but pnpm 10.6+ reads `pnpm-workspace.yaml` even for
- * single-package projects and that's where `allowBuilds` (the new
- * native-build allowlist) actually takes effect — the old
- * `pnpm.onlyBuiltDependencies` block in `package.json` is silently
- * ignored in this context.
+ * Scaffold's `pnpm-workspace.yaml`. The scaffold starts as a single app,
+ * but it reserves `packages/plugins/*` for local plugin development and
+ * pnpm 10.6+ reads this file for `allowBuilds` (the new native-build
+ * allowlist). The old `pnpm.onlyBuiltDependencies` block in `package.json`
+ * is silently ignored in this context.
  *
  * NexPress hard-depends on three packages whose install scripts
  * compile native code: `sharp` (media transforms), `@node-rs/argon2`
@@ -275,6 +274,9 @@ function pnpmWorkspaceYamlTemplate(): string {
 # native-backed features (image transforms / password hashing /
 # bundle build) work. Approving them up front matches what
 # \`pnpm approve-builds\` would write here anyway.
+packages:
+  - "packages/plugins/*"
+
 allowBuilds:
   sharp: true
   "@node-rs/argon2": true

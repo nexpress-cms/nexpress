@@ -122,6 +122,7 @@ describe("non-block scaffold generators", () => {
       expect(source).toMatch(/scheduled:\s*\[/);
       expect(source).toMatch(/cron: "0 2 \* \* \*"/);
       expect(source).toMatch(/handler: async \(ctx\)/);
+      expect(source).not.toContain("*/15");
     });
   });
 
@@ -145,6 +146,30 @@ describe("non-block scaffold generators", () => {
         expect(pkg.dependencies["@nexpress/blocks"]).toBe("workspace:*");
         expect(pkg.scripts.build).toBe("tsup");
         expect(pkg.scripts.typecheck).toBe("tsc --noEmit");
+      }
+    });
+
+    it("each kind can inherit framework dependency ranges from a project scaffold", async () => {
+      for (const generator of [
+        scaffoldHookPlugin,
+        scaffoldRoutePlugin,
+        scaffoldAdminPlugin,
+        scaffoldScheduledPlugin,
+      ]) {
+        const result = await generator({
+          slug: `ranges-${Math.random().toString(16).slice(2, 8)}`,
+          outDir: workdir,
+          dependencyRanges: {
+            "@nexpress/blocks": "file:/tmp/nexpress-blocks-0.4.0.tgz",
+            "@nexpress/plugin-sdk": "0.4.0",
+          },
+        });
+        const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+          dependencies: Record<string, string>;
+        };
+
+        expect(pkg.dependencies["@nexpress/blocks"]).toBe("file:/tmp/nexpress-blocks-0.4.0.tgz");
+        expect(pkg.dependencies["@nexpress/plugin-sdk"]).toBe("0.4.0");
       }
     });
 

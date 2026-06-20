@@ -229,7 +229,7 @@ jobs:
   scaffold-smoke:
     name: scaffold smoke (fresh scaffold journey)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     env:
       NP_SECRET: ci-secret-which-is-long-enough-for-jwt-signing
@@ -300,6 +300,11 @@ jobs:
           cd "$RUNNER_TEMP/scaffold/smoke-app"
           pnpm install --ignore-workspace
           pnpm exec tsc --noEmit
+
+      - name: Plugin scaffold smoke — generated packages build
+        run: |
+          node "$GITHUB_WORKSPACE/.github/scripts/check-plugin-scaffold-matrix.mjs" \
+            "$RUNNER_TEMP/scaffold/smoke-app"
 
       # Runtime smoke — typecheck passes for whole classes of bugs that
       # only manifest at module load (the canonical case: `@nexpress/app`

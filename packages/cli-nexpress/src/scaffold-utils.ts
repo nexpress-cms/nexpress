@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, relative, resolve, sep } from "node:path";
 
 /**
  * Shared scaffold-time utilities used by every `nexpress create *-plugin`
@@ -59,6 +59,12 @@ export interface ScaffoldOptions {
    * into a single dispatcher doesn't have to widen the API again.
    */
   interactive?: boolean;
+  /**
+   * Framework package ranges to write into the generated plugin. Defaults to
+   * workspace links for NexPress monorepo authors; the CLI can override this
+   * from a create-nexpress project's installed package ranges.
+   */
+  dependencyRanges?: ScaffoldDependencyRanges;
 }
 
 export interface ScaffoldResult {
@@ -73,6 +79,15 @@ export interface ScaffoldResult {
 }
 
 export type ScaffoldKind = "block" | "hook" | "route" | "admin" | "scheduled";
+
+export type ScaffoldFrameworkDependency = "@nexpress/blocks" | "@nexpress/plugin-sdk";
+
+export type ScaffoldDependencyRanges = Partial<Record<ScaffoldFrameworkDependency, string>>;
+
+const DEFAULT_DEPENDENCY_RANGES: Record<ScaffoldFrameworkDependency, string> = {
+  "@nexpress/blocks": "workspace:*",
+  "@nexpress/plugin-sdk": "workspace:*",
+};
 
 export interface ScaffoldNames {
   packageName: string;
@@ -113,6 +128,86 @@ export function assertDirAvailable(pluginDir: string): void {
   }
 }
 
+function readPackageJson(path: string): unknown {
+  return JSON.parse(readFileSync(path, "utf-8")) as unknown;
+}
+
+function readDependencyRange(pkg: unknown, name: ScaffoldFrameworkDependency): string | undefined {
+  if (!pkg || typeof pkg !== "object") return undefined;
+  for (const blockName of ["dependencies", "devDependencies", "peerDependencies"] as const) {
+    const block = (pkg as Record<string, unknown>)[blockName];
+    if (!block || typeof block !== "object") continue;
+    const value = (block as Record<string, unknown>)[name];
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return undefined;
+}
+
+/**
+ * Reads the nearest parent package.json and reuses installed framework
+ * ranges for generated plugins. In this repo there is no top-level
+ * @nexpress dependency block, so callers naturally fall back to workspace:*.
+ * In a create-nexpress project, the root has exact / file: ranges and the
+ * generated plugin becomes installable in that project workspace.
+ */
+export function resolveScaffoldDependencyRanges(cwd: string): ScaffoldDependencyRanges {
+  let current = resolve(cwd);
+  while (true) {
+    const packageJsonPath = resolve(current, "package.json");
+    if (existsSync(packageJsonPath)) {
+      const pkg = readPackageJson(packageJsonPath);
+      const ranges: ScaffoldDependencyRanges = {};
+      for (const name of Object.keys(DEFAULT_DEPENDENCY_RANGES) as ScaffoldFrameworkDependency[]) {
+        const range = readDependencyRange(pkg, name);
+        if (range) ranges[name] = range;
+      }
+      if (Object.keys(ranges).length > 0) return ranges;
+    }
+    if (
+      existsSync(resolve(current, "pnpm-workspace.yaml")) ||
+      existsSync(resolve(current, "nexpress.config.ts")) ||
+      existsSync(resolve(current, "src/nexpress.config.ts"))
+    ) {
+      return {};
+    }
+
+    const parent = dirname(current);
+    if (parent === current) return {};
+    current = parent;
+  }
+}
+
+export function frameworkDependencyRanges(
+  overrides: ScaffoldDependencyRanges = {},
+): Record<ScaffoldFrameworkDependency, string> {
+  return {
+    ...DEFAULT_DEPENDENCY_RANGES,
+    ...overrides,
+  };
+}
+
+function asPortableRelativePath(fromDir: string, targetFile: string): string {
+  const path = relative(fromDir, targetFile).split(sep).join("/");
+  return path.startsWith(".") ? path : `./${path}`;
+}
+
+/**
+ * Generates a tsconfig `extends` value for package-oriented workspaces. App
+ * root tsconfig files often carry Next/noEmit/incremental settings that break
+ * package dts builds, so only a real `tsconfig.base.json` is treated as safe.
+ */
+export function resolveTsconfigExtends(pluginDir: string): string | undefined {
+  let current = resolve(pluginDir);
+  while (true) {
+    const candidate = resolve(current, "tsconfig.base.json");
+    if (existsSync(candidate)) return asPortableRelativePath(pluginDir, candidate);
+
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
 /**
  * Builds a baseline `package.json` shape every generator can extend.
  * Scoped exports / extra deps go through the caller's overrides.
@@ -121,6 +216,7 @@ export function basePackageJson(
   packageName: string,
   description: string,
   options: {
+    dependencyRanges?: ScaffoldDependencyRanges;
     extraDependencies?: Record<string, string>;
     extraExports?: Record<string, { types: string; import: string }>;
   } = {},
@@ -149,8 +245,7 @@ export function basePackageJson(
           react: "^19.0.0",
         },
         dependencies: {
-          "@nexpress/blocks": "workspace:*",
-          "@nexpress/plugin-sdk": "workspace:*",
+          ...frameworkDependencyRanges(options.dependencyRanges),
           ...(options.extraDependencies ?? {}),
         },
         devDependencies: {
@@ -176,16 +271,28 @@ export function basePackageJson(
  * Default tsconfig for non-interactive (no `"use client"`) generators.
  * The interactive block scaffold overrides `lib` to include `DOM`.
  */
-export function baseTsconfig(extras: { lib?: string[] } = {}): string {
+export function baseTsconfig(extras: { extendsPath?: string; lib?: string[] } = {}): string {
   return (
     JSON.stringify(
       {
-        extends: "../../tsconfig.base.json",
+        ...(extras.extendsPath ? { extends: extras.extendsPath } : {}),
         compilerOptions: {
+          target: "ES2022",
+          module: "NodeNext",
+          moduleResolution: "NodeNext",
+          lib: extras.lib ?? ["ES2022"],
+          strict: true,
+          esModuleInterop: true,
+          skipLibCheck: true,
+          forceConsistentCasingInFileNames: true,
+          resolveJsonModule: true,
+          isolatedModules: true,
+          declaration: true,
+          declarationMap: true,
+          sourceMap: true,
           outDir: "dist",
           rootDir: "src",
           jsx: "react-jsx",
-          ...(extras.lib ? { lib: extras.lib } : {}),
         },
         include: ["src"],
       },

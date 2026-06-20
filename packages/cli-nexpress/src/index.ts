@@ -17,6 +17,7 @@ import {
   scaffoldRoutePlugin,
   scaffoldScheduledPlugin,
 } from "./scaffold-plugin-types.js";
+import { resolveScaffoldDependencyRanges } from "./scaffold-utils.js";
 import type { ScaffoldKind, ScaffoldResult } from "./scaffold-utils.js";
 import { buildRunScriptArgs, resolveOpsScriptInvocation } from "./ops-command.js";
 import { runThemeAdd } from "./theme-add/run.js";
@@ -78,9 +79,10 @@ Notes:
     config-resolution time, so a follow-up \`pnpm db:generate && pnpm
     db:migrate\` (or \`--apply\` here) is all you need to materialise
     theme-declared columns. No more AST patches to your collection files.
-  - "create *-plugin" writes a starter package to the current directory; you
-    then add it to your workspace (e.g. into packages/plugins/<slug>/) and run
-    pnpm install + pnpm --filter <packageName> build before importing.
+  - "create *-plugin" writes a starter package to the current directory. In a
+    create-nexpress project, run it from packages/plugins so pnpm can discover
+    the local plugin workspace, then run pnpm install + pnpm --filter
+    <packageName> build before importing.
   - --interactive (block kind only) emits a second client entry with the boundary
     wiring (splitting off, self-import external, DOM lib) pre-configured.
   - The config file must include marker comments for automated edits:
@@ -449,23 +451,24 @@ async function main(argv: string[]): Promise<number> {
     }
 
     const cwd = process.cwd();
+    const dependencyRanges = resolveScaffoldDependencyRanges(cwd);
     try {
       let result: ScaffoldResult;
       switch (meta.kind) {
         case "block":
-          result = await scaffoldBlockPlugin({ slug, outDir: cwd, interactive });
+          result = await scaffoldBlockPlugin({ slug, outDir: cwd, dependencyRanges, interactive });
           break;
         case "hook":
-          result = await scaffoldHookPlugin({ slug, outDir: cwd });
+          result = await scaffoldHookPlugin({ slug, outDir: cwd, dependencyRanges });
           break;
         case "route":
-          result = await scaffoldRoutePlugin({ slug, outDir: cwd });
+          result = await scaffoldRoutePlugin({ slug, outDir: cwd, dependencyRanges });
           break;
         case "admin":
-          result = await scaffoldAdminPlugin({ slug, outDir: cwd });
+          result = await scaffoldAdminPlugin({ slug, outDir: cwd, dependencyRanges });
           break;
         case "scheduled":
-          result = await scaffoldScheduledPlugin({ slug, outDir: cwd });
+          result = await scaffoldScheduledPlugin({ slug, outDir: cwd, dependencyRanges });
           break;
         default: {
           // Exhaustiveness check — adding a kind without updating the
@@ -482,7 +485,7 @@ async function main(argv: string[]): Promise<number> {
           `  Files written:\n` +
           result.files.map((f) => `    - ${f}\n`).join("") +
           `\n  Next:\n` +
-          `    1. Move the directory under your monorepo (e.g. packages/plugins/${slug}/) if needed.\n` +
+          `    1. Keep the directory in a pnpm workspace (e.g. packages/plugins/${slug}/).\n` +
           `    2. pnpm install\n` +
           `    3. pnpm --filter <packageName> build\n` +
           `    4. Import the plugin in nexpress.config.ts and add it to plugins: [...].\n`,

@@ -2,6 +2,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
+import {
+  baseTsconfig,
+  frameworkDependencyRanges,
+  resolveTsconfigExtends,
+  type ScaffoldDependencyRanges,
+} from "./scaffold-utils.js";
+
 /**
  * Author-friendly identifier derivation for new block plugins. The
  * generator takes a slug (`my-callout`, `@scope/my-callout`) and
@@ -57,6 +64,7 @@ export interface ScaffoldOptions {
    * of this.
    */
   interactive?: boolean;
+  dependencyRanges?: ScaffoldDependencyRanges;
 }
 
 // `ScaffoldResult` is shared with the other plugin-kind generators —
@@ -66,7 +74,7 @@ export type { ScaffoldResult } from "./scaffold-utils.js";
 import type { ScaffoldResult } from "./scaffold-utils.js";
 
 export async function scaffoldBlockPlugin(options: ScaffoldOptions): Promise<ScaffoldResult> {
-  const { slug, outDir, interactive = false } = options;
+  const { slug, outDir, dependencyRanges, interactive = false } = options;
   const dirName = dirNameFromSlug(slug);
   const pluginDir = resolve(outDir, dirName);
 
@@ -96,57 +104,47 @@ export async function scaffoldBlockPlugin(options: ScaffoldOptions): Promise<Sca
       import: "./dist/client.js",
     };
   }
-  const packageJson = JSON.stringify(
-    {
-      name: packageName,
-      version: "0.1.0",
-      description: `Block plugin: ${packageName}`,
-      license: "MIT",
-      type: "module",
-      main: "./dist/index.js",
-      types: "./dist/index.d.ts",
-      exports: exportsBlock,
-      files: ["dist"],
-      engines: { node: ">=20" },
-      peerDependencies: {
-        react: "^19.0.0",
+  const packageJson =
+    JSON.stringify(
+      {
+        name: packageName,
+        version: "0.1.0",
+        description: `Block plugin: ${packageName}`,
+        license: "MIT",
+        type: "module",
+        main: "./dist/index.js",
+        types: "./dist/index.d.ts",
+        exports: exportsBlock,
+        files: ["dist"],
+        engines: { node: ">=20" },
+        peerDependencies: {
+          react: "^19.0.0",
+        },
+        dependencies: {
+          ...frameworkDependencyRanges(dependencyRanges),
+        },
+        devDependencies: {
+          "@types/node": "^22.0.0",
+          "@types/react": "^19.0.0",
+          tsup: "^8.5.0",
+          typescript: "^5.8.0",
+        },
+        scripts: {
+          build: "tsup",
+          dev: "tsup --watch --no-clean",
+          clean: "rm -rf dist",
+          typecheck: "tsc --noEmit",
+        },
       },
-      dependencies: {
-        "@nexpress/blocks": "workspace:*",
-        "@nexpress/plugin-sdk": "workspace:*",
-      },
-      devDependencies: {
-        "@types/node": "^22.0.0",
-        "@types/react": "^19.0.0",
-        tsup: "^8.5.0",
-        typescript: "^5.8.0",
-      },
-      scripts: {
-        build: "tsup",
-        dev: "tsup --watch --no-clean",
-        clean: "rm -rf dist",
-        typecheck: "tsc --noEmit",
-      },
-    },
-    null,
-    2,
-  ) + "\n";
+      null,
+      2,
+    ) + "\n";
 
   // ────────────── tsconfig.json ──────────────
-  const tsconfig = JSON.stringify(
-    {
-      extends: "../../tsconfig.base.json",
-      compilerOptions: {
-        outDir: "dist",
-        rootDir: "src",
-        jsx: "react-jsx",
-        ...(interactive ? { lib: ["ES2022", "DOM", "DOM.Iterable"] } : {}),
-      },
-      include: ["src"],
-    },
-    null,
-    2,
-  ) + "\n";
+  const tsconfig = baseTsconfig({
+    extendsPath: resolveTsconfigExtends(pluginDir),
+    ...(interactive ? { lib: ["ES2022", "DOM", "DOM.Iterable"] } : {}),
+  });
 
   // ────────────── tsup.config.ts ──────────────
   const tsupConfig = interactive
@@ -438,6 +436,16 @@ export function ${blockComponentName}Form({ placeholder }: ${blockComponentName}
 }
 `;
 
+  const selfShimSource = `/**
+ * Ambient declaration for this package's own \`./client\` subpath.
+ * It keeps tsup's dts build from resolving through the package exports
+ * map before \`dist/client.d.ts\` exists.
+ */
+declare module "${packageName}/client" {
+  export { ${blockComponentName}Form } from "./client.js";
+}
+`;
+
   // ────────────── assemble ──────────────
   const files: Record<string, string> = {
     "package.json": packageJson,
@@ -448,6 +456,7 @@ export function ${blockComponentName}Form({ placeholder }: ${blockComponentName}
   };
   if (interactive) {
     files["src/client.tsx"] = clientSource;
+    files["src/self-shim.d.ts"] = selfShimSource;
   }
 
   await mkdir(resolve(pluginDir, "src"), { recursive: true });
