@@ -53,7 +53,7 @@ describe("scaffoldBlockPlugin", () => {
   it("documents CLI registration for local workspace plugins", async () => {
     const result = await scaffoldBlockPlugin({ slug: "my-callout", outDir: workdir });
     const readme = await readFile(join(result.pluginDir, "README.md"), "utf-8");
-    expect(readme).toContain("cd ../../..");
+    expect(readme).toContain("From your NexPress project root");
     expect(readme).toContain("pnpm exec nexpress plugin add my-callout");
     expect(readme).toContain('import myCalloutPlugin from "my-callout";');
     expect(readme).toContain("plugins: [myCalloutPlugin]");

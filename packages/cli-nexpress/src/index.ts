@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 
 import {
@@ -17,12 +17,13 @@ import {
   scaffoldRoutePlugin,
   scaffoldScheduledPlugin,
 } from "./scaffold-plugin-types.js";
-import { resolveScaffoldDependencyRanges } from "./scaffold-utils.js";
+import { packageNameFromSlug, resolveScaffoldDependencyRanges } from "./scaffold-utils.js";
 import type { ScaffoldKind, ScaffoldResult } from "./scaffold-utils.js";
 import { buildRunScriptArgs, resolveOpsScriptInvocation } from "./ops-command.js";
 import {
   buildPackageManagerArgs,
-  findLocalPluginWorkspaceDir,
+  inspectLocalPluginWorkspace,
+  missingLocalPluginBuildArtifacts,
   type NpPackageManager,
   type NpPackageManagerOptions,
 } from "./package-manager.js";
@@ -70,12 +71,12 @@ Usage:
   nexpress release apply --plan <path> [--json]       Validate or execute a release plan
   nexpress release verify [--url <origin>] [--json]   Run the post-release readiness gate
   nexpress runbook <name> [--json|--brief]            Diagnose a common incident runbook
-  nexpress create block-plugin <slug>                 Scaffold a static block plugin
-  nexpress create block-plugin <slug> --interactive   Scaffold with a "use client" form
-  nexpress create hook-plugin <slug>                  Scaffold a content-hook plugin
-  nexpress create route-plugin <slug>                 Scaffold an API-route plugin
-  nexpress create admin-plugin <slug>                 Scaffold an admin-extension plugin
-  nexpress create scheduled-plugin <slug>             Scaffold a scheduled-task plugin
+  nexpress create block-plugin <slug> [--workspace|--out <dir>]  Scaffold a static block plugin
+  nexpress create block-plugin <slug> --interactive              Scaffold with a "use client" form
+  nexpress create hook-plugin <slug> [--workspace|--out <dir>]   Scaffold a content-hook plugin
+  nexpress create route-plugin <slug> [--workspace|--out <dir>]  Scaffold an API-route plugin
+  nexpress create admin-plugin <slug> [--workspace|--out <dir>]  Scaffold an admin-extension plugin
+  nexpress create scheduled-plugin <slug> [--workspace|--out <dir>] Scaffold a scheduled-task plugin
 
 Notes:
   - "plugin add/remove" and "theme add" run from the project root (where
@@ -85,10 +86,10 @@ Notes:
     config-resolution time, so a follow-up \`pnpm db:generate && pnpm
     db:migrate\` (or \`--apply\` here) is all you need to materialise
     theme-declared columns. No more AST patches to your collection files.
-  - "create *-plugin" writes a starter package to the current directory. In a
-    create-nexpress project, run it from packages/plugins so pnpm can discover
-    the local plugin workspace, then run pnpm install + pnpm --filter
-    <packageName> build before registering with "nexpress plugin add".
+  - "create *-plugin" writes a starter package to the current directory by
+    default. From a project root, use --workspace to write packages/plugins/<slug>
+    or --out <dir> for an explicit destination. Then run pnpm install +
+    pnpm --filter <packageName> build before registering with "nexpress plugin add".
   - --interactive (block kind only) emits a second client entry with the boundary
     wiring (splitting off, self-import external, DOM lib) pre-configured.
   - The config file must include marker comments for automated edits:
@@ -130,6 +131,22 @@ function detectPackageManager(cwd: string): NpPackageManager {
   while (true) {
     if (existsSync(resolve(current, "pnpm-lock.yaml"))) return "pnpm";
     if (existsSync(resolve(current, "yarn.lock"))) return "yarn";
+    const packageJsonPath = resolve(current, "package.json");
+    if (existsSync(packageJsonPath)) {
+      try {
+        const pkg = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as {
+          packageManager?: unknown;
+        };
+        if (typeof pkg.packageManager === "string") {
+          if (pkg.packageManager.startsWith("pnpm@")) return "pnpm";
+          if (pkg.packageManager.startsWith("yarn@")) return "yarn";
+        }
+      } catch {
+        // Ignore malformed package.json files here; the command-specific
+        // package manager call will surface the actionable failure.
+      }
+    }
+    if (existsSync(resolve(current, "pnpm-workspace.yaml"))) return "pnpm";
     const parent = dirname(current);
     if (parent === current) break;
     current = parent;
@@ -214,17 +231,47 @@ async function pluginAdd(packageName: string, cwd: string): Promise<number> {
     return 1;
   }
 
-  const localWorkspaceDir =
-    project.packageManager === "pnpm" ? findLocalPluginWorkspaceDir(cwd, packageName) : null;
+  const localWorkspace =
+    project.packageManager === "pnpm"
+      ? inspectLocalPluginWorkspace(cwd, packageName)
+      : ({ kind: "missing" } as const);
+
+  if (localWorkspace.kind === "malformed") {
+    process.stdout.write(
+      `\n⚠ Found a local plugin candidate at ${relative(cwd, localWorkspace.dir)}, but ${relative(
+        cwd,
+        localWorkspace.packageJsonPath,
+      )} is not valid JSON.\n` +
+        `  Fix that package.json, then re-run pnpm exec nexpress plugin add ${packageName}.\n`,
+    );
+    return 1;
+  }
+
+  if (localWorkspace.kind === "found") {
+    const missingArtifacts = missingLocalPluginBuildArtifacts(
+      localWorkspace.dir,
+      localWorkspace.packageJson,
+    );
+    if (missingArtifacts.length > 0) {
+      process.stdout.write(
+        `\n⚠ Found local workspace package at ${relative(cwd, localWorkspace.dir)}, but build output is missing:\n` +
+          missingArtifacts
+            .map((path) => `  - ${relative(cwd, resolve(localWorkspace.dir, path))}\n`)
+            .join("") +
+          `\nRun pnpm --filter ${packageName} build, then re-run pnpm exec nexpress plugin add ${packageName}.\n`,
+      );
+      return 1;
+    }
+  }
 
   process.stdout.write(`\n→ Installing ${packageName} via ${project.packageManager}…\n`);
-  if (localWorkspaceDir) {
+  if (localWorkspace.kind === "found") {
     process.stdout.write(
-      `  Detected local workspace package at ${relative(cwd, localWorkspaceDir)}; using pnpm --workspace.\n`,
+      `  Detected local workspace package at ${relative(cwd, localWorkspace.dir)}; using pnpm --workspace.\n`,
     );
   }
   await runPackageManager(project.packageManager, "add", packageName, cwd, {
-    localWorkspace: Boolean(localWorkspaceDir),
+    localWorkspace: localWorkspace.kind === "found",
   });
 
   // Re-read after install — formatters / lockfile updates rarely touch the
@@ -425,8 +472,36 @@ async function main(argv: string[]): Promise<number> {
 
   if (args[0] === "create") {
     const sub = args[1];
-    const positional = args.slice(2).filter((a) => !a.startsWith("--"));
-    const flags = new Set(args.slice(2).filter((a) => a.startsWith("--")));
+    const positional: string[] = [];
+    const flags = new Set<string>();
+    let outDirArg: string | undefined;
+
+    for (let i = 2; i < args.length; i += 1) {
+      const arg = args[i];
+      if (arg === "--interactive" || arg === "--workspace") {
+        flags.add(arg);
+      } else if (arg === "--out") {
+        const value = args[i + 1];
+        if (!value || value.startsWith("--")) {
+          process.stderr.write(`--out requires a directory. Example: --out packages/plugins\n`);
+          return 2;
+        }
+        outDirArg = value;
+        i += 1;
+      } else if (arg.startsWith("--out=")) {
+        const value = arg.slice("--out=".length);
+        if (!value) {
+          process.stderr.write(`--out requires a directory. Example: --out packages/plugins\n`);
+          return 2;
+        }
+        outDirArg = value;
+      } else if (arg.startsWith("--")) {
+        process.stderr.write(`Unknown flag for create ${sub ?? ""}: ${arg}\n`);
+        return 2;
+      } else {
+        positional.push(arg);
+      }
+    }
     const slug = positional[0];
 
     // sub-command → kind + label. Adding a new plugin kind = one row here
@@ -449,38 +524,58 @@ async function main(argv: string[]): Promise<number> {
     const meta = sub ? kindMap[sub] : undefined;
     if (!meta || !slug) {
       process.stderr.write(
-        `Missing or unknown subcommand. Usage: nexpress create <${Object.keys(kindMap).join("|")}> <slug> [--interactive]\n`,
+        `Missing or unknown subcommand. Usage: nexpress create <${Object.keys(kindMap).join("|")}> <slug> [--interactive] [--workspace|--out <dir>]\n`,
       );
+      return 2;
+    }
+    if (positional.length > 1) {
+      process.stderr.write(`Unexpected positional: ${positional[1]}\n`);
       return 2;
     }
 
     const interactive = flags.has("--interactive");
+    const workspace = flags.has("--workspace");
     if (interactive && !meta.supportsInteractive) {
       process.stderr.write(
         `--interactive isn't supported for ${meta.label} plugins (it only applies to block-plugin).\n`,
       );
       return 2;
     }
+    if (workspace && outDirArg) {
+      process.stderr.write(`Use either --workspace or --out <dir>, not both.\n`);
+      return 2;
+    }
 
     const cwd = process.cwd();
+    const outDir = workspace ? resolve(cwd, "packages/plugins") : resolve(cwd, outDirArg ?? ".");
+    if (workspace) {
+      try {
+        resolveProject(cwd);
+      } catch {
+        process.stderr.write(
+          `--workspace must be run from a NexPress project root so packages/plugins can be registered.\n`,
+        );
+        return 2;
+      }
+    }
     const dependencyRanges = resolveScaffoldDependencyRanges(cwd);
     try {
       let result: ScaffoldResult;
       switch (meta.kind) {
         case "block":
-          result = await scaffoldBlockPlugin({ slug, outDir: cwd, dependencyRanges, interactive });
+          result = await scaffoldBlockPlugin({ slug, outDir, dependencyRanges, interactive });
           break;
         case "hook":
-          result = await scaffoldHookPlugin({ slug, outDir: cwd, dependencyRanges });
+          result = await scaffoldHookPlugin({ slug, outDir, dependencyRanges });
           break;
         case "route":
-          result = await scaffoldRoutePlugin({ slug, outDir: cwd, dependencyRanges });
+          result = await scaffoldRoutePlugin({ slug, outDir, dependencyRanges });
           break;
         case "admin":
-          result = await scaffoldAdminPlugin({ slug, outDir: cwd, dependencyRanges });
+          result = await scaffoldAdminPlugin({ slug, outDir, dependencyRanges });
           break;
         case "scheduled":
-          result = await scaffoldScheduledPlugin({ slug, outDir: cwd, dependencyRanges });
+          result = await scaffoldScheduledPlugin({ slug, outDir, dependencyRanges });
           break;
         default: {
           // Exhaustiveness check — adding a kind without updating the
@@ -492,15 +587,15 @@ async function main(argv: string[]): Promise<number> {
       }
 
       const labelPrefix = meta.kind === "block" && interactive ? "interactive block" : meta.label;
+      const packageName = packageNameFromSlug(slug);
       process.stdout.write(
         `\n✓ Scaffolded ${labelPrefix} plugin in ${result.pluginDir}\n` +
           `  Files written:\n` +
           result.files.map((f) => `    - ${f}\n`).join("") +
-          `\n  Next:\n` +
-          `    1. Keep the directory in a pnpm workspace (e.g. packages/plugins/<name>/).\n` +
-          `    2. From the project root, run pnpm install\n` +
-          `    3. pnpm --filter <packageName> build\n` +
-          `    4. pnpm exec nexpress plugin add ${slug}\n`,
+          `\n  Next (from your NexPress project root):\n` +
+          `    1. pnpm install\n` +
+          `    2. pnpm --filter ${packageName} build\n` +
+          `    3. pnpm exec nexpress plugin add ${packageName}\n`,
       );
       return 0;
     } catch (error) {
