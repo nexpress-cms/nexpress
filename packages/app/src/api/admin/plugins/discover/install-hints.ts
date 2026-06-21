@@ -1,9 +1,11 @@
 export interface PluginInstallHints {
   packageName: string;
   installCommand: string;
+  packageInstallCommand: string;
   registerSnippet: string;
   verifyCommand: string;
   projectVerifyCommand: string;
+  restartHint: string;
   note: string;
 }
 
@@ -34,7 +36,8 @@ export function buildPluginInstallHints(packageName: string): PluginInstallHints
   const importName = pluginImportName(packageName);
   return {
     packageName,
-    installCommand: `pnpm add ${packageName}`,
+    installCommand: `pnpm exec nexpress plugin add ${packageName}`,
+    packageInstallCommand: `pnpm add ${packageName}`,
     registerSnippet: [
       `import { defineConfig } from "@nexpress/core";`,
       `import ${importName} from ${JSON.stringify(packageName)};`,
@@ -46,7 +49,9 @@ export function buildPluginInstallHints(packageName: string): PluginInstallHints
       "});",
     ].join("\n"),
     verifyCommand: "nexpress ops plugins doctor --json",
-    projectVerifyCommand: "pnpm run ops:plugins -- doctor --json",
-    note: "Uses the common default-export plugin shape. If the package README documents a named export or factory, adjust the import before adding it to plugins.",
+    projectVerifyCommand: "pnpm --silent run ops:plugins -- doctor --json",
+    restartHint:
+      "Restart pnpm dev or redeploy so plugin hooks, routes, blocks, and tasks load at boot.",
+    note: "Run the NexPress CLI from the project root. It installs the package and updates the plugin marker block; use the manual package command and config snippet only when a custom config shape prevents automatic editing.",
   };
 }

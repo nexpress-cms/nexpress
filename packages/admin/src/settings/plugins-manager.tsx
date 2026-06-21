@@ -317,10 +317,9 @@ export function PluginsManager() {
   // Dialog now instead of inline on the page (matches the design's
   // pagehead-action pattern).
   const [browseOpen, setBrowseOpen] = useState(false);
-  // Install-plugin guide modal — explains the manual install flow
-  // (npm install → add to nexpress.config.ts → restart). The
-  // framework doesn't ship runtime install today, so this is the
-  // honest UI for the "Install plugin" CTA.
+  // Install-plugin guide modal — explains the project CLI flow
+  // (`plugin add` → restart → doctor), with a manual config fallback
+  // for uncommon package export or custom config shapes.
   const [installGuideOpen, setInstallGuideOpen] = useState(false);
 
   const loadPlugins = useCallback(async () => {
@@ -937,9 +936,11 @@ interface DiscoveredPlugin {
   install?: {
     packageName: string;
     installCommand: string;
+    packageInstallCommand?: string;
     registerSnippet: string;
     verifyCommand: string;
     projectVerifyCommand: string;
+    restartHint?: string;
     note: string;
   };
 }
@@ -1032,7 +1033,8 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
             <code className="break-all rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
               keywords:nexpress-plugin
             </code>
-            . Copy the install command and run it from your project root, then add the plugin to{" "}
+            . Copy the project CLI command and run it from your project root. It installs the
+            package and updates{" "}
             <code className="break-all rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
               plugins
             </code>{" "}
@@ -1092,7 +1094,10 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
           {items && items.length > 0 ? (
             <div className="space-y-2">
               {items.map((plugin) => {
-                const installCommand = plugin.install?.installCommand ?? `pnpm add ${plugin.name}`;
+                const installCommand =
+                  plugin.install?.installCommand ?? `pnpm exec nexpress plugin add ${plugin.name}`;
+                const packageInstallCommand =
+                  plugin.install?.packageInstallCommand ?? `pnpm add ${plugin.name}`;
                 const configSnippet =
                   plugin.install?.registerSnippet ??
                   `import { defineConfig } from "@nexpress/core";\nimport plugin from "${plugin.name}";\n\nexport default defineConfig({\n  plugins: [plugin],\n});`;
@@ -1122,9 +1127,21 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
                         <p className="break-all font-mono text-[10px] text-muted-foreground">
                           {installCommand}
                         </p>
+                        <p className="break-words text-[11px] text-muted-foreground">
+                          Manual fallback:{" "}
+                          <code className="break-all font-mono text-[10px]">
+                            {packageInstallCommand}
+                          </code>{" "}
+                          + config snippet
+                        </p>
                         {plugin.install?.projectVerifyCommand ? (
                           <p className="break-all font-mono text-[10px] text-muted-foreground">
                             verify: {plugin.install.projectVerifyCommand}
+                          </p>
+                        ) : null}
+                        {plugin.install?.restartHint ? (
+                          <p className="break-words text-[11px] text-muted-foreground">
+                            {plugin.install.restartHint}
                           </p>
                         ) : null}
                         {plugin.install?.note ? (
@@ -1161,7 +1178,7 @@ function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps)
                           onClick={() => void copy(configSnippet, `${plugin.name}:config`)}
                         >
                           <Copy className="size-3.5" />
-                          {copied === `${plugin.name}:config` ? "Copied!" : "Copy config"}
+                          {copied === `${plugin.name}:config` ? "Copied!" : "Copy fallback config"}
                         </Button>
                         {plugin.npmUrl ? (
                           <Button
@@ -1196,18 +1213,16 @@ interface InstallGuideDialogProps {
 }
 
 /**
- * "Install plugin" — guide modal. NexPress doesn't ship a runtime
- * plugin installer (plugins are npm packages added to
- * `nexpress.config.ts`'s `plugins` array, then loaded at boot).
- * This modal walks the operator through that flow honestly:
+ * "Install plugin" — guide modal. Plugins are still static npm
+ * packages loaded at boot, but the project CLI owns the repetitive
+ * package-install + config-marker edit.
  *
- *   1. Install via package manager
- *   2. Register in nexpress.config.ts
- *   3. Restart dev / redeploy
+ *   1. Run `nexpress plugin add`
+ *   2. Restart dev / redeploy
+ *   3. Verify with ops plugins doctor
  *
- * The "Browse registry" CTA at the bottom routes to the registry
- * modal so an operator who clicked Install first lands in the
- * right place anyway.
+ * The manual config snippet stays visible as an escape hatch for
+ * custom config files or packages with unusual export shapes.
  */
 function InstallGuideDialog({ open, onOpenChange }: InstallGuideDialogProps) {
   const [copied, setCopied] = useState<string | null>(null);
@@ -1224,11 +1239,14 @@ function InstallGuideDialog({ open, onOpenChange }: InstallGuideDialogProps) {
     }
   };
 
-  // Reflect how plugins are actually wired in the reference app:
-  // a static `definePlugin()` object passed directly into the
-  // `plugins:` array. Per-plugin options live in the admin's
-  // Configure dialog (handlers receive them via `ctx.config`),
-  // NOT as a factory-call argument here.
+  const pluginAddCommand = "pnpm exec nexpress plugin add @nexpress/plugin-<name>";
+  const manualPackageCommand = "pnpm add @nexpress/plugin-<name>";
+  const verifyCommand = "pnpm --silent run ops:plugins -- doctor --json";
+
+  // Manual fallback: a static `definePlugin()` object passed directly
+  // into the `plugins:` array. Per-plugin options live in the admin's
+  // Configure dialog (handlers receive them via `ctx.config`), NOT as
+  // a factory-call argument here.
   const configSnippet = `import { defineConfig } from "@nexpress/core";
 import yourPlugin from "@nexpress/plugin-your-name";
 
@@ -1247,8 +1265,9 @@ export default defineConfig({
             <span className="min-w-0 break-words">Install a plugin</span>
           </DialogTitle>
           <DialogDescription className="break-words">
-            NexPress plugins are npm packages. There&apos;s no runtime install — the three steps
-            below are the whole flow.
+            NexPress plugins are npm packages loaded at boot. The project CLI installs the package,
+            updates the plugin marker block, and leaves restart / verify as the explicit operator
+            steps.
           </DialogDescription>
         </DialogHeader>
 
@@ -1258,27 +1277,27 @@ export default defineConfig({
               <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
                 1
               </span>
-              <div className="min-w-0 break-words font-medium">Install the package</div>
+              <div className="min-w-0 break-words font-medium">
+                Install and register with the CLI
+              </div>
             </div>
             <div className="ml-7 min-w-0 space-y-1.5">
               <p className="text-xs text-muted-foreground">
-                Run the install in your project root. Use <strong>Browse registry</strong> to find
+                Run the command from your project root. Use <strong>Browse registry</strong> to find
                 packages tagged{" "}
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
                   keywords:nexpress-plugin
                 </code>
-                .
+                ; each result includes a ready-to-copy command for that package.
               </p>
               <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/40 px-3 py-2 font-mono text-xs sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                <span className="min-w-0 select-all break-all">
-                  pnpm add @nexpress/plugin-&lt;name&gt;
-                </span>
+                <span className="min-w-0 select-all break-all">{pluginAddCommand}</span>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   className="min-h-10 w-full sm:min-h-0 sm:w-auto"
-                  onClick={() => void copy("pnpm add @nexpress/plugin-<name>", "install")}
+                  onClick={() => void copy(pluginAddCommand, "install")}
                   aria-label="Copy install command"
                 >
                   <Copy className="size-3.5" />
@@ -1294,15 +1313,29 @@ export default defineConfig({
                 2
               </span>
               <div className="min-w-0 break-words font-medium">
-                Register the plugin in <code className="font-mono">nexpress.config.ts</code>
+                Use the manual fallback if needed
               </div>
             </div>
             <div className="ml-7 min-w-0 space-y-1.5">
               <p className="text-xs text-muted-foreground">
-                Add the exported plugin object to the <code className="font-mono">plugins</code>{" "}
-                array. Runtime options belong in the plugin&apos;s admin config form when it
-                declares one.
+                If the CLI cannot update a custom config shape, install the package yourself and add
+                the exported plugin object to the <code className="font-mono">plugins</code> array.
+                Runtime options belong in the plugin&apos;s admin config form when it declares one.
               </p>
+              <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/40 px-3 py-2 font-mono text-xs sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                <span className="min-w-0 select-all break-all">{manualPackageCommand}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="min-h-10 w-full sm:min-h-0 sm:w-auto"
+                  onClick={() => void copy(manualPackageCommand, "manual-install")}
+                  aria-label="Copy manual package command"
+                >
+                  <Copy className="size-3.5" />
+                  {copied === "manual-install" ? "Copied!" : "Copy"}
+                </Button>
+              </div>
               <div className="rounded-lg border border-border/60 bg-muted/40">
                 <div className="grid gap-2 border-b border-border/60 px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                   <span className="min-w-0 truncate font-mono normal-case">nexpress.config.ts</span>
@@ -1340,6 +1373,20 @@ export default defineConfig({
                 status <em>Active</em> once its <code className="font-mono">setup()</code> runs
                 cleanly.
               </p>
+              <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/40 px-3 py-2 font-mono text-xs text-foreground sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                <span className="min-w-0 select-all break-all">{verifyCommand}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="min-h-10 w-full sm:min-h-0 sm:w-auto"
+                  onClick={() => void copy(verifyCommand, "verify")}
+                  aria-label="Copy verify command"
+                >
+                  <Copy className="size-3.5" />
+                  {copied === "verify" ? "Copied!" : "Copy"}
+                </Button>
+              </div>
               <p>
                 If a plugin you registered shows as <em>Pending restart</em>, the dev server
                 hasn&apos;t reloaded yet — stop and restart{" "}

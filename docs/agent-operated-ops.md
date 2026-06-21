@@ -371,6 +371,11 @@ Implementation status:
   `schemaVersion: "np.ops-plugins-upgrade-plan.v1"` with package inference,
   inspect / outdated / upgrade / verify commands, and approval flags. It does
   not install packages or rewrite config.
+- Admin plugin discovery (`/api/admin/plugins/discover`) returns the matching
+  install bridge for registry plugins: `pnpm exec nexpress plugin add <package>`
+  as the primary project-root command, a manual `pnpm add` + config snippet
+  fallback, and `pnpm --silent run ops:plugins -- doctor --json` as the
+  post-restart verification command.
 - `nexpress release check --target <host> --json` emits
   `schemaVersion: "np.release.v1"` by composing preflight, migration plan,
   required backup readiness, jobs, storage, and plugin diagnostics into a

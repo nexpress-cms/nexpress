@@ -16,9 +16,13 @@ describe("plugin discover install hints", () => {
   it("builds copyable install, registration, and verification commands", () => {
     const hints = buildPluginInstallHints("@nexpress/plugin-reading-time");
 
-    expect(hints.installCommand).toBe("pnpm add @nexpress/plugin-reading-time");
+    expect(hints.installCommand).toBe(
+      "pnpm exec nexpress plugin add @nexpress/plugin-reading-time",
+    );
+    expect(hints.packageInstallCommand).toBe("pnpm add @nexpress/plugin-reading-time");
     expect(hints.verifyCommand).toBe("nexpress ops plugins doctor --json");
-    expect(hints.projectVerifyCommand).toBe("pnpm run ops:plugins -- doctor --json");
+    expect(hints.projectVerifyCommand).toBe("pnpm --silent run ops:plugins -- doctor --json");
+    expect(hints.restartHint).toContain("Restart");
     expect(hints.registerSnippet).toContain(
       `import readingTimePlugin from "@nexpress/plugin-reading-time";`,
     );
