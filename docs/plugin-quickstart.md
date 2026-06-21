@@ -50,7 +50,8 @@ It cannot:
     `packages/plugins/<name>/`.
   - **A `create-nexpress` project** — local plugins can live under
     `packages/plugins/<name>/`; published plugins can still live in a
-    sibling repo and install via `pnpm add @your-scope/plugin-<name>`.
+    sibling repo and be added to the site with
+    `pnpm exec nexpress plugin add @your-scope/plugin-<name>`.
 
 The walkthrough below uses the local workspace path because it's
 faster to iterate against. The **External projects** section at the

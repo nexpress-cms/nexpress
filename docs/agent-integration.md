@@ -154,8 +154,13 @@ If the collection declares `versions.drafts: true`:
 - `GET /api/admin/plugins/discover?q=<query>` — admin-only npm
   registry search for packages tagged `nexpress-plugin`. Each result
   includes an `install` block with `installCommand`,
-  `registerSnippet`, and `projectVerifyCommand` so agents can present
-  an executable install plan instead of guessing the config wiring.
+  `packageInstallCommand`, `registerSnippet`, `projectVerifyCommand`,
+  and `restartHint` so agents can present the project CLI path first:
+  run `pnpm exec nexpress plugin add <package>` from the project root,
+  then restart / redeploy and verify with
+  `pnpm --silent run ops:plugins -- doctor --json`. The package install
+  command and config snippet are a manual fallback for custom config
+  files or unusual package exports.
 
 Plugin routes also appear in the OpenAPI spec with `tags: [plugin:{id}]`
 so agents can filter the spec down to a plugin's surface.
