@@ -202,7 +202,7 @@ pnpm --filter ${packageName} build  # one-shot
 ## Register in your project
 
 \`\`\`bash
-cd ../../..
+# From your NexPress project root:
 pnpm exec nexpress plugin add ${packageName}
 \`\`\`
 

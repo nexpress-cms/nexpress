@@ -61,21 +61,22 @@ bottom covers the npm-publish variant.
 The fastest path is the `nexpress create *-plugin` generator. It picks
 the right starter for what you're building:
 
-| Command                                             | Starter shape                                                                                                      |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `nexpress create block-plugin <slug>`               | One static page-builder block.                                                                                     |
-| `nexpress create block-plugin <slug> --interactive` | Static block + a `"use client"` form, with the directive / `splitting: false` / self-import wiring pre-configured. |
-| `nexpress create hook-plugin <slug>`                | One `content:afterCreate` hook handler.                                                                            |
-| `nexpress create route-plugin <slug>`               | One public `GET /health` route.                                                                                    |
-| `nexpress create admin-plugin <slug>`               | `configSchema` settings form + status widget + manual action, all wired through `ctx.actions.register`.            |
-| `nexpress create scheduled-plugin <slug>`           | One nightly cron task at 02:00.                                                                                    |
+| Command                                                         | Starter shape                                                                                                      |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `nexpress create block-plugin <slug> --workspace`               | One static page-builder block under `packages/plugins/<slug>`.                                                     |
+| `nexpress create block-plugin <slug> --interactive --workspace` | Static block + a `"use client"` form, with the directive / `splitting: false` / self-import wiring pre-configured. |
+| `nexpress create hook-plugin <slug> --workspace`                | One `content:afterCreate` hook handler.                                                                            |
+| `nexpress create route-plugin <slug> --workspace`               | One public `GET /health` route.                                                                                    |
+| `nexpress create admin-plugin <slug> --workspace`               | `configSchema` settings form + status widget + manual action, all wired through `ctx.actions.register`.            |
+| `nexpress create scheduled-plugin <slug> --workspace`           | One nightly cron task at 02:00.                                                                                    |
 
 ```bash
-mkdir -p packages/plugins
-cd packages/plugins
-pnpm exec nexpress create hook-plugin my-plugin
-cd my-plugin
+pnpm exec nexpress create hook-plugin my-plugin --workspace
 ```
+
+Run from the project root, `--workspace` writes
+`packages/plugins/my-plugin`. If you want a different workspace
+member directory, use `--out <dir>` instead.
 
 Each generator writes the same baseline:
 `package.json`, `tsconfig.json`, `tsup.config.ts`, `README.md`, and
@@ -394,14 +395,20 @@ If you're not using the local `packages/plugins` workspace, the steps
 differ slightly:
 
 1. Create a new package somewhere convenient (workspace, sibling
-   repo, monorepo elsewhere). Use a private scope you control.
+   repo, monorepo elsewhere). Use a private scope you control. The
+   CLI can still write the starter:
+   ```bash
+   nexpress create hook-plugin @your-scope/plugin-<name> --out <dir>
+   ```
 2. `pnpm add @nexpress/plugin-sdk` (and `@nexpress/core` only as a
    `peerDependency` — never bundle it).
 3. Write the same `definePlugin` body shown above.
 4. `pnpm publish` to your private registry, or `pnpm pack` and
    `pnpm add file:./your-plugin-0.1.0.tgz` for local testing.
-5. In the consuming site, `pnpm add @your-scope/plugin-<name>` and
-   add it to `nexpress.config.ts` exactly as in Step 3.
+5. In the consuming site, run:
+   ```bash
+   pnpm exec nexpress plugin add @your-scope/plugin-<name>
+   ```
 
 The `@nexpress/plugin-sdk` package is the only thing your plugin
 imports from. Importing from `@nexpress/core` directly is permitted

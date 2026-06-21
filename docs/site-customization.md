@@ -66,11 +66,12 @@ This rewrites the `// @nexpress:plugins-imports-*` and
 automatically — keep those marker comments in place.
 
 Authoring a plugin: separate package, scaffolded with
-[plugin-quickstart](./plugin-quickstart.md). Local plugins can live
-under `packages/plugins/<name>`; from the project root,
-`pnpm exec nexpress plugin add <packageName>` registers them as
-workspace dependencies. Published plugins install the same way and
-resolve through the npm registry.
+[plugin-quickstart](./plugin-quickstart.md). From the project root,
+`pnpm exec nexpress create hook-plugin <name> --workspace` creates a
+local plugin under `packages/plugins/<name>`, and
+`pnpm exec nexpress plugin add <packageName>` registers it as a
+workspace dependency after it has been built. Published plugins
+install the same way and resolve through the npm registry.
 
 ### Themes
 

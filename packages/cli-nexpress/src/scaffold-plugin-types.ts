@@ -2,7 +2,7 @@
  * Generators for the four non-block plugin kinds — hook, route, admin
  * settings, scheduled task. Each one writes a self-contained starter
  * package the operator can drop into `packages/plugins/<slug>/` (or any
- * workspace member), build, and import from `nexpress.config.ts`.
+ * workspace member), build, and register with `nexpress plugin add`.
  *
  * The block scaffold lives in its own file (`scaffold-block-plugin.ts`)
  * because it has more variants (static vs interactive) and more moving
@@ -35,7 +35,7 @@ pnpm --filter <packageName> build  # one-shot
 ## Register in your project
 
 \`\`\`bash
-cd ../../..
+# From your NexPress project root:
 pnpm exec nexpress plugin add <packageName>
 \`\`\`
 

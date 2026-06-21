@@ -74,15 +74,25 @@ mkdirSync(pluginsDir, { recursive: true });
 const matrix = [
   {
     label: "hook plugin",
-    args: ["exec", "nexpress", "create", "hook-plugin", "smoke-hook"],
+    args: ["exec", "nexpress", "create", "hook-plugin", "smoke-hook", "--workspace"],
     dir: "smoke-hook",
     packageName: "smoke-hook",
+    cwd: scaffoldDir,
   },
   {
     label: "route plugin",
-    args: ["exec", "nexpress", "create", "route-plugin", "smoke-route"],
+    args: [
+      "exec",
+      "nexpress",
+      "create",
+      "route-plugin",
+      "smoke-route",
+      "--out",
+      "packages/plugins",
+    ],
     dir: "smoke-route",
     packageName: "smoke-route",
+    cwd: scaffoldDir,
   },
   {
     label: "admin plugin",
@@ -112,7 +122,7 @@ const matrix = [
 ];
 
 for (const entry of matrix) {
-  run(`create ${entry.label}`, entry.args, { cwd: pluginsDir });
+  run(`create ${entry.label}`, entry.args, { cwd: entry.cwd ?? pluginsDir });
   const pluginDir = resolve(pluginsDir, entry.dir);
   const pkg = readJson(resolve(pluginDir, "package.json"), `${entry.label} package.json`);
   const tsconfig = readJson(resolve(pluginDir, "tsconfig.json"), `${entry.label} tsconfig.json`);
