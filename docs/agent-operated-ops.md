@@ -362,7 +362,10 @@ Implementation status:
 - `nexpress ops plugins list --json` and
   `nexpress ops plugins doctor --json` emit
   `schemaVersion: "np.ops-plugins.v1"` with plugin inventory plus duplicate
-  plugin ID, block type, API route, and page route warnings.
+  plugin ID, block type, API route, and page route warnings. Non-ready reports
+  include `plan.nextCommands` / `plan.projectNextCommands`; duplicate-contract
+  warnings point first at `nexpress ops plugins inspect <pluginId> --json`
+  for the conflicting plugins, then back to doctor for verification.
 - `nexpress ops plugins inspect <pluginId> --json` emits the same
   `np.ops-plugins.v1` envelope narrowed to one configured plugin, including
   manifest metadata, declared capabilities, plugin-owned contracts, and related

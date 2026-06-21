@@ -21,6 +21,10 @@ import { packageNameFromSlug, resolveScaffoldDependencyRanges } from "./scaffold
 import type { ScaffoldKind, ScaffoldResult } from "./scaffold-utils.js";
 import { buildRunScriptArgs, resolveOpsScriptInvocation } from "./ops-command.js";
 import {
+  formatPluginManualConfigGuidance,
+  formatPluginPostInstallGuidance,
+} from "./plugin-guidance.js";
+import {
   buildPackageManagerArgs,
   inspectLocalPluginWorkspace,
   missingLocalPluginBuildArtifacts,
@@ -179,6 +183,15 @@ function runPackageManager(
   });
 }
 
+function formatPackageManagerCommand(
+  manager: NpPackageManager,
+  action: "add" | "remove",
+  packageName: string,
+  options: NpPackageManagerOptions = {},
+): string {
+  return [manager, ...buildPackageManagerArgs(manager, action, packageName, options)].join(" ");
+}
+
 function runProjectScript(
   manager: NpPackageManager,
   script: string,
@@ -219,14 +232,22 @@ async function pluginAdd(packageName: string, cwd: string): Promise<number> {
   const dryRun = addPluginToConfig(original, entry);
   if (dryRun.kind === "no-markers") {
     process.stdout.write(
-      `\n⚠ ${project.configPath} doesn't have plugin markers, so I won't run "${project.packageManager} add" yet.\n` +
+      `\n⚠ ${project.configPath} doesn't have plugin markers, so I won't run "${formatPackageManagerCommand(
+        project.packageManager,
+        "add",
+        packageName,
+      )}" yet.\n` +
         `  Add the markers below to your config (or paste the snippet directly), then re-run.\n\n` +
         `${buildManualSnippet(entry)}\n\n` +
         `Marker template:\n` +
         `  // @nexpress:plugins-imports-start\n` +
         `  // @nexpress:plugins-imports-end\n` +
         `  // @nexpress:plugins-list-start\n` +
-        `  // @nexpress:plugins-list-end\n`,
+        `  // @nexpress:plugins-list-end\n\n` +
+        `${formatPluginManualConfigGuidance({
+          manager: project.packageManager,
+          packageName,
+        })}\n`,
     );
     return 1;
   }
@@ -273,6 +294,7 @@ async function pluginAdd(packageName: string, cwd: string): Promise<number> {
   await runPackageManager(project.packageManager, "add", packageName, cwd, {
     localWorkspace: localWorkspace.kind === "found",
   });
+  process.stdout.write(`✓ Installed ${packageName}.\n`);
 
   // Re-read after install — formatters / lockfile updates rarely touch the
   // config, but if anything did the dry-run is no longer authoritative.
@@ -283,12 +305,15 @@ async function pluginAdd(packageName: string, cwd: string): Promise<number> {
     await writeConfig(project.configPath, result.content);
     process.stdout.write(
       `✓ Registered ${entry.identifier} in ${project.configPath}\n` +
-        `  Restart the dev server (or click "Reload all" in /admin/plugins) to load it.\n`,
+        `${formatPluginPostInstallGuidance(project.packageManager)}\n`,
     );
     return 0;
   }
   if (result.kind === "no-op") {
-    process.stdout.write(`· Package installed; ${result.reason}. No config change needed.\n`);
+    process.stdout.write(
+      `· Package installed; ${result.reason}. No config change needed.\n` +
+        `${formatPluginPostInstallGuidance(project.packageManager)}\n`,
+    );
     return 0;
   }
 
@@ -297,7 +322,10 @@ async function pluginAdd(packageName: string, cwd: string): Promise<number> {
   process.stdout.write(
     `\n⚠ ${project.configPath} changed during install and no longer has plugin markers. Add this manually:\n\n${buildManualSnippet(
       entry,
-    )}\n\nThen restart the dev server.\n`,
+    )}\n\n${formatPluginManualConfigGuidance({
+      manager: project.packageManager,
+      packageName,
+    })}\n`,
   );
   return 1;
 }

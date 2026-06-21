@@ -32,6 +32,12 @@ describe("ops plugins core", () => {
         schemaVersion: "np.ops-plugins.v1",
         ok: true,
         status: "ready",
+        nextCommand: null,
+        projectNextCommand: null,
+        plan: {
+          nextCommands: [],
+          projectNextCommands: [],
+        },
         summary: expect.objectContaining({
           plugins: 1,
           blocks: 1,
@@ -65,10 +71,27 @@ describe("ops plugins core", () => {
     ]);
 
     expect(report.status).toBe("attention");
+    expect(report.nextCommand).toBe("nexpress ops plugins inspect one --json");
+    expect(report.projectNextCommand).toBe("pnpm --silent run ops:plugins -- inspect one --json");
+    expect(report.plan.nextCommands).toEqual([
+      "nexpress ops plugins inspect one --json",
+      "nexpress ops plugins inspect two --json",
+      "nexpress ops plugins doctor --json",
+    ]);
     expect(report.checks).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: "plugins.block_conflict", state: "warn" }),
-        expect.objectContaining({ id: "plugins.route_conflict", state: "warn" }),
+        expect.objectContaining({
+          id: "plugins.block_conflict",
+          state: "warn",
+          detail: "shared is claimed by plugins one, two",
+          hint: expect.stringContaining("Rename one block type"),
+        }),
+        expect.objectContaining({
+          id: "plugins.route_conflict",
+          state: "warn",
+          detail: "POST /shared is claimed by plugins one, two",
+          hint: expect.stringContaining("Change one method/path pair"),
+        }),
       ]),
     );
   });
@@ -83,6 +106,27 @@ describe("ops plugins core", () => {
         "- demo@1.0.0: Demo",
       ].join("\n"),
     );
+  });
+
+  it("renders doctor hints and ordered next commands", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "one", name: "One" },
+        blocks: [{ type: "shared" }],
+      },
+      {
+        manifest: { id: "two", name: "Two" },
+        blocks: [{ type: "shared" }],
+      },
+    ]);
+
+    const brief = renderBriefOpsPluginsStatus(report, "doctor", { color: false });
+
+    expect(brief).toContain("shared is claimed by plugins one, two");
+    expect(brief).toContain("hint: Block type names share one registry.");
+    expect(brief).toContain("Next: nexpress ops plugins inspect one --json");
+    expect(brief).toContain("  - nexpress ops plugins inspect two --json");
+    expect(brief).toContain("Project next: pnpm --silent run ops:plugins -- inspect one --json");
   });
 
   it("inspects one configured plugin with related checks", () => {

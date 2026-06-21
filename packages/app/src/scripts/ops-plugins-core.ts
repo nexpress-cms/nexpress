@@ -91,6 +91,10 @@ export interface OpsPluginsJson {
   summary: OpsPluginsSummary;
   nextCommand: string | null;
   projectNextCommand: string | null;
+  plan: {
+    nextCommands: string[];
+    projectNextCommands: string[];
+  };
   checks: CheckResult[];
   plugins: OpsPluginEntry[];
 }
@@ -259,6 +263,7 @@ function duplicateChecks(
   id: string,
   label: string,
   keys: Array<{ key: string; plugin: string }>,
+  resolution: string,
 ): CheckResult | null {
   const owners = new Map<string, string[]>();
   for (const item of keys) {
@@ -273,10 +278,54 @@ function duplicateChecks(
     state: "warn",
     label,
     detail: duplicates
-      .map(([key, plugins]) => `${key} (${plugins.join(", ")})`)
+      .map(([key, plugins]) => `${key} is claimed by plugins ${plugins.join(", ")}`)
       .slice(0, 5)
       .join("; "),
+    hint: resolution,
   };
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function duplicateCheckPluginIds(check: CheckResult): string[] {
+  if (!check.detail?.includes("claimed by plugins")) return [];
+  return check.detail.split(";").flatMap((part) => {
+    const match = part.match(/claimed by plugins\s+(.+)$/u);
+    if (!match) return [];
+    return (match[1] ?? "")
+      .split(",")
+      .map((plugin) => plugin.trim())
+      .filter(Boolean);
+  });
+}
+
+function buildOpsPluginNextCommands(
+  status: OpsPluginsJson["status"],
+  checks: CheckResult[],
+  plugins: OpsPluginEntry[],
+): string[] {
+  if (status === "ready") return [];
+
+  const duplicateInspectCommands = checks.flatMap((check) =>
+    duplicateCheckPluginIds(check).map(
+      (pluginId) => `nexpress ops plugins inspect ${pluginId} --json`,
+    ),
+  );
+  if (duplicateInspectCommands.length > 0) {
+    return uniqueStrings([...duplicateInspectCommands, "nexpress ops plugins doctor --json"]);
+  }
+
+  const firstPlugin = plugins[0];
+  if (firstPlugin) {
+    return uniqueStrings([
+      `nexpress ops plugins inspect ${firstPlugin.id} --json`,
+      "nexpress ops plugins doctor --json",
+    ]);
+  }
+
+  return ["nexpress ops plugins list --json"];
 }
 
 function summarize(checks: CheckResult[], plugins: OpsPluginEntry[]): OpsPluginsSummary {
@@ -332,7 +381,8 @@ export function buildOpsPluginsJson(args: {
 }): OpsPluginsJson {
   const summary = summarize(args.checks, args.plugins);
   const status = summary.errors > 0 ? "blocked" : summary.warnings > 0 ? "attention" : "ready";
-  const nextCommand = status === "ready" ? null : "nexpress ops plugins doctor --json";
+  const nextCommands = buildOpsPluginNextCommands(status, args.checks, args.plugins);
+  const nextCommand = nextCommands[0] ?? null;
   return {
     schemaVersion: "np.ops-plugins.v1",
     ok: summary.errors === 0,
@@ -340,6 +390,10 @@ export function buildOpsPluginsJson(args: {
     summary,
     nextCommand,
     projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
+    plan: {
+      nextCommands,
+      projectNextCommands: nextCommands.map(toProjectCommand),
+    },
     checks: args.checks,
     plugins: args.plugins,
   };
@@ -393,6 +447,10 @@ export function buildOpsPluginInspectJson(
     summary,
     nextCommand,
     projectNextCommand: toProjectCommand(nextCommand),
+    plan: {
+      nextCommands: [nextCommand],
+      projectNextCommands: [toProjectCommand(nextCommand)],
+    },
     checks,
     relatedChecks,
     pluginId,
@@ -409,6 +467,7 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
       state: "warn",
       label: "Plugin config",
       detail: "plugins is missing or not an array",
+      hint: "Add `plugins: []` to defineConfig, or run this from a generated NexPress project root.",
     });
     return buildOpsPluginsJson({ checks, plugins: [] });
   }
@@ -429,6 +488,7 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
       state: "error",
       label: "Plugin entries",
       detail: `${invalidCount.toString()} entries are not plugin objects`,
+      hint: "Every plugin entry should be a definePlugin(...) object exported by the plugin package.",
     });
   }
 
@@ -439,6 +499,7 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
       state: "error",
       label: "Plugin manifests",
       detail: `${missingManifest.toString()} plugins are missing manifest metadata`,
+      hint: "Use definePlugin() from @nexpress/plugin-sdk so manifest metadata is present at boot.",
     });
   }
 
@@ -446,6 +507,7 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
     "plugins.duplicate_id",
     "Plugin IDs",
     plugins.map((plugin) => ({ key: plugin.id, plugin: plugin.id })),
+    "Plugin manifest ids must be unique. Rename one plugin id or remove one registration, then restart and rerun doctor.",
   );
   if (duplicateIds) checks.push(duplicateIds);
 
@@ -453,6 +515,7 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
     "plugins.block_conflict",
     "Plugin block types",
     plugins.flatMap((plugin) => plugin.blocks.map((key) => ({ key, plugin: plugin.id }))),
+    "Block type names share one registry. Rename one block type or disable one plugin, then rebuild and rerun doctor.",
   );
   if (blockConflicts) checks.push(blockConflicts);
 
@@ -460,6 +523,7 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
     "plugins.route_conflict",
     "Plugin API routes",
     plugins.flatMap((plugin) => plugin.routes.map((key) => ({ key, plugin: plugin.id }))),
+    "Plugin API routes share /api/plugins/<id> ownership. Change one method/path pair or disable one plugin, then restart and rerun doctor.",
   );
   if (routeConflicts) checks.push(routeConflicts);
 
@@ -467,6 +531,7 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
     "plugins.page_route_conflict",
     "Plugin page routes",
     plugins.flatMap((plugin) => plugin.pageRoutes.map((key) => ({ key, plugin: plugin.id }))),
+    "Plugin page routes share the public site router. Change one pattern or disable one plugin, then restart and rerun doctor.",
   );
   if (pageRouteConflicts) checks.push(pageRouteConflicts);
 
@@ -492,6 +557,7 @@ export async function collectOpsPluginsStatus(cwd = process.cwd()): Promise<OpsP
           state: "error",
           label: "nexpress.config.ts",
           detail: `looked at ${CONFIG_CANDIDATES.join(", ")}`,
+          hint: "Run this from the project root or add src/nexpress.config.ts before checking plugins.",
         },
       ],
     });
@@ -525,6 +591,7 @@ export async function collectOpsPluginsStatus(cwd = process.cwd()): Promise<OpsP
           state: "error",
           label: "nexpress.config.ts",
           detail: error instanceof Error ? error.message : String(error),
+          hint: "Fix the config import error, then rerun plugin doctor.",
         },
       ],
     });
@@ -800,11 +867,27 @@ export function renderBriefOpsPluginsStatus(
       const parts = [formatBriefState(check.state, options.color), check.id, check.label];
       if (check.detail) parts.push(`- ${check.detail.replace(/\s+/g, " ")}`);
       lines.push(parts.join(" "));
+      if (check.hint && check.state !== "ok") lines.push(`  hint: ${check.hint}`);
     }
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  const additionalNextCommands = report.plan.nextCommands.filter(
+    (command) => command !== report.nextCommand,
+  );
+  if (additionalNextCommands.length > 0) {
+    lines.push("Next commands:");
+    for (const command of additionalNextCommands) lines.push(`  - ${command}`);
+  }
   if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
     lines.push(`Project next: ${report.projectNextCommand}`);
+  }
+  const additionalProjectCommands = report.plan.projectNextCommands.filter(
+    (command, index) =>
+      command !== report.projectNextCommand && command !== report.plan.nextCommands[index],
+  );
+  if (additionalProjectCommands.length > 0) {
+    lines.push("Project next commands:");
+    for (const command of additionalProjectCommands) lines.push(`  - ${command}`);
   }
   return lines.join("\n");
 }
