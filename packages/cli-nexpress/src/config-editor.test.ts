@@ -6,9 +6,11 @@ import {
   buildManualRemoveSnippet,
   buildManualSnippet,
   buildManualThemeSnippet,
+  buildManualThemeRemoveSnippet,
   packageToIdentifier,
   packageToThemeIdentifier,
   removePluginFromConfig,
+  removeThemeFromConfig,
 } from "./config-editor.js";
 
 const baseConfig = `import { defineConfig } from "@nexpress/core";
@@ -227,12 +229,60 @@ describe("addThemeToConfig", () => {
   });
 });
 
+describe("removeThemeFromConfig", () => {
+  it("removes both the named import and themes-list entry", () => {
+    const added = addThemeToConfig(baseConfigWithThemeMarkers, {
+      packageName: "@nexpress/theme-magazine",
+      identifier: "magazineTheme",
+    });
+    if (added.kind !== "ok") throw new Error("setup failed");
+
+    const removed = removeThemeFromConfig(added.content, {
+      packageName: "@nexpress/theme-magazine",
+      identifier: "magazineTheme",
+    });
+    expect(removed.kind).toBe("ok");
+    if (removed.kind !== "ok") return;
+    expect(removed.content).not.toContain("@nexpress/theme-magazine");
+    expect(removed.content).not.toContain("magazineTheme,");
+  });
+
+  it("returns no-op when the theme isn't marker-registered", () => {
+    const result = removeThemeFromConfig(baseConfigWithThemeMarkers, {
+      packageName: "@nexpress/theme-never-installed",
+      identifier: "neverInstalledTheme",
+    });
+    expect(result.kind).toBe("no-op");
+  });
+
+  it("returns no-markers when the config lacks theme markers", () => {
+    const without = `export default {};\n`;
+    const result = removeThemeFromConfig(without, {
+      packageName: "@nexpress/theme-magazine",
+      identifier: "magazineTheme",
+    });
+    expect(result.kind).toBe("no-markers");
+  });
+});
+
 describe("buildManualThemeSnippet", () => {
   it("includes a named import and the themes-list line", () => {
     const snippet = buildManualThemeSnippet({
       packageName: "@nexpress/theme-magazine",
       identifier: "magazineTheme",
     });
+    expect(snippet).toContain('import { magazineTheme } from "@nexpress/theme-magazine";');
+    expect(snippet).toContain("magazineTheme,");
+  });
+});
+
+describe("buildManualThemeRemoveSnippet", () => {
+  it("includes a named import and the themes-list line to remove", () => {
+    const snippet = buildManualThemeRemoveSnippet({
+      packageName: "@nexpress/theme-magazine",
+      identifier: "magazineTheme",
+    });
+    expect(snippet).toContain("Remove from the imports section");
     expect(snippet).toContain('import { magazineTheme } from "@nexpress/theme-magazine";');
     expect(snippet).toContain("magazineTheme,");
   });

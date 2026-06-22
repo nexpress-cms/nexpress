@@ -342,6 +342,49 @@ export function addThemeToConfig(content: string, entry: ThemeEntry): EditOutcom
   return { kind: "ok", content: next.join("\n") };
 }
 
+/**
+ * Removes the matching theme import + themes-list entry. This is intentionally
+ * marker-bounded for the same reason as `theme add`: arbitrary TypeScript
+ * config files are too flexible to rewrite safely without opt-in anchors.
+ */
+export function removeThemeFromConfig(content: string, entry: ThemeEntry): EditOutcome {
+  const check = checkThemeMarkers(content);
+  if (!check.ok) return { kind: "no-markers", missing: check.missing };
+  const lines = check.lines;
+
+  const importsSpan = findSpan(lines, THEMES_IMPORTS_START, THEMES_IMPORTS_END);
+  const listSpan = findSpan(lines, THEMES_LIST_START, THEMES_LIST_END);
+  if (!importsSpan || !listSpan) {
+    return { kind: "no-markers", missing: ["malformed theme marker pairs"] };
+  }
+
+  const isImportLine = (line: string) =>
+    /^\s*import\s+/.test(line) && line.includes(`"${entry.packageName}"`);
+  const isListLine = (line: string) => new RegExp(`^\\s*${entry.identifier}\\s*,?\\s*$`).test(line);
+
+  const next: string[] = [];
+  let removed = false;
+  for (let i = 0; i < lines.length; i++) {
+    const inImports = i > importsSpan.startLine && i < importsSpan.endLine;
+    const inList = i > listSpan.startLine && i < listSpan.endLine;
+    const line = lines[i] ?? "";
+    if (inImports && isImportLine(line)) {
+      removed = true;
+      continue;
+    }
+    if (inList && isListLine(line)) {
+      removed = true;
+      continue;
+    }
+    next.push(line);
+  }
+
+  if (!removed) {
+    return { kind: "no-op", reason: `no theme entry for "${entry.packageName}" found` };
+  }
+  return { kind: "ok", content: next.join("\n") };
+}
+
 /** Snippet printed when theme markers are missing. */
 export function buildManualThemeSnippet(entry: ThemeEntry): string {
   return [
@@ -349,6 +392,17 @@ export function buildManualThemeSnippet(entry: ThemeEntry): string {
     `import { ${entry.identifier} } from "${entry.packageName}";`,
     ``,
     `// Add to defineConfig({ themes: [...] }):`,
+    `${entry.identifier},`,
+  ].join("\n");
+}
+
+/** Snippet printed when theme markers are missing during theme removal. */
+export function buildManualThemeRemoveSnippet(entry: ThemeEntry): string {
+  return [
+    `// Remove from the imports section of your nexpress.config.ts:`,
+    `import { ${entry.identifier} } from "${entry.packageName}";`,
+    ``,
+    `// Remove from defineConfig({ themes: [...] }):`,
     `${entry.identifier},`,
   ].join("\n");
 }
