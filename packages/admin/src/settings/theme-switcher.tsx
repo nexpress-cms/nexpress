@@ -146,7 +146,7 @@ export function ThemeSwitcher({
     }
   }
 
-  async function activate(id: string) {
+  async function activate(id: string, options: { reconcileFallback?: boolean } = {}) {
     setActivatingId(id);
     setMessage(null);
     setError(null);
@@ -167,9 +167,11 @@ export function ThemeSwitcher({
       const activated = themes?.find((t) => t.id === id);
       const previousActive = themes?.find((t) => t.isActive && t.id !== id);
       setMessage(
-        activated
-          ? `Activated ${activated.name}. The public site will pick it up on the next request.`
-          : "Theme activated.",
+        options.reconcileFallback && activated
+          ? `Saved ${activated.name} as the active theme.`
+          : activated
+            ? `Activated ${activated.name}. The public site will pick it up on the next request.`
+            : "Theme activated.",
       );
       // Only show the hint when there WAS a previous active
       // theme (skip on first-boot where no prior theme
@@ -189,10 +191,9 @@ export function ThemeSwitcher({
     }
   }
 
+  const fallbackActiveId = fallbackNotice?.activeId ?? null;
   const fallbackThemeName =
-    fallbackNotice?.activeId && themes
-      ? themes.find((theme) => theme.id === fallbackNotice.activeId)?.name
-      : null;
+    fallbackActiveId && themes ? themes.find((theme) => theme.id === fallbackActiveId)?.name : null;
 
   if (themes === null && !error) {
     return (
@@ -259,20 +260,41 @@ export function ThemeSwitcher({
         ) : null}
 
         {fallbackNotice ? (
-          <div className="min-w-0 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
-            <p className="font-medium">Previously active theme is no longer registered.</p>
-            <p className="mt-1 break-words text-xs opacity-80">
-              <code className="break-all font-mono">{fallbackNotice.persistedActiveId}</code> is
-              still saved as the active theme, but it is no longer present in{" "}
-              <code className="break-all font-mono">nexpress.config.ts</code>. The public site is
-              rendering{" "}
-              {fallbackThemeName ? (
-                <span className="font-medium">{fallbackThemeName}</span>
-              ) : (
-                "the first registered theme"
-              )}{" "}
-              until you activate a registered theme below.
-            </p>
+          <div className="grid min-w-0 gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-700 dark:text-amber-300 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+            <div className="min-w-0">
+              <p className="font-medium">Previously active theme is no longer registered.</p>
+              <p className="mt-1 break-words text-xs opacity-80">
+                <code className="break-all font-mono">{fallbackNotice.persistedActiveId}</code> is
+                still saved as the active theme, but it is no longer present in{" "}
+                <code className="break-all font-mono">nexpress.config.ts</code>. The public site is
+                rendering{" "}
+                {fallbackThemeName ? (
+                  <span className="font-medium">{fallbackThemeName}</span>
+                ) : (
+                  "the first registered theme"
+                )}
+                .
+              </p>
+            </div>
+            {fallbackActiveId ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={activatingId !== null}
+                onClick={() => void activate(fallbackActiveId, { reconcileFallback: true })}
+                className="w-full shrink-0 border-amber-500/40 bg-background/70 text-amber-800 hover:bg-amber-500/10 dark:text-amber-200 sm:w-auto"
+              >
+                {activatingId === fallbackActiveId ? (
+                  <>
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                    Saving…
+                  </>
+                ) : (
+                  "Save fallback as active"
+                )}
+              </Button>
+            ) : null}
           </div>
         ) : null}
 

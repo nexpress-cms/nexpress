@@ -222,6 +222,40 @@ describe.skipIf(skipIfNoTestDb())("theme switcher (Phase 11.4)", () => {
     expect(body.fallbackReason).toBe("missing");
   });
 
+  it("PUT /api/admin/themes/active can persist the fallback id to repair a stale active theme", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const db = await getTestDb();
+    const { npSettings } = await import("@nexpress/core");
+    await db.insert(npSettings).values({
+      key: "activeTheme",
+      value: "ghost-theme",
+      updatedAt: new Date(),
+      updatedBy: null,
+    });
+
+    const { GET, PUT } = await import("@/app/api/admin/themes/active/route");
+    const putReq = buildRequest("/api/admin/themes/active", {
+      session: admin,
+      method: "PUT",
+      body: { id: "default" },
+    });
+    const putRes = await PUT(putReq);
+    const { status: putStatus, body: putBody } = await readJson<{ activeId?: string }>(putRes);
+    expect(putStatus).toBe(200);
+    expect(putBody.activeId).toBe("default");
+
+    const getReq = buildRequest("/api/admin/themes/active", { session: admin });
+    const getRes = await GET(getReq);
+    const { body } = await readJson<{
+      activeId?: string | null;
+      persistedActiveId?: string | null;
+      fallbackReason?: "unset" | "missing" | null;
+    }>(getRes);
+    expect(body.activeId).toBe("default");
+    expect(body.persistedActiveId).toBe("default");
+    expect(body.fallbackReason).toBeNull();
+  });
+
   it("GET listing requires editor+ (no anonymous read)", async () => {
     const viewer = await seedUser({ role: "viewer" });
     const { GET } = await import("@/app/api/admin/themes/route");
