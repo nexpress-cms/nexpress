@@ -52,7 +52,7 @@
     "@nexpress/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/react": "^19.2.16",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.0.0",
     "next": "^16.2.7",
     "react": "^19.2.7",
