@@ -80,6 +80,8 @@ type PanelState =
 
 type ToastState = { type: "success" | "error"; message: string } | null;
 
+const PLUGIN_DOCTOR_COMMAND = "pnpm --silent run ops:plugins -- doctor --json";
+
 function getErrorMessage(payload: unknown, fallback: string): string {
   if (payload && typeof payload === "object" && payload !== null && "error" in payload) {
     const err = (payload as { error?: unknown }).error;
@@ -172,6 +174,11 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
         {plugin.description ? (
           <p className="mt-0.5 break-words text-xs text-muted-foreground sm:text-sm">
             {plugin.description}
+          </p>
+        ) : null}
+        {status === "pending" ? (
+          <p className="mt-1 break-words text-xs text-amber-700 dark:text-amber-200">
+            Restart the dev server or redeploy, then verify with ops plugins doctor.
           </p>
         ) : null}
         {hasDetails ? (
@@ -321,6 +328,7 @@ export function PluginsManager() {
   // (`plugin add` → restart → doctor), with a manual config fallback
   // for uncommon package export or custom config shapes.
   const [installGuideOpen, setInstallGuideOpen] = useState(false);
+  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
 
   const loadPlugins = useCallback(async () => {
     try {
@@ -349,6 +357,27 @@ export function PluginsManager() {
     });
     return () => window.cancelAnimationFrame(frame);
   }, [loadPlugins]);
+
+  const copyLifecycleCommand = useCallback(async (text: string, key: string) => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+        setCopiedCommand(key);
+        setToast({ type: "success", message: "Copied plugin doctor command." });
+        setTimeout(() => setCopiedCommand(null), 2_000);
+        return;
+      }
+      setToast({
+        type: "error",
+        message: "Clipboard is unavailable. Open Install plugin to copy the command inline.",
+      });
+    } catch {
+      setToast({
+        type: "error",
+        message: "Clipboard copy failed. Open Install plugin to copy the command inline.",
+      });
+    }
+  }, []);
 
   const handleToggle = async (plugin: PluginItem, nextEnabled: boolean) => {
     setTogglingId(plugin.id);
@@ -495,10 +524,21 @@ export function PluginsManager() {
       <div className="grid min-w-0 gap-3 sm:flex sm:items-start sm:justify-between">
         <PageHeader
           title="Plugins"
-          description="Toggle and configure installed plugins. Enable / disable applies to the next request; new plugins still need a server restart to register hooks and routes."
+          description="Toggle and configure installed plugins. Enable / disable applies to the next request; added or removed plugin code still needs a server restart or redeploy before verification."
           className="min-w-0"
         />
         <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-none sm:flex sm:flex-wrap sm:items-center">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-10 w-full sm:min-h-0 sm:w-auto"
+            onClick={() => void copyLifecycleCommand(PLUGIN_DOCTOR_COMMAND, "doctor")}
+            title="Copy the project-side plugin doctor command"
+          >
+            <Copy className="size-3.5" />
+            {copiedCommand === "doctor" ? "Copied!" : "Copy doctor"}
+          </Button>
           <Button
             type="button"
             variant="outline"
@@ -1241,7 +1281,7 @@ function InstallGuideDialog({ open, onOpenChange }: InstallGuideDialogProps) {
 
   const pluginAddCommand = "pnpm exec nexpress plugin add @nexpress/plugin-<name>";
   const manualPackageCommand = "pnpm add @nexpress/plugin-<name>";
-  const verifyCommand = "pnpm --silent run ops:plugins -- doctor --json";
+  const verifyCommand = PLUGIN_DOCTOR_COMMAND;
 
   // Manual fallback: a static `definePlugin()` object passed directly
   // into the `plugins:` array. Per-plugin options live in the admin's

@@ -64,9 +64,7 @@ export function packageToIdentifier(packageName: string): string {
   // Drop scope (`@scope/foo` → `foo`).
   const unscoped = packageName.replace(/^@[^/]+\//, "");
   // Replace any non-alphanumeric run with a single space, then camel-case.
-  const parts = unscoped
-    .split(/[^A-Za-z0-9]+/)
-    .filter((part) => part.length > 0);
+  const parts = unscoped.split(/[^A-Za-z0-9]+/).filter((part) => part.length > 0);
   if (parts.length === 0) {
     throw new Error(`Cannot derive identifier from package name: "${packageName}"`);
   }
@@ -110,7 +108,9 @@ function findSpan(lines: string[], startMarker: string, endMarker: string): Mark
   return { startLine, endLine, indent };
 }
 
-function checkMarkers(content: string): { ok: true; lines: string[] } | { ok: false; missing: string[] } {
+function checkMarkers(
+  content: string,
+): { ok: true; lines: string[] } | { ok: false; missing: string[] } {
   const lines = content.split("\n");
   const missing: string[] = [];
   if (!content.includes(IMPORTS_START) || !content.includes(IMPORTS_END)) {
@@ -176,8 +176,7 @@ export function removePluginFromConfig(content: string, entry: PluginEntry): Edi
 
   const isImportLine = (line: string) =>
     /^\s*import\s+/.test(line) && line.includes(`"${entry.packageName}"`);
-  const isListLine = (line: string) =>
-    new RegExp(`^\\s*${entry.identifier}\\s*,?\\s*$`).test(line);
+  const isListLine = (line: string) => new RegExp(`^\\s*${entry.identifier}\\s*,?\\s*$`).test(line);
 
   const next: string[] = [];
   let removed = false;
@@ -209,6 +208,17 @@ export function buildManualSnippet(entry: PluginEntry): string {
     `import ${entry.identifier} from "${entry.packageName}";`,
     ``,
     `// Add to defineConfig({ plugins: [...] }):`,
+    `${entry.identifier},`,
+  ].join("\n");
+}
+
+/** Snippet the CLI prints when markers are missing during plugin removal. */
+export function buildManualRemoveSnippet(entry: PluginEntry): string {
+  return [
+    `// Remove from the imports section of your nexpress.config.ts:`,
+    `import ${entry.identifier} from "${entry.packageName}";`,
+    ``,
+    `// Remove from defineConfig({ plugins: [...] }):`,
     `${entry.identifier},`,
   ].join("\n");
 }
@@ -258,13 +268,9 @@ export function packageToThemeIdentifier(packageName: string): string {
     );
   }
   const tail = match[1] ?? "";
-  const parts = tail
-    .split(/[^A-Za-z0-9]+/)
-    .filter((part) => part.length > 0);
+  const parts = tail.split(/[^A-Za-z0-9]+/).filter((part) => part.length > 0);
   if (parts.length === 0) {
-    throw new Error(
-      `Cannot derive identifier from package name: "${packageName}"`,
-    );
+    throw new Error(`Cannot derive identifier from package name: "${packageName}"`);
   }
   const [first, ...rest] = parts;
   const camelHead =

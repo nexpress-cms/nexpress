@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   addPluginToConfig,
   addThemeToConfig,
+  buildManualRemoveSnippet,
   buildManualSnippet,
   buildManualThemeSnippet,
   packageToIdentifier,
@@ -46,10 +47,10 @@ describe("addPluginToConfig", () => {
     });
     expect(result.kind).toBe("ok");
     if (result.kind !== "ok") return;
-    expect(result.content).toContain(
-      'import readingTime from "@nexpress/reading-time";',
+    expect(result.content).toContain('import readingTime from "@nexpress/reading-time";');
+    expect(result.content).toMatch(
+      /plugins:\s*\[\s*\/\/[^\n]*plugins-list-start\s*\n\s*readingTime,/,
     );
-    expect(result.content).toMatch(/plugins:\s*\[\s*\/\/[^\n]*plugins-list-start\s*\n\s*readingTime,/);
   });
 
   it("preserves the indentation of the surrounding markers", () => {
@@ -137,6 +138,18 @@ describe("buildManualSnippet", () => {
   });
 });
 
+describe("buildManualRemoveSnippet", () => {
+  it("includes both the import and the plugin-list line to remove", () => {
+    const snippet = buildManualRemoveSnippet({
+      packageName: "@nexpress/reading-time",
+      identifier: "readingTime",
+    });
+    expect(snippet).toContain("Remove from the imports section");
+    expect(snippet).toContain('import readingTime from "@nexpress/reading-time";');
+    expect(snippet).toContain("readingTime,");
+  });
+});
+
 const baseConfigWithThemeMarkers = `import { defineConfig } from "@nexpress/core";
 import { defaultThemes } from "@nexpress/app/config-defaults";
 
@@ -184,12 +197,8 @@ describe("addThemeToConfig", () => {
     });
     expect(result.kind).toBe("ok");
     if (result.kind !== "ok") return;
-    expect(result.content).toContain(
-      'import { magazineTheme } from "@nexpress/theme-magazine";',
-    );
-    expect(result.content).toMatch(
-      /themes-list-start\s*\n\s*magazineTheme,/,
-    );
+    expect(result.content).toContain('import { magazineTheme } from "@nexpress/theme-magazine";');
+    expect(result.content).toMatch(/themes-list-start\s*\n\s*magazineTheme,/);
   });
 
   it("is idempotent — second add of the same theme short-circuits", () => {
