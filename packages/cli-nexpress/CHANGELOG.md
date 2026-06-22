@@ -1,5 +1,28 @@
 # @nexpress/cli
 
+## 0.3.22
+
+### Patch Changes
+
+- 2c85715: Add an admin recovery action for stale active themes after removal and surface the same repair path in theme removal guidance.
+- 488d485: Update `nexpress create admin-plugin` to scaffold a `configSchema` auto-form instead of the legacy `admin.settings.fields` form, including the required `zod` dependency.
+- d701bf8: Add `nexpress theme remove` as the friendly counterpart to `theme add`, while keeping `theme:uninstall` as a legacy alias.
+- 78fa3c1: Detect generated local plugin workspace packages during `nexpress plugin add`
+  and install them with `pnpm --workspace` instead of querying the npm registry.
+- 3475f0e: Improve plugin install follow-up guidance and plugin doctor remediation commands.
+- 5ffb38e: Improve local plugin authoring by adding project-root scaffold destinations,
+  clearer generated registration instructions, and preflight checks for malformed
+  or unbuilt local plugin packages.
+- e00a036: Improve plugin lifecycle guidance by adding restart and doctor verification steps after plugin
+  removal, clearer manual removal recovery output, and a copyable plugin doctor command in Admin.
+- f53706b: Improve generated plugin scaffold guidance with build, restart, doctor verification, and removal
+  steps in the README and CLI success output.
+- ca20077: Make local plugin scaffolds work cleanly inside fresh `create-nexpress` projects by reserving `packages/plugins/*` as a workspace, inheriting the site's installed NexPress dependency ranges, generating the correct plugin `tsconfig` extends path, and adding CI smoke coverage that creates, installs, typechecks, and builds every plugin starter.
+- d0cd3b9: Clean up theme registrations before generating uninstall migrations so removed theme fields do not get auto-merged back into collection schemas.
+- Updated dependencies [7a28472]
+- Updated dependencies [31f1868]
+  - @nexpress/core@0.3.22
+
 ## 0.3.21
 
 ### Patch Changes
