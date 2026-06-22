@@ -42,7 +42,7 @@
     "@types/node": "^25.9.3",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.9"
   },
   "scripts": {
     "build": "tsup",
