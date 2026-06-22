@@ -52,7 +52,10 @@ export async function GET(request: NextRequest) {
                   path: route.path,
                 }))
               : [],
-            hasAdmin: reg?.admin !== undefined,
+            // Match the detail route: configSchema-only plugins still have a
+            // first-class settings page even when they do not declare custom
+            // widgets/actions/tables under `admin`.
+            hasAdmin: reg?.admin !== undefined || reg?.configSchema !== undefined,
             // Legacy settings sub-tree (if declared). New configSchema-backed
             // plugins use `configFields` below; this remains for plugins that
             // have not migrated off `admin.settings.fields`.
