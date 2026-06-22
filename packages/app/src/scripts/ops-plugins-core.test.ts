@@ -84,13 +84,17 @@ describe("ops plugins core", () => {
           id: "plugins.block_conflict",
           state: "warn",
           detail: "shared is claimed by plugins one, two",
-          hint: expect.stringContaining("Rename one block type"),
+          hint: expect.stringMatching(
+            /Rename one block type.*pnpm --silent run ops:plugins -- doctor --json/,
+          ),
         }),
         expect.objectContaining({
           id: "plugins.route_conflict",
           state: "warn",
           detail: "POST /shared is claimed by plugins one, two",
-          hint: expect.stringContaining("Change one method/path pair"),
+          hint: expect.stringMatching(
+            /Change one method\/path pair.*pnpm --silent run ops:plugins -- doctor --json/,
+          ),
         }),
       ]),
     );
@@ -124,6 +128,7 @@ describe("ops plugins core", () => {
 
     expect(brief).toContain("shared is claimed by plugins one, two");
     expect(brief).toContain("hint: Block type names share one registry.");
+    expect(brief).toContain("pnpm --silent run ops:plugins -- doctor --json");
     expect(brief).toContain("Next: nexpress ops plugins inspect one --json");
     expect(brief).toContain("  - nexpress ops plugins inspect two --json");
     expect(brief).toContain("Project next: pnpm --silent run ops:plugins -- inspect one --json");
