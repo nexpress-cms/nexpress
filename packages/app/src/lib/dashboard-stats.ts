@@ -1,7 +1,6 @@
 import { count, desc, eq, isNull } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import {
-  getActiveThemeId,
   getAllCollectionSlugs,
   getCollectionConfig,
   getCollectionTable,
@@ -10,6 +9,7 @@ import {
   npMedia,
 } from "@nexpress/core";
 
+import { getActiveThemeState } from "./active-theme-state";
 import { getDb } from "./db";
 
 export type DashboardStats = {
@@ -214,8 +214,10 @@ async function loadOnboardingState(): Promise<DashboardStats["onboarding"]> {
   // portfolio / docs / their own theme.
   let themeCustomized = false;
   try {
-    const activeTheme = await getActiveThemeId();
-    themeCustomized = Boolean(activeTheme && activeTheme !== "default");
+    const activeTheme = await getActiveThemeState();
+    themeCustomized = Boolean(
+      activeTheme.effectiveActiveId && activeTheme.effectiveActiveId !== "default",
+    );
   } catch {
     /* swallow */
   }

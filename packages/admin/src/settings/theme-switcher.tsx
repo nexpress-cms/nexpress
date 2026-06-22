@@ -58,6 +58,11 @@ interface ThemeSummary {
   };
 }
 
+interface ActiveThemeFallbackNotice {
+  persistedActiveId: string;
+  activeId: string | null;
+}
+
 function summarizeMismatches(req: NonNullable<ThemeSummary["requirements"]>): string {
   const parts: string[] = [];
   if (req.missingCollections.length > 0) {
@@ -99,6 +104,7 @@ export function ThemeSwitcher({
   const [error, setError] = useState<string | null>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [fallbackNotice, setFallbackNotice] = useState<ActiveThemeFallbackNotice | null>(null);
   // v0.3 (E) — after a successful theme switch, show a hint
   // pointing to the cleanup tool. The previous theme's
   // contributed blocks are still in the page-tree; the render
@@ -117,6 +123,9 @@ export function ThemeSwitcher({
       const res = await npFetch("/api/admin/themes");
       const payload = (await res.json().catch(() => null)) as {
         docs?: ThemeSummary[];
+        activeId?: string | null;
+        persistedActiveId?: string | null;
+        activeFallbackReason?: "unset" | "missing" | null;
         error?: { message?: string };
       } | null;
       if (!res.ok) {
@@ -124,6 +133,14 @@ export function ThemeSwitcher({
         return;
       }
       setThemes(payload?.docs ?? []);
+      if (payload?.activeFallbackReason === "missing" && payload.persistedActiveId) {
+        setFallbackNotice({
+          persistedActiveId: payload.persistedActiveId,
+          activeId: payload.activeId ?? null,
+        });
+      } else {
+        setFallbackNotice(null);
+      }
     } catch {
       setError("Unable to load themes.");
     }
@@ -158,6 +175,7 @@ export function ThemeSwitcher({
       // theme (skip on first-boot where no prior theme
       // contributed blocks to clean up).
       if (previousActive) setShowCleanupHint(true);
+      setFallbackNotice(null);
       // Update local state optimistically; a full refetch is
       // unnecessary because the server confirmed the new id.
       setThemes((current) =>
@@ -170,6 +188,11 @@ export function ThemeSwitcher({
       setActivatingId(null);
     }
   }
+
+  const fallbackThemeName =
+    fallbackNotice?.activeId && themes
+      ? themes.find((theme) => theme.id === fallbackNotice.activeId)?.name
+      : null;
 
   if (themes === null && !error) {
     return (
@@ -231,6 +254,24 @@ export function ThemeSwitcher({
               >
                 Open cleanup tool →
               </a>
+            </p>
+          </div>
+        ) : null}
+
+        {fallbackNotice ? (
+          <div className="min-w-0 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+            <p className="font-medium">Previously active theme is no longer registered.</p>
+            <p className="mt-1 break-words text-xs opacity-80">
+              <code className="break-all font-mono">{fallbackNotice.persistedActiveId}</code> is
+              still saved as the active theme, but it is no longer present in{" "}
+              <code className="break-all font-mono">nexpress.config.ts</code>. The public site is
+              rendering{" "}
+              {fallbackThemeName ? (
+                <span className="font-medium">{fallbackThemeName}</span>
+              ) : (
+                "the first registered theme"
+              )}{" "}
+              until you activate a registered theme below.
             </p>
           </div>
         ) : null}
@@ -383,6 +424,7 @@ export function ThemeSwitcher({
             // theme setting edit) reconciles instead of drifting
             // off the in-memory snapshot.
             void load();
+            setFallbackNotice(null);
             onActivated?.(result.activeId);
           }}
         />
