@@ -53,6 +53,7 @@ interface RunOptions {
   args?: string[];
   stdin?: string;
   timeoutMs?: number;
+  resolveWhenStdoutIncludes?: string | string[];
 }
 
 async function runWizard(opts: RunOptions): Promise<SpawnResult> {
@@ -81,6 +82,13 @@ async function runWizard(opts: RunOptions): Promise<SpawnResult> {
     let stderr = "";
     proc.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
+      const markers =
+        typeof opts.resolveWhenStdoutIncludes === "string"
+          ? [opts.resolveWhenStdoutIncludes]
+          : (opts.resolveWhenStdoutIncludes ?? []);
+      if (markers.length > 0 && markers.every((marker) => stdout.includes(marker))) {
+        proc.kill("SIGTERM");
+      }
     });
     proc.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
@@ -290,7 +298,11 @@ describe("setup-server.ts end-to-end (spawn)", () => {
         env: {
           DISPLAY: ":99",
         },
-        timeoutMs: 1_000,
+        timeoutMs: 5_000,
+        resolveWhenStdoutIncludes: [
+          "pnpm run setup -- --cli",
+          "pnpm run setup -- --non-interactive",
+        ],
       });
 
       expect(result.stdout).toContain("pnpm run setup -- --cli");
