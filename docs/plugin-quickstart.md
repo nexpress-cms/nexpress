@@ -111,7 +111,9 @@ pnpm exec nexpress plugin add my-plugin
 
 For a generated local workspace package, that command uses
 `pnpm add my-plugin --workspace` and updates the plugin marker
-sections in `nexpress.config.ts`.
+sections in `nexpress.config.ts`. Its success output also gives the
+post-restart verification command:
+`pnpm --silent run ops:plugins -- doctor --json`.
 
 Restart the dev server (or click "Reload all" in `/admin/plugins` for
 config / state changes — see [`plugin-reload.md`](plugin-reload.md) for

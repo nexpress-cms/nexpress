@@ -63,7 +63,10 @@ pnpm exec nexpress plugin remove @scope/plugin-foo
 
 This rewrites the `// @nexpress:plugins-imports-*` and
 `// @nexpress:plugins-list-*` markers in your `nexpress.config.ts`
-automatically — keep those marker comments in place.
+automatically — keep those marker comments in place. After a successful
+add, the CLI prints the restart step plus
+`pnpm --silent run ops:plugins -- doctor --json` so you can verify
+plugin-owned blocks and routes before deploying.
 
 Authoring a plugin: separate package, scaffolded with
 [plugin-quickstart](./plugin-quickstart.md). From the project root,

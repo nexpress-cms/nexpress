@@ -206,7 +206,9 @@ const OPS_CONTRACTS: OpsContract[] = [
     supports: { json: true, brief: true, noColor: true, out: false },
     artifact: { writes: false, defaultPath: null },
     approval: { required: false, token: null },
-    notes: ["Reports manifest metadata, route/block conflicts, and rebuild/restart upgrade steps."],
+    notes: [
+      "Reports manifest metadata, route/block conflicts, plan.nextCommands, and rebuild/restart upgrade steps.",
+    ],
   },
   {
     id: "release",
