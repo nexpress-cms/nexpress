@@ -301,7 +301,7 @@ jobs:
           pnpm install --ignore-workspace
           pnpm exec tsc --noEmit
 
-      - name: Plugin scaffold smoke — generated packages build
+      - name: Plugin scaffold smoke — generated package lifecycle
         run: |
           node "$GITHUB_WORKSPACE/.github/scripts/check-plugin-scaffold-matrix.mjs" \
             "$RUNNER_TEMP/scaffold/smoke-app"

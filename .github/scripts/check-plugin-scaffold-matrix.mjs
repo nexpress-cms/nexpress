@@ -5,7 +5,8 @@
  * Run inside the fresh scaffold CI job after the app dependencies have
  * installed. It exercises the operator-facing `pnpm exec nexpress create
  * *-plugin` path, then proves each generated plugin package can be
- * installed, type-checked, and built in the scaffold workspace.
+ * installed, type-checked, built, registered, verified with
+ * ops:plugins doctor, and removed in the scaffold workspace.
  */
 
 import { spawnSync } from "node:child_process";
@@ -27,6 +28,20 @@ function readJson(path, label) {
     return JSON.parse(readFileSync(path, "utf8"));
   } catch (error) {
     fail(`Could not read ${label}`, error instanceof Error ? error.message : String(error));
+  }
+}
+
+function parseJsonOutput(output, label) {
+  try {
+    return JSON.parse(output);
+  } catch (error) {
+    fail(
+      `${label} did not print valid JSON`,
+      [
+        error instanceof Error ? error.message : String(error),
+        output.split("\n").slice(-80).join("\n"),
+      ].join("\n"),
+    );
   }
 }
 
@@ -52,6 +67,12 @@ function assertIncludes(text, needle, label) {
   if (!text.includes(needle)) {
     fail(`${label} missing expected text: ${needle}`, text.split("\n").slice(-40).join("\n"));
   }
+}
+
+function pluginIdentifier(packageName) {
+  return packageName
+    .replace(/^@[^/]+\//, "")
+    .replace(/-([a-z0-9])/g, (_, char) => char.toUpperCase());
 }
 
 const rootPkg = readJson(resolve(scaffoldDir, "package.json"), "scaffold package.json");
@@ -122,7 +143,27 @@ const matrix = [
 ];
 
 for (const entry of matrix) {
-  run(`create ${entry.label}`, entry.args, { cwd: entry.cwd ?? pluginsDir });
+  const createOutput = run(`create ${entry.label}`, entry.args, { cwd: entry.cwd ?? pluginsDir });
+  assertIncludes(
+    createOutput,
+    `pnpm --filter ${entry.packageName} build`,
+    `${entry.label} create output`,
+  );
+  assertIncludes(
+    createOutput,
+    `pnpm exec nexpress plugin add ${entry.packageName}`,
+    `${entry.label} create output`,
+  );
+  assertIncludes(
+    createOutput,
+    "Restart your dev server or redeploy",
+    `${entry.label} create output`,
+  );
+  assertIncludes(
+    createOutput,
+    "pnpm --silent run ops:plugins -- doctor --json",
+    `${entry.label} create output`,
+  );
   const pluginDir = resolve(pluginsDir, entry.dir);
   const pkg = readJson(resolve(pluginDir, "package.json"), `${entry.label} package.json`);
   const tsconfig = readJson(resolve(pluginDir, "tsconfig.json"), `${entry.label} tsconfig.json`);
@@ -169,20 +210,126 @@ for (const entry of matrix) {
 }
 console.log("✓ generated plugin packages typecheck and build");
 
-run("register generated local plugin", ["exec", "nexpress", "plugin", "add", "smoke-hook"], {
-  timeout: 180_000,
-});
-const registeredPkg = readJson(resolve(scaffoldDir, "package.json"), "scaffold package.json");
-if (registeredPkg.dependencies?.["smoke-hook"] !== "workspace:*") {
-  fail(
-    "local plugin registration should add the workspace dependency",
-    `actual: ${registeredPkg.dependencies?.["smoke-hook"] ?? "(missing)"}`,
+for (const entry of matrix) {
+  const addOutput = run(
+    `register ${entry.label}`,
+    ["exec", "nexpress", "plugin", "add", entry.packageName],
+    {
+      timeout: 180_000,
+    },
+  );
+  assertIncludes(addOutput, `✓ Installed ${entry.packageName}.`, `${entry.label} add output`);
+  assertIncludes(addOutput, "Restart your dev server or redeploy", `${entry.label} add output`);
+  assertIncludes(
+    addOutput,
+    "pnpm --silent run ops:plugins -- doctor --json",
+    `${entry.label} add output`,
   );
 }
+const registeredPkg = readJson(resolve(scaffoldDir, "package.json"), "scaffold package.json");
+for (const entry of matrix) {
+  if (registeredPkg.dependencies?.[entry.packageName] !== "workspace:*") {
+    fail(
+      `${entry.label} registration should add the workspace dependency`,
+      `actual: ${registeredPkg.dependencies?.[entry.packageName] ?? "(missing)"}`,
+    );
+  }
+}
 const configSource = readFileSync(resolve(scaffoldDir, "src/nexpress.config.ts"), "utf8");
-assertIncludes(configSource, 'import smokeHook from "smoke-hook";', "nexpress.config.ts");
-assertIncludes(configSource, "smokeHook,", "nexpress.config.ts");
-console.log("✓ generated local plugin registers through nexpress plugin add");
+for (const entry of matrix) {
+  const identifier = pluginIdentifier(entry.packageName);
+  assertIncludes(
+    configSource,
+    `import ${identifier} from "${entry.packageName}";`,
+    "nexpress.config.ts",
+  );
+  assertIncludes(configSource, `${identifier},`, "nexpress.config.ts");
+}
+
+const registeredDoctor = parseJsonOutput(
+  run(
+    "doctor after generated local plugin registration",
+    ["--silent", "run", "ops:plugins", "--", "doctor", "--json"],
+    { timeout: 180_000 },
+  ),
+  "ops:plugins doctor after registration",
+);
+if (registeredDoctor.ok !== true) {
+  fail(
+    "ops:plugins doctor should pass after generated plugin registration",
+    JSON.stringify(registeredDoctor, null, 2),
+  );
+}
+const registeredIds = new Set(registeredDoctor.plugins?.map((plugin) => plugin.id) ?? []);
+for (const entry of matrix) {
+  if (!registeredIds.has(entry.dir)) {
+    fail(
+      `ops:plugins doctor did not include ${entry.label}`,
+      JSON.stringify(registeredDoctor, null, 2),
+    );
+  }
+}
+console.log("✓ generated local plugins register and pass ops:plugins doctor");
+
+for (const entry of matrix) {
+  const removeOutput = run(
+    `remove ${entry.label}`,
+    ["exec", "nexpress", "plugin", "remove", entry.packageName],
+    {
+      timeout: 180_000,
+    },
+  );
+  assertIncludes(removeOutput, `✓ Removed ${entry.packageName}.`, `${entry.label} remove output`);
+  assertIncludes(removeOutput, "boot-time plugin code unloads", `${entry.label} remove output`);
+  assertIncludes(
+    removeOutput,
+    "pnpm --silent run ops:plugins -- doctor --json",
+    `${entry.label} remove output`,
+  );
+}
+
+const removedPkg = readJson(resolve(scaffoldDir, "package.json"), "scaffold package.json");
+const removedConfigSource = readFileSync(resolve(scaffoldDir, "src/nexpress.config.ts"), "utf8");
+for (const entry of matrix) {
+  const identifier = pluginIdentifier(entry.packageName);
+  if (removedPkg.dependencies?.[entry.packageName]) {
+    fail(
+      `${entry.label} removal should delete the root dependency`,
+      JSON.stringify(removedPkg, null, 2),
+    );
+  }
+  if (
+    removedConfigSource.includes(`from "${entry.packageName}"`) ||
+    removedConfigSource.includes(`${identifier},`)
+  ) {
+    fail(`${entry.label} removal should unregister config entries`, removedConfigSource);
+  }
+}
+
+const removedDoctor = parseJsonOutput(
+  run(
+    "doctor after generated local plugin removal",
+    ["--silent", "run", "ops:plugins", "--", "doctor", "--json"],
+    { timeout: 180_000 },
+  ),
+  "ops:plugins doctor after removal",
+);
+if (removedDoctor.ok !== true) {
+  fail(
+    "ops:plugins doctor should pass after generated plugin removal",
+    JSON.stringify(removedDoctor, null, 2),
+  );
+}
+const removedIds = new Set(removedDoctor.plugins?.map((plugin) => plugin.id) ?? []);
+for (const entry of matrix) {
+  if (removedIds.has(entry.dir)) {
+    fail(
+      `ops:plugins doctor still includes removed ${entry.label}`,
+      JSON.stringify(removedDoctor, null, 2),
+    );
+  }
+}
+console.log("✓ generated local plugins remove cleanly and pass ops:plugins doctor");
 
 const interactiveClient = resolve(pluginsDir, "smoke-interactive/dist/client.js");
 if (!existsSync(interactiveClient)) {
