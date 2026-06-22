@@ -1,3 +1,4 @@
+---
 "@nexpress/app": patch
 "@nexpress/admin": patch
 ---
