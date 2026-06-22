@@ -22,7 +22,9 @@
 > `pnpm nexpress theme add <pkg>` rather than the design-phase
 > `theme:install` name, and
 > `theme-default` remains a built-in baseline instead of being absorbed into
-> `theme-magazine`.
+> `theme-magazine`. Theme removal later gained the friendlier
+> `pnpm nexpress theme remove <pkg>` spelling; the original
+> `theme:uninstall` name remains a compatibility alias.
 
 ---
 
@@ -588,7 +590,8 @@ $ pnpm nexpress theme add @nexpress/theme-magazine
 
 **Out of scope for F.8**:
 
-- `theme:uninstall` (removing fields can drop data) → v0.3.
+- Theme removal (later shipped as `theme remove`, with
+  `theme:uninstall` kept as a legacy alias) → v0.3.
 - Cross-theme migration (`theme add` switching from theme A
   to theme B) → operator runs install on B; A's extra fields
   remain (idempotent, harmless).
@@ -787,9 +790,10 @@ Per the agreement to track everything we postpone:
   the DB-write boundary explicit so operators can review the generated
   migration SQL before it hits the database. Making apply default-on
   remains a separate operator-safety decision.
-- **`theme:uninstall` CLI** — removing collection fields without
-  data loss requires a confirmation flow and possibly a backup
-  step. Out of scope for F.8.
+- **Theme removal CLI** — shipped after F.8 as
+  `pnpm nexpress theme remove <pkg>` with destructive confirmation,
+  config cleanup before migration generation, and legacy
+  `theme:uninstall` compatibility.
 - **Bulk "cleanup unknown blocks" admin action** — placeholder
   rendering covers correctness; bulk action is convenience.
 - **`settingsSchema` migration helpers** — v0.2 falls back to

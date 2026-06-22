@@ -98,6 +98,20 @@ framework auto-merges the theme's `manifest.requires.collections`
 into your `collections` array at `defineConfig` time, so your
 own `src/collections/*.ts` files stay untouched.
 
+To remove a theme, run the CLI before uninstalling the package:
+
+```bash
+pnpm nexpress theme remove @you/theme-cool --dry-run
+pnpm nexpress theme remove @you/theme-cool --yes
+pnpm db:migrate
+pnpm remove @you/theme-cool
+```
+
+The remove command unregisters the theme before generating the
+destructive `DROP COLUMN` migration. The legacy
+`theme:uninstall` spelling still works, but new docs and help use
+`theme remove` to mirror `theme add`.
+
 To author a new theme: separate npm package — see
 [theme-authoring.md](./theme-authoring.md). The manual equivalent
 of `theme add` is the same import + array entry:
