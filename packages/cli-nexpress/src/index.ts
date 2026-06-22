@@ -5,6 +5,7 @@ import { dirname, relative, resolve } from "node:path";
 
 import {
   addPluginToConfig,
+  buildManualRemoveSnippet,
   buildManualSnippet,
   packageToIdentifier,
   removePluginFromConfig,
@@ -22,7 +23,9 @@ import type { ScaffoldKind, ScaffoldResult } from "./scaffold-utils.js";
 import { buildRunScriptArgs, resolveOpsScriptInvocation } from "./ops-command.js";
 import {
   formatPluginManualConfigGuidance,
+  formatPluginManualRemoveGuidance,
   formatPluginPostInstallGuidance,
+  formatPluginPostRemoveGuidance,
 } from "./plugin-guidance.js";
 import {
   buildPackageManagerArgs,
@@ -348,13 +351,24 @@ async function pluginRemove(packageName: string, cwd: string): Promise<number> {
     process.stdout.write(`· ${result.reason}; nothing to update in config.\n`);
   } else {
     process.stdout.write(
-      `\n⚠ ${project.configPath} doesn't have plugin markers; remove the import + list entry manually.\n`,
+      `\n⚠ ${project.configPath} doesn't have plugin markers. Remove this manually after uninstall:\n\n` +
+        `${buildManualRemoveSnippet(entry)}\n`,
     );
   }
 
   process.stdout.write(`\n→ Uninstalling ${packageName} via ${project.packageManager}…\n`);
   await runPackageManager(project.packageManager, "remove", packageName, cwd);
   process.stdout.write(`✓ Removed ${packageName}.\n`);
+  if (result.kind === "no-markers") {
+    process.stdout.write(
+      `${formatPluginManualRemoveGuidance({
+        manager: project.packageManager,
+        packageName,
+      })}\n`,
+    );
+  } else {
+    process.stdout.write(`${formatPluginPostRemoveGuidance(project.packageManager)}\n`);
+  }
   return 0;
 }
 

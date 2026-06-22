@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatPluginManualConfigGuidance,
+  formatPluginManualRemoveGuidance,
   formatPluginPostInstallGuidance,
+  formatPluginPostRemoveGuidance,
   formatProjectScriptCommand,
   pluginAddCommand,
+  pluginRemoveCommand,
 } from "./plugin-guidance.js";
 
 describe("plugin install guidance", () => {
@@ -32,10 +35,30 @@ describe("plugin install guidance", () => {
     );
   });
 
+  it("formats plugin remove commands for manual recovery", () => {
+    expect(pluginRemoveCommand("pnpm", "@acme/plugin-demo")).toBe(
+      "pnpm exec nexpress plugin remove @acme/plugin-demo",
+    );
+    expect(pluginRemoveCommand("npm", "@acme/plugin-demo")).toBe(
+      "npx nexpress plugin remove @acme/plugin-demo",
+    );
+    expect(pluginRemoveCommand("yarn", "@acme/plugin-demo")).toBe(
+      "yarn nexpress plugin remove @acme/plugin-demo",
+    );
+  });
+
   it("keeps successful installs connected to restart and doctor verification", () => {
     const guidance = formatPluginPostInstallGuidance("pnpm");
 
     expect(guidance).toContain("Restart your dev server or redeploy");
+    expect(guidance).toContain("pnpm --silent run ops:plugins -- doctor --json");
+    expect(guidance).toContain("pnpm --silent run ops:plugins -- list --json");
+  });
+
+  it("keeps successful removals connected to restart and doctor verification", () => {
+    const guidance = formatPluginPostRemoveGuidance("pnpm");
+
+    expect(guidance).toContain("boot-time plugin code unloads");
     expect(guidance).toContain("pnpm --silent run ops:plugins -- doctor --json");
     expect(guidance).toContain("pnpm --silent run ops:plugins -- list --json");
   });
@@ -48,6 +71,17 @@ describe("plugin install guidance", () => {
 
     expect(guidance).toContain("Add the marker block");
     expect(guidance).toContain("pnpm exec nexpress plugin add my-plugin");
+    expect(guidance).toContain("pnpm --silent run ops:plugins -- doctor --json");
+  });
+
+  it("gives manual remove steps before verification", () => {
+    const guidance = formatPluginManualRemoveGuidance({
+      manager: "pnpm",
+      packageName: "my-plugin",
+    });
+
+    expect(guidance).toContain("Remove the config snippet");
+    expect(guidance).toContain("pnpm exec nexpress plugin remove my-plugin");
     expect(guidance).toContain("pnpm --silent run ops:plugins -- doctor --json");
   });
 });

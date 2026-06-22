@@ -119,6 +119,16 @@ Restart the dev server (or click "Reload all" in `/admin/plugins` for
 config / state changes — see [`plugin-reload.md`](plugin-reload.md) for
 the limits) and your plugin runs.
 
+To remove it later, run:
+
+```bash
+pnpm exec nexpress plugin remove my-plugin
+```
+
+That command unregisters the marker-managed config entry, removes the
+package dependency, and prints the same restart plus
+`pnpm --silent run ops:plugins -- doctor --json` verification step.
+
 ## Step 1b — From-scratch scaffold (without the CLI)
 
 If the CLI generator isn't available or you prefer to start from
