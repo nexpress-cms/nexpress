@@ -24,6 +24,7 @@ interface PluginDetail {
 interface PluginListResponse {
   items: Array<{
     id: string;
+    hasAdmin?: boolean;
     configFields?: Array<{ name: string; type: string }> | null;
   }>;
 }
@@ -108,6 +109,7 @@ test.describe("plugin admin and config", () => {
     expect(listResponse.status()).toBe(200);
     const list = (await listResponse.json()) as PluginListResponse;
     const readingTime = list.items.find((plugin) => plugin.id === PLUGIN_ID);
+    expect(readingTime?.hasAdmin).toBe(true);
     expect(readingTime?.configFields).toContainEqual(
       expect.objectContaining({ name: "wordsPerMinute", type: "number" }),
     );
@@ -116,7 +118,10 @@ test.describe("plugin admin and config", () => {
     await expect(page.getByRole("heading", { name: "Plugins" })).toBeVisible();
     await expect(page.getByText("Reading Time", { exact: true })).toBeVisible();
 
-    await page.goto(`/admin/plugins/${PLUGIN_ID}`);
+    await page
+      .locator(`[data-np-plugin-id="${PLUGIN_ID}"]`)
+      .getByRole("link", { name: "Open admin" })
+      .click();
     await expect(page.getByRole("heading", { name: "Reading Time" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
     await expect(page.getByLabel("Words per minute")).toHaveValue("220");

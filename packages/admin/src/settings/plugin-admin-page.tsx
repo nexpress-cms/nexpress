@@ -76,7 +76,7 @@ interface PluginAdminPageProps {
    *  wired (e.g. dev without pg-boss). */
   schedules?: ScheduleDef[];
   /** G.1 — introspected metadata from the plugin's `configSchema`.
-   *  When non-empty, an auto-form replaces the legacy
+   *  When present, an auto-form replaces the legacy
    *  `admin.settings.fields` form (per design doc § 5.1.1
    *  precedence). Server-side introspection happens in the route
    *  loader; client just renders. */
@@ -124,7 +124,7 @@ export function PluginAdminPage({
   initialAutoConfig,
   configParseError,
 }: PluginAdminPageProps) {
-  const hasAutoForm = (configFields?.length ?? 0) > 0;
+  const hasAutoForm = configFields !== undefined;
   const sections: Array<"autoForm" | "settings" | "widgets" | "actions" | "tables" | "schedules"> =
     [];
   if (hasAutoForm) sections.push("autoForm");
@@ -156,7 +156,7 @@ export function PluginAdminPage({
       {hasAutoForm ? (
         <ConfigAutoFormCard
           pluginId={pluginId}
-          fields={configFields!}
+          fields={configFields}
           initialValue={
             initialAutoConfig && typeof initialAutoConfig === "object"
               ? (initialAutoConfig as ZodFormValue)
