@@ -71,12 +71,10 @@ missing, the CLI prints the exact import and `plugins` entry to add or
 remove by hand.
 
 Authoring a plugin: separate package, scaffolded with
-[plugin-quickstart](./plugin-quickstart.md). From the project root,
-`pnpm exec nexpress create hook-plugin <name> --workspace` creates a
-local plugin under `packages/plugins/<name>`, and
-`pnpm exec nexpress plugin add <packageName>` registers it as a
-workspace dependency after it has been built. Published plugins
-install the same way and resolve through the npm registry.
+[plugin-quickstart](./plugin-quickstart.md). That guide is the canonical
+place for local plugin packages, admin/config surfaces, page routes,
+verification, and upgrade checks. This page only covers the site-level
+install/remove flow.
 
 ### Themes
 

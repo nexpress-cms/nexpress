@@ -980,13 +980,17 @@ checklist, and \`test\` can run an approval-gated storage probe.
 ## Plugins
 
 \`\`\`bash
+pnpm --silent run ops:plugins -- list --json
 pnpm --silent run ops:plugins -- doctor --json
 pnpm --silent run ops:plugins -- inspect reading-time --json
-pnpm --silent run ops:plugins -- upgrade-plan --json
+pnpm --silent run ops:plugins -- upgrade-plan reading-time --json
 \`\`\`
 
 \`ops:plugins\` reports plugin inventory, single-plugin manifests,
-route/block conflicts, and read-only upgrade plans.
+route/block conflicts, and read-only upgrade plans. Doctor reports include
+\`nextCommand\`, \`projectNextCommand\`, and \`plan.nextCommands\`; run the
+first suggested inspect command when a plugin-owned block, API route, or page
+route conflict appears.
 
 ## Release And Runbooks
 

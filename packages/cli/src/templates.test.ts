@@ -506,7 +506,11 @@ describe("getProjectFiles", () => {
     expect(ops).toContain(
       "pnpm --silent run ops:storage -- test --execute --approve storage-test --json",
     );
+    expect(ops).toContain("pnpm --silent run ops:plugins -- list --json");
     expect(ops).toContain("pnpm --silent run ops:plugins -- doctor --json");
+    expect(ops).toContain("pnpm --silent run ops:plugins -- inspect reading-time --json");
+    expect(ops).toContain("pnpm --silent run ops:plugins -- upgrade-plan reading-time --json");
+    expect(ops).toContain("first suggested inspect command");
     expect(ops).toContain("pnpm --silent run ops:release -- check --target vercel --json");
     expect(ops).toContain("pnpm --silent run ops:release -- plan --target vercel --json");
     expect(ops).toContain(

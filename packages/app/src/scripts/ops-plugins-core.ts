@@ -5,6 +5,9 @@ import { pathToFileURL } from "node:url";
 import { toProjectCommand } from "./ops-command-format.js";
 import type { CheckResult } from "./doctor-readiness.js";
 
+const OPS_PLUGINS_DOCTOR_COMMAND = "nexpress ops plugins doctor --json";
+const OPS_PLUGINS_PROJECT_DOCTOR_COMMAND = toProjectCommand(OPS_PLUGINS_DOCTOR_COMMAND);
+
 interface PluginManifestLike {
   apiVersion?: unknown;
   id?: unknown;
@@ -314,14 +317,14 @@ function buildOpsPluginNextCommands(
     ),
   );
   if (duplicateInspectCommands.length > 0) {
-    return uniqueStrings([...duplicateInspectCommands, "nexpress ops plugins doctor --json"]);
+    return uniqueStrings([...duplicateInspectCommands, OPS_PLUGINS_DOCTOR_COMMAND]);
   }
 
   const firstPlugin = plugins[0];
   if (firstPlugin) {
     return uniqueStrings([
       `nexpress ops plugins inspect ${firstPlugin.id} --json`,
-      "nexpress ops plugins doctor --json",
+      OPS_PLUGINS_DOCTOR_COMMAND,
     ]);
   }
 
@@ -373,6 +376,10 @@ function normalizePlugin(plugin: PluginLike, index: number): OpsPluginEntry {
       .map(scheduledKey)
       .filter((key): key is string => Boolean(key)),
   };
+}
+
+function withDoctorRerun(action: string): string {
+  return `${action} Then rerun \`${OPS_PLUGINS_DOCTOR_COMMAND}\` or \`${OPS_PLUGINS_PROJECT_DOCTOR_COMMAND}\` from a generated project.`;
 }
 
 export function buildOpsPluginsJson(args: {
@@ -467,7 +474,9 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
       state: "warn",
       label: "Plugin config",
       detail: "plugins is missing or not an array",
-      hint: "Add `plugins: []` to defineConfig, or run this from a generated NexPress project root.",
+      hint: withDoctorRerun(
+        "Add `plugins: []` to defineConfig, or run this from a generated NexPress project root.",
+      ),
     });
     return buildOpsPluginsJson({ checks, plugins: [] });
   }
@@ -488,7 +497,9 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
       state: "error",
       label: "Plugin entries",
       detail: `${invalidCount.toString()} entries are not plugin objects`,
-      hint: "Every plugin entry should be a definePlugin(...) object exported by the plugin package.",
+      hint: withDoctorRerun(
+        "Every plugin entry should be a definePlugin(...) object exported by the plugin package.",
+      ),
     });
   }
 
@@ -499,7 +510,9 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
       state: "error",
       label: "Plugin manifests",
       detail: `${missingManifest.toString()} plugins are missing manifest metadata`,
-      hint: "Use definePlugin() from @nexpress/plugin-sdk so manifest metadata is present at boot.",
+      hint: withDoctorRerun(
+        "Use definePlugin() from @nexpress/plugin-sdk so manifest metadata is present at boot.",
+      ),
     });
   }
 
@@ -507,7 +520,9 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
     "plugins.duplicate_id",
     "Plugin IDs",
     plugins.map((plugin) => ({ key: plugin.id, plugin: plugin.id })),
-    "Plugin manifest ids must be unique. Rename one plugin id or remove one registration, then restart and rerun doctor.",
+    withDoctorRerun(
+      "Plugin manifest ids must be unique. Rename one plugin id or remove one registration, then restart.",
+    ),
   );
   if (duplicateIds) checks.push(duplicateIds);
 
@@ -515,7 +530,9 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
     "plugins.block_conflict",
     "Plugin block types",
     plugins.flatMap((plugin) => plugin.blocks.map((key) => ({ key, plugin: plugin.id }))),
-    "Block type names share one registry. Rename one block type or disable one plugin, then rebuild and rerun doctor.",
+    withDoctorRerun(
+      "Block type names share one registry. Rename one block type or disable one plugin, then rebuild.",
+    ),
   );
   if (blockConflicts) checks.push(blockConflicts);
 
@@ -523,7 +540,9 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
     "plugins.route_conflict",
     "Plugin API routes",
     plugins.flatMap((plugin) => plugin.routes.map((key) => ({ key, plugin: plugin.id }))),
-    "Plugin API routes share /api/plugins/<id> ownership. Change one method/path pair or disable one plugin, then restart and rerun doctor.",
+    withDoctorRerun(
+      "Plugin API routes share /api/plugins/<id> ownership. Change one method/path pair or disable one plugin, then restart.",
+    ),
   );
   if (routeConflicts) checks.push(routeConflicts);
 
@@ -531,7 +550,9 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
     "plugins.page_route_conflict",
     "Plugin page routes",
     plugins.flatMap((plugin) => plugin.pageRoutes.map((key) => ({ key, plugin: plugin.id }))),
-    "Plugin page routes share the public site router. Change one pattern or disable one plugin, then restart and rerun doctor.",
+    withDoctorRerun(
+      "Plugin page routes share the public site router. Change one pattern or disable one plugin, then restart.",
+    ),
   );
   if (pageRouteConflicts) checks.push(pageRouteConflicts);
 
@@ -557,7 +578,9 @@ export async function collectOpsPluginsStatus(cwd = process.cwd()): Promise<OpsP
           state: "error",
           label: "nexpress.config.ts",
           detail: `looked at ${CONFIG_CANDIDATES.join(", ")}`,
-          hint: "Run this from the project root or add src/nexpress.config.ts before checking plugins.",
+          hint: withDoctorRerun(
+            "Run this from the project root or add src/nexpress.config.ts before checking plugins.",
+          ),
         },
       ],
     });
@@ -591,7 +614,7 @@ export async function collectOpsPluginsStatus(cwd = process.cwd()): Promise<OpsP
           state: "error",
           label: "nexpress.config.ts",
           detail: error instanceof Error ? error.message : String(error),
-          hint: "Fix the config import error, then rerun plugin doctor.",
+          hint: withDoctorRerun("Fix the config import error."),
         },
       ],
     });
@@ -736,7 +759,7 @@ function buildUpgradeSteps(packageRef: OpsPluginPackageRef): OpsPluginUpgradeSte
       status: "ready",
       required: true,
       requiresApproval: false,
-      command: "nexpress ops plugins doctor --json",
+      command: OPS_PLUGINS_DOCTOR_COMMAND,
       note: "Verify plugin-owned routes, page routes, and blocks after rebuilding.",
     },
     {
