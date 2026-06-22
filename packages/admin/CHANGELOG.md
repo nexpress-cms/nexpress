@@ -1,5 +1,25 @@
 # @nexpress/admin
 
+## 0.3.22
+
+### Patch Changes
+
+- 2c85715: Add an admin recovery action for stale active themes after removal and surface the same repair path in theme removal guidance.
+- 7a28472: Harden Document view quick insert and preview cleanup while extending persistence coverage.
+  Emit typed generated-schema foreign-key callbacks so self-referential collections typecheck under
+  project-service lint.
+- 31f1868: Keep schema-backed plugin config forms consistent between the plugin list Configure dialog and the plugin detail page. Also harden theme/plugin settings schema introspection for wrapped array elements and add tested helpers for one-item-per-line string-array inputs.
+- 84ae7c9: Expose configSchema-only plugin admin pages from the Plugins list and render empty config schemas as settings pages.
+- 7d461d7: Align plugin discovery and install guidance with `nexpress plugin add`, including manual fallback commands and ops doctor verification.
+- e00a036: Improve plugin lifecycle guidance by adding restart and doctor verification steps after plugin
+  removal, clearer manual removal recovery output, and a copyable plugin doctor command in Admin.
+- 5852e1b: Align admin theme APIs and UI with public fallback behavior when the persisted active theme is no longer registered.
+- Updated dependencies [7a28472]
+- Updated dependencies [31f1868]
+  - @nexpress/core@0.3.22
+  - @nexpress/blocks@0.3.22
+  - @nexpress/editor@0.3.22
+
 ## 0.3.21
 
 ### Patch Changes

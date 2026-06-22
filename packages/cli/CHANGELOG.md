@@ -1,5 +1,12 @@
 # create-nexpress
 
+## 0.1.31
+
+### Patch Changes
+
+- 78dba13: Clarify plugin doctor rerun hints and scaffolded ops plugin command examples.
+- ca20077: Make local plugin scaffolds work cleanly inside fresh `create-nexpress` projects by reserving `packages/plugins/*` as a workspace, inheriting the site's installed NexPress dependency ranges, generating the correct plugin `tsconfig` extends path, and adding CI smoke coverage that creates, installs, typechecks, and builds every plugin starter.
+
 ## 0.1.30
 
 ### Patch Changes

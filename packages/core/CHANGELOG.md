@@ -1,5 +1,14 @@
 # @nexpress/core
 
+## 0.3.22
+
+### Patch Changes
+
+- 7a28472: Harden Document view quick insert and preview cleanup while extending persistence coverage.
+  Emit typed generated-schema foreign-key callbacks so self-referential collections typecheck under
+  project-service lint.
+- 31f1868: Keep schema-backed plugin config forms consistent between the plugin list Configure dialog and the plugin detail page. Also harden theme/plugin settings schema introspection for wrapped array elements and add tested helpers for one-item-per-line string-array inputs.
+
 ## 0.3.21
 
 ### Patch Changes

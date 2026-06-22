@@ -1,5 +1,46 @@
 # @nexpress/app
 
+## 0.3.22
+
+### Patch Changes
+
+- 31f1868: Keep schema-backed plugin config forms consistent between the plugin list Configure dialog and the plugin detail page. Also harden theme/plugin settings schema introspection for wrapped array elements and add tested helpers for one-item-per-line string-array inputs.
+- 3475f0e: Improve plugin install follow-up guidance and plugin doctor remediation commands.
+- 84ae7c9: Expose configSchema-only plugin admin pages from the Plugins list and render empty config schemas as settings pages.
+- 7d461d7: Align plugin discovery and install guidance with `nexpress plugin add`, including manual fallback commands and ops doctor verification.
+- 78dba13: Clarify plugin doctor rerun hints and scaffolded ops plugin command examples.
+- 5852e1b: Align admin theme APIs and UI with public fallback behavior when the persisted active theme is no longer registered.
+- Updated dependencies [2c85715]
+- Updated dependencies [7a28472]
+- Updated dependencies [31f1868]
+- Updated dependencies [84ae7c9]
+- Updated dependencies [7d461d7]
+- Updated dependencies [e00a036]
+- Updated dependencies [5852e1b]
+  - @nexpress/admin@0.3.22
+  - @nexpress/core@0.3.22
+  - @nexpress/auth-pages@0.3.22
+  - @nexpress/blocks@0.3.22
+  - @nexpress/next@0.3.22
+  - @nexpress/plugin-sdk@0.3.22
+  - @nexpress/plugin-forum@0.3.22
+  - @nexpress/plugin-oauth-github@0.3.22
+  - @nexpress/plugin-oauth-google@0.3.22
+  - @nexpress/theme@0.3.22
+  - @nexpress/theme-default@0.3.22
+  - @nexpress/theme-docs@0.3.22
+  - @nexpress/theme-magazine@0.3.22
+  - @nexpress/theme-portfolio@0.3.22
+  - @nexpress/plugin-block-callout@0.3.22
+  - @nexpress/plugin-block-embed@0.3.22
+  - @nexpress/plugin-block-latest-posts@0.3.22
+  - @nexpress/plugin-block-newsletter@0.3.22
+  - @nexpress/plugin-block-pricing@0.3.22
+  - @nexpress/plugin-block-stats@0.3.22
+  - @nexpress/plugin-reading-time@0.3.22
+  - @nexpress/plugin-seo-audit@0.3.22
+  - @nexpress/editor@0.3.22
+
 ## 0.3.21
 
 ### Patch Changes
