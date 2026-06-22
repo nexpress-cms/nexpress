@@ -68,6 +68,7 @@ const scriptEntries = {
 
 const libEntries = {
   "lib/api-response": "src/lib/api-response.ts",
+  "lib/active-theme-state": "src/lib/active-theme-state.ts",
   "lib/auth-helpers": "src/lib/auth-helpers.ts",
   "lib/auth-routes": "src/lib/auth-routes.ts",
   "lib/cached-theme": "src/lib/cached-theme.ts",

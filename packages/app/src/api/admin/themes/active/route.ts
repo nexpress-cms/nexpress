@@ -2,7 +2,6 @@ import {
   NP_DEFAULT_SITE_ID,
   NpForbiddenError,
   NpValidationError,
-  getActiveThemeId,
   getCurrentSiteId,
   getThemeById,
   setActiveThemeId,
@@ -12,17 +11,17 @@ import { bustThemeCache, readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
+import { getActiveThemeState } from "../../../../lib/active-theme-state";
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
 
 /**
  * Phase 11.4 — read/write the active theme id.
  *
- * GET reports `{ activeId }` so the admin switcher can show
- * which theme is currently in effect. Returns `null` when no
- * setting is persisted and the registry is empty; otherwise
- * always falls back to the first registered theme (matching
- * `getActiveTheme()` resilience).
+ * GET reports `{ activeId }` using the same fallback semantics
+ * as `getActiveTheme()`, plus `{ persistedActiveId,
+ * fallbackReason }` so admin surfaces can explain stale persisted
+ * settings after a theme was removed from `nexpress.config.ts`.
  *
  * PUT takes `{ id: string }`, validates it against the
  * registry (404-equivalent if unknown), persists via
@@ -38,8 +37,12 @@ export async function GET(request: NextRequest) {
     if (!can(user, "content.publish")) {
       throw new NpForbiddenError("themes/active", "read");
     }
-    const activeId = await getActiveThemeId();
-    return npSuccessResponse({ activeId });
+    const activeState = await getActiveThemeState();
+    return npSuccessResponse({
+      activeId: activeState.effectiveActiveId,
+      persistedActiveId: activeState.persistedActiveId,
+      fallbackReason: activeState.fallbackReason,
+    });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
