@@ -14,7 +14,7 @@ pnpm add @nexpress/theme-docs
 
 ```ts
 // nexpress.config.ts
-import docsTheme from "@nexpress/theme-docs";
+import { docsTheme } from "@nexpress/theme-docs";
 
 export default defineConfig({
   // ...
