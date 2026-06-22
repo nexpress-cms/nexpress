@@ -54,7 +54,11 @@ describe("scaffoldBlockPlugin", () => {
     const result = await scaffoldBlockPlugin({ slug: "my-callout", outDir: workdir });
     const readme = await readFile(join(result.pluginDir, "README.md"), "utf-8");
     expect(readme).toContain("From your NexPress project root");
+    expect(readme).toContain("pnpm --filter my-callout build");
     expect(readme).toContain("pnpm exec nexpress plugin add my-callout");
+    expect(readme).toContain("pnpm exec nexpress plugin remove my-callout");
+    expect(readme).toContain("pnpm --silent run ops:plugins -- doctor --json");
+    expect(readme).toContain('import { defineConfig } from "@nexpress/core";');
     expect(readme).toContain('import myCalloutPlugin from "my-callout";');
     expect(readme).toContain("plugins: [myCalloutPlugin]");
   });

@@ -172,4 +172,20 @@ describe("plugin commands", () => {
     expect(stdout.read()).toContain("Remove the config snippet above");
     expect(stdout.read()).toContain("pnpm exec nexpress plugin remove @acme/plugin-seo");
   });
+
+  it("prints restart and doctor steps after creating a plugin scaffold", async () => {
+    const stdout = captureStdout();
+
+    const code = await runNexpressCli(["node", "nexpress", "create", "hook-plugin", "audit-log"], {
+      cwd: workdir,
+    });
+
+    stdout.restore();
+    expect(code).toBe(0);
+    expect(stdout.read()).toContain("✓ Scaffolded content-hook plugin");
+    expect(stdout.read()).toContain("pnpm --filter audit-log build");
+    expect(stdout.read()).toContain("pnpm exec nexpress plugin add audit-log");
+    expect(stdout.read()).toContain("Restart your dev server or redeploy");
+    expect(stdout.read()).toContain("pnpm --silent run ops:plugins -- doctor --json");
+  });
 });

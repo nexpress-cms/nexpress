@@ -653,7 +653,9 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
           `\n  Next (from your NexPress project root):\n` +
           `    1. pnpm install\n` +
           `    2. pnpm --filter ${packageName} build\n` +
-          `    3. pnpm exec nexpress plugin add ${packageName}\n`,
+          `    3. pnpm exec nexpress plugin add ${packageName}\n` +
+          `    4. Restart your dev server or redeploy\n` +
+          `    5. pnpm --silent run ops:plugins -- doctor --json\n`,
       );
       return 0;
     } catch (error) {

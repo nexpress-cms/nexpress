@@ -36,19 +36,41 @@ pnpm --filter <packageName> build  # one-shot
 
 \`\`\`bash
 # From your NexPress project root:
+pnpm --filter <packageName> build
 pnpm exec nexpress plugin add <packageName>
+# Restart your dev server or redeploy, then:
+pnpm --silent run ops:plugins -- doctor --json
 \`\`\`
 
-That command installs the local workspace package and adds it to
-\`nexpress.config.ts\`. The manual equivalent is:
+\`plugin add\` installs the local workspace package, updates the
+\`nexpress.config.ts\` plugin markers, and prints the restart step. Restart
+your dev server or redeploy before the doctor check. If your config does not
+use the marker block, the CLI prints the exact snippet to paste manually.
+
+The manual equivalent is:
 
 \`\`\`ts
+import { defineConfig } from "@nexpress/core";
 import <exportName> from "<packageName>";
+
 export default defineConfig({
   // ...
   plugins: [<exportName>],
 });
 \`\`\`
+
+## Remove from your project
+
+\`\`\`bash
+# From your NexPress project root:
+pnpm exec nexpress plugin remove <packageName>
+# Restart your dev server or redeploy, then:
+pnpm --silent run ops:plugins -- doctor --json
+\`\`\`
+
+\`plugin remove\` unregisters the plugin, removes the package dependency, and
+prints the restart step. Restart your dev server or redeploy before checking
+that the plugin no longer appears in the loaded plugin list.
 
 Reference: [Plugin SDK quickstart](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-quickstart.md).
 `;

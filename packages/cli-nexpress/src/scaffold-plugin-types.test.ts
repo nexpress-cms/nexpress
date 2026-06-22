@@ -49,7 +49,11 @@ describe("non-block scaffold generators", () => {
       const result = await generator({ slug: "my-demo", outDir: workdir });
       const readme = await readFile(join(result.pluginDir, "README.md"), "utf-8");
       expect(readme).toContain("From your NexPress project root");
+      expect(readme).toContain("pnpm --filter my-demo build");
       expect(readme).toContain("pnpm exec nexpress plugin add my-demo");
+      expect(readme).toContain("pnpm exec nexpress plugin remove my-demo");
+      expect(readme).toContain("pnpm --silent run ops:plugins -- doctor --json");
+      expect(readme).toContain('import { defineConfig } from "@nexpress/core";');
       expect(readme).toContain('import myDemoPlugin from "my-demo";');
       expect(readme).toContain("plugins: [myDemoPlugin]");
     });
