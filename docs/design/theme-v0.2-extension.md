@@ -3,20 +3,26 @@
 > Version: 0.2 (Frozen — shipped)
 > Date: 2026-05-08 (design lock) / 2026-05-09 (phase complete)
 > Status: **Shipped.** Phases F.1 → F.9 merged to main; live
->   in `@nexpress/core`, `@nexpress/blocks`, `@nexpress/theme`,
->   `@nexpress/next`, `@nexpress/admin`, `@nexpress/cli`,
->   `@nexpress/web`, and the three reference themes
->   (`theme-magazine`, `theme-docs`, `theme-portfolio`).
+> in `@nexpress/core`, `@nexpress/blocks`, `@nexpress/theme`,
+> `@nexpress/next`, `@nexpress/admin`, `@nexpress/cli`,
+> `@nexpress/web`, the three v0.2 reference themes
+> (`theme-magazine`, `theme-docs`, `theme-portfolio`), and the
+> shipped `theme-default` baseline.
 > Prerequisites: AGENTS.md theme section + `docs/theme-authoring.md`
->   (v0.1 contract), issue #541 (theme rethink discussion)
-> Frozen-snapshot note: code samples in this document remained
->   accurate through implementation. Where shipped behavior
->   diverged from the design intent (e.g. F.7's `error.tsx`
->   delegation blocked by Next's client-component constraint;
->   F.9.1 follow-ups for picker UI / textarea / etc.), the
->   relevant section's deferred-to-v0.3 list captures it.
->   Cookbook (`docs/theme-authoring.md`) is the live reference
->   — read that for the as-shipped API.
+> (v0.1 contract), issue #541 (theme rethink discussion)
+> Frozen-snapshot note: most code samples in this document remained
+> accurate through implementation. Where shipped behavior
+> diverged from the design intent (e.g. F.7's `error.tsx`
+> delegation blocked by Next's client-component constraint;
+> F.9.1 follow-ups for picker UI / textarea / etc.), the
+> relevant section's deferred-to-v0.3 list captures it.
+> Cookbook (`docs/theme-authoring.md`) is the live reference
+> — read that for the as-shipped API.
+> Post-ship update: the install command shipped as
+> `pnpm nexpress theme add <pkg>` rather than the design-phase
+> `theme:install` name, and
+> `theme-default` remains a built-in baseline instead of being absorbed into
+> `theme-magazine`.
 
 ---
 
@@ -34,12 +40,12 @@ Two requirements drive every decision below:
   in React, with no waiting on framework-level layout primitives.
 - **Site operator**: from `pnpm install` through "site live and
   customized", **the operator never opens a code editor**. CLI
-  use is limited to two commands: `pnpm nexpress theme:install
-  <pkg>` (code-mod) followed by `pnpm db:migrate` (schema apply).
-  Everything else happens in admin. Auto-chaining migrate inside
-  `theme:install` is recorded as a v0.3 candidate (see §10) — the
-  v0.2 contract keeps DB-write boundary explicit so the operator
-  can review the staged collection diff before it touches the DB.
+  use is limited to two commands: `pnpm nexpress theme add <pkg>`
+  (config registration) followed by `pnpm db:migrate` (schema apply).
+  Everything else happens in admin. Auto-chaining migrate is available
+  through `theme add --apply`; the plain flow keeps the DB-write
+  boundary explicit so the operator can review the generated migration
+  before it touches the DB.
 
 These pull in opposite directions — operator-no-code requires
 themes to expose machine-readable contracts, theme-developer-
@@ -50,20 +56,21 @@ The contract additions below are designed to honor both.
 
 Resolved before this doc was written; restated for the record.
 
-| # | Decision | Choice | Rationale |
-|---|----------|--------|-----------|
-| A | Include `pnpm nexpress theme:install` (CLI AST migration) | **Yes** | Without it, "operator no coding" promise breaks at theme activation. |
-| B | Member/community surface skinning | **Out of scope** | `(site)/members/*` carries strong behavior; needs its own track. Theme contract stays presentational for v0.2. |
-| C | Reference theme count after rebuild | **3** (`magazine`, `docs`, `portfolio`) | Each presses a different axis. `default` + `minimal` collapse into `magazine` settings variants. |
-| D | First implementation order | **F.1 → F.2 → F.3 → ...** | F.2 (routes) is the largest unlock; F.1 (`requires`) is design-only and unblocks F.8. |
+| #   | Decision                                                    | Choice                                                                             | Rationale                                                                                                      |
+| --- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| A   | Include `pnpm nexpress theme add` (CLI config registration) | **Yes**                                                                            | Without it, "operator no coding" promise breaks at theme activation.                                           |
+| B   | Member/community surface skinning                           | **Out of scope**                                                                   | `(site)/members/*` carries strong behavior; needs its own track. Theme contract stays presentational for v0.2. |
+| C   | Reference theme count after rebuild                         | **3 v0.2 references** (`magazine`, `docs`, `portfolio`) + `theme-default` baseline | Each presses a different axis. `theme-default` stays as the scaffold fallback; `theme-minimal` retired.        |
+| D   | First implementation order                                  | **F.1 → F.2 → F.3 → ...**                                                          | F.2 (routes) is the largest unlock; F.1 (`requires`) is design-only and unblocks F.8.                          |
 
 ## 2. Goals
 
 - Theme developer can express any content-centric site shape using
   arbitrary React + Next.js composition inside the contract.
 - Site operator never opens a code editor. CLI use is limited
-  to `pnpm nexpress theme:install <pkg>` followed by `pnpm
-  db:migrate` (consistent with §0; auto-chain deferred to v0.3).
+  to `pnpm nexpress theme add <pkg>` followed by `pnpm db:migrate`,
+  or `theme add --apply` when the operator wants the CLI to chain
+  schema generation and migration.
 - Existing `defineTheme()` callers stay green. All v0.2 fields are
   additive options on `NpThemeImpl` / `NpThemeManifest`.
 - Plugin and theme contributions (blocks, patterns, routes) merge
@@ -181,6 +188,7 @@ interface NpThemeArchives {
 ```
 
 **Dispatch precedence** (in `apps/web/(site)/[[...slug]]`):
+
 1. App-explicit Next.js route file → Next routes natively, framework
    never sees the request.
 2. **Page document slug lookup** → operator's authored pages always
@@ -198,7 +206,7 @@ App overrides at level 1 are an escape hatch for custom Next.js
 work; level 2 ensures theme contributions never silently shadow
 operator-authored content. Theme routes remain useful for
 parameterized patterns (`/category/:slug`) which page slugs can't
-match anyway, and for static slugs the operator chooses *not* to
+match anyway, and for static slugs the operator chooses _not_ to
 author as a page.
 
 **Page-slug check is exact-match only.** A page with slug
@@ -241,11 +249,13 @@ manifest: {
 ```
 
 Zod schema serves three roles:
+
 1. Type inference for `getThemeSettings()` return type.
 2. Admin auto-form generation (zod → form fields).
 3. Runtime validation when reading from `np_settings`.
 
 **Supported zod field types** (form generator initial coverage):
+
 - `z.string()` → text input. Modifiers: `.url()` → URL input,
   `.regex(/#[0-9a-f]{6}/i)` → color picker (heuristic match).
 - `z.number().int().min(N).max(M)` → number input with range.
@@ -278,11 +288,11 @@ granularity wouldn't pay for itself.
 **Coexistence with existing settings rows.** Three settings keys
 participate in theme state, each with a distinct purpose:
 
-| Key | Purpose | Phase |
-|-----|---------|-------|
-| `activeTheme` | Active theme id for the site (existing) | v0.1 |
-| `theme` | Token overrides — colors / typography / shape (existing) | v0.1 |
-| `theme.settings:<themeId>` | New per-theme settings blob (this phase) | v0.2 |
+| Key                        | Purpose                                                  | Phase |
+| -------------------------- | -------------------------------------------------------- | ----- |
+| `activeTheme`              | Active theme id for the site (existing)                  | v0.1  |
+| `theme`                    | Token overrides — colors / typography / shape (existing) | v0.1  |
+| `theme.settings:<themeId>` | New per-theme settings blob (this phase)                 | v0.2  |
 
 The new key is namespaced with a colon to avoid collision with
 the v0.1 `theme` row, and keyed by theme id so multiple installed
@@ -293,6 +303,7 @@ failure surfaces as an admin warning toast and falls back to
 schema defaults.
 
 **API**:
+
 - Server: `await getThemeSettings()` → `z.infer<typeof schema>`.
   Memoized per request.
 - Client: settings flow as props from server parents. Direct
@@ -325,7 +336,7 @@ impl: {
 
 **Registration model — installed vs active.** The shared block
 registry is process-global (single Node process serves multiple
-sites). It MUST hold blocks from every *installed* theme module,
+sites). It MUST hold blocks from every _installed_ theme module,
 not only the currently-active one for a given site, because:
 
 - Multiple sites in the same process can each have a different
@@ -338,8 +349,8 @@ not only the currently-active one for a given site, because:
 **The activation filter lives at admin/render time, not at
 registry write time.** When admin lists "available block types
 for the page builder" or `renderBlocks` resolves a `type` string,
-the filter is "blocks contributed by themes/plugins active *for
-the current site context*". Registry stays append-only; the active-
+the filter is "blocks contributed by themes/plugins active _for
+the current site context_". Registry stays append-only; the active-
 theme query is what gates visibility.
 
 **Source identity contract — required for the filter to work.**
@@ -350,11 +361,11 @@ from `portfolio` blocks when both themes are installed in the
 same process, the `source` field MUST carry the concrete
 contributor id, not a broad category label:
 
-| Contributor | `source` value | Example |
-|-------------|----------------|---------|
-| Theme | `theme:<manifest.id>` | `theme:magazine` |
-| Plugin | `plugin:<manifest.id>` | `plugin:reading-time` |
-| Built-in | `core` | `core` |
+| Contributor | `source` value         | Example               |
+| ----------- | ---------------------- | --------------------- |
+| Theme       | `theme:<manifest.id>`  | `theme:magazine`      |
+| Plugin      | `plugin:<manifest.id>` | `plugin:reading-time` |
+| Built-in    | `core`                 | `core`                |
 
 The framework's bootstrap auto-stamps `source` based on the
 registration call path: `registerBlock` invoked from
@@ -380,6 +391,7 @@ console warning catches the latter.
 **Stale instance handling**: when an operator deactivates a theme,
 existing pages may have block instances of that theme's types.
 v0.2 behavior:
+
 - Renderer (`renderBlocks`) emits a `<NpUnknownBlock>` placeholder
   with the original `type` shown.
 - Page builder shows the block as a red error card with the
@@ -451,9 +463,10 @@ interface NpNavLocation {
 ```
 
 **Theme component usage**:
+
 ```tsx
 import { NavMenu } from "@nexpress/next/client";
-<NavMenu location="primary" />
+<NavMenu location="primary" />;
 ```
 
 **Admin integration**: extends the nav editor (#429) to include
@@ -502,11 +515,11 @@ When a theme contributes SEO hooks (`seo.sitemapEntries` /
 `seo.feedEntries`), the following settings-row writes MUST also
 invalidate the relevant `nx:sitemap:*` / `nx:feed:*` tags:
 
-| Settings event | Row written | Invalidates |
-|----------------|-------------|-------------|
-| Active-theme switch | `key = "activeTheme"` | `nx:sitemap:<siteId>`, `nx:feed:<siteId>` |
+| Settings event      | Row written                        | Invalidates                                                                                             |
+| ------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Active-theme switch | `key = "activeTheme"`              | `nx:sitemap:<siteId>`, `nx:feed:<siteId>`                                                               |
 | Theme settings save | `key = "theme.settings:<themeId>"` | same — only if the theme declares `seo.*` hooks; pure-style settings (e.g. `accentColor`) skip the bust |
-| Theme tokens save | `key = "theme"` | no — tokens don't affect sitemap/feed content |
+| Theme tokens save   | `key = "theme"`                    | no — tokens don't affect sitemap/feed content                                                           |
 
 The framework wires these invalidations in the settings save path
 based on the active theme's implementation (`impl.seo` declared
@@ -514,17 +527,19 @@ based on the active theme's implementation (`impl.seo` declared
 but they do have to declare their SEO hooks on `impl.seo` so the
 framework knows whether to bust SEO cache on settings save.
 
-### 4.8 Phase F.8 — `pnpm nexpress theme:install`
+### 4.8 Phase F.8 — `pnpm nexpress theme add`
 
 **Purpose**: the CLI step that closes the operator-no-code loop.
-Reads a theme's `manifest.requires`, AST-patches the operator's
-`src/collections/` files, runs `pnpm db:generate`, leaves changes
-git-staged for review.
+Installs a theme package, registers it in `nexpress.config.ts` via
+theme marker comments, validates that the package exports the expected
+named theme object, and leaves schema materialization to
+`pnpm db:generate && pnpm db:migrate` unless the operator passes
+`--apply`.
 
 **UX flow**:
 
 ```
-$ pnpm nexpress theme:install @nexpress/theme-magazine
+$ pnpm nexpress theme add @nexpress/theme-magazine
 ✓ Loaded @nexpress/theme-magazine 0.1.0
 
   Required collections:
@@ -536,58 +551,65 @@ $ pnpm nexpress theme:install @nexpress/theme-magazine
 
   Continue? [y/N] y
 
-✓ Patched src/collections/posts.ts
-✓ Wrote src/collections/authors.ts
-✓ Generated src/db/generated/collections.ts
-✓ Generated drizzle migration: drizzle/0042_add_magazine_fields.sql
+✓ Installed @nexpress/theme-magazine
+✓ Updated src/nexpress.config.ts theme markers
 
   Next:
-    1. Review the staged changes (git diff --staged)
-    2. Run `pnpm db:migrate`
+    1. Run `pnpm db:generate && pnpm db:migrate`
+       (`theme add --apply` can chain this)
+    2. Run `pnpm --silent run ops:preflight -- --target <host> --json`
     3. Activate "@nexpress/theme-magazine" in admin → Settings → Theme
 ```
 
 **Implementation tooling**:
-- AST: `ts-morph` for safe TypeScript modifications.
-- Migration: `drizzle-kit generate` subprocess.
-- Conflict detection: if a target field name already exists with
-  a *different type*, abort with "manual merge required" and
-  print conflicting locations.
-- Dry-run: `--dry-run` prints planned changes, writes nothing.
+
+- Config edit: marker-aware import + `themes:` array patch in
+  `nexpress.config.ts`.
+- Requirement merge: `defineConfig` auto-merges theme
+  `manifest.requires.collections` into the resolved collection shape;
+  operator collection files stay untouched.
+- Migration: `theme add --apply` chains `db:generate` + `db:migrate`;
+  otherwise the CLI prints that follow-up explicitly.
+- Conflict detection: if an operator-authored field name already
+  exists with a _different type_, admin requirement checks explain
+  the conflict and point at the relevant collection file.
+- Dry-run: `--dry-run` prints planned dependency/config changes,
+  writes nothing.
 
 **Safety invariants**:
-- Never overwrites an existing `defineCollection` field — only
-  adds missing ones. Type mismatch on existing field = abort.
-- All file writes are git-staged before the next step runs, so
-  the operator can `git diff --staged` and `git restore --staged`
-  if anything looks wrong.
-- No DB writes happen in `theme:install`. The migration must be
-  applied manually with `pnpm db:migrate`.
+
+- Never overwrites an operator collection file — theme requirements
+  are merged at config-resolution time.
+- Type mismatch on an existing operator field = visible requirement
+  conflict instead of silent schema mutation.
+- No DB writes happen in plain `theme add`. The migration must be
+  applied manually with `pnpm db:migrate`, or explicitly chained with
+  `theme add --apply`.
 
 **Out of scope for F.8**:
+
 - `theme:uninstall` (removing fields can drop data) → v0.3.
-- Cross-theme migration (`theme:install` switching from theme A
+- Cross-theme migration (`theme add` switching from theme A
   to theme B) → operator runs install on B; A's extra fields
   remain (idempotent, harmless).
 
 ### 4.9 Phase F.9 — Reference theme rebuild
 
-**Purpose**: prove the contract by rebuilding three reference
+**Purpose**: prove the contract by rebuilding three v0.2 reference
 themes against the full v0.2 surface. Each press a different
 axis.
 
-| Theme | Stresses |
-|-------|----------|
-| `@nexpress/theme-magazine` | F.2 archives (category/tag/author/date), F.3 settings (hero variant, accent color), F.4 blocks (hero-feature, three-col-grid), F.5 patterns (homepage compositions), F.6 nav (primary + footer). |
-| `@nexpress/theme-docs` | F.2 search route + sidebar slot consuming hierarchy, F.3 settings (version selector, GitHub repo URL), F.5 patterns (callout, code-with-tabs). |
-| `@nexpress/theme-portfolio` | F.3 deep settings (grid columns, hover style, project layout variants), F.4 blocks (case-study-hero, image-grid). Tests settings UI limits. |
+| Theme                       | Stresses                                                                                                                                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@nexpress/theme-magazine`  | F.2 archives (category/tag/author/date), F.3 settings (hero variant, accent color), F.4 blocks (hero-feature, three-col-grid), F.5 patterns (homepage compositions), F.6 nav (primary + footer). |
+| `@nexpress/theme-docs`      | F.2 search route + sidebar slot consuming hierarchy, F.3 settings (version selector, GitHub repo URL), F.5 patterns (callout, code-with-tabs).                                                   |
+| `@nexpress/theme-portfolio` | F.3 deep settings (grid columns, hover style, project layout variants), F.4 blocks (case-study-hero, image-grid). Tests settings UI limits.                                                      |
 
-`packages/themes/default` and `packages/themes/minimal` retire —
-absorbed as `theme-magazine` settings variants (`layout: "default" |
-"minimal"`).
+`packages/themes/minimal` retired. `packages/themes/default` remains
+the scaffold fallback and v0.1 baseline reference.
 
 **Validation gate**: each theme + a recorded demo where an operator
-goes `pnpm create nexpress my-site → pnpm nexpress theme:install
+goes `pnpm create nexpress my-site → pnpm nexpress theme add
 <theme> → pnpm db:migrate → admin only → live customized site`.
 The two CLI steps match §0; everything after `db:migrate` happens
 in admin without touching code. If any of the three themes can't
@@ -603,7 +625,7 @@ Resolved before implementation; deviations need a doc update.
 **Decision**: route component fetches its own data via
 `findDocuments` / generated typed wrappers. Framework provides
 `getArchiveQuery({ collection, params, settings })` as a
-*helper* (not a wrapper), but does not pre-fetch.
+_helper_ (not a wrapper), but does not pre-fetch.
 
 **Why not pre-fetch**: pre-fetching forces a "what does the
 theme want?" guess in the framework. Magazine theme wants
@@ -660,16 +682,19 @@ real friction.
 `np_settings.siteId` scoping. Theme code itself stays
 process-global (different sites can share the same theme module).
 
-### 5.7 CLI AST-patch safety
+### 5.7 CLI config-patch safety
 
-**Decision**: never overwrite, only add. Conflict on existing
-field → abort with location prints. Dry-run mode required. All
-writes git-staged before next step.
+**Decision**: `theme add` only edits dependency state and
+`nexpress.config.ts` marker ranges. It never rewrites operator
+collection files. Conflicting operator fields surface through
+theme requirement checks, and dry-run mode is required for plan
+review without mutation.
 
 ### 5.8 Plugin / theme name collisions
 
 **Decision**: type-name prefixing is convention; **`source`
 identity is contract** (see §4.4 for the registry-side rule).
+
 - Block `type` strings: theme blocks SHOULD prefix with theme id,
   plugin blocks SHOULD prefix with plugin id (admin lint warns
   in dev). This is convention because two themes shipping the
@@ -704,7 +729,7 @@ F.6 (navLocations)                ← small, builds on #429
   ↓
 F.7 (error/404/seo)               ← small
   ↓
-F.8 (CLI theme:install)           ← AST + drizzle integration ~2 PRs, highest risk
+F.8 (CLI theme add)               ← config registration + drizzle integration ~2 PRs, highest risk
   ↓
 F.9 (reference theme rebuild)     ← integration test, 3 themes ~3 PRs
 ```
@@ -732,15 +757,15 @@ existing phase before declaring done.
 
 ## 8. Risk register
 
-| Risk | Severity | Mitigation |
-|------|----------|------------|
-| Admin UI volume balloons (auto-form + pattern picker + nav locations + install dialog) | 🟡 Medium | Share primitives across surfaces (zod-form for theme + plugin config). Build admin patterns library if scope grows. |
-| Catch-all route priority bug (app vs slug vs theme) hides pages or bypasses access checks | 🔴 High | Precedence locked as **app > page slug > theme route > 404** so theme contributions can never silently shadow operator-authored pages. Integration tests cover each level. Both `Page` render and `generateMetadata` share the dispatcher. |
-| Stale block instances after theme deactivation confuse operators | 🟢 Low | Registry stays append-only; activation filter at admin/render layer. Stale instances render as placeholder + red card; bulk cleanup tool deferred to v0.3. |
-| settingsSchema evolution breaks operator data on theme upgrade | 🟡 Medium | Strict parse + reset-to-defaults banner in v0.2. Migration helpers in v0.3 if F.9 surfaces real demand. |
-| CLI AST patch corrupts operator collection files | 🔴 High | Add-only, abort-on-conflict, dry-run, git-staging before next step. Never DB-writes. Heavy unit + integration tests on patcher. |
-| Theme/plugin block-type collisions silently overwrite | 🟡 Medium | Convention-driven prefixes, dev-mode lint, `source` field on registry entries. |
-| Reference theme rebuild surfaces unforeseen contract gaps | 🟡 Medium | F.9 ordering at the end is intentional — gates v0.2 completion on real-use validation. |
+| Risk                                                                                      | Severity  | Mitigation                                                                                                                                                                                                                                 |
+| ----------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Admin UI volume balloons (auto-form + pattern picker + nav locations + install dialog)    | 🟡 Medium | Share primitives across surfaces (zod-form for theme + plugin config). Build admin patterns library if scope grows.                                                                                                                        |
+| Catch-all route priority bug (app vs slug vs theme) hides pages or bypasses access checks | 🔴 High   | Precedence locked as **app > page slug > theme route > 404** so theme contributions can never silently shadow operator-authored pages. Integration tests cover each level. Both `Page` render and `generateMetadata` share the dispatcher. |
+| Stale block instances after theme deactivation confuse operators                          | 🟢 Low    | Registry stays append-only; activation filter at admin/render layer. Stale instances render as placeholder + red card; bulk cleanup tool deferred to v0.3.                                                                                 |
+| settingsSchema evolution breaks operator data on theme upgrade                            | 🟡 Medium | Strict parse + reset-to-defaults banner in v0.2. Migration helpers in v0.3 if F.9 surfaces real demand.                                                                                                                                    |
+| CLI config patch corrupts operator config                                                 | 🟡 Medium | Marker-bounded edits, dry-run mode, named-export probe, and manual snippet fallback when markers are missing. Collection files are never rewritten by `theme add`.                                                                         |
+| Theme/plugin block-type collisions silently overwrite                                     | 🟡 Medium | Convention-driven prefixes, dev-mode lint, `source` field on registry entries.                                                                                                                                                             |
+| Reference theme rebuild surfaces unforeseen contract gaps                                 | 🟡 Medium | F.9 ordering at the end is intentional — gates v0.2 completion on real-use validation.                                                                                                                                                     |
 
 ## 9. Backwards compatibility
 
@@ -757,12 +782,11 @@ existing phase before declaring done.
 
 Per the agreement to track everything we postpone:
 
-- **`theme:install` auto-chains `db:migrate`** — v0.2 keeps the
-  DB-write boundary explicit so the operator reviews the staged
-  collection diff (and the generated migration SQL) before it
-  hits the database. A `--apply` flag (or default-on with
-  `--no-apply` opt-out) is a clean v0.3 addition once the safety
-  story for AST patching has shipped real-world miles.
+- **Default-on migration apply** — `theme add --apply` can chain
+  `db:generate` + `db:migrate`, but the default command still keeps
+  the DB-write boundary explicit so operators can review the generated
+  migration SQL before it hits the database. Making apply default-on
+  remains a separate operator-safety decision.
 - **`theme:uninstall` CLI** — removing collection fields without
   data loss requires a confirmation flow and possibly a backup
   step. Out of scope for F.8.

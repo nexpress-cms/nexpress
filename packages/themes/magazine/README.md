@@ -12,7 +12,7 @@ pnpm add @nexpress/theme-magazine
 
 ```ts
 // nexpress.config.ts
-import magazineTheme from "@nexpress/theme-magazine";
+import { magazineTheme } from "@nexpress/theme-magazine";
 
 export default defineConfig({
   // ...

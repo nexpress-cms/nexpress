@@ -12,7 +12,7 @@ pnpm add @nexpress/theme-portfolio
 
 ```ts
 // nexpress.config.ts
-import portfolioTheme from "@nexpress/theme-portfolio";
+import { portfolioTheme } from "@nexpress/theme-portfolio";
 
 export default defineConfig({
   // ...
@@ -22,7 +22,8 @@ export default defineConfig({
 ```
 
 For authoring your own theme see
-[`@nexpress/theme`](https://www.npmjs.com/package/@nexpress/theme).
+[`@nexpress/theme`](https://www.npmjs.com/package/@nexpress/theme) and
+[docs/theme-authoring.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/theme-authoring.md).
 
 ## License
 

@@ -14,7 +14,7 @@ pnpm add @nexpress/theme-default
 
 ```ts
 // nexpress.config.ts
-import defaultTheme from "@nexpress/theme-default";
+import { defaultTheme } from "@nexpress/theme-default";
 
 export default defineConfig({
   // ...
