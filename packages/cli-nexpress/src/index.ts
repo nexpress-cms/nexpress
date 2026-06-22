@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   addPluginToConfig,
@@ -186,6 +187,15 @@ function runPackageManager(
   });
 }
 
+type PackageManagerRunner = typeof runPackageManager;
+type ProjectScriptRunner = typeof runProjectScript;
+
+export interface CliRuntime {
+  cwd?: string;
+  runPackageManager?: PackageManagerRunner;
+  runProjectScript?: ProjectScriptRunner;
+}
+
 function formatPackageManagerCommand(
   manager: NpPackageManager,
   action: "add" | "remove",
@@ -220,7 +230,11 @@ async function writeConfig(path: string, content: string): Promise<void> {
   await writeFile(path, content, "utf-8");
 }
 
-async function pluginAdd(packageName: string, cwd: string): Promise<number> {
+async function pluginAdd(
+  packageName: string,
+  cwd: string,
+  packageManagerRunner: PackageManagerRunner = runPackageManager,
+): Promise<number> {
   const entry: PluginEntry = {
     packageName,
     identifier: packageToIdentifier(packageName),
@@ -294,7 +308,7 @@ async function pluginAdd(packageName: string, cwd: string): Promise<number> {
       `  Detected local workspace package at ${relative(cwd, localWorkspace.dir)}; using pnpm --workspace.\n`,
     );
   }
-  await runPackageManager(project.packageManager, "add", packageName, cwd, {
+  await packageManagerRunner(project.packageManager, "add", packageName, cwd, {
     localWorkspace: localWorkspace.kind === "found",
   });
   process.stdout.write(`✓ Installed ${packageName}.\n`);
@@ -333,7 +347,11 @@ async function pluginAdd(packageName: string, cwd: string): Promise<number> {
   return 1;
 }
 
-async function pluginRemove(packageName: string, cwd: string): Promise<number> {
+async function pluginRemove(
+  packageName: string,
+  cwd: string,
+  packageManagerRunner: PackageManagerRunner = runPackageManager,
+): Promise<number> {
   const entry: PluginEntry = {
     packageName,
     identifier: packageToIdentifier(packageName),
@@ -357,7 +375,7 @@ async function pluginRemove(packageName: string, cwd: string): Promise<number> {
   }
 
   process.stdout.write(`\n→ Uninstalling ${packageName} via ${project.packageManager}…\n`);
-  await runPackageManager(project.packageManager, "remove", packageName, cwd);
+  await packageManagerRunner(project.packageManager, "remove", packageName, cwd);
   process.stdout.write(`✓ Removed ${packageName}.\n`);
   if (result.kind === "no-markers") {
     process.stdout.write(
@@ -372,8 +390,12 @@ async function pluginRemove(packageName: string, cwd: string): Promise<number> {
   return 0;
 }
 
-async function main(argv: string[]): Promise<number> {
+export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): Promise<number> {
   const [, , ...args] = argv;
+  const cwd = runtime.cwd ?? process.cwd();
+  const packageManagerRunner = runtime.runPackageManager ?? runPackageManager;
+  const projectScriptRunner = runtime.runProjectScript ?? runProjectScript;
+
   if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
     process.stdout.write(HELP_TEXT);
     return 0;
@@ -453,9 +475,8 @@ async function main(argv: string[]): Promise<number> {
     const sub = args[1];
     const invocation = resolveOpsScriptInvocation(sub, args.slice(2));
     if (invocation) {
-      const cwd = process.cwd();
       const manager = detectPackageManager(cwd);
-      await runProjectScript(manager, invocation.script, invocation.args, cwd);
+      await projectScriptRunner(manager, invocation.script, invocation.args, cwd);
       return 0;
     }
     process.stderr.write(`Unknown subcommand: ops ${sub ?? ""}\n${HELP_TEXT}`);
@@ -465,9 +486,8 @@ async function main(argv: string[]): Promise<number> {
   if (args[0] === "deploy") {
     const sub = args[1];
     if (sub === "plan") {
-      const cwd = process.cwd();
       const manager = detectPackageManager(cwd);
-      await runProjectScript(manager, "deploy:plan", args.slice(2), cwd);
+      await projectScriptRunner(manager, "deploy:plan", args.slice(2), cwd);
       return 0;
     }
     process.stderr.write(`Unknown subcommand: deploy ${sub ?? ""}\n${HELP_TEXT}`);
@@ -477,9 +497,8 @@ async function main(argv: string[]): Promise<number> {
   if (args[0] === "release") {
     const sub = args[1];
     if (sub === "apply" || sub === "check" || sub === "plan" || sub === "verify") {
-      const cwd = process.cwd();
       const manager = detectPackageManager(cwd);
-      await runProjectScript(manager, "release", args.slice(1), cwd);
+      await projectScriptRunner(manager, "release", args.slice(1), cwd);
       return 0;
     }
     process.stderr.write(`Unknown subcommand: release ${sub ?? ""}\n${HELP_TEXT}`);
@@ -489,9 +508,8 @@ async function main(argv: string[]): Promise<number> {
   if (args[0] === "runbook") {
     const runbook = args[1];
     if (runbook) {
-      const cwd = process.cwd();
       const manager = detectPackageManager(cwd);
-      await runProjectScript(manager, "runbook", args.slice(1), cwd);
+      await projectScriptRunner(manager, "runbook", args.slice(1), cwd);
       return 0;
     }
     process.stderr.write(`Missing runbook name.\n${HELP_TEXT}`);
@@ -505,9 +523,8 @@ async function main(argv: string[]): Promise<number> {
       process.stderr.write(`Missing arguments. Usage: nexpress plugin add|remove <package>\n`);
       return 2;
     }
-    const cwd = process.cwd();
-    if (sub === "add") return pluginAdd(target, cwd);
-    if (sub === "remove") return pluginRemove(target, cwd);
+    if (sub === "add") return pluginAdd(target, cwd, packageManagerRunner);
+    if (sub === "remove") return pluginRemove(target, cwd, packageManagerRunner);
     process.stderr.write(`Unknown subcommand: plugin ${sub}\n`);
     return 2;
   }
@@ -588,7 +605,6 @@ async function main(argv: string[]): Promise<number> {
       return 2;
     }
 
-    const cwd = process.cwd();
     const outDir = workspace ? resolve(cwd, "packages/plugins") : resolve(cwd, outDirArg ?? ".");
     if (workspace) {
       try {
@@ -651,12 +667,24 @@ async function main(argv: string[]): Promise<number> {
   return 2;
 }
 
-main(process.argv)
-  .then((code) => {
-    process.exit(code);
-  })
-  .catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`\nnexpress: ${message}\n`);
-    process.exit(1);
-  });
+function isDirectRun(): boolean {
+  const entrypoint = process.argv[1];
+  if (!entrypoint) return false;
+  try {
+    return realpathSync(entrypoint) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return resolve(entrypoint) === fileURLToPath(import.meta.url);
+  }
+}
+
+if (isDirectRun()) {
+  runNexpressCli(process.argv)
+    .then((code) => {
+      process.exit(code);
+    })
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`\nnexpress: ${message}\n`);
+      process.exit(1);
+    });
+}
