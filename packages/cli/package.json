@@ -43,7 +43,7 @@
     "@types/node": "^25.9.3",
     "@types/pg": "^8.15.5",
     "@types/prompts": "^2.4.9",
-    "@types/react": "^19.2.16",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.0.0",
     "dotenv": "^17.2.4",
     "drizzle-orm": "^0.45.2",
