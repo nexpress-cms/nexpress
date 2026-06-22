@@ -1,39 +1,45 @@
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, unlinkSync } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import pc from "picocolors";
 
+import {
+  buildManualThemeRemoveSnippet,
+  packageToThemeIdentifier,
+  removeThemeFromConfig,
+  type EditOutcome,
+  type ThemeEntry,
+} from "../config-editor.js";
 import { extractCollectionFromFile } from "./ast/extract-collection.js";
-import {
-  CollectionUnpatchError,
-  unpatchCollectionFile,
-} from "./ast/unpatch-collection.js";
+import { CollectionUnpatchError, unpatchCollectionFile } from "./ast/unpatch-collection.js";
 import { formatThemeUninstallPlan } from "./format.js";
-import {
-  planThemeUninstall,
-  type PlanCollectionShape,
-} from "./plan.js";
+import { planThemeUninstall, type PlanCollectionShape } from "./plan.js";
 
 /**
- * F.8 runner — full apply phase for theme:uninstall.
+ * Destructive cleanup runner for `theme:uninstall`.
  *
- * Flow mirrors theme:install:
+ * Flow complements `theme add`:
  *   1. Load theme module via dynamic import (theme must still be
  *      installed so we can read the manifest).
- *   2. Walk src/collections/*.ts; AST-extract slug + field names.
- *   3. Plan removals (per-field by default; whole-file with
+ *   2. Prepare marker-bounded removal from nexpress.config.ts so
+ *      defineConfig stops auto-merging theme requirements before
+ *      db:generate runs.
+ *   3. Walk src/collections/*.ts; AST-extract slug + field names.
+ *   4. Plan removals (per-field by default; whole-file with
  *      --with-collections).
- *   4. Print plan; --dry-run exits here.
- *   5. Confirm interactively (--yes skips). The confirm copy
+ *   5. Print plan; --dry-run exits here.
+ *   6. Confirm interactively (--yes skips). The confirm copy
  *      lists data-loss explicitly because every column to remove
  *      maps to a DROP COLUMN in the next migration.
- *   6. Apply: AST-remove fields / delete collection files.
- *   7. Best-effort spawn `pnpm db:generate` so the DROP COLUMN
- *      migration lands alongside the staged collection edits.
- *   8. Print operator's next steps (review diff + db:migrate +
- *      pnpm remove + remove from themes: array in config).
+ *   7. Apply config removal, then AST-remove fields / delete
+ *      collection files.
+ *   8. Best-effort spawn `pnpm db:generate` so the DROP COLUMN
+ *      migration is generated from the theme-unregistered config.
+ *   9. Print operator's next steps (review diff + db:migrate +
+ *      pnpm remove).
  */
 
 interface RunInput {
@@ -42,18 +48,31 @@ interface RunInput {
     dryRun: boolean;
     yes: boolean;
     withCollections: boolean;
-    /** v0.3 — when true, auto-chains `db:migrate` after a
-     *  successful `db:generate`. Default false: the operator
-     *  reviews the generated DROP COLUMN SQL before it touches
-     *  the database. With `--apply`, the operator opts into the
-     *  one-shot uninstall (still prompts before applying unless
-     *  combined with `--yes`). Same flag semantics as
-     *  `theme:install --apply` for consistency. */
+    /** When true, auto-chains `db:migrate` after a successful
+     *  `db:generate`. Default false: the operator reviews the
+     *  generated DROP COLUMN SQL before it touches the database.
+     *  With `--apply`, the operator opts into the one-shot
+     *  uninstall (still prompts before applying unless combined
+     *  with `--yes`). Same flag semantics as `theme add --apply`
+     *  for consistency. */
     apply: boolean;
   };
 }
 
 const COLLECTIONS_DIR = "src/collections";
+
+function resolveConfigPath(cwd: string): string | null {
+  const candidates = [
+    "nexpress.config.ts",
+    "src/nexpress.config.ts",
+    "apps/web/src/nexpress.config.ts",
+  ];
+  for (const candidate of candidates) {
+    const full = resolve(cwd, candidate);
+    if (existsSync(full)) return full;
+  }
+  return null;
+}
 
 function discoverCollections(cwd: string): PlanCollectionShape[] {
   const dir = resolve(cwd, COLLECTIONS_DIR);
@@ -85,9 +104,7 @@ function collectFieldNames(
   for (const f of fields) {
     if (f.type === "row" || f.type === "collapsible") {
       out.push(
-        ...collectFieldNames(
-          f.fields as { name?: string; type?: string; fields?: unknown }[],
-        ),
+        ...collectFieldNames(f.fields as { name?: string; type?: string; fields?: unknown }[]),
       );
       continue;
     }
@@ -96,26 +113,19 @@ function collectFieldNames(
   return out;
 }
 
-async function loadThemeManifest(
-  themePackage: string,
-): Promise<Record<string, unknown>> {
+async function loadThemeManifest(themePackage: string): Promise<Record<string, unknown>> {
   const mod = (await import(themePackage)) as Record<string, unknown>;
   const candidate =
     (mod as { default?: unknown }).default ??
     Object.values(mod).find(
-      (v): v is Record<string, unknown> =>
-        typeof v === "object" && v !== null && "manifest" in v,
+      (v): v is Record<string, unknown> => typeof v === "object" && v !== null && "manifest" in v,
     );
   if (!candidate || typeof candidate !== "object") {
-    throw new Error(
-      `Theme package '${themePackage}' has no detectable defineTheme export.`,
-    );
+    throw new Error(`Theme package '${themePackage}' has no detectable defineTheme export.`);
   }
   const manifest = (candidate as { manifest?: unknown }).manifest;
   if (!manifest || typeof manifest !== "object") {
-    throw new Error(
-      `Theme package '${themePackage}' export has no .manifest field.`,
-    );
+    throw new Error(`Theme package '${themePackage}' export has no .manifest field.`);
   }
   return manifest as Record<string, unknown>;
 }
@@ -197,18 +207,83 @@ async function runDrizzleMigrate(cwd: string): Promise<boolean> {
   return false;
 }
 
+function formatConfigRemovalStatus(
+  result: EditOutcome,
+  entry: ThemeEntry,
+  configPath: string,
+  requiresManualCleanup: boolean,
+): string {
+  if (requiresManualCleanup) {
+    return (
+      `${pc.yellow("⚠")} Config cleanup needs a manual edit before uninstall can apply. ` +
+      `${pc.cyan(configPath)} still references ${pc.cyan(entry.identifier)} or ${pc.cyan(entry.packageName)}.\n\n` +
+      `${buildManualThemeRemoveSnippet(entry)}`
+    );
+  }
+  if (result.kind === "ok") {
+    return `${pc.green("✓")} Config cleanup planned: remove ${pc.cyan(entry.identifier)} from ${pc.cyan(configPath)} before db:generate.`;
+  }
+  if (result.kind === "no-op") {
+    return pc.dim(
+      `Config cleanup: no marker entry for ${entry.identifier} found and no direct config reference remains; assuming the theme is already unregistered.`,
+    );
+  }
+  return pc.dim(
+    `Config cleanup: theme markers are missing, but no direct config reference remains; assuming the theme is already unregistered.`,
+  );
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function configReferencesTheme(content: string, entry: ThemeEntry): boolean {
+  const packagePattern = new RegExp(`["']${escapeRegExp(entry.packageName)}["']`);
+  const identifierPattern = new RegExp(`\\b${escapeRegExp(entry.identifier)}\\b`);
+  return packagePattern.test(content) || identifierPattern.test(content);
+}
+
 export async function runThemeUninstall(input: RunInput): Promise<number> {
   const cwd = process.cwd();
   console.log(pc.dim(`Resolving from ${cwd}…`));
+
+  let themeEntry: ThemeEntry;
+  try {
+    themeEntry = {
+      packageName: input.themePackage,
+      identifier: packageToThemeIdentifier(input.themePackage),
+    };
+  } catch (error) {
+    console.error(pc.red("error: ") + (error instanceof Error ? error.message : String(error)));
+    console.error(
+      pc.dim(
+        "  theme:uninstall can only auto-clean marker-managed themes. Remove this theme from `themes:` manually, then run `pnpm db:generate`.",
+      ),
+    );
+    return 2;
+  }
+
+  const configPath = resolveConfigPath(cwd);
+  if (!configPath) {
+    console.error(pc.red("error: ") + "Could not find nexpress.config.ts.");
+    console.error(
+      pc.dim(
+        "  Looked at nexpress.config.ts, src/nexpress.config.ts, and apps/web/src/nexpress.config.ts. Run from the project root.",
+      ),
+    );
+    return 2;
+  }
+
+  const originalConfig = await readFile(configPath, "utf-8");
+  const configRemoval = removeThemeFromConfig(originalConfig, themeEntry);
+  const configAfterCleanup = configRemoval.kind === "ok" ? configRemoval.content : originalConfig;
+  const configNeedsManualCleanup = configReferencesTheme(configAfterCleanup, themeEntry);
 
   let manifest;
   try {
     manifest = await loadThemeManifest(input.themePackage);
   } catch (error) {
-    console.error(
-      pc.red("error: ") +
-        (error instanceof Error ? error.message : String(error)),
-    );
+    console.error(pc.red("error: ") + (error instanceof Error ? error.message : String(error)));
     console.error(
       pc.dim(
         `  Hint: theme:uninstall needs the theme package present so it can read the manifest. ` +
@@ -220,9 +295,7 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
 
   const discovered = discoverCollections(cwd);
   const plan = planThemeUninstall({
-    manifest: manifest as unknown as Parameters<
-      typeof planThemeUninstall
-    >[0]["manifest"],
+    manifest: manifest as unknown as Parameters<typeof planThemeUninstall>[0]["manifest"],
     existingCollections: discovered,
     withCollections: input.flags.withCollections,
   });
@@ -230,24 +303,44 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
   console.log("");
   console.log(formatThemeUninstallPlan(plan));
   console.log("");
-
-  if (plan.isNoop) return 0;
+  console.log(
+    formatConfigRemovalStatus(configRemoval, themeEntry, configPath, configNeedsManualCleanup),
+  );
+  console.log("");
 
   if (input.flags.dryRun) {
     console.log(pc.dim("--dry-run: exiting without applying."));
     return 0;
   }
 
+  if (configNeedsManualCleanup) {
+    console.error(
+      pc.red("error: ") +
+        "theme:uninstall cannot safely generate a drop migration until the theme is removed from nexpress.config.ts.",
+    );
+    console.error(
+      pc.dim("  Add theme markers or apply the manual cleanup snippet above, then re-run."),
+    );
+    return 2;
+  }
+
+  if (plan.isNoop) {
+    if (configRemoval.kind === "ok") {
+      await writeFile(configPath, configRemoval.content, "utf-8");
+      console.log(`${pc.green("✓")} Removed theme registration from ${pc.cyan(configPath)}.`);
+      console.log("");
+      console.log("Next:");
+      console.log(`  1. Run \`pnpm remove ${input.themePackage}\`.`);
+    }
+    return 0;
+  }
+
   if (!input.flags.yes) {
     if (!stdin.isTTY) {
       console.error(
-        pc.red(
-          "error: theme:uninstall needs interactive confirmation, but stdin isn't a TTY.",
-        ),
+        pc.red("error: theme:uninstall needs interactive confirmation, but stdin isn't a TTY."),
       );
-      console.error(
-        pc.dim("  Re-run with --yes to skip the prompt non-interactively."),
-      );
+      console.error(pc.dim("  Re-run with --yes to skip the prompt non-interactively."));
       return 2;
     }
     // db:generate runs unconditionally after AST changes; --apply
@@ -263,6 +356,11 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
       console.log(pc.dim("Aborted."));
       return 0;
     }
+  }
+
+  if (configRemoval.kind === "ok") {
+    await writeFile(configPath, configRemoval.content, "utf-8");
+    console.log(`${pc.green("✓")} Removed theme registration from ${pc.cyan(configPath)}.`);
   }
 
   // Build the path map so we can save each file once.
@@ -310,18 +408,14 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
     if (deletedSlugs.has(slug)) continue;
     const filePath = pathBySlug.get(slug);
     if (!filePath) {
-      console.error(
-        pc.red("error: ") +
-          `Couldn't locate file for collection '${slug}'. Skipping.`,
-      );
+      console.error(pc.red("error: ") + `Couldn't locate file for collection '${slug}'. Skipping.`);
       continue;
     }
     try {
       const result = unpatchCollectionFile(filePath, fields);
       if (result.removed.length > 0) {
         console.log(
-          pc.yellow("~") +
-            ` Patched ${pc.cyan(filePath)} — removed: ${result.removed.join(", ")}`,
+          pc.yellow("~") + ` Patched ${pc.cyan(filePath)} — removed: ${result.removed.join(", ")}`,
         );
         summary.fieldsRemoved += result.removed.length;
       }
@@ -332,9 +426,7 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
     } catch (error) {
       if (error instanceof CollectionUnpatchError) {
         console.error(pc.red("error: ") + error.message);
-        console.error(
-          pc.dim(`  File untouched. Reconcile manually then re-run.`),
-        );
+        console.error(pc.dim(`  File untouched. Reconcile manually then re-run.`));
         return 1;
       }
       throw error;
@@ -379,14 +471,10 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
       const applied = await runDrizzleMigrate(cwd);
       console.log("");
       if (applied) {
-        console.log(
-          `${pc.green("✓")} Migration applied. Theme columns dropped from the database.`,
-        );
+        console.log(`${pc.green("✓")} Migration applied. Theme columns dropped from the database.`);
         console.log("");
         console.log("Next:");
-        console.log(
-          `  1. Remove the theme from \`themes:\` in nexpress.config.ts and run \`pnpm remove ${input.themePackage}\`.`,
-        );
+        console.log(`  1. Run \`pnpm remove ${input.themePackage}\`.`);
         if (summary.filesDeleted > 0) {
           console.log(
             pc.dim(
@@ -415,9 +503,7 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
   console.log(
     "  3. Run `pnpm db:migrate` to apply the migration (or re-run with --apply to auto-chain after generate).",
   );
-  console.log(
-    `  4. Remove the theme from \`themes:\` in nexpress.config.ts and run \`pnpm remove ${input.themePackage}\`.`,
-  );
+  console.log(`  4. Run \`pnpm remove ${input.themePackage}\`.`);
   if (summary.filesDeleted > 0) {
     console.log(
       pc.dim(
