@@ -391,6 +391,10 @@ resolution time, so the theme must be unregistered before Drizzle
 can generate the expected `DROP COLUMN` migration. Use
 `--with-collections` only when a contributed collection file exactly
 matches the theme's required shape and should be deleted outright.
+If the removed theme was the active theme, open `/admin/settings/theme`
+after deploy and either save the fallback theme as active or activate
+another registered theme. The public site falls back safely, but this
+clears the stale `np_settings.activeTheme` value.
 The older `theme:uninstall` command remains as a compatibility alias.
 
 **Install (manual / explicit form)**: scaffolded sites can list

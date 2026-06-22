@@ -207,6 +207,13 @@ async function runDrizzleMigrate(cwd: string): Promise<boolean> {
   return false;
 }
 
+function printActiveThemeRepairStep(stepNumber: number): void {
+  console.log(
+    `  ${stepNumber}. If this theme was active, open \`/admin/settings/theme\` and click ` +
+      `"Save fallback as active" or activate another registered theme.`,
+  );
+}
+
 function formatConfigRemovalStatus(
   result: EditOutcome,
   entry: ThemeEntry,
@@ -331,6 +338,7 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
       console.log("");
       console.log("Next:");
       console.log(`  1. Run \`pnpm remove ${input.themePackage}\`.`);
+      printActiveThemeRepairStep(2);
     }
     return 0;
   }
@@ -475,10 +483,11 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
         console.log("");
         console.log("Next:");
         console.log(`  1. Run \`pnpm remove ${input.themePackage}\`.`);
+        printActiveThemeRepairStep(2);
         if (summary.filesDeleted > 0) {
           console.log(
             pc.dim(
-              `  2. Remove the matching \`import { … } from "./collections/<slug>"\` lines from nexpress.config.ts ` +
+              `  3. Remove the matching \`import { … } from "./collections/<slug>"\` lines from nexpress.config.ts ` +
                 `and drop the entries from \`collections: [...]\`.`,
             ),
           );
@@ -504,10 +513,11 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
     "  3. Run `pnpm db:migrate` to apply the migration (or re-run with --apply to auto-chain after generate).",
   );
   console.log(`  4. Run \`pnpm remove ${input.themePackage}\`.`);
+  printActiveThemeRepairStep(5);
   if (summary.filesDeleted > 0) {
     console.log(
       pc.dim(
-        `  5. Remove the matching \`import { … } from "./collections/<slug>"\` lines from nexpress.config.ts ` +
+        `  6. Remove the matching \`import { … } from "./collections/<slug>"\` lines from nexpress.config.ts ` +
           `and drop the entries from \`collections: [...]\` (otherwise TypeScript will fail on the deleted modules).`,
       ),
     );

@@ -110,7 +110,10 @@ pnpm remove @you/theme-cool
 The remove command unregisters the theme before generating the
 destructive `DROP COLUMN` migration. The legacy
 `theme:uninstall` spelling still works, but new docs and help use
-`theme remove` to mirror `theme add`.
+`theme remove` to mirror `theme add`. If that theme was active,
+open `/admin/settings/theme` after deploy and save the fallback theme
+as active or activate another registered theme so the persisted
+`activeTheme` setting is no longer stale.
 
 To author a new theme: separate npm package — see
 [theme-authoring.md](./theme-authoring.md). The manual equivalent
