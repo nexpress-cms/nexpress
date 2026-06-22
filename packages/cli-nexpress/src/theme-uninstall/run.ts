@@ -19,7 +19,7 @@ import { formatThemeUninstallPlan } from "./format.js";
 import { planThemeUninstall, type PlanCollectionShape } from "./plan.js";
 
 /**
- * Destructive cleanup runner for `theme:uninstall`.
+ * Destructive cleanup runner for `theme remove`.
  *
  * Flow complements `theme add`:
  *   1. Load theme module via dynamic import (theme must still be
@@ -257,7 +257,7 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
     console.error(pc.red("error: ") + (error instanceof Error ? error.message : String(error)));
     console.error(
       pc.dim(
-        "  theme:uninstall can only auto-clean marker-managed themes. Remove this theme from `themes:` manually, then run `pnpm db:generate`.",
+        "  theme remove can only auto-clean marker-managed themes. Remove this theme from `themes:` manually, then run `pnpm db:generate`.",
       ),
     );
     return 2;
@@ -286,7 +286,7 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
     console.error(pc.red("error: ") + (error instanceof Error ? error.message : String(error)));
     console.error(
       pc.dim(
-        `  Hint: theme:uninstall needs the theme package present so it can read the manifest. ` +
+        `  Hint: theme remove needs the theme package present so it can read the manifest. ` +
           `Run this BEFORE \`pnpm remove ${input.themePackage}\`.`,
       ),
     );
@@ -316,7 +316,7 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
   if (configNeedsManualCleanup) {
     console.error(
       pc.red("error: ") +
-        "theme:uninstall cannot safely generate a drop migration until the theme is removed from nexpress.config.ts.",
+        "theme remove cannot safely generate a drop migration until the theme is removed from nexpress.config.ts.",
     );
     console.error(
       pc.dim("  Add theme markers or apply the manual cleanup snippet above, then re-run."),
@@ -338,7 +338,7 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
   if (!input.flags.yes) {
     if (!stdin.isTTY) {
       console.error(
-        pc.red("error: theme:uninstall needs interactive confirmation, but stdin isn't a TTY."),
+        pc.red("error: theme remove needs interactive confirmation, but stdin isn't a TTY."),
       );
       console.error(pc.dim("  Re-run with --yes to skip the prompt non-interactively."));
       return 2;

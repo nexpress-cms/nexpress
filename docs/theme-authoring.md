@@ -373,6 +373,26 @@ The marker comments are present in every freshly scaffolded
 yet, `theme add` prints a copy-paste snippet and exits without
 mutating anything; add the markers and re-run.
 
+**Remove (operator side)**: run removal while the package is still
+installed, so the CLI can read the theme manifest and know which
+fields came from the theme:
+
+```bash
+pnpm nexpress theme remove @yourco/theme-mybrand --dry-run
+pnpm nexpress theme remove @yourco/theme-mybrand --yes
+pnpm db:migrate
+pnpm remove @yourco/theme-mybrand
+```
+
+`theme remove` unregisters the theme from `nexpress.config.ts`
+before it edits collection files or runs `db:generate`. That order
+matters: active theme requirements are auto-merged at config
+resolution time, so the theme must be unregistered before Drizzle
+can generate the expected `DROP COLUMN` migration. Use
+`--with-collections` only when a contributed collection file exactly
+matches the theme's required shape and should be deleted outright.
+The older `theme:uninstall` command remains as a compatibility alias.
+
 **Install (manual / explicit form)**: scaffolded sites can list
 themes by hand if they prefer. The built-in pack
 (`@nexpress/theme-default`, `theme-magazine`, `theme-portfolio`,

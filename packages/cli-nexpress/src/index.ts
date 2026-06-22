@@ -36,6 +36,7 @@ import {
   type NpPackageManagerOptions,
 } from "./package-manager.js";
 import { runThemeAdd } from "./theme-add/run.js";
+import { parseThemeUninstallArgs } from "./theme-uninstall/args.js";
 import { runThemeUninstall } from "./theme-uninstall/run.js";
 
 const HELP_TEXT = `nexpress — project-side CLI
@@ -47,11 +48,12 @@ Usage:
   nexpress theme add <package> --dry-run              Same, but print the plan and exit without mutating
   nexpress theme add <package> --yes                  Same, but skip the interactive confirm prompt
   nexpress theme add <package> --apply                Same, but chain db:generate + db:migrate after registration
-  nexpress theme:uninstall <package>                  Uninstall: AST-remove fields the theme contributed
-  nexpress theme:uninstall <package> --dry-run        Same, but print the plan and exit without mutating
-  nexpress theme:uninstall <package> --yes            Same, but skip the destructive confirm prompt
-  nexpress theme:uninstall <package> --with-collections  Also delete collection FILES that match the theme's spec exactly
-  nexpress theme:uninstall <package> --apply          Same, but auto-chain db:migrate after generate (DROP COLUMN runs)
+  nexpress theme remove <package>                     Prepare removal: unregister theme and remove contributed fields
+  nexpress theme remove <package> --dry-run           Same, but print the plan and exit without mutating
+  nexpress theme remove <package> --yes               Same, but skip the destructive confirm prompt
+  nexpress theme remove <package> --with-collections  Also delete collection FILES that match the theme's spec exactly
+  nexpress theme remove <package> --apply             Same, but auto-chain db:migrate after generate (DROP COLUMN runs)
+  nexpress theme:uninstall <package>                  Legacy alias for theme remove
   nexpress deploy plan --target <host> [--json]       Print a deployment bridge plan
   nexpress ops status [--json|--brief|--no-color]     Print read-only runtime status for operators and agents
   nexpress ops contracts [--json|--brief]             Print the shipped local ops contract registry
@@ -87,13 +89,16 @@ Usage:
   nexpress create scheduled-plugin <slug> [--workspace|--out <dir>] Scaffold a scheduled-task plugin
 
 Notes:
-  - "plugin add/remove" and "theme add" run from the project root (where
+  - "plugin add/remove" and "theme add/remove" run from the project root (where
     nexpress.config.ts lives).
   - "theme add" only registers the theme. The framework auto-merges the
     theme's manifest.requires.collections into your \`collections\` array at
     config-resolution time, so a follow-up \`pnpm db:generate && pnpm
     db:migrate\` (or \`--apply\` here) is all you need to materialise
     theme-declared columns. No more AST patches to your collection files.
+  - "theme remove" needs the theme package to still be installed so it can
+    read the manifest, unregisters the theme before db:generate, and then
+    creates the DROP COLUMN migration for contributed fields.
   - "create *-plugin" writes a starter package to the current directory by
     default. From a project root, use --workspace to write packages/plugins/<slug>
     or --out <dir> for an explicit destination. Then run pnpm install +
@@ -402,10 +407,8 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
   }
 
   if (args[0] === "theme") {
-    // `nexpress theme add <pkg> [flags]` — the only theme
-    // subcommand for now. `theme:install` was retired in this
-    // release (the framework auto-merges theme requirements at
-    // config-resolution time, so the AST-patch path is gone).
+    // `theme add` registers a package; `theme remove` is the
+    // friendly counterpart to the legacy `theme:uninstall`.
     const sub = args[1];
     if (sub === "add") {
       let themePackage: string | undefined;
@@ -434,41 +437,31 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
       }
       return runThemeAdd({ themePackage, flags: { dryRun, yes, apply } });
     }
+    if (sub === "remove") {
+      const parsed = parseThemeUninstallArgs(args.slice(2), {
+        commandName: "theme remove",
+        example: "nexpress theme remove @nexpress/theme-magazine",
+      });
+      if (!parsed.ok) {
+        process.stderr.write(`${parsed.message}\n`);
+        return 2;
+      }
+      return runThemeUninstall(parsed.value);
+    }
     process.stderr.write(`Unknown subcommand: theme ${sub ?? ""}\n${HELP_TEXT}`);
     return 2;
   }
 
   if (args[0] === "theme:uninstall") {
-    let themePackage: string | undefined;
-    let dryRun = false;
-    let yes = false;
-    let withCollections = false;
-    let apply = false;
-    for (const arg of args.slice(1)) {
-      if (arg === "--dry-run") dryRun = true;
-      else if (arg === "--yes" || arg === "-y") yes = true;
-      else if (arg === "--with-collections") withCollections = true;
-      else if (arg === "--apply") apply = true;
-      else if (arg.startsWith("--")) {
-        process.stderr.write(`Unknown flag for theme:uninstall: ${arg}\n`);
-        return 2;
-      } else if (themePackage === undefined) {
-        themePackage = arg;
-      } else {
-        process.stderr.write(`Unexpected positional: ${arg}\n`);
-        return 2;
-      }
-    }
-    if (!themePackage) {
-      process.stderr.write(
-        `theme:uninstall requires a theme package name. Example: nexpress theme:uninstall @nexpress/theme-magazine\n`,
-      );
+    const parsed = parseThemeUninstallArgs(args.slice(1), {
+      commandName: "theme:uninstall",
+      example: "nexpress theme:uninstall @nexpress/theme-magazine",
+    });
+    if (!parsed.ok) {
+      process.stderr.write(`${parsed.message}\n`);
       return 2;
     }
-    return runThemeUninstall({
-      themePackage,
-      flags: { dryRun, yes, withCollections, apply },
-    });
+    return runThemeUninstall(parsed.value);
   }
 
   if (args[0] === "ops") {
