@@ -252,5 +252,6 @@ changeset-only pushes are ignored on `main`). It defines four jobs on Ubuntu
    push-to-main. Uploads the Playwright report as a build artifact on failure.
 4. `scaffold smoke (fresh scaffold journey)` — packs the workspace packages,
    scaffolds a temp project outside the monorepo, installs it, typechecks it,
-   builds generated `nexpress create *-plugin` packages, and runs the
-   deploy-readiness journey smoke.
+   builds generated `nexpress create *-plugin` packages, verifies their
+   add / doctor / remove lifecycle, and runs the deploy-readiness journey
+   smoke.
