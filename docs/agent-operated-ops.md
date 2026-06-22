@@ -65,14 +65,23 @@ rather than turning the CLI into an unsafe autopilot.
 
 ### 1. Stable machine contracts before clever automation
 
-Every command that an agent may call must support:
+Every operator / agent report command should support stable JSON:
 
 ```bash
 --json
+```
+
+Human-readable reports should also support:
+
+```bash
 --brief
 --no-color
---dry-run
 ```
+
+Commands that can mutate state add an explicit dry-run / execute split. The
+shipped convention is `--execute --approve <token>` for bounded mutations;
+destructive production apply flows remain deferred unless the confirmation,
+audit, rollback, and multi-instance semantics are pinned down.
 
 JSON output should carry a schema version from day one:
 
@@ -94,25 +103,26 @@ steps instead of only prose.
 ### 3. Plan before apply
 
 Dangerous actions default to dry-run / plan mode. Applying production changes
-requires explicit flags such as `--apply`, `--yes`, or a task-specific
-confirmation like `--confirm-production`.
+requires a persisted plan artifact plus a task-specific approval token, for
+example `nexpress release apply --plan <artifact> --execute --approve <planId>`.
 
 ### 4. Idempotence is a feature
 
 Agents retry. Commands should be safe to run twice when possible:
 
 ```bash
-nexpress ops migrate apply --if-pending
-nexpress ops backup create --if-needed
-nexpress ops storage migrate --resume
+nexpress ops migrate status --json
+nexpress ops backup verify latest --json
+nexpress ops storage migrate plan --target s3 --json
 ```
 
 ### 5. Audit anything destructive
 
-Migration, restore, storage migration, queue drain, plugin enable / disable,
-and release commands should emit audit records that can be inspected from the
-admin or logs. The audit record should include who / what ran it, the command,
-input hash, resources touched, result, and rollback hints.
+Future migration apply, restore apply, storage migration apply, and plugin
+enable / disable commands should emit audit records that can be inspected from
+the admin or logs. Shipped bounded mutations such as queue drain start, backup
+manifest registration, and release apply already return mutation / execution
+audit data in their JSON contracts.
 
 ### 6. Local CLI first, remote ops API later
 
@@ -122,14 +132,19 @@ they are security-sensitive and should wait until the local contracts settle.
 
 ---
 
-## Target command surface
+## Shipped command surface
+
+These examples use the project-side `nexpress` command. Generated projects also
+emit `projectCommand` fields such as `pnpm --silent run ops:plugins -- doctor
+--json` in JSON reports and release artifacts.
 
 ### Project setup
 
 ```bash
-create-nexpress my-site --yes --docker
-nexpress setup
-nexpress doctor --prod --json
+pnpm create nexpress my-site
+pnpm run setup
+nexpress ops doctor --prod --json
+nexpress ops doctor --prod --fix-plan --json
 ```
 
 ### Deploy
@@ -138,19 +153,18 @@ nexpress doctor --prod --json
 nexpress deploy plan --target docker --json
 nexpress deploy plan --target vercel --json
 nexpress deploy plan --target fly --json
-nexpress deploy apply --target fly
+nexpress ops preflight --target vercel --json
 ```
 
 ### Status and diagnostics
 
 ```bash
 nexpress ops status --json
+nexpress ops contracts --json
 nexpress ops doctor --prod --json
 nexpress ops doctor --prod --fix-plan --json
-nexpress ops health
-nexpress ops logs --since 10m --level error --json
-nexpress ops config explain --json
-nexpress ops env diff --target production --json
+nexpress ops preflight --target vercel --json
+nexpress ops health --url https://example.com --json
 ```
 
 ### Database migrations
@@ -158,42 +172,41 @@ nexpress ops env diff --target production --json
 ```bash
 nexpress ops migrate status --json
 nexpress ops migrate plan --json
-nexpress ops migrate apply --safe
 nexpress ops migrate rollback-plan --json
 ```
 
 ### Backup and restore
 
 ```bash
+nexpress ops backup status --json
 nexpress ops backup create --json
 nexpress ops backup list --json
 nexpress ops backup verify latest --json
 nexpress ops backup restore-plan latest --json
-nexpress ops restore apply latest --confirm-production
-nexpress ops restore smoke-test latest
 ```
 
 ### Jobs and workers
 
 ```bash
 nexpress ops jobs status --json
-nexpress ops jobs pause --reason "maintenance"
-nexpress ops jobs resume
-nexpress ops jobs queues --json
-nexpress ops jobs retry <jobId>
-nexpress ops jobs drain --timeout 120s
-nexpress ops jobs heartbeat --json
+nexpress ops jobs pause --reason "maintenance" --json
+nexpress ops jobs resume --json
+nexpress ops jobs retry-all --state failed --json
+nexpress ops jobs retry-all --state failed --execute --approve retry-all --json
+nexpress ops jobs drain --json
+nexpress ops jobs drain --execute --approve drain --json
 ```
 
 ### Storage
 
 ```bash
 nexpress ops storage status --json
-nexpress ops storage test --json
 nexpress ops storage verify --json
-nexpress ops storage migrate --from local --to s3 --dry-run --json
-nexpress ops storage orphaned-files --json
 nexpress ops storage missing-files --json
+nexpress ops storage orphaned-files --json
+nexpress ops storage migrate plan --target s3 --json
+nexpress ops storage test --json
+nexpress ops storage test --execute --approve storage-test --json
 ```
 
 ### Plugins
@@ -202,17 +215,16 @@ nexpress ops storage missing-files --json
 nexpress ops plugins list --json
 nexpress ops plugins inspect <pluginId> --json
 nexpress ops plugins doctor --json
-nexpress ops plugins enable <pluginId>
-nexpress ops plugins disable <pluginId>
-nexpress ops plugins upgrade-plan --json
+nexpress ops plugins upgrade-plan [pluginId] --json
 ```
 
 ### Release
 
 ```bash
-nexpress release check --json
-nexpress release plan --json
-nexpress release apply
+nexpress release check --target vercel --json
+nexpress release plan --target vercel --json
+nexpress release apply --plan .nexpress/releases/<plan>.json --json
+nexpress release apply --plan .nexpress/releases/<plan>.json --execute --approve <planId> --json
 nexpress release verify --json
 ```
 
@@ -220,9 +232,22 @@ nexpress release verify --json
 
 ```bash
 nexpress runbook migration-crashed --json
-nexpress runbook storage-local-to-s3 --json
-nexpress runbook backup-restore-drill --json
 nexpress runbook worker-not-draining --json
+nexpress runbook storage-local-to-s3 --json --out .nexpress/runbooks/storage-local-to-s3.json
+nexpress runbook backup-restore-drill --json --out .nexpress/runbooks/backup-restore-drill.json
+```
+
+## Deferred destructive / remote surfaces
+
+These remain out of the v0.x local CLI closure:
+
+```text
+nexpress ops migrate apply --safe
+nexpress ops storage migrate apply --target s3
+nexpress ops backup restore apply <manifestId>
+nexpress ops plugins enable <pluginId>
+nexpress ops plugins disable <pluginId>
+POST /api/admin/ops/*
 ```
 
 ---
@@ -286,8 +311,8 @@ Example compact failure:
       "summary": "Local storage is unsafe when more than one app instance can serve traffic.",
       "evidence": ["NP_STORAGE_ADAPTER=local", "NP_REPLICAS=2"],
       "fix": {
-        "command": "nexpress ops storage migrate --from local --to s3 --dry-run --json",
-        "requiresApproval": true
+        "command": "nexpress ops storage migrate plan --target s3 --json",
+        "requiresApproval": false
       }
     }
   ]
@@ -317,7 +342,7 @@ Use stable IDs that can be documented and grepped. Suggested initial catalog:
 | `jobs.queue_backlog`                 | warning  | Queue depth exceeds threshold.                                         |
 | `jobs.failed_recent`                 | warning  | Recent failed jobs need inspection.                                    |
 | `scheduler.token_missing`            | warning  | Internal scheduler endpoint token is unset.                            |
-| `plugins.route_conflict`             | error    | Two plugins claim the same route / action.                             |
+| `plugins.route_conflict`             | warning  | Two plugins claim the same route / action.                             |
 | `plugins.block_conflict`             | warning  | Later plugin registration overwrites an existing block type.           |
 | `deploy.target_missing_env`          | error    | Target-specific required env var is missing.                           |
 | `deploy.target_storage_incompatible` | error    | Target requires S3 or equivalent durable storage.                      |
@@ -500,7 +525,8 @@ performing destructive restores automatically.
 Scope:
 
 - `backup create`, `backup list`, `backup verify`.
-- `restore plan`, `restore apply`, `restore smoke-test`.
+- `restore plan`; keep destructive restore apply / smoke-test execution as
+  future approval-gated work.
 - `pg_dump --format=custom` for DB.
 - Local uploads archive or S3 manifest / sync plan for media.
 - Manifest tying DB dump, media snapshot, migration version, app version, and
@@ -515,7 +541,8 @@ Scope:
 - Job queue status, pause / resume, retry, drain, heartbeat checks.
 - Storage verification, orphan / missing file scans, local-to-S3 migration.
 - Plugin inventory, manifest inspection, route / block conflict checks,
-  enable / disable plans that state when rebuild / restart is required.
+  config diagnostics, and read-only upgrade plans that state when rebuild /
+  restart is required.
 - `release check` that composes typecheck, tests, build, migration status,
   env readiness, storage safety, worker readiness, and backup recency.
 - Executable runbooks that diagnose incident states and return next commands.
@@ -677,7 +704,7 @@ blind destructive changes.
 
 **Acceptance criteria:**
 
-- No-op when there are no pending migrations and `--if-pending` is used.
+- `plan` reports a ready/no-op state when there are no pending migrations.
 - Destructive SQL causes a blocking check in `plan`.
 - `apply --safe` refuses production without a verified backup or explicit
   documented override.
@@ -697,7 +724,8 @@ and verifiable.
 - Generate a manifest containing backup ID, DB dump path, media snapshot,
   migration version, app version, created-at timestamp, and verification state.
 - Support local uploads archives and S3 snapshot / sync manifests.
-- Require `--confirm-production` for future destructive production restore.
+- Require a task-specific `--execute --approve <token>` gate for any future
+  destructive production restore.
 
 **Acceptance criteria:**
 
@@ -715,11 +743,11 @@ stale workers, media drift, and plugin conflicts.
 
 **Scope:**
 
-- Add `ops jobs status|queues|pause|resume|retry|drain|heartbeat`.
-- Add `ops storage status|test|verify|orphaned-files|missing-files|migrate`.
-- Add `ops plugins list|inspect|doctor|enable|disable|upgrade-plan`.
+- Add `ops jobs status|pause|resume|retry-all|drain`.
+- Add `ops storage status|test|verify|orphaned-files|missing-files|migrate plan`.
+- Add `ops plugins list|inspect|doctor|upgrade-plan`.
 - Use shared `np.ops.v1` result envelope and check IDs.
-- Document which plugin actions require rebuild / restart in v1.
+- Document which plugin upgrades require rebuild / restart in v1.
 
 Implementation status:
 
