@@ -27,32 +27,57 @@ Optional (defaults shown in `.env.example`):
 
 ---
 
+## Pick a host
+
+If you want the shortest path from a local NexPress site to a hosted demo,
+start with Vercel. It gives the fastest GitHub import and preview-deploy loop,
+but it also has the strictest storage rule: media must live in S3, R2, MinIO,
+or another S3-compatible store because the filesystem is ephemeral.
+
+[![Deploy with Vercel][vercel-button]][vercel-new]
+
+Other common choices:
+
+- **Railway / Render** — Docker deploys with managed Postgres; use
+  S3-compatible storage for durable media.
+- **Fly.io / Docker self-host** — best when you want runtime ownership. Local
+  uploaded files are acceptable only for single-node deployments with a
+  persistent volume.
+
+Regardless of host, run the deploy bridge before promoting traffic.
+
+---
+
 ## Preflight commands
 
 Scaffolded projects ship deploy-readiness commands that should run before
 you promote any host:
 
 ```bash
-pnpm run deploy:plan -- --target vercel
-pnpm run doctor:prod -- --target vercel
+pnpm run deploy:plan -- --target vercel --brief --no-color
+pnpm db:migrate
+pnpm run ops:preflight -- --target vercel --brief --no-color
+pnpm --silent run ops:release -- check --target vercel --json
 ```
 
 Supported targets are `vercel`, `railway`, `render`, `fly`, and `docker`.
-`deploy:plan` prints the host-specific checklist. `doctor:prod` is the
-failing gate: it checks required env shape, Postgres reachability,
-migration state, storage policy, scheduler token, and job-worker settings.
-For example, `--target vercel` errors unless media storage is S3-compatible;
-`railway`, `render`, and `fly` warn or error on local storage depending on
-whether you explicitly opted into a single-node volume deployment.
+`deploy:plan` prints the host-specific checklist. `ops:preflight` is the
+blocking gate: it composes deploy-plan, the production doctor, and migration
+plan evidence into one report. `ops:release check` persists the same evidence
+for CI, handoff, or an agent-operated release log.
 
-For automation, `deploy:plan -- --target vercel --json` emits the same plan
-as stable JSON; `doctor:prod -- --target vercel --json` emits the matching
-readiness report. Each doctor check includes a stable `id` such as
-`database.reachable` so CI and agents can key off machine-safe identifiers
-instead of human labels. Add `--fix-plan` to the JSON doctor command to include
-ordered next-command suggestions for fixable failures. Use `deploy:plan -- --brief`
-or `doctor:prod -- --brief` for compact human logs, and `--no-color` on either
-command for plain logs.
+The lower-level production doctor is still available when you want just the
+runtime readiness checks:
+
+```bash
+pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan
+pnpm --silent run doctor:prod -- --target vercel --json --fix-plan
+```
+
+Each doctor check includes a stable `id` such as `database.reachable` so CI and
+agents can key off machine-safe identifiers instead of human labels. Add
+`--fix-plan` to include ordered next-command suggestions for fixable failures.
+Use `--brief` for compact human logs and `--no-color` for plain logs.
 
 ---
 
@@ -117,16 +142,18 @@ Postgres (RDS, Supabase, Neon, Fly.io Postgres, etc.) instead.
 Works out of the box thanks to `output: "standalone"` + Next 16 Vercel
 support. One-time setup:
 
-1. Push the repo to GitHub / GitLab and import it in the Vercel
-   dashboard. Pick the root of the monorepo — Vercel auto-detects the
-   `apps/web` workspace via the Next plugin.
+1. Push the scaffolded site to GitHub / GitLab and import that repository
+   root in the Vercel dashboard. If you are deploying this framework
+   monorepo's reference app instead of a generated site, set the build command
+   to the app workspace command you actually run in CI.
 2. Add the env vars from "Required environment" above. For the DB,
    pick one of:
    - **Vercel Postgres** — set `DATABASE_URL` to the connection string
      Vercel provides (use the **non-pooled** URL for migrations and the
      pooled URL at runtime).
    - **Neon / Supabase** — paste their connection string directly.
-3. Add a build command override if needed: `pnpm build --filter=@nexpress/web`.
+3. Scaffolded sites can use the default `pnpm build`. If you are deploying
+   this monorepo's reference app, use `pnpm --filter @nexpress/web build`.
 4. Configure a Vercel Cron entry to drive scheduled publishing:
 
    ```json
@@ -140,9 +167,10 @@ support. One-time setup:
    `NP_SCHEDULER_TOKEN` equal to whatever you set as the Vercel cron
    secret.
 
-5. Add a deploy hook that runs `pnpm db:migrate` once per deploy. Either
-   wire it into the Vercel build command (`pnpm db:migrate && pnpm build`)
-   or run it from your CI before promoting.
+5. Run migrations before promoting the deployment. Either wire
+   `pnpm db:migrate && pnpm build` into the Vercel build command, or run
+   `pnpm db:migrate` from CI against the same `DATABASE_URL` before
+   production traffic moves.
 
 > **Storage:** Vercel filesystem is ephemeral — you must use S3 or an
 > equivalent. Set `NP_STORAGE_ADAPTER=s3` and the matching `NP_S3_*` vars.
@@ -258,26 +286,31 @@ schedule `*/2 * * * *`, share `NP_SCHEDULER_TOKEN` and `SITE_URL` via
 
 ## First-deploy checklist
 
-1. Run `pnpm run deploy:plan -- --target <host>` and fix the checklist
-   items for your platform.
-2. Run `pnpm run doctor:prod -- --target <host>` and treat any error as a
-   deploy blocker.
-3. Run drizzle migrations: `pnpm --filter @nexpress/web db:migrate`.
-4. Seed the initial admin user with `pnpm --filter @nexpress/web seed:admin`
-   (set `NP_ADMIN_EMAIL`, `NP_ADMIN_NAME`, `NP_ADMIN_PASSWORD` first), or
-   register via `/admin/login` if your config allows it.
-5. Confirm `/api/health` returns `{"status":"ok"}` and `/api/health/ready`
+1. Run `pnpm run deploy:plan -- --target <host> --brief --no-color` and fix
+   the checklist items for your platform.
+2. Run drizzle migrations: `pnpm db:migrate`. For this monorepo's reference
+   app, use `pnpm --filter @nexpress/web db:migrate`.
+3. Run `pnpm run ops:preflight -- --target <host> --brief --no-color` and
+   treat any error as a deploy blocker.
+4. Capture the release gate:
+   `pnpm --silent run ops:release -- check --target <host> --json`.
+5. Seed the initial admin user with `pnpm run seed:admin` (set
+   `NP_ADMIN_EMAIL`, `NP_ADMIN_NAME`, `NP_ADMIN_PASSWORD` first), or register
+   via `/admin/login` if your config allows it.
+6. Confirm `/api/health` returns `{"status":"ok"}` and `/api/health/ready`
    returns 200 with every probe `ok: true`. The readiness probe pings
    the DB and (when wired) the pg-boss queue (Phase 22.4) — a 503 here
    means traffic should not be routed to this node yet.
-6. Confirm `/api/openapi.json` lists every collection — agents and the
+7. Confirm `/api/openapi.json` lists every collection — agents and the
    admin both rely on it being accurate (no cache, rebuilt per request).
-7. Wire scheduled publishing if your collections use `_status: "scheduled"`.
-8. (If using SMTP) trigger a password reset and confirm an email arrives.
-9. Tail the boot logs for warnings emitted by `verifyStartupSafety`
-   (Phase 22.2). Each warning carries a `check` id (see
-   [operations.md § Boot warnings](./operations.md#boot-warnings)) and
-   names a fix. A clean boot has none.
+8. Wire scheduled publishing if your collections use `_status: "scheduled"`.
+9. After production is live, run
+   `pnpm --silent run ops:release -- verify --url https://your-domain.example --json`.
+10. (If using SMTP) trigger a password reset and confirm an email arrives.
+11. Tail the boot logs for warnings emitted by `verifyStartupSafety`
+    (Phase 22.2). Each warning carries a `check` id (see
+    [operations.md § Boot warnings](./operations.md#boot-warnings)) and
+    names a fix. A clean boot has none.
 
 ---
 
@@ -402,3 +435,6 @@ For a Sentry / pino / Datadog-specific recipe and the matching
   Postgres-backed rate limiting is intentionally not provided as a
   first-party adapter — see issue #269 for the design rationale
   (one DB hop per request blows up p99 under burst).
+
+[vercel-button]: https://vercel.com/button
+[vercel-new]: https://vercel.com/new?utm_source=nexpress&utm_campaign=oss
