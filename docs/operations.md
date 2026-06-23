@@ -10,15 +10,15 @@ have a natural home in any single subsystem doc.
 
 ## Specialist guides
 
-| Symptom                                              | Go to                                                      |
-| ---------------------------------------------------- | ---------------------------------------------------------- |
-| Worker silent, queue not draining, scheduled cron    | [jobs.md § 11 Operations Playbook](./jobs.md#11-operations-playbook) |
-| RSC pages serving stale data after a write           | [caching.md](./caching.md)                                 |
-| Need to wire pino/Sentry/Datadog                     | [observability.md](./observability.md)                     |
-| Multi-node rate-limiting, sticky sessions, S3 prereq | [deployment.md § Multi-node notes](./deployment.md#multi-node-notes) |
+| Symptom                                              | Go to                                                                                        |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Worker silent, queue not draining, scheduled cron    | [jobs.md § 11 Operations Playbook](./jobs.md#11-operations-playbook)                         |
+| RSC pages serving stale data after a write           | [caching.md](./caching.md)                                                                   |
+| Need to wire pino/Sentry/Datadog                     | [observability.md](./observability.md)                                                       |
+| Multi-node rate-limiting, sticky sessions, S3 prereq | [deployment.md § Multi-node notes](./deployment.md#multi-node-notes)                         |
 | `INTERNAL_ERROR` with no handler context             | [observability.md § Where errors get reported](./observability.md#where-errors-get-reported) |
-| Email never arrives                                  | [email.md](./email.md)                                     |
-| Importer stuck, partial run, resume                  | [wordpress-import-guide.md](./wordpress-import-guide.md)   |
+| Email never arrives                                  | [email.md](./email.md)                                                                       |
+| Importer stuck, partial run, resume                  | [wordpress-import-guide.md](./wordpress-import-guide.md)                                     |
 
 ## Boot warnings
 
@@ -26,20 +26,38 @@ have a natural home in any single subsystem doc.
 configurations (Phase 22.2). Each warning ships a stable `check` id in
 its log context so log search rules can target them.
 
-| `check` id                  | Meaning                                                                                  | Fix                                                                                                                                                                                  |
-| --------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `multi_node_local_storage`  | `NP_MULTI_NODE=true` (or `=1`) AND `NP_STORAGE_ADAPTER=local`. Each node has its own `./uploads` dir. | Switch to S3 (`NP_STORAGE_ADAPTER=s3` + bucket env). For migration of existing files, see [Switching storage adapters](#switching-storage-adapters) below.                              |
-| `missing_prod_secret`       | `NODE_ENV=production` AND `NP_SECRET` unset. JWT sessions are forgeable.                  | Generate a secret (`openssl rand -base64 48`) and set `NP_SECRET`. Existing sessions will be invalidated; users re-login.                                                                |
-| `weak_prod_secret`          | `NP_SECRET` is shorter than 32 characters in production.                                  | Same fix as above.                                                                                                                                                                   |
-| `noop_email_in_prod`        | `NODE_ENV=production` AND `NP_EMAIL_ADAPTER` is unset / `noop`. Transactional mail (password-reset, email-verify, member digests) is silently dropped. | Set `NP_EMAIL_ADAPTER=smtp` and the `NP_SMTP_*` env vars (or install a custom adapter via `setEmailAdapter()` in your bootstrap — see [email.md](./email.md)). |
-| `loopback_database_in_prod` | `NODE_ENV=production` AND `DATABASE_URL` host is `localhost` / `127.0.0.1` / `::1` / `0.0.0.0`. Almost always a stale dev connection string that slipped through CI/CD. | Point `DATABASE_URL` at the production Postgres instance.                                                                                                                              |
-| `missing_site_url`          | `NODE_ENV=production` AND `SITE_URL` is unset. Sitemap, OAuth callbacks, email links all anchor on it. | Set `SITE_URL` to your public origin (e.g. `https://example.com`). Note: with `SITE_URL` unset, password-reset / register / verify flows refuse to run (#598) — see [SITE_URL is required for email flows](#site_url-is-required-for-email-flows). |
-| `loopback_site_url`         | `NODE_ENV=production` AND `SITE_URL` is `http://localhost:…` or similar loopback. Breaks share links, OAuth round-trips, outbound email. | Same fix.                                                                                                                                                                            |
+| `check` id                  | Meaning                                                                                                                                                                 | Fix                                                                                                                                                                                                                                                |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `multi_node_local_storage`  | `NP_MULTI_NODE=true` (or `=1`) AND `NP_STORAGE_ADAPTER=local`. Each node has its own `./uploads` dir.                                                                   | Switch to S3 (`NP_STORAGE_ADAPTER=s3` + bucket env). For migration of existing files, see [Switching storage adapters](#switching-storage-adapters) below.                                                                                         |
+| `missing_prod_secret`       | `NODE_ENV=production` AND `NP_SECRET` unset. JWT sessions are forgeable.                                                                                                | Generate a secret (`openssl rand -base64 48`) and set `NP_SECRET`. Existing sessions will be invalidated; users re-login.                                                                                                                          |
+| `weak_prod_secret`          | `NP_SECRET` is shorter than 32 characters in production.                                                                                                                | Same fix as above.                                                                                                                                                                                                                                 |
+| `noop_email_in_prod`        | `NODE_ENV=production` AND `NP_EMAIL_ADAPTER` is unset / `noop`. Transactional mail (password-reset, email-verify, member digests) is silently dropped.                  | Set `NP_EMAIL_ADAPTER=smtp` and the `NP_SMTP_*` env vars (or install a custom adapter via `setEmailAdapter()` in your bootstrap — see [email.md](./email.md)).                                                                                     |
+| `loopback_database_in_prod` | `NODE_ENV=production` AND `DATABASE_URL` host is `localhost` / `127.0.0.1` / `::1` / `0.0.0.0`. Almost always a stale dev connection string that slipped through CI/CD. | Point `DATABASE_URL` at the production Postgres instance.                                                                                                                                                                                          |
+| `missing_site_url`          | `NODE_ENV=production` AND `SITE_URL` is unset. Sitemap, OAuth callbacks, email links all anchor on it.                                                                  | Set `SITE_URL` to your public origin (e.g. `https://example.com`). Note: with `SITE_URL` unset, password-reset / register / verify flows refuse to run (#598) — see [SITE_URL is required for email flows](#site_url-is-required-for-email-flows). |
+| `loopback_site_url`         | `NODE_ENV=production` AND `SITE_URL` is `http://localhost:…` or similar loopback. Breaks share links, OAuth round-trips, outbound email.                                | Same fix.                                                                                                                                                                                                                                          |
 
 These are warnings, not crashes — the process boots. They show up in
 whatever logger has been installed via `setLogger()`; on a default
 deploy that's stdout via `consoleLogger`. Verify them at runtime via
 the `/admin/health` page (which mirrors the boot-time checks).
+
+## Admin ops cockpit
+
+Logged-in admins with `admin.manage` can start from `/admin/ops` when they
+need the GUI equivalent of the deploy-readiness command set. The page combines
+runtime health, deploy readiness, worker posture, storage evidence, and plugin
+evidence into one action queue.
+
+- `/admin/ops` — overview and release-handoff commands.
+- `/admin/health` — runtime probes with copyable remediation commands and
+  downloadable JSON evidence from `/api/admin/ops/health`.
+- `/admin/readiness?target=vercel` — deploy gate for `vercel`, `railway`,
+  `render`, `fly`, or `docker`; JSON evidence lives at
+  `/api/admin/ops/readiness?target=<host>`.
+
+Use the admin pages for human triage, then copy the matching `pnpm run ops:*`
+or `pnpm --silent run ops:release ... --json` command when CI, an agent handoff,
+or a runbook needs a stable artifact.
 
 ## SITE_URL is required for email flows
 
@@ -70,7 +88,7 @@ Symptoms: `pnpm db:migrate` exits non-zero; subsequent boots fail on a
 table that's half-created or has columns the code doesn't expect.
 
 1. Check the `drizzle.__drizzle_migrations` table. The last row is the
-   latest *applied* migration; if its hash matches the file you tried
+   latest _applied_ migration; if its hash matches the file you tried
    to apply, the failure was after the SQL committed and you can
    probably re-run `pnpm db:migrate` (it'll skip the already-applied
    row).
@@ -93,8 +111,8 @@ Going from `local` → `s3` (or vice versa) does **not** automatically
 move existing files. The DB stores the storage key, not the URL —
 `createStorageAdapter` resolves URLs at read time. Steps:
 
-1. Sync the `./uploads` tree to the bucket (`aws s3 sync ./uploads
-   s3://my-bucket/`).
+1. Sync the `./uploads` tree to the bucket:
+   `aws s3 sync ./uploads s3://my-bucket/`.
 2. Set `NP_STORAGE_ADAPTER=s3` + `NP_S3_BUCKET` + `NP_S3_REGION` and
    restart.
 3. Spot-check a handful of media items via the admin Media surface —
@@ -172,9 +190,10 @@ Plan for a forced re-login.
 Symptoms: `Error: connection terminated unexpectedly`, slow request
 tails, pg `too many connections` in the server log.
 
-1. Inspect `SELECT count(*), state FROM pg_stat_activity GROUP BY
-   state;` — `idle in transaction` rows usually point to a route that
-   forgot to release a transaction.
+1. Inspect the connection mix:
+   `SELECT count(*), state FROM pg_stat_activity GROUP BY state;`.
+   `idle in transaction` rows usually point to a route that forgot to
+   release a transaction.
 2. The `getDb()` singleton is the only intended pool per process
    (`AGENTS.md` ANTI-PATTERNS: never create parallel connections).
    `grep` for `new Pool` / `createDbConnection` outside

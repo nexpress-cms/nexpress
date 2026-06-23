@@ -70,6 +70,10 @@ When a brief preflight report blocks, each blocked step prints its own `next:`
 command before the overall next command. Use that per-step command for the
 local fix and rerun `ops:preflight` as the gate.
 
+If you are already logged into the admin, `/admin/ops` is the GUI starting
+point for the same flow. It links to runtime Health, target-specific Readiness,
+Jobs, and Plugins, and exposes downloadable JSON evidence for handoff or review.
+
 The lower-level production doctor is still available when you want just the
 runtime readiness checks:
 

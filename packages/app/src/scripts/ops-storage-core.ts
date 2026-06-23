@@ -200,10 +200,10 @@ async function readMediaRows(
 }
 
 async function listFilesRecursive(root: string, current = root): Promise<string[]> {
-  const entries = await readdir(current, { withFileTypes: true });
+  const entries = await readdir(/* turbopackIgnore: true */ current, { withFileTypes: true });
   const files: string[] = [];
   for (const entry of entries) {
-    const full = join(current, entry.name);
+    const full = join(/* turbopackIgnore: true */ current, entry.name);
     if (entry.isDirectory()) {
       files.push(...(await listFilesRecursive(root, full)));
     } else if (entry.isFile()) {
@@ -215,7 +215,7 @@ async function listFilesRecursive(root: string, current = root): Promise<string[
 
 async function existsAt(path: string): Promise<boolean> {
   try {
-    await access(path);
+    await access(/* turbopackIgnore: true */ path);
     return true;
   } catch {
     return false;
@@ -223,7 +223,7 @@ async function existsAt(path: string): Promise<boolean> {
 }
 
 function resolveStorageKey(root: string, key: string): string | null {
-  const full = resolve(root, key);
+  const full = resolve(/* turbopackIgnore: true */ root, key);
   const rel = relative(root, full);
   if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return null;
   return full;
@@ -255,7 +255,10 @@ async function collectLocalStorageInventory(
   const checks: CheckResult[] = [];
   const summary = emptySummary();
   const indexed = new Set<string>();
-  const root = resolve(process.cwd(), env.NP_STORAGE_DIR ?? "./public/media");
+  const root = resolve(
+    /* turbopackIgnore: true */ process.cwd(),
+    env.NP_STORAGE_DIR ?? "./public/media",
+  );
   let files: string[] = [];
   let localDirectoryReady = false;
   let invalidStorageKeys = 0;
@@ -284,7 +287,7 @@ async function collectLocalStorageInventory(
   checks.push({ id: "storage.adapter", state: "ok", label: "Storage adapter", detail: "local" });
 
   try {
-    const storageStat = await stat(root);
+    const storageStat = await stat(/* turbopackIgnore: true */ root);
     if (storageStat.isDirectory()) {
       localDirectoryReady = true;
       checks.push({
@@ -361,7 +364,7 @@ async function collectLocalStorageInventory(
         missing.push({ key, kind: "missing", path: full });
       }
     }
-    files = await listFilesRecursive(root);
+    files = await listFilesRecursive(/* turbopackIgnore: true */ root);
     summary.localFiles = files.length;
   }
   const orphaned = files
@@ -369,7 +372,7 @@ async function collectLocalStorageInventory(
     .map<OpsStorageDriftItem>((file) => ({
       key: file,
       kind: "orphaned",
-      path: resolve(root, file),
+      path: resolve(/* turbopackIgnore: true */ root, file),
     }));
   summary.missingFiles = missing.length;
   summary.orphanedFiles = orphaned.length;
@@ -483,11 +486,14 @@ export async function collectOpsStorageStatus(
     );
   }
 
-  const root = resolve(process.cwd(), env.NP_STORAGE_DIR ?? "./public/media");
+  const root = resolve(
+    /* turbopackIgnore: true */ process.cwd(),
+    env.NP_STORAGE_DIR ?? "./public/media",
+  );
   let localDirectoryReady = adapter !== "local";
   if (adapter === "local") {
     try {
-      const storageStat = await stat(root);
+      const storageStat = await stat(/* turbopackIgnore: true */ root);
       if (storageStat.isDirectory()) {
         localDirectoryReady = true;
         checks.push({
@@ -554,7 +560,7 @@ export async function collectOpsStorageStatus(
       }
       if (!(await existsAt(full))) summary.missingFiles += 1;
     }
-    const files = await listFilesRecursive(root);
+    const files = await listFilesRecursive(/* turbopackIgnore: true */ root);
     summary.localFiles = files.length;
     summary.orphanedFiles = files.filter((file) => !indexed.has(file)).length;
     if (invalidStorageKeys > 0) {
@@ -738,7 +744,10 @@ function buildStorageConfig(env: OpsStorageEnv, adapter: "local" | "s3") {
     return {
       adapter,
       local: {
-        directory: resolve(process.cwd(), env.NP_STORAGE_DIR ?? "./public/media"),
+        directory: resolve(
+          /* turbopackIgnore: true */ process.cwd(),
+          env.NP_STORAGE_DIR ?? "./public/media",
+        ),
         baseUrl: env.NP_STORAGE_URL ?? "/media",
       },
     } as const;
