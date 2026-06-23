@@ -1,6 +1,7 @@
-import { createRequire } from "node:module";
 import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
+
+import pg from "pg";
 
 import { toProjectCommand } from "./ops-command-format.js";
 import { messageForConnectionError } from "./setup-server-errors.js";
@@ -337,10 +338,8 @@ async function checkStorage(env: OpsEnv): Promise<CheckResult> {
   }
 }
 
-async function loadPg(): Promise<PgModuleLike> {
-  const require = createRequire(resolve(process.cwd(), "package.json"));
-  const resolved = require.resolve("pg");
-  return import(resolved) as Promise<PgModuleLike>;
+function loadPg(): PgModuleLike {
+  return { default: pg as unknown as PgModuleLike["default"] };
 }
 
 async function checkDatabase(env: OpsEnv): Promise<CheckResult> {
@@ -357,7 +356,7 @@ async function checkDatabase(env: OpsEnv): Promise<CheckResult> {
 
   let pg: PgModuleLike;
   try {
-    pg = await loadPg();
+    pg = loadPg();
   } catch {
     return {
       id: "database.reachable",
@@ -403,7 +402,7 @@ async function checkMigrations(env: OpsEnv): Promise<CheckResult> {
 
   let pg: PgModuleLike;
   try {
-    pg = await loadPg();
+    pg = loadPg();
   } catch {
     return {
       id: "migrations.applied",

@@ -28,6 +28,7 @@ import { defineConfig } from "tsup";
 const scriptEntries = {
   "scripts/_load-env": "src/scripts/_load-env.ts",
   "scripts/deploy-plan": "src/scripts/deploy-plan.ts",
+  "scripts/deploy-plan-core": "src/scripts/deploy-plan-core.ts",
   "scripts/deploy-targets": "src/scripts/deploy-targets.ts",
   "scripts/dev-notice": "src/scripts/dev-notice.ts",
   "scripts/doctor": "src/scripts/doctor.ts",
@@ -81,6 +82,7 @@ const libEntries = {
   "lib/member-auth-helpers": "src/lib/member-auth-helpers.ts",
   "lib/revalidate": "src/lib/revalidate.ts",
   "lib/revision-helpers": "src/lib/revision-helpers.ts",
+  "lib/ops-readiness": "src/lib/ops-readiness.ts",
   "lib/safe-next": "src/lib/safe-next.ts",
   "lib/search-highlight": "src/lib/search-highlight.tsx",
   "lib/seed-content": "src/lib/seed-content.ts",

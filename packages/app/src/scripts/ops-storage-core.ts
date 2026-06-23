@@ -1,8 +1,8 @@
-import { createRequire } from "node:module";
 import { access, readdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { createStorageAdapter } from "@nexpress/core";
+import pg from "pg";
 
 import { toProjectCommand } from "./ops-command-format.js";
 import type { CheckResult } from "./doctor-readiness.js";
@@ -135,10 +135,8 @@ const EMPTY_ANSI = {
   reset: "",
 };
 
-async function loadPg(): Promise<PgModuleLike> {
-  const require = createRequire(resolve(process.cwd(), "package.json"));
-  const resolved = require.resolve("pg");
-  return import(resolved) as Promise<PgModuleLike>;
+function loadPg(): PgModuleLike {
+  return { default: pg as unknown as PgModuleLike["default"] };
 }
 
 function parseAdapter(env: OpsStorageEnv): OpsStorageJson["adapter"] {
@@ -176,7 +174,7 @@ async function readMediaRows(
 
   let pg: PgModuleLike;
   try {
-    pg = await loadPg();
+    pg = loadPg();
   } catch {
     return { ok: false, reason: "pg-unavailable" };
   }

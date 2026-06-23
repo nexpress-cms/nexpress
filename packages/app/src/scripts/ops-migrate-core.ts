@@ -1,6 +1,7 @@
-import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+
+import pg from "pg";
 
 import type { CheckResult } from "./doctor-readiness.js";
 import { toProjectCommand } from "./ops-command-format.js";
@@ -156,10 +157,8 @@ const DESTRUCTIVE_PATTERNS: Array<{ id: string; pattern: RegExp }> = [
   { id: "rename-column", pattern: /\balter\s+table\b[\s\S]*\brename\s+column\b/i },
 ];
 
-async function loadPg(): Promise<PgModuleLike> {
-  const require = createRequire(resolve(process.cwd(), "package.json"));
-  const resolved = require.resolve("pg");
-  return import(resolved) as Promise<PgModuleLike>;
+function loadPg(): PgModuleLike {
+  return { default: pg as unknown as PgModuleLike["default"] };
 }
 
 function countChecks(checks: CheckResult[]): { errors: number; warnings: number } {
@@ -654,7 +653,7 @@ async function collectOpsMigrateState(args: {
 
   let pg: PgModuleLike;
   try {
-    pg = await loadPg();
+    pg = loadPg();
   } catch {
     return {
       migrationsFolder,

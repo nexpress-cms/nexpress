@@ -1,7 +1,5 @@
-import { createRequire } from "node:module";
-import { resolve } from "node:path";
-
 import { PgBossAdapter } from "@nexpress/core/jobs";
+import pg from "pg";
 
 import { toProjectCommand } from "./ops-command-format.js";
 
@@ -148,10 +146,8 @@ export function workerStaleThresholdMs(env: OpsJobsEnv = process.env): number {
   return (Number.isFinite(raw) && raw > 0 ? raw : 90) * 1_000;
 }
 
-async function loadPg(): Promise<PgModuleLike> {
-  const require = createRequire(resolve(process.cwd(), "package.json"));
-  const resolved = require.resolve("pg");
-  return import(resolved) as Promise<PgModuleLike>;
+function loadPg(): PgModuleLike {
+  return { default: pg as unknown as PgModuleLike["default"] };
 }
 
 function toIso(value: Date | string): string {
@@ -250,7 +246,7 @@ export async function collectOpsJobsStatus(
 
   let pg: PgModuleLike;
   try {
-    pg = await loadPg();
+    pg = loadPg();
   } catch {
     return buildOpsJobsJson({
       enabled,
@@ -422,7 +418,7 @@ export async function applyOpsJobsPauseMutation(args: {
 
   let pg: PgModuleLike;
   try {
-    pg = await loadPg();
+    pg = loadPg();
   } catch (error) {
     return {
       ...fallback,
@@ -515,7 +511,7 @@ export async function applyOpsJobsRetryAllMutation(args: {
 
   let pg: PgModuleLike;
   try {
-    pg = await loadPg();
+    pg = loadPg();
   } catch (error) {
     return {
       ...fallback,
