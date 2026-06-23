@@ -514,7 +514,7 @@ type LinkButtonVariant = "default" | "outline" | "ghost";
 
 function linkButtonClass(variant: LinkButtonVariant, className?: string): string {
   const base =
-    "inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 text-[12.5px] font-medium tracking-[-0.005em] outline-none transition-colors duration-150 focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] sm:h-7 sm:px-2.5";
+    "inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 text-[12.5px] font-medium outline-none transition-colors duration-150 focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] sm:h-7 sm:px-2.5";
   const styles: Record<LinkButtonVariant, string> = {
     default:
       "bg-neutral-950 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-200",
