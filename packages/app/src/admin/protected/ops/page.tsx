@@ -162,6 +162,8 @@ export default async function AdminOpsPage({ searchParams }: AdminOpsPageProps) 
 
       <OpsActionQueue actions={actions} />
 
+      <OpsEvidencePanel readiness={readiness} />
+
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.9fr)]">
         <Card className="min-w-0">
           <CardHeader className="min-w-0">
@@ -316,18 +318,107 @@ function OpsActionQueue({ actions }: { actions: CombinedAction[] }) {
                 />
               ) : null}
               {action.links.map((link) => (
-                <LinkButton
-                  key={`${action.id}-${link.href}`}
-                  href={link.href}
-                  variant="outline"
-                  className="shrink-0 bg-white sm:w-auto dark:bg-neutral-950/60"
-                >
-                  {link.label}
-                </LinkButton>
+                <ActionLinkButton key={`${action.id}-${link.href}`} link={link} />
               ))}
             </div>
           </div>
         ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ActionLinkButton({ link }: { link: AdminOpsLink }) {
+  const className = "shrink-0 bg-white sm:w-auto dark:bg-neutral-950/60";
+  if (link.href.startsWith("/api/")) {
+    return (
+      <AnchorButton href={link.href} variant="outline" className={className}>
+        {link.label}
+      </AnchorButton>
+    );
+  }
+  return (
+    <LinkButton href={link.href} variant="outline" className={className}>
+      {link.label}
+    </LinkButton>
+  );
+}
+
+function OpsEvidencePanel({ readiness }: { readiness: OpsReadinessReport }) {
+  const items = opsEvidenceItems(readiness);
+
+  return (
+    <Card className="min-w-0">
+      <CardHeader className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <CardTitle className="break-words text-[15px]">Runtime evidence</CardTitle>
+            <p className="mt-1 break-words text-[12.5px] text-neutral-500 dark:text-neutral-400">
+              Download focused JSON snapshots for the surfaces operators inspect most often.
+            </p>
+          </div>
+          <Badge variant="outline" className="shrink-0">
+            {items.length.toString()} snapshots
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="min-w-0">
+        <div className="grid min-w-0 gap-3 xl:grid-cols-3">
+          {items.map((item) => (
+            <div
+              key={item.id}
+              className="flex min-w-0 flex-col gap-3 rounded-md border border-neutral-200/70 bg-neutral-50 px-3 py-3 dark:border-neutral-800 dark:bg-neutral-900/45"
+            >
+              <div className="min-w-0">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <StateBadge state={item.section.state} />
+                  <p className="break-words text-[13px] font-semibold text-neutral-950 dark:text-neutral-50">
+                    {item.title}
+                  </p>
+                </div>
+                <p className="mt-1 break-words text-[12.5px] leading-[1.5] text-neutral-500 dark:text-neutral-400">
+                  {item.section.summary}
+                </p>
+              </div>
+              <div className="grid min-w-0 gap-2 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
+                {item.section.metrics.slice(0, 3).map((metric) => (
+                  <div
+                    key={`${item.id}-${metric.label}`}
+                    className="min-w-0 rounded bg-white px-2 py-1.5 ring-1 ring-neutral-200/70 dark:bg-neutral-950/60 dark:ring-neutral-800"
+                  >
+                    <p className="truncate text-[11px] text-neutral-500 dark:text-neutral-400">
+                      {metric.label}
+                    </p>
+                    <p
+                      className={`mt-0.5 truncate text-[12.5px] font-semibold ${metricToneClass(
+                        metric.tone,
+                      )}`}
+                    >
+                      {metric.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-auto flex min-w-0 flex-wrap gap-1.5">
+                <AnchorButton
+                  href={item.apiHref}
+                  variant="outline"
+                  download={item.download}
+                  className="shrink-0 bg-white dark:bg-neutral-950/60"
+                >
+                  JSON
+                </AnchorButton>
+                <LinkButton
+                  href={item.adminHref}
+                  variant="ghost"
+                  className="shrink-0 dark:bg-transparent"
+                >
+                  Open
+                </LinkButton>
+              </div>
+            </div>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );
@@ -427,12 +518,19 @@ function relatedLinksForReadinessSection(
     case "storage":
       return [
         { label: "Media", href: "/admin/media" },
+        { label: "JSON", href: "/api/admin/ops/storage" },
         { label: "Readiness", href: readinessHref },
       ];
     case "jobs":
-      return [{ label: "Jobs", href: "/admin/jobs" }];
+      return [
+        { label: "Jobs", href: "/admin/jobs" },
+        { label: "JSON", href: "/api/admin/ops/jobs" },
+      ];
     case "plugins":
-      return [{ label: "Plugins", href: "/admin/plugins" }];
+      return [
+        { label: "Plugins", href: "/admin/plugins" },
+        { label: "JSON", href: "/api/admin/ops/plugins" },
+      ];
   }
   const _exhaustive: never = id;
   return _exhaustive;
@@ -448,6 +546,67 @@ function worstSectionState(
   if (states.includes("error")) return "error";
   if (states.includes("warn")) return "warn";
   return "ok";
+}
+
+function opsEvidenceItems(readiness: OpsReadinessReport): Array<{
+  id: "storage" | "jobs" | "plugins";
+  title: string;
+  section: OpsReadinessSection;
+  apiHref: string;
+  download: string;
+  adminHref: string;
+}> {
+  return [
+    {
+      id: "storage",
+      title: "Storage",
+      section: requiredSection(readiness, "storage"),
+      apiHref: "/api/admin/ops/storage",
+      download: "nexpress-storage.json",
+      adminHref: "/admin/media",
+    },
+    {
+      id: "jobs",
+      title: "Jobs",
+      section: requiredSection(readiness, "jobs"),
+      apiHref: "/api/admin/ops/jobs",
+      download: "nexpress-jobs.json",
+      adminHref: "/admin/jobs",
+    },
+    {
+      id: "plugins",
+      title: "Plugins",
+      section: requiredSection(readiness, "plugins"),
+      apiHref: "/api/admin/ops/plugins",
+      download: "nexpress-plugins.json",
+      adminHref: "/admin/plugins",
+    },
+  ];
+}
+
+function requiredSection(
+  readiness: OpsReadinessReport,
+  id: OpsReadinessSection["id"],
+): OpsReadinessSection {
+  const section = readiness.sections.find((item) => item.id === id);
+  if (section) return section;
+  return {
+    id,
+    title: id,
+    state: "error",
+    summary: `${id} evidence was not generated.`,
+    metrics: [],
+    nextCommand: null,
+    projectNextCommand: null,
+    checks: [
+      {
+        id: `ops.${id}.missing`,
+        state: "error",
+        label: `${id} evidence`,
+        detail: "Readiness did not include this section.",
+      },
+    ],
+  };
 }
 
 function StateBadge({ state }: { state: AdminOpsState }) {
@@ -518,6 +677,13 @@ function toneTextClass(state: AdminOpsState): string {
   if (state === "error") return "text-red-600 dark:text-red-400";
   if (state === "warn") return "text-amber-600 dark:text-amber-400";
   return "text-emerald-600 dark:text-emerald-400";
+}
+
+function metricToneClass(tone: OpsReadinessSection["metrics"][number]["tone"]): string {
+  if (tone === "error") return "text-red-600 dark:text-red-400";
+  if (tone === "warn") return "text-amber-600 dark:text-amber-400";
+  if (tone === "ok") return "text-emerald-600 dark:text-emerald-400";
+  return "text-neutral-700 dark:text-neutral-200";
 }
 
 function dotClass(state: AdminOpsState): string {

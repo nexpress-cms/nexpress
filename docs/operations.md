@@ -54,6 +54,10 @@ evidence into one action queue.
 - `/admin/readiness?target=vercel` — deploy gate for `vercel`, `railway`,
   `render`, `fly`, or `docker`; JSON evidence lives at
   `/api/admin/ops/readiness?target=<host>`.
+- `/api/admin/ops/jobs`, `/api/admin/ops/storage`, and
+  `/api/admin/ops/plugins` — read-only focused evidence snapshots for the
+  runtime worker, media storage, and loaded plugin registry. These require an
+  authenticated admin with `admin.manage`, just like the human ops pages.
 
 Use the admin pages for human triage, then copy the matching `pnpm run ops:*`
 or `pnpm --silent run ops:release ... --json` command when CI, an agent handoff,

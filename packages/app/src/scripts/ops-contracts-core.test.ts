@@ -74,6 +74,28 @@ describe("ops contracts core", () => {
     );
   });
 
+  it("documents the shipped read-only admin ops API separately from mutations", () => {
+    const report = buildOpsContractsJson();
+    const readApi = report.contracts.find((contract) => contract.id === "remote.ops-api.read");
+    const mutationApi = report.contracts.find((contract) => contract.id === "remote.ops-api");
+
+    expect(readApi).toEqual(
+      expect.objectContaining({
+        status: "shipped",
+        risk: "read-only",
+        command: "GET /api/admin/ops/health|readiness|jobs|storage|plugins",
+        supports: expect.objectContaining({ json: true }),
+      }),
+    );
+    expect(mutationApi).toEqual(
+      expect.objectContaining({
+        status: "deferred",
+        risk: "destructive",
+        command: "POST /api/admin/ops/*",
+      }),
+    );
+  });
+
   it("renders compact contract output", () => {
     const output = renderBriefOpsContracts(buildOpsContractsJson(), { color: false });
 

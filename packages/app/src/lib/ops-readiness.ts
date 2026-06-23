@@ -13,10 +13,10 @@ import type * as OpsJobsCore from "../scripts/ops-jobs-core";
 import type { OpsJobsJson } from "../scripts/ops-jobs-core";
 import type * as OpsMigrateCore from "../scripts/ops-migrate-core";
 import type { OpsMigrateJson } from "../scripts/ops-migrate-core";
-import type * as OpsPluginsCore from "../scripts/ops-plugins-core";
 import type { OpsPluginsJson } from "../scripts/ops-plugins-core";
 import type * as OpsStorageCore from "../scripts/ops-storage-core";
 import type { OpsStorageJson } from "../scripts/ops-storage-core";
+import { collectRuntimeOpsPluginsStatus } from "./ops-plugins-runtime";
 
 type OpsReadinessEnv = Record<string, string | undefined>;
 
@@ -205,12 +205,9 @@ export async function gatherOpsReadiness(
       const jobsCore = await loadJobsCore();
       return buildJobsSection(await jobsCore.collectOpsJobsStatus(env, options.now ?? new Date()));
     }),
-    captureSection("plugins", "Plugins", async () => {
-      const pluginsCore = await loadPluginsCore();
-      return buildPluginsSection(
-        await pluginsCore.collectOpsPluginsStatus(options.cwd ?? process.cwd()),
-      );
-    }),
+    captureSection("plugins", "Plugins", () =>
+      buildPluginsSection(collectRuntimeOpsPluginsStatus()),
+    ),
   ]);
 
   const sections = [deploy, migrations, backup, storage, jobs, plugins];
@@ -241,10 +238,6 @@ async function loadJobsCore(): Promise<typeof OpsJobsCore> {
 
 async function loadMigrateCore(): Promise<typeof OpsMigrateCore> {
   return (await import("@nexpress/app/scripts/ops-migrate-core")) as unknown as typeof OpsMigrateCore;
-}
-
-async function loadPluginsCore(): Promise<typeof OpsPluginsCore> {
-  return (await import("@nexpress/app/scripts/ops-plugins-core")) as unknown as typeof OpsPluginsCore;
 }
 
 async function loadStorageCore(): Promise<typeof OpsStorageCore> {
@@ -422,7 +415,7 @@ function buildPluginsSection(report: OpsPluginsJson): OpsReadinessSection {
 async function captureSection(
   id: OpsReadinessSection["id"],
   title: string,
-  collect: () => Promise<OpsReadinessSection>,
+  collect: () => OpsReadinessSection | Promise<OpsReadinessSection>,
 ): Promise<OpsReadinessSection> {
   try {
     return await collect();
