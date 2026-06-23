@@ -175,40 +175,42 @@ export async function gatherOpsReadiness(
   const env = options.env ?? process.env;
   const resolvedTarget = options.target ?? resolveOpsReadinessTarget(null, env).target;
   const inferredTarget = options.inferredTarget ?? !options.target;
-  const [deployPlanCore, backupCore, jobsCore, migrationsCore, pluginsCore, storageCore] =
-    await Promise.all([
-      loadDeployPlanCore(),
-      loadBackupCore(),
-      loadJobsCore(),
-      loadMigrateCore(),
-      loadPluginsCore(),
-      loadStorageCore(),
-    ]);
-  const deployPlan = deployPlanCore.buildDeployPlanJson(
-    deployPlanCore.buildDeployPlan(resolvedTarget),
-    inferredTarget,
-    env,
-  );
-  const deploy = buildDeployReadinessSection(deployPlan);
-
-  const [migrations, backup, storage, jobs, plugins] = await Promise.all([
-    captureSection("migrations", "Migrations", async () =>
-      buildMigrationsSection(await migrationsCore.collectOpsMigrateReport({ mode: "plan", env })),
-    ),
-    captureSection("backup", "Backup", async () =>
-      buildBackupSection(
+  const [deploy, migrations, backup, storage, jobs, plugins] = await Promise.all([
+    captureSection("deploy", `${deployTargetTitle(resolvedTarget)} deploy gate`, async () => {
+      const deployPlanCore = await loadDeployPlanCore();
+      const deployPlan = deployPlanCore.buildDeployPlanJson(
+        deployPlanCore.buildDeployPlan(resolvedTarget),
+        inferredTarget,
+        env,
+      );
+      return buildDeployReadinessSection(deployPlan);
+    }),
+    captureSection("migrations", "Migrations", async () => {
+      const migrationsCore = await loadMigrateCore();
+      return buildMigrationsSection(
+        await migrationsCore.collectOpsMigrateReport({ mode: "plan", env }),
+      );
+    }),
+    captureSection("backup", "Backup", async () => {
+      const backupCore = await loadBackupCore();
+      return buildBackupSection(
         await backupCore.collectOpsBackupReport({ mode: "status", required: true, env }),
-      ),
-    ),
-    captureSection("storage", "Storage", async () =>
-      buildStorageSection(await storageCore.collectOpsStorageStatus(env, "verify")),
-    ),
-    captureSection("jobs", "Jobs", async () =>
-      buildJobsSection(await jobsCore.collectOpsJobsStatus(env, options.now ?? new Date())),
-    ),
-    captureSection("plugins", "Plugins", async () =>
-      buildPluginsSection(await pluginsCore.collectOpsPluginsStatus(options.cwd ?? process.cwd())),
-    ),
+      );
+    }),
+    captureSection("storage", "Storage", async () => {
+      const storageCore = await loadStorageCore();
+      return buildStorageSection(await storageCore.collectOpsStorageStatus(env, "verify"));
+    }),
+    captureSection("jobs", "Jobs", async () => {
+      const jobsCore = await loadJobsCore();
+      return buildJobsSection(await jobsCore.collectOpsJobsStatus(env, options.now ?? new Date()));
+    }),
+    captureSection("plugins", "Plugins", async () => {
+      const pluginsCore = await loadPluginsCore();
+      return buildPluginsSection(
+        await pluginsCore.collectOpsPluginsStatus(options.cwd ?? process.cwd()),
+      );
+    }),
   ]);
 
   const sections = [deploy, migrations, backup, storage, jobs, plugins];

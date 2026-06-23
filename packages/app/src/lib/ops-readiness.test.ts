@@ -40,6 +40,21 @@ describe("ops readiness", () => {
     expect(summary.nextCommand).toBe("nexpress ops migrate plan --json");
   });
 
+  it("falls through to the next actionable warning when a blocker has no command", () => {
+    const sections: OpsReadinessSection[] = [
+      section("deploy", "error", null),
+      section("migrations", "warn", "nexpress ops migrate plan --json"),
+      section("backup", "ok", "nexpress ops backup status --json"),
+    ];
+
+    const summary = summarizeOpsReadinessSections(sections);
+
+    expect(summary.status).toBe("blocked");
+    expect(summary.summary.checkErrors).toBe(1);
+    expect(summary.summary.checkWarnings).toBe(1);
+    expect(summary.nextCommand).toBe("nexpress ops migrate plan --json");
+  });
+
   it("keeps invalid target information while falling back to inferred/default target", () => {
     const resolved = resolveOpsReadinessTarget("unknown", {});
 
