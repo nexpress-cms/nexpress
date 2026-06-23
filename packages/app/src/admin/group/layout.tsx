@@ -1,19 +1,13 @@
-import { npThemeInitScript } from "@nexpress/admin";
-import Script from "next/script";
+import { AdminThemeInit } from "./admin-theme-init";
 
 /**
- * Admin route-group layout. The only thing it does today is mount
- * the admin theme bootstrap without rendering a raw <script> tag
- * from a React component. The script body is tiny and side-effect-only.
+ * Admin route-group layout. Keeps admin-only theme state out of the
+ * public site while avoiding raw script tags inside route layouts.
  */
 export default function AdminGroupLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <Script
-        id="np-admin-theme-init"
-        strategy="beforeInteractive"
-        dangerouslySetInnerHTML={{ __html: npThemeInitScript }}
-      />
+      <AdminThemeInit />
       {children}
     </>
   );
