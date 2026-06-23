@@ -273,6 +273,12 @@ record steps with approval flags. It never drops databases, runs `pg_restore`,
 or mutates media storage; use it as the operator checklist for the isolated
 drill.
 
+The backup CLI records and verifies operator-provided artifacts; it does not
+create a database dump or media snapshot itself. Brief reports include the same
+action notes as JSON plans so placeholder-looking commands such as
+`nexpress ops backup create --database artifacts/db.dump --verified --json`
+are read as "record this artifact after you have captured it."
+
 ## Automation snippets
 
 ### Cron (host)

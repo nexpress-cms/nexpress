@@ -66,6 +66,10 @@ blocking gate: it composes deploy-plan, the production doctor, and migration
 plan evidence into one report. `ops:release check` persists the same evidence
 for CI, handoff, or an agent-operated release log.
 
+When a brief preflight report blocks, each blocked step prints its own `next:`
+command before the overall next command. Use that per-step command for the
+local fix and rerun `ops:preflight` as the gate.
+
 The lower-level production doctor is still available when you want just the
 runtime readiness checks:
 

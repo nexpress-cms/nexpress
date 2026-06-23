@@ -8,8 +8,10 @@ import {
   renderBriefOpsStorageStatus,
   runOpsStorageTest,
 } from "./ops-storage-core.js";
+import { normalizePnpmPassthroughArgv } from "./ops-command-format.js";
 
-const ARGV = process.argv.slice(2);
+const RAW_ARGV = process.argv.slice(2);
+const ARGV = normalizePnpmPassthroughArgv(RAW_ARGV);
 const SUBCOMMAND = ARGV[0] && !ARGV[0].startsWith("--") ? ARGV[0] : "status";
 const JSON_MODE = ARGV.includes("--json");
 const COLOR_MODE = !JSON_MODE && !ARGV.includes("--no-color") && !process.env.NO_COLOR;

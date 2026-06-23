@@ -241,12 +241,30 @@ export function renderBriefOpsPreflightReport(report: OpsPreflightJson, color: b
   ];
   for (const step of report.steps) {
     lines.push(`${step.ok ? "[ok]" : "[blocked]"} ${step.id} - ${step.command}`);
+    if (!step.ok) {
+      const next = stepNextCommand(report, step.id);
+      if (next) lines.push(`  next: ${next}`);
+    }
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
   if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
     lines.push(`Project next: ${report.projectNextCommand}`);
   }
   return lines.join("\n");
+}
+
+function stepNextCommand(
+  report: OpsPreflightJson,
+  id: OpsPreflightJson["steps"][number]["id"],
+): string | null {
+  switch (id) {
+    case "deploy.plan":
+      return report.plan?.nextCommands[0] ?? null;
+    case "doctor.prod":
+      return report.doctor?.projectNextCommand ?? report.doctor?.nextCommand ?? null;
+    case "ops.migrate":
+      return report.migrate?.projectNextCommand ?? report.migrate?.nextCommand ?? null;
+  }
 }
 
 async function main(): Promise<void> {

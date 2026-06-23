@@ -11,6 +11,8 @@ import {
   collectOpsBackupRestorePlan,
   createOpsBackupManifest,
   parseBackupManifest,
+  renderBriefOpsBackupReport,
+  renderBriefOpsBackupRestorePlan,
 } from "./ops-backup-core.js";
 
 describe("ops backup core", () => {
@@ -79,6 +81,25 @@ describe("ops backup core", () => {
           blockedBy: ["backup.record_manifest"],
         }),
       ]),
+    );
+  });
+
+  it("renders action notes in backup brief output", () => {
+    const report = buildOpsBackupJson({
+      mode: "status",
+      backupDir: ".nexpress/backups",
+      required: true,
+      maxAgeHours: 24,
+      manifests: [],
+    });
+
+    const output = renderBriefOpsBackupReport(report, { color: false });
+
+    expect(output).toContain(
+      "note: Capture a provider or pg_dump backup first, place artifacts under NP_BACKUP_DIR, then record the manifest.",
+    );
+    expect(output).toContain(
+      "note: Verify declared database and media artifacts exist before release promotion.",
     );
   });
 
@@ -321,9 +342,14 @@ describe("ops backup core", () => {
     expect(plan.ok).toBe(false);
     expect(plan.status).toBe("blocked");
     expect(plan.nextCommand).toBe("nexpress ops backup status --required --json");
-    expect(plan.projectNextCommand).toBe("pnpm --silent run ops:backup -- status --required --json");
+    expect(plan.projectNextCommand).toBe(
+      "pnpm --silent run ops:backup -- status --required --json",
+    );
     expect(plan.checks).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "backup.manifest", state: "error" })]),
+    );
+    expect(renderBriefOpsBackupRestorePlan(plan, { color: false })).toContain(
+      "note: Record a backup manifest before planning a restore drill.",
     );
   });
 

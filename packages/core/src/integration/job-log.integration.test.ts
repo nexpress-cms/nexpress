@@ -10,6 +10,18 @@ import {
 import { getLogger } from "../observability/logger.js";
 import { closeTestDb, ensureMigrated, skipIfNoTestDb, truncateAll } from "./setup.js";
 
+async function waitForJobLog(jobId: string, message: string) {
+  const deadline = Date.now() + 1000;
+  let rows = await listJobLogs(jobId);
+
+  while (!rows.some((row) => row.message === message) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    rows = await listJobLogs(jobId);
+  }
+
+  return rows;
+}
+
 describe.skipIf(skipIfNoTestDb())("np_job_logs (Phase 20.3a integration)", () => {
   beforeAll(async () => {
     await ensureMigrated();
@@ -44,12 +56,9 @@ describe.skipIf(skipIfNoTestDb())("np_job_logs (Phase 20.3a integration)", () =>
   it("logger.info inside a job context tees into np_job_logs via the lazy import", async () => {
     await runInJobContext("job-B", async () => {
       getLogger().info("via logger", { source: "test" });
-      // Tee is fire-and-forget — let the microtask resolve.
-      await new Promise((resolve) => setImmediate(resolve));
-      await new Promise((resolve) => setImmediate(resolve));
     });
 
-    const rows = await listJobLogs("job-B");
+    const rows = await waitForJobLog("job-B", "via logger");
     expect(rows.length).toBeGreaterThanOrEqual(1);
     const teed = rows.find((r) => r.message === "via logger");
     expect(teed).toBeDefined();

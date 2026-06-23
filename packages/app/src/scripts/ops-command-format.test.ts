@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { isMatchingProjectCommand, toProjectCommand } from "./ops-command-format.js";
+import {
+  isMatchingProjectCommand,
+  normalizePnpmPassthroughArgv,
+  toProjectCommand,
+} from "./ops-command-format.js";
 
 describe("ops command formatting", () => {
   it("uses silent pnpm for JSON project commands", () => {
@@ -34,5 +38,14 @@ describe("ops command formatting", () => {
         "pnpm --silent run ops:release -- verify --json",
       ),
     ).toBe(true);
+  });
+
+  it("normalizes pnpm passthrough separators before subcommand parsing", () => {
+    expect(normalizePnpmPassthroughArgv(["--", "migrate", "plan", "--json"])).toEqual([
+      "migrate",
+      "plan",
+      "--json",
+    ]);
+    expect(normalizePnpmPassthroughArgv(["verify", "--json"])).toEqual(["verify", "--json"]);
   });
 });
