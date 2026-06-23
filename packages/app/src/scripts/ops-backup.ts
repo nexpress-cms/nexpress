@@ -9,9 +9,10 @@ import {
   renderBriefOpsBackupRestorePlan,
   type OpsBackupMode,
 } from "./ops-backup-core.js";
+import { normalizePnpmPassthroughArgv } from "./ops-command-format.js";
 
 const RAW_ARGV = process.argv.slice(2);
-const ARGV = RAW_ARGV[0] === "--" ? RAW_ARGV.slice(1) : RAW_ARGV;
+const ARGV = normalizePnpmPassthroughArgv(RAW_ARGV);
 const SUBCOMMAND = ARGV[0] && !ARGV[0].startsWith("--") ? ARGV[0] : "status";
 const MODE: OpsBackupMode =
   SUBCOMMAND === "create"

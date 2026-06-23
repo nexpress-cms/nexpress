@@ -13,6 +13,7 @@ import {
   type RunbookId,
   type RunbookJson,
 } from "./runbook-core.js";
+import { normalizePnpmPassthroughArgv } from "./ops-command-format.js";
 
 type PackageManager = "pnpm" | "npm" | "yarn";
 
@@ -42,7 +43,7 @@ const RUNBOOKS: RunbookId[] = [
 ];
 
 const RAW_ARGV = process.argv.slice(2);
-const ARGV = RAW_ARGV[0] === "--" ? RAW_ARGV.slice(1) : RAW_ARGV;
+const ARGV = normalizePnpmPassthroughArgv(RAW_ARGV);
 const RUNBOOK = RUNBOOKS.includes(ARGV[0] as RunbookId) ? (ARGV[0] as RunbookId) : null;
 const JSON_MODE = ARGV.includes("--json");
 const COLOR_MODE = !JSON_MODE && !ARGV.includes("--no-color") && !process.env.NO_COLOR;

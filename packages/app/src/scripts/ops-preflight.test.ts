@@ -189,5 +189,8 @@ describe("ops preflight", () => {
     expect(report.steps.find((step) => step.id === "ops.migrate")).toEqual(
       expect.objectContaining({ ok: false, exitCode: 1 }),
     );
+    expect(renderBriefOpsPreflightReport(report, false)).toContain(
+      "  next: pnpm --silent run ops:backup -- status --required --json",
+    );
   });
 });

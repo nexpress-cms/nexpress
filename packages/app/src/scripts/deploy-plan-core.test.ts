@@ -118,6 +118,7 @@ describe("deploy plan core", () => {
     expect(json.nextCommands).toEqual([
       "pnpm db:migrate -- --status",
       "pnpm db:migrate",
+      "pnpm run ops:preflight -- --target docker --brief --no-color",
       "pnpm run doctor:prod -- --target docker --brief --no-color --fix-plan",
     ]);
   });
@@ -159,6 +160,9 @@ describe("deploy plan core", () => {
     expect(output).toContain("Plan the target:");
     expect(output).toContain("pnpm run ops:preflight -- --target vercel --brief --no-color");
     expect(output).toContain("https://vercel.com/new?utm_source=nexpress&utm_campaign=oss");
+    expect(output).toContain(
+      "Use `pnpm run ops:preflight -- --target vercel` as the failing readiness gate",
+    );
     expect(output).toContain("Diagnostics");
     expect(output).toContain(
       "pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan",

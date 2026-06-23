@@ -25,6 +25,7 @@ import {
   type ReleaseStepId,
   type ReleaseStepReport,
 } from "./release-core.js";
+import { normalizePnpmPassthroughArgv } from "./ops-command-format.js";
 
 type PackageManager = "pnpm" | "npm" | "yarn";
 type ReleaseCliMode = ReleaseMode | "apply";
@@ -37,7 +38,7 @@ interface CapturedCommand {
 }
 
 const RAW_ARGV = process.argv.slice(2);
-const ARGV = RAW_ARGV[0] === "--" ? RAW_ARGV.slice(1) : RAW_ARGV;
+const ARGV = normalizePnpmPassthroughArgv(RAW_ARGV);
 const MODE: ReleaseCliMode =
   ARGV[0] === "apply"
     ? "apply"

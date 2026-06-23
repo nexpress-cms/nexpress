@@ -371,13 +371,14 @@ function buildDeployPlanNextCommands(
   requiredEnv: EnvRequirementCheck[],
 ): string[] {
   const doctorCommand = `pnpm run doctor:prod -- --target ${plan.target} --brief --no-color --fix-plan`;
+  const preflightCommand = `pnpm run ops:preflight -- --target ${plan.target} --brief --no-color`;
   const hasUnresolvedRequiredEnv = requiredEnv.some((check) => check.status !== "set");
 
   if (hasUnresolvedRequiredEnv) {
     return [doctorCommand];
   }
 
-  return ["pnpm db:migrate -- --status", "pnpm db:migrate", doctorCommand];
+  return ["pnpm db:migrate -- --status", "pnpm db:migrate", preflightCommand, doctorCommand];
 }
 
 export function buildDeployPlanJson(
@@ -472,7 +473,7 @@ export function renderDeployPlan(
 
   lines.push(
     "",
-    `${c.dim}Use \`pnpm run doctor:prod -- --target ${plan.target}\` as the failing readiness gate; deploy:plan is advisory.${c.reset}`,
+    `${c.dim}Use \`pnpm run ops:preflight -- --target ${plan.target}\` as the failing readiness gate; deploy:plan is advisory.${c.reset}`,
   );
 
   return lines.join("\n");

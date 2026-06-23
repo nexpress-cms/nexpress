@@ -970,6 +970,7 @@ export function renderBriefOpsBackupReport(
     for (const action of report.actions) {
       const required = action.required ? " required" : "";
       lines.push(`  - [${action.phase}${required}] ${action.command}`);
+      lines.push(`    note: ${action.note}`);
     }
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
@@ -995,6 +996,7 @@ export function renderBriefOpsBackupRestorePlan(
     for (const step of report.steps) {
       const approval = step.requiresApproval ? " approval" : "";
       lines.push(`  - [${step.phase}] ${step.command}${approval}`);
+      lines.push(`    note: ${step.note}`);
     }
   }
   if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);

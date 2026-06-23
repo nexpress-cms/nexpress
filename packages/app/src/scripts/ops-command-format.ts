@@ -15,6 +15,10 @@ export function toProjectCommand(command: string): string {
   return formatProjectRun(script, parts.slice(3));
 }
 
+export function normalizePnpmPassthroughArgv(argv: string[]): string[] {
+  return argv[0] === "--" ? argv.slice(1) : argv;
+}
+
 export function isMatchingProjectCommand(command: string, projectCommand: string): boolean {
   return projectCommandCandidates(command).includes(projectCommand.trim().replace(/\s+/g, " "));
 }

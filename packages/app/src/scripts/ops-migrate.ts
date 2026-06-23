@@ -8,9 +8,10 @@ import {
   renderBriefOpsMigrateRollbackPlan,
   type OpsMigrateMode,
 } from "./ops-migrate-core.js";
+import { normalizePnpmPassthroughArgv } from "./ops-command-format.js";
 
 const RAW_ARGV = process.argv.slice(2);
-const ARGV = RAW_ARGV[0] === "--" ? RAW_ARGV.slice(1) : RAW_ARGV;
+const ARGV = normalizePnpmPassthroughArgv(RAW_ARGV);
 const MODE: OpsMigrateMode = ARGV[0] === "plan" ? "plan" : "status";
 const ROLLBACK_PLAN_MODE = ARGV[0] === "rollback-plan";
 const JSON_MODE = ARGV.includes("--json");
