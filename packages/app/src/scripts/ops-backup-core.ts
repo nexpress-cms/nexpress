@@ -146,7 +146,10 @@ const EMPTY_ANSI = {
 };
 
 function backupDirFromEnv(env: OpsBackupEnv): string {
-  return resolve(process.cwd(), env.NP_BACKUP_DIR ?? ".nexpress/backups");
+  return resolve(
+    /* turbopackIgnore: true */ process.cwd(),
+    env.NP_BACKUP_DIR ?? ".nexpress/backups",
+  );
 }
 
 function maxAgeHoursFromEnv(env: OpsBackupEnv): number {
@@ -195,15 +198,15 @@ function manifestSummary(manifest: BackupManifest): BackupManifestSummary {
 }
 
 async function listManifestFiles(backupDir: string): Promise<string[]> {
-  const entries = await readdir(backupDir, { withFileTypes: true });
+  const entries = await readdir(/* turbopackIgnore: true */ backupDir, { withFileTypes: true });
   return entries
     .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-    .map((entry) => join(backupDir, entry.name));
+    .map((entry) => join(/* turbopackIgnore: true */ backupDir, entry.name));
 }
 
 async function readManifestFile(file: string): Promise<BackupManifest | null> {
   try {
-    const raw = await readFile(file, "utf8");
+    const raw = await readFile(/* turbopackIgnore: true */ file, "utf8");
     return parseBackupManifest(JSON.parse(raw));
   } catch {
     return null;
@@ -212,7 +215,7 @@ async function readManifestFile(file: string): Promise<BackupManifest | null> {
 
 async function pathExists(path: string): Promise<boolean> {
   try {
-    await access(path);
+    await access(/* turbopackIgnore: true */ path);
     return true;
   } catch {
     return false;
@@ -220,7 +223,7 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 function resolveBackupArtifactPath(backupDir: string, path: string): string | null {
-  const resolved = resolve(backupDir, path);
+  const resolved = resolve(/* turbopackIgnore: true */ backupDir, path);
   const rel = relative(backupDir, resolved);
   if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return null;
   return resolved;
@@ -470,7 +473,7 @@ export async function collectOpsBackupReport(args: {
   const checks: CheckResult[] = [];
 
   try {
-    const dirStat = await stat(backupDir);
+    const dirStat = await stat(/* turbopackIgnore: true */ backupDir);
     if (!dirStat.isDirectory()) {
       return buildOpsBackupJson({
         mode: args.mode,
@@ -573,7 +576,7 @@ async function collectBackupManifests(env: OpsBackupEnv): Promise<{
   const checks: CheckResult[] = [];
 
   try {
-    const dirStat = await stat(backupDir);
+    const dirStat = await stat(/* turbopackIgnore: true */ backupDir);
     if (!dirStat.isDirectory()) {
       return {
         backupDir,
@@ -858,7 +861,9 @@ export async function collectOpsBackupRestorePlan(args: {
 }
 
 function backupArtifactManifestPath(backupDir: string, input: string): string {
-  const resolved = isAbsolute(input) ? resolve(input) : resolve(backupDir, input);
+  const resolved = isAbsolute(input)
+    ? resolve(/* turbopackIgnore: true */ input)
+    : resolve(/* turbopackIgnore: true */ backupDir, input);
   const rel = relative(backupDir, resolved);
   if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
     throw new Error(`Backup artifact must be inside ${backupDir}: ${input}`);
@@ -871,7 +876,7 @@ async function checkedBackupArtifactManifestPath(
   input: string,
 ): Promise<string> {
   const rel = backupArtifactManifestPath(backupDir, input);
-  const artifactPath = resolve(backupDir, rel);
+  const artifactPath = resolve(/* turbopackIgnore: true */ backupDir, rel);
   if (!(await pathExists(artifactPath))) {
     throw new Error(`Backup artifact does not exist inside ${backupDir}: ${rel}`);
   }
@@ -894,7 +899,7 @@ export async function createOpsBackupManifest(args: {
     args.id ?? `backup-${now.toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
   const createdAt = now.toISOString();
   const verified = Boolean(args.verified || args.restoreVerified);
-  await mkdir(backupDir, { recursive: true });
+  await mkdir(/* turbopackIgnore: true */ backupDir, { recursive: true });
 
   const manifest: BackupManifest = {
     id,
@@ -919,7 +924,11 @@ export async function createOpsBackupManifest(args: {
       : {}),
   };
 
-  await writeFile(join(backupDir, `${id}.json`), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  await writeFile(
+    join(/* turbopackIgnore: true */ backupDir, `${id}.json`),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf8",
+  );
   const report = await collectOpsBackupReport({ mode: "create", env });
   return {
     ...report,

@@ -16,7 +16,7 @@ import {
   type OpsReadinessState,
 } from "../../../lib/ops-readiness";
 import { DEPLOY_TARGETS, deployTargetTitle } from "../../../scripts/deploy-targets";
-import { CopyCommandButton } from "./readiness-actions";
+import { CopyCommandButton } from "../ops-actions";
 
 interface AdminReadinessPageProps {
   searchParams: Promise<{ target?: string }>;
