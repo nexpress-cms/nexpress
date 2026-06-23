@@ -20,6 +20,7 @@ import {
   PanelLeft,
   Puzzle,
   Settings,
+  ShieldCheck,
   Tag,
   Timer,
   Users,
@@ -320,6 +321,7 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
 
     const systemItems: NavItem[] = [{ href: "/admin/plugins", label: "Plugins", icon: Puzzle }];
     if (caps.canManageAdmin) {
+      systemItems.push({ href: "/admin/readiness", label: "Readiness", icon: ShieldCheck });
       systemItems.push({ href: "/admin/jobs", label: "Jobs", icon: Timer });
       systemItems.push({ href: "/admin/health", label: "Health", icon: Activity });
     }
