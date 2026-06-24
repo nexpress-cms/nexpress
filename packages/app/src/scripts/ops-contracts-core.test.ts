@@ -83,7 +83,8 @@ describe("ops contracts core", () => {
       expect.objectContaining({
         status: "shipped",
         risk: "read-only",
-        command: "GET /api/admin/ops/health|readiness|jobs|storage|plugins",
+        command: "GET /api/admin/ops/status|doctor|health|readiness|jobs|storage|plugins",
+        schemaVersions: expect.arrayContaining(["np.ops.v1", "np.doctor.v1"]),
         supports: expect.objectContaining({ json: true }),
       }),
     );

@@ -8,6 +8,7 @@ import {
   buildAdminOpsOverview,
   buildHealthActions,
   commandForReadinessSection,
+  stateFromHealthSummary,
   stateFromReadinessStatus,
   type AdminOpsLink,
   type AdminOpsOverviewCard,
@@ -19,10 +20,11 @@ import { ensureFor } from "../../../lib/init-core";
 import {
   gatherOpsReadiness,
   resolveOpsReadinessTarget,
+  type OpsReadinessMetric,
   type OpsReadinessReport,
   type OpsReadinessSection,
 } from "../../../lib/ops-readiness";
-import { gatherSystemHealth } from "../../../lib/system-health";
+import { gatherSystemHealth, type HealthSummary } from "../../../lib/system-health";
 import { DEPLOY_TARGETS, deployTargetTitle } from "../../../scripts/deploy-targets";
 import { CopyCommandButton } from "../ops-actions";
 
@@ -38,6 +40,17 @@ interface CombinedAction {
   summary: string;
   command: string | null;
   links: AdminOpsLink[];
+}
+
+interface OpsEvidenceItem {
+  id: "status" | "doctor" | "storage" | "jobs" | "plugins";
+  title: string;
+  state: AdminOpsState;
+  summary: string;
+  metrics: OpsReadinessMetric[];
+  apiHref: string;
+  download: string;
+  adminHref: string;
 }
 
 export default async function AdminOpsPage({ searchParams }: AdminOpsPageProps) {
@@ -162,7 +175,7 @@ export default async function AdminOpsPage({ searchParams }: AdminOpsPageProps) 
 
       <OpsActionQueue actions={actions} />
 
-      <OpsEvidencePanel readiness={readiness} />
+      <OpsEvidencePanel health={health} readiness={readiness} />
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.9fr)]">
         <Card className="min-w-0">
@@ -344,8 +357,14 @@ function ActionLinkButton({ link }: { link: AdminOpsLink }) {
   );
 }
 
-function OpsEvidencePanel({ readiness }: { readiness: OpsReadinessReport }) {
-  const items = opsEvidenceItems(readiness);
+function OpsEvidencePanel({
+  health,
+  readiness,
+}: {
+  health: HealthSummary;
+  readiness: OpsReadinessReport;
+}) {
+  const items = opsEvidenceItems(health, readiness);
 
   return (
     <Card className="min-w-0">
@@ -363,7 +382,7 @@ function OpsEvidencePanel({ readiness }: { readiness: OpsReadinessReport }) {
         </div>
       </CardHeader>
       <CardContent className="min-w-0">
-        <div className="grid min-w-0 gap-3 xl:grid-cols-3">
+        <div className="grid min-w-0 gap-3 md:grid-cols-2 2xl:grid-cols-5">
           {items.map((item) => (
             <div
               key={item.id}
@@ -371,17 +390,17 @@ function OpsEvidencePanel({ readiness }: { readiness: OpsReadinessReport }) {
             >
               <div className="min-w-0">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <StateBadge state={item.section.state} />
+                  <StateBadge state={item.state} />
                   <p className="break-words text-[13px] font-semibold text-neutral-950 dark:text-neutral-50">
                     {item.title}
                   </p>
                 </div>
                 <p className="mt-1 break-words text-[12.5px] leading-[1.5] text-neutral-500 dark:text-neutral-400">
-                  {item.section.summary}
+                  {item.summary}
                 </p>
               </div>
-              <div className="grid min-w-0 gap-2 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
-                {item.section.metrics.slice(0, 3).map((metric) => (
+              <div className="grid min-w-0 gap-2 sm:grid-cols-3 2xl:grid-cols-1">
+                {item.metrics.slice(0, 3).map((metric) => (
                   <div
                     key={`${item.id}-${metric.label}`}
                     className="min-w-0 rounded bg-white px-2 py-1.5 ring-1 ring-neutral-200/70 dark:bg-neutral-950/60 dark:ring-neutral-800"
@@ -548,19 +567,62 @@ function worstSectionState(
   return "ok";
 }
 
-function opsEvidenceItems(readiness: OpsReadinessReport): Array<{
-  id: "storage" | "jobs" | "plugins";
-  title: string;
-  section: OpsReadinessSection;
-  apiHref: string;
-  download: string;
-  adminHref: string;
-}> {
+function opsEvidenceItems(health: HealthSummary, readiness: OpsReadinessReport): OpsEvidenceItem[] {
+  const storage = requiredSection(readiness, "storage");
+  const jobs = requiredSection(readiness, "jobs");
+  const plugins = requiredSection(readiness, "plugins");
+
   return [
+    {
+      id: "status",
+      title: "Status",
+      state: stateFromHealthSummary(health),
+      summary: "Compact runtime status for env, database, storage, jobs, and migrations.",
+      metrics: [
+        {
+          label: "Errors",
+          value: health.errorCount.toString(),
+          tone: health.errorCount > 0 ? "error" : "ok",
+        },
+        {
+          label: "Warnings",
+          value: health.warnCount.toString(),
+          tone: health.warnCount > 0 ? "warn" : "ok",
+        },
+        { label: "Checks", value: health.checks.length.toString(), tone: "muted" },
+      ],
+      apiHref: "/api/admin/ops/status",
+      download: "nexpress-status.json",
+      adminHref: "/admin/health",
+    },
+    {
+      id: "doctor",
+      title: "Doctor",
+      state: stateFromReadinessStatus(readiness.status),
+      summary: `Production doctor fix-plan evidence for ${readiness.targetTitle}.`,
+      metrics: [
+        { label: "Target", value: readiness.targetTitle, tone: "muted" },
+        {
+          label: "Blocked",
+          value: readiness.summary.errors.toString(),
+          tone: readiness.summary.errors > 0 ? "error" : "ok",
+        },
+        {
+          label: "Warnings",
+          value: readiness.summary.warnings.toString(),
+          tone: readiness.summary.warnings > 0 ? "warn" : "ok",
+        },
+      ],
+      apiHref: `/api/admin/ops/doctor?prod=1&target=${readiness.target}&fixPlan=1`,
+      download: `nexpress-doctor-${readiness.target}.json`,
+      adminHref: `/admin/readiness?target=${readiness.target}`,
+    },
     {
       id: "storage",
       title: "Storage",
-      section: requiredSection(readiness, "storage"),
+      state: storage.state,
+      summary: storage.summary,
+      metrics: storage.metrics,
       apiHref: "/api/admin/ops/storage",
       download: "nexpress-storage.json",
       adminHref: "/admin/media",
@@ -568,7 +630,9 @@ function opsEvidenceItems(readiness: OpsReadinessReport): Array<{
     {
       id: "jobs",
       title: "Jobs",
-      section: requiredSection(readiness, "jobs"),
+      state: jobs.state,
+      summary: jobs.summary,
+      metrics: jobs.metrics,
       apiHref: "/api/admin/ops/jobs",
       download: "nexpress-jobs.json",
       adminHref: "/admin/jobs",
@@ -576,7 +640,9 @@ function opsEvidenceItems(readiness: OpsReadinessReport): Array<{
     {
       id: "plugins",
       title: "Plugins",
-      section: requiredSection(readiness, "plugins"),
+      state: plugins.state,
+      summary: plugins.summary,
+      metrics: plugins.metrics,
       apiHref: "/api/admin/ops/plugins",
       download: "nexpress-plugins.json",
       adminHref: "/admin/plugins",
