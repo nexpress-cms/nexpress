@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/plugin-oauth-google",
-  "version": "0.3.22",
+  "version": "0.3.23",
   "description": "Google OAuth provider plugin for NexPress.",
   "license": "MIT",
   "author": "Nexpress",
