@@ -1,10 +1,19 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
 
 import type { CheckResult } from "./doctor-readiness.js";
+import { collectOpsBackupReport, type OpsBackupJson } from "./ops-backup-core.js";
 import { toProjectCommand } from "./ops-command-format.js";
+import {
+  buildOpsMutationAudit,
+  defaultOpsArtifactPath,
+  type OpsMutationAudit,
+  writeOpsJsonArtifact,
+} from "./ops-mutation.js";
 import {
   buildMigrationStatus,
   MIGRATIONS_TABLE_NAME,
@@ -118,6 +127,26 @@ export interface OpsMigrateRollbackPlanJson {
   destructiveFindings: DestructiveSqlFinding[];
   checks: CheckResult[];
   steps: OpsMigrateRollbackPlanStep[];
+}
+
+export interface OpsMigrateApplyJson {
+  schemaVersion: "np.ops-migrate-apply.v1";
+  ok: boolean;
+  status: "ready" | "attention" | "blocked";
+  mode: "apply";
+  migrationsFolder: string;
+  migrationTable: string;
+  summary: OpsMigrateSummary & {
+    backupReady: boolean;
+    applied: number;
+    remainingPending: number;
+  };
+  mutation: OpsMutationAudit;
+  nextCommand: string | null;
+  projectNextCommand: string | null;
+  pending: OpsMigrateJson["pending"];
+  destructiveFindings: DestructiveSqlFinding[];
+  checks: CheckResult[];
 }
 
 interface RenderOptions {
@@ -743,6 +772,306 @@ export async function collectOpsMigrateRollbackPlan(args: {
   });
 }
 
+function applyNextCommand(): string {
+  return "nexpress ops migrate apply --safe --execute --approve migrate-apply --json";
+}
+
+function applySafeChecks(plan: OpsMigrateJson, backup: OpsBackupJson): CheckResult[] {
+  const checks = plan.checks.map((check) =>
+    check.id === "migrate.pending" && plan.summary.pending > 0
+      ? {
+          ...check,
+          state: "ok" as const,
+          hint: undefined,
+          detail: `${plan.summary.pending.toString()} pending and ready for apply gate`,
+        }
+      : check,
+  );
+  if (plan.summary.pending === 0) {
+    checks.push({
+      id: "migrate.apply.backup",
+      state: "ok",
+      label: "Migration apply backup gate",
+      detail: "no pending migrations; backup not required",
+    });
+    return checks;
+  }
+  checks.push(
+    ...backup.checks.map((check) => ({
+      ...check,
+      id: `backup.${check.id.replace(/^backup\./, "")}`,
+    })),
+  );
+  if (!backup.ok) {
+    checks.push({
+      id: "migrate.apply.backup",
+      state: "error",
+      label: "Migration apply backup gate",
+      detail: "fresh verified backup is required before apply",
+      hint: "Run `nexpress ops backup status --required --json` and record a verified backup.",
+    });
+  } else {
+    checks.push({
+      id: "migrate.apply.backup",
+      state: "ok",
+      label: "Migration apply backup gate",
+      detail: backup.summary.latestId ?? "backup ready",
+    });
+  }
+  return checks;
+}
+
+function buildOpsMigrateApplyJson(args: {
+  plan: OpsMigrateJson;
+  backup: OpsBackupJson;
+  checks: CheckResult[];
+  execute?: boolean;
+  approve?: string | null;
+  artifactPath: string | null;
+  startedAt: Date;
+  applied: number;
+  remainingPending: number;
+  error?: string | null;
+  nextCommand?: string | null;
+}): OpsMigrateApplyJson {
+  const counts = countChecks(args.checks);
+  const status = counts.errors > 0 ? "blocked" : counts.warnings > 0 ? "attention" : "ready";
+  const nextCommand =
+    args.nextCommand ??
+    (args.execute && counts.errors === 0 ? "nexpress release verify --json" : applyNextCommand());
+  return {
+    schemaVersion: "np.ops-migrate-apply.v1",
+    ok: counts.errors === 0,
+    status,
+    mode: "apply",
+    migrationsFolder: args.plan.migrationsFolder,
+    migrationTable: args.plan.migrationTable,
+    summary: {
+      ...args.plan.summary,
+      backupReady: args.backup.ok,
+      applied: args.applied,
+      remainingPending: args.remainingPending,
+    },
+    mutation: buildOpsMutationAudit({
+      action: "migrate.apply-safe",
+      execute: args.execute,
+      approve: args.approve,
+      requiredApproval: "migrate-apply",
+      artifactPath: args.artifactPath,
+      applied: Boolean(args.execute && args.applied > 0 && counts.errors === 0),
+      error: args.error ?? null,
+      rollbackHint:
+        "NexPress does not generate down migrations. Roll back by restoring the verified backup captured before apply.",
+      nextCommand,
+      startedAt: args.startedAt,
+      completedAt: new Date(),
+    }),
+    nextCommand,
+    projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
+    pending: args.plan.pending,
+    destructiveFindings: args.plan.destructiveFindings,
+    checks: args.checks,
+  };
+}
+
+async function applyMigrationsWithLock(args: {
+  env: OpsMigrateEnv;
+  migrationsFolder: string;
+}): Promise<void> {
+  const url = args.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL not set");
+  const pg = loadPg();
+  const client = new pg.default.Client({
+    connectionString: url,
+    connectionTimeoutMillis: 5_000,
+  });
+  let locked = false;
+  try {
+    await client.connect();
+    const lock = await client.query<{ locked: boolean }>(
+      "select pg_try_advisory_lock(hashtext($1)) as locked",
+      ["nexpress.ops.migrate.apply"],
+    );
+    locked = lock.rows[0]?.locked === true;
+    if (!locked) throw new Error("Another migration apply appears to be running.");
+    const db = drizzle(client as never);
+    await migrate(db, { migrationsFolder: args.migrationsFolder });
+  } finally {
+    if (locked) {
+      try {
+        await client.query("select pg_advisory_unlock(hashtext($1))", [
+          "nexpress.ops.migrate.apply",
+        ]);
+      } catch {
+        /* swallow */
+      }
+    }
+    await client.end().catch(() => {});
+  }
+}
+
+export async function runOpsMigrateApply(args: {
+  safe?: boolean;
+  execute?: boolean;
+  approve?: string | null;
+  out?: string | null;
+  env?: OpsMigrateEnv;
+  migrationsFolder?: string;
+}): Promise<OpsMigrateApplyJson> {
+  const env = args.env ?? process.env;
+  const startedAt = new Date();
+  const artifactPath =
+    args.out ??
+    (args.execute ? defaultOpsArtifactPath("migrations", "migrate-apply", startedAt) : null);
+  const plan = await collectOpsMigrateReport({
+    mode: "plan",
+    env,
+    migrationsFolder: args.migrationsFolder,
+  });
+  const backup = await collectOpsBackupReport({ mode: "status", required: true, env });
+  const checks = applySafeChecks(plan, backup);
+
+  if (!args.safe) {
+    checks.push({
+      id: "migrate.apply.safe_flag",
+      state: "error",
+      label: "Migration apply mode",
+      detail: "missing --safe",
+    });
+  }
+  if (plan.summary.inspectionBlocked) {
+    checks.push({
+      id: "migrate.apply.inspection",
+      state: "error",
+      label: "Migration apply inspection",
+      detail: "migration state inspection is blocked",
+    });
+  }
+  if (plan.summary.manualReviewRequired) {
+    checks.push({
+      id: "migrate.apply.manual_review",
+      state: "error",
+      label: "Migration apply manual review",
+      detail: "drift, unknown applied migrations, or destructive SQL require manual handling",
+    });
+  }
+
+  if (!args.execute) {
+    const report = buildOpsMigrateApplyJson({
+      plan,
+      backup,
+      checks,
+      execute: false,
+      approve: args.approve,
+      artifactPath,
+      startedAt,
+      applied: 0,
+      remainingPending: plan.summary.pending,
+      nextCommand: plan.summary.pending > 0 ? applyNextCommand() : null,
+    });
+    if (artifactPath) await writeOpsJsonArtifact(artifactPath, report);
+    return report;
+  }
+
+  if (args.approve !== "migrate-apply") {
+    checks.push({
+      id: "migrate.apply.approval",
+      state: "error",
+      label: "Migration apply approval",
+      detail: "missing --approve migrate-apply",
+    });
+    const report = buildOpsMigrateApplyJson({
+      plan,
+      backup,
+      checks,
+      execute: true,
+      approve: args.approve,
+      artifactPath,
+      startedAt,
+      applied: 0,
+      remainingPending: plan.summary.pending,
+      error: "Missing --approve migrate-apply",
+      nextCommand: applyNextCommand(),
+    });
+    if (artifactPath) await writeOpsJsonArtifact(artifactPath, report);
+    return report;
+  }
+
+  if (countChecks(checks).errors > 0 || plan.summary.pending === 0) {
+    const report = buildOpsMigrateApplyJson({
+      plan,
+      backup,
+      checks,
+      execute: true,
+      approve: args.approve,
+      artifactPath,
+      startedAt,
+      applied: 0,
+      remainingPending: plan.summary.pending,
+      error: plan.summary.pending === 0 ? null : "Migration apply gate is blocked",
+      nextCommand: plan.summary.pending === 0 ? "nexpress release verify --json" : plan.nextCommand,
+    });
+    if (artifactPath) await writeOpsJsonArtifact(artifactPath, report);
+    return report;
+  }
+
+  try {
+    await applyMigrationsWithLock({ env, migrationsFolder: plan.migrationsFolder });
+    const after = await collectOpsMigrateReport({
+      mode: "status",
+      env,
+      migrationsFolder: plan.migrationsFolder,
+    });
+    const report = buildOpsMigrateApplyJson({
+      plan,
+      backup,
+      checks: [
+        ...checks,
+        {
+          id: "migrate.apply.result",
+          state: after.summary.pending === 0 ? "ok" : "warn",
+          label: "Migration apply result",
+          detail: `${after.summary.pending.toString()} pending after apply`,
+        },
+      ],
+      execute: true,
+      approve: args.approve,
+      artifactPath,
+      startedAt,
+      applied: Math.max(0, plan.summary.pending - after.summary.pending),
+      remainingPending: after.summary.pending,
+      error: after.summary.pending === 0 ? null : "Some migrations remain pending after apply",
+      nextCommand: "nexpress release verify --json",
+    });
+    if (artifactPath) await writeOpsJsonArtifact(artifactPath, report);
+    return report;
+  } catch (error) {
+    const report = buildOpsMigrateApplyJson({
+      plan,
+      backup,
+      checks: [
+        ...checks,
+        {
+          id: "migrate.apply.result",
+          state: "error",
+          label: "Migration apply result",
+          detail: error instanceof Error ? error.message : String(error),
+        },
+      ],
+      execute: true,
+      approve: args.approve,
+      artifactPath,
+      startedAt,
+      applied: 0,
+      remainingPending: plan.summary.pending,
+      error: error instanceof Error ? error.message : String(error),
+      nextCommand: "nexpress ops migrate rollback-plan --json",
+    });
+    if (artifactPath) await writeOpsJsonArtifact(artifactPath, report);
+    return report;
+  }
+}
+
 function formatState(state: OpsMigrateJson["status"], color: boolean): string {
   const c = color ? ANSI : EMPTY_ANSI;
   if (state === "ready") return `${c.green}ready${c.reset}`;
@@ -794,6 +1123,32 @@ export function renderBriefOpsMigrateReport(
   if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
     lines.push(`Project next: ${report.projectNextCommand}`);
   }
+  return lines.join("\n");
+}
+
+export function renderBriefOpsMigrateApply(
+  report: OpsMigrateApplyJson,
+  options: RenderOptions = { color: true },
+): string {
+  const c = options.color ? ANSI : EMPTY_ANSI;
+  const lines = [
+    `${c.dim}NexPress ops migrate apply${c.reset}`,
+    `${formatState(report.status, options.color)}: ${report.summary.applied.toString()} applied, ${report.summary.remainingPending.toString()} pending`,
+    `backup: ${report.summary.backupReady ? "ready" : "blocked"}`,
+  ];
+  for (const check of report.checks) lines.push(formatCheck(check, options.color));
+  if (report.pending.length > 0) {
+    lines.push("pending before apply:");
+    for (const migration of report.pending) lines.push(`  - ${migration.tag}`);
+  }
+  lines.push(
+    `mutation: ${report.mutation.action} applied=${String(report.mutation.applied)}${report.mutation.error ? ` error=${report.mutation.error}` : ""}`,
+  );
+  if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
+    lines.push(`Project next: ${report.projectNextCommand}`);
+  }
+  if (report.mutation.artifactPath) lines.push(`artifact: ${report.mutation.artifactPath}`);
   return lines.join("\n");
 }
 

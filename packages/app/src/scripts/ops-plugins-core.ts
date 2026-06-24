@@ -2,7 +2,16 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { invalidatePluginEnabled } from "@nexpress/core";
+import pg from "pg";
+
 import { toProjectCommand } from "./ops-command-format.js";
+import {
+  buildOpsMutationAudit,
+  defaultOpsArtifactPath,
+  type OpsMutationAudit,
+  writeOpsJsonArtifact,
+} from "./ops-mutation.js";
 import type { CheckResult } from "./doctor-readiness.js";
 
 const OPS_PLUGINS_DOCTOR_COMMAND = "nexpress ops plugins doctor --json";
@@ -36,6 +45,23 @@ interface PluginLike {
 
 interface ConfigLike {
   plugins?: unknown;
+}
+
+type OpsPluginsEnv = Record<string, string | undefined>;
+
+interface PgClientLike {
+  connect(): Promise<void>;
+  query<T = unknown>(text: string, values?: unknown[]): Promise<{ rows: T[] }>;
+  end(): Promise<void>;
+}
+
+interface PgModuleLike {
+  default: {
+    Client: new (config: {
+      connectionString: string;
+      connectionTimeoutMillis?: number;
+    }) => PgClientLike;
+  };
 }
 
 export interface OpsPluginEntry {
@@ -148,6 +174,20 @@ export interface OpsPluginsUpgradePlanJson {
   steps: OpsPluginUpgradeStep[];
 }
 
+export interface OpsPluginsMutationJson {
+  schemaVersion: "np.ops-plugins-mutation.v1";
+  ok: boolean;
+  status: "ready" | "attention" | "blocked";
+  action: "enable" | "disable";
+  pluginId: string;
+  enabled: boolean | null;
+  mutation: OpsMutationAudit;
+  nextCommand: string | null;
+  projectNextCommand: string | null;
+  checks: CheckResult[];
+  plugin: OpsPluginEntry | null;
+}
+
 interface RenderOptions {
   color: boolean;
 }
@@ -175,6 +215,10 @@ const CONFIG_CANDIDATES = [
 ];
 
 const PACKAGE_JSON_CANDIDATES = ["package.json", "apps/web/package.json"];
+
+function loadPg(): PgModuleLike {
+  return { default: pg as unknown as PgModuleLike["default"] };
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
@@ -946,5 +990,229 @@ export function renderBriefOpsPluginsUpgradePlan(
   if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
     lines.push(`Project next: ${report.projectNextCommand}`);
   }
+  return lines.join("\n");
+}
+
+async function readPluginEnabledState(
+  env: OpsPluginsEnv,
+  pluginId: string,
+): Promise<
+  | { ok: true; enabled: boolean | null }
+  | { ok: false; reason: "missing-url" | "query-failed"; detail: string }
+> {
+  const url = env.DATABASE_URL;
+  if (!url) return { ok: false, reason: "missing-url", detail: "DATABASE_URL not set" };
+  const pg = loadPg();
+  const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
+  try {
+    await client.connect();
+    const result = await client.query<{ enabled: boolean }>(
+      "select enabled from np_plugins where id = $1 limit 1",
+      [pluginId],
+    );
+    await client.end();
+    return { ok: true, enabled: result.rows[0]?.enabled ?? null };
+  } catch (error) {
+    try {
+      await client.end();
+    } catch {
+      /* swallow */
+    }
+    return {
+      ok: false,
+      reason: "query-failed",
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function writePluginEnabledState(
+  env: OpsPluginsEnv,
+  pluginId: string,
+  enabled: boolean,
+): Promise<{ ok: true; enabled: boolean } | { ok: false; detail: string }> {
+  const url = env.DATABASE_URL;
+  if (!url) return { ok: false, detail: "DATABASE_URL not set" };
+  const pg = loadPg();
+  const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
+  try {
+    await client.connect();
+    const result = await client.query<{ enabled: boolean }>(
+      `insert into np_plugins (id, enabled, installed_at, updated_at)
+       values ($1, $2, now(), now())
+       on conflict (id) do update set enabled = excluded.enabled, updated_at = now()
+       returning enabled`,
+      [pluginId, enabled],
+    );
+    await client.end();
+    return { ok: true, enabled: result.rows[0]?.enabled ?? enabled };
+  } catch (error) {
+    try {
+      await client.end();
+    } catch {
+      /* swallow */
+    }
+    return { ok: false, detail: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function countChecks(checks: CheckResult[]): { errors: number; warnings: number } {
+  return {
+    errors: checks.filter((check) => check.state === "error").length,
+    warnings: checks.filter((check) => check.state === "warn").length,
+  };
+}
+
+export async function runOpsPluginsMutation(args: {
+  action: "enable" | "disable";
+  pluginId: string;
+  execute?: boolean;
+  approve?: string | null;
+  out?: string | null;
+  env?: OpsPluginsEnv;
+  cwd?: string;
+}): Promise<OpsPluginsMutationJson> {
+  const env = args.env ?? process.env;
+  const startedAt = new Date();
+  const requiredApproval = `plugin-${args.action}`;
+  const artifactPath =
+    args.out ??
+    (args.execute
+      ? defaultOpsArtifactPath("plugins", `${args.action}-${args.pluginId}`, startedAt)
+      : null);
+  const inventory = await collectOpsPluginsStatus(args.cwd);
+  const plugin = inventory.plugins.find((entry) => entry.id === args.pluginId) ?? null;
+  const checks: CheckResult[] = [
+    ...inventory.checks,
+    plugin
+      ? {
+          id: "plugins.mutation.plugin",
+          state: "ok",
+          label: "Plugin mutation target",
+          detail: args.pluginId,
+        }
+      : {
+          id: "plugins.mutation.plugin",
+          state: "error",
+          label: "Plugin mutation target",
+          detail: `No configured plugin has id ${args.pluginId}`,
+          hint: "Only plugins registered in nexpress.config.ts can be enabled or disabled.",
+        },
+  ];
+  const desiredEnabled = args.action === "enable";
+  let enabled: boolean | null = null;
+  let mutationError: string | null = null;
+
+  if (!args.execute) {
+    const current = await readPluginEnabledState(env, args.pluginId);
+    if (current.ok) {
+      enabled = current.enabled ?? true;
+      checks.push({
+        id: "plugins.mutation.current_state",
+        state: "ok",
+        label: "Plugin DB state",
+        detail:
+          current.enabled === null ? "missing row, defaults enabled" : String(current.enabled),
+      });
+    } else {
+      checks.push({
+        id: "plugins.mutation.current_state",
+        state: "warn",
+        label: "Plugin DB state",
+        detail: current.detail,
+      });
+    }
+  } else if (args.approve !== requiredApproval) {
+    mutationError = `Missing --approve ${requiredApproval}`;
+    checks.push({
+      id: "plugins.mutation.approval",
+      state: "error",
+      label: "Plugin mutation approval",
+      detail: mutationError,
+    });
+  } else if (plugin) {
+    const written = await writePluginEnabledState(env, args.pluginId, desiredEnabled);
+    if (written.ok) {
+      enabled = written.enabled;
+      invalidatePluginEnabled(args.pluginId);
+      checks.push({
+        id: "plugins.mutation.write",
+        state: "ok",
+        label: "Plugin DB state",
+        detail: `${args.pluginId} enabled=${String(written.enabled)}`,
+      });
+    } else {
+      mutationError = written.detail;
+      checks.push({
+        id: "plugins.mutation.write",
+        state: "error",
+        label: "Plugin DB state",
+        detail: written.detail,
+      });
+    }
+  }
+
+  const nextCommand = args.execute
+    ? "nexpress ops plugins doctor --json"
+    : `nexpress ops plugins ${args.action} ${args.pluginId} --execute --approve ${requiredApproval} --json`;
+  const counts = countChecks(checks);
+  const status = counts.errors > 0 ? "blocked" : counts.warnings > 0 ? "attention" : "ready";
+  const report: OpsPluginsMutationJson = {
+    schemaVersion: "np.ops-plugins-mutation.v1",
+    ok: counts.errors === 0,
+    status,
+    action: args.action,
+    pluginId: args.pluginId,
+    enabled,
+    mutation: buildOpsMutationAudit({
+      action: `plugins.${args.action}`,
+      execute: args.execute,
+      approve: args.approve,
+      requiredApproval,
+      artifactPath,
+      applied: Boolean(args.execute && counts.errors === 0),
+      error: mutationError,
+      rollbackHint: `Run nexpress ops plugins ${desiredEnabled ? "disable" : "enable"} ${args.pluginId} --execute --approve plugin-${desiredEnabled ? "disable" : "enable"} --json`,
+      nextCommand,
+      startedAt,
+      completedAt: new Date(),
+    }),
+    nextCommand,
+    projectNextCommand: toProjectCommand(nextCommand),
+    checks,
+    plugin,
+  };
+  if (artifactPath) await writeOpsJsonArtifact(artifactPath, report);
+  return report;
+}
+
+export function renderBriefOpsPluginsMutation(
+  report: OpsPluginsMutationJson,
+  options: RenderOptions = { color: true },
+): string {
+  const c = options.color ? ANSI : EMPTY_ANSI;
+  const state =
+    report.status === "ready"
+      ? `${c.green}ready${c.reset}`
+      : report.status === "attention"
+        ? `${c.yellow}attention${c.reset}`
+        : `${c.red}blocked${c.reset}`;
+  const lines = [
+    `${c.dim}NexPress ops plugins ${report.action}${c.reset}`,
+    `${state}: ${report.pluginId} enabled=${String(report.enabled)}`,
+  ];
+  for (const check of report.checks) {
+    const parts = [formatBriefState(check.state, options.color), check.id, check.label];
+    if (check.detail) parts.push(`- ${check.detail.replace(/\s+/g, " ")}`);
+    lines.push(parts.join(" "));
+  }
+  lines.push(
+    `mutation: ${report.mutation.action} applied=${String(report.mutation.applied)}${report.mutation.error ? ` error=${report.mutation.error}` : ""}`,
+  );
+  if (report.nextCommand) lines.push(`Next: ${report.nextCommand}`);
+  if (report.projectNextCommand && report.projectNextCommand !== report.nextCommand) {
+    lines.push(`Project next: ${report.projectNextCommand}`);
+  }
+  if (report.mutation.artifactPath) lines.push(`artifact: ${report.mutation.artifactPath}`);
   return lines.join("\n");
 }

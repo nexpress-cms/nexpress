@@ -8,7 +8,9 @@ import {
   analyzePlugins,
   buildOpsPluginInspectJson,
   buildOpsPluginsUpgradePlanJson,
+  renderBriefOpsPluginsMutation,
   renderBriefOpsPluginsStatus,
+  runOpsPluginsMutation,
 } from "./ops-plugins-core.js";
 
 describe("ops plugins core", () => {
@@ -253,5 +255,72 @@ describe("ops plugins core", () => {
     expect(plan.summary.manual).toBe(1);
     expect(plan.nextCommand).toBe("nexpress ops plugins inspect custom --json");
     expect(plan.projectNextCommand).toBe("pnpm --silent run ops:plugins -- inspect custom --json");
+  });
+
+  it("dry-runs plugin disable with a mutation audit", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "np-ops-plugins-mutation-"));
+    writeFileSync(
+      join(cwd, "nexpress.config.ts"),
+      `export default { plugins: [{ manifest: { id: "demo", name: "Demo" } }] };\n`,
+    );
+
+    const report = await runOpsPluginsMutation({
+      action: "disable",
+      pluginId: "demo",
+      cwd,
+      env: {},
+    });
+
+    expect(report).toEqual(
+      expect.objectContaining({
+        schemaVersion: "np.ops-plugins-mutation.v1",
+        action: "disable",
+        pluginId: "demo",
+        mutation: expect.objectContaining({
+          action: "plugins.disable",
+          mode: "dry-run",
+          applied: false,
+        }),
+        nextCommand: "nexpress ops plugins disable demo --execute --approve plugin-disable --json",
+      }),
+    );
+    expect(renderBriefOpsPluginsMutation(report, { color: false })).toContain(
+      "mutation: plugins.disable applied=false",
+    );
+  });
+
+  it("requires approval before plugin enable/disable execute mode", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "np-ops-plugins-approval-"));
+    writeFileSync(
+      join(cwd, "nexpress.config.ts"),
+      `export default { plugins: [{ manifest: { id: "demo", name: "Demo" } }] };\n`,
+    );
+
+    const report = await runOpsPluginsMutation({
+      action: "enable",
+      pluginId: "demo",
+      execute: true,
+      out: join(cwd, "plugin-enable.json"),
+      cwd,
+      env: { DATABASE_URL: "postgres://nexpress:nexpress@127.0.0.1:55432/ci_unreachable" },
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.mutation).toEqual(
+      expect.objectContaining({
+        action: "plugins.enable",
+        mode: "execute",
+        applied: false,
+        error: "Missing --approve plugin-enable",
+      }),
+    );
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.mutation.approval",
+          state: "error",
+        }),
+      ]),
+    );
   });
 });
