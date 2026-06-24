@@ -12,7 +12,9 @@ import {
   createOpsBackupManifest,
   parseBackupManifest,
   renderBriefOpsBackupReport,
+  renderBriefOpsBackupRestoreApply,
   renderBriefOpsBackupRestorePlan,
+  runOpsBackupRestoreApply,
 } from "./ops-backup-core.js";
 
 describe("ops backup core", () => {
@@ -331,6 +333,130 @@ describe("ops backup core", () => {
     ]);
     expect(plan.plan.projectNextCommands).toContain(
       "pnpm --silent run ops:backup -- verify backup-ready --json",
+    );
+  });
+
+  it("dry-runs isolated restore apply with explicit target gates", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "np-backups-"));
+    mkdirSync(join(dir, "artifacts"));
+    writeFileSync(join(dir, "artifacts", "db.dump"), "dump");
+    writeFileSync(
+      join(dir, "backup.json"),
+      JSON.stringify({
+        id: "backup-apply",
+        createdAt: new Date().toISOString(),
+        database: { path: "artifacts/db.dump" },
+        verification: { verifiedAt: new Date().toISOString() },
+      }),
+    );
+
+    const report = await runOpsBackupRestoreApply({
+      manifestId: "backup-apply",
+      env: {
+        NP_BACKUP_DIR: dir,
+        DATABASE_URL: "postgres://nexpress:secret@localhost:5432/app",
+        RESTORE_DATABASE_URL: "postgres://nexpress:secret@localhost:5432/restore",
+      },
+    });
+
+    expect(report).toEqual(
+      expect.objectContaining({
+        schemaVersion: "np.ops-backup-restore-apply.v1",
+        ok: true,
+        status: "ready",
+        target: "isolated",
+        mutation: expect.objectContaining({
+          action: "backup.restore-apply",
+          mode: "dry-run",
+          applied: false,
+        }),
+        nextCommand:
+          "nexpress ops backup restore apply backup-apply --execute --approve restore-apply --json",
+      }),
+    );
+    expect(renderBriefOpsBackupRestoreApply(report, { color: false })).toContain(
+      "mutation: backup.restore-apply applied=false",
+    );
+  });
+
+  it("blocks restore apply when the target database matches DATABASE_URL", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "np-backups-"));
+    mkdirSync(join(dir, "artifacts"));
+    writeFileSync(join(dir, "artifacts", "db.dump"), "dump");
+    writeFileSync(
+      join(dir, "backup.json"),
+      JSON.stringify({
+        id: "backup-danger",
+        createdAt: new Date().toISOString(),
+        database: { path: "artifacts/db.dump" },
+        verification: { verifiedAt: new Date().toISOString() },
+      }),
+    );
+
+    const report = await runOpsBackupRestoreApply({
+      manifestId: "backup-danger",
+      execute: true,
+      approve: "restore-apply",
+      out: join(dir, "restore-apply.json"),
+      env: {
+        NP_BACKUP_DIR: dir,
+        DATABASE_URL: "postgres://nexpress:secret@localhost:5432/app",
+        RESTORE_DATABASE_URL: "postgres://nexpress:secret@localhost:5432/app",
+      },
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.mutation).toEqual(
+      expect.objectContaining({
+        action: "backup.restore-apply",
+        applied: false,
+        error: "Restore apply gate is blocked",
+      }),
+    );
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "backup.restore_apply.target_database",
+          state: "error",
+        }),
+      ]),
+    );
+  });
+
+  it("blocks restore apply when only database credentials differ", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "np-backups-"));
+    mkdirSync(join(dir, "artifacts"));
+    writeFileSync(join(dir, "artifacts", "db.dump"), "dump");
+    writeFileSync(
+      join(dir, "backup.json"),
+      JSON.stringify({
+        id: "backup-credential-match",
+        createdAt: new Date().toISOString(),
+        database: { path: "artifacts/db.dump" },
+        verification: { verifiedAt: new Date().toISOString() },
+      }),
+    );
+
+    const report = await runOpsBackupRestoreApply({
+      manifestId: "backup-credential-match",
+      execute: true,
+      approve: "restore-apply",
+      out: join(dir, "restore-apply.json"),
+      env: {
+        NP_BACKUP_DIR: dir,
+        DATABASE_URL: "postgres://app_user:secret@localhost/app",
+        RESTORE_DATABASE_URL: "postgres://restore_user:other@localhost:5432/app?sslmode=require",
+      },
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "backup.restore_apply.target_database",
+          state: "error",
+        }),
+      ]),
     );
   });
 

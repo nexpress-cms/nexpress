@@ -1,3 +1,7 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -5,6 +9,7 @@ import {
   buildOpsStorageJson,
   collectOpsStorageDriftList,
   renderBriefOpsStorageStatus,
+  runOpsStorageMigrationApply,
 } from "./ops-storage-core.js";
 
 describe("ops storage core", () => {
@@ -206,6 +211,94 @@ describe("ops storage core", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "storage.migration_target",
+          state: "error",
+        }),
+      ]),
+    );
+  });
+
+  it("dry-runs storage migration apply without mutating", async () => {
+    const report = await runOpsStorageMigrationApply({
+      env: {
+        NP_STORAGE_ADAPTER: "local",
+        NP_S3_BUCKET: "media",
+        NP_S3_REGION: "us-east-1",
+      },
+    });
+
+    expect(report).toEqual(
+      expect.objectContaining({
+        schemaVersion: "np.ops-storage-migration-apply.v1",
+        source: "local",
+        target: "s3",
+        mutation: expect.objectContaining({
+          action: "storage.migrate.apply",
+          mode: "dry-run",
+          applied: false,
+        }),
+        nextCommand:
+          "nexpress ops storage migrate apply --target s3 --execute --approve storage-migrate --json",
+      }),
+    );
+  });
+
+  it("requires approval before executing storage migration apply", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "np-storage-apply-"));
+    const report = await runOpsStorageMigrationApply({
+      execute: true,
+      out: join(dir, "storage-apply.json"),
+      env: {
+        NP_STORAGE_ADAPTER: "local",
+        NP_S3_BUCKET: "media",
+        NP_S3_REGION: "us-east-1",
+      },
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.mutation).toEqual(
+      expect.objectContaining({
+        action: "storage.migrate.apply",
+        mode: "execute",
+        applied: false,
+        error: "Missing --approve storage-migrate",
+      }),
+    );
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "storage.migration_apply.approval",
+          state: "error",
+        }),
+      ]),
+    );
+  });
+
+  it("blocks storage migration apply when the local source index is not ready", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "np-storage-apply-gate-"));
+    const report = await runOpsStorageMigrationApply({
+      execute: true,
+      approve: "storage-migrate",
+      out: join(dir, "storage-apply.json"),
+      env: {
+        NP_STORAGE_ADAPTER: "local",
+        NP_S3_BUCKET: "media",
+        NP_S3_REGION: "us-east-1",
+      },
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.mutation).toEqual(
+      expect.objectContaining({
+        action: "storage.migrate.apply",
+        mode: "execute",
+        applied: false,
+        error: "Storage migration apply gate is blocked",
+      }),
+    );
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "storage.migration_apply.media_index",
           state: "error",
         }),
       ]),

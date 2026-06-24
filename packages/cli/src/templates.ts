@@ -918,8 +918,8 @@ pnpm run ops:health -- --url http://localhost:3000 --brief --no-color
 \`schemaVersion: "np.ops.v1"\`, \`status\`, \`summary\`, stable
 \`checks[].id\`, and a \`nextCommand\` when the site needs follow-up.
 \`ops:contracts\` emits \`schemaVersion: "np.ops-contracts.v1"\` with the shipped
-local ops commands, artifact behavior, approval requirements, and explicitly
-deferred destructive surfaces.
+local ops commands, artifact behavior, approval requirements, and mutation
+safety boundaries.
 \`ops:preflight\` combines \`deploy:plan\`, the production doctor, and
 \`ops:migrate plan\` into a single deployment gate. \`ops:health\` checks
 \`/api/health/ready\` for a running local or hosted site.
@@ -929,17 +929,23 @@ deferred destructive surfaces.
 \`\`\`bash
 pnpm --silent run ops:migrate -- plan --json
 pnpm --silent run ops:migrate -- rollback-plan --json
+pnpm --silent run ops:migrate -- apply --safe --json
+pnpm --silent run ops:migrate -- apply --safe --execute --approve migrate-apply --json
 pnpm --silent run ops:backup -- status --json
 pnpm --silent run ops:backup -- create --json
 pnpm --silent run ops:backup -- verify latest --json
 pnpm --silent run ops:backup -- restore-plan latest --json
+pnpm --silent run ops:backup -- restore apply latest --json
+pnpm --silent run ops:backup -- restore apply latest --execute --approve restore-apply --json
 \`\`\`
 
 \`ops:migrate\` reports local/applied migration state, destructive SQL risk,
-backup/apply/verify handoff actions, and backup-restore rollback plans.
+backup/apply/verify handoff actions, approval-gated safe apply, and
+backup-restore rollback plans.
 \`ops:backup\` reports manifest freshness, records operator-provided backup
 manifests, verifies artifact presence, exposes record/verify/restore handoff
-actions, and produces read-only restore drill plans for isolated targets.
+actions, produces restore drill plans, and can apply isolated restore drills
+against \`RESTORE_DATABASE_URL\` / \`RESTORE_STORAGE_DIR\`.
 Backup and restore reports also include \`plan.nextCommands\` so release plans
 and agent handoffs preserve the exact follow-up sequence.
 
@@ -968,14 +974,17 @@ pnpm --silent run ops:storage -- verify --json
 pnpm --silent run ops:storage -- missing-files --json
 pnpm --silent run ops:storage -- orphaned-files --json
 pnpm --silent run ops:storage -- migrate plan --target s3 --json
+pnpm --silent run ops:storage -- migrate apply --target s3 --json
+pnpm --silent run ops:storage -- migrate apply --target s3 --execute --approve storage-migrate --json
 pnpm --silent run ops:storage -- test --json
 pnpm --silent run ops:storage -- test --execute --approve storage-test --json
 \`\`\`
 
 \`ops:storage\` reports storage adapter readiness and local media drift, while
 \`verify\` re-runs the integrity gate. Drift-list commands show concrete
-missing/orphaned paths, \`migrate plan\` prepares a read-only local-to-S3
-checklist, and \`test\` can run an approval-gated storage probe.
+missing/orphaned paths, \`migrate plan\` prepares a local-to-S3 checklist,
+\`migrate apply\` copies indexed local objects to S3 without deleting local
+source files, and \`test\` can run an approval-gated storage probe.
 
 ## Plugins
 
@@ -984,13 +993,17 @@ pnpm --silent run ops:plugins -- list --json
 pnpm --silent run ops:plugins -- doctor --json
 pnpm --silent run ops:plugins -- inspect reading-time --json
 pnpm --silent run ops:plugins -- upgrade-plan reading-time --json
+pnpm --silent run ops:plugins -- disable reading-time --json
+pnpm --silent run ops:plugins -- disable reading-time --execute --approve plugin-disable --json
+pnpm --silent run ops:plugins -- enable reading-time --execute --approve plugin-enable --json
 \`\`\`
 
 \`ops:plugins\` reports plugin inventory, single-plugin manifests,
-route/block conflicts, and read-only upgrade plans. Doctor reports include
-\`nextCommand\`, \`projectNextCommand\`, and \`plan.nextCommands\`; run the
-first suggested inspect command when a plugin-owned block, API route, or page
-route conflict appears.
+route/block conflicts, read-only upgrade plans, and approval-gated enable /
+disable operations that write \`np_plugins.enabled\`. Doctor reports include
+\`nextCommand\`, \`projectNextCommand\`, and \`plan.nextCommands\`.
+Use the first suggested inspect command when a plugin-owned block, API route,
+or page route conflict appears.
 
 ## Release And Runbooks
 

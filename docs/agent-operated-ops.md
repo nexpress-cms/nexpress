@@ -1,10 +1,9 @@
 # Agent-operated ops contracts
 
-**Status:** local CLI and read-only admin operating tracks are complete for
-v0.x. This page started as the planning backlog for the agent-operated CLI
-surface; it now documents the shipped `nexpress ops`, `nexpress runbook`,
-`nexpress release`, and `/api/admin/ops/*` contracts plus the explicitly
-deferred destructive / remote follow-up items.
+**Status:** local CLI, approval-gated mutation commands, and the admin ops API
+track are complete for v0.x. This page started as the planning backlog for the
+agent-operated CLI surface; it now documents the shipped `nexpress ops`,
+`nexpress runbook`, `nexpress release`, and `/api/admin/ops/*` contracts.
 
 NexPress already exposes agent-friendly content APIs through OpenAPI, auth,
 plugin discovery, and stable error codes. The operating surface after a site is
@@ -55,10 +54,9 @@ surfaces:
 
 The original gap was that these were spread across scripts, docs, and app
 endpoints. The shipped ops / runbook / release commands now provide the
-low-token entry points for the common lifecycle. The v0.x local track is
-intentionally closed around read-only plans, bounded approval-gated probes, and
-release / runbook artifacts; broader destructive apply flows stay deferred
-rather than turning the CLI into an unsafe autopilot.
+low-token entry points for the common lifecycle. The v0.x local track is closed
+around read-only plans, bounded approval-gated applies, and persisted artifacts
+instead of turning the CLI into an unsafe autopilot.
 
 ---
 
@@ -86,9 +84,8 @@ Human-readable reports should also support:
 ```
 
 Commands that can mutate state add an explicit dry-run / execute split. The
-shipped convention is `--execute --approve <token>` for bounded mutations;
-destructive production apply flows remain deferred unless the confirmation,
-audit, rollback, and multi-instance semantics are pinned down.
+shipped convention is `--execute --approve <token>` plus a task-specific JSON
+artifact for every apply.
 
 JSON output should carry a schema version from day one:
 
@@ -125,19 +122,17 @@ nexpress ops storage migrate plan --target s3 --json
 
 ### 5. Audit anything destructive
 
-Future migration apply, restore apply, storage migration apply, and plugin
-enable / disable commands should emit audit records that can be inspected from
-the admin or logs. Shipped bounded mutations such as queue drain start, backup
-manifest registration, and release apply already return mutation / execution
-audit data in their JSON contracts.
+Migration apply, restore apply, storage migration apply, plugin enable /
+disable, queue drain, backup manifest registration, and release apply all
+return mutation / execution audit data in their JSON contracts.
 
 ### 6. Local CLI first, remote mutations later
 
 Start with a local CLI that runs beside the project and uses environment
-variables / direct database access. Remote operations endpoints are useful, but
-mutating ones are security-sensitive and should wait until the local contracts
-settle. The admin now exposes a read-only evidence subset for already-authenticated
-operators; destructive remote actions remain deferred.
+variables / direct database access. The admin exposes read-only evidence
+endpoints and a disabled-by-default mutation endpoint for already-authenticated
+operators. Remote mutation requires `NP_REMOTE_OPS_MUTATIONS=1`, `admin.manage`,
+the same action allowlist as the CLI, and the same approval token.
 
 ---
 
@@ -182,6 +177,8 @@ nexpress ops health --url https://example.com --json
 nexpress ops migrate status --json
 nexpress ops migrate plan --json
 nexpress ops migrate rollback-plan --json
+nexpress ops migrate apply --safe --json
+nexpress ops migrate apply --safe --execute --approve migrate-apply --json
 ```
 
 ### Backup and restore
@@ -192,6 +189,8 @@ nexpress ops backup create --json
 nexpress ops backup list --json
 nexpress ops backup verify latest --json
 nexpress ops backup restore-plan latest --json
+nexpress ops backup restore apply latest --json
+nexpress ops backup restore apply latest --execute --approve restore-apply --json
 ```
 
 ### Jobs and workers
@@ -214,6 +213,8 @@ nexpress ops storage verify --json
 nexpress ops storage missing-files --json
 nexpress ops storage orphaned-files --json
 nexpress ops storage migrate plan --target s3 --json
+nexpress ops storage migrate apply --target s3 --json
+nexpress ops storage migrate apply --target s3 --execute --approve storage-migrate --json
 nexpress ops storage test --json
 nexpress ops storage test --execute --approve storage-test --json
 ```
@@ -225,6 +226,9 @@ nexpress ops plugins list --json
 nexpress ops plugins inspect <pluginId> --json
 nexpress ops plugins doctor --json
 nexpress ops plugins upgrade-plan [pluginId] --json
+nexpress ops plugins disable <pluginId> --json
+nexpress ops plugins disable <pluginId> --execute --approve plugin-disable --json
+nexpress ops plugins enable <pluginId> --execute --approve plugin-enable --json
 ```
 
 ### Admin read-only ops API
@@ -247,6 +251,26 @@ The `status` and `doctor` endpoints mirror the local `np.ops.v1` and
 that is already loaded in the process. The local `nexpress ops plugins ...` CLI
 remains the static config and package-inspection surface.
 
+### Admin mutation ops API
+
+Remote mutation is intentionally off unless the operator sets
+`NP_REMOTE_OPS_MUTATIONS=1`. Requests use the authenticated admin session,
+require `admin.manage`, and still dry-run by default. Execute mode requires the
+same approval token as the matching local CLI command.
+
+```text
+POST /api/admin/ops/actions
+```
+
+Supported action names:
+
+```json
+{ "action": "storage.migrate.apply", "target": "s3" }
+{ "action": "plugins.disable", "pluginId": "reading-time" }
+{ "action": "migrate.apply-safe" }
+{ "action": "backup.restore.apply", "manifestId": "latest" }
+```
+
 ### Release
 
 ```bash
@@ -266,17 +290,18 @@ nexpress runbook storage-local-to-s3 --json --out .nexpress/runbooks/storage-loc
 nexpress runbook backup-restore-drill --json --out .nexpress/runbooks/backup-restore-drill.json
 ```
 
-## Deferred destructive / remote surfaces
+## Approval-gated mutation surfaces
 
-These remain out of the v0.x local CLI closure:
+These shipped mutation surfaces all dry-run first and require
+`--execute --approve <token>` to apply:
 
 ```text
-nexpress ops migrate apply --safe
-nexpress ops storage migrate apply --target s3
-nexpress ops backup restore apply <manifestId>
-nexpress ops plugins enable <pluginId>
-nexpress ops plugins disable <pluginId>
-POST /api/admin/ops/*
+nexpress ops migrate apply --safe --execute --approve migrate-apply
+nexpress ops storage migrate apply --target s3 --execute --approve storage-migrate
+nexpress ops backup restore apply <manifestId> --execute --approve restore-apply
+nexpress ops plugins enable <pluginId> --execute --approve plugin-enable
+nexpress ops plugins disable <pluginId> --execute --approve plugin-disable
+POST /api/admin/ops/actions
 ```
 
 ---
@@ -407,7 +432,7 @@ Implementation status:
 - `pnpm --silent run ops:contracts -- --json` emits
   `schemaVersion: "np.ops-contracts.v1"` as a local registry of the shipped
   ops / release / runbook contracts, including artifact behavior, approval
-  requirements, and destructive surfaces that are deliberately deferred.
+  requirements, and mutation safety boundaries.
 - `nexpress ops health --url <origin> --json` probes `/api/health/ready`
   and emits `schemaVersion: "np.ops-health.v1"` for a running site.
 - `nexpress ops jobs status --json` emits
@@ -552,14 +577,15 @@ Make disaster recovery runnable instead of only documented.
 
 Current status: backup reports now bridge release and migration gates to the
 operator-owned backup process. They expose record / verify / restore actions,
-project-local commands, artifact verification, and restore drill plans without
-performing destructive restores automatically.
+project-local commands, artifact verification, restore drill plans, and an
+isolated restore apply that refuses to target the production application
+database.
 
 Scope:
 
 - `backup create`, `backup list`, `backup verify`.
-- `restore plan`; keep destructive restore apply / smoke-test execution as
-  future approval-gated work.
+- `restore plan` and approval-gated `restore apply` against
+  `RESTORE_DATABASE_URL` / `RESTORE_STORAGE_DIR`.
 - `pg_dump --format=custom` for DB.
 - Local uploads archive or S3 manifest / sync plan for media.
 - Manifest tying DB dump, media snapshot, migration version, app version, and
@@ -598,39 +624,41 @@ pnpm --silent run ops:contracts -- --json
 
 Key shipped contracts:
 
-| Area              | Command                                                                                                          | Schema / artifact                                                                                           |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Deploy bridge     | `pnpm --silent run deploy:plan -- --target <host> --json`                                                        | `np.deploy-plan.v1`                                                                                         |
-| Local status      | `pnpm --silent run ops:status -- --json`                                                                         | `np.ops.v1`                                                                                                 |
-| Production doctor | `pnpm --silent run doctor:prod -- --target <host> --fix-plan --json`                                             | `np.doctor.v1`                                                                                              |
-| Contract registry | `pnpm --silent run ops:contracts -- --json`                                                                      | `np.ops-contracts.v1`                                                                                       |
-| Preflight         | `pnpm --silent run ops:preflight -- --target <host> --json`                                                      | `np.ops-preflight.v1`                                                                                       |
-| Health            | `pnpm --silent run ops:health -- --url <origin> --json`                                                          | `np.ops-health.v1`                                                                                          |
-| Migrations        | `pnpm --silent run ops:migrate -- status / plan / rollback-plan --json`                                          | `np.ops-migrate.v1`, `np.ops-migrate-rollback-plan.v1`                                                      |
-| Backups           | `pnpm --silent run ops:backup -- status / create / verify / restore-plan --json`                                 | `np.ops-backup.v1`, `np.ops-backup-restore-plan.v1`                                                         |
-| Jobs              | `pnpm --silent run ops:jobs -- status / pause / resume / retry-all / drain --json`                               | `np.ops-jobs.v1`                                                                                            |
-| Storage           | `pnpm --silent run ops:storage -- status / verify / missing-files / orphaned-files / migrate plan / test --json` | `np.ops-storage.v1`, `np.ops-storage-list.v1`, `np.ops-storage-migration-plan.v1`                           |
-| Plugins           | `pnpm --silent run ops:plugins -- list / inspect / doctor / upgrade-plan --json`                                 | `np.ops-plugins.v1`, `np.ops-plugins-upgrade-plan.v1`                                                       |
-| Release           | `pnpm --silent run ops:release -- check / plan / apply / verify --json`                                          | `np.release.v1`, `np.release-plan.v1`, `np.release-apply.v1`; release artifacts under `.nexpress/releases/` |
-| Runbooks          | `pnpm --silent run ops:runbook -- <incident> --json --out <path>`                                                | `np.runbook.v1`; operator-provided artifact path                                                            |
+| Area              | Command                                                                                                                          | Schema / artifact                                                                                                      |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Deploy bridge     | `pnpm --silent run deploy:plan -- --target <host> --json`                                                                        | `np.deploy-plan.v1`                                                                                                    |
+| Local status      | `pnpm --silent run ops:status -- --json`                                                                                         | `np.ops.v1`                                                                                                            |
+| Production doctor | `pnpm --silent run doctor:prod -- --target <host> --fix-plan --json`                                                             | `np.doctor.v1`                                                                                                         |
+| Contract registry | `pnpm --silent run ops:contracts -- --json`                                                                                      | `np.ops-contracts.v1`                                                                                                  |
+| Preflight         | `pnpm --silent run ops:preflight -- --target <host> --json`                                                                      | `np.ops-preflight.v1`                                                                                                  |
+| Health            | `pnpm --silent run ops:health -- --url <origin> --json`                                                                          | `np.ops-health.v1`                                                                                                     |
+| Migrations        | `pnpm --silent run ops:migrate -- status / plan / rollback-plan / apply --json`                                                  | `np.ops-migrate.v1`, `np.ops-migrate-rollback-plan.v1`, `np.ops-migrate-apply.v1`                                      |
+| Backups           | `pnpm --silent run ops:backup -- status / create / verify / restore-plan / restore apply --json`                                 | `np.ops-backup.v1`, `np.ops-backup-restore-plan.v1`, `np.ops-backup-restore-apply.v1`                                  |
+| Jobs              | `pnpm --silent run ops:jobs -- status / pause / resume / retry-all / drain --json`                                               | `np.ops-jobs.v1`                                                                                                       |
+| Storage           | `pnpm --silent run ops:storage -- status / verify / missing-files / orphaned-files / migrate plan / migrate apply / test --json` | `np.ops-storage.v1`, `np.ops-storage-list.v1`, `np.ops-storage-migration-plan.v1`, `np.ops-storage-migration-apply.v1` |
+| Plugins           | `pnpm --silent run ops:plugins -- list / inspect / doctor / upgrade-plan / enable / disable --json`                              | `np.ops-plugins.v1`, `np.ops-plugins-upgrade-plan.v1`, `np.ops-plugins-mutation.v1`                                    |
+| Release           | `pnpm --silent run ops:release -- check / plan / apply / verify --json`                                                          | `np.release.v1`, `np.release-plan.v1`, `np.release-apply.v1`; release artifacts under `.nexpress/releases/`            |
+| Runbooks          | `pnpm --silent run ops:runbook -- <incident> --json --out <path>`                                                                | `np.runbook.v1`; operator-provided artifact path                                                                       |
 
-Deferred on purpose:
+Mutation boundaries:
 
-- `ops migrate apply --safe`
-- `ops storage migrate apply --target s3`
-- `ops backup restore apply`
-- `ops plugins enable|disable`
-- remote mutating `/api/admin/ops/*` actions
-
-Those surfaces are destructive or security-sensitive. They should only reopen
-after a real operator need pins the confirmation, audit, rollback, and
-multi-instance semantics tightly enough to implement safely.
+- `ops migrate apply --safe` requires a fresh verified backup, no drift, no
+  unknown applied migrations, no destructive pending SQL, an advisory lock, and
+  `--approve migrate-apply`.
+- `ops storage migrate apply --target s3` copies indexed local objects to S3 and
+  leaves local source storage untouched.
+- `ops backup restore apply` only targets `RESTORE_DATABASE_URL` /
+  `RESTORE_STORAGE_DIR` and refuses a target matching `DATABASE_URL`.
+- `ops plugins enable|disable` writes `np_plugins.enabled`; package/config file
+  changes remain outside this command.
+- remote mutating `/api/admin/ops/actions` is disabled unless
+  `NP_REMOTE_OPS_MUTATIONS=1`.
 
 ---
 
 ## Security posture for remote ops API
 
-The shipped remote API subset is read-only and admin-session gated:
+The remote API read endpoints are admin-session gated:
 
 ```text
 GET /api/admin/ops/health
@@ -642,7 +670,17 @@ GET /api/admin/ops/storage
 GET /api/admin/ops/plugins
 ```
 
-Future action endpoints require stricter controls:
+The mutation endpoint is also admin-session gated and disabled by default:
+
+```text
+POST /api/admin/ops/actions
+```
+
+It requires `NP_REMOTE_OPS_MUTATIONS=1`, `admin.manage`, an allowlisted action
+name, and the matching CLI approval token for execute mode. Requests dry-run
+unless `execute: true` is present.
+
+Remote ops mutation controls:
 
 - Admin capability gate.
 - CSRF for browser-originated calls or a separate short-lived service token for
@@ -652,22 +690,13 @@ Future action endpoints require stricter controls:
 - Optional IP allowlist / signed command payload in production.
 - No secrets in responses; return presence, hashes, or redacted values only.
 
-Candidate action endpoints, only after the CLI contract is proven:
-
-```text
-POST /api/admin/ops/cache/revalidate
-POST /api/admin/ops/jobs/drain
-POST /api/admin/ops/backup
-POST /api/admin/ops/runbook/{id}
-```
-
 ---
 
 ## Implementation ledger
 
 The original issue-ready backlog has been retired. Keep this section as the
-current-state map between the shipped code contracts and the few intentionally
-deferred decisions that still need real operator pressure before implementation.
+current-state map between the shipped code contracts and future expansion areas
+that still need real operator pressure before implementation.
 
 The machine-readable registry remains the canonical source:
 
@@ -679,67 +708,24 @@ pnpm --silent run ops:contracts -- --json
 pnpm --dir apps/web --silent run ops:contracts -- --json
 ```
 
-| Track                | Status                                       | Shipped contract                                                                                                                              | Remaining decision                                                                                                  |
-| -------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Status / doctor      | Shipped                                      | `nexpress ops status`, `nexpress ops doctor`, `pnpm run ops:status`, `pnpm run doctor:prod`, `/api/admin/ops/status`, `/api/admin/ops/doctor` | None in the read-only scope.                                                                                        |
-| Deploy plan          | Shipped                                      | `nexpress deploy plan --target docker\|vercel\|fly`, `pnpm run deploy:plan` as `np.deploy-plan.v1`                                            | Provider API mutation remains out of scope; the contract is plan-only.                                              |
-| Migration safety     | Partially shipped                            | `ops:migrate status`, `ops:migrate plan`, `ops:migrate rollback-plan`, release/preflight migration evidence                                   | `apply --safe` needs final backup freshness, advisory lock, audit, rollback, and post-apply readiness semantics.    |
-| Backup / restore     | Partially shipped                            | `ops:backup status`, `create`, `list`, `verify`, `restore-plan`, manifests under `.nexpress/backups`                                          | `restore apply` and restore smoke-test stay deferred until the destructive confirmation and recovery contract gels. |
-| Jobs                 | Shipped with bounded mutations               | `ops:jobs status`, `pause`, `resume`, `retry-all`, `drain`; `retry-all` / `drain` execute mode requires `--execute --approve <token>`         | Broader destructive queue rewrites remain future work.                                                              |
-| Storage              | Partially shipped                            | `ops:storage status`, `verify`, `test`, `missing-files`, `orphaned-files`, `migrate plan`                                                     | `migrate apply --target s3` stays deferred until object-copy auditing, retry, and rollback semantics are settled.   |
-| Plugins              | Partially shipped                            | `ops:plugins list`, `inspect`, `doctor`, `upgrade-plan`                                                                                       | `enable` / `disable` config mutation waits for rebuild, restart, audit, and rollback semantics.                     |
-| Release              | Shipped with explicit approval gate          | `release check`, `plan`, `apply`, `verify`; `ops:release check\|verify`; artifacts under `.nexpress/releases`                                 | No new local read-only scope; execution stays approval-gated and allowlisted.                                       |
-| Runbooks             | Shipped as read-only incident recipes        | `runbook worker-not-draining`, `storage-local-to-s3`, `backup-restore-drill`, `migration-crashed`; `ops:runbook <name>`                       | Automated incident mutations remain deferred.                                                                       |
-| Remote admin ops API | Read-only shipped; mutation surface deferred | `GET /api/admin/ops/health`, `readiness`, `status`, `doctor`, `jobs`, `storage`, `plugins`                                                    | `POST /api/admin/ops/*` needs scoped auth, rate limits, audit logging, and two-step confirmation.                   |
+| Track                | Status                                     | Shipped contract                                                                                                                              | Remaining decision                                                                                   |
+| -------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Status / doctor      | Shipped                                    | `nexpress ops status`, `nexpress ops doctor`, `pnpm run ops:status`, `pnpm run doctor:prod`, `/api/admin/ops/status`, `/api/admin/ops/doctor` | None in the read-only scope.                                                                         |
+| Deploy plan          | Shipped                                    | `nexpress deploy plan --target docker\|vercel\|fly`, `pnpm run deploy:plan` as `np.deploy-plan.v1`                                            | Provider API mutation remains out of scope; the contract is plan-only.                               |
+| Migration safety     | Shipped with approval-gated apply          | `ops:migrate status`, `ops:migrate plan`, `ops:migrate rollback-plan`, `ops:migrate apply --safe`, release/preflight migration evidence       | Production rollback remains backup-restore based; no automatic down migrations.                      |
+| Backup / restore     | Shipped with isolated restore apply        | `ops:backup status`, `create`, `list`, `verify`, `restore-plan`, `restore apply`, manifests under `.nexpress/backups`                         | Production restore remains a human incident procedure; automated apply targets isolated drills only. |
+| Jobs                 | Shipped with bounded mutations             | `ops:jobs status`, `pause`, `resume`, `retry-all`, `drain`; `retry-all` / `drain` execute mode requires `--execute --approve <token>`         | Broader destructive queue rewrites remain future work.                                               |
+| Storage              | Shipped with local-to-S3 apply             | `ops:storage status`, `verify`, `test`, `missing-files`, `orphaned-files`, `migrate plan`, `migrate apply`                                    | Cutover still happens by changing storage env vars after verification.                               |
+| Plugins              | Shipped with enable / disable              | `ops:plugins list`, `inspect`, `doctor`, `upgrade-plan`, `enable`, `disable`                                                                  | Package upgrades and config-file edits still require normal dependency/config workflow.              |
+| Release              | Shipped with explicit approval gate        | `release check`, `plan`, `apply`, `verify`; `ops:release check\|verify`; artifacts under `.nexpress/releases`                                 | No new local read-only scope; execution stays approval-gated and allowlisted.                        |
+| Runbooks             | Shipped as read-only incident recipes      | `runbook worker-not-draining`, `storage-local-to-s3`, `backup-restore-drill`, `migration-crashed`; `ops:runbook <name>`                       | Automated incident mutations remain deferred.                                                        |
+| Remote admin ops API | Shipped with disabled-by-default mutations | `GET /api/admin/ops/health`, `readiness`, `status`, `doctor`, `jobs`, `storage`, `plugins`; `POST /api/admin/ops/actions`                     | Keep the mutation endpoint disabled by default and prefer local CLI for routine operator work.       |
 
 ## Future decision backlog
 
-Only these deferred surfaces should be reopened from this track. Each one is
-dangerous enough that the implementation should start from a concrete operator
-need, not from the old planning issue text.
-
-### Approval-gated migration apply
-
-- Contract: `nexpress ops migrate apply --safe`
-- Project command: `pnpm run ops:migrate -- apply --safe`
-- Artifact: `.nexpress/migrations/<apply>.json`
-- Decision needed: backup freshness window, advisory lock behavior,
-  destructive-SQL approval format, post-apply readiness checks, and rollback
-  evidence.
-
-### Approval-gated local-to-S3 storage migration apply
-
-- Contract: `nexpress ops storage migrate apply --target s3`
-- Project command: `pnpm run ops:storage -- migrate apply --target s3`
-- Artifact: `.nexpress/storage/<migration>.json`
-- Decision needed: copy retry behavior, resumability, object verification,
-  orphan handling, and rollback / cutover notes.
-
-### Approval-gated restore apply and smoke test
-
-- Contract: `nexpress ops backup restore apply <manifestId>`
-- Project command: `pnpm run ops:backup -- restore apply <manifestId>`
-- Artifact: `.nexpress/restores/<restore>.json`
-- Decision needed: production restore confirmation, DB/media restore ordering,
-  smoke-test scope, audit trail, and rollback path after a failed restore.
-
-### Plugin enable / disable mutation
-
-- Contract: `nexpress ops plugins enable|disable <pluginId>`
-- Project command: `pnpm run ops:plugins -- enable|disable <pluginId>`
-- Artifact: `.nexpress/plugins/<mutation>.json`
-- Decision needed: package-manager behavior, config-file ownership, rebuild /
-  restart requirements, route/block conflict gates, and rollback notes.
-
-### Remote admin ops mutation API
-
-- Contract: `POST /api/admin/ops/*`
-- Artifact: admin audit log plus task-specific JSON artifact
-- Decision needed: scoped service-token model, CSRF boundary for browser
-  actions, rate limiting, IP / signature policy, audit retention, and
-  destructive two-step confirmation.
-
-Candidate routes remain examples, not committed scope:
+The v0.x ops mutation track is closed. Future work should come from concrete
+operator pressure rather than reopening the old planning list. Likely expansion
+areas are new action families, not replacements for the shipped safety pattern:
 
 ```text
 POST /api/admin/ops/cache/revalidate

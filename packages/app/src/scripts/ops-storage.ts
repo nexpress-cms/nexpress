@@ -6,6 +6,7 @@ import {
   collectOpsStorageStatus,
   collectOpsStorageDriftList,
   renderBriefOpsStorageStatus,
+  runOpsStorageMigrationApply,
   runOpsStorageTest,
 } from "./ops-storage-core.js";
 import { normalizePnpmPassthroughArgv } from "./ops-command-format.js";
@@ -26,6 +27,8 @@ Usage:
   pnpm --silent run ops:storage -- missing-files --json
   pnpm --silent run ops:storage -- orphaned-files --json
   pnpm --silent run ops:storage -- migrate plan --target s3 --json
+  pnpm --silent run ops:storage -- migrate apply --target s3 --json
+  pnpm --silent run ops:storage -- migrate apply --target s3 --execute --approve storage-migrate --json
   pnpm --silent run ops:storage -- test --json
   pnpm --silent run ops:storage -- test --execute --approve storage-test --json
   nexpress ops storage status --json
@@ -33,13 +36,15 @@ Usage:
   nexpress ops storage missing-files --json
   nexpress ops storage orphaned-files --json
   nexpress ops storage migrate plan --target s3 --json
+  nexpress ops storage migrate apply --target s3 --execute --approve storage-migrate --json
   nexpress ops storage test --execute --approve storage-test --json
 
 Options:
   --target <id>  Migration plan target. Currently only s3.
   --limit <n>    Maximum drift-list rows to return. Defaults to 100, caps at 1000.
-  --execute      Apply the storage test probe. Without this, test dry-runs.
-  --approve <id> Required with --execute: storage-test.
+  --execute      Apply the storage test probe or migration apply. Without this, commands dry-run.
+  --approve <id> Required with --execute: storage-test or storage-migrate.
+  --out <path>   Write a JSON artifact to a specific path.
   --json       Print the stable machine-readable storage report.
   --brief      Print compact human output. This is the default.
   --no-color   Disable ANSI color in human-readable output.
@@ -98,7 +103,7 @@ async function main(): Promise<void> {
     printHelp();
     process.exit(2);
   }
-  if (SUBCOMMAND === "migrate" && ARGV[1] !== "plan") {
+  if (SUBCOMMAND === "migrate" && ARGV[1] !== "plan" && ARGV[1] !== "apply") {
     printHelp();
     process.exit(2);
   }
@@ -115,9 +120,16 @@ async function main(): Promise<void> {
             limit: readLimitArg(),
           })
         : SUBCOMMAND === "migrate"
-          ? await buildOpsStorageMigrationPlan({
-              target: readStringArg("--target") ?? "s3",
-            })
+          ? ARGV[1] === "apply"
+            ? await runOpsStorageMigrationApply({
+                target: readStringArg("--target") ?? "s3",
+                execute: ARGV.includes("--execute"),
+                approve: readStringArg("--approve"),
+                out: readStringArg("--out"),
+              })
+            : await buildOpsStorageMigrationPlan({
+                target: readStringArg("--target") ?? "s3",
+              })
           : await collectOpsStorageStatus(process.env, SUBCOMMAND);
   if (JSON_MODE) {
     console.log(JSON.stringify(report, null, 2));

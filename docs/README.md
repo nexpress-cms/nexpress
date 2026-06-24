@@ -12,7 +12,7 @@ behavior they describe changes.
 | File                                                   | Topic                                                                  |
 | ------------------------------------------------------ | ---------------------------------------------------------------------- |
 | [agent-integration.md](agent-integration.md)           | Agent / LLM integration surface                                        |
-| [agent-operated-ops.md](agent-operated-ops.md)         | Shipped agent-operated ops CLI contracts plus deferred follow-ups      |
+| [agent-operated-ops.md](agent-operated-ops.md)         | Shipped agent-operated ops CLI, mutation, and admin API contracts      |
 | [api-error-codes.md](api-error-codes.md)               | Stable `code` strings on error responses                               |
 | [backup-restore.md](backup-restore.md)                 | Backup procedures, restore order, DR drill                             |
 | [caching.md](caching.md)                               | Cache strategy and invalidation                                        |
@@ -55,7 +55,7 @@ focused live guides above.
 [`agent-operated-ops.md`](agent-operated-ops.md) started as a planning
 backlog, but now documents the shipped `nexpress ops`, `nexpress release`,
 and `nexpress runbook` JSON contracts. Its issue sections are retained as
-implementation history and deferred follow-up notes.
+implementation history and follow-up notes.
 
 ## Design snapshots — frozen
 

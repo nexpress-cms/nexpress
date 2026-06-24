@@ -15,8 +15,8 @@ describe("ops contracts core", () => {
     );
     expect(report.summary.contracts).toBe(report.contracts.length);
     expect(report.summary.shipped).toBeGreaterThan(10);
-    expect(report.summary.deferred).toBeGreaterThan(0);
-    expect(report.summary.destructiveDeferred).toBeGreaterThan(0);
+    expect(report.summary.deferred).toBe(0);
+    expect(report.summary.destructiveDeferred).toBe(0);
     expect(report.contracts.map((contract) => contract.id)).toEqual(
       [...report.contracts.map((contract) => contract.id)].sort(),
     );
@@ -57,21 +57,28 @@ describe("ops contracts core", () => {
     );
   });
 
-  it("keeps destructive apply surfaces explicitly deferred", () => {
+  it("documents shipped approval-gated mutation surfaces", () => {
     const report = buildOpsContractsJson();
-    const deferredIds = report.contracts
-      .filter((contract) => contract.status === "deferred")
-      .map((contract) => contract.id);
-
-    expect(deferredIds).toEqual(
-      expect.arrayContaining([
+    const mutationContracts = report.contracts.filter((contract) =>
+      [
         "ops.migrate.apply-safe",
         "ops.storage.migrate-apply",
         "ops.backup.restore-apply",
         "ops.plugins.mutate",
-        "remote.ops-api",
-      ]),
+      ].includes(contract.id),
     );
+
+    expect(mutationContracts).toHaveLength(4);
+    for (const contract of mutationContracts) {
+      expect(contract).toEqual(
+        expect.objectContaining({
+          status: "shipped",
+          artifact: expect.objectContaining({ writes: true }),
+          approval: expect.objectContaining({ required: true }),
+        }),
+      );
+      expect(contract.schemaVersions.length).toBeGreaterThan(0);
+    }
   });
 
   it("documents the shipped read-only admin ops API separately from mutations", () => {
@@ -90,11 +97,12 @@ describe("ops contracts core", () => {
     );
     expect(mutationApi).toEqual(
       expect.objectContaining({
-        status: "deferred",
+        status: "shipped",
         risk: "destructive",
-        command: "POST /api/admin/ops/*",
+        command: "POST /api/admin/ops/actions",
       }),
     );
+    expect(mutationApi?.notes.join(" ")).toContain("NP_REMOTE_OPS_MUTATIONS=1");
   });
 
   it("renders compact contract output", () => {
@@ -102,6 +110,6 @@ describe("ops contracts core", () => {
 
     expect(output).toContain("NexPress ops contracts");
     expect(output).toContain("[shipped] release bounded-mutation");
-    expect(output).toContain("[deferred] remote.ops-api destructive");
+    expect(output).toContain("[shipped] remote.ops-api destructive");
   });
 });

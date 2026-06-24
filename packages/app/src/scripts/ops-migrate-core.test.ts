@@ -8,6 +8,8 @@ import {
   buildOpsMigrateRollbackPlanJson,
   buildOpsMigrateJson,
   collectOpsMigrateReport,
+  renderBriefOpsMigrateApply,
+  runOpsMigrateApply,
   scanDestructiveSql,
   type DestructiveSqlFinding,
 } from "./ops-migrate-core.js";
@@ -158,6 +160,41 @@ describe("ops migrate core", () => {
           detail: expect.stringContaining("_journal.json"),
         }),
       ]),
+    );
+  });
+
+  it("returns a blocked apply report when --safe is missing", async () => {
+    const folder = mkdtempSync(join(tmpdir(), "np-ops-migrate-apply-"));
+
+    const report = await runOpsMigrateApply({
+      migrationsFolder: folder,
+      env: {
+        DATABASE_URL: "postgres://nexpress:nexpress@127.0.0.1:55432/ci_unreachable",
+      },
+    });
+
+    expect(report).toEqual(
+      expect.objectContaining({
+        schemaVersion: "np.ops-migrate-apply.v1",
+        ok: false,
+        mode: "apply",
+        mutation: expect.objectContaining({
+          action: "migrate.apply-safe",
+          mode: "dry-run",
+          applied: false,
+        }),
+      }),
+    );
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "migrate.apply.safe_flag",
+          state: "error",
+        }),
+      ]),
+    );
+    expect(renderBriefOpsMigrateApply(report, { color: false })).toContain(
+      "mutation: migrate.apply-safe applied=false",
     );
   });
 

@@ -1,10 +1,16 @@
-import { access, readdir, stat } from "node:fs/promises";
+import { access, readFile, readdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { createStorageAdapter } from "@nexpress/core";
 import pg from "pg";
 
 import { toProjectCommand } from "./ops-command-format.js";
+import {
+  buildOpsMutationAudit,
+  defaultOpsArtifactPath,
+  type OpsMutationAudit,
+  writeOpsJsonArtifact,
+} from "./ops-mutation.js";
 import type { CheckResult } from "./doctor-readiness.js";
 
 type OpsStorageEnv = Record<string, string | undefined>;
@@ -27,6 +33,9 @@ interface PgModuleLike {
 interface MediaRow {
   storage_key: string;
   sizes: unknown;
+  original_filename: string;
+  mime_type: string;
+  filesize: number | string;
 }
 
 export interface OpsStorageDriftItem {
@@ -84,6 +93,34 @@ export interface OpsStorageMigrationPlanJson {
   }>;
 }
 
+export interface OpsStorageMigrationApplyItem {
+  key: string;
+  status: "planned" | "copied" | "failed";
+  bytes: number | null;
+  error: string | null;
+}
+
+export interface OpsStorageMigrationApplyJson {
+  schemaVersion: "np.ops-storage-migration-apply.v1";
+  ok: boolean;
+  status: "ready" | "attention" | "blocked";
+  source: "local";
+  target: string;
+  summary: OpsStorageSummary & {
+    planned: number;
+    copied: number;
+    failed: number;
+    returned: number;
+    truncated: boolean;
+    invalidStorageKeys: number;
+  };
+  mutation: OpsMutationAudit;
+  nextCommand: string | null;
+  projectNextCommand: string | null;
+  checks: CheckResult[];
+  items: OpsStorageMigrationApplyItem[];
+}
+
 export interface OpsStorageJson {
   schemaVersion: "np.ops-storage.v1";
   ok: boolean;
@@ -113,6 +150,13 @@ interface LocalStorageInventory {
   missing: OpsStorageDriftItem[];
   orphaned: OpsStorageDriftItem[];
   invalidStorageKeys: number;
+  metadata: Map<string, StorageObjectMetadata>;
+}
+
+interface StorageObjectMetadata {
+  contentType: string;
+  contentLength: number | null;
+  originalFilename: string;
 }
 
 interface RenderOptions {
@@ -163,6 +207,46 @@ function collectSizeStorageKeys(value: unknown): string[] {
   return keys;
 }
 
+function collectSizeStorageMetadata(
+  value: unknown,
+): Array<{ key: string; metadata: StorageObjectMetadata }> {
+  if (!value || typeof value !== "object") return [];
+  const result: Array<{ key: string; metadata: StorageObjectMetadata }> = [];
+  for (const size of Object.values(value as Record<string, unknown>)) {
+    if (!size || typeof size !== "object") continue;
+    const record = size as Record<string, unknown>;
+    const storageKey = record.storageKey;
+    if (typeof storageKey !== "string" || storageKey.length === 0) continue;
+    const mimeType =
+      typeof record.mimeType === "string" ? record.mimeType : "application/octet-stream";
+    const filename =
+      typeof record.filename === "string"
+        ? record.filename
+        : (storageKey.split("/").pop() ?? storageKey);
+    const rawSize = record.filesize;
+    const contentLength =
+      typeof rawSize === "number"
+        ? rawSize
+        : typeof rawSize === "string" && Number.isFinite(Number(rawSize))
+          ? Number(rawSize)
+          : null;
+    result.push({
+      key: storageKey,
+      metadata: {
+        contentType: mimeType,
+        contentLength,
+        originalFilename: filename,
+      },
+    });
+  }
+  return result;
+}
+
+function parseContentLength(value: number | string): number | null {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
 async function readMediaRows(
   env: OpsStorageEnv,
 ): Promise<
@@ -183,7 +267,7 @@ async function readMediaRows(
   try {
     await client.connect();
     const result = await client.query<MediaRow>(
-      `select storage_key, sizes
+      `select storage_key, sizes, original_filename, mime_type, filesize
          from np_media
         where deleted_at is null`,
     );
@@ -255,6 +339,7 @@ async function collectLocalStorageInventory(
   const checks: CheckResult[] = [];
   const summary = emptySummary();
   const indexed = new Set<string>();
+  const metadata = new Map<string, StorageObjectMetadata>();
   const root = resolve(
     /* turbopackIgnore: true */ process.cwd(),
     env.NP_STORAGE_DIR ?? "./public/media",
@@ -281,6 +366,7 @@ async function collectLocalStorageInventory(
       missing: [],
       orphaned: [],
       invalidStorageKeys,
+      metadata,
     };
   }
 
@@ -336,12 +422,19 @@ async function collectLocalStorageInventory(
       missing: [],
       orphaned: [],
       invalidStorageKeys,
+      metadata,
     };
   }
 
   for (const row of media.rows) {
     indexed.add(row.storage_key);
+    metadata.set(row.storage_key, {
+      contentType: row.mime_type,
+      contentLength: parseContentLength(row.filesize),
+      originalFilename: row.original_filename,
+    });
     for (const key of collectSizeStorageKeys(row.sizes)) indexed.add(key);
+    for (const item of collectSizeStorageMetadata(row.sizes)) metadata.set(item.key, item.metadata);
   }
   summary.mediaRows = media.rows.length;
   summary.indexedObjects = indexed.size;
@@ -416,6 +509,7 @@ async function collectLocalStorageInventory(
     missing,
     orphaned,
     invalidStorageKeys,
+    metadata,
   };
 }
 
@@ -737,6 +831,281 @@ export async function buildOpsStorageMigrationPlan(args: {
     checks,
     commands,
   };
+}
+
+function migrationApplyNextCommand(target = "s3"): string {
+  return `nexpress ops storage migrate apply --target ${target} --execute --approve storage-migrate --json`;
+}
+
+function copyItemLimit<T>(items: T[]): { returned: T[]; truncated: boolean } {
+  return { returned: items.slice(0, 100), truncated: items.length > 100 };
+}
+
+export async function runOpsStorageMigrationApply(args: {
+  target?: string | null;
+  execute?: boolean;
+  approve?: string | null;
+  out?: string | null;
+  env?: OpsStorageEnv;
+}): Promise<OpsStorageMigrationApplyJson> {
+  const env = args.env ?? process.env;
+  const target = args.target ?? "s3";
+  const startedAt = new Date();
+  const artifactPath =
+    args.out ??
+    (args.execute ? defaultOpsArtifactPath("storage", "storage-migrate", startedAt) : null);
+  const inventory = await collectLocalStorageInventory(env);
+  const plan = await buildOpsStorageMigrationPlan({ target, env });
+  const checks = [...plan.checks];
+  const plannedKeys = [...inventory.indexed].sort();
+  const nextCommand = migrationApplyNextCommand(target);
+
+  if (target !== "s3") {
+    const report = buildStorageMigrationApplyReport({
+      inventory,
+      target,
+      checks,
+      items: [],
+      startedAt,
+      artifactPath,
+      execute: args.execute,
+      approve: args.approve,
+      error: `Unsupported target ${target}`,
+      nextCommand: "nexpress ops storage migrate plan --target s3 --json",
+    });
+    await maybeWriteStorageApplyArtifact(report, artifactPath);
+    return report;
+  }
+
+  if (!args.execute) {
+    const planned = plannedKeys.map<OpsStorageMigrationApplyItem>((key) => {
+      const metadata = inventory.metadata.get(key);
+      return {
+        key,
+        status: "planned",
+        bytes: metadata?.contentLength ?? null,
+        error: null,
+      };
+    });
+    const report = buildStorageMigrationApplyReport({
+      inventory,
+      target,
+      checks,
+      items: planned,
+      startedAt,
+      artifactPath,
+      execute: false,
+      approve: args.approve,
+      nextCommand,
+    });
+    await maybeWriteStorageApplyArtifact(report, artifactPath);
+    return report;
+  }
+
+  if (
+    !inventory.checks.some((check) => check.id === "storage.media_index" && check.state === "ok")
+  ) {
+    checks.push({
+      id: "storage.migration_apply.media_index",
+      state: "error",
+      label: "Storage migration media index",
+      detail: "np_media index is not readable",
+      hint: "Set DATABASE_URL and re-run storage migrate apply after the media index is readable.",
+    });
+  }
+  if (
+    !inventory.checks.some(
+      (check) => check.id === "storage.local_directory" && check.state === "ok",
+    )
+  ) {
+    checks.push({
+      id: "storage.migration_apply.local_source",
+      state: "error",
+      label: "Storage migration local source",
+      detail: "local storage directory is not ready",
+      hint: "Restore or configure the local storage directory before copying objects to S3.",
+    });
+  }
+
+  if (args.approve !== "storage-migrate") {
+    checks.push({
+      id: "storage.migration_apply.approval",
+      state: "error",
+      label: "Storage migration approval",
+      detail: "missing --approve storage-migrate",
+    });
+    const report = buildStorageMigrationApplyReport({
+      inventory,
+      target,
+      checks,
+      items: [],
+      startedAt,
+      artifactPath,
+      execute: true,
+      approve: args.approve,
+      error: "Missing --approve storage-migrate",
+      nextCommand,
+    });
+    await maybeWriteStorageApplyArtifact(report, artifactPath);
+    return report;
+  }
+
+  if (countChecks(checks).errors > 0) {
+    const report = buildStorageMigrationApplyReport({
+      inventory,
+      target,
+      checks,
+      items: [],
+      startedAt,
+      artifactPath,
+      execute: true,
+      approve: args.approve,
+      error: "Storage migration apply gate is blocked",
+      nextCommand: plan.nextCommand,
+    });
+    await maybeWriteStorageApplyArtifact(report, artifactPath);
+    return report;
+  }
+
+  const targetStorage = createStorageAdapter(buildStorageConfig(env, "s3"));
+  const items: OpsStorageMigrationApplyItem[] = [];
+  for (const key of plannedKeys) {
+    const full = resolveStorageKey(inventory.root, key);
+    if (!full) {
+      items.push({
+        key,
+        status: "failed",
+        bytes: null,
+        error: "Key resolves outside storage root",
+      });
+      continue;
+    }
+    try {
+      const [buffer, fileStat] = await Promise.all([
+        readFile(/* turbopackIgnore: true */ full),
+        stat(/* turbopackIgnore: true */ full),
+      ]);
+      const metadata = inventory.metadata.get(key);
+      await targetStorage.upload(key, buffer, {
+        contentType: metadata?.contentType ?? "application/octet-stream",
+        contentLength: metadata?.contentLength ?? fileStat.size,
+        originalFilename: metadata?.originalFilename ?? key.split("/").pop() ?? key,
+      });
+      const exists = await targetStorage.exists(key);
+      items.push({
+        key,
+        status: exists ? "copied" : "failed",
+        bytes: fileStat.size,
+        error: exists ? null : "Target object did not become readable",
+      });
+    } catch (error) {
+      items.push({
+        key,
+        status: "failed",
+        bytes: null,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const failures = items.filter((item) => item.status === "failed");
+  if (failures.length > 0) {
+    checks.push({
+      id: "storage.migration_apply.copy",
+      state: "error",
+      label: "Storage object copy",
+      detail: `${failures.length.toString()} objects failed to copy`,
+      hint: "Review the apply artifact, fix the failing object, then rerun the migration apply.",
+    });
+  } else {
+    checks.push({
+      id: "storage.migration_apply.copy",
+      state: "ok",
+      label: "Storage object copy",
+      detail: `${items.length.toString()} objects copied to S3`,
+    });
+  }
+
+  const report = buildStorageMigrationApplyReport({
+    inventory,
+    target,
+    checks,
+    items,
+    startedAt,
+    artifactPath,
+    execute: true,
+    approve: args.approve,
+    error: failures.length > 0 ? "One or more objects failed to copy" : null,
+    nextCommand:
+      failures.length > 0
+        ? "nexpress ops storage migrate apply --target s3 --execute --approve storage-migrate --json"
+        : "nexpress ops storage verify --json",
+  });
+  await maybeWriteStorageApplyArtifact(report, artifactPath);
+  return report;
+}
+
+function buildStorageMigrationApplyReport(args: {
+  inventory: LocalStorageInventory;
+  target: string;
+  checks: CheckResult[];
+  items: OpsStorageMigrationApplyItem[];
+  startedAt: Date;
+  artifactPath: string | null;
+  execute?: boolean;
+  approve?: string | null;
+  error?: string | null;
+  nextCommand: string | null;
+}): OpsStorageMigrationApplyJson {
+  const counts = countChecks(args.checks);
+  const failed = args.items.filter((item) => item.status === "failed").length;
+  const copied = args.items.filter((item) => item.status === "copied").length;
+  const planned = args.items.filter((item) => item.status === "planned").length;
+  const status =
+    counts.errors > 0 || failed > 0 ? "blocked" : counts.warnings > 0 ? "attention" : "ready";
+  const limited = copyItemLimit(args.items);
+  return {
+    schemaVersion: "np.ops-storage-migration-apply.v1",
+    ok: counts.errors === 0 && failed === 0,
+    status,
+    source: "local",
+    target: args.target,
+    summary: {
+      ...args.inventory.summary,
+      planned,
+      copied,
+      failed,
+      returned: limited.returned.length,
+      truncated: limited.truncated,
+      invalidStorageKeys: args.inventory.invalidStorageKeys,
+    },
+    mutation: buildOpsMutationAudit({
+      action: "storage.migrate.apply",
+      execute: args.execute,
+      approve: args.approve,
+      requiredApproval: "storage-migrate",
+      artifactPath: args.artifactPath,
+      applied: Boolean(args.execute && copied > 0 && failed === 0 && counts.errors === 0),
+      error: args.error ?? null,
+      rollbackHint:
+        "Keep local storage unchanged until the deployed app is verified with NP_STORAGE_ADAPTER=s3. Roll back by restoring the previous storage env vars.",
+      nextCommand: args.nextCommand,
+      startedAt: args.startedAt,
+      completedAt: new Date(),
+    }),
+    nextCommand: args.nextCommand,
+    projectNextCommand: args.nextCommand ? toProjectCommand(args.nextCommand) : null,
+    checks: args.checks,
+    items: limited.returned,
+  };
+}
+
+async function maybeWriteStorageApplyArtifact(
+  report: OpsStorageMigrationApplyJson,
+  artifactPath: string | null,
+): Promise<void> {
+  if (!artifactPath) return;
+  await writeOpsJsonArtifact(artifactPath, report);
 }
 
 function buildStorageConfig(env: OpsStorageEnv, adapter: "local" | "s3") {
