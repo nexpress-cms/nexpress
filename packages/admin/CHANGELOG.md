@@ -1,5 +1,20 @@
 # @nexpress/admin
 
+## 0.3.23
+
+### Patch Changes
+
+- 4fd3bf8: Add an admin Ops overview that combines Health, Readiness, Jobs, Storage, and
+  Plugins into one operator queue, upgrade the Health page with copyable
+  remediation commands and JSON evidence, and scaffold the matching route
+  wrappers in new projects.
+- b7cf702: Add an admin Readiness surface that gathers deploy, migration, backup, storage,
+  jobs, and plugin ops evidence from the existing CLI core checks, and scaffold the
+  matching route wrappers in new projects.
+  - @nexpress/blocks@0.3.23
+  - @nexpress/core@0.3.23
+  - @nexpress/editor@0.3.23
+
 ## 0.3.22
 
 ### Patch Changes

@@ -1,5 +1,23 @@
 # create-nexpress
 
+## 0.1.32
+
+### Patch Changes
+
+- 4fd3bf8: Add an admin Ops overview that combines Health, Readiness, Jobs, Storage, and
+  Plugins into one operator queue, upgrade the Health page with copyable
+  remediation commands and JSON evidence, and scaffold the matching route
+  wrappers in new projects.
+- 1124b14: Add read-only admin ops evidence endpoints for jobs, storage, and runtime plugins, and surface them from the Admin Ops cockpit.
+- b7cf702: Add an admin Readiness surface that gathers deploy, migration, backup, storage,
+  jobs, and plugin ops evidence from the existing CLI core checks, and scaffold the
+  matching route wrappers in new projects.
+- 79113bf: Add read-only Admin Ops status and doctor evidence endpoints, and link them from the Admin Ops cockpit.
+- 936c645: Ship approval-gated ops mutation commands for storage migration, plugin toggles, safe migration apply, isolated backup restore apply, and the gated admin ops action API.
+- a604279: Improve the admin Readiness surface with an action queue, copyable commands,
+  downloadable JSON evidence, related admin links, expandable checks, and
+  section-isolated probe loading.
+
 ## 0.1.31
 
 ### Patch Changes

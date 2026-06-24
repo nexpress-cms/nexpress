@@ -1,5 +1,51 @@
 # @nexpress/app
 
+## 0.3.23
+
+### Patch Changes
+
+- 4fd3bf8: Add an admin Ops overview that combines Health, Readiness, Jobs, Storage, and
+  Plugins into one operator queue, upgrade the Health page with copyable
+  remediation commands and JSON evidence, and scaffold the matching route
+  wrappers in new projects.
+- 1124b14: Add read-only admin ops evidence endpoints for jobs, storage, and runtime plugins, and surface them from the Admin Ops cockpit.
+- b7cf702: Add an admin Readiness surface that gathers deploy, migration, backup, storage,
+  jobs, and plugin ops evidence from the existing CLI core checks, and scaffold the
+  matching route wrappers in new projects.
+- 79113bf: Add read-only Admin Ops status and doctor evidence endpoints, and link them from the Admin Ops cockpit.
+- 44ef2e7: Harden first-week operations output by fixing `ops:storage migrate plan` parsing behind
+  pnpm passthrough arguments and surfacing per-step preflight and backup action notes in
+  brief reports.
+- 936c645: Ship approval-gated ops mutation commands for storage migration, plugin toggles, safe migration apply, isolated backup restore apply, and the gated admin ops action API.
+- a604279: Improve the admin Readiness surface with an action queue, copyable commands,
+  downloadable JSON evidence, related admin links, expandable checks, and
+  section-isolated probe loading.
+- Updated dependencies [4fd3bf8]
+- Updated dependencies [b7cf702]
+  - @nexpress/admin@0.3.23
+  - @nexpress/auth-pages@0.3.23
+  - @nexpress/blocks@0.3.23
+  - @nexpress/core@0.3.23
+  - @nexpress/editor@0.3.23
+  - @nexpress/next@0.3.23
+  - @nexpress/plugin-block-callout@0.3.23
+  - @nexpress/plugin-block-embed@0.3.23
+  - @nexpress/plugin-block-latest-posts@0.3.23
+  - @nexpress/plugin-block-newsletter@0.3.23
+  - @nexpress/plugin-block-pricing@0.3.23
+  - @nexpress/plugin-block-stats@0.3.23
+  - @nexpress/plugin-forum@0.3.23
+  - @nexpress/plugin-oauth-github@0.3.23
+  - @nexpress/plugin-oauth-google@0.3.23
+  - @nexpress/plugin-reading-time@0.3.23
+  - @nexpress/plugin-sdk@0.3.23
+  - @nexpress/plugin-seo-audit@0.3.23
+  - @nexpress/theme@0.3.23
+  - @nexpress/theme-default@0.3.23
+  - @nexpress/theme-docs@0.3.23
+  - @nexpress/theme-magazine@0.3.23
+  - @nexpress/theme-portfolio@0.3.23
+
 ## 0.3.22
 
 ### Patch Changes
