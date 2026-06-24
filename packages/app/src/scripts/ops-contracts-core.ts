@@ -332,9 +332,11 @@ const OPS_CONTRACTS: OpsContract[] = [
     title: "Read-only admin ops evidence API",
     status: "shipped",
     risk: "read-only",
-    command: "GET /api/admin/ops/health|readiness|jobs|storage|plugins",
+    command: "GET /api/admin/ops/status|doctor|health|readiness|jobs|storage|plugins",
     projectCommand: null,
     schemaVersions: [
+      "np.ops.v1",
+      "np.doctor.v1",
       "np.admin-ops-health.v1",
       "np.admin-ops-readiness.v1",
       "np.ops-jobs.v1",

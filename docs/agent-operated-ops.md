@@ -228,14 +228,17 @@ require `admin.manage`:
 ```text
 GET /api/admin/ops/health
 GET /api/admin/ops/readiness?target=vercel
+GET /api/admin/ops/status
+GET /api/admin/ops/doctor?prod=1&target=vercel&fixPlan=1
 GET /api/admin/ops/jobs
 GET /api/admin/ops/storage
 GET /api/admin/ops/plugins
 ```
 
-The `plugins` endpoint reports the runtime registry that is already loaded in
-the process. The local `nexpress ops plugins ...` CLI remains the static config
-and package-inspection surface.
+The `status` and `doctor` endpoints mirror the local `np.ops.v1` and
+`np.doctor.v1` contracts. The `plugins` endpoint reports the runtime registry
+that is already loaded in the process. The local `nexpress ops plugins ...` CLI
+remains the static config and package-inspection surface.
 
 ### Release
 
@@ -592,6 +595,7 @@ Key shipped contracts:
 | ----------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | Deploy bridge     | `pnpm --silent run deploy:plan -- --target <host> --json`                                                        | `np.deploy-plan.v1`                                                                                         |
 | Local status      | `pnpm --silent run ops:status -- --json`                                                                         | `np.ops.v1`                                                                                                 |
+| Production doctor | `pnpm --silent run doctor:prod -- --target <host> --fix-plan --json`                                             | `np.doctor.v1`                                                                                              |
 | Contract registry | `pnpm --silent run ops:contracts -- --json`                                                                      | `np.ops-contracts.v1`                                                                                       |
 | Preflight         | `pnpm --silent run ops:preflight -- --target <host> --json`                                                      | `np.ops-preflight.v1`                                                                                       |
 | Health            | `pnpm --silent run ops:health -- --url <origin> --json`                                                          | `np.ops-health.v1`                                                                                          |
@@ -624,6 +628,8 @@ The shipped remote API subset is read-only and admin-session gated:
 ```text
 GET /api/admin/ops/health
 GET /api/admin/ops/readiness?target=<host>
+GET /api/admin/ops/status
+GET /api/admin/ops/doctor?prod=1&target=<host>&fixPlan=1
 GET /api/admin/ops/jobs
 GET /api/admin/ops/storage
 GET /api/admin/ops/plugins
@@ -638,13 +644,6 @@ Future action endpoints require stricter controls:
 - Two-step confirmation for destructive actions.
 - Optional IP allowlist / signed command payload in production.
 - No secrets in responses; return presence, hashes, or redacted values only.
-
-Candidate additional read endpoints:
-
-```text
-GET /api/admin/ops/status
-GET /api/admin/ops/doctor
-```
 
 Candidate action endpoints, only after the CLI contract is proven:
 

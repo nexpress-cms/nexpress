@@ -1,8 +1,6 @@
 import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import pg from "pg";
-
 import { toProjectCommand } from "./ops-command-format.js";
 import { messageForConnectionError } from "./setup-server-errors.js";
 import type { CheckResult } from "./doctor-readiness.js";
@@ -12,7 +10,7 @@ import {
   readLocalMigrationEntries,
 } from "./migration-status.js";
 import { checkMigrationStatusReadiness } from "./doctor-readiness.js";
-import { collectOpsJobsStatus } from "./ops-jobs-core.js";
+import type * as OpsJobsCore from "./ops-jobs-core.js";
 
 type OpsEnv = Record<string, string | undefined>;
 
@@ -168,7 +166,9 @@ function checkNodeVersion(): CheckResult {
 
 async function checkEnvFile(): Promise<CheckResult> {
   try {
-    await access(resolve(process.cwd(), ".env"));
+    await access(
+      /* turbopackIgnore: true */ resolve(/* turbopackIgnore: true */ process.cwd(), ".env"),
+    );
     return { id: "env.file", state: "ok", label: ".env file present" };
   } catch {
     return {
@@ -271,7 +271,8 @@ async function checkWorkerHeartbeat(env: OpsEnv): Promise<CheckResult> {
       detail: "skipped (jobs disabled)",
     };
   }
-  const report = await collectOpsJobsStatus(env);
+  const jobsCore = await loadJobsCore();
+  const report = await jobsCore.collectOpsJobsStatus(env);
   if (report.status === "ready") {
     return {
       id: "jobs.worker",
@@ -298,6 +299,10 @@ async function checkWorkerHeartbeat(env: OpsEnv): Promise<CheckResult> {
   };
 }
 
+async function loadJobsCore(): Promise<typeof OpsJobsCore> {
+  return import("./ops-jobs-core.js");
+}
+
 async function checkStorage(env: OpsEnv): Promise<CheckResult> {
   const adapter = (env.NP_STORAGE_ADAPTER ?? "local").toLowerCase();
   if (adapter === "s3") {
@@ -316,7 +321,9 @@ async function checkStorage(env: OpsEnv): Promise<CheckResult> {
 
   const dir = env.NP_STORAGE_DIR ?? "./public/media";
   try {
-    const stats = await stat(resolve(process.cwd(), dir));
+    const stats = await stat(
+      /* turbopackIgnore: true */ resolve(/* turbopackIgnore: true */ process.cwd(), dir),
+    );
     if (!stats.isDirectory()) {
       return {
         id: "storage.adapter",
@@ -338,8 +345,8 @@ async function checkStorage(env: OpsEnv): Promise<CheckResult> {
   }
 }
 
-function loadPg(): PgModuleLike {
-  return { default: pg as unknown as PgModuleLike["default"] };
+async function loadPg(): Promise<unknown> {
+  return import("pg");
 }
 
 async function checkDatabase(env: OpsEnv): Promise<CheckResult> {
@@ -356,7 +363,7 @@ async function checkDatabase(env: OpsEnv): Promise<CheckResult> {
 
   let pg: PgModuleLike;
   try {
-    pg = loadPg();
+    pg = (await loadPg()) as PgModuleLike;
   } catch {
     return {
       id: "database.reachable",
@@ -402,7 +409,7 @@ async function checkMigrations(env: OpsEnv): Promise<CheckResult> {
 
   let pg: PgModuleLike;
   try {
-    pg = loadPg();
+    pg = (await loadPg()) as PgModuleLike;
   } catch {
     return {
       id: "migrations.applied",
