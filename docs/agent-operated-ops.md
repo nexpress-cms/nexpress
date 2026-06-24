@@ -1,9 +1,10 @@
-# Agent-operated ops CLI plan
+# Agent-operated ops contracts
 
-**Status:** local CLI operating track complete for v0.x. This page
-started as the planning backlog for the agent-operated CLI surface; it now
-documents the shipped `nexpress ops`, `nexpress runbook`, and `nexpress release`
-contracts plus the explicitly deferred destructive / remote follow-up items.
+**Status:** local CLI and read-only admin operating tracks are complete for
+v0.x. This page started as the planning backlog for the agent-operated CLI
+surface; it now documents the shipped `nexpress ops`, `nexpress runbook`,
+`nexpress release`, and `/api/admin/ops/*` contracts plus the explicitly
+deferred destructive / remote follow-up items.
 
 NexPress already exposes agent-friendly content APIs through OpenAPI, auth,
 plugin discovery, and stable error codes. The operating surface after a site is
@@ -62,6 +63,12 @@ rather than turning the CLI into an unsafe autopilot.
 ---
 
 ## Design principles
+
+### Command context
+
+Project-side `pnpm run ...` examples run from a generated NexPress app. In this
+monorepo, run the same command with `pnpm --dir apps/web ...` from the
+repository root.
 
 ### 1. Stable machine contracts before clever automation
 
@@ -656,273 +663,87 @@ POST /api/admin/ops/runbook/{id}
 
 ---
 
-## Issue-ready backlog
+## Implementation ledger
 
-The following issue bodies are intentionally copy-pasteable into GitHub. Keep
-one user-visible outcome per issue and land them in order unless a later issue
-is needed to unblock testing.
+The original issue-ready backlog has been retired. Keep this section as the
+current-state map between the shipped code contracts and the few intentionally
+deferred decisions that still need real operator pressure before implementation.
 
-### Issue 1 — Add `nexpress ops status` / `doctor` JSON contract
+The machine-readable registry remains the canonical source:
 
-**Title:** Add agent-friendly `nexpress ops status` and `doctor` commands
+```bash
+# Generated app / apps/web:
+pnpm --silent run ops:contracts -- --json
 
-**Goal:** Give agents and operators one low-token command to understand whether
-a NexPress deployment is healthy enough to read, write, and serve traffic.
+# Monorepo root:
+pnpm --dir apps/web --silent run ops:contracts -- --json
+```
 
-**Scope:**
+| Track                | Status                                       | Shipped contract                                                                                                                              | Remaining decision                                                                                                  |
+| -------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Status / doctor      | Shipped                                      | `nexpress ops status`, `nexpress ops doctor`, `pnpm run ops:status`, `pnpm run doctor:prod`, `/api/admin/ops/status`, `/api/admin/ops/doctor` | None in the read-only scope.                                                                                        |
+| Deploy plan          | Shipped                                      | `nexpress deploy plan --target docker\|vercel\|fly`, `pnpm run deploy:plan` as `np.deploy-plan.v1`                                            | Provider API mutation remains out of scope; the contract is plan-only.                                              |
+| Migration safety     | Partially shipped                            | `ops:migrate status`, `ops:migrate plan`, `ops:migrate rollback-plan`, release/preflight migration evidence                                   | `apply --safe` needs final backup freshness, advisory lock, audit, rollback, and post-apply readiness semantics.    |
+| Backup / restore     | Partially shipped                            | `ops:backup status`, `create`, `list`, `verify`, `restore-plan`, manifests under `.nexpress/backups`                                          | `restore apply` and restore smoke-test stay deferred until the destructive confirmation and recovery contract gels. |
+| Jobs                 | Shipped with bounded mutations               | `ops:jobs status`, `pause`, `resume`, `retry-all`, `drain`; `retry-all` / `drain` execute mode requires `--execute --approve <token>`         | Broader destructive queue rewrites remain future work.                                                              |
+| Storage              | Partially shipped                            | `ops:storage status`, `verify`, `test`, `missing-files`, `orphaned-files`, `migrate plan`                                                     | `migrate apply --target s3` stays deferred until object-copy auditing, retry, and rollback semantics are settled.   |
+| Plugins              | Partially shipped                            | `ops:plugins list`, `inspect`, `doctor`, `upgrade-plan`                                                                                       | `enable` / `disable` config mutation waits for rebuild, restart, audit, and rollback semantics.                     |
+| Release              | Shipped with explicit approval gate          | `release check`, `plan`, `apply`, `verify`; `ops:release check\|verify`; artifacts under `.nexpress/releases`                                 | No new local read-only scope; execution stays approval-gated and allowlisted.                                       |
+| Runbooks             | Shipped as read-only incident recipes        | `runbook worker-not-draining`, `storage-local-to-s3`, `backup-restore-drill`, `migration-crashed`; `ops:runbook <name>`                       | Automated incident mutations remain deferred.                                                                       |
+| Remote admin ops API | Read-only shipped; mutation surface deferred | `GET /api/admin/ops/health`, `readiness`, `status`, `doctor`, `jobs`, `storage`, `plugins`                                                    | `POST /api/admin/ops/*` needs scoped auth, rate limits, audit logging, and two-step confirmation.                   |
 
-- Add a runtime CLI entrypoint for `nexpress ops status` and
-  `nexpress ops doctor`.
-- Support `--json`, `--brief`, `--prod`, `--fix-plan`, and `--no-color`.
-- Emit `schemaVersion: "np.ops.v1"`.
-- Implement initial checks for Node, pnpm, required env vars, DB reachability,
-  pending migrations, storage adapter probe, `SITE_URL`, scheduler token, job
-  heartbeat, and readiness endpoint.
-- Define stable check IDs and exit-code behavior.
-- Add unit tests for pass / fail output and JSON schema shape.
-- Update docs with command examples.
+## Future decision backlog
 
-**Acceptance criteria:**
+Only these deferred surfaces should be reopened from this track. Each one is
+dangerous enough that the implementation should start from a concrete operator
+need, not from the old planning issue text.
 
-- `nexpress ops doctor --prod --json` returns valid JSON with deterministic
-  check IDs.
-- A missing `DATABASE_URL` produces an error-severity check and exit code `1`.
-- `--brief` emits one compact line per check.
-- `--fix-plan --json` includes suggested next commands for fixable checks.
+### Approval-gated migration apply
 
-### Issue 2 — Add `nexpress deploy plan` recipes
+- Contract: `nexpress ops migrate apply --safe`
+- Project command: `pnpm run ops:migrate -- apply --safe`
+- Artifact: `.nexpress/migrations/<apply>.json`
+- Decision needed: backup freshness window, advisory lock behavior,
+  destructive-SQL approval format, post-apply readiness checks, and rollback
+  evidence.
 
-**Title:** Add machine-readable deployment plans for Docker, Vercel, and Fly.io
+### Approval-gated local-to-S3 storage migration apply
 
-**Goal:** Convert deployment documentation into target-specific plans that an
-agent can inspect before applying changes.
+- Contract: `nexpress ops storage migrate apply --target s3`
+- Project command: `pnpm run ops:storage -- migrate apply --target s3`
+- Artifact: `.nexpress/storage/<migration>.json`
+- Decision needed: copy retry behavior, resumability, object verification,
+  orphan handling, and rollback / cutover notes.
 
-**Scope:**
+### Approval-gated restore apply and smoke test
 
-- Add `nexpress deploy plan --target docker|vercel|fly`.
-- Output required environment variables, generated file expectations,
-  pre-deploy checks, ordered commands, and blocking incompatibilities.
-- Detect storage / target incompatibilities such as local uploads on ephemeral
-  filesystems.
-- Support `--json`, `--brief`, and `--no-color`.
-- Keep provider API mutation out of scope; this issue is plan-only.
+- Contract: `nexpress ops backup restore apply <manifestId>`
+- Project command: `pnpm run ops:backup -- restore apply <manifestId>`
+- Artifact: `.nexpress/restores/<restore>.json`
+- Decision needed: production restore confirmation, DB/media restore ordering,
+  smoke-test scope, audit trail, and rollback path after a failed restore.
 
-**Acceptance criteria:**
+### Plugin enable / disable mutation
 
-- `--target vercel --json` reports S3 as required durable media storage.
-- `--target docker --json` includes build, migrate, health, and worker notes.
-- Plans include docs links and stable blocking check IDs.
+- Contract: `nexpress ops plugins enable|disable <pluginId>`
+- Project command: `pnpm run ops:plugins -- enable|disable <pluginId>`
+- Artifact: `.nexpress/plugins/<mutation>.json`
+- Decision needed: package-manager behavior, config-file ownership, rebuild /
+  restart requirements, route/block conflict gates, and rollback notes.
 
-### Issue 3 — Add safe migration workflow
+### Remote admin ops mutation API
 
-**Title:** Add `nexpress ops migrate plan/apply --safe`
+- Contract: `POST /api/admin/ops/*`
+- Artifact: admin audit log plus task-specific JSON artifact
+- Decision needed: scoped service-token model, CSRF boundary for browser
+  actions, rate limiting, IP / signature policy, audit retention, and
+  destructive two-step confirmation.
 
-**Goal:** Make production database migrations agent-operable without allowing
-blind destructive changes.
+Candidate routes remain examples, not committed scope:
 
-**Scope:**
-
-- Add `migrate status`, `migrate plan`, and `migrate rollback-plan`; keep
-  `migrate apply --safe` as future approval-gated work.
-- Detect pending migrations and current database migration version.
-- Flag destructive SQL patterns for manual approval.
-- For future apply, acquire an advisory migration lock before touching the DB.
-- Require a fresh backup or an explicit override for any future production apply.
-- Verify readiness after apply.
-
-**Acceptance criteria:**
-
-- `plan` reports a ready/no-op state when there are no pending migrations.
-- Destructive SQL causes a blocking check in `plan`.
-- `apply --safe` refuses production without a verified backup or explicit
-  documented override.
-
-### Issue 4 — Add backup / restore CLI
-
-**Title:** Add `nexpress ops backup` and `restore` commands with manifests
-
-**Goal:** Make the documented DB + media disaster-recovery workflow executable
-and verifiable.
-
-**Scope:**
-
-- Add `backup create`, `backup list`, `backup verify latest`.
-- Add `backup restore-plan latest`; keep destructive `restore apply latest`
-  and `restore smoke-test` as future approval-gated work.
-- Generate a manifest containing backup ID, DB dump path, media snapshot,
-  migration version, app version, created-at timestamp, and verification state.
-- Support local uploads archives and S3 snapshot / sync manifests.
-- Require a task-specific `--execute --approve <token>` gate for any future
-  destructive production restore.
-
-**Acceptance criteria:**
-
-- Backups tie DB and media artifacts to one manifest.
-- `verify latest --json` reports whether DB dump and media artifacts are
-  present and restorable enough for a smoke test.
-- Restore plan prints exact ordered steps before any future apply command.
-
-### Issue 5 — Add jobs / storage / plugin ops checks
-
-**Title:** Add operational subcommands for jobs, storage, and plugins
-
-**Goal:** Cover the high-frequency post-deploy incidents agents need to triage:
-stale workers, media drift, and plugin conflicts.
-
-**Scope:**
-
-- Add `ops jobs status|pause|resume|retry-all|drain`.
-- Add `ops storage status|test|verify|orphaned-files|missing-files|migrate plan`.
-- Add `ops plugins list|inspect|doctor|upgrade-plan`.
-- Use shared `np.ops.v1` result envelope and check IDs.
-- Document which plugin upgrades require rebuild / restart in v1.
-
-Implementation status:
-
-- `nexpress ops jobs status --json` now reports worker heartbeat, pause
-  state, and queue counts as `np.ops-jobs.v1`.
-- `nexpress ops jobs pause|resume --json` now writes the global pause state in
-  `np_settings("_system", "jobs.paused")` and returns the updated status with a
-  mutation audit block.
-- `nexpress ops jobs retry-all --json` now dry-runs retryable archived jobs by
-  default, and `--execute --approve retry-all` re-enqueues failed / cancelled /
-  expired jobs with a mutation audit block.
-- `nexpress ops jobs drain --json` now reports drain readiness by default, and
-  `--execute --approve drain` starts a safe drain by pausing new job claims and
-  returning the remaining active / created / retry counts.
-- `nexpress ops backup create --json` now records an operator-provided backup
-  manifest in `NP_BACKUP_DIR` / `.nexpress/backups`; it does not perform a DB
-  dump.
-- `nexpress ops storage status --json` now reports local/S3 adapter
-  readiness, media index counts, and local missing/orphaned media drift as
-  `np.ops-storage.v1`.
-- `nexpress ops storage verify --json` now re-runs the same integrity gate
-  explicitly, and `nexpress ops storage test --execute --approve storage-test`
-  runs an upload / exists / delete probe through the configured adapter.
-- `nexpress ops storage missing-files|orphaned-files --json` now returns
-  concrete local drift lists, and
-  `nexpress ops storage migrate plan --target s3 --json` returns a read-only
-  local-to-S3 migration plan with inspect, prepare, and approval-gated future
-  apply commands.
-- `nexpress ops plugins list|inspect|doctor --json` now reports configured
-  plugin inventory, single-plugin manifest details, and static conflicts as
-  `np.ops-plugins.v1`; `nexpress ops plugins upgrade-plan --json` now emits a
-  read-only `np.ops-plugins-upgrade-plan.v1` plan for package review, rebuild,
-  and post-upgrade verification.
-- `nexpress ops status`, release plans, and executable runbooks now promote
-  actionable `nextCommand` guidance from the underlying jobs / storage evidence,
-  including dry-run retry, drain, storage verify, and storage probe commands.
-- Queue destructive commands beyond bounded retry and drain start remain future
-  work and should keep requiring explicit operator approval.
-- Storage migration apply commands and plugin mutation commands (`enable`,
-  `disable`) remain future work and should keep requiring explicit operator
-  approval.
-
-**Acceptance criteria:**
-
-- Stale worker heartbeat is reported with a stable warning check ID.
-- Storage verify can detect a missing media object and an orphaned object.
-- Plugin doctor can identify route conflicts and block type overwrites.
-
-### Issue 6 — Add `release check/plan/verify`
-
-**Title:** Add release orchestration commands for agent-safe deploys
-
-**Goal:** Give agents one preflight / postflight contract around tests, builds,
-migrations, backups, and readiness.
-
-**Scope:**
-
-- Add `nexpress release check`, `release plan`, `release apply`, and
-  `release verify`.
-- Compose existing test, typecheck, build, migration, backup, env, storage,
-  worker, and readiness checks.
-- `release apply` should only run commands included in the previous plan or a
-  freshly generated equivalent plan.
-- Persist an audit artifact for each release attempt.
-
-Implementation status:
-
-- `nexpress release check --target <host> --json` now composes
-  `ops:preflight`, `ops:migrate plan`, `ops:backup status --required`,
-  `ops:jobs`, `ops:storage`, and `ops:plugins doctor` as `np.release.v1`.
-- `nexpress release plan --target <host> --json` now persists a
-  `np.release-plan.v1` artifact with the release check snapshot, ordered
-  remediation / release / verify commands, approval flags, and apply
-  preconditions.
-- `nexpress release apply --plan <artifact> --json` now validates that artifact
-  and persists `np.release-apply.v1`; it only runs plan commands when both
-  `--execute` and `--approve <planId>` are present and every command passes the
-  release-apply allowlist, then executes the matched argv spec without a shell.
-- `nexpress release verify --url <origin> --json` now composes
-  `ops:health`, `ops:jobs`, `ops:storage`, and `ops:plugins doctor` as
-  `np.release.v1`.
-- `nexpress ops release check|verify` delegates to the same project-side
-  script for agents that stay inside the ops namespace.
-- `release apply` remains intentionally approval-gated because it can run
-  deploy, migration, or publishing actions.
-
-**Acceptance criteria:**
-
-- `release check --json` returns a compact pass / fail summary with links to
-  failing command output artifacts.
-- Pending migrations and stale / missing / unverified backups block production
-  release checks through dedicated migration and backup evidence steps.
-- `release plan --json` persists a replayable plan artifact, and
-  `release apply --plan <artifact> --json` records a dry-run or execution audit
-  artifact.
-- `release apply` dry-run artifacts include the exact approval-gated execution
-  command in both global and project-local forms.
-- `release apply` blocks tampered artifacts before execution when commands,
-  targets, command metadata, or project command translations do not match the
-  generated release plan contract.
-- `release apply` executes approved commands through structured argv specs
-  instead of shell command strings.
-- Ops/runbook/release artifacts preserve project-local next commands so a
-  generated app can execute the same remediation sequence without translating
-  `nexpress ...` global CLI calls by hand.
-- A blocked `release plan` only lists remediation and verify commands; release
-  phase commands are regenerated once the check is ready.
-- `release verify --json` can run after deployment and report readiness.
-
-### Issue 7 — Add executable runbook commands
-
-**Title:** Add `nexpress runbook` diagnostics for common incidents
-
-**Goal:** Turn operations docs into command-driven incident recipes that return
-diagnosis, evidence, next commands, risk, and rollback notes.
-
-**Scope:**
-
-- Add runbooks for `migration-crashed`, `storage-local-to-s3`,
-  `backup-restore-drill`, and `worker-not-draining`.
-- Each runbook should collect evidence using existing ops checks and return a
-  short diagnosis.
-- Support `--json`, `--brief`, and docs links.
-- Do not auto-apply destructive steps in the first version.
-
-**Acceptance criteria:**
-
-- `nexpress runbook worker-not-draining --json` reports heartbeat age, queue
-  backlog, likely cause, and next commands.
-- Runbooks share the same `np.runbook.v1` envelope.
-
-Implementation status:
-
-- `nexpress runbook worker-not-draining --json` now composes jobs evidence into
-  `np.runbook.v1`.
-- `nexpress runbook storage-local-to-s3 --json` now composes storage and Vercel
-  preflight evidence into `np.runbook.v1`.
-- `nexpress runbook backup-restore-drill --json` now composes
-  `ops:backup verify latest` and release check evidence into `np.runbook.v1`.
-- `nexpress runbook migration-crashed --json` now composes
-  `ops:migrate status`, `ops:migrate plan`, and `ops:migrate rollback-plan`
-  evidence into `np.runbook.v1`.
-- `nexpress ops runbook <name> --json` delegates to the same project-side
-  script for agents staying inside the ops namespace.
-- Runbook evidence records command exit codes and treats non-zero exits as
-  blocked even if the command wrote a partial JSON report, so crash-after-report
-  failures remain visible in the artifact.
-- Runbooks are intentionally read-only in this pass. Automated pause/resume,
-  retry, restore, migration apply, or local-to-S3 mutation remains future
-  approval-gated work.
+```text
+POST /api/admin/ops/cache/revalidate
+POST /api/admin/ops/jobs/drain
+POST /api/admin/ops/backup
+POST /api/admin/ops/runbook/{id}
+```
