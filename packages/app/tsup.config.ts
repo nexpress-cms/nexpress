@@ -83,6 +83,7 @@ const libEntries = {
   "lib/member-auth-helpers": "src/lib/member-auth-helpers.ts",
   "lib/revalidate": "src/lib/revalidate.ts",
   "lib/revision-helpers": "src/lib/revision-helpers.ts",
+  "lib/ops-plugins-runtime": "src/lib/ops-plugins-runtime.ts",
   "lib/ops-readiness": "src/lib/ops-readiness.ts",
   "lib/safe-next": "src/lib/safe-next.ts",
   "lib/search-highlight": "src/lib/search-highlight.tsx",

@@ -124,11 +124,13 @@ the admin or logs. Shipped bounded mutations such as queue drain start, backup
 manifest registration, and release apply already return mutation / execution
 audit data in their JSON contracts.
 
-### 6. Local CLI first, remote ops API later
+### 6. Local CLI first, remote mutations later
 
 Start with a local CLI that runs beside the project and uses environment
 variables / direct database access. Remote operations endpoints are useful, but
-they are security-sensitive and should wait until the local contracts settle.
+mutating ones are security-sensitive and should wait until the local contracts
+settle. The admin now exposes a read-only evidence subset for already-authenticated
+operators; destructive remote actions remain deferred.
 
 ---
 
@@ -217,6 +219,23 @@ nexpress ops plugins inspect <pluginId> --json
 nexpress ops plugins doctor --json
 nexpress ops plugins upgrade-plan [pluginId] --json
 ```
+
+### Admin read-only ops API
+
+These endpoints use the same authenticated admin session as `/admin/ops` and
+require `admin.manage`:
+
+```text
+GET /api/admin/ops/health
+GET /api/admin/ops/readiness?target=vercel
+GET /api/admin/ops/jobs
+GET /api/admin/ops/storage
+GET /api/admin/ops/plugins
+```
+
+The `plugins` endpoint reports the runtime registry that is already loaded in
+the process. The local `nexpress ops plugins ...` CLI remains the static config
+and package-inspection surface.
 
 ### Release
 
@@ -590,7 +609,7 @@ Deferred on purpose:
 - `ops storage migrate apply --target s3`
 - `ops backup restore apply`
 - `ops plugins enable|disable`
-- remote `/api/admin/ops/*`
+- remote mutating `/api/admin/ops/*` actions
 
 Those surfaces are destructive or security-sensitive. They should only reopen
 after a real operator need pins the confirmation, audit, rollback, and
@@ -598,11 +617,19 @@ multi-instance semantics tightly enough to implement safely.
 
 ---
 
-## Security posture for a future remote ops API
+## Security posture for remote ops API
 
-A remote API is useful for hosted agents, but it must not be the first version.
-When added, it should be scoped to read-only status first and require stricter
-controls for actions:
+The shipped remote API subset is read-only and admin-session gated:
+
+```text
+GET /api/admin/ops/health
+GET /api/admin/ops/readiness?target=<host>
+GET /api/admin/ops/jobs
+GET /api/admin/ops/storage
+GET /api/admin/ops/plugins
+```
+
+Future action endpoints require stricter controls:
 
 - Admin capability gate.
 - CSRF for browser-originated calls or a separate short-lived service token for
@@ -612,13 +639,11 @@ controls for actions:
 - Optional IP allowlist / signed command payload in production.
 - No secrets in responses; return presence, hashes, or redacted values only.
 
-Candidate read endpoints:
+Candidate additional read endpoints:
 
 ```text
 GET /api/admin/ops/status
 GET /api/admin/ops/doctor
-GET /api/admin/ops/jobs
-GET /api/admin/ops/storage
 ```
 
 Candidate action endpoints, only after the CLI contract is proven:
