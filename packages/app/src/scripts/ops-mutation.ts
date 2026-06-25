@@ -1,7 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 
 import { toProjectCommand } from "./ops-command-format.js";
+import { resolveRuntimePath } from "./runtime-path.js";
 
 export type OpsMutationMode = "dry-run" | "execute";
 
@@ -56,7 +57,7 @@ export function defaultOpsArtifactPath(kind: string, id: string, now = new Date(
 }
 
 export async function writeOpsJsonArtifact(path: string, value: unknown): Promise<void> {
-  const resolved = resolve(/* turbopackIgnore: true */ process.cwd(), path);
+  const resolved = resolveRuntimePath(path);
   await mkdir(dirname(resolved), { recursive: true });
   await writeFile(resolved, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }

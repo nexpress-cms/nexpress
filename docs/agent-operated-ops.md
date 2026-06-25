@@ -126,7 +126,7 @@ Migration apply, restore apply, storage migration apply, plugin enable /
 disable, queue drain, backup manifest registration, and release apply all
 return mutation / execution audit data in their JSON contracts.
 
-### 6. Local CLI first, remote mutations later
+### 6. Local-first, gated remote mutations
 
 Start with a local CLI that runs beside the project and uses environment
 variables / direct database access. The admin exposes read-only evidence
