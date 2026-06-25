@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "next build",
+    "build": "tsx scripts/build.ts",
     "predev": "tsx scripts/dev-notice.ts",
     "dev": "concurrently -n next,schema -c blue,magenta -k \"next dev\" \"NP_SCHEMA_WATCH=1 tsx watch --watch-path=src/collections --watch-path=src/nexpress.config.ts scripts/generate-schema.ts\"",
     "start": "next start",

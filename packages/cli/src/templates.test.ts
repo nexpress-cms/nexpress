@@ -373,6 +373,16 @@ describe("getProjectFiles", () => {
     expect(pkg.scripts.runbook).toBe("tsx scripts/runbook.ts");
   });
 
+  it("routes build through the shared NexPress build guard", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const pkg = JSON.parse(files["package.json"]) as {
+      scripts: Record<string, string>;
+    };
+
+    expect(pkg.scripts.build).toBe("tsx scripts/build.ts");
+    expect(files["scripts/build.ts"]).toMatch(/@nexpress\/app\/scripts\/build/);
+  });
+
   it("ops scripts are thin wrappers over @nexpress/app's shared ops scripts", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const opsStatus = files["scripts/ops-status.ts"];

@@ -59,6 +59,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "src/collections/posts.ts": utf8(postsCollectionTemplate()),
     "src/collections/tags.ts": utf8(tagsCollectionTemplate()),
     "scripts/_load-env.ts": utf8(loadEnvScriptTemplate()),
+    "scripts/build.ts": utf8(buildScriptTemplate()),
     "scripts/deploy-plan.ts": utf8(deployPlanScriptTemplate()),
     "scripts/dev-notice.ts": utf8(devNoticeScriptTemplate()),
     "scripts/doctor.ts": utf8(doctorScriptTemplate()),
@@ -148,7 +149,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
       scripts: {
         predev: "tsx scripts/dev-notice.ts",
         dev: "next dev",
-        build: "next build",
+        build: "tsx scripts/build.ts",
         start: "next start",
         typecheck: "tsc --noEmit",
         "deploy:plan": "tsx scripts/deploy-plan.ts",
@@ -358,6 +359,10 @@ function generateSchemaScriptTemplate(): string {
     `import { generateSchema } from "@nexpress/app/scripts/generate-schema";\n\n` +
     `generateSchema({ config: nexpressConfig });\n`
   );
+}
+
+function buildScriptTemplate(): string {
+  return `import "@nexpress/app/scripts/build";\n`;
 }
 
 function workerScriptTemplate(): string {
