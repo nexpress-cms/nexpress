@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import * as fs from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -12,6 +12,7 @@ import {
   type OpsMutationAudit,
   writeOpsJsonArtifact,
 } from "./ops-mutation.js";
+import { resolveRuntimePath } from "./runtime-path.js";
 import type { CheckResult } from "./doctor-readiness.js";
 
 const OPS_PLUGINS_DOCTOR_COMMAND = "nexpress ops plugins doctor --json";
@@ -215,9 +216,25 @@ const CONFIG_CANDIDATES = [
 ];
 
 const PACKAGE_JSON_CANDIDATES = ["package.json", "apps/web/package.json"];
+// Plugin ops inspect project config at runtime; keep file reads opaque to
+// Next/Turbopack's standalone tracer so it does not copy the whole project root.
+const FS_METHODS = {
+  existsSync: "existsSync",
+  readFileSync: "readFileSync",
+} as const;
 
 function loadPg(): PgModuleLike {
   return { default: pg as unknown as PgModuleLike["default"] };
+}
+
+function runtimeExists(path: string): boolean {
+  const existsSync = fs[FS_METHODS.existsSync] as (path: string) => boolean;
+  return existsSync(path);
+}
+
+function runtimeReadTextFile(path: string): string {
+  const readFileSync = fs[FS_METHODS.readFileSync] as (path: string, encoding: "utf8") => string;
+  return readFileSync(path, "utf8");
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -603,15 +620,17 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
   return buildOpsPluginsJson({ checks, plugins });
 }
 
-export function resolveNexpressConfigPath(cwd = process.cwd()): string | null {
+export function resolveNexpressConfigPath(cwd = resolveRuntimePath("")): string | null {
   for (const candidate of CONFIG_CANDIDATES) {
     const full = resolve(cwd, candidate);
-    if (existsSync(full)) return full;
+    if (runtimeExists(full)) return full;
   }
   return null;
 }
 
-export async function collectOpsPluginsStatus(cwd = process.cwd()): Promise<OpsPluginsJson> {
+export async function collectOpsPluginsStatus(
+  cwd = resolveRuntimePath(""),
+): Promise<OpsPluginsJson> {
   const configPath = resolveNexpressConfigPath(cwd);
   if (!configPath) {
     return buildOpsPluginsJson({
@@ -666,7 +685,7 @@ export async function collectOpsPluginsStatus(cwd = process.cwd()): Promise<OpsP
 }
 
 function readPackageDependencies(
-  cwd = process.cwd(),
+  cwd = resolveRuntimePath(""),
 ): Record<string, { range: string; field: OpsPluginPackageRef["dependencyField"] }> {
   const result: Record<string, { range: string; field: OpsPluginPackageRef["dependencyField"] }> =
     {};
@@ -677,9 +696,9 @@ function readPackageDependencies(
   ];
   for (const candidate of PACKAGE_JSON_CANDIDATES) {
     const packageJsonPath = resolve(cwd, candidate);
-    if (!existsSync(packageJsonPath)) continue;
+    if (!runtimeExists(packageJsonPath)) continue;
     try {
-      const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8")) as Record<string, unknown>;
+      const pkg = JSON.parse(runtimeReadTextFile(packageJsonPath)) as Record<string, unknown>;
       // Later candidates are closer to generated app runtime (`apps/web` in the monorepo),
       // so they intentionally override root workspace ranges when both exist.
       for (const field of fields) {

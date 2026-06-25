@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
-import { access, cp, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import type { Dirent, Stats } from "node:fs";
+import * as fsPromises from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 
@@ -11,10 +12,22 @@ import {
   type OpsMutationAudit,
   writeOpsJsonArtifact,
 } from "./ops-mutation.js";
+import { resolveRuntimePath } from "./runtime-path.js";
 import type { CheckResult } from "./doctor-readiness.js";
 
 type OpsBackupEnv = Record<string, string | undefined>;
 const execFileAsync = promisify(execFile);
+// Backup commands inspect operator-owned runtime paths; keep those dynamic fs reads
+// opaque to Next/Turbopack's standalone file tracer so it does not copy the project root.
+const FS_METHODS = {
+  access: "access",
+  cp: "cp",
+  mkdir: "mkdir",
+  readdir: "readdir",
+  readFile: "readFile",
+  stat: "stat",
+  writeFile: "writeFile",
+} as const;
 
 export type OpsBackupMode = "create" | "status" | "list" | "verify";
 
@@ -183,11 +196,60 @@ const EMPTY_ANSI = {
   reset: "",
 };
 
+function runtimeAccess(path: string): Promise<void> {
+  const access = fsPromises[FS_METHODS.access] as (path: string) => Promise<void>;
+  return access(path);
+}
+
+function runtimeCp(source: string, target: string): Promise<void> {
+  const cp = fsPromises[FS_METHODS.cp] as (
+    source: string,
+    target: string,
+    options: { recursive: true; force: true },
+  ) => Promise<void>;
+  return cp(source, target, { recursive: true, force: true });
+}
+
+function runtimeMkdir(path: string): Promise<string | undefined> {
+  const mkdir = fsPromises[FS_METHODS.mkdir] as (
+    path: string,
+    options: { recursive: true },
+  ) => Promise<string | undefined>;
+  return mkdir(path, { recursive: true });
+}
+
+function runtimeReaddir(path: string): Promise<Dirent[]> {
+  const readdir = fsPromises[FS_METHODS.readdir] as (
+    path: string,
+    options: { withFileTypes: true },
+  ) => Promise<Dirent[]>;
+  return readdir(path, { withFileTypes: true });
+}
+
+function runtimeReadTextFile(path: string): Promise<string> {
+  const readFile = fsPromises[FS_METHODS.readFile] as (
+    path: string,
+    encoding: "utf8",
+  ) => Promise<string>;
+  return readFile(path, "utf8");
+}
+
+function runtimeStat(path: string): Promise<Stats> {
+  const stat = fsPromises[FS_METHODS.stat] as (path: string) => Promise<Stats>;
+  return stat(path);
+}
+
+function runtimeWriteTextFile(path: string, value: string): Promise<void> {
+  const writeFile = fsPromises[FS_METHODS.writeFile] as (
+    path: string,
+    value: string,
+    encoding: "utf8",
+  ) => Promise<void>;
+  return writeFile(path, value, "utf8");
+}
+
 function backupDirFromEnv(env: OpsBackupEnv): string {
-  return resolve(
-    /* turbopackIgnore: true */ process.cwd(),
-    env.NP_BACKUP_DIR ?? ".nexpress/backups",
-  );
+  return resolveRuntimePath(env.NP_BACKUP_DIR ?? ".nexpress/backups");
 }
 
 function maxAgeHoursFromEnv(env: OpsBackupEnv): number {
@@ -236,7 +298,7 @@ function manifestSummary(manifest: BackupManifest): BackupManifestSummary {
 }
 
 async function listManifestFiles(backupDir: string): Promise<string[]> {
-  const entries = await readdir(/* turbopackIgnore: true */ backupDir, { withFileTypes: true });
+  const entries = await runtimeReaddir(backupDir);
   return entries
     .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
     .map((entry) => join(/* turbopackIgnore: true */ backupDir, entry.name));
@@ -244,7 +306,7 @@ async function listManifestFiles(backupDir: string): Promise<string[]> {
 
 async function readManifestFile(file: string): Promise<BackupManifest | null> {
   try {
-    const raw = await readFile(/* turbopackIgnore: true */ file, "utf8");
+    const raw = await runtimeReadTextFile(file);
     return parseBackupManifest(JSON.parse(raw));
   } catch {
     return null;
@@ -253,7 +315,7 @@ async function readManifestFile(file: string): Promise<BackupManifest | null> {
 
 async function pathExists(path: string): Promise<boolean> {
   try {
-    await access(/* turbopackIgnore: true */ path);
+    await runtimeAccess(path);
     return true;
   } catch {
     return false;
@@ -511,7 +573,7 @@ export async function collectOpsBackupReport(args: {
   const checks: CheckResult[] = [];
 
   try {
-    const dirStat = await stat(/* turbopackIgnore: true */ backupDir);
+    const dirStat = await runtimeStat(backupDir);
     if (!dirStat.isDirectory()) {
       return buildOpsBackupJson({
         mode: args.mode,
@@ -614,7 +676,7 @@ async function collectBackupManifests(env: OpsBackupEnv): Promise<{
   const checks: CheckResult[] = [];
 
   try {
-    const dirStat = await stat(/* turbopackIgnore: true */ backupDir);
+    const dirStat = await runtimeStat(backupDir);
     if (!dirStat.isDirectory()) {
       return {
         backupDir,
@@ -701,7 +763,7 @@ async function markBackupRestoreVerified(args: {
       status: found.manifest.verification?.status ?? "verified",
     },
   };
-  await writeFile(found.file, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  await runtimeWriteTextFile(found.file, `${JSON.stringify(manifest, null, 2)}\n`);
   return manifestSummary(manifest);
 }
 
@@ -1113,13 +1175,13 @@ async function copyRestoreMedia(args: {
 }): Promise<string> {
   const source = resolveBackupArtifactPath(args.backupDir, args.mediaPath);
   if (!source) throw new Error(`Invalid media artifact path: ${args.mediaPath}`);
-  const sourceStat = await stat(source);
+  const sourceStat = await runtimeStat(source);
   if (!sourceStat.isDirectory()) {
     throw new Error(`Media artifact must be a directory for restore apply: ${args.mediaPath}`);
   }
   const target = resolve(/* turbopackIgnore: true */ args.restoreStorageDir, basename(source));
-  await mkdir(/* turbopackIgnore: true */ args.restoreStorageDir, { recursive: true });
-  await cp(/* turbopackIgnore: true */ source, target, { recursive: true, force: true });
+  await runtimeMkdir(args.restoreStorageDir);
+  await runtimeCp(source, target);
   return target;
 }
 
@@ -1350,7 +1412,7 @@ export async function createOpsBackupManifest(args: {
     args.id ?? `backup-${now.toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
   const createdAt = now.toISOString();
   const verified = Boolean(args.verified || args.restoreVerified);
-  await mkdir(/* turbopackIgnore: true */ backupDir, { recursive: true });
+  await runtimeMkdir(backupDir);
 
   const manifest: BackupManifest = {
     id,
@@ -1375,10 +1437,9 @@ export async function createOpsBackupManifest(args: {
       : {}),
   };
 
-  await writeFile(
+  await runtimeWriteTextFile(
     join(/* turbopackIgnore: true */ backupDir, `${id}.json`),
     `${JSON.stringify(manifest, null, 2)}\n`,
-    "utf8",
   );
   const report = await collectOpsBackupReport({ mode: "create", env });
   return {
