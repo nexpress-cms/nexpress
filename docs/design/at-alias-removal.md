@@ -30,13 +30,29 @@ This bit a scaffolded site's `pnpm run seed:content` in #834. Two tsx scripts (s
 
 ## What's in place today (mitigation, not fix)
 
-Three guard layers, each one trades architectural coherence for staying-ahead-of-the-bug-class:
+Four guard layers, each one trades architectural coherence for staying-ahead-of-the-bug-class:
 
-| Layer | Where | What it does |
-| ----- | ----- | ------------ |
-| #834 — bypass | scaffold templates | The two tsx scripts that hit the bug (`seed-content.ts`, `worker.ts`) now bootstrap via `createBootstrap` from `@nexpress/next` directly, importing `seedAll` / `runWorker` from packages that have no `@/` references in their compiled output. They never touch `@nexpress/app/lib/init-core`. |
-| #836 — smoke | `.github/workflows/ci.yml` scaffold-smoke job | After scaffolding a fresh project, runs each tsx script against a closed-port DB and greps stderr for `ERR_MODULE_NOT_FOUND` / `ERR_PACKAGE_PATH_NOT_EXPORTED` / `Cannot find package|module`. Fails the build on any match. Catches accidental new transits through the broken chain. |
-| #837 — spawn tests | `apps/web/tests/setup-server-spawn.unit.test.ts` | Spawns the setup wizard in each of its three modes (HTTP / CLI / non-interactive), asserts the binary doesn't crash with a module-resolution error before reaching its DB-connect step. Catches setup-wizard-specific regressions. |
+- **#834 — bypass** (`scaffold templates`): the two tsx scripts that hit the
+  bug (`seed-content.ts`, `worker.ts`) now bootstrap via `createBootstrap`
+  from `@nexpress/next` directly, importing `seedAll` / `runWorker` from
+  packages that have no `@/` references in their compiled output. They never
+  touch `@nexpress/app/lib/init-core`.
+- **#836 — smoke** (`.github/workflows/ci.yml` scaffold-smoke job): after
+  scaffolding a fresh project, runs each tsx script against a closed-port DB
+  and greps stderr for `ERR_MODULE_NOT_FOUND`,
+  `ERR_PACKAGE_PATH_NOT_EXPORTED`, and `Cannot find package/module`. Fails
+  the build on any match. Catches accidental new transits through the broken
+  chain.
+- **#837 — spawn tests** (`apps/web/tests/setup-server-spawn.unit.test.ts`):
+  spawns the setup wizard in each of its three modes (HTTP / CLI /
+  non-interactive), asserts the binary doesn't crash with a module-resolution
+  error before reaching its DB-connect step. Catches setup-wizard-specific
+  regressions.
+- **#1107 — app script smoke** (`.github/scripts/check-web-script-runtime.mjs`
+  in the CI checks job): runs the reference app's `apps/web/scripts/*.ts`
+  entrypoints through `tsx` after `pnpm build`, with closed-port DB/env
+  values, and fails on the same resolver-crash signatures. Catches source-side
+  script regressions before they reach the scaffold/publish path.
 
 Net: the bug class is closed for every known consumer. The **debt** is "future tsx-script consumers that genuinely need to use `@nexpress/app/lib/*` symbols would still break, and they'd be the ones to surface the constraint."
 
@@ -65,11 +81,11 @@ What was added to `@nexpress/next`:
 
 Why the trade walked back:
 
-| Cost | Detail |
-| ---- | ------ |
-| Module-level mutable state | Anti-pattern. Last-write-wins semantics. Test isolation needs explicit reset. |
-| Proxy identity | `nexpressConfig === actualConfig` returns false. `JSON.stringify` edge cases. Stepping through the debugger goes through trap frames. |
-| Cross-package coupling | `@nexpress/next` accessors are silently coupled to `@nexpress/app/lib/*` having run their side-effect imports. Reading the code, the dependency is implicit. |
+| Cost                                 | Detail                                                                                                                                                                       |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module-level mutable state           | Anti-pattern. Last-write-wins semantics. Test isolation needs explicit reset.                                                                                                |
+| Proxy identity                       | `nexpressConfig === actualConfig` returns false. `JSON.stringify` edge cases. Stepping through the debugger goes through trap frames.                                        |
+| Cross-package coupling               | `@nexpress/next` accessors are silently coupled to `@nexpress/app/lib/*` having run their side-effect imports. Reading the code, the dependency is implicit.                 |
 | **The actual bug class stayed open** | The side-effect imports `import "@/lib/bootstrap"` are still in the compiled dist. A tsx-script consumer that hits `@nexpress/app/lib/*` would crash the same way as before. |
 
 Net: ~130 lines of accessor + Proxy boilerplate added across @nexpress/next and @nexpress/app (PR #838: 168 insertions / 39 deletions), all for a cosmetic improvement in where symbols come from. The original bug class is unchanged. ROI negative.
@@ -101,7 +117,7 @@ Today's exports map:
 }
 ```
 
-Pointing this to `./src/lib/*.ts` instead would let Next bundle the lib/ source with consumer tsconfig.paths in scope. Tsx consumers don't import lib/* anyway (per the #834 bypass pattern), so source-only is safe.
+Pointing this to `./src/lib/*.ts` instead would let Next bundle the lib/ source with consumer tsconfig.paths in scope. Tsx consumers don't import lib/\* anyway (per the #834 bypass pattern), so source-only is safe.
 
 Caveat: anything that DOES bundle `@nexpress/app/lib/*` outside Next's transpilePackages chain (e.g., a future tsup-built consumer integration) would now compile TS source. That's usually fine, but verify no consumer relies on the dist .js files being on disk.
 
@@ -115,7 +131,9 @@ Caveat: anything that DOES bundle `@nexpress/app/lib/*` outside Next's transpile
 
 - A working answer to the instrumentation native-dep block (or commitment to option 3's per-route-import sweep).
 - A repro of what BREAKS today for a real consumer. The current mitigation is fine; doing this for cleanliness alone is risky for marginal gain.
-- A test that catches the next regression class. Today's smoke checks `ERR_MODULE_NOT_FOUND` in scripts — that should keep working through the refactor and prove the new contract holds.
+- A test that catches the next regression class. Today's scaffold and apps/web
+  script smokes check `ERR_MODULE_NOT_FOUND`-style resolver crashes — they
+  should keep working through the refactor and prove the new contract holds.
 
 ## References
 

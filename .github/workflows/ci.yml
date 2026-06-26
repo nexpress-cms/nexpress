@@ -66,6 +66,14 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # Runtime smoke — `apps/web/scripts/*.ts` are now typechecked
+      # and linted, but tsx module-load failures can still hide
+      # until execution. Keep this after `pnpm build` so the local
+      # wrappers exercise the same @nexpress/app dist subpaths a
+      # checked-out operator would run.
+      - name: Runtime smoke — apps/web scripts load cleanly
+        run: node .github/scripts/check-web-script-runtime.mjs
+
       - name: Typecheck (tsc --noEmit per package)
         run: pnpm typecheck
 
