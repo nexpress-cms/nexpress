@@ -43,6 +43,7 @@ walk. Tagged so writes can invalidate selectively.
 | `/sitemap.xml`             | `nx:sitemap:<siteId>`, `nx:sitemap`                                                    | 600s       |
 | `/feed.xml` (default)      | `nx:feed:<siteId>`, `nx:feed:<siteId>:posts`, `nx:feed`, `nx:feed:posts`               | 600s       |
 | `/feed.xml?collection=…`   | `nx:feed:<siteId>`, `nx:feed:<siteId>:{collection}`, `nx:feed`, `nx:feed:{collection}` | 600s       |
+| `/api/search?q=…`          | `nx:search:<siteId>`, `nx:search`                                                      | 60s        |
 | `getCachedTheme()`         | `nx:theme:<siteId>`                                                                    | 600s       |
 | `getCachedActiveThemeId()` | `nx:theme:<siteId>` (shared)                                                           | 600s       |
 | `getCachedNavigation(loc)` | `nx:nav:<siteId>:<location>`                                                           | 600s       |
@@ -85,7 +86,7 @@ their own entries to the rule map (or override defaults).
 
 `unstable_cache` requires Next's incremental cache, which is
 absent when route handlers are invoked directly (integration
-tests calling `GET()`). Sitemap and feed routes catch the
+tests calling `GET()`). Sitemap, feed, and search routes catch the
 "incrementalCache missing" invariant and fall through to the
 direct (uncached) path. Production traffic always hits the
 cache.
@@ -170,10 +171,6 @@ serving with no CDN; that's fine for development.
   ship saved-choice dark mode without forcing the root layout
   dynamic.
 
-- **Search responses** (`/api/search`) — query strings make
-  caching tricky; the pluggable adapter from 10.6 may handle
-  its own cache. A simple short-TTL wrapper for the
-  hot-query case is a candidate follow-up.
 - **Global fallback tags still over-invalidate** — sitemap,
   feed, and search caches now carry site-scoped tags
   (`nx:sitemap:<siteId>`, `nx:feed:<siteId>`, `nx:search:<siteId>`)
@@ -204,3 +201,5 @@ Keep these in mind when tuning production deployments.
   `getCachedNavigation()` with site-scoped tags
 - 14.5 — plugin-contributed page templates (separate concern,
   but reuses the cache plumbing)
+- 14.7 — `/api/search` hot-query data cache with
+  `nx:search:<siteId>` + `nx:search` invalidation tags

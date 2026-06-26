@@ -1,15 +1,11 @@
-import {
-  NP_DEFAULT_SITE_ID,
-  getCurrentSiteId,
-  searchCollections,
-} from "@nexpress/core";
+import { NP_DEFAULT_SITE_ID, getCurrentSiteId, searchCollections } from "@nexpress/core";
 import { headers } from "next/headers";
-import { unstable_cache } from "next/cache";
 import type { NextRequest } from "next/server";
 
 import { isLocale } from "@/i18n.config";
 import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
 import { ensureFor } from "../../lib/init-core";
+import { searchWithShortTtlCache } from "./cache";
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
@@ -33,7 +29,10 @@ export async function GET(request: NextRequest) {
 
     const collectionsParam = params.get("collections");
     const collections = collectionsParam
-      ? collectionsParam.split(",").map((s) => s.trim()).filter(Boolean)
+      ? collectionsParam
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
       : undefined;
 
     const limit = parsePositiveInt(params.get("limit"), DEFAULT_LIMIT, MAX_LIMIT);
@@ -63,8 +62,7 @@ export async function GET(request: NextRequest) {
       }
     }
     const candidate = explicitLocale || headerLocale || null;
-    const locale =
-      candidate && isLocale(candidate) ? candidate : undefined;
+    const locale = candidate && isLocale(candidate) ? candidate : undefined;
 
     // Phase 14.7 — short-TTL cache around `searchCollections`.
     // Hot queries (header search box clicks for the same word
@@ -80,54 +78,15 @@ export async function GET(request: NextRequest) {
     // origin every time, but the per-key memory cost is the
     // result row, not a re-walk.
     const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-    const collectionsKey = collections ? collections.slice().sort().join(",") : "";
-    const cached = unstable_cache(
-      () =>
-        searchCollections({
-          q,
-          collections,
-          limit,
-          offset,
-          ...(locale ? { locale } : {}),
-        }),
-      [
-        "nx:search",
-        siteId,
-        q,
-        collectionsKey,
-        String(limit),
-        String(offset),
-        locale ?? "",
-      ],
-      {
-        tags: [`nx:search:${siteId}`, "nx:search"],
-        revalidate: 60,
-      },
-    );
-
-    let result;
-    try {
-      result = await cached();
-    } catch (error) {
-      // `unstable_cache` requires Next's incremental cache
-      // store. Integration tests calling `GET()` directly
-      // miss it; fall through to the uncached path so the
-      // route still works in those contexts.
-      if (
-        error instanceof Error &&
-        /incrementalCache/i.test(error.message)
-      ) {
-        result = await searchCollections({
-          q,
-          collections,
-          limit,
-          offset,
-          ...(locale ? { locale } : {}),
-        });
-      } else {
-        throw error;
-      }
-    }
+    const result = await searchWithShortTtlCache({
+      siteId,
+      q,
+      collections,
+      limit,
+      offset,
+      locale,
+      search: searchCollections,
+    });
     return npSuccessResponse(result);
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
