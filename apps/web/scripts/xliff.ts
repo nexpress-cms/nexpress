@@ -1,8 +1,8 @@
 import { type NpAuthUser } from "@nexpress/core";
 import { runCli } from "@nexpress/xliff";
 
-import "./_load-env";
-import { ensureFor } from "../src/lib/init-core";
+import "./_load-env.js";
+import { ensureFor } from "../src/lib/init-core.js";
 
 /**
  * Phase 12.12 — `pnpm xliff` shim. Boots core services + plugins
