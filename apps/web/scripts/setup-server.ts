@@ -11,3 +11,5 @@ process.env.NP_SETUP_ENV_PATH ??= "../../.env";
 // docker-compose template (both use the same projectName).
 process.env.NP_SETUP_DB_NAME ??= "nexpress";
 await import("@nexpress/app/scripts/setup-server");
+
+export {};

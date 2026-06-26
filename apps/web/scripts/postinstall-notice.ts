@@ -8,11 +8,9 @@
 try {
   await import("@nexpress/app/scripts/postinstall-notice");
 } catch (err) {
-  if (
-    !(err instanceof Error) ||
-    !("code" in err) ||
-    err.code !== "ERR_MODULE_NOT_FOUND"
-  ) {
+  if (!(err instanceof Error) || !("code" in err) || err.code !== "ERR_MODULE_NOT_FOUND") {
     throw err;
   }
 }
+
+export {};

@@ -14,8 +14,8 @@ import {
 } from "@nexpress/core";
 import type { NpAuthUser } from "@nexpress/core";
 
-import { ensureFor } from "../src/lib/init-core";
-import { seedAll } from "../src/lib/seed-content";
+import { ensureFor } from "../src/lib/init-core.js";
+import { seedAll } from "../src/lib/seed-content.js";
 
 /**
  * `pnpm seed:content` — populate a fresh install with the active
@@ -61,7 +61,7 @@ async function findFirstAdmin(): Promise<NpAuthUser | null> {
     id: row.id,
     email: row.email,
     name: row.name,
-    role: row.role as NpAuthUser["role"],
+    role: row.role,
     tokenVersion: row.tokenVersion,
   };
 }
@@ -80,9 +80,7 @@ async function main(): Promise<void> {
   if (siteId !== "default") {
     const target = await getSiteById(siteId);
     if (!target) {
-      console.error(
-        `Site "${siteId}" not found. Create it via /admin/sites or the API first.`,
-      );
+      console.error(`Site "${siteId}" not found. Create it via /admin/sites or the API first.`);
       process.exit(1);
     }
   }
@@ -103,9 +101,8 @@ async function main(): Promise<void> {
     `Seeding "${theme.manifest.id}" theme content for site "${siteId}" as ${actor.email}…`,
   );
 
-  const { terms, pages, posts, navigation } = await withCurrentSite(
-    siteId,
-    async () => seedAll(actor, theme),
+  const { terms, pages, posts, navigation } = await withCurrentSite(siteId, async () =>
+    seedAll(actor, theme),
   );
 
   if (terms.skipped) console.log("• terms: already populated, skipping");
@@ -117,11 +114,9 @@ async function main(): Promise<void> {
   else console.log(`  ✓ pages: ${pages.created} created`);
   if (posts.skipped) console.log("• posts: already populated, skipping");
   else console.log(`  ✓ posts: ${posts.created} created`);
-  if (navigation.headerSkipped)
-    console.log("• header navigation: already exists, skipping");
+  if (navigation.headerSkipped) console.log("• header navigation: already exists, skipping");
   else console.log(`  ✓ header navigation: ${navigation.header} items`);
-  if (navigation.footerSkipped)
-    console.log("• footer navigation: already exists, skipping");
+  if (navigation.footerSkipped) console.log("• footer navigation: already exists, skipping");
   else console.log(`  ✓ footer navigation: ${navigation.footer} items`);
 
   console.log("");

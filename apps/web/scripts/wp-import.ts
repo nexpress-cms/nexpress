@@ -26,7 +26,7 @@ import {
   runCli,
 } from "@nexpress/wp-import";
 
-import { ensureFor } from "../src/lib/init-core";
+import { ensureFor } from "../src/lib/init-core.js";
 
 /**
  * Phase 21.4 — `pnpm wp-import` shim. The CLI logic lives in
@@ -104,166 +104,170 @@ const code = await runCli(process.argv.slice(2), undefined, {
         update: ctx.update,
         reportHtml: reportHtml?.deps,
         resume,
-      media: {
-        upload: async (file) => {
-          const result = await uploadMedia(
-            { buffer: file.buffer, originalFilename: file.originalFilename, mimeType: file.mimeType },
-            ctx.actor.id,
-          );
-          return { id: result.id };
+        media: {
+          upload: async (file) => {
+            const result = await uploadMedia(
+              {
+                buffer: file.buffer,
+                originalFilename: file.originalFilename,
+                mimeType: file.mimeType,
+              },
+              ctx.actor.id,
+            );
+            return { id: result.id };
+          },
+          // Phase 21.13 — cross-run dedup. The framework's media
+          // service computes the SHA-256 on insert, so a second
+          // import of the same WXR finds the existing row and
+          // skips both download + upload. `deletedAt IS NULL` keeps
+          // soft-deleted media from being silently revived.
+          findExistingByHash: async (sha256) => {
+            const db = getDb();
+            const [hit] = await db
+              .select({ id: npMedia.id })
+              .from(npMedia)
+              .where(and(eq(npMedia.hash, sha256), isNull(npMedia.deletedAt)))
+              .limit(1);
+            return hit ? { id: hit.id } : null;
+          },
         },
-        // Phase 21.13 — cross-run dedup. The framework's media
-        // service computes the SHA-256 on insert, so a second
-        // import of the same WXR finds the existing row and
-        // skips both download + upload. `deletedAt IS NULL` keeps
-        // soft-deleted media from being silently revived.
-        findExistingByHash: async (sha256) => {
-          const db = getDb();
-          const [hit] = await db
-            .select({ id: npMedia.id })
-            .from(npMedia)
-            .where(and(eq(npMedia.hash, sha256), isNull(npMedia.deletedAt)))
-            .limit(1);
-          return hit ? { id: hit.id } : null;
-        },
-      },
-      taxonomies: {
-        findOrCreate: async ({ taxonomy, slug, name }) => {
-          // Route WP `category` → categories collection, WP
-          // `post_tag` → tags collection. Anything else (custom WP
-          // taxonomies the operator might have configured) is
-          // skipped — the wp-import applier records a notes line
-          // and the post imports without that term wired. User
-          // projects with custom taxonomy storage swap in their
-          // own resolver to handle additional WP taxonomies.
-          const collectionSlug =
-            taxonomy === "category"
-              ? "categories"
-              : taxonomy === "post_tag"
-                ? "tags"
-                : null;
-          if (!collectionSlug) return null;
+        taxonomies: {
+          findOrCreate: async ({ taxonomy, slug, name }) => {
+            // Route WP `category` → categories collection, WP
+            // `post_tag` → tags collection. Anything else (custom WP
+            // taxonomies the operator might have configured) is
+            // skipped — the wp-import applier records a notes line
+            // and the post imports without that term wired. User
+            // projects with custom taxonomy storage swap in their
+            // own resolver to handle additional WP taxonomies.
+            const collectionSlug =
+              taxonomy === "category" ? "categories" : taxonomy === "post_tag" ? "tags" : null;
+            if (!collectionSlug) return null;
 
-          // Look up by slug first (the slugField is unique on each
-          // split collection). Both collections share the same
-          // (name, slug, description) shape, so the same code path
-          // covers both.
-          const existing = await findDocuments(
-            collectionSlug,
-            { where: { slug }, limit: 1 },
-            ctx.actor,
-          );
-          const hit = existing.docs[0];
-          if (hit) {
-            const id = typeof hit.id === "string" ? hit.id : null;
-            if (id) return { id };
-          }
-          const created = await saveDocument(
-            collectionSlug,
-            null,
-            { name, slug },
-            ctx.actor,
-            { status: "published" },
-          );
-          const createdId =
-            typeof created.doc.id === "string" ? created.doc.id : null;
-          if (!createdId) {
-            throw new Error(`${collectionSlug} create returned no id`);
-          }
-          return { id: createdId };
+            // Look up by slug first (the slugField is unique on each
+            // split collection). Both collections share the same
+            // (name, slug, description) shape, so the same code path
+            // covers both.
+            const existing = await findDocuments(
+              collectionSlug,
+              { where: { slug }, limit: 1 },
+              ctx.actor,
+            );
+            const hit = existing.docs[0];
+            if (hit) {
+              const id = typeof hit.id === "string" ? hit.id : null;
+              if (id) return { id };
+            }
+            const created = await saveDocument(collectionSlug, null, { name, slug }, ctx.actor, {
+              status: "published",
+            });
+            const createdId = typeof created.doc.id === "string" ? created.doc.id : null;
+            if (!createdId) {
+              throw new Error(`${collectionSlug} create returned no id`);
+            }
+            return { id: createdId };
+          },
         },
-      },
-      comments: {
-        ensureImportedMember: async ({ handle, email, displayName }) => {
-          const db = getDb();
-          const [existing] = await db
-            .select({ id: npMembers.id })
-            .from(npMembers)
-            .where(eq(npMembers.handle, handle))
-            .limit(1);
-          if (existing) return { id: existing.id };
-          // No password, no verified email — `imported` status
-          // already blocks login. Email collisions are rare for
-          // imported guests but possible if a live member already
-          // owns the address; in that case fall through with a
-          // synthetic placeholder so the unique index on
-          // np_members.email doesn't reject the insert.
-          const safeEmail = email && (await isEmailFree(email)) ? email : `${handle}@imported.invalid`;
-          const [inserted] = await db
-            .insert(npMembers)
-            .values({
-              handle,
-              email: safeEmail,
-              displayName,
-              status: "imported",
-              emailVerified: false,
-            })
-            .returning({ id: npMembers.id });
-          if (!inserted) throw new Error("imported member insert returned no row");
-          return { id: inserted.id };
-        },
-        insertComment: async ({ targetType, targetId, parentId, memberId, bodyMd, bodyHtml, createdAt }) => {
-          const db = getDb();
-          const [row] = await db
-            .insert(npComments)
-            .values({
-              targetType,
-              targetId,
-              parentId,
-              memberId,
-              bodyMd,
-              bodyHtml,
-              status: "visible",
-              createdAt,
-            })
-            .returning({ id: npComments.id });
-          if (!row) throw new Error("comment insert returned no row");
-          return { id: row.id };
-        },
-        renderBody: (source) => renderCommentMarkdown(source),
-      },
-      collectionMappings: ctx.collectionMappings,
-      preserveOriginalAuthor: { posts: "wpOriginalAuthor" },
-      audit: {
-        record: ({ action, targetType, targetId, payload }) =>
-          recordAuditEvent({
-            actor: { kind: "staff", userId: ctx.actor.id },
-            action,
+        comments: {
+          ensureImportedMember: async ({ handle, email, displayName }) => {
+            const db = getDb();
+            const [existing] = await db
+              .select({ id: npMembers.id })
+              .from(npMembers)
+              .where(eq(npMembers.handle, handle))
+              .limit(1);
+            if (existing) return { id: existing.id };
+            // No password, no verified email — `imported` status
+            // already blocks login. Email collisions are rare for
+            // imported guests but possible if a live member already
+            // owns the address; in that case fall through with a
+            // synthetic placeholder so the unique index on
+            // np_members.email doesn't reject the insert.
+            const safeEmail =
+              email && (await isEmailFree(email)) ? email : `${handle}@imported.invalid`;
+            const [inserted] = await db
+              .insert(npMembers)
+              .values({
+                handle,
+                email: safeEmail,
+                displayName,
+                status: "imported",
+                emailVerified: false,
+              })
+              .returning({ id: npMembers.id });
+            if (!inserted) throw new Error("imported member insert returned no row");
+            return { id: inserted.id };
+          },
+          insertComment: async ({
             targetType,
             targetId,
-            payload,
-          }),
-      },
-      authors: ctx.createAuthors
-        ? {
-            resolveAuthor: async ({ wpAuthorLogin, wpAuthor }) => {
-              const db = getDb();
-              const email = wpAuthor?.email
-                ? flagImportedEmail(wpAuthor.email)
-                : `${wpAuthorLogin}@wp-import.invalid`;
-              const [existing] = await db
-                .select({ id: npUsers.id })
-                .from(npUsers)
-                .where(eq(npUsers.email, email))
-                .limit(1);
-              if (existing) return { id: existing.id };
-              const password = await hashPassword(
-                `wp-import-${wpAuthorLogin}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-              );
-              const [inserted] = await db
-                .insert(npUsers)
-                .values({
-                  email,
-                  password,
-                  name: wpAuthor?.displayName || wpAuthorLogin,
-                  role: "viewer",
-                })
-                .returning({ id: npUsers.id });
-              if (!inserted) throw new Error("staff user insert returned no row");
-              return { id: inserted.id };
-            },
-          }
-        : { resolveAuthor: () => Promise.resolve(null) },
+            parentId,
+            memberId,
+            bodyMd,
+            bodyHtml,
+            createdAt,
+          }) => {
+            const db = getDb();
+            const [row] = await db
+              .insert(npComments)
+              .values({
+                targetType,
+                targetId,
+                parentId,
+                memberId,
+                bodyMd,
+                bodyHtml,
+                status: "visible",
+                createdAt,
+              })
+              .returning({ id: npComments.id });
+            if (!row) throw new Error("comment insert returned no row");
+            return { id: row.id };
+          },
+          renderBody: (source) => renderCommentMarkdown(source),
+        },
+        collectionMappings: ctx.collectionMappings,
+        preserveOriginalAuthor: { posts: "wpOriginalAuthor" },
+        audit: {
+          record: ({ action, targetType, targetId, payload }) =>
+            recordAuditEvent({
+              actor: { kind: "staff", userId: ctx.actor.id },
+              action,
+              targetType,
+              targetId,
+              payload,
+            }),
+        },
+        authors: ctx.createAuthors
+          ? {
+              resolveAuthor: async ({ wpAuthorLogin, wpAuthor }) => {
+                const db = getDb();
+                const email = wpAuthor?.email
+                  ? flagImportedEmail(wpAuthor.email)
+                  : `${wpAuthorLogin}@wp-import.invalid`;
+                const [existing] = await db
+                  .select({ id: npUsers.id })
+                  .from(npUsers)
+                  .where(eq(npUsers.email, email))
+                  .limit(1);
+                if (existing) return { id: existing.id };
+                const password = await hashPassword(
+                  `wp-import-${wpAuthorLogin}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+                );
+                const [inserted] = await db
+                  .insert(npUsers)
+                  .values({
+                    email,
+                    password,
+                    name: wpAuthor?.displayName || wpAuthorLogin,
+                    role: "viewer",
+                  })
+                  .returning({ id: npUsers.id });
+                if (!inserted) throw new Error("staff user insert returned no row");
+                return { id: inserted.id };
+              },
+            }
+          : { resolveAuthor: () => Promise.resolve(null) },
       });
     } finally {
       reportHtml?.close();
@@ -375,7 +379,7 @@ async function findFirstAdmin(): Promise<NpAuthUser | null> {
     id: row.id,
     email: row.email,
     name: row.name,
-    role: row.role as NpAuthUser["role"],
+    role: row.role,
     tokenVersion: row.tokenVersion,
   };
 }
