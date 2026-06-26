@@ -27,6 +27,8 @@ import { defineConfig } from "tsup";
  */
 const scriptEntries = {
   "scripts/_load-env": "src/scripts/_load-env.ts",
+  "scripts/build": "src/scripts/build.ts",
+  "scripts/build-core": "src/scripts/build-core.ts",
   "scripts/deploy-plan": "src/scripts/deploy-plan.ts",
   "scripts/deploy-plan-core": "src/scripts/deploy-plan-core.ts",
   "scripts/deploy-targets": "src/scripts/deploy-targets.ts",
