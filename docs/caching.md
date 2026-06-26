@@ -82,6 +82,24 @@ Write routes already call `revalidateCollection` after
 successful saves / deletes. Sites that add collections add
 their own entries to the rule map (or override defaults).
 
+Collection writes also forward the resolved path/tag hints to
+an optional CDN purge bridge:
+
+```ts
+import { setCdnPurgeAdapter } from "@nexpress/next";
+
+setCdnPurgeAdapter({
+  async purge({ paths, tags }) {
+    // Call your CDN provider here. Providers differ: some purge
+    // by tag/surrogate key, some by URL/path, some support both.
+  },
+});
+```
+
+The adapter runs fire-and-forget after each invalidation pass.
+Failures are logged and swallowed so a temporary CDN provider
+outage does not turn a successful content write into a 500.
+
 **Test fallback**
 
 `unstable_cache` requires Next's incremental cache, which is
@@ -178,11 +196,12 @@ serving with no CDN; that's fine for development.
   `nx:search`). Multi-tenant writes hit the site-scoped tags
   for precision, while the global tags remain as a compatibility
   hammer for older plugins and external purgers.
-- **CDN cache invalidation** — `revalidateTag` only flushes
-  the Next data cache, not a downstream CDN. Sites running
-  Cloudflare / Fastly need their own purge call. A pluggable
-  hook (`setCdnPurgeAdapter()`) parallel to the spam /
-  search adapters is the natural fit.
+- **CDN cache invalidation providers** — collection writes now
+  expose a stable `setCdnPurgeAdapter()` hook, but NexPress does
+  not ship provider-specific Cloudflare / Fastly adapters yet.
+  Direct non-collection invalidations (theme/site/navigation
+  saves) still use the Next data-cache APIs directly and can
+  adopt the same bridge in a later pass.
 - **stale-while-revalidate (data cache)** — `unstable_cache`
   itself doesn't expose a SWR window; a request arriving
   just after the 600s TTL waits for the regen. The HTTP

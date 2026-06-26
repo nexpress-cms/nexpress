@@ -62,6 +62,14 @@ export {
 } from "./revalidate.js";
 
 export {
+  getCdnPurgeAdapter,
+  resetCdnPurgeAdapter,
+  setCdnPurgeAdapter,
+  type NpCdnPurgeAdapter,
+  type NpCdnPurgeRequest,
+} from "./cdn-purge.js";
+
+export {
   canActorUseSite,
   createBootstrap,
   type Bootstrap,
@@ -98,7 +106,4 @@ export { getSiteMember } from "./site-member.js";
 
 export { JsonLd } from "./json-ld.js";
 
-export {
-  fetchFrontListPosts,
-  type FetchFrontListPostsOptions,
-} from "./list-front-posts.js";
+export { fetchFrontListPosts, type FetchFrontListPostsOptions } from "./list-front-posts.js";
