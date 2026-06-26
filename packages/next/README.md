@@ -56,9 +56,22 @@ Three intents:
 Use `revalidateCollection()` instead of importing `next/cache` directly:
 
 ```ts
-import { revalidateCollection } from "@nexpress/next";
+import { defaultRevalidationRules, revalidateCollection } from "@nexpress/next";
 
-await revalidateCollection("posts");
+revalidateCollection(defaultRevalidationRules, "posts");
+```
+
+Sites behind a CDN can also bridge collection invalidation hints to their
+provider:
+
+```ts
+import { setCdnPurgeAdapter } from "@nexpress/next";
+
+setCdnPurgeAdapter({
+  async purge({ paths, tags }) {
+    // Call Cloudflare, Fastly, or another CDN provider here.
+  },
+});
 ```
 
 ## What's also exported

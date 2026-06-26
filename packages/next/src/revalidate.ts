@@ -1,5 +1,6 @@
 import { getCurrentSiteId, getLogger } from "@nexpress/core";
 import { revalidatePath, revalidateTag } from "next/cache";
+import { purgeCdnCache } from "./cdn-purge.js";
 
 export interface CollectionRevalidationRule {
   /**
@@ -28,6 +29,16 @@ export type RevalidationMap = Record<string, CollectionRevalidationRule>;
 interface SubstituteContext {
   documentSlug: string | undefined;
   siteId: string | null;
+}
+
+interface RevalidationTargets {
+  paths: string[];
+  tags: string[];
+}
+
+interface EmitContext {
+  collection: string;
+  documentSlug: string | undefined;
 }
 
 function substitute(template: string, ctx: SubstituteContext): string | null {
@@ -70,7 +81,7 @@ export function revalidateCollection(
   // siteId. This includes the legacy global tags (`nx:sitemap`,
   // `nx:feed:posts`, …) so existing site-scoped cache wrappers
   // (Phase 14.8) and global wrappers both clear.
-  emit(rule, { documentSlug, siteId: null });
+  emit(rule, { documentSlug, siteId: null }, { collection: slug, documentSlug });
 
   // Second pass — resolve siteId asynchronously and re-fire
   // any rule entries that contain `{siteId}`. Fire-and-forget
@@ -79,13 +90,37 @@ export function revalidateCollection(
   // already covered the global-tag invalidation as a safety
   // net, so a missed site-scoped tag is at worst over-
   // invalidation, never stale-cache.
-  void emitSiteScopedTags(rule, documentSlug);
+  void emitSiteScopedTags(rule, slug, documentSlug);
 }
 
-function emit(rule: CollectionRevalidationRule, ctx: SubstituteContext): void {
+function collectTargets(
+  rule: CollectionRevalidationRule,
+  ctx: SubstituteContext,
+): RevalidationTargets {
+  const paths: string[] = [];
+  const tags: string[] = [];
+
   for (const raw of rule.paths) {
     const target = substitute(raw, ctx);
-    if (!target) continue;
+    if (target) paths.push(target);
+  }
+
+  for (const rawTag of rule.tags ?? []) {
+    const target = substitute(rawTag, ctx);
+    if (target) tags.push(target);
+  }
+
+  return { paths, tags };
+}
+
+function emit(
+  rule: CollectionRevalidationRule,
+  ctx: SubstituteContext,
+  emitContext: EmitContext,
+): void {
+  const targets = collectTargets(rule, ctx);
+
+  for (const target of targets.paths) {
     try {
       revalidatePath(target);
     } catch (error) {
@@ -105,9 +140,7 @@ function emit(rule: CollectionRevalidationRule, ctx: SubstituteContext): void {
   // Phase 14.1 — bust any registered tags alongside paths so
   // `unstable_cache`-wrapped readers (sitemap, feed, navigation,
   // theme tokens) drop their cached output on the next request.
-  for (const rawTag of rule.tags ?? []) {
-    const target = substitute(rawTag, ctx);
-    if (!target) continue;
+  for (const target of targets.tags) {
     try {
       // Next 16 made `revalidateTag` two-arg: `(tag, profile)`.
       // `"default"` matches the implicit profile our
@@ -124,10 +157,20 @@ function emit(rule: CollectionRevalidationRule, ctx: SubstituteContext): void {
       }
     }
   }
+
+  purgeCdnCache({
+    source: "collection",
+    collection: emitContext.collection,
+    documentSlug: emitContext.documentSlug,
+    siteId: ctx.siteId,
+    paths: targets.paths,
+    tags: targets.tags,
+  });
 }
 
 async function emitSiteScopedTags(
   rule: CollectionRevalidationRule,
+  collection: string,
   documentSlug: string | undefined,
 ): Promise<void> {
   // Skip the work entirely if no rule entry references {siteId}.
@@ -148,7 +191,7 @@ async function emitSiteScopedTags(
     paths: rule.paths.filter((p) => p.includes("{siteId}")),
     tags: rule.tags?.filter((t) => t.includes("{siteId}")),
   };
-  emit(siteScopedRule, { documentSlug, siteId });
+  emit(siteScopedRule, { documentSlug, siteId }, { collection, documentSlug });
 }
 
 /**
