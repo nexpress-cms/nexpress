@@ -30,7 +30,7 @@ This bit a scaffolded site's `pnpm run seed:content` in #834. Two tsx scripts (s
 
 ## What's in place today (mitigation, not fix)
 
-Four guard layers, each one trades architectural coherence for staying-ahead-of-the-bug-class:
+Five guard layers, each one trades architectural coherence for staying-ahead-of-the-bug-class:
 
 - **#834 — bypass** (`scaffold templates`): the two tsx scripts that hit the
   bug (`seed-content.ts`, `worker.ts`) now bootstrap via `createBootstrap`
@@ -53,6 +53,12 @@ Four guard layers, each one trades architectural coherence for staying-ahead-of-
   entrypoints through `tsx` after `pnpm build`, with closed-port DB/env
   values, and fails on the same resolver-crash signatures. Catches source-side
   script regressions before they reach the scaffold/publish path.
+- **Scaffold script import guard** (`.github/scripts/check-scaffold-journey.mjs`):
+  derives the installed `@nexpress/app/dist/lib` entries that still transit
+  through the consumer `@/lib/*` alias, then fails if any generated
+  `scripts/*.ts` imports one directly or through a scaffold `src/lib/*`
+  wrapper. This catches the risky import before it becomes another
+  closed-port runtime smoke failure.
 
 Net: the bug class is closed for every known consumer. The **debt** is "future tsx-script consumers that genuinely need to use `@nexpress/app/lib/*` symbols would still break, and they'd be the ones to surface the constraint."
 

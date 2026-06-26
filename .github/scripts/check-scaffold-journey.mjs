@@ -9,8 +9,8 @@
  * target-aware doctor failure messages.
  */
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const [, , scaffoldDirArg] = process.argv;
@@ -160,6 +160,122 @@ function assertProjectJsonCommand(command, label) {
   }
 }
 
+function extractImportSpecifiers(source) {
+  const specifiers = new Set();
+  const staticImport =
+    /\b(?:import|export)\s+(?:type\s+)?(?:[^"'();]*?\s+from\s+)?["']([^"']+)["']/g;
+  const dynamicImport = /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
+
+  for (const match of source.matchAll(staticImport)) specifiers.add(match[1]);
+  for (const match of source.matchAll(dynamicImport)) specifiers.add(match[1]);
+  return [...specifiers];
+}
+
+function resolveJsImport(fromFile, specifier) {
+  if (!specifier.startsWith(".")) return null;
+
+  const base = resolve(dirname(fromFile), specifier);
+  if (existsSync(base)) return base;
+  if (existsSync(`${base}.js`)) return `${base}.js`;
+  return null;
+}
+
+function findUnsafeAppLibModules() {
+  const appDistDir = resolve(scaffoldDir, "node_modules/@nexpress/app/dist");
+  const appDistLibDir = resolve(appDistDir, "lib");
+  if (!existsSync(appDistLibDir)) {
+    fail("installed @nexpress/app package is missing dist/lib");
+  }
+
+  const unsafeByFile = new Map();
+  function fileTouchesConsumerAlias(file, stack = new Set()) {
+    const cached = unsafeByFile.get(file);
+    if (cached !== undefined) return cached;
+    if (stack.has(file)) return false;
+
+    stack.add(file);
+    const source = readFileSync(file, "utf8");
+    let unsafe = /@\/lib\//.test(source);
+    if (!unsafe) {
+      for (const specifier of extractImportSpecifiers(source)) {
+        const resolved = resolveJsImport(file, specifier);
+        if (
+          resolved &&
+          resolved.startsWith(appDistDir) &&
+          fileTouchesConsumerAlias(resolved, stack)
+        ) {
+          unsafe = true;
+          break;
+        }
+      }
+    }
+    stack.delete(file);
+    unsafeByFile.set(file, unsafe);
+    return unsafe;
+  }
+
+  return new Set(
+    readdirSync(appDistLibDir)
+      .filter((entry) => entry.endsWith(".js"))
+      .filter((entry) => fileTouchesConsumerAlias(resolve(appDistLibDir, entry)))
+      .map((entry) => entry.replace(/\.js$/, "")),
+  );
+}
+
+function unsafeScriptImport(scriptFile, specifier, unsafeAppLibModules) {
+  const withoutExtension = specifier.replace(/\.(?:js|ts|tsx)$/, "");
+
+  const appLibPrefix = "@nexpress/app/lib/";
+  if (withoutExtension.startsWith(appLibPrefix)) {
+    const imported = withoutExtension.slice(appLibPrefix.length);
+    return unsafeAppLibModules.has(imported) ? imported : null;
+  }
+
+  const aliasPrefix = "@/lib/";
+  if (withoutExtension.startsWith(aliasPrefix)) {
+    const imported = withoutExtension.slice(aliasPrefix.length);
+    return unsafeAppLibModules.has(imported) ? imported : null;
+  }
+
+  if (!specifier.startsWith(".")) return null;
+
+  const scriptDir = dirname(scriptFile);
+  const resolved = resolve(scriptDir, withoutExtension);
+  const rel = relative(resolve(scaffoldDir, "src/lib"), resolved);
+  if (rel.startsWith("..") || rel === "" || rel.includes("..")) return null;
+
+  const imported = rel.split(/[\\/]/).join("/");
+  return unsafeAppLibModules.has(imported) ? imported : null;
+}
+
+function assertScaffoldScriptsAvoidUnsafeAppLibs() {
+  const scriptsDir = resolve(scaffoldDir, "scripts");
+  const unsafeAppLibModules = findUnsafeAppLibModules();
+  const violations = [];
+
+  for (const entry of readdirSync(scriptsDir)) {
+    if (!entry.endsWith(".ts")) continue;
+
+    const scriptFile = resolve(scriptsDir, entry);
+    const source = readFileSync(scriptFile, "utf8");
+    for (const specifier of extractImportSpecifiers(source)) {
+      const unsafeModule = unsafeScriptImport(scriptFile, specifier, unsafeAppLibModules);
+      if (!unsafeModule) continue;
+      violations.push(`${entry}: ${specifier} -> @nexpress/app/lib/${unsafeModule}`);
+    }
+  }
+
+  if (violations.length > 0) {
+    fail(
+      "scaffold tsx scripts must not import app lib modules that transit through the consumer bootstrap alias",
+      violations.join("\n"),
+    );
+  }
+
+  const listed = [...unsafeAppLibModules].sort().join(", ") || "(none)";
+  console.log(`✓ scaffold tsx scripts avoid unsafe app lib bootstrap transits: ${listed}`);
+}
+
 for (const name of REQUIRED_SCRIPTS) {
   if (!pkg.scripts?.[name]) {
     fail(`scaffold package.json missing script: ${name}`);
@@ -176,6 +292,7 @@ for (const [name, expected] of Object.entries(EXACT_SCRIPTS)) {
   }
 }
 console.log("✓ deploy package scripts keep the expected pnpm run shape");
+assertScaffoldScriptsAvoidUnsafeAppLibs();
 
 const deployPlan = runTsx("scripts/deploy-plan.ts", ["--target", "vercel"]);
 assertNoResolverCrash(deployPlan.output, "deploy:plan");
