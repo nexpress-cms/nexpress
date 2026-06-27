@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+  revalidateTag: vi.fn(),
   unstable_cache: vi.fn(),
 }));
 
@@ -17,9 +19,11 @@ vi.mock("@nexpress/core", () => ({
   pluginConfigCacheTag: (id: string) => `np:plugin:${id}`,
 }));
 
-const { unstable_cache } = await import("next/cache");
+const { revalidatePath, revalidateTag, unstable_cache } = await import("next/cache");
 const core = await import("@nexpress/core");
+const { resetCdnPurgeAdapter, setCdnPurgeAdapter } = await import("./cdn-purge.js");
 const {
+  bustThemeCache,
   cachedPluginFetch,
   cachedThemeFetch,
   getCachedActiveThemeId,
@@ -37,9 +41,33 @@ describe("cache tag helpers", () => {
 
   it("scopes the nav tag by site id and location", () => {
     expect(navCacheTag("default", "header")).toBe("nx:nav:default:header");
-    expect(navCacheTag("blog-jp", "footer")).toBe(
-      "nx:nav:blog-jp:footer",
-    );
+    expect(navCacheTag("blog-jp", "footer")).toBe("nx:nav:blog-jp:footer");
+  });
+});
+
+describe("bustThemeCache", () => {
+  beforeEach(() => {
+    vi.mocked(revalidatePath).mockClear();
+    vi.mocked(revalidateTag).mockClear();
+    resetCdnPurgeAdapter();
+  });
+
+  it("invalidates theme, SEO tags, root layout, and CDN hints together", async () => {
+    const purge = vi.fn();
+    setCdnPurgeAdapter({ purge });
+
+    await bustThemeCache("default");
+
+    expect(revalidateTag).toHaveBeenCalledWith("nx:theme:default", "default");
+    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap:default", "default");
+    expect(revalidateTag).toHaveBeenCalledWith("nx:feed:default", "default");
+    expect(revalidatePath).toHaveBeenCalledWith("/", "layout");
+    expect(purge).toHaveBeenCalledWith({
+      source: "theme",
+      siteId: "default",
+      tags: ["nx:theme:default", "nx:sitemap:default", "nx:feed:default"],
+      paths: ["/"],
+    });
   });
 });
 
@@ -75,9 +103,7 @@ describe("getCachedTheme", () => {
   it("falls through to uncached read when Next's incremental cache is unavailable", async () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
     const cacheError = new Error("incrementalCache missing");
-    vi.mocked(unstable_cache).mockReturnValueOnce(
-      (() => Promise.reject(cacheError)) as never,
-    );
+    vi.mocked(unstable_cache).mockReturnValueOnce((() => Promise.reject(cacheError)) as never);
     const expected = { tokens: "fresh" };
     vi.mocked(core.getTheme).mockResolvedValueOnce(expected as never);
 
@@ -190,11 +216,7 @@ describe("cachedThemeFetch", () => {
       expect.any(Function),
       expect.any(Array),
       expect.objectContaining({
-        tags: [
-          "nx:theme:default",
-          "nx:collection:posts",
-          "nx:collection:authors",
-        ],
+        tags: ["nx:theme:default", "nx:collection:posts", "nx:collection:authors"],
       }),
     );
   });
@@ -202,9 +224,7 @@ describe("cachedThemeFetch", () => {
   it("falls back to uncached fetcher when Next's incremental cache is unavailable", async () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
     const cacheError = new Error("incrementalCache missing");
-    vi.mocked(unstable_cache).mockReturnValueOnce(
-      (() => Promise.reject(cacheError)) as never,
-    );
+    vi.mocked(unstable_cache).mockReturnValueOnce((() => Promise.reject(cacheError)) as never);
     const fetcher = vi.fn(() => Promise.resolve("fresh-result"));
 
     const result = await cachedThemeFetch(["k"], fetcher);
@@ -216,14 +236,10 @@ describe("cachedThemeFetch", () => {
   it("propagates non-incremental-cache errors", async () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
     const realError = new Error("DB connection refused");
-    vi.mocked(unstable_cache).mockReturnValueOnce(
-      (() => Promise.reject(realError)) as never,
-    );
+    vi.mocked(unstable_cache).mockReturnValueOnce((() => Promise.reject(realError)) as never);
     const fetcher = vi.fn(() => Promise.resolve("x"));
 
-    await expect(
-      cachedThemeFetch(["k"], fetcher),
-    ).rejects.toBe(realError);
+    await expect(cachedThemeFetch(["k"], fetcher)).rejects.toBe(realError);
     expect(fetcher).not.toHaveBeenCalled();
   });
 });
@@ -231,13 +247,9 @@ describe("cachedThemeFetch", () => {
 describe("cachedPluginFetch", () => {
   it("registers a per-site, per-plugin cache key with caller-supplied parts", async () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("blog-jp");
-    vi.mocked(unstable_cache).mockReturnValueOnce(
-      (() => Promise.resolve("x")) as never,
-    );
+    vi.mocked(unstable_cache).mockReturnValueOnce((() => Promise.resolve("x")) as never);
 
-    await cachedPluginFetch("forum", ["list", "2"], () =>
-      Promise.resolve("data"),
-    );
+    await cachedPluginFetch("forum", ["list", "2"], () => Promise.resolve("data"));
 
     expect(unstable_cache).toHaveBeenLastCalledWith(
       expect.any(Function),
@@ -248,9 +260,7 @@ describe("cachedPluginFetch", () => {
 
   it("defaults revalidate to 60 seconds", async () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
-    vi.mocked(unstable_cache).mockReturnValueOnce(
-      (() => Promise.resolve("x")) as never,
-    );
+    vi.mocked(unstable_cache).mockReturnValueOnce((() => Promise.resolve("x")) as never);
 
     await cachedPluginFetch("forum", ["k"], () => Promise.resolve("x"));
 
@@ -263,9 +273,7 @@ describe("cachedPluginFetch", () => {
 
   it("honors caller-supplied revalidate", async () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
-    vi.mocked(unstable_cache).mockReturnValueOnce(
-      (() => Promise.resolve("x")) as never,
-    );
+    vi.mocked(unstable_cache).mockReturnValueOnce((() => Promise.resolve("x")) as never);
 
     await cachedPluginFetch("forum", ["k"], () => Promise.resolve("x"), {
       revalidate: 300,
@@ -280,9 +288,7 @@ describe("cachedPluginFetch", () => {
 
   it("appends extraTags after the always-on plugin-config tag", async () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
-    vi.mocked(unstable_cache).mockReturnValueOnce(
-      (() => Promise.resolve("x")) as never,
-    );
+    vi.mocked(unstable_cache).mockReturnValueOnce((() => Promise.resolve("x")) as never);
 
     await cachedPluginFetch("forum", ["k"], () => Promise.resolve("x"), {
       extraTags: ["nx:collection:discussions"],
@@ -300,9 +306,7 @@ describe("cachedPluginFetch", () => {
   it("falls back to uncached fetcher when Next's incremental cache is unavailable", async () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
     const cacheError = new Error("incrementalCache missing");
-    vi.mocked(unstable_cache).mockReturnValueOnce(
-      (() => Promise.reject(cacheError)) as never,
-    );
+    vi.mocked(unstable_cache).mockReturnValueOnce((() => Promise.reject(cacheError)) as never);
     const fetcher = vi.fn(() => Promise.resolve("fresh-result"));
 
     const result = await cachedPluginFetch("forum", ["k"], fetcher);
@@ -314,38 +318,22 @@ describe("cachedPluginFetch", () => {
   it("propagates non-incremental-cache errors", async () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
     const realError = new Error("DB connection refused");
-    vi.mocked(unstable_cache).mockReturnValueOnce(
-      (() => Promise.reject(realError)) as never,
-    );
+    vi.mocked(unstable_cache).mockReturnValueOnce((() => Promise.reject(realError)) as never);
     const fetcher = vi.fn(() => Promise.resolve("x"));
 
-    await expect(cachedPluginFetch("forum", ["k"], fetcher)).rejects.toBe(
-      realError,
-    );
+    await expect(cachedPluginFetch("forum", ["k"], fetcher)).rejects.toBe(realError);
     expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("two plugins use distinct cache namespaces", async () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValue("default");
-    vi.mocked(unstable_cache).mockReturnValue(
-      (() => Promise.resolve("x")) as never,
-    );
+    vi.mocked(unstable_cache).mockReturnValue((() => Promise.resolve("x")) as never);
 
     await cachedPluginFetch("forum", ["k"], () => Promise.resolve("x"));
     await cachedPluginFetch("calendar", ["k"], () => Promise.resolve("x"));
 
     const calls = vi.mocked(unstable_cache).mock.calls;
-    expect(calls[calls.length - 2]?.[1]).toEqual([
-      "np:plugin-fetch",
-      "default",
-      "forum",
-      "k",
-    ]);
-    expect(calls[calls.length - 1]?.[1]).toEqual([
-      "np:plugin-fetch",
-      "default",
-      "calendar",
-      "k",
-    ]);
+    expect(calls[calls.length - 2]?.[1]).toEqual(["np:plugin-fetch", "default", "forum", "k"]);
+    expect(calls[calls.length - 1]?.[1]).toEqual(["np:plugin-fetch", "default", "calendar", "k"]);
   });
 });

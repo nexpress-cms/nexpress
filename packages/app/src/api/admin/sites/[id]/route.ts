@@ -6,7 +6,7 @@ import {
   isSuperAdmin,
   updateSite,
 } from "@nexpress/core";
-import { readJsonBody, siteCacheTag } from "@nexpress/next";
+import { invalidateCacheTargets, readJsonBody, siteCacheTag } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
@@ -34,10 +34,7 @@ import { canManageSite } from "../../../../lib/site-authz";
  *     a per-site operation; it strikes the row from the registry.
  */
 
-export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> },
-) {
+export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -53,16 +50,11 @@ export async function GET(
     }
     return npSuccessResponse(site);
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
-export async function PATCH(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> },
-) {
+export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -87,25 +79,22 @@ export async function PATCH(
     // Site name + hostname flow through `getCachedSite()` (600s TTL)
     // into every theme's masthead / footer / canonical URL. Without
     // this bust an admin rename surfaces on the public site after a
-    // 10-minute stall. `revalidate*` throws outside a request
-    // context, but PATCH always runs inside one — no need to guard.
+    // 10-minute stall.
     if (patch.name !== undefined || patch.hostname !== undefined) {
-      const { revalidatePath, revalidateTag } = await import("next/cache");
-      revalidateTag(siteCacheTag(id), "default");
-      revalidatePath("/", "layout");
+      invalidateCacheTargets({
+        source: "site",
+        siteId: id,
+        tags: [siteCacheTag(id)],
+        paths: [{ path: "/", type: "layout" }],
+      });
     }
     return npSuccessResponse(site);
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> },
-) {
+export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -125,9 +114,7 @@ export async function DELETE(
     await deleteSite(id, { cascade });
     return npSuccessResponse({ id, deleted: true, cascade });
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

@@ -160,9 +160,7 @@ describe("collectThemeRoutes — archives expansion", () => {
         },
       },
     });
-    expect(collectThemeRoutes(mo)[0]?.pattern).toBe(
-      "/:year(\\d{4})/:month(\\d{2})",
-    );
+    expect(collectThemeRoutes(mo)[0]?.pattern).toBe("/:year(\\d{4})/:month(\\d{2})");
 
     const day = themeWith({
       archives: {
@@ -171,9 +169,7 @@ describe("collectThemeRoutes — archives expansion", () => {
         },
       },
     });
-    expect(collectThemeRoutes(day)[0]?.pattern).toBe(
-      "/:year(\\d{4})/:month(\\d{2})/:day(\\d{2})",
-    );
+    expect(collectThemeRoutes(day)[0]?.pattern).toBe("/:year(\\d{4})/:month(\\d{2})/:day(\\d{2})");
   });
 
   it("respects per-entry pattern override", () => {
@@ -297,9 +293,7 @@ describe("dispatchPluginRouteSync", () => {
   });
 
   it("returns null when no plugin routes registered", () => {
-    expect(
-      dispatchPluginRouteSync({ localeAwarePath: "/anything", themeRoutes: [] }),
-    ).toBeNull();
+    expect(dispatchPluginRouteSync({ localeAwarePath: "/anything", themeRoutes: [] })).toBeNull();
   });
 
   it("matches a literal plugin route", () => {
@@ -368,12 +362,8 @@ describe("dispatchPluginRouteSync", () => {
   });
 
   it("rejects entries whose component is a primitive (defense-in-depth)", () => {
-    mockPageRoutes = [
-      pluginEntry("bad", "/x", { component: "not-a-component" as unknown }),
-    ];
-    expect(
-      dispatchPluginRouteSync({ localeAwarePath: "/x", themeRoutes: [] }),
-    ).toBeNull();
+    mockPageRoutes = [pluginEntry("bad", "/x", { component: "not-a-component" })];
+    expect(dispatchPluginRouteSync({ localeAwarePath: "/x", themeRoutes: [] })).toBeNull();
   });
 
   it("preserves surface and locale fields on the match", () => {

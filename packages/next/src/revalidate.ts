@@ -1,6 +1,5 @@
-import { getCurrentSiteId, getLogger } from "@nexpress/core";
-import { revalidatePath, revalidateTag } from "next/cache";
-import { purgeCdnCache } from "./cdn-purge.js";
+import { getCurrentSiteId } from "@nexpress/core";
+import { invalidateCacheTargets } from "./cdn-purge.js";
 
 export interface CollectionRevalidationRule {
   /**
@@ -120,45 +119,7 @@ function emit(
 ): void {
   const targets = collectTargets(rule, ctx);
 
-  for (const target of targets.paths) {
-    try {
-      revalidatePath(target);
-    } catch (error) {
-      // revalidatePath throws outside a Next request context (unit tests,
-      // background workers, admin actions invoked via `pg-boss`). Silent
-      // skip — real request traffic already ran it via the route that
-      // produced the write; the worker path can invalidate on its own.
-      if (process.env.NODE_ENV !== "test") {
-        getLogger().warn("revalidateCollection skipped (no Next context)", {
-          target,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-  }
-
-  // Phase 14.1 — bust any registered tags alongside paths so
-  // `unstable_cache`-wrapped readers (sitemap, feed, navigation,
-  // theme tokens) drop their cached output on the next request.
-  for (const target of targets.tags) {
-    try {
-      // Next 16 made `revalidateTag` two-arg: `(tag, profile)`.
-      // `"default"` matches the implicit profile our
-      // `unstable_cache` wrappers use (no explicit `cacheLife`),
-      // so the invalidation reaches every cached entry tagged
-      // with `target`.
-      revalidateTag(target, "default");
-    } catch (error) {
-      if (process.env.NODE_ENV !== "test") {
-        getLogger().warn("revalidateCollection skipped tag (no Next context)", {
-          tag: target,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-  }
-
-  purgeCdnCache({
+  invalidateCacheTargets({
     source: "collection",
     collection: emitContext.collection,
     documentSlug: emitContext.documentSlug,

@@ -446,7 +446,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       if (!secret) return null;
       try {
         const db = getDb();
-        const user = await verifyTokenFull(sessionToken, secret, db as never, "access");
+        const user = await verifyTokenFull(sessionToken, secret, db, "access");
         if (!user) return null;
         return (await canActorUseSite(user, siteId)) ? siteId : null;
       } catch {

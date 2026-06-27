@@ -8,7 +8,7 @@ import {
   can,
 } from "@nexpress/core";
 import type { NpThemeTokens } from "@nexpress/core";
-import { readJsonBody } from "@nexpress/next";
+import { bustThemeCache, readJsonBody } from "@nexpress/next";
 import { and, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
@@ -70,19 +70,10 @@ export async function PUT(request: NextRequest) {
         set: { value: theme, updatedAt: now, updatedBy: user.id },
       });
 
-    // Phase 14.3 — site-scoped tag matches the cache helpers
-    // in `@nexpress/next` (`themeCacheTag(siteId)`). Tenants
-    // editing their own theme don't bust unrelated sites'
-    // caches. The path revalidation stays scoped to the layout
-    // so any cached SSR output downstream also drops.
-    try {
-      const { revalidatePath, revalidateTag } = await import("next/cache");
-      const { themeCacheTag } = await import("@nexpress/next");
-      revalidateTag(themeCacheTag(siteId), "default");
-      revalidatePath("/", "layout");
-    } catch {
-      // Swallow — see active-theme route's matching catch.
-    }
+    // Phase 14.3 — site-scoped tag matches the cache helpers in
+    // `@nexpress/next`. `bustThemeCache` also forwards the same
+    // hints to any configured CDN purge adapter.
+    await bustThemeCache(siteId);
 
     return npSuccessResponse(theme);
   } catch (error) {

@@ -59,7 +59,9 @@ function filterFieldByThemeOrigin(
   return field;
 }
 
-function stripSeoFunctions(seo: NonNullable<NpCollectionConfig["seo"]>): NonNullable<NpCollectionConfig["seo"]> {
+function stripSeoFunctions(
+  seo: NonNullable<NpCollectionConfig["seo"]>,
+): NonNullable<NpCollectionConfig["seo"]> {
   // Walk the seo block and drop any function-valued slot. `urlPath`
   // is the one that's always a function today; the loop survives a
   // future addition without another patch here.
@@ -68,7 +70,7 @@ function stripSeoFunctions(seo: NonNullable<NpCollectionConfig["seo"]>): NonNull
     if (typeof value === "function") continue;
     safe[key] = value;
   }
-  return safe as NonNullable<NpCollectionConfig["seo"]>;
+  return safe;
 }
 
 function stripFieldFunctions(field: NpFieldConfig): NpFieldConfig {
@@ -92,7 +94,8 @@ function stripFieldFunctions(field: NpFieldConfig): NpFieldConfig {
   const strippedAdmin = admin
     ? (() => {
         if (typeof admin.condition === "function") {
-          const fieldName = "name" in field && typeof field.name === "string" ? field.name : "<unknown>";
+          const fieldName =
+            "name" in field && typeof field.name === "string" ? field.name : "<unknown>";
           if (process.env.NODE_ENV !== "production") {
             // One-line dev warning so theme authors who wrote
             // `condition: (data) => ...` see why their field
@@ -123,5 +126,5 @@ function stripFieldFunctions(field: NpFieldConfig): NpFieldConfig {
     return { ...withAdmin, fields: field.fields.map(stripFieldFunctions) } as NpFieldConfig;
   }
 
-  return withAdmin as NpFieldConfig;
+  return withAdmin;
 }

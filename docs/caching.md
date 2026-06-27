@@ -82,8 +82,11 @@ Write routes already call `revalidateCollection` after
 successful saves / deletes. Sites that add collections add
 their own entries to the rule map (or override defaults).
 
-Collection writes also forward the resolved path/tag hints to
-an optional CDN purge bridge:
+Write-side invalidations also forward resolved path/tag hints
+to an optional CDN purge bridge. This includes collection
+writes, theme changes/settings, site rename/hostname changes,
+navigation saves, setup-time site/theme busts, and plugin
+config saves:
 
 ```ts
 import { setCdnPurgeAdapter } from "@nexpress/next";
@@ -98,7 +101,9 @@ setCdnPurgeAdapter({
 
 The adapter runs fire-and-forget after each invalidation pass.
 Failures are logged and swallowed so a temporary CDN provider
-outage does not turn a successful content write into a 500.
+outage does not turn a successful write into a 500. Providers
+that need full URLs should derive them from the deployment's
+canonical site URL plus the received path hints.
 
 **Test fallback**
 
@@ -196,12 +201,12 @@ serving with no CDN; that's fine for development.
   `nx:search`). Multi-tenant writes hit the site-scoped tags
   for precision, while the global tags remain as a compatibility
   hammer for older plugins and external purgers.
-- **CDN cache invalidation providers** — collection writes now
-  expose a stable `setCdnPurgeAdapter()` hook, but NexPress does
-  not ship provider-specific Cloudflare / Fastly adapters yet.
-  Direct non-collection invalidations (theme/site/navigation
-  saves) still use the Next data-cache APIs directly and can
-  adopt the same bridge in a later pass.
+- **CDN cache invalidation providers** — NexPress exposes a
+  stable `setCdnPurgeAdapter()` hook and forwards framework
+  invalidation hints to it, but does not ship provider-specific
+  Cloudflare / Fastly adapters yet. Keep provider credentials,
+  retry policy, batching, and URL expansion in application code
+  for now.
 - **stale-while-revalidate (data cache)** — `unstable_cache`
   itself doesn't expose a SWR window; a request arriving
   just after the 600s TTL waits for the regen. The HTTP

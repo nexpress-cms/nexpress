@@ -1,14 +1,16 @@
 import {
+  NP_DEFAULT_SITE_ID,
   NpForbiddenError,
   NpValidationError,
   can,
+  getCurrentSiteId,
   getPluginConfigWithStatus,
   getPluginRegistration,
   introspectThemeSettingsSchema,
   pluginConfigCacheTag,
   setPluginConfig,
 } from "@nexpress/core";
-import { readJsonBody } from "@nexpress/next";
+import { invalidateCacheTargets, readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
@@ -94,14 +96,13 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
 
     const persisted = await setPluginConfig(pluginId, value, user.id);
 
-    try {
-      const { revalidateTag } = await import("next/cache");
-      revalidateTag(pluginConfigCacheTag(pluginId), "default");
-    } catch {
-      // Outside Next request context (tests, scripts) —
-      // persistence already succeeded; cache bust failure is
-      // not a 500.
-    }
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+    invalidateCacheTargets({
+      source: "plugin-config",
+      siteId,
+      pluginId,
+      tags: [pluginConfigCacheTag(pluginId)],
+    });
 
     return npSuccessResponse({ pluginId, value: persisted });
   } catch (error) {

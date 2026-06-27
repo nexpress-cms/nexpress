@@ -61,7 +61,7 @@ import { defaultRevalidationRules, revalidateCollection } from "@nexpress/next";
 revalidateCollection(defaultRevalidationRules, "posts");
 ```
 
-Sites behind a CDN can also bridge collection invalidation hints to their
+Sites behind a CDN can also bridge framework invalidation hints to their
 provider:
 
 ```ts
