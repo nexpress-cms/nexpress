@@ -81,6 +81,10 @@ export interface DownloadOptions {
   allowPrivateHosts?: boolean;
 }
 
+type FetchInitWithDispatcher = Omit<RequestInit, "dispatcher"> & {
+  dispatcher?: unknown;
+};
+
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_RETRIES = 1;
 const DEFAULT_MAX_REDIRECTS = 3;
@@ -187,21 +191,15 @@ async function fetchWithRedirects(
     // so pinning would have nothing to enforce.
     const dispatcher = pinned ? createPinnedAgent(pinned) : undefined;
     // Node's bundled fetch is undici under the hood and accepts a
-    // `dispatcher` option. Node 22 still vendors undici 6.x, so the
-    // ambient fetch types resolve `Dispatcher` against
-    // `undici-types@6.x` — but our explicit `undici@8` dep makes our
-    // `Agent` the 8.x variant. The two `Dispatcher` shapes are
-    // structurally identical for the call site but TS sees them as
-    // distinct nominal types from different packages. Casting the
-    // assignment through `unknown` ignores the version mismatch at
-    // the boundary; undici 8 is API-compatible for `new Agent({ connect })`,
-    // which is the only surface we touch.
-    const init: RequestInit & { dispatcher?: unknown } = {
+    // `dispatcher` option. Keep the property as `unknown` so the
+    // call site does not couple ambient fetch types to our explicit
+    // undici dependency version.
+    const init: FetchInitWithDispatcher = {
       signal: opts.signal,
       redirect: "manual",
     };
     if (dispatcher) {
-      (init as { dispatcher?: unknown }).dispatcher = dispatcher as unknown;
+      init.dispatcher = dispatcher;
     }
     const res = await opts.fetchImpl(currentUrl, init as RequestInit);
     if (isRedirectStatus(res.status)) {

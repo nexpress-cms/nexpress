@@ -30,5 +30,5 @@ export function getThemeById(id: string): NpTheme | undefined {
 }
 
 export function getRegisteredThemes(): NpTheme[] {
-  return coreGetRegisteredThemes() as unknown as NpTheme[];
+  return coreGetRegisteredThemes() as NpTheme[];
 }

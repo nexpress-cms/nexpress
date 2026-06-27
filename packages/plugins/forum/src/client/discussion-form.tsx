@@ -162,7 +162,7 @@ export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
       }
       const docPayload = (json && typeof json === "object" && "data" in json
         ? (json as { data: { id?: string; slug?: string; status?: string } }).data
-        : (json as { id?: string; slug?: string; status?: string } | null)) ?? null;
+        : json) ?? null;
       const slugOut = docPayload?.slug ?? finalSlug;
       const status = docPayload?.status;
 

@@ -30,7 +30,7 @@ export function rewriteLexicalMedia(root: LexicalRoot, resolution: MediaResoluti
   // Deep-clone so the input remains pure. The Lexical document is
   // small enough that JSON round-tripping is a non-issue.
   const cloned = JSON.parse(JSON.stringify(root)) as LexicalRoot;
-  walk(cloned.root as unknown as Record<string, unknown>, resolution);
+  walk(cloned.root, resolution);
   return cloned;
 }
 

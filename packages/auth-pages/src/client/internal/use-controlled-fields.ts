@@ -37,7 +37,7 @@ export function useControlledFields<T extends Record<string, string>>(
   const fields = {} as { [K in keyof T]: FieldBinding };
   for (const key of Object.keys(initial) as Array<keyof T>) {
     fields[key] = {
-      value: values[key] as string,
+      value: values[key],
       onChange: (event) => {
         const value = event.target.value as T[typeof key];
         setValues((prev) => ({ ...prev, [key]: value }));

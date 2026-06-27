@@ -343,7 +343,7 @@ async function findSibling(
   const id = (row as { id?: string }).id;
   if (!id) return null;
   const full = await getDocumentById(collection, id, user);
-  return (full as Record<string, unknown>) ?? null;
+  return full ?? null;
 }
 
 const FRAMEWORK_FIELDS = new Set([
