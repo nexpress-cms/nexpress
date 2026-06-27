@@ -12,9 +12,16 @@ interface CreatedPage {
   blocks?: CreatedBlock[];
 }
 
+const slugify = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
 test.describe("in-page block editor", () => {
   test("Document view edits preview blocks and persists them", async ({ page, context }) => {
     const title = `E2E document editor ${Date.now()}`;
+    const slug = slugify(title);
     const heroTitle = "Document mode hero";
 
     await context.clearCookies();
@@ -27,6 +34,7 @@ test.describe("in-page block editor", () => {
     await expect(documentTab).toBeVisible();
     await documentTab.click();
     await expect(documentTab).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByText("Draft canvas is empty.")).toBeVisible({ timeout: 15_000 });
 
     const quickInsert = page.getByPlaceholder("Write something, or type / to insert a block");
     await expect(quickInsert).toBeVisible();
@@ -81,6 +89,10 @@ test.describe("in-page block editor", () => {
 
     const createdHero = created.blocks.find((block) => block.type === "hero");
     expect(createdHero?.props?.title).toBe(heroTitle);
+
+    const publicResponse = await page.goto(`/${slug}`);
+    expect(publicResponse?.status()).toBe(200);
+    await expect(page.getByText(heroTitle)).toBeVisible({ timeout: 10_000 });
 
     await page.goto(`/admin/collections/pages/${created.id}`);
     const reopenedDocumentTab = page.getByRole("tab", { name: "Document view" });

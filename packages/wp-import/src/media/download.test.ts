@@ -12,7 +12,7 @@ function makeFetchOnce(
   body: Uint8Array,
   init: ResponseInit & { url?: string } = {},
 ): typeof fetch {
-  return vi.fn(() => Promise.resolve(new Response(body, init))) as unknown as typeof fetch;
+  return vi.fn(() => Promise.resolve(new Response(body, init)));
 }
 
 // All non-SSRF tests pretend the source host resolves to a public

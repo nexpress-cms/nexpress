@@ -28,6 +28,12 @@ The page lives inside an iframe (`srcDoc`, same-origin sandbox)
 so theme CSS stays scoped. Above it, the editor surfaces hover
 controls in the parent React tree.
 
+When the block tree is empty, Document view keeps the preview
+frame mounted and overlays a small empty-state panel with the same
+starter-block choices Page builder exposes. The trailing quick-
+insert bar remains available, so the first block can still be
+plain rich text without opening a modal.
+
 ### Hover affordances
 
 Hovering any block in the canvas highlights it with a primary-
@@ -149,6 +155,15 @@ Pure-logic smoke tests live in
 - Quick-insert slash filtering.
 - Document-mode text metrics, including rich-text Lexical content
   and nested structural copy.
+
+Rendered golden paths live in `apps/web/tests/e2e/`:
+
+- `in-page-editor.spec.ts` edits a preview block in Document view,
+  publishes the page, verifies the public URL renders that block,
+  then reopens the admin editor to confirm the saved preview.
+- `publish.spec.ts` creates a page, authors a rich-text block from
+  Document view's quick insert, publishes it, and verifies the
+  authored text renders on the public site.
 
 Run with `pnpm --filter @nexpress/web run test`. The unit suite
 runs without a database; the existing integration suite at

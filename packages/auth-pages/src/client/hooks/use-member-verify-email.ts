@@ -61,6 +61,8 @@ export function useMemberVerifyEmail(
   }, [endpoint, messages, options]);
 
   useEffect(() => {
+    // Auto-verification starts as soon as the token landing page mounts.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (autoVerify) void verify();
     // We intentionally fire once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps

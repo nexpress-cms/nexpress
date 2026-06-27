@@ -36,7 +36,7 @@ export function useBlockPreview(
 ): BlockPreviewState {
   const debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
   const [html, setHtml] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Stable JSON of the blocks tree — `useEffect` dep so we re-run

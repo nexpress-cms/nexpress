@@ -69,6 +69,7 @@ export function DocCanvas({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const { html, loading, error } = useBlockPreview(blocks);
+  const hasBlocks = blocks.length > 0;
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [hoverRect, setHoverRect] = useState<OverlayPosition | null>(null);
   const [settingsTargetId, setSettingsTargetId] = useState<string | null>(null);
@@ -97,6 +98,24 @@ export function DocCanvas({
   // dragged block must resolve to a top-level id and the drop
   // target must too. Cross-container moves stay in Page builder.
   const topLevelIds = useMemo(() => new Set(blocks.map((b) => b.id)), [blocks]);
+  const emptyStarterBlocks = useMemo(() => {
+    const preferred = ["hero", "rich-text", "section-header", "feature-grid"];
+    const starters: NpBlockMetadata[] = [];
+    for (const type of preferred) {
+      const def = definitions.get(type);
+      if (def) starters.push(def);
+      if (starters.length >= 4) break;
+    }
+    if (starters.length < 4) {
+      for (const def of availableBlocks) {
+        if (starters.some((starter) => starter.type === def.type)) continue;
+        if (def.acceptsChildren) continue;
+        starters.push(def);
+        if (starters.length >= 4) break;
+      }
+    }
+    return starters;
+  }, [availableBlocks, definitions]);
 
   // Bumps on every iframe `load` event — replaces the old
   // `[html]`-dependent listener attach. `srcDoc` is set
@@ -397,6 +416,29 @@ export function DocCanvas({
             display: "block",
           }}
         />
+        {!loading && !error && !hasBlocks ? (
+          <div className="pointer-events-none absolute inset-x-4 top-8 z-10 mx-auto max-w-xl rounded-xl border border-dashed border-border/70 bg-background/95 px-4 py-6 text-center shadow-sm backdrop-blur sm:px-6">
+            <p className="text-sm font-medium text-foreground">No blocks yet.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Draft canvas is empty.</p>
+            {emptyStarterBlocks.length > 0 ? (
+              <div className="pointer-events-auto mt-4 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:flex sm:flex-wrap sm:justify-center">
+                {emptyStarterBlocks.map((def) => (
+                  <Button
+                    key={def.type}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full sm:w-auto"
+                    onClick={() => dispatch({ type: "ADD", blockType: def.type })}
+                  >
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    {def.label}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {loading ? (
