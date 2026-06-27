@@ -1,5 +1,11 @@
 # @nexpress/plugin-webhook-relay
 
+## 0.2.16
+
+### Patch Changes
+
+- @nexpress/plugin-sdk@0.3.24
+
 ## 0.2.15
 
 ### Patch Changes

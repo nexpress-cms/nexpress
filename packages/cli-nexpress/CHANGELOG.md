@@ -1,5 +1,11 @@
 # @nexpress/cli
 
+## 0.3.24
+
+### Patch Changes
+
+- @nexpress/core@0.3.24
+
 ## 0.3.23
 
 ### Patch Changes
