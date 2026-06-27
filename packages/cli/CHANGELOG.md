@@ -1,5 +1,11 @@
 # create-nexpress
 
+## 0.1.33
+
+### Patch Changes
+
+- 48288ca: Route app and scaffold builds through a NexPress build guard that fails on Turbopack standalone root-trace warnings.
+
 ## 0.1.32
 
 ### Patch Changes

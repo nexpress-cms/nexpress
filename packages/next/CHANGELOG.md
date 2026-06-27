@@ -1,5 +1,14 @@
 # @nexpress/next
 
+## 0.3.24
+
+### Patch Changes
+
+- b8cce91: Add a CDN purge bridge so hosts can forward collection, theme, site, navigation, setup, and plugin config invalidation hints to a downstream CDN.
+  - @nexpress/blocks@0.3.24
+  - @nexpress/core@0.3.24
+  - @nexpress/theme@0.3.24
+
 ## 0.3.23
 
 ### Patch Changes
