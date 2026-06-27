@@ -20,8 +20,6 @@ import type { Metadata } from "next";
  * and absorbs the cast — pages can call it directly without the
  * `as Metadata` boilerplate at every call site.
  */
-export async function buildPageMetadata(
-  input: NpPageMetadataInput = {},
-): Promise<Metadata> {
-  return (await buildCorePageMetadata(input)) as Metadata;
+export async function buildPageMetadata(input: NpPageMetadataInput = {}): Promise<Metadata> {
+  return await buildCorePageMetadata(input);
 }

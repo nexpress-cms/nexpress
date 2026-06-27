@@ -10,7 +10,7 @@ import {
   introspectThemeSettingsSchema,
   setThemeSettings,
 } from "@nexpress/core";
-import { readJsonBody, themeCacheTag } from "@nexpress/next";
+import { invalidateCacheTargets, readJsonBody, themeCacheTag } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
@@ -56,9 +56,7 @@ export async function GET(request: NextRequest, ctx: RouteContext) {
       // package doesn't need zod as a direct dep; core narrows
       // back to `ZodTypeAny` at the introspection / validation
       // call sites.
-      theme.manifest.settingsSchema as Parameters<
-        typeof introspectThemeSettingsSchema
-      >[0],
+      theme.manifest.settingsSchema as Parameters<typeof introspectThemeSettingsSchema>[0],
     );
     const status = await getThemeSettingsWithStatus(id);
     return npSuccessResponse({
@@ -99,19 +97,17 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
     // design doc §5.3). When the active theme contributes SEO
     // hooks (`impl.seo` declared), additionally bust the
     // sitemap/feed tags so theme-driven SEO state stays fresh.
-    try {
-      const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-      const { revalidateTag } = await import("next/cache");
-      revalidateTag(themeCacheTag(siteId), "default");
-      if (await activeThemeContributesSeo()) {
-        revalidateTag(`nx:sitemap:${siteId}`, "default");
-        revalidateTag(`nx:feed:${siteId}`, "default");
-      }
-    } catch {
-      // Outside Next request context (tests, scripts) —
-      // persistence already succeeded; cache bust failure is
-      // not a 500.
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+    const tags = [themeCacheTag(siteId)];
+    if (await activeThemeContributesSeo()) {
+      tags.push(`nx:sitemap:${siteId}`, `nx:feed:${siteId}`);
     }
+    invalidateCacheTargets({
+      source: "theme-settings",
+      siteId,
+      themeId: id,
+      tags,
+    });
 
     return npSuccessResponse({ themeId: id, value: persisted });
   } catch (error) {

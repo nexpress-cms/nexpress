@@ -11,13 +11,9 @@ import {
   getThemeSettings,
   pluginConfigCacheTag,
 } from "@nexpress/core";
-import type {
-  NpNavItem,
-  NpRegisteredTheme,
-  NpSite,
-  NpThemeTokens,
-} from "@nexpress/core";
+import type { NpNavItem, NpRegisteredTheme, NpSite, NpThemeTokens } from "@nexpress/core";
 import { unstable_cache } from "next/cache";
+import { invalidateCacheTargets } from "./cdn-purge.js";
 
 /**
  * Phase 14.3 — `unstable_cache` wrappers around the public-site
@@ -49,9 +45,7 @@ import { unstable_cache } from "next/cache";
 const REVALIDATE_SECONDS = 600;
 
 function isMissingIncrementalCache(error: unknown): boolean {
-  return (
-    error instanceof Error && /incrementalCache/i.test(error.message)
-  );
+  return error instanceof Error && /incrementalCache/i.test(error.message);
 }
 
 async function resolveSiteId(): Promise<string> {
@@ -77,20 +71,18 @@ export function navCacheTag(siteId: string, location: string): string {
  * failure as a 500 would be a worse experience than letting the
  * tag expire naturally.
  */
-export async function bustThemeCache(siteId: string): Promise<void> {
-  try {
-    const { revalidatePath, revalidateTag } = await import("next/cache");
-    revalidateTag(themeCacheTag(siteId), "default");
+export function bustThemeCache(siteId: string): Promise<void> {
+  invalidateCacheTargets({
+    source: "theme",
+    siteId,
     // F.7 — bust SEO tags unconditionally on theme change. Gating
     // on the new theme's hooks misses the case where the OLD
     // theme contributed SEO entries that linger in cache until
     // natural expiry.
-    revalidateTag(`nx:sitemap:${siteId}`, "default");
-    revalidateTag(`nx:feed:${siteId}`, "default");
-    revalidatePath("/", "layout");
-  } catch {
-    // see docstring
-  }
+    tags: [themeCacheTag(siteId), `nx:sitemap:${siteId}`, `nx:feed:${siteId}`],
+    paths: [{ path: "/", type: "layout" }],
+  });
+  return Promise.resolve();
 }
 
 /**
@@ -115,11 +107,10 @@ export function siteCacheTag(siteId: string): string {
  */
 export async function getCachedSite(): Promise<NpSite | null> {
   const siteId = await resolveSiteId();
-  const cached = unstable_cache(
-    () => getSiteById(siteId),
-    ["np:site", siteId],
-    { tags: [siteCacheTag(siteId)], revalidate: REVALIDATE_SECONDS },
-  );
+  const cached = unstable_cache(() => getSiteById(siteId), ["np:site", siteId], {
+    tags: [siteCacheTag(siteId)],
+    revalidate: REVALIDATE_SECONDS,
+  });
   try {
     return await cached();
   } catch (error) {
@@ -130,11 +121,10 @@ export async function getCachedSite(): Promise<NpSite | null> {
 
 export async function getCachedTheme(): Promise<NpThemeTokens> {
   const siteId = await resolveSiteId();
-  const cached = unstable_cache(
-    () => getTheme(),
-    ["nx:theme", siteId],
-    { tags: [themeCacheTag(siteId)], revalidate: REVALIDATE_SECONDS },
-  );
+  const cached = unstable_cache(() => getTheme(), ["nx:theme", siteId], {
+    tags: [themeCacheTag(siteId)],
+    revalidate: REVALIDATE_SECONDS,
+  });
   try {
     return await cached();
   } catch (error) {
@@ -145,11 +135,10 @@ export async function getCachedTheme(): Promise<NpThemeTokens> {
 
 export async function getCachedActiveThemeId(): Promise<string | null> {
   const siteId = await resolveSiteId();
-  const cached = unstable_cache(
-    () => getActiveThemeId(),
-    ["nx:theme:active-id", siteId],
-    { tags: [themeCacheTag(siteId)], revalidate: REVALIDATE_SECONDS },
-  );
+  const cached = unstable_cache(() => getActiveThemeId(), ["nx:theme:active-id", siteId], {
+    tags: [themeCacheTag(siteId)],
+    revalidate: REVALIDATE_SECONDS,
+  });
   try {
     return await cached();
   } catch (error) {
@@ -167,9 +156,7 @@ export async function getCachedActiveThemeId(): Promise<string | null> {
  * keyParts entry ensures different themes' settings are
  * cached separately within the same site.
  */
-export async function getCachedThemeSettings(
-  themeId?: string,
-): Promise<unknown> {
+export async function getCachedThemeSettings(themeId?: string): Promise<unknown> {
   const siteId = await resolveSiteId();
   const cached = unstable_cache(
     () => getThemeSettings(themeId),
@@ -197,9 +184,7 @@ export async function getCachedThemeSettings(
  * — the same plugin id can have different config per site, and
  * cache entries shouldn't cross.
  */
-export async function getCachedPluginConfig(
-  pluginId: string,
-): Promise<unknown> {
+export async function getCachedPluginConfig(pluginId: string): Promise<unknown> {
   const siteId = await resolveSiteId();
   const cached = unstable_cache(
     () => getPluginConfig(pluginId),
@@ -294,14 +279,10 @@ export async function cachedThemeFetch<T>(
 ): Promise<T> {
   const siteId = await resolveSiteId();
   const tags = [themeCacheTag(siteId), ...(options?.extraTags ?? [])];
-  const cached = unstable_cache(
-    fetcher,
-    ["nx:theme-fetch", siteId, ...keyParts],
-    {
-      tags,
-      revalidate: options?.revalidate ?? 60,
-    },
-  );
+  const cached = unstable_cache(fetcher, ["nx:theme-fetch", siteId, ...keyParts], {
+    tags,
+    revalidate: options?.revalidate ?? 60,
+  });
   try {
     return await cached();
   } catch (error) {
@@ -389,14 +370,10 @@ export async function cachedPluginFetch<T>(
 ): Promise<T> {
   const siteId = await resolveSiteId();
   const tags = [pluginConfigCacheTag(pluginId), ...(options?.extraTags ?? [])];
-  const cached = unstable_cache(
-    fetcher,
-    ["np:plugin-fetch", siteId, pluginId, ...keyParts],
-    {
-      tags,
-      revalidate: options?.revalidate ?? 60,
-    },
-  );
+  const cached = unstable_cache(fetcher, ["np:plugin-fetch", siteId, pluginId, ...keyParts], {
+    tags,
+    revalidate: options?.revalidate ?? 60,
+  });
   try {
     return await cached();
   } catch (error) {
@@ -429,15 +406,12 @@ export async function getCachedActiveTheme(): Promise<NpRegisteredTheme | null> 
   return all[0] ?? null;
 }
 
-export async function getCachedNavigation(
-  location: string = "header",
-): Promise<NpNavItem[]> {
+export async function getCachedNavigation(location: string = "header"): Promise<NpNavItem[]> {
   const siteId = await resolveSiteId();
-  const cached = unstable_cache(
-    () => getNavigation(location),
-    ["nx:nav", siteId, location],
-    { tags: [navCacheTag(siteId, location)], revalidate: REVALIDATE_SECONDS },
-  );
+  const cached = unstable_cache(() => getNavigation(location), ["nx:nav", siteId, location], {
+    tags: [navCacheTag(siteId, location)],
+    revalidate: REVALIDATE_SECONDS,
+  });
   try {
     return await cached();
   } catch (error) {

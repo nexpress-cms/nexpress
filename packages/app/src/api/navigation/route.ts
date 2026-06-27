@@ -9,7 +9,7 @@ import {
   can,
 } from "@nexpress/core";
 import type { NpNavItem } from "@nexpress/core";
-import { navCacheTag, readJsonBody } from "@nexpress/next";
+import { invalidateCacheTargets, navCacheTag, readJsonBody } from "@nexpress/next";
 import { and, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
@@ -28,15 +28,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-async function bustNavCache(siteId: string, location: string) {
-  // Wrapped because revalidateTag throws outside Next's request
-  // context (test harness, scripts).
-  try {
-    const { revalidateTag } = await import("next/cache");
-    revalidateTag(navCacheTag(siteId, location), "default");
-  } catch {
-    // ignore
-  }
+function bustNavCache(siteId: string, location: string): void {
+  invalidateCacheTargets({
+    source: "navigation",
+    siteId,
+    navigationLocation: location,
+    tags: [navCacheTag(siteId, location)],
+  });
 }
 
 function isNavItem(value: unknown): value is NpNavItem {
@@ -139,7 +137,7 @@ export async function PUT(request: NextRequest) {
     // Phase 14.3 — bust the per-(site, location) cache key set
     // up by `getCachedNavigation` so theme headers/footers
     // pick up the edit on the next render.
-    await bustNavCache(siteId, location);
+    bustNavCache(siteId, location);
 
     return npSuccessResponse(result);
   } catch (error) {
@@ -177,7 +175,7 @@ export async function DELETE(request: NextRequest) {
       throw new NpNotFoundError("navigation", location);
     }
 
-    await bustNavCache(siteId, location);
+    bustNavCache(siteId, location);
 
     return npSuccessResponse({ location });
   } catch (error) {
@@ -249,8 +247,8 @@ export async function PATCH(request: NextRequest) {
       throw new NpNotFoundError("navigation", oldLocation);
     }
 
-    await bustNavCache(siteId, oldLocation);
-    await bustNavCache(siteId, newLocation);
+    bustNavCache(siteId, oldLocation);
+    bustNavCache(siteId, newLocation);
 
     return npSuccessResponse(renamed);
   } catch (error) {

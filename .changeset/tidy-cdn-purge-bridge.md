@@ -2,4 +2,4 @@
 "@nexpress/next": patch
 ---
 
-Add a `setCdnPurgeAdapter()` bridge so hosts can forward collection cache invalidation paths and tags to a downstream CDN.
+Add a CDN purge bridge so hosts can forward collection, theme, site, navigation, setup, and plugin config invalidation hints to a downstream CDN.

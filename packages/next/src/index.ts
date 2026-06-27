@@ -63,10 +63,16 @@ export {
 
 export {
   getCdnPurgeAdapter,
+  invalidateCacheTargets,
   resetCdnPurgeAdapter,
   setCdnPurgeAdapter,
+  type NpCacheInvalidationPath,
+  type NpCacheInvalidationPathInput,
+  type NpCacheInvalidationPathType,
+  type NpCacheInvalidationRequest,
   type NpCdnPurgeAdapter,
   type NpCdnPurgeRequest,
+  type NpCdnPurgeSource,
 } from "./cdn-purge.js";
 
 export {

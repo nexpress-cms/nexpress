@@ -36,7 +36,7 @@ export async function getSiteMember(): Promise<NpMemberAuthRow | null> {
     const payload = await verifyMemberToken(token, secret, "access");
     const db = getDb();
     if (!db) return null;
-    const member = await getMemberFromTokenPayload(db as never, payload, token);
+    const member = await getMemberFromTokenPayload(db, payload, token);
     if (!member || member.status === "suspended" || member.status === "deleted") {
       return null;
     }

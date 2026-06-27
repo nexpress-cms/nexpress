@@ -13,7 +13,7 @@ import {
   withCurrentSite,
 } from "@nexpress/core";
 import { count, eq } from "drizzle-orm";
-import { readJsonBody, siteCacheTag, themeCacheTag } from "@nexpress/next";
+import { bustThemeCache, invalidateCacheTargets, readJsonBody, siteCacheTag } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
@@ -221,16 +221,13 @@ export async function POST(request: NextRequest): Promise<Response> {
         // Site name is read through `getCachedSite()` (600s TTL) by
         // every theme's masthead + footer. Without this bust the
         // wizard rename takes up to 10 min to surface on the public
-        // site — the most visible first-boot moment. `revalidate*`
-        // throws outside a request context (test harness scripts),
-        // so guard it like the theme-bust block below.
-        try {
-          const { revalidatePath, revalidateTag } = await import("next/cache");
-          revalidateTag(siteCacheTag(NP_DEFAULT_SITE_ID), "default");
-          revalidatePath("/", "layout");
-        } catch {
-          // ignore — see comment above
-        }
+        // site — the most visible first-boot moment.
+        invalidateCacheTargets({
+          source: "setup",
+          siteId: NP_DEFAULT_SITE_ID,
+          tags: [siteCacheTag(NP_DEFAULT_SITE_ID)],
+          paths: [{ path: "/", type: "layout" }],
+        });
       } catch (siteErr) {
         const msg = siteErr instanceof Error ? siteErr.message : String(siteErr);
         console.error("[admin-setup] updateSite failed:", siteErr);
@@ -266,24 +263,8 @@ export async function POST(request: NextRequest): Promise<Response> {
             // Bust the theme-dependent caches so the next render
             // picks up the new shell + CSS. Mirror of
             // `/api/admin/themes/active` PUT — keep them in sync
-            // if you change one. Wrapped in try/catch because
-            // `revalidate*` throws "Invariant: static generation
-            // store missing" outside a request context (test
-            // harnesses, scripts); the persistence already
-            // succeeded, cache-bust failure shouldn't surface as
-            // a 500. SEO tags bust unconditionally on theme
-            // switch (design doc §4.7) — the new theme may not
-            // contribute SEO hooks, but the OLD one might have,
-            // and those cached entries linger otherwise.
-            try {
-              const { revalidatePath, revalidateTag } = await import("next/cache");
-              revalidateTag(themeCacheTag(NP_DEFAULT_SITE_ID), "default");
-              revalidateTag(`nx:sitemap:${NP_DEFAULT_SITE_ID}`, "default");
-              revalidateTag(`nx:feed:${NP_DEFAULT_SITE_ID}`, "default");
-              revalidatePath("/", "layout");
-            } catch {
-              // ignore — see comment above
-            }
+            // if you change one.
+            await bustThemeCache(NP_DEFAULT_SITE_ID);
           }
           // Theme-only path (operator picked a theme but declined
           // sample content): the activation already landed above;

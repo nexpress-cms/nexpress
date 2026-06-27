@@ -5,8 +5,7 @@ import {
   isOwnerOrAdmin,
   NP_DEFAULT_SITE_ID,
 } from "@nexpress/core";
-import { navCacheTag } from "@nexpress/next";
-import { revalidateTag } from "next/cache";
+import { invalidateCacheTargets, navCacheTag } from "@nexpress/next";
 
 // Nav locations the editor exposes. Kept in sync with the `Settings →
 // Navigation` switcher in `packages/admin/src/settings/navigation-editor.tsx`.
@@ -49,9 +48,11 @@ export const pagesCollection = defineCollection({
         const nextSlug = typeof data.slug === "string" ? data.slug : null;
         if (previousSlug === nextSlug) return data;
         const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-        for (const location of NAV_LOCATIONS) {
-          revalidateTag(navCacheTag(siteId, location), "default");
-        }
+        invalidateCacheTargets({
+          source: "navigation",
+          siteId,
+          tags: NAV_LOCATIONS.map((location) => navCacheTag(siteId, location)),
+        });
         return data;
       },
     ],
@@ -107,8 +108,7 @@ export const pagesCollection = defineCollection({
       admin: {
         kind: "templatePicker",
         position: "sidebar",
-        description:
-          "Page layout template. Defaults to the active theme's `default` when blank.",
+        description: "Page layout template. Defaults to the active theme's `default` when blank.",
       },
     },
     {
