@@ -439,12 +439,13 @@ export function BlockPageEditor({
   // Bridge form-level save events to the orchestrator's autosave
   // indicator. The collection edit view emits "saving" before the
   // network call and "saved" / "error" after it resolves; we
-  // forward the first two into the indicator's state machine.
-  // Errors don't mark "saved" — the editor stays in a dirty state
-  // so operators see they still need to retry the save.
+  // forward them into the indicator's state machine. Errors don't
+  // mark "saved" — the editor shows an explicit failed state so
+  // operators see they still need to retry the save.
   useSaveEvents((event) => {
     if (event === "saving") autosave.mark("saving");
     else if (event === "saved") autosave.mark("saved");
+    else autosave.mark("error");
   });
 
   // Container contract warnings — surfaced as a side card and
