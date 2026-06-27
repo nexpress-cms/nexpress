@@ -8,7 +8,7 @@ export interface UseAutosaveStatusResult {
   status: AutosaveStatus;
   savedLabel: string;
   /** Mark a state transition. Pass `"saved"` after a successful save resolves. */
-  mark: (next: "dirty" | "saving" | "saved") => void;
+  mark: (next: "dirty" | "saving" | "saved" | "error") => void;
 }
 
 /**
@@ -16,6 +16,7 @@ export interface UseAutosaveStatusResult {
  * indicator. Transitions:
  *
  *   idle → dirty → saving → saved → idle (after 4s)
+ *                         ↘ error
  *
  * Callers mark `"dirty"` from `onChange`, then `"saving"` when
  * a save kicks off, and `"saved"` when it resolves. The
@@ -39,7 +40,7 @@ export function useAutosaveStatus(): UseAutosaveStatusResult {
 
   const savedLabel = relativeLabel(savedAt);
 
-  const mark = (next: "dirty" | "saving" | "saved") => {
+  const mark = (next: "dirty" | "saving" | "saved" | "error") => {
     if (idleTimerRef.current) {
       clearTimeout(idleTimerRef.current);
       idleTimerRef.current = null;

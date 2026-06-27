@@ -7,7 +7,7 @@ import { cn } from "../../ui/utils.js";
 
 import { BlockIcon } from "./block-icon.js";
 
-export type AutosaveStatus = "idle" | "dirty" | "saving" | "saved";
+export type AutosaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
 
 /**
  * Drop nulls + interpose a separator between the surviving items.
@@ -87,6 +87,17 @@ export function StatusBar({
   status = "idle",
   startSlot,
 }: StatusBarProps) {
+  const saveStatusLabel =
+    status === "saving"
+      ? "Saving..."
+      : status === "dirty"
+        ? "Unsaved changes"
+        : status === "error"
+          ? "Save failed"
+          : savedLabel
+            ? `Saved ${savedLabel}`
+            : "";
+
   return (
     <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-xl border border-neutral-200/80 bg-neutral-50/70 px-3.5 py-2 text-xs text-muted-foreground dark:border-neutral-800/80 dark:bg-neutral-900/40">
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -156,9 +167,20 @@ export function StatusBar({
             </code>
           </span>
         ) : null}
-        {savedLabel ? (
-          <span>
-            Saved <strong className="font-semibold text-foreground">{savedLabel}</strong>
+        {saveStatusLabel ? (
+          <span
+            className={cn(
+              status === "dirty" && "text-amber-700 dark:text-amber-300",
+              status === "error" && "text-rose-700 dark:text-rose-300",
+            )}
+          >
+            {status === "saved" || status === "idle" ? (
+              <>
+                Saved <strong className="font-semibold text-foreground">{savedLabel}</strong>
+              </>
+            ) : (
+              saveStatusLabel
+            )}
           </span>
         ) : null}
         <span
@@ -167,12 +189,13 @@ export function StatusBar({
             status === "saving" && "animate-pulse bg-amber-500",
             status === "saved" && "np-autosave-pulse bg-emerald-500",
             status === "dirty" && "bg-amber-500",
+            status === "error" && "bg-rose-500",
             // Idle = autosave on, no pending changes — ripple to
             // signal the indicator is alive (matches the design's
             // `be-pulse` ambient state).
             status === "idle" && "np-autosave-pulse bg-emerald-500",
           )}
-          aria-label={`Autosave ${status}`}
+          aria-label={saveStatusLabel || `Autosave ${status}`}
         />
       </div>
     </div>

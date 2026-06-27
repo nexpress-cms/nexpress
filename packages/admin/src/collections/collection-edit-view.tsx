@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -37,7 +38,7 @@ import {
   User,
   type LucideIcon,
 } from "lucide-react";
-import { useForm, useWatch } from "react-hook-form";
+import { useForm, useFormState, useWatch } from "react-hook-form";
 import { z } from "zod";
 
 import { CollectionTabs, type CollectionTabDescriptor } from "./collection-tabs.js";
@@ -72,6 +73,20 @@ type ToastState = {
   type: "success" | "error";
   message: string;
 } | null;
+
+type AutosaveStatusState =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "saved"; at: number }
+  | { kind: "error"; message: string };
+
+interface AutosavePayload {
+  documentId: string;
+  snapshot: Record<string, unknown>;
+  snapshotKey: string;
+}
+
+const UNSAVED_NAVIGATION_MESSAGE = "You have unsaved changes. Leave without saving?";
 
 const namedSidebarFields = new Set(["status", "publishedAt", "slug"]);
 
@@ -635,6 +650,7 @@ function CollectionEditViewInner({
     resolver,
     defaultValues,
   });
+  const { isDirty } = useFormState({ control: form.control });
   const autosaveValues = useWatch({ control: form.control });
   const autosaveValuesKey = useMemo(() => JSON.stringify(autosaveValues ?? {}), [autosaveValues]);
   const autosaveBaselineRef = useRef<string | null>(null);
@@ -661,12 +677,7 @@ function CollectionEditViewInner({
     typeof config.versions.drafts.autosaveInterval === "number"
       ? config.versions.drafts.autosaveInterval
       : 5_000;
-  const [autosaveStatus, setAutosaveStatus] = useState<
-    | { kind: "idle" }
-    | { kind: "saving" }
-    | { kind: "saved"; at: number }
-    | { kind: "error"; message: string }
-  >({ kind: "idle" });
+  const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatusState>({ kind: "idle" });
 
   // Hold the pending debounce handle in a ref so each keystroke can clear
   // the previous timer. Without this ref the user's first edit queues a
@@ -674,6 +685,7 @@ function CollectionEditViewInner({
   // window every queued timer fires and floods the endpoint. The server
   // dedups, but the network spam is wasteful.
   const autosaveTimer = useRef<number | null>(null);
+  const latestAutosavePayloadRef = useRef<AutosavePayload | null>(null);
   // `savingAs` is read inside the timer callback below; capture it via a
   // ref so we don't reschedule autosave every time the manual save state changes.
   const savingAsRef = useRef(savingAs);
@@ -682,33 +694,23 @@ function CollectionEditViewInner({
   }, [savingAs]);
 
   useEffect(() => {
-    if (!autosaveEnabled || !doc?.id) return;
-    if (autosaveBaselineRef.current === null) {
-      autosaveBaselineRef.current = autosaveValuesKey;
-      return;
-    }
-    if (autosaveBaselineRef.current === autosaveValuesKey) return;
-    autosaveBaselineRef.current = autosaveValuesKey;
+    latestAutosavePayloadRef.current = null;
+    const frame = window.requestAnimationFrame(() => setAutosaveStatus({ kind: "idle" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [defaultValues]);
 
-    const documentId = String(doc.id);
-    const snapshot = JSON.parse(autosaveValuesKey) as Record<string, unknown>;
-
-    if (autosaveTimer.current !== null) {
-      window.clearTimeout(autosaveTimer.current);
-    }
-    const runAutosave = async () => {
-      autosaveTimer.current = null;
-      // Skip when a manual Draft/Publish/Schedule save is in flight —
-      // they'll write a real revision themselves.
+  const runAutosave = useCallback(
+    async (payload: AutosavePayload) => {
       if (savingAsRef.current !== null) return;
+      latestAutosavePayloadRef.current = payload;
       try {
         setAutosaveStatus({ kind: "saving" });
         const response = await npFetch(
-          `/api/collections/${collectionSlug}/${documentId}/autosave`,
+          `/api/collections/${collectionSlug}/${payload.documentId}/autosave`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(snapshot),
+            body: JSON.stringify(payload.snapshot),
           },
         );
         if (!response.ok) {
@@ -717,16 +719,46 @@ function CollectionEditViewInner({
           } | null;
           throw new Error(body?.error?.message ?? `HTTP ${response.status}`);
         }
+        autosaveBaselineRef.current = payload.snapshotKey;
+        latestAutosavePayloadRef.current = null;
         setAutosaveStatus({ kind: "saved", at: Date.now() });
       } catch (error) {
+        latestAutosavePayloadRef.current = payload;
         setAutosaveStatus({
           kind: "error",
           message: error instanceof Error ? error.message : "Autosave failed",
         });
       }
+    },
+    [collectionSlug],
+  );
+
+  const handleAutosaveRetry = useCallback(() => {
+    const payload = latestAutosavePayloadRef.current;
+    if (!payload) return;
+    void runAutosave(payload);
+  }, [runAutosave]);
+
+  useEffect(() => {
+    if (!autosaveEnabled || !doc?.id) return;
+    if (autosaveBaselineRef.current === null) {
+      autosaveBaselineRef.current = autosaveValuesKey;
+      return;
+    }
+    if (autosaveBaselineRef.current === autosaveValuesKey) return;
+
+    const documentId = String(doc.id);
+    const snapshot = JSON.parse(autosaveValuesKey) as Record<string, unknown>;
+
+    if (autosaveTimer.current !== null) {
+      window.clearTimeout(autosaveTimer.current);
+    }
+    const runQueuedAutosave = () => {
+      autosaveTimer.current = null;
+      void runAutosave({ documentId, snapshot, snapshotKey: autosaveValuesKey });
     };
     autosaveTimer.current = window.setTimeout(() => {
-      void runAutosave();
+      runQueuedAutosave();
     }, autosaveInterval);
 
     return () => {
@@ -735,7 +767,61 @@ function CollectionEditViewInner({
         autosaveTimer.current = null;
       }
     };
-  }, [autosaveEnabled, autosaveInterval, autosaveValuesKey, collectionSlug, doc?.id]);
+  }, [autosaveEnabled, autosaveInterval, autosaveValuesKey, doc?.id, runAutosave]);
+
+  const hasUnsavedChanges = isDirty || autosaveStatus.kind === "error" || savingAs !== null;
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const handleDocumentClick = (event: MouseEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest<HTMLAnchorElement>("a[href]");
+      if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+      const rawHref = anchor.getAttribute("href");
+      if (!rawHref || rawHref.startsWith("mailto:") || rawHref.startsWith("tel:")) return;
+
+      const destination = new URL(anchor.href);
+      const current = new URL(window.location.href);
+      if (
+        destination.origin === current.origin &&
+        destination.pathname === current.pathname &&
+        destination.search === current.search
+      ) {
+        return;
+      }
+
+      if (!window.confirm(UNSAVED_NAVIGATION_MESSAGE)) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+      }
+    };
+
+    document.addEventListener("click", handleDocumentClick, true);
+    return () => document.removeEventListener("click", handleDocumentClick, true);
+  }, [hasUnsavedChanges]);
 
   // Tick once per second so the "saved Xs ago" label refreshes without a re-save.
   const [, setTickNow] = useState(0);
@@ -780,6 +866,7 @@ function CollectionEditViewInner({
   // React Hook Form subscription that autosave already needs so the
   // condition logic stays centralized.
   const formValues = autosaveValues;
+  const currentFormSnapshot = isObject(formValues) ? formValues : {};
 
   const visibleFields = effectiveFields.filter(isVisibleField);
   const passes = (field: NpFieldConfig): boolean =>
@@ -1019,13 +1106,26 @@ function CollectionEditViewInner({
         });
 
         if (!response.ok) {
-          throw new Error(`Failed to ${doc?.id ? "update" : "create"} document.`);
+          const body = (await response.json().catch(() => null)) as {
+            error?: { message?: string };
+          } | null;
+          throw new Error(
+            body?.error?.message ?? `Failed to ${doc?.id ? "update" : "create"} document.`,
+          );
         }
 
         const payload = (await response.json()) as {
           doc?: Record<string, unknown> & { id?: string };
         };
         const nextId = payload.doc?.id ?? doc?.id;
+
+        if (doc?.id) {
+          const savedValues = buildDefaultValues(effectiveFields, payload.doc ?? values);
+          form.reset(savedValues);
+          autosaveBaselineRef.current = JSON.stringify(savedValues);
+          latestAutosavePayloadRef.current = null;
+          setAutosaveStatus({ kind: "idle" });
+        }
 
         setToast({
           type: "success",
@@ -1053,8 +1153,9 @@ function CollectionEditViewInner({
       }
     }, handleValidationErrors);
 
-  const handleSaveDraft = submitWithStatus("draft");
-  const handlePublish = submitWithStatus("published");
+  const handleSaveDraft = () => {
+    void submitWithStatus("draft")();
+  };
   const handleSchedule = (publishedAtIso: string) => {
     void submitWithStatus("scheduled", publishedAtIso)();
   };
@@ -1065,6 +1166,26 @@ function CollectionEditViewInner({
   const isScheduled = currentStatus === "scheduled";
   const scheduleLabel = isScheduled ? "Reschedule" : "Schedule";
   const publishLabel = isScheduled ? "Publish now" : "Publish";
+  const authoringStatusLabel =
+    savingAs === "draft"
+      ? "Saving draft..."
+      : savingAs === "published"
+        ? "Publishing..."
+        : savingAs === "scheduled"
+          ? "Scheduling..."
+          : savingAs === "unschedule"
+            ? "Cancelling schedule..."
+            : autosaveStatus.kind === "error"
+              ? "Autosave failed"
+              : isDirty
+                ? "Unsaved changes"
+                : null;
+  const authoringStatusClass =
+    autosaveStatus.kind === "error"
+      ? "text-rose-600 dark:text-rose-300"
+      : isDirty
+        ? "text-amber-700 dark:text-amber-300"
+        : "text-muted-foreground";
 
   const handleDelete = async () => {
     if (!doc?.id) {
@@ -1099,7 +1220,7 @@ function CollectionEditViewInner({
     <Form {...form}>
       <form
         onSubmit={(e) => {
-          void handlePublish(e);
+          void submitWithStatus("published")(e);
         }}
         className="min-w-0 space-y-6 pb-28 md:pb-0"
       >
@@ -1137,20 +1258,44 @@ function CollectionEditViewInner({
             <p className="mt-2 break-words text-sm text-muted-foreground">
               Shape content, metadata, and publishing details in one pass.
             </p>
+            {authoringStatusLabel ? (
+              <p
+                className={cn("mt-1 break-words text-xs font-medium", authoringStatusClass)}
+                data-np-authoring-status
+                aria-live="polite"
+              >
+                {authoringStatusLabel}
+              </p>
+            ) : null}
             {autosaveEnabled && doc?.id ? (
-              <p className="mt-1 break-words text-xs text-muted-foreground" aria-live="polite">
+              <div
+                className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 break-words text-xs text-muted-foreground"
+                aria-live="polite"
+              >
                 {autosaveStatus.kind === "saving" ? (
-                  "Autosaving…"
+                  "Autosaving..."
                 ) : autosaveStatus.kind === "saved" ? (
                   `Autosaved ${formatRelative(autosaveStatus.at)}`
                 ) : autosaveStatus.kind === "error" ? (
-                  <span className="break-words text-rose-600 dark:text-rose-300">
-                    Autosave error: {autosaveStatus.message}
-                  </span>
+                  <>
+                    <span className="break-words text-rose-600 dark:text-rose-300">
+                      Autosave error: {autosaveStatus.message}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto px-0 py-0 text-xs"
+                      onClick={handleAutosaveRetry}
+                      disabled={isSaving}
+                    >
+                      Retry
+                    </Button>
+                  </>
                 ) : (
                   "Autosave on"
                 )}
-              </p>
+              </div>
             ) : null}
           </div>
 
@@ -1548,7 +1693,12 @@ function CollectionEditViewInner({
               <div id="np-block-editor-aside" />
 
               {doc?.id && config.versions ? (
-                <RevisionsPanel collectionSlug={collectionSlug} documentId={String(doc.id)} />
+                <RevisionsPanel
+                  collectionSlug={collectionSlug}
+                  documentId={String(doc.id)}
+                  currentSnapshot={currentFormSnapshot}
+                  hasUnsavedChanges={hasUnsavedChanges}
+                />
               ) : null}
 
               {doc?.id && collectionTabs && collectionTabs.length > 0 ? (
