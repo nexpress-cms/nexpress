@@ -134,9 +134,18 @@ When `versions.drafts.autosave === true`:
   carries `reused: true` and reuses the previous revision's id/version.
 - Autosave revisions count toward `versions.max` and rotate out the
   oldest revisions (drafts + published + autosave) when the cap is hit.
+- When the latest autosave is newer than the saved document and differs
+  from the saved form defaults, the admin edit view shows an **Autosave
+  recovery available** banner. Operators can review the changed fields,
+  recover the snapshot into the form, or dismiss that autosave for the
+  current browser session.
 
-The revisions panel surfaces autosave entries with a distinct chip;
-restoring one writes a new draft revision via the normal restore path.
+Recovering from the banner does **not** immediately write the main
+document row. It loads the autosave into the form as unsaved state, then
+the normal manual save or the next autosave loop persists the operator's
+decision. The revisions panel still surfaces autosave entries with a
+distinct chip; restoring one writes a new draft revision via the normal
+restore path.
 
 The header shows a small **Autosaved 12s ago** label; transitions to
 **Autosaving…** while a request is in flight and **Autosave error: …**
@@ -144,13 +153,13 @@ if the request fails (most often a 401 after the session cookie expires).
 
 ## Status taxonomy
 
-| `_status` sent | `status` persisted | Notes |
-|---|---|---|
-| `"draft"` | `"draft"` | Hidden from public site. |
-| `"published"` + past `publishedAt` | `"published"` | Public. |
-| `"published"` + future `publishedAt` | `"scheduled"` | Pipeline auto-demotes. |
-| `"scheduled"` | `"scheduled"` | Accepted as-is. |
-| `"archived"` | `"archived"` | Hidden but retained for restore. |
+| `_status` sent                       | `status` persisted | Notes                            |
+| ------------------------------------ | ------------------ | -------------------------------- |
+| `"draft"`                            | `"draft"`          | Hidden from public site.         |
+| `"published"` + past `publishedAt`   | `"published"`      | Public.                          |
+| `"published"` + future `publishedAt` | `"scheduled"`      | Pipeline auto-demotes.           |
+| `"scheduled"`                        | `"scheduled"`      | Accepted as-is.                  |
+| `"archived"`                         | `"archived"`       | Hidden but retained for restore. |
 
 The public renderer filters to `status="published"`. Revisions keep the
 full history regardless of status.

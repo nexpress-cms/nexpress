@@ -38,6 +38,45 @@ const richTextFixture = (text: string): Record<string, unknown> => ({
   },
 });
 
+async function createDraftPost(
+  page: Page,
+  context: BrowserContext,
+  title: string,
+): Promise<{ id: string; headers: Record<string, string> }> {
+  const headers = await csrfHeaders(context);
+  const response = await page.request.post("/api/collections/posts", {
+    data: {
+      kind: "article",
+      title,
+      content: richTextFixture("Original body"),
+      _status: "draft",
+    },
+    headers,
+  });
+  expect(response.status()).toBe(201);
+  const created = (await response.json()) as { id?: unknown };
+  expect(typeof created.id).toBe("string");
+  return { id: created.id, headers };
+}
+
+async function writePostAutosave(
+  page: Page,
+  postId: string,
+  headers: Record<string, string>,
+  input: { title: string; excerpt?: string; body?: string },
+): Promise<void> {
+  const response = await page.request.post(`/api/collections/posts/${postId}/autosave`, {
+    data: {
+      kind: "article",
+      title: input.title,
+      content: richTextFixture(input.body ?? "Recovered body"),
+      ...(input.excerpt ? { excerpt: input.excerpt } : {}),
+    },
+    headers,
+  });
+  expect(response.ok()).toBeTruthy();
+}
+
 test.describe("admin authoring reliability", () => {
   test("guards internal navigation when collection form edits are unsaved", async ({
     page,
@@ -66,6 +105,37 @@ test.describe("admin authoring reliability", () => {
       await dialog.accept();
     });
     await dashboardLink.click();
+    await expect(page).toHaveURL(/\/admin$/);
+  });
+
+  test("guards browser history back when collection form edits are unsaved", async ({
+    page,
+    context,
+  }) => {
+    await context.clearCookies();
+    await signInAsE2EAdmin(page);
+
+    await page.goto("/admin");
+    await expect(page).toHaveURL(/\/admin$/);
+    await page.goto("/admin/collections/pages/create");
+    await expect(page).toHaveURL(/\/admin\/collections\/pages\/create$/);
+    await expect(visibleSaveDraftButton(page)).toBeEnabled();
+
+    await page.getByLabel("title", { exact: true }).fill(`History guard ${Date.now()}`);
+    await expect(page.locator("[data-np-authoring-status]")).toContainText("Unsaved changes");
+
+    page.once("dialog", async (dialog) => {
+      expect(dialog.message().toLowerCase()).toContain("unsaved changes");
+      await dialog.dismiss();
+    });
+    await page.evaluate(() => window.history.back());
+    await expect(page).toHaveURL(/\/admin\/collections\/pages\/create$/);
+
+    page.once("dialog", async (dialog) => {
+      expect(dialog.message().toLowerCase()).toContain("unsaved changes");
+      await dialog.accept();
+    });
+    await page.evaluate(() => window.history.back());
     await expect(page).toHaveURL(/\/admin$/);
   });
 
@@ -98,7 +168,7 @@ test.describe("admin authoring reliability", () => {
 
     await expect(page.getByText("Forced save failure")).toBeVisible();
     await expect(page.locator("[data-np-authoring-status]")).toContainText("Unsaved changes");
-    await expect(page.getByText("Save failed")).toBeVisible();
+    await expect(page.getByText("Save failed")).toBeVisible({ timeout: 10_000 });
   });
 
   test("shows revision detail differences against the current form", async ({ page, context }) => {
@@ -162,36 +232,14 @@ test.describe("admin authoring reliability", () => {
     await context.clearCookies();
     await signInAsE2EAdmin(page);
 
-    const headers = await csrfHeaders(context);
-    const createResponse = await page.request.post("/api/collections/posts", {
-      data: {
-        kind: "article",
-        title,
-        content: richTextFixture("Original body"),
-        _status: "draft",
-      },
-      headers,
+    const { id, headers } = await createDraftPost(page, context, title);
+    await writePostAutosave(page, id, headers, {
+      title: recoveredTitle,
+      excerpt: "Recovered excerpt",
     });
-    expect(createResponse.status()).toBe(201);
-    const created = (await createResponse.json()) as { id?: unknown };
-    expect(typeof created.id).toBe("string");
 
-    const autosaveResponse = await page.request.post(
-      `/api/collections/posts/${String(created.id)}/autosave`,
-      {
-        data: {
-          kind: "article",
-          title: recoveredTitle,
-          content: richTextFixture("Recovered body"),
-          excerpt: "Recovered excerpt",
-        },
-        headers,
-      },
-    );
-    expect(autosaveResponse.ok()).toBeTruthy();
-
-    await page.goto(`/admin/collections/posts/${String(created.id)}`);
-    await expect(page).toHaveURL(new RegExp(`/admin/collections/posts/${String(created.id)}$`));
+    await page.goto(`/admin/collections/posts/${id}`);
+    await expect(page).toHaveURL(new RegExp(`/admin/collections/posts/${id}$`));
 
     const recovery = page.locator("[data-np-autosave-recovery]");
     await expect(recovery).toContainText("Autosave recovery available", { timeout: 15_000 });
@@ -205,9 +253,53 @@ test.describe("admin authoring reliability", () => {
       recoveredTitle,
     );
 
+    const autosaveAfterRecover = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/collections/posts/${id}/autosave`) &&
+        response.request().method() === "POST",
+    );
     await dialog.getByRole("button", { name: "Recover autosave" }).click();
     await expect(page.getByLabel("title", { exact: true })).toHaveValue(recoveredTitle);
     await expect(page.locator("[data-np-authoring-status]")).toContainText("Unsaved changes");
     await expect(page.locator("[data-np-autosave-recovery]")).toHaveCount(0);
+    expect((await autosaveAfterRecover).ok()).toBeTruthy();
+    await expect(page.getByText(/Autosaved/)).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("persists autosave recovery dismissal until a newer autosave exists", async ({
+    page,
+    context,
+  }) => {
+    const title = `Autosave dismiss ${Date.now()}`;
+    const dismissedTitle = `${title} dismissed`;
+    const newerTitle = `${title} newer`;
+
+    await context.clearCookies();
+    await signInAsE2EAdmin(page);
+
+    const { id, headers } = await createDraftPost(page, context, title);
+    await writePostAutosave(page, id, headers, {
+      title: dismissedTitle,
+      excerpt: "Dismissed autosave",
+    });
+
+    await page.goto(`/admin/collections/posts/${id}`);
+    const recovery = page.locator("[data-np-autosave-recovery]");
+    await expect(recovery).toContainText("Autosave recovery available", { timeout: 15_000 });
+    await recovery.getByRole("button", { name: "Dismiss" }).click();
+    await expect(recovery).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.locator("[data-np-autosave-recovery]")).toHaveCount(0);
+
+    await writePostAutosave(page, id, headers, {
+      title: newerTitle,
+      excerpt: "Newer autosave",
+    });
+    await page.reload();
+    const newRecovery = page.locator("[data-np-autosave-recovery]");
+    await expect(newRecovery).toContainText("Autosave recovery available", { timeout: 15_000 });
+    await newRecovery.getByRole("button", { name: "Review" }).click();
+    await expect(page.getByRole("dialog", { name: "Autosave recovery" })).toContainText(newerTitle);
   });
 });
