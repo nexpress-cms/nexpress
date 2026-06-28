@@ -17,25 +17,20 @@ import {
 } from "../ui/dialog.js";
 import { ScrollArea } from "../ui/scroll-area.js";
 import { npFetch } from "../lib/api-client.js";
+import {
+  diffSnapshotFields,
+  formatRevisionDate,
+  summarizeSnapshotValue,
+  type RevisionDetail,
+  type RevisionSummary,
+} from "./revision-utils.js";
 
 interface RevisionsPanelProps {
   collectionSlug: string;
   documentId: string;
   currentSnapshot?: Record<string, unknown>;
   hasUnsavedChanges?: boolean;
-}
-
-interface RevisionSummary {
-  id: string;
-  version: number;
-  status: "draft" | "published" | "autosave";
-  changedFields: string[];
-  authorId: string | null;
-  createdAt: string;
-}
-
-interface RevisionDetail extends RevisionSummary {
-  snapshot: Record<string, unknown>;
+  formatFieldLabel?: (path: string) => string;
 }
 
 type PanelState =
@@ -52,37 +47,12 @@ const statusBadgeClass: Record<RevisionSummary["status"], string> = {
   autosave: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
 };
 
-function formatDate(value: string): string {
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return value;
-  }
-}
-
-function snapshotValueKey(value: unknown): string {
-  try {
-    return JSON.stringify(value ?? null);
-  } catch {
-    return String(value);
-  }
-}
-
-function diffSnapshotFields(
-  current: Record<string, unknown>,
-  revision: Record<string, unknown>,
-): string[] {
-  const keys = new Set([...Object.keys(current), ...Object.keys(revision)]);
-  return Array.from(keys)
-    .filter((key) => snapshotValueKey(current[key]) !== snapshotValueKey(revision[key]))
-    .sort((a, b) => a.localeCompare(b));
-}
-
 export function RevisionsPanel({
   collectionSlug,
   documentId,
   currentSnapshot,
   hasUnsavedChanges = false,
+  formatFieldLabel = (path) => path,
 }: RevisionsPanelProps) {
   const router = useRouter();
   const [state, setState] = useState<PanelState>({ kind: "idle" });
@@ -94,6 +64,10 @@ export function RevisionsPanel({
     if (!selected || !currentSnapshot || loadingDetail) return [];
     return diffSnapshotFields(currentSnapshot, selected.snapshot);
   }, [currentSnapshot, loadingDetail, selected]);
+  const selectedSnapshotEntries = useMemo(() => {
+    if (!selected || loadingDetail) return [];
+    return Object.entries(selected.snapshot).sort(([a], [b]) => a.localeCompare(b));
+  }, [loadingDetail, selected]);
 
   const loadRevisions = useCallback(async () => {
     setState({ kind: "loading" });
@@ -252,11 +226,11 @@ export function RevisionsPanel({
                       </Badge>
                     </div>
                     <span className="max-w-full break-words text-xs text-muted-foreground">
-                      {formatDate(revision.createdAt)}
+                      {formatRevisionDate(revision.createdAt)}
                       {revision.changedFields.length > 0 ? (
                         <>
                           {" · "}
-                          {revision.changedFields.slice(0, 4).join(", ")}
+                          {revision.changedFields.slice(0, 4).map(formatFieldLabel).join(", ")}
                           {revision.changedFields.length > 4 ? "…" : ""}
                         </>
                       ) : null}
@@ -293,11 +267,11 @@ export function RevisionsPanel({
               {selected ? `Version ${selected.version}` : "Revision"}
             </DialogTitle>
             <DialogDescription className="break-words">
-              {selected ? formatDate(selected.createdAt) : null}
+              {selected ? formatRevisionDate(selected.createdAt) : null}
               {selected && selected.changedFields.length > 0 ? (
                 <>
                   {" · Changed: "}
-                  {selected.changedFields.join(", ")}
+                  {selected.changedFields.map(formatFieldLabel).join(", ")}
                 </>
               ) : null}
             </DialogDescription>
@@ -311,8 +285,13 @@ export function RevisionsPanel({
               {selectedDiffFields.length > 0 ? (
                 <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
                   {selectedDiffFields.slice(0, 12).map((field) => (
-                    <Badge key={field} variant="secondary" className="max-w-full break-words">
-                      {field}
+                    <Badge
+                      key={field}
+                      variant="secondary"
+                      className="max-w-full break-words"
+                      title={field}
+                    >
+                      {formatFieldLabel(field)}
                     </Badge>
                   ))}
                   {selectedDiffFields.length > 12 ? (
@@ -326,15 +305,48 @@ export function RevisionsPanel({
               )}
             </div>
           ) : null}
-          <div className="max-h-[60vh] min-w-0 overflow-auto rounded-xl bg-slate-950 p-4 text-xs text-slate-100">
+          <div
+            className="min-w-0 rounded-xl border border-border/70 bg-background px-4 py-3 text-sm"
+            data-np-revision-snapshot-summary
+          >
             {loadingDetail ? (
-              <div className="flex min-w-0 items-center gap-2 text-slate-300">
+              <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
                 <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> Loading snapshot…
               </div>
             ) : selected ? (
-              <pre className="whitespace-pre-wrap break-words font-mono">
-                {JSON.stringify(selected.snapshot, null, 2)}
-              </pre>
+              <>
+                <p className="break-words font-medium text-foreground">Snapshot summary</p>
+                <dl className="mt-3 grid min-w-0 gap-2">
+                  {selectedSnapshotEntries.slice(0, 16).map(([field, value]) => (
+                    <div
+                      key={field}
+                      className="grid min-w-0 gap-1 rounded-lg bg-muted/40 px-3 py-2 sm:grid-cols-[11rem_minmax(0,1fr)]"
+                    >
+                      <dt className="break-words text-xs font-medium text-muted-foreground">
+                        {formatFieldLabel(field)}
+                      </dt>
+                      <dd className="min-w-0 break-words text-xs text-foreground">
+                        {summarizeSnapshotValue(value)}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+                {selectedSnapshotEntries.length > 16 ? (
+                  <p className="mt-2 break-words text-xs text-muted-foreground">
+                    +{(selectedSnapshotEntries.length - 16).toString()} more fields in raw snapshot.
+                  </p>
+                ) : null}
+                <details className="mt-3 min-w-0">
+                  <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+                    Raw snapshot
+                  </summary>
+                  <div className="mt-2 max-h-[36vh] min-w-0 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">
+                    <pre className="whitespace-pre-wrap break-words font-mono">
+                      {JSON.stringify(selected.snapshot, null, 2)}
+                    </pre>
+                  </div>
+                </details>
+              </>
             ) : null}
           </div>
           <DialogFooter>

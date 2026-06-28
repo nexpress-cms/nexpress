@@ -20,6 +20,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { collectHiddenFieldNames, evaluateFieldCondition } from "@nexpress/core/fields";
 import type { NpCollectionConfig, NpFieldConfig } from "@nexpress/core";
 import {
+  AlertTriangle,
   BookOpen,
   Briefcase,
   Calendar,
@@ -31,10 +32,12 @@ import {
   Layout,
   Loader2,
   Newspaper,
+  RotateCcw,
   Save,
   Search,
   Tag,
   Trash2,
+  X,
   User,
   type LucideIcon,
 } from "lucide-react";
@@ -45,13 +48,30 @@ import { CollectionTabs, type CollectionTabDescriptor } from "./collection-tabs.
 import { FieldRenderer } from "./field-renderer.js";
 import { NavMembershipPanel } from "./nav-membership-panel.js";
 import { RevisionsPanel } from "./revisions-panel.js";
+import {
+  diffSnapshotFields,
+  formatRevisionDate,
+  summarizeSnapshotValue,
+  type RevisionDetail,
+  type RevisionSummary,
+} from "./revision-utils.js";
 import { ScheduleDialog } from "./schedule-dialog.js";
 import { TranslationTabs } from "./translation-tabs.js";
 import { SaveEventsProvider, useSaveEmitter } from "../blocks/shared/save-events.js";
+import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog.js";
 import { Form } from "../ui/form.js";
+import { ScrollArea } from "../ui/scroll-area.js";
 import { StatusBadge } from "../ui/status-badge.js";
 import { Switch } from "../ui/switch.js";
 import { cn } from "../ui/utils.js";
@@ -85,6 +105,19 @@ interface AutosavePayload {
   snapshot: Record<string, unknown>;
   snapshotKey: string;
 }
+
+type AutosaveRecoveryState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "none" }
+  | {
+      kind: "available";
+      revision: RevisionSummary;
+      snapshot: Record<string, unknown>;
+      recoveredValues: Record<string, unknown>;
+      diffFields: string[];
+    }
+  | { kind: "error"; message: string };
 
 const UNSAVED_NAVIGATION_MESSAGE = "You have unsaved changes. Leave without saving?";
 
@@ -678,6 +711,10 @@ function CollectionEditViewInner({
       ? config.versions.drafts.autosaveInterval
       : 5_000;
   const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatusState>({ kind: "idle" });
+  const [autosaveRecovery, setAutosaveRecovery] = useState<AutosaveRecoveryState>({
+    kind: "idle",
+  });
+  const [autosaveRecoveryDialogOpen, setAutosaveRecoveryDialogOpen] = useState(false);
 
   // Hold the pending debounce handle in a ref so each keystroke can clear
   // the previous timer. Without this ref the user's first edit queues a
@@ -686,6 +723,7 @@ function CollectionEditViewInner({
   // dedups, but the network spam is wasteful.
   const autosaveTimer = useRef<number | null>(null);
   const latestAutosavePayloadRef = useRef<AutosavePayload | null>(null);
+  const dismissedAutosaveRevisionIdRef = useRef<string | null>(null);
   // `savingAs` is read inside the timer callback below; capture it via a
   // ref so we don't reschedule autosave every time the manual save state changes.
   const savingAsRef = useRef(savingAs);
@@ -698,6 +736,96 @@ function CollectionEditViewInner({
     const frame = window.requestAnimationFrame(() => setAutosaveStatus({ kind: "idle" }));
     return () => window.cancelAnimationFrame(frame);
   }, [defaultValues]);
+
+  useEffect(() => {
+    if (!autosaveEnabled || !doc?.id) {
+      const frame = window.requestAnimationFrame(() => {
+        setAutosaveRecovery({ kind: "none" });
+        setAutosaveRecoveryDialogOpen(false);
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+
+    let cancelled = false;
+    let frame: number | null = null;
+
+    const loadLatestAutosave = async () => {
+      setAutosaveRecovery({ kind: "loading" });
+      try {
+        const documentId = String(doc.id);
+        const response = await npFetch(
+          `/api/collections/${collectionSlug}/${documentId}/revisions?limit=20`,
+        );
+        if (!response.ok) {
+          throw new Error("Failed to check autosave recovery.");
+        }
+
+        const payload = (await response.json()) as {
+          revisions?: RevisionSummary[];
+        };
+        const latestAutosave = (payload.revisions ?? []).find(
+          (revision) => revision.status === "autosave",
+        );
+        if (!latestAutosave || latestAutosave.id === dismissedAutosaveRevisionIdRef.current) {
+          if (!cancelled) setAutosaveRecovery({ kind: "none" });
+          return;
+        }
+
+        const docUpdatedAt =
+          typeof doc.updatedAt === "string" ? Date.parse(doc.updatedAt) : Number.NaN;
+        const autosaveCreatedAt = Date.parse(latestAutosave.createdAt);
+        if (
+          !Number.isNaN(docUpdatedAt) &&
+          !Number.isNaN(autosaveCreatedAt) &&
+          autosaveCreatedAt < docUpdatedAt
+        ) {
+          if (!cancelled) setAutosaveRecovery({ kind: "none" });
+          return;
+        }
+
+        const detailResponse = await npFetch(
+          `/api/collections/${collectionSlug}/${documentId}/revisions/${latestAutosave.id}`,
+        );
+        if (!detailResponse.ok) {
+          throw new Error("Failed to load autosave recovery details.");
+        }
+
+        const detail = (await detailResponse.json()) as RevisionDetail;
+        const recoveredValues = buildDefaultValues(effectiveFields, detail.snapshot);
+        const diffFields = diffSnapshotFields(defaultValues, recoveredValues);
+        if (diffFields.length === 0) {
+          if (!cancelled) setAutosaveRecovery({ kind: "none" });
+          return;
+        }
+
+        if (!cancelled) {
+          setAutosaveRecovery({
+            kind: "available",
+            revision: latestAutosave,
+            snapshot: detail.snapshot,
+            recoveredValues,
+            diffFields,
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAutosaveRecovery({
+            kind: "error",
+            message: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      }
+    };
+
+    frame = window.requestAnimationFrame(() => {
+      void loadLatestAutosave();
+    });
+
+    return () => {
+      cancelled = true;
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [autosaveEnabled, collectionSlug, defaultValues, doc, doc?.id, effectiveFields]);
 
   const runAutosave = useCallback(
     async (payload: AutosavePayload) => {
@@ -770,6 +898,42 @@ function CollectionEditViewInner({
   }, [autosaveEnabled, autosaveInterval, autosaveValuesKey, doc?.id, runAutosave]);
 
   const hasUnsavedChanges = isDirty || autosaveStatus.kind === "error" || savingAs !== null;
+  const autosaveRecoveryAvailable = autosaveRecovery.kind === "available" ? autosaveRecovery : null;
+  const autosaveRecoverySnapshotEntries = useMemo(() => {
+    if (!autosaveRecoveryAvailable) return [];
+    return Object.entries(autosaveRecoveryAvailable.snapshot).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+  }, [autosaveRecoveryAvailable]);
+
+  const handleDismissAutosaveRecovery = useCallback(() => {
+    if (autosaveRecovery.kind === "available") {
+      dismissedAutosaveRevisionIdRef.current = autosaveRecovery.revision.id;
+    }
+    setAutosaveRecovery({ kind: "none" });
+    setAutosaveRecoveryDialogOpen(false);
+  }, [autosaveRecovery]);
+
+  const handleApplyAutosaveRecovery = useCallback(() => {
+    if (autosaveRecovery.kind !== "available") return;
+    if (
+      hasUnsavedChanges &&
+      !window.confirm("Apply this autosave? This replaces unsaved edits currently in the form.")
+    ) {
+      return;
+    }
+
+    form.reset(autosaveRecovery.recoveredValues, { keepDefaultValues: true });
+    setAutosaveStatus({ kind: "idle" });
+    latestAutosavePayloadRef.current = null;
+    dismissedAutosaveRevisionIdRef.current = autosaveRecovery.revision.id;
+    setAutosaveRecovery({ kind: "none" });
+    setAutosaveRecoveryDialogOpen(false);
+    setToast({
+      type: "success",
+      message: "Autosave applied. Review the recovered changes, then save when ready.",
+    });
+  }, [autosaveRecovery, form, hasUnsavedChanges]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -1114,13 +1278,12 @@ function CollectionEditViewInner({
           );
         }
 
-        const payload = (await response.json()) as {
-          doc?: Record<string, unknown> & { id?: string };
-        };
-        const nextId = payload.doc?.id ?? doc?.id;
+        const payload = (await response.json()) as Record<string, unknown>;
+        const savedDoc = isObject(payload.doc) ? payload.doc : payload;
+        const nextId = typeof savedDoc.id === "string" ? savedDoc.id : doc?.id;
 
         if (doc?.id) {
-          const savedValues = buildDefaultValues(effectiveFields, payload.doc ?? values);
+          const savedValues = buildDefaultValues(effectiveFields, savedDoc ?? values);
           form.reset(savedValues);
           autosaveBaselineRef.current = JSON.stringify(savedValues);
           latestAutosavePayloadRef.current = null;
@@ -1372,6 +1535,165 @@ function CollectionEditViewInner({
             </div>
           </div>
         </div>
+
+        {autosaveRecoveryAvailable ? (
+          <div
+            className="grid min-w-0 gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 shadow-sm dark:text-amber-100"
+            data-np-autosave-recovery
+          >
+            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex min-w-0 gap-3">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-300" />
+                <div className="min-w-0 space-y-1">
+                  <p className="break-words font-medium">Autosave recovery available</p>
+                  <p className="break-words text-xs text-amber-800 dark:text-amber-200">
+                    Saved {formatRevisionDate(autosaveRecoveryAvailable.revision.createdAt)} ·{" "}
+                    {autosaveRecoveryAvailable.diffFields.length.toString()} changed{" "}
+                    {autosaveRecoveryAvailable.diffFields.length === 1 ? "field" : "fields"}
+                  </p>
+                  <div className="flex min-w-0 flex-wrap gap-1.5 pt-1">
+                    {autosaveRecoveryAvailable.diffFields.slice(0, 6).map((field) => (
+                      <Badge
+                        key={field}
+                        variant="secondary"
+                        className="max-w-full break-words bg-white/70 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100"
+                        title={field}
+                      >
+                        {fieldLabelByName(field)}
+                      </Badge>
+                    ))}
+                    {autosaveRecoveryAvailable.diffFields.length > 6 ? (
+                      <Badge
+                        variant="secondary"
+                        className="bg-white/70 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100"
+                      >
+                        +{(autosaveRecoveryAvailable.diffFields.length - 6).toString()} more
+                      </Badge>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <div className="grid min-w-0 grid-cols-1 gap-2 min-[420px]:grid-cols-3 sm:flex sm:shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="bg-background/80"
+                  onClick={() => setAutosaveRecoveryDialogOpen(true)}
+                >
+                  Review
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleApplyAutosaveRecovery}
+                  className="bg-amber-700 text-white hover:bg-amber-800 dark:bg-amber-500 dark:text-amber-950 dark:hover:bg-amber-400"
+                >
+                  <RotateCcw className="size-3.5" />
+                  Recover
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-amber-900 hover:bg-amber-500/15 dark:text-amber-100"
+                  onClick={handleDismissAutosaveRecovery}
+                >
+                  <X className="size-3.5" />
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <Dialog
+          open={autosaveRecoveryDialogOpen && autosaveRecoveryAvailable !== null}
+          onOpenChange={setAutosaveRecoveryDialogOpen}
+        >
+          <DialogContent className="min-w-0 max-w-3xl">
+            <DialogHeader>
+              <DialogTitle className="break-words">Autosave recovery</DialogTitle>
+              <DialogDescription className="break-words">
+                {autosaveRecoveryAvailable
+                  ? `Saved ${formatRevisionDate(autosaveRecoveryAvailable.revision.createdAt)}. Review the changed fields before applying it to the form.`
+                  : null}
+              </DialogDescription>
+            </DialogHeader>
+            {autosaveRecoveryAvailable ? (
+              <div className="min-w-0 space-y-4">
+                <div
+                  className="min-w-0 rounded-xl border border-border/70 bg-muted/30 px-4 py-3 text-sm"
+                  data-np-autosave-recovery-diff
+                >
+                  <p className="break-words font-medium text-foreground">
+                    Compared with saved document
+                  </p>
+                  <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
+                    {autosaveRecoveryAvailable.diffFields.slice(0, 16).map((field) => (
+                      <Badge
+                        key={field}
+                        variant="secondary"
+                        className="max-w-full break-words"
+                        title={field}
+                      >
+                        {fieldLabelByName(field)}
+                      </Badge>
+                    ))}
+                    {autosaveRecoveryAvailable.diffFields.length > 16 ? (
+                      <Badge variant="secondary">
+                        +{(autosaveRecoveryAvailable.diffFields.length - 16).toString()} more
+                      </Badge>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div
+                  className="min-w-0 rounded-xl border border-border/70 bg-background px-4 py-3 text-sm"
+                  data-np-autosave-recovery-summary
+                >
+                  <p className="break-words font-medium text-foreground">Autosave summary</p>
+                  <ScrollArea className="mt-3 max-h-80 pr-2">
+                    <dl className="grid min-w-0 gap-2">
+                      {autosaveRecoverySnapshotEntries.slice(0, 16).map(([field, value]) => (
+                        <div
+                          key={field}
+                          className="grid min-w-0 gap-1 rounded-lg bg-muted/40 px-3 py-2 sm:grid-cols-[11rem_minmax(0,1fr)]"
+                        >
+                          <dt className="break-words text-xs font-medium text-muted-foreground">
+                            {fieldLabelByName(field)}
+                          </dt>
+                          <dd className="min-w-0 break-words text-xs text-foreground">
+                            {summarizeSnapshotValue(value)}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </ScrollArea>
+                </div>
+              </div>
+            ) : null}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={() => setAutosaveRecoveryDialogOpen(false)}
+              >
+                Close
+              </Button>
+              <Button
+                type="button"
+                className="w-full sm:w-auto"
+                onClick={handleApplyAutosaveRecovery}
+                disabled={!autosaveRecoveryAvailable}
+              >
+                <RotateCcw className="size-3.5" />
+                Recover autosave
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <ScheduleDialog
           open={scheduleOpen}
@@ -1698,6 +2020,7 @@ function CollectionEditViewInner({
                   documentId={String(doc.id)}
                   currentSnapshot={currentFormSnapshot}
                   hasUnsavedChanges={hasUnsavedChanges}
+                  formatFieldLabel={fieldLabelByName}
                 />
               ) : null}
 

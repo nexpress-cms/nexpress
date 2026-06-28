@@ -1,10 +1,42 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 
 function visibleSaveDraftButton(page: Page) {
-  return page.locator('button:visible').filter({ hasText: /^Save as Draft$/ }).first();
+  return page
+    .locator("button:visible")
+    .filter({ hasText: /^Save as Draft$/ })
+    .first();
 }
+
+async function csrfHeaders(context: BrowserContext): Promise<Record<string, string>> {
+  const cookies = await context.cookies();
+  const token = cookies.find((cookie) => cookie.name === "np-csrf")?.value;
+  if (!token) {
+    throw new Error("Missing np-csrf cookie after E2E admin login.");
+  }
+  return { "X-CSRF-Token": token };
+}
+
+const richTextFixture = (text: string): Record<string, unknown> => ({
+  root: {
+    type: "root",
+    version: 1,
+    direction: null,
+    format: "",
+    indent: 0,
+    children: [
+      {
+        type: "paragraph",
+        version: 1,
+        direction: null,
+        format: "",
+        indent: 0,
+        children: [{ type: "text", version: 1, text }],
+      },
+    ],
+  },
+});
 
 test.describe("admin authoring reliability", () => {
   test("guards internal navigation when collection form edits are unsaved", async ({
@@ -118,5 +150,64 @@ test.describe("admin authoring reliability", () => {
     const diff = dialog.locator("[data-np-revision-diff]");
     await expect(diff).toContainText("Compared with current form");
     await expect(diff).toContainText("title");
+  });
+
+  test("offers autosave recovery and applies it as unsaved form state", async ({
+    page,
+    context,
+  }) => {
+    const title = `Autosave recovery ${Date.now()}`;
+    const recoveredTitle = `${title} recovered`;
+
+    await context.clearCookies();
+    await signInAsE2EAdmin(page);
+
+    const headers = await csrfHeaders(context);
+    const createResponse = await page.request.post("/api/collections/posts", {
+      data: {
+        kind: "article",
+        title,
+        content: richTextFixture("Original body"),
+        _status: "draft",
+      },
+      headers,
+    });
+    expect(createResponse.status()).toBe(201);
+    const created = (await createResponse.json()) as { id?: unknown };
+    expect(typeof created.id).toBe("string");
+
+    const autosaveResponse = await page.request.post(
+      `/api/collections/posts/${String(created.id)}/autosave`,
+      {
+        data: {
+          kind: "article",
+          title: recoveredTitle,
+          content: richTextFixture("Recovered body"),
+          excerpt: "Recovered excerpt",
+        },
+        headers,
+      },
+    );
+    expect(autosaveResponse.ok()).toBeTruthy();
+
+    await page.goto(`/admin/collections/posts/${String(created.id)}`);
+    await expect(page).toHaveURL(new RegExp(`/admin/collections/posts/${String(created.id)}$`));
+
+    const recovery = page.locator("[data-np-autosave-recovery]");
+    await expect(recovery).toContainText("Autosave recovery available", { timeout: 15_000 });
+    await expect(recovery).toContainText("title");
+
+    await recovery.getByRole("button", { name: "Review" }).click();
+    const dialog = page.getByRole("dialog", { name: "Autosave recovery" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator("[data-np-autosave-recovery-diff]")).toContainText("title");
+    await expect(dialog.locator("[data-np-autosave-recovery-summary]")).toContainText(
+      recoveredTitle,
+    );
+
+    await dialog.getByRole("button", { name: "Recover autosave" }).click();
+    await expect(page.getByLabel("title", { exact: true })).toHaveValue(recoveredTitle);
+    await expect(page.locator("[data-np-authoring-status]")).toContainText("Unsaved changes");
+    await expect(page.locator("[data-np-autosave-recovery]")).toHaveCount(0);
   });
 });
