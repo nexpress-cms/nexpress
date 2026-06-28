@@ -11,6 +11,13 @@ async function csrfHeaders(context: BrowserContext): Promise<Record<string, stri
   return { "X-CSRF-Token": token };
 }
 
+async function isolateAdminRateLimitBucket(
+  context: BrowserContext,
+  suffix: number,
+): Promise<void> {
+  await context.setExtraHTTPHeaders({ "x-forwarded-for": `192.0.2.${suffix}` });
+}
+
 const richTextFixture = (text: string): Record<string, unknown> => ({
   root: {
     type: "root",
@@ -35,7 +42,7 @@ async function createDraftPage(
   page: Page,
   context: BrowserContext,
   title: string,
-): Promise<{ id: string; path: string }> {
+): Promise<{ id: string }> {
   const response = await page.request.post("/api/collections/pages", {
     data: {
       title,
@@ -44,12 +51,9 @@ async function createDraftPage(
     headers: await csrfHeaders(context),
   });
   expect(response.status()).toBe(201);
-  const created = (await response.json()) as { id?: unknown; locale?: unknown; slug?: unknown };
+  const created = (await response.json()) as { id?: unknown };
   expect(typeof created.id).toBe("string");
-  expect(typeof created.slug).toBe("string");
-  const locale = typeof created.locale === "string" ? created.locale : null;
-  const path = locale ? `/${locale}/${created.slug}` : `/${created.slug}`;
-  return { id: created.id, path };
+  return { id: created.id };
 }
 
 async function createDraftPost(
@@ -57,7 +61,7 @@ async function createDraftPost(
   context: BrowserContext,
   title: string,
   body: string,
-): Promise<{ id: string; slug: string }> {
+): Promise<{ id: string }> {
   const response = await page.request.post("/api/collections/posts", {
     data: {
       kind: "article",
@@ -68,10 +72,22 @@ async function createDraftPost(
     headers: await csrfHeaders(context),
   });
   expect(response.status()).toBe(201);
-  const created = (await response.json()) as { id?: unknown; slug?: unknown };
+  const created = (await response.json()) as { id?: unknown };
   expect(typeof created.id).toBe("string");
-  expect(typeof created.slug).toBe("string");
-  return { id: created.id, slug: created.slug };
+  return { id: created.id };
+}
+
+async function fetchPreviewResolution(
+  page: Page,
+  collection: string,
+  id: string,
+): Promise<{ path: string; href: string }> {
+  const response = await page.request.get(`/api/admin/collections/${collection}/${id}/preview`);
+  expect(response.status()).toBe(200);
+  const payload = (await response.json()) as { path?: unknown; href?: unknown };
+  expect(typeof payload.path).toBe("string");
+  expect(typeof payload.href).toBe("string");
+  return { path: payload.path, href: payload.href };
 }
 
 async function expectPreviewPath(page: Page, expectedPath: string): Promise<string> {
@@ -91,10 +107,11 @@ test.describe("admin preview links", () => {
     const title = `Preview draft page ${Date.now()}`;
 
     await context.clearCookies();
+    await isolateAdminRateLimitBucket(context, 110);
     await signInAsE2EAdmin(page);
 
     const created = await createDraftPage(page, context, title);
-    const publicPath = created.path;
+    const { path: publicPath } = await fetchPreviewResolution(page, "pages", created.id);
 
     const publicResponse = await page.goto(publicPath);
     expect(publicResponse?.status()).toBe(404);
@@ -114,10 +131,11 @@ test.describe("admin preview links", () => {
     const body = `Preview draft post body ${Date.now()}`;
 
     await context.clearCookies();
+    await isolateAdminRateLimitBucket(context, 111);
     await signInAsE2EAdmin(page);
 
     const created = await createDraftPost(page, context, title, body);
-    const publicPath = `/blog/${created.slug}`;
+    const { path: publicPath } = await fetchPreviewResolution(page, "posts", created.id);
 
     const publicResponse = await page.goto(publicPath);
     expect(publicResponse?.status()).toBe(404);
@@ -130,5 +148,108 @@ test.describe("admin preview links", () => {
     expect(new URL(page.url()).pathname).toBe(publicPath);
     await expect(page.getByText("Draft preview")).toBeVisible();
     await expect(page.getByText(title)).toBeVisible();
+  });
+
+  test("saves a new draft page and opens its preview from the create screen", async ({
+    page,
+    context,
+  }) => {
+    const title = `Create preview page ${Date.now()}`;
+
+    await context.clearCookies();
+    await isolateAdminRateLimitBucket(context, 112);
+    await signInAsE2EAdmin(page);
+
+    await page.goto("/admin/collections/pages/create");
+    await expect(page).toHaveURL(/\/admin\/collections\/pages\/create$/);
+    await page.getByLabel("title", { exact: true }).fill(title);
+
+    const popupPromise = context.waitForEvent("page");
+    const createResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/collections/pages") && response.request().method() === "POST",
+    );
+    const previewResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/admin/collections/pages/") &&
+        response.url().endsWith("/preview") &&
+        response.request().method() === "GET",
+    );
+
+    await page.getByRole("button", { name: /^Save Draft & Preview$/ }).click();
+
+    const [previewPage, createResponse, previewResponse] = await Promise.all([
+      popupPromise,
+      createResponsePromise,
+      previewResponsePromise,
+    ]);
+    expect(createResponse.status()).toBe(201);
+    const created = (await createResponse.json()) as { id?: unknown; title?: unknown };
+    expect(typeof created.id).toBe("string");
+    expect(created.title).toBe(title);
+
+    expect(previewResponse.status()).toBe(200);
+    const preview = (await previewResponse.json()) as { path?: unknown; href?: unknown };
+    expect(typeof preview.path).toBe("string");
+    expect(typeof preview.href).toBe("string");
+
+    await previewPage.waitForURL((url) => url.pathname === preview.path, { timeout: 15_000 });
+    await expect(previewPage.getByText("Draft preview")).toBeVisible();
+    await previewPage.close();
+
+    await expect(page).toHaveURL(new RegExp(`/admin/collections/pages/${created.id}$`), {
+      timeout: 15_000,
+    });
+  });
+
+  test("saves dirty edits before opening preview", async ({ page, context }) => {
+    const title = `Dirty preview page ${Date.now()}`;
+    const updatedTitle = `${title} updated`;
+
+    await context.clearCookies();
+    await isolateAdminRateLimitBucket(context, 113);
+    await signInAsE2EAdmin(page);
+
+    const created = await createDraftPage(page, context, title);
+    const { path: publicPath } = await fetchPreviewResolution(page, "pages", created.id);
+
+    await page.goto(`/admin/collections/pages/${created.id}`);
+    await expect(page).toHaveURL(new RegExp(`/admin/collections/pages/${created.id}$`));
+    await expectPreviewPath(page, publicPath);
+
+    await page.getByLabel("title", { exact: true }).fill(updatedTitle);
+    const savePreviewButton = page.getByRole("button", { name: /^Save & Preview$/ });
+    await expect(savePreviewButton).toBeVisible();
+
+    const popupPromise = context.waitForEvent("page");
+    const patchResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/collections/pages/${created.id}`) &&
+        response.request().method() === "PATCH",
+    );
+    const previewResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/admin/collections/pages/${created.id}/preview`) &&
+        response.request().method() === "GET",
+    );
+
+    await savePreviewButton.click();
+
+    const [previewPage, patchResponse, previewResponse] = await Promise.all([
+      popupPromise,
+      patchResponsePromise,
+      previewResponsePromise,
+    ]);
+    expect(patchResponse.ok()).toBeTruthy();
+    const patched = (await patchResponse.json()) as { title?: unknown };
+    expect(patched.title).toBe(updatedTitle);
+    expect(previewResponse.ok()).toBeTruthy();
+
+    const preview = (await previewResponse.json()) as { path?: unknown };
+    expect(preview.path).toBe(publicPath);
+
+    await previewPage.waitForURL((url) => url.pathname === publicPath, { timeout: 15_000 });
+    await expect(previewPage.getByText("Draft preview")).toBeVisible();
+    await previewPage.close();
   });
 });

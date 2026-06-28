@@ -70,8 +70,12 @@ whether you use the UI or the API.
 
 The same edit view's **Preview** button enters draft mode through
 `/api/preview` and redirects to the collection's configured
-`seo.urlPath(doc)` value. That keeps admin preview aligned with the
-real public route: i18n pages preview at `/<locale>/<slug>`, posts at
+`seo.urlPath(doc)` value. New documents and dirty forms use **Save
+Draft & Preview**, **Save & Preview**, or **Publish & Preview** first
+(depending on the document status); after the save, the admin asks
+`/api/admin/collections/{slug}/{id}/preview` for the server-resolved
+preview href. That keeps admin preview aligned with the real public
+route: i18n pages preview at `/<locale>/<slug>`, posts at
 `/blog/<slug>`, and theme-contributed post kinds follow their own
 `urlPattern`.
 
