@@ -15,8 +15,8 @@ import { requireAuth } from "../../../lib/auth-helpers";
 import { ensureFor } from "../../../lib/init-core";
 
 /**
- * Issue #467 follow-up — server-side patterns surface for the
- * page-builder. Patterns are stored as a single JSON blob in
+ * Server-side patterns surface for the page-builder. Patterns
+ * are stored as a single JSON blob in
  * `np_settings` under `page-builder.patterns`, scoped to the
  * current site so multi-tenant deployments don't leak
  * compositions across tenants.
@@ -91,9 +91,7 @@ export async function GET(request: NextRequest) {
     const patterns = await readPatterns();
     return npSuccessResponse({ patterns });
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -132,8 +130,7 @@ export async function POST(request: NextRequest) {
     const next: ServerPattern = {
       id,
       label: body.label.trim(),
-      description:
-        typeof body.description === "string" ? body.description : undefined,
+      description: typeof body.description === "string" ? body.description : undefined,
       blocks: body.blocks,
       createdAt: previous?.createdAt ?? now,
       updatedAt: now,
@@ -143,9 +140,7 @@ export async function POST(request: NextRequest) {
     await writePatterns(siteId, updated, user.id);
     return npSuccessResponse({ pattern: next });
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

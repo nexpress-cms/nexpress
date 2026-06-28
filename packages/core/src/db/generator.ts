@@ -148,6 +148,10 @@ export function generateDrizzleSchema(
     columns.push('siteId: text("site_id").default("default").notNull()');
     indexes.push(`index("${tableName}_site_idx").on(table.siteId)`);
 
+    if (hasDraftVersions(collection) && !hasTopLevelField(collection, "publishedAt")) {
+      columns.push('publishedAt: timestamp("published_at", { withTimezone: true })');
+    }
+
     if (hasDraftVersions(collection)) {
       columns.push(
         '_status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull()',
@@ -583,6 +587,10 @@ function hasSlugField(collection: NpCollectionConfig): boolean {
 
 function hasDraftVersions(collection: NpCollectionConfig): boolean {
   return Boolean(collection.versions?.drafts);
+}
+
+function hasTopLevelField(collection: NpCollectionConfig, name: string): boolean {
+  return collection.fields.some((field) => "name" in field && field.name === name);
 }
 
 function resolveRelationTarget(relationTo: string, collectionTables: Map<string, string>): string {

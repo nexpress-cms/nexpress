@@ -132,16 +132,24 @@ describe("built-in theme seed parity", () => {
   it("magazine seeds Masthead, cover page, and routes every designed section archive", () => {
     const pages = magazineTheme.impl.seedContent?.pages ?? [];
     const posts = magazineTheme.impl.seedContent?.posts ?? [];
+    const tags = magazineTheme.impl.seedContent?.tags ?? [];
     expect(pages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ slug: "masthead", template: "masthead" }),
         expect.objectContaining({ slug: "issue-12", template: "cover" }),
       ]),
     );
+    expect(tags).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Cities" }),
+        expect.objectContaining({ name: "Craft" }),
+      ]),
+    );
     expect(posts[0]).toEqual(
       expect.objectContaining({
         title: "The cartographers of a city that won't sit still.",
         excerpt: "Thirty-two years redrawing Seoul, block by block — inside the last paper atlas.",
+        tagNames: ["Cities", "Craft"],
         data: expect.objectContaining({
           authorName: "Helena Park",
           featured: true,
@@ -151,6 +159,9 @@ describe("built-in theme seed parity", () => {
     );
     expect(magazineTheme.impl.templates?.pages?.masthead).toBeDefined();
     expect(magazineTheme.impl.templates?.pages?.cover).toBeDefined();
+    expect(magazineTheme.impl.archives?.posts?.byCategory).toBeDefined();
+    expect(magazineTheme.impl.archives?.posts?.byTag).toBeDefined();
+    expect(magazineTheme.impl.archives?.posts?.byDate).toBeDefined();
     expect(magazineTheme.impl.routes?.map((route) => route.pattern)).toContain(
       "/:section(features|dispatches|profiles|essays|photography)",
     );

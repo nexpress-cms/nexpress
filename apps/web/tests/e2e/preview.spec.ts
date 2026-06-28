@@ -11,10 +11,7 @@ async function csrfHeaders(context: BrowserContext): Promise<Record<string, stri
   return { "X-CSRF-Token": token };
 }
 
-async function isolateAdminRateLimitBucket(
-  context: BrowserContext,
-  suffix: number,
-): Promise<void> {
+async function isolateAdminRateLimitBucket(context: BrowserContext, suffix: number): Promise<void> {
   await context.setExtraHTTPHeaders({ "x-forwarded-for": `192.0.2.${suffix}` });
 }
 
@@ -53,6 +50,27 @@ async function createDraftPage(
   expect(response.status()).toBe(201);
   const created = (await response.json()) as { id?: unknown };
   expect(typeof created.id).toBe("string");
+  return { id: created.id };
+}
+
+async function createScheduledPage(
+  page: Page,
+  context: BrowserContext,
+  title: string,
+  publishedAt: string,
+): Promise<{ id: string }> {
+  const response = await page.request.post("/api/collections/pages", {
+    data: {
+      title,
+      publishedAt,
+      _status: "published",
+    },
+    headers: await csrfHeaders(context),
+  });
+  expect(response.status()).toBe(201);
+  const created = (await response.json()) as { id?: unknown; status?: unknown };
+  expect(typeof created.id).toBe("string");
+  expect(created.status).toBe("scheduled");
   return { id: created.id };
 }
 
@@ -243,6 +261,71 @@ test.describe("admin preview links", () => {
     expect(patchResponse.ok()).toBeTruthy();
     const patched = (await patchResponse.json()) as { title?: unknown };
     expect(patched.title).toBe(updatedTitle);
+    expect(previewResponse.ok()).toBeTruthy();
+
+    const preview = (await previewResponse.json()) as { path?: unknown };
+    expect(preview.path).toBe(publicPath);
+
+    await previewPage.waitForURL((url) => url.pathname === publicPath, { timeout: 15_000 });
+    await expect(previewPage.getByText("Draft preview")).toBeVisible();
+    await previewPage.close();
+  });
+
+  test("preserves scheduled status when saving dirty edits before preview", async ({
+    page,
+    context,
+  }) => {
+    const title = `Scheduled preview page ${Date.now()}`;
+    const updatedTitle = `${title} updated`;
+    const publishedAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString();
+
+    await context.clearCookies();
+    await isolateAdminRateLimitBucket(context, 114);
+    await signInAsE2EAdmin(page);
+
+    const created = await createScheduledPage(page, context, title, publishedAt);
+    const { path: publicPath } = await fetchPreviewResolution(page, "pages", created.id);
+
+    await page.goto(`/admin/collections/pages/${created.id}`);
+    await expect(page).toHaveURL(new RegExp(`/admin/collections/pages/${created.id}$`));
+    await expectPreviewPath(page, publicPath);
+
+    await page.getByLabel("title", { exact: true }).fill(updatedTitle);
+    const savePreviewButton = page.getByRole("button", {
+      name: /^Save Scheduled & Preview$/,
+    });
+    await expect(savePreviewButton).toBeVisible();
+
+    const popupPromise = context.waitForEvent("page");
+    const patchResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/collections/pages/${created.id}`) &&
+        response.request().method() === "PATCH",
+    );
+    const previewResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/admin/collections/pages/${created.id}/preview`) &&
+        response.request().method() === "GET",
+    );
+
+    await savePreviewButton.click();
+
+    const [previewPage, patchResponse, previewResponse] = await Promise.all([
+      popupPromise,
+      patchResponsePromise,
+      previewResponsePromise,
+    ]);
+    expect(patchResponse.ok()).toBeTruthy();
+    const patched = (await patchResponse.json()) as {
+      title?: unknown;
+      status?: unknown;
+      publishedAt?: unknown;
+    };
+    expect(patched.title).toBe(updatedTitle);
+    expect(patched.status).toBe("scheduled");
+    if (patched.publishedAt !== undefined && patched.publishedAt !== null) {
+      expect(typeof patched.publishedAt).toBe("string");
+    }
     expect(previewResponse.ok()).toBeTruthy();
 
     const preview = (await previewResponse.json()) as { path?: unknown };

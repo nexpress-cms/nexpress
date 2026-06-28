@@ -16,7 +16,7 @@ import { postsCategoriesTable, postsTagsTable } from "./collections";
 
 export interface PostsDocument {
   id: string;
-  status: "draft" | "published" | "archived" | "pending";
+  status: "draft" | "scheduled" | "published" | "archived" | "pending";
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
@@ -57,12 +57,13 @@ export interface PostsDocument {
 
 export interface PagesDocument {
   id: string;
-  status: "draft" | "published" | "archived" | "pending";
+  status: "draft" | "scheduled" | "published" | "archived" | "pending";
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
   updatedBy: string | null;
   slug: string;
+  publishedAt: Date | null;
   _status: "draft" | "published";
   title: string;
   seoDescription: string | null;
@@ -73,7 +74,7 @@ export interface PagesDocument {
 
 export interface CategoriesDocument {
   id: string;
-  status: "draft" | "published" | "archived" | "pending";
+  status: "draft" | "scheduled" | "published" | "archived" | "pending";
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
@@ -85,7 +86,7 @@ export interface CategoriesDocument {
 
 export interface TagsDocument {
   id: string;
-  status: "draft" | "published" | "archived" | "pending";
+  status: "draft" | "scheduled" | "published" | "archived" | "pending";
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
@@ -97,13 +98,14 @@ export interface TagsDocument {
 
 export interface DiscussionsDocument {
   id: string;
-  status: "draft" | "published" | "archived" | "pending";
+  status: "draft" | "scheduled" | "published" | "archived" | "pending";
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
   updatedBy: string | null;
   memberAuthorId: string | null;
   slug: string;
+  publishedAt: Date | null;
   _status: "draft" | "published";
   title: string;
   body: unknown | null;

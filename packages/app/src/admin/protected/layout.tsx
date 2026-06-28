@@ -142,9 +142,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // entries with `type: "collection"`. The picker can't ask the
   // browser for the registered slugs (block render runs on the
   // server, the registry is module-scoped), so we snapshot the
-  // list once at request time. Label is the slug for now;
-  // collections.label.plural would be friendlier — left as a
-  // follow-up so this PR keeps moving.
+  // list once at request time. Labels use each collection's
+  // plural display name so generated controls match the admin nav.
   const collectionOptions = collections.map((c) => ({
     label: c.labels.plural,
     value: c.slug,

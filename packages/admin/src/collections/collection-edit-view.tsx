@@ -130,6 +130,12 @@ const namedSidebarFields = new Set(["status", "publishedAt", "slug"]);
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+const normalizePublishedAtForRequest = (value: unknown): string | undefined => {
+  if (typeof value === "string" && value.length > 0) return value;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
+  return undefined;
+};
+
 const safeHistoryState = (state: unknown): Record<string, unknown> =>
   isObject(state) ? { ...state } : {};
 
@@ -1193,8 +1199,9 @@ function CollectionEditViewInner({
 
   /**
    * `status` controls the wire payload's `_status` and the toast copy.
-   * Scheduling is just `_status: "published"` + a future `publishedAt` —
-   * the pipeline coerces that to `status: "scheduled"` server-side.
+   * Scheduled saves send `_status: "scheduled"` directly; older API
+   * clients may still send `_status: "published"` + future `publishedAt`,
+   * which the pipeline coerces server-side.
    */
   /**
    * Build a readable label for a field name. Walks effectiveFields
@@ -1346,11 +1353,17 @@ function CollectionEditViewInner({
       ? `/api/collections/${collectionSlug}/${String(doc.id)}`
       : `/api/collections/${collectionSlug}`;
 
+    const scheduledPublishedAt =
+      status === "scheduled"
+        ? (publishedAtOverride ??
+          normalizePublishedAtForRequest(values.publishedAt) ??
+          normalizePublishedAtForRequest(doc?.publishedAt))
+        : undefined;
     const wireStatus =
-      status === "scheduled" ? "published" : status === "unschedule" ? "draft" : status;
+      status === "scheduled" ? "scheduled" : status === "unschedule" ? "draft" : status;
     const requestBody: Record<string, unknown> = { ...values, _status: wireStatus };
-    if (status === "scheduled" && publishedAtOverride) {
-      requestBody.publishedAt = publishedAtOverride;
+    if (status === "scheduled" && scheduledPublishedAt) {
+      requestBody.publishedAt = scheduledPublishedAt;
     }
     if (status === "unschedule") {
       // Clear the future timestamp so the doc returns to plain draft.
@@ -1470,10 +1483,13 @@ function CollectionEditViewInner({
 
   const handleSaveAndPreview = () => {
     const previewWindow = openPendingPreviewWindow();
-    const previewStatus: SaveStatus =
-      doc?.id && (currentStatus === "published" || currentStatus === "scheduled")
+    const previewStatus: SaveStatus = doc?.id
+      ? currentStatus === "published"
         ? "published"
-        : "draft";
+        : currentStatus === "scheduled"
+          ? "scheduled"
+          : "draft"
+      : "draft";
 
     void form.handleSubmit(
       async (values) => {
@@ -1548,7 +1564,9 @@ function CollectionEditViewInner({
     ? "Save Draft & Preview"
     : currentStatus === "published"
       ? "Publish & Preview"
-      : "Save & Preview";
+      : currentStatus === "scheduled"
+        ? "Save Scheduled & Preview"
+        : "Save & Preview";
   const authoringStatusLabel =
     savingAs === "draft"
       ? "Saving draft..."

@@ -3,10 +3,7 @@ import { describe, expect, it } from "vitest";
 import { generateDocumentsModule } from "./type-generator.js";
 import type { NpCollectionConfig } from "../config/types.js";
 
-function collection(
-  slug: string,
-  fields: NpCollectionConfig["fields"] = [],
-): NpCollectionConfig {
+function collection(slug: string, fields: NpCollectionConfig["fields"] = []): NpCollectionConfig {
   return {
     slug,
     labels: { singular: slug, plural: `${slug}s` },
@@ -109,5 +106,29 @@ describe("generateDocumentsModule — hasMany filter wrapper", () => {
     ]);
     expect(without).not.toMatch(/getDb,/);
     expect(withHM).toMatch(/getDb,/);
+  });
+
+  it("emits scheduled status and framework publishedAt for draft collections", () => {
+    const out = generateDocumentsModule([
+      {
+        ...collection("pages", [{ type: "text", name: "title", required: true }]),
+        versions: { drafts: true },
+      },
+    ]);
+
+    expect(out).toContain('status: "draft" | "scheduled" | "published" | "archived" | "pending";');
+    expect(out).toContain("publishedAt: Date | null;");
+    expect(out).toContain('_status: "draft" | "published";');
+  });
+
+  it("does not duplicate user-declared publishedAt fields in document types", () => {
+    const out = generateDocumentsModule([
+      {
+        ...collection("posts", [{ type: "date", name: "publishedAt" }]),
+        versions: { drafts: true },
+      },
+    ]);
+
+    expect(out.match(/publishedAt: Date \| null;/g)).toHaveLength(1);
   });
 });

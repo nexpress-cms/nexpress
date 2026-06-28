@@ -7,14 +7,8 @@ import { npUsers } from "../db/schema/system.js";
 import { publishScheduledDocuments } from "../collections/scheduled.js";
 import { saveDocument } from "../collections/pipeline.js";
 import { loadPlugins, resetPlugins } from "../plugins/host.js";
-import {
-  closeTestDb,
-  ensureMigrated,
-  getTestDb,
-  skipIfNoTestDb,
-  truncateAll,
-} from "./setup.js";
-import { postsTable, registerTestCollections } from "./fixtures.js";
+import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } from "./setup.js";
+import { categoriesTable, pagesTable, postsTable, registerTestCollections } from "./fixtures.js";
 
 describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () => {
   beforeAll(async () => {
@@ -60,13 +54,9 @@ describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () 
   it("pipeline coerces published + future publishedAt to scheduled", async () => {
     const user = await seedUser();
     const future = new Date(Date.now() + 60 * 60 * 1000);
-    const result = await saveDocument(
-      "posts",
-      null,
-      { ...baseDoc, publishedAt: future },
-      user,
-      { status: "published" },
-    );
+    const result = await saveDocument("posts", null, { ...baseDoc, publishedAt: future }, user, {
+      status: "published",
+    });
     expect(result.doc.status).toBe("scheduled");
 
     const db = await getTestDb();
@@ -75,6 +65,76 @@ describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () 
       .from(postsTable)
       .where(eq(postsTable.id, result.doc.id as string));
     expect(row.status).toBe("scheduled");
+  });
+
+  it("pipeline accepts future publishedAt strings on framework-managed columns", async () => {
+    const user = await seedUser();
+    const futureIso = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const result = await saveDocument(
+      "pages",
+      null,
+      { title: "Scheduled Page", publishedAt: futureIso },
+      user,
+      { status: "published" },
+    );
+    expect(result.doc.status).toBe("scheduled");
+
+    const db = await getTestDb();
+    const [row] = await db
+      .select()
+      .from(pagesTable)
+      .where(eq(pagesTable.id, result.doc.id as string));
+    expect(row.status).toBe("scheduled");
+  });
+
+  it("pipeline preserves scheduled status on framework-managed column updates", async () => {
+    const user = await seedUser();
+    const futureIso = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const created = await saveDocument(
+      "pages",
+      null,
+      { title: "Scheduled Page", publishedAt: futureIso },
+      user,
+      { status: "published" },
+    );
+
+    const updated = await saveDocument(
+      "pages",
+      created.doc.id as string,
+      { title: "Scheduled Page Updated" },
+      user,
+      { status: "scheduled" },
+    );
+    expect(updated.doc.status).toBe("scheduled");
+
+    const db = await getTestDb();
+    const [row] = await db
+      .select()
+      .from(pagesTable)
+      .where(eq(pagesTable.id, created.doc.id as string));
+    expect(row.title).toBe("Scheduled Page Updated");
+    expect(row.status).toBe("scheduled");
+  });
+
+  it("does not treat publishedAt as framework-managed without draft versions", async () => {
+    const user = await seedUser();
+    const futureIso = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const result = await saveDocument(
+      "categories",
+      null,
+      { name: "Scheduling", publishedAt: futureIso },
+      user,
+      { status: "published" },
+    );
+    expect(result.doc.status).toBe("published");
+
+    const db = await getTestDb();
+    const [row] = await db
+      .select()
+      .from(categoriesTable)
+      .where(eq(categoriesTable.id, result.doc.id as string));
+    expect(row.name).toBe("Scheduling");
+    expect(row.status).toBe("published");
   });
 
   it("publishScheduledDocuments flips only rows whose publishedAt has passed", async () => {
@@ -133,13 +193,9 @@ describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () 
 
     const user = await seedUser();
     const past = new Date(Date.now() - 60 * 1000);
-    const due = await saveDocument(
-      "posts",
-      null,
-      { ...baseDoc, publishedAt: past },
-      user,
-      { status: "scheduled" },
-    );
+    const due = await saveDocument("posts", null, { ...baseDoc, publishedAt: past }, user, {
+      status: "scheduled",
+    });
 
     await publishScheduledDocuments();
 
@@ -159,13 +215,9 @@ describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () 
   it("is idempotent — second run finds nothing", async () => {
     const user = await seedUser();
     const past = new Date(Date.now() - 60 * 1000);
-    await saveDocument(
-      "posts",
-      null,
-      { ...baseDoc, publishedAt: past },
-      user,
-      { status: "scheduled" },
-    );
+    await saveDocument("posts", null, { ...baseDoc, publishedAt: past }, user, {
+      status: "scheduled",
+    });
 
     const first = await publishScheduledDocuments();
     const second = await publishScheduledDocuments();

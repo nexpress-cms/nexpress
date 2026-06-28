@@ -53,12 +53,8 @@ function collectHasManyFields(collection: NpCollectionConfig): HasManyDescriptor
  * `nexpressConfig.collections` source so they stay in sync.
  */
 export function generateDocumentsModule(collections: NpCollectionConfig[]): string {
-  const hasManyByCollection = new Map(
-    collections.map((c) => [c.slug, collectHasManyFields(c)]),
-  );
-  const anyHasMany = Array.from(hasManyByCollection.values()).some(
-    (list) => list.length > 0,
-  );
+  const hasManyByCollection = new Map(collections.map((c) => [c.slug, collectHasManyFields(c)]));
+  const anyHasMany = Array.from(hasManyByCollection.values()).some((list) => list.length > 0);
 
   const coreImports = [
     `import {`,
@@ -100,13 +96,9 @@ export function generateDocumentsModule(collections: NpCollectionConfig[]): stri
   // https://github.com/vercel/next.js/issues for the long
   // history of `.js`-extension friction with Turbopack.
   const joinTableImports =
-    joinTables.length > 0
-      ? `import { ${joinTables.join(", ")} } from "./collections";`
-      : "";
+    joinTables.length > 0 ? `import { ${joinTables.join(", ")} } from "./collections";` : "";
 
-  const imports = [coreImports, drizzleImports, joinTableImports]
-    .filter(Boolean)
-    .join("\n");
+  const imports = [coreImports, drizzleImports, joinTableImports].filter(Boolean).join("\n");
 
   const interfaces = collections.map((c) => renderCollectionInterface(c)).join("\n\n");
   const helpers = collections
@@ -116,10 +108,7 @@ export function generateDocumentsModule(collections: NpCollectionConfig[]): stri
   return [imports, "", interfaces, "", helpers, ""].join("\n");
 }
 
-function renderReadHelpers(
-  collection: NpCollectionConfig,
-  hasMany: HasManyDescriptor[],
-): string {
+function renderReadHelpers(collection: NpCollectionConfig, hasMany: HasManyDescriptor[]): string {
   const docType = `${toPascalCase(collection.slug)}Document`;
   const findFnName = `find${toPascalCase(collection.slug)}`;
   const getFnName = `get${toPascalCase(collection.slug)}Document`;
@@ -275,16 +264,16 @@ function renderHasManyFindFn(
 function renderCollectionInterface(collection: NpCollectionConfig): string {
   const interfaceName = `${toPascalCase(collection.slug)}Document`;
   const fields = [
-    'id: string;',
-    'status: "draft" | "published" | "archived" | "pending";',
-    'createdAt: Date;',
-    'updatedAt: Date;',
-    'createdBy: string | null;',
-    'updatedBy: string | null;',
+    "id: string;",
+    'status: "draft" | "scheduled" | "published" | "archived" | "pending";',
+    "createdAt: Date;",
+    "updatedAt: Date;",
+    "createdBy: string | null;",
+    "updatedBy: string | null;",
   ];
 
   if (collection.community?.memberWrite?.create) {
-    fields.push('memberAuthorId: string | null;');
+    fields.push("memberAuthorId: string | null;");
   }
 
   if (collection.slugField) {
@@ -292,12 +281,21 @@ function renderCollectionInterface(collection: NpCollectionConfig): string {
   }
 
   if (collection.versions?.drafts) {
+    if (!hasTopLevelField(collection, "publishedAt")) {
+      fields.push("publishedAt: Date | null;");
+    }
     fields.push('_status: "draft" | "published";');
   }
 
   fields.push(...renderFields(collection.fields));
 
-  return [`export interface ${interfaceName} {`, ...fields.map((field) => `  ${field}`), "}"].join("\n");
+  return [`export interface ${interfaceName} {`, ...fields.map((field) => `  ${field}`), "}"].join(
+    "\n",
+  );
+}
+
+function hasTopLevelField(collection: NpCollectionConfig, name: string): boolean {
+  return collection.fields.some((field) => "name" in field && field.name === name);
 }
 
 function renderFields(fields: NpFieldConfig[], prefix: string[] = []): string[] {
@@ -330,7 +328,9 @@ function renderObjectType(fields: NpFieldConfig[]): string {
   return [`{`, ...members, `}`].join("\n");
 }
 
-function getTypeSource(field: Exclude<NpFieldConfig, { type: "row" | "collapsible" | "group" }>): string {
+function getTypeSource(
+  field: Exclude<NpFieldConfig, { type: "row" | "collapsible" | "group" }>,
+): string {
   switch (field.type) {
     case "text":
     case "textarea":
