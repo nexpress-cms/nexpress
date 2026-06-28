@@ -10,6 +10,7 @@ import { toClientCollectionConfig } from "@nexpress/next";
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { ensureFor } from "../../../../../lib/init-core";
+import { resolveCollectionPreviewPath } from "../../../../../lib/collection-preview";
 import { getAuthRuntimeConfig } from "../../../../../lib/auth-helpers";
 import { getCachedActiveTheme } from "../../../../../lib/cached-theme";
 import { getDb } from "../../../../../lib/db";
@@ -66,6 +67,7 @@ export default async function EditPage({ params }: Props) {
       doc={doc}
       collectionSlug={collection}
       collectionTabs={tabs}
+      previewPath={resolveCollectionPreviewPath(config, doc)}
     />
   );
 }

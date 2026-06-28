@@ -68,6 +68,13 @@ It opens a date/time picker that submits the document with
 that to `status: "scheduled"` server-side, so the workflow is symmetric
 whether you use the UI or the API.
 
+The same edit view's **Preview** button enters draft mode through
+`/api/preview` and redirects to the collection's configured
+`seo.urlPath(doc)` value. That keeps admin preview aligned with the
+real public route: i18n pages preview at `/<locale>/<slug>`, posts at
+`/blog/<slug>`, and theme-contributed post kinds follow their own
+`urlPattern`.
+
 When the document is already scheduled, the button reads **Reschedule**
 and the dialog gains a **Cancel schedule** action that switches the doc
 back to `draft` (and clears `publishedAt`). The header **Publish**
