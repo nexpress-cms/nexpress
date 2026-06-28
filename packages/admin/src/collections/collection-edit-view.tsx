@@ -120,11 +120,27 @@ type AutosaveRecoveryState =
   | { kind: "error"; message: string };
 
 const UNSAVED_NAVIGATION_MESSAGE = "You have unsaved changes. Leave without saving?";
+const UNSAVED_HISTORY_GUARD_KEY = "__npUnsavedGuard";
+const UNSAVED_HISTORY_GUARD_TRAP = "trap";
 
 const namedSidebarFields = new Set(["status", "publishedAt", "slug"]);
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const safeHistoryState = (state: unknown): Record<string, unknown> =>
+  isObject(state) ? { ...state } : {};
+
+const pushUnsavedHistoryTrap = (): void => {
+  window.history.pushState(
+    {
+      ...safeHistoryState(window.history.state),
+      [UNSAVED_HISTORY_GUARD_KEY]: UNSAVED_HISTORY_GUARD_TRAP,
+    },
+    "",
+    window.location.href,
+  );
+};
 
 const buildInputDateValue = (value: unknown, includeTime: boolean): string => {
   if (typeof value === "string") {
@@ -724,12 +740,44 @@ function CollectionEditViewInner({
   const autosaveTimer = useRef<number | null>(null);
   const latestAutosavePayloadRef = useRef<AutosavePayload | null>(null);
   const dismissedAutosaveRevisionIdRef = useRef<string | null>(null);
+  const historyGuardActiveRef = useRef(false);
+  const skipNextHistoryPopRef = useRef(false);
   // `savingAs` is read inside the timer callback below; capture it via a
   // ref so we don't reschedule autosave every time the manual save state changes.
   const savingAsRef = useRef(savingAs);
   useEffect(() => {
     savingAsRef.current = savingAs;
   }, [savingAs]);
+
+  const autosaveRecoveryDismissStorageKey = doc?.id
+    ? `np-admin.autosave-recovery.dismissed.${collectionSlug}.${String(doc.id)}`
+    : null;
+
+  const readDismissedAutosaveRevisionId = useCallback((): string | null => {
+    if (!autosaveRecoveryDismissStorageKey) return dismissedAutosaveRevisionIdRef.current;
+    try {
+      return (
+        window.sessionStorage.getItem(autosaveRecoveryDismissStorageKey) ??
+        dismissedAutosaveRevisionIdRef.current
+      );
+    } catch {
+      return dismissedAutosaveRevisionIdRef.current;
+    }
+  }, [autosaveRecoveryDismissStorageKey]);
+
+  const markAutosaveRecoveryDismissed = useCallback(
+    (revisionId: string, persist: boolean) => {
+      dismissedAutosaveRevisionIdRef.current = revisionId;
+      if (!persist || !autosaveRecoveryDismissStorageKey) return;
+      try {
+        window.sessionStorage.setItem(autosaveRecoveryDismissStorageKey, revisionId);
+      } catch {
+        // Session storage can be unavailable in restricted contexts; the
+        // in-memory ref still hides the banner for the current render.
+      }
+    },
+    [autosaveRecoveryDismissStorageKey],
+  );
 
   useEffect(() => {
     latestAutosavePayloadRef.current = null;
@@ -766,7 +814,7 @@ function CollectionEditViewInner({
         const latestAutosave = (payload.revisions ?? []).find(
           (revision) => revision.status === "autosave",
         );
-        if (!latestAutosave || latestAutosave.id === dismissedAutosaveRevisionIdRef.current) {
+        if (!latestAutosave || latestAutosave.id === readDismissedAutosaveRevisionId()) {
           if (!cancelled) setAutosaveRecovery({ kind: "none" });
           return;
         }
@@ -825,7 +873,15 @@ function CollectionEditViewInner({
       cancelled = true;
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, [autosaveEnabled, collectionSlug, defaultValues, doc, doc?.id, effectiveFields]);
+  }, [
+    autosaveEnabled,
+    collectionSlug,
+    defaultValues,
+    doc,
+    doc?.id,
+    effectiveFields,
+    readDismissedAutosaveRevisionId,
+  ]);
 
   const runAutosave = useCallback(
     async (payload: AutosavePayload) => {
@@ -908,11 +964,11 @@ function CollectionEditViewInner({
 
   const handleDismissAutosaveRecovery = useCallback(() => {
     if (autosaveRecovery.kind === "available") {
-      dismissedAutosaveRevisionIdRef.current = autosaveRecovery.revision.id;
+      markAutosaveRecoveryDismissed(autosaveRecovery.revision.id, true);
     }
     setAutosaveRecovery({ kind: "none" });
     setAutosaveRecoveryDialogOpen(false);
-  }, [autosaveRecovery]);
+  }, [autosaveRecovery, markAutosaveRecoveryDismissed]);
 
   const handleApplyAutosaveRecovery = useCallback(() => {
     if (autosaveRecovery.kind !== "available") return;
@@ -926,14 +982,14 @@ function CollectionEditViewInner({
     form.reset(autosaveRecovery.recoveredValues, { keepDefaultValues: true });
     setAutosaveStatus({ kind: "idle" });
     latestAutosavePayloadRef.current = null;
-    dismissedAutosaveRevisionIdRef.current = autosaveRecovery.revision.id;
+    markAutosaveRecoveryDismissed(autosaveRecovery.revision.id, false);
     setAutosaveRecovery({ kind: "none" });
     setAutosaveRecoveryDialogOpen(false);
     setToast({
       type: "success",
       message: "Autosave applied. Review the recovered changes, then save when ready.",
     });
-  }, [autosaveRecovery, form, hasUnsavedChanges]);
+  }, [autosaveRecovery, form, hasUnsavedChanges, markAutosaveRecoveryDismissed]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -943,6 +999,46 @@ function CollectionEditViewInner({
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) {
+      if (
+        historyGuardActiveRef.current &&
+        isObject(window.history.state) &&
+        window.history.state[UNSAVED_HISTORY_GUARD_KEY] === UNSAVED_HISTORY_GUARD_TRAP
+      ) {
+        skipNextHistoryPopRef.current = true;
+        window.history.back();
+        skipNextHistoryPopRef.current = false;
+      }
+      historyGuardActiveRef.current = false;
+      return;
+    }
+
+    if (historyGuardActiveRef.current) return;
+    skipNextHistoryPopRef.current = false;
+    historyGuardActiveRef.current = true;
+    pushUnsavedHistoryTrap();
+
+    const handlePopState = () => {
+      if (skipNextHistoryPopRef.current) {
+        skipNextHistoryPopRef.current = false;
+        return;
+      }
+
+      if (!window.confirm(UNSAVED_NAVIGATION_MESSAGE)) {
+        pushUnsavedHistoryTrap();
+        return;
+      }
+
+      historyGuardActiveRef.current = false;
+      skipNextHistoryPopRef.current = true;
+      window.history.back();
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, [hasUnsavedChanges]);
 
   useEffect(() => {
