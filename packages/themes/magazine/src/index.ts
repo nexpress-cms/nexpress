@@ -92,6 +92,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: at(0),
     categoryNames: ["Features"],
+    tagNames: ["Cities", "Craft"],
     data: {
       authorName: "Helena Park",
       featured: true,
@@ -109,6 +110,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: at(1),
     categoryNames: ["Profiles"],
+    tagNames: ["Craft", "Profiles"],
   },
   {
     title: "In praise of the slow train, the long letter, the second draft",
@@ -120,6 +122,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: at(2),
     categoryNames: ["Essays"],
+    tagNames: ["Letters", "Slow Media"],
   },
   {
     title: "A small republic of bicycle repairmen, in a courtyard nobody owns",
@@ -131,6 +134,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: at(3),
     categoryNames: ["Reporting"],
+    tagNames: ["Cities", "Field Notes"],
   },
   // ── Dispatches (timed, short) ─────────────────────────────
   {
@@ -142,6 +146,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: at(0, 7, 42),
     categoryNames: ["Dispatches"],
+    tagNames: ["Field Notes"],
   },
   {
     title:
@@ -152,6 +157,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: at(1, 18, 10),
     categoryNames: ["Dispatches"],
+    tagNames: ["Cities"],
   },
   {
     title: "What we read this week — and which one we'll be arguing about for the next six months.",
@@ -161,6 +167,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: at(2, 9, 0),
     categoryNames: ["Dispatches"],
+    tagNames: ["Books", "Letters"],
   },
   {
     title:
@@ -171,6 +178,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: at(3, 14, 30),
     categoryNames: ["Dispatches"],
+    tagNames: ["Field Notes"],
   },
   // ── Archive ───────────────────────────────────────────────
   {
@@ -182,6 +190,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: at(28),
     categoryNames: ["Profiles"],
+    tagNames: ["Cinema", "Archives"],
   },
   {
     title: "My grandmother could mend anything. I can barely sew a button.",
@@ -192,6 +201,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: at(32),
     categoryNames: ["Essays"],
+    tagNames: ["Craft", "Letters"],
   },
   {
     title: "The night porter knows whose flowers were delivered to which floor, and won't tell.",
@@ -202,6 +212,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: at(45),
     categoryNames: ["Profiles"],
+    tagNames: ["Profiles"],
   },
   {
     title: "Twenty-eight portraits, one barbershop, sixty-two years of haircuts.",
@@ -212,6 +223,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: at(60),
     categoryNames: ["Photography"],
+    tagNames: ["Photography", "Archives"],
   },
   {
     title: "On the small uses of carrying a notebook, in a year of carrying nothing else.",
@@ -222,6 +234,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: at(75),
     categoryNames: ["Essays"],
+    tagNames: ["Slow Media"],
   },
   {
     title: "The translator's translator: a quiet hand behind half the year's most-read books.",
@@ -232,6 +245,23 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: at(95),
     categoryNames: ["Profiles"],
+    tagNames: ["Books", "Profiles"],
+  },
+];
+
+const SEED_TAGS = [
+  { name: "Cities", description: "Urban craft, civic memory, and changing neighborhoods." },
+  { name: "Craft", description: "People keeping exacting practical knowledge alive." },
+  { name: "Profiles", description: "Reported portraits from the magazine desk." },
+  { name: "Letters", description: "Essays, correspondence, and second-draft thinking." },
+  { name: "Slow Media", description: "Paper, trains, notebooks, and deliberate publishing." },
+  { name: "Field Notes", description: "Short dispatches from festivals, libraries, and streets." },
+  { name: "Books", description: "Reading lists, translation notes, and literary margins." },
+  { name: "Cinema", description: "Screens, stages, and rooms built for an audience." },
+  { name: "Archives", description: "Recovered rooms, images, and old cultural infrastructure." },
+  {
+    name: "Photography",
+    description: "Portrait series, visual archives, and image-led reporting.",
   },
 ];
 
@@ -511,6 +541,7 @@ export const magazineTheme = defineTheme({
       },
     },
     seedContent: {
+      tags: SEED_TAGS,
       categories: SEED_CATEGORIES,
       pages: SEED_PAGES,
       posts: SEED_POSTS,

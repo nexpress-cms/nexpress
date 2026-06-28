@@ -54,7 +54,8 @@ const BUILT_IN_PATTERNS: NpPattern[] = [
             },
             {
               question: "Can I switch plans later?",
-              answer: "Yes — upgrades take effect immediately, downgrades at the next billing cycle.",
+              answer:
+                "Yes — upgrades take effect immediately, downgrades at the next billing cycle.",
             },
             {
               question: "Is there a free trial?",
@@ -205,11 +206,7 @@ const BUILT_IN_PATTERNS: NpPattern[] = [
         props: {
           heading: "Talk to our team",
           email: "hello@example.com",
-          fields: [
-            { label: "Name" },
-            { label: "Email" },
-            { label: "Company" },
-          ],
+          fields: [{ label: "Name" }, { label: "Email" }, { label: "Company" }],
         },
       },
     ],
@@ -271,7 +268,7 @@ function isPattern(value: unknown): value is NpPattern {
 }
 
 // ---------------------------------------------------------------
-// Server-side patterns (#467 follow-up). Stored in `np_settings`
+// Server-side patterns. Stored in `np_settings`
 // per site so a team's saved compositions show up across operator
 // accounts and devices instead of being trapped in one browser's
 // localStorage. The local store stays as fallback for offline use,
@@ -304,9 +301,7 @@ export async function fetchServerPatterns(): Promise<NpPattern[] | null> {
     if (!res.ok) return null;
     const payload = (await res.json()) as ServerPatternResponse;
     if (!Array.isArray(payload.patterns)) return [];
-    return payload.patterns
-      .filter(isPattern)
-      .map((p) => ({ ...p, source: "custom" as const }));
+    return payload.patterns.filter(isPattern).map((p) => ({ ...p, source: "custom" as const }));
   } catch {
     return null;
   }
@@ -317,9 +312,7 @@ export async function fetchServerPatterns(): Promise<NpPattern[] | null> {
  * success or `null` on failure — the caller falls back to the
  * local store so the operator's intent isn't lost.
  */
-export async function saveServerPattern(
-  pattern: NpPattern,
-): Promise<NpPattern | null> {
+export async function saveServerPattern(pattern: NpPattern): Promise<NpPattern | null> {
   if (typeof window === "undefined") return null;
   try {
     // npFetch attaches the CSRF token from the np-csrf cookie —

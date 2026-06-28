@@ -50,7 +50,19 @@ describe("generateDrizzleSchema", () => {
       },
     ]);
 
+    expect(out).toContain('publishedAt: timestamp("published_at", { withTimezone: true })');
     expect(out).toContain('_status: text("_status", { enum: ["draft", "published"] })');
+  });
+
+  it("does not duplicate a user-declared publishedAt date field", () => {
+    const out = generateDrizzleSchema([
+      {
+        ...collection("posts", [{ type: "date", name: "publishedAt" }]),
+        versions: { drafts: true },
+      },
+    ]);
+
+    expect(out.match(/publishedAt: timestamp\("published_at"/g)).toHaveLength(1);
   });
 
   it("points upload fields at npMedia and relationship fields at the target table", () => {

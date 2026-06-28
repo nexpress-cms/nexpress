@@ -26,7 +26,7 @@ import { ensureFor } from "../../../lib/init-core";
  * functions across the server → client boundary.
  *
  * Render path:
- * - `renderToReadableStream` (#467 follow-up). Async data-bound
+ * - `renderToReadableStream`. Async data-bound
  *   blocks (latest-posts, stats.counter, plugin async blocks) are
  *   awaited via `stream.allReady` so what the operator sees in the
  *   preview matches what the public page would render.
@@ -59,9 +59,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (await request.json()) as { blocks?: unknown };
-    const blocks = Array.isArray(body.blocks)
-      ? (body.blocks as NpBlockInstance[])
-      : [];
+    const blocks = Array.isArray(body.blocks) ? (body.blocks as NpBlockInstance[]) : [];
 
     const themeStyle = await resolveThemeStyle();
 
@@ -84,9 +82,7 @@ export async function POST(request: NextRequest) {
     } catch (renderError) {
       return new Response(
         buildErrorDocument(
-          renderError instanceof Error
-            ? renderError.message
-            : "Block render failed.",
+          renderError instanceof Error ? renderError.message : "Block render failed.",
         ),
         {
           status: 200, // Don't 5xx — iframe still needs to mount.
@@ -106,9 +102,7 @@ export async function POST(request: NextRequest) {
       });
     }
     return new Response(
-      buildErrorDocument(
-        error instanceof Error ? error.message : "Preview unavailable.",
-      ),
+      buildErrorDocument(error instanceof Error ? error.message : "Preview unavailable."),
       {
         status: 500,
         headers: previewHeaders(),
@@ -142,9 +136,7 @@ async function renderTreeToHtml(tree: React.ReactElement): Promise<string> {
     // the outer try/catch) get a stack trace either way.
     throw renderError instanceof Error
       ? renderError
-      : new Error(
-          typeof renderError === "string" ? renderError : "Render failed",
-        );
+      : new Error(typeof renderError === "string" ? renderError : "Render failed");
   }
   // Drain the stream into a string. Response is the simplest text
   // accumulator that handles backpressure; we don't have to manage
@@ -228,13 +220,7 @@ function buildErrorDocument(message: string): string {
   // pipeline blew up. The operator sees the failure context and
   // can keep editing.
   const escaped = message.replace(/[&<>"]/g, (char) =>
-    char === "&"
-      ? "&amp;"
-      : char === "<"
-        ? "&lt;"
-        : char === ">"
-          ? "&gt;"
-          : "&quot;",
+    char === "&" ? "&amp;" : char === "<" ? "&lt;" : char === ">" ? "&gt;" : "&quot;",
   );
   return `<!doctype html>
 <html lang="en">

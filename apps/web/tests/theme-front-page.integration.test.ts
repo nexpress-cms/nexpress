@@ -145,7 +145,7 @@ describe.skipIf(skipIfNoTestDb())("theme front-page rendering", () => {
     expect(html).toContain("The cartographers of a city that");
   });
 
-  it("magazine section and category archives render seeded category posts", async () => {
+  it("magazine section, category, tag, and date archives render seeded posts", async () => {
     await activateThemeForSeed("magazine");
     const actor = await asActor();
     const { magazineTheme, MagazineSectionArchiveRoute } = await import("@nexpress/theme-magazine");
@@ -154,6 +154,7 @@ describe.skipIf(skipIfNoTestDb())("theme front-page rendering", () => {
 
     const seed = await seedAll(actor, magazineTheme);
     expect(seed.posts.created).toBeGreaterThan(0);
+    expect(seed.terms.tagsCreated).toBeGreaterThan(0);
     expect(seed.terms.categoriesCreated).toBeGreaterThan(0);
 
     const blockCtx = await createSiteScopedBlockRenderContext();
@@ -181,6 +182,36 @@ describe.skipIf(skipIfNoTestDb())("theme front-page rendering", () => {
     expect(categoryHtml).toContain("np-magazine-archive");
     expect(categoryHtml).toContain("The cartographers of a city that");
     expect(categoryHtml).not.toContain("No stories yet.");
+
+    const Tag = magazineTheme.impl.archives!.posts!.byTag!.component as (props: {
+      params: Record<string, string>;
+      searchParams: Record<string, string>;
+      blockCtx: typeof blockCtx;
+    }) => Promise<React.ReactElement>;
+    const tagElement = await Tag({
+      params: { slug: "cities" },
+      searchParams: {},
+      blockCtx,
+    });
+    const tagHtml = renderToString(tagElement);
+    expect(tagHtml).toContain("np-magazine-archive");
+    expect(tagHtml).toContain("The cartographers of a city that");
+    expect(tagHtml).not.toContain("No stories yet.");
+
+    const DateArchive = magazineTheme.impl.archives!.posts!.byDate!.component as (props: {
+      params: Record<string, string>;
+      searchParams: Record<string, string>;
+      blockCtx: typeof blockCtx;
+    }) => Promise<React.ReactElement>;
+    const dateElement = await DateArchive({
+      params: { year: "2026", month: "05" },
+      searchParams: {},
+      blockCtx,
+    });
+    const dateHtml = renderToString(dateElement);
+    expect(dateHtml).toContain("May 2026");
+    expect(dateHtml).toContain("The cartographers of a city that");
+    expect(dateHtml).not.toContain("No stories yet.");
   });
 
   it("portfolio pages.front renders the studio grid with seeded projects", async () => {

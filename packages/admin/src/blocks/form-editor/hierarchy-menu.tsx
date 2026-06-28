@@ -16,7 +16,7 @@ import {
 } from "../../ui/dropdown-menu.js";
 
 /**
- * Row-header dropdown for cross-hierarchy moves (#467 follow-up).
+ * Row-header dropdown for cross-hierarchy moves.
  * Mirrors the Cmd-K commands so mouse operators don't need to
  * know the keyboard shortcut. Move-into candidates are resolved
  * lazily on dropdown open via `getMoveIntoCandidates(id)` so we

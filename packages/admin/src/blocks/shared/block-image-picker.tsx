@@ -20,7 +20,7 @@ import { Input } from "../../ui/input.js";
  * library. Stores a URL string — block renders use the URL
  * directly in `<img src=...>` / `background-image: url(...)`.
  *
- * Library features (#467 follow-ups):
+ * Media-library behavior:
  * - Server-side substring search via `/api/media?q=` (ILIKE
  *   over filename + alt).
  * - Page-based "Load more" pagination.

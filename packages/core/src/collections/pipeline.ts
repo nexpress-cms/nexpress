@@ -171,9 +171,7 @@ const deferredPostCommitStore = new AsyncLocalStorage<DeferredPostCommitHook[]>(
  * the inner queue drains when the inner callback resolves, before
  * control returns to the outer.
  */
-export async function withDeferredPostCommit<T>(
-  callback: () => Promise<T>,
-): Promise<T> {
+export async function withDeferredPostCommit<T>(callback: () => Promise<T>): Promise<T> {
   const queue: DeferredPostCommitHook[] = [];
   const result = await deferredPostCommitStore.run(queue, callback);
   // Drain on success. Each hook is independently isolated — one
@@ -238,17 +236,14 @@ export async function runPostCommit(
     await fn();
   } catch (err) {
     const { getLogger } = await import("../observability/logger.js");
-    getLogger().error(
-      `post-commit ${label} failed — document persisted, follow-up skipped`,
-      {
-        collection: context.collection,
-        documentId: context.documentId,
-        operation: context.operation,
-        label,
-        error: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
-      },
-    );
+    getLogger().error(`post-commit ${label} failed — document persisted, follow-up skipped`, {
+      collection: context.collection,
+      documentId: context.documentId,
+      operation: context.operation,
+      label,
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
   }
 }
 
@@ -657,7 +652,12 @@ async function initSaveContext(
   data: Record<string, unknown>,
   actor: SaveActor,
   options: NpSaveOptions | undefined,
-): Promise<Omit<SaveContext, "hookData" | "prepared" | "searchVector" | "publishTransition" | "unpublishTransition" | "now">> {
+): Promise<
+  Omit<
+    SaveContext,
+    "hookData" | "prepared" | "searchVector" | "publishTransition" | "unpublishTransition" | "now"
+  >
+> {
   const config = getCollectionConfig(collection);
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
@@ -674,13 +674,21 @@ async function initSaveContext(
   // hidden field can't be filled by the operator, so requiring
   // it on save would block writes the operator can't fix.
   const validatedData = toRecord(getCollectionZodSchema(config, data).parse(data));
+  if (hasFrameworkPublishedAt(config)) {
+    const publishedAt = normalizeFrameworkPublishedAt(data.publishedAt);
+    if (publishedAt !== undefined) {
+      validatedData.publishedAt = publishedAt;
+    }
+  }
   const operation: "create" | "update" = docId ? "update" : "create";
   // Read the original doc through the outer tx when one is
   // provided so the read sees the tx's own pending writes
   // (matters when a batch saves dependent docs in sequence and
   // a later one needs to look the earlier one up).
   const readHandle: DrizzleTransactionLike = outerTx ?? db;
-  const originalDoc = docId ? await getDocumentByIdInternal(readHandle, table, collection, docId) : null;
+  const originalDoc = docId
+    ? await getDocumentByIdInternal(readHandle, table, collection, docId)
+    : null;
   return {
     collection,
     docId,
@@ -823,6 +831,12 @@ async function prepareDocumentForWrite(c: SaveContext): Promise<void> {
   }
 
   c.prepared = prepareDocumentData(c.config.fields, c.hookData);
+  if (hasFrameworkPublishedAt(c.config)) {
+    const publishedAt = normalizeFrameworkPublishedAt(c.hookData.publishedAt);
+    if (publishedAt !== undefined) {
+      c.prepared.mainData.publishedAt = publishedAt;
+    }
+  }
   if (c.options?.status) {
     c.prepared.mainData.status = c.options.status;
   }
@@ -862,7 +876,11 @@ async function prepareDocumentForWrite(c: SaveContext): Promise<void> {
   // public site doesn't render it until the scheduler flips it back.
   const desiredStatus = c.prepared.mainData.status as string | undefined;
   const publishedAtValue = c.prepared.mainData.publishedAt;
-  if (desiredStatus === "published" && publishedAtValue instanceof Date && publishedAtValue > c.now) {
+  if (
+    desiredStatus === "published" &&
+    publishedAtValue instanceof Date &&
+    publishedAtValue > c.now
+  ) {
     c.prepared.mainData.status = "scheduled";
   }
 
@@ -892,17 +910,14 @@ async function prepareDocumentForWrite(c: SaveContext): Promise<void> {
  * media-ref + revision). Returns the saved doc.
  */
 async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unknown>> {
-  await runHook(
-    ctx.operation === "create" ? "content:beforeCreate" : "content:beforeUpdate",
-    {
-      collection: ctx.collection,
-      data: ctx.hookData,
-      originalDoc: ctx.originalDoc,
-      user: ctx.userForHooks,
-      principal: ctx.principal,
-      operation: ctx.operation,
-    },
-  );
+  await runHook(ctx.operation === "create" ? "content:beforeCreate" : "content:beforeUpdate", {
+    collection: ctx.collection,
+    data: ctx.hookData,
+    originalDoc: ctx.originalDoc,
+    user: ctx.userForHooks,
+    principal: ctx.principal,
+    operation: ctx.operation,
+  });
   if (ctx.publishTransition) {
     await runHook("content:beforePublish", {
       collection: ctx.collection,
@@ -953,7 +968,13 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
 
     await syncChildTables(tx, ctx.registration.childTables, ctx.prepared.childRows, persistedDocId);
     await syncJoinTables(tx, ctx.registration.joinTables, ctx.prepared.joinRows, persistedDocId);
-    await syncMediaRefsForDocument(tx, ctx.collection, persistedDocId, ctx.config.fields, ctx.hookData);
+    await syncMediaRefsForDocument(
+      tx,
+      ctx.collection,
+      persistedDocId,
+      ctx.config.fields,
+      ctx.hookData,
+    );
 
     // Slug-rename history. When a slug-having collection's row
     // changes its slug, write an `oldSlug → newSlug` record so
@@ -1712,9 +1733,7 @@ export async function getDocumentById<T extends object = Record<string, unknown>
   // assert against.
   const requestSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const docSiteId =
-    typeof doc.siteId === "string" && doc.siteId.length > 0
-      ? doc.siteId
-      : NP_DEFAULT_SITE_ID;
+    typeof doc.siteId === "string" && doc.siteId.length > 0 ? doc.siteId : NP_DEFAULT_SITE_ID;
   if (docSiteId !== requestSiteId) {
     throw new NpForbiddenError(collection, "cross-site");
   }
@@ -2153,9 +2172,7 @@ async function getDocumentByIdInternal(
   if (!options?.allowCrossSite) {
     const requestSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
     const docSiteId =
-      typeof doc.siteId === "string" && doc.siteId.length > 0
-        ? doc.siteId
-        : NP_DEFAULT_SITE_ID;
+      typeof doc.siteId === "string" && doc.siteId.length > 0 ? doc.siteId : NP_DEFAULT_SITE_ID;
     if (docSiteId !== requestSiteId) {
       throw new NpForbiddenError(collection, "cross-site");
     }
@@ -2214,8 +2231,37 @@ function prepareDocumentData(
   if (typeof data.visibility === "string") {
     prepared.mainData.visibility = data.visibility;
   }
-
   return prepared;
+}
+
+function hasFrameworkPublishedAt(config: NpCollectionConfig): boolean {
+  if (!config.versions?.drafts) return false;
+  return !config.fields.some((field) => "name" in field && field.name === "publishedAt");
+}
+
+function normalizeFrameworkPublishedAt(value: unknown): Date | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      throw new NpValidationError("Invalid input", [
+        { field: "publishedAt", message: "Must be a valid date." },
+      ]);
+    }
+    return value;
+  }
+  if (typeof value === "string") {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new NpValidationError("Invalid input", [
+        { field: "publishedAt", message: "Must be a valid date." },
+      ]);
+    }
+    return date;
+  }
+  throw new NpValidationError("Invalid input", [
+    { field: "publishedAt", message: "Must be a valid date." },
+  ]);
 }
 
 function collectPreparedDocumentData(

@@ -14,12 +14,7 @@ import {
   tabsBlock,
   testimonialsBlock,
 } from "./blocks/index.js";
-import type {
-  NpBlockDefinition,
-  NpBlockMetadata,
-  NpBlockRegistry,
-  NpPattern,
-} from "./types.js";
+import type { NpBlockDefinition, NpBlockMetadata, NpBlockRegistry, NpPattern } from "./types.js";
 
 const defaultBlocks = [
   // Layout containers first — operators looking to compose a page
@@ -94,8 +89,8 @@ const sharedRegistry: NpBlockRegistry = {
 };
 
 /**
- * Phase F.4 follow-up — warn when a block registration overwrites
- * an existing entry from a DIFFERENT contributor.
+ * Warn when a block registration overwrites an existing entry
+ * from a DIFFERENT contributor.
  *
  * Allowed (no warning):
  *   - First registration (no existing entry)
@@ -130,7 +125,7 @@ function detectAndWarnBlockCollision(
   if (isBuiltInSource(existing.source)) return;
   if (warnedBlockTypes.has(incoming.type)) return;
   warnedBlockTypes.add(incoming.type);
-   
+
   console.warn(
     `[nexpress/blocks] block type "${incoming.type}" registered by ` +
       `"${incoming.source ?? "(no source)"}" is overwriting an earlier ` +
@@ -200,7 +195,7 @@ export const getSharedRegistry = (): NpBlockRegistry => sharedRegistry;
 const sharedPatterns = new Map<string, NpPattern>();
 
 /**
- * Phase F.4 follow-up — same collision-warning policy for patterns.
+ * Same collision-warning policy for patterns.
  * Last-loaded still wins; warning fires once per id per process
  * when two different non-default sources register the same id.
  */
@@ -215,16 +210,13 @@ function isBuiltInPatternSource(source: NpPattern["source"]): boolean {
   return source === "built-in" || source === "core";
 }
 
-function detectAndWarnPatternCollision(
-  existing: NpPattern | undefined,
-  incoming: NpPattern,
-): void {
+function detectAndWarnPatternCollision(existing: NpPattern | undefined, incoming: NpPattern): void {
   if (!existing) return;
   if (existing.source === incoming.source) return;
   if (isBuiltInPatternSource(existing.source)) return;
   if (warnedPatternIds.has(incoming.id)) return;
   warnedPatternIds.add(incoming.id);
-   
+
   console.warn(
     `[nexpress/blocks] pattern id "${incoming.id}" registered by ` +
       `"${incoming.source}" is overwriting an earlier registration from ` +
@@ -256,5 +248,4 @@ export const resetSharedPatternRegistry = (): void => {
 };
 
 /** Returns every pattern in the shared registry — plugin + theme contributions. */
-export const getRegisteredPatterns = (): NpPattern[] =>
-  Array.from(sharedPatterns.values());
+export const getRegisteredPatterns = (): NpPattern[] => Array.from(sharedPatterns.values());

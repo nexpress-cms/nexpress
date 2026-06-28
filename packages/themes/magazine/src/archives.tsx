@@ -1,17 +1,9 @@
 import * as React from "react";
 import type { NpRouteRenderProps, NpThemeArchives } from "@nexpress/theme";
-import {
-  findDocuments,
-  findPosts,
-  getUserById,
-  type NpFindResult,
-} from "@nexpress/core";
+import { findDocuments, findPosts, getUserById, type NpFindResult } from "@nexpress/core";
 import { cachedThemeFetch } from "@nexpress/next";
 
-import {
-  MagazineArchiveItem,
-  type MagazineArchiveItemDoc,
-} from "./components/archive-item.js";
+import { MagazineArchiveItem, type MagazineArchiveItemDoc } from "./components/archive-item.js";
 import { resolveMagazineSettings } from "./settings-helpers.js";
 
 /**
@@ -23,13 +15,14 @@ import { resolveMagazineSettings } from "./settings-helpers.js";
  * the registered join table, so `where: { categories: id }`
  * stays ergonomic without bypassing relationship storage.
  *
- * Two archives shipped:
+ * Four archives ship:
  *   - byCategory at /category/:slug
+ *   - byTag at /tag/:slug
  *   - byAuthor at /author/:id
- *
- * byTag and byDate are recorded as F.9.1 follow-up (the
- * shape mirrors byCategory; one less for review focus).
+ *   - byDate at /:year/:month
  */
+
+const DATE_ARCHIVE_LOOKBACK_LIMIT = 500;
 
 interface ArchiveLayoutProps {
   eyebrow: string;
@@ -51,9 +44,7 @@ function ArchiveLayout({
         <header className="np-magazine-archive-masthead">
           <p className="np-magazine-archive-eyebrow">{eyebrow}</p>
           <h1 className="np-magazine-archive-title">{title}</h1>
-          {subtitle ? (
-            <p className="np-magazine-archive-subtitle">{subtitle}</p>
-          ) : null}
+          {subtitle ? <p className="np-magazine-archive-subtitle">{subtitle}</p> : null}
           <p className="np-magazine-archive-count">
             {result.totalDocs.toString()} {stories}
           </p>
@@ -64,10 +55,7 @@ function ArchiveLayout({
           <ul className="np-magazine-archive">
             {result.docs.map((doc, index) => (
               <li key={(doc.id as string) ?? `archive-${index.toString()}`}>
-                <MagazineArchiveItem
-                  doc={doc as MagazineArchiveItemDoc}
-                  romanIndex={index}
-                />
+                <MagazineArchiveItem doc={doc as MagazineArchiveItemDoc} romanIndex={index} />
               </li>
             ))}
           </ul>
@@ -77,18 +65,32 @@ function ArchiveLayout({
   );
 }
 
-export async function CategoryArchive({
-  params,
-}: NpRouteRenderProps): Promise<React.ReactElement> {
+function resultFromDocs(
+  docs: Record<string, unknown>[],
+  limit: number,
+): NpFindResult<Record<string, unknown>> {
+  const pageDocs = docs.slice(0, limit);
+  return {
+    docs: pageDocs,
+    totalDocs: docs.length,
+    totalPages: docs.length === 0 ? 0 : Math.ceil(docs.length / limit),
+    page: 1,
+    limit,
+    hasNextPage: docs.length > limit,
+    hasPrevPage: false,
+  };
+}
+
+export async function CategoryArchive({ params }: NpRouteRenderProps): Promise<React.ReactElement> {
   const slug = params.slug ?? "";
   const settings = await resolveMagazineSettings();
   const data = await cachedThemeFetch(
     ["magazine.category-archive", slug, String(settings.postsPerPage)],
     async () => {
-      const cats = await findDocuments<Record<string, unknown>>(
-        "categories",
-        { where: { slug }, limit: 1 },
-      );
+      const cats = await findDocuments<Record<string, unknown>>("categories", {
+        where: { slug },
+        limit: 1,
+      });
       const category = cats.docs[0];
       if (!category) {
         return { category: null, posts: emptyResult(settings.postsPerPage) };
@@ -110,13 +112,7 @@ export async function CategoryArchive({
   );
 
   if (!data.category) {
-    return (
-      <ArchiveLayout
-        eyebrow="Archive"
-        title="Category not found"
-        result={data.posts}
-      />
-    );
+    return <ArchiveLayout eyebrow="Archive" title="Category not found" result={data.posts} />;
   }
   return (
     <ArchiveLayout
@@ -124,6 +120,133 @@ export async function CategoryArchive({
       title={(data.category.name as string) ?? slug}
       subtitle={data.category.description as string | undefined}
       result={data.posts}
+    />
+  );
+}
+
+export async function TagArchive({ params }: NpRouteRenderProps): Promise<React.ReactElement> {
+  const slug = params.slug ?? "";
+  const settings = await resolveMagazineSettings();
+  const data = await cachedThemeFetch(
+    ["magazine.tag-archive", slug, String(settings.postsPerPage)],
+    async () => {
+      const tags = await findDocuments<Record<string, unknown>>("tags", {
+        where: { slug },
+        limit: 1,
+      });
+      const tag = tags.docs[0];
+      if (!tag) {
+        return { tag: null, posts: emptyResult(settings.postsPerPage) };
+      }
+      const posts = await findPosts({
+        where: {
+          status: "published",
+          tags: tag.id as string,
+        },
+        sort: "-publishedAt",
+        limit: settings.postsPerPage,
+      });
+      return { tag, posts };
+    },
+    {
+      revalidate: 60,
+      extraTags: ["nx:collection:posts", "nx:collection:tags"],
+    },
+  );
+
+  if (!data.tag) {
+    return <ArchiveLayout eyebrow="Archive" title="Tag not found" result={data.posts} />;
+  }
+  return (
+    <ArchiveLayout
+      eyebrow="Tag"
+      title={(data.tag.name as string) ?? slug}
+      subtitle={data.tag.description as string | undefined}
+      result={data.posts}
+    />
+  );
+}
+
+interface DateRange {
+  start: Date;
+  end: Date;
+  title: string;
+  subtitle: string;
+}
+
+function dateRangeFromParams(params: Record<string, string | undefined>): DateRange | null {
+  const year = Number(params.year);
+  const month = Number(params.month);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return null;
+  }
+
+  const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+  const end = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+  const title = new Intl.DateTimeFormat("en", {
+    month: "long",
+    timeZone: "UTC",
+    year: "numeric",
+  }).format(start);
+
+  return {
+    start,
+    end,
+    title,
+    subtitle: "Stories published during this issue month.",
+  };
+}
+
+function isInDateRange(doc: Record<string, unknown>, range: DateRange): boolean {
+  const publishedAt =
+    doc.publishedAt instanceof Date
+      ? doc.publishedAt
+      : typeof doc.publishedAt === "string"
+        ? new Date(doc.publishedAt)
+        : null;
+  if (!publishedAt) return false;
+  if (Number.isNaN(publishedAt.getTime())) return false;
+  return publishedAt >= range.start && publishedAt < range.end;
+}
+
+export async function DateArchive({ params }: NpRouteRenderProps): Promise<React.ReactElement> {
+  const range = dateRangeFromParams(params);
+  const settings = await resolveMagazineSettings();
+  if (!range) {
+    return (
+      <ArchiveLayout
+        eyebrow="Archive"
+        title="Date archive not found"
+        result={emptyResult(settings.postsPerPage)}
+      />
+    );
+  }
+
+  const result = await cachedThemeFetch(
+    ["magazine.date-archive", params.year ?? "", params.month ?? "", String(settings.postsPerPage)],
+    async () => {
+      const posts = await findPosts({
+        where: { status: "published" },
+        sort: "-publishedAt",
+        limit: DATE_ARCHIVE_LOOKBACK_LIMIT,
+      });
+      const matches = posts.docs.filter((doc): doc is Record<string, unknown> =>
+        isInDateRange(doc, range),
+      );
+      return resultFromDocs(matches, settings.postsPerPage);
+    },
+    {
+      revalidate: 60,
+      extraTags: ["nx:collection:posts"],
+    },
+  );
+
+  return (
+    <ArchiveLayout
+      eyebrow="Issue archive"
+      title={range.title}
+      subtitle={range.subtitle}
+      result={result}
     />
   );
 }
@@ -140,9 +263,7 @@ function emptyResult(limit: number): NpFindResult<Record<string, unknown>> {
   };
 }
 
-export async function AuthorArchive({
-  params,
-}: NpRouteRenderProps): Promise<React.ReactElement> {
+export async function AuthorArchive({ params }: NpRouteRenderProps): Promise<React.ReactElement> {
   const id = params.id ?? "";
   const settings = await resolveMagazineSettings();
   const data = await cachedThemeFetch(
@@ -162,8 +283,7 @@ export async function AuthorArchive({
     },
   );
 
-  const displayName =
-    data.author?.name && data.author.name.length > 0 ? data.author.name : id;
+  const displayName = data.author?.name && data.author.name.length > 0 ? data.author.name : id;
   return (
     <ArchiveLayout
       eyebrow="By the author"
@@ -177,6 +297,8 @@ export async function AuthorArchive({
 export const magazineArchives: NpThemeArchives = {
   posts: {
     byCategory: { component: CategoryArchive },
+    byTag: { component: TagArchive },
     byAuthor: { component: AuthorArchive },
+    byDate: { component: DateArchive, granularity: "month" },
   },
 };
