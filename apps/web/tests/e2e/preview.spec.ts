@@ -11,6 +11,13 @@ async function csrfHeaders(context: BrowserContext): Promise<Record<string, stri
   return { "X-CSRF-Token": token };
 }
 
+async function isolateAdminRateLimitBucket(
+  context: BrowserContext,
+  suffix: number,
+): Promise<void> {
+  await context.setExtraHTTPHeaders({ "x-forwarded-for": `192.0.2.${suffix}` });
+}
+
 const richTextFixture = (text: string): Record<string, unknown> => ({
   root: {
     type: "root",
@@ -100,6 +107,7 @@ test.describe("admin preview links", () => {
     const title = `Preview draft page ${Date.now()}`;
 
     await context.clearCookies();
+    await isolateAdminRateLimitBucket(context, 110);
     await signInAsE2EAdmin(page);
 
     const created = await createDraftPage(page, context, title);
@@ -123,6 +131,7 @@ test.describe("admin preview links", () => {
     const body = `Preview draft post body ${Date.now()}`;
 
     await context.clearCookies();
+    await isolateAdminRateLimitBucket(context, 111);
     await signInAsE2EAdmin(page);
 
     const created = await createDraftPost(page, context, title, body);
@@ -148,6 +157,7 @@ test.describe("admin preview links", () => {
     const title = `Create preview page ${Date.now()}`;
 
     await context.clearCookies();
+    await isolateAdminRateLimitBucket(context, 112);
     await signInAsE2EAdmin(page);
 
     await page.goto("/admin/collections/pages/create");
@@ -197,6 +207,7 @@ test.describe("admin preview links", () => {
     const updatedTitle = `${title} updated`;
 
     await context.clearCookies();
+    await isolateAdminRateLimitBucket(context, 113);
     await signInAsE2EAdmin(page);
 
     const created = await createDraftPage(page, context, title);
