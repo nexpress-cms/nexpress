@@ -87,6 +87,7 @@ interface CollectionEditViewProps {
   doc?: Record<string, unknown> & { id?: string; publishedAt?: string };
   collectionSlug: string;
   collectionTabs?: CollectionTabDescriptor[];
+  canPreview?: boolean;
   previewPath?: string | null;
 }
 
@@ -163,7 +164,7 @@ const getDefaultValue = (field: NpFieldConfig, source: Record<string, unknown>):
 
   const currentValue = source[field.name];
 
-  if (currentValue !== undefined) {
+  if (currentValue !== undefined && currentValue !== null) {
     if (field.type === "date") {
       return buildInputDateValue(currentValue, Boolean(field.pickerOptions?.includeTime));
     }
@@ -650,12 +651,14 @@ function CollectionEditViewInner({
   doc,
   collectionSlug,
   collectionTabs,
+  canPreview = false,
   previewPath,
 }: CollectionEditViewProps) {
   const router = useRouter();
   const emitSave = useSaveEmitter();
   const [toast, setToast] = useState<ToastState>(null);
   const [savingAs, setSavingAs] = useState<SaveStatus | null>(null);
+  const [isOpeningPreview, setIsOpeningPreview] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
@@ -1333,6 +1336,103 @@ function CollectionEditViewInner({
     }
   };
 
+  const saveDocumentWithStatus = async (
+    values: Record<string, unknown>,
+    status: SaveStatus,
+    publishedAtOverride?: string,
+  ): Promise<{ nextId: string | undefined }> => {
+    const method = doc?.id ? "PATCH" : "POST";
+    const endpoint = doc?.id
+      ? `/api/collections/${collectionSlug}/${String(doc.id)}`
+      : `/api/collections/${collectionSlug}`;
+
+    const wireStatus =
+      status === "scheduled" ? "published" : status === "unschedule" ? "draft" : status;
+    const requestBody: Record<string, unknown> = { ...values, _status: wireStatus };
+    if (status === "scheduled" && publishedAtOverride) {
+      requestBody.publishedAt = publishedAtOverride;
+    }
+    if (status === "unschedule") {
+      // Clear the future timestamp so the doc returns to plain draft.
+      requestBody.publishedAt = null;
+    }
+
+    const response = await npFetch(endpoint, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorBody = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      throw new Error(
+        errorBody?.error?.message ?? `Failed to ${doc?.id ? "update" : "create"} document.`,
+      );
+    }
+
+    const payload = (await response.json()) as Record<string, unknown>;
+    const savedDoc = isObject(payload.doc) ? payload.doc : payload;
+    const nextId = typeof savedDoc.id === "string" ? savedDoc.id : doc?.id;
+
+    if (doc?.id) {
+      const savedValues = buildDefaultValues(effectiveFields, savedDoc);
+      form.reset(savedValues);
+      autosaveBaselineRef.current = JSON.stringify(savedValues);
+      latestAutosavePayloadRef.current = null;
+      setAutosaveStatus({ kind: "idle" });
+    }
+
+    return { nextId };
+  };
+
+  const resolvePreviewHref = async (documentId: string): Promise<string> => {
+    const response = await npFetch(
+      `/api/admin/collections/${collectionSlug}/${documentId}/preview`,
+    );
+    const payload = (await response.json().catch(() => null)) as {
+      href?: unknown;
+      error?: { message?: string };
+    } | null;
+
+    if (!response.ok) {
+      throw new Error(payload?.error?.message ?? "Preview is unavailable for this document.");
+    }
+
+    if (typeof payload?.href !== "string" || payload.href.length === 0) {
+      throw new Error("Preview is unavailable for this document.");
+    }
+
+    return payload.href;
+  };
+
+  const openPendingPreviewWindow = (): Window | null => {
+    if (typeof window === "undefined") return null;
+    return window.open("about:blank", "_blank");
+  };
+
+  const closePreviewWindow = (previewWindow: Window | null): void => {
+    if (previewWindow && !previewWindow.closed) {
+      previewWindow.close();
+    }
+  };
+
+  const navigatePreviewWindow = (previewWindow: Window | null, href: string): boolean => {
+    if (previewWindow && !previewWindow.closed) {
+      try {
+        previewWindow.opener = null;
+      } catch {
+        // Some browser contexts disallow mutating opener; navigation still works.
+      }
+      previewWindow.location.href = href;
+      return true;
+    }
+    return window.open(href, "_blank", "noopener,noreferrer") !== null;
+  };
+
   const submitWithStatus = (status: SaveStatus, publishedAtOverride?: string) =>
     form.handleSubmit(async (values) => {
       setSavingAs(status);
@@ -1340,50 +1440,7 @@ function CollectionEditViewInner({
       emitSave("saving");
 
       try {
-        const method = doc?.id ? "PATCH" : "POST";
-        const endpoint = doc?.id
-          ? `/api/collections/${collectionSlug}/${String(doc.id)}`
-          : `/api/collections/${collectionSlug}`;
-
-        const wireStatus =
-          status === "scheduled" ? "published" : status === "unschedule" ? "draft" : status;
-        const body: Record<string, unknown> = { ...values, _status: wireStatus };
-        if (status === "scheduled" && publishedAtOverride) {
-          body.publishedAt = publishedAtOverride;
-        }
-        if (status === "unschedule") {
-          // Clear the future timestamp so the doc returns to plain draft.
-          body.publishedAt = null;
-        }
-
-        const response = await npFetch(endpoint, {
-          method,
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(body),
-        });
-
-        if (!response.ok) {
-          const body = (await response.json().catch(() => null)) as {
-            error?: { message?: string };
-          } | null;
-          throw new Error(
-            body?.error?.message ?? `Failed to ${doc?.id ? "update" : "create"} document.`,
-          );
-        }
-
-        const payload = (await response.json()) as Record<string, unknown>;
-        const savedDoc = isObject(payload.doc) ? payload.doc : payload;
-        const nextId = typeof savedDoc.id === "string" ? savedDoc.id : doc?.id;
-
-        if (doc?.id) {
-          const savedValues = buildDefaultValues(effectiveFields, savedDoc ?? values);
-          form.reset(savedValues);
-          autosaveBaselineRef.current = JSON.stringify(savedValues);
-          latestAutosavePayloadRef.current = null;
-          setAutosaveStatus({ kind: "idle" });
-        }
+        const { nextId } = await saveDocumentWithStatus(values, status, publishedAtOverride);
 
         setToast({
           type: "success",
@@ -1394,7 +1451,7 @@ function CollectionEditViewInner({
           setScheduleOpen(false);
         }
 
-        if (!doc?.id && nextId !== undefined && nextId !== null) {
+        if (!doc?.id && nextId !== undefined) {
           router.push(`/admin/collections/${collectionSlug}/${String(nextId)}`);
           return;
         }
@@ -1411,6 +1468,67 @@ function CollectionEditViewInner({
       }
     }, handleValidationErrors);
 
+  const handleSaveAndPreview = () => {
+    const previewWindow = openPendingPreviewWindow();
+    const previewStatus: SaveStatus =
+      doc?.id && (currentStatus === "published" || currentStatus === "scheduled")
+        ? "published"
+        : "draft";
+
+    void form.handleSubmit(
+      async (values) => {
+        let savedDocumentId: string | undefined;
+        setSavingAs(previewStatus);
+        setIsOpeningPreview(true);
+        setToast(null);
+        emitSave("saving");
+
+        try {
+          const { nextId } = await saveDocumentWithStatus(values, previewStatus);
+          savedDocumentId = nextId;
+
+          if (!savedDocumentId) {
+            throw new Error("Preview is unavailable because the saved document id is missing.");
+          }
+
+          const href = await resolvePreviewHref(savedDocumentId);
+          const opened = navigatePreviewWindow(previewWindow, href);
+          setToast({
+            type: opened ? "success" : "error",
+            message: opened
+              ? `${config.labels.singular} saved. Preview opened.`
+              : `${config.labels.singular} saved, but the browser blocked the preview popup. Use Preview after save.`,
+          });
+          emitSave("saved");
+        } catch (error) {
+          closePreviewWindow(previewWindow);
+          const message = error instanceof Error ? error.message : "Preview could not be opened.";
+          setToast({
+            type: "error",
+            message: savedDocumentId
+              ? `${config.labels.singular} saved, but preview could not open: ${message}`
+              : message,
+          });
+          emitSave(savedDocumentId ? "saved" : "error");
+        } finally {
+          setSavingAs(null);
+          setIsOpeningPreview(false);
+          if (savedDocumentId) {
+            if (!doc?.id) {
+              router.push(`/admin/collections/${collectionSlug}/${savedDocumentId}`);
+            } else {
+              router.refresh();
+            }
+          }
+        }
+      },
+      (errors) => {
+        closePreviewWindow(previewWindow);
+        handleValidationErrors(errors);
+      },
+    )();
+  };
+
   const handleSaveDraft = () => {
     void submitWithStatus("draft")();
   };
@@ -1420,10 +1538,17 @@ function CollectionEditViewInner({
   const handleCancelSchedule = () => {
     void submitWithStatus("unschedule")();
   };
-  const isSaving = savingAs !== null;
+  const isSaving = savingAs !== null || isOpeningPreview;
   const isScheduled = currentStatus === "scheduled";
   const scheduleLabel = isScheduled ? "Reschedule" : "Schedule";
   const publishLabel = isScheduled ? "Publish now" : "Publish";
+  const shouldShowSaveAndPreview = canPreview && (!doc?.id || isDirty);
+  const shouldShowPreviewLink = Boolean(previewPath) && !shouldShowSaveAndPreview;
+  const saveAndPreviewLabel = !doc?.id
+    ? "Save Draft & Preview"
+    : currentStatus === "published"
+      ? "Publish & Preview"
+      : "Save & Preview";
   const authoringStatusLabel =
     savingAs === "draft"
       ? "Saving draft..."
@@ -1558,7 +1683,24 @@ function CollectionEditViewInner({
           </div>
 
           <div className="grid min-w-0 grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
-            {previewPath ? (
+            {shouldShowSaveAndPreview ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleSaveAndPreview}
+                disabled={isSaving}
+                className="w-full sm:w-auto"
+              >
+                {isOpeningPreview ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Eye className="size-3.5" />
+                )}
+                {saveAndPreviewLabel}
+              </Button>
+            ) : null}
+
+            {shouldShowPreviewLink && previewPath ? (
               <Button type="button" variant="outline" className="w-full sm:w-auto" asChild>
                 <Link href={`/api/preview?path=${encodeURIComponent(previewPath)}`} target="_blank">
                   <Eye className="size-3.5" />

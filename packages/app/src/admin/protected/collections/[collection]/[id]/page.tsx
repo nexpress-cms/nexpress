@@ -67,6 +67,7 @@ export default async function EditPage({ params }: Props) {
       doc={doc}
       collectionSlug={collection}
       collectionTabs={tabs}
+      canPreview={Boolean(config.seo?.urlPath)}
       previewPath={resolveCollectionPreviewPath(config, doc)}
     />
   );

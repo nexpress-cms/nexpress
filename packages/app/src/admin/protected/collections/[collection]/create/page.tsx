@@ -34,8 +34,7 @@ export default async function CreatePage({ params, searchParams }: Props) {
   // `doc`. The edit view treats partials as initial form values;
   // it never gates on "is this an existing row?" — the missing
   // `id` already signals create-mode to the submit handler.
-  const initialDoc =
-    typeof kind === "string" && kind.length > 0 ? { kind } : undefined;
+  const initialDoc = typeof kind === "string" && kind.length > 0 ? { kind } : undefined;
 
   // Active-theme gate for theme-contributed fields — same as the
   // edit page. See `[id]/page.tsx` for the longer rationale.
@@ -46,6 +45,7 @@ export default async function CreatePage({ params, searchParams }: Props) {
     <CollectionEditView
       config={toClientCollectionConfig(config, activeThemeId)}
       collectionSlug={collection}
+      canPreview={Boolean(config.seo?.urlPath)}
       {...(initialDoc ? { doc: initialDoc } : {})}
     />
   );
