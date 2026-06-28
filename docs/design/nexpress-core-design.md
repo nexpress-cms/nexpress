@@ -3526,6 +3526,7 @@ export function CollectionEditView({
     resolver: zodResolver(schema),
     defaultValues: doc || generateDefaults(config.fields),
   });
+  const previewPath = doc ? config.seo?.urlPath?.(doc) : null;
 
   return (
     <Form {...form}>
@@ -3535,9 +3536,9 @@ export function CollectionEditView({
             {doc ? `Edit ${config.labels.singular}` : `Create ${config.labels.singular}`}
           </h1>
           <div className="flex gap-2">
-            {doc && (
+            {previewPath && (
               <Button variant="outline" type="button" asChild>
-                <a href={`/api/preview?path=/${config.slug}/${doc.slug}`} target="_blank">
+                <a href={`/api/preview?path=${encodeURIComponent(previewPath)}`} target="_blank">
                   <Eye className="size-4 mr-2" /> Preview
                 </a>
               </Button>

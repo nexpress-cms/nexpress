@@ -232,7 +232,7 @@ test.describe("admin mobile layout", () => {
     });
 
     await expectTouchTarget(
-      page.locator('[role="tablist"][aria-label="Editor view"]'),
+      page.locator('[role="tablist"][aria-label="Editor view"]:visible'),
       "editor view toggle",
     );
     await expectTouchTarget(

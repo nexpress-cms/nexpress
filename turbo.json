@@ -49,6 +49,9 @@
     "typecheck": {
       "dependsOn": ["^build"]
     },
+    "@nexpress/web#typecheck": {
+      "dependsOn": ["build"]
+    },
     "lint": {
       "outputs": [],
       "inputs": [

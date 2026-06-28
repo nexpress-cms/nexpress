@@ -78,6 +78,7 @@ const libEntries = {
   "lib/auth-routes": "src/lib/auth-routes.ts",
   "lib/cached-theme": "src/lib/cached-theme.ts",
   "lib/collection-helpers": "src/lib/collection-helpers.ts",
+  "lib/collection-preview": "src/lib/collection-preview.ts",
   "lib/custom-routes": "src/lib/custom-routes.ts",
   "lib/dashboard-stats": "src/lib/dashboard-stats.ts",
   "lib/db": "src/lib/db.ts",

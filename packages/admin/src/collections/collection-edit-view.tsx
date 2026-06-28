@@ -87,6 +87,7 @@ interface CollectionEditViewProps {
   doc?: Record<string, unknown> & { id?: string; publishedAt?: string };
   collectionSlug: string;
   collectionTabs?: CollectionTabDescriptor[];
+  previewPath?: string | null;
 }
 
 type ToastState = {
@@ -649,6 +650,7 @@ function CollectionEditViewInner({
   doc,
   collectionSlug,
   collectionTabs,
+  previewPath,
 }: CollectionEditViewProps) {
   const router = useRouter();
   const emitSave = useSaveEmitter();
@@ -712,9 +714,6 @@ function CollectionEditViewInner({
     autosaveBaselineRef.current = JSON.stringify(defaultValues);
   }, [defaultValues, form]);
 
-  const slugValue = useWatch({ control: form.control, name: "slug" });
-  const previewSlug =
-    typeof slugValue === "string" ? slugValue : typeof doc?.slug === "string" ? doc.slug : "";
   const currentStatus = typeof doc?.status === "string" ? doc.status : null;
 
   // Autosave wiring — enabled only when the collection opts in via
@@ -1559,9 +1558,9 @@ function CollectionEditViewInner({
           </div>
 
           <div className="grid min-w-0 grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
-            {previewSlug ? (
+            {previewPath ? (
               <Button type="button" variant="outline" className="w-full sm:w-auto" asChild>
-                <Link href={`/api/preview?path=/${collectionSlug}/${previewSlug}`} target="_blank">
+                <Link href={`/api/preview?path=${encodeURIComponent(previewPath)}`} target="_blank">
                   <Eye className="size-3.5" />
                   Preview
                 </Link>
