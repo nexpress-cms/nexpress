@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { highlightMatches } from "@/lib/search-highlight";
+import { highlightMatches, toPlainSearchText } from "@/lib/search-highlight";
 
 /**
  * Phase 10.7 — pin the highlightMatches edge cases. The
@@ -75,5 +75,19 @@ describe("highlightMatches (Phase 10.7)", () => {
   it("preserves the original casing of matched text", () => {
     const html = render(highlightMatches("Hello WORLD hello", "world"));
     expect(html).toContain('<mark class="np-search-highlight">WORLD</mark>');
+  });
+});
+
+describe("toPlainSearchText", () => {
+  it("removes lightweight HTML fragments before search result highlighting", () => {
+    expect(toPlainSearchText("Hanmi Gallery — <em>complete identity</em>")).toBe(
+      "Hanmi Gallery — complete identity",
+    );
+  });
+
+  it("decodes common HTML entities and collapses whitespace", () => {
+    expect(toPlainSearchText("Design&nbsp;&amp;&nbsp;research <strong>ops</strong>")).toBe(
+      "Design & research ops",
+    );
   });
 });

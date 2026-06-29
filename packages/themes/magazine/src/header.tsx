@@ -89,6 +89,7 @@ export async function MagazineHeader() {
           <div className="np-magazine-dateline-right">
             <a href="/archive">Print archive</a>
             <a href="/today">Today's edition</a>
+            <a href="/search">Search</a>
             <a href="/members/login">Sign in</a>
           </div>
         </div>

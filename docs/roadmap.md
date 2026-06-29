@@ -219,9 +219,10 @@ implementation.
   setup docs.
 - **Email** — adapter interface is stable; the default is a stub. SES /
   Postmark / Resend reference implementations belong in the registry.
-- **Search UX** — Postgres tsvector pipeline is in place; the `/search`
-  page is functional but minimal. Faceted filters, relevance tuning,
-  per-collection scopes.
+- **Search UX** — Postgres tsvector pipeline is in place and `/search`
+  now has query retention, public-collection filters, pagination state,
+  mobile-safe result cards, and built-in theme entry points. Relevance
+  tuning and external-engine ranking remain future quality work.
 - **Notifications** — digest job exists; per-member preferences UI is
   partial.
 

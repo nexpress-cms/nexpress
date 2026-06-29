@@ -3,11 +3,7 @@ import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import { findDocuments } from "./pipeline.js";
 import { getDb } from "../db/runtime.js";
-import {
-  getAllCollectionSlugs,
-  getCollectionConfig,
-  getCollectionTable,
-} from "./registry.js";
+import { getAllCollectionSlugs, getCollectionConfig, getCollectionTable } from "./registry.js";
 import { buildWeightedSearchVectorSql } from "./search.js";
 import { getSearchAdapter } from "./search-adapter.js";
 
@@ -36,10 +32,21 @@ export interface SearchResultItem {
   doc: Record<string, unknown>;
 }
 
+export interface SearchCollectionFacet {
+  collection: string;
+  label: string;
+  count: number;
+  selected: boolean;
+}
+
 export interface SearchResult {
   results: SearchResultItem[];
   total: number;
   perCollection: Record<string, number>;
+  facets?: SearchCollectionFacet[];
+  limit?: number;
+  offset?: number;
+  hasNextPage?: boolean;
 }
 
 const DEFAULT_LIMIT = 10;
@@ -48,6 +55,11 @@ const MAX_LIMIT = 50;
 function normalizeLimit(limit: number | undefined): number {
   if (!limit || limit < 1) return DEFAULT_LIMIT;
   return Math.min(Math.floor(limit), MAX_LIMIT);
+}
+
+function normalizeOffset(offset: number | undefined): number {
+  if (!offset || offset < 0) return 0;
+  return Math.floor(offset);
 }
 
 function hasSearchVectorColumn(table: PgTable): boolean {
@@ -63,17 +75,17 @@ function hasSearchVectorColumn(table: PgTable): boolean {
  * collection ranking is authoritative. A future version can do a UNION across
  * tables if global ranking becomes a priority.
  */
-export async function searchCollections(
-  opts: SearchCollectionsOptions,
-): Promise<SearchResult> {
+export async function searchCollections(opts: SearchCollectionsOptions): Promise<SearchResult> {
   const query = opts.q.trim();
   if (query.length === 0) {
     return { results: [], total: 0, perCollection: {} };
   }
 
   const slugs = opts.collections ?? getAllCollectionSlugs();
+  const selected = opts.collections ? new Set(opts.collections) : null;
   const limit = normalizeLimit(opts.limit);
-  const offset = opts.offset ?? 0;
+  const offset = normalizeOffset(opts.offset);
+  const perCollectionLimit = offset + limit;
   const baseWhere = opts.where ?? { status: "published" };
 
   // Phase 10.6 — pluggable adapter. When a site has installed an
@@ -106,6 +118,7 @@ export async function searchCollections(
   }
 
   const results: SearchResultItem[] = [];
+  const facets: SearchCollectionFacet[] = [];
   const perCollection: Record<string, number> = {};
   let total = 0;
 
@@ -124,28 +137,38 @@ export async function searchCollections(
     // doesn't exist), so we forward it unconditionally without
     // a config check here.
     const config = getCollectionConfig(slug);
-    const collectionLocale =
-      config.i18n && opts.locale ? opts.locale : undefined;
+    const collectionLocale = config.i18n && opts.locale ? opts.locale : undefined;
 
     const page = await findDocuments(slug, {
       search: query,
       where: baseWhere,
-      limit,
+      limit: perCollectionLimit,
       page: 1,
       ...(collectionLocale ? { locale: collectionLocale } : {}),
     });
 
     perCollection[slug] = page.totalDocs;
+    facets.push({
+      collection: slug,
+      label: config.labels.plural,
+      count: page.totalDocs,
+      selected: selected ? selected.has(slug) : true,
+    });
     total += page.totalDocs;
     for (const doc of page.docs) {
       results.push({ collection: slug, doc });
     }
   }
 
+  const pagedResults = results.slice(offset, offset + limit);
   return {
-    results: results.slice(offset, offset + limit),
+    results: pagedResults,
     total,
     perCollection,
+    facets,
+    limit,
+    offset,
+    hasNextPage: offset + pagedResults.length < total,
   };
 }
 

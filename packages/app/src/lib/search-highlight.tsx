@@ -17,6 +17,25 @@
  */
 import type { ReactNode } from "react";
 
+const HTML_ENTITY_REPLACEMENTS: Record<string, string> = {
+  amp: "&",
+  apos: "'",
+  gt: ">",
+  lt: "<",
+  nbsp: " ",
+  quot: '"',
+};
+
+export function toPlainSearchText(text: string): string {
+  return text
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&([a-z]+);/gi, (match, entity: string) => {
+      return HTML_ENTITY_REPLACEMENTS[entity.toLowerCase()] ?? match;
+    })
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function highlightMatches(text: string, query: string): ReactNode {
   const tokens = query
     .trim()

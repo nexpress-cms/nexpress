@@ -69,6 +69,11 @@ export function PortfolioMobileNav({ items }: PortfolioMobileNavProps) {
         }}
       >
         <ul className="np-portfolio-nav-drawer-list">
+          <li>
+            <a href="/search" onClick={() => setOpen(false)}>
+              Search
+            </a>
+          </li>
           {items.map((item, index) => (
             <li key={`portfolio-mobile-${index.toString()}`}>
               <a href={item.url} onClick={() => setOpen(false)}>
