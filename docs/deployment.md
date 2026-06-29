@@ -178,7 +178,15 @@ support. One-time setup:
 5. Run migrations before promoting the deployment. Either wire
    `pnpm db:migrate && pnpm build` into the Vercel build command, or run
    `pnpm db:migrate` from CI against the same `DATABASE_URL` before
-   production traffic moves.
+   production traffic moves. Sensitive Vercel env values are not a reliable
+   local migration source: `vercel env pull` can leave production
+   `DATABASE_URL` empty for local agents. Prefer CI secrets, the Vercel build
+   environment, or another trusted shell where the production env is already
+   injected.
+
+   Avoid shipping one-off HTTP migration endpoints. If an emergency bridge is
+   unavoidable, token-gate it, execute it once, and remove it before the final
+   production deploy.
 
 > **Storage:** Vercel filesystem is ephemeral — you must use S3 or an
 > equivalent. Set `NP_STORAGE_ADAPTER=s3` and the matching `NP_S3_*` vars.
@@ -297,7 +305,10 @@ schedule `*/2 * * * *`, share `NP_SCHEDULER_TOKEN` and `SITE_URL` via
 1. Run `pnpm run deploy:plan -- --target <host> --brief --no-color` and fix
    the checklist items for your platform.
 2. Run drizzle migrations: `pnpm db:migrate`. For this monorepo's reference
-   app, use `pnpm --filter @nexpress/web db:migrate`.
+   app, use `pnpm --filter @nexpress/web db:migrate`. On Vercel, run this
+   from CI, the Vercel build command, or another trusted shell where
+   production `DATABASE_URL` is already injected; do not depend on local
+   `vercel env pull` for sensitive database values.
 3. Run `pnpm run ops:preflight -- --target <host> --brief --no-color` and
    treat any error as a deploy blocker.
 4. Capture the release gate:

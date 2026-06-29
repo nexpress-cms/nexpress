@@ -301,7 +301,13 @@ if (deployPlan.code !== 0) {
 }
 assertIncludes(deployPlan.output, "NexPress deploy plan: Vercel", "deploy:plan");
 assertIncludes(deployPlan.output, "NP_STORAGE_ADAPTER=s3", "deploy:plan");
-assertIncludes(deployPlan.output, "Run migrations against the same DATABASE_URL", "deploy:plan");
+assertIncludes(
+  deployPlan.output,
+  "Run migrations in CI, a Vercel build command, or another trusted shell",
+  "deploy:plan",
+);
+assertIncludes(deployPlan.output, "vercel env pull", "deploy:plan");
+assertIncludes(deployPlan.output, "pnpm db:migrate && pnpm build", "deploy:plan");
 assertIncludes(deployPlan.output, "pnpm db:migrate -- --status", "deploy:plan");
 assertIncludes(deployPlan.output, "pnpm run doctor:prod -- --target vercel", "deploy:plan");
 assertIncludes(
@@ -580,6 +586,7 @@ assertIncludes(readme, "[docs/ops.md](docs/ops.md)", "README");
 assertIncludes(readme, "## Deploy Bridge", "README");
 assertIncludes(readme, "pnpm run deploy:plan -- --target vercel --brief --no-color", "README");
 assertIncludes(readme, "pnpm db:migrate", "README");
+assertIncludes(readme, "production `DATABASE_URL` is already injected", "README");
 assertIncludes(readme, "pnpm run ops:preflight -- --target vercel --brief --no-color", "README");
 assertIncludes(readme, "pnpm --silent run ops:release -- check --target vercel --json", "README");
 assertIncludes(
@@ -600,6 +607,8 @@ assertIncludes(opsDoc, "https://vercel.com/new?utm_source=nexpress", "docs/ops.m
 assertIncludes(opsDoc, "NP_STORAGE_ADAPTER=s3", "docs/ops.md");
 assertIncludes(opsDoc, "NP_S3_ENDPOINT", "docs/ops.md");
 assertIncludes(opsDoc, "pnpm db:migrate", "docs/ops.md");
+assertIncludes(opsDoc, "pnpm db:migrate && pnpm build", "docs/ops.md");
+assertIncludes(opsDoc, "vercel env pull", "docs/ops.md");
 assertIncludes(
   opsDoc,
   "pnpm run ops:preflight -- --target vercel --brief --no-color",

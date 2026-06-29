@@ -48,6 +48,14 @@ describe("deploy plan core", () => {
     ]);
     expect(json.bridge.steps).toContainEqual(
       expect.objectContaining({
+        id: "migrate",
+        description:
+          "Apply database migrations from CI, the Vercel build command, or a trusted shell where production DATABASE_URL is already injected.",
+        command: "pnpm db:migrate",
+      }),
+    );
+    expect(json.bridge.steps).toContainEqual(
+      expect.objectContaining({
         id: "preflight",
         command: "pnpm run ops:preflight -- --target vercel --brief --no-color",
       }),
@@ -75,6 +83,9 @@ describe("deploy plan core", () => {
     ]);
     expect(json.diagnostics).toContain(
       "Run pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan for ordered remediation.",
+    );
+    expect(json.diagnostics).toContain(
+      "Vercel sensitive env values are not a reliable local migration source; run migrations where production env is already injected.",
     );
     expect(json.commands).toEqual(
       expect.arrayContaining(["pnpm db:migrate -- --status", "pnpm db:migrate"]),
@@ -155,6 +166,14 @@ describe("deploy plan core", () => {
     expect(output).toContain("NexPress deploy plan: Vercel");
     expect(output).toContain("[todo] NP_STORAGE_ADAPTER=s3 - Set NP_STORAGE_ADAPTER=s3.");
     expect(output).toContain("Set SITE_URL to the final https:// production domain");
+    expect(output).toContain(
+      "Run migrations in CI, a Vercel build command, or another trusted shell where production DATABASE_URL is injected.",
+    );
+    expect(output).toContain("pnpm db:migrate && pnpm build");
+    expect(output).toContain(
+      "Vercel sensitive env values are not a reliable local migration source",
+    );
+    expect(output).toContain("Avoid one-off HTTP migration endpoints");
     expect(output).toContain("Run before deploy");
     expect(output).toContain("Deploy bridge");
     expect(output).toContain("Plan the target:");

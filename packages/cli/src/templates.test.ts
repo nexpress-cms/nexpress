@@ -469,6 +469,8 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("## Deploy Bridge");
     expect(readme).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
     expect(readme).toContain("pnpm db:migrate");
+    expect(readme).toContain("production `DATABASE_URL` is already injected");
+    expect(readme).toContain("do not depend on");
     expect(readme).toContain("pnpm run ops:preflight -- --target vercel --brief --no-color");
     expect(readme).toContain("pnpm --silent run ops:release -- check --target vercel --json");
     expect(readme).toContain(
@@ -481,6 +483,10 @@ describe("getProjectFiles", () => {
     expect(ops).toContain("## Deploy Bridge");
     expect(ops).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
     expect(ops).toContain("pnpm db:migrate");
+    expect(ops).toContain(
+      "`pnpm db:migrate` must run where the production `DATABASE_URL` is available",
+    );
+    expect(ops).toContain("pnpm db:migrate && pnpm build");
     expect(ops).toContain("pnpm run ops:preflight -- --target vercel --brief --no-color");
     expect(ops).toContain("pnpm --silent run ops:release -- check --target vercel --json");
     expect(ops).toContain(
@@ -555,6 +561,7 @@ describe("getProjectFiles", () => {
     expect(ops).toContain("NP_STORAGE_ADAPTER=s3");
     expect(ops).toContain("NP_S3_ENDPOINT");
     expect(ops).toContain("pnpm db:migrate");
+    expect(ops).toContain("not depend on `vercel env pull`");
     expect(ops).toContain("Other Hosting Choices");
     expect(readme).not.toMatch(/cp \.env\.example \.env\s*\n\s*pnpm build\s*\n\s*pnpm dev/);
   });
