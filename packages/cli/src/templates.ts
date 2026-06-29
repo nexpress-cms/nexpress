@@ -861,6 +861,11 @@ pnpm --silent run ops:release -- check --target vercel --json
 pnpm --silent run ops:release -- verify --url https://your-domain.example --json
 \`\`\`
 
+On Vercel, run migrations in CI, the Vercel build command, or another trusted
+shell where production \`DATABASE_URL\` is already injected. Sensitive Vercel
+env values may not be readable through \`vercel env pull\`, so do not depend on
+local env pull for production migrations.
+
 For full Vercel / Railway / Render / Fly / Docker notes, see
 [docs/ops.md](docs/ops.md) and the upstream
 [deployment guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/deployment.md).
@@ -904,6 +909,9 @@ pnpm --silent run ops:release -- verify --url https://your-domain.example --json
 \`\`\`
 
 \`deploy:plan\` explains host env, storage, runtime, and import/deploy steps.
+\`pnpm db:migrate\` must run where the production \`DATABASE_URL\` is available;
+on Vercel that usually means CI, \`pnpm db:migrate && pnpm build\` as the build
+command, or another trusted shell with production env injected.
 \`ops:preflight\` is the blocking pre-deploy gate for deploy-plan, production
 doctor, and migration-plan evidence. \`ops:release check\` captures the same
 evidence for CI or agent handoff. \`ops:release verify\` is the first
@@ -1084,6 +1092,11 @@ pnpm db:migrate
 pnpm run ops:preflight -- --target vercel --brief --no-color
 pnpm --silent run ops:release -- check --target vercel --json
 \`\`\`
+
+Run \`pnpm db:migrate\` where Vercel's production env is already injected. Do
+not depend on \`vercel env pull\` for sensitive \`DATABASE_URL\` values; Vercel
+may return empty local placeholders. Preferred paths are a CI job with the
+database secret, or a Vercel build command of \`pnpm db:migrate && pnpm build\`.
 
 Vercel's filesystem is ephemeral, so media uploads require S3/R2/MinIO or
 another S3-compatible store. For scheduled publishing, add \`CRON_SECRET\` in

@@ -102,6 +102,7 @@ export function buildSuccessLines(
     "Deploy bridge:",
     "  pnpm run deploy:plan -- --target vercel --brief --no-color",
     "  pnpm db:migrate",
+    "  # Vercel: run migrate from CI/build/trusted shell with production DATABASE_URL injected",
     "  pnpm run ops:preflight -- --target vercel --brief --no-color",
     "  pnpm --silent run ops:release -- check --target vercel --json",
     "  pnpm --silent run ops:release -- verify --url https://your-domain.example --json",

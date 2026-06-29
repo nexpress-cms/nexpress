@@ -134,12 +134,18 @@ export function buildDeployPlan(target: DeployTarget): TargetPlan {
           "Import the project in Vercel after pushing the repo.",
           "Set the required env vars in Vercel Project Settings before the first production deploy.",
           "Set SITE_URL to the final https:// production domain, not localhost.",
-          "Run migrations against the same DATABASE_URL that Vercel will use.",
+          "Run migrations in CI, a Vercel build command, or another trusted shell where production DATABASE_URL is injected.",
+          "Do not rely on `vercel env pull` for sensitive production DATABASE_URL values; Vercel may return empty local placeholders.",
+          "A safe Vercel build command is `pnpm db:migrate && pnpm build`; otherwise run `pnpm db:migrate` from CI before promotion.",
           "vercel.json already includes the scheduled-publish cron endpoint.",
           "Use a separate worker host if you need long-running pg-boss workers.",
         ],
         commands: commonCommands,
-        diagnostics: commonDiagnostics,
+        diagnostics: [
+          ...commonDiagnostics,
+          "Vercel sensitive env values are not a reliable local migration source; run migrations where production env is already injected.",
+          "Avoid one-off HTTP migration endpoints. If an emergency bridge is unavoidable, token-gate it, execute once, and remove it before final deploy.",
+        ],
       };
     case "railway":
       return {
@@ -243,6 +249,10 @@ function buildDeployBridge(target: DeployTarget): DeployPlanBridge {
   const title = deployTargetTitle(target);
   const importUrl =
     target === "vercel" ? "https://vercel.com/new?utm_source=nexpress&utm_campaign=oss" : undefined;
+  const migrateDescription =
+    target === "vercel"
+      ? "Apply database migrations from CI, the Vercel build command, or a trusted shell where production DATABASE_URL is already injected."
+      : "Apply database migrations against the same DATABASE_URL the host will use.";
 
   return {
     title: `${title} deploy bridge`,
@@ -265,7 +275,7 @@ function buildDeployBridge(target: DeployTarget): DeployPlanBridge {
       {
         id: "migrate",
         label: "Apply migrations",
-        description: "Apply database migrations against the same DATABASE_URL the host will use.",
+        description: migrateDescription,
         command: "pnpm db:migrate",
       },
       {

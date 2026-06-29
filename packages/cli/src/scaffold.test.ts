@@ -19,6 +19,9 @@ describe("buildSuccessLines", () => {
     expect(output).toContain("Deploy bridge:");
     expect(output).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
     expect(output).toContain("pnpm db:migrate");
+    expect(output).toContain(
+      "Vercel: run migrate from CI/build/trusted shell with production DATABASE_URL injected",
+    );
     expect(output).toContain("pnpm run ops:preflight -- --target vercel --brief --no-color");
     expect(output).toContain("pnpm --silent run ops:release -- check --target vercel --json");
     expect(output).toContain(
