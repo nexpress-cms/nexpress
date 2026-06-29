@@ -20,7 +20,10 @@ hidden until the pipeline flips them live.
    where `status="scheduled"` and `publishedAt <= now()`, flips them to
    `"published"`, and fires `content:afterUpdate` + `content:afterPublish`
    hooks so plugins (SEO, caches, notifications) react as if the post had
-   just gone live interactively.
+   just gone live interactively. The HTTP trigger also calls the app's
+   collection revalidator for every promoted row, so public pages,
+   sitemap, feed, search, and cached theme routes do not wait for their
+   TTL before seeing the new content.
 
 The `scheduled` status is a first-class document status. Public reads,
 search, sitemap, and feed generation still treat only

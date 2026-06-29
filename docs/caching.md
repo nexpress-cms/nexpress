@@ -51,8 +51,9 @@ walk. Tagged so writes can invalidate selectively.
 **Invalidation**
 
 The pipeline's `revalidateCollection` (`@nexpress/next`)
-expands tags from the per-collection `RevalidationMap` rule
-and calls `revalidateTag` on each. Default rules:
+always emits the generic `nx:collection:<slug>` tag, then
+expands tags from the per-collection `RevalidationMap` rule and
+calls `revalidateTag` on each. Default rules:
 
 ```ts
 posts: {
@@ -78,9 +79,19 @@ pages: {
 collection caches per-row data with a tag like
 `nx:posts:{slug}`.
 
+Theme and plugin route caches created with `cachedThemeFetch()`
+or `cachedPluginFetch()` should use `nx:collection:<slug>` in
+`extraTags` for every collection they read. That tag is emitted
+for all collection writes, even when the app has not declared a
+collection-specific route rule.
+
 Write routes already call `revalidateCollection` after
-successful saves / deletes. Sites that add collections add
-their own entries to the rule map (or override defaults).
+successful saves / deletes. Scheduled publish triggers also
+call it for every row promoted from `scheduled` to `published`
+so sitemap/feed/search/theme-route caches do not wait for their
+TTL. Sites that add collections only need a rule-map entry when
+they want path-specific invalidation beyond
+`nx:collection:<slug>`.
 
 Write-side invalidations also forward resolved path/tag hints
 to an optional CDN purge bridge. This includes collection
@@ -227,3 +238,7 @@ Keep these in mind when tuning production deployments.
   but reuses the cache plumbing)
 - 14.7 — `/api/search` hot-query data cache with
   `nx:search:<siteId>` + `nx:search` invalidation tags
+- current — `nx:collection:<slug>` is emitted on every
+  collection write, including custom collections without an
+  explicit route rule, so cached theme/plugin routes have a
+  stable invalidation tag

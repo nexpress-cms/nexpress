@@ -55,6 +55,7 @@ export {
 } from "./revisions.js";
 
 export {
+  collectionCacheTag,
   revalidateCollection,
   defaultRevalidationRules,
   type CollectionRevalidationRule,

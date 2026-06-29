@@ -15,7 +15,8 @@ const { revalidatePath, revalidateTag } = await import("next/cache");
 const { getCurrentSiteId } = await import("@nexpress/core");
 const { getCdnPurgeAdapter, resetCdnPurgeAdapter, setCdnPurgeAdapter } =
   await import("./cdn-purge.js");
-const { defaultRevalidationRules, revalidateCollection } = await import("./revalidate.js");
+const { collectionCacheTag, defaultRevalidationRules, revalidateCollection } =
+  await import("./revalidate.js");
 
 describe("revalidateCollection", () => {
   beforeEach(() => {
@@ -25,9 +26,10 @@ describe("revalidateCollection", () => {
     resetCdnPurgeAdapter();
   });
 
-  it("is a no-op for collections with no rule", () => {
+  it("emits the generic collection cache tag for collections with no explicit rule", () => {
     revalidateCollection({}, "unknown", { slug: "x" });
     expect(revalidatePath).not.toHaveBeenCalled();
+    expect(revalidateTag).toHaveBeenCalledWith("nx:collection:unknown", "default");
   });
 
   it("expands the {slug} placeholder using the document's slug", () => {
@@ -36,6 +38,12 @@ describe("revalidateCollection", () => {
     });
     expect(revalidatePath).toHaveBeenCalledWith("/blog");
     expect(revalidatePath).toHaveBeenCalledWith("/blog/hello-world");
+  });
+
+  it("exposes the generic collection cache tag used by cached theme/plugin fetches", () => {
+    expect(collectionCacheTag("posts")).toBe("nx:collection:posts");
+    revalidateCollection({ posts: { paths: [], tags: [] } }, "posts", null);
+    expect(revalidateTag).toHaveBeenCalledWith("nx:collection:posts", "default");
   });
 
   it("skips paths with {slug} when the document has no slug", () => {
@@ -160,7 +168,8 @@ describe("revalidateCollection — tag bust (Phase 14.1)", () => {
       null,
     );
     expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap", "default");
-    expect(revalidateTag).toHaveBeenCalledTimes(1);
+    expect(revalidateTag).toHaveBeenCalledWith("nx:collection:posts", "default");
+    expect(revalidateTag).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -211,7 +220,7 @@ describe("CDN purge adapter", () => {
       documentSlug: "hello-world",
       siteId: null,
       paths: ["/blog", "/blog/hello-world"],
-      tags: ["nx:sitemap", "nx:posts:hello-world"],
+      tags: ["nx:sitemap", "nx:posts:hello-world", "nx:collection:posts"],
     });
   });
 
@@ -233,7 +242,7 @@ describe("CDN purge adapter", () => {
     expect(purge).toHaveBeenCalledWith(
       expect.objectContaining({
         paths: ["/"],
-        tags: ["nx:sitemap"],
+        tags: ["nx:sitemap", "nx:collection:pages"],
       }),
     );
   });
@@ -253,7 +262,7 @@ describe("CDN purge adapter", () => {
     expect(purge).toHaveBeenCalledWith(
       expect.objectContaining({
         paths: ["/blog"],
-        tags: ["nx:sitemap"],
+        tags: ["nx:sitemap", "nx:collection:posts"],
       }),
     );
   });
@@ -283,7 +292,7 @@ describe("CDN purge adapter", () => {
       documentSlug: "x",
       siteId: null,
       paths: ["/blog"],
-      tags: ["nx:sitemap"],
+      tags: ["nx:sitemap", "nx:collection:posts"],
     });
     expect(purge).toHaveBeenNthCalledWith(2, {
       source: "collection",

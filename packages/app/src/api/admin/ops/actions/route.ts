@@ -1,4 +1,10 @@
-import { NpForbiddenError, NpValidationError, can } from "@nexpress/core";
+import {
+  NP_DEFAULT_SITE_ID,
+  NpForbiddenError,
+  NpValidationError,
+  can,
+  getCurrentSiteId,
+} from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
@@ -6,6 +12,7 @@ import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
 import type * as OpsBackupCore from "../../../../scripts/ops-backup-core";
+import type * as OpsCacheCore from "../../../../scripts/ops-cache-core";
 import type * as OpsMigrateCore from "../../../../scripts/ops-migrate-core";
 import type * as OpsPluginsCore from "../../../../scripts/ops-plugins-core";
 import type * as OpsStorageCore from "../../../../scripts/ops-storage-core";
@@ -15,7 +22,8 @@ type AdminOpsAction =
   | "plugins.enable"
   | "plugins.disable"
   | "migrate.apply-safe"
-  | "backup.restore.apply";
+  | "backup.restore.apply"
+  | "cache.revalidate";
 
 interface AdminOpsActionBody {
   action?: unknown;
@@ -24,6 +32,9 @@ interface AdminOpsActionBody {
   target?: unknown;
   pluginId?: unknown;
   manifestId?: unknown;
+  collection?: unknown;
+  documentSlug?: unknown;
+  navigationLocation?: unknown;
 }
 
 function readBodyRecord(value: unknown): AdminOpsActionBody {
@@ -41,7 +52,8 @@ function readAction(value: unknown): AdminOpsAction {
     value === "plugins.enable" ||
     value === "plugins.disable" ||
     value === "migrate.apply-safe" ||
-    value === "backup.restore.apply"
+    value === "backup.restore.apply" ||
+    value === "cache.revalidate"
   ) {
     return value;
   }
@@ -127,6 +139,20 @@ export async function POST(request: NextRequest) {
           }),
         );
       }
+      case "cache.revalidate": {
+        const cacheCore = await loadCacheCore();
+        return npSuccessResponse(
+          cacheCore.runOpsCacheRevalidate({
+            target: readCacheTarget(body.target),
+            collection: readOptionalString(body.collection),
+            documentSlug: readOptionalString(body.documentSlug),
+            navigationLocation: readOptionalString(body.navigationLocation),
+            siteId: (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID,
+            execute,
+            approve,
+          }),
+        );
+      }
     }
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
@@ -149,4 +175,24 @@ async function loadMigrateCore(): Promise<typeof OpsMigrateCore> {
 
 async function loadBackupCore(): Promise<typeof OpsBackupCore> {
   return (await import("@nexpress/app/scripts/ops-backup-core")) as unknown as typeof OpsBackupCore;
+}
+
+async function loadCacheCore(): Promise<typeof OpsCacheCore> {
+  return await import("../../../../scripts/ops-cache-core");
+}
+
+function readCacheTarget(value: unknown): OpsCacheCore.OpsCacheRevalidateTarget | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (
+    value === "public" ||
+    value === "collection" ||
+    value === "theme" ||
+    value === "navigation" ||
+    value === "site"
+  ) {
+    return value;
+  }
+  throw new NpValidationError("Invalid input", [
+    { field: "target", message: "Unsupported cache revalidate target" },
+  ]);
 }

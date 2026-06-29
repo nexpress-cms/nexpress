@@ -40,6 +40,10 @@ interface EmitContext {
   documentSlug: string | undefined;
 }
 
+export function collectionCacheTag(slug: string): string {
+  return `nx:collection:${slug}`;
+}
+
 function substitute(template: string, ctx: SubstituteContext): string | null {
   let out = template;
   if (out.includes("{slug}")) {
@@ -70,8 +74,7 @@ export function revalidateCollection(
   slug: string,
   doc?: Record<string, unknown> | null,
 ): void {
-  const rule = rules[slug];
-  if (!rule) return;
+  const rule = withCollectionCacheTag(rules[slug], slug);
 
   const documentSlug =
     doc && typeof doc.slug === "string" && doc.slug.length > 0 ? doc.slug : undefined;
@@ -90,6 +93,16 @@ export function revalidateCollection(
   // net, so a missed site-scoped tag is at worst over-
   // invalidation, never stale-cache.
   void emitSiteScopedTags(rule, slug, documentSlug);
+}
+
+function withCollectionCacheTag(
+  rule: CollectionRevalidationRule | undefined,
+  slug: string,
+): CollectionRevalidationRule {
+  return {
+    paths: rule?.paths ?? [],
+    tags: [...(rule?.tags ?? []), collectionCacheTag(slug)],
+  };
 }
 
 function collectTargets(

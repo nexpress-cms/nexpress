@@ -269,8 +269,9 @@ export interface NpCachedThemeFetchOptions {
  * `extraTags` is the escape hatch for authors who want a
  * collection edit to also bust the cached archive — pass a
  * `nx:collection:<slug>` tag for EVERY collection the fetcher
- * reads from. The framework's `revalidateCollection` (called
- * inside `saveDocument`) fires those tags on every write.
+ * reads from. The framework's `revalidateCollection` emits the
+ * matching generic collection tag on every write, even when the
+ * collection has no path-specific revalidation rule.
  */
 export async function cachedThemeFetch<T>(
   keyParts: string[],
@@ -351,16 +352,11 @@ export interface NpCachedPluginFetchOptions {
  * ```
  *
  * `extraTags` is the escape hatch for plugins whose data depends
- * on collections. Tags are advisory — they only invalidate when
- * something else calls `revalidateTag` against them. The host's
- * `RevalidationMap` (`packages/next/src/revalidate.ts`) declares
- * which tags fire on each collection's writes; pair the tag
- * pattern you put in `extraTags` with a matching entry in the
- * map (or contribute one in plugin docs to operators) so a
- * content write actually busts the cache. The always-on
- * `np:plugin:<pluginId>` tag, by contrast, is fired automatically
- * by `setPluginConfig` — you don't have to configure anything
- * for plugin-config saves to invalidate the cache.
+ * on collections. Use `nx:collection:<slug>` for every collection
+ * the fetcher reads; the framework emits that generic tag on each
+ * collection write. The always-on `np:plugin:<pluginId>` tag is
+ * fired automatically by `setPluginConfig` — plugin-config saves
+ * invalidate the cache without extra setup.
  */
 export async function cachedPluginFetch<T>(
   pluginId: string,

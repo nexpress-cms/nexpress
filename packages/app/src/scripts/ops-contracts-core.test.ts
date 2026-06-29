@@ -100,9 +100,11 @@ describe("ops contracts core", () => {
         status: "shipped",
         risk: "destructive",
         command: "POST /api/admin/ops/actions",
+        schemaVersions: expect.arrayContaining(["np.ops-cache-revalidate.v1"]),
       }),
     );
     expect(mutationApi?.notes.join(" ")).toContain("NP_REMOTE_OPS_MUTATIONS=1");
+    expect(mutationApi?.notes.join(" ")).toContain("cache.revalidate");
   });
 
   it("renders compact contract output", () => {
