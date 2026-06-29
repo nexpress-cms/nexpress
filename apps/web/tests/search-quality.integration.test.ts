@@ -123,6 +123,45 @@ describe.skipIf(skipIfNoTestDb())("search quality (Phase 10.7)", () => {
     expect(first?.title).toMatch(/^Swordfish/);
   });
 
+  it("title-match outranks weaker hits across collections", async () => {
+    const { saveDocument, searchCollections } = await import("@nexpress/core");
+
+    await saveDocument(
+      "posts",
+      null,
+      {
+        title: "Marine field notes",
+        excerpt: "summary",
+        content: lexicalParagraph("Today I learned about the narwhal migration route."),
+        publishedAt: new Date().toISOString(),
+        author: session.userId,
+      },
+      actor(),
+      { status: "published" },
+    );
+    await saveDocument(
+      "pages",
+      null,
+      {
+        title: "Narwhal planning hub",
+        seoDescription: "Reference page for the launch plan.",
+        locale: "en",
+      },
+      actor(),
+      { status: "published" },
+    );
+
+    const result = await searchCollections({
+      q: "narwhal",
+      collections: ["posts", "pages"],
+      limit: 10,
+    });
+    expect(result.results.length).toBe(2);
+    expect(result.results[0]?.collection).toBe("pages");
+    expect((result.results[0]?.doc as { title?: string }).title).toMatch(/^Narwhal/);
+    expect(result.results[0]?.score).toBeGreaterThan(result.results[1]?.score ?? 0);
+  });
+
   it("reindex re-applies the weighted vector to existing rows (operator workflow)", async () => {
     const { reindexCollection, saveDocument, searchCollections } = await import(
       "@nexpress/core"

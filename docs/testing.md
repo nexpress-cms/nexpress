@@ -170,7 +170,7 @@ excludes `src/integration/` so the cross-directory import doesn't trip
   SMTP-speaking relay and sends through `SmtpEmailAdapter`.
 - **Search vector ranking** — covered by
   `apps/web/tests/search-quality.integration.test.ts`, including field
-  weighting and reindex behaviour.
+  weighting, cross-collection relevance ranking, and reindex behaviour.
 - **pg-boss queue pickup** — covered by
   `packages/core/src/integration/pg-boss-worker.integration.test.ts`,
   which starts the real worker, enqueues a job, and asserts that the

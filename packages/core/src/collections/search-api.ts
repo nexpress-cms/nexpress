@@ -4,8 +4,9 @@ import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import { findDocuments } from "./pipeline.js";
 import { getDb } from "../db/runtime.js";
 import { getAllCollectionSlugs, getCollectionConfig, getCollectionTable } from "./registry.js";
-import { buildWeightedSearchVectorSql } from "./search.js";
+import { buildSearchVectorParts, buildWeightedSearchVectorSql } from "./search.js";
 import { getSearchAdapter } from "./search-adapter.js";
+import type { NpCollectionConfig } from "../config/types.js";
 
 export interface SearchCollectionsOptions {
   q: string;
@@ -30,6 +31,12 @@ export interface SearchCollectionsOptions {
 export interface SearchResultItem {
   collection: string;
   doc: Record<string, unknown>;
+  /**
+   * Relative relevance score for the default Postgres search path.
+   * Higher values rank first. The scale is intentionally not stable API:
+   * adapters may omit it or use their own scoring semantics.
+   */
+  score?: number;
 }
 
 export interface SearchCollectionFacet {
@@ -51,6 +58,17 @@ export interface SearchResult {
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
+const SCORE_PRECISION = 6;
+const MIN_TOKEN_LENGTH = 2;
+const TOKEN_MATCH_WEIGHT = {
+  a: 100,
+  b: 40,
+  c: 20,
+  d: 10,
+} as const;
+const TITLE_EXACT_BOOST = 180;
+const TITLE_PREFIX_BOOST = 100;
+const TITLE_PHRASE_BOOST = 60;
 
 function normalizeLimit(limit: number | undefined): number {
   if (!limit || limit < 1) return DEFAULT_LIMIT;
@@ -66,14 +84,98 @@ function hasSearchVectorColumn(table: PgTable): boolean {
   return (table as unknown as Record<string, unknown>).searchVector !== undefined;
 }
 
+interface SearchCandidate {
+  collection: string;
+  doc: Record<string, unknown>;
+  score: number;
+  collectionOrder: number;
+  rankWithinCollection: number;
+}
+
+function normalizeScoringText(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/\p{Mark}/gu, "")
+    .toLowerCase();
+}
+
+function tokenizeSearchQuery(query: string): string[] {
+  const seen = new Set<string>();
+  const tokens: string[] = [];
+  for (const match of normalizeScoringText(query).matchAll(/[\p{L}\p{N}]+/gu)) {
+    const token = match[0];
+    if (token.length < MIN_TOKEN_LENGTH || seen.has(token)) continue;
+    seen.add(token);
+    tokens.push(token);
+  }
+  return tokens;
+}
+
+function countOccurrences(text: string, token: string): number {
+  let count = 0;
+  let index = text.indexOf(token);
+  while (index !== -1) {
+    count += 1;
+    index = text.indexOf(token, index + token.length);
+  }
+  return count;
+}
+
+function scoreTextBucket(text: string, tokens: string[], phrase: string, weight: number): number {
+  if (!text) return 0;
+  const normalized = normalizeScoringText(text);
+  let score = 0;
+
+  for (const token of tokens) {
+    const occurrences = countOccurrences(normalized, token);
+    if (occurrences > 0) {
+      score += weight * (1 + Math.log2(occurrences));
+    }
+  }
+
+  if (phrase && normalized.includes(phrase)) {
+    score += weight * 2;
+  }
+
+  return score;
+}
+
+function scoreSearchResult(
+  config: NpCollectionConfig,
+  doc: Record<string, unknown>,
+  query: string,
+): number {
+  const tokens = tokenizeSearchQuery(query);
+  const phrase = normalizeScoringText(query).trim();
+  const parts = buildSearchVectorParts(config, doc);
+
+  let score =
+    scoreTextBucket(parts.a, tokens, phrase, TOKEN_MATCH_WEIGHT.a) +
+    scoreTextBucket(parts.b, tokens, phrase, TOKEN_MATCH_WEIGHT.b) +
+    scoreTextBucket(parts.c, tokens, phrase, TOKEN_MATCH_WEIGHT.c) +
+    scoreTextBucket(parts.d, tokens, phrase, TOKEN_MATCH_WEIGHT.d);
+
+  if (parts.a && phrase) {
+    const titleText = normalizeScoringText(parts.a).trim();
+    if (titleText === phrase) {
+      score += TITLE_EXACT_BOOST;
+    } else if (titleText.startsWith(phrase)) {
+      score += TITLE_PREFIX_BOOST;
+    } else if (titleText.includes(phrase)) {
+      score += TITLE_PHRASE_BOOST;
+    }
+  }
+
+  return Number(score.toFixed(SCORE_PRECISION));
+}
+
 /**
- * Cross-collection full-text search using the existing `search_vector` column
- * on each collection table. Built on top of `findDocuments` so it inherits
- * the ts_rank ordering, access-control read checks, and pagination.
- *
- * Results are merged in per-collection slug order; for an MVP the within-
- * collection ranking is authoritative. A future version can do a UNION across
- * tables if global ranking becomes a priority.
+ * Cross-collection full-text search using the existing `search_vector`
+ * column on each collection table. Built on top of `findDocuments` so it
+ * inherits ts_rank candidate selection, access-control read checks, and
+ * pagination. The default Postgres path then applies a shared relevance
+ * score across the candidate set so title/name hits can outrank weaker body
+ * hits even when they come from another collection.
  */
 export async function searchCollections(opts: SearchCollectionsOptions): Promise<SearchResult> {
   const query = opts.q.trim();
@@ -117,12 +219,12 @@ export async function searchCollections(opts: SearchCollectionsOptions): Promise
     }
   }
 
-  const results: SearchResultItem[] = [];
+  const candidates: SearchCandidate[] = [];
   const facets: SearchCollectionFacet[] = [];
   const perCollection: Record<string, number> = {};
   let total = 0;
 
-  for (const slug of slugs) {
+  for (const [collectionOrder, slug] of slugs.entries()) {
     let table: PgTable;
     try {
       table = getCollectionTable(slug) as PgTable;
@@ -155,12 +257,29 @@ export async function searchCollections(opts: SearchCollectionsOptions): Promise
       selected: selected ? selected.has(slug) : true,
     });
     total += page.totalDocs;
-    for (const doc of page.docs) {
-      results.push({ collection: slug, doc });
+    for (const [rankWithinCollection, doc] of page.docs.entries()) {
+      candidates.push({
+        collection: slug,
+        doc,
+        score: scoreSearchResult(config, doc, query),
+        collectionOrder,
+        rankWithinCollection,
+      });
     }
   }
 
-  const pagedResults = results.slice(offset, offset + limit);
+  const rankedResults = candidates.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (a.collectionOrder !== b.collectionOrder) return a.collectionOrder - b.collectionOrder;
+    return a.rankWithinCollection - b.rankWithinCollection;
+  });
+  const pagedResults = rankedResults.slice(offset, offset + limit).map(
+    ({ collection, doc, score }): SearchResultItem => ({
+      collection,
+      doc,
+      score,
+    }),
+  );
   return {
     results: pagedResults,
     total,

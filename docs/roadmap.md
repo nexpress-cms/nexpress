@@ -221,8 +221,9 @@ implementation.
   Postmark / Resend reference implementations belong in the registry.
 - **Search UX** — Postgres tsvector pipeline is in place and `/search`
   now has query retention, public-collection filters, pagination state,
-  mobile-safe result cards, and built-in theme entry points. Relevance
-  tuning and external-engine ranking remain future quality work.
+  mobile-safe result cards, globally ranked built-in relevance, and
+  built-in theme entry points. External-engine ranking adapters and
+  per-site relevance knobs remain future quality work.
 - **Notifications** — digest job exists; per-member preferences UI is
   partial.
 

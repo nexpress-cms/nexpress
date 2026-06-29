@@ -93,7 +93,7 @@ page renders blocks that plugins extend.
 | `findPosts(options)`                       | Sugar over `findDocuments("posts", options)`.                      |
 | `getAllPageSlugs()`                        | Static path generation.                                            |
 | `findSlugRedirect(oldSlug)`                | Resolve a historic slug → `{ slug, status }`.                      |
-| `searchCollections({ q, limit, ... })`     | Full-text search across registered collections with optional result facets. |
+| `searchCollections({ q, limit, ... })`     | Full-text search with facets and optional relevance scores.        |
 
 > `getPageBySlug` / `getPostBySlug` / `findPosts` /
 > `getAllPageSlugs` are convenience helpers hardcoded to the
