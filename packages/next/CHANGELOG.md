@@ -1,5 +1,21 @@
 # @nexpress/next
 
+## 0.3.25
+
+### Patch Changes
+
+- a9b2a81: Tighten public cache revalidation: scheduled-publish triggers now invalidate
+  collection caches immediately, collection writes emit `nx:collection:<slug>` for
+  cached theme/plugin routes, and the remote admin ops action allowlist includes a
+  dry-run/approval-gated `cache.revalidate` action.
+- Updated dependencies [d48a1c8]
+- Updated dependencies [2b72360]
+- Updated dependencies [a96907c]
+- Updated dependencies [2c95312]
+  - @nexpress/core@0.3.25
+  - @nexpress/blocks@0.3.25
+  - @nexpress/theme@0.3.25
+
 ## 0.3.24
 
 ### Patch Changes

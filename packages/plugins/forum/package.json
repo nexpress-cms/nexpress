@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/plugin-forum",
-  "version": "0.3.24",
+  "version": "0.3.25",
   "description": "Forum plugin for NexPress — threaded discussions on top of the community surface.",
   "license": "MIT",
   "author": "Nexpress",

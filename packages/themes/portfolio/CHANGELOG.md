@@ -1,5 +1,22 @@
 # @nexpress/theme-portfolio
 
+## 0.3.25
+
+### Patch Changes
+
+- 2c95312: Improve public search UX with stable result metadata, page-based API pagination,
+  public-collection filters on `/search`, mobile-safe result cards, locale-aware
+  site search, and built-in theme search entry points.
+- Updated dependencies [a9b2a81]
+- Updated dependencies [d48a1c8]
+- Updated dependencies [2b72360]
+- Updated dependencies [a96907c]
+- Updated dependencies [2c95312]
+  - @nexpress/next@0.3.25
+  - @nexpress/core@0.3.25
+  - @nexpress/blocks@0.3.25
+  - @nexpress/theme@0.3.25
+
 ## 0.3.24
 
 ### Patch Changes

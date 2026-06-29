@@ -1,5 +1,25 @@
 # @nexpress/admin
 
+## 0.3.25
+
+### Patch Changes
+
+- 1d11718: Harden admin authoring recovery with browser-history unsaved-change prompts and session-scoped autosave recovery dismissal.
+- 8fe1905: Add an admin autosave recovery banner with review/apply controls and more readable revision snapshots.
+- 11d6514: Improve the Document view authoring experience with a visible empty canvas state and stronger publish-to-public-render coverage.
+- d48a1c8: Preserve scheduled document status when Save & Preview saves dirty edits, restore framework-managed `publishedAt` codegen for draft-enabled collections, accept ISO `publishedAt` strings in the save pipeline, and complete the Magazine theme's tag and monthly date archives with seeded tag content.
+- df736ab: Improve collection authoring reliability with visible save-failure states, unsaved-change navigation guards, autosave retry, and revision difference summaries.
+- 590e12d: Align admin Preview links with each collection's configured public URL path and cover draft-mode preview for pages and posts.
+- 2b72360: Tighten scheduled publishing end to end: add an admin status filter for scheduled rows, include draft-enabled framework `publishedAt` columns in the scheduled sweep, return the sweep timestamp from the internal trigger, and document the public API scheduling contract.
+- 44b754d: Improve admin preview authoring so new and dirty documents save first, then open the server-resolved public preview route.
+- Updated dependencies [d48a1c8]
+- Updated dependencies [2b72360]
+- Updated dependencies [a96907c]
+- Updated dependencies [2c95312]
+  - @nexpress/core@0.3.25
+  - @nexpress/blocks@0.3.25
+  - @nexpress/editor@0.3.25
+
 ## 0.3.24
 
 ### Patch Changes

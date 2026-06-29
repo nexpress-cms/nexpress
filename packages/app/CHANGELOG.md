@@ -1,5 +1,55 @@
 # @nexpress/app
 
+## 0.3.25
+
+### Patch Changes
+
+- a9b2a81: Tighten public cache revalidation: scheduled-publish triggers now invalidate
+  collection caches immediately, collection writes emit `nx:collection:<slug>` for
+  cached theme/plugin routes, and the remote admin ops action allowlist includes a
+  dry-run/approval-gated `cache.revalidate` action.
+- 590e12d: Align admin Preview links with each collection's configured public URL path and cover draft-mode preview for pages and posts.
+- 2b72360: Tighten scheduled publishing end to end: add an admin status filter for scheduled rows, include draft-enabled framework `publishedAt` columns in the scheduled sweep, return the sweep timestamp from the internal trigger, and document the public API scheduling contract.
+- a96907c: Improve built-in search relevance by globally ranking Postgres search candidates across collections and exposing optional result scores.
+- 2c95312: Improve public search UX with stable result metadata, page-based API pagination,
+  public-collection filters on `/search`, mobile-safe result cards, locale-aware
+  site search, and built-in theme search entry points.
+- 44b754d: Improve admin preview authoring so new and dirty documents save first, then open the server-resolved public preview route.
+- Updated dependencies [1d11718]
+- Updated dependencies [8fe1905]
+- Updated dependencies [a9b2a81]
+- Updated dependencies [11d6514]
+- Updated dependencies [d48a1c8]
+- Updated dependencies [df736ab]
+- Updated dependencies [590e12d]
+- Updated dependencies [2b72360]
+- Updated dependencies [a96907c]
+- Updated dependencies [2c95312]
+- Updated dependencies [44b754d]
+  - @nexpress/admin@0.3.25
+  - @nexpress/next@0.3.25
+  - @nexpress/core@0.3.25
+  - @nexpress/theme-magazine@0.3.25
+  - @nexpress/theme-default@0.3.25
+  - @nexpress/theme-portfolio@0.3.25
+  - @nexpress/auth-pages@0.3.25
+  - @nexpress/plugin-forum@0.3.25
+  - @nexpress/theme-docs@0.3.25
+  - @nexpress/blocks@0.3.25
+  - @nexpress/plugin-sdk@0.3.25
+  - @nexpress/plugin-oauth-github@0.3.25
+  - @nexpress/plugin-oauth-google@0.3.25
+  - @nexpress/theme@0.3.25
+  - @nexpress/plugin-block-callout@0.3.25
+  - @nexpress/plugin-block-embed@0.3.25
+  - @nexpress/plugin-block-latest-posts@0.3.25
+  - @nexpress/plugin-block-newsletter@0.3.25
+  - @nexpress/plugin-block-pricing@0.3.25
+  - @nexpress/plugin-block-stats@0.3.25
+  - @nexpress/plugin-reading-time@0.3.25
+  - @nexpress/plugin-seo-audit@0.3.25
+  - @nexpress/editor@0.3.25
+
 ## 0.3.24
 
 ### Patch Changes
