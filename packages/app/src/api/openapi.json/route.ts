@@ -50,7 +50,13 @@ function fieldToSchema(field: NpFieldManifest): OpenApiSchema {
 function collectionSchema(manifest: ReturnType<typeof collectionToManifest>): OpenApiSchema {
   const properties: Record<string, OpenApiSchema> = {
     id: { type: "string", format: "uuid", readOnly: true },
-    status: { type: "string", enum: ["draft", "scheduled", "published", "archived"] },
+    status: { type: "string", enum: ["draft", "scheduled", "published", "archived", "pending"] },
+    _status: {
+      type: "string",
+      enum: ["draft", "scheduled", "published", "archived", "pending"],
+      writeOnly: true,
+      description: "Request-only status transition sentinel. Use `scheduled` with a future `publishedAt`, or `published` with a future `publishedAt` for backwards-compatible scheduling.",
+    },
     createdAt: { type: "string", format: "date-time", readOnly: true },
     updatedAt: { type: "string", format: "date-time", readOnly: true },
   };
@@ -65,6 +71,15 @@ function collectionSchema(manifest: ReturnType<typeof collectionToManifest>): Op
 
   if (manifest.slug_auto) {
     properties.slug = { type: "string", description: "Auto-derived from title unless set explicitly." };
+  }
+
+  if (manifest.versions.drafts && !manifest.fields.some((field) => field.name === "publishedAt")) {
+    properties.publishedAt = {
+      type: "string",
+      format: "date-time",
+      nullable: true,
+      description: "Framework-managed publish timestamp for draft-enabled collections that do not declare their own publishedAt field.",
+    };
   }
 
   const required = manifest.fields
@@ -981,6 +996,47 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Disable draft mode and redirect to /",
         responses: { "307": { description: "Redirect" } },
+      },
+    },
+    "/api/internal/publish-scheduled": {
+      post: {
+        summary: "Run the scheduled-publishing sweep",
+        description:
+          "Bearer-token-protected internal trigger. Set `NP_SCHEDULER_TOKEN` and call from cron. Publishes due rows with `status=scheduled` and `publishedAt <= now`.",
+        parameters: [
+          {
+            in: "header",
+            name: "Authorization",
+            required: true,
+            schema: { type: "string" },
+            description: "Bearer token in the form `Bearer <NP_SCHEDULER_TOKEN>`.",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Sweep result",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    published: { type: "integer" },
+                    byCollection: {
+                      type: "object",
+                      additionalProperties: {
+                        type: "array",
+                        items: { type: "string", format: "uuid" },
+                      },
+                    },
+                    at: { type: "string", format: "date-time" },
+                  },
+                },
+              },
+            },
+          },
+          "401": { description: "Missing or invalid bearer token" },
+          "503": { description: "`NP_SCHEDULER_TOKEN` is not configured" },
+        },
       },
     },
     "/api/plugins/{pluginId}/actions/{actionId}": {

@@ -41,8 +41,9 @@ export async function POST(request: NextRequest) {
     }
 
     await ensureFor("write");
-    const result = await publishScheduledDocuments();
-    return npSuccessResponse(result);
+    const at = new Date();
+    const result = await publishScheduledDocuments(at);
+    return npSuccessResponse({ ...result, at: at.toISOString() });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

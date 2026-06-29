@@ -108,6 +108,24 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
     expect(xml).not.toContain("hidden-draft");
   });
 
+  it("scheduled posts are excluded until the publish sweep promotes them", async () => {
+    const staff = await seedUser({ role: "editor" });
+    await collectionPOST(
+      staffPostsRequest(staff, {
+        title: "Hidden scheduled sitemap",
+        slug: "hidden-scheduled-sitemap",
+        content: { root: { type: "root", children: [] } },
+        publishedAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        _status: "published",
+      }),
+      { params: Promise.resolve({ slug: "posts" }) },
+    );
+
+    const res = await sitemapGET(sitemapRequest("en"));
+    const xml = await res.text();
+    expect(xml).not.toContain("hidden-scheduled-sitemap");
+  });
+
   it("includes published pages with normalized slug", async () => {
     const staff = await seedUser({ role: "editor" });
     await collectionPOST(

@@ -19,6 +19,7 @@ import {
 } from "@/app/api/collections/[slug]/[id]/route";
 import { POST as bulkPOST } from "@/app/api/collections/[slug]/bulk/route";
 import { POST as autosavePOST } from "@/app/api/collections/[slug]/[id]/autosave/route";
+import { POST as publishScheduledPOST } from "@/app/api/internal/publish-scheduled/route";
 
 describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
   beforeAll(async () => {
@@ -145,6 +146,56 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
     // Pipeline coerces published+future → scheduled.
     expect(created.body.status).toBe("scheduled");
     expect(new Date(created.body.publishedAt).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("scheduled documents stay hidden from anonymous REST list and detail reads", async () => {
+    const session = await seedUser({ role: "editor" });
+    const futureIso = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+    await listPOST(
+      buildRequest("/api/collections/posts", {
+        method: "POST",
+        session,
+        body: {
+          title: "Visible public post",
+          slug: "visible-public-post",
+          content: { root: { type: "root", children: [] } },
+          _status: "published",
+        },
+      }),
+      slugParams("posts"),
+    );
+    const scheduledRes = await listPOST(
+      buildRequest("/api/collections/posts", {
+        method: "POST",
+        session,
+        body: {
+          title: "Hidden scheduled post",
+          slug: "hidden-scheduled-post",
+          content: { root: { type: "root", children: [] } },
+          publishedAt: futureIso,
+          _status: "published",
+        },
+      }),
+      slugParams("posts"),
+    );
+    const scheduled = await readJson<{ id: string; status: string }>(scheduledRes);
+    expect(scheduled.body.status).toBe("scheduled");
+
+    const anonListRes = await listGET(buildRequest("/api/collections/posts"), slugParams("posts"));
+    const anonList = await readJson<{
+      docs: Array<{ id: string; title: string; status: string }>;
+      totalDocs: number;
+    }>(anonListRes);
+    expect(anonList.status).toBe(200);
+    expect(anonList.body.totalDocs).toBe(1);
+    expect(anonList.body.docs.map((doc) => doc.title)).toEqual(["Visible public post"]);
+
+    const anonDetailRes = await idGET(
+      buildRequest(`/api/collections/posts/${scheduled.body.id}`),
+      idParams("posts", scheduled.body.id),
+    );
+    expect(anonDetailRes.status).toBe(404);
   });
 
   it("bulk publish: flips multiple drafts to published in one call", async () => {
@@ -385,5 +436,52 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
     const cancelled = await readJson<{ status: string; publishedAt: string | null }>(cancelRes);
     expect(cancelled.status).toBe(200);
     expect(cancelled.body.status).toBe("draft");
+  });
+
+  it("internal scheduled trigger publishes due rows and reports sweep time", async () => {
+    const previousToken = process.env.NP_SCHEDULER_TOKEN;
+    process.env.NP_SCHEDULER_TOKEN = "test-scheduler-token";
+    try {
+      const session = await seedUser({ role: "editor" });
+      const dueIso = new Date(Date.now() - 60 * 1000).toISOString();
+      const createRes = await listPOST(
+        buildRequest("/api/collections/posts", {
+          method: "POST",
+          session,
+          body: {
+            title: "Due scheduled trigger",
+            slug: "due-scheduled-trigger",
+            content: { root: { type: "root", children: [] } },
+            publishedAt: dueIso,
+            _status: "scheduled",
+          },
+        }),
+        slugParams("posts"),
+      );
+      const created = await readJson<{ id: string; status: string }>(createRes);
+      expect(created.body.status).toBe("scheduled");
+
+      const triggerRes = await publishScheduledPOST(
+        buildRequest("/api/internal/publish-scheduled", {
+          method: "POST",
+          headers: { authorization: "Bearer test-scheduler-token" },
+        }),
+      );
+      const triggered = await readJson<{
+        published: number;
+        byCollection: Record<string, string[]>;
+        at: string;
+      }>(triggerRes);
+      expect(triggered.status).toBe(200);
+      expect(triggered.body.published).toBe(1);
+      expect(triggered.body.byCollection.posts).toContain(created.body.id);
+      expect(new Date(triggered.body.at).getTime()).not.toBeNaN();
+    } finally {
+      if (previousToken === undefined) {
+        delete process.env.NP_SCHEDULER_TOKEN;
+      } else {
+        process.env.NP_SCHEDULER_TOKEN = previousToken;
+      }
+    }
   });
 });

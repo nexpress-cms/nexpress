@@ -128,7 +128,7 @@ describe.skipIf(skipIfNoTestDb())("my thing", () => {
 | `plugin-persistence.integration.test.ts` (5) | syncPluginRegistrations / updatePluginState upsert + idempotence                                                                                    |
 | `reset-token.integration.test.ts` (5)        | create→consume flow: password hash rotates, tokenVersion bumps, sessions delete                                                                     |
 | `pipeline.integration.test.ts` (4)           | saveDocument create/update, revision versioning, findDocuments round-trip, deleteDocument                                                           |
-| `scheduled.integration.test.ts` (4)          | pipeline coerces published+future → scheduled; publishScheduledDocuments flips due rows, fires afterUpdate + afterPublish with full doc, idempotent |
+| `scheduled.integration.test.ts` (8)          | pipeline coerces published+future → scheduled; framework-managed `publishedAt` columns participate in scheduling; publishScheduledDocuments flips due rows, fires afterUpdate + afterPublish with full doc, idempotent |
 | `ctx-settings.integration.test.ts` (6)       | settings.getSite/getPlugin/setPlugin round-trip; theme.setTokens merges; ON CONFLICT prevents row duplication; capability gate                      |
 
 **CLI templates (6 tests, `packages/cli/src/templates.test.ts`):**
@@ -221,7 +221,7 @@ transpile cost. Browsers install via
 | `admin-mobile-layout.spec.ts`   | 320/360/390px admin shell, drawer open/closed overflow, narrow-phone tap targets, settings tabs, dialogs, and operational admin surfaces.                                                                |
 | `authoring-reliability.spec.ts` | Admin unsaved-navigation guards for links and browser history, failed-save dirty-state preservation, revision diff visibility, latest-autosave recovery, recovery dismissal, and post-recovery autosave. |
 | `mobile-layout.spec.ts`         | 320/390/430px public bundled themes, mobile drawers, and no hidden horizontal scroll on representative public routes.                                                                                    |
-| `preview.spec.ts`               | Admin Preview links and save-then-preview authoring flows for draft pages and posts, including public-route 404 before draft mode and draft-mode render at the collection's real public URL.             |
+| `preview.spec.ts`               | Admin Preview links and save-then-preview authoring flows for draft, scheduled, and published pages/posts, including public-route 404 before draft mode and draft-mode render at the collection's real public URL. |
 | `publish.spec.ts`               | Admin-created page publish flow, public route availability, and the published document appearing back in the admin collection list.                                                                      |
 | `theme.spec.ts`                 | Settings → Theme activation for an inactive bundled theme, followed by cleanup back to the canonical default theme.                                                                                      |
 | `plugins.spec.ts`               | Installed plugin enumeration, config-schema admin detail rendering, dedicated plugin config save, runtime plugin-route config usage, and legacy config PATCH rejection.                                  |

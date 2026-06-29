@@ -86,6 +86,24 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
     expect(result.total).toBe(0);
   });
 
+  it("scheduled posts are excluded from search until published", async () => {
+    const staff = await seedUser({ role: "editor" });
+    await collectionPOST(
+      staffPostsRequest(staff, {
+        title: "Hidden scheduled term-orchid",
+        slug: "hidden-scheduled-orchid",
+        content: { root: { type: "root", children: [] } },
+        publishedAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        _status: "published",
+      }),
+      { params: Promise.resolve({ slug: "posts" }) },
+    );
+
+    const { searchCollections } = await import("@nexpress/core");
+    const result = await searchCollections({ q: "orchid" });
+    expect(result.total).toBe(0);
+  });
+
   it("URL resolution: post hits map to /blog/{slug} via seo.urlPath", async () => {
     // The search page uses `getCollectionConfig(slug).seo.urlPath`
     // to build links. Verifying the post collection's

@@ -1,4 +1,9 @@
-import { getCollectionConfig, findDocuments, verifyTokenFull } from "@nexpress/core";
+import {
+  getCollectionConfig,
+  findDocuments,
+  verifyTokenFull,
+  type NpDocumentStatus,
+} from "@nexpress/core";
 import { CollectionListView } from "@nexpress/admin/client";
 import { toClientCollectionConfig } from "@nexpress/next";
 import { cookies } from "next/headers";
@@ -15,6 +20,7 @@ interface Props {
     page?: string;
     sort?: string;
     search?: string;
+    status?: string;
     /**
      * Universal-content-model #748 — when present, narrows the
      * list view to rows with `kind = <value>`. The admin
@@ -27,10 +33,22 @@ interface Props {
   }>;
 }
 
-export default async function CollectionListPage({
-  params,
-  searchParams,
-}: Props) {
+const LIST_STATUS_FILTERS = new Set<NpDocumentStatus>([
+  "draft",
+  "scheduled",
+  "published",
+  "pending",
+  "archived",
+]);
+
+function normalizeStatusFilter(value: string | undefined): NpDocumentStatus | undefined {
+  if (!value || value === "all") return undefined;
+  return LIST_STATUS_FILTERS.has(value as NpDocumentStatus)
+    ? (value as NpDocumentStatus)
+    : undefined;
+}
+
+export default async function CollectionListPage({ params, searchParams }: Props) {
   await ensureFor("read");
 
   const { collection } = await params;
@@ -49,7 +67,11 @@ export default async function CollectionListPage({
   const user = await verifyTokenFull(token, secret, getDb());
   if (!user) redirect("/admin/login");
 
-  const { page, sort, search, kind } = await searchParams;
+  const { page, sort, search, kind, status } = await searchParams;
+  const activeStatus = normalizeStatusFilter(status);
+  const where: { kind?: string; status?: NpDocumentStatus } = {};
+  if (typeof kind === "string" && kind.length > 0) where.kind = kind;
+  if (activeStatus) where.status = activeStatus;
 
   const result = await findDocuments(
     collection,
@@ -58,9 +80,7 @@ export default async function CollectionListPage({
       limit: 25,
       sort: sort || config.admin?.defaultSort || "-createdAt",
       search,
-      ...(typeof kind === "string" && kind.length > 0
-        ? { where: { kind } }
-        : {}),
+      ...(Object.keys(where).length > 0 ? { where } : {}),
     },
     user,
   );
@@ -73,6 +93,7 @@ export default async function CollectionListPage({
       totalPages={result.totalPages}
       currentPage={result.page}
       {...(typeof kind === "string" && kind.length > 0 ? { activeKind: kind } : {})}
+      {...(activeStatus ? { activeStatus } : {})}
     />
   );
 }
