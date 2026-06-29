@@ -379,12 +379,13 @@ const OPS_CONTRACTS: OpsContract[] = [
       "np.ops-plugins-mutation.v1",
       "np.ops-migrate-apply.v1",
       "np.ops-backup-restore-apply.v1",
+      "np.ops-cache-revalidate.v1",
     ],
     supports: { json: true, brief: false, noColor: false, out: false },
     artifact: { writes: true, defaultPath: ".nexpress/<action>/<artifact>.json when executed" },
     approval: { required: true, token: "same action token as local CLI execute mode" },
     notes: [
-      "Disabled by default; requires NP_REMOTE_OPS_MUTATIONS=1, admin.manage, action allowlist, and action approval tokens.",
+      "Disabled by default; requires NP_REMOTE_OPS_MUTATIONS=1, admin.manage, action allowlist, and action approval tokens. Includes cache.revalidate for public/theme/navigation/site/collection cache busts.",
     ],
   },
 ];

@@ -719,7 +719,7 @@ pnpm --dir apps/web --silent run ops:contracts -- --json
 | Plugins              | Shipped with enable / disable              | `ops:plugins list`, `inspect`, `doctor`, `upgrade-plan`, `enable`, `disable`                                                                  | Package upgrades and config-file edits still require normal dependency/config workflow.              |
 | Release              | Shipped with explicit approval gate        | `release check`, `plan`, `apply`, `verify`; `ops:release check\|verify`; artifacts under `.nexpress/releases`                                 | No new local read-only scope; execution stays approval-gated and allowlisted.                        |
 | Runbooks             | Shipped as read-only incident recipes      | `runbook worker-not-draining`, `storage-local-to-s3`, `backup-restore-drill`, `migration-crashed`; `ops:runbook <name>`                       | Automated incident mutations remain deferred.                                                        |
-| Remote admin ops API | Shipped with disabled-by-default mutations | `GET /api/admin/ops/health`, `readiness`, `status`, `doctor`, `jobs`, `storage`, `plugins`; `POST /api/admin/ops/actions`                     | Keep the mutation endpoint disabled by default and prefer local CLI for routine operator work.       |
+| Remote admin ops API | Shipped with disabled-by-default mutations | `GET /api/admin/ops/health`, `readiness`, `status`, `doctor`, `jobs`, `storage`, `plugins`; `POST /api/admin/ops/actions` incl. cache action  | Keep the mutation endpoint disabled by default and prefer local CLI for routine operator work.       |
 
 ## Future decision backlog
 
@@ -728,7 +728,6 @@ operator pressure rather than reopening the old planning list. Likely expansion
 areas are new action families, not replacements for the shipped safety pattern:
 
 ```text
-POST /api/admin/ops/cache/revalidate
 POST /api/admin/ops/jobs/drain
 POST /api/admin/ops/backup
 POST /api/admin/ops/runbook/{id}
