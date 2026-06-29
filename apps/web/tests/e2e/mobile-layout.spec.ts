@@ -57,6 +57,7 @@ const THEMES: ThemeScenario[] = [
         label: "single post",
       },
       { path: "/tag/postgres", label: "tag archive" },
+      { path: "/search?q=postgres", label: "site search" },
     ],
   },
   {
@@ -65,6 +66,7 @@ const THEMES: ThemeScenario[] = [
     routes: [
       { path: "/", label: "docs landing" },
       { path: "/docs/search", label: "docs search" },
+      { path: "/search?q=plugin", label: "site search" },
       { path: "/docs/plugin-author-quickstart", label: "doc detail" },
     ],
   },
@@ -77,6 +79,7 @@ const THEMES: ThemeScenario[] = [
       { path: "/", label: "magazine front" },
       { path: "/features", label: "section archive" },
       { path: "/category/features", label: "category archive" },
+      { path: "/search?q=features", label: "site search" },
     ],
   },
   {
@@ -88,6 +91,7 @@ const THEMES: ThemeScenario[] = [
       { path: "/", label: "portfolio work index" },
       { path: "/studio", label: "studio page" },
       { path: "/work/hanmi-gallery-complete-identity", label: "project detail" },
+      { path: "/search?q=identity", label: "site search" },
     ],
   },
 ];

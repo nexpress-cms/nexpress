@@ -292,6 +292,15 @@ export const portfolioCss = `
   color: var(--np-color-muted-foreground, #8a857d);
   font-feature-settings: "tnum";
 }
+.np-portfolio-search-link {
+  color: var(--np-color-muted-foreground, #8a857d);
+  text-decoration: none;
+  font-size: 0.825rem;
+  letter-spacing: 0.04em;
+}
+.np-portfolio-search-link:hover {
+  color: var(--np-color-foreground, #f5f1ea);
+}
 .np-portfolio-nav-toggle {
   display: none;
   align-items: center;
@@ -341,7 +350,8 @@ export const portfolioCss = `
   .np-portfolio-nav-toggle { display: inline-flex; }
 }
 @media (max-width: 720px) {
-  .np-portfolio-header-meta { display: none; }
+  .np-portfolio-header-meta,
+  .np-portfolio-search-link { display: none; }
 }
 @media (max-width: 640px) {
   .np-portfolio-header-inner,

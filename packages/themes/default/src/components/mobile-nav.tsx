@@ -99,6 +99,19 @@ export function MobileNav({ items, label = "Menu" }: MobileNavProps) {
             <CloseIcon />
           </button>
         </header>
+        <form action="/search" method="GET" role="search" className="np-mobile-nav-search">
+          <label className="sr-only" htmlFor="np-mobile-nav-search-input">
+            Search
+          </label>
+          <input
+            id="np-mobile-nav-search-input"
+            type="search"
+            name="q"
+            placeholder="Search writing"
+            autoComplete="off"
+          />
+          <button type="submit">Search</button>
+        </form>
         <ul className="np-mobile-nav-list">
           {items.map((item, index) => (
             <li key={`mobile-nav-${index.toString()}`}>

@@ -47,6 +47,7 @@ export {
   reindexCollection,
 } from "./search-api.js";
 export type {
+  SearchCollectionFacet,
   SearchCollectionsOptions,
   SearchResult,
   SearchResultItem,

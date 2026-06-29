@@ -73,6 +73,11 @@ export function MagazineMobileNav({ items }: MagazineMobileNavProps) {
         aria-hidden={open ? "false" : "true"}
       >
         <ul className="np-magazine-mobile-nav-drawer-list">
+          <li>
+            <a href="/search" onClick={() => setOpen(false)}>
+              Search
+            </a>
+          </li>
           {items.map((item, index) => (
             <li key={`magazine-mobile-${index.toString()}`}>
               <a href={item.url} onClick={() => setOpen(false)}>

@@ -165,6 +165,7 @@ export type {
   NpPendingDocSummary,
   NpListPendingDocsOptions,
   NpListPendingDocsResult,
+  SearchCollectionFacet,
   SearchCollectionsOptions,
   SearchResult,
   SearchResultItem,

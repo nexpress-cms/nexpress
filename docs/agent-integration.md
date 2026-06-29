@@ -105,9 +105,12 @@ Match the agent's role to its scope (e.g. a content-importer agent =
 - `GET /api/collections/{slug}?page=1&limit=20&sort=-updatedAt` — paged.
 - `GET /api/collections/{slug}?search=query` — uses Postgres full-text
   search over the `search_vector` column. Returned in ts_rank order.
-- `GET /api/search?q=query&collections=posts,pages&limit=10` — cross-
-  collection search; filters to `status=published` automatically for
-  public use.
+- `GET /api/search?q=query&collections=posts,pages&page=1&limit=10` —
+  cross-collection search; filters to `status=published` automatically for
+  public use. The JSON body includes `results`, `total`,
+  `perCollection`, optional `facets`, `limit`, `offset`, and
+  `hasNextPage`. `offset=` is still accepted for API callers that
+  prefer skip-based pagination.
 - `GET /api/collections/{slug}?where=<json>` — JSON-encoded filter
   object. Only equality supported today.
 

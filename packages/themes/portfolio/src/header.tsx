@@ -57,6 +57,9 @@ export async function PortfolioHeader() {
           <span className="np-portfolio-header-meta">
             <LocalTimeTicker zone={settings.timezone} initial={localTime} />
           </span>
+          <a href="/search" className="np-portfolio-search-link">
+            Search
+          </a>
           {ctaHref ? (
             <a href={ctaHref} className="np-portfolio-cta">
               Start a project →

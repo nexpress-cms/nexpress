@@ -9,12 +9,23 @@ import { searchWithShortTtlCache } from "./cache";
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
+const MAX_OFFSET = 10_000;
 
 function parsePositiveInt(value: string | null, fallback: number, max: number): number {
   if (!value) return fallback;
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.min(parsed, max);
+}
+
+function parseCollections(value: string | null): string[] | undefined {
+  if (!value) return undefined;
+  const seen = new Set<string>();
+  for (const raw of value.split(",")) {
+    const slug = raw.trim();
+    if (slug) seen.add(slug);
+  }
+  return seen.size > 0 ? [...seen] : undefined;
 }
 
 export async function GET(request: NextRequest) {
@@ -27,16 +38,13 @@ export async function GET(request: NextRequest) {
       return npSuccessResponse({ results: [], total: 0, perCollection: {} });
     }
 
-    const collectionsParam = params.get("collections");
-    const collections = collectionsParam
-      ? collectionsParam
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : undefined;
+    const collections = parseCollections(params.get("collections"));
 
     const limit = parsePositiveInt(params.get("limit"), DEFAULT_LIMIT, MAX_LIMIT);
-    const offset = parsePositiveInt(params.get("offset"), 0, 10_000);
+    const page = parsePositiveInt(params.get("page"), 1, 500);
+    const offset = params.has("offset")
+      ? parsePositiveInt(params.get("offset"), 0, MAX_OFFSET)
+      : Math.min((page - 1) * limit, MAX_OFFSET);
 
     // Phase 12.4 — locale resolution for search results.
     // Order: explicit `?locale=` query > request's own

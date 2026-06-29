@@ -8,6 +8,7 @@ import {
   skipIfNoTestDb,
   truncateAll,
 } from "./harness.js";
+import type { TestUserSession } from "./harness.js";
 
 import { GET as searchAPIGET } from "@/app/api/search/route";
 import { POST as collectionPOST } from "@/app/api/collections/[slug]/route";
@@ -27,6 +28,48 @@ function staffPostsRequest(
     },
     body: JSON.stringify(body),
   });
+}
+
+function actor(staff: TestUserSession) {
+  return {
+    id: staff.userId,
+    email: staff.email,
+    name: "Test",
+    role: staff.role,
+    tokenVersion: 0,
+  };
+}
+
+function lexicalParagraph(text: string): unknown {
+  return {
+    root: {
+      type: "root",
+      version: 1,
+      direction: null,
+      format: "",
+      indent: 0,
+      children: [
+        {
+          type: "paragraph",
+          version: 1,
+          direction: null,
+          format: "",
+          indent: 0,
+          children: [
+            {
+              type: "text",
+              version: 1,
+              detail: 0,
+              format: 0,
+              mode: "normal",
+              style: "",
+              text,
+            },
+          ],
+        },
+      ],
+    },
+  };
 }
 
 describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
@@ -123,13 +166,11 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
     // posts.slugField = { useField: "title", unique: true } so the
     // pipeline derives the slug from the title regardless of what
     // we send. The seeded title becomes slug "url-resolver-pumpkin".
-    const { searchCollections, getCollectionConfig } = await import(
-      "@nexpress/core"
-    );
+    const { searchCollections, getCollectionConfig } = await import("@nexpress/core");
     const result = await searchCollections({ q: "pumpkin" });
     const hit = result.results.find(
-      (r) => r.collection === "posts" &&
-        (r.doc as { slug: string }).slug === "url-resolver-pumpkin",
+      (r) =>
+        r.collection === "posts" && (r.doc as { slug: string }).slug === "url-resolver-pumpkin",
     );
     expect(hit).toBeDefined();
     const urlPath = getCollectionConfig("posts").seo?.urlPath;
@@ -162,18 +203,92 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
     // stem-divergent words now hit. "walnut" is stem-stable
     // either way; see the dedicated regression below for a
     // word whose stem actually differs from its surface form.
+    const res = await searchAPIGET(new NextRequest("http://localhost:3000/api/search?q=walnut"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      results: Array<{ collection: string; doc: Record<string, unknown> }>;
+      total: number;
+      perCollection: Record<string, number>;
+      facets?: Array<{ collection: string; label: string; count: number; selected: boolean }>;
+      limit?: number;
+      offset?: number;
+      hasNextPage?: boolean;
+    };
+    expect(body.total).toBeGreaterThanOrEqual(1);
+    expect(body.results[0]?.collection).toBe("posts");
+    expect(body.perCollection.posts).toBeGreaterThanOrEqual(1);
+    expect(
+      body.facets?.some((facet) => facet.collection === "posts" && facet.label === "Posts"),
+    ).toBe(true);
+    expect(body.limit).toBe(10);
+    expect(body.offset).toBe(0);
+    expect(body.hasNextPage).toBe(false);
+  });
+
+  it("/api/search supports collection filters and page-based pagination metadata", async () => {
+    const staff = await seedUser({ role: "editor" });
+    const { saveDocument } = await import("@nexpress/core");
+    await saveDocument(
+      "posts",
+      null,
+      {
+        title: "Filtered amber post",
+        excerpt: "amber scope",
+        content: lexicalParagraph("amber body"),
+        publishedAt: new Date().toISOString(),
+        author: staff.userId,
+      },
+      actor(staff),
+      { status: "published" },
+    );
+    await saveDocument(
+      "pages",
+      null,
+      {
+        title: "Filtered amber page one",
+        seoDescription: "amber scope",
+        locale: "en",
+      },
+      actor(staff),
+      { status: "published" },
+    );
+    await saveDocument(
+      "pages",
+      null,
+      {
+        title: "Filtered amber page two",
+        seoDescription: "amber scope",
+        locale: "en",
+      },
+      actor(staff),
+      { status: "published" },
+    );
+
     const res = await searchAPIGET(
-      new NextRequest("http://localhost:3000/api/search?q=walnut"),
+      new NextRequest("http://localhost:3000/api/search?q=amber&collections=pages&page=2&limit=1"),
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       results: Array<{ collection: string; doc: Record<string, unknown> }>;
       total: number;
       perCollection: Record<string, number>;
+      facets?: Array<{ collection: string; label: string; count: number; selected: boolean }>;
+      limit?: number;
+      offset?: number;
+      hasNextPage?: boolean;
     };
-    expect(body.total).toBeGreaterThanOrEqual(1);
-    expect(body.results[0]?.collection).toBe("posts");
-    expect(body.perCollection.posts).toBeGreaterThanOrEqual(1);
+
+    expect(body.total).toBe(2);
+    expect(body.results).toHaveLength(1);
+    expect(body.results.every((result) => result.collection === "pages")).toBe(true);
+    expect(body.perCollection.pages).toBe(2);
+    expect(body.perCollection.posts).toBeUndefined();
+    expect(body.limit).toBe(1);
+    expect(body.offset).toBe(1);
+    expect(body.hasNextPage).toBe(false);
+    expect(body.facets).toEqual([
+      { collection: "pages", label: "Pages", count: 2, selected: true },
+    ]);
   });
 
   it("stem-divergent surface form matches stored content (Phase 10.7 regression)", async () => {
@@ -207,9 +322,7 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
   });
 
   it("empty query returns an empty result envelope", async () => {
-    const res = await searchAPIGET(
-      new NextRequest("http://localhost:3000/api/search?q="),
-    );
+    const res = await searchAPIGET(new NextRequest("http://localhost:3000/api/search?q="));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { results: unknown[]; total: number };
     expect(body.total).toBe(0);

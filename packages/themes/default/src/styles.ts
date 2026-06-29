@@ -600,6 +600,36 @@ export const defaultThemeCss = `
 .np-mobile-nav-close:hover {
   background: var(--np-color-muted, #f8fafc);
 }
+.np-mobile-nav-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--np-color-border, #e5e7eb);
+}
+.np-mobile-nav-search input {
+  min-width: 0;
+  height: 2.35rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--np-color-border, #e5e7eb);
+  border-radius: var(--np-radius-md, 0.5rem);
+  background: var(--np-color-card, #fff);
+  color: inherit;
+  font: inherit;
+}
+.np-mobile-nav-search button {
+  height: 2.35rem;
+  padding: 0 0.8rem;
+  border: 1px solid var(--np-color-foreground, #0f172a);
+  border-radius: var(--np-radius-md, 0.5rem);
+  background: var(--np-color-foreground, #0f172a);
+  color: var(--np-color-background, #fff);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
 .np-mobile-nav-list {
   list-style: none;
   margin: 0;
