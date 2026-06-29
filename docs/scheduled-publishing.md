@@ -9,8 +9,10 @@ hidden until the pipeline flips them live.
 
 ## How scheduling flows
 
-1. An editor saves a document with `_status: "published"` and a
-   `publishedAt` timestamp in the future.
+1. An editor saves a document with `_status: "scheduled"` and a
+   future `publishedAt` timestamp. Older API clients may still send
+   `_status: "published"` plus a future `publishedAt`; the pipeline
+   keeps that compatibility path.
 2. The write pipeline (`packages/core/src/collections/pipeline.ts`)
    automatically demotes the status to `"scheduled"` before persisting —
    the public site never sees the post ahead of time.
@@ -20,9 +22,9 @@ hidden until the pipeline flips them live.
    hooks so plugins (SEO, caches, notifications) react as if the post had
    just gone live interactively.
 
-The `scheduled` status is a protocol detail — agents and plugins can
-treat any document with `_status: "scheduled"` as "will publish at
-`publishedAt`."
+The `scheduled` status is a first-class document status. Public reads,
+search, sitemap, and feed generation still treat only
+`status="published"` as live.
 
 ---
 
@@ -42,6 +44,10 @@ Response body:
 ```json
 {
   "published": 3,
+  "byCollection": {
+    "posts": ["01JZ0..."],
+    "pages": []
+  },
   "at": "2026-04-24T12:00:00.000Z"
 }
 ```
@@ -64,15 +70,15 @@ every request so production deploys can't accidentally leave it open.
 
 The collection edit view ships a **Schedule** button next to **Publish**.
 It opens a date/time picker that submits the document with
-`_status: "published"` plus a future `publishedAt` — the pipeline coerces
-that to `status: "scheduled"` server-side, so the workflow is symmetric
-whether you use the UI or the API.
+`_status: "scheduled"` plus a future `publishedAt`. The API also accepts
+the older `_status: "published"` plus future `publishedAt` shape and
+demotes it server-side, so existing integrations keep working.
 
 The same edit view's **Preview** button enters draft mode through
 `/api/preview` and redirects to the collection's configured
-`seo.urlPath(doc)` value. New documents and dirty forms use **Save
-Draft & Preview**, **Save & Preview**, or **Publish & Preview** first
-(depending on the document status); after the save, the admin asks
+`seo.urlPath(doc)` value. New documents and dirty forms use **Save Draft
+& Preview**, **Save & Preview**, **Save Scheduled & Preview**, or
+**Publish & Preview** first (depending on the document status); after the save, the admin asks
 `/api/admin/collections/{slug}/{id}/preview` for the server-resolved
 preview href. That keeps admin preview aligned with the real public
 route: i18n pages preview at `/<locale>/<slug>`, posts at
@@ -85,6 +91,10 @@ back to `draft` (and clears `publishedAt`). The header **Publish**
 button also relabels to **Publish now** so editors can ship the
 in-flight schedule immediately.
 
+The collection list has a status filter. Use **Scheduled** to audit
+pending publishes without mixing them into normal draft or published
+queues.
+
 ## Using it from an agent
 
 Agents usually care about two operations:
@@ -96,14 +106,15 @@ await fetch(`/api/collections/posts/${id}`, {
   method: "PATCH",
   headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
   body: JSON.stringify({
-    _status: "published",
+    _status: "scheduled",
     publishedAt: "2026-05-01T09:00:00.000Z",
   }),
 });
 ```
 
-The response will show `status: "scheduled"` because the pipeline
-demoted it.
+The response will show `status: "scheduled"`. Sending
+`_status: "published"` with the same future timestamp produces the same
+persisted status for compatibility with older agents.
 
 ### Cancel a scheduled publish
 

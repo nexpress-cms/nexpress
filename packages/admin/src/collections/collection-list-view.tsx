@@ -51,7 +51,18 @@ interface CollectionListViewProps {
    * defaults to the kind field's own `defaultValue`.
    */
   activeKind?: string;
+  /** Active document status filter from `?status=`. */
+  activeStatus?: string;
 }
+
+const STATUS_FILTER_OPTIONS = [
+  { value: "all", label: "All" },
+  { value: "draft", label: "Draft" },
+  { value: "scheduled", label: "Scheduled" },
+  { value: "published", label: "Published" },
+  { value: "pending", label: "Pending" },
+  { value: "archived", label: "Archived" },
+] as const;
 
 const getNamedFields = (
   fields: NpFieldConfig[],
@@ -138,6 +149,7 @@ export function CollectionListView({
   totalPages,
   currentPage,
   activeKind,
+  activeStatus,
 }: CollectionListViewProps) {
   // Thread `?kind=` onto the Create CTA so the new-doc form opens
   // with the same kind pre-set the operator was filtering by.
@@ -228,6 +240,21 @@ export function CollectionListView({
       .slice(0, 4)
       .map((field) => field.name);
   }, [config.admin?.listColumns, config.fields]);
+
+  const activeStatusValue = activeStatus && activeStatus.length > 0 ? activeStatus : "all";
+  const showStatusFilter =
+    Boolean(config.versions?.drafts) || columns.includes("status") || activeStatusValue !== "all";
+  const applyStatusFilter = useCallback(
+    (status: string) => {
+      const query = createQueryString(new URLSearchParams(searchParams.toString()), {
+        status: status === "all" ? null : status,
+        page: "1",
+      });
+
+      router.push(query ? `${pathname}?${query}` : pathname);
+    },
+    [pathname, router, searchParams],
+  );
 
   const docIds = useMemo(
     () =>
@@ -345,8 +372,34 @@ export function CollectionListView({
         </Card>
       ) : (
         <Card className="min-w-0">
-          <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <CardTitle className="break-words">All entries</CardTitle>
+          <CardHeader className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div className="min-w-0 space-y-3">
+              <CardTitle className="break-words">All entries</CardTitle>
+              {showStatusFilter ? (
+                <div
+                  aria-label="Filter by status"
+                  className="flex min-w-0 flex-wrap gap-1.5"
+                  role="group"
+                >
+                  {STATUS_FILTER_OPTIONS.map((option) => {
+                    const active = activeStatusValue === option.value;
+                    return (
+                      <Button
+                        key={option.value}
+                        type="button"
+                        variant={active ? "outline" : "ghost"}
+                        size="sm"
+                        aria-pressed={active}
+                        className="h-8 px-2.5 text-xs"
+                        onClick={() => applyStatusFilter(option.value)}
+                      >
+                        {option.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
             <div className="relative min-w-0 w-full md:max-w-sm">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
               <Input

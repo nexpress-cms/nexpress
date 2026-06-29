@@ -174,6 +174,28 @@ describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () 
     expect(futureRow.status).toBe("scheduled");
   });
 
+  it("publishScheduledDocuments includes draft collections with framework-managed publishedAt", async () => {
+    const user = await seedUser();
+    const past = new Date(Date.now() - 60 * 1000).toISOString();
+    const due = await saveDocument(
+      "pages",
+      null,
+      { title: "Due Scheduled Page", publishedAt: past },
+      user,
+      { status: "scheduled" },
+    );
+
+    const result = await publishScheduledDocuments();
+
+    expect(result.byCollection.pages).toContain(due.doc.id as string);
+    const db = await getTestDb();
+    const [row] = await db
+      .select()
+      .from(pagesTable)
+      .where(eq(pagesTable.id, due.doc.id as string));
+    expect(row.status).toBe("published");
+  });
+
   it("fires content:afterUpdate, afterPublish hooks with the full doc", async () => {
     const afterUpdate = vi.fn();
     const afterPublish = vi.fn();

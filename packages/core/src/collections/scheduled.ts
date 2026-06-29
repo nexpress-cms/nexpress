@@ -4,11 +4,7 @@ import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import type { NpFieldConfig } from "../config/types.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { runHook } from "../plugins/host.js";
-import {
-  getAllCollectionSlugs,
-  getCollectionConfig,
-  getCollectionTable,
-} from "./registry.js";
+import { getAllCollectionSlugs, getCollectionConfig, getCollectionTable } from "./registry.js";
 import { getDb } from "../db/runtime.js";
 
 function hasPublishedAtField(fields: NpFieldConfig[]): boolean {
@@ -57,7 +53,7 @@ export async function publishScheduledDocuments(
 
   for (const slug of getAllCollectionSlugs()) {
     const config = getCollectionConfig(slug);
-    if (!hasPublishedAtField(config.fields)) continue;
+    if (!config.versions?.drafts && !hasPublishedAtField(config.fields)) continue;
 
     const table = getCollectionTable(slug) as PgTable;
     const statusCol = getTableColumn(table, "status");
