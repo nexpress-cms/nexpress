@@ -1,5 +1,24 @@
 # @nexpress/theme-magazine
 
+## 0.3.25
+
+### Patch Changes
+
+- d48a1c8: Preserve scheduled document status when Save & Preview saves dirty edits, restore framework-managed `publishedAt` codegen for draft-enabled collections, accept ISO `publishedAt` strings in the save pipeline, and complete the Magazine theme's tag and monthly date archives with seeded tag content.
+- 2c95312: Improve public search UX with stable result metadata, page-based API pagination,
+  public-collection filters on `/search`, mobile-safe result cards, locale-aware
+  site search, and built-in theme search entry points.
+- Updated dependencies [a9b2a81]
+- Updated dependencies [d48a1c8]
+- Updated dependencies [2b72360]
+- Updated dependencies [a96907c]
+- Updated dependencies [2c95312]
+  - @nexpress/next@0.3.25
+  - @nexpress/core@0.3.25
+  - @nexpress/blocks@0.3.25
+  - @nexpress/theme@0.3.25
+  - @nexpress/editor@0.3.25
+
 ## 0.3.24
 
 ### Patch Changes

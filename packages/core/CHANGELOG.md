@@ -1,5 +1,16 @@
 # @nexpress/core
 
+## 0.3.25
+
+### Patch Changes
+
+- d48a1c8: Preserve scheduled document status when Save & Preview saves dirty edits, restore framework-managed `publishedAt` codegen for draft-enabled collections, accept ISO `publishedAt` strings in the save pipeline, and complete the Magazine theme's tag and monthly date archives with seeded tag content.
+- 2b72360: Tighten scheduled publishing end to end: add an admin status filter for scheduled rows, include draft-enabled framework `publishedAt` columns in the scheduled sweep, return the sweep timestamp from the internal trigger, and document the public API scheduling contract.
+- a96907c: Improve built-in search relevance by globally ranking Postgres search candidates across collections and exposing optional result scores.
+- 2c95312: Improve public search UX with stable result metadata, page-based API pagination,
+  public-collection filters on `/search`, mobile-safe result cards, locale-aware
+  site search, and built-in theme search entry points.
+
 ## 0.3.24
 
 ## 0.3.23

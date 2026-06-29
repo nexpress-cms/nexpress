@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/editor",
-  "version": "0.3.24",
+  "version": "0.3.25",
   "description": "Lexical-based rich-text editor for NexPress.",
   "license": "MIT",
   "author": "Nexpress",

@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/core",
-  "version": "0.3.24",
+  "version": "0.3.25",
   "description": "Server-side core for NexPress — collections pipeline, auth, jobs, media, plugins, observability.",
   "license": "MIT",
   "author": "Nexpress",
