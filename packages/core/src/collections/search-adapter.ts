@@ -21,6 +21,10 @@ import type { SearchResult } from "./search-api.js";
  * collections, or wants to defer to pg under specific
  * conditions (e.g. very short queries).
  *
+ * Adapter results may include `SearchResultItem.score`, but the
+ * framework treats adapter ordering as authoritative and does not
+ * reinterpret scores from an external engine.
+ *
  * Errors thrown by the adapter are fail-open: the framework
  * logs a warning and falls back to pg. Sites that want
  * fail-closed wrap their adapter in try/catch and return

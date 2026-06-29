@@ -1243,7 +1243,7 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Full-text search across published documents in every collection",
         description:
-          "Public endpoint. Uses each collection's search_vector column; results are filtered to status=\"published\" automatically.",
+          "Public endpoint. Uses each collection's search_vector column; results are filtered to status=\"published\" automatically and ranked by a shared relevance score.",
         parameters: [
           { in: "query", name: "q", required: true, schema: { type: "string" } },
           {
@@ -1253,11 +1253,17 @@ function buildSpec(): OpenApiSchema {
             description: "Comma-separated collection slugs. Omit to search every collection with a search_vector column.",
           },
           { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 50 } },
+          {
+            in: "query",
+            name: "page",
+            schema: { type: "integer", minimum: 1 },
+            description: "1-based page number. Ignored when offset is provided.",
+          },
           { in: "query", name: "offset", schema: { type: "integer", minimum: 0 } },
         ],
         responses: {
           "200": {
-            description: "Search results ranked by ts_rank within each collection.",
+            description: "Globally relevance-ranked search results.",
             content: {
               "application/json": {
                 schema: {
@@ -1270,11 +1276,31 @@ function buildSpec(): OpenApiSchema {
                         properties: {
                           collection: { type: "string" },
                           doc: { type: "object", additionalProperties: true },
+                          score: {
+                            type: "number",
+                            description:
+                              "Relative relevance score when using the built-in Postgres search path. Higher ranks first; scale is not stable.",
+                          },
                         },
                       },
                     },
                     total: { type: "integer" },
                     perCollection: { type: "object", additionalProperties: { type: "integer" } },
+                    facets: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          collection: { type: "string" },
+                          label: { type: "string" },
+                          count: { type: "integer" },
+                          selected: { type: "boolean" },
+                        },
+                      },
+                    },
+                    limit: { type: "integer" },
+                    offset: { type: "integer" },
+                    hasNextPage: { type: "boolean" },
                   },
                 },
               },

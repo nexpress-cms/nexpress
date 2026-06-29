@@ -206,7 +206,7 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
     const res = await searchAPIGET(new NextRequest("http://localhost:3000/api/search?q=walnut"));
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      results: Array<{ collection: string; doc: Record<string, unknown> }>;
+      results: Array<{ collection: string; doc: Record<string, unknown>; score?: number }>;
       total: number;
       perCollection: Record<string, number>;
       facets?: Array<{ collection: string; label: string; count: number; selected: boolean }>;
@@ -216,6 +216,7 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
     };
     expect(body.total).toBeGreaterThanOrEqual(1);
     expect(body.results[0]?.collection).toBe("posts");
+    expect(body.results[0]?.score).toBeGreaterThan(0);
     expect(body.perCollection.posts).toBeGreaterThanOrEqual(1);
     expect(
       body.facets?.some((facet) => facet.collection === "posts" && facet.label === "Posts"),
@@ -269,7 +270,7 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      results: Array<{ collection: string; doc: Record<string, unknown> }>;
+      results: Array<{ collection: string; doc: Record<string, unknown>; score?: number }>;
       total: number;
       perCollection: Record<string, number>;
       facets?: Array<{ collection: string; label: string; count: number; selected: boolean }>;

@@ -270,18 +270,6 @@ function SearchResults({ q, result, page, selectedCollections }: SearchResultsPr
     );
   }
 
-  // Group hits by collection so the rendered list reads as a
-  // table-of-contents rather than a flat soup. Within a group
-  // the order is whatever ts_rank decided (authoritative per
-  // collection — global cross-collection ranking is a future
-  // improvement called out in `searchCollections`'s doc).
-  const grouped = new Map<string, SearchResultItem[]>();
-  for (const item of result.results) {
-    const list = grouped.get(item.collection) ?? [];
-    list.push(item);
-    grouped.set(item.collection, list);
-  }
-
   const lastPage = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
   const scopeLabel =
     selectedCollections.length > 0
@@ -295,22 +283,11 @@ function SearchResults({ q, result, page, selectedCollections }: SearchResultsPr
         {result.total === 1 ? "" : "s"} for <strong>{q}</strong> in {scopeLabel}.
       </p>
 
-      {[...grouped.entries()].map(([collection, items]) => (
-        <section key={collection} className="np-search-group">
-          <h2 className="np-search-group-title">
-            {collectionPluralLabel(collection)} ({result.perCollection[collection] ?? items.length})
-          </h2>
-          <ul className="np-search-list">
-            {items.map((item) => (
-              <SearchResultRow
-                key={`${item.collection}:${docId(item.doc)}`}
-                item={item}
-                query={q}
-              />
-            ))}
-          </ul>
-        </section>
-      ))}
+      <ul className="np-search-list">
+        {result.results.map((item) => (
+          <SearchResultRow key={`${item.collection}:${docId(item.doc)}`} item={item} query={q} />
+        ))}
+      </ul>
 
       {lastPage > 1 ? (
         <Pagination
@@ -466,14 +443,6 @@ function pickExcerpt(doc: Record<string, unknown>): string | null {
 function collectionLabel(collection: string): string {
   try {
     return getCollectionConfig(collection).labels.singular;
-  } catch {
-    return collection;
-  }
-}
-
-function collectionPluralLabel(collection: string): string {
-  try {
-    return getCollectionConfig(collection).labels.plural;
   } catch {
     return collection;
   }
