@@ -84,6 +84,7 @@ const libEntries = {
   "lib/dashboard-stats": "src/lib/dashboard-stats.ts",
   "lib/db": "src/lib/db.ts",
   "lib/init-core": "src/lib/init-core.ts",
+  "lib/kind-preset": "src/lib/kind-preset.ts",
   "lib/manifest": "src/lib/manifest.ts",
   "lib/member-auth-helpers": "src/lib/member-auth-helpers.ts",
   "lib/revalidate": "src/lib/revalidate.ts",

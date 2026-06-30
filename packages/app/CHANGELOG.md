@@ -1212,13 +1212,10 @@ icon: "BookOpen", urlPattern: "/docs/:slug", hierarchical: true }`.
     np_c_docs rows to `kind="doc"` posts manually before
     upgrading to this release.
 
-  ## Open follow-ups (deliberately deferred)
-  - **Create-form kind pre-fill** — clicking "New doc" from
-    `/admin/collections/posts?kind=doc` should pre-set the kind
-    field to "doc". Today the operator picks it manually.
-  - **Generic kind URL resolver** — `seo.urlPath` hardcodes the
-    `doc` branch. A reads-from-`admin.kinds.<x>.urlPattern`
-    helper would generalise; not needed until a third kind lands.
+  ## Remaining follow-up
+
+  Create-form kind pre-fill and the generic kind URL resolver were
+  completed later in the universal-content-model follow-up batch.
   - **Kind-aware capabilities** — `content.publish.<kind>`
     capability strings designed-in but not implemented. Add when
     an operator asks for the split.
