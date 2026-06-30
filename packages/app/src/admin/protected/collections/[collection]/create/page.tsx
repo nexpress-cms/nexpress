@@ -4,6 +4,7 @@ import { toClientCollectionConfig } from "@nexpress/next";
 import { notFound } from "next/navigation";
 import { ensureFor } from "../../../../../lib/init-core";
 import { getCachedActiveTheme } from "../../../../../lib/cached-theme";
+import { resolveCreateKindPreset } from "../../../../../lib/kind-preset";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +14,9 @@ interface Props {
     /**
      * Universal-content-model #748 — when present, pre-fills the
      * kind field on the new-doc form so creating from a
-     * kind-scoped list view lands in the same bucket. Validated
-     * against the kind field's options at submit time by the
-     * pipeline's Zod schema; an unknown value here just gets
-     * stripped (the field falls back to its `defaultValue`).
+     * kind-scoped list view lands in the same bucket. Unknown
+     * values are ignored before they reach the form so bookmarked
+     * stale URLs fall back to the field's defaultValue.
      */
     kind?: string;
   }>;
@@ -34,7 +34,8 @@ export default async function CreatePage({ params, searchParams }: Props) {
   // `doc`. The edit view treats partials as initial form values;
   // it never gates on "is this an existing row?" — the missing
   // `id` already signals create-mode to the submit handler.
-  const initialDoc = typeof kind === "string" && kind.length > 0 ? { kind } : undefined;
+  const initialKind = resolveCreateKindPreset(config, kind);
+  const initialDoc = initialKind ? { kind: initialKind } : undefined;
 
   // Active-theme gate for theme-contributed fields — same as the
   // edit page. See `[id]/page.tsx` for the longer rationale.
