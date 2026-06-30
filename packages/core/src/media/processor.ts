@@ -2,6 +2,8 @@ import sharp from "sharp";
 
 import type { NpImageSize } from "../config/types.js";
 
+type NpSharpPipeline = ReturnType<typeof sharp>;
+
 export interface NpProcessedImageVariant {
   name: string;
   buffer: Buffer;
@@ -78,11 +80,7 @@ export async function processImage(
   };
 }
 
-function applyFormat(
-  image: sharp.Sharp,
-  format: string,
-  quality: number,
-): sharp.Sharp {
+function applyFormat(image: NpSharpPipeline, format: string, quality: number): NpSharpPipeline {
   switch (format) {
     case "avif":
       return image.avif({ quality });
@@ -96,7 +94,7 @@ function applyFormat(
   }
 }
 
-function resolveCropPosition(crop?: NpImageSize["crop"]): sharp.Gravity | number {
+function resolveCropPosition(crop?: NpImageSize["crop"]): string | number {
   switch (crop) {
     case "top":
       return "top";

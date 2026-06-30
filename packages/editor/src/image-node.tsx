@@ -38,13 +38,15 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
     return new ImageNode(node.__src, node.__altText, node.__width, node.__height, node.__key);
   }
 
-  static override importJSON(serializedNode: SerializedImageNode): ImageNode {
-    return new ImageNode(
-      serializedNode.src,
-      serializedNode.altText,
-      serializedNode.width,
-      serializedNode.height,
-    );
+  static override importJSON(
+    serializedNode: SerializedLexicalNode & Record<string, unknown>,
+  ): ImageNode {
+    const src = typeof serializedNode.src === "string" ? serializedNode.src : "";
+    const altText = typeof serializedNode.altText === "string" ? serializedNode.altText : "";
+    const width = typeof serializedNode.width === "number" ? serializedNode.width : undefined;
+    const height = typeof serializedNode.height === "number" ? serializedNode.height : undefined;
+
+    return new ImageNode(src, altText, width, height);
   }
 
   constructor(src: string, altText: string, width?: number, height?: number, key?: NodeKey) {
@@ -83,12 +85,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
 
   override decorate(): JSX.Element {
     return (
-      <img
-        src={this.__src}
-        alt={this.__altText}
-        width={this.__width}
-        height={this.__height}
-      />
+      <img src={this.__src} alt={this.__altText} width={this.__width} height={this.__height} />
     );
   }
 }
