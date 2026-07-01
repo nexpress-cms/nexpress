@@ -325,6 +325,7 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
       systemItems.push({ href: "/admin/ops", label: "Ops", icon: Gauge });
       systemItems.push({ href: "/admin/readiness", label: "Readiness", icon: ShieldCheck });
       systemItems.push({ href: "/admin/jobs", label: "Jobs", icon: Timer });
+      systemItems.push({ href: "/admin/import/wordpress", label: "WP Import", icon: FileStack });
       systemItems.push({ href: "/admin/health", label: "Health", icon: Activity });
     }
     systemItems.push({ href: "/admin/settings", label: "Settings", icon: Settings });

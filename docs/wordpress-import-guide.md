@@ -33,6 +33,32 @@ The importer reads `DATABASE_URL` and uses the framework's existing storage adap
 
 ## 3. Quickstart
 
+### Admin screen
+
+Open `/admin/import/wordpress`, choose the WXR file, run **Preview**, then run
+**Apply** with the same file and options. The screen uses the same applier as
+the CLI and reports planned/written rows, skips, errors, notes, and subsystem
+summaries.
+
+Preview is a dry run: it parses the file, plans post/page writes, and walks
+media references without downloading or uploading. Taxonomy, comment, and
+author resolver results are only final after Apply because those steps depend
+on live DB writes.
+
+Admin options map to the CLI behavior:
+
+| Admin option            | CLI equivalent                                |
+| ----------------------- | --------------------------------------------- |
+| Update existing slugs   | `--update`                                    |
+| Strict failures         | `--strict`                                    |
+| Create imported authors | default on / `--no-create-authors` off        |
+| Include media pipeline  | default on; turn off for a content-only apply |
+
+Use the CLI for very large exports, custom-post-type mappings, resume markers,
+or HTML/Lexical diff reports.
+
+### CLI
+
 ```bash
 # Preview — parse the WXR and print a summary
 pnpm wp-import path/to/export.xml
