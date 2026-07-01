@@ -3,9 +3,9 @@ import { defineConfig } from "vitest/config";
 /**
  * Integration-test config, invoked via `pnpm test:integration`. Picks up
  * `*.integration.test.ts` files only. Each fork lazily clones a
- * pre-migrated template DB into its own `_wN` database (see
- * src/integration/setup.ts), so fileParallelism stays safe. Unit tests
- * live under the default `vitest run` and use a separate shape.
+ * pre-migrated, run-namespaced template DB into its own `_wN` database
+ * (see src/integration/setup.ts), so fileParallelism stays safe. Unit
+ * tests live under the default `vitest run` and use a separate shape.
  */
 export default defineConfig({
   test: {

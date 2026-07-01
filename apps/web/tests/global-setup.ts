@@ -3,10 +3,10 @@ import { prepareTemplateDatabase } from "../../../packages/core/src/integration/
 
 /**
  * Vitest globalSetup hook. Runs once in the parent process before any
- * worker forks. Builds (or rebuilds) `${TEST_DATABASE_URL}_template` with
- * migrations applied, then drops any leftover `_wN` worker DBs so each
- * run starts clean. Workers will lazily clone the template into their
- * own `_wN` DB on first connect — see setup.ts:ensureWorkerDatabase.
+ * worker forks. Builds (or rebuilds) a run-namespaced template with
+ * migrations applied, then drops any leftover worker DBs from that namespace
+ * so each run starts clean. Workers lazily clone the template into their own
+ * `_wN` DB on first connect — see setup.ts:ensureWorkerDatabase.
  */
 export default async function () {
   const teardown = await prepareTemplateDatabase();

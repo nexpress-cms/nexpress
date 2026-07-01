@@ -10,9 +10,12 @@
  * and vice-versa. We always overwrite when TEST_DATABASE_URL is set —
  * otherwise a `.env` that ships a dev DATABASE_URL alongside
  * TEST_DATABASE_URL would leave the route-handler pool pointed at the
- * dev DB. The `_wN` suffix mirrors getTestDatabaseUrl() in the core
- * integration setup so harness + bootstrap land on the same DB.
+ * dev DB. Reuse getTestDatabaseUrl() from the core integration setup so
+ * harness + bootstrap land on the same namespaced worker DB.
  */
+// eslint-disable-next-line import-x/no-relative-packages
+import { getTestDatabaseUrl } from "../../../packages/core/src/integration/setup.js";
+
 if (!process.env.NP_SECRET) {
   process.env.NP_SECRET = "test-secret-for-integration-tests-only-32ch";
 }
@@ -25,13 +28,7 @@ if (!process.env.SITE_URL) {
   process.env.SITE_URL = "http://localhost:3000";
 }
 if (process.env.TEST_DATABASE_URL) {
-  const u = new URL(process.env.TEST_DATABASE_URL);
-  const id = process.env.VITEST_POOL_ID;
-  if (id) {
-    const base = u.pathname.replace(/^\//, "");
-    u.pathname = `/${base}_w${id}`;
-  }
-  process.env.DATABASE_URL = u.toString();
+  process.env.DATABASE_URL = getTestDatabaseUrl() ?? process.env.TEST_DATABASE_URL;
 }
 if (!process.env.NODE_ENV) {
   process.env.NODE_ENV = "test";

@@ -11,10 +11,7 @@ export default defineConfig({
     jsx: "automatic",
   },
   test: {
-    include: [
-      "tests/**/*.integration.test.ts",
-      "tests/**/*.integration.test.tsx",
-    ],
+    include: ["tests/**/*.integration.test.ts", "tests/**/*.integration.test.tsx"],
     environment: "node",
     globals: false,
     // Set env vars (NP_SECRET, etc.) before any test module's imports are
@@ -27,9 +24,9 @@ export default defineConfig({
       // crash when invoked outside Next's request context.
       "./tests/setup-next-cache-mock.ts",
     ],
-    // Builds the migrated `${TEST_DATABASE_URL}_template` once before any
-    // worker forks; workers then lazily clone it into per-worker `_wN`
-    // databases. Lets fileParallelism: true stay safe — see
+    // Builds a migrated, run-namespaced template once before any worker
+    // forks; workers then lazily clone it into per-worker `_wN` databases.
+    // Lets fileParallelism: true stay safe — see
     // packages/core/src/integration/setup.ts for the wider rationale.
     globalSetup: ["./tests/global-setup.ts"],
     fileParallelism: true,

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -16,12 +17,13 @@ import { splitMigrationStatements } from "./migration-split.js";
  * Tests skip themselves when TEST_DATABASE_URL isn't set — CI without
  * Docker then simply reports zero integration tests rather than failing.
  *
- * Parallelism: the global-setup hook prepares a `${base}_template` DB with
- * migrations applied once. Each vitest worker (identified by VITEST_POOL_ID)
- * lazily clones it into `${base}_w${N}` on first DB access via
- * `CREATE DATABASE … TEMPLATE …`, which is a near-instant filesystem copy
- * server-side. fileParallelism therefore stays safe — no two workers ever
- * share a DB.
+ * Parallelism: the global-setup hook assigns a per-run namespace, prepares a
+ * `${base}_${runId}_template` DB with migrations applied once, then each
+ * vitest worker (identified by VITEST_POOL_ID) lazily clones it into
+ * `${base}_${runId}_w${N}` on first DB access via `CREATE DATABASE … TEMPLATE …`,
+ * which is a near-instant filesystem copy server-side. fileParallelism stays
+ * safe, and two local integration runs pointed at the same TEST_DATABASE_URL no
+ * longer delete each other's template / worker DBs.
  */
 
 const MIGRATIONS_DIR = path.resolve(
@@ -41,14 +43,61 @@ function getBaseDatabaseName(): string | null {
   return u.pathname.replace(/^\//, "");
 }
 
+const MAX_POSTGRES_IDENTIFIER_LENGTH = 63;
+
+function shortHash(value: string): string {
+  return createHash("sha1").update(value).digest("hex").slice(0, 8);
+}
+
+function quoteIdentifier(name: string): string {
+  return `"${name.replaceAll('"', '""')}"`;
+}
+
+function escapeLikePattern(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll("_", "\\_").replaceAll("%", "\\%");
+}
+
+function makeDatabaseName(base: string, suffix: string): string {
+  const raw = `${base}${suffix}`;
+  if (raw.length <= MAX_POSTGRES_IDENTIFIER_LENGTH) return raw;
+
+  const hash = shortHash(raw);
+  const reserved = suffix.length + hash.length + 1;
+  const prefixLength = Math.max(1, MAX_POSTGRES_IDENTIFIER_LENGTH - reserved);
+  return `${base.slice(0, prefixLength)}_${hash}${suffix}`;
+}
+
+function createTestDatabaseRunId(): string {
+  return `r${process.pid.toString(36)}${Date.now().toString(36).slice(-6)}`;
+}
+
+function getRunId(): string | null {
+  const id = process.env.NP_TEST_DB_RUN_ID;
+  return id && id.length > 0 ? id : null;
+}
+
+function ensureRunId(): string {
+  const existing = getRunId();
+  if (existing) return existing;
+  const id = createTestDatabaseRunId();
+  process.env.NP_TEST_DB_RUN_ID = id;
+  return id;
+}
+
+function getRunSuffix(): string {
+  const id = getRunId();
+  return id ? `_${id}` : "";
+}
+
 function getTemplateDatabaseName(): string | null {
   const base = getBaseDatabaseName();
-  return base ? `${base}_template` : null;
+  return base ? makeDatabaseName(base, `${getRunSuffix()}_template`) : null;
 }
 
 function getWorkerSuffix(): string | null {
   const id = process.env.VITEST_POOL_ID;
-  return id ? `_w${id}` : null;
+  if (id) return `_w${id}`;
+  return getRunId() ? "_single" : null;
 }
 
 export function getTestDatabaseUrl(): string | null {
@@ -57,7 +106,7 @@ export function getTestDatabaseUrl(): string | null {
   const suffix = getWorkerSuffix();
   if (!suffix) return u.toString();
   const base = u.pathname.replace(/^\//, "");
-  u.pathname = `/${base}${suffix}`;
+  u.pathname = `/${makeDatabaseName(base, `${getRunSuffix()}${suffix}`)}`;
   return u.toString();
 }
 
@@ -75,8 +124,9 @@ let workerDbReady = false;
 
 /**
  * On a parallel run, clone the migrated template into a per-worker DB.
- * No-op when VITEST_POOL_ID isn't set (single-fork or CLI invocation) —
- * the worker just connects to the base test DB directly.
+ * When global setup assigned a run id but Vitest did not expose a
+ * VITEST_POOL_ID, clone into a `_single` DB so the template-ready flag
+ * still points at a migrated database.
  */
 async function ensureWorkerDatabase(): Promise<void> {
   if (workerDbReady) return;
@@ -92,7 +142,7 @@ async function ensureWorkerDatabase(): Promise<void> {
     workerDbReady = true;
     return;
   }
-  const workerDb = `${base}${suffix}`;
+  const workerDb = makeDatabaseName(base, `${getRunSuffix()}${suffix}`);
 
   const adminPool = new pg.Pool({ connectionString: adminUrl, max: 1 });
   try {
@@ -101,11 +151,12 @@ async function ensureWorkerDatabase(): Promise<void> {
       [workerDb],
     );
     if (rows.length === 0) {
-      // CREATE DATABASE doesn't accept parameter binds — names are
-      // already constrained to [A-Za-z0-9_] via the deterministic
-      // prefix/suffix construction above, so direct interpolation is
-      // safe here.
-      await adminPool.query(`CREATE DATABASE "${workerDb}" TEMPLATE "${template}"`);
+      // CREATE DATABASE doesn't accept parameter binds for identifiers.
+      // Quote defensively because the base DB name comes from operator
+      // configuration.
+      await adminPool.query(
+        `CREATE DATABASE ${quoteIdentifier(workerDb)} TEMPLATE ${quoteIdentifier(template)}`,
+      );
     }
   } finally {
     await adminPool.end();
@@ -232,13 +283,13 @@ export async function truncateAll(): Promise<void> {
   ];
   const list = tables.map((t) => `"${t}"`).join(", ");
   // CASCADE handles any FK holdouts. RESTART IDENTITY resets any sequences
-  // (unused by the schema today but future-proof).
-  await pool.query(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
-  // Wipe non-default sites in place. We can't TRUNCATE np_sites because
-  // the default row is created exactly once by `ensureDefaultSite()` at
-  // bootstrap (idempotent flag) — re-creating it after every truncate
-  // would mean every test file pays a write per case.
-  await pool.query(`DELETE FROM "np_sites" WHERE id <> 'default'`);
+  // (unused by the schema today but future-proof). Keep the site cleanup in
+  // the same round trip; truncateAll() runs before almost every integration
+  // case, so even small query-count savings add up.
+  await pool.query(`
+    TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE;
+    DELETE FROM "np_sites" WHERE id <> 'default';
+  `);
 }
 
 /**
@@ -252,18 +303,17 @@ export function skipIfNoTestDb(): boolean {
 
 /**
  * Used by the vitest globalSetup hook in both apps/web and packages/core
- * integration configs. Drops any leftover worker DBs from a prior run,
- * then recreates `${base}_template` from the migration SQL files.
+ * integration configs. Assigns a per-run namespace, drops any leftover
+ * worker DBs for that namespace, then recreates the namespaced template
+ * database from the migration SQL files.
  * Idempotent. CREATE DATABASE … TEMPLATE only needs the caller to be the
  * template owner — we don't flag IS_TEMPLATE so this stays compatible
  * with managed Postgres (RDS / Cloud SQL) where pg_database catalog
  * writes require superuser.
  *
- * The LIKE patterns use `\_` to escape the literal underscore from
- * Postgres' metacharacter so `nexpress_test_w%` doesn't accidentally
- * match unrelated DBs that happen to have similar prefixes. Patterns
- * are passed via $1 binds so they aren't subject to host-side string
- * escape processing.
+ * The LIKE pattern keys on the generated run id, so two local integration
+ * runs pointed at the same TEST_DATABASE_URL do not drop each other's
+ * worker databases.
  */
 export async function prepareTemplateDatabase(): Promise<() => Promise<void>> {
   const baseUrl = process.env.TEST_DATABASE_URL;
@@ -272,25 +322,25 @@ export async function prepareTemplateDatabase(): Promise<() => Promise<void>> {
       /* no-op when integration tests are skipped wholesale */
     };
   }
-  const base = getBaseDatabaseName()!;
+  const runId = ensureRunId();
   const template = getTemplateDatabaseName()!;
   const adminUrl = getAdminDatabaseUrl()!;
-  const workerLikePattern = `${base}\\_w%`;
+  const workerLikePattern = `%${escapeLikePattern(`_${runId}_`)}%`;
 
   const adminPool = new pg.Pool({ connectionString: adminUrl, max: 1 });
   try {
     // Sweep leftover worker DBs from a prior run, terminating any
     // dangling connections first so DROP doesn't wedge.
     const leftover = await adminPool.query<{ datname: string }>(
-      "SELECT datname FROM pg_database WHERE datname LIKE $1",
-      [workerLikePattern],
+      "SELECT datname FROM pg_database WHERE datname LIKE $1 AND datname <> $2",
+      [workerLikePattern, template],
     );
     for (const { datname } of leftover.rows) {
       await adminPool.query(
         "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1",
         [datname],
       );
-      await adminPool.query(`DROP DATABASE IF EXISTS "${datname}"`);
+      await adminPool.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(datname)}`);
     }
 
     // Recreate template fresh on every run so schema drift never lingers.
@@ -311,8 +361,8 @@ export async function prepareTemplateDatabase(): Promise<() => Promise<void>> {
     } catch {
       /* see comment above */
     }
-    await adminPool.query(`DROP DATABASE IF EXISTS "${template}"`);
-    await adminPool.query(`CREATE DATABASE "${template}"`);
+    await adminPool.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(template)}`);
+    await adminPool.query(`CREATE DATABASE ${quoteIdentifier(template)}`);
   } finally {
     await adminPool.end();
   }
@@ -345,19 +395,27 @@ export async function prepareTemplateDatabase(): Promise<() => Promise<void>> {
 
   return async () => {
     // Teardown — drop worker DBs so the next run starts clean. Leave the
-    // template in place; it'll be recreated by the next `prepareTemplateDatabase`.
+    // template in place for legacy non-namespaced runs; namespaced runs drop
+    // their template too so normal local runs don't leave one database per run.
     const cleanupPool = new pg.Pool({ connectionString: adminUrl, max: 1 });
     try {
       const { rows } = await cleanupPool.query<{ datname: string }>(
-        "SELECT datname FROM pg_database WHERE datname LIKE $1",
-        [workerLikePattern],
+        "SELECT datname FROM pg_database WHERE datname LIKE $1 AND datname <> $2",
+        [workerLikePattern, template],
       );
       for (const { datname } of rows) {
         await cleanupPool.query(
           "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1",
           [datname],
         );
-        await cleanupPool.query(`DROP DATABASE IF EXISTS "${datname}"`);
+        await cleanupPool.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(datname)}`);
+      }
+      if (runId) {
+        await cleanupPool.query(
+          "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1",
+          [template],
+        );
+        await cleanupPool.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(template)}`);
       }
     } finally {
       await cleanupPool.end();
