@@ -145,8 +145,13 @@ The source WP site was decommissioned or has its uploads dir behind auth. Either
 **Comments look spammy.**
 The WP site's spam filter wasn't catching the unapproved tail. The importer drops anything with `<wp:comment_approved>` != `"1"`, but a permissive moderator may have approved spam. Cleaning this up is a `np_comments` admin pass after the import — the audit trail at least tells you which run brought them in.
 
-**The post body has stray Gutenberg comment fences (`<!-- wp:paragraph -->`).**
-Phase 21.4's converter is comment-aware in design but the v1 cut treats them as text. Run a follow-up cleanup pass via the editor or the framework's revision tools. A future sub-phase may layer real Gutenberg-block parsing on top.
+**The post body used Gutenberg block comments (`<!-- wp:paragraph -->`).**
+The converter strips block fences and preserves the inner content. Core block
+attributes that affect structure are honored for common blocks such as
+headings, lists, images, embeds, separators, spacers, quotes, and nested layout
+wrappers. Unknown custom blocks fall back to their inner HTML and add a
+Gutenberg conversion warning to the import notes so you know which records need
+a manual spot-check.
 
 ---
 

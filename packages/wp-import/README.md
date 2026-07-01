@@ -6,6 +6,10 @@ conversion (including a Gutenberg block-fence parser), media download +
 dedup, taxonomy/term mapping, comment threading, custom post types, an
 audit log, and a resume marker for crash recovery.
 
+Gutenberg conversion preserves inner content for unknown custom blocks and
+surfaces conversion warnings in the apply report, so operators can focus manual
+cleanup on the records that need it.
+
 ## Install
 
 ```bash

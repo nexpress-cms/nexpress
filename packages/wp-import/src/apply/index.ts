@@ -1,7 +1,11 @@
 import { findDocuments, saveDocument } from "@nexpress/core";
 import type { NpAuthUser } from "@nexpress/core";
 
-import { htmlToLexical, type LexicalRoot } from "../convert/html-to-lexical.js";
+import {
+  htmlToLexical,
+  type LexicalConversionWarning,
+  type LexicalRoot,
+} from "../convert/html-to-lexical.js";
 import {
   type MediaPipelineDeps,
   type MediaPipelineReport,
@@ -11,11 +15,7 @@ import {
 import { rewriteLexicalMedia } from "../media/rewrite.js";
 import { type WpImportBundle, type WpImportRecord, type WpPostStatus } from "../parse/types.js";
 import { type AttachmentIndex, buildAttachmentIndex } from "./attachment-index.js";
-import {
-  resolveAuthors,
-  type AuthorResolution,
-  type AuthorResolver,
-} from "./authors.js";
+import { resolveAuthors, type AuthorResolution, type AuthorResolver } from "./authors.js";
 import {
   emptyCommentPlan,
   importPostComments,
@@ -320,11 +320,14 @@ export async function applyBundle(
   let droppedAuthorCount = 0;
   let coverWiredCount = 0;
   let coverMissingCount = 0;
+  const conversionWarningCounts = new Map<string, number>();
 
   for (const record of bundle.records) {
     const builtin = TYPE_TO_COLLECTION[record.wpType];
     const customMapping =
-      !builtin && options.collectionMappings ? options.collectionMappings[record.wpType] : undefined;
+      !builtin && options.collectionMappings
+        ? options.collectionMappings[record.wpType]
+        : undefined;
     const collection = builtin ?? customMapping?.collection;
     if (!collection) {
       skipped.push({
@@ -384,7 +387,9 @@ export async function applyBundle(
           slug: record.slug,
           reason: markerId ? "resume marker — already imported" : "slug already exists",
         });
-        log(`skip  ${collection}/${record.slug} (${markerId ? "resume marker" : "already exists"})`);
+        log(
+          `skip  ${collection}/${record.slug} (${markerId ? "resume marker" : "already exists"})`,
+        );
         await emitAudit(options.audit, {
           action: "import.wp.skipped",
           targetType: collection,
@@ -420,10 +425,11 @@ export async function applyBundle(
           : { categoryIds: [], tagIds: [] };
       const authorId =
         collection === "posts" && authors && record.wpAuthorLogin
-          ? authors.authorIds.get(record.wpAuthorLogin) ?? undefined
+          ? (authors.authorIds.get(record.wpAuthorLogin) ?? undefined)
           : undefined;
 
       if (dryRun) {
+        collectRecordConversionWarnings(record, conversionWarningCounts);
         applied.push({
           wpId: record.wpId,
           wpType: record.wpType,
@@ -454,6 +460,7 @@ export async function applyBundle(
         originalAuthorField && originalAuthorName
           ? { field: originalAuthorField, value: originalAuthorName }
           : undefined,
+        (warning) => collectConversionWarning(conversionWarningCounts, warning),
       );
       const mappedStatus = mapStatusToFramework(record.status);
       const saved = await saveDocument(
@@ -481,7 +488,9 @@ export async function applyBundle(
         tagIds: termIds.tagIds,
         authorId,
       });
-      log(updateMode ? `update ${collection}/${record.slug}` : `write ${collection}/${record.slug}`);
+      log(
+        updateMode ? `update ${collection}/${record.slug}` : `write ${collection}/${record.slug}`,
+      );
       options.reportHtml?.emit({
         wpId: record.wpId,
         wpType: record.wpType,
@@ -618,6 +627,9 @@ export async function applyBundle(
       );
     }
   }
+  for (const [message, count] of conversionWarningCounts) {
+    notes.push(`${count} Gutenberg conversion warning${count === 1 ? "" : "s"}: ${message}`);
+  }
 
   // Phase 21.12 — escalate sub-pipeline failures to record-level
   // errors when the operator passed `--strict`. The CLI exits
@@ -677,8 +689,9 @@ function buildDocData(
   authorId: string | undefined,
   fieldOverrides: Record<string, string> | undefined,
   originalAuthor: { field: string; value: string } | undefined,
+  onConversionWarning?: (warning: LexicalConversionWarning) => void,
 ): Record<string, unknown> {
-  const lexical = htmlToLexical(record.rawContent);
+  const lexical = htmlToLexical(record.rawContent, { onWarning: onConversionWarning });
   const rewritten: LexicalRoot = rewriteLexicalMedia(lexical, resolution);
   const data: Record<string, unknown> = {
     title: record.title || "(untitled)",
@@ -702,7 +715,17 @@ function buildDocData(
   // content stay protected so a misconfigured override can't
   // overwrite the post body).
   if (fieldOverrides) {
-    const protectedFields = new Set(["title", "slug", "content", "excerpt", "publishedAt", "coverImage", "categories", "tags", "author"]);
+    const protectedFields = new Set([
+      "title",
+      "slug",
+      "content",
+      "excerpt",
+      "publishedAt",
+      "coverImage",
+      "categories",
+      "tags",
+      "author",
+    ]);
     for (const [metaKey, fieldName] of Object.entries(fieldOverrides)) {
       if (protectedFields.has(fieldName)) continue;
       const value = record.meta[metaKey];
@@ -733,6 +756,26 @@ function buildDocData(
   return data;
 }
 
+function collectRecordConversionWarnings(
+  record: WpImportRecord,
+  counts: Map<string, number>,
+): void {
+  htmlToLexical(record.rawContent, {
+    onWarning: (warning) => collectConversionWarning(counts, warning),
+  });
+}
+
+function collectConversionWarning(
+  counts: Map<string, number>,
+  warning: LexicalConversionWarning,
+): void {
+  const message =
+    warning.code === "unknown-gutenberg-block"
+      ? `Unsupported Gutenberg block "${warning.blockName}" was imported by preserving its inner HTML only.`
+      : `Gutenberg block "${warning.blockName}" had malformed JSON attributes; inner content was preserved without those attributes.`;
+  counts.set(message, (counts.get(message) ?? 0) + 1);
+}
+
 function recordHasFeaturedImage(record: WpImportRecord): boolean {
   return record.mediaRefs.some((ref) => ref.kind === "featured");
 }
@@ -752,7 +795,10 @@ function hasAnyComment(bundle: WpImportBundle): boolean {
  * because that's what ran on the site; falls back to the login
  * (<dc:creator>) when no <wp:author> entry was emitted.
  */
-function resolveOriginalAuthorName(record: WpImportRecord, bundle: WpImportBundle): string | undefined {
+function resolveOriginalAuthorName(
+  record: WpImportRecord,
+  bundle: WpImportBundle,
+): string | undefined {
   const login = record.wpAuthorLogin;
   if (!login) return undefined;
   const match = bundle.authors.find((a) => a.login === login);
