@@ -20,9 +20,8 @@
  *   - It doesn't recurse into nested blocks (`wp:columns` →
  *     `wp:column`). Nested blocks land as a single block whose
  *     inner HTML still contains the child fences; the converter
- *     falls back to treating the inner HTML as plain content. A
- *     future sub-phase can layer recursive parsing on top once we
- *     have a real fixture exercising columns / groups.
+ *     decides whether to recurse into that inner HTML or treat it
+ *     as classic content.
  *   - It doesn't validate the JSON attributes against any schema.
  *     Malformed JSON is treated as no attributes, with the raw
  *     attribute text preserved in `rawAttrs` so a downstream
@@ -73,7 +72,12 @@ export function isGutenbergSource(html: string): boolean {
  */
 export function parseGutenbergBlocks(source: string): GutenbergBlock[] {
   const blocks: GutenbergBlock[] = [];
-  const stack: Array<{ name: string; attrs: Record<string, unknown>; rawAttrs: string; innerStart: number }> = [];
+  const stack: Array<{
+    name: string;
+    attrs: Record<string, unknown>;
+    rawAttrs: string;
+    innerStart: number;
+  }> = [];
   let cursor = 0;
   FENCE_RE.lastIndex = 0;
   let match: RegExpExecArray | null;

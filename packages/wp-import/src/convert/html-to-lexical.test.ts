@@ -134,9 +134,7 @@ describe("htmlToLexical", () => {
     });
 
     it("synthesises a heading when the fence inner is plain text", () => {
-      const out = htmlToLexical(
-        '<!-- wp:heading {"level":3} -->Just text<!-- /wp:heading -->',
-      );
+      const out = htmlToLexical('<!-- wp:heading {"level":3} -->Just text<!-- /wp:heading -->');
       const block = out.root.children[0];
       expect(block?.type).toBe("heading");
       expect(block?.tag).toBe("h3");
@@ -162,11 +160,128 @@ describe("htmlToLexical", () => {
       ]);
     });
 
+    it("maps wp:image figure markup to an image block plus caption paragraph", () => {
+      const out = htmlToLexical(
+        '<!-- wp:image {"id":7} --><figure class="wp-block-image"><img src="https://example.com/hero.jpg" alt="Hero"/><figcaption>Hero caption</figcaption></figure><!-- /wp:image -->',
+      );
+      expect(out.root.children.map((c) => c.type)).toEqual(["image", "paragraph"]);
+      expect(out.root.children[0]).toMatchObject({
+        type: "image",
+        src: "https://example.com/hero.jpg",
+        altText: "Hero",
+      });
+      expect(out.root.children[1]?.children?.[0]).toMatchObject({ text: "Hero caption" });
+    });
+
+    it("maps wp:embed iframe markup to a link paragraph and keeps the caption", () => {
+      const out = htmlToLexical(
+        '<!-- wp:embed {"providerNameSlug":"youtube"} --><figure><div><iframe src="https://www.youtube.com/embed/abc"></iframe></div><figcaption>Watch this</figcaption></figure><!-- /wp:embed -->',
+      );
+      expect(out.root.children.map((c) => c.type)).toEqual(["paragraph", "paragraph"]);
+      const link = out.root.children[0]?.children?.[0];
+      expect(link).toMatchObject({
+        type: "link",
+        url: "https://www.youtube.com/embed/abc",
+      });
+      expect(out.root.children[1]?.children?.[0]).toMatchObject({ text: "Watch this" });
+    });
+
+    it("prefers the embedded media URL over caption links", () => {
+      const out = htmlToLexical(
+        '<!-- wp:embed --><figure><iframe src="https://video.example.com/embed/1"></iframe><figcaption><a href="https://caption.example.com">caption</a></figcaption></figure><!-- /wp:embed -->',
+      );
+      const link = out.root.children[0]?.children?.[0];
+      expect(link).toMatchObject({
+        type: "link",
+        url: "https://video.example.com/embed/1",
+      });
+    });
+
+    it("preserves wp:gallery content without unsupported-block warnings", () => {
+      const warnings: string[] = [];
+      const out = htmlToLexical(
+        '<!-- wp:gallery --><figure><img src="https://example.com/one.jpg" alt="One"/></figure><!-- /wp:gallery -->',
+        {
+          onWarning: (warning) => warnings.push(warning.code),
+        },
+      );
+      expect(out.root.children[0]).toMatchObject({
+        type: "image",
+        src: "https://example.com/one.jpg",
+      });
+      expect(warnings).toEqual([]);
+    });
+
+    it("recurses through nested Gutenberg layout blocks so child attrs still apply", () => {
+      const out = htmlToLexical(
+        '<!-- wp:group --><!-- wp:heading {"level":5} --><h2>Nested</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Body</p><!-- /wp:paragraph --><!-- /wp:group -->',
+      );
+      expect(out.root.children.map((c) => c.type)).toEqual(["heading", "paragraph"]);
+      expect(out.root.children[0]?.tag).toBe("h5");
+    });
+
+    it("maps wp:more and wp:spacer structural blocks without dropping document shape", () => {
+      const out = htmlToLexical(
+        "<!-- wp:paragraph --><p>before</p><!-- /wp:paragraph --><!-- wp:more /--><!-- wp:spacer /--><!-- wp:paragraph --><p>after</p><!-- /wp:paragraph -->",
+      );
+      expect(out.root.children.map((c) => c.type)).toEqual([
+        "paragraph",
+        "horizontalrule",
+        "paragraph",
+        "paragraph",
+      ]);
+    });
+
     it("falls through to the classic converter for unknown blocks", () => {
+      const warnings: string[] = [];
       const out = htmlToLexical(
         "<!-- wp:custom-foo --><blockquote>cite</blockquote><!-- /wp:custom-foo -->",
+        {
+          onWarning: (warning) => warnings.push(`${warning.code}:${warning.blockName}`),
+        },
       );
       expect(out.root.children[0]?.type).toBe("quote");
+      expect(warnings).toEqual(["unknown-gutenberg-block:custom-foo"]);
+    });
+
+    it("warns on malformed Gutenberg attributes while preserving content", () => {
+      const warnings: string[] = [];
+      const out = htmlToLexical(
+        "<!-- wp:paragraph {bad json} --><p>Safe</p><!-- /wp:paragraph -->",
+        {
+          onWarning: (warning) => warnings.push(`${warning.code}:${warning.rawAttrs}`),
+        },
+      );
+      expect(out.root.children[0]?.children?.[0]).toMatchObject({ text: "Safe" });
+      expect(warnings).toEqual(["malformed-gutenberg-attrs:{bad json}"]);
+    });
+
+    it("does not warn for a valid empty Gutenberg attributes object", () => {
+      const warnings: string[] = [];
+      htmlToLexical("<!-- wp:paragraph {} --><p>Safe</p><!-- /wp:paragraph -->", {
+        onWarning: (warning) => warnings.push(warning.code),
+      });
+      expect(warnings).toEqual([]);
+    });
+
+    it("keeps quote citations once with a line break", () => {
+      const out = htmlToLexical(
+        "<!-- wp:quote --><blockquote><p>Quoted</p><cite>Alice</cite></blockquote><!-- /wp:quote -->",
+      );
+      const children = out.root.children[0]?.children ?? [];
+      expect(children.map((node) => node.type)).toEqual(["text", "linebreak", "text"]);
+      expect(children[0]).toMatchObject({ text: "Quoted" });
+      expect(children[2]).toMatchObject({ text: "Alice" });
+    });
+
+    it("keeps nested quote citations once", () => {
+      const out = htmlToLexical(
+        "<!-- wp:quote --><blockquote><p>Quoted <cite>Alice</cite></p></blockquote><!-- /wp:quote -->",
+      );
+      const children = out.root.children[0]?.children ?? [];
+      expect(children.map((node) => node.type)).toEqual(["text", "linebreak", "text"]);
+      expect(children[0]).toMatchObject({ text: "Quoted " });
+      expect(children[2]).toMatchObject({ text: "Alice" });
     });
   });
 });

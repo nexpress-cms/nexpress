@@ -17,11 +17,14 @@ import { isGutenbergSource, parseGutenbergBlocks, type GutenbergBlock } from "./
  *     own renderer (`packages/editor/src/render-rich-text.tsx`),
  *     so we emit exactly what the renderer expects.
  *
+ * Gutenberg block-comment fences (`<!-- wp:paragraph -->`) are
+ * handled in a narrow, content-preserving pass before the classic
+ * HTML converter runs. Core blocks with structural attributes
+ * (heading level, ordered-list flag, image figure, embeds, and
+ * separators) get explicit handling; unknown blocks fall back to
+ * their inner HTML and emit a warning through `onWarning`.
+ *
  * NOT in this PR:
- *   - Gutenberg block-comment syntax (`<!-- wp:paragraph -->`).
- *     Treat the comments as text noise; Phase 21.4b can layer
- *     block awareness on top once we have a real WP fixture to
- *     validate against.
  *   - Image media-id resolution. <img> nodes are emitted with
  *     the source URL as `src`; Phase 21.5 swaps these to
  *     NexPress media ids after the upload pipeline runs.
@@ -58,11 +61,41 @@ interface LexicalBlock {
 
 type LexicalNode = LexicalBlock;
 
+export interface LexicalConversionWarning {
+  code: "unknown-gutenberg-block" | "malformed-gutenberg-attrs";
+  blockName: string;
+  message: string;
+  rawAttrs?: string;
+}
+
+export interface HtmlToLexicalOptions {
+  onWarning?: (warning: LexicalConversionWarning) => void;
+}
+
 const FORMAT_BOLD = 1;
 const FORMAT_ITALIC = 2;
 const FORMAT_STRIKETHROUGH = 4;
 const FORMAT_UNDERLINE = 8;
 const FORMAT_CODE = 16;
+
+const QUOTE_CITATION_TAGS = new Set(["cite"]);
+
+const GUTENBERG_PASSTHROUGH_BLOCKS = new Set([
+  "paragraph",
+  "freeform",
+  "html",
+  "classic",
+  "gallery",
+  "group",
+  "columns",
+  "column",
+  "media-text",
+  "cover",
+  "buttons",
+  "button",
+  "table",
+  "details",
+]);
 
 /**
  * Convert raw WP content HTML into a Lexical root document.
@@ -70,7 +103,7 @@ const FORMAT_CODE = 16;
  * single empty paragraph, matching what the editor would produce
  * for a freshly-created field.
  */
-export function htmlToLexical(html: string): LexicalRoot {
+export function htmlToLexical(html: string, options: HtmlToLexicalOptions = {}): LexicalRoot {
   const trimmed = html.trim();
   if (!trimmed) {
     return emptyDocument();
@@ -84,7 +117,7 @@ export function htmlToLexical(html: string): LexicalRoot {
   const blocks: LexicalBlock[] = [];
   if (isGutenbergSource(trimmed)) {
     for (const block of parseGutenbergBlocks(trimmed)) {
-      convertGutenbergBlock(block, blocks);
+      convertGutenbergBlock(block, blocks, options);
     }
   } else {
     // `parse()` wraps the input in a synthetic root element. Walk
@@ -119,13 +152,27 @@ export function htmlToLexical(html: string): LexicalRoot {
  * ordering) and override what `convertTopLevel` would have
  * inferred from the markup alone.
  */
-function convertGutenbergBlock(block: GutenbergBlock, out: LexicalBlock[]): void {
+function convertGutenbergBlock(
+  block: GutenbergBlock,
+  out: LexicalBlock[],
+  options: HtmlToLexicalOptions,
+): void {
+  const name = normalizeGutenbergName(block.name);
+  if (hasMalformedAttrs(block.rawAttrs, block.attrs)) {
+    options.onWarning?.({
+      code: "malformed-gutenberg-attrs",
+      blockName: block.name,
+      rawAttrs: block.rawAttrs,
+      message: `Gutenberg block "${block.name}" had malformed JSON attributes; inner content was preserved without those attributes.`,
+    });
+  }
+
   // Self-closing structural blocks land directly. Today only
-  // `wp:separator` has a clear Lexical analog; others (spacer,
-  // page-break) fall through to plain paragraphs so the document
-  // shape survives.
+  // a few core blocks have a clear Lexical analog. Empty unknown
+  // self-closing blocks are reported because there is no inner
+  // content to preserve.
   if (block.selfClosing) {
-    if (block.name === "separator") {
+    if (name === "separator" || name === "more" || name === "nextpage" || name === "page-break") {
       out.push({
         type: "horizontalrule",
         version: 1,
@@ -133,18 +180,22 @@ function convertGutenbergBlock(block: GutenbergBlock, out: LexicalBlock[]): void
         indent: 0,
         direction: null,
       });
+    } else if (name === "spacer") {
+      out.push(paragraph([]));
+    } else {
+      warnUnknownBlock(block, options);
     }
     return;
   }
 
   // Loose content (the synthetic name parseGutenbergBlocks emits
   // for text between fences) — fall through to the classic path.
-  if (block.name === "gutenberg-loose") {
+  if (name === "gutenberg-loose") {
     runClassicPath(block.innerHtml, out);
     return;
   }
 
-  switch (block.name) {
+  switch (name) {
     case "heading": {
       // The fence may pin a level (1–6); if absent we fall back to
       // whatever <h*> tag the inner markup carries.
@@ -191,13 +242,91 @@ function convertGutenbergBlock(block: GutenbergBlock, out: LexicalBlock[]): void
       }
       return;
     }
-    default:
-      // Most blocks (paragraph, quote, code, image, gallery,
-      // group, columns, ...) carry markup that the classic
-      // converter already maps cleanly. Recurse and let the
-      // existing path handle them.
+    case "image":
+      convertImageBlock(block.innerHtml, out);
+      return;
+    case "embed":
+      convertEmbedBlock(block.innerHtml, out);
+      return;
+    case "video":
+    case "audio":
+    case "file":
+      convertMediaLinkBlock(block.innerHtml, out);
+      return;
+    case "quote":
+    case "pullquote":
+      convertQuoteBlock(block.innerHtml, out);
+      return;
+    case "code":
+    case "preformatted":
+    case "verse":
       runClassicPath(block.innerHtml, out);
+      return;
+    case "separator":
+    case "more":
+    case "nextpage":
+    case "page-break":
+      out.push({
+        type: "horizontalrule",
+        version: 1,
+        format: "",
+        indent: 0,
+        direction: null,
+      });
+      return;
+    case "spacer":
+      out.push(paragraph([]));
+      return;
+    default:
+      // Most known layout blocks (paragraph, group, columns,
+      // buttons, table, ...) carry markup that the classic
+      // converter already maps cleanly. For truly unknown blocks
+      // we still preserve inner content but surface a warning so
+      // operators know which imported records deserve a manual
+      // spot-check.
+      if (!GUTENBERG_PASSTHROUGH_BLOCKS.has(name)) {
+        warnUnknownBlock(block, options);
+      }
+      runGutenbergOrClassicPath(block.innerHtml, out, options);
   }
+}
+
+function normalizeGutenbergName(name: string): string {
+  return name.startsWith("core/") ? name.slice("core/".length) : name;
+}
+
+function hasMalformedAttrs(rawAttrs: string, attrs: Record<string, unknown>): boolean {
+  const raw = rawAttrs.trim();
+  if (!raw || Object.keys(attrs).length > 0) return false;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return !(parsed && typeof parsed === "object" && !Array.isArray(parsed));
+  } catch {
+    return true;
+  }
+}
+
+function warnUnknownBlock(block: GutenbergBlock, options: HtmlToLexicalOptions): void {
+  options.onWarning?.({
+    code: "unknown-gutenberg-block",
+    blockName: block.name,
+    rawAttrs: block.rawAttrs || undefined,
+    message: `Unsupported Gutenberg block "${block.name}" was imported by preserving its inner HTML only.`,
+  });
+}
+
+function runGutenbergOrClassicPath(
+  html: string,
+  out: LexicalBlock[],
+  options: HtmlToLexicalOptions,
+): void {
+  if (isGutenbergSource(html)) {
+    for (const block of parseGutenbergBlocks(html)) {
+      convertGutenbergBlock(block, out, options);
+    }
+    return;
+  }
+  runClassicPath(html, out);
 }
 
 function runClassicPath(html: string, out: LexicalBlock[]): void {
@@ -205,6 +334,104 @@ function runClassicPath(html: string, out: LexicalBlock[]): void {
   for (const child of parsed.childNodes) {
     convertTopLevel(child, out);
   }
+}
+
+function convertImageBlock(html: string, out: LexicalBlock[]): void {
+  const parsed = parse(html, { lowerCaseTagName: true });
+  const img = findFirstElement(parsed, "img");
+  if (!img) {
+    runClassicPath(html, out);
+    return;
+  }
+
+  out.push(imageBlock(img));
+  const caption = findFirstElement(parsed, "figcaption");
+  const captionChildren = caption ? convertInline(caption) : [];
+  if (captionChildren.length > 0) {
+    out.push(paragraph(captionChildren));
+  }
+}
+
+function convertEmbedBlock(html: string, out: LexicalBlock[]): void {
+  const parsed = parse(html, { lowerCaseTagName: true });
+  const caption = findFirstElement(parsed, "figcaption");
+  const url = findFirstUrl(parsed, ["src", "href"]);
+
+  if (url) {
+    out.push(
+      paragraph([
+        {
+          type: "link",
+          version: 1,
+          format: "",
+          indent: 0,
+          direction: null,
+          url,
+          children: [textNode(url, 0)],
+        },
+      ]),
+    );
+    const captionChildren = caption ? convertInline(caption) : [];
+    if (captionChildren.length > 0) out.push(paragraph(captionChildren));
+    return;
+  }
+
+  runClassicPath(html, out);
+}
+
+function convertMediaLinkBlock(html: string, out: LexicalBlock[]): void {
+  const parsed = parse(html, { lowerCaseTagName: true });
+  const url = findFirstUrl(parsed);
+  if (!url) {
+    runClassicPath(html, out);
+    return;
+  }
+  out.push(
+    paragraph([
+      {
+        type: "link",
+        version: 1,
+        format: "",
+        indent: 0,
+        direction: null,
+        url,
+        children: [textNode(url, 0)],
+      },
+    ]),
+  );
+}
+
+function convertQuoteBlock(html: string, out: LexicalBlock[]): void {
+  const parsed = parse(html, { lowerCaseTagName: true });
+  const quote = findFirstElement(parsed, "blockquote");
+  if (!quote) {
+    runClassicPath(html, out);
+    return;
+  }
+
+  const children: LexicalNode[] = [];
+  const cite = findFirstElement(quote, "cite");
+  for (const child of quote.childNodes) {
+    walkInline(child, 0, children, QUOTE_CITATION_TAGS);
+  }
+  if (cite && cite.text.trim().length > 0) {
+    children.push({
+      type: "linebreak",
+      version: 1,
+      format: "",
+      indent: 0,
+      direction: null,
+    });
+    children.push(...convertInline(cite));
+  }
+  out.push({
+    type: "quote",
+    version: 1,
+    format: "",
+    indent: 0,
+    direction: null,
+    children,
+  });
 }
 
 function stripTags(html: string): string {
@@ -299,6 +526,28 @@ function convertTopLevel(node: Node, out: LexicalBlock[]): void {
     case "img":
       out.push(imageBlock(el));
       return;
+    case "figure":
+      convertFigure(el, out);
+      return;
+    case "iframe": {
+      const src = el.getAttribute("src");
+      if (src) {
+        out.push(
+          paragraph([
+            {
+              type: "link",
+              version: 1,
+              format: "",
+              indent: 0,
+              direction: null,
+              url: src,
+              children: [textNode(src, 0)],
+            },
+          ]),
+        );
+      }
+      return;
+    }
     case "br":
       // A <br> at top level is rare but appears in WP content
       // around editor switches. Emit as an empty paragraph so the
@@ -328,6 +577,38 @@ function convertTopLevel(node: Node, out: LexicalBlock[]): void {
   }
 }
 
+function convertFigure(el: HTMLElement, out: LexicalBlock[]): void {
+  const img = findFirstElement(el, "img");
+  if (img) {
+    out.push(imageBlock(img));
+    const caption = findFirstElement(el, "figcaption");
+    const captionChildren = caption ? convertInline(caption) : [];
+    if (captionChildren.length > 0) out.push(paragraph(captionChildren));
+    return;
+  }
+
+  const iframe = findFirstElement(el, "iframe");
+  const iframeSrc = iframe?.getAttribute("src");
+  if (iframeSrc) {
+    out.push(
+      paragraph([
+        {
+          type: "link",
+          version: 1,
+          format: "",
+          indent: 0,
+          direction: null,
+          url: iframeSrc,
+          children: [textNode(iframeSrc, 0)],
+        },
+      ]),
+    );
+    return;
+  }
+
+  for (const child of el.childNodes) convertTopLevel(child, out);
+}
+
 const BLOCK_TAGS = new Set([
   "p",
   "h1",
@@ -342,6 +623,9 @@ const BLOCK_TAGS = new Set([
   "li",
   "pre",
   "hr",
+  "figure",
+  "figcaption",
+  "iframe",
   "div",
   "section",
   "article",
@@ -355,6 +639,40 @@ const BLOCK_TAGS = new Set([
 
 function isBlockTag(el: HTMLElement): boolean {
   return BLOCK_TAGS.has((el.tagName ?? "").toLowerCase());
+}
+
+function findFirstElement(root: HTMLElement, tagName: string): HTMLElement | null {
+  if ((root.tagName ?? "").toLowerCase() === tagName) return root;
+  for (const child of root.childNodes) {
+    if (child.nodeType !== NodeType.ELEMENT_NODE) continue;
+    const found = findFirstElement(child as HTMLElement, tagName);
+    if (found) return found;
+  }
+  return null;
+}
+
+function findFirstUrl(
+  root: HTMLElement,
+  priority: Array<"href" | "src"> = ["href", "src"],
+): string | null {
+  for (const attr of priority) {
+    const found = findFirstElementWithAttribute(root, attr);
+    const url = found?.getAttribute(attr);
+    if (url) return url;
+  }
+
+  const match = root.text.match(/https?:\/\/[^\s<>"']+/);
+  return match?.[0] ?? null;
+}
+
+function findFirstElementWithAttribute(root: HTMLElement, attr: string): HTMLElement | null {
+  if (root.getAttribute(attr)) return root;
+  for (const child of root.childNodes) {
+    if (child.nodeType !== NodeType.ELEMENT_NODE) continue;
+    const found = findFirstElementWithAttribute(child as HTMLElement, attr);
+    if (found) return found;
+  }
+  return null;
 }
 
 function paragraph(children: LexicalNode[]): LexicalBlock {
@@ -428,7 +746,12 @@ function convertInline(el: HTMLElement): LexicalNode[] {
   return out;
 }
 
-function walkInline(node: Node, format: number, out: LexicalNode[]): void {
+function walkInline(
+  node: Node,
+  format: number,
+  out: LexicalNode[],
+  skipTags?: ReadonlySet<string>,
+): void {
   if (node.nodeType === NodeType.TEXT_NODE) {
     const text = node.text;
     if (!text) return;
@@ -438,31 +761,35 @@ function walkInline(node: Node, format: number, out: LexicalNode[]): void {
   if (node.nodeType !== NodeType.ELEMENT_NODE) return;
   const el = node as HTMLElement;
   const tag = (el.tagName ?? "").toLowerCase();
+  if (skipTags?.has(tag)) return;
 
   switch (tag) {
     case "strong":
     case "b":
-      for (const child of el.childNodes) walkInline(child, format | FORMAT_BOLD, out);
+      for (const child of el.childNodes) walkInline(child, format | FORMAT_BOLD, out, skipTags);
       return;
     case "em":
     case "i":
-      for (const child of el.childNodes) walkInline(child, format | FORMAT_ITALIC, out);
+      for (const child of el.childNodes) walkInline(child, format | FORMAT_ITALIC, out, skipTags);
       return;
     case "u":
-      for (const child of el.childNodes) walkInline(child, format | FORMAT_UNDERLINE, out);
+      for (const child of el.childNodes)
+        walkInline(child, format | FORMAT_UNDERLINE, out, skipTags);
       return;
     case "s":
     case "del":
     case "strike":
-      for (const child of el.childNodes) walkInline(child, format | FORMAT_STRIKETHROUGH, out);
+      for (const child of el.childNodes) {
+        walkInline(child, format | FORMAT_STRIKETHROUGH, out, skipTags);
+      }
       return;
     case "code":
-      for (const child of el.childNodes) walkInline(child, format | FORMAT_CODE, out);
+      for (const child of el.childNodes) walkInline(child, format | FORMAT_CODE, out, skipTags);
       return;
     case "a": {
       const url = el.getAttribute("href") ?? "";
       const inner: LexicalNode[] = [];
-      for (const child of el.childNodes) walkInline(child, format, inner);
+      for (const child of el.childNodes) walkInline(child, format, inner, skipTags);
       out.push({
         type: "link",
         version: 1,
@@ -495,12 +822,12 @@ function walkInline(node: Node, format: number, out: LexicalNode[]): void {
       // Strip span wrappers — they almost always carry styling
       // we don't want. Walk their children with the inherited
       // format mask.
-      for (const child of el.childNodes) walkInline(child, format, out);
+      for (const child of el.childNodes) walkInline(child, format, out, skipTags);
       return;
     default: {
       // Unknown inline element — fall through with whatever
       // text it contains.
-      for (const child of el.childNodes) walkInline(child, format, out);
+      for (const child of el.childNodes) walkInline(child, format, out, skipTags);
     }
   }
 }

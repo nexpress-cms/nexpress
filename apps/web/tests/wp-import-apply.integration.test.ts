@@ -142,6 +142,25 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     expect(posts.docs).toHaveLength(0);
   });
 
+  it("surfaces Gutenberg conversion warnings in dry-run notes", async () => {
+    const xml = readFileSync(FIXTURE, "utf8");
+    const bundle = parseWxr(xml);
+    const post = bundle.records.find((record) => record.wpType === "post");
+    if (!post) throw new Error("fixture post missing");
+    post.rawContent =
+      "<!-- wp:custom-card --><p>Preserved custom block content.</p><!-- /wp:custom-card -->";
+    const session = await seedUser({ email: "wp-gutenberg-warnings@example.com", role: "admin" });
+    const actor = await asActor(session);
+
+    const report = await applyBundle(bundle, { actor, dryRun: true });
+
+    expect(
+      report.notes.some((note) =>
+        note.includes('Unsupported Gutenberg block "custom-card" was imported by preserving'),
+      ),
+    ).toBe(true);
+  });
+
   it("builds the attachment index from the bundle", async () => {
     const xml = readFileSync(FIXTURE, "utf8");
     const bundle = parseWxr(xml);

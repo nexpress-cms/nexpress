@@ -80,7 +80,12 @@ export {
   type AuthorResolveInput,
   type AuthorResolver,
 } from "./apply/authors.js";
-export { htmlToLexical, type LexicalRoot } from "./convert/html-to-lexical.js";
+export {
+  htmlToLexical,
+  type HtmlToLexicalOptions,
+  type LexicalConversionWarning,
+  type LexicalRoot,
+} from "./convert/html-to-lexical.js";
 export {
   downloadMedia,
   isAllowedMimeType,
