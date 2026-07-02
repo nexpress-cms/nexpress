@@ -149,7 +149,27 @@ interface QueuedResponse {
   run: ImportRun;
 }
 
+type BackgroundState = "ready" | "disabled" | "paused" | "no-workers" | "stale-workers";
+
+interface BackgroundStatus {
+  jobsEnabled: boolean;
+  paused: boolean;
+  state: BackgroundState;
+  workerAliveCount: number;
+  workerTotalCount: number;
+  newestHeartbeat: string | null;
+  staleAfterSeconds: number;
+}
+
 interface RunsResponse {
+  runs: ImportRun[];
+  background: BackgroundStatus;
+}
+
+interface SweepResponse {
+  failed: number;
+  cutoff: string;
+  staleAfterSeconds: number;
   runs: ImportRun[];
 }
 
@@ -173,6 +193,8 @@ export function WordPressImportView() {
   const [previewResult, setPreviewResult] = useState<ImportResponse | null>(null);
   const [activeRun, setActiveRun] = useState<ImportRun | null>(null);
   const [runs, setRuns] = useState<ImportRun[]>([]);
+  const [background, setBackground] = useState<BackgroundStatus | null>(null);
+  const [sweptCount, setSweptCount] = useState(0);
   const [runsLoading, setRunsLoading] = useState(false);
   const [previewKey, setPreviewKey] = useState<string | null>(null);
   const [loading, setLoading] = useState<ImportMode | null>(null);
@@ -227,6 +249,7 @@ export function WordPressImportView() {
       if (!response.ok || !body?.runs) return;
 
       setRuns(body.runs);
+      if (body.background) setBackground(body.background);
       setActiveRun((current) => {
         if (current) return body.runs.find((run) => run.id === current.id) ?? current;
         return body.runs.find((run) => isLiveRun(run.status)) ?? body.runs[0] ?? null;
@@ -238,12 +261,37 @@ export function WordPressImportView() {
     }
   }, []);
 
+  const sweepStaleRuns = useCallback(async () => {
+    try {
+      const response = await npFetch("/api/admin/import/wordpress/runs/sweep", {
+        method: "POST",
+      });
+      const body = (await response.json().catch(() => null)) as
+        (SweepResponse & { error?: { message?: string } }) | null;
+      if (!response.ok || !body) return;
+
+      if (body.failed > 0) {
+        setSweptCount((current) => current + body.failed);
+        setRuns((current) => body.runs.reduce((next, run) => upsertRun(next, run), current));
+        setActiveRun((current) => {
+          if (!current) return current;
+          return body.runs.find((run) => run.id === current.id) ?? current;
+        });
+      }
+    } catch {
+      /* stale sweep is best-effort; history refresh still runs */
+    }
+  }, []);
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void refreshRuns({ silent: true });
+      void (async () => {
+        await sweepStaleRuns();
+        await refreshRuns({ silent: true });
+      })();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [refreshRuns]);
+  }, [refreshRuns, sweepStaleRuns]);
 
   useEffect(() => {
     if (!activeRunId || !activeRunStatus || !isLiveRun(activeRunStatus)) return;
@@ -304,6 +352,7 @@ export function WordPressImportView() {
         setPreviewResult(null);
         setPreviewKey(null);
         void refreshRun(queued.run.id);
+        void refreshRuns({ silent: true });
       }
     } catch {
       setError("WordPress import failed.");
@@ -402,6 +451,8 @@ export function WordPressImportView() {
               </div>
             ) : null}
 
+            <BackgroundNotice background={background} sweptCount={sweptCount} />
+
             <div className="flex flex-col gap-2 sm:flex-row">
               <Button
                 type="button"
@@ -469,6 +520,40 @@ export function WordPressImportView() {
           visibleApplied={visibleApplied}
           visibleSkipped={visibleSkipped}
         />
+      </div>
+    </div>
+  );
+}
+
+function BackgroundNotice({
+  background,
+  sweptCount,
+}: {
+  background: BackgroundStatus | null;
+  sweptCount: number;
+}) {
+  const notice = background ? backgroundNotice(background) : null;
+  if (!notice && sweptCount === 0) return null;
+
+  return (
+    <div
+      className={cn(
+        "flex gap-2 rounded-lg border px-3 py-2 text-[12.5px]",
+        notice?.tone === "danger"
+          ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+          : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200",
+      )}
+    >
+      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+      <div className="min-w-0">
+        {notice ? <p className="font-medium">{notice.title}</p> : null}
+        {notice ? <p className="mt-0.5 break-words">{notice.detail}</p> : null}
+        {sweptCount > 0 ? (
+          <p className={notice ? "mt-1 break-words" : "break-words"}>
+            {sweptCount.toString()} stale background run{sweptCount === 1 ? "" : "s"} marked failed
+            and cleared.
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -946,6 +1031,43 @@ function statusVariant(status: ImportRunStatus): "destructive" | "brand" | "seco
   if (status === "failed") return "destructive";
   if (status === "succeeded") return "brand";
   return "secondary";
+}
+
+function backgroundNotice(background: BackgroundStatus): {
+  title: string;
+  detail: string;
+  tone: "warn" | "danger";
+} | null {
+  switch (background.state) {
+    case "ready":
+      return null;
+    case "disabled":
+      return {
+        title: "Background jobs are disabled",
+        detail: "Set NP_ENABLE_JOBS=1 on the web runtime and run a worker before applying imports.",
+        tone: "danger",
+      };
+    case "paused":
+      return {
+        title: "Background jobs are paused",
+        detail: "Resume processing from /admin/jobs before applying imports.",
+        tone: "danger",
+      };
+    case "no-workers":
+      return {
+        title: "No worker heartbeat yet",
+        detail: "Start a worker with NP_ENABLE_JOBS=1 pnpm run worker so queued imports can drain.",
+        tone: "warn",
+      };
+    case "stale-workers":
+      return {
+        title: "No live workers",
+        detail: `${background.workerTotalCount.toString()} worker heartbeat${
+          background.workerTotalCount === 1 ? " is" : "s are"
+        } registered, but none are alive. Restart the worker process.`,
+        tone: "danger",
+      };
+  }
 }
 
 function formatDateTime(value: string): string {

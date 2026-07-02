@@ -20,6 +20,9 @@ Optional (defaults shown in `.env.example`):
 - `NP_ENABLE_JOBS=1` — start the pg-boss worker. Without it, write-side
   follow-up jobs (revalidation, email send) silently drop. **Required in
   production.**
+- `NP_IMPORT_RUN_STALE_AFTER_SECONDS=86400` — how long an admin WordPress
+  import run may stay queued/running before the admin sweep marks it failed
+  and clears its temporary WXR payload.
 - `NP_SCHEDULER_TOKEN` — Bearer token guarding `/api/internal/*`. Leave
   unset to disable those endpoints. See [scheduled-publishing.md](./scheduled-publishing.md).
 - `NP_EMAIL_ADAPTER=smtp` + `NP_SMTP_*` — real password-reset / invite

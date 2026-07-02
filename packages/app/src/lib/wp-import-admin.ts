@@ -5,8 +5,10 @@ import {
   enqueueJob,
   findDocuments,
   getDb,
+  getJobsPauseState,
   getOptionalJobQueue,
   hashPassword,
+  listWorkerHealth,
   npComments,
   npImportRuns,
   npMedia,
@@ -35,11 +37,13 @@ import {
   type TaxonomyResolution,
   type WpImportBundle,
 } from "@nexpress/wp-import";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 
 const MAX_LIST_ITEMS = 250;
 const MAX_LOG_LINES = 200;
 const IMPORT_RUN_LIST_LIMIT = 25;
+const IMPORT_RUN_SWEEP_LIMIT = 100;
+const DEFAULT_IMPORT_RUN_STALE_AFTER_SECONDS = 24 * 60 * 60;
 export const WORDPRESS_IMPORT_APPLY_JOB_TYPE = "import:wordpressApply";
 
 export type WpImportAdminMode = "preview" | "apply";
@@ -152,7 +156,28 @@ export interface WpImportAdminRun {
   updatedAt: string;
 }
 
+export type WpImportAdminBackgroundState =
+  "ready" | "disabled" | "paused" | "no-workers" | "stale-workers";
+
+export interface WpImportAdminBackgroundStatus {
+  jobsEnabled: boolean;
+  paused: boolean;
+  state: WpImportAdminBackgroundState;
+  workerAliveCount: number;
+  workerTotalCount: number;
+  newestHeartbeat: string | null;
+  staleAfterSeconds: number;
+}
+
 export interface WpImportAdminRunList {
+  runs: WpImportAdminRun[];
+  background: WpImportAdminBackgroundStatus;
+}
+
+export interface WpImportAdminSweepResult {
+  failed: number;
+  cutoff: string;
+  staleAfterSeconds: number;
   runs: WpImportAdminRun[];
 }
 
@@ -230,7 +255,7 @@ export async function createAndEnqueueWordPressImportRun(args: {
   const queue = getOptionalJobQueue();
   if (!queue) {
     throw new NpError(
-      "Job queue is not wired. Start the worker runtime before applying a background import.",
+      "WordPress background apply requires jobs. Set NP_ENABLE_JOBS=1 on the web runtime and start a worker with `NP_ENABLE_JOBS=1 pnpm run worker`.",
       "INTERNAL_ERROR",
       503,
     );
@@ -304,13 +329,16 @@ export async function listWordPressImportRuns(
   limit = IMPORT_RUN_LIST_LIMIT,
 ): Promise<WpImportAdminRunList> {
   const db = getDb();
-  const rows = await db
-    .select()
-    .from(npImportRuns)
-    .where(eq(npImportRuns.kind, "wordpress"))
-    .orderBy(desc(npImportRuns.createdAt))
-    .limit(Math.min(Math.max(1, limit), 100));
-  return { runs: rows.map(serializeImportRun) };
+  const [rows, background] = await Promise.all([
+    db
+      .select()
+      .from(npImportRuns)
+      .where(eq(npImportRuns.kind, "wordpress"))
+      .orderBy(desc(npImportRuns.createdAt))
+      .limit(Math.min(Math.max(1, limit), 100)),
+    getWordPressImportBackgroundStatus(),
+  ]);
+  return { runs: rows.map(serializeImportRun), background };
 }
 
 export async function getWordPressImportRun(id: string): Promise<WpImportAdminRun> {
@@ -322,6 +350,84 @@ export async function getWordPressImportRun(id: string): Promise<WpImportAdminRu
     .limit(1);
   if (!row) throw new NpNotFoundError("wp-import-run", id);
   return serializeImportRun(row);
+}
+
+export async function getWordPressImportBackgroundStatus(): Promise<WpImportAdminBackgroundStatus> {
+  const jobsEnabled = process.env.NP_ENABLE_JOBS === "1";
+  const [workers, pause] = await Promise.all([listWorkerHealth(), getJobsPauseState()]);
+  const state: WpImportAdminBackgroundState = !jobsEnabled
+    ? "disabled"
+    : pause.paused
+      ? "paused"
+      : workers.aliveCount > 0
+        ? "ready"
+        : workers.totalCount > 0
+          ? "stale-workers"
+          : "no-workers";
+
+  return {
+    jobsEnabled,
+    paused: pause.paused,
+    state,
+    workerAliveCount: workers.aliveCount,
+    workerTotalCount: workers.totalCount,
+    newestHeartbeat: workers.newestHeartbeat,
+    staleAfterSeconds: getWordPressImportRunStaleAfterSeconds(),
+  };
+}
+
+export async function sweepStaleWordPressImportRuns(
+  options: { now?: Date; staleAfterMs?: number; limit?: number } = {},
+): Promise<WpImportAdminSweepResult> {
+  const now = options.now ?? new Date();
+  const staleAfterMs = options.staleAfterMs ?? getWordPressImportRunStaleAfterSeconds() * 1_000;
+  const staleAfterSeconds = Math.max(1, Math.floor(staleAfterMs / 1_000));
+  const cutoff = new Date(now.getTime() - staleAfterMs);
+  const limit = Math.min(
+    Math.max(1, options.limit ?? IMPORT_RUN_SWEEP_LIMIT),
+    IMPORT_RUN_SWEEP_LIMIT,
+  );
+  const workers = await listWorkerHealth(now);
+  const staleStatuses: NpImportRunStatus[] =
+    workers.aliveCount > 0 ? ["queued"] : ["queued", "running"];
+  const db = getDb();
+  const staleRows = await db
+    .select()
+    .from(npImportRuns)
+    .where(
+      and(
+        eq(npImportRuns.kind, "wordpress"),
+        inArray(npImportRuns.status, staleStatuses),
+        lt(npImportRuns.updatedAt, cutoff),
+      ),
+    )
+    .orderBy(asc(npImportRuns.updatedAt))
+    .limit(limit);
+
+  const failedRuns: WpImportAdminRun[] = [];
+  for (const row of staleRows) {
+    const message = `Import run exceeded the ${formatDuration(staleAfterSeconds)} stale timeout before reaching a terminal state.`;
+    const [updated] = await db
+      .update(npImportRuns)
+      .set({
+        status: "failed",
+        sourceXml: null,
+        error: message,
+        finishedAt: now,
+        updatedAt: now,
+        logs: appendLog(row.logs, message),
+      })
+      .where(and(eq(npImportRuns.id, row.id), inArray(npImportRuns.status, staleStatuses)))
+      .returning();
+    if (updated) failedRuns.push(serializeImportRun(updated));
+  }
+
+  return {
+    failed: failedRuns.length,
+    cutoff: cutoff.toISOString(),
+    staleAfterSeconds,
+    runs: failedRuns,
+  };
 }
 
 let wordPressImportJobsRegistered = false;
@@ -497,6 +603,18 @@ function toIso(value: Date | null): string | null {
 
 function appendLog(current: string[] | null | undefined, line: string): string[] {
   return [...(current ?? []), line].slice(-MAX_LOG_LINES);
+}
+
+function getWordPressImportRunStaleAfterSeconds(): number {
+  const raw = Number.parseInt(process.env.NP_IMPORT_RUN_STALE_AFTER_SECONDS ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_IMPORT_RUN_STALE_AFTER_SECONDS;
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds % 86_400 === 0) return `${(seconds / 86_400).toString()}d`;
+  if (seconds % 3_600 === 0) return `${(seconds / 3_600).toString()}h`;
+  if (seconds % 60 === 0) return `${(seconds / 60).toString()}m`;
+  return `${seconds.toString()}s`;
 }
 
 function readRunId(data: unknown): string {
