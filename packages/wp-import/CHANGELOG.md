@@ -1,5 +1,15 @@
 # @nexpress/wp-import
 
+## 0.3.26
+
+### Patch Changes
+
+- 4b06f7a: Improve Gutenberg block-fence conversion for WordPress imports, including images, embeds, structural blocks, nested content, and conversion warnings for unknown custom blocks.
+- Updated dependencies [64c6c7e]
+- Updated dependencies [11e3007]
+- Updated dependencies [192270e]
+  - @nexpress/core@0.3.26
+
 ## 0.3.25
 
 ### Patch Changes

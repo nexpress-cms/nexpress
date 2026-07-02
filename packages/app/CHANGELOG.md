@@ -1,5 +1,51 @@
 # @nexpress/app
 
+## 0.3.26
+
+### Patch Changes
+
+- 64c6c7e: Add background WordPress import runs with admin progress polling, run history, and worker execution for Apply.
+- b7284a9: Add an admin WordPress import screen with WXR preview/apply controls and a shared app API route.
+- edd80bd: Clarify the Vercel migration path in deploy plans and scaffolded ops docs. The
+  guidance now calls out that sensitive Vercel env values are not a reliable
+  local migration source, and points operators toward CI, the Vercel build
+  command, or another trusted shell where production `DATABASE_URL` is already
+  injected.
+- 41b4ff2: Ignore unknown `?kind=` create-form presets before they reach the admin form, and pin
+  kind-aware post URL resolution with regression tests.
+- 192270e: Add admin WordPress import custom type mappings with preview diagnostics and background-run persistence.
+- ffee334: Harden admin WordPress import background runs with worker status guidance, stale-run cleanup, and real pg-boss pickup coverage.
+- Updated dependencies [64c6c7e]
+- Updated dependencies [b7284a9]
+- Updated dependencies [11e3007]
+- Updated dependencies [4b06f7a]
+- Updated dependencies [192270e]
+- Updated dependencies [ffee334]
+  - @nexpress/core@0.3.26
+  - @nexpress/admin@0.3.26
+  - @nexpress/editor@0.3.26
+  - @nexpress/wp-import@0.3.26
+  - @nexpress/auth-pages@0.3.26
+  - @nexpress/blocks@0.3.26
+  - @nexpress/next@0.3.26
+  - @nexpress/plugin-sdk@0.3.26
+  - @nexpress/plugin-forum@0.3.26
+  - @nexpress/plugin-oauth-github@0.3.26
+  - @nexpress/plugin-oauth-google@0.3.26
+  - @nexpress/theme@0.3.26
+  - @nexpress/theme-default@0.3.26
+  - @nexpress/theme-docs@0.3.26
+  - @nexpress/theme-magazine@0.3.26
+  - @nexpress/theme-portfolio@0.3.26
+  - @nexpress/plugin-block-callout@0.3.26
+  - @nexpress/plugin-block-embed@0.3.26
+  - @nexpress/plugin-block-latest-posts@0.3.26
+  - @nexpress/plugin-block-newsletter@0.3.26
+  - @nexpress/plugin-block-pricing@0.3.26
+  - @nexpress/plugin-block-stats@0.3.26
+  - @nexpress/plugin-reading-time@0.3.26
+  - @nexpress/plugin-seo-audit@0.3.26
+
 ## 0.3.25
 
 ### Patch Changes

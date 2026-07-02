@@ -1,5 +1,13 @@
 # @nexpress/core
 
+## 0.3.26
+
+### Patch Changes
+
+- 64c6c7e: Add background WordPress import runs with admin progress polling, run history, and worker execution for Apply.
+- 11e3007: Refresh the Sharp and Lexical runtime dependencies and keep their TypeScript build output compatible with the updated package types.
+- 192270e: Add admin WordPress import custom type mappings with preview diagnostics and background-run persistence.
+
 ## 0.3.25
 
 ### Patch Changes
