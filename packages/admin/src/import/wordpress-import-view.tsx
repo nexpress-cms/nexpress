@@ -1,12 +1,14 @@
 "use client";
 
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  Clock3,
   DatabaseZap,
   Eye,
   FileUp,
+  History,
   Loader2,
   Play,
   RefreshCw,
@@ -119,6 +121,38 @@ interface ImportResponse {
   };
 }
 
+type ImportRunStatus = "queued" | "running" | "succeeded" | "failed";
+
+interface ImportRun {
+  id: string;
+  kind: string;
+  mode: "apply";
+  status: ImportRunStatus;
+  sourceName: string;
+  sourceSize: number;
+  sourceMimeType: string | null;
+  options: OptionsState;
+  jobId: string | null;
+  report: ImportResponse | null;
+  logs: string[];
+  error: string | null;
+  createdBy: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface QueuedResponse {
+  mode: "apply";
+  queued: true;
+  run: ImportRun;
+}
+
+interface RunsResponse {
+  runs: ImportRun[];
+}
+
 interface OptionsState {
   update: boolean;
   strict: boolean;
@@ -136,7 +170,10 @@ const DEFAULT_OPTIONS: OptionsState = {
 export function WordPressImportView() {
   const [file, setFile] = useState<File | null>(null);
   const [options, setOptions] = useState<OptionsState>(DEFAULT_OPTIONS);
-  const [result, setResult] = useState<ImportResponse | null>(null);
+  const [previewResult, setPreviewResult] = useState<ImportResponse | null>(null);
+  const [activeRun, setActiveRun] = useState<ImportRun | null>(null);
+  const [runs, setRuns] = useState<ImportRun[]>([]);
+  const [runsLoading, setRunsLoading] = useState(false);
   const [previewKey, setPreviewKey] = useState<string | null>(null);
   const [loading, setLoading] = useState<ImportMode | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -144,14 +181,77 @@ export function WordPressImportView() {
   const currentKey = file ? `${fileKey(file)}:${optionsKey(options)}` : null;
   const canPreview = !!file && loading === null;
   const canApply = !!file && loading === null && previewKey === currentKey;
-  const statusTone: "destructive" | "brand" | "secondary" = result?.report.errors.total
-    ? "destructive"
-    : result
-      ? "brand"
-      : "secondary";
+  const displayedResult = activeRun?.report ?? previewResult;
+  const statusTone: "destructive" | "brand" | "secondary" = activeRun
+    ? statusVariant(activeRun.status)
+    : displayedResult?.report.errors.total
+      ? "destructive"
+      : displayedResult
+        ? "brand"
+        : "secondary";
 
-  const visibleApplied = useMemo(() => result?.report.applied.items ?? [], [result]);
-  const visibleSkipped = useMemo(() => result?.report.skipped.items ?? [], [result]);
+  const visibleApplied = useMemo(
+    () => displayedResult?.report.applied.items ?? [],
+    [displayedResult],
+  );
+  const visibleSkipped = useMemo(
+    () => displayedResult?.report.skipped.items ?? [],
+    [displayedResult],
+  );
+  const activeRunId = activeRun?.id ?? null;
+  const activeRunStatus = activeRun?.status ?? null;
+
+  const refreshRun = useCallback(async (id: string) => {
+    try {
+      const response = await npFetch(`/api/admin/import/wordpress/runs/${id}`);
+      const body = (await response.json().catch(() => null)) as {
+        run?: ImportRun;
+        error?: { message?: string };
+      } | null;
+      if (!response.ok || !body?.run) return;
+
+      const nextRun = body.run;
+      setRuns((current) => upsertRun(current, nextRun));
+      setActiveRun((current) => (current?.id === nextRun.id ? nextRun : current));
+    } catch {
+      /* polling retries on the next tick */
+    }
+  }, []);
+
+  const refreshRuns = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setRunsLoading(true);
+    try {
+      const response = await npFetch("/api/admin/import/wordpress/runs?limit=12");
+      const body = (await response.json().catch(() => null)) as
+        (RunsResponse & { error?: { message?: string } }) | null;
+      if (!response.ok || !body?.runs) return;
+
+      setRuns(body.runs);
+      setActiveRun((current) => {
+        if (current) return body.runs.find((run) => run.id === current.id) ?? current;
+        return body.runs.find((run) => isLiveRun(run.status)) ?? body.runs[0] ?? null;
+      });
+    } catch {
+      /* history refresh is best-effort */
+    } finally {
+      if (!options?.silent) setRunsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void refreshRuns({ silent: true });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [refreshRuns]);
+
+  useEffect(() => {
+    if (!activeRunId || !activeRunStatus || !isLiveRun(activeRunStatus)) return;
+    const interval = window.setInterval(() => {
+      void refreshRun(activeRunId);
+    }, 2500);
+    return () => window.clearInterval(interval);
+  }, [activeRunId, activeRunStatus, refreshRun]);
 
   async function submit(mode: ImportMode) {
     if (!file) {
@@ -182,7 +282,7 @@ export function WordPressImportView() {
         body: formData,
       });
       const body = (await response.json().catch(() => null)) as
-        ImportResponse | { error?: { message?: string } } | null;
+        ImportResponse | QueuedResponse | { error?: { message?: string } } | null;
 
       if (!response.ok) {
         setError(
@@ -192,12 +292,18 @@ export function WordPressImportView() {
         return;
       }
 
-      const nextResult = body as ImportResponse;
-      setResult(nextResult);
       if (mode === "preview") {
+        const nextResult = body as ImportResponse;
+        setPreviewResult(nextResult);
+        setActiveRun(null);
         setPreviewKey(currentKey);
       } else {
+        const queued = body as QueuedResponse;
+        setActiveRun(queued.run);
+        setRuns((current) => upsertRun(current, queued.run));
+        setPreviewResult(null);
         setPreviewKey(null);
+        void refreshRun(queued.run.id);
       }
     } catch {
       setError("WordPress import failed.");
@@ -209,7 +315,8 @@ export function WordPressImportView() {
   function updateOption<K extends keyof OptionsState>(key: K, value: OptionsState[K]) {
     setOptions((current) => ({ ...current, [key]: value }));
     setPreviewKey(null);
-    setResult(null);
+    setPreviewResult(null);
+    setActiveRun(null);
     setError(null);
   }
 
@@ -219,10 +326,15 @@ export function WordPressImportView() {
         title="WordPress import"
         description="Preview WXR exports and apply them into NexPress content."
         actions={
-          result ? (
+          activeRun ? (
             <Badge variant={statusTone}>
-              {result.mode === "preview" ? "Preview" : "Applied"} · {result.report.errors.total}{" "}
-              errors
+              {statusLabel(activeRun.status)}
+              {activeRun.report ? ` · ${activeRun.report.report.errors.total} errors` : ""}
+            </Badge>
+          ) : displayedResult ? (
+            <Badge variant={statusTone}>
+              {displayedResult.mode === "preview" ? "Preview" : "Applied"} ·{" "}
+              {displayedResult.report.errors.total} errors
             </Badge>
           ) : null
         }
@@ -248,7 +360,8 @@ export function WordPressImportView() {
                   const nextFile = event.currentTarget.files?.[0] ?? null;
                   setFile(nextFile);
                   setPreviewKey(null);
-                  setResult(null);
+                  setPreviewResult(null);
+                  setActiveRun(null);
                   setError(null);
                 }}
               />
@@ -324,7 +437,8 @@ export function WordPressImportView() {
                 disabled={loading !== null}
                 onClick={() => {
                   setOptions(DEFAULT_OPTIONS);
-                  setResult(null);
+                  setPreviewResult(null);
+                  setActiveRun(null);
                   setPreviewKey(null);
                   setError(null);
                 }}
@@ -333,11 +447,25 @@ export function WordPressImportView() {
                 <RefreshCw className="size-3.5" />
               </Button>
             </div>
+
+            <RunHistory
+              activeRunId={activeRun?.id ?? null}
+              loading={runsLoading}
+              runs={runs}
+              onRefresh={() => void refreshRuns()}
+              onSelect={(run) => {
+                setActiveRun(run);
+                setPreviewResult(null);
+                setError(null);
+                if (isLiveRun(run.status)) void refreshRun(run.id);
+              }}
+            />
           </CardContent>
         </Card>
 
-        <ReportCard
-          result={result}
+        <ReportPanel
+          activeRun={activeRun}
+          result={displayedResult}
           visibleApplied={visibleApplied}
           visibleSkipped={visibleSkipped}
         />
@@ -346,15 +474,21 @@ export function WordPressImportView() {
   );
 }
 
-function ReportCard({
+function ReportPanel({
+  activeRun,
   result,
   visibleApplied,
   visibleSkipped,
 }: {
+  activeRun: ImportRun | null;
   result: ImportResponse | null;
   visibleApplied: AppliedRow[];
   visibleSkipped: SkippedRow[];
 }) {
+  if (activeRun && (!activeRun.report || activeRun.status !== "succeeded")) {
+    return <RunStatusCard run={activeRun} />;
+  }
+
   if (!result) {
     return (
       <Card className="min-h-[360px]">
@@ -474,6 +608,135 @@ function ReportCard({
         ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+function RunStatusCard({ run }: { run: ImportRun }) {
+  const tone =
+    run.status === "failed" ? "destructive" : run.status === "succeeded" ? "brand" : "secondary";
+  const live = isLiveRun(run.status);
+
+  return (
+    <Card className="min-h-[360px]">
+      <CardHeader>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              {run.status === "failed" ? (
+                <AlertTriangle className="size-4 text-red-500" />
+              ) : live ? (
+                <Loader2 className="size-4 animate-spin text-[var(--np-color-brand)]" />
+              ) : (
+                <CheckCircle2 className="size-4 text-emerald-500" />
+              )}
+              <CardTitle>{run.sourceName}</CardTitle>
+            </div>
+            <CardDescription>
+              {formatBytes(run.sourceSize)} · created {formatDateTime(run.createdAt)}
+            </CardDescription>
+          </div>
+          <Badge variant={tone}>{statusLabel(run.status)}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="flex min-w-0 flex-col gap-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Metric label="Status" value={statusLabel(run.status)} />
+          <Metric label="Started" value={run.startedAt ? formatTime(run.startedAt) : "-"} />
+          <Metric label="Finished" value={run.finishedAt ? formatTime(run.finishedAt) : "-"} />
+          <Metric label="Job" value={run.jobId ? shortId(run.jobId) : "-"} />
+        </div>
+
+        {run.error ? (
+          <div className="flex gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+            <span className="break-words">{run.error}</span>
+          </div>
+        ) : null}
+
+        <RowsSection title="Run log">
+          {run.logs.length > 0 ? (
+            run.logs.map((line) => <RowLine key={line} primary={line} />)
+          ) : (
+            <EmptyLine>No run log yet.</EmptyLine>
+          )}
+        </RowsSection>
+
+        {live ? (
+          <div className="flex items-center gap-2 text-[12px] text-neutral-500 dark:text-neutral-400">
+            <Clock3 className="size-3.5" />
+            <span>Polling for updates...</span>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function RunHistory({
+  activeRunId,
+  loading,
+  runs,
+  onRefresh,
+  onSelect,
+}: {
+  activeRunId: string | null;
+  loading: boolean;
+  runs: ImportRun[];
+  onRefresh: () => void;
+  onSelect: (run: ImportRun) => void;
+}) {
+  return (
+    <div className="grid gap-2 border-t border-neutral-200/70 pt-4 dark:border-neutral-800">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <History className="size-4 text-neutral-500" />
+          <p className="text-[13px] font-medium text-neutral-800 dark:text-neutral-200">
+            Recent runs
+          </p>
+        </div>
+        <Button type="button" variant="outline" size="icon" disabled={loading} onClick={onRefresh}>
+          {loading ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="size-3.5" />
+          )}
+          <span className="sr-only">Refresh import runs</span>
+        </Button>
+      </div>
+
+      {runs.length > 0 ? (
+        <div className="grid gap-2">
+          {runs.map((run) => (
+            <button
+              key={run.id}
+              type="button"
+              className={cn(
+                "flex min-w-0 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors",
+                activeRunId === run.id
+                  ? "border-[var(--np-color-brand)] bg-[var(--np-color-brand)]/5"
+                  : "border-neutral-200/70 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900",
+              )}
+              onClick={() => onSelect(run)}
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-[12.5px] font-medium text-neutral-900 dark:text-neutral-100">
+                  {run.sourceName}
+                </span>
+                <span className="block truncate text-[11.5px] text-neutral-500 dark:text-neutral-400">
+                  {formatDateTime(run.createdAt)}
+                  {run.jobId ? ` · ${shortId(run.jobId)}` : ""}
+                </span>
+              </span>
+              <Badge variant={statusVariant(run.status)}>{statusLabel(run.status)}</Badge>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-lg border border-dashed border-neutral-200/80 px-3 py-3 text-[12px] text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
+          No background runs yet.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -654,6 +917,56 @@ function optionsKey(options: OptionsState): string {
     options.createAuthors ? "authors" : "no-authors",
     options.includeMedia ? "media" : "no-media",
   ].join(":");
+}
+
+function upsertRun(runs: ImportRun[], run: ImportRun): ImportRun[] {
+  return [run, ...runs.filter((item) => item.id !== run.id)].sort(
+    (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
+  );
+}
+
+function isLiveRun(status: ImportRunStatus): boolean {
+  return status === "queued" || status === "running";
+}
+
+function statusLabel(status: ImportRunStatus): string {
+  switch (status) {
+    case "queued":
+      return "Queued";
+    case "running":
+      return "Running";
+    case "succeeded":
+      return "Succeeded";
+    case "failed":
+      return "Failed";
+  }
+}
+
+function statusVariant(status: ImportRunStatus): "destructive" | "brand" | "secondary" {
+  if (status === "failed") return "destructive";
+  if (status === "succeeded") return "brand";
+  return "secondary";
+}
+
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatTime(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(value));
+}
+
+function shortId(value: string): string {
+  return value.length <= 8 ? value : value.slice(0, 8);
 }
 
 function formatBytes(bytes: number): string {

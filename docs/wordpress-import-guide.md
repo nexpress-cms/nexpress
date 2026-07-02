@@ -9,15 +9,15 @@
 
 ## 1. What the importer covers
 
-| In | Out |
-|----|-----|
-| Posts + pages (HTML / Gutenberg → Lexical) | Theme migration |
-| Featured images + inline `<img>` | Plugin shortcodes beyond gallery / caption / audio / video / playlist / embed |
-| Categories + tags | WordPress.com REST API (use the WXR export instead) |
-| Authors → staff users (role: viewer) | Multi-site WordPress (run once per site) |
-| Comments → imported guest members | Live two-way sync |
-| Custom post types via config | |
-| Audit log entries (`import.wp.*`) | |
+| In                                         | Out                                                                           |
+| ------------------------------------------ | ----------------------------------------------------------------------------- |
+| Posts + pages (HTML / Gutenberg → Lexical) | Theme migration                                                               |
+| Featured images + inline `<img>`           | Plugin shortcodes beyond gallery / caption / audio / video / playlist / embed |
+| Categories + tags                          | WordPress.com REST API (use the WXR export instead)                           |
+| Authors → staff users (role: viewer)       | Multi-site WordPress (run once per site)                                      |
+| Comments → imported guest members          | Live two-way sync                                                             |
+| Custom post types via config               |                                                                               |
+| Audit log entries (`import.wp.*`)          |                                                                               |
 
 ---
 
@@ -36,14 +36,27 @@ The importer reads `DATABASE_URL` and uses the framework's existing storage adap
 ### Admin screen
 
 Open `/admin/import/wordpress`, choose the WXR file, run **Preview**, then run
-**Apply** with the same file and options. The screen uses the same applier as
-the CLI and reports planned/written rows, skips, errors, notes, and subsystem
-summaries.
+**Apply** with the same file and options. Preview is immediate; Apply creates
+a background import run, enqueues it through the NexPress job queue, and polls
+the run until it succeeds or fails. Recent runs stay visible on the same screen
+with status, job id, lifecycle logs, and the final report.
 
 Preview is a dry run: it parses the file, plans post/page writes, and walks
 media references without downloading or uploading. Taxonomy, comment, and
 author resolver results are only final after Apply because those steps depend
 on live DB writes.
+
+Background Apply requires jobs to be wired on the web runtime and drained by a
+worker:
+
+```bash
+NP_ENABLE_JOBS=1 pnpm worker
+```
+
+The web process that receives the Apply request also needs `NP_ENABLE_JOBS=1`
+so it can enqueue the run. The uploaded WXR body is stored temporarily in
+`np_import_runs.source_xml` and cleared when the run reaches a terminal state.
+The admin endpoint keeps the same 25 MB upload cap as the preview route.
 
 Admin options map to the CLI behavior:
 
@@ -54,8 +67,8 @@ Admin options map to the CLI behavior:
 | Create imported authors | default on / `--no-create-authors` off        |
 | Include media pipeline  | default on; turn off for a content-only apply |
 
-Use the CLI for very large exports, custom-post-type mappings, resume markers,
-or HTML/Lexical diff reports.
+Use the CLI for exports beyond the admin upload cap, custom-post-type mappings,
+resume markers, or HTML/Lexical diff reports.
 
 ### CLI
 
@@ -80,19 +93,19 @@ written.
 
 ## 4. CLI flags
 
-| Flag | Default | Effect |
-|------|---------|--------|
-| `--apply` | off | Switch from preview-only to applier mode. Without this flag the importer parses + summarises without touching the DB. |
-| `--dry-run` | on (with `--apply`) | When combined with `--apply`, walks records + media but skips the actual writes. Useful for spotting collisions on a real DB. |
-| `--no-create-authors` | off | Don't create `np_users` rows for WP authors. Imported posts come in without an author wired and the original byline lands on `wpOriginalAuthor`. |
-| `--config <path>` | none | Load custom-post-type → collection mappings from a JSON file (see §6). |
-| `--strict` | off | Escalate sub-pipeline warnings (media 4xx / MIME reject / taxonomy / author resolver failures) into errors so the CLI exits non-zero. Use for "clean import or nothing" runs. |
-| `--update` | off | Rewrite the existing document instead of skipping when a slug collides. Comments are NOT re-imported on an update pass — that needs the per-comment idempotency keys landing in 21.14. |
-| `--report-html` | off | Write a side-by-side HTML/Lexical diff of every imported record so you can spot-check the conversion. Defaults to `<wxr>.report.html`. |
-| `--report-html-path <path>` | — | Override the default report path. Implies `--report-html`. |
-| `--resume` | off | Read + persist a sidecar resume marker so re-runs skip already-imported documents and dedupe comments by `wpCommentId`. Defaults to `<wxr>.import-state.json`. |
-| `--resume-state <path>` | — | Override the default resume-marker path. Implies `--resume`. |
-| `--help` | — | Show the usage block. |
+| Flag                        | Default             | Effect                                                                                                                                                                                 |
+| --------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--apply`                   | off                 | Switch from preview-only to applier mode. Without this flag the importer parses + summarises without touching the DB.                                                                  |
+| `--dry-run`                 | on (with `--apply`) | When combined with `--apply`, walks records + media but skips the actual writes. Useful for spotting collisions on a real DB.                                                          |
+| `--no-create-authors`       | off                 | Don't create `np_users` rows for WP authors. Imported posts come in without an author wired and the original byline lands on `wpOriginalAuthor`.                                       |
+| `--config <path>`           | none                | Load custom-post-type → collection mappings from a JSON file (see §6).                                                                                                                 |
+| `--strict`                  | off                 | Escalate sub-pipeline warnings (media 4xx / MIME reject / taxonomy / author resolver failures) into errors so the CLI exits non-zero. Use for "clean import or nothing" runs.          |
+| `--update`                  | off                 | Rewrite the existing document instead of skipping when a slug collides. Comments are NOT re-imported on an update pass — that needs the per-comment idempotency keys landing in 21.14. |
+| `--report-html`             | off                 | Write a side-by-side HTML/Lexical diff of every imported record so you can spot-check the conversion. Defaults to `<wxr>.report.html`.                                                 |
+| `--report-html-path <path>` | —                   | Override the default report path. Implies `--report-html`.                                                                                                                             |
+| `--resume`                  | off                 | Read + persist a sidecar resume marker so re-runs skip already-imported documents and dedupe comments by `wpCommentId`. Defaults to `<wxr>.import-state.json`.                         |
+| `--resume-state <path>`     | —                   | Override the default resume-marker path. Implies `--resume`.                                                                                                                           |
+| `--help`                    | —                   | Show the usage block.                                                                                                                                                                  |
 
 ---
 
@@ -147,14 +160,14 @@ Snake-case keys (`wp_type`, `field_overrides`) are also accepted so the design d
 
 Re-running the same WXR against the same DB:
 
-| What | Behavior |
-|------|----------|
-| Documents | Skipped on slug match (or by resume marker when `--resume` is on). Listed under `Skipped` with reason "slug already exists" or "resume marker — already imported". |
-| Authors | Skipped on email match (the `+wp-import` flagged variant). |
-| Taxonomy terms | Skipped on slug match. |
-| Imported members | Skipped on handle match. |
-| Comments | Skipped on `wpCommentId` match when the resume marker is enabled (Phase 21.14). Without `--resume`, comments only land for posts the applier created in this run. |
-| Media | Cross-run dedup via byte-hash lookup against `np_media.hash` (Phase 21.13). Identical bytes reuse an existing row instead of producing a duplicate. |
+| What             | Behavior                                                                                                                                                           |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Documents        | Skipped on slug match (or by resume marker when `--resume` is on). Listed under `Skipped` with reason "slug already exists" or "resume marker — already imported". |
+| Authors          | Skipped on email match (the `+wp-import` flagged variant).                                                                                                         |
+| Taxonomy terms   | Skipped on slug match.                                                                                                                                             |
+| Imported members | Skipped on handle match.                                                                                                                                           |
+| Comments         | Skipped on `wpCommentId` match when the resume marker is enabled (Phase 21.14). Without `--resume`, comments only land for posts the applier created in this run.  |
+| Media            | Cross-run dedup via byte-hash lookup against `np_media.hash` (Phase 21.13). Identical bytes reuse an existing row instead of producing a duplicate.                |
 
 The audit log carries the full forensic trail — query `np_audit_events` filtered by `action LIKE 'import.wp.%'` to see what each run did.
 

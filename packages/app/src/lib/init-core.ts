@@ -9,6 +9,7 @@ import {
   nexpressConfig,
 } from "@/lib/bootstrap";
 import { registerCustomRoutes } from "./custom-routes";
+import { registerWordPressImportJobs } from "./wp-import-admin";
 
 export { nexpressConfig };
 
@@ -64,6 +65,7 @@ let customRoutesRegistered = false;
 function registerCustomRoutesOnce(): void {
   if (customRoutesRegistered) return;
   registerCustomRoutes();
+  registerWordPressImportJobs();
   customRoutesRegistered = true;
 }
 

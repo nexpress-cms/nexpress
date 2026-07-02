@@ -4,7 +4,11 @@ import type { NextRequest } from "next/server";
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
-import { runWordPressAdminImport, type WpImportAdminMode } from "../../../../lib/wp-import-admin";
+import {
+  createAndEnqueueWordPressImportRun,
+  runWordPressAdminImport,
+  type WpImportAdminMode,
+} from "../../../../lib/wp-import-admin";
 
 const MAX_WXR_FILE_SIZE = 25 * 1024 * 1024;
 
@@ -39,8 +43,27 @@ export async function POST(request: NextRequest) {
     }
 
     const mode = parseMode(formData.get("mode"));
-    const xml = await file.text();
+    const options = {
+      update: parseBoolean(formData.get("update"), false, "update"),
+      strict: parseBoolean(formData.get("strict"), false, "strict"),
+      createAuthors: parseBoolean(formData.get("createAuthors"), true, "createAuthors"),
+      includeMedia: parseBoolean(formData.get("includeMedia"), true, "includeMedia"),
+    };
+    const xmlPromise = file.text();
     await ensureFor(mode === "apply" ? "write" : "read");
+    const xml = await xmlPromise;
+
+    if (mode === "apply") {
+      const run = await createAndEnqueueWordPressImportRun({
+        xml,
+        actor: user,
+        sourceName: file.name || "wordpress-export.xml",
+        sourceSize: file.size,
+        sourceMimeType: file.type || null,
+        options,
+      });
+      return npSuccessResponse({ mode, queued: true, run });
+    }
 
     const result = await runWordPressAdminImport({
       xml,
@@ -48,10 +71,7 @@ export async function POST(request: NextRequest) {
       options: {
         mode,
         sourceName: file.name || "wordpress-export.xml",
-        update: parseBoolean(formData.get("update"), false, "update"),
-        strict: parseBoolean(formData.get("strict"), false, "strict"),
-        createAuthors: parseBoolean(formData.get("createAuthors"), true, "createAuthors"),
-        includeMedia: parseBoolean(formData.get("includeMedia"), true, "includeMedia"),
+        ...options,
       },
     });
 

@@ -1091,7 +1091,8 @@ export type NpJobType =
   | "auth:sendPasswordReset"
   | "members:sendVerifyEmail"
   | "members:sendPasswordReset"
-  | "notifications:sendDigest";
+  | "notifications:sendDigest"
+  | "import:wordpressApply";
 
 /**
  * System-level filters that aren't part of any collection's
