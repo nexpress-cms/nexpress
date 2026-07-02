@@ -59,6 +59,16 @@ interface CollectionMapping {
   fieldOverrides?: Record<string, string>;
 }
 
+interface ConversionSample {
+  wpId: number;
+  wpType: string;
+  slug: string;
+  title: string;
+  rawHtml: string;
+  lexicalJson: string;
+  truncated: boolean;
+}
+
 interface MappingRow {
   wpType: string;
   collection: string;
@@ -69,6 +79,17 @@ interface MappingRow {
 interface UnmappedType {
   wpType: string;
   records: number;
+}
+
+interface ResumeSummary {
+  enabled: boolean;
+  sourceHash: string | null;
+  source: string | null;
+  documents: number;
+  comments: number;
+  authors: number;
+  media: number;
+  taxonomies: number;
 }
 
 interface ImportResponse {
@@ -85,12 +106,14 @@ interface ImportResponse {
     strict: boolean;
     createAuthors: boolean;
     includeMedia: boolean;
+    resume: boolean;
     collectionMappings?: Record<string, CollectionMapping>;
   };
   mappings?: {
     configured: ListResult<MappingRow>;
     unmapped: ListResult<UnmappedType>;
   };
+  resume: ResumeSummary;
   counts: {
     records: number;
     authors: number;
@@ -108,6 +131,7 @@ interface ImportResponse {
     errors: ListResult<ErrorRow>;
     notes: ListResult<string>;
     logs: ListResult<string>;
+    conversionSamples: ListResult<ConversionSample>;
     attachments: { byId: number; byUrl: number };
     media: {
       status: "not-run" | "completed";
@@ -154,8 +178,10 @@ interface ImportRun {
   sourceName: string;
   sourceSize: number;
   sourceMimeType: string | null;
+  sourceHash: string | null;
   options: ImportRunOptions;
   jobId: string | null;
+  resume: ResumeSummary;
   report: ImportResponse | null;
   logs: string[];
   error: string | null;
@@ -201,6 +227,7 @@ interface OptionsState {
   strict: boolean;
   createAuthors: boolean;
   includeMedia: boolean;
+  resume: boolean;
   mappingConfig: string;
 }
 
@@ -209,6 +236,7 @@ interface ImportRunOptions {
   strict: boolean;
   createAuthors: boolean;
   includeMedia: boolean;
+  resume?: boolean;
   collectionMappings?: Record<string, CollectionMapping>;
 }
 
@@ -217,6 +245,7 @@ const DEFAULT_OPTIONS: OptionsState = {
   strict: false,
   createAuthors: true,
   includeMedia: true,
+  resume: true,
   mappingConfig: "",
 };
 
@@ -369,6 +398,7 @@ export function WordPressImportView() {
       formData.set("strict", String(options.strict));
       formData.set("createAuthors", String(options.createAuthors));
       formData.set("includeMedia", String(options.includeMedia));
+      formData.set("resume", String(options.resume));
       if (options.mappingConfig.trim()) {
         formData.set("mappingConfig", options.mappingConfig);
       }
@@ -489,6 +519,11 @@ export function WordPressImportView() {
                 checked={options.includeMedia}
                 label="Include media pipeline"
                 onCheckedChange={(checked) => updateOption("includeMedia", checked)}
+              />
+              <OptionSwitch
+                checked={options.resume}
+                label="Use resume marker"
+                onCheckedChange={(checked) => updateOption("resume", checked)}
               />
             </div>
 
@@ -701,6 +736,7 @@ function ReportPanel({
         <ChipGroup title="Record types" values={result.counts.recordsByType} />
         <ChipGroup title="Statuses" values={result.counts.statuses} />
         {result.mappings ? <MappingSummary mappings={result.mappings} /> : null}
+        <ImportResumeSummary resume={result.resume} />
 
         <div className="grid min-w-0 gap-4 xl:grid-cols-2">
           <RowsSection title={result.dryRun ? "Planned writes" : "Written rows"}>
@@ -745,6 +781,7 @@ function ReportPanel({
         ) : null}
 
         <PipelineSummary result={result} />
+        <ConversionSamples samples={result.report.conversionSamples} />
 
         {result.report.notes.total > 0 ? (
           <RowsSection title="Notes">
@@ -815,6 +852,8 @@ function RunStatusCard({ run }: { run: ImportRun }) {
             <EmptyLine>No run log yet.</EmptyLine>
           )}
         </RowsSection>
+
+        <ImportResumeSummary resume={run.resume} />
 
         {live ? (
           <div className="flex items-center gap-2 text-[12px] text-neutral-500 dark:text-neutral-400">
@@ -917,7 +956,11 @@ function PipelineSummary({ result }: { result: ImportResponse }) {
       label: "Comments",
       value:
         result.report.comments.status === "completed"
-          ? `${result.report.comments.applied} imported`
+          ? `${result.report.comments.applied} imported${
+              result.report.comments.skippedByResume > 0
+                ? `, ${result.report.comments.skippedByResume} resume-skipped`
+                : ""
+            }`
           : "Not run",
       errorCount: result.report.comments.errors.total,
     },
@@ -953,6 +996,76 @@ function PipelineSummary({ result }: { result: ImportResponse }) {
           </p>
         </div>
       ))}
+    </div>
+  );
+}
+
+function ImportResumeSummary({ resume }: { resume: ResumeSummary }) {
+  if (!resume.enabled) return null;
+
+  return (
+    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="min-w-0 rounded-lg border border-neutral-200/70 px-3 py-2 dark:border-neutral-800 xl:col-span-2">
+        <p className="text-[12px] font-medium text-neutral-700 dark:text-neutral-300">Resume</p>
+        <p className="mt-1 truncate text-[12px] text-neutral-500 dark:text-neutral-400">
+          {resume.sourceHash ? shortHash(resume.sourceHash) : resume.source || "Enabled"}
+        </p>
+      </div>
+      <Metric label="Docs marked" value={resume.documents} />
+      <Metric label="Comments marked" value={resume.comments} />
+      <Metric label="Media marked" value={resume.media} />
+    </div>
+  );
+}
+
+function ConversionSamples({ samples }: { samples: ListResult<ConversionSample> }) {
+  if (samples.total === 0) return null;
+
+  return (
+    <div className="min-w-0 rounded-lg border border-neutral-200/70 dark:border-neutral-800">
+      <div className="flex items-center justify-between gap-2 border-b border-neutral-200/70 px-3 py-2 dark:border-neutral-800">
+        <p className="text-[12px] font-medium text-neutral-700 dark:text-neutral-300">
+          Conversion samples
+        </p>
+        <Badge variant="secondary">
+          {samples.items.length.toString()} / {samples.total.toString()}
+        </Badge>
+      </div>
+      <div className="grid gap-3 p-3">
+        {samples.items.map((sample) => (
+          <details
+            key={`${sample.wpType}:${sample.wpId}:${sample.slug}`}
+            className="min-w-0 rounded-lg border border-neutral-200/70 dark:border-neutral-800"
+          >
+            <summary className="cursor-pointer px-3 py-2 text-[12.5px] font-medium text-neutral-900 dark:text-neutral-100">
+              {sample.wpType} #{sample.wpId.toString()} · {sample.slug || "(no slug)"}
+              {sample.truncated ? " · truncated" : ""}
+            </summary>
+            <div className="grid min-w-0 gap-3 border-t border-neutral-200/70 p-3 dark:border-neutral-800 xl:grid-cols-2">
+              <CodeSample title="HTML" value={sample.rawHtml || "(empty)"} />
+              <CodeSample title="Lexical JSON" value={sample.lexicalJson} />
+            </div>
+          </details>
+        ))}
+        {samples.truncated ? (
+          <p className="text-[12px] text-neutral-500 dark:text-neutral-400">
+            Showing the first {samples.items.length.toString()} samples.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function CodeSample({ title, value }: { title: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="mb-1 text-[11.5px] font-medium text-neutral-500 dark:text-neutral-400">
+        {title}
+      </p>
+      <pre className="max-h-64 overflow-auto rounded-md bg-neutral-950 p-3 font-mono text-[11px] leading-5 text-neutral-100">
+        {value}
+      </pre>
     </div>
   );
 }
@@ -1033,7 +1146,7 @@ function Metric({
       <p className="text-[11.5px] text-neutral-500 dark:text-neutral-400">{label}</p>
       <p
         className={cn(
-          "mt-1 truncate text-[22px] font-semibold leading-none tracking-[-0.02em]",
+          "mt-1 truncate text-[22px] font-semibold leading-none",
           tone === "danger" && Number(value) > 0
             ? "text-red-600 dark:text-red-300"
             : "text-neutral-950 dark:text-neutral-50",
@@ -1116,6 +1229,7 @@ function optionsKey(options: OptionsState): string {
     options.strict ? "strict" : "soft",
     options.createAuthors ? "authors" : "no-authors",
     options.includeMedia ? "media" : "no-media",
+    options.resume ? "resume" : "no-resume",
     options.mappingConfig.trim(),
   ].join(":");
 }
@@ -1212,6 +1326,10 @@ function formatTime(value: string): string {
 
 function shortId(value: string): string {
   return value.length <= 8 ? value : value.slice(0, 8);
+}
+
+function shortHash(value: string): string {
+  return value.length <= 12 ? value : value.slice(0, 12);
 }
 
 function formatBytes(bytes: number): string {

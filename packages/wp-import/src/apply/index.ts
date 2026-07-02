@@ -429,7 +429,17 @@ export async function applyBundle(
           : undefined;
 
       if (dryRun) {
-        collectRecordConversionWarnings(record, conversionWarningCounts);
+        const lexical = buildLexicalContent(record, resolution, (warning) =>
+          collectConversionWarning(conversionWarningCounts, warning),
+        );
+        options.reportHtml?.emit({
+          wpId: record.wpId,
+          wpType: record.wpType,
+          slug: record.slug,
+          title: record.title,
+          rawContent: record.rawContent,
+          lexical,
+        });
         applied.push({
           wpId: record.wpId,
           wpType: record.wpType,
@@ -520,7 +530,7 @@ export async function applyBundle(
       // are stamped into the marker by their respective passes.
       if (options.resume && savedId) {
         options.resume.state.documents[documentKey(collection, record.slug)] = savedId;
-        options.resume.persist();
+        await options.resume.persist();
       }
 
       // Phase 21.7 — pull the post id from the save result and
@@ -691,8 +701,7 @@ function buildDocData(
   originalAuthor: { field: string; value: string } | undefined,
   onConversionWarning?: (warning: LexicalConversionWarning) => void,
 ): Record<string, unknown> {
-  const lexical = htmlToLexical(record.rawContent, { onWarning: onConversionWarning });
-  const rewritten: LexicalRoot = rewriteLexicalMedia(lexical, resolution);
+  const rewritten = buildLexicalContent(record, resolution, onConversionWarning);
   const data: Record<string, unknown> = {
     title: record.title || "(untitled)",
     slug: record.slug,
@@ -756,13 +765,13 @@ function buildDocData(
   return data;
 }
 
-function collectRecordConversionWarnings(
+function buildLexicalContent(
   record: WpImportRecord,
-  counts: Map<string, number>,
-): void {
-  htmlToLexical(record.rawContent, {
-    onWarning: (warning) => collectConversionWarning(counts, warning),
-  });
+  resolution: MediaResolution,
+  onConversionWarning?: (warning: LexicalConversionWarning) => void,
+): LexicalRoot {
+  const lexical = htmlToLexical(record.rawContent, { onWarning: onConversionWarning });
+  return rewriteLexicalMedia(lexical, resolution);
 }
 
 function collectConversionWarning(

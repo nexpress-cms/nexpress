@@ -411,11 +411,24 @@ export const npJobLogs = pgTable(
 
 export type NpImportRunStatus = "queued" | "running" | "succeeded" | "failed";
 
+export interface NpImportRunResumeState {
+  version: 1;
+  source: string;
+  startedAt: string;
+  updatedAt: string;
+  documents: Record<string, string>;
+  comments: Record<string, string>;
+  authors: Record<string, string>;
+  media: Record<string, string>;
+  taxonomies: Record<string, string>;
+}
+
 export interface NpImportRunOptions {
   update: boolean;
   strict: boolean;
   createAuthors: boolean;
   includeMedia: boolean;
+  resume?: boolean;
   collectionMappings?: Record<
     string,
     {
@@ -434,6 +447,7 @@ export const npImportRuns = pgTable(
     sourceName: text("source_name").notNull(),
     sourceSize: integer("source_size").notNull(),
     sourceMimeType: text("source_mime_type"),
+    sourceHash: text("source_hash"),
     /**
      * Temporary payload handoff for background imports. The API stores the
      * uploaded WXR body here and the worker clears it when the run reaches a
@@ -444,6 +458,7 @@ export const npImportRuns = pgTable(
     status: text("status").$type<NpImportRunStatus>().default("queued").notNull(),
     jobId: text("job_id"),
     report: jsonb("report").$type<unknown>(),
+    resumeState: jsonb("resume_state").$type<NpImportRunResumeState | null>(),
     logs: jsonb("logs").$type<string[]>().default([]).notNull(),
     error: text("error"),
     createdBy: uuid("created_by").references((): AnyPgColumn => npUsers.id, {
@@ -458,5 +473,6 @@ export const npImportRuns = pgTable(
     index("np_import_runs_status_created_idx").on(table.status, table.createdAt),
     index("np_import_runs_created_idx").on(table.createdAt),
     index("np_import_runs_created_by_idx").on(table.createdBy),
+    index("np_import_runs_source_hash_idx").on(table.kind, table.sourceHash, table.createdAt),
   ],
 );

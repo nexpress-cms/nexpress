@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   NpError,
   NpNotFoundError,
@@ -22,10 +24,12 @@ import {
   uploadMedia,
   type NpAuthUser,
   type NpImportRunOptions,
+  type NpImportRunResumeState,
   type NpImportRunStatus,
 } from "@nexpress/core";
 import {
   applyBundle,
+  emptyResumeState,
   parseConfig,
   parseWxr,
   type AppliedRow,
@@ -34,16 +38,22 @@ import {
   type AuthorResolution,
   type CommentImportPlan,
   type CollectionMapping,
+  type LexicalRoot,
   type MediaPipelineReport,
+  type ReportHtmlDeps,
+  type ResumeDeps,
+  type ResumeState,
   type SkippedRow,
   type TaxonomyResolution,
   type WpImportBundle,
   WpImportConfigError,
 } from "@nexpress/wp-import";
-import { and, asc, desc, eq, inArray, isNull, lt } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt } from "drizzle-orm";
 
 const MAX_LIST_ITEMS = 250;
 const MAX_LOG_LINES = 200;
+const MAX_CONVERSION_SAMPLES = 12;
+const MAX_CONVERSION_SAMPLE_CHARS = 6_000;
 const IMPORT_RUN_LIST_LIMIT = 25;
 const IMPORT_RUN_SWEEP_LIMIT = 100;
 const DEFAULT_IMPORT_RUN_STALE_AFTER_SECONDS = 24 * 60 * 60;
@@ -62,6 +72,7 @@ export interface WpImportAdminOptions {
   strict: boolean;
   createAuthors: boolean;
   includeMedia: boolean;
+  resume: boolean;
   collectionMappings?: Record<string, CollectionMapping>;
 }
 
@@ -89,6 +100,7 @@ export interface WpImportAdminReport {
   errors: WpImportAdminList<{ wpId: number; slug: string; message: string }>;
   notes: WpImportAdminList<string>;
   logs: WpImportAdminList<string>;
+  conversionSamples: WpImportAdminList<WpImportAdminConversionSample>;
   attachments: {
     byId: number;
     byUrl: number;
@@ -127,6 +139,16 @@ export interface WpImportAdminReport {
   };
 }
 
+export interface WpImportAdminConversionSample {
+  wpId: number;
+  wpType: string;
+  slug: string;
+  title: string;
+  rawHtml: string;
+  lexicalJson: string;
+  truncated: boolean;
+}
+
 export interface WpImportAdminMappingRow {
   wpType: string;
   collection: string;
@@ -144,6 +166,17 @@ export interface WpImportAdminMappingSummary {
   unmapped: WpImportAdminList<WpImportAdminUnmappedType>;
 }
 
+export interface WpImportAdminResumeSummary {
+  enabled: boolean;
+  sourceHash: string | null;
+  source: string | null;
+  documents: number;
+  comments: number;
+  authors: number;
+  media: number;
+  taxonomies: number;
+}
+
 export interface WpImportAdminResponse {
   mode: WpImportAdminMode;
   dryRun: boolean;
@@ -154,10 +187,12 @@ export interface WpImportAdminResponse {
     strict: boolean;
     createAuthors: boolean;
     includeMedia: boolean;
+    resume: boolean;
     collectionMappings?: Record<string, CollectionMapping>;
   };
   counts: WpImportAdminCounts;
   mappings: WpImportAdminMappingSummary;
+  resume: WpImportAdminResumeSummary;
   report: WpImportAdminReport;
 }
 
@@ -171,8 +206,10 @@ export interface WpImportAdminRun {
   sourceName: string;
   sourceSize: number;
   sourceMimeType: string | null;
+  sourceHash: string | null;
   options: NpImportRunOptions;
   jobId: string | null;
+  resume: WpImportAdminResumeSummary;
   report: WpImportAdminResponse | null;
   logs: string[];
   error: string | null;
@@ -218,11 +255,14 @@ export async function runWordPressAdminImport(args: {
   xml: string;
   actor: NpAuthUser;
   options: WpImportAdminOptions;
+  resume?: ResumeDeps;
 }): Promise<WpImportAdminResponse> {
   const { actor, options } = args;
   const bundle = parseWxrForAdmin(args.xml);
   const dryRun = options.mode === "preview";
+  const sourceHash = hashImportSource(args.xml);
   const logs: string[] = [];
+  const conversionSamples: WpImportAdminConversionSample[] = [];
   const collectionMappings = options.collectionMappings ?? {};
 
   const report = await applyBundle(bundle, {
@@ -234,6 +274,8 @@ export async function runWordPressAdminImport(args: {
     log: (line) => {
       logs.push(line);
     },
+    reportHtml: createAdminReportHtmlDeps(conversionSamples),
+    ...(options.resume && args.resume ? { resume: args.resume } : {}),
     ...(options.includeMedia ? { media: createMediaDeps(actor.id) } : {}),
     ...(!dryRun
       ? {
@@ -267,11 +309,13 @@ export async function runWordPressAdminImport(args: {
       strict: options.strict,
       createAuthors: options.createAuthors,
       includeMedia: options.includeMedia,
+      resume: options.resume,
       collectionMappings,
     },
     counts: summarizeBundle(bundle),
     mappings: summarizeMappings(bundle, collectionMappings),
-    report: serializeReport(report, logs),
+    resume: summarizeResumeState(options.resume, sourceHash, args.resume?.state ?? null),
+    report: serializeReport(report, logs, conversionSamples),
   };
 }
 
@@ -300,6 +344,17 @@ export function parseWordPressImportMappingConfig(
   }
 }
 
+export async function createWordPressImportPreviewResumeDeps(args: {
+  sourceName: string;
+  sourceHash: string;
+}): Promise<ResumeDeps> {
+  const reusable = await findReusableResumeState(args.sourceHash, args.sourceName);
+  return {
+    state: reusable?.state ?? emptyResumeState(resumeSourceLabel(args.sourceName, args.sourceHash)),
+    persist: () => {},
+  };
+}
+
 export async function createAndEnqueueWordPressImportRun(args: {
   xml: string;
   actor: NpAuthUser;
@@ -319,6 +374,24 @@ export async function createAndEnqueueWordPressImportRun(args: {
 
   const db = getDb();
   const now = new Date();
+  const normalizedOptions = normalizeImportRunOptions(args.options);
+  const sourceHash = hashImportSource(args.xml);
+  const reusableResume = normalizedOptions.resume
+    ? await findReusableResumeState(sourceHash, args.sourceName)
+    : null;
+  const resumeState = normalizedOptions.resume
+    ? (reusableResume?.state ?? emptyResumeState(resumeSourceLabel(args.sourceName, sourceHash)))
+    : null;
+  const initialLogs = [
+    `Queued WordPress import for ${args.sourceName}.`,
+    ...(normalizedOptions.resume
+      ? [
+          reusableResume
+            ? `Loaded resume marker from run ${reusableResume.runId}.`
+            : "Started a fresh resume marker for this source.",
+        ]
+      : []),
+  ];
   const [created] = await db
     .insert(npImportRuns)
     .values({
@@ -327,10 +400,12 @@ export async function createAndEnqueueWordPressImportRun(args: {
       sourceName: args.sourceName,
       sourceSize: args.sourceSize,
       sourceMimeType: args.sourceMimeType,
+      sourceHash,
       sourceXml: args.xml,
-      options: normalizeImportRunOptions(args.options),
+      options: normalizedOptions,
+      resumeState: toImportRunResumeState(resumeState),
       status: "queued",
-      logs: [`Queued WordPress import for ${args.sourceName}.`],
+      logs: initialLogs,
       createdBy: args.actor.id,
       updatedAt: now,
     })
@@ -537,18 +612,32 @@ export async function executeWordPressImportRun(runId: string): Promise<WpImport
     }
 
     const actor = await loadImportActor(run.createdBy);
+    const normalizedOptions = normalizeImportRunOptions(run.options);
+    const sourceHash = run.sourceHash ?? hashImportSource(run.sourceXml);
+    const resume =
+      normalizedOptions.resume === true
+        ? createDbResumeDeps(
+            run.id,
+            fromImportRunResumeState(
+              run.resumeState,
+              resumeSourceLabel(run.sourceName, sourceHash),
+            ) ?? emptyResumeState(resumeSourceLabel(run.sourceName, sourceHash)),
+          )
+        : undefined;
     const result = await runWordPressAdminImport({
       xml: run.sourceXml,
       actor,
       options: {
         mode: "apply",
         sourceName: run.sourceName,
-        update: run.options.update,
-        strict: run.options.strict,
-        createAuthors: run.options.createAuthors,
-        includeMedia: run.options.includeMedia,
-        collectionMappings: run.options.collectionMappings ?? {},
+        update: normalizedOptions.update,
+        strict: normalizedOptions.strict,
+        createAuthors: normalizedOptions.createAuthors,
+        includeMedia: normalizedOptions.includeMedia,
+        resume: normalizedOptions.resume === true,
+        collectionMappings: normalizedOptions.collectionMappings ?? {},
       },
+      resume,
     });
     const finishedAt = new Date();
     const [updated] = await db
@@ -556,6 +645,8 @@ export async function executeWordPressImportRun(runId: string): Promise<WpImport
       .set({
         status: "succeeded",
         report: result,
+        sourceHash,
+        resumeState: toImportRunResumeState(resume?.state ?? null),
         sourceXml: null,
         error: null,
         finishedAt,
@@ -623,6 +714,7 @@ async function loadImportActor(userId: string): Promise<NpAuthUser> {
 }
 
 function serializeImportRun(row: ImportRunRow): WpImportAdminRun {
+  const options = normalizeImportRunOptions(row.options);
   return {
     id: row.id,
     kind: row.kind,
@@ -631,8 +723,14 @@ function serializeImportRun(row: ImportRunRow): WpImportAdminRun {
     sourceName: row.sourceName,
     sourceSize: row.sourceSize,
     sourceMimeType: row.sourceMimeType,
-    options: normalizeImportRunOptions(row.options),
+    sourceHash: row.sourceHash,
+    options,
     jobId: row.jobId,
+    resume: summarizeResumeState(
+      options.resume === true,
+      row.sourceHash,
+      fromImportRunResumeState(row.resumeState, row.sourceName),
+    ),
     report: isImportReport(row.report) ? row.report : null,
     logs: Array.isArray(row.logs) ? row.logs.filter((item) => typeof item === "string") : [],
     error: row.error,
@@ -668,6 +766,7 @@ function normalizeImportRunOptions(options: NpImportRunOptions): NpImportRunOpti
     strict: options.strict,
     createAuthors: options.createAuthors,
     includeMedia: options.includeMedia,
+    resume: options.resume ?? false,
     collectionMappings: options.collectionMappings ?? {},
   };
 }
@@ -697,6 +796,171 @@ function readRunId(data: unknown): string {
   throw new NpValidationError("Invalid import job payload", [
     { field: "runId", message: "runId is required" },
   ]);
+}
+
+export function hashImportSource(xml: string): string {
+  return createHash("sha256").update(xml, "utf8").digest("hex");
+}
+
+async function findReusableResumeState(
+  sourceHash: string,
+  sourceName: string,
+): Promise<{ runId: string; state: ResumeState } | null> {
+  const db = getDb();
+  const [row] = await db
+    .select({
+      runId: npImportRuns.id,
+      resumeState: npImportRuns.resumeState,
+    })
+    .from(npImportRuns)
+    .where(
+      and(
+        eq(npImportRuns.kind, "wordpress"),
+        eq(npImportRuns.sourceHash, sourceHash),
+        isNotNull(npImportRuns.resumeState),
+      ),
+    )
+    .orderBy(desc(npImportRuns.createdAt))
+    .limit(1);
+  if (!row) return null;
+
+  const state = fromImportRunResumeState(
+    row.resumeState,
+    resumeSourceLabel(sourceName, sourceHash),
+  );
+  return state ? { runId: row.runId, state } : null;
+}
+
+function createDbResumeDeps(runId: string, state: ResumeState): ResumeDeps {
+  const db = getDb();
+  return {
+    state,
+    persist: async () => {
+      state.updatedAt = new Date().toISOString();
+      await db
+        .update(npImportRuns)
+        .set({
+          resumeState: toImportRunResumeState(state),
+          updatedAt: new Date(),
+        })
+        .where(eq(npImportRuns.id, runId));
+    },
+  };
+}
+
+function createAdminReportHtmlDeps(samples: WpImportAdminConversionSample[]): ReportHtmlDeps {
+  return {
+    emit: (sample) => {
+      if (samples.length >= MAX_CONVERSION_SAMPLES) return;
+      samples.push(serializeConversionSample(sample));
+    },
+  };
+}
+
+function serializeConversionSample(sample: {
+  wpId: number;
+  wpType: string;
+  slug: string;
+  title: string;
+  rawContent: string;
+  lexical: LexicalRoot;
+}): WpImportAdminConversionSample {
+  const rawHtml = truncateText(sample.rawContent, MAX_CONVERSION_SAMPLE_CHARS);
+  const lexicalJson = truncateText(
+    JSON.stringify(sample.lexical, null, 2),
+    MAX_CONVERSION_SAMPLE_CHARS,
+  );
+  return {
+    wpId: sample.wpId,
+    wpType: sample.wpType,
+    slug: sample.slug,
+    title: sample.title,
+    rawHtml: rawHtml.value,
+    lexicalJson: lexicalJson.value,
+    truncated: rawHtml.truncated || lexicalJson.truncated,
+  };
+}
+
+function toImportRunResumeState(state: ResumeState | null): NpImportRunResumeState | null {
+  if (!state) return null;
+  return {
+    version: 1,
+    source: state.source,
+    startedAt: state.startedAt,
+    updatedAt: state.updatedAt,
+    documents: state.documents,
+    comments: Object.fromEntries(
+      Object.entries(state.comments).map(([key, value]) => [String(key), value]),
+    ),
+    authors: state.authors,
+    media: state.media,
+    taxonomies: state.taxonomies,
+  };
+}
+
+function fromImportRunResumeState(value: unknown, fallbackSource: string): ResumeState | null {
+  if (!isRecord(value) || value.version !== 1) return null;
+  const now = new Date().toISOString();
+  return {
+    version: 1,
+    source: typeof value.source === "string" ? value.source : fallbackSource,
+    startedAt: typeof value.startedAt === "string" ? value.startedAt : now,
+    updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : now,
+    documents: asStringMap(value.documents),
+    comments: asNumberKeyMap(value.comments),
+    authors: asStringMap(value.authors),
+    media: asStringMap(value.media),
+    taxonomies: asStringMap(value.taxonomies),
+  };
+}
+
+function summarizeResumeState(
+  enabled: boolean,
+  sourceHash: string | null,
+  state: ResumeState | null,
+): WpImportAdminResumeSummary {
+  return {
+    enabled,
+    sourceHash: enabled ? sourceHash : null,
+    source: enabled ? (state?.source ?? null) : null,
+    documents: enabled ? Object.keys(state?.documents ?? {}).length : 0,
+    comments: enabled ? Object.keys(state?.comments ?? {}).length : 0,
+    authors: enabled ? Object.keys(state?.authors ?? {}).length : 0,
+    media: enabled ? Object.keys(state?.media ?? {}).length : 0,
+    taxonomies: enabled ? Object.keys(state?.taxonomies ?? {}).length : 0,
+  };
+}
+
+function resumeSourceLabel(sourceName: string, sourceHash: string): string {
+  return `${sourceName}#${sourceHash.slice(0, 12)}`;
+}
+
+function truncateText(value: string, limit: number): { value: string; truncated: boolean } {
+  if (value.length <= limit) return { value, truncated: false };
+  return { value: `${value.slice(0, limit)}\n... truncated ...`, truncated: true };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asStringMap(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (typeof item === "string") out[key] = item;
+  }
+  return out;
+}
+
+function asNumberKeyMap(value: unknown): Record<number, string> {
+  if (!isRecord(value)) return {};
+  const out: Record<number, string> = {};
+  for (const [key, item] of Object.entries(value)) {
+    const parsed = Number.parseInt(key, 10);
+    if (Number.isFinite(parsed) && typeof item === "string") out[parsed] = item;
+  }
+  return out;
 }
 
 function createMediaDeps(actorId: string) {
@@ -918,13 +1182,18 @@ function summarizeMappings(
   };
 }
 
-function serializeReport(report: ApplyReport, logs: string[]): WpImportAdminReport {
+function serializeReport(
+  report: ApplyReport,
+  logs: string[],
+  conversionSamples: WpImportAdminConversionSample[],
+): WpImportAdminReport {
   return {
     applied: list(report.applied),
     skipped: list(report.skipped),
     errors: list(report.errors),
     notes: list(report.notes),
     logs: tailList(logs, MAX_LOG_LINES),
+    conversionSamples: list(conversionSamples, MAX_CONVERSION_SAMPLES),
     attachments: serializeAttachments(report.attachments),
     media: serializeMedia(report.media),
     taxonomies: serializeTaxonomies(report.taxonomies),

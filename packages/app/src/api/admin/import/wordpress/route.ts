@@ -6,6 +6,8 @@ import { requireAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
 import {
   createAndEnqueueWordPressImportRun,
+  createWordPressImportPreviewResumeDeps,
+  hashImportSource,
   parseWordPressImportMappingConfig,
   runWordPressAdminImport,
   type WpImportAdminMode,
@@ -49,17 +51,20 @@ export async function POST(request: NextRequest) {
       strict: parseBoolean(formData.get("strict"), false, "strict"),
       createAuthors: parseBoolean(formData.get("createAuthors"), true, "createAuthors"),
       includeMedia: parseBoolean(formData.get("includeMedia"), true, "includeMedia"),
+      resume: parseBoolean(formData.get("resume"), true, "resume"),
       collectionMappings: parseWordPressImportMappingConfig(formData.get("mappingConfig")),
     };
     const xmlPromise = file.text();
     await ensureFor(mode === "apply" ? "write" : "read");
     const xml = await xmlPromise;
+    const sourceName = file.name || "wordpress-export.xml";
+    const sourceHash = hashImportSource(xml);
 
     if (mode === "apply") {
       const run = await createAndEnqueueWordPressImportRun({
         xml,
         actor: user,
-        sourceName: file.name || "wordpress-export.xml",
+        sourceName,
         sourceSize: file.size,
         sourceMimeType: file.type || null,
         options,
@@ -72,9 +77,12 @@ export async function POST(request: NextRequest) {
       actor: user,
       options: {
         mode,
-        sourceName: file.name || "wordpress-export.xml",
+        sourceName,
         ...options,
       },
+      resume: options.resume
+        ? await createWordPressImportPreviewResumeDeps({ sourceName, sourceHash })
+        : undefined,
     });
 
     return npSuccessResponse(result);

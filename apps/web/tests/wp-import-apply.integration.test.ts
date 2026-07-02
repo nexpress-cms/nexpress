@@ -202,7 +202,11 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
         },
         upload: async (file) => {
           const result = await uploadMedia(
-            { buffer: file.buffer, originalFilename: file.originalFilename, mimeType: file.mimeType },
+            {
+              buffer: file.buffer,
+              originalFilename: file.originalFilename,
+              mimeType: file.mimeType,
+            },
             actor.id,
           );
           return { id: result.id };
@@ -225,7 +229,9 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     const post = posts.docs[0]!;
     expect(post.coverImage).toBe(mediaId);
 
-    const content = post.content as { root: { children: Array<{ type: string; children?: Array<Record<string, unknown>> }> } };
+    const content = post.content as {
+      root: { children: Array<{ type: string; children?: Array<Record<string, unknown>> }> };
+    };
     const para = content.root.children[0];
     const img = para?.children?.find((c) => c.type === "image");
     expect(img?.mediaId).toBe(mediaId);
@@ -259,13 +265,9 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
           // `taxonomy` field onto the matching collection slug so the
           // post.categoryIds / tagIds FK validation passes.
           const collection = taxonomy === "post_tag" ? "tags" : "categories";
-          const result = await saveDocument(
-            collection,
-            null,
-            { name, slug },
-            actor,
-            { status: "published" },
-          );
+          const result = await saveDocument(collection, null, { name, slug }, actor, {
+            status: "published",
+          });
           const id = (result.doc as { id: string }).id;
           idsBySlug.set(slug, id);
           created.push({ taxonomy, slug });
@@ -566,7 +568,11 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
 
     // First run lays down the post.
     await applyBundle(bundle, { actor, dryRun: false });
-    const beforePosts = await findDocuments("posts", { where: { slug: "hello-world" }, limit: 1 }, actor);
+    const beforePosts = await findDocuments(
+      "posts",
+      { where: { slug: "hello-world" }, limit: 1 },
+      actor,
+    );
     const beforeId = beforePosts.docs[0]?.id as string;
     expect(beforeId).toBeTruthy();
 
@@ -577,7 +583,11 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     expect(report.applied).toHaveLength(2); // both records rewritten
     expect(report.skipped.filter((s) => s.reason === "slug already exists")).toHaveLength(0);
 
-    const afterPosts = await findDocuments("posts", { where: { slug: "hello-world" }, limit: 1 }, actor);
+    const afterPosts = await findDocuments(
+      "posts",
+      { where: { slug: "hello-world" }, limit: 1 },
+      actor,
+    );
     expect(afterPosts.docs[0]?.id).toBe(beforeId);
   });
 
@@ -628,6 +638,28 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     expect(samples.find((s) => s.slug === "hello-world")?.lexicalChildrenLen).toBeGreaterThan(0);
   });
 
+  it("21.12 — reportHtml deps fires during dry-run preview", async () => {
+    const xml = readFileSync(FIXTURE, "utf8");
+    const bundle = parseWxr(xml);
+    const session = await seedUser({ email: "wp-preview-report@example.com", role: "admin" });
+    const actor = await asActor(session);
+
+    const samples: Array<{ slug: string; rawContent: string; lexicalChildrenLen: number }> = [];
+    await applyBundle(bundle, {
+      actor,
+      dryRun: true,
+      reportHtml: {
+        emit: ({ slug, rawContent, lexical }) => {
+          samples.push({ slug, rawContent, lexicalChildrenLen: lexical.root.children.length });
+        },
+      },
+    });
+
+    expect(samples.map((s) => s.slug).sort()).toEqual(["about", "hello-world"]);
+    expect(samples.find((s) => s.slug === "hello-world")?.rawContent).toContain("Welcome to Acme");
+    expect(samples.find((s) => s.slug === "hello-world")?.lexicalChildrenLen).toBeGreaterThan(0);
+  });
+
   it("21.5 — leaves Lexical untouched when a media URL fails to download", async () => {
     const xml = readFileSync(FIXTURE, "utf8");
     const bundle = parseWxr(xml);
@@ -656,7 +688,9 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     // No coverImage wired when the source asset never resolved.
     expect(post.coverImage).toBeFalsy();
     // Lexical img keeps its original src for SSR fallback rendering.
-    const content = post.content as { root: { children: Array<{ children?: Array<Record<string, unknown>> }> } };
+    const content = post.content as {
+      root: { children: Array<{ children?: Array<Record<string, unknown>> }> };
+    };
     const img = content.root.children[0]?.children?.find((c) => c.type === "image");
     expect(img?.mediaId).toBeUndefined();
     expect(img?.src).toBe("https://acme.example.com/wp-content/uploads/2025/04/hero.jpg");

@@ -45,12 +45,13 @@ export interface ResumeState {
 export interface ResumeDeps {
   state: ResumeState;
   /**
-   * Persist the current state to disk. Called after each record-
-   * level success so a crash mid-import doesn't lose work. Errors
-   * are surfaced — a marker that can't be written defeats the
-   * whole point.
+   * Persist the current state. Called after each record-level
+   * success so a crash mid-import doesn't lose work. Errors are
+   * surfaced — a marker that can't be written defeats the whole
+   * point. File-backed CLI markers can stay synchronous; admin
+   * runs use an async DB-backed marker.
    */
-  persist: () => void;
+  persist: () => void | Promise<void>;
 }
 
 export function emptyResumeState(source: string): ResumeState {
