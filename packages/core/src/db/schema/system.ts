@@ -219,9 +219,7 @@ export const npSlugHistory = pgTable(
     documentId: text("document_id").notNull(),
     oldSlug: text("old_slug").notNull(),
     newSlug: text("new_slug").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
     index("np_slug_history_lookup_idx").on(table.siteId, table.collection, table.oldSlug),
@@ -408,5 +406,50 @@ export const npJobLogs = pgTable(
   (table) => [
     index("np_job_logs_job_idx").on(table.jobId, table.createdAt),
     index("np_job_logs_created_idx").on(table.createdAt),
+  ],
+);
+
+export type NpImportRunStatus = "queued" | "running" | "succeeded" | "failed";
+
+export interface NpImportRunOptions {
+  update: boolean;
+  strict: boolean;
+  createAuthors: boolean;
+  includeMedia: boolean;
+}
+
+export const npImportRuns = pgTable(
+  "np_import_runs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    kind: text("kind").default("wordpress").notNull(),
+    mode: text("mode").default("apply").notNull(),
+    sourceName: text("source_name").notNull(),
+    sourceSize: integer("source_size").notNull(),
+    sourceMimeType: text("source_mime_type"),
+    /**
+     * Temporary payload handoff for background imports. The API stores the
+     * uploaded WXR body here and the worker clears it when the run reaches a
+     * terminal state so large exports are not retained indefinitely.
+     */
+    sourceXml: text("source_xml"),
+    options: jsonb("options").$type<NpImportRunOptions>().notNull(),
+    status: text("status").$type<NpImportRunStatus>().default("queued").notNull(),
+    jobId: text("job_id"),
+    report: jsonb("report").$type<unknown>(),
+    logs: jsonb("logs").$type<string[]>().default([]).notNull(),
+    error: text("error"),
+    createdBy: uuid("created_by").references((): AnyPgColumn => npUsers.id, {
+      onDelete: "set null",
+    }),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }),
+    finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("np_import_runs_status_created_idx").on(table.status, table.createdAt),
+    index("np_import_runs_created_idx").on(table.createdAt),
+    index("np_import_runs_created_by_idx").on(table.createdBy),
   ],
 );

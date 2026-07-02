@@ -1,17 +1,26 @@
 import {
+  NpError,
+  NpNotFoundError,
   NpValidationError,
+  enqueueJob,
   findDocuments,
   getDb,
+  getOptionalJobQueue,
   hashPassword,
   npComments,
+  npImportRuns,
   npMedia,
   npMembers,
   npUsers,
   recordAuditEvent,
+  recordJobLog,
+  registerJobHandler,
   renderCommentMarkdown,
   saveDocument,
   uploadMedia,
   type NpAuthUser,
+  type NpImportRunOptions,
+  type NpImportRunStatus,
 } from "@nexpress/core";
 import {
   applyBundle,
@@ -26,10 +35,12 @@ import {
   type TaxonomyResolution,
   type WpImportBundle,
 } from "@nexpress/wp-import";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
 const MAX_LIST_ITEMS = 250;
 const MAX_LOG_LINES = 200;
+const IMPORT_RUN_LIST_LIMIT = 25;
+export const WORDPRESS_IMPORT_APPLY_JOB_TYPE = "import:wordpressApply";
 
 export type WpImportAdminMode = "preview" | "apply";
 
@@ -119,6 +130,38 @@ export interface WpImportAdminResponse {
   report: WpImportAdminReport;
 }
 
+type ImportRunRow = typeof npImportRuns.$inferSelect;
+
+export interface WpImportAdminRun {
+  id: string;
+  kind: string;
+  mode: WpImportAdminMode;
+  status: NpImportRunStatus;
+  sourceName: string;
+  sourceSize: number;
+  sourceMimeType: string | null;
+  options: NpImportRunOptions;
+  jobId: string | null;
+  report: WpImportAdminResponse | null;
+  logs: string[];
+  error: string | null;
+  createdBy: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WpImportAdminRunList {
+  runs: WpImportAdminRun[];
+}
+
+export interface WpImportAdminQueuedResponse {
+  mode: "apply";
+  queued: true;
+  run: WpImportAdminRun;
+}
+
 export async function runWordPressAdminImport(args: {
   xml: string;
   actor: NpAuthUser;
@@ -176,6 +219,216 @@ export async function runWordPressAdminImport(args: {
   };
 }
 
+export async function createAndEnqueueWordPressImportRun(args: {
+  xml: string;
+  actor: NpAuthUser;
+  sourceName: string;
+  sourceSize: number;
+  sourceMimeType: string | null;
+  options: NpImportRunOptions;
+}): Promise<WpImportAdminRun> {
+  const queue = getOptionalJobQueue();
+  if (!queue) {
+    throw new NpError(
+      "Job queue is not wired. Start the worker runtime before applying a background import.",
+      "INTERNAL_ERROR",
+      503,
+    );
+  }
+
+  const db = getDb();
+  const now = new Date();
+  const [created] = await db
+    .insert(npImportRuns)
+    .values({
+      kind: "wordpress",
+      mode: "apply",
+      sourceName: args.sourceName,
+      sourceSize: args.sourceSize,
+      sourceMimeType: args.sourceMimeType,
+      sourceXml: args.xml,
+      options: args.options,
+      status: "queued",
+      logs: [`Queued WordPress import for ${args.sourceName}.`],
+      createdBy: args.actor.id,
+      updatedAt: now,
+    })
+    .returning();
+
+  if (!created) {
+    throw new Error("WordPress import run insert returned no row");
+  }
+
+  try {
+    const jobId = await enqueueJob(WORDPRESS_IMPORT_APPLY_JOB_TYPE, { runId: created.id });
+    if (!jobId) {
+      throw new Error("Job queue did not return an id");
+    }
+
+    const [updated] = await db
+      .update(npImportRuns)
+      .set({
+        jobId,
+        updatedAt: new Date(),
+        logs: appendLog(created.logs, `Background job ${jobId} enqueued.`),
+      })
+      .where(eq(npImportRuns.id, created.id))
+      .returning();
+
+    return serializeImportRun(updated ?? { ...created, jobId });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const [failed] = await db
+      .update(npImportRuns)
+      .set({
+        status: "failed",
+        sourceXml: null,
+        error: message,
+        finishedAt: new Date(),
+        updatedAt: new Date(),
+        logs: appendLog(created.logs, `Failed to enqueue background job: ${message}`),
+      })
+      .where(eq(npImportRuns.id, created.id))
+      .returning();
+
+    const run = serializeImportRun(failed ?? created);
+    throw new NpError(
+      `WordPress import run ${run.id} could not be queued: ${message}`,
+      "INTERNAL_ERROR",
+      503,
+    );
+  }
+}
+
+export async function listWordPressImportRuns(
+  limit = IMPORT_RUN_LIST_LIMIT,
+): Promise<WpImportAdminRunList> {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(npImportRuns)
+    .where(eq(npImportRuns.kind, "wordpress"))
+    .orderBy(desc(npImportRuns.createdAt))
+    .limit(Math.min(Math.max(1, limit), 100));
+  return { runs: rows.map(serializeImportRun) };
+}
+
+export async function getWordPressImportRun(id: string): Promise<WpImportAdminRun> {
+  const db = getDb();
+  const [row] = await db
+    .select()
+    .from(npImportRuns)
+    .where(and(eq(npImportRuns.id, id), eq(npImportRuns.kind, "wordpress")))
+    .limit(1);
+  if (!row) throw new NpNotFoundError("wp-import-run", id);
+  return serializeImportRun(row);
+}
+
+let wordPressImportJobsRegistered = false;
+
+export function registerWordPressImportJobs(): void {
+  if (wordPressImportJobsRegistered) return;
+  registerJobHandler(WORDPRESS_IMPORT_APPLY_JOB_TYPE, async (data) => {
+    const runId = readRunId(data);
+    const run = await executeWordPressImportRun(runId);
+    if (run.status === "failed") {
+      throw new Error(run.error ?? `WordPress import run ${run.id} failed`);
+    }
+  });
+  wordPressImportJobsRegistered = true;
+}
+
+export async function executeWordPressImportRun(runId: string): Promise<WpImportAdminRun> {
+  const db = getDb();
+  const [run] = await db
+    .select()
+    .from(npImportRuns)
+    .where(and(eq(npImportRuns.id, runId), eq(npImportRuns.kind, "wordpress")))
+    .limit(1);
+  if (!run) throw new NpNotFoundError("wp-import-run", runId);
+
+  if (run.status === "succeeded" || run.status === "failed") {
+    return serializeImportRun(run);
+  }
+
+  const startedAt = run.startedAt ?? new Date();
+  const runningLogs = appendLog(run.logs, `Started WordPress import ${run.id}.`);
+  await db
+    .update(npImportRuns)
+    .set({
+      status: "running",
+      startedAt,
+      updatedAt: new Date(),
+      logs: runningLogs,
+    })
+    .where(eq(npImportRuns.id, run.id));
+  await recordJobLog("info", `Started WordPress import ${run.id}.`, {
+    sourceName: run.sourceName,
+  });
+
+  try {
+    if (!run.sourceXml) {
+      throw new Error("Import source XML is missing.");
+    }
+    if (!run.createdBy) {
+      throw new Error("Import run has no actor.");
+    }
+
+    const actor = await loadImportActor(run.createdBy);
+    const result = await runWordPressAdminImport({
+      xml: run.sourceXml,
+      actor,
+      options: {
+        mode: "apply",
+        sourceName: run.sourceName,
+        update: run.options.update,
+        strict: run.options.strict,
+        createAuthors: run.options.createAuthors,
+        includeMedia: run.options.includeMedia,
+      },
+    });
+    const finishedAt = new Date();
+    const [updated] = await db
+      .update(npImportRuns)
+      .set({
+        status: "succeeded",
+        report: result,
+        sourceXml: null,
+        error: null,
+        finishedAt,
+        updatedAt: finishedAt,
+        logs: appendLog(runningLogs, `Finished WordPress import ${run.id}.`),
+      })
+      .where(eq(npImportRuns.id, run.id))
+      .returning();
+
+    await recordJobLog("info", `Finished WordPress import ${run.id}.`, {
+      applied: result.report.applied.total,
+      skipped: result.report.skipped.total,
+      errors: result.report.errors.total,
+    });
+    return serializeImportRun(updated ?? { ...run, status: "succeeded", report: result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const finishedAt = new Date();
+    const [failed] = await db
+      .update(npImportRuns)
+      .set({
+        status: "failed",
+        sourceXml: null,
+        error: message,
+        finishedAt,
+        updatedAt: finishedAt,
+        logs: appendLog(runningLogs, `Failed WordPress import ${run.id}: ${message}`),
+      })
+      .where(eq(npImportRuns.id, run.id))
+      .returning();
+
+    await recordJobLog("error", `WordPress import ${run.id} failed: ${message}`);
+    return serializeImportRun(failed ?? { ...run, status: "failed", error: message });
+  }
+}
+
 function parseWxrForAdmin(xml: string): WpImportBundle {
   try {
     return parseWxr(xml);
@@ -185,6 +438,80 @@ function parseWxrForAdmin(xml: string): WpImportBundle {
       { field: "file", message: `Invalid WXR file: ${message}` },
     ]);
   }
+}
+
+async function loadImportActor(userId: string): Promise<NpAuthUser> {
+  const db = getDb();
+  const [row] = await db
+    .select({
+      id: npUsers.id,
+      email: npUsers.email,
+      name: npUsers.name,
+      role: npUsers.role,
+      tokenVersion: npUsers.tokenVersion,
+    })
+    .from(npUsers)
+    .where(eq(npUsers.id, userId))
+    .limit(1);
+  if (!row) {
+    throw new Error(`Import actor ${userId} no longer exists.`);
+  }
+  return row;
+}
+
+function serializeImportRun(row: ImportRunRow): WpImportAdminRun {
+  return {
+    id: row.id,
+    kind: row.kind,
+    mode: row.mode === "preview" ? "preview" : "apply",
+    status: row.status,
+    sourceName: row.sourceName,
+    sourceSize: row.sourceSize,
+    sourceMimeType: row.sourceMimeType,
+    options: row.options,
+    jobId: row.jobId,
+    report: isImportReport(row.report) ? row.report : null,
+    logs: Array.isArray(row.logs) ? row.logs.filter((item) => typeof item === "string") : [],
+    error: row.error,
+    createdBy: row.createdBy,
+    startedAt: toIso(row.startedAt),
+    finishedAt: toIso(row.finishedAt),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function isImportReport(value: unknown): value is WpImportAdminResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "mode" in value &&
+    "report" in value &&
+    "counts" in value
+  );
+}
+
+function toIso(value: Date | null): string | null {
+  return value ? value.toISOString() : null;
+}
+
+function appendLog(current: string[] | null | undefined, line: string): string[] {
+  return [...(current ?? []), line].slice(-MAX_LOG_LINES);
+}
+
+function readRunId(data: unknown): string {
+  if (
+    typeof data === "object" &&
+    data !== null &&
+    "runId" in data &&
+    typeof data.runId === "string" &&
+    data.runId.length > 0
+  ) {
+    return data.runId;
+  }
+  throw new NpValidationError("Invalid import job payload", [
+    { field: "runId", message: "runId is required" },
+  ]);
 }
 
 function createMediaDeps(actorId: string) {

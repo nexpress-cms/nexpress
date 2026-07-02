@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   closeTestDb,
@@ -16,7 +16,14 @@ import {
   type TestUserSession,
 } from "./harness.js";
 
-import { findDocuments, npUsers, type NpAuthUser } from "@nexpress/core";
+import {
+  findDocuments,
+  getJobHandler,
+  npUsers,
+  setJobQueue,
+  type NpAuthUser,
+  type NpJobType,
+} from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import { NextRequest } from "next/server";
 
@@ -43,6 +50,20 @@ interface ImportResponse {
   };
 }
 
+interface ImportRun {
+  id: string;
+  status: "queued" | "running" | "succeeded" | "failed";
+  jobId: string | null;
+  report: ImportResponse | null;
+  error: string | null;
+}
+
+interface QueuedResponse {
+  mode: "apply";
+  queued: true;
+  run: ImportRun;
+}
+
 describe.skipIf(skipIfNoTestDb())("admin WordPress import API", () => {
   beforeAll(async () => {
     await ensureMigrated();
@@ -51,6 +72,10 @@ describe.skipIf(skipIfNoTestDb())("admin WordPress import API", () => {
 
   beforeEach(async () => {
     await truncateAll();
+  });
+
+  afterEach(() => {
+    setJobQueue(null);
   });
 
   afterAll(async () => {
@@ -84,8 +109,17 @@ describe.skipIf(skipIfNoTestDb())("admin WordPress import API", () => {
     expect(posts.docs).toHaveLength(0);
   });
 
-  it("applies a WXR file through the admin endpoint", async () => {
+  it("queues and applies a WXR file through the background admin flow", async () => {
     const admin = await seedUser({ role: "admin" });
+    let enqueued: { type: NpJobType; data: unknown } | null = null;
+    setJobQueue({
+      enqueue: async (type, data) => {
+        enqueued = { type, data };
+        return "job-1";
+      },
+      start: async () => {},
+      stop: async () => {},
+    });
     const { POST } = await import("@/app/api/admin/import/wordpress/route");
 
     const response = await POST(
@@ -94,24 +128,82 @@ describe.skipIf(skipIfNoTestDb())("admin WordPress import API", () => {
         includeMedia: "false",
       }),
     );
-    const { status, body } = await readJson<ImportResponse>(response);
+    const { status, body } = await readJson<QueuedResponse>(response);
 
     expect(status).toBe(200);
     expect(body.mode).toBe("apply");
-    expect(body.dryRun).toBe(false);
-    expect(body.report.errors.total).toBe(0);
-    expect(body.report.applied.items.map((row) => `${row.collection}/${row.slug}`).sort()).toEqual([
-      "pages/about",
-      "posts/hello-world",
-    ]);
-    expect(body.report.media.status).toBe("not-run");
-    expect(body.report.taxonomies.status).toBe("completed");
-    expect(body.report.comments.status).toBe("completed");
-    expect(body.report.authors.status).toBe("completed");
+    expect(body.queued).toBe(true);
+    expect(body.run.status).toBe("queued");
+    expect(body.run.jobId).toBe("job-1");
+    expect(enqueued?.type).toBe("import:wordpressApply");
+
+    const handler = getJobHandler("import:wordpressApply");
+    expect(handler).toBeTypeOf("function");
+    await handler!(enqueued?.data);
+
+    const { GET } = await import("@/app/api/admin/import/wordpress/runs/[id]/route");
+    const runResponse = await GET(
+      new NextRequest(`http://localhost:3000/api/admin/import/wordpress/runs/${body.run.id}`, {
+        headers: {
+          cookie: `np-session=${admin.accessToken}; np-csrf=${admin.csrfToken}`,
+          "x-csrf-token": admin.csrfToken,
+        },
+      }),
+      { params: Promise.resolve({ id: body.run.id }) },
+    );
+    const runJson = await readJson<{ run: ImportRun }>(runResponse);
+    const run = runJson.body.run;
+
+    expect(runJson.status).toBe(200);
+    expect(run.status).toBe("succeeded");
+    expect(run.error).toBeNull();
+    expect(run.report?.mode).toBe("apply");
+    expect(run.report?.dryRun).toBe(false);
+    expect(run.report?.report.errors.total).toBe(0);
+    expect(
+      run.report?.report.applied.items.map((row) => `${row.collection}/${row.slug}`).sort(),
+    ).toEqual(["pages/about", "posts/hello-world"]);
+    expect(run.report?.report.media.status).toBe("not-run");
+    expect(run.report?.report.taxonomies.status).toBe("completed");
+    expect(run.report?.report.comments.status).toBe("completed");
+    expect(run.report?.report.authors.status).toBe("completed");
 
     const actor = await asActor(admin);
     const posts = await findDocuments("posts", { where: { slug: "hello-world" }, limit: 1 }, actor);
     expect(posts.docs[0]?.title).toBe("Hello World");
+  });
+
+  it("lists recent WordPress import runs", async () => {
+    const admin = await seedUser({ role: "admin" });
+    setJobQueue({
+      enqueue: async () => "job-list-1",
+      start: async () => {},
+      stop: async () => {},
+    });
+    const { POST } = await import("@/app/api/admin/import/wordpress/route");
+    const { GET } = await import("@/app/api/admin/import/wordpress/runs/route");
+
+    await POST(
+      multipartRequest("/api/admin/import/wordpress", admin, {
+        mode: "apply",
+        includeMedia: "false",
+      }),
+    );
+
+    const response = await GET(
+      new NextRequest("http://localhost:3000/api/admin/import/wordpress/runs?limit=5", {
+        headers: {
+          cookie: `np-session=${admin.accessToken}; np-csrf=${admin.csrfToken}`,
+          "x-csrf-token": admin.csrfToken,
+        },
+      }),
+    );
+    const { status, body } = await readJson<{ runs: ImportRun[] }>(response);
+
+    expect(status).toBe(200);
+    expect(body.runs).toHaveLength(1);
+    expect(body.runs[0]?.status).toBe("queued");
+    expect(body.runs[0]?.jobId).toBe("job-list-1");
   });
 
   it("forbids non-admin users", async () => {
