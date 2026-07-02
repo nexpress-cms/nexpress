@@ -8,6 +8,7 @@ import {
   closeTestDb,
   ensureMigrated,
   getTestDb,
+  getTestDatabaseUrl,
   readJson,
   registerTestCollections,
   seedUser,
@@ -19,13 +20,24 @@ import {
 import {
   findDocuments,
   getJobHandler,
+  npImportRuns,
   npUsers,
+  recordHeartbeat,
   setJobQueue,
+  startWorker,
+  stopWorker,
   type NpAuthUser,
   type NpJobType,
 } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import { NextRequest } from "next/server";
+
+// eslint-disable-next-line import-x/no-relative-packages
+import {
+  createAndEnqueueWordPressImportRun,
+  getWordPressImportRun,
+  registerWordPressImportJobs,
+} from "../../../packages/app/src/lib/wp-import-admin.js";
 
 const FIXTURE = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -74,7 +86,8 @@ describe.skipIf(skipIfNoTestDb())("admin WordPress import API", () => {
     await truncateAll();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await stopWorker();
     setJobQueue(null);
   });
 
@@ -206,6 +219,139 @@ describe.skipIf(skipIfNoTestDb())("admin WordPress import API", () => {
     expect(body.runs[0]?.jobId).toBe("job-list-1");
   });
 
+  it("marks stale WordPress import runs failed through the admin sweep endpoint", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const db = await getTestDb();
+    const old = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const [run] = await db
+      .insert(npImportRuns)
+      .values({
+        kind: "wordpress",
+        mode: "apply",
+        sourceName: "stale.wxr.xml",
+        sourceSize: 128,
+        sourceMimeType: "text/xml",
+        sourceXml: "<rss />",
+        options: {
+          update: false,
+          strict: false,
+          createAuthors: true,
+          includeMedia: false,
+        },
+        status: "queued",
+        logs: ["Queued WordPress import for stale.wxr.xml."],
+        createdBy: admin.userId,
+        createdAt: old,
+        updatedAt: old,
+      })
+      .returning({ id: npImportRuns.id });
+    if (!run) throw new Error("failed to seed stale import run");
+    const [running] = await db
+      .insert(npImportRuns)
+      .values({
+        kind: "wordpress",
+        mode: "apply",
+        sourceName: "still-running.wxr.xml",
+        sourceSize: 128,
+        sourceMimeType: "text/xml",
+        sourceXml: "<rss />",
+        options: {
+          update: false,
+          strict: false,
+          createAuthors: true,
+          includeMedia: false,
+        },
+        status: "running",
+        logs: ["Started WordPress import still-running."],
+        createdBy: admin.userId,
+        startedAt: old,
+        createdAt: old,
+        updatedAt: old,
+      })
+      .returning({ id: npImportRuns.id });
+    if (!running) throw new Error("failed to seed running import run");
+    await recordHeartbeat("wp-import-test-worker", { test: true });
+
+    const { POST } = await import("@/app/api/admin/import/wordpress/runs/sweep/route");
+    const response = await POST(
+      new NextRequest("http://localhost:3000/api/admin/import/wordpress/runs/sweep", {
+        method: "POST",
+        headers: {
+          cookie: `np-session=${admin.accessToken}; np-csrf=${admin.csrfToken}`,
+          "x-csrf-token": admin.csrfToken,
+        },
+      }),
+    );
+    const { status, body } = await readJson<{ failed: number; runs: ImportRun[] }>(response);
+
+    expect(status).toBe(200);
+    expect(body.failed).toBe(1);
+    expect(body.runs[0]?.id).toBe(run.id);
+    expect(body.runs[0]?.status).toBe("failed");
+    expect(body.runs[0]?.error).toContain("stale timeout");
+
+    const [stored] = await db
+      .select({
+        status: npImportRuns.status,
+        sourceXml: npImportRuns.sourceXml,
+        error: npImportRuns.error,
+      })
+      .from(npImportRuns)
+      .where(eq(npImportRuns.id, run.id));
+    expect(stored).toMatchObject({
+      status: "failed",
+      sourceXml: null,
+    });
+    expect(stored?.error).toContain("stale timeout");
+
+    const [runningStored] = await db
+      .select({
+        status: npImportRuns.status,
+        sourceXml: npImportRuns.sourceXml,
+      })
+      .from(npImportRuns)
+      .where(eq(npImportRuns.id, running.id));
+    expect(runningStored).toMatchObject({
+      status: "running",
+      sourceXml: "<rss />",
+    });
+  });
+
+  it("drains a queued WordPress import run through a real pg-boss worker", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const actor = await asActor(admin);
+    registerWordPressImportJobs();
+
+    const url = getTestDatabaseUrl();
+    if (!url) throw new Error("TEST_DATABASE_URL not set");
+    await startWorker(url, {
+      heartbeat: false,
+      installSignalHandlers: false,
+    });
+
+    const run = await createAndEnqueueWordPressImportRun({
+      xml: readFileSync(FIXTURE, "utf8"),
+      actor,
+      sourceName: "minimal.wxr.xml",
+      sourceSize: readFileSync(FIXTURE).byteLength,
+      sourceMimeType: "text/xml",
+      options: {
+        update: false,
+        strict: false,
+        createAuthors: true,
+        includeMedia: false,
+      },
+    });
+
+    const completed = await waitForImportRun(run.id, "succeeded");
+    expect(completed.jobId).toBeTruthy();
+    expect(completed.error).toBeNull();
+    expect(completed.report?.report.applied.total).toBe(2);
+
+    const posts = await findDocuments("posts", { where: { slug: "hello-world" }, limit: 1 }, actor);
+    expect(posts.docs[0]?.title).toBe("Hello World");
+  });
+
   it("forbids non-admin users", async () => {
     const editor = await seedUser({ role: "editor" });
     const { POST } = await import("@/app/api/admin/import/wordpress/route");
@@ -245,6 +391,26 @@ function multipartRequest(
     },
     body: formData,
   });
+}
+
+async function waitForImportRun(
+  id: string,
+  status: ImportRun["status"],
+  timeoutMs = 15_000,
+): Promise<ImportRun> {
+  const started = Date.now();
+  let last: ImportRun | null = null;
+
+  while (Date.now() - started < timeoutMs) {
+    last = await getWordPressImportRun(id);
+    if (last.status === status) return last;
+    if (last.status === "failed") return last;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  throw new Error(
+    `Timed out waiting for import run ${id} to reach ${status}; last status ${last?.status ?? "unknown"}`,
+  );
 }
 
 async function asActor(session: TestUserSession): Promise<NpAuthUser> {

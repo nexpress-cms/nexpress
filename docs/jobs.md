@@ -125,6 +125,9 @@ The framework registers a handful of system handlers via
 - `system:jobLogPrune` — sweep `np_job_logs` rows older
   than 14 days (cron: `30 3 * * *`, Phase 20.3a)
 - `notification:email` — send queued notification emails
+- `import:wordpressApply` — apply an admin-uploaded WXR export
+  in the background and write the final report back to
+  `np_import_runs`
 - `plugin:scheduledTask` — fan-out for plugin-registered
   scheduled tasks
 
@@ -307,6 +310,8 @@ the endpoint directly if needed.
 
 - Check the worker process is alive (e.g. `docker ps`)
 - Confirm `NP_ENABLE_JOBS=1` is set in the worker env
+- Confirm `NP_ENABLE_JOBS=1` is also set in the web/API env
+  for routes that enqueue work such as WordPress import Apply
 - Watch the Pending tab — if jobs are stuck in `created`
   for a long time, the worker isn't draining
 - `GET /api/admin/jobs/health` (editor+) returns the live
@@ -314,6 +319,13 @@ the endpoint directly if needed.
   `newestHeartbeat` confirms a dead worker (Phase 19).
   `pause.paused: true` (Phase 20.2) means the worker is
   alive but the operator paused the queue.
+- `/admin/import/wordpress` also surfaces the same worker
+  heartbeat state because Apply stores uploaded WXR XML in
+  `np_import_runs.source_xml` until the background run finishes.
+  Queued runs older than `NP_IMPORT_RUN_STALE_AFTER_SECONDS`
+  (default 24 hours) are marked failed and cleared by the
+  admin sweep. Running runs are swept only when no live worker
+  heartbeat exists.
 
 **Maintenance window — pause processing**
 

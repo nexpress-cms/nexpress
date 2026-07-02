@@ -50,13 +50,21 @@ Background Apply requires jobs to be wired on the web runtime and drained by a
 worker:
 
 ```bash
-NP_ENABLE_JOBS=1 pnpm worker
+NP_ENABLE_JOBS=1 pnpm run worker
 ```
 
 The web process that receives the Apply request also needs `NP_ENABLE_JOBS=1`
 so it can enqueue the run. The uploaded WXR body is stored temporarily in
 `np_import_runs.source_xml` and cleared when the run reaches a terminal state.
 The admin endpoint keeps the same 25 MB upload cap as the preview route.
+
+The admin screen checks the job runtime before Apply. It warns when jobs are
+disabled, processing is paused, or no live worker heartbeat exists. It also
+POSTs a stale-run sweep when the screen opens: queued runs older than
+`NP_IMPORT_RUN_STALE_AFTER_SECONDS` (default 24 hours) are marked failed and
+their temporary WXR body is cleared. Running runs use the same timeout only
+when no live worker heartbeat exists, so a very large import is not failed
+while an active worker is still alive.
 
 Admin options map to the CLI behavior:
 
