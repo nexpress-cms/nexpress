@@ -416,6 +416,13 @@ export interface NpImportRunOptions {
   strict: boolean;
   createAuthors: boolean;
   includeMedia: boolean;
+  collectionMappings?: Record<
+    string,
+    {
+      collection: string;
+      fieldOverrides?: Record<string, string>;
+    }
+  >;
 }
 
 export const npImportRuns = pgTable(

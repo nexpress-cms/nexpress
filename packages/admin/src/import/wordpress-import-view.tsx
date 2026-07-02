@@ -22,6 +22,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Switch } from "../ui/switch.js";
+import { Textarea } from "../ui/textarea.js";
 import { cn } from "../ui/utils.js";
 
 type ImportMode = "preview" | "apply";
@@ -53,6 +54,23 @@ interface ErrorRow {
   message: string;
 }
 
+interface CollectionMapping {
+  collection: string;
+  fieldOverrides?: Record<string, string>;
+}
+
+interface MappingRow {
+  wpType: string;
+  collection: string;
+  fieldOverrides: Record<string, string>;
+  records: number;
+}
+
+interface UnmappedType {
+  wpType: string;
+  records: number;
+}
+
 interface ImportResponse {
   mode: ImportMode;
   dryRun: boolean;
@@ -67,6 +85,11 @@ interface ImportResponse {
     strict: boolean;
     createAuthors: boolean;
     includeMedia: boolean;
+    collectionMappings?: Record<string, CollectionMapping>;
+  };
+  mappings?: {
+    configured: ListResult<MappingRow>;
+    unmapped: ListResult<UnmappedType>;
   };
   counts: {
     records: number;
@@ -131,7 +154,7 @@ interface ImportRun {
   sourceName: string;
   sourceSize: number;
   sourceMimeType: string | null;
-  options: OptionsState;
+  options: ImportRunOptions;
   jobId: string | null;
   report: ImportResponse | null;
   logs: string[];
@@ -178,6 +201,15 @@ interface OptionsState {
   strict: boolean;
   createAuthors: boolean;
   includeMedia: boolean;
+  mappingConfig: string;
+}
+
+interface ImportRunOptions {
+  update: boolean;
+  strict: boolean;
+  createAuthors: boolean;
+  includeMedia: boolean;
+  collectionMappings?: Record<string, CollectionMapping>;
 }
 
 const DEFAULT_OPTIONS: OptionsState = {
@@ -185,7 +217,20 @@ const DEFAULT_OPTIONS: OptionsState = {
   strict: false,
   createAuthors: true,
   includeMedia: true,
+  mappingConfig: "",
 };
+
+const MAPPING_CONFIG_PLACEHOLDER = `{
+  "mappings": [
+    {
+      "wpType": "product",
+      "collection": "posts",
+      "fieldOverrides": {
+        "_sku": "sku"
+      }
+    }
+  ]
+}`;
 
 export function WordPressImportView() {
   const [file, setFile] = useState<File | null>(null);
@@ -324,6 +369,9 @@ export function WordPressImportView() {
       formData.set("strict", String(options.strict));
       formData.set("createAuthors", String(options.createAuthors));
       formData.set("includeMedia", String(options.includeMedia));
+      if (options.mappingConfig.trim()) {
+        formData.set("mappingConfig", options.mappingConfig);
+      }
 
       const response = await npFetch("/api/admin/import/wordpress", {
         method: "POST",
@@ -442,6 +490,27 @@ export function WordPressImportView() {
                 label="Include media pipeline"
                 onCheckedChange={(checked) => updateOption("includeMedia", checked)}
               />
+            </div>
+
+            <div className="grid gap-2">
+              <Label
+                htmlFor="wp-import-mapping-config"
+                className="text-[13px] text-neutral-700 dark:text-neutral-300"
+              >
+                Custom type mappings
+              </Label>
+              <Textarea
+                id="wp-import-mapping-config"
+                value={options.mappingConfig}
+                onChange={(event) => updateOption("mappingConfig", event.currentTarget.value)}
+                placeholder={MAPPING_CONFIG_PLACEHOLDER}
+                spellCheck={false}
+                className="min-h-36 resize-y font-mono text-[12px]"
+              />
+              <p className="text-[11.5px] leading-5 text-neutral-500 dark:text-neutral-400">
+                Same JSON shape as <code>wp-import --config</code>. Leave empty for posts and pages
+                only.
+              </p>
             </div>
 
             {error ? (
@@ -631,6 +700,7 @@ function ReportPanel({
 
         <ChipGroup title="Record types" values={result.counts.recordsByType} />
         <ChipGroup title="Statuses" values={result.counts.statuses} />
+        {result.mappings ? <MappingSummary mappings={result.mappings} /> : null}
 
         <div className="grid min-w-0 gap-4 xl:grid-cols-2">
           <RowsSection title={result.dryRun ? "Planned writes" : "Written rows"}>
@@ -887,6 +957,51 @@ function PipelineSummary({ result }: { result: ImportResponse }) {
   );
 }
 
+function MappingSummary({
+  mappings,
+}: {
+  mappings: {
+    configured: ListResult<MappingRow>;
+    unmapped: ListResult<UnmappedType>;
+  };
+}) {
+  const hasConfigured = mappings.configured.total > 0;
+  const hasUnmapped = mappings.unmapped.total > 0;
+  if (!hasConfigured && !hasUnmapped) return null;
+
+  return (
+    <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+      {hasConfigured ? (
+        <RowsSection title="Custom mappings">
+          {mappings.configured.items.map((row) => (
+            <RowLine
+              key={row.wpType}
+              primary={`${row.wpType} -> ${row.collection}`}
+              secondary={`${row.records.toString()} record${row.records === 1 ? "" : "s"}${
+                Object.keys(row.fieldOverrides).length > 0
+                  ? ` · ${formatFieldOverrides(row.fieldOverrides)}`
+                  : ""
+              }`}
+            />
+          ))}
+        </RowsSection>
+      ) : null}
+
+      {hasUnmapped ? (
+        <RowsSection title="Unmapped WP types" tone="danger">
+          {mappings.unmapped.items.map((row) => (
+            <RowLine
+              key={row.wpType}
+              primary={row.wpType}
+              secondary={`${row.records.toString()} record${row.records === 1 ? "" : "s"} will be skipped until mapped.`}
+            />
+          ))}
+        </RowsSection>
+      ) : null}
+    </div>
+  );
+}
+
 function OptionSwitch({
   checked,
   label,
@@ -1001,6 +1116,7 @@ function optionsKey(options: OptionsState): string {
     options.strict ? "strict" : "soft",
     options.createAuthors ? "authors" : "no-authors",
     options.includeMedia ? "media" : "no-media",
+    options.mappingConfig.trim(),
   ].join(":");
 }
 
@@ -1031,6 +1147,13 @@ function statusVariant(status: ImportRunStatus): "destructive" | "brand" | "seco
   if (status === "failed") return "destructive";
   if (status === "succeeded") return "brand";
   return "secondary";
+}
+
+function formatFieldOverrides(overrides: Record<string, string>): string {
+  const entries = Object.entries(overrides);
+  const visible = entries.slice(0, 3).map(([metaKey, fieldName]) => `${metaKey} -> ${fieldName}`);
+  const remaining = entries.length - visible.length;
+  return remaining > 0 ? `${visible.join(", ")} +${remaining.toString()} more` : visible.join(", ");
 }
 
 function backgroundNotice(background: BackgroundStatus): {
