@@ -1,11 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { WpComment, WpImportRecord } from "../parse/types.js";
-import {
-  emptyCommentPlan,
-  importPostComments,
-  type CommentDeps,
-} from "./comments.js";
+import { emptyCommentPlan, importPostComments, type CommentDeps } from "./comments.js";
 import { emptyResumeState, type ResumeDeps } from "./resume.js";
 
 function makeComment(partial: Partial<WpComment>): WpComment {
@@ -65,11 +61,17 @@ describe("importPostComments", () => {
     });
     let nextId = 1;
     const insertedRows: Array<{ parentId: string | null; bodyMd: string; targetId: string }> = [];
-    const insertComment = vi.fn((input: { parentId: string | null; bodyMd: string; targetId: string }) => {
-      const id = `cmt-${nextId++}`;
-      insertedRows.push({ parentId: input.parentId, bodyMd: input.bodyMd, targetId: input.targetId });
-      return Promise.resolve({ id });
-    });
+    const insertComment = vi.fn(
+      (input: { parentId: string | null; bodyMd: string; targetId: string }) => {
+        const id = `cmt-${nextId++}`;
+        insertedRows.push({
+          parentId: input.parentId,
+          bodyMd: input.bodyMd,
+          targetId: input.targetId,
+        });
+        return Promise.resolve({ id });
+      },
+    );
     const deps: CommentDeps = {
       ensureImportedMember,
       insertComment,
@@ -193,7 +195,9 @@ describe("importPostComments", () => {
     const persisted: number[] = [];
     const resume: ResumeDeps = {
       state,
-      persist: () => persisted.push(Date.now()),
+      persist: () => {
+        persisted.push(Date.now());
+      },
     };
     const plan = emptyCommentPlan();
     await importPostComments({

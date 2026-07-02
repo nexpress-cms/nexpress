@@ -103,9 +103,7 @@ export async function importPostComments(args: {
         continue;
       }
       const parentId =
-        wpComment.parentWpId !== null
-          ? wpToNexpressId.get(wpComment.parentWpId) ?? null
-          : null;
+        wpComment.parentWpId !== null ? (wpToNexpressId.get(wpComment.parentWpId) ?? null) : null;
 
       const createdAt = parseWpDate(wpComment.date);
       const inserted = await deps.insertComment({
@@ -122,7 +120,7 @@ export async function importPostComments(args: {
       log(`comment write ${collection}/${record.slug} #${wpComment.wpId}`);
       if (resume) {
         resume.state.comments[wpComment.wpId] = inserted.id;
-        resume.persist();
+        await resume.persist();
       }
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);

@@ -207,9 +207,10 @@ What a new developer sees in their first hour with NexPress.
   the live demo link; operational details can stay out of the docs until they
   become reusable product behavior.
 - WordPress importer admin UI — `/admin/import/wordpress` now covers WXR
-  preview plus background apply with run history/progress. The CLI still owns
-  exports beyond the admin upload cap, resume markers, custom mappings, and
-  HTML diff reports.
+  preview plus background apply with run history/progress, custom mappings,
+  DB-backed resume markers, and bounded HTML/Lexical conversion samples. The
+  CLI still owns exports beyond the admin upload cap and full filesystem
+  artifacts such as complete HTML diff files or custom resume-marker paths.
 
 ### 6. API completeness
 
