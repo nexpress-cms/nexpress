@@ -46,6 +46,12 @@ media references without downloading or uploading. Taxonomy, comment, and
 author resolver results are only final after Apply because those steps depend
 on live DB writes.
 
+Paste the same JSON used by `wp-import --config` into **Custom type mappings**
+when the WXR contains custom post types. Preview then shows configured mappings
+and any unmapped WP types before you enqueue Apply. Background runs store the
+normalized mapping in `np_import_runs.options` so the worker executes the same
+plan the operator previewed.
+
 Background Apply requires jobs to be wired on the web runtime and drained by a
 worker:
 
@@ -74,9 +80,10 @@ Admin options map to the CLI behavior:
 | Strict failures         | `--strict`                                    |
 | Create imported authors | default on / `--no-create-authors` off        |
 | Include media pipeline  | default on; turn off for a content-only apply |
+| Custom type mappings    | `--config <path>`                             |
 
-Use the CLI for exports beyond the admin upload cap, custom-post-type mappings,
-resume markers, or HTML/Lexical diff reports.
+Use the CLI for exports beyond the admin upload cap, resume markers, or
+HTML/Lexical diff reports.
 
 ### CLI
 
@@ -161,6 +168,10 @@ Skips and errors emit `import.wp.skipped` / `import.wp.error` audit events along
 - `fieldOverrides` — optional. Maps WP `<wp:postmeta>` keys to NexPress collection field names. Empty values are dropped. Protected fields (`title`, `slug`, `content`, `excerpt`, `publishedAt`, `coverImage`, `categories`, `tags`, `author`) can never be overridden — a misconfigured override is a no-op, not a corrupt post.
 
 Snake-case keys (`wp_type`, `field_overrides`) are also accepted so the design doc's TOML example translates directly.
+
+The admin screen accepts this exact JSON shape in **Custom type mappings**. It
+validates the JSON before Preview or Apply and reports `mappingConfig` input
+errors without creating a background run.
 
 ---
 

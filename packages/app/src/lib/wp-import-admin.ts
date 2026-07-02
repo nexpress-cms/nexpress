@@ -26,16 +26,19 @@ import {
 } from "@nexpress/core";
 import {
   applyBundle,
+  parseConfig,
   parseWxr,
   type AppliedRow,
   type ApplyReport,
   type AttachmentIndex,
   type AuthorResolution,
   type CommentImportPlan,
+  type CollectionMapping,
   type MediaPipelineReport,
   type SkippedRow,
   type TaxonomyResolution,
   type WpImportBundle,
+  WpImportConfigError,
 } from "@nexpress/wp-import";
 import { and, asc, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 
@@ -44,6 +47,10 @@ const MAX_LOG_LINES = 200;
 const IMPORT_RUN_LIST_LIMIT = 25;
 const IMPORT_RUN_SWEEP_LIMIT = 100;
 const DEFAULT_IMPORT_RUN_STALE_AFTER_SECONDS = 24 * 60 * 60;
+const BUILTIN_WP_TYPE_COLLECTIONS: Record<string, string> = {
+  page: "pages",
+  post: "posts",
+};
 export const WORDPRESS_IMPORT_APPLY_JOB_TYPE = "import:wordpressApply";
 
 export type WpImportAdminMode = "preview" | "apply";
@@ -55,6 +62,7 @@ export interface WpImportAdminOptions {
   strict: boolean;
   createAuthors: boolean;
   includeMedia: boolean;
+  collectionMappings?: Record<string, CollectionMapping>;
 }
 
 export interface WpImportAdminList<T> {
@@ -119,6 +127,23 @@ export interface WpImportAdminReport {
   };
 }
 
+export interface WpImportAdminMappingRow {
+  wpType: string;
+  collection: string;
+  fieldOverrides: Record<string, string>;
+  records: number;
+}
+
+export interface WpImportAdminUnmappedType {
+  wpType: string;
+  records: number;
+}
+
+export interface WpImportAdminMappingSummary {
+  configured: WpImportAdminList<WpImportAdminMappingRow>;
+  unmapped: WpImportAdminList<WpImportAdminUnmappedType>;
+}
+
 export interface WpImportAdminResponse {
   mode: WpImportAdminMode;
   dryRun: boolean;
@@ -129,8 +154,10 @@ export interface WpImportAdminResponse {
     strict: boolean;
     createAuthors: boolean;
     includeMedia: boolean;
+    collectionMappings?: Record<string, CollectionMapping>;
   };
   counts: WpImportAdminCounts;
+  mappings: WpImportAdminMappingSummary;
   report: WpImportAdminReport;
 }
 
@@ -196,12 +223,14 @@ export async function runWordPressAdminImport(args: {
   const bundle = parseWxrForAdmin(args.xml);
   const dryRun = options.mode === "preview";
   const logs: string[] = [];
+  const collectionMappings = options.collectionMappings ?? {};
 
   const report = await applyBundle(bundle, {
     actor,
     dryRun,
     strict: options.strict,
     update: options.update,
+    collectionMappings,
     log: (line) => {
       logs.push(line);
     },
@@ -238,10 +267,37 @@ export async function runWordPressAdminImport(args: {
       strict: options.strict,
       createAuthors: options.createAuthors,
       includeMedia: options.includeMedia,
+      collectionMappings,
     },
     counts: summarizeBundle(bundle),
+    mappings: summarizeMappings(bundle, collectionMappings),
     report: serializeReport(report, logs),
   };
+}
+
+export function parseWordPressImportMappingConfig(
+  value: unknown,
+): Record<string, CollectionMapping> {
+  if (value === null || value === undefined) return {};
+  if (typeof value !== "string") {
+    throw new NpValidationError("Invalid input", [
+      { field: "mappingConfig", message: "mappingConfig must be a JSON string" },
+    ]);
+  }
+
+  const source = value.trim();
+  if (!source) return {};
+
+  try {
+    return parseConfig(source, "mappingConfig").collectionMappings;
+  } catch (error) {
+    if (error instanceof WpImportConfigError) {
+      throw new NpValidationError("Invalid input", [
+        { field: "mappingConfig", message: error.message },
+      ]);
+    }
+    throw error;
+  }
 }
 
 export async function createAndEnqueueWordPressImportRun(args: {
@@ -272,7 +328,7 @@ export async function createAndEnqueueWordPressImportRun(args: {
       sourceSize: args.sourceSize,
       sourceMimeType: args.sourceMimeType,
       sourceXml: args.xml,
-      options: args.options,
+      options: normalizeImportRunOptions(args.options),
       status: "queued",
       logs: [`Queued WordPress import for ${args.sourceName}.`],
       createdBy: args.actor.id,
@@ -491,6 +547,7 @@ export async function executeWordPressImportRun(runId: string): Promise<WpImport
         strict: run.options.strict,
         createAuthors: run.options.createAuthors,
         includeMedia: run.options.includeMedia,
+        collectionMappings: run.options.collectionMappings ?? {},
       },
     });
     const finishedAt = new Date();
@@ -574,7 +631,7 @@ function serializeImportRun(row: ImportRunRow): WpImportAdminRun {
     sourceName: row.sourceName,
     sourceSize: row.sourceSize,
     sourceMimeType: row.sourceMimeType,
-    options: row.options,
+    options: normalizeImportRunOptions(row.options),
     jobId: row.jobId,
     report: isImportReport(row.report) ? row.report : null,
     logs: Array.isArray(row.logs) ? row.logs.filter((item) => typeof item === "string") : [],
@@ -603,6 +660,16 @@ function toIso(value: Date | null): string | null {
 
 function appendLog(current: string[] | null | undefined, line: string): string[] {
   return [...(current ?? []), line].slice(-MAX_LOG_LINES);
+}
+
+function normalizeImportRunOptions(options: NpImportRunOptions): NpImportRunOptions {
+  return {
+    update: options.update,
+    strict: options.strict,
+    createAuthors: options.createAuthors,
+    includeMedia: options.includeMedia,
+    collectionMappings: options.collectionMappings ?? {},
+  };
 }
 
 function getWordPressImportRunStaleAfterSeconds(): number {
@@ -820,6 +887,34 @@ function summarizeBundle(bundle: WpImportBundle): WpImportAdminCounts {
     recordsByType: countBy(bundle.records, (record) => record.wpType),
     termsByTaxonomy: countBy(bundle.terms, (term) => term.taxonomy),
     statuses: countBy(bundle.records, (record) => record.status),
+  };
+}
+
+function summarizeMappings(
+  bundle: WpImportBundle,
+  collectionMappings: Record<string, CollectionMapping>,
+): WpImportAdminMappingSummary {
+  const recordsByType = countBy(bundle.records, (record) => record.wpType);
+  const configured = Object.entries(collectionMappings)
+    .map(([wpType, mapping]) => ({
+      wpType,
+      collection: mapping.collection,
+      fieldOverrides: mapping.fieldOverrides ?? {},
+      records: recordsByType[wpType] ?? 0,
+    }))
+    .sort((a, b) => a.wpType.localeCompare(b.wpType));
+  const unmapped = Object.entries(recordsByType)
+    .filter(([wpType]) => {
+      if (wpType === "attachment") return false;
+      if (BUILTIN_WP_TYPE_COLLECTIONS[wpType]) return false;
+      return !collectionMappings[wpType];
+    })
+    .map(([wpType, records]) => ({ wpType, records }))
+    .sort((a, b) => a.wpType.localeCompare(b.wpType));
+
+  return {
+    configured: list(configured),
+    unmapped: list(unmapped),
   };
 }
 

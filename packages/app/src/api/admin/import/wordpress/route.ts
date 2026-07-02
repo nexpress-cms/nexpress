@@ -6,6 +6,7 @@ import { requireAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
 import {
   createAndEnqueueWordPressImportRun,
+  parseWordPressImportMappingConfig,
   runWordPressAdminImport,
   type WpImportAdminMode,
 } from "../../../../lib/wp-import-admin";
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
       strict: parseBoolean(formData.get("strict"), false, "strict"),
       createAuthors: parseBoolean(formData.get("createAuthors"), true, "createAuthors"),
       includeMedia: parseBoolean(formData.get("includeMedia"), true, "includeMedia"),
+      collectionMappings: parseWordPressImportMappingConfig(formData.get("mappingConfig")),
     };
     const xmlPromise = file.text();
     await ensureFor(mode === "apply" ? "write" : "read");

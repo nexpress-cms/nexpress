@@ -51,6 +51,21 @@ interface ImportResponse {
     records: number;
     recordsByType: Record<string, number>;
   };
+  mappings: {
+    configured: {
+      total: number;
+      items: Array<{
+        wpType: string;
+        collection: string;
+        fieldOverrides: Record<string, string>;
+        records: number;
+      }>;
+    };
+    unmapped: {
+      total: number;
+      items: Array<{ wpType: string; records: number }>;
+    };
+  };
   report: {
     applied: { total: number; items: Array<{ collection: string; slug: string }> };
     skipped: { total: number; items: Array<{ reason: string }> };
@@ -66,6 +81,16 @@ interface ImportRun {
   id: string;
   status: "queued" | "running" | "succeeded" | "failed";
   jobId: string | null;
+  options: {
+    update: boolean;
+    strict: boolean;
+    createAuthors: boolean;
+    includeMedia: boolean;
+    collectionMappings?: Record<
+      string,
+      { collection: string; fieldOverrides?: Record<string, string> }
+    >;
+  };
   report: ImportResponse | null;
   error: string | null;
 }
@@ -116,10 +141,65 @@ describe.skipIf(skipIfNoTestDb())("admin WordPress import API", () => {
     expect(body.report.skipped.items.some((row) => row.reason.includes("attachment"))).toBe(true);
     expect(body.report.media.status).toBe("completed");
     expect(body.report.taxonomies.status).toBe("not-run");
+    expect(body.mappings.unmapped.total).toBe(0);
 
     const actor = await asActor(admin);
     const posts = await findDocuments("posts", { where: { slug: "hello-world" }, limit: 1 }, actor);
     expect(posts.docs).toHaveLength(0);
+  });
+
+  it("previews custom post type mappings and flags unmapped types", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { POST } = await import("@/app/api/admin/import/wordpress/route");
+    const xml = customTypeFixtureXml();
+
+    const unmappedResponse = await POST(
+      multipartRequest(
+        "/api/admin/import/wordpress",
+        admin,
+        {
+          mode: "preview",
+          includeMedia: "false",
+        },
+        { xml },
+      ),
+    );
+    const unmapped = await readJson<ImportResponse>(unmappedResponse);
+
+    expect(unmapped.status).toBe(200);
+    expect(unmapped.body.counts.recordsByType).toMatchObject({ landing: 1 });
+    expect(unmapped.body.mappings.unmapped.items).toEqual([{ wpType: "landing", records: 1 }]);
+    expect(
+      unmapped.body.report.skipped.items.some((row) =>
+        row.reason.includes('unmapped wpType "landing"'),
+      ),
+    ).toBe(true);
+
+    const mappedResponse = await POST(
+      multipartRequest(
+        "/api/admin/import/wordpress",
+        admin,
+        {
+          mode: "preview",
+          includeMedia: "false",
+          mappingConfig: customMappingConfig(),
+        },
+        { xml },
+      ),
+    );
+    const mapped = await readJson<ImportResponse>(mappedResponse);
+
+    expect(mapped.status).toBe(200);
+    expect(mapped.body.mappings.unmapped.total).toBe(0);
+    expect(mapped.body.mappings.configured.items[0]).toMatchObject({
+      wpType: "landing",
+      collection: "pages",
+      records: 1,
+      fieldOverrides: { _landing_template: "template" },
+    });
+    expect(
+      mapped.body.report.applied.items.map((row) => `${row.collection}/${row.slug}`).sort(),
+    ).toEqual(["pages/about", "posts/hello-world"]);
   });
 
   it("queues and applies a WXR file through the background admin flow", async () => {
@@ -134,12 +214,19 @@ describe.skipIf(skipIfNoTestDb())("admin WordPress import API", () => {
       stop: async () => {},
     });
     const { POST } = await import("@/app/api/admin/import/wordpress/route");
+    const xml = customTypeFixtureXml();
 
     const response = await POST(
-      multipartRequest("/api/admin/import/wordpress", admin, {
-        mode: "apply",
-        includeMedia: "false",
-      }),
+      multipartRequest(
+        "/api/admin/import/wordpress",
+        admin,
+        {
+          mode: "apply",
+          includeMedia: "false",
+          mappingConfig: customMappingConfig(),
+        },
+        { xml },
+      ),
     );
     const { status, body } = await readJson<QueuedResponse>(response);
 
@@ -148,6 +235,10 @@ describe.skipIf(skipIfNoTestDb())("admin WordPress import API", () => {
     expect(body.queued).toBe(true);
     expect(body.run.status).toBe("queued");
     expect(body.run.jobId).toBe("job-1");
+    expect(body.run.options.collectionMappings?.landing).toMatchObject({
+      collection: "pages",
+      fieldOverrides: { _landing_template: "template" },
+    });
     expect(enqueued?.type).toBe("import:wordpressApply");
 
     const handler = getJobHandler("import:wordpressApply");
@@ -180,10 +271,36 @@ describe.skipIf(skipIfNoTestDb())("admin WordPress import API", () => {
     expect(run.report?.report.taxonomies.status).toBe("completed");
     expect(run.report?.report.comments.status).toBe("completed");
     expect(run.report?.report.authors.status).toBe("completed");
+    expect(run.report?.mappings.configured.items[0]).toMatchObject({
+      wpType: "landing",
+      collection: "pages",
+      records: 1,
+    });
 
     const actor = await asActor(admin);
     const posts = await findDocuments("posts", { where: { slug: "hello-world" }, limit: 1 }, actor);
     expect(posts.docs[0]?.title).toBe("Hello World");
+    const pages = await findDocuments("pages", { where: { slug: "about" }, limit: 1 }, actor);
+    expect(pages.docs[0]?.template).toBe("landing-page");
+  });
+
+  it("rejects invalid admin mapping config", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { POST } = await import("@/app/api/admin/import/wordpress/route");
+
+    const response = await POST(
+      multipartRequest("/api/admin/import/wordpress", admin, {
+        mode: "preview",
+        mappingConfig: JSON.stringify({ mappings: [{ wpType: "landing" }] }),
+      }),
+    );
+    const { status, body } = await readJson<{ error?: { message?: string; details?: unknown } }>(
+      response,
+    );
+
+    expect(status).toBe(400);
+    expect(body.error?.message).toBe("Invalid input");
+    expect(JSON.stringify(body.error)).toContain("mappingConfig");
   });
 
   it("lists recent WordPress import runs", async () => {
@@ -371,11 +488,13 @@ function multipartRequest(
   pathName: string,
   session: TestUserSession,
   fields: Record<string, string>,
+  options: { xml?: string; fileName?: string } = {},
 ): NextRequest {
+  const source = options.xml ?? readFileSync(FIXTURE);
   const formData = new FormData();
   formData.set(
     "file",
-    new File([readFileSync(FIXTURE)], "minimal.wxr.xml", {
+    new File([source], options.fileName ?? "minimal.wxr.xml", {
       type: "text/xml",
     }),
   );
@@ -390,6 +509,32 @@ function multipartRequest(
       "x-csrf-token": session.csrfToken,
     },
     body: formData,
+  });
+}
+
+function customTypeFixtureXml(): string {
+  const xml = readFileSync(FIXTURE, "utf8");
+  return xml.replace(
+    "<wp:post_type><![CDATA[page]]></wp:post_type>",
+    `<wp:postmeta>
+      <wp:meta_key><![CDATA[_landing_template]]></wp:meta_key>
+      <wp:meta_value><![CDATA[landing-page]]></wp:meta_value>
+    </wp:postmeta>
+    <wp:post_type><![CDATA[landing]]></wp:post_type>`,
+  );
+}
+
+function customMappingConfig(): string {
+  return JSON.stringify({
+    mappings: [
+      {
+        wpType: "landing",
+        collection: "pages",
+        fieldOverrides: {
+          _landing_template: "template",
+        },
+      },
+    ],
   });
 }
 
