@@ -206,8 +206,10 @@ What a new developer sees in their first hour with NexPress.
 - Hosted demo deploy we can link from the README. Keep the public surface to
   the live demo link; operational details can stay out of the docs until they
   become reusable product behavior.
-- Migration UI for the WordPress importer — CLI exists; admins want a
-  drag-and-drop WXR uploader with progress.
+- WordPress importer admin UI — `/admin/import/wordpress` now covers WXR
+  preview/apply. Remaining polish is background progress for very large
+  imports; the CLI still owns resume markers, custom mappings, and HTML diff
+  reports.
 
 ### 6. API completeness
 

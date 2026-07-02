@@ -371,6 +371,9 @@ importers:
       '@nexpress/theme-portfolio':
         specifier: workspace:*
         version: link:../themes/portfolio
+      '@nexpress/wp-import':
+        specifier: workspace:*
+        version: link:../wp-import
       dotenv:
         specifier: ^17.2.4
         version: 17.4.2
