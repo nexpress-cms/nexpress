@@ -19,12 +19,11 @@
 > Cookbook (`docs/theme-authoring.md`) is the live reference
 > — read that for the as-shipped API.
 > Post-ship update: the install command shipped as
-> `pnpm nexpress theme add <pkg>` rather than the design-phase
-> `theme:install` name, and
+> `pnpm exec nexpress theme add <pkg>` rather than the original design-phase
+> command name, and
 > `theme-default` remains a built-in baseline instead of being absorbed into
-> `theme-magazine`. Theme removal later gained the friendlier
-> `pnpm nexpress theme remove <pkg>` spelling; the original
-> `theme:uninstall` name remains a compatibility alias.
+> `theme-magazine`. Theme removal later settled on the friendlier
+> `pnpm exec nexpress theme remove <pkg>` spelling.
 
 ---
 
@@ -42,7 +41,7 @@ Two requirements drive every decision below:
   in React, with no waiting on framework-level layout primitives.
 - **Site operator**: from `pnpm install` through "site live and
   customized", **the operator never opens a code editor**. CLI
-  use is limited to two commands: `pnpm nexpress theme add <pkg>`
+  use is limited to two commands: `pnpm exec nexpress theme add <pkg>`
   (config registration) followed by `pnpm db:migrate` (schema apply).
   Everything else happens in admin. Auto-chaining migrate is available
   through `theme add --apply`; the plain flow keeps the DB-write
@@ -60,7 +59,7 @@ Resolved before this doc was written; restated for the record.
 
 | #   | Decision                                                    | Choice                                                                             | Rationale                                                                                                      |
 | --- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| A   | Include `pnpm nexpress theme add` (CLI config registration) | **Yes**                                                                            | Without it, "operator no coding" promise breaks at theme activation.                                           |
+| A   | Include `pnpm exec nexpress theme add` (CLI config registration) | **Yes**                                                                            | Without it, "operator no coding" promise breaks at theme activation.                                           |
 | B   | Member/community surface skinning                           | **Out of scope**                                                                   | `(site)/members/*` carries strong behavior; needs its own track. Theme contract stays presentational for v0.2. |
 | C   | Reference theme count after rebuild                         | **3 v0.2 references** (`magazine`, `docs`, `portfolio`) + `theme-default` baseline | Each presses a different axis. `theme-default` stays as the scaffold fallback; `theme-minimal` retired.        |
 | D   | First implementation order                                  | **F.1 → F.2 → F.3 → ...**                                                          | F.2 (routes) is the largest unlock; F.1 (`requires`) is design-only and unblocks F.8.                          |
@@ -70,7 +69,7 @@ Resolved before this doc was written; restated for the record.
 - Theme developer can express any content-centric site shape using
   arbitrary React + Next.js composition inside the contract.
 - Site operator never opens a code editor. CLI use is limited
-  to `pnpm nexpress theme add <pkg>` followed by `pnpm db:migrate`,
+  to `pnpm exec nexpress theme add <pkg>` followed by `pnpm db:migrate`,
   or `theme add --apply` when the operator wants the CLI to chain
   schema generation and migration.
 - Existing `defineTheme()` callers stay green. All v0.2 fields are
@@ -529,7 +528,7 @@ based on the active theme's implementation (`impl.seo` declared
 but they do have to declare their SEO hooks on `impl.seo` so the
 framework knows whether to bust SEO cache on settings save.
 
-### 4.8 Phase F.8 — `pnpm nexpress theme add`
+### 4.8 Phase F.8 — `pnpm exec nexpress theme add`
 
 **Purpose**: the CLI step that closes the operator-no-code loop.
 Installs a theme package, registers it in `nexpress.config.ts` via
@@ -541,7 +540,7 @@ named theme object, and leaves schema materialization to
 **UX flow**:
 
 ```
-$ pnpm nexpress theme add @nexpress/theme-magazine
+$ pnpm exec nexpress theme add @nexpress/theme-magazine
 ✓ Loaded @nexpress/theme-magazine 0.1.0
 
   Required collections:
@@ -590,8 +589,7 @@ $ pnpm nexpress theme add @nexpress/theme-magazine
 
 **Out of scope for F.8**:
 
-- Theme removal (later shipped as `theme remove`, with
-  `theme:uninstall` kept as a legacy alias) → v0.3.
+- Theme removal (later shipped as `theme remove`) → v0.3.
 - Cross-theme migration (`theme add` switching from theme A
   to theme B) → operator runs install on B; A's extra fields
   remain (idempotent, harmless).
@@ -612,7 +610,7 @@ axis.
 the scaffold fallback and v0.1 baseline reference.
 
 **Validation gate**: each theme + a recorded demo where an operator
-goes `pnpm create nexpress my-site → pnpm nexpress theme add
+goes `pnpm create nexpress my-site → pnpm exec nexpress theme add
 <theme> → pnpm db:migrate → admin only → live customized site`.
 The two CLI steps match §0; everything after `db:migrate` happens
 in admin without touching code. If any of the three themes can't
@@ -791,9 +789,8 @@ Per the agreement to track everything we postpone:
   migration SQL before it hits the database. Making apply default-on
   remains a separate operator-safety decision.
 - **Theme removal CLI** — shipped after F.8 as
-  `pnpm nexpress theme remove <pkg>` with destructive confirmation,
-  config cleanup before migration generation, and legacy
-  `theme:uninstall` compatibility.
+  `pnpm exec nexpress theme remove <pkg>` with destructive confirmation
+  and config cleanup before migration generation.
 - **Bulk "cleanup unknown blocks" admin action** — placeholder
   rendering covers correctness; bulk action is convenience.
 - **`settingsSchema` migration helpers** — v0.2 falls back to

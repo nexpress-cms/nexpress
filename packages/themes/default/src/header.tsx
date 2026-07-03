@@ -11,7 +11,7 @@ import { getCachedNavigation, getCachedSite, resolveAvailableLocales } from "@ne
 import Link from "next/link";
 
 // `next/headers` lives in the Next-build-context-only world —
-// outside a Next bundle (e.g. when `pnpm nexpress theme add`
+// outside a Next bundle (e.g. when `pnpm exec nexpress theme add`
 // dynamically imports this module to probe its export shape)
 // resolution fails with ERR_MODULE_NOT_FOUND. Lazy-importing
 // inside the request-scoped function body keeps the top-level

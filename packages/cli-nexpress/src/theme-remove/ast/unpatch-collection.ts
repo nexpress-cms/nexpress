@@ -17,7 +17,7 @@ import {
  *   never matched (we only remove fields whose `name` is a
  *   string literal we recognize).
  * - **Idempotent.** A field already absent is a silent skip,
- *   not an error — re-running uninstall on a partially-cleaned
+ *   not an error — re-running theme remove on a partially-cleaned
  *   collection works.
  * - **Atomic per file.** All matched fields removed in one pass
  *   followed by a single save. A thrown error before save
@@ -125,22 +125,16 @@ function removeAllMatching(
   }
 }
 
-function getDefineCollectionFieldsArray(
-  arg: Node | undefined,
-): ArrayLiteralExpression | undefined {
+function getDefineCollectionFieldsArray(arg: Node | undefined): ArrayLiteralExpression | undefined {
   if (!arg || !arg.isKind(SyntaxKind.ObjectLiteralExpression)) return undefined;
   const fieldsProp = arg.getProperty("fields");
-  if (!fieldsProp || !fieldsProp.isKind(SyntaxKind.PropertyAssignment))
-    return undefined;
+  if (!fieldsProp || !fieldsProp.isKind(SyntaxKind.PropertyAssignment)) return undefined;
   const init = fieldsProp.getInitializer();
   if (!init || !init.isKind(SyntaxKind.ArrayLiteralExpression)) return undefined;
   return init;
 }
 
-function readStringProp(
-  literal: ObjectLiteralExpression,
-  key: string,
-): string | undefined {
+function readStringProp(literal: ObjectLiteralExpression, key: string): string | undefined {
   const prop = literal.getProperty(key);
   if (!prop || !prop.isKind(SyntaxKind.PropertyAssignment)) return undefined;
   const init = prop.getInitializer();

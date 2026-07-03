@@ -117,6 +117,7 @@ describe("getProjectFiles", () => {
     expect(workspaceYaml).toBeDefined();
     expect(workspaceYaml).toMatch(/^packages:/m);
     expect(workspaceYaml).toMatch(/^\s+- "packages\/plugins\/\*"$/m);
+    expect(workspaceYaml).toMatch(/^\s+- "packages\/themes\/\*"$/m);
     expect(workspaceYaml).toMatch(/^allowBuilds:/m);
     expect(workspaceYaml).toMatch(/^\s+sharp:\s*true$/m);
     expect(workspaceYaml).toMatch(/^\s+"@node-rs\/argon2":\s*true$/m);

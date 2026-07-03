@@ -1,7 +1,7 @@
 {
   "name": "@nexpress/cli",
   "version": "0.3.25",
-  "description": "Project-side CLI for NexPress — manage plugins (add/remove), inspect config.",
+  "description": "Project-side CLI for NexPress — manage plugins, themes, ops, and release handoffs.",
   "license": "MIT",
   "author": "Nexpress",
   "homepage": "https://github.com/nexpress-cms/nexpress#readme",
@@ -16,7 +16,8 @@
   "keywords": [
     "nexpress",
     "cli",
-    "plugins"
+    "plugins",
+    "themes"
   ],
   "type": "module",
   "bin": {

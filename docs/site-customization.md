@@ -86,7 +86,7 @@ one from admin → Appearance.
 To install a third-party theme, one command from the project root:
 
 ```bash
-pnpm nexpress theme add @you/theme-cool
+pnpm exec nexpress theme add @you/theme-cool
 pnpm db:generate && pnpm db:migrate
 ```
 
@@ -98,26 +98,32 @@ framework auto-merges the theme's `manifest.requires.collections`
 into your `collections` array at `defineConfig` time, so your
 own `src/collections/*.ts` files stay untouched.
 
-To remove a theme, run the CLI before uninstalling the package:
+To remove a theme, run the CLI before removing the package:
 
 ```bash
-pnpm nexpress theme remove @you/theme-cool --dry-run
-pnpm nexpress theme remove @you/theme-cool --yes
+pnpm exec nexpress theme remove @you/theme-cool --dry-run
+pnpm exec nexpress theme remove @you/theme-cool --yes
 pnpm db:migrate
-pnpm remove @you/theme-cool
+pnpm remove @you/theme-cool -w
 ```
 
 The remove command unregisters the theme before generating the
-destructive `DROP COLUMN` migration. The legacy
-`theme:uninstall` spelling still works, but new docs and help use
-`theme remove` to mirror `theme add`. If that theme was active,
-open `/admin/settings/theme` after deploy and save the fallback theme
-as active or activate another registered theme so the persisted
-`activeTheme` setting is no longer stale.
+destructive `DROP COLUMN` migration. If that theme was active, open
+`/admin/settings/theme` after deploy and save the fallback theme as active or
+activate another registered theme so the persisted `activeTheme` setting is no
+longer stale.
 
-To author a new theme: separate npm package — see
-[theme-authoring.md](./theme-authoring.md). The manual equivalent
-of `theme add` is the same import + array entry:
+To author a new local theme, scaffold it into the reserved theme workspace:
+
+```bash
+pnpm exec nexpress create theme cool --workspace
+pnpm --filter theme-cool build
+pnpm exec nexpress theme add theme-cool --yes
+```
+
+See [theme-quickstart.md](./theme-quickstart.md) for the full first-theme path
+and [theme-authoring.md](./theme-authoring.md) for the contract reference. The
+manual equivalent of `theme add` is the same import + array entry:
 
 ```ts
 import { coolTheme } from "@you/theme-cool";

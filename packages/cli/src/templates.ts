@@ -247,8 +247,8 @@ function packageJsonTemplate(config: TemplateConfig): string {
 
 /**
  * Scaffold's `pnpm-workspace.yaml`. The scaffold starts as a single app,
- * but it reserves `packages/plugins/*` for local plugin development and
- * pnpm 10.6+ reads this file for `allowBuilds` (the new native-build
+ * but it reserves `packages/plugins/*` and `packages/themes/*` for local
+ * extension development. pnpm 10.6+ reads this file for `allowBuilds` (the new native-build
  * allowlist). The old `pnpm.onlyBuiltDependencies` block in `package.json`
  * is silently ignored in this context.
  *
@@ -277,6 +277,7 @@ function pnpmWorkspaceYamlTemplate(): string {
 # \`pnpm approve-builds\` would write here anyway.
 packages:
   - "packages/plugins/*"
+  - "packages/themes/*"
 
 allowBuilds:
   sharp: true

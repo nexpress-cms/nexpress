@@ -36,6 +36,7 @@ behavior they describe changes.
 | [testing.md](testing.md)                               | Unit + integration test setup                                          |
 | [theme-and-page-authors.md](theme-and-page-authors.md) | Cookbook — what to call from a custom page or theme                    |
 | [theme-authoring.md](theme-authoring.md)               | Authoring a theme                                                      |
+| [theme-quickstart.md](theme-quickstart.md)             | Author your first theme                                                |
 | [troubleshooting.md](troubleshooting.md)               | First-boot and scaffold troubleshooting                                |
 | [wordpress-import-guide.md](wordpress-import-guide.md) | Running the WP importer                                                |
 

@@ -647,10 +647,10 @@ export async function wipeSeededContent(
   // `seedSource IS NOT NULL` predicate (which isn't part of v0.1
   // FindOptions and would require a contract extension).
   //
-  // Orphaned rows from a theme that has since been uninstalled
+  // Orphaned rows from a theme that has since been removed
   // stay on disk; the operator deletes them manually. Acceptable
   // because reseed callers always pass the active theme registry,
-  // so uninstall is the only way to land in that state.
+  // so theme removal is the only way to land in that state.
   const themeIds = options.themeId
     ? [options.themeId]
     : getRegisteredThemes().map((t) => t.manifest.id);

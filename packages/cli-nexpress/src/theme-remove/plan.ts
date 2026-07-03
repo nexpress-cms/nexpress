@@ -1,15 +1,12 @@
-import type {
-  NpThemeManifest,
-  NpThemeFieldRequirement,
-} from "@nexpress/core";
+import type { NpThemeManifest, NpThemeFieldRequirement } from "@nexpress/core";
 
 /**
- * F.8 — pure planner for `theme:uninstall`.
+ * F.8 — pure planner for `theme remove`.
  *
  * Mirrors the install planner's stateless model: takes the
  * theme manifest's `requires` plus the operator's currently
  * installed collections, and produces an ordered list of
- * structured `ThemeUninstallStep`s the runner will execute.
+ * structured `ThemeRemoveStep`s the runner will execute.
  *
  * The planner is **add-only-aware**: it only proposes removing
  * fields the install planner would have added. If the operator
@@ -26,7 +23,7 @@ import type {
  * with extra metadata.
  */
 
-export type ThemeUninstallStep =
+export type ThemeRemoveStep =
   | {
       kind: "remove-field";
       collection: string;
@@ -45,13 +42,13 @@ export type ThemeUninstallStep =
       filePath: string;
     };
 
-export interface ThemeUninstallPlan {
+export interface ThemeRemovePlan {
   themeId: string;
   themeName: string;
   themeVersion: string;
   /** Steps the apply phase will execute. Empty when the theme's
    *  collections / fields are already absent — `isNoop` true. */
-  steps: ThemeUninstallStep[];
+  steps: ThemeRemoveStep[];
   /** True when no steps. Apply phase exits cleanly without a
    *  prompt. */
   isNoop: boolean;
@@ -76,7 +73,7 @@ export interface PlanCollectionShape {
   fieldNames: string[];
 }
 
-export interface PlanThemeUninstallInput {
+export interface PlanThemeRemoveInput {
   manifest: NpThemeManifest;
   /** The site's existing collections (after AST extraction).
    *  Only collections referenced by `manifest.requires` matter
@@ -89,15 +86,13 @@ export interface PlanThemeUninstallInput {
   withCollections: boolean;
 }
 
-export function planThemeUninstall(
-  input: PlanThemeUninstallInput,
-): ThemeUninstallPlan {
+export function planThemeRemove(input: PlanThemeRemoveInput): ThemeRemovePlan {
   const { manifest, existingCollections, withCollections } = input;
   const requires = manifest.requires?.collections ?? {};
   const byCollectionSlug = new Map<string, PlanCollectionShape>();
   for (const c of existingCollections) byCollectionSlug.set(c.slug, c);
 
-  const steps: ThemeUninstallStep[] = [];
+  const steps: ThemeRemoveStep[] = [];
 
   for (const [slug, requirement] of Object.entries(requires)) {
     const onDisk = byCollectionSlug.get(slug);
@@ -112,9 +107,7 @@ export function planThemeUninstall(
       // their own fields to a theme-installed collection
       // probably have docs that depend on those fields — the
       // file stays, fields removed individually instead.
-      const extras = onDisk.fieldNames.filter(
-        (name) => !requiredFields.includes(name),
-      );
+      const extras = onDisk.fieldNames.filter((name) => !requiredFields.includes(name));
       if (extras.length === 0) {
         steps.push({
           kind: "remove-collection-file",
@@ -135,9 +128,7 @@ export function planThemeUninstall(
       // fields still come out even when we keep the file.
     }
 
-    for (const [fieldName, fieldReq] of Object.entries(
-      requirement.fields ?? {},
-    )) {
+    for (const [fieldName, fieldReq] of Object.entries(requirement.fields ?? {})) {
       if (!onDiskNames.has(fieldName)) continue; // already gone
       steps.push({
         kind: "remove-field",

@@ -4,6 +4,10 @@
 > the contract for shipping a theme package, what each piece
 > does at runtime, and how a developer goes from a fresh
 > `pnpm create nexpress` install to a working custom theme.
+>
+> Starting a new theme? Use the short
+> [`theme-quickstart.md`](theme-quickstart.md) path first, then come
+> back here for the full contract.
 
 ---
 
@@ -115,7 +119,7 @@ import { PageDefaultTemplate } from "./templates/page-default.js";
 
 export const mybrandTheme = defineTheme({
   manifest: {
-    id: "mybrand",                 // unique key used in np_settings.activeTheme
+    id: "mybrand", // unique key used in np_settings.activeTheme
     name: "MyBrand",
     version: "0.1.0",
     description: "Editorial mybrand theme",
@@ -198,7 +202,9 @@ A theme ships its layout CSS as a string in `impl.css`. The
 framework injects it at SSR time as:
 
 ```html
-<style data-np-theme="mybrand">/* your CSS */</style>
+<style data-np-theme="mybrand">
+  /* your CSS */
+</style>
 ```
 
 Why a string and not a stylesheet?
@@ -280,14 +286,14 @@ own policy (saved choice, time-of-day, seasonal palette,
 none at all) and ships the matching CSS.
 
 The theme system exposes three small primitives so themes
-that *do* want a saved-choice toggle don't have to reinvent
+that _do_ want a saved-choice toggle don't have to reinvent
 the wheel:
 
-| Export                        | From                       | Purpose                                                   |
-| ----------------------------- | -------------------------- | --------------------------------------------------------- |
-| `<NpColorSchemeScript />`     | `@nexpress/theme`          | Inline pre-paint script that flips `<html data-theme>` based on cookie / localStorage / `prefers-color-scheme`. |
-| `COLOR_SCHEME_COOKIE` / `COLOR_SCHEME_STORAGE_KEY` | `@nexpress/theme/client` | Shared key names so the toggle, server reads, and script all agree. |
-| `isColorScheme` / `NpColorScheme` | `@nexpress/theme/client` | Type guard + union for `"dark" \| "light"`.            |
+| Export                                             | From                     | Purpose                                                                                                         |
+| -------------------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `<NpColorSchemeScript />`                          | `@nexpress/theme`        | Inline pre-paint script that flips `<html data-theme>` based on cookie / localStorage / `prefers-color-scheme`. |
+| `COLOR_SCHEME_COOKIE` / `COLOR_SCHEME_STORAGE_KEY` | `@nexpress/theme/client` | Shared key names so the toggle, server reads, and script all agree.                                             |
+| `isColorScheme` / `NpColorScheme`                  | `@nexpress/theme/client` | Type guard + union for `"dark" \| "light"`.                                                                     |
 
 A typical opt-in shell looks like this:
 
@@ -325,7 +331,7 @@ Because `<html>` ends up with a `data-theme` attribute that
 the server didn't render, React would normally log a
 hydration warning. The reference root layout sets
 `<html suppressHydrationWarning>` as a generic escape hatch
-for *any* theme that mutates `<html>` attributes pre-hydration
+for _any_ theme that mutates `<html>` attributes pre-hydration
 — it covers the color-scheme script case without the
 framework knowing about the policy specifically. The flag
 only silences the attribute diff on `<html>` itself; the rest
@@ -337,10 +343,10 @@ of the tree still surfaces hydration mismatches normally.
 
 These are orthogonal axes:
 
-| Axis      | Lives in                                    | Who edits     | Persists across theme swap?       |
-| --------- | ------------------------------------------- | ------------- | --------------------------------- |
-| Theme     | npm package's `impl`                        | Developer     | (the package controls structure)  |
-| Tokens    | `np_settings.theme` row                     | Admin         | Yes — colors stay across themes   |
+| Axis   | Lives in                | Who edits | Persists across theme swap?      |
+| ------ | ----------------------- | --------- | -------------------------------- |
+| Theme  | npm package's `impl`    | Developer | (the package controls structure) |
+| Tokens | `np_settings.theme` row | Admin     | Yes — colors stay across themes  |
 
 A theme can declare its own preferred token defaults via
 `impl.tokens`, but the saved admin tokens always win. This is
@@ -351,22 +357,39 @@ revert when an admin tries a different theme.
 
 ## 9. Registering and Activating
 
-**Install (operator side, one command)**: from the project root, run
+**New local theme (author side)**: from the project root, run
 
 ```bash
-pnpm nexpress theme add @yourco/theme-mybrand
+pnpm exec nexpress create theme mybrand --workspace
+pnpm install
+pnpm --filter theme-mybrand build
+pnpm exec nexpress theme add theme-mybrand --yes
+```
+
+`create theme` writes a real package under `packages/themes/mybrand`.
+The unscoped package name is normalized to `theme-mybrand`, and the
+theme exports `mybrandTheme` so `theme add` can register it with a
+named import. Local workspace themes must be built before registration;
+`theme add` checks for the runtime `dist/` entrypoint and stops before
+editing config if the package is malformed or unbuilt.
+
+**Install a published theme (operator side)**: from the project root, run
+
+```bash
+pnpm exec nexpress theme add @yourco/theme-mybrand
 pnpm db:generate && pnpm db:migrate
 ```
 
-`theme add` runs `pnpm add <pkg>`, then patches `nexpress.config.ts`
-via the marker comments (`@nexpress:themes-imports-*` and
-`@nexpress:themes-list-*`) to insert the import and append the
-identifier to the `themes:` array. `defineConfig` then auto-merges
-the theme's `manifest.requires.collections` into the resolved
-`collections` array, so the operator's `src/collections/*.ts`
-files stay untouched — `pnpm db:generate` picks up the new
-columns from the merged config. `pnpm nexpress theme add --apply`
-chains the two `db:*` commands in one go.
+`theme add` runs the package manager install, then patches
+`nexpress.config.ts` via the marker comments
+(`@nexpress:themes-imports-*` and `@nexpress:themes-list-*`) to
+insert the import and append the identifier to the `themes:` array.
+`defineConfig` then auto-merges the theme's
+`manifest.requires.collections` into the resolved `collections`
+array, so the operator's `src/collections/*.ts` files stay untouched
+— `pnpm db:generate` picks up the new columns from the merged config.
+`pnpm exec nexpress theme add --apply` chains the two `db:*`
+commands in one go.
 
 The marker comments are present in every freshly scaffolded
 `nexpress.config.ts`. If a project's config doesn't have them
@@ -378,10 +401,10 @@ installed, so the CLI can read the theme manifest and know which
 fields came from the theme:
 
 ```bash
-pnpm nexpress theme remove @yourco/theme-mybrand --dry-run
-pnpm nexpress theme remove @yourco/theme-mybrand --yes
+pnpm exec nexpress theme remove @yourco/theme-mybrand --dry-run
+pnpm exec nexpress theme remove @yourco/theme-mybrand --yes
 pnpm db:migrate
-pnpm remove @yourco/theme-mybrand
+pnpm remove @yourco/theme-mybrand -w
 ```
 
 `theme remove` unregisters the theme from `nexpress.config.ts`
@@ -395,7 +418,6 @@ If the removed theme was the active theme, open `/admin/settings/theme`
 after deploy and either save the fallback theme as active or activate
 another registered theme. The public site falls back safely, but this
 clears the stale `np_settings.activeTheme` value.
-The older `theme:uninstall` command remains as a compatibility alias.
 
 **Install (manual / explicit form)**: scaffolded sites can list
 themes by hand if they prefer. The built-in pack
@@ -477,8 +499,8 @@ Two safety nets keep this honest:
   the operator captured under another theme remains addressable.
 
 **This prebake applies only to the bundled built-ins.**
-Third-party themes go through the regular `pnpm nexpress theme
-add` flow — that's a code change (the config file is patched)
+Third-party themes go through the regular
+`pnpm exec nexpress theme add` flow — that's a code change (the config file is patched)
 and a schema change (the next migration adds the columns), so it
 needs a redeploy + migration. After the third-party theme is
 added once, activating / deactivating it from admin is free
@@ -566,7 +588,7 @@ language without forking the seeder.
 
 ```ts
 export const magazineTheme = defineTheme({
-  manifest: { id: "magazine", /* … */ },
+  manifest: { id: "magazine" /* … */ },
   impl: {
     /* shell, slots, templates, tokens, css, … */
     seedContent: {
@@ -609,8 +631,8 @@ Slot-by-slot rules:
   `/` on the home page). `blocks` is `NpBlockInstance[]` kept
   as `unknown[]` in the type so the JSON shape doesn't cross
   the package boundary; the seeder treats it opaquely.
-- **`posts`** — `{ title, excerpt, content, publishedAt, status?,
-  tagNames? }`. Lexical `content` is opaque to the type for the
+- **`posts`** — `{ title, excerpt, content, publishedAt, status?, tagNames? }`.
+  Lexical `content` is opaque to the type for the
   same reason. Past `publishedAt` = published; future = scheduled
   (the scheduled-publish cron promotes when the timestamp passes).
 - **`navigation.header` / `navigation.footer`** — `NpNavItem[]`.
@@ -618,9 +640,8 @@ Slot-by-slot rules:
   ids for theme-seeded nav items, so author them as part of the
   static data (e.g. `id: "nav-magazine-politics"`).
 - **`documents`** — keyed by collection slug for everything
-  beyond pages/posts. Each entry is `{ slug, title, status?,
-  publishedAt?, data? }`; `data` holds the collection-specific
-  fields. Use this for `authors`, `glossary`, `projects`, or any
+  beyond pages/posts. Each entry is `{ slug, title, status?, publishedAt?, data? }`;
+  `data` holds the collection-specific fields. Use this for `authors`, `glossary`, `projects`, or any
   user-declared collection a theme wants to ship demo data for.
   Idempotent per collection (skipped when the collection has any
   row). Unknown collection slugs are logged at warn level and
@@ -698,8 +719,13 @@ export default defineConfig([
     dts: true,
     clean: true,
     external: [
-      "react", "react-dom", "next", "next/link", "next/navigation",
-      "@nexpress/blocks", "@nexpress/theme",
+      "react",
+      "react-dom",
+      "next",
+      "next/link",
+      "next/navigation",
+      "@nexpress/blocks",
+      "@nexpress/theme",
       "./components/member-status-widget.js",
     ],
   },
@@ -727,12 +753,12 @@ fetch it via an API route.
 
 ## 11. Reference Theme Examples
 
-| Package                       | Role in repo                                       | v0.2 surfaces |
-| ----------------------------- | -------------------------------------------------- | ------------- |
-| `@nexpress/theme-magazine`    | Editorial / blog layout, hero + archives + patterns. | F.1–F.7 + M.* (every surface) |
-| `@nexpress/theme-docs`        | Hierarchical docs with sidebar + search route.       | F.1–F.3, F.6, F.7 (no patterns / archives) |
-| `@nexpress/theme-portfolio`   | Image-led dark theme, deep settings (12 fields).     | F.1, F.3, F.4, F.6, F.7 |
-| `@nexpress/theme-default`     | v0.1-era baseline. Pre-v0.2 surfaces only — kept as the framework fallback when no other theme is configured. | v0.1 only |
+| Package                     | Role in repo                                                                                                  | v0.2 surfaces                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `@nexpress/theme-magazine`  | Editorial / blog layout, hero + archives + patterns.                                                          | F.1–F.7 + M.* (every surface)              |
+| `@nexpress/theme-docs`      | Hierarchical docs with sidebar + search route.                                                                | F.1–F.3, F.6, F.7 (no patterns / archives) |
+| `@nexpress/theme-portfolio` | Image-led dark theme, deep settings (12 fields).                                                              | F.1, F.3, F.4, F.6, F.7                    |
+| `@nexpress/theme-default`   | v0.1-era baseline. Pre-v0.2 surfaces only — kept as the framework fallback when no other theme is configured. | v0.1 only                                  |
 
 For new themes, copy from `theme-magazine` / `theme-docs` /
 `theme-portfolio` — they exercise the v0.2 surfaces (manifest
@@ -761,27 +787,27 @@ For full design rationale + deferred items per surface see
 (`packages/themes/{magazine,docs,portfolio}`) are the live
 implementation reference.
 
-| Surface | What it does |
-|---|---|
-| `manifest.requires` | Declare collection field expectations; the framework auto-merges them into the operator's `collections` array at `defineConfig` time. Operators run `pnpm nexpress theme add <pkg>` to install + register, then `pnpm db:generate && pnpm db:migrate` to materialise the columns. Admin warns at activation time only when an operator-declared field has a conflicting TYPE. |
-| `manifest.settingsSchema` | Zod schema → admin auto-form. Operator tunes per site without editing code. Reuses `nx:theme:<siteId>` cache tag. |
-| `impl.blocks` | Theme-shipped block types. Bootstrap auto-stamps `source: "theme:<id>"` for active-source filtering in multi-site processes. |
-| `impl.patterns` | Pre-shaped block subtrees the page-builder drops in one click (Cmd-K → Pattern). |
-| `impl.navLocations` | Declare nav mount points with labels; admin nav editor populates its location dropdown from the active theme's declarations. |
-| `impl.routes` / `impl.archives` | Declared dynamic routes (`/category/:slug`, `/search`, `/lookbook`). Catch-all dispatches with precedence: app-explicit > page-slug > theme route. |
-| `impl.notFound` / `impl.seo` | 404 page + sitemap/feed/robots contributions. Theme switch + settings save bust SEO cache tags appropriately. |
+| Surface                         | What it does                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `manifest.requires`             | Declare collection field expectations; the framework auto-merges them into the operator's `collections` array at `defineConfig` time. Operators run `pnpm exec nexpress theme add <pkg>` to install + register, then `pnpm db:generate && pnpm db:migrate` to materialise the columns. Admin warns at activation time only when an operator-declared field has a conflicting TYPE. |
+| `manifest.settingsSchema`       | Zod schema → admin auto-form. Operator tunes per site without editing code. Reuses `nx:theme:<siteId>` cache tag.                                                                                                                                                                                                                                                                  |
+| `impl.blocks`                   | Theme-shipped block types. Bootstrap auto-stamps `source: "theme:<id>"` for active-source filtering in multi-site processes.                                                                                                                                                                                                                                                       |
+| `impl.patterns`                 | Pre-shaped block subtrees the page-builder drops in one click (Cmd-K → Pattern).                                                                                                                                                                                                                                                                                                   |
+| `impl.navLocations`             | Declare nav mount points with labels; admin nav editor populates its location dropdown from the active theme's declarations.                                                                                                                                                                                                                                                       |
+| `impl.routes` / `impl.archives` | Declared dynamic routes (`/category/:slug`, `/search`, `/lookbook`). Catch-all dispatches with precedence: app-explicit > page-slug > theme route.                                                                                                                                                                                                                                 |
+| `impl.notFound` / `impl.seo`    | 404 page + sitemap/feed/robots contributions. Theme switch + settings save bust SEO cache tags appropriately.                                                                                                                                                                                                                                                                      |
 
 ### Member surface (M.*) cheat-sheet
 
 For full design rationale see [`docs/design/member-surface-skinning.md`](./design/member-surface-skinning.md). The magazine reference (`packages/themes/magazine`) is the live implementation reference for every M.* surface listed below.
 
-| Surface | What it does |
-|---|---|
-| `impl.members.shell` | Wraps the framework-owned `(member)/members/*` route tree (login / register / forgot-password / reset-password / verify / me/notifications) in the theme's chrome. Receives an opaque `children` prop — themes don't depend on the framework body internals. Falls back through `impl.shell` to a transparent fragment when omitted (M.1). |
-| `impl.members.pageTitle?.{login,register,…}` | Theme-provided variants of the framework's default member-page chrome strings. Operator i18n bundles override on top via the existing UI-string registry. Optional cosmetic (M.1). |
-| `--np-member-form-*` tokens | CSS custom properties on the form input / button / error surface (`.np-members-form` scope). Themes restyle member auth forms by overriding these tokens in `impl.css` rather than replacing components (M.2). |
-| `--np-member-oauth-{google,github}-*` | Forward-compat tokens for the OAuth button surface (no consumer renders today; `/api/members/oauth/{provider}/start` runs the flow directly). Declared so themes can pre-style for when buttons land (M.2). |
-| `impl.members.notFound` | Member-tree 404 component. Server-rendered. Falls back to `impl.notFound` (top-level), then to a member-tuned framework default (`/members/login` CTA — most 404s inside `/members/*` are stale auth links) (M.3). |
+| Surface                                                     | What it does                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `impl.members.shell`                                        | Wraps the framework-owned `(member)/members/*` route tree (login / register / forgot-password / reset-password / verify / me/notifications) in the theme's chrome. Receives an opaque `children` prop — themes don't depend on the framework body internals. Falls back through `impl.shell` to a transparent fragment when omitted (M.1).                                     |
+| `impl.members.pageTitle?.{login,register,…}`                | Theme-provided variants of the framework's default member-page chrome strings. Operator i18n bundles override on top via the existing UI-string registry. Optional cosmetic (M.1).                                                                                                                                                                                             |
+| `--np-member-form-*` tokens                                 | CSS custom properties on the form input / button / error surface (`.np-members-form` scope). Themes restyle member auth forms by overriding these tokens in `impl.css` rather than replacing components (M.2).                                                                                                                                                                 |
+| `--np-member-oauth-{google,github}-*`                       | Forward-compat tokens for the OAuth button surface (no consumer renders today; `/api/members/oauth/{provider}/start` runs the flow directly). Declared so themes can pre-style for when buttons land (M.2).                                                                                                                                                                    |
+| `impl.members.notFound`                                     | Member-tree 404 component. Server-rendered. Falls back to `impl.notFound` (top-level), then to a member-tuned framework default (`/members/login` CTA — most 404s inside `/members/*` are stale auth links) (M.3).                                                                                                                                                             |
 | `impl.members.error` + `./components/members-error` subpath | Forward-compat type marker on the manifest; the actual render lives at a separate client subpath the theme ships at `./components/members-error`. The operator's `(member)/error.tsx` lazy-imports the active theme's chunk based on the `<style data-np-theme>` tag the layout already emitted. F.7.1 delegation pattern (Next mandates `error.tsx` is `"use client"`) (M.3). |
 
 ### Member surface migration recipe
@@ -840,6 +866,7 @@ the site's chosen theme can ship its own version of that id
 and seamlessly take over.
 
 Use cases:
+
 - A `docs` plugin shipping a `pages.docs` template (TOC + version selector)
 - An `events` plugin shipping `pages.event` (calendar embed + RSVP)
 - A `commerce` plugin shipping `pages.product` (price + cart widget)

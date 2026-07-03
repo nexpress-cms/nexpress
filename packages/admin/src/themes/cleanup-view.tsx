@@ -11,7 +11,7 @@ import { PageHeader } from "../layout/page-header.js";
 /**
  * v0.3 (C) — admin "cleanup unknown blocks" workflow.
  *
- * After a `theme:uninstall`, theme switch, or plugin removal,
+ * After a theme removal, theme switch, or plugin removal,
  * existing pages may carry block instances whose `type` no
  * longer maps to any registered renderer. The render layer
  * already shows these as red "unknown block" placeholders
@@ -138,7 +138,7 @@ export function ThemeCleanupView() {
     <div className="min-w-0 space-y-6">
       <PageHeader
         title="Cleanup unused blocks"
-        description="Block instances whose type is no longer registered (after a theme uninstall, theme switch, or plugin removal). The render layer shows these as placeholder cards; this tool removes them in bulk."
+        description="Block instances whose type is no longer registered (after theme removal, a theme switch, or plugin removal). The render layer shows these as placeholder cards; this tool removes them in bulk."
         className="min-w-0"
       />
 

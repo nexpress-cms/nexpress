@@ -3,7 +3,7 @@ interface ParseOptions {
   example: string;
 }
 
-export interface ParsedThemeUninstallArgs {
+export interface ParsedThemeRemoveArgs {
   themePackage: string;
   flags: {
     dryRun: boolean;
@@ -13,14 +13,13 @@ export interface ParsedThemeUninstallArgs {
   };
 }
 
-export type ThemeUninstallArgsParseResult =
-  | { ok: true; value: ParsedThemeUninstallArgs }
-  | { ok: false; message: string };
+export type ThemeRemoveArgsParseResult =
+  { ok: true; value: ParsedThemeRemoveArgs } | { ok: false; message: string };
 
-export function parseThemeUninstallArgs(
+export function parseThemeRemoveArgs(
   args: readonly string[],
   options: ParseOptions,
-): ThemeUninstallArgsParseResult {
+): ThemeRemoveArgsParseResult {
   let themePackage: string | undefined;
   let dryRun = false;
   let yes = false;

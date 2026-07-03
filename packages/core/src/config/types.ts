@@ -678,8 +678,8 @@ export interface NpThemeManifest {
    *    destructive. The framework's codegen then picks up the
    *    union shape; the operator's next `pnpm db:generate &&
    *    pnpm db:migrate` materialises the columns. Operators
-   *    add a theme via `pnpm nexpress theme add <pkg>` — there
-   *    is no longer a `theme:install` AST-patcher that touches
+   *    add a theme via `pnpm exec nexpress theme add <pkg>` — there
+   *    is no longer an old AST-patcher that touches
    *    `src/collections/*.ts` (that flow was retired alongside
    *    the auto-merge).
    * 2. Admin theme switcher: compares against the resolved

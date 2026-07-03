@@ -110,7 +110,7 @@ pnpm exec nexpress plugin add my-plugin
 ```
 
 For a generated local workspace package, that command uses
-`pnpm add my-plugin --workspace` and updates the plugin marker
+`pnpm add my-plugin@workspace:* -w` and updates the plugin marker
 sections in `nexpress.config.ts`. Its success output also gives the
 post-restart verification command:
 `pnpm --silent run ops:plugins -- doctor --json`.
@@ -230,7 +230,10 @@ export type MyPluginConfig = z.infer<typeof configSchema>;
 
 export default definePlugin<MyPluginConfig>({
   manifest: {
-    /* ... */
+    id: "my-plugin",
+    version: "0.1.0",
+    name: "My Plugin",
+    nexpress: { minVersion: "0.1.0" },
   },
   configSchema,
   hooks: {
@@ -290,7 +293,10 @@ mirroring the theme-settings migration pipeline.
 ```ts
 definePlugin<MyPluginConfig>({
   manifest: {
-    /* ... */
+    id: "my-plugin",
+    version: "0.1.0",
+    name: "My Plugin",
+    nexpress: { minVersion: "0.1.0" },
   },
   configSchema,
   configVersion: 2,

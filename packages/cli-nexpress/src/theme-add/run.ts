@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import pc from "picocolors";
@@ -12,16 +12,22 @@ import {
   packageToThemeIdentifier,
   type ThemeEntry,
 } from "../config-editor.js";
+import {
+  buildPackageManagerArgs,
+  inspectLocalWorkspacePackage,
+  isPnpmWorkspaceRoot,
+  missingLocalPackageBuildArtifacts,
+  type NpPackageManager,
+  type NpPackageManagerOptions,
+} from "../package-manager.js";
 
 /**
- * `nexpress theme add <pkg>` — the friendly successor to
- * `theme:install`. The legacy flow shipped a theme that
- * AST-patched the operator's `src/collections/*.ts` files; this
- * one stops at registration. The framework picks up the theme's
- * `manifest.requires.collections` at config-resolution time
- * (`defineConfig` → `mergeThemeRequirements`) and unions the
- * declared fields into the collections array, so the operator's
- * source tree stays untouched.
+ * `nexpress theme add <pkg>` registers a theme package without
+ * patching the operator's `src/collections/*.ts` files. The
+ * framework picks up the theme's `manifest.requires.collections`
+ * at config-resolution time (`defineConfig` → `mergeThemeRequirements`)
+ * and unions the declared fields into the collections array, so
+ * the operator's source tree stays untouched.
  *
  * Steps the runner performs:
  *
@@ -55,10 +61,23 @@ interface RunInput {
   };
 }
 
+type PackageManagerRunner = (
+  manager: NpPackageManager,
+  action: "add" | "remove",
+  packageName: string,
+  cwd: string,
+  options?: NpPackageManagerOptions,
+) => Promise<void>;
+
+interface ThemeAddRuntime {
+  cwd?: string;
+  runPackageManager?: PackageManagerRunner;
+}
+
 interface ResolvedProject {
   cwd: string;
   configPath: string;
-  packageManager: "pnpm" | "npm" | "yarn";
+  packageManager: NpPackageManager;
 }
 
 function resolveConfigPath(cwd: string): string {
@@ -76,9 +95,25 @@ function resolveConfigPath(cwd: string): string {
   );
 }
 
-function detectPackageManager(cwd: string): "pnpm" | "npm" | "yarn" {
+function detectPackageManager(cwd: string): NpPackageManager {
   if (existsSync(resolve(cwd, "pnpm-lock.yaml"))) return "pnpm";
   if (existsSync(resolve(cwd, "yarn.lock"))) return "yarn";
+  const packageJsonPath = resolve(cwd, "package.json");
+  if (existsSync(packageJsonPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as {
+        packageManager?: unknown;
+      };
+      if (typeof pkg.packageManager === "string") {
+        if (pkg.packageManager.startsWith("pnpm@")) return "pnpm";
+        if (pkg.packageManager.startsWith("yarn@")) return "yarn";
+      }
+    } catch {
+      // Ignore malformed package.json here; command-specific IO will
+      // report the actionable failure.
+    }
+  }
+  if (existsSync(resolve(cwd, "pnpm-workspace.yaml"))) return "pnpm";
   return "npm";
 }
 
@@ -90,11 +125,7 @@ function resolveProject(cwd: string): ResolvedProject {
   };
 }
 
-function runChild(
-  manager: "pnpm" | "npm" | "yarn",
-  args: string[],
-  cwd: string,
-): Promise<boolean> {
+function runChild(manager: NpPackageManager, args: string[], cwd: string): Promise<boolean> {
   return new Promise((resolveFn) => {
     const child = spawn(manager, args, { cwd, stdio: "inherit" });
     child.on("error", () => resolveFn(false));
@@ -102,19 +133,8 @@ function runChild(
   });
 }
 
-async function runPackageManagerAdd(
-  manager: "pnpm" | "npm" | "yarn",
-  packageName: string,
-  cwd: string,
-): Promise<void> {
-  const args =
-    manager === "npm"
-      ? ["install", packageName]
-      : ["add", packageName];
-  const ok = await runChild(manager, args, cwd);
-  if (!ok) {
-    throw new Error(`${manager} ${args.join(" ")} failed; theme was not installed.`);
-  }
+function formatProjectScriptCommand(manager: NpPackageManager, script: string): string {
+  return manager === "npm" ? `npm run ${script}` : `${manager} ${script}`;
 }
 
 async function confirm(message: string): Promise<boolean> {
@@ -190,12 +210,11 @@ async function probeThemeExport(
 }
 
 async function runDbCommand(
-  manager: "pnpm" | "npm" | "yarn",
+  manager: NpPackageManager,
   script: "db:generate" | "db:migrate",
   cwd: string,
 ): Promise<boolean> {
-  const args =
-    manager === "npm" ? ["run", script] : [script];
+  const args = manager === "npm" ? ["run", script] : [script];
   return runChild(manager, args, cwd);
 }
 
@@ -203,7 +222,7 @@ async function runDbCommand(
  * Entry point for `nexpress theme add <pkg>`. Returns a process
  * exit code so the bin wrapper can `process.exit()` cleanly.
  */
-export async function runThemeAdd(input: RunInput): Promise<number> {
+export async function runThemeAdd(input: RunInput, runtime: ThemeAddRuntime = {}): Promise<number> {
   let identifier: string;
   try {
     identifier = packageToThemeIdentifier(input.themePackage);
@@ -214,7 +233,19 @@ export async function runThemeAdd(input: RunInput): Promise<number> {
     return 2;
   }
 
-  const cwd = process.cwd();
+  const cwd = runtime.cwd ?? process.cwd();
+  const packageManagerRunner =
+    runtime.runPackageManager ??
+    ((manager, action, packageName, projectCwd, options = {}) =>
+      new Promise<void>((resolveFn, reject) => {
+        const args = buildPackageManagerArgs(manager, action, packageName, options);
+        const child = spawn(manager, args, { cwd: projectCwd, stdio: "inherit" });
+        child.on("error", reject);
+        child.on("exit", (code) => {
+          if (code === 0) resolveFn();
+          else reject(new Error(`${manager} ${args.join(" ")} failed; theme was not installed.`));
+        });
+      }));
   let project: ResolvedProject;
   try {
     project = resolveProject(cwd);
@@ -224,6 +255,7 @@ export async function runThemeAdd(input: RunInput): Promise<number> {
     );
     return 2;
   }
+  const pnpmWorkspaceRoot = project.packageManager === "pnpm" && isPnpmWorkspaceRoot(project.cwd);
 
   const entry: ThemeEntry = {
     packageName: input.themePackage,
@@ -233,14 +265,26 @@ export async function runThemeAdd(input: RunInput): Promise<number> {
   // Plan / dry-run path: don't touch the package manager or
   // disk. Print what would happen and exit.
   if (input.flags.dryRun) {
+    const localWorkspace = pnpmWorkspaceRoot
+      ? inspectLocalWorkspacePackage(project.cwd, input.themePackage, ["packages/themes"])
+      : ({ kind: "missing" } as const);
+    const packageManagerArgs = buildPackageManagerArgs(
+      project.packageManager,
+      "add",
+      input.themePackage,
+      {
+        localWorkspace: localWorkspace.kind === "found",
+        ...(pnpmWorkspaceRoot ? { workspaceRoot: true } : {}),
+      },
+    );
     process.stdout.write(
       `${pc.dim("Plan (dry-run):")}\n` +
-        `  • ${pc.cyan(project.packageManager)} add ${pc.cyan(input.themePackage)}\n` +
+        `  • ${pc.cyan(`${project.packageManager} ${packageManagerArgs.join(" ")}`)}\n` +
         `  • Insert ${pc.cyan(`import { ${identifier} } from "${input.themePackage}";`)} into ${pc.cyan(project.configPath)}\n` +
         `  • Append ${pc.cyan(identifier)} to the \`themes:\` array\n` +
         (input.flags.apply
-          ? `  • Run ${pc.cyan(`${project.packageManager} db:generate`)} then ${pc.cyan(`${project.packageManager} db:migrate`)}\n`
-          : `  • You then run ${pc.cyan("pnpm db:generate && pnpm db:migrate")} to materialise theme-declared columns\n`),
+          ? `  • Run ${pc.cyan(formatProjectScriptCommand(project.packageManager, "db:generate"))} then ${pc.cyan(formatProjectScriptCommand(project.packageManager, "db:migrate"))}\n`
+          : `  • You then run ${pc.cyan(`${formatProjectScriptCommand(project.packageManager, "db:generate")} && ${formatProjectScriptCommand(project.packageManager, "db:migrate")}`)} to materialise theme-declared columns\n`),
     );
     return 0;
   }
@@ -268,6 +312,36 @@ export async function runThemeAdd(input: RunInput): Promise<number> {
     return 1;
   }
 
+  const localWorkspace = pnpmWorkspaceRoot
+    ? inspectLocalWorkspacePackage(project.cwd, input.themePackage, ["packages/themes"])
+    : ({ kind: "missing" } as const);
+  if (localWorkspace.kind === "malformed") {
+    process.stdout.write(
+      `\n${pc.yellow("⚠")} Found a local theme candidate at ${relative(project.cwd, localWorkspace.dir)}, but ${relative(
+        project.cwd,
+        localWorkspace.packageJsonPath,
+      )} is not valid JSON.\n` +
+        `  Fix that package.json, then re-run pnpm exec nexpress theme add ${input.themePackage} --yes.\n`,
+    );
+    return 1;
+  }
+  if (localWorkspace.kind === "found") {
+    const missingArtifacts = missingLocalPackageBuildArtifacts(
+      localWorkspace.dir,
+      localWorkspace.packageJson,
+    );
+    if (missingArtifacts.length > 0) {
+      process.stdout.write(
+        `\n${pc.yellow("⚠")} Found local workspace theme at ${relative(project.cwd, localWorkspace.dir)}, but build output is missing:\n` +
+          missingArtifacts
+            .map((path) => `  - ${relative(project.cwd, resolve(localWorkspace.dir, path))}\n`)
+            .join("") +
+          `\nRun pnpm --filter ${input.themePackage} build, then re-run pnpm exec nexpress theme add ${input.themePackage} --yes.\n`,
+      );
+      return 1;
+    }
+  }
+
   if (!input.flags.yes) {
     if (!stdin.isTTY) {
       process.stderr.write(
@@ -287,11 +361,17 @@ export async function runThemeAdd(input: RunInput): Promise<number> {
   }
 
   // 1. Run the package manager — gives us the on-disk module.
-  process.stdout.write(
-    `\n→ Installing ${input.themePackage} via ${project.packageManager}…\n`,
-  );
+  process.stdout.write(`\n→ Installing ${input.themePackage} via ${project.packageManager}…\n`);
+  if (localWorkspace.kind === "found") {
+    process.stdout.write(
+      `  Detected local workspace theme at ${relative(project.cwd, localWorkspace.dir)}; using workspace:*.\n`,
+    );
+  }
   try {
-    await runPackageManagerAdd(project.packageManager, input.themePackage, project.cwd);
+    await packageManagerRunner(project.packageManager, "add", input.themePackage, project.cwd, {
+      localWorkspace: localWorkspace.kind === "found",
+      ...(pnpmWorkspaceRoot ? { workspaceRoot: true } : {}),
+    });
   } catch (err) {
     process.stderr.write(
       `\n${pc.red("error:")} ${err instanceof Error ? err.message : String(err)}\n`,
@@ -339,30 +419,28 @@ export async function runThemeAdd(input: RunInput): Promise<number> {
   //    the operator can review the diff between them.
   if (input.flags.apply) {
     process.stdout.write(
-      `\n${pc.dim("Running")} ${project.packageManager} db:generate…\n`,
+      `\n${pc.dim("Running")} ${formatProjectScriptCommand(project.packageManager, "db:generate")}…\n`,
     );
-    const generated = await runDbCommand(
-      project.packageManager,
-      "db:generate",
-      project.cwd,
-    );
+    const generated = await runDbCommand(project.packageManager, "db:generate", project.cwd);
     if (!generated) {
       process.stdout.write(
-        `\n${pc.yellow("⚠")} db:generate failed. Run \`${project.packageManager} db:generate && ${project.packageManager} db:migrate\` manually after fixing.\n`,
+        `\n${pc.yellow("⚠")} db:generate failed. Run \`${formatProjectScriptCommand(
+          project.packageManager,
+          "db:generate",
+        )} && ${formatProjectScriptCommand(project.packageManager, "db:migrate")}\` manually after fixing.\n`,
       );
       return 1;
     }
     process.stdout.write(
-      `\n${pc.dim("Running")} ${project.packageManager} db:migrate…\n`,
+      `\n${pc.dim("Running")} ${formatProjectScriptCommand(project.packageManager, "db:migrate")}…\n`,
     );
-    const migrated = await runDbCommand(
-      project.packageManager,
-      "db:migrate",
-      project.cwd,
-    );
+    const migrated = await runDbCommand(project.packageManager, "db:migrate", project.cwd);
     if (!migrated) {
       process.stdout.write(
-        `\n${pc.yellow("⚠")} db:migrate failed. Review the generated SQL and run \`${project.packageManager} db:migrate\` manually.\n`,
+        `\n${pc.yellow("⚠")} db:migrate failed. Review the generated SQL and run \`${formatProjectScriptCommand(
+          project.packageManager,
+          "db:migrate",
+        )}\` manually.\n`,
       );
       return 1;
     }
@@ -375,7 +453,7 @@ export async function runThemeAdd(input: RunInput): Promise<number> {
 
   process.stdout.write(
     `\nNext:\n` +
-      `  1. Run ${pc.cyan(`${project.packageManager} db:generate && ${project.packageManager} db:migrate`)} to materialise theme-declared columns.\n` +
+      `  1. Run ${pc.cyan(`${formatProjectScriptCommand(project.packageManager, "db:generate")} && ${formatProjectScriptCommand(project.packageManager, "db:migrate")}`)} to materialise theme-declared columns.\n` +
       `  2. Activate the theme in admin → Settings → Theme.\n` +
       `  ${pc.dim("(or re-run with --apply to chain db:generate + db:migrate automatically)")}\n`,
   );

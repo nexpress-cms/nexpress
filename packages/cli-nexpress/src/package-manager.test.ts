@@ -6,9 +6,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   buildPackageManagerArgs,
-  findLocalPluginWorkspaceDir,
-  inspectLocalPluginWorkspace,
-  missingLocalPluginBuildArtifacts,
+  findLocalWorkspacePackageDir,
+  inspectLocalWorkspacePackage,
+  missingLocalPackageBuildArtifacts,
 } from "./package-manager.js";
 
 describe("package manager helpers", () => {
@@ -19,6 +19,8 @@ describe("package manager helpers", () => {
     await mkdir(join(workdir, "packages/plugins/smoke-hook"), { recursive: true });
     await mkdir(join(workdir, "packages/plugins/banner"), { recursive: true });
     await mkdir(join(workdir, "packages/plugins/broken"), { recursive: true });
+    await mkdir(join(workdir, "packages/themes/newsroom"), { recursive: true });
+    await mkdir(join(workdir, "packages/themes/broken-theme"), { recursive: true });
     await writeFile(
       join(workdir, "packages/plugins/smoke-hook/package.json"),
       JSON.stringify({
@@ -32,6 +34,15 @@ describe("package manager helpers", () => {
       JSON.stringify({ name: "@acme/banner" }),
     );
     await writeFile(join(workdir, "packages/plugins/broken/package.json"), "{", "utf-8");
+    await writeFile(join(workdir, "packages/themes/broken-theme/package.json"), "{", "utf-8");
+    await writeFile(
+      join(workdir, "packages/themes/newsroom/package.json"),
+      JSON.stringify({
+        name: "theme-newsroom",
+        exports: { ".": { import: "./dist/index.js", types: "./dist/index.d.ts" } },
+        main: "./dist/index.js",
+      }),
+    );
   });
 
   afterEach(async () => {
@@ -39,16 +50,28 @@ describe("package manager helpers", () => {
   });
 
   describe("buildPackageManagerArgs", () => {
-    it("adds local pnpm workspace packages with --workspace", () => {
+    it("adds local pnpm workspace packages through workspace:* at the workspace root", () => {
       expect(
-        buildPackageManagerArgs("pnpm", "add", "smoke-hook", { localWorkspace: true }),
-      ).toEqual(["add", "smoke-hook", "--workspace"]);
+        buildPackageManagerArgs("pnpm", "add", "smoke-hook", {
+          localWorkspace: true,
+          workspaceRoot: true,
+        }),
+      ).toEqual(["add", "smoke-hook@workspace:*", "-w"]);
     });
 
-    it("does not apply the workspace flag to pnpm remove or other package managers", () => {
+    it("adds remote pnpm packages explicitly to the workspace root", () => {
       expect(
-        buildPackageManagerArgs("pnpm", "remove", "smoke-hook", { localWorkspace: true }),
-      ).toEqual(["remove", "smoke-hook"]);
+        buildPackageManagerArgs("pnpm", "add", "@acme/plugin-seo", { workspaceRoot: true }),
+      ).toEqual(["add", "@acme/plugin-seo", "-w"]);
+    });
+
+    it("removes pnpm packages explicitly from the workspace root", () => {
+      expect(
+        buildPackageManagerArgs("pnpm", "remove", "smoke-hook", { workspaceRoot: true }),
+      ).toEqual(["remove", "smoke-hook", "-w"]);
+    });
+
+    it("does not apply pnpm workspace options to other package managers", () => {
       expect(buildPackageManagerArgs("npm", "add", "smoke-hook", { localWorkspace: true })).toEqual(
         ["install", "smoke-hook"],
       );
@@ -58,32 +81,41 @@ describe("package manager helpers", () => {
     });
   });
 
-  describe("findLocalPluginWorkspaceDir", () => {
-    it("finds local plugin packages by package.json name", () => {
-      expect(findLocalPluginWorkspaceDir(workdir, "smoke-hook")).toBe(
+  describe("findLocalWorkspacePackageDir", () => {
+    it("finds local extension packages by package.json name", () => {
+      expect(findLocalWorkspacePackageDir(workdir, "smoke-hook", ["packages/plugins"])).toBe(
         join(workdir, "packages/plugins/smoke-hook"),
       );
-      expect(findLocalPluginWorkspaceDir(workdir, "@acme/banner")).toBe(
+      expect(findLocalWorkspacePackageDir(workdir, "@acme/banner", ["packages/plugins"])).toBe(
         join(workdir, "packages/plugins/banner"),
+      );
+      expect(findLocalWorkspacePackageDir(workdir, "theme-newsroom", ["packages/themes"])).toBe(
+        join(workdir, "packages/themes/newsroom"),
       );
     });
 
     it("ignores unrelated malformed local plugin packages", () => {
-      expect(findLocalPluginWorkspaceDir(workdir, "missing")).toBeNull();
+      expect(findLocalWorkspacePackageDir(workdir, "missing", ["packages/plugins"])).toBeNull();
     });
 
     it("reports malformed local package candidates instead of falling through to npm", () => {
-      expect(inspectLocalPluginWorkspace(workdir, "broken")).toMatchObject({
+      expect(inspectLocalWorkspacePackage(workdir, "broken", ["packages/plugins"])).toMatchObject({
         kind: "malformed",
         packageJsonPath: join(workdir, "packages/plugins/broken/package.json"),
+      });
+      expect(
+        inspectLocalWorkspacePackage(workdir, "theme-broken-theme", ["packages/themes"]),
+      ).toMatchObject({
+        kind: "malformed",
+        packageJsonPath: join(workdir, "packages/themes/broken-theme/package.json"),
       });
     });
   });
 
-  describe("missingLocalPluginBuildArtifacts", () => {
+  describe("missingLocalPackageBuildArtifacts", () => {
     it("reports generated dist entrypoints that have not been built yet", () => {
       expect(
-        missingLocalPluginBuildArtifacts(workdir, {
+        missingLocalPackageBuildArtifacts(workdir, {
           exports: {
             ".": {
               import: "./dist/index.js",
@@ -101,7 +133,7 @@ describe("package manager helpers", () => {
       await writeFile(join(packageDir, "dist/index.js"), "export default {};\n");
 
       expect(
-        missingLocalPluginBuildArtifacts(packageDir, {
+        missingLocalPackageBuildArtifacts(packageDir, {
           exports: {
             ".": {
               import: "./dist/index.js",

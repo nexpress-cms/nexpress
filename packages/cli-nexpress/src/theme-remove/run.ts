@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -13,10 +13,15 @@ import {
   type EditOutcome,
   type ThemeEntry,
 } from "../config-editor.js";
+import {
+  buildPackageManagerArgs,
+  isPnpmWorkspaceRoot,
+  type NpPackageManager,
+} from "../package-manager.js";
 import { extractCollectionFromFile } from "./ast/extract-collection.js";
 import { CollectionUnpatchError, unpatchCollectionFile } from "./ast/unpatch-collection.js";
-import { formatThemeUninstallPlan } from "./format.js";
-import { planThemeUninstall, type PlanCollectionShape } from "./plan.js";
+import { formatThemeRemovePlan } from "./format.js";
+import { planThemeRemove, type PlanCollectionShape } from "./plan.js";
 
 /**
  * Destructive cleanup runner for `theme remove`.
@@ -39,7 +44,7 @@ import { planThemeUninstall, type PlanCollectionShape } from "./plan.js";
  *   8. Best-effort spawn `pnpm db:generate` so the DROP COLUMN
  *      migration is generated from the theme-unregistered config.
  *   9. Print operator's next steps (review diff + db:migrate +
- *      pnpm remove).
+ *      package remove).
  */
 
 interface RunInput {
@@ -52,7 +57,7 @@ interface RunInput {
      *  `db:generate`. Default false: the operator reviews the
      *  generated DROP COLUMN SQL before it touches the database.
      *  With `--apply`, the operator opts into the one-shot
-     *  uninstall (still prompts before applying unless combined
+     *  remove flow (still prompts before applying unless combined
      *  with `--yes`). Same flag semantics as `theme add --apply`
      *  for consistency. */
     apply: boolean;
@@ -141,10 +146,37 @@ async function confirm(message: string): Promise<boolean> {
   }
 }
 
-function detectPackageManager(cwd: string): "pnpm" | "npm" | "yarn" {
+function detectPackageManager(cwd: string): NpPackageManager {
   if (existsSync(resolve(cwd, "pnpm-lock.yaml"))) return "pnpm";
   if (existsSync(resolve(cwd, "yarn.lock"))) return "yarn";
+  const packageJsonPath = resolve(cwd, "package.json");
+  if (existsSync(packageJsonPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as {
+        packageManager?: unknown;
+      };
+      if (typeof pkg.packageManager === "string") {
+        if (pkg.packageManager.startsWith("pnpm@")) return "pnpm";
+        if (pkg.packageManager.startsWith("yarn@")) return "yarn";
+      }
+    } catch {
+      // Ignore malformed package.json here; the surrounding command
+      // will report actionable IO failures when it needs the file.
+    }
+  }
+  if (existsSync(resolve(cwd, "pnpm-workspace.yaml"))) return "pnpm";
   return "npm";
+}
+
+function formatPackageRemoveCommand(cwd: string, packageName: string): string {
+  const manager = detectPackageManager(cwd);
+  const args = buildPackageManagerArgs(
+    manager,
+    "remove",
+    packageName,
+    manager === "pnpm" && isPnpmWorkspaceRoot(cwd) ? { workspaceRoot: true } : {},
+  );
+  return `${manager} ${args.join(" ")}`;
 }
 
 async function runDrizzleGenerate(cwd: string): Promise<boolean> {
@@ -176,7 +208,7 @@ async function runDrizzleGenerate(cwd: string): Promise<boolean> {
 /**
  * v0.3 (`--apply` flag) — run `db:migrate` after a successful
  * generate. Same shape as install's helper. The migration here
- * contains DROP COLUMN statements when uninstall removed
+ * contains DROP COLUMN statements when fields were removed
  * fields, so applying it is genuinely destructive — the
  * runner's confirm prompt and the plan formatter both warn
  * about that.
@@ -222,7 +254,7 @@ function formatConfigRemovalStatus(
 ): string {
   if (requiresManualCleanup) {
     return (
-      `${pc.yellow("⚠")} Config cleanup needs a manual edit before uninstall can apply. ` +
+      `${pc.yellow("⚠")} Config cleanup needs a manual edit before theme remove can apply. ` +
       `${pc.cyan(configPath)} still references ${pc.cyan(entry.identifier)} or ${pc.cyan(entry.packageName)}.\n\n` +
       `${buildManualThemeRemoveSnippet(entry)}`
     );
@@ -250,8 +282,9 @@ function configReferencesTheme(content: string, entry: ThemeEntry): boolean {
   return packagePattern.test(content) || identifierPattern.test(content);
 }
 
-export async function runThemeUninstall(input: RunInput): Promise<number> {
+export async function runThemeRemove(input: RunInput): Promise<number> {
   const cwd = process.cwd();
+  const packageRemoveCommand = formatPackageRemoveCommand(cwd, input.themePackage);
   console.log(pc.dim(`Resolving from ${cwd}…`));
 
   let themeEntry: ThemeEntry;
@@ -294,21 +327,21 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
     console.error(
       pc.dim(
         `  Hint: theme remove needs the theme package present so it can read the manifest. ` +
-          `Run this BEFORE \`pnpm remove ${input.themePackage}\`.`,
+          `Run this BEFORE \`${packageRemoveCommand}\`.`,
       ),
     );
     return 2;
   }
 
   const discovered = discoverCollections(cwd);
-  const plan = planThemeUninstall({
-    manifest: manifest as unknown as Parameters<typeof planThemeUninstall>[0]["manifest"],
+  const plan = planThemeRemove({
+    manifest: manifest as unknown as Parameters<typeof planThemeRemove>[0]["manifest"],
     existingCollections: discovered,
     withCollections: input.flags.withCollections,
   });
 
   console.log("");
-  console.log(formatThemeUninstallPlan(plan));
+  console.log(formatThemeRemovePlan(plan));
   console.log("");
   console.log(
     formatConfigRemovalStatus(configRemoval, themeEntry, configPath, configNeedsManualCleanup),
@@ -337,7 +370,7 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
       console.log(`${pc.green("✓")} Removed theme registration from ${pc.cyan(configPath)}.`);
       console.log("");
       console.log("Next:");
-      console.log(`  1. Run \`pnpm remove ${input.themePackage}\`.`);
+      console.log(`  1. Run \`${packageRemoveCommand}\`.`);
       printActiveThemeRepairStep(2);
     }
     return 0;
@@ -461,7 +494,7 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
     );
   }
 
-  // v0.3 — `--apply` auto-chains db:migrate. The uninstall
+  // `--apply` auto-chains db:migrate. The theme remove
   // migration contains DROP COLUMN statements when fields were
   // removed, so this step is genuinely destructive. The prompt
   // above already reflected that.
@@ -482,7 +515,7 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
         console.log(`${pc.green("✓")} Migration applied. Theme columns dropped from the database.`);
         console.log("");
         console.log("Next:");
-        console.log(`  1. Run \`pnpm remove ${input.themePackage}\`.`);
+        console.log(`  1. Run \`${packageRemoveCommand}\`.`);
         printActiveThemeRepairStep(2);
         if (summary.filesDeleted > 0) {
           console.log(
@@ -512,7 +545,7 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
   console.log(
     "  3. Run `pnpm db:migrate` to apply the migration (or re-run with --apply to auto-chain after generate).",
   );
-  console.log(`  4. Run \`pnpm remove ${input.themePackage}\`.`);
+  console.log(`  4. Run \`${packageRemoveCommand}\`.`);
   printActiveThemeRepairStep(5);
   if (summary.filesDeleted > 0) {
     console.log(

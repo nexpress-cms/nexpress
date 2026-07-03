@@ -36,18 +36,18 @@ describe("non-block scaffold generators", () => {
       ]);
       expect(result.kind).toBe(kind);
       expect(result.interactive).toBe(false);
-      expect(result.pluginDir.endsWith("demo")).toBe(true);
+      expect(result.packageDir.endsWith("demo")).toBe(true);
     });
 
     it(`${kind} — derives camelCase export from the slug`, async () => {
       const result = await generator({ slug: "my-demo", outDir: workdir });
-      const source = await readFile(join(result.pluginDir, "src/index.tsx"), "utf-8");
+      const source = await readFile(join(result.packageDir, "src/index.tsx"), "utf-8");
       expect(source).toMatch(/export const myDemoPlugin = definePlugin/);
     });
 
     it(`${kind} — documents CLI registration for local workspace plugins`, async () => {
       const result = await generator({ slug: "my-demo", outDir: workdir });
-      const readme = await readFile(join(result.pluginDir, "README.md"), "utf-8");
+      const readme = await readFile(join(result.packageDir, "README.md"), "utf-8");
       expect(readme).toContain("From your NexPress project root");
       expect(readme).toContain("pnpm --filter my-demo build");
       expect(readme).toContain("pnpm exec nexpress plugin add my-demo");
@@ -71,7 +71,7 @@ describe("non-block scaffold generators", () => {
 
     it("registers a content:afterCreate hook in the starter source", async () => {
       const result = await scaffoldHookPlugin({ slug: "audit-log", outDir: workdir });
-      const source = await readFile(join(result.pluginDir, "src/index.tsx"), "utf-8");
+      const source = await readFile(join(result.packageDir, "src/index.tsx"), "utf-8");
       expect(source).toMatch(/"content:afterCreate":/);
       expect(source).toMatch(/ctx\.log\.info/);
     });
@@ -82,7 +82,7 @@ describe("non-block scaffold generators", () => {
 
     it("declares a GET /health route in the starter source", async () => {
       const result = await scaffoldRoutePlugin({ slug: "ping", outDir: workdir });
-      const source = await readFile(join(result.pluginDir, "src/index.tsx"), "utf-8");
+      const source = await readFile(join(result.packageDir, "src/index.tsx"), "utf-8");
       expect(source).toMatch(/method: "GET"/);
       expect(source).toMatch(/path: "\/health"/);
       expect(source).toMatch(/auth: false/);
@@ -95,7 +95,7 @@ describe("non-block scaffold generators", () => {
 
     it("declares configSchema + widget + action wired through typed status registration", async () => {
       const result = await scaffoldAdminPlugin({ slug: "status-card", outDir: workdir });
-      const source = await readFile(join(result.pluginDir, "src/index.tsx"), "utf-8");
+      const source = await readFile(join(result.packageDir, "src/index.tsx"), "utf-8");
       // All three admin surface kinds.
       expect(source).toMatch(/import \{ z \} from "zod"/);
       expect(source).toMatch(/const configSchema = z\.object/);
@@ -113,13 +113,13 @@ describe("non-block scaffold generators", () => {
 
     it("omits manually declared admin:panel because definePlugin derives it", async () => {
       const result = await scaffoldAdminPlugin({ slug: "ui", outDir: workdir });
-      const source = await readFile(join(result.pluginDir, "src/index.tsx"), "utf-8");
+      const source = await readFile(join(result.packageDir, "src/index.tsx"), "utf-8");
       expect(source).not.toMatch(/capabilities: \["admin:panel"\]/);
     });
 
     it("adds zod because the admin starter imports configSchema", async () => {
       const result = await scaffoldAdminPlugin({ slug: "config-form", outDir: workdir });
-      const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+      const pkg = JSON.parse(await readFile(join(result.packageDir, "package.json"), "utf-8")) as {
         dependencies: Record<string, string>;
       };
       expect(pkg.dependencies.zod).toBe("^4.4.3");
@@ -131,7 +131,7 @@ describe("non-block scaffold generators", () => {
 
     it("declares one daily cron task in the starter source", async () => {
       const result = await scaffoldScheduledPlugin({ slug: "cleanup", outDir: workdir });
-      const source = await readFile(join(result.pluginDir, "src/index.tsx"), "utf-8");
+      const source = await readFile(join(result.packageDir, "src/index.tsx"), "utf-8");
       expect(source).toMatch(/scheduled:\s*\[/);
       expect(source).toMatch(/cron: "0 2 \* \* \*"/);
       expect(source).toMatch(/handler: async \(ctx\)/);
@@ -151,7 +151,9 @@ describe("non-block scaffold generators", () => {
           slug: `pkg-${Math.random().toString(16).slice(2, 8)}`,
           outDir: workdir,
         });
-        const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+        const pkg = JSON.parse(
+          await readFile(join(result.packageDir, "package.json"), "utf-8"),
+        ) as {
           dependencies: Record<string, string>;
           scripts: Record<string, string>;
         };
@@ -177,7 +179,9 @@ describe("non-block scaffold generators", () => {
             "@nexpress/plugin-sdk": "0.4.0",
           },
         });
-        const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+        const pkg = JSON.parse(
+          await readFile(join(result.packageDir, "package.json"), "utf-8"),
+        ) as {
           dependencies: Record<string, string>;
         };
 
@@ -204,7 +208,9 @@ describe("non-block scaffold generators", () => {
           slug: `baseline-${Math.random().toString(16).slice(2, 8)}`,
           outDir: workdir,
         });
-        const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+        const pkg = JSON.parse(
+          await readFile(join(result.packageDir, "package.json"), "utf-8"),
+        ) as {
           files: string[];
           engines: Record<string, string>;
           exports: Record<string, { types: string; import: string }>;
