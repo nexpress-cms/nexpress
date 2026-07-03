@@ -37,6 +37,17 @@ describe("deploy plan core", () => {
         importUrl: "https://vercel.com/new?utm_source=nexpress&utm_campaign=oss",
       }),
     );
+    expect(json.bridge.launch).toEqual([
+      {
+        id: "vercel-import",
+        kind: "deploy-button",
+        label: "Open Vercel import",
+        description:
+          "Push the scaffold to GitHub, open Vercel's new-project flow, import the repo, and set env before the first production build.",
+        href: "https://vercel.com/new?utm_source=nexpress&utm_campaign=oss",
+        docsUrl: "https://vercel.com/docs/deploy-button",
+      },
+    ]);
     expect(json.bridge.steps.map((step) => step.id)).toEqual([
       "plan",
       "configure-env",
@@ -175,6 +186,9 @@ describe("deploy plan core", () => {
     );
     expect(output).toContain("Avoid one-off HTTP migration endpoints");
     expect(output).toContain("Run before deploy");
+    expect(output).toContain("Start here");
+    expect(output).toContain("Open Vercel import:");
+    expect(output).toContain("https://vercel.com/docs/deploy-button");
     expect(output).toContain("Deploy bridge");
     expect(output).toContain("Plan the target:");
     expect(output).toContain("pnpm run ops:preflight -- --target vercel --brief --no-color");
@@ -189,7 +203,7 @@ describe("deploy plan core", () => {
     expect(output).not.toMatch(ANSI_ESCAPE_RE);
   });
 
-  it("renders a compact brief with only unresolved required env and commands", () => {
+  it("renders a compact brief with unresolved env, launch, and command steps", () => {
     const output = renderBriefDeployPlan(
       buildDeployPlan("docker"),
       true,
@@ -205,6 +219,9 @@ describe("deploy plan core", () => {
       "[todo] NP_SECRET - Generate a 32+ character secret, for example `openssl rand -base64 48`.",
     );
     expect(output).toContain("pnpm db:migrate -- --status");
+    expect(output).toContain("Start here:");
+    expect(output).toContain("Build the Docker image:");
+    expect(output).toContain("docker build -f docker/Dockerfile -t nexpress .");
     expect(output).toContain("pnpm run doctor:prod -- --target docker");
     expect(output).toContain("Deploy bridge:");
     expect(output).toContain("Configure hosted env:");
@@ -216,5 +233,45 @@ describe("deploy plan core", () => {
     );
     expect(output).not.toContain("Fit");
     expect(output).not.toMatch(ANSI_ESCAPE_RE);
+  });
+
+  it("describes the first hosted launch action for non-Vercel targets", () => {
+    expect(buildDeployPlanJson(buildDeployPlan("railway"), false, {}).bridge.launch).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "railway-github",
+          href: "https://railway.com/new",
+          docsUrl: "https://docs.railway.com/quick-start",
+        }),
+        expect.objectContaining({
+          id: "railway-cli",
+          command: "railway init && railway up",
+        }),
+      ]),
+    );
+    expect(buildDeployPlanJson(buildDeployPlan("render"), false, {}).bridge.launch).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "render-web-service",
+          docsUrl: "https://render.com/docs/web-services",
+        }),
+        expect.objectContaining({
+          id: "render-blueprint",
+          docsUrl: "https://render.com/docs/infrastructure-as-code",
+        }),
+      ]),
+    );
+    expect(buildDeployPlanJson(buildDeployPlan("fly"), false, {}).bridge.launch).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "fly-launch",
+          command: "fly launch",
+        }),
+        expect.objectContaining({
+          id: "fly-github-actions",
+          docsUrl: "https://fly.io/docs/launch/continuous-deployment-with-github-actions/",
+        }),
+      ]),
+    );
   });
 });

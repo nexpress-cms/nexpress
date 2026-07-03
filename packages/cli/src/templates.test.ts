@@ -469,6 +469,9 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("pnpm run doctor");
     expect(readme).toContain("## Deploy Bridge");
     expect(readme).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
+    expect(readme).toContain("target's first launch action");
+    expect(readme).toContain("Railway project creation");
+    expect(readme).toContain("Docker image build");
     expect(readme).toContain("pnpm db:migrate");
     expect(readme).toContain("production `DATABASE_URL` is already injected");
     expect(readme).toContain("do not depend on");
@@ -483,6 +486,11 @@ describe("getProjectFiles", () => {
 
     expect(ops).toContain("## Deploy Bridge");
     expect(ops).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
+    expect(ops).toContain("`Start here` in the plan gives the first host-specific launch action");
+    expect(ops).toContain("Vercel import URL");
+    expect(ops).toContain("Railway dashboard / CLI path");
+    expect(ops).toContain("Render web service /");
+    expect(ops).toContain("`fly launch`");
     expect(ops).toContain("pnpm db:migrate");
     expect(ops).toContain(
       "`pnpm db:migrate` must run where the production `DATABASE_URL` is available",
@@ -564,6 +572,9 @@ describe("getProjectFiles", () => {
     expect(ops).toContain("pnpm db:migrate");
     expect(ops).toContain("not depend on `vercel env pull`");
     expect(ops).toContain("Other Hosting Choices");
+    expect(ops).toContain("railway init && railway up");
+    expect(ops).toContain("render.yaml");
+    expect(ops).toContain("docker build -f docker/Dockerfile -t nexpress .");
     expect(readme).not.toMatch(/cp \.env\.example \.env\s*\n\s*pnpm build\s*\n\s*pnpm dev/);
   });
 

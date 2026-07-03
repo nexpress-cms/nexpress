@@ -309,6 +309,9 @@ assertIncludes(
 assertIncludes(deployPlan.output, "vercel env pull", "deploy:plan");
 assertIncludes(deployPlan.output, "pnpm db:migrate && pnpm build", "deploy:plan");
 assertIncludes(deployPlan.output, "pnpm db:migrate -- --status", "deploy:plan");
+assertIncludes(deployPlan.output, "Start here", "deploy:plan");
+assertIncludes(deployPlan.output, "Open Vercel import", "deploy:plan");
+assertIncludes(deployPlan.output, "https://vercel.com/docs/deploy-button", "deploy:plan");
 assertIncludes(deployPlan.output, "pnpm run doctor:prod -- --target vercel", "deploy:plan");
 assertIncludes(
   deployPlan.output,
@@ -328,6 +331,7 @@ assertIncludes(deployPlanHelp.output, "--brief", "deploy:plan --help");
 assertIncludes(deployPlanHelp.output, "--no-color", "deploy:plan --help");
 assertIncludes(deployPlanHelp.output, "--help, -h", "deploy:plan --help");
 assertIncludes(deployPlanHelp.output, "vercel, railway, render, fly, docker", "deploy:plan --help");
+assertIncludes(deployPlanHelp.output, "target's launch handoff", "deploy:plan --help");
 console.log("✓ deploy:plan help documents output modes");
 
 const deployPlanBrief = runTsx("scripts/deploy-plan.ts", [
@@ -346,6 +350,8 @@ if (deployPlanBrief.code !== 0) {
 assertNoAnsi(deployPlanBrief.output, "deploy:plan --brief --no-color");
 assertIncludes(deployPlanBrief.output, "Required env:", "deploy:plan --brief");
 assertIncludes(deployPlanBrief.output, "[check] NP_STORAGE_ADAPTER=s3", "deploy:plan --brief");
+assertIncludes(deployPlanBrief.output, "Start here:", "deploy:plan --brief");
+assertIncludes(deployPlanBrief.output, "Open Vercel import", "deploy:plan --brief");
 assertIncludes(deployPlanBrief.output, "Run before deploy:", "deploy:plan --brief");
 assertIncludes(deployPlanBrief.output, "If blocked:", "deploy:plan --brief");
 assertIncludes(
@@ -585,6 +591,7 @@ assertIncludes(readme, "## First Site", "README");
 assertIncludes(readme, "[docs/ops.md](docs/ops.md)", "README");
 assertIncludes(readme, "## Deploy Bridge", "README");
 assertIncludes(readme, "pnpm run deploy:plan -- --target vercel --brief --no-color", "README");
+assertIncludes(readme, "target's first launch action", "README");
 assertIncludes(readme, "pnpm db:migrate", "README");
 assertIncludes(readme, "production `DATABASE_URL` is already injected", "README");
 assertIncludes(readme, "pnpm run ops:preflight -- --target vercel --brief --no-color", "README");
@@ -604,6 +611,12 @@ if (readme.split(/\r?\n/).length > 100) {
 assertIncludes(opsDoc, "## Deploy Bridge", "docs/ops.md");
 assertIncludes(opsDoc, "Deploy with Vercel", "docs/ops.md");
 assertIncludes(opsDoc, "https://vercel.com/new?utm_source=nexpress", "docs/ops.md");
+assertIncludes(opsDoc, "Start here", "docs/ops.md");
+assertIncludes(opsDoc, "Railway dashboard / CLI path", "docs/ops.md");
+assertIncludes(opsDoc, "railway init && railway up", "docs/ops.md");
+assertIncludes(opsDoc, "render.yaml", "docs/ops.md");
+assertIncludes(opsDoc, "fly launch", "docs/ops.md");
+assertIncludes(opsDoc, "docker build -f docker/Dockerfile -t nexpress .", "docs/ops.md");
 assertIncludes(opsDoc, "NP_STORAGE_ADAPTER=s3", "docs/ops.md");
 assertIncludes(opsDoc, "NP_S3_ENDPOINT", "docs/ops.md");
 assertIncludes(opsDoc, "pnpm db:migrate", "docs/ops.md");

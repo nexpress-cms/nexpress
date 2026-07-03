@@ -55,10 +55,10 @@ pnpm run ops:preflight -- --target vercel --brief --no-color
 pnpm run ops:release -- check --target vercel --json
 ```
 
-`deploy:plan` explains host-specific env and storage requirements.
-`ops:preflight` is the blocking gate: deploy plan, production doctor, and
-migration evidence in one report. `ops:release check` writes the same evidence
-in a CI/agent-friendly shape.
+`deploy:plan` starts with the host's first launch action, then explains
+target-specific env and storage requirements. `ops:preflight` is the blocking
+gate: deploy plan, production doctor, and migration evidence in one report.
+`ops:release check` writes the same evidence in a CI/agent-friendly shape.
 
 Fastest hosted path:
 
@@ -72,9 +72,9 @@ media storage is a deploy blocker there.
 
 Other good defaults:
 
-- **Railway / Render** — Docker deploy plus managed Postgres; still use S3 for
-  durable media.
-- **Fly.io / Docker self-host** — best when you want runtime ownership; local
+- **Railway / Render** — dashboard or Blueprint-style Docker deploy plus
+  managed Postgres; still use S3 for durable media.
+- **Fly.io / Docker self-host** — CLI or Docker-first runtime ownership; local
   media storage is acceptable only for single-node deployments.
 
 Full host recipes live in [docs/deployment.md](./docs/deployment.md).

@@ -47,7 +47,9 @@ Other common choices:
   uploaded files are acceptable only for single-node deployments with a
   persistent volume.
 
-Regardless of host, run the deploy bridge before promoting traffic.
+Regardless of host, run the deploy bridge before promoting traffic. The plan
+starts with the target's first launch action: Vercel import, Railway dashboard
+or CLI, Render Web Service or Blueprint, `fly launch`, or Docker image build.
 
 ---
 
@@ -64,10 +66,11 @@ pnpm --silent run ops:release -- check --target vercel --json
 ```
 
 Supported targets are `vercel`, `railway`, `render`, `fly`, and `docker`.
-`deploy:plan` prints the host-specific checklist. `ops:preflight` is the
-blocking gate: it composes deploy-plan, the production doctor, and migration
-plan evidence into one report. `ops:release check` persists the same evidence
-for CI, handoff, or an agent-operated release log.
+`deploy:plan` prints the host-specific checklist plus a `Start here` section
+with the first launch URL or command. `ops:preflight` is the blocking gate: it
+composes deploy-plan, the production doctor, and migration plan evidence into
+one report. `ops:release check` persists the same evidence for CI, handoff, or
+an agent-operated release log.
 
 When a brief preflight report blocks, each blocked step prints its own `next:`
 command before the overall next command. Use that per-step command for the
