@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -47,9 +48,21 @@ const FIXTURE = path.resolve(
 interface ImportResponse {
   mode: "preview" | "apply";
   dryRun: boolean;
+  options: {
+    resume: boolean;
+  };
   counts: {
     records: number;
     recordsByType: Record<string, number>;
+  };
+  resume: {
+    enabled: boolean;
+    sourceHash: string | null;
+    documents: number;
+    comments: number;
+    authors: number;
+    media: number;
+    taxonomies: number;
   };
   mappings: {
     configured: {
@@ -70,6 +83,15 @@ interface ImportResponse {
     applied: { total: number; items: Array<{ collection: string; slug: string }> };
     skipped: { total: number; items: Array<{ reason: string }> };
     errors: { total: number };
+    conversionSamples: {
+      total: number;
+      items: Array<{
+        wpId: number;
+        slug: string;
+        rawHtml: string;
+        lexicalJson: string;
+      }>;
+    };
     media: { status: "not-run" | "completed" };
     taxonomies: { status: "not-run" | "completed" };
     comments: { status: "not-run" | "completed" };
@@ -86,11 +108,14 @@ interface ImportRun {
     strict: boolean;
     createAuthors: boolean;
     includeMedia: boolean;
+    resume?: boolean;
     collectionMappings?: Record<
       string,
       { collection: string; fieldOverrides?: Record<string, string> }
     >;
   };
+  sourceHash: string | null;
+  resume: ImportResponse["resume"];
   report: ImportResponse | null;
   error: string | null;
 }
@@ -135,12 +160,20 @@ describe.skipIf(skipIfNoTestDb())("admin WordPress import API", () => {
     expect(status).toBe(200);
     expect(body.mode).toBe("preview");
     expect(body.dryRun).toBe(true);
+    expect(body.options.resume).toBe(true);
+    expect(body.resume).toMatchObject({
+      enabled: true,
+      documents: 0,
+      comments: 0,
+    });
     expect(body.counts.records).toBe(3);
     expect(body.counts.recordsByType).toMatchObject({ attachment: 1, page: 1, post: 1 });
     expect(body.report.applied.total).toBe(2);
     expect(body.report.skipped.items.some((row) => row.reason.includes("attachment"))).toBe(true);
     expect(body.report.media.status).toBe("completed");
     expect(body.report.taxonomies.status).toBe("not-run");
+    expect(body.report.conversionSamples.total).toBe(2);
+    expect(body.report.conversionSamples.items[0]?.lexicalJson).toContain('"root"');
     expect(body.mappings.unmapped.total).toBe(0);
 
     const actor = await asActor(admin);
@@ -235,6 +268,12 @@ describe.skipIf(skipIfNoTestDb())("admin WordPress import API", () => {
     expect(body.queued).toBe(true);
     expect(body.run.status).toBe("queued");
     expect(body.run.jobId).toBe("job-1");
+    expect(body.run.sourceHash).toBe(sha256(xml));
+    expect(body.run.options.resume).toBe(true);
+    expect(body.run.resume).toMatchObject({
+      enabled: true,
+      documents: 0,
+    });
     expect(body.run.options.collectionMappings?.landing).toMatchObject({
       collection: "pages",
       fieldOverrides: { _landing_template: "template" },
@@ -271,6 +310,9 @@ describe.skipIf(skipIfNoTestDb())("admin WordPress import API", () => {
     expect(run.report?.report.taxonomies.status).toBe("completed");
     expect(run.report?.report.comments.status).toBe("completed");
     expect(run.report?.report.authors.status).toBe("completed");
+    expect(run.resume.documents).toBeGreaterThanOrEqual(2);
+    expect(run.report?.resume.documents).toBeGreaterThanOrEqual(2);
+    expect(run.report?.report.conversionSamples.total).toBe(2);
     expect(run.report?.mappings.configured.items[0]).toMatchObject({
       wpType: "landing",
       collection: "pages",
@@ -282,6 +324,23 @@ describe.skipIf(skipIfNoTestDb())("admin WordPress import API", () => {
     expect(posts.docs[0]?.title).toBe("Hello World");
     const pages = await findDocuments("pages", { where: { slug: "about" }, limit: 1 }, actor);
     expect(pages.docs[0]?.template).toBe("landing-page");
+
+    const secondResponse = await POST(
+      multipartRequest(
+        "/api/admin/import/wordpress",
+        admin,
+        {
+          mode: "apply",
+          includeMedia: "false",
+          mappingConfig: customMappingConfig(),
+        },
+        { xml },
+      ),
+    );
+    const second = await readJson<QueuedResponse>(secondResponse);
+    expect(second.status).toBe(200);
+    expect(second.body.run.sourceHash).toBe(body.run.sourceHash);
+    expect(second.body.run.resume.documents).toBeGreaterThanOrEqual(2);
   });
 
   it("rejects invalid admin mapping config", async () => {
@@ -536,6 +595,10 @@ function customMappingConfig(): string {
       },
     ],
   });
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
 async function waitForImportRun(
