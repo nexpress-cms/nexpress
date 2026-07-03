@@ -494,7 +494,7 @@ declare module "${packageName}/client" {
 
   return {
     files: Object.keys(files),
-    pluginDir,
+    packageDir: pluginDir,
     kind: "block",
     interactive,
   };

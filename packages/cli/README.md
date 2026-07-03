@@ -63,6 +63,7 @@ A Next.js 16 App Router project with:
 - Deploy on Vercel: push your scaffold to GitHub, then import it from
   [Vercel New Project](https://vercel.com/new?utm_source=nexpress&utm_campaign=oss)
 - Add a collection: edit `src/collections/<name>.ts`, run `pnpm db:generate && pnpm db:migrate`
+- Author a local theme: `pnpm exec nexpress create theme mybrand --workspace`
 - Read [AGENTS.md](https://github.com/nexpress-cms/nexpress/blob/main/AGENTS.md) — architecture overview
 - Read [deployment.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/deployment.md) — Docker, Vercel, Fly.io, Render, Railway
 

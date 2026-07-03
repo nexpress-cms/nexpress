@@ -316,9 +316,9 @@ jobs:
             SITE_URL=http://localhost:3000 \
             pnpm build
 
-      - name: Plugin scaffold smoke — generated package lifecycle
+      - name: Extension scaffold smoke — generated package lifecycle
         run: |
-          node "$GITHUB_WORKSPACE/.github/scripts/check-plugin-scaffold-matrix.mjs" \
+          node "$GITHUB_WORKSPACE/.github/scripts/check-extension-scaffold-matrix.mjs" \
             "$RUNNER_TEMP/scaffold/smoke-app"
 
       # Runtime smoke — typecheck passes for whole classes of bugs that

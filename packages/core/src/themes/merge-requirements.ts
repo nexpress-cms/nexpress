@@ -16,7 +16,7 @@ import { getScopedLogger } from "../observability/logger.js";
  * Why this exists: the v0.2 theme contract lets themes declare
  * the collection fields their components depend on
  * (`requires.collections.<slug>.fields.<name>`). Pre-#F-track this
- * was wired up exclusively through `pnpm nexpress theme:install`,
+ * was wired up exclusively through `pnpm exec nexpress theme add`,
  * which AST-patched the operator's `src/collections/*.ts`. That
  * "code-write" felt heavyweight for what is, conceptually, a
  * package add — and surfaced bugs (#604, #605, #606) at the

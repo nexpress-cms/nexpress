@@ -60,34 +60,41 @@ export interface ScaffoldOptions {
    */
   interactive?: boolean;
   /**
-   * Framework package ranges to write into the generated plugin. Defaults to
-   * workspace links for NexPress monorepo authors; the CLI can override this
-   * from a create-nexpress project's installed package ranges.
+   * Framework package ranges to write into the generated extension package.
+   * Defaults to workspace links for NexPress monorepo authors; the CLI can
+   * override this from a create-nexpress project's installed package ranges.
    */
   dependencyRanges?: ScaffoldDependencyRanges;
 }
 
 export interface ScaffoldResult {
-  /** Files written, relative to the new plugin dir. CLI surfaces this list. */
+  /** Files written, relative to the new package dir. CLI surfaces this list. */
   files: string[];
-  /** Absolute path to the new plugin dir. */
-  pluginDir: string;
+  /** Absolute path to the new package dir. */
+  packageDir: string;
   /** Author-friendly label for the success message. */
   kind: ScaffoldKind;
   /** Block-only generator flag — `false` for non-block kinds. */
   interactive: boolean;
 }
 
-export type ScaffoldKind = "block" | "hook" | "route" | "admin" | "scheduled";
+export type ScaffoldKind = "block" | "hook" | "route" | "admin" | "scheduled" | "theme";
 
-export type ScaffoldFrameworkDependency = "@nexpress/blocks" | "@nexpress/plugin-sdk";
+export type ScaffoldFrameworkDependency =
+  "@nexpress/blocks" | "@nexpress/plugin-sdk" | "@nexpress/theme";
 
 export type ScaffoldDependencyRanges = Partial<Record<ScaffoldFrameworkDependency, string>>;
 
 const DEFAULT_DEPENDENCY_RANGES: Record<ScaffoldFrameworkDependency, string> = {
   "@nexpress/blocks": "workspace:*",
   "@nexpress/plugin-sdk": "workspace:*",
+  "@nexpress/theme": "workspace:*",
 };
+
+const DEFAULT_PLUGIN_DEPENDENCIES: ScaffoldFrameworkDependency[] = [
+  "@nexpress/blocks",
+  "@nexpress/plugin-sdk",
+];
 
 export interface ScaffoldNames {
   packageName: string;
@@ -120,10 +127,10 @@ export function deriveNames(slug: string, outDir: string): ScaffoldNames {
 }
 
 /** Throws if the target dir already exists. The CLI surfaces the message. */
-export function assertDirAvailable(pluginDir: string): void {
-  if (existsSync(pluginDir)) {
+export function assertDirAvailable(packageDir: string): void {
+  if (existsSync(packageDir)) {
     throw new Error(
-      `Refusing to overwrite existing directory: ${pluginDir}. Pick a new slug or remove the directory first.`,
+      `Refusing to overwrite existing directory: ${packageDir}. Pick a new slug or remove the directory first.`,
     );
   }
 }
@@ -145,19 +152,22 @@ function readDependencyRange(pkg: unknown, name: ScaffoldFrameworkDependency): s
 
 /**
  * Reads the nearest parent package.json and reuses installed framework
- * ranges for generated plugins. In this repo there is no top-level
+ * ranges for generated extension packages. In this repo there is no top-level
  * @nexpress dependency block, so callers naturally fall back to workspace:*.
  * In a create-nexpress project, the root has exact / file: ranges and the
- * generated plugin becomes installable in that project workspace.
+ * generated extension package becomes installable in that project workspace.
  */
-export function resolveScaffoldDependencyRanges(cwd: string): ScaffoldDependencyRanges {
+export function resolveScaffoldDependencyRanges(
+  cwd: string,
+  dependencies: ScaffoldFrameworkDependency[] = DEFAULT_PLUGIN_DEPENDENCIES,
+): ScaffoldDependencyRanges {
   let current = resolve(cwd);
   while (true) {
     const packageJsonPath = resolve(current, "package.json");
     if (existsSync(packageJsonPath)) {
       const pkg = readPackageJson(packageJsonPath);
       const ranges: ScaffoldDependencyRanges = {};
-      for (const name of Object.keys(DEFAULT_DEPENDENCY_RANGES) as ScaffoldFrameworkDependency[]) {
+      for (const name of dependencies) {
         const range = readDependencyRange(pkg, name);
         if (range) ranges[name] = range;
       }
@@ -179,11 +189,13 @@ export function resolveScaffoldDependencyRanges(cwd: string): ScaffoldDependency
 
 export function frameworkDependencyRanges(
   overrides: ScaffoldDependencyRanges = {},
-): Record<ScaffoldFrameworkDependency, string> {
-  return {
-    ...DEFAULT_DEPENDENCY_RANGES,
-    ...overrides,
-  };
+  dependencies: ScaffoldFrameworkDependency[] = DEFAULT_PLUGIN_DEPENDENCIES,
+): Record<string, string> {
+  const ranges: Record<string, string> = {};
+  for (const dependency of dependencies) {
+    ranges[dependency] = overrides[dependency] ?? DEFAULT_DEPENDENCY_RANGES[dependency];
+  }
+  return ranges;
 }
 
 function asPortableRelativePath(fromDir: string, targetFile: string): string {
@@ -196,11 +208,11 @@ function asPortableRelativePath(fromDir: string, targetFile: string): string {
  * root tsconfig files often carry Next/noEmit/incremental settings that break
  * package dts builds, so only a real `tsconfig.base.json` is treated as safe.
  */
-export function resolveTsconfigExtends(pluginDir: string): string | undefined {
-  let current = resolve(pluginDir);
+export function resolveTsconfigExtends(packageDir: string): string | undefined {
+  let current = resolve(packageDir);
   while (true) {
     const candidate = resolve(current, "tsconfig.base.json");
-    if (existsSync(candidate)) return asPortableRelativePath(pluginDir, candidate);
+    if (existsSync(candidate)) return asPortableRelativePath(packageDir, candidate);
 
     const parent = dirname(current);
     if (parent === current) return undefined;
@@ -318,17 +330,18 @@ export default defineConfig({
 `;
 
 /**
- * Writes every entry under `pluginDir`, creating the `src/` subdir as
- * needed. Each generator returns its file map; this helper makes the
- * write-side identical for every kind.
+ * Writes every entry under `packageDir`. Each generator returns its file map;
+ * this helper makes the write-side identical for every kind.
  */
-export async function writePluginFiles(
-  pluginDir: string,
+export async function writeScaffoldFiles(
+  packageDir: string,
   files: Record<string, string>,
 ): Promise<string[]> {
-  await mkdir(resolve(pluginDir, "src"), { recursive: true });
+  await mkdir(resolve(packageDir, "src"), { recursive: true });
   for (const [path, content] of Object.entries(files)) {
-    await writeFile(resolve(pluginDir, path), content, "utf-8");
+    const target = resolve(packageDir, path);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, content, "utf-8");
   }
   return Object.keys(files);
 }

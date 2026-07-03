@@ -1,6 +1,26 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runNexpressCli } from "./index.js";
+
+const themeMarkerConfig = `import { defineConfig } from "@nexpress/core";
+import { defaultThemes } from "@nexpress/app/config-defaults";
+
+// @nexpress:themes-imports-start
+// @nexpress:themes-imports-end
+
+export default defineConfig({
+  collections: [],
+  themes: [
+    ...defaultThemes,
+    // @nexpress:themes-list-start
+    // @nexpress:themes-list-end
+  ],
+});
+`;
 
 function captureStdout() {
   let output = "";
@@ -27,11 +47,26 @@ function captureStderr() {
 }
 
 describe("theme commands", () => {
+  let workdir: string;
+
+  beforeEach(async () => {
+    workdir = await mkdtemp(join(tmpdir(), "nexpress-theme-command-"));
+    await writeFile(
+      join(workdir, "package.json"),
+      JSON.stringify({ name: "site", packageManager: "pnpm@10.33.0" }, null, 2),
+      "utf-8",
+    );
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("lists theme remove as the primary uninstall command", async () => {
+  afterEach(async () => {
+    await rm(workdir, { recursive: true, force: true });
+  });
+
+  it("lists theme remove without the removed alias", async () => {
     const stdout = captureStdout();
 
     const code = await runNexpressCli(["node", "nexpress", "--help"]);
@@ -39,11 +74,10 @@ describe("theme commands", () => {
     stdout.restore();
     expect(code).toBe(0);
     expect(stdout.read()).toContain("nexpress theme remove <package>");
-    expect(stdout.read()).toContain("nexpress theme:uninstall <package>");
-    expect(stdout.read()).toContain("Legacy alias for theme remove");
+    expect(stdout.read()).not.toContain(["theme:", "uninstall"].join(""));
   });
 
-  it("parses theme remove errors before reaching the uninstall runner", async () => {
+  it("parses theme remove errors before reaching the remove runner", async () => {
     const stderr = captureStderr();
 
     const code = await runNexpressCli(["node", "nexpress", "theme", "remove", "--force"]);
@@ -51,5 +85,128 @@ describe("theme commands", () => {
     stderr.restore();
     expect(code).toBe(2);
     expect(stderr.read()).toContain("Unknown flag for theme remove: --force");
+  });
+
+  it("prints build, theme add, migration, and activation steps after creating a theme", async () => {
+    const stdout = captureStdout();
+
+    const code = await runNexpressCli(["node", "nexpress", "create", "theme", "newsroom"], {
+      cwd: workdir,
+    });
+
+    stdout.restore();
+    expect(code).toBe(0);
+    expect(stdout.read()).toContain("✓ Scaffolded theme");
+    expect(stdout.read()).toContain("pnpm --filter theme-newsroom build");
+    expect(stdout.read()).toContain("pnpm exec nexpress theme add theme-newsroom --yes");
+    expect(stdout.read()).toContain("pnpm db:generate && pnpm db:migrate");
+    expect(stdout.read()).toContain("Activate it in admin -> Settings -> Theme");
+  });
+
+  it("prints npm script commands in theme add dry-run for npm projects", async () => {
+    await writeFile(
+      join(workdir, "package.json"),
+      JSON.stringify({ name: "site", packageManager: "npm@11.0.0" }, null, 2),
+      "utf-8",
+    );
+    await writeFile(join(workdir, "nexpress.config.ts"), themeMarkerConfig, "utf-8");
+    const stdout = captureStdout();
+
+    const code = await runNexpressCli(
+      ["node", "nexpress", "theme", "add", "theme-newsroom", "--dry-run"],
+      { cwd: workdir },
+    );
+
+    stdout.restore();
+    expect(code).toBe(0);
+    expect(stdout.read()).toContain("npm install theme-newsroom");
+    expect(stdout.read()).toContain("npm run db:generate && npm run db:migrate");
+  });
+
+  it("adds a built local workspace theme with a workspace protocol dependency", async () => {
+    await writeFile(join(workdir, "nexpress.config.ts"), themeMarkerConfig, "utf-8");
+    await writeFile(join(workdir, "pnpm-workspace.yaml"), 'packages:\n  - "packages/themes/*"\n');
+    await mkdir(join(workdir, "packages/themes/newsroom/dist"), { recursive: true });
+    await writeFile(
+      join(workdir, "packages/themes/newsroom/package.json"),
+      JSON.stringify(
+        {
+          name: "theme-newsroom",
+          exports: { ".": { import: "./dist/index.js", types: "./dist/index.d.ts" } },
+          main: "./dist/index.js",
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+    await writeFile(join(workdir, "packages/themes/newsroom/dist/index.js"), "export {};\n");
+    const packageManagerCalls: Array<{
+      manager: string;
+      action: string;
+      packageName: string;
+      cwd: string;
+      options: unknown;
+    }> = [];
+    const stdout = captureStdout();
+
+    const code = await runNexpressCli(
+      ["node", "nexpress", "theme", "add", "theme-newsroom", "--yes"],
+      {
+        cwd: workdir,
+        runPackageManager: (manager, action, packageName, cwd, options = {}) => {
+          packageManagerCalls.push({ manager, action, packageName, cwd, options });
+          return Promise.resolve();
+        },
+      },
+    );
+
+    stdout.restore();
+    const config = await readFile(join(workdir, "nexpress.config.ts"), "utf-8");
+    expect(code).toBe(0);
+    expect(packageManagerCalls).toEqual([
+      {
+        manager: "pnpm",
+        action: "add",
+        packageName: "theme-newsroom",
+        cwd: workdir,
+        options: { localWorkspace: true, workspaceRoot: true },
+      },
+    ]);
+    expect(stdout.read()).toContain("Detected local workspace theme");
+    expect(config).toContain('import { newsroomTheme } from "theme-newsroom";');
+    expect(config).toContain("    newsroomTheme,");
+  });
+
+  it("refuses to add an unbuilt local workspace theme", async () => {
+    await writeFile(join(workdir, "nexpress.config.ts"), themeMarkerConfig, "utf-8");
+    await writeFile(join(workdir, "pnpm-workspace.yaml"), 'packages:\n  - "packages/themes/*"\n');
+    await mkdir(join(workdir, "packages/themes/newsroom"), { recursive: true });
+    await writeFile(
+      join(workdir, "packages/themes/newsroom/package.json"),
+      JSON.stringify(
+        {
+          name: "theme-newsroom",
+          exports: { ".": { import: "./dist/index.js", types: "./dist/index.d.ts" } },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+    const stdout = captureStdout();
+
+    const code = await runNexpressCli(
+      ["node", "nexpress", "theme", "add", "theme-newsroom", "--yes"],
+      {
+        cwd: workdir,
+        runPackageManager: () => Promise.resolve(),
+      },
+    );
+
+    stdout.restore();
+    expect(code).toBe(1);
+    expect(stdout.read()).toContain("build output is missing");
+    expect(stdout.read()).toContain("pnpm --filter theme-newsroom build");
   });
 });

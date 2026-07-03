@@ -1,19 +1,16 @@
 import pc from "picocolors";
 
-import type {
-  ThemeUninstallPlan,
-  ThemeUninstallStep,
-} from "./plan.js";
+import type { ThemeRemovePlan, ThemeRemoveStep } from "./plan.js";
 
 /**
- * Renders a ThemeUninstallPlan for stdout. Mirrors the install
+ * Renders a ThemeRemovePlan for stdout. Mirrors the install
  * formatter shape so operators see a familiar layout, but with
  * destructive coloring (red minuses for removals, yellow for
  * "kept with warning") and an explicit data-loss header at the
  * top of the block.
  */
 
-function describeStep(step: ThemeUninstallStep): string {
+function describeStep(step: ThemeRemoveStep): string {
   if (step.kind === "remove-field") {
     const required = step.requirement.required ? " (was required)" : "";
     const rel =
@@ -33,40 +30,30 @@ function describeStep(step: ThemeUninstallStep): string {
   return `    ${pc.yellow("⚠")} ${step.collection} — keeping file (${step.reason})`;
 }
 
-export function formatThemeUninstallPlan(plan: ThemeUninstallPlan): string {
+export function formatThemeRemovePlan(plan: ThemeRemovePlan): string {
   const lines: string[] = [];
   lines.push(
-    `${pc.cyan("→")} Uninstalling ${pc.bold(plan.themeId)} ${pc.dim(`v${plan.themeVersion}`)}`,
+    `${pc.cyan("→")} Removing ${pc.bold(plan.themeId)} ${pc.dim(`v${plan.themeVersion}`)}`,
   );
 
   if (plan.isNoop) {
     lines.push("");
     lines.push(
-      pc.dim(
-        "  Nothing to remove — the theme's collections / fields are already absent.",
-      ),
+      pc.dim("  Nothing to remove — the theme's collections / fields are already absent."),
     );
     return lines.join("\n");
   }
 
   const removeFieldSteps = plan.steps.filter((s) => s.kind === "remove-field");
-  const removeFileSteps = plan.steps.filter(
-    (s) => s.kind === "remove-collection-file",
-  );
-  const keepWarnings = plan.steps.filter(
-    (s) => s.kind === "keep-collection-with-warning",
-  );
+  const removeFileSteps = plan.steps.filter((s) => s.kind === "remove-collection-file");
+  const keepWarnings = plan.steps.filter((s) => s.kind === "keep-collection-with-warning");
 
   lines.push("");
   lines.push(
-    pc.red(
-      "  ⚠  Destructive — the next migration will DROP COLUMN for every field below.",
-    ),
+    pc.red("  ⚠  Destructive — the next migration will DROP COLUMN for every field below."),
   );
   lines.push(
-    pc.dim(
-      "      Run `pnpm db:migrate` after reviewing the generated migration; back up first.",
-    ),
+    pc.dim("      Run `pnpm db:migrate` after reviewing the generated migration; back up first."),
   );
 
   if (removeFileSteps.length > 0) {

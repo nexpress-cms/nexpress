@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -102,6 +102,58 @@ describe("plugin commands", () => {
     expect(config).toContain("    pluginSeo,");
     expect(stdout.read()).toContain("✓ Registered pluginSeo");
     expect(stdout.read()).toContain("pnpm --silent run ops:plugins -- doctor --json");
+  });
+
+  it("adds a built local workspace plugin with a workspace protocol dependency", async () => {
+    await writeFile(join(workdir, "nexpress.config.ts"), markerConfig, "utf-8");
+    await writeFile(join(workdir, "pnpm-workspace.yaml"), 'packages:\n  - "packages/plugins/*"\n');
+    await mkdir(join(workdir, "packages/plugins/smoke-hook/dist"), { recursive: true });
+    await writeFile(
+      join(workdir, "packages/plugins/smoke-hook/package.json"),
+      JSON.stringify(
+        {
+          name: "smoke-hook",
+          exports: { ".": { import: "./dist/index.js", types: "./dist/index.d.ts" } },
+          main: "./dist/index.js",
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+    await writeFile(join(workdir, "packages/plugins/smoke-hook/dist/index.js"), "export {};\n");
+    const packageManagerCalls: Array<{
+      manager: string;
+      action: string;
+      packageName: string;
+      cwd: string;
+      options: unknown;
+    }> = [];
+    const stdout = captureStdout();
+
+    const code = await runNexpressCli(["node", "nexpress", "plugin", "add", "smoke-hook"], {
+      cwd: workdir,
+      runPackageManager: (manager, action, packageName, cwd, options = {}) => {
+        packageManagerCalls.push({ manager, action, packageName, cwd, options });
+        return Promise.resolve();
+      },
+    });
+
+    stdout.restore();
+    const config = await readFile(join(workdir, "nexpress.config.ts"), "utf-8");
+    expect(code).toBe(0);
+    expect(packageManagerCalls).toEqual([
+      {
+        manager: "pnpm",
+        action: "add",
+        packageName: "smoke-hook",
+        cwd: workdir,
+        options: { localWorkspace: true, workspaceRoot: true },
+      },
+    ]);
+    expect(stdout.read()).toContain("Detected local workspace package");
+    expect(config).toContain('import smokeHook from "smoke-hook";');
+    expect(config).toContain("    smokeHook,");
   });
 
   it("removes a plugin through the CLI command path", async () => {

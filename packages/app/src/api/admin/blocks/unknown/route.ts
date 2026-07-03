@@ -33,9 +33,9 @@ import { ensureFor } from "../../../../lib/init-core";
  * present in the active block registry. This typically happens
  * after:
  *
- *   - `theme:uninstall` removed a theme that contributed blocks
+ *   - `nexpress theme remove` removed a theme that contributed blocks
  *     (`magazine.hero-feature`, etc.).
- *   - The operator switched themes A → B without uninstalling A.
+ *   - The operator switched themes A → B without removing A.
  *   - A plugin that contributed blocks was removed.
  *
  * Scoped to admin (`admin.manage` capability) and CSRF-protected

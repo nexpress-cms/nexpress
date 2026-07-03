@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
- * Plugin scaffold matrix smoke.
+ * Extension scaffold matrix smoke.
  *
  * Run inside the fresh scaffold CI job after the app dependencies have
  * installed. It exercises the operator-facing `pnpm exec nexpress create
- * *-plugin` path, then proves each generated plugin package can be
- * installed, type-checked, built, registered, verified with
- * ops:plugins doctor, and removed in the scaffold workspace.
+ * *-plugin` and `create theme` paths. Plugin packages are installed,
+ * type-checked, built, registered, verified with ops:plugins doctor, and
+ * removed. Theme packages are type-checked, built, and registered through
+ * `theme add` so local theme authoring works in a fresh scaffold.
  */
 
 import { spawnSync } from "node:child_process";
@@ -16,6 +17,7 @@ import { resolve } from "node:path";
 const [, , scaffoldDirArg] = process.argv;
 const scaffoldDir = scaffoldDirArg ? resolve(scaffoldDirArg) : process.cwd();
 const pluginsDir = resolve(scaffoldDir, "packages/plugins");
+const themesDir = resolve(scaffoldDir, "packages/themes");
 
 function fail(message, detail = "") {
   console.error(`::error::${message}`);
@@ -75,24 +77,37 @@ function pluginIdentifier(packageName) {
     .replace(/-([a-z0-9])/g, (_, char) => char.toUpperCase());
 }
 
+function themeIdentifier(packageName) {
+  const tail = packageName.replace(/^@[^/]+\//, "").replace(/^theme[-_]/, "");
+  const identifier = tail.replace(/-([a-z0-9])/g, (_, char) => char.toUpperCase());
+  return `${identifier}Theme`;
+}
+
 const rootPkg = readJson(resolve(scaffoldDir, "package.json"), "scaffold package.json");
-const expectedRanges = {
+const expectedPluginRanges = {
   "@nexpress/blocks":
     rootPkg.dependencies?.["@nexpress/blocks"] ?? rootPkg.devDependencies?.["@nexpress/blocks"],
   "@nexpress/plugin-sdk":
     rootPkg.dependencies?.["@nexpress/plugin-sdk"] ??
     rootPkg.devDependencies?.["@nexpress/plugin-sdk"],
 };
+const expectedThemeRanges = {
+  "@nexpress/blocks":
+    rootPkg.dependencies?.["@nexpress/blocks"] ?? rootPkg.devDependencies?.["@nexpress/blocks"],
+  "@nexpress/theme":
+    rootPkg.dependencies?.["@nexpress/theme"] ?? rootPkg.devDependencies?.["@nexpress/theme"],
+};
 
-for (const [name, range] of Object.entries(expectedRanges)) {
+for (const [name, range] of Object.entries({ ...expectedPluginRanges, ...expectedThemeRanges })) {
   if (typeof range !== "string" || range.length === 0) {
-    fail(`scaffold package.json missing ${name}; plugin scaffolds cannot inherit a range`);
+    fail(`scaffold package.json missing ${name}; extension scaffolds cannot inherit a range`);
   }
 }
 
 mkdirSync(pluginsDir, { recursive: true });
+mkdirSync(themesDir, { recursive: true });
 
-const matrix = [
+const pluginMatrix = [
   {
     label: "hook plugin",
     args: ["exec", "nexpress", "create", "hook-plugin", "smoke-hook", "--workspace"],
@@ -142,7 +157,17 @@ const matrix = [
   },
 ];
 
-for (const entry of matrix) {
+const themeMatrix = [
+  {
+    label: "theme",
+    args: ["exec", "nexpress", "create", "theme", "newsroom", "--workspace"],
+    dir: "newsroom",
+    packageName: "theme-newsroom",
+    cwd: scaffoldDir,
+  },
+];
+
+for (const entry of pluginMatrix) {
   const createOutput = run(`create ${entry.label}`, entry.args, { cwd: entry.cwd ?? pluginsDir });
   assertIncludes(
     createOutput,
@@ -174,7 +199,7 @@ for (const entry of matrix) {
       `expected ${entry.packageName}\nactual ${pkg.name}`,
     );
   }
-  for (const [name, range] of Object.entries(expectedRanges)) {
+  for (const [name, range] of Object.entries(expectedPluginRanges)) {
     if (pkg.dependencies?.[name] !== range) {
       fail(
         `${entry.label} did not inherit ${name} dependency range`,
@@ -198,19 +223,76 @@ for (const entry of matrix) {
     fail("admin plugin scaffold should include zod for configSchema", JSON.stringify(pkg, null, 2));
   }
 }
-console.log(`✓ generated plugin packages: ${matrix.map((entry) => entry.packageName).join(", ")}`);
 
-run("install generated plugin workspaces", ["install", "--no-frozen-lockfile"], {
+for (const entry of themeMatrix) {
+  const createOutput = run(`create ${entry.label}`, entry.args, { cwd: entry.cwd ?? themesDir });
+  assertIncludes(
+    createOutput,
+    `pnpm --filter ${entry.packageName} build`,
+    `${entry.label} create output`,
+  );
+  assertIncludes(
+    createOutput,
+    `pnpm exec nexpress theme add ${entry.packageName} --yes`,
+    `${entry.label} create output`,
+  );
+  assertIncludes(
+    createOutput,
+    "Activate it in admin -> Settings -> Theme",
+    `${entry.label} create output`,
+  );
+
+  const themeDir = resolve(themesDir, entry.dir);
+  const pkg = readJson(resolve(themeDir, "package.json"), `${entry.label} package.json`);
+  const tsconfig = readJson(resolve(themeDir, "tsconfig.json"), `${entry.label} tsconfig.json`);
+
+  if (pkg.name !== entry.packageName) {
+    fail(
+      `${entry.label} package name drifted`,
+      `expected ${entry.packageName}\nactual ${pkg.name}`,
+    );
+  }
+  for (const [name, range] of Object.entries(expectedThemeRanges)) {
+    if (pkg.dependencies?.[name] !== range) {
+      fail(
+        `${entry.label} did not inherit ${name} dependency range`,
+        `expected: ${range}\nactual: ${pkg.dependencies?.[name] ?? "(missing)"}`,
+      );
+    }
+  }
+  if (pkg.dependencies?.["@nexpress/plugin-sdk"]) {
+    fail("theme scaffold should not depend on @nexpress/plugin-sdk", JSON.stringify(pkg, null, 2));
+  }
+  if (typeof tsconfig.extends === "string") {
+    fail(`${entry.label} tsconfig should not extend the scaffold app tsconfig`, tsconfig.extends);
+  }
+  if (
+    tsconfig.compilerOptions?.module !== "NodeNext" ||
+    tsconfig.compilerOptions?.moduleResolution !== "NodeNext"
+  ) {
+    fail(
+      `${entry.label} tsconfig should be a self-contained package config`,
+      JSON.stringify(tsconfig, null, 2),
+    );
+  }
+}
+console.log(
+  `✓ generated extension packages: ${[...pluginMatrix, ...themeMatrix]
+    .map((entry) => entry.packageName)
+    .join(", ")}`,
+);
+
+run("install generated extension workspaces", ["install", "--no-frozen-lockfile"], {
   timeout: 180_000,
 });
 
-for (const entry of matrix) {
+for (const entry of [...pluginMatrix, ...themeMatrix]) {
   run(`${entry.label} typecheck`, ["--filter", entry.packageName, "typecheck"]);
   run(`${entry.label} build`, ["--filter", entry.packageName, "build"], { timeout: 180_000 });
 }
-console.log("✓ generated plugin packages typecheck and build");
+console.log("✓ generated extension packages typecheck and build");
 
-for (const entry of matrix) {
+for (const entry of pluginMatrix) {
   const addOutput = run(
     `register ${entry.label}`,
     ["exec", "nexpress", "plugin", "add", entry.packageName],
@@ -227,7 +309,7 @@ for (const entry of matrix) {
   );
 }
 const registeredPkg = readJson(resolve(scaffoldDir, "package.json"), "scaffold package.json");
-for (const entry of matrix) {
+for (const entry of pluginMatrix) {
   if (registeredPkg.dependencies?.[entry.packageName] !== "workspace:*") {
     fail(
       `${entry.label} registration should add the workspace dependency`,
@@ -236,7 +318,7 @@ for (const entry of matrix) {
   }
 }
 const configSource = readFileSync(resolve(scaffoldDir, "src/nexpress.config.ts"), "utf8");
-for (const entry of matrix) {
+for (const entry of pluginMatrix) {
   const identifier = pluginIdentifier(entry.packageName);
   assertIncludes(
     configSource,
@@ -261,7 +343,7 @@ if (registeredDoctor.ok !== true) {
   );
 }
 const registeredIds = new Set(registeredDoctor.plugins?.map((plugin) => plugin.id) ?? []);
-for (const entry of matrix) {
+for (const entry of pluginMatrix) {
   if (!registeredIds.has(entry.dir)) {
     fail(
       `ops:plugins doctor did not include ${entry.label}`,
@@ -271,7 +353,7 @@ for (const entry of matrix) {
 }
 console.log("✓ generated local plugins register and pass ops:plugins doctor");
 
-for (const entry of matrix) {
+for (const entry of pluginMatrix) {
   const removeOutput = run(
     `remove ${entry.label}`,
     ["exec", "nexpress", "plugin", "remove", entry.packageName],
@@ -290,7 +372,7 @@ for (const entry of matrix) {
 
 const removedPkg = readJson(resolve(scaffoldDir, "package.json"), "scaffold package.json");
 const removedConfigSource = readFileSync(resolve(scaffoldDir, "src/nexpress.config.ts"), "utf8");
-for (const entry of matrix) {
+for (const entry of pluginMatrix) {
   const identifier = pluginIdentifier(entry.packageName);
   if (removedPkg.dependencies?.[entry.packageName]) {
     fail(
@@ -321,7 +403,7 @@ if (removedDoctor.ok !== true) {
   );
 }
 const removedIds = new Set(removedDoctor.plugins?.map((plugin) => plugin.id) ?? []);
-for (const entry of matrix) {
+for (const entry of pluginMatrix) {
   if (removedIds.has(entry.dir)) {
     fail(
       `ops:plugins doctor still includes removed ${entry.label}`,
@@ -341,3 +423,34 @@ assertIncludes(
   "interactive block dist/client.js",
 );
 console.log("✓ interactive block scaffold preserves the client boundary after build");
+
+for (const entry of themeMatrix) {
+  const addOutput = run(
+    `register ${entry.label}`,
+    ["exec", "nexpress", "theme", "add", entry.packageName, "--yes"],
+    {
+      timeout: 180_000,
+    },
+  );
+  assertIncludes(addOutput, "Detected local workspace theme", `${entry.label} add output`);
+  assertIncludes(addOutput, "Registered", `${entry.label} add output`);
+  assertIncludes(addOutput, themeIdentifier(entry.packageName), `${entry.label} add output`);
+}
+const themeRegisteredPkg = readJson(resolve(scaffoldDir, "package.json"), "scaffold package.json");
+const themeConfigSource = readFileSync(resolve(scaffoldDir, "src/nexpress.config.ts"), "utf8");
+for (const entry of themeMatrix) {
+  const identifier = themeIdentifier(entry.packageName);
+  if (themeRegisteredPkg.dependencies?.[entry.packageName] !== "workspace:*") {
+    fail(
+      `${entry.label} registration should add the workspace dependency`,
+      `actual: ${themeRegisteredPkg.dependencies?.[entry.packageName] ?? "(missing)"}`,
+    );
+  }
+  assertIncludes(
+    themeConfigSource,
+    `import { ${identifier} } from "${entry.packageName}";`,
+    "nexpress.config.ts",
+  );
+  assertIncludes(themeConfigSource, `${identifier},`, "nexpress.config.ts");
+}
+console.log("✓ generated local themes register through theme add");

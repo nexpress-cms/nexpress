@@ -19,7 +19,7 @@ import {
   deriveNames,
   resolveTsconfigExtends,
   SERVER_TSUP_CONFIG,
-  writePluginFiles,
+  writeScaffoldFiles,
   type ScaffoldOptions,
   type ScaffoldResult,
 } from "./scaffold-utils.js";
@@ -157,8 +157,8 @@ search indexing, notifications.
   };
 
   return {
-    files: await writePluginFiles(names.pluginDir, files),
-    pluginDir: names.pluginDir,
+    files: await writeScaffoldFiles(names.pluginDir, files),
+    packageDir: names.pluginDir,
     kind: "hook",
     interactive: false,
   };
@@ -247,8 +247,8 @@ or chain in your own auth / validation.
   };
 
   return {
-    files: await writePluginFiles(names.pluginDir, files),
-    pluginDir: names.pluginDir,
+    files: await writeScaffoldFiles(names.pluginDir, files),
+    packageDir: names.pluginDir,
     kind: "route",
     interactive: false,
   };
@@ -369,8 +369,8 @@ call to make this plugin do something.
   };
 
   return {
-    files: await writePluginFiles(names.pluginDir, files),
-    pluginDir: names.pluginDir,
+    files: await writeScaffoldFiles(names.pluginDir, files),
+    packageDir: names.pluginDir,
     kind: "admin",
     interactive: false,
   };
@@ -461,8 +461,8 @@ worker queue.
   };
 
   return {
-    files: await writePluginFiles(names.pluginDir, files),
-    pluginDir: names.pluginDir,
+    files: await writeScaffoldFiles(names.pluginDir, files),
+    packageDir: names.pluginDir,
     kind: "scheduled",
     interactive: false,
   };

@@ -3,10 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  CollectionUnpatchError,
-  unpatchCollectionFile,
-} from "./unpatch-collection.js";
+import { CollectionUnpatchError, unpatchCollectionFile } from "./unpatch-collection.js";
 
 let tmpDir: string;
 
@@ -146,9 +143,7 @@ export default defineCollection({
 });
 `.trimStart(),
     );
-    expect(() =>
-      unpatchCollectionFile(filePath, ["whatever"]),
-    ).toThrow(CollectionUnpatchError);
+    expect(() => unpatchCollectionFile(filePath, ["whatever"])).toThrow(CollectionUnpatchError);
   });
 
   it("does not save the file when no fields were removed", () => {

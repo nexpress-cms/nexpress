@@ -29,13 +29,13 @@ describe("scaffoldBlockPlugin", () => {
       "tsconfig.json",
       "tsup.config.ts",
     ]);
-    expect(result.pluginDir.endsWith("my-callout")).toBe(true);
+    expect(result.packageDir.endsWith("my-callout")).toBe(true);
   });
 
   it("derives package + identifier names from the slug consistently", async () => {
     const result = await scaffoldBlockPlugin({ slug: "my-callout", outDir: workdir });
 
-    const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+    const pkg = JSON.parse(await readFile(join(result.packageDir, "package.json"), "utf-8")) as {
       name: string;
       dependencies: Record<string, string>;
     };
@@ -44,7 +44,7 @@ describe("scaffoldBlockPlugin", () => {
     expect(pkg.dependencies["@nexpress/plugin-sdk"]).toBe("workspace:*");
     expect(pkg.dependencies["@nexpress/blocks"]).toBe("workspace:*");
 
-    const source = await readFile(join(result.pluginDir, "src/index.tsx"), "utf-8");
+    const source = await readFile(join(result.packageDir, "src/index.tsx"), "utf-8");
     // Camel-cased export name + matching block type root.
     expect(source).toMatch(/export const myCalloutPlugin = definePlugin\(/);
     expect(source).toMatch(/type: "myCallout\.example"/);
@@ -52,7 +52,7 @@ describe("scaffoldBlockPlugin", () => {
 
   it("documents CLI registration for local workspace plugins", async () => {
     const result = await scaffoldBlockPlugin({ slug: "my-callout", outDir: workdir });
-    const readme = await readFile(join(result.pluginDir, "README.md"), "utf-8");
+    const readme = await readFile(join(result.packageDir, "README.md"), "utf-8");
     expect(readme).toContain("From your NexPress project root");
     expect(readme).toContain("pnpm --filter my-callout build");
     expect(readme).toContain("pnpm exec nexpress plugin add my-callout");
@@ -65,7 +65,7 @@ describe("scaffoldBlockPlugin", () => {
 
   it("keeps static block package metadata aligned with the shared plugin baseline", async () => {
     const result = await scaffoldBlockPlugin({ slug: "baseline-block", outDir: workdir });
-    const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+    const pkg = JSON.parse(await readFile(join(result.packageDir, "package.json"), "utf-8")) as {
       files: string[];
       engines: Record<string, string>;
       exports: Record<string, { types: string; import: string }>;
@@ -97,7 +97,7 @@ describe("scaffoldBlockPlugin", () => {
         "@nexpress/plugin-sdk": "0.4.0",
       },
     });
-    const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+    const pkg = JSON.parse(await readFile(join(result.packageDir, "package.json"), "utf-8")) as {
       dependencies: Record<string, string>;
     };
 
@@ -111,12 +111,12 @@ describe("scaffoldBlockPlugin", () => {
       outDir: workdir,
     });
 
-    const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+    const pkg = JSON.parse(await readFile(join(result.packageDir, "package.json"), "utf-8")) as {
       name: string;
     };
     expect(pkg.name).toBe("@acme/banner");
     // On-disk dir name strips the scope.
-    expect(result.pluginDir.endsWith("banner")).toBe(true);
+    expect(result.packageDir.endsWith("banner")).toBe(true);
   });
 
   it("refuses to overwrite an existing directory", async () => {
@@ -139,14 +139,14 @@ describe("scaffoldBlockPlugin", () => {
 
     // package.json gains a `./client` export so the index file can self-
     // import through the package's own subpath.
-    const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+    const pkg = JSON.parse(await readFile(join(result.packageDir, "package.json"), "utf-8")) as {
       exports: Record<string, unknown>;
     };
     expect(pkg.exports["./client"]).toBeDefined();
 
     // tsconfig must include DOM libs for `useState` / event handler types.
     const tsconfig = JSON.parse(
-      await readFile(join(result.pluginDir, "tsconfig.json"), "utf-8"),
+      await readFile(join(result.packageDir, "tsconfig.json"), "utf-8"),
     ) as { compilerOptions: { lib?: string[] } };
     expect(tsconfig.compilerOptions.lib).toEqual(["ES2022", "DOM", "DOM.Iterable"]);
 
@@ -154,17 +154,17 @@ describe("scaffoldBlockPlugin", () => {
     // both are required to keep the "use client" boundary intact after
     // bundling. Hard-coding the strings here so a future refactor doesn't
     // silently strip the wiring.
-    const tsup = await readFile(join(result.pluginDir, "tsup.config.ts"), "utf-8");
+    const tsup = await readFile(join(result.packageDir, "tsup.config.ts"), "utf-8");
     expect(tsup).toContain("splitting: false");
     expect(tsup).toContain("mixer/client");
 
     // Source: index re-imports the form via the package's own subpath
     // (not a relative path) and `client.tsx` starts with the directive.
-    const indexSrc = await readFile(join(result.pluginDir, "src/index.tsx"), "utf-8");
+    const indexSrc = await readFile(join(result.packageDir, "src/index.tsx"), "utf-8");
     expect(indexSrc).toMatch(/from "mixer\/client"/);
-    const clientSrc = await readFile(join(result.pluginDir, "src/client.tsx"), "utf-8");
+    const clientSrc = await readFile(join(result.packageDir, "src/client.tsx"), "utf-8");
     expect(clientSrc.split("\n")[0]).toBe(`"use client";`);
-    const selfShim = await readFile(join(result.pluginDir, "src/self-shim.d.ts"), "utf-8");
+    const selfShim = await readFile(join(result.packageDir, "src/self-shim.d.ts"), "utf-8");
     expect(selfShim).toContain('declare module "mixer/client"');
     expect(selfShim).toContain('export { MixerForm } from "./client.js";');
   });
@@ -174,7 +174,7 @@ describe("scaffoldBlockPlugin", () => {
     expect(result.interactive).toBe(false);
     expect(result.files).not.toContain("src/client.tsx");
 
-    const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+    const pkg = JSON.parse(await readFile(join(result.packageDir, "package.json"), "utf-8")) as {
       exports: Record<string, unknown>;
     };
     expect(pkg.exports["./client"]).toBeUndefined();

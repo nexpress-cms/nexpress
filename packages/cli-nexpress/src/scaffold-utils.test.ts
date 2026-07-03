@@ -29,6 +29,7 @@ describe("scaffold utils", () => {
 
     expect(pkg.dependencies["@nexpress/blocks"]).toBe("workspace:*");
     expect(pkg.dependencies["@nexpress/plugin-sdk"]).toBe("workspace:*");
+    expect(pkg.dependencies["@nexpress/theme"]).toBeUndefined();
   });
 
   it("lets callers override generated framework dependency ranges", () => {
@@ -63,6 +64,28 @@ describe("scaffold utils", () => {
     expect(resolveScaffoldDependencyRanges(nested)).toEqual({
       "@nexpress/blocks": "0.4.1",
       "@nexpress/plugin-sdk": "file:/tmp/nexpress-plugin-sdk-0.4.1.tgz",
+    });
+  });
+
+  it("can read theme scaffold ranges without pulling in plugin-sdk", async () => {
+    await writeFile(
+      join(workdir, "package.json"),
+      JSON.stringify({
+        dependencies: {
+          "@nexpress/blocks": "0.4.1",
+          "@nexpress/theme": "0.4.1",
+          "@nexpress/plugin-sdk": "0.4.1",
+        },
+      }),
+    );
+    const nested = join(workdir, "packages", "themes");
+    await mkdir(nested, { recursive: true });
+
+    expect(
+      resolveScaffoldDependencyRanges(nested, ["@nexpress/blocks", "@nexpress/theme"]),
+    ).toEqual({
+      "@nexpress/blocks": "0.4.1",
+      "@nexpress/theme": "0.4.1",
     });
   });
 

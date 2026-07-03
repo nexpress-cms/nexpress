@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { parseThemeUninstallArgs } from "./args.js";
+import { parseThemeRemoveArgs } from "./args.js";
 
-describe("parseThemeUninstallArgs", () => {
+describe("parseThemeRemoveArgs", () => {
   it("parses the friendly theme remove command flags", () => {
-    const result = parseThemeUninstallArgs(
+    const result = parseThemeRemoveArgs(
       ["@nexpress/theme-magazine", "--dry-run", "--yes", "--with-collections", "--apply"],
       {
         commandName: "theme remove",
@@ -27,7 +27,7 @@ describe("parseThemeUninstallArgs", () => {
   });
 
   it("labels unknown flags with the command name", () => {
-    const result = parseThemeUninstallArgs(["@nexpress/theme-magazine", "--force"], {
+    const result = parseThemeRemoveArgs(["@nexpress/theme-magazine", "--force"], {
       commandName: "theme remove",
       example: "nexpress theme remove @nexpress/theme-magazine",
     });
@@ -38,16 +38,16 @@ describe("parseThemeUninstallArgs", () => {
     });
   });
 
-  it("keeps legacy theme:uninstall errors discoverable", () => {
-    const result = parseThemeUninstallArgs([], {
-      commandName: "theme:uninstall",
-      example: "nexpress theme:uninstall @nexpress/theme-magazine",
+  it("labels missing package errors with the current command", () => {
+    const result = parseThemeRemoveArgs([], {
+      commandName: "theme remove",
+      example: "nexpress theme remove @nexpress/theme-magazine",
     });
 
     expect(result).toEqual({
       ok: false,
       message:
-        "theme:uninstall requires a theme package name. Example: nexpress theme:uninstall @nexpress/theme-magazine",
+        "theme remove requires a theme package name. Example: nexpress theme remove @nexpress/theme-magazine",
     });
   });
 });

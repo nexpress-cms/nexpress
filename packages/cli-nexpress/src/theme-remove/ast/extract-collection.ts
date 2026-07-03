@@ -42,9 +42,7 @@ export interface ExtractedCollection {
   config: Pick<NpCollectionConfig, "slug" | "fields" | "labels">;
 }
 
-export function extractCollectionFromFile(
-  filePath: string,
-): ExtractedCollection | null {
+export function extractCollectionFromFile(filePath: string): ExtractedCollection | null {
   const project = new Project({
     skipAddingFilesFromTsConfig: true,
     skipFileDependencyResolution: true,
@@ -59,9 +57,7 @@ export function extractCollectionFromFile(
  * Test-friendly variant — extract from already-parsed source.
  * The exported entry above wraps this with FS reads.
  */
-export function extractFromSourceFile(
-  source: SourceFile,
-): ExtractedCollection | null {
+export function extractFromSourceFile(source: SourceFile): ExtractedCollection | null {
   const defineCall = findDefineCollectionCall(source);
   if (!defineCall) return null;
 
@@ -75,11 +71,8 @@ export function extractFromSourceFile(
   const fieldsProp = obj.getProperty("fields");
   const fields: NpFieldConfig[] = [];
   if (fieldsProp && fieldsProp.isKind(SyntaxKind.PropertyAssignment)) {
-    const initializer = (fieldsProp).getInitializer();
-    if (
-      initializer &&
-      initializer.isKind(SyntaxKind.ArrayLiteralExpression)
-    ) {
+    const initializer = fieldsProp.getInitializer();
+    if (initializer && initializer.isKind(SyntaxKind.ArrayLiteralExpression)) {
       for (const el of initializer.getElements()) {
         if (el.isKind(SyntaxKind.ObjectLiteralExpression)) {
           collectFields(el, fields);
@@ -100,9 +93,7 @@ export function extractFromSourceFile(
   };
 }
 
-function findDefineCollectionCall(
-  source: SourceFile,
-): CallExpression | undefined {
+function findDefineCollectionCall(source: SourceFile): CallExpression | undefined {
   // Walk every CallExpression; pick the first whose callee
   // is the identifier `defineCollection`. Multiple calls in
   // one file are unusual but if present we take the first
@@ -113,13 +104,10 @@ function findDefineCollectionCall(
   return undefined;
 }
 
-function readStringProperty(
-  obj: ObjectLiteralExpression,
-  name: string,
-): string | undefined {
+function readStringProperty(obj: ObjectLiteralExpression, name: string): string | undefined {
   const prop = obj.getProperty(name);
   if (!prop || !prop.isKind(SyntaxKind.PropertyAssignment)) return undefined;
-  const initializer = (prop).getInitializer();
+  const initializer = prop.getInitializer();
   if (!initializer) return undefined;
   if (initializer.isKind(SyntaxKind.StringLiteral)) {
     return initializer.getLiteralValue();
@@ -134,17 +122,14 @@ function readStringProperty(
  * leaf fields (`text`, `checkbox`, `relationship`, etc.),
  * pushes a synthesized `NpFieldConfig`.
  */
-function collectFields(
-  literal: ObjectLiteralExpression,
-  out: NpFieldConfig[],
-): void {
+function collectFields(literal: ObjectLiteralExpression, out: NpFieldConfig[]): void {
   const type = readStringProperty(literal, "type");
   if (!type) return;
 
   if (type === "row" || type === "collapsible") {
     const innerFields = literal.getProperty("fields");
     if (innerFields && innerFields.isKind(SyntaxKind.PropertyAssignment)) {
-      const init = (innerFields).getInitializer();
+      const init = innerFields.getInitializer();
       if (init && init.isKind(SyntaxKind.ArrayLiteralExpression)) {
         for (const el of init.getElements()) {
           if (el.isKind(SyntaxKind.ObjectLiteralExpression)) {
@@ -173,12 +158,10 @@ function collectFields(
   } as unknown as NpFieldConfig);
 }
 
-function readRelationTo(
-  literal: ObjectLiteralExpression,
-): string | string[] | undefined {
+function readRelationTo(literal: ObjectLiteralExpression): string | string[] | undefined {
   const prop = literal.getProperty("relationTo");
   if (!prop || !prop.isKind(SyntaxKind.PropertyAssignment)) return undefined;
-  const init = (prop).getInitializer();
+  const init = prop.getInitializer();
   if (!init) return undefined;
   if (init.isKind(SyntaxKind.StringLiteral)) {
     return init.getLiteralValue();

@@ -21,6 +21,7 @@ import {
 } from "./scaffold-plugin-types.js";
 import { packageNameFromSlug, resolveScaffoldDependencyRanges } from "./scaffold-utils.js";
 import type { ScaffoldKind, ScaffoldResult } from "./scaffold-utils.js";
+import { packageNameFromThemeSlug, scaffoldTheme } from "./scaffold-theme.js";
 import { buildRunScriptArgs, resolveOpsScriptInvocation } from "./ops-command.js";
 import {
   formatPluginManualConfigGuidance,
@@ -30,14 +31,15 @@ import {
 } from "./plugin-guidance.js";
 import {
   buildPackageManagerArgs,
-  inspectLocalPluginWorkspace,
-  missingLocalPluginBuildArtifacts,
+  inspectLocalWorkspacePackage,
+  isPnpmWorkspaceRoot,
+  missingLocalPackageBuildArtifacts,
   type NpPackageManager,
   type NpPackageManagerOptions,
 } from "./package-manager.js";
 import { runThemeAdd } from "./theme-add/run.js";
-import { parseThemeUninstallArgs } from "./theme-uninstall/args.js";
-import { runThemeUninstall } from "./theme-uninstall/run.js";
+import { parseThemeRemoveArgs } from "./theme-remove/args.js";
+import { runThemeRemove } from "./theme-remove/run.js";
 
 const HELP_TEXT = `nexpress — project-side CLI
 
@@ -53,7 +55,6 @@ Usage:
   nexpress theme remove <package> --yes               Same, but skip the destructive confirm prompt
   nexpress theme remove <package> --with-collections  Also delete collection FILES that match the theme's spec exactly
   nexpress theme remove <package> --apply             Same, but auto-chain db:migrate after generate (DROP COLUMN runs)
-  nexpress theme:uninstall <package>                  Legacy alias for theme remove
   nexpress deploy plan --target <host> [--json]       Print a deployment bridge plan
   nexpress ops status [--json|--brief|--no-color]     Print read-only runtime status for operators and agents
   nexpress ops contracts [--json|--brief]             Print the shipped local ops contract registry
@@ -87,6 +88,7 @@ Usage:
   nexpress create route-plugin <slug> [--workspace|--out <dir>]  Scaffold an API-route plugin
   nexpress create admin-plugin <slug> [--workspace|--out <dir>]  Scaffold an admin-extension plugin
   nexpress create scheduled-plugin <slug> [--workspace|--out <dir>] Scaffold a scheduled-task plugin
+  nexpress create theme <slug> [--workspace|--out <dir>]         Scaffold a theme package
 
 Notes:
   - "plugin add/remove" and "theme add/remove" run from the project root (where
@@ -103,6 +105,9 @@ Notes:
     default. From a project root, use --workspace to write packages/plugins/<slug>
     or --out <dir> for an explicit destination. Then run pnpm install +
     pnpm --filter <packageName> build before registering with "nexpress plugin add".
+  - "create theme" writes a starter package the same way; --workspace targets
+    packages/themes/<slug>. Build it, register with "nexpress theme add", then
+    activate it in admin -> Settings -> Theme.
   - --interactive (block kind only) emits a second client entry with the boundary
     wiring (splitting off, self-import external, DOM lib) pre-configured.
   - The config file must include marker comments for automated edits:
@@ -245,6 +250,7 @@ async function pluginAdd(
     identifier: packageToIdentifier(packageName),
   };
   const project = resolveProject(cwd);
+  const pnpmWorkspaceRoot = project.packageManager === "pnpm" && isPnpmWorkspaceRoot(cwd);
 
   // Validate the config edit BEFORE running the package manager. If the
   // operator's nexpress.config.ts doesn't have markers, we'd rather bail
@@ -258,6 +264,7 @@ async function pluginAdd(
         project.packageManager,
         "add",
         packageName,
+        pnpmWorkspaceRoot ? { workspaceRoot: true } : {},
       )}" yet.\n` +
         `  Add the markers below to your config (or paste the snippet directly), then re-run.\n\n` +
         `${buildManualSnippet(entry)}\n\n` +
@@ -274,10 +281,9 @@ async function pluginAdd(
     return 1;
   }
 
-  const localWorkspace =
-    project.packageManager === "pnpm"
-      ? inspectLocalPluginWorkspace(cwd, packageName)
-      : ({ kind: "missing" } as const);
+  const localWorkspace = pnpmWorkspaceRoot
+    ? inspectLocalWorkspacePackage(cwd, packageName, ["packages/plugins"])
+    : ({ kind: "missing" } as const);
 
   if (localWorkspace.kind === "malformed") {
     process.stdout.write(
@@ -291,7 +297,7 @@ async function pluginAdd(
   }
 
   if (localWorkspace.kind === "found") {
-    const missingArtifacts = missingLocalPluginBuildArtifacts(
+    const missingArtifacts = missingLocalPackageBuildArtifacts(
       localWorkspace.dir,
       localWorkspace.packageJson,
     );
@@ -310,11 +316,12 @@ async function pluginAdd(
   process.stdout.write(`\n→ Installing ${packageName} via ${project.packageManager}…\n`);
   if (localWorkspace.kind === "found") {
     process.stdout.write(
-      `  Detected local workspace package at ${relative(cwd, localWorkspace.dir)}; using pnpm --workspace.\n`,
+      `  Detected local workspace package at ${relative(cwd, localWorkspace.dir)}; using workspace:*.\n`,
     );
   }
   await packageManagerRunner(project.packageManager, "add", packageName, cwd, {
     localWorkspace: localWorkspace.kind === "found",
+    ...(pnpmWorkspaceRoot ? { workspaceRoot: true } : {}),
   });
   process.stdout.write(`✓ Installed ${packageName}.\n`);
 
@@ -362,6 +369,7 @@ async function pluginRemove(
     identifier: packageToIdentifier(packageName),
   };
   const project = resolveProject(cwd);
+  const pnpmWorkspaceRoot = project.packageManager === "pnpm" && isPnpmWorkspaceRoot(cwd);
 
   // Strip the config first so a failed npm step doesn't leave the user with
   // a "ghost" registration referencing an uninstalled package.
@@ -380,7 +388,13 @@ async function pluginRemove(
   }
 
   process.stdout.write(`\n→ Uninstalling ${packageName} via ${project.packageManager}…\n`);
-  await packageManagerRunner(project.packageManager, "remove", packageName, cwd);
+  await packageManagerRunner(
+    project.packageManager,
+    "remove",
+    packageName,
+    cwd,
+    pnpmWorkspaceRoot ? { workspaceRoot: true } : {},
+  );
   process.stdout.write(`✓ Removed ${packageName}.\n`);
   if (result.kind === "no-markers") {
     process.stdout.write(
@@ -407,8 +421,8 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
   }
 
   if (args[0] === "theme") {
-    // `theme add` registers a package; `theme remove` is the
-    // friendly counterpart to the legacy `theme:uninstall`.
+    // `theme add` registers a package; `theme remove` unregisters it and
+    // prepares the contributed field cleanup.
     const sub = args[1];
     if (sub === "add") {
       let themePackage: string | undefined;
@@ -435,10 +449,13 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
         );
         return 2;
       }
-      return runThemeAdd({ themePackage, flags: { dryRun, yes, apply } });
+      return runThemeAdd(
+        { themePackage, flags: { dryRun, yes, apply } },
+        { cwd, runPackageManager: packageManagerRunner },
+      );
     }
     if (sub === "remove") {
-      const parsed = parseThemeUninstallArgs(args.slice(2), {
+      const parsed = parseThemeRemoveArgs(args.slice(2), {
         commandName: "theme remove",
         example: "nexpress theme remove @nexpress/theme-magazine",
       });
@@ -446,22 +463,10 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
         process.stderr.write(`${parsed.message}\n`);
         return 2;
       }
-      return runThemeUninstall(parsed.value);
+      return runThemeRemove(parsed.value);
     }
     process.stderr.write(`Unknown subcommand: theme ${sub ?? ""}\n${HELP_TEXT}`);
     return 2;
-  }
-
-  if (args[0] === "theme:uninstall") {
-    const parsed = parseThemeUninstallArgs(args.slice(1), {
-      commandName: "theme:uninstall",
-      example: "nexpress theme:uninstall @nexpress/theme-magazine",
-    });
-    if (!parsed.ok) {
-      process.stderr.write(`${parsed.message}\n`);
-      return 2;
-    }
-    return runThemeUninstall(parsed.value);
   }
 
   if (args[0] === "ops") {
@@ -560,16 +565,48 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
     // and one new generator function in `scaffold-plugin-types.ts`.
     const kindMap: Record<
       string,
-      { kind: ScaffoldKind; label: string; supportsInteractive: boolean }
+      {
+        kind: ScaffoldKind;
+        label: string;
+        supportsInteractive: boolean;
+        workspaceDir: "packages/plugins" | "packages/themes";
+      }
     > = {
-      "block-plugin": { kind: "block", label: "block", supportsInteractive: true },
-      "hook-plugin": { kind: "hook", label: "content-hook", supportsInteractive: false },
-      "route-plugin": { kind: "route", label: "API-route", supportsInteractive: false },
-      "admin-plugin": { kind: "admin", label: "admin-extension", supportsInteractive: false },
+      "block-plugin": {
+        kind: "block",
+        label: "block",
+        supportsInteractive: true,
+        workspaceDir: "packages/plugins",
+      },
+      "hook-plugin": {
+        kind: "hook",
+        label: "content-hook",
+        supportsInteractive: false,
+        workspaceDir: "packages/plugins",
+      },
+      "route-plugin": {
+        kind: "route",
+        label: "API-route",
+        supportsInteractive: false,
+        workspaceDir: "packages/plugins",
+      },
+      "admin-plugin": {
+        kind: "admin",
+        label: "admin-extension",
+        supportsInteractive: false,
+        workspaceDir: "packages/plugins",
+      },
       "scheduled-plugin": {
         kind: "scheduled",
         label: "scheduled-task",
         supportsInteractive: false,
+        workspaceDir: "packages/plugins",
+      },
+      theme: {
+        kind: "theme",
+        label: "theme",
+        supportsInteractive: false,
+        workspaceDir: "packages/themes",
       },
     };
 
@@ -589,7 +626,7 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
     const workspace = flags.has("--workspace");
     if (interactive && !meta.supportsInteractive) {
       process.stderr.write(
-        `--interactive isn't supported for ${meta.label} plugins (it only applies to block-plugin).\n`,
+        `--interactive isn't supported for ${meta.label} scaffolds (it only applies to block-plugin).\n`,
       );
       return 2;
     }
@@ -598,7 +635,7 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
       return 2;
     }
 
-    const outDir = workspace ? resolve(cwd, "packages/plugins") : resolve(cwd, outDirArg ?? ".");
+    const outDir = workspace ? resolve(cwd, meta.workspaceDir) : resolve(cwd, outDirArg ?? ".");
     if (workspace) {
       try {
         resolveProject(cwd);
@@ -609,7 +646,12 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
         return 2;
       }
     }
-    const dependencyRanges = resolveScaffoldDependencyRanges(cwd);
+    const dependencyRanges = resolveScaffoldDependencyRanges(
+      cwd,
+      meta.kind === "theme"
+        ? ["@nexpress/blocks", "@nexpress/theme"]
+        : ["@nexpress/blocks", "@nexpress/plugin-sdk"],
+    );
     try {
       let result: ScaffoldResult;
       switch (meta.kind) {
@@ -628,6 +670,9 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
         case "scheduled":
           result = await scaffoldScheduledPlugin({ slug, outDir, dependencyRanges });
           break;
+        case "theme":
+          result = await scaffoldTheme({ slug, outDir, dependencyRanges });
+          break;
         default: {
           // Exhaustiveness check — adding a kind without updating the
           // switch makes the type system complain here.
@@ -638,17 +683,31 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
       }
 
       const labelPrefix = meta.kind === "block" && interactive ? "interactive block" : meta.label;
-      const packageName = packageNameFromSlug(slug);
+      const packageName =
+        meta.kind === "theme" ? packageNameFromThemeSlug(slug) : packageNameFromSlug(slug);
+      const nextSteps =
+        meta.kind === "theme"
+          ? [
+              `    1. pnpm install`,
+              `    2. pnpm --filter ${packageName} build`,
+              `    3. pnpm exec nexpress theme add ${packageName} --yes`,
+              `    4. pnpm db:generate && pnpm db:migrate`,
+              `    5. Restart your dev server or redeploy`,
+              `    6. Activate it in admin -> Settings -> Theme`,
+            ]
+          : [
+              `    1. pnpm install`,
+              `    2. pnpm --filter ${packageName} build`,
+              `    3. pnpm exec nexpress plugin add ${packageName}`,
+              `    4. Restart your dev server or redeploy`,
+              `    5. pnpm --silent run ops:plugins -- doctor --json`,
+            ];
       process.stdout.write(
-        `\n✓ Scaffolded ${labelPrefix} plugin in ${result.pluginDir}\n` +
+        `\n✓ Scaffolded ${labelPrefix}${meta.kind === "theme" ? "" : " plugin"} in ${result.packageDir}\n` +
           `  Files written:\n` +
           result.files.map((f) => `    - ${f}\n`).join("") +
           `\n  Next (from your NexPress project root):\n` +
-          `    1. pnpm install\n` +
-          `    2. pnpm --filter ${packageName} build\n` +
-          `    3. pnpm exec nexpress plugin add ${packageName}\n` +
-          `    4. Restart your dev server or redeploy\n` +
-          `    5. pnpm --silent run ops:plugins -- doctor --json\n`,
+          `${nextSteps.join("\n")}\n`,
       );
       return 0;
     } catch (error) {

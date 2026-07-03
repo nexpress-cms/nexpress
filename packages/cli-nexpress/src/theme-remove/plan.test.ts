@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { NpThemeManifest } from "@nexpress/core";
 
-import { planThemeUninstall, type PlanCollectionShape } from "./plan.js";
+import { planThemeRemove, type PlanCollectionShape } from "./plan.js";
 
 const manifest = (
   collections: NonNullable<NpThemeManifest["requires"]>["collections"],
@@ -18,9 +18,9 @@ const shape = (
   filePath = `src/collections/${slug}.ts`,
 ): PlanCollectionShape => ({ slug, filePath, fieldNames });
 
-describe("planThemeUninstall", () => {
+describe("planThemeRemove", () => {
   it("noop when theme requires nothing", () => {
-    const plan = planThemeUninstall({
+    const plan = planThemeRemove({
       manifest: { id: "t", name: "T", version: "0", requires: { collections: {} } },
       existingCollections: [],
       withCollections: false,
@@ -30,7 +30,7 @@ describe("planThemeUninstall", () => {
   });
 
   it("noop when collections referenced by theme are already gone", () => {
-    const plan = planThemeUninstall({
+    const plan = planThemeRemove({
       manifest: manifest({
         posts: { fields: { category: { type: "text" } } },
       }),
@@ -41,7 +41,7 @@ describe("planThemeUninstall", () => {
   });
 
   it("plans field removal when theme field exists in operator's collection", () => {
-    const plan = planThemeUninstall({
+    const plan = planThemeRemove({
       manifest: manifest({
         posts: { fields: { category: { type: "text" } } },
       }),
@@ -57,7 +57,7 @@ describe("planThemeUninstall", () => {
   });
 
   it("skips fields already absent (idempotent re-run)", () => {
-    const plan = planThemeUninstall({
+    const plan = planThemeRemove({
       manifest: manifest({
         posts: { fields: { category: { type: "text" }, slug: { type: "text" } } },
       }),
@@ -73,7 +73,7 @@ describe("planThemeUninstall", () => {
 
   describe("--with-collections", () => {
     it("proposes deleting the file when shape matches theme spec exactly", () => {
-      const plan = planThemeUninstall({
+      const plan = planThemeRemove({
         manifest: manifest({
           authors: { fields: { name: { type: "text" }, bio: { type: "textarea" } } },
         }),
@@ -88,7 +88,7 @@ describe("planThemeUninstall", () => {
     });
 
     it("keeps file with warning when operator added extra fields", () => {
-      const plan = planThemeUninstall({
+      const plan = planThemeRemove({
         manifest: manifest({
           authors: { fields: { name: { type: "text" } } },
         }),
@@ -106,7 +106,7 @@ describe("planThemeUninstall", () => {
     });
 
     it("doesn't propose file deletion without --with-collections flag", () => {
-      const plan = planThemeUninstall({
+      const plan = planThemeRemove({
         manifest: manifest({
           authors: { fields: { name: { type: "text" } } },
         }),
@@ -120,7 +120,7 @@ describe("planThemeUninstall", () => {
   });
 
   it("preserves theme metadata in the plan output", () => {
-    const plan = planThemeUninstall({
+    const plan = planThemeRemove({
       manifest: { id: "magazine", name: "Magazine", version: "1.2.3" },
       existingCollections: [],
       withCollections: false,
