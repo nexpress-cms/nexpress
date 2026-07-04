@@ -70,6 +70,12 @@ form. Both stay in sync via a unit test
 | `hooks:scheduled`      | scheduled task registration in `scheduled: [...]`                                                                       | Auto-derived.                                             |
 | `hooks:media`          | `media:before/afterUpload`                                                                                              | Auto-derived.                                             |
 
+Media hook payloads include the same actor shape as content hooks:
+staff uploads pass `user` plus `principal: { kind: "staff", user }`,
+while member uploads pass `user: null`, a member-kind `principal`, and
+a `member` summary. Prefer `principal` for new hook code; keep `user`
+checks null-safe for member-authored uploads.
+
 Methods NOT in the table (`ctx.cache.*`, `ctx.log.*`, `ctx.errors.*`,
 `ctx.next.*`, `ctx.actions.*`) are ungated — they're either in-process
 bookkeeping (`cache`, `log`) or already gated upstream (`actions`

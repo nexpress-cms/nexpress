@@ -321,6 +321,8 @@ type ResolvedHookFn = (ctx: {
   hook: string;
   data: Record<string, unknown>;
   collection?: string;
+  user?: unknown;
+  principal?: unknown;
   ctx: Record<string, unknown>;
 }) => unknown;
 
@@ -530,7 +532,14 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
       handler: async (data) => {
         const collection = typeof data.collection === "string" ? data.collection : undefined;
         const ctx = await buildCtxFor(manifest.id);
-        return await userHandler({ hook: hookName, data, collection, ctx });
+        return await userHandler({
+          hook: hookName,
+          data,
+          collection,
+          user: data.user,
+          principal: data.principal,
+          ctx,
+        });
       },
     });
   }

@@ -363,7 +363,8 @@ Reputation events the framework emits:
 Enforcement points (`assertNotBanned` is the gate):
 
 - Comment create / edit
-- Reaction add (site-scope only — see audit follow-up below)
+- Reaction add (site-wide bans, plus collection-scoped bans for
+  comment targets)
 - Member-authored doc create / update / delete
 - Reports filing
 - Member media upload

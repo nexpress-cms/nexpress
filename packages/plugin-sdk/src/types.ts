@@ -132,6 +132,10 @@ export interface NpPluginUser {
   role: string;
 }
 
+export type NpHookPrincipal =
+  | { kind: "staff"; user: NpPluginUser }
+  | { kind: "member"; memberId: string };
+
 /**
  * Legacy plugin-block declaration shape from a never-implemented
  * design (component-string indirection). Kept around as a type
@@ -601,7 +605,17 @@ export interface NpHookContext<TConfig = Record<string, unknown>> {
   hook: string;
   data: Record<string, unknown>;
   collection?: string;
-  user?: NpPluginUser;
+  /**
+   * Resolved staff actor for staff-authored hooks, `null` for
+   * member-authored hooks, and `undefined` when the hook has no user
+   * context. Prefer `principal` for new code.
+   */
+  user?: NpPluginUser | null;
+  /**
+   * Polymorphic actor for hooks emitted by staff or member writes.
+   * Omitted for hooks that are not tied to an authenticated actor.
+   */
+  principal?: NpHookPrincipal;
   ctx: NpPluginContext<TConfig>;
 }
 
