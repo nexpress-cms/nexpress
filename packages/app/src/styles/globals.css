@@ -213,11 +213,19 @@
    *
    * See `docs/design/member-surface-skinning.md` § 5.2 for the
    * contract. OAuth button tokens (`--np-member-oauth-{provider}-*`)
-   * are declared here for forward compatibility — there's no OAuth
-   * button component on the login page today (OAuth login goes
-   * through `/api/members/oauth/{provider}/start` directly), but
-   * shipping the token surface lets themes pre-style for when those
-   * buttons land. */
+   * are consumed by the member login page when providers are registered. */
+  .np-members-auth {
+    /* OAuth button tokens. */
+    --np-member-oauth-google-bg: #fff;
+    --np-member-oauth-google-fg: #1f2937;
+    --np-member-oauth-google-border: var(--np-color-input, #e5e7eb);
+    --np-member-oauth-google-radius: var(--np-radius-md, 0.5rem);
+    --np-member-oauth-github-bg: #1f2937;
+    --np-member-oauth-github-fg: #fff;
+    --np-member-oauth-github-border: transparent;
+    --np-member-oauth-github-radius: var(--np-radius-md, 0.5rem);
+  }
+
   .np-members-form {
     --np-member-form-input-bg: var(--np-color-background, #fff);
     --np-member-form-input-border: var(--np-color-input, #e5e7eb);
@@ -229,15 +237,6 @@
     --np-member-form-button-fg: var(--np-color-primary-foreground, #fff);
     --np-member-form-button-radius: var(--np-radius-md, 0.5rem);
     --np-member-form-error-color: var(--np-color-destructive, #b91c1c);
-    /* OAuth button tokens — forward-compat surface (no consumer today). */
-    --np-member-oauth-google-bg: #fff;
-    --np-member-oauth-google-fg: #1f2937;
-    --np-member-oauth-google-border: var(--np-color-input, #e5e7eb);
-    --np-member-oauth-google-radius: var(--np-radius-md, 0.5rem);
-    --np-member-oauth-github-bg: #1f2937;
-    --np-member-oauth-github-fg: #fff;
-    --np-member-oauth-github-border: transparent;
-    --np-member-oauth-github-radius: var(--np-radius-md, 0.5rem);
   }
 
   .np-members-form .np-form-input,
@@ -251,11 +250,80 @@
   .np-members-form .np-form-input:focus,
   .np-members-form textarea.np-form-input:focus {
     border-color: var(--np-member-form-input-border-focus);
-    box-shadow: 0 0 0 3px color-mix(in oklch, var(--np-member-form-input-border-focus) 20%, transparent);
+    box-shadow: 0 0 0 3px
+      color-mix(in oklch, var(--np-member-form-input-border-focus) 20%, transparent);
   }
 
   .np-members-form .np-form-input:disabled {
     background: var(--np-member-form-input-disabled-bg);
+  }
+
+  .np-members-oauth {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    margin-bottom: 1rem;
+  }
+
+  .np-member-oauth-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.5rem;
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    border: 1px solid var(--np-color-input, #e5e7eb);
+    border-radius: var(--np-radius-md, 0.5rem);
+    background: var(--np-color-background, #fff);
+    color: var(--np-color-foreground, #111827);
+    font-weight: 600;
+    line-height: 1.2;
+    text-decoration: none;
+  }
+
+  .np-member-oauth-button:hover {
+    filter: brightness(0.98);
+  }
+
+  .np-member-oauth-button[data-provider*="google"] {
+    border-color: var(--np-member-oauth-google-border);
+    border-radius: var(--np-member-oauth-google-radius);
+    background: var(--np-member-oauth-google-bg);
+    color: var(--np-member-oauth-google-fg);
+  }
+
+  .np-member-oauth-button[data-provider*="github"] {
+    border-color: var(--np-member-oauth-github-border);
+    border-radius: var(--np-member-oauth-github-radius);
+    background: var(--np-member-oauth-github-bg);
+    color: var(--np-member-oauth-github-fg);
+  }
+
+  .np-member-oauth-icon {
+    width: 1rem;
+    height: 1rem;
+    flex: 0 0 auto;
+  }
+
+  .np-members-oauth-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    color: var(--np-color-muted-foreground, #64748b);
+    font-size: 0.75rem;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .np-members-oauth-divider span {
+    height: 1px;
+    flex: 1 1 0;
+    background: var(--np-color-border, #e5e7eb);
+  }
+
+  .np-members-oauth-divider em {
+    font-style: normal;
   }
 
   .np-members-form .np-form-error {

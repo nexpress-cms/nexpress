@@ -89,6 +89,40 @@ spoof `Host: attacker.example` on a forgot-password POST and cause
 the framework to mail a real reset token inside an
 `https://attacker.example/...` URL.
 
+## OAuth provider button missing on login
+
+Symptom: GitHub or Google does not appear on `/admin/login` or
+`/members/login`, or the OAuth start route reports an unknown provider.
+
+First run doctor with a fix plan:
+
+```bash
+pnpm run doctor -- --fix-plan
+pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan
+```
+
+For bundled providers, set credentials from one source only:
+
+- Env: set both `NP_OAUTH_GITHUB_CLIENT_ID` and
+  `NP_OAUTH_GITHUB_CLIENT_SECRET`, or both
+  `NP_OAUTH_GOOGLE_CLIENT_ID` and `NP_OAUTH_GOOGLE_CLIENT_SECRET`.
+- Admin form: leave that provider's env pair unset and fill
+  `/admin/plugins/oauth-github` or `/admin/plugins/oauth-google`.
+
+Partial env is a configuration error. The plugin refuses to register
+instead of mixing env and DB credentials, and doctor reports
+`oauth.github.credentials` or `oauth.google.credentials` with the
+missing variable. After saving admin-form credentials, click
+**Reload all** in `/admin/plugins` or restart the process so plugin
+setup registers the provider.
+
+Callback URLs must match `SITE_URL` exactly. GitHub OAuth Apps accept
+one Authorization callback URL, so the bundled GitHub plugin exposes
+the provider on one login Audience at a time (`staff` by default, or
+`member`). Register the matching callback URL for that Audience.
+Google OAuth web clients can register both staff and member redirect
+URIs.
+
 ## Migration crashed mid-flight
 
 Symptoms: `pnpm db:migrate` exits non-zero; subsequent boots fail on a

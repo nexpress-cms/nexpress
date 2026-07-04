@@ -8,5 +8,10 @@ export default defineConfig({
   dts: !fast,
   clean: true,
   sourcemap: !fast,
-  external: ["@nexpress/core", "@nexpress/oauth-providers", "@nexpress/plugin-sdk"],
+  external: [
+    "@nexpress/core",
+    "@nexpress/core/auth",
+    "@nexpress/oauth-providers",
+    "@nexpress/plugin-sdk",
+  ],
 });

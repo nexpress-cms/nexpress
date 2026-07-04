@@ -60,11 +60,19 @@ export interface OAuthExchangeParams {
   codeVerifier: string;
 }
 
+export type OAuthAudience = "staff" | "member";
+
 export interface OAuthProvider {
   /** Stable id used in route paths and `np_user_oauth_identities.provider`. */
   id: string;
   /** Human-readable label for admin UI / login buttons. */
   label?: string;
+  /**
+   * Login surfaces where this provider should be shown. Omit for
+   * back-compat: older providers are visible on both staff and member
+   * login pages.
+   */
+  audiences?: readonly OAuthAudience[];
   /**
    * Returns a fully-qualified URL the framework should redirect the
    * browser to. Async to allow providers that need to mint per-request
@@ -90,8 +98,15 @@ export function registerOAuthProvider(provider: OAuthProvider): void {
     throw new Error("OAuth provider must have a non-empty string id");
   }
   if (typeof provider.authorize !== "function" || typeof provider.exchange !== "function") {
+    throw new Error(`OAuth provider "${provider.id}" must implement authorize() and exchange()`);
+  }
+  if (
+    provider.audiences !== undefined &&
+    (provider.audiences.length === 0 ||
+      provider.audiences.some((audience) => audience !== "staff" && audience !== "member"))
+  ) {
     throw new Error(
-      `OAuth provider "${provider.id}" must implement authorize() and exchange()`,
+      `OAuth provider "${provider.id}" has invalid audiences; expected at least one of "staff" or "member"`,
     );
   }
   providers.set(provider.id, provider);
@@ -103,6 +118,19 @@ export function getOAuthProvider(id: string): OAuthProvider | undefined {
 
 export function listOAuthProviders(): OAuthProvider[] {
   return Array.from(providers.values());
+}
+
+export function oauthProviderSupportsAudience(
+  provider: OAuthProvider,
+  audience: OAuthAudience,
+): boolean {
+  return provider.audiences === undefined || provider.audiences.includes(audience);
+}
+
+export function listOAuthProvidersFor(audience: OAuthAudience): OAuthProvider[] {
+  return listOAuthProviders().filter((provider) =>
+    oauthProviderSupportsAudience(provider, audience),
+  );
 }
 
 /** Reset the registry — tests use this between cases. Not for runtime use. */

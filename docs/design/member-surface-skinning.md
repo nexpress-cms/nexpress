@@ -227,6 +227,11 @@ components:
 
 ```css
 /* Framework defaults — themes override per their impl.css */
+.np-members-auth {
+  --np-member-oauth-google-bg / -fg / -border / -radius
+  --np-member-oauth-github-bg / -fg / -border / -radius
+}
+
 .np-members-form {
   --np-member-form-input-bg:            var(--np-color-background);
   --np-member-form-input-border:        var(--np-color-input);
@@ -238,20 +243,18 @@ components:
   --np-member-form-button-fg:           var(--np-color-primary-foreground);
   --np-member-form-button-radius:       var(--np-radius-md);
   --np-member-form-error-color:         var(--np-color-destructive);
-  /* OAuth — forward-compat tokens, no consumer today */
-  --np-member-oauth-google-bg / -fg / -border / -radius
-  --np-member-oauth-github-bg / -fg / -border / -radius
 }
 ```
 
-Selector note: scoped to `.np-members-form` (existing plural
-class — applied on every member auth `<form>`), not the
-singular `.np-member-form` an earlier draft of this doc
-floated. The existing class name is reused so M.2 doesn't
-churn the hand-coded forms; tokens cascade only inside member
-forms (so `.np-discussion-form` and other shared
-`.np-form-input` consumers keep their existing
-`--np-color-*` reads).
+Selector note: form-control tokens stay scoped to
+`.np-members-form` (existing plural class — applied on every
+member auth `<form>`), not the singular `.np-member-form` an
+earlier draft of this doc floated. OAuth button tokens live one
+level up on `.np-members-auth` because the provider buttons
+render before the email/password `<form>`. The split keeps
+tokens on member auth surfaces only, so `.np-discussion-form`
+and other shared `.np-form-input` consumers keep their existing
+`--np-color-*` reads.
 
 Existing v0.2 reference themes already declare base colors via
 `tokens.colors`; Phase M.2 maps the existing tokens through

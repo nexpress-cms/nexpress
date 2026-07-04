@@ -34,7 +34,9 @@ function fieldToSchema(field: NpFieldManifest): OpenApiSchema {
         type: "array",
         items: {
           type: "object",
-          properties: Object.fromEntries((field.fields ?? []).map((f) => [f.name, fieldToSchema(f)])),
+          properties: Object.fromEntries(
+            (field.fields ?? []).map((f) => [f.name, fieldToSchema(f)]),
+          ),
         },
       };
     case "group":
@@ -55,7 +57,8 @@ function collectionSchema(manifest: ReturnType<typeof collectionToManifest>): Op
       type: "string",
       enum: ["draft", "scheduled", "published", "archived", "pending"],
       writeOnly: true,
-      description: "Request-only status transition sentinel. Use `scheduled` with a future `publishedAt`, or `published` with a future `publishedAt` for backwards-compatible scheduling.",
+      description:
+        "Request-only status transition sentinel. Use `scheduled` with a future `publishedAt`, or `published` with a future `publishedAt` for backwards-compatible scheduling.",
     },
     createdAt: { type: "string", format: "date-time", readOnly: true },
     updatedAt: { type: "string", format: "date-time", readOnly: true },
@@ -70,7 +73,10 @@ function collectionSchema(manifest: ReturnType<typeof collectionToManifest>): Op
   }
 
   if (manifest.slug_auto) {
-    properties.slug = { type: "string", description: "Auto-derived from title unless set explicitly." };
+    properties.slug = {
+      type: "string",
+      description: "Auto-derived from title unless set explicitly.",
+    };
   }
 
   if (manifest.versions.drafts && !manifest.fields.some((field) => field.name === "publishedAt")) {
@@ -78,7 +84,8 @@ function collectionSchema(manifest: ReturnType<typeof collectionToManifest>): Op
       type: "string",
       format: "date-time",
       nullable: true,
-      description: "Framework-managed publish timestamp for draft-enabled collections that do not declare their own publishedAt field.",
+      description:
+        "Framework-managed publish timestamp for draft-enabled collections that do not declare their own publishedAt field.",
     };
   }
 
@@ -121,7 +128,8 @@ function buildSpec(): OpenApiSchema {
         updatedAt: { type: "string", format: "date-time" },
         loaded: {
           type: "boolean",
-          description: "True when the plugin is currently registered in this process (may lag the DB flag until restart).",
+          description:
+            "True when the plugin is currently registered in this process (may lag the DB flag until restart).",
         },
       },
     },
@@ -146,7 +154,11 @@ function buildSpec(): OpenApiSchema {
         mimeType: { type: "string" },
         width: { type: "integer", nullable: true },
         height: { type: "integer", nullable: true },
-        hash: { type: "string", nullable: true, description: "Content SHA used for dedup on import." },
+        hash: {
+          type: "string",
+          nullable: true,
+          description: "Content SHA used for dedup on import.",
+        },
         folderId: { type: "string", format: "uuid", nullable: true },
         storageKey: { type: "string" },
         sizes: { type: "object", additionalProperties: true, nullable: true },
@@ -194,16 +206,25 @@ function buildSpec(): OpenApiSchema {
             },
           },
         },
-        responses: { "200": { description: "Sets np-session/np-refresh/np-csrf cookies and returns the user" } },
+        responses: {
+          "200": { description: "Sets np-session/np-refresh/np-csrf cookies and returns the user" },
+        },
       },
     },
-    "/api/auth/logout": { post: { summary: "Clear auth cookies", responses: { "204": { description: "No content" } } } },
-    "/api/auth/me": { get: { summary: "Current authenticated user", responses: { "200": { description: "User object" } } } },
+    "/api/auth/logout": {
+      post: { summary: "Clear auth cookies", responses: { "204": { description: "No content" } } },
+    },
+    "/api/auth/me": {
+      get: {
+        summary: "Current authenticated user",
+        responses: { "200": { description: "User object" } },
+      },
+    },
     "/api/auth/oauth/{provider}/start": {
       get: {
         summary: "Begin an OAuth login (staff side)",
         description:
-          "Mints a signed `np-oauth-state` cookie and 302s the browser to the provider's authorize URL. Provider must be registered in-process via `registerOAuthProvider({ id, authorize, exchange })` from `@nexpress/core` — typically by a plugin's `setup()`.",
+          "Mints a signed `np-oauth-state` cookie and 302s the browser to the provider's authorize URL. Provider must be registered in-process via `registerOAuthProvider({ id, authorize, exchange })` from `@nexpress/core` — typically by a plugin's `setup()` — and must support the `staff` audience when it declares `audiences`.",
         parameters: [{ in: "path", name: "provider", required: true, schema: { type: "string" } }],
         responses: {
           "307": { description: "Redirect to provider authorize URL" },
@@ -222,7 +243,10 @@ function buildSpec(): OpenApiSchema {
           { in: "query", name: "state", required: true, schema: { type: "string" } },
         ],
         responses: {
-          "307": { description: "Redirect — `/admin` on success or `/admin/login?oauth_error=…` on failure" },
+          "307": {
+            description:
+              "Redirect — `/admin` on success or `/admin/login?oauth_error=…` on failure",
+          },
         },
       },
     },
@@ -230,7 +254,7 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Begin an OAuth login (member side)",
         description:
-          "Member-side mirror of `/api/auth/oauth/{provider}/start`. Mints a signed `np-mb-oauth-state` cookie and 302s to the provider. The provider registry is shared with the staff route — a single registered provider works for both audiences; the routes choose which user pool to resolve to.",
+          "Member-side mirror of `/api/auth/oauth/{provider}/start`. Mints a signed `np-mb-oauth-state` cookie and 302s to the provider. The provider registry is shared with the staff route, but providers that declare `audiences` must include `member`; providers without `audiences` stay visible on both surfaces for back-compat.",
         parameters: [{ in: "path", name: "provider", required: true, schema: { type: "string" } }],
         responses: {
           "307": { description: "Redirect to provider authorize URL" },
@@ -249,7 +273,9 @@ function buildSpec(): OpenApiSchema {
           { in: "query", name: "state", required: true, schema: { type: "string" } },
         ],
         responses: {
-          "307": { description: "Redirect — `/` on success or `/members/login?oauth_error=…` on failure" },
+          "307": {
+            description: "Redirect — `/` on success or `/members/login?oauth_error=…` on failure",
+          },
         },
       },
     },
@@ -352,7 +378,10 @@ function buildSpec(): OpenApiSchema {
                 properties: {
                   email: { type: "string", format: "email" },
                   name: { type: "string" },
-                  role: { type: "string", enum: ["admin", "editor", "moderator", "author", "viewer"] },
+                  role: {
+                    type: "string",
+                    enum: ["admin", "editor", "moderator", "author", "viewer"],
+                  },
                 },
               },
             },
@@ -541,7 +570,10 @@ function buildSpec(): OpenApiSchema {
             },
           },
         },
-        responses: { "200": { description: "Acknowledged" }, "400": { description: "Validation error" } },
+        responses: {
+          "200": { description: "Acknowledged" },
+          "400": { description: "Validation error" },
+        },
       },
     },
     "/api/members/reset-password": {
@@ -554,7 +586,10 @@ function buildSpec(): OpenApiSchema {
               schema: {
                 type: "object",
                 required: ["token", "password"],
-                properties: { token: { type: "string" }, password: { type: "string", minLength: 8 } },
+                properties: {
+                  token: { type: "string" },
+                  password: { type: "string", minLength: 8 },
+                },
               },
             },
           },
@@ -583,7 +618,12 @@ function buildSpec(): OpenApiSchema {
         parameters: [
           { in: "query", name: "page", schema: { type: "integer", minimum: 1 } },
           { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100 } },
-          { in: "query", name: "search", schema: { type: "string" }, description: "Matches against email and name." },
+          {
+            in: "query",
+            name: "search",
+            schema: { type: "string" },
+            description: "Matches against email and name.",
+          },
         ],
         responses: {
           "200": {
@@ -623,14 +663,20 @@ function buildSpec(): OpenApiSchema {
                   email: { type: "string", format: "email" },
                   name: { type: "string" },
                   password: { type: "string", minLength: 8 },
-                  role: { type: "string", enum: ["admin", "editor", "moderator", "author", "viewer"] },
+                  role: {
+                    type: "string",
+                    enum: ["admin", "editor", "moderator", "author", "viewer"],
+                  },
                 },
               },
             },
           },
         },
         responses: {
-          "201": { description: "Created user", content: { "application/json": { schema: { $ref: "#/components/schemas/user_item" } } } },
+          "201": {
+            description: "Created user",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/user_item" } } },
+          },
           "409": { description: "Email already registered" },
           "400": { description: "Validation error" },
         },
@@ -640,7 +686,12 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Get a navigation tree by location",
         parameters: [
-          { in: "query", name: "location", schema: { type: "string" }, description: "Defaults to `main`." },
+          {
+            in: "query",
+            name: "location",
+            schema: { type: "string" },
+            description: "Defaults to `main`.",
+          },
         ],
         responses: {
           "200": {
@@ -689,7 +740,9 @@ function buildSpec(): OpenApiSchema {
         responses: {
           "200": {
             description: "Flattened `key → value` map across every settings row except `theme`.",
-            content: { "application/json": { schema: { type: "object", additionalProperties: true } } },
+            content: {
+              "application/json": { schema: { type: "object", additionalProperties: true } },
+            },
           },
           "403": { description: "Caller is not an admin" },
         },
@@ -733,7 +786,8 @@ function buildSpec(): OpenApiSchema {
     "/api/settings/theme": {
       get: {
         summary: "Active theme tokens",
-        description: "Public endpoint — returns `DEFAULT_THEME` when no theme has been persisted yet.",
+        description:
+          "Public endpoint — returns `DEFAULT_THEME` when no theme has been persisted yet.",
         responses: {
           "200": {
             description: "Theme tokens",
@@ -788,7 +842,12 @@ function buildSpec(): OpenApiSchema {
           { in: "query", name: "page", schema: { type: "integer", minimum: 1 } },
           { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100 } },
           { in: "query", name: "folderId", schema: { type: "string", format: "uuid" } },
-          { in: "query", name: "mimeType", schema: { type: "string" }, description: "Prefix match, e.g. `image/`." },
+          {
+            in: "query",
+            name: "mimeType",
+            schema: { type: "string" },
+            description: "Prefix match, e.g. `image/`.",
+          },
         ],
         responses: {
           "200": {
@@ -840,18 +899,35 @@ function buildSpec(): OpenApiSchema {
       },
     },
     "/api/media/{id}": {
-      parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+      parameters: [
+        { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+      ],
       get: {
         summary: "Get a single media record",
         responses: {
-          "200": { description: "Media record", content: { "application/json": { schema: { $ref: "#/components/schemas/media_item" } } } },
+          "200": {
+            description: "Media record",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/media_item" } },
+            },
+          },
           "404": { description: "Media not found" },
         },
       },
       delete: {
         summary: "Delete a media record (admin only)",
         responses: {
-          "200": { description: "Deleted", content: { "application/json": { schema: { type: "object", properties: { id: { type: "string" }, deleted: { type: "boolean" } } } } } },
+          "200": {
+            description: "Deleted",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: { id: { type: "string" }, deleted: { type: "boolean" } },
+                },
+              },
+            },
+          },
           "404": { description: "Media not found" },
           "409": { description: "Media is referenced by a document — clear refs first." },
         },
@@ -861,10 +937,22 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "List media folders",
         parameters: [
-          { in: "query", name: "parentId", schema: { type: "string", format: "uuid" }, description: "Omit to list top-level folders." },
+          {
+            in: "query",
+            name: "parentId",
+            schema: { type: "string", format: "uuid" },
+            description: "Omit to list top-level folders.",
+          },
         ],
         responses: {
-          "200": { description: "Folder array", content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/media_folder" } } } } },
+          "200": {
+            description: "Folder array",
+            content: {
+              "application/json": {
+                schema: { type: "array", items: { $ref: "#/components/schemas/media_folder" } },
+              },
+            },
+          },
         },
       },
       post: {
@@ -885,26 +973,42 @@ function buildSpec(): OpenApiSchema {
           },
         },
         responses: {
-          "201": { description: "Created folder", content: { "application/json": { schema: { $ref: "#/components/schemas/media_folder" } } } },
+          "201": {
+            description: "Created folder",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/media_folder" } },
+            },
+          },
           "404": { description: "Parent folder not found" },
           "400": { description: "name missing" },
         },
       },
     },
     "/api/media/folders/{id}": {
-      parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+      parameters: [
+        { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+      ],
       patch: {
         summary: "Rename a folder (editor+)",
         requestBody: {
           required: true,
           content: {
             "application/json": {
-              schema: { type: "object", required: ["name"], properties: { name: { type: "string" } } },
+              schema: {
+                type: "object",
+                required: ["name"],
+                properties: { name: { type: "string" } },
+              },
             },
           },
         },
         responses: {
-          "200": { description: "Updated folder", content: { "application/json": { schema: { $ref: "#/components/schemas/media_folder" } } } },
+          "200": {
+            description: "Updated folder",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/media_folder" } },
+            },
+          },
           "404": { description: "Folder not found" },
         },
       },
@@ -920,7 +1024,8 @@ function buildSpec(): OpenApiSchema {
     "/api/meta/blocks": {
       get: {
         summary: "Block manifests registered in this instance",
-        description: "Public discovery endpoint — each block declares `type`, `label`, `propsSchema`, etc.",
+        description:
+          "Public discovery endpoint — each block declares `type`, `label`, `propsSchema`, etc.",
         responses: {
           "200": {
             description: "Block manifest list",
@@ -941,7 +1046,8 @@ function buildSpec(): OpenApiSchema {
     "/api/meta/collections": {
       get: {
         summary: "Collection manifests registered in this instance",
-        description: "Public discovery endpoint. Mirrors collection definitions with fields, access rules, and labels.",
+        description:
+          "Public discovery endpoint. Mirrors collection definitions with fields, access rules, and labels.",
         responses: {
           "200": {
             description: "Collection manifest list",
@@ -984,7 +1090,12 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Enable Next.js draft mode and redirect (editor+)",
         parameters: [
-          { in: "query", name: "path", schema: { type: "string" }, description: "Where to redirect once draft mode is enabled. Defaults to `/`." },
+          {
+            in: "query",
+            name: "path",
+            schema: { type: "string" },
+            description: "Where to redirect once draft mode is enabled. Defaults to `/`.",
+          },
         ],
         responses: {
           "307": { description: "Redirect to the target path with draft cookies set" },
@@ -1050,7 +1161,9 @@ function buildSpec(): OpenApiSchema {
           "Invokes the action registered by the plugin via `ctx.actions.register(actionId, handler)`. Body is forwarded to the handler; widget/action shapes pass `{ collection, documentId }` for collection tabs, or an empty body for global widgets.",
         requestBody: {
           required: false,
-          content: { "application/json": { schema: { type: "object", additionalProperties: true } } },
+          content: {
+            "application/json": { schema: { type: "object", additionalProperties: true } },
+          },
         },
         responses: {
           "200": {
@@ -1118,13 +1231,27 @@ function buildSpec(): OpenApiSchema {
                   properties: {
                     version: { type: "string", enum: ["1"] },
                     exportedAt: { type: "string", format: "date-time" },
-                    siteUrl: { type: "string", nullable: true, description: "SITE_URL env at export time, useful for downstream URL rewrites." },
-                    partial: { type: "boolean", description: "True when the `collections` filter was applied." },
+                    siteUrl: {
+                      type: "string",
+                      nullable: true,
+                      description:
+                        "SITE_URL env at export time, useful for downstream URL rewrites.",
+                    },
+                    partial: {
+                      type: "boolean",
+                      description: "True when the `collections` filter was applied.",
+                    },
                     collectionsExported: { type: "array", items: { type: "string" } },
                     theme: { type: "object", additionalProperties: true, nullable: true },
                     settings: { type: "object", additionalProperties: true },
                     navigation: { type: "object", additionalProperties: true },
-                    collections: { type: "object", additionalProperties: { type: "array", items: { type: "object", additionalProperties: true } } },
+                    collections: {
+                      type: "object",
+                      additionalProperties: {
+                        type: "array",
+                        items: { type: "object", additionalProperties: true },
+                      },
+                    },
                     media: { type: "array", items: { $ref: "#/components/schemas/media_item" } },
                     plugins: {
                       type: "array",
@@ -1158,7 +1285,8 @@ function buildSpec(): OpenApiSchema {
             in: "query",
             name: "dryRun",
             schema: { type: "boolean" },
-            description: "When `true`, skip all writes and return the report that would have been generated.",
+            description:
+              "When `true`, skip all writes and return the report that would have been generated.",
           },
           {
             in: "query",
@@ -1179,7 +1307,13 @@ function buildSpec(): OpenApiSchema {
                   theme: { type: "object", additionalProperties: true },
                   settings: { type: "object", additionalProperties: true },
                   navigation: { type: "object", additionalProperties: true },
-                  collections: { type: "object", additionalProperties: { type: "array", items: { type: "object", additionalProperties: true } } },
+                  collections: {
+                    type: "object",
+                    additionalProperties: {
+                      type: "array",
+                      items: { type: "object", additionalProperties: true },
+                    },
+                  },
                   media: {
                     type: "array",
                     items: {
@@ -1235,7 +1369,10 @@ function buildSpec(): OpenApiSchema {
             },
           },
           "403": { description: "Caller is not an admin" },
-          "400": { description: "Invalid payload shape, unsupported version, or unknown collection in filter" },
+          "400": {
+            description:
+              "Invalid payload shape, unsupported version, or unknown collection in filter",
+          },
         },
       },
     },
@@ -1243,14 +1380,15 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Full-text search across published documents in every collection",
         description:
-          "Public endpoint. Uses each collection's search_vector column; results are filtered to status=\"published\" automatically and ranked by a shared relevance score.",
+          'Public endpoint. Uses each collection\'s search_vector column; results are filtered to status="published" automatically and ranked by a shared relevance score.',
         parameters: [
           { in: "query", name: "q", required: true, schema: { type: "string" } },
           {
             in: "query",
             name: "collections",
             schema: { type: "string" },
-            description: "Comma-separated collection slugs. Omit to search every collection with a search_vector column.",
+            description:
+              "Comma-separated collection slugs. Omit to search every collection with a search_vector column.",
           },
           { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 50 } },
           {
@@ -1340,7 +1478,9 @@ function buildSpec(): OpenApiSchema {
         responses: {
           "200": {
             description: "Plugin detail",
-            content: { "application/json": { schema: { $ref: "#/components/schemas/plugin_item" } } },
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/plugin_item" } },
+            },
           },
           "404": { description: "Plugin id unknown" },
         },
@@ -1365,7 +1505,9 @@ function buildSpec(): OpenApiSchema {
         responses: {
           "200": {
             description: "Updated plugin",
-            content: { "application/json": { schema: { $ref: "#/components/schemas/plugin_item" } } },
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/plugin_item" } },
+            },
           },
           "404": { description: "Plugin id unknown" },
         },
@@ -1386,7 +1528,11 @@ function buildSpec(): OpenApiSchema {
           { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100 } },
           { in: "query", name: "sort", schema: { type: "string" } },
           { in: "query", name: "search", schema: { type: "string" } },
-          { in: "query", name: "where", schema: { type: "string", description: "JSON-encoded filter object" } },
+          {
+            in: "query",
+            name: "where",
+            schema: { type: "string", description: "JSON-encoded filter object" },
+          },
         ],
         responses: {
           "200": {
@@ -1412,23 +1558,44 @@ function buildSpec(): OpenApiSchema {
         summary: `Create a ${manifest.labels.singular.toLowerCase()}`,
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } } },
+          content: {
+            "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } },
+          },
         },
         responses: {
-          "201": { description: "Created document", content: { "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } } } },
+          "201": {
+            description: "Created document",
+            content: {
+              "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } },
+            },
+          },
         },
       },
     };
 
     paths[`/api/collections/${slug}/{id}`] = {
-      parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+      parameters: [
+        { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+      ],
       get: {
         summary: `Get a single ${manifest.labels.singular.toLowerCase()}`,
-        responses: { "200": { description: "Document", content: { "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } } } } },
+        responses: {
+          "200": {
+            description: "Document",
+            content: {
+              "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } },
+            },
+          },
+        },
       },
       patch: {
         summary: `Update a ${manifest.labels.singular.toLowerCase()}`,
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } } } },
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } },
+          },
+        },
         responses: { "200": { description: "Updated document" } },
       },
       delete: {
@@ -1496,7 +1663,9 @@ function buildSpec(): OpenApiSchema {
 
     if (manifest.versions.drafts) {
       paths[`/api/collections/${slug}/{id}/autosave`] = {
-        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        parameters: [
+          { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+        ],
         post: {
           summary: `Autosave a ${manifest.labels.singular.toLowerCase()} draft`,
           description:
@@ -1509,7 +1678,8 @@ function buildSpec(): OpenApiSchema {
           },
           responses: {
             "200": {
-              description: "Revision summary (or the existing one when the snapshot was a no-op duplicate).",
+              description:
+                "Revision summary (or the existing one when the snapshot was a no-op duplicate).",
               content: {
                 "application/json": {
                   schema: {
@@ -1544,7 +1714,9 @@ function buildSpec(): OpenApiSchema {
       };
 
       paths[`/api/collections/${slug}/{id}/revisions`] = {
-        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        parameters: [
+          { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+        ],
         get: {
           summary: `List revisions for a ${manifest.labels.singular.toLowerCase()}`,
           parameters: [
@@ -1573,7 +1745,12 @@ function buildSpec(): OpenApiSchema {
       paths[`/api/collections/${slug}/{id}/revisions/{revisionId}`] = {
         parameters: [
           { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
-          { in: "path", name: "revisionId", required: true, schema: { type: "string", format: "uuid" } },
+          {
+            in: "path",
+            name: "revisionId",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+          },
         ],
         get: {
           summary: `Get a single revision with snapshot`,
@@ -1585,7 +1762,10 @@ function buildSpec(): OpenApiSchema {
                   schema: {
                     allOf: [
                       revisionSummary,
-                      { type: "object", properties: { snapshot: { type: "object", additionalProperties: true } } },
+                      {
+                        type: "object",
+                        properties: { snapshot: { type: "object", additionalProperties: true } },
+                      },
                     ],
                   },
                 },
@@ -1598,14 +1778,21 @@ function buildSpec(): OpenApiSchema {
       paths[`/api/collections/${slug}/{id}/revisions/{revisionId}/restore`] = {
         parameters: [
           { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
-          { in: "path", name: "revisionId", required: true, schema: { type: "string", format: "uuid" } },
+          {
+            in: "path",
+            name: "revisionId",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+          },
         ],
         post: {
           summary: `Restore a prior revision as the current document`,
           responses: {
             "200": {
               description: "Document after restore",
-              content: { "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } } },
+              content: {
+                "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } },
+              },
             },
           },
         },
@@ -1615,7 +1802,9 @@ function buildSpec(): OpenApiSchema {
     // Comment routes — only listed when the collection opted in.
     if (getCollectionConfig(slug).community?.comments) {
       paths[`/api/collections/${slug}/{id}/comments`] = {
-        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        parameters: [
+          { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+        ],
         get: {
           summary: `List comments under a ${manifest.labels.singular.toLowerCase()}`,
           parameters: [
@@ -1682,7 +1871,9 @@ function buildSpec(): OpenApiSchema {
   // Per-comment endpoints (live regardless of collection — comment id
   // already carries the target context).
   paths[`/api/comments/{id}`] = {
-    parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+    parameters: [
+      { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+    ],
     patch: {
       summary: "Edit a comment (own or with edit-any-comment grant)",
       requestBody: {
@@ -1713,7 +1904,9 @@ function buildSpec(): OpenApiSchema {
     },
   };
   paths["/api/comments/{id}/hide"] = {
-    parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+    parameters: [
+      { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+    ],
     post: {
       summary: "Hide a comment (mod-only)",
       requestBody: {
@@ -1734,7 +1927,9 @@ function buildSpec(): OpenApiSchema {
     },
   };
   paths["/api/comments/{id}/restore"] = {
-    parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+    parameters: [
+      { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+    ],
     post: {
       summary: "Restore a hidden comment (mod-only)",
       responses: {
@@ -1749,9 +1944,26 @@ function buildSpec(): OpenApiSchema {
     get: {
       summary: "Reaction summary for a target",
       parameters: [
-        { in: "query", name: "targetType", required: true, schema: { type: "string" }, description: "Only `comment` is wired today; the polymorphic shape leaves room for future surfaces." },
-        { in: "query", name: "targetId", required: true, schema: { type: "string", format: "uuid" } },
-        { in: "query", name: "kind", schema: { type: "string" }, description: "Defaults to `like`." },
+        {
+          in: "query",
+          name: "targetType",
+          required: true,
+          schema: { type: "string" },
+          description:
+            "Only `comment` is wired today; the polymorphic shape leaves room for future surfaces.",
+        },
+        {
+          in: "query",
+          name: "targetId",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
+        {
+          in: "query",
+          name: "kind",
+          schema: { type: "string" },
+          description: "Defaults to `like`.",
+        },
       ],
       responses: {
         "200": {
@@ -1798,7 +2010,12 @@ function buildSpec(): OpenApiSchema {
       summary: "Remove a reaction",
       parameters: [
         { in: "query", name: "targetType", required: true, schema: { type: "string" } },
-        { in: "query", name: "targetId", required: true, schema: { type: "string", format: "uuid" } },
+        {
+          in: "query",
+          name: "targetId",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
         { in: "query", name: "kind", schema: { type: "string" } },
       ],
       responses: {
@@ -1811,11 +2028,18 @@ function buildSpec(): OpenApiSchema {
     get: {
       summary: "List the authenticated member's follows",
       parameters: [
-        { in: "query", name: "targetType", schema: { type: "string", enum: ["member", "thread", "tag"] } },
+        {
+          in: "query",
+          name: "targetType",
+          schema: { type: "string", enum: ["member", "thread", "tag"] },
+        },
         { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 200 } },
         { in: "query", name: "offset", schema: { type: "integer", minimum: 0 } },
       ],
-      responses: { "200": { description: "Follow rows" }, "401": { description: "Member auth required" } },
+      responses: {
+        "200": { description: "Follow rows" },
+        "401": { description: "Member auth required" },
+      },
     },
     post: {
       summary: "Follow a member / thread / tag",
@@ -1845,7 +2069,10 @@ function buildSpec(): OpenApiSchema {
         { in: "query", name: "targetType", required: true, schema: { type: "string" } },
         { in: "query", name: "targetId", required: true, schema: { type: "string" } },
       ],
-      responses: { "200": { description: "Removed" }, "401": { description: "Member auth required" } },
+      responses: {
+        "200": { description: "Removed" },
+        "401": { description: "Member auth required" },
+      },
     },
   };
   paths["/api/follows/check"] = {
@@ -1854,7 +2081,12 @@ function buildSpec(): OpenApiSchema {
       description:
         "Single-target probe used by site UI follow buttons. The bulk `/api/follows` returns the caller's full follow list, which is the wrong shape for one-button use.",
       parameters: [
-        { in: "query", name: "targetType", required: true, schema: { type: "string", enum: ["member", "thread", "tag"] } },
+        {
+          in: "query",
+          name: "targetType",
+          required: true,
+          schema: { type: "string", enum: ["member", "thread", "tag"] },
+        },
         { in: "query", name: "targetId", required: true, schema: { type: "string" } },
       ],
       responses: {
@@ -1867,8 +2099,18 @@ function buildSpec(): OpenApiSchema {
     get: {
       summary: "Authenticated member's notification inbox",
       parameters: [
-        { in: "query", name: "count", schema: { type: "string", enum: ["1"] }, description: "Lightweight badge probe — returns just `{ unread }`." },
-        { in: "query", name: "unread", schema: { type: "string", enum: ["1"] }, description: "Filter the list to unread rows." },
+        {
+          in: "query",
+          name: "count",
+          schema: { type: "string", enum: ["1"] },
+          description: "Lightweight badge probe — returns just `{ unread }`.",
+        },
+        {
+          in: "query",
+          name: "unread",
+          schema: { type: "string", enum: ["1"] },
+          description: "Filter the list to unread rows.",
+        },
         { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 200 } },
         { in: "query", name: "offset", schema: { type: "integer", minimum: 0 } },
       ],
@@ -1936,8 +2178,17 @@ function buildSpec(): OpenApiSchema {
     get: {
       summary: "List moderation reports (staff/mod only)",
       parameters: [
-        { in: "query", name: "status", schema: { type: "string", enum: ["unresolved", "resolved", "all"] }, description: "Default: `unresolved`." },
-        { in: "query", name: "targetType", schema: { type: "string", enum: ["comment", "thread", "reply", "member"] } },
+        {
+          in: "query",
+          name: "status",
+          schema: { type: "string", enum: ["unresolved", "resolved", "all"] },
+          description: "Default: `unresolved`.",
+        },
+        {
+          in: "query",
+          name: "targetType",
+          schema: { type: "string", enum: ["comment", "thread", "reply", "member"] },
+        },
         { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 200 } },
         { in: "query", name: "page", schema: { type: "integer", minimum: 1 } },
       ],
@@ -1951,8 +2202,10 @@ function buildSpec(): OpenApiSchema {
     post: {
       summary: "Resolve a moderation report",
       description:
-        "Marks the report resolved with a free-form `resolution` label (e.g. `\"hidden\"`, `\"banned\"`, `\"dismissed\"`). The actual moderation action (hide / ban / etc.) is a separate call.",
-      parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        'Marks the report resolved with a free-form `resolution` label (e.g. `"hidden"`, `"banned"`, `"dismissed"`). The actual moderation action (hide / ban / etc.) is a separate call.',
+      parameters: [
+        { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+      ],
       requestBody: {
         required: true,
         content: {
@@ -1977,7 +2230,12 @@ function buildSpec(): OpenApiSchema {
     get: {
       summary: "List active bans for a member",
       parameters: [
-        { in: "query", name: "memberId", required: true, schema: { type: "string", format: "uuid" } },
+        {
+          in: "query",
+          name: "memberId",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
       ],
       responses: {
         "200": { description: "Active ban rows for the member" },
@@ -1997,9 +2255,17 @@ function buildSpec(): OpenApiSchema {
               properties: {
                 memberId: { type: "string", format: "uuid" },
                 scopeType: { type: "string", enum: ["site", "category", "collection"] },
-                scopeId: { type: "string", nullable: true, description: "Required for non-site scopes." },
+                scopeId: {
+                  type: "string",
+                  nullable: true,
+                  description: "Required for non-site scopes.",
+                },
                 kind: { type: "string", enum: ["temporary", "permanent"] },
-                expiresAt: { type: "string", format: "date-time", description: "Required when kind=temporary." },
+                expiresAt: {
+                  type: "string",
+                  format: "date-time",
+                  description: "Required when kind=temporary.",
+                },
                 reason: { type: "string", nullable: true },
               },
             },
@@ -2016,7 +2282,9 @@ function buildSpec(): OpenApiSchema {
   paths["/api/admin/community/bans/{id}"] = {
     delete: {
       summary: "Revoke a ban",
-      parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+      parameters: [
+        { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+      ],
       responses: {
         "200": { description: "{ ok: true }" },
         "403": { description: "Requires admin / editor / moderator role" },
@@ -2027,7 +2295,9 @@ function buildSpec(): OpenApiSchema {
   paths["/api/admin/community/comments/{id}"] = {
     delete: {
       summary: "Staff delete a comment",
-      parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+      parameters: [
+        { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+      ],
       responses: {
         "200": { description: "{ ok: true }" },
         "403": { description: "Requires admin / editor / moderator role" },
@@ -2037,7 +2307,9 @@ function buildSpec(): OpenApiSchema {
   paths["/api/admin/community/comments/{id}/hide"] = {
     post: {
       summary: "Staff hide a comment",
-      parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+      parameters: [
+        { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+      ],
       requestBody: {
         content: {
           "application/json": {
@@ -2054,7 +2326,9 @@ function buildSpec(): OpenApiSchema {
   paths["/api/admin/community/comments/{id}/restore"] = {
     post: {
       summary: "Staff restore a comment",
-      parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+      parameters: [
+        { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+      ],
       responses: {
         "200": { description: "{ ok: true }" },
         "403": { description: "Requires admin / editor / moderator role" },

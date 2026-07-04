@@ -66,8 +66,8 @@ export const defaultCollections: NpConfig["collections"] = [
  *     from boot) plus the public forum routes under `/discussions`.
  *   - oauth-github, oauth-google — register OAuth provider entries
  *     but only become reachable when the corresponding env vars
- *     (or admin auto-form values) are populated; the empty case
- *     stays silent.
+ *     (or admin auto-form values) are populated; the empty case logs
+ *     an informational setup hint and registers nothing.
  *
  * Operators who want a stripped-down install filter the list or
  * disable plugins from the admin Plugins page.

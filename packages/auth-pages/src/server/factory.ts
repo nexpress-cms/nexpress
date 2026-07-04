@@ -17,6 +17,7 @@ import {
   issueOAuthState,
   npMembers,
   npMemberSessions,
+  oauthProviderSupportsAudience,
   requestMemberPasswordReset,
   resolveMemberOAuthLogin,
   sha256,
@@ -30,11 +31,7 @@ import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { NextResponse, type NextRequest } from "next/server";
 
-import type {
-  MemberAuthRoutes,
-  MemberAuthRoutesConfig,
-  MemberAuthRoutesOptions,
-} from "./types.js";
+import type { MemberAuthRoutes, MemberAuthRoutesConfig, MemberAuthRoutesOptions } from "./types.js";
 import { siteUrlLenient, siteUrlStrict } from "./site-url.js";
 
 /**
@@ -158,22 +155,24 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
 
       const userAgent = request.headers.get("user-agent") ?? null;
       const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
-      await asDb(db).insert(npMemberSessions).values([
-        {
-          memberId: member.id,
-          tokenHash: await sha256(access),
-          userAgent,
-          ip,
-          expiresAt: new Date(Date.now() + tokenExpiration * 1000),
-        },
-        {
-          memberId: member.id,
-          tokenHash: await sha256(refresh),
-          userAgent,
-          ip,
-          expiresAt: new Date(Date.now() + refreshTokenExpiration * 1000),
-        },
-      ]);
+      await asDb(db)
+        .insert(npMemberSessions)
+        .values([
+          {
+            memberId: member.id,
+            tokenHash: await sha256(access),
+            userAgent,
+            ip,
+            expiresAt: new Date(Date.now() + tokenExpiration * 1000),
+          },
+          {
+            memberId: member.id,
+            tokenHash: await sha256(refresh),
+            userAgent,
+            ip,
+            expiresAt: new Date(Date.now() + refreshTokenExpiration * 1000),
+          },
+        ]);
 
       const response = NextResponse.json(
         {
@@ -248,11 +247,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
           .returning({ id: npMembers.id });
       } catch (err) {
         // SQLSTATE 23505 — concurrent collision after preflight pass.
-        if (
-          err instanceof Error &&
-          "code" in err &&
-          (err as { code?: string }).code === "23505"
-        ) {
+        if (err instanceof Error && "code" in err && (err as { code?: string }).code === "23505") {
           return npSuccessResponse({ ok: true });
         }
         throw err;
@@ -291,9 +286,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
     if (hashes.length > 0) {
       try {
         const db = getDb() as never;
-        await asDb(db)
-          .delete(npMemberSessions)
-          .where(inArray(npMemberSessions.tokenHash, hashes));
+        await asDb(db).delete(npMemberSessions).where(inArray(npMemberSessions.tokenHash, hashes));
       } catch {
         // Best-effort — cookies still clear below.
       }
@@ -341,25 +334,25 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
       const userAgent = request.headers.get("user-agent") ?? null;
       const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
       await asDb(db).transaction(async (tx) => {
+        await asDb(tx).delete(npMemberSessions).where(eq(npMemberSessions.id, sessionRow.id));
         await asDb(tx)
-          .delete(npMemberSessions)
-          .where(eq(npMemberSessions.id, sessionRow.id));
-        await asDb(tx).insert(npMemberSessions).values([
-          {
-            memberId: member.id,
-            tokenHash: await sha256(access),
-            userAgent,
-            ip,
-            expiresAt: new Date(Date.now() + tokenExpiration * 1000),
-          },
-          {
-            memberId: member.id,
-            tokenHash: await sha256(refresh),
-            userAgent,
-            ip,
-            expiresAt: new Date(Date.now() + refreshTokenExpiration * 1000),
-          },
-        ]);
+          .insert(npMemberSessions)
+          .values([
+            {
+              memberId: member.id,
+              tokenHash: await sha256(access),
+              userAgent,
+              ip,
+              expiresAt: new Date(Date.now() + tokenExpiration * 1000),
+            },
+            {
+              memberId: member.id,
+              tokenHash: await sha256(refresh),
+              userAgent,
+              ip,
+              expiresAt: new Date(Date.now() + refreshTokenExpiration * 1000),
+            },
+          ]);
       });
 
       const response = NextResponse.json(
@@ -439,9 +432,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
   const resetPassword = async (request: NextRequest): Promise<NextResponse> => {
     try {
       await ensureFor("write");
-      const body = (await readJsonBody(request)) as
-        | { token?: unknown; password?: unknown }
-        | null;
+      const body = (await readJsonBody(request)) as { token?: unknown; password?: unknown } | null;
       const token = typeof body?.token === "string" ? body.token : "";
       const password = typeof body?.password === "string" ? body.password : "";
       if (password.length < opts.resetPassword.minPasswordLength) {
@@ -467,7 +458,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
     await ensureFor("plugins");
     const { provider: providerId } = await ctx.params;
     const provider = getOAuthProvider(providerId);
-    if (!provider) {
+    if (!provider || !oauthProviderSupportsAudience(provider, "member")) {
       return NextResponse.json(
         {
           error: { code: "NOT_FOUND", message: `OAuth provider "${providerId}" not registered` },
@@ -479,11 +470,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
 
     const { secret, secureCookies } = authHelpers.getMemberAuthRuntimeConfig();
     const { token, codeVerifier } = issueOAuthState(providerId, secret);
-    const redirectUri = buildPath(
-      config,
-      request,
-      `/api/members/oauth/${providerId}/callback`,
-    );
+    const redirectUri = buildPath(config, request, `/api/members/oauth/${providerId}/callback`);
     const authorizeUrl = await provider.authorize({
       state: token,
       redirectUri,
@@ -526,7 +513,9 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
     await ensureFor("plugins");
     const { provider: providerId } = await ctx.params;
     const provider = getOAuthProvider(providerId);
-    if (!provider) return oauthFail(request, "unknown_provider");
+    if (!provider || !oauthProviderSupportsAudience(provider, "member")) {
+      return oauthFail(request, "unknown_provider");
+    }
 
     const url = request.nextUrl;
     const code = url.searchParams.get("code");
@@ -552,11 +541,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
       profile = await provider.exchange({
         code,
         state: stateParam,
-        redirectUri: buildPath(
-          config,
-          request,
-          `/api/members/oauth/${providerId}/callback`,
-        ),
+        redirectUri: buildPath(config, request, `/api/members/oauth/${providerId}/callback`),
         codeVerifier: verification.payload.codeVerifier,
       });
     } catch (err) {
@@ -608,22 +593,24 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
     const db = getDb() as never;
     const userAgent = request.headers.get("user-agent") ?? null;
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
-    await asDb(db).insert(npMemberSessions).values([
-      {
-        memberId: member.id,
-        tokenHash: await sha256(access),
-        userAgent,
-        ip,
-        expiresAt: new Date(Date.now() + tokenExpiration * 1000),
-      },
-      {
-        memberId: member.id,
-        tokenHash: await sha256(refreshTok),
-        userAgent,
-        ip,
-        expiresAt: new Date(Date.now() + refreshTokenExpiration * 1000),
-      },
-    ]);
+    await asDb(db)
+      .insert(npMemberSessions)
+      .values([
+        {
+          memberId: member.id,
+          tokenHash: await sha256(access),
+          userAgent,
+          ip,
+          expiresAt: new Date(Date.now() + tokenExpiration * 1000),
+        },
+        {
+          memberId: member.id,
+          tokenHash: await sha256(refreshTok),
+          userAgent,
+          ip,
+          expiresAt: new Date(Date.now() + refreshTokenExpiration * 1000),
+        },
+      ]);
 
     const target = new URL(opts.oauth.successRedirect, siteUrl(config, request));
     const response = NextResponse.redirect(target);
@@ -711,10 +698,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
         return npSuccessResponse({ ok: true });
       }
 
-      await asDb(db)
-        .update(npMembers)
-        .set(updates)
-        .where(eq(npMembers.id, member.id));
+      await asDb(db).update(npMembers).set(updates).where(eq(npMembers.id, member.id));
 
       if (mustReauth) {
         await invalidateAllMemberSessions(db, member.id);
@@ -871,19 +855,10 @@ function validatePatchBody(raw: unknown, minPasswordLength: number): PatchBody {
   }
   if (body.bio !== undefined) {
     out.bio =
-      body.bio === null
-        ? null
-        : typeof body.bio === "string"
-          ? body.bio.slice(0, 500)
-          : null;
+      body.bio === null ? null : typeof body.bio === "string" ? body.bio.slice(0, 500) : null;
   }
   if (body.avatar !== undefined) {
-    out.avatar =
-      body.avatar === null
-        ? null
-        : typeof body.avatar === "string"
-          ? body.avatar
-          : null;
+    out.avatar = body.avatar === null ? null : typeof body.avatar === "string" ? body.avatar : null;
   }
   if (body.newPassword !== undefined) {
     if (typeof body.newPassword !== "string" || body.newPassword.length < minPasswordLength) {

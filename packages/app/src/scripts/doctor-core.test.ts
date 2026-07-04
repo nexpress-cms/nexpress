@@ -63,4 +63,23 @@ describe("doctor core", () => {
     expect(report.summary.errors).toBeGreaterThan(0);
     expect(report.fixPlan?.length).toBeGreaterThan(0);
   });
+
+  it("includes partial OAuth env errors in collected checks", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nexpress-doctor-core-"));
+    const checks = await collectDoctorChecks({
+      cwd,
+      nodeVersion: "24.11.1",
+      env: {
+        npm_config_user_agent: "pnpm/10.33.0",
+        NP_OAUTH_GITHUB_CLIENT_ID: "Iv1.partial",
+      },
+    });
+
+    expect(checks.find((check) => check.id === "oauth.github.credentials")).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: "partial env: missing NP_OAUTH_GITHUB_CLIENT_SECRET",
+      }),
+    );
+  });
 });

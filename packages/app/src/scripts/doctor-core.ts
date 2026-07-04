@@ -6,6 +6,7 @@ import { buildDoctorJson, type DoctorJsonOutput } from "./doctor-output.js";
 import {
   checkJobsEnabledProd,
   checkMigrationStatusReadiness,
+  checkOAuthEnvPairs,
   checkSchedulerTokenProd,
   checkSecretLengthProd,
   checkSiteUrlProd,
@@ -96,6 +97,7 @@ export async function collectDoctorChecks(
   checks.push(checkEnvExampleSync(env));
   const s3 = checkS3Vars(env);
   if (s3) checks.push(s3);
+  checks.push(...checkOAuthEnvPairs(env));
   checks.push(await checkLocalStorage(env, cwd));
   checks.push(await checkDatabase(env));
   checks.push(await checkMigrationsApplied({ prodMode, env, cwd }));

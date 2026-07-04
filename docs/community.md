@@ -117,31 +117,59 @@ Settings → Community.
 
 ## 4. SSO Providers
 
-`registerOAuthProvider({ id, label, ... })` adds an OAuth
-button to the member login screen. Two providers ship in-tree:
+`registerOAuthProvider({ id, label, ... })` adds OAuth entries to
+the auth provider registry. The reference app reads that registry
+on both staff login (`/admin/login`) and member login
+(`/members/login`), so configured providers render as "Continue
+with ..." buttons automatically on the audiences they support. Two
+provider plugins ship in-tree:
 
 - `@nexpress/plugin-oauth-github`
 - `@nexpress/plugin-oauth-google`
 
 Both wrap [`arctic`](https://arcticjs.dev) so the
 authorization-code dance is maintained externally rather than
-bespoke. Add to `nexpress.config.ts`:
+bespoke. They are already included in `defaultPlugins`; leave them
+installed and configure credentials from one source.
 
-```ts
-import { githubOAuthPlugin } from "@nexpress/plugin-oauth-github";
+Production env path:
 
-export default defineConfig({
-  plugins: [
-    githubOAuthPlugin({
-      clientId: process.env.NP_OAUTH_GITHUB_CLIENT_ID!,
-      clientSecret: process.env.NP_OAUTH_GITHUB_CLIENT_SECRET!,
-    }),
-  ],
-});
+```bash
+NP_OAUTH_GITHUB_CLIENT_ID=Iv1.xxxxxxxxxxxx
+NP_OAUTH_GITHUB_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxx
+NP_OAUTH_GOOGLE_CLIENT_ID=xxxxxxxx.apps.googleusercontent.com
+NP_OAUTH_GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-The plugin auto-registers the provider; the site login page
-picks it up via `listOAuthProviders()`.
+Admin-form path:
+
+- GitHub: `/admin/plugins/oauth-github`
+- Google: `/admin/plugins/oauth-google`
+
+Env wins when both sources are populated. Set both env vars for a
+provider or unset both; partial env is a doctor error and the plugin
+refuses to register that provider rather than mixing env and DB
+credentials.
+
+The GitHub plugin also exposes an Audience setting. It defaults to
+`staff` because a GitHub OAuth App accepts one Authorization callback
+URL. Switch it to `member` only when that GitHub app is registered for
+the member callback. The Google plugin is visible on both staff and
+member login because Google OAuth web clients allow multiple redirect
+URIs.
+
+Callback URLs:
+
+- Staff GitHub: `${SITE_URL}/api/auth/oauth/github/callback`
+- Member GitHub: `${SITE_URL}/api/members/oauth/github/callback`
+- Staff Google: `${SITE_URL}/api/auth/oauth/google/callback`
+- Member Google: `${SITE_URL}/api/members/oauth/google/callback`
+
+For GitHub, register only the callback that matches the configured
+Audience. For Google, one client can cover both pools when both URLs
+are registered exactly. After saving admin-form credentials, click
+**Reload all** in `/admin/plugins` or restart the process so setup
+runs again.
 
 Linked identities surface in:
 

@@ -80,16 +80,8 @@ export {
   buildWeightedSearchVectorSql,
 } from "./collections/search.js";
 export type { NpSearchVectorParts } from "./collections/search.js";
-export {
-  buildSitemap,
-  renderSitemapXml,
-  renderSitemapIndexXml,
-} from "./seo/sitemap.js";
-export type {
-  NpSitemapEntry,
-  NpSitemapIndexEntry,
-  BuildSitemapOptions,
-} from "./seo/sitemap.js";
+export { buildSitemap, renderSitemapXml, renderSitemapIndexXml } from "./seo/sitemap.js";
+export type { NpSitemapEntry, NpSitemapIndexEntry, BuildSitemapOptions } from "./seo/sitemap.js";
 export {
   DEFAULT_SITE_SEO_SETTINGS,
   buildPageMetadata,
@@ -210,9 +202,12 @@ export {
   registerOAuthProvider,
   getOAuthProvider,
   listOAuthProviders,
+  listOAuthProvidersFor,
+  oauthProviderSupportsAudience,
   resetOAuthProviders,
 } from "./auth/oauth-providers.js";
 export type {
+  OAuthAudience,
   OAuthProvider,
   OAuthProfile,
   OAuthAuthorizeParams,
@@ -488,10 +483,7 @@ export type { SiteMembership } from "./sites/memberships.js";
 
 export { setI18nConfig, getI18nConfig, resetI18nConfig } from "./i18n/registry.js";
 export { resolveLocale, getCurrentLocale } from "./i18n/locale-resolver.js";
-export type {
-  NpResolveLocaleInput,
-  NpResolveLocaleResult,
-} from "./i18n/locale-resolver.js";
+export type { NpResolveLocaleInput, NpResolveLocaleResult } from "./i18n/locale-resolver.js";
 export {
   addStrings,
   setStrings,
@@ -602,10 +594,7 @@ export {
   getRateLimiter,
   getOptionalRateLimiter,
 } from "./rate-limit/index.js";
-export type {
-  NpRateLimitDecision,
-  NpRateLimiterAdapter,
-} from "./rate-limit/index.js";
+export type { NpRateLimitDecision, NpRateLimiterAdapter } from "./rate-limit/index.js";
 
 export {
   getCommunityRole,
@@ -766,9 +755,5 @@ export type {
   NpMemberProfile,
 } from "./community/index.js";
 
-export {
-  registerCustomRoute,
-  getCustomRoutes,
-  clearCustomRoutes,
-} from "./routes/index.js";
+export { registerCustomRoute, getCustomRoutes, clearCustomRoutes } from "./routes/index.js";
 export type { NpCustomRoute } from "./routes/index.js";

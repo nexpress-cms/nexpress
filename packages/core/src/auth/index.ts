@@ -38,10 +38,13 @@ export type { ArcticLikeProvider, ArcticLikeTokens, FromArcticOptions } from "./
 export {
   getOAuthProvider,
   listOAuthProviders,
+  listOAuthProvidersFor,
+  oauthProviderSupportsAudience,
   registerOAuthProvider,
   resetOAuthProviders,
 } from "./oauth-providers.js";
 export type {
+  OAuthAudience,
   OAuthAuthorizeParams,
   OAuthExchangeParams,
   OAuthProfile,

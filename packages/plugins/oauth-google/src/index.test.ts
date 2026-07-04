@@ -3,7 +3,7 @@ import type { ZodTypeAny } from "zod";
 
 import { googleOAuthPlugin, type GoogleOAuthConfig } from "./index.js";
 
-vi.mock(import("@nexpress/core"), async (importOriginal) => {
+vi.mock(import("@nexpress/core/auth"), async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
@@ -11,7 +11,7 @@ vi.mock(import("@nexpress/core"), async (importOriginal) => {
   };
 });
 
-import { registerOAuthProvider } from "@nexpress/core";
+import { registerOAuthProvider } from "@nexpress/core/auth";
 
 describe("oauth-google configSchema", () => {
   const schema = googleOAuthPlugin.configSchema as ZodTypeAny;
@@ -45,10 +45,9 @@ describe("oauth-google configSchema", () => {
   });
 
   it("marks clientSecret as sensitive (masked input in admin form)", () => {
-    const shape = (schema as unknown as { _zod?: { def?: { shape?: Record<string, unknown> } } })._zod?.def?.shape;
-    const clientSecretField = shape?.clientSecret as
-      | { meta?: () => unknown }
-      | undefined;
+    const shape = (schema as unknown as { _zod?: { def?: { shape?: Record<string, unknown> } } })
+      ._zod?.def?.shape;
+    const clientSecretField = shape?.clientSecret as { meta?: () => unknown } | undefined;
     const meta =
       typeof clientSecretField?.meta === "function"
         ? (clientSecretField.meta() as { sensitive?: boolean } | undefined)
@@ -130,6 +129,7 @@ describe("setup credential resolution", () => {
     runSetup(ctx);
     expect(registerOAuthProvider).toHaveBeenCalledTimes(1);
     expect(calls.find((c) => c.level === "info")?.data).toEqual({ source: "env" });
+    expect(registeredProvider()?.audiences).toEqual(["staff", "member"]);
   });
 
   it("registers the provider when both admin-form fields are set (admin source)", () => {
@@ -141,6 +141,7 @@ describe("setup credential resolution", () => {
     runSetup(ctx);
     expect(registerOAuthProvider).toHaveBeenCalledTimes(1);
     expect(calls.find((c) => c.level === "info")?.data).toEqual({ source: "admin" });
+    expect(registeredProvider()?.audiences).toEqual(["staff", "member"]);
   });
 
   it("REFUSES to register when env has clientId but no clientSecret", () => {
@@ -167,10 +168,20 @@ describe("setup credential resolution", () => {
     expect(calls.find((c) => c.level === "error")).toBeDefined();
   });
 
-  it("warns and skips when neither env nor admin form provides credentials", () => {
+  it("logs an informational setup hint and skips when no source provides credentials", () => {
     const { ctx, calls } = makeCtx(validConfig);
     runSetup(ctx);
     expect(registerOAuthProvider).not.toHaveBeenCalled();
-    expect(calls.find((c) => c.level === "warn")).toBeDefined();
+    expect(calls.find((c) => c.level === "warn")).toBeUndefined();
+    expect(calls.find((c) => c.level === "info")?.msg).toMatch(/skipping provider registration/i);
   });
 });
+
+function registeredProvider():
+  | {
+      id?: string;
+      audiences?: readonly string[];
+    }
+  | undefined {
+  return vi.mocked(registerOAuthProvider).mock.calls[0]?.[0];
+}
