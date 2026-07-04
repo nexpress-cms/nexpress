@@ -862,6 +862,9 @@ pnpm --silent run ops:release -- check --target vercel --json
 pnpm --silent run ops:release -- verify --url https://your-domain.example --json
 \`\`\`
 
+\`deploy:plan\` starts with the target's first launch action: Vercel import,
+Railway project creation, Render Blueprint, \`fly launch\`, or Docker image build.
+
 On Vercel, run migrations in CI, the Vercel build command, or another trusted
 shell where production \`DATABASE_URL\` is already injected. Sensitive Vercel
 env values may not be readable through \`vercel env pull\`, so do not depend on
@@ -910,6 +913,9 @@ pnpm --silent run ops:release -- verify --url https://your-domain.example --json
 \`\`\`
 
 \`deploy:plan\` explains host env, storage, runtime, and import/deploy steps.
+\`Start here\` in the plan gives the first host-specific launch action: a
+Vercel import URL, Railway dashboard / CLI path, Render web service /
+Blueprint path, \`fly launch\`, or Docker image build command.
 \`pnpm db:migrate\` must run where the production \`DATABASE_URL\` is available;
 on Vercel that usually means CI, \`pnpm db:migrate && pnpm build\` as the build
 command, or another trusted shell with production env injected.
@@ -1111,11 +1117,16 @@ HTTP calls, but not a long-lived pg-boss worker.
 
 ## Other Hosting Choices
 
-- **Vercel** — fastest app hosting path, but requires S3-compatible storage
-  for media because the filesystem is ephemeral.
-- **Railway / Render** — straightforward Docker deploys with managed
-  Postgres; still use S3-compatible storage for durable media.
-- **Fly.io / Docker self-host** — best when you want to own the runtime;
-  local uploaded files are acceptable only for single-node deployments.
+- **Vercel** — fastest app hosting path. Start with the Vercel import URL from
+  \`deploy:plan --target vercel\`; S3-compatible media storage is required.
+- **Railway** — start with Railway's new project dashboard or
+  \`railway init && railway up\`; add managed Postgres and durable media.
+- **Render** — start with a Web Service from the scaffold repo; use a Blueprint
+  if your project adds \`render.yaml\` for web/database/worker/cron resources.
+- **Fly.io** — start with \`fly launch\` against the scaffold Dockerfile, then
+  set secrets and run the release gate.
+- **Docker self-host** — start with
+  \`docker build -f docker/Dockerfile -t nexpress .\`; local uploads are safe
+  only for one node with backed-up persistent disk.
 `;
 }

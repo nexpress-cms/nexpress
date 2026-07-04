@@ -36,13 +36,7 @@ export interface DeployPlanSummary {
 }
 
 export type DeployPlanBridgeStepId =
-  | "plan"
-  | "configure-env"
-  | "migrate"
-  | "preflight"
-  | "release-check"
-  | "deploy"
-  | "verify";
+  "plan" | "configure-env" | "migrate" | "preflight" | "release-check" | "deploy" | "verify";
 
 export interface DeployPlanBridgeStep {
   id: DeployPlanBridgeStepId;
@@ -51,10 +45,23 @@ export interface DeployPlanBridgeStep {
   command?: string;
 }
 
+export type DeployPlanLaunchKind = "dashboard" | "deploy-button" | "cli" | "docker";
+
+export interface DeployPlanLaunchOption {
+  id: string;
+  kind: DeployPlanLaunchKind;
+  label: string;
+  description: string;
+  href?: string;
+  command?: string;
+  docsUrl?: string;
+}
+
 export interface DeployPlanBridge {
   title: string;
   summary: string;
   importUrl?: string;
+  launch?: DeployPlanLaunchOption[];
   steps: DeployPlanBridgeStep[];
 }
 
@@ -259,6 +266,7 @@ function buildDeployBridge(target: DeployTarget): DeployPlanBridge {
     summary:
       "One ordered handoff from local setup to host env, preflight, release check, deploy, and post-deploy verify.",
     ...(importUrl ? { importUrl } : {}),
+    launch: buildDeployLaunchOptions(target),
     steps: [
       {
         id: "plan",
@@ -306,6 +314,96 @@ function buildDeployBridge(target: DeployTarget): DeployPlanBridge {
       },
     ],
   };
+}
+
+function buildDeployLaunchOptions(target: DeployTarget): DeployPlanLaunchOption[] {
+  switch (target) {
+    case "vercel":
+      return [
+        {
+          id: "vercel-import",
+          kind: "deploy-button",
+          label: "Open Vercel import",
+          description:
+            "Push the scaffold to GitHub, open Vercel's new-project flow, import the repo, and set env before the first production build.",
+          href: "https://vercel.com/new?utm_source=nexpress&utm_campaign=oss",
+          docsUrl: "https://vercel.com/docs/deploy-button",
+        },
+      ];
+    case "railway":
+      return [
+        {
+          id: "railway-github",
+          kind: "dashboard",
+          label: "Open Railway new project",
+          description:
+            "Create a Railway project, choose Deploy from GitHub repo, add Postgres, and wire the required env before promoting.",
+          href: "https://railway.com/new",
+          docsUrl: "https://docs.railway.com/quick-start",
+        },
+        {
+          id: "railway-cli",
+          kind: "cli",
+          label: "Railway CLI path",
+          description:
+            "Initialize and upload from the local checkout after logging in with Railway CLI.",
+          command: "railway init && railway up",
+          docsUrl: "https://docs.railway.com/cli",
+        },
+      ];
+    case "render":
+      return [
+        {
+          id: "render-web-service",
+          kind: "dashboard",
+          label: "Create Render Web Service",
+          description:
+            "Connect GitHub in Render, create a Web Service from the scaffold repo, and point it at the included Dockerfile.",
+          href: "https://dashboard.render.com/",
+          docsUrl: "https://render.com/docs/web-services",
+        },
+        {
+          id: "render-blueprint",
+          kind: "dashboard",
+          label: "Render Blueprint option",
+          description:
+            "Use a render.yaml Blueprint if your project adds one for the web, database, worker, and cron resources.",
+          href: "https://dashboard.render.com/",
+          docsUrl: "https://render.com/docs/infrastructure-as-code",
+        },
+      ];
+    case "fly":
+      return [
+        {
+          id: "fly-launch",
+          kind: "cli",
+          label: "Fly launch",
+          description:
+            "Run Fly's launcher against the scaffold Dockerfile, then set secrets and run the release gate.",
+          command: "fly launch",
+          docsUrl: "https://fly.io/docs/getting-started/launch-demo/",
+        },
+        {
+          id: "fly-github-actions",
+          kind: "cli",
+          label: "Fly GitHub Actions deploy",
+          description:
+            "Use Fly's GitHub Actions flow once the app, secrets, and release command are ready.",
+          docsUrl: "https://fly.io/docs/launch/continuous-deployment-with-github-actions/",
+        },
+      ];
+    case "docker":
+      return [
+        {
+          id: "docker-build",
+          kind: "docker",
+          label: "Build the Docker image",
+          description:
+            "Build the included multi-stage Dockerfile, then run the container with production env and storage mounted.",
+          command: "docker build -f docker/Dockerfile -t nexpress .",
+        },
+      ];
+  }
 }
 
 export function checkEnvRequirement(
@@ -477,6 +575,10 @@ export function renderDeployPlan(
   );
   pushSection(lines, "Storage", plan.storage, options);
   pushSection(lines, "Runtime", plan.runtime, options);
+  const launch = plan.bridge.launch ?? [];
+  if (launch.length > 0) {
+    pushSection(lines, "Start here", renderLaunchItems(launch), options);
+  }
   pushSection(lines, "Run before deploy", plan.commands, options);
   pushSection(lines, "Deploy bridge", renderBridgeItems(plan.bridge), options);
   if (diagnostics.length > 0) pushSection(lines, "Diagnostics", diagnostics, options);
@@ -505,6 +607,11 @@ export function renderBriefDeployPlan(
     `Required env: ${String(required.length - unresolved.length)}/${String(required.length)} set`,
   );
   for (const check of unresolved) lines.push(`  - ${formatEnvRequirement(check, options.color)}`);
+  const launch = plan.bridge.launch ?? [];
+  if (launch.length > 0) {
+    lines.push("", "Start here:");
+    for (const launchOption of launch) lines.push(`  - ${renderLaunchItem(launchOption)}`);
+  }
   lines.push("", "Run before deploy:");
   for (const command of plan.commands) lines.push(`  - ${command}`);
   lines.push("", "Deploy bridge:");
@@ -516,6 +623,17 @@ export function renderBriefDeployPlan(
     for (const diagnostic of diagnostics) lines.push(`  - ${diagnostic}`);
   }
   return lines.join("\n");
+}
+
+function renderLaunchItems(launch: DeployPlanLaunchOption[]): string[] {
+  return launch.map(renderLaunchItem);
+}
+
+function renderLaunchItem(option: DeployPlanLaunchOption): string {
+  const href = option.href ? ` URL: ${option.href}` : "";
+  const command = option.command ? ` Command: ${option.command}` : "";
+  const docs = option.docsUrl ? ` Docs: ${option.docsUrl}` : "";
+  return `${option.label}: ${option.description}${href}${command}${docs}`;
 }
 
 function renderBridgeItems(bridge: DeployPlanBridge): string[] {

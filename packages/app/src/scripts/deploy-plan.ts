@@ -33,10 +33,13 @@ Targets:
 
 Options:
   --json       Print the stable machine-readable deployment plan.
-  --brief      Print only unresolved required env and ordered commands.
+  --brief      Print unresolved required env plus compact launch and command steps.
   --no-color   Disable ANSI color in human-readable output.
   --dry-run    Accepted for agent workflows; deploy:plan never applies changes.
   --help, -h   Show this help.
+
+Output starts with the target's launch handoff, then env, storage,
+runtime, migration, preflight, release, and post-deploy verify steps.
 `);
 }
 
