@@ -11,8 +11,63 @@ export interface CheckResult {
 
 type DoctorEnv = Record<string, string | undefined>;
 
+interface OAuthEnvPair {
+  id: "github" | "google";
+  label: string;
+  clientIdVar: string;
+  clientSecretVar: string;
+  adminPath: string;
+}
+
+const OAUTH_ENV_PAIRS: OAuthEnvPair[] = [
+  {
+    id: "github",
+    label: "GitHub OAuth credentials",
+    clientIdVar: "NP_OAUTH_GITHUB_CLIENT_ID",
+    clientSecretVar: "NP_OAUTH_GITHUB_CLIENT_SECRET",
+    adminPath: "/admin/plugins/oauth-github",
+  },
+  {
+    id: "google",
+    label: "Google OAuth credentials",
+    clientIdVar: "NP_OAUTH_GOOGLE_CLIENT_ID",
+    clientSecretVar: "NP_OAUTH_GOOGLE_CLIENT_SECRET",
+    adminPath: "/admin/plugins/oauth-google",
+  },
+];
+
 function jobsEnabled(env: DoctorEnv): boolean {
   return env.NP_ENABLE_JOBS === "1" || env.NP_ENABLE_JOBS === "true";
+}
+
+export function checkOAuthEnvPairs(env: DoctorEnv): CheckResult[] {
+  const checks: CheckResult[] = [];
+  for (const pair of OAUTH_ENV_PAIRS) {
+    const hasClientId = Boolean(env[pair.clientIdVar]);
+    const hasClientSecret = Boolean(env[pair.clientSecretVar]);
+    if (!hasClientId && !hasClientSecret) continue;
+
+    const id = `oauth.${pair.id}.credentials`;
+    if (hasClientId && hasClientSecret) {
+      checks.push({
+        id,
+        state: "ok",
+        label: pair.label,
+        detail: "env pair set",
+      });
+      continue;
+    }
+
+    const missing = hasClientId ? pair.clientSecretVar : pair.clientIdVar;
+    checks.push({
+      id,
+      state: "error",
+      label: pair.label,
+      detail: `partial env: missing ${missing}`,
+      hint: `Set both ${pair.clientIdVar} and ${pair.clientSecretVar}, or unset both to use the admin form at ${pair.adminPath}.`,
+    });
+  }
+  return checks;
 }
 
 export function checkSecretLengthProd(prodMode: boolean, env: DoctorEnv): CheckResult | null {

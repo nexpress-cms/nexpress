@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { count, eq } from "drizzle-orm";
-import { listOAuthProviders, npUsers } from "@nexpress/core";
+import { npUsers } from "@nexpress/core";
+import { listOAuthProvidersFor } from "@nexpress/core/auth";
 
 import { getDb } from "../../lib/db";
 import { ensureFor } from "../../lib/init-core";
@@ -20,15 +21,12 @@ import { LoginClient } from "./login-client";
 export default async function LoginPage() {
   await ensureFor("plugins");
   const db = getDb();
-  const rows = await db
-    .select({ value: count() })
-    .from(npUsers)
-    .where(eq(npUsers.role, "admin"));
+  const rows = await db.select({ value: count() }).from(npUsers).where(eq(npUsers.role, "admin"));
   if ((rows[0]?.value ?? 0) === 0) {
     redirect("/admin/setup");
   }
 
-  const providers = listOAuthProviders().map((provider) => ({
+  const providers = listOAuthProvidersFor("staff").map((provider) => ({
     id: provider.id,
     label: provider.label ?? provider.id,
   }));

@@ -192,6 +192,22 @@ function fixForCheck(result: CheckResult, target: DeployTarget | null): FixPlanT
         ],
       };
     default:
+      if (result.id === "oauth.github.credentials" || result.id === "oauth.google.credentials") {
+        const provider = result.id === "oauth.github.credentials" ? "github" : "google";
+        const providerTitle = provider === "github" ? "GitHub" : "Google";
+        const envPrefix = provider === "github" ? "NP_OAUTH_GITHUB" : "NP_OAUTH_GOOGLE";
+        return {
+          id: `oauth.configure_${provider}_credentials`,
+          title: `Configure ${providerTitle} OAuth credentials from one source`,
+          risk: "low",
+          requiresApproval: false,
+          commands: [`pnpm --silent run ops:plugins -- inspect oauth-${provider} --json`],
+          notes: [
+            `Set both ${envPrefix}_CLIENT_ID and ${envPrefix}_CLIENT_SECRET, or unset both and fill /admin/plugins/oauth-${provider}.`,
+            "After saving admin-form credentials, reload plugins or restart the process so the provider registers.",
+          ],
+        };
+      }
       if (result.id.startsWith("target.") && result.id.endsWith(".storage")) {
         return {
           id: "storage.configure_target_durable_storage",

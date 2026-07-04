@@ -198,6 +198,36 @@ describe("doctor output", () => {
     ]);
   });
 
+  it("builds fix-plan actions for partial OAuth credential env", () => {
+    const fixPlan = buildDoctorFixPlan({
+      target: null,
+      checks: [
+        {
+          id: "oauth.github.credentials",
+          state: "error",
+          label: "GitHub OAuth credentials",
+          detail: "partial env: missing NP_OAUTH_GITHUB_CLIENT_SECRET",
+          hint: "Set both GitHub OAuth env vars, or unset both to use the admin form.",
+        },
+      ],
+    });
+
+    expect(fixPlan).toEqual([
+      expect.objectContaining({
+        id: "oauth.configure_github_credentials",
+        checkIds: ["oauth.github.credentials"],
+        severity: "blocking",
+        blocksDeploy: true,
+        nextCommand: "pnpm --silent run ops:plugins -- inspect oauth-github --json",
+        commands: ["pnpm --silent run ops:plugins -- inspect oauth-github --json"],
+        notes: expect.arrayContaining([
+          "Set both NP_OAUTH_GITHUB_CLIENT_ID and NP_OAUTH_GITHUB_CLIENT_SECRET, or unset both and fill /admin/plugins/oauth-github.",
+          "After saving admin-form credentials, reload plugins or restart the process so the provider registers.",
+        ]),
+      }),
+    ]);
+  });
+
   it("renders no-color check output for logs", () => {
     const warningCheck = checkAt(1);
     expect(renderDoctorCheck(warningCheck, { color: false })).toBe(

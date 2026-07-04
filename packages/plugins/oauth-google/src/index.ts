@@ -1,4 +1,4 @@
-import { registerOAuthProvider } from "@nexpress/core";
+import { registerOAuthProvider } from "@nexpress/core/auth";
 import {
   createGoogleOAuthProvider,
   fetchGoogleProfile,
@@ -29,6 +29,8 @@ import { z } from "zod";
  * The redirect URI registered in Google Cloud Console must be
  * exactly `${SITE_URL}/api/auth/oauth/google/callback` (staff)
  * or `${SITE_URL}/api/members/oauth/google/callback` (member).
+ * Google OAuth web clients allow multiple Authorized redirect URIs,
+ * so one client can cover both pools when both URLs are registered.
  *
  * **Reload required for admin-form changes**: `setup()` reads
  * config once at boot. If the operator updates credentials via
@@ -65,16 +67,12 @@ export const googleOAuthPlugin = definePlugin<GoogleOAuthConfig>({
     version: "0.3.0",
     name: "Google OAuth",
     description:
-      "Adds 'Sign in with Google' for staff + member auth. Credentials read from env (NP_OAUTH_GOOGLE_CLIENT_ID + NP_OAUTH_GOOGLE_CLIENT_SECRET) OR the admin auto-form — env wins on a tie. Honors email_verified strictly. Logs a warning when neither source provides credentials.",
+      "Adds 'Sign in with Google' for staff + member auth. Credentials read from env (NP_OAUTH_GOOGLE_CLIENT_ID + NP_OAUTH_GOOGLE_CLIENT_SECRET) OR the admin auto-form — env wins on a tie. Honors email_verified strictly. Logs an informational setup hint when neither source provides credentials.",
     author: { name: "NexPress" },
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
     capabilities: ["network:fetch"],
-    allowedHosts: [
-      "accounts.google.com",
-      "oauth2.googleapis.com",
-      "openidconnect.googleapis.com",
-    ],
+    allowedHosts: ["accounts.google.com", "oauth2.googleapis.com", "openidconnect.googleapis.com"],
     provides: {
       blocks: [],
       fields: [],
@@ -110,18 +108,19 @@ export const googleOAuthPlugin = definePlugin<GoogleOAuthConfig>({
     const clientId = envHasBoth ? envId! : ctx.config.clientId;
     const clientSecret = envHasBoth ? envSecret! : ctx.config.clientSecret;
     if (!clientId || !clientSecret) {
-      ctx.log.warn(
-        "Google OAuth not configured — set NP_OAUTH_GOOGLE_CLIENT_ID and NP_OAUTH_GOOGLE_CLIENT_SECRET, or fill the admin form at /admin/plugins/oauth-google.",
+      ctx.log.info(
+        "Google OAuth not configured; skipping provider registration. Set NP_OAUTH_GOOGLE_CLIENT_ID and NP_OAUTH_GOOGLE_CLIENT_SECRET, or fill the admin form at /admin/plugins/oauth-google.",
       );
       return;
     }
-    registerOAuthProvider(
-      createGoogleOAuthProvider({
+    registerOAuthProvider({
+      ...createGoogleOAuthProvider({
         clientId,
         clientSecret,
         scopes: ctx.config.scopes,
       }),
-    );
+      audiences: ["staff", "member"] as const,
+    });
     ctx.log.info("Google OAuth provider registered", {
       source: envHasBoth ? "env" : "admin",
     });

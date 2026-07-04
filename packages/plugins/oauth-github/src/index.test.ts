@@ -3,10 +3,10 @@ import type { ZodTypeAny } from "zod";
 
 import { githubOAuthPlugin, type GitHubOAuthConfig } from "./index.js";
 
-// `registerOAuthProvider` from @nexpress/core is the side effect we
+// `registerOAuthProvider` from @nexpress/core/auth is the side effect we
 // want to assert. Stub just that one export and forward the rest
 // (oauth-providers' factories transitively need `fromArctic` etc.).
-vi.mock(import("@nexpress/core"), async (importOriginal) => {
+vi.mock(import("@nexpress/core/auth"), async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
@@ -14,7 +14,7 @@ vi.mock(import("@nexpress/core"), async (importOriginal) => {
   };
 });
 
-import { registerOAuthProvider } from "@nexpress/core";
+import { registerOAuthProvider } from "@nexpress/core/auth";
 
 describe("oauth-github configSchema", () => {
   const schema = githubOAuthPlugin.configSchema as ZodTypeAny;
@@ -22,7 +22,7 @@ describe("oauth-github configSchema", () => {
   it("provides empty-string defaults for clientId / clientSecret", () => {
     // Empty defaults make the schema parse cleanly when neither env
     // nor admin form is filled — `setup()` then detects the empty
-    // strings and skips registration with a clear warning. Without
+    // strings and skips registration with a clear setup hint. Without
     // defaults, `getPluginConfig` returns schema-defaults that fail
     // safeParse on first cold read, surfacing as parseError on the
     // admin page (noisy for fresh installs).
@@ -31,6 +31,7 @@ describe("oauth-github configSchema", () => {
       clientId: "",
       clientSecret: "",
       scopes: ["read:user", "user:email"],
+      audience: "staff",
     });
   });
 
@@ -39,10 +40,12 @@ describe("oauth-github configSchema", () => {
       clientId: "Iv1.0123456789abcdef",
       clientSecret: "abcdef0123456789",
       scopes: ["read:user"],
+      audience: "member",
     }) as GitHubOAuthConfig;
     expect(parsed.clientId).toBe("Iv1.0123456789abcdef");
     expect(parsed.clientSecret).toBe("abcdef0123456789");
     expect(parsed.scopes).toEqual(["read:user"]);
+    expect(parsed.audience).toBe("member");
   });
 
   it("uses default scopes when omitted", () => {
@@ -51,6 +54,7 @@ describe("oauth-github configSchema", () => {
       clientSecret: "secret",
     }) as GitHubOAuthConfig;
     expect(parsed.scopes).toEqual(["read:user", "user:email"]);
+    expect(parsed.audience).toBe("staff");
   });
 
   it("marks clientSecret as sensitive (masked input in admin form)", () => {
@@ -59,10 +63,9 @@ describe("oauth-github configSchema", () => {
     // dispatches that to <Input type="password">. We can't unit-test
     // the introspector here without pulling @nexpress/core, so we
     // verify the meta payload directly.
-    const shape = (schema as unknown as { _zod?: { def?: { shape?: Record<string, unknown> } } })._zod?.def?.shape;
-    const clientSecretField = shape?.clientSecret as
-      | { meta?: () => unknown }
-      | undefined;
+    const shape = (schema as unknown as { _zod?: { def?: { shape?: Record<string, unknown> } } })
+      ._zod?.def?.shape;
+    const clientSecretField = shape?.clientSecret as { meta?: () => unknown } | undefined;
     const meta =
       typeof clientSecretField?.meta === "function"
         ? (clientSecretField.meta() as { sensitive?: boolean } | undefined)
@@ -83,10 +86,7 @@ describe("plugin metadata", () => {
   });
 
   it("declares the GitHub API hosts as allowedHosts", () => {
-    expect(githubOAuthPlugin.manifest.allowedHosts).toEqual([
-      "github.com",
-      "api.github.com",
-    ]);
+    expect(githubOAuthPlugin.manifest.allowedHosts).toEqual(["github.com", "api.github.com"]);
   });
 });
 
@@ -134,6 +134,7 @@ describe("setup credential resolution", () => {
     clientId: "",
     clientSecret: "",
     scopes: ["read:user", "user:email"],
+    audience: "staff",
   } satisfies GitHubOAuthConfig;
 
   it("registers the provider when both env vars are set (env source)", () => {
@@ -142,7 +143,11 @@ describe("setup credential resolution", () => {
     const { ctx, calls } = makeCtx(validConfig);
     runSetup(ctx);
     expect(registerOAuthProvider).toHaveBeenCalledTimes(1);
-    expect(calls.find((c) => c.level === "info")?.data).toEqual({ source: "env" });
+    expect(calls.find((c) => c.level === "info")?.data).toEqual({
+      source: "env",
+      audience: "staff",
+    });
+    expect(registeredProvider()?.audiences).toEqual(["staff"]);
   });
 
   it("registers the provider when both admin-form fields are set (admin source)", () => {
@@ -150,10 +155,15 @@ describe("setup credential resolution", () => {
       clientId: "Iv1.fromadmin",
       clientSecret: "adminsecret",
       scopes: ["read:user"],
+      audience: "member",
     });
     runSetup(ctx);
     expect(registerOAuthProvider).toHaveBeenCalledTimes(1);
-    expect(calls.find((c) => c.level === "info")?.data).toEqual({ source: "admin" });
+    expect(calls.find((c) => c.level === "info")?.data).toEqual({
+      source: "admin",
+      audience: "member",
+    });
+    expect(registeredProvider()?.audiences).toEqual(["member"]);
   });
 
   it("env wins over admin form when both sources have credentials", () => {
@@ -163,12 +173,10 @@ describe("setup credential resolution", () => {
       clientId: "Iv1.adminform",
       clientSecret: "adminformsecret",
       scopes: ["read:user"],
+      audience: "member",
     });
     runSetup(ctx);
-    const call = vi.mocked(registerOAuthProvider).mock.calls[0]?.[0] as
-      | { id?: string }
-      | undefined;
-    expect(call).toBeDefined();
+    expect(registeredProvider()).toEqual(expect.objectContaining({ id: "github" }));
     // The provider object can't easily be inspected for the
     // exact secret value (it's wrapped in arctic), so we assert
     // via the log source tag.
@@ -181,6 +189,7 @@ describe("setup credential resolution", () => {
       clientId: "Iv1.fallback",
       clientSecret: "fallbacksecret",
       scopes: ["read:user"],
+      audience: "staff",
     });
     runSetup(ctx);
     expect(registerOAuthProvider).not.toHaveBeenCalled();
@@ -195,16 +204,27 @@ describe("setup credential resolution", () => {
       clientId: "Iv1.fallback",
       clientSecret: "fallbacksecret",
       scopes: ["read:user"],
+      audience: "staff",
     });
     runSetup(ctx);
     expect(registerOAuthProvider).not.toHaveBeenCalled();
     expect(calls.find((c) => c.level === "error")).toBeDefined();
   });
 
-  it("warns and skips when neither env nor admin form provides credentials", () => {
+  it("logs an informational setup hint and skips when no source provides credentials", () => {
     const { ctx, calls } = makeCtx(validConfig);
     runSetup(ctx);
     expect(registerOAuthProvider).not.toHaveBeenCalled();
-    expect(calls.find((c) => c.level === "warn")).toBeDefined();
+    expect(calls.find((c) => c.level === "warn")).toBeUndefined();
+    expect(calls.find((c) => c.level === "info")?.msg).toMatch(/skipping provider registration/i);
   });
 });
+
+function registeredProvider():
+  | {
+      id?: string;
+      audiences?: readonly string[];
+    }
+  | undefined {
+  return vi.mocked(registerOAuthProvider).mock.calls[0]?.[0];
+}

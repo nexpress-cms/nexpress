@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkJobsEnabledProd,
   checkMigrationStatusReadiness,
+  checkOAuthEnvPairs,
   checkSchedulerTokenProd,
   checkSecretLengthProd,
   checkSiteUrlProd,
@@ -58,6 +59,60 @@ describe("doctor production target readiness", () => {
     expect(checkSchedulerTokenProd(true, { NP_SCHEDULER_TOKEN: "0123456789abcdef" })).toEqual(
       expect.objectContaining({ id: "prod.scheduler_token" }),
     );
+    expect(
+      checkOAuthEnvPairs({
+        NP_OAUTH_GITHUB_CLIENT_ID: "Iv1.example",
+        NP_OAUTH_GITHUB_CLIENT_SECRET: "secret",
+      }),
+    ).toEqual([expect.objectContaining({ id: "oauth.github.credentials" })]);
+  });
+
+  it("treats OAuth providers as optional unless an env credential source is started", () => {
+    expect(checkOAuthEnvPairs({})).toEqual([]);
+  });
+
+  it("accepts complete OAuth env credential pairs", () => {
+    expect(
+      checkOAuthEnvPairs({
+        NP_OAUTH_GITHUB_CLIENT_ID: "Iv1.example",
+        NP_OAUTH_GITHUB_CLIENT_SECRET: "secret",
+        NP_OAUTH_GOOGLE_CLIENT_ID: "123.apps.googleusercontent.com",
+        NP_OAUTH_GOOGLE_CLIENT_SECRET: "GOCSPX-secret",
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        id: "oauth.github.credentials",
+        state: "ok",
+        detail: "env pair set",
+      }),
+      expect.objectContaining({
+        id: "oauth.google.credentials",
+        state: "ok",
+        detail: "env pair set",
+      }),
+    ]);
+  });
+
+  it("errors on partial OAuth env credential pairs", () => {
+    expect(
+      checkOAuthEnvPairs({
+        NP_OAUTH_GITHUB_CLIENT_ID: "Iv1.example",
+        NP_OAUTH_GOOGLE_CLIENT_SECRET: "GOCSPX-secret",
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        id: "oauth.github.credentials",
+        state: "error",
+        detail: "partial env: missing NP_OAUTH_GITHUB_CLIENT_SECRET",
+        hint: expect.stringContaining("/admin/plugins/oauth-github"),
+      }),
+      expect.objectContaining({
+        id: "oauth.google.credentials",
+        state: "error",
+        detail: "partial env: missing NP_OAUTH_GOOGLE_CLIENT_ID",
+        hint: expect.stringContaining("/admin/plugins/oauth-google"),
+      }),
+    ]);
   });
 
   it("errors when production SITE_URL is not an http(s) URL", () => {

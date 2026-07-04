@@ -603,17 +603,21 @@ could otherwise claim the victim's NexPress account.
 
 The bundled `@nexpress/plugin-oauth-google` and
 `@nexpress/plugin-oauth-github` packages are thin wrappers
-around the factories — sites that prefer plugin lifecycle (one
-line in `nexpressConfig.plugins` instead of an explicit
-`registerOAuthProvider()` call) keep using them. Sites that
-want the registration in their own boot code reach for
-`@nexpress/oauth-providers` directly.
+around the factories. They are included in the default scaffold
+plugin list and read credentials from either env
+(`NP_OAUTH_<PROVIDER>_CLIENT_ID` +
+`NP_OAUTH_<PROVIDER>_CLIENT_SECRET`) or the admin plugin
+auto-form. Env wins on a tie; partial env is treated as a
+misconfiguration. The GitHub wrapper also declares a single login
+Audience (`staff` by default, or `member`) because GitHub OAuth Apps
+accept one callback URL. Sites that want registration in their own
+boot code can still reach for `@nexpress/oauth-providers` directly.
 
-Once registered, a single provider is shared across staff
-(`/api/auth/oauth/{provider}/...`) and member
-(`/api/members/oauth/{provider}/...`) flows — the routes pick
-which user pool to resolve to, the provider just identifies the
-authenticating human.
+Once registered, providers may declare `audiences: ["staff"]`,
+`["member"]`, or both. Staff login and member login render only
+providers that support their audience; older custom providers without
+an `audiences` declaration remain visible on both surfaces for
+back-compat.
 
 ### 6.3 Staff auth pages — same model, different pool
 

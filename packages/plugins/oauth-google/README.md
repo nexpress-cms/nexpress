@@ -25,6 +25,8 @@ export default defineConfig({
 ## Configuration
 
 Two paths — pick whichever fits the operator's secret-management story.
+The plugin is safe to leave installed with no credentials; in that
+case it logs an informational setup hint and registers no provider.
 
 ### 1. Environment variables (recommended for production)
 
@@ -41,11 +43,11 @@ secrets. Secrets never touch the database.
 Open `/admin/plugins/oauth-google` after the framework boots. The G.1
 auto-form renders these editable fields:
 
-| Field         | Type                | Default                              |
-|---------------|---------------------|--------------------------------------|
-| Client ID     | text                | _empty_                              |
-| Client secret | password (masked)   | _empty_                              |
-| Scopes        | one item per line   | `openid`<br>`email`<br>`profile`     |
+| Field         | Type              | Default                          |
+| ------------- | ----------------- | -------------------------------- |
+| Client ID     | text              | _empty_                          |
+| Client secret | password (masked) | _empty_                          |
+| Scopes        | one item per line | `openid`<br>`email`<br>`profile` |
 
 Saved values persist to `np_settings (key="plugin.config:oauth-google")`.
 
@@ -53,6 +55,10 @@ Saved values persist to `np_settings (key="plugin.config:oauth-google")`.
 
 **Env wins on a tie.** Set env to empty (or unset) to switch to
 admin-form control.
+
+Set both env vars or neither. A partial env source is treated as a
+misconfiguration and the provider is not registered; run
+`pnpm run doctor -- --fix-plan` to surface the same problem before boot.
 
 ### Reload required for admin-form changes
 
@@ -64,9 +70,11 @@ to take effect.
 ## OAuth redirect URI
 
 Register `${SITE_URL}/api/auth/oauth/google/callback` (staff pool)
-and / or `${SITE_URL}/api/members/oauth/google/callback` (member
-pool) in Google Cloud Console. The provider registry is shared — a
-single registered provider works for both pools.
+and `${SITE_URL}/api/members/oauth/google/callback` (member pool) in
+Google Cloud Console when both login surfaces should show Google.
+Google OAuth web clients allow multiple Authorized redirect URIs, so
+the bundled provider declares both audiences and one client can cover
+both pools when both URLs are registered exactly.
 
 ## License
 

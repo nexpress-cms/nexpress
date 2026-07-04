@@ -9,6 +9,7 @@ import {
   hashPassword,
   invalidateAllSessions,
   issueOAuthState,
+  oauthProviderSupportsAudience,
   requestPasswordReset,
   resolveOAuthLogin,
   runHook,
@@ -321,10 +322,11 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
       const valid = await verifyPassword(stored.password, currentPassword);
       if (!valid) throw new NpAuthError("Current password is incorrect");
 
-      await db.$client.query(
-        "update np_users set password = $1, updated_at = $2 where id = $3",
-        [await hashPassword(newPassword), new Date(), user.id],
-      );
+      await db.$client.query("update np_users set password = $1, updated_at = $2 where id = $3", [
+        await hashPassword(newPassword),
+        new Date(),
+        user.id,
+      ]);
 
       // Bump tokenVersion + revoke sessions across every device.
       // Caller has to log in again on this device too.
@@ -346,7 +348,7 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
     await ensureFor("plugins");
     const { provider: providerId } = await ctx.params;
     const provider = getOAuthProvider(providerId);
-    if (!provider) {
+    if (!provider || !oauthProviderSupportsAudience(provider, "staff")) {
       return NextResponse.json(
         {
           error: { code: "NOT_FOUND", message: `OAuth provider "${providerId}" not registered` },
@@ -404,7 +406,9 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
     await ensureFor("plugins");
     const { provider: providerId } = await ctx.params;
     const provider = getOAuthProvider(providerId);
-    if (!provider) return oauthFail(request, "unknown_provider");
+    if (!provider || !oauthProviderSupportsAudience(provider, "staff")) {
+      return oauthFail(request, "unknown_provider");
+    }
 
     const url = request.nextUrl;
     const code = url.searchParams.get("code");
@@ -462,12 +466,7 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
       return oauthFail(request, "resolve_failed");
     }
 
-    const access = await signToken(
-      resolved.user,
-      cfg.secret,
-      cfg.tokenExpiration,
-      "access",
-    );
+    const access = await signToken(resolved.user, cfg.secret, cfg.tokenExpiration, "access");
     const refresh = await signToken(
       resolved.user,
       cfg.secret,
