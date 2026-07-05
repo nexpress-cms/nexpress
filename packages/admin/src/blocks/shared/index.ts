@@ -36,8 +36,14 @@ export {
   ContainerWarningsPanel,
   type ContainerWarningsPanelProps,
 } from "./container-warnings-panel.js";
+export { readCollapsedBlockIds, writeCollapsedBlockIds } from "./collapsed-state.js";
 export { EditorAsidePortal, type EditorAsidePortalProps } from "./editor-aside-portal.js";
 export { StatusBar, type StatusBarProps, type AutosaveStatus } from "./status-bar.js";
+export {
+  DEFAULT_RECOMMENDED_STARTER_TYPES,
+  pickRecommendedStarterBlocks,
+  type PickRecommendedStarterBlocksOptions,
+} from "./starter-blocks.js";
 export {
   ModeSwitch,
   readPersistedView,

@@ -15,6 +15,12 @@ segmented toggle. Pick once and the choice persists per
 (`np-page-builder.editor-view.pages.blocks`, etc.). Default lands
 on Page builder.
 
+Page builder row collapse state uses the same scope shape
+(`np-page-builder.collapsed.pages.blocks`, etc.) so collapsing rows
+while editing one blocks field does not leak into another
+collection or block field. When a host does not pass a scope the
+editor falls back to the legacy `np-page-builder.collapsed` key.
+
 ## Document view
 
 Document view is the WYSIWYG preview surface. Blocks render
@@ -30,7 +36,9 @@ controls in the parent React tree.
 
 When the block tree is empty, Document view keeps the preview
 frame mounted and overlays a small empty-state panel with the same
-starter-block choices Page builder exposes. The trailing quick-
+starter-block choices Page builder exposes (`hero`, `rich-text`,
+`section-header`, `feature-grid` when those blocks are registered).
+The trailing quick-
 insert bar remains available, so the first block can still be
 plain rich text without opening a modal.
 
@@ -147,6 +155,9 @@ Pure-logic smoke tests live in
 `apps/web/tests/in-page-editor.unit.test.tsx` and cover:
 
 - Lucide-name migration on the 14 built-in blocks.
+- Shared empty-state starter selection for Document and Page
+  builder views.
+- Scoped Page builder row-collapse persistence.
 - `REPLACE_TYPE` reducer cases (id preservation, parent
   contract rejection, container children carry / drop, unknown
   type no-op, missing id no-op).

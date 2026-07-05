@@ -59,9 +59,12 @@ import {
   PastePatternDialog,
   PatternLibraryDialog,
   StatusBar,
+  pickRecommendedStarterBlocks,
+  readCollapsedBlockIds,
   useAutosaveStatus,
   usePersistedView,
   useSaveEvents,
+  writeCollapsedBlockIds,
 } from "../shared/index.js";
 import { DocCanvas } from "../in-page-editor/index.js";
 import { Button } from "../../ui/button.js";
@@ -174,35 +177,22 @@ export function BlockPageEditor({
   // localStorage. Default is expanded — we track the collapsed
   // *set* instead of the open set so brand-new blocks open by
   // default without needing an explicit insert hook.
-  const COLLAPSED_KEY = "np-page-builder.collapsed";
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => {
-    if (typeof window === "undefined") return new Set();
-    try {
-      const raw = window.localStorage.getItem(COLLAPSED_KEY);
-      if (!raw) return new Set();
-      const parsed: unknown = JSON.parse(raw);
-      return Array.isArray(parsed)
-        ? new Set(parsed.filter((id): id is string => typeof id === "string"))
-        : new Set();
-    } catch {
-      return new Set();
-    }
+    return readCollapsedBlockIds(viewScope);
   });
   const isRowOpen = useCallback((id: string) => !collapsedIds.has(id), [collapsedIds]);
-  const setRowOpen = useCallback((id: string, open: boolean) => {
-    setCollapsedIds((current) => {
-      const next = new Set(current);
-      if (open) next.delete(id);
-      else next.add(id);
-      try {
-        window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(Array.from(next)));
-      } catch {
-        // Private mode / quota — drop the persistence, keep the
-        // in-memory state. The collapsed set just resets next load.
-      }
-      return next;
-    });
-  }, []);
+  const setRowOpen = useCallback(
+    (id: string, open: boolean) => {
+      setCollapsedIds((current) => {
+        const next = new Set(current);
+        if (open) next.delete(id);
+        else next.add(id);
+        writeCollapsedBlockIds(viewScope, next);
+        return next;
+      });
+    },
+    [viewScope],
+  );
 
   // Focus-on-newly-inserted (#467 quick-wins). Diff the id set
   // across renders; if exactly one new top-level-or-nested id
@@ -943,40 +933,26 @@ export function BlockPageEditor({
                   {/* Recommended starters (#467 quick-wins). The
                     preference list is the typical "above the fold"
                     set — operators almost always lead with a
-                    hero/heading and a paragraph or grid. We show
+                    hero/rich text and a section block. We show
                     only blocks the host actually registered so a
                     plugin-light setup doesn't see broken buttons. */}
                   <div className="mx-auto grid min-w-0 w-full max-w-sm grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:max-w-none sm:flex-wrap sm:justify-center">
-                    {(() => {
-                      const preferred = ["hero", "heading", "text", "grid", "cta"];
-                      const pickList: NpBlockMetadata[] = [];
-                      for (const type of preferred) {
-                        const def = definitions.get(type);
-                        if (def) pickList.push(def);
-                        if (pickList.length >= 4) break;
-                      }
-                      if (pickList.length < 4) {
-                        for (const def of availableBlocks) {
-                          if (pickList.includes(def)) continue;
-                          if (def.acceptsChildren) continue;
-                          pickList.push(def);
-                          if (pickList.length >= 4) break;
-                        }
-                      }
-                      return pickList.map((def) => (
-                        <Button
-                          key={def.type}
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="w-full sm:w-auto"
-                          onClick={() => dispatch({ type: "ADD", blockType: def.type })}
-                        >
-                          <Plus className="mr-1.5 h-3.5 w-3.5" />
-                          {def.label}
-                        </Button>
-                      ));
-                    })()}
+                    {pickRecommendedStarterBlocks({
+                      definitions,
+                      availableBlocks,
+                    }).map((def) => (
+                      <Button
+                        key={def.type}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full sm:w-auto"
+                        onClick={() => dispatch({ type: "ADD", blockType: def.type })}
+                      >
+                        <Plus className="mr-1.5 h-3.5 w-3.5" />
+                        {def.label}
+                      </Button>
+                    ))}
                   </div>
                 </div>
               ) : null}

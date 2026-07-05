@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { getDefaultBlocks, type NpBlockDefinition, type NpBlockInstance } from "@nexpress/blocks";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  getDefaultBlocks,
+  type NpBlockDefinition,
+  type NpBlockInstance,
+  type NpBlockMetadata,
+} from "@nexpress/blocks";
 
 // Engine reducer + factory — deep-imported because the public
 // `@nexpress/admin` exports only surface UI components today. The
@@ -19,6 +24,14 @@ import {
   filterSlashMenuDefinitions,
   SLASH_MENU_LIMIT,
 } from "../../../packages/admin/src/blocks/in-page-editor/quick-insert-bar.js";
+import {
+  readCollapsedBlockIds,
+  writeCollapsedBlockIds,
+} from "../../../packages/admin/src/blocks/shared/collapsed-state.js";
+import {
+  DEFAULT_RECOMMENDED_STARTER_TYPES,
+  pickRecommendedStarterBlocks,
+} from "../../../packages/admin/src/blocks/shared/starter-blocks.js";
 
 /**
  * In-page editor unit suite. Atom-block-specific tests + the
@@ -33,6 +46,28 @@ import {
 
 const defaults = getDefaultBlocks();
 const byType = new Map<string, NpBlockDefinition>(defaults.map((d) => [d.type, d]));
+
+class MemoryStorage {
+  private values = new Map<string, string>();
+
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.values.set(key, value);
+  }
+}
+
+function installMemoryStorage(): MemoryStorage {
+  const storage = new MemoryStorage();
+  vi.stubGlobal("window", { localStorage: storage });
+  return storage;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("legacy built-in blocks migrated to Lucide", () => {
   const legacyTypes = [
@@ -320,6 +355,67 @@ describe("editor reducer — MOVE_WITHIN_PARENT side semantics", () => {
       toId: "b1",
     });
     expect(ids(backward)).toEqual(["b0", "b3", "b1", "b2"]);
+  });
+});
+
+describe("shared editor chrome helpers", () => {
+  it("recommends the current built-in empty-state starter blocks", () => {
+    const result = pickRecommendedStarterBlocks({
+      definitions: byType,
+      availableBlocks: defaults,
+    });
+
+    expect(result.map((definition) => definition.type)).toEqual(
+      Array.from(DEFAULT_RECOMMENDED_STARTER_TYPES),
+    );
+  });
+
+  it("falls back to non-container blocks when preferred starters are unavailable", () => {
+    const availableBlocks: NpBlockMetadata[] = [
+      {
+        type: "layout-shell",
+        label: "Layout shell",
+        acceptsChildren: true,
+        defaultProps: {},
+        propsSchema: [],
+      },
+      {
+        type: "plugin-leaf",
+        label: "Plugin leaf",
+        defaultProps: {},
+        propsSchema: [],
+      },
+    ];
+
+    const result = pickRecommendedStarterBlocks({
+      definitions: new Map(),
+      availableBlocks,
+    });
+
+    expect(result.map((definition) => definition.type)).toEqual(["plugin-leaf"]);
+  });
+
+  it("persists collapsed row ids per editor scope", () => {
+    const storage = installMemoryStorage();
+    storage.setItem("np-page-builder.collapsed", JSON.stringify(["legacy"]));
+    storage.setItem("np-page-builder.collapsed.pages.blocks", JSON.stringify(["scoped"]));
+
+    expect(Array.from(readCollapsedBlockIds("pages.blocks"))).toEqual(["scoped"]);
+
+    writeCollapsedBlockIds("posts.blocks", new Set(["post-row"]));
+    expect(storage.getItem("np-page-builder.collapsed.posts.blocks")).toBe(
+      JSON.stringify(["post-row"]),
+    );
+    expect(storage.getItem("np-page-builder.collapsed")).toBe(JSON.stringify(["legacy"]));
+  });
+
+  it("keeps the legacy collapsed key when no editor scope is provided", () => {
+    const storage = installMemoryStorage();
+
+    writeCollapsedBlockIds(undefined, new Set(["global-row"]));
+
+    expect(storage.getItem("np-page-builder.collapsed")).toBe(JSON.stringify(["global-row"]));
+    expect(Array.from(readCollapsedBlockIds())).toEqual(["global-row"]);
   });
 });
 
