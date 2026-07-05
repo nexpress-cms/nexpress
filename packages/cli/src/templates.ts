@@ -204,6 +204,11 @@ function packageJsonTemplate(config: TemplateConfig): string {
         // does `import pg from "pg"` and would otherwise fail with
         // ERR_MODULE_NOT_FOUND on a fresh scaffold.
         pg: "^8.13.1",
+        // Media processing runs through @nexpress/core, but production
+        // platforms such as Vercel need sharp's optional native payload
+        // present in the app install graph for standalone tracing. Keep
+        // this range aligned with @nexpress/core's direct dependency.
+        sharp: "^0.35.2",
         // Pinned to ^16 — `@nexpress/app`'s route handlers use Next 16
         // signatures (notably `revalidateTag(tag, profile)` with the
         // second arg added in 16; `proxy.ts` replacing `middleware.ts`).

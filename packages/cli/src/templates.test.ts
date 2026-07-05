@@ -15,11 +15,14 @@ import type { TemplateFile } from "./template-loader.js";
 // `__NEXPRESS_PACKAGE_VERSION__` so the test verifies the END output
 // — the rendered package.json — rather than just echoing the constant
 // back.
-const CORE_PACKAGE_VERSION: string = (
-  JSON.parse(readFileSync(resolve(import.meta.dirname, "../../core/package.json"), "utf-8")) as {
-    version: string;
-  }
-).version;
+const CORE_PACKAGE_JSON = JSON.parse(
+  readFileSync(resolve(import.meta.dirname, "../../core/package.json"), "utf-8"),
+) as {
+  version: string;
+  dependencies: Record<string, string>;
+};
+const CORE_PACKAGE_VERSION: string = CORE_PACKAGE_JSON.version;
+const CORE_SHARP_RANGE: string = CORE_PACKAGE_JSON.dependencies.sharp;
 
 const baseConfig = {
   projectName: "test-site",
@@ -127,6 +130,15 @@ describe("getProjectFiles", () => {
     // adding the workspace.yaml. Guard against its accidental
     // reintroduction (two places for the same intent drift).
     expect(files["package.json"]).not.toMatch(/onlyBuiltDependencies/);
+  });
+
+  it("declares sharp directly so Vercel standalone traces native media deps", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const pkg = JSON.parse(files["package.json"]) as {
+      dependencies: Record<string, string>;
+    };
+
+    expect(pkg.dependencies.sharp).toBe(CORE_SHARP_RANGE);
   });
 
   it("uses workspace:* deps when localMode, otherwise an exact @nexpress/core pin", () => {
