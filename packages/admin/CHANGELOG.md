@@ -1,5 +1,26 @@
 # @nexpress/admin
 
+## 0.3.26
+
+### Patch Changes
+
+- 64c6c7e: Add background WordPress import runs with admin progress polling, run history, and worker execution for Apply.
+- b7284a9: Add an admin WordPress import screen with WXR preview/apply controls and a shared app API route.
+- e81ebaa: Complete the admin WordPress import parity pass with DB-backed resume markers,
+  source hashing, and bounded HTML/Lexical conversion samples in Preview and run
+  reports.
+- 192270e: Add admin WordPress import custom type mappings with preview diagnostics and background-run persistence.
+- ffee334: Harden admin WordPress import background runs with worker status guidance, stale-run cleanup, and real pg-boss pickup coverage.
+- Updated dependencies [64c6c7e]
+- Updated dependencies [11e3007]
+- Updated dependencies [61d3c2e]
+- Updated dependencies [1b3fa11]
+- Updated dependencies [e81ebaa]
+- Updated dependencies [192270e]
+  - @nexpress/core@0.3.26
+  - @nexpress/editor@0.3.26
+  - @nexpress/blocks@0.3.26
+
 ## 0.3.25
 
 ### Patch Changes

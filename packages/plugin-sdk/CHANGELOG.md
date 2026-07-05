@@ -1,5 +1,19 @@
 # @nexpress/plugin-sdk
 
+## 0.3.26
+
+### Patch Changes
+
+- 61d3c2e: Align media hook actor payloads with content hooks: staff and member uploads now expose a polymorphic `principal`, member uploads emit `media:beforeUpload`, and plugin hook context types accept `user: null` for member-authored operations.
+- Updated dependencies [64c6c7e]
+- Updated dependencies [11e3007]
+- Updated dependencies [61d3c2e]
+- Updated dependencies [1b3fa11]
+- Updated dependencies [e81ebaa]
+- Updated dependencies [192270e]
+  - @nexpress/core@0.3.26
+  - @nexpress/blocks@0.3.26
+
 ## 0.3.25
 
 ### Patch Changes

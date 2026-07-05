@@ -1,5 +1,18 @@
 # @nexpress/core
 
+## 0.3.26
+
+### Patch Changes
+
+- 64c6c7e: Add background WordPress import runs with admin progress polling, run history, and worker execution for Apply.
+- 11e3007: Refresh the Sharp and Lexical runtime dependencies and keep their TypeScript build output compatible with the updated package types.
+- 61d3c2e: Align media hook actor payloads with content hooks: staff and member uploads now expose a polymorphic `principal`, member uploads emit `media:beforeUpload`, and plugin hook context types accept `user: null` for member-authored operations.
+- 1b3fa11: Harden OAuth onboarding: doctor now reports partial bundled-provider env pairs, OAuth login surfaces honor provider audiences, member login can expose supported providers, and bundled OAuth plugins stay quiet until configured.
+- e81ebaa: Complete the admin WordPress import parity pass with DB-backed resume markers,
+  source hashing, and bounded HTML/Lexical conversion samples in Preview and run
+  reports.
+- 192270e: Add admin WordPress import custom type mappings with preview diagnostics and background-run persistence.
+
 ## 0.3.25
 
 ### Patch Changes

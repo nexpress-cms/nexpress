@@ -1,5 +1,18 @@
 # @nexpress/cli
 
+## 0.3.26
+
+### Patch Changes
+
+- a66141f: Add a local theme authoring path with `nexpress create theme`, workspace-theme registration support in `theme add`, and fresh-scaffold `packages/themes/*` workspace coverage.
+- Updated dependencies [64c6c7e]
+- Updated dependencies [11e3007]
+- Updated dependencies [61d3c2e]
+- Updated dependencies [1b3fa11]
+- Updated dependencies [e81ebaa]
+- Updated dependencies [192270e]
+  - @nexpress/core@0.3.26
+
 ## 0.3.25
 
 ### Patch Changes

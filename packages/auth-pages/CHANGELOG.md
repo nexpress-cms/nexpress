@@ -1,5 +1,19 @@
 # @nexpress/auth-pages
 
+## 0.3.26
+
+### Patch Changes
+
+- 1b3fa11: Harden OAuth onboarding: doctor now reports partial bundled-provider env pairs, OAuth login surfaces honor provider audiences, member login can expose supported providers, and bundled OAuth plugins stay quiet until configured.
+- Updated dependencies [64c6c7e]
+- Updated dependencies [11e3007]
+- Updated dependencies [61d3c2e]
+- Updated dependencies [1b3fa11]
+- Updated dependencies [e81ebaa]
+- Updated dependencies [192270e]
+  - @nexpress/core@0.3.26
+  - @nexpress/next@0.3.26
+
 ## 0.3.25
 
 ### Patch Changes
