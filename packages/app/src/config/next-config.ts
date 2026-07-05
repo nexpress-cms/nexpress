@@ -20,9 +20,16 @@ import type { NextConfig } from "next";
  *     argon2, pg, pg-boss) out of the bundle so they're loaded
  *     via Node's normal resolution at runtime instead of being
  *     mangled by Turbopack.
+ *   - `outputFileTracingIncludes` traces sharp's Linux native
+ *     payload through pnpm's real store paths. Vercel standalone
+ *     functions otherwise can ship the JS wrapper without the
+ *     matching `@img/sharp-*` / libvips package, which fails at
+ *     runtime on first media processing.
  *
- * Overrides are shallow-merged — pass arrays to *replace* the
- * defaults entirely, or use the spread helper:
+ * Overrides are shallow-merged except `outputFileTracingIncludes`,
+ * whose route globs are appended so custom includes don't drop the
+ * sharp runtime guard. Pass arrays to *replace* transpilation /
+ * external-package defaults entirely, or use the spread helper:
  *
  *   export default createNextConfig({
  *     transpilePackages: [
@@ -60,7 +67,44 @@ export const defaultServerExternalPackages = [
   "sharp",
 ] as const;
 
+type OutputFileTracingIncludes = NonNullable<NextConfig["outputFileTracingIncludes"]>;
+
+export const defaultOutputFileTracingIncludes: OutputFileTracingIncludes = {
+  "/*": [
+    // Use pnpm's real package store paths, not top-level node_modules symlinks.
+    // Vercel rejects symlinked directories in traced Serverless Function
+    // artifacts, while these globs survive sharp / libvips patch bumps.
+    "./node_modules/.pnpm/sharp@*/node_modules/sharp/**/*",
+    "./node_modules/.pnpm/@img+sharp-linux-*/node_modules/@img/sharp-linux-*/**/*",
+    "./node_modules/.pnpm/@img+sharp-libvips-linux-*/node_modules/@img/sharp-libvips-linux-*/**/*",
+    "./node_modules/.pnpm/@img+sharp-linuxmusl-*/node_modules/@img/sharp-linuxmusl-*/**/*",
+    "./node_modules/.pnpm/@img+sharp-libvips-linuxmusl-*/node_modules/@img/sharp-libvips-linuxmusl-*/**/*",
+  ],
+};
+
+function mergeOutputFileTracingIncludes(
+  defaults: OutputFileTracingIncludes,
+  overrides: NextConfig["outputFileTracingIncludes"],
+): OutputFileTracingIncludes {
+  const merged: OutputFileTracingIncludes = {};
+
+  for (const [route, includes] of Object.entries(defaults)) {
+    merged[route] = [...includes];
+  }
+
+  if (!overrides) return merged;
+
+  for (const [route, includes] of Object.entries(overrides)) {
+    const current = merged[route] ?? [];
+    merged[route] = [...current, ...includes.filter((include) => !current.includes(include))];
+  }
+
+  return merged;
+}
+
 export function createNextConfig(overrides: NextConfig = {}): NextConfig {
+  const { outputFileTracingIncludes, ...rest } = overrides;
+
   return {
     output: "standalone",
     transpilePackages: [...defaultTranspilePackages],
@@ -72,6 +116,10 @@ export function createNextConfig(overrides: NextConfig = {}): NextConfig {
     // pg pulls in dynamically — Turbopack would otherwise try to
     // bundle it.
     serverExternalPackages: [...defaultServerExternalPackages],
-    ...overrides,
+    ...rest,
+    outputFileTracingIncludes: mergeOutputFileTracingIncludes(
+      defaultOutputFileTracingIncludes,
+      outputFileTracingIncludes,
+    ),
   };
 }

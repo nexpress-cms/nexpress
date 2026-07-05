@@ -154,7 +154,12 @@ Postgres (RDS, Supabase, Neon, Fly.io Postgres, etc.) instead.
 ## Path 2: Vercel
 
 Works out of the box thanks to `output: "standalone"` + Next 16 Vercel
-support. One-time setup:
+support. `createNextConfig()` also traces sharp's Linux native packages
+through pnpm's real `.pnpm/` store paths, so Vercel functions include the
+matching `@img/sharp-*` / libvips payload instead of failing only after the
+first media request.
+
+One-time setup:
 
 1. Push the scaffolded site to GitHub / GitLab and import that repository
    root in the Vercel dashboard. If you are deploying this framework
@@ -168,6 +173,11 @@ support. One-time setup:
    - **Neon / Supabase** — paste their connection string directly.
 3. Scaffolded sites can use the default `pnpm build`. If you are deploying
    this monorepo's reference app, use `pnpm --filter @nexpress/web build`.
+   Keep `next.config.ts` on `createNextConfig()` unless you have a specific
+   reason to override it; custom `outputFileTracingIncludes` entries are
+   appended to the NexPress sharp tracing defaults. Do not add symlinked
+   `./node_modules/sharp/**` includes — Vercel can reject those when packaging
+   Serverless Functions.
 4. Configure a Vercel Cron entry to drive scheduled publishing:
 
    ```json
@@ -195,7 +205,8 @@ support. One-time setup:
    production deploy.
 
 > **Storage:** Vercel filesystem is ephemeral — you must use S3 or an
-> equivalent. Set `NP_STORAGE_ADAPTER=s3` and the matching `NP_S3_*` vars.
+> equivalent. Set `NP_STORAGE_ADAPTER=s3` and the matching `NP_S3_*` vars
+> before media upload or image processing matters in production.
 
 ---
 
