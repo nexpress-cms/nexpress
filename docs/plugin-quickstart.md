@@ -20,7 +20,9 @@ The v1 plugin model is **npm-package + rebuild**. A plugin can:
   `content:afterCreate`, `content:beforeUpdate`, `content:afterUpdate`,
   `content:beforePublish`, `content:afterPublish`,
   `content:beforeDelete`, `content:afterDelete`), plus
-  `member:*`, `media:*`, and the render contributions
+  auth hooks (`auth:afterLogin`, `auth:beforeLogout`,
+  `auth:afterRegister`), media hooks (`media:beforeUpload`,
+  `media:afterUpload`), and render contributions
   (`render:beforePage` and friends — see
   [`plugin-render.md`](plugin-render.md)).
 - Register **routes** (`/api/plugins/<id>/<path>`).

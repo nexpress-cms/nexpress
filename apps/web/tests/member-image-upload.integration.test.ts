@@ -13,8 +13,18 @@ import {
 } from "./harness.js";
 
 import { POST as uploadPOST } from "@/app/api/members/media/upload/route";
+import { POST as staffUploadPOST } from "@/app/api/media/upload/route";
 
 import { NextRequest } from "next/server";
+
+interface CapturedMediaHook {
+  hook: string;
+  user: unknown;
+  principal: unknown;
+  member: unknown;
+  file: unknown;
+  media: unknown;
+}
 
 function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
   const headers = new Headers(init.headers);
@@ -64,6 +74,82 @@ function uploadRequest(
     headers,
     body: formData,
   });
+}
+
+function staffUploadRequest(
+  user: { accessToken: string; csrfToken: string },
+  file: { name: string; type: string; bytes: Uint8Array },
+): NextRequest {
+  const formData = new FormData();
+  const blob = new Blob([file.bytes], { type: file.type });
+  formData.append("file", blob, file.name);
+
+  const headers = new Headers();
+  headers.set("cookie", `np-session=${user.accessToken}; np-csrf=${user.csrfToken}`);
+  headers.set("x-csrf-token", user.csrfToken);
+
+  return new NextRequest("http://localhost:3000/api/media/upload", {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+}
+
+async function registerMediaHookCapture(pluginId: string): Promise<CapturedMediaHook[]> {
+  const { ensureFor } = await import("@/lib/init-core");
+  const { loadPlugins } = await import("@nexpress/core");
+  await ensureFor("plugins");
+
+  const captured: CapturedMediaHook[] = [];
+  await loadPlugins([
+    {
+      manifest: {
+        id: pluginId,
+        version: "0.0.0",
+        name: "Media hook capture",
+        description: "Captures media hook actor payloads in tests",
+        author: { name: "Test" },
+        license: "MIT",
+        nexpress: { minVersion: "0.1.0" },
+        capabilities: ["hooks:media"],
+        allowedHosts: [],
+        provides: {
+          blocks: [],
+          fields: [],
+          collections: [],
+          adminExtensions: [],
+          apiRoutes: [],
+          hooks: ["media:beforeUpload", "media:afterUpload"],
+        },
+        agent: { description: "test", category: "media", tags: [] },
+        usesTokens: [],
+        styleSlots: {},
+      },
+      hooks: {
+        "media:beforeUpload": ({ hook, data }) => {
+          captured.push({
+            hook,
+            user: data.user,
+            principal: data.principal,
+            member: data.member,
+            file: data.file,
+            media: data.media,
+          });
+        },
+        "media:afterUpload": ({ hook, data }) => {
+          captured.push({
+            hook,
+            user: data.user,
+            principal: data.principal,
+            member: data.member,
+            file: data.file,
+            media: data.media,
+          });
+        },
+      },
+    } as never,
+  ]);
+  return captured;
 }
 
 // 1x1 transparent PNG (smallest valid PNG, used as the test fixture).
@@ -120,6 +206,58 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
     expect(row.uploadedBy).toBeNull();
     expect(row.uploadedByMemberId).toBe(member.memberId);
     expect(row.mimeType).toBe("image/png");
+  });
+
+  it("member upload emits media hooks with member principal and user=null", async () => {
+    const captured = await registerMediaHookCapture("test-member-media-hook-principal");
+    const member = await seedActiveMember("upload-hook-member");
+
+    const res = await uploadPOST(
+      uploadRequest(member, { name: "hook-member.png", type: "image/png", bytes: TINY_PNG }),
+    );
+    expect(res.status).toBe(202);
+
+    expect(captured.map((call) => call.hook)).toEqual(["media:beforeUpload", "media:afterUpload"]);
+    for (const call of captured) {
+      expect(call.user).toBeNull();
+      expect(call.principal).toEqual({ kind: "member", memberId: member.memberId });
+      expect(call.member).toEqual(
+        expect.objectContaining({
+          id: member.memberId,
+          handle: "upload-hook-member",
+        }),
+      );
+    }
+    expect(captured[0].file).toEqual(
+      expect.objectContaining({ filename: "hook-member.png", mimeType: "image/png" }),
+    );
+    expect(captured[1].media).toEqual(expect.objectContaining({ id: expect.any(String) }));
+  });
+
+  it("staff upload emits media hooks with staff principal", async () => {
+    const captured = await registerMediaHookCapture("test-staff-media-hook-principal");
+    const editor = await seedUser({ role: "editor" });
+
+    const res = await staffUploadPOST(
+      staffUploadRequest(editor, { name: "hook-staff.png", type: "image/png", bytes: TINY_PNG }),
+    );
+    expect(res.status).toBe(202);
+
+    expect(captured.map((call) => call.hook)).toEqual(["media:beforeUpload", "media:afterUpload"]);
+    for (const call of captured) {
+      expect(call.user).toEqual(
+        expect.objectContaining({
+          id: editor.userId,
+          email: editor.email,
+          role: editor.role,
+        }),
+      );
+      expect(call.principal).toEqual({
+        kind: "staff",
+        user: expect.objectContaining({ id: editor.userId, email: editor.email }),
+      });
+      expect(call.member).toBeUndefined();
+    }
   });
 
   it("unauthenticated upload rejected (401)", async () => {
@@ -207,10 +345,7 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
     const formData = new FormData();
     // No `file` appended — multipart body is empty.
     const headers = new Headers();
-    headers.set(
-      "cookie",
-      `np-mb-session=${member.sessionCookie}; np-mb-csrf=${member.csrfCookie}`,
-    );
+    headers.set("cookie", `np-mb-session=${member.sessionCookie}; np-mb-csrf=${member.csrfCookie}`);
     headers.set("x-csrf-token", member.csrfCookie);
     const req = new NextRequest("http://localhost:3000/api/members/media/upload", {
       method: "POST",
@@ -268,9 +403,7 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
     const body = await readJson<{
       error?: { details?: Array<{ message?: string }> };
     }>(res);
-    expect(body.body.error?.details?.[0]?.message).toContain(
-      "don't match",
-    );
+    expect(body.body.error?.details?.[0]?.message).toContain("don't match");
   });
 
   it("real GIF89a / WebP / JPEG bytes pass the magic-byte sniff", async () => {
@@ -278,10 +411,9 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
 
     // GIF89a — minimal 1x1 transparent
     const tinyGif = new Uint8Array([
-      0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0x80, 0x00,
-      0x00, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x21, 0xf9, 0x04, 0x01, 0x00,
-      0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00,
-      0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3b,
+      0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00, 0xff, 0xff,
+      0xff, 0x00, 0x00, 0x00, 0x21, 0xf9, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00, 0x2c, 0x00, 0x00,
+      0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3b,
     ]);
     const gifRes = await uploadPOST(
       uploadRequest(member, { name: "tiny.gif", type: "image/gif", bytes: tinyGif }),
@@ -292,9 +424,8 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
     // actually verify; processor may post-fail but we only assert
     // the sniff lets it through).
     const tinyWebp = new Uint8Array([
-      0x52, 0x49, 0x46, 0x46, 0x1a, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
-      0x56, 0x50, 0x38, 0x4c, 0x0d, 0x00, 0x00, 0x00, 0x2f, 0x00, 0x00, 0x00,
-      0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x52, 0x49, 0x46, 0x46, 0x1a, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38,
+      0x4c, 0x0d, 0x00, 0x00, 0x00, 0x2f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     ]);
     const webpRes = await uploadPOST(
       uploadRequest(member, {
@@ -309,8 +440,8 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
     // sniff. Sharp may reject it as truncated downstream, but that
     // turns into a `error` status on the row, not a 400 here.
     const tinyJpeg = new Uint8Array([
-      0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
-      0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xff, 0xd9,
+      0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00,
+      0x01, 0x00, 0x01, 0x00, 0x00, 0xff, 0xd9,
     ]);
     const jpegRes = await uploadPOST(
       uploadRequest(member, {
@@ -322,4 +453,3 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
     expect(jpegRes.status).toBe(202);
   });
 });
-

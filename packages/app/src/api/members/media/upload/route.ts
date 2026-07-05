@@ -105,6 +105,7 @@ export async function POST(request: NextRequest) {
   try {
     await ensureFor("write");
     const member = await requireMember(request);
+    const principal = { kind: "member", memberId: member.id } as const;
 
     // Banned members can't upload, even if their session is still
     // live. The check is the same one the comment + doc-create
@@ -159,6 +160,22 @@ export async function POST(request: NextRequest) {
       ]);
     }
 
+    await runHook("media:beforeUpload", {
+      user: null,
+      principal,
+      member: {
+        id: member.id,
+        email: member.email,
+        handle: member.handle,
+        displayName: member.displayName,
+      },
+      file: {
+        filename: file.name,
+        mimeType: sniffedMime,
+        size: file.size,
+      },
+    });
+
     const result = await uploadMedia(
       { buffer, originalFilename: file.name, mimeType: sniffedMime },
       { kind: "member", memberId: member.id },
@@ -178,14 +195,14 @@ export async function POST(request: NextRequest) {
     const url = row ? await getStorageAdapter().getUrl(row.storageKey) : null;
 
     await runHook("media:afterUpload", {
-      // Plugins typing on this hook still expect a `user` shape
-      // for the actor. Pass null for the staff fields and let
-      // hook authors that care about member uploads check the
-      // member-keyed media row directly. (Hook surface widens
-      // in a follow-up alongside `config.hooks.beforeCreate` for
-      // member writes.)
       user: null,
-      member: { id: member.id, handle: member.handle },
+      principal,
+      member: {
+        id: member.id,
+        email: member.email,
+        handle: member.handle,
+        displayName: member.displayName,
+      },
       media: result,
     });
 

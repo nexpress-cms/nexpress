@@ -17,10 +17,7 @@ import { POST as registerPOST } from "@/app/api/members/register/route";
 import { POST as collectionPOST } from "@/app/api/collections/[slug]/route";
 import { POST as commentsPOST } from "@/app/api/collections/[slug]/[id]/comments/route";
 import { POST as reactionPOST } from "@/app/api/reactions/route";
-import {
-  GET as settingsGET,
-  PUT as settingsPUT,
-} from "@/app/api/admin/community/settings/route";
+import { GET as settingsGET, PUT as settingsPUT } from "@/app/api/admin/community/settings/route";
 
 import { NextRequest } from "next/server";
 
@@ -31,11 +28,7 @@ function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = 
   return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
 }
 
-function staffRequest(
-  path: string,
-  user: TestUserSession,
-  init: RequestInit = {},
-): NextRequest {
+function staffRequest(path: string, user: TestUserSession, init: RequestInit = {}): NextRequest {
   return jsonRequest(path, {
     ...init,
     cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
@@ -358,6 +351,42 @@ describe.skipIf(skipIfNoTestDb())("community settings (integration)", () => {
         }),
       );
       expect(res.status).toBe(400);
+    });
+
+    it("collection-scoped bans block reactions on comments in that collection", async () => {
+      const admin = await seedUser({ role: "admin" });
+      const staff = await seedUser({ role: "editor" });
+      const postId = await seedStaffPost(staff);
+      const author = await seedActiveMember("cs-gia", "cs-gia@example.com", "password-12");
+      const reactor = await seedActiveMember("cs-han", "cs-han@example.com", "password-12");
+      const commentId = await seedComment(postId, author);
+
+      const { issueBan } = await import("@nexpress/core");
+      await issueBan({
+        memberId: reactor.memberId,
+        scopeType: "collection",
+        scopeId: "posts",
+        kind: "permanent",
+        reason: "reaction scope regression",
+        actor: {
+          kind: "staff",
+          user: {
+            id: admin.userId,
+            email: admin.email,
+            name: null,
+            role: admin.role,
+            tokenVersion: 0,
+          },
+        },
+      });
+
+      const res = await reactionPOST(
+        memberRequest("/api/reactions", reactor, {
+          method: "POST",
+          body: JSON.stringify({ targetType: "comment", targetId: commentId, kind: "like" }),
+        }),
+      );
+      expect(res.status).toBe(403);
     });
   });
 });

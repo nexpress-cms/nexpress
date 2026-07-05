@@ -32,6 +32,7 @@ function isAllowedMimeType(mimeType: string): boolean {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
+    const principal = { kind: "staff", user } as const;
 
     if (!can(user, "content.publish")) {
       throw new NpForbiddenError("media", "upload");
@@ -84,7 +85,8 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
 
     await runHook("media:beforeUpload", {
-      user: { id: user.id, email: user.email, role: user.role },
+      user,
+      principal,
       file: {
         filename: file.name,
         mimeType: file.type,
@@ -101,7 +103,8 @@ export async function POST(request: NextRequest) {
       );
 
       await runHook("media:afterUpload", {
-        user: { id: user.id, email: user.email, role: user.role },
+        user,
+        principal,
         media: result,
       });
 
@@ -135,7 +138,8 @@ export async function POST(request: NextRequest) {
     });
 
     await runHook("media:afterUpload", {
-      user: { id: user.id, email: user.email, role: user.role },
+      user,
+      principal,
       media: {
         id,
         filename: file.name,
