@@ -1,5 +1,22 @@
 # create-nexpress
 
+## 0.1.34
+
+### Patch Changes
+
+- 64c6c7e: Add background WordPress import runs with admin progress polling, run history, and worker execution for Apply.
+- b7284a9: Add an admin WordPress import screen with WXR preview/apply controls and a shared app API route.
+- c941aae: Add first-deploy launch handoffs to deploy plans so generated projects show the
+  host-specific starting URL or command before the migration, preflight, release,
+  and verification gates.
+- edd80bd: Clarify the Vercel migration path in deploy plans and scaffolded ops docs. The
+  guidance now calls out that sensitive Vercel env values are not a reliable
+  local migration source, and points operators toward CI, the Vercel build
+  command, or another trusted shell where production `DATABASE_URL` is already
+  injected.
+- a66141f: Add a local theme authoring path with `nexpress create theme`, workspace-theme registration support in `theme add`, and fresh-scaffold `packages/themes/*` workspace coverage.
+- ffee334: Harden admin WordPress import background runs with worker status guidance, stale-run cleanup, and real pg-boss pickup coverage.
+
 ## 0.1.33
 
 ### Patch Changes

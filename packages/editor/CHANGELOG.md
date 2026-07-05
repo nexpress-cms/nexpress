@@ -1,5 +1,11 @@
 # @nexpress/editor
 
+## 0.3.26
+
+### Patch Changes
+
+- 11e3007: Refresh the Sharp and Lexical runtime dependencies and keep their TypeScript build output compatible with the updated package types.
+
 ## 0.3.25
 
 ## 0.3.24
