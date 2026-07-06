@@ -7,13 +7,15 @@ import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 /**
- * Per-member notification inbox. v1 is synchronous: every event that
- * generates a notification writes a row immediately. The inbox is
- * in-app only — email fan-out and per-member frequency preferences
- * are out of scope for the shipped roadmap.
+ * Per-member notification inbox. Every event that generates a
+ * notification writes a row immediately. The member page renders the
+ * in-app inbox, and the digest sweep can batch unread rows into
+ * scheduled email summaries for members who opt in.
  *
  * `kind` is a free-form string. The current vocabulary:
  *  - `comment.reply`        — your comment got a reply
+ *  - `comment.mention`      — you were mentioned in a comment
+ *  - `document.mention`     — you were mentioned in a document
  *  - `reaction.received`    — someone reacted to your content
  *  - `follow.received`      — someone followed you
  * Plugins can write their own kinds; the recipient UI fans them out

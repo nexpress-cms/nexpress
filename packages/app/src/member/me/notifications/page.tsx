@@ -1,46 +1,96 @@
-import { listNotificationKinds, getMemberNotificationPrefs } from "@nexpress/core";
+import {
+  getMemberNotificationPrefs,
+  listNotificationKinds,
+  listNotifications,
+} from "@nexpress/core";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 
 import { getSiteMember } from "@nexpress/next";
 import { NotificationPrefsForm } from "../../../components/notification-prefs-form";
+import {
+  NotificationsInbox,
+  type NotificationInboxItem,
+} from "../../../components/notifications-inbox";
 import { ShellWrap } from "../../../components/shell-wrap";
 import { ensureFor } from "../../../lib/init-core";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Notification settings",
+  title: "Notifications",
   robots: { index: false, follow: false },
 };
 
 /**
- * Phase 16.3 — member-side notification toggle page. The server
- * component pre-fetches prefs + the kind catalog so the form
- * doesn't flash an empty state before the API resolves.
- * Anonymous viewers redirect to login with a `next` param so
- * sign-in lands back here.
+ * Member-side notification hub. The server component pre-fetches the
+ * inbox, unread count, prefs, and kind catalog so the page renders
+ * useful content before the client-side mark-read controls hydrate.
  */
-export default async function NotificationSettingsPage() {
+export default async function NotificationsPage() {
   await ensureFor("read");
   const member = await getSiteMember();
   if (!member) {
     redirect("/members/login?next=/members/me/notifications");
   }
-  const [prefs, kinds] = await Promise.all([
+  const kinds = listNotificationKinds();
+  const [prefs, inbox] = await Promise.all([
     getMemberNotificationPrefs(member.id),
-    Promise.resolve(listNotificationKinds()),
+    listNotifications(member.id, { limit: 50, offset: 0 }),
   ]);
   return (
     <ShellWrap surface="member">
-      <section style={{ maxWidth: 640, margin: "2.5rem auto", padding: "0 1.25rem" }}>
-        <h1 style={{ fontSize: "1.5rem", marginBottom: "0.25rem" }}>Notification settings</h1>
-        <p style={{ color: "#64748b", marginBottom: "1.5rem" }}>
-          Choose which notification kinds land in your inbox. Disabling a kind silently drops new
-          notifications of that kind &mdash; existing ones stay readable.
-        </p>
-        <NotificationPrefsForm initialPrefs={prefs} kinds={kinds} />
+      <section
+        style={{
+          maxWidth: 760,
+          margin: "2.5rem auto",
+          padding: "0 1.25rem",
+          display: "grid",
+          gap: "2rem",
+        }}
+      >
+        <div>
+          <h1 style={{ fontSize: "1.5rem", margin: "0 0 0.25rem" }}>Notifications</h1>
+          <p style={{ color: "#64748b", margin: 0 }}>
+            Review unread activity and tune which notification kinds land in your inbox.
+          </p>
+        </div>
+
+        <NotificationsInbox
+          initialNotifications={inbox.notifications.map(toClientNotification)}
+          initialUnread={inbox.unread}
+          totalDocs={inbox.totalDocs}
+        />
+
+        <section style={{ display: "grid", gap: "1rem" }} aria-labelledby="notification-settings">
+          <div>
+            <h2 id="notification-settings" style={{ fontSize: "1.15rem", margin: 0 }}>
+              Settings
+            </h2>
+            <p style={{ color: "#64748b", margin: "0.25rem 0 0" }}>
+              Disabling a kind silently drops new notifications of that kind. Existing notifications
+              stay readable.
+            </p>
+          </div>
+          <NotificationPrefsForm initialPrefs={prefs} kinds={kinds} />
+        </section>
       </section>
     </ShellWrap>
   );
+}
+
+function toClientNotification(row: {
+  id: string;
+  kind: string;
+  payload: Record<string, unknown>;
+  readAt: Date | null;
+  createdAt: Date;
+}): NotificationInboxItem {
+  return {
+    id: row.id,
+    kind: row.kind,
+    payload: row.payload,
+    readAt: row.readAt ? row.readAt.toISOString() : null,
+    createdAt: row.createdAt.toISOString(),
+  };
 }

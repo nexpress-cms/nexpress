@@ -124,7 +124,8 @@ The framework registers a handful of system handlers via
   (cron: `0 * * * *`)
 - `system:jobLogPrune` — sweep `np_job_logs` rows older
   than 14 days (cron: `30 3 * * *`, Phase 20.3a)
-- `notification:email` — send queued notification emails
+- `notifications:sendDigest` — send daily / weekly member
+  notification digests for members who opted in
 - `import:wordpressApply` — apply an admin-uploaded WXR export
   in the background and write the final report back to
   `np_import_runs`

@@ -227,8 +227,10 @@ implementation.
   mobile-safe result cards, globally ranked built-in relevance, and
   built-in theme entry points. External-engine ranking adapters and
   per-site relevance knobs remain future quality work.
-- **Notifications** — digest job exists; per-member preferences UI is
-  partial.
+- **Notifications** — the member page now includes the in-app inbox,
+  mark-read controls, per-kind toggles, and digest cadence. External
+  realtime delivery and provider-specific email polish remain future
+  quality work.
 
 ### 7. Stability promotion (Experimental → Stable)
 
