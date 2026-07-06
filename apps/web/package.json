@@ -76,7 +76,7 @@
     "@nexpress/wp-import": "workspace:*",
     "@nexpress/xliff": "workspace:*",
     "drizzle-orm": "^0.45.2",
-    "next": "^16.2.9",
+    "next": "^16.2.10",
     "nodemailer": "^9.0.1",
     "pg": "^8.21.0",
     "react": "^19.2.7",
