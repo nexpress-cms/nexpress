@@ -18,14 +18,21 @@ import type { NpNavItem } from "@nexpress/core";
  */
 export interface MobileNavProps {
   items: NpNavItem[];
+  member?: MobileNavMember | null;
+  notificationUnread?: number | null;
   /** Optional brand label for the drawer header. Defaults to "Menu". */
   label?: string;
 }
 
 const DESKTOP_NAV_QUERY = "(min-width: 1181px)";
 
-export function MobileNav({ items, label = "Menu" }: MobileNavProps) {
+interface MobileNavMember {
+  handle: string;
+}
+
+export function MobileNav({ items, member, notificationUnread, label = "Menu" }: MobileNavProps) {
   const [open, setOpen] = useState(false);
+  const unread = normalizeUnread(notificationUnread);
 
   useEffect(() => {
     const media = window.matchMedia(DESKTOP_NAV_QUERY);
@@ -112,6 +119,30 @@ export function MobileNav({ items, label = "Menu" }: MobileNavProps) {
           />
           <button type="submit">Search</button>
         </form>
+        <div className="np-mobile-nav-account" aria-label="Member">
+          {member ? (
+            <>
+              <Link href={`/u/${member.handle}`} onClick={() => setOpen(false)}>
+                @{member.handle}
+              </Link>
+              <Link href="/members/me/notifications" onClick={() => setOpen(false)}>
+                <span>Notifications</span>
+                {unread > 0 ? (
+                  <span className="np-mobile-nav-badge">{formatUnreadCount(unread)}</span>
+                ) : null}
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link href="/members/login" onClick={() => setOpen(false)}>
+                Sign in
+              </Link>
+              <Link href="/members/register" onClick={() => setOpen(false)}>
+                Register
+              </Link>
+            </>
+          )}
+        </div>
         <ul className="np-mobile-nav-list">
           {items.map((item, index) => (
             <li key={`mobile-nav-${index.toString()}`}>
@@ -143,6 +174,15 @@ export function MobileNav({ items, label = "Menu" }: MobileNavProps) {
       </aside>
     </>
   );
+}
+
+function normalizeUnread(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return 0;
+  return Math.floor(value);
+}
+
+function formatUnreadCount(value: number): string {
+  return value > 99 ? "99+" : value.toString();
 }
 
 function MenuIcon() {

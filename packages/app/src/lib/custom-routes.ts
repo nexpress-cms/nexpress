@@ -60,7 +60,7 @@ export function registerCustomRoutes(): void {
   registerCustomRoute({
     path: "/members/me/notifications",
     label: "My notifications",
-    description: "Signed-in member's notification preferences",
+    description: "Signed-in member's notification inbox and settings",
     icon: "circle-user",
     group: "auth",
   });
