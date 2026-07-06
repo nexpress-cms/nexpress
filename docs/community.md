@@ -230,18 +230,22 @@ the next render (no realtime push).
 - Reaction on your comment / doc
 - New follow
 - Mention — Phase 16.2 wired `@handle` parsing into the
-  notification fan-out, firing `notification:mention` rows.
+  notification fan-out, firing `comment.mention` or
+  `document.mention` rows.
 
-Each row has `kind`, `actor_id`, `target_type`, `target_id`,
-`payload` JSON, `read_at`. Members read their own via
-`GET /api/members/notifications` and mark-read via
-`PUT /api/members/notifications/:id/read` /
-`PUT /api/members/notifications/read-all`.
+Each row has `kind`, `actor_id`, `payload` JSON, `read_at`,
+and a tenant-scoped `site_id`. Members read their own via
+`GET /api/notifications` (`?count=1` returns only `{ unread }`;
+`?unread=1` filters to unread rows) and mark rows read via
+`POST /api/notifications/mark-read` with either `{ ids: [...] }`
+or `{ all: true }`.
 
-The `notification:email` job (pg-boss) routes to the
-configured email adapter when delivery is configured. With
-`NoopEmailAdapter` (default) the rows stay in DB but no
-mail goes out — the in-app inbox still works.
+Members manage the in-app inbox, per-kind toggles, and digest
+cadence at `/members/me/notifications`. The
+`notifications:sendDigest` recurring job (pg-boss) batches unread
+notifications into daily or weekly email summaries for members who
+opt in. With `NoopEmailAdapter` (default), rows stay in DB and the
+in-app inbox still works, but digest mail is not delivered.
 
 ---
 
