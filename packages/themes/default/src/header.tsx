@@ -7,6 +7,7 @@ import {
   type NpMemberAuthRow,
   type NpNavItem,
 } from "@nexpress/core";
+import { unreadNotificationCount } from "@nexpress/core/community";
 import { getCachedNavigation, getCachedSite, resolveAvailableLocales } from "@nexpress/next";
 import Link from "next/link";
 
@@ -51,6 +52,7 @@ export async function DefaultHeader() {
     getCachedSite(),
     resolveHeaderMember(),
   ]);
+  const unreadNotifications = member ? await resolveUnreadNotifications(member.id) : 0;
   const siteName = site?.name?.trim() || FALLBACK_SITE_NAME;
   const i18n = getI18nConfig();
   const showLanguagePicker = (i18n?.locales.length ?? 0) > 1;
@@ -136,8 +138,11 @@ export async function DefaultHeader() {
             />
           ) : null}
           <DarkModeToggle />
-          <MemberStatusWidget initialMember={member} />
-          <MobileNav items={headerNav} />
+          <MemberStatusWidget
+            initialMember={member}
+            initialUnreadNotifications={unreadNotifications}
+          />
+          <MobileNav items={headerNav} member={member} notificationUnread={unreadNotifications} />
         </div>
       </div>
     </header>
@@ -167,5 +172,13 @@ async function resolveHeaderMember(): Promise<HeaderMember | null> {
   } catch (error) {
     if (isTokenVerificationError(error)) return null;
     throw error;
+  }
+}
+
+async function resolveUnreadNotifications(memberId: string): Promise<number> {
+  try {
+    return await unreadNotificationCount(memberId);
+  } catch {
+    return 0;
   }
 }

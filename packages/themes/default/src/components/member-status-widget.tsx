@@ -12,6 +12,7 @@ interface MemberMe {
 
 export interface MemberStatusWidgetProps {
   initialMember?: MemberMe | null;
+  initialUnreadNotifications?: number | null;
 }
 
 /**
@@ -26,9 +27,15 @@ export interface MemberStatusWidgetProps {
  * The client probe remains as a fallback for standalone consumers
  * that render the widget without an initial value.
  */
-export function MemberStatusWidget({ initialMember }: MemberStatusWidgetProps = {}) {
+export function MemberStatusWidget({
+  initialMember,
+  initialUnreadNotifications,
+}: MemberStatusWidgetProps = {}) {
   const router = useRouter();
   const [member, setMember] = useState<MemberMe | null>(initialMember ?? null);
+  const [unreadNotifications, setUnreadNotifications] = useState<number | null>(() =>
+    initialUnreadNotifications === undefined ? null : normalizeUnread(initialUnreadNotifications),
+  );
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
@@ -53,6 +60,31 @@ export function MemberStatusWidget({ initialMember }: MemberStatusWidgetProps = 
     })();
   }, [initialMember]);
 
+  useEffect(() => {
+    if (!member?.id) {
+      setUnreadNotifications(null);
+      return;
+    }
+    if (initialUnreadNotifications !== undefined) {
+      setUnreadNotifications(normalizeUnread(initialUnreadNotifications));
+      return;
+    }
+
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const unread = await fetchUnreadNotificationCount(controller.signal);
+        setUnreadNotifications(unread);
+      } catch {
+        if (!controller.signal.aborted) setUnreadNotifications(null);
+      }
+    })();
+
+    return () => {
+      controller.abort();
+    };
+  }, [initialUnreadNotifications, member?.id]);
+
   const onSignOut = async () => {
     setSigningOut(true);
     try {
@@ -65,6 +97,7 @@ export function MemberStatusWidget({ initialMember }: MemberStatusWidgetProps = 
       // typically expires server-side regardless.
     }
     setMember(null);
+    setUnreadNotifications(null);
     setSigningOut(false);
     router.push("/");
     router.refresh();
@@ -75,6 +108,18 @@ export function MemberStatusWidget({ initialMember }: MemberStatusWidgetProps = 
       <div className="np-member-status">
         <Link href={`/u/${member.handle}`} className="np-member-status-handle">
           @{member.handle}
+        </Link>
+        <Link
+          href="/members/me/notifications"
+          className="np-member-notifications"
+          aria-label={notificationLabel(unreadNotifications)}
+        >
+          <BellIcon />
+          {unreadNotifications && unreadNotifications > 0 ? (
+            <span className="np-member-notification-badge">
+              {formatUnreadCount(unreadNotifications)}
+            </span>
+          ) : null}
         </Link>
         <button
           type="button"
@@ -95,5 +140,53 @@ export function MemberStatusWidget({ initialMember }: MemberStatusWidgetProps = 
         Register
       </Link>
     </div>
+  );
+}
+
+async function fetchUnreadNotificationCount(signal: AbortSignal): Promise<number> {
+  const res = await fetch("/api/notifications?count=1", {
+    credentials: "include",
+    signal,
+  });
+  if (!res.ok) return 0;
+
+  const body = (await res.json().catch(() => null)) as {
+    data?: { unread?: unknown };
+    unread?: unknown;
+  } | null;
+  return normalizeUnread(body?.data?.unread ?? body?.unread);
+}
+
+function normalizeUnread(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return 0;
+  return Math.floor(value);
+}
+
+function formatUnreadCount(value: number): string {
+  return value > 99 ? "99+" : value.toString();
+}
+
+function notificationLabel(unreadNotifications: number | null): string {
+  if (!unreadNotifications) return "Notifications";
+  return `${formatUnreadCount(unreadNotifications)} unread notifications`;
+}
+
+function BellIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M10.3 21a1.9 1.9 0 0 0 3.4 0" />
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+    </svg>
   );
 }

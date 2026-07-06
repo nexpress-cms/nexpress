@@ -630,6 +630,42 @@ export const defaultThemeCss = `
   white-space: nowrap;
   cursor: pointer;
 }
+.np-mobile-nav-account {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--np-color-border, #e5e7eb);
+}
+.np-mobile-nav-account a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2.35rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--np-radius-md, 0.5rem);
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.np-mobile-nav-account a:hover {
+  background: var(--np-color-muted, #f8fafc);
+}
+.np-mobile-nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+}
 .np-mobile-nav-list {
   list-style: none;
   margin: 0;
@@ -1826,6 +1862,45 @@ export const defaultThemeCss = `
 }
 .np-member-status-handle {
   font-weight: 500;
+}
+.np-member-notifications {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--np-color-border, #e5e7eb);
+  border-radius: 999px;
+  color: inherit;
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.np-member-notifications:hover {
+  background: var(--np-color-muted, #f8fafc);
+  border-color: color-mix(in oklch, var(--np-color-border, #e5e7eb) 60%, currentColor);
+  text-decoration: none;
+}
+.np-member-notifications svg {
+  flex: none;
+}
+.np-member-notification-badge {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border: 2px solid var(--np-color-background, #ffffff);
+  border-radius: 999px;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
 }
 .np-button-primary {
   display: inline-flex;
