@@ -8,6 +8,7 @@ import { canAcceptChild, locateBlock, type EditorAction } from "../editor-engine
 import { Button } from "../../ui/button.js";
 import { cn } from "../../ui/utils.js";
 import { PaletteModal } from "../shared/palette-modal.js";
+import { pickRecommendedStarterBlocks } from "../shared/starter-blocks.js";
 
 import { BlockSettingsDialog } from "./block-settings-dialog.js";
 import {
@@ -99,22 +100,7 @@ export function DocCanvas({
   // target must too. Cross-container moves stay in Page builder.
   const topLevelIds = useMemo(() => new Set(blocks.map((b) => b.id)), [blocks]);
   const emptyStarterBlocks = useMemo(() => {
-    const preferred = ["hero", "rich-text", "section-header", "feature-grid"];
-    const starters: NpBlockMetadata[] = [];
-    for (const type of preferred) {
-      const def = definitions.get(type);
-      if (def) starters.push(def);
-      if (starters.length >= 4) break;
-    }
-    if (starters.length < 4) {
-      for (const def of availableBlocks) {
-        if (starters.some((starter) => starter.type === def.type)) continue;
-        if (def.acceptsChildren) continue;
-        starters.push(def);
-        if (starters.length >= 4) break;
-      }
-    }
-    return starters;
+    return pickRecommendedStarterBlocks({ definitions, availableBlocks });
   }, [availableBlocks, definitions]);
 
   // Bumps on every iframe `load` event — replaces the old
