@@ -104,15 +104,15 @@
     }
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1063.0",
+    "@aws-sdk/client-s3": "^3.1079.0",
     "@node-rs/argon2": "^2.0.2",
     "arctic": "^3.7.0",
     "drizzle-orm": "^0.45.2",
     "intl-messageformat": "^11.2.8",
     "jose": "^6.2.3",
-    "pg": "^8.21.0",
+    "pg": "^8.22.0",
     "pg-boss": "^12.20.0",
-    "sharp": "^0.35.2",
+    "sharp": "^0.35.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
