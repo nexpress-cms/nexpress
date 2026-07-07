@@ -75,9 +75,6 @@ limitations called out in `AGENTS.md`.
 - **Multi-node session / token revocation** — `tokenVersion` lives on the
   user row already; document and verify the bump path under
   multi-instance load.
-- **Storage** — `LocalStorageAdapter` is documented as not multi-node safe;
-  surface a clearer "use S3 in production" failure mode at boot when
-  `NP_STORAGE_ADAPTER=local` and `NP_REPLICAS>1`-style hint is set.
 - **Job queue at scale** — heartbeat exists; add a "stuck job" detector and
   a worker-pause UX for incident response.
 - **Backup / restore docs** — pg_dump recipe, media bucket sync, settings

@@ -339,6 +339,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       secret: config.auth?.secret ?? process.env.NP_SECRET ?? null,
       nodeEnv: process.env.NODE_ENV,
       multiNodeFlag: process.env.NP_MULTI_NODE,
+      replicasFlag: process.env.NP_REPLICAS,
       // Phase 23.2 — well-known env vars set by managed container
       // platforms. If any is present in production we treat the
       // deploy as "probably multi-replica" even when NP_MULTI_NODE

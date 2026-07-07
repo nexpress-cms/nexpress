@@ -79,6 +79,49 @@ describe("verifyStartupSafety", () => {
     expect(warnings.some((w) => w.message.includes("multi-node safe"))).toBe(true);
   });
 
+  it("normalizes NP_MULTI_NODE casing", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "local",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: "TRUE",
+    });
+    expect(emitted).toContain("multi_node_local_storage");
+    expect(warnings.some((w) => w.message.includes("multi-node safe"))).toBe(true);
+  });
+
+  it("warns when NP_REPLICAS is greater than one", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "local",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      replicasFlag: "2",
+    });
+    expect(emitted).toContain("multi_node_local_storage");
+    const warning = warnings.find((w) => w.message.includes("multi-node safe"));
+    expect(warning?.message).toContain("NP_REPLICAS=2");
+    expect(warning?.context).toMatchObject({ reason: "replica_count" });
+  });
+
+  it("does not let NP_MULTI_NODE=false silence NP_REPLICAS greater than one", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "local",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: "false",
+      replicasFlag: "3",
+      containerEnv: true,
+    });
+    expect(emitted).toContain("multi_node_local_storage");
+    expect(warnings.find((w) => w.message.includes("multi-node safe"))?.context).toMatchObject({
+      reason: "replica_count",
+    });
+  });
+
   it("warns about a missing NP_SECRET in production", () => {
     const { warnings } = captureWarnings();
     const emitted = verifyStartupSafety({
@@ -205,6 +248,20 @@ describe("verifyStartupSafety", () => {
     expect(warnings).toEqual([]);
   });
 
+  it("NP_REPLICAS=1 silences the container hint", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "local",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      replicasFlag: "1",
+      containerEnv: true,
+    });
+    expect(emitted).not.toContain("multi_node_local_storage");
+    expect(warnings).toEqual([]);
+  });
+
   // ── #597 — three more prod-only checks ────────────────────────
 
   it("warns when NP_EMAIL_ADAPTER is unset (null) in production", () => {
@@ -218,11 +275,9 @@ describe("verifyStartupSafety", () => {
       siteUrl: "https://example.com",
     });
     expect(emitted).toContain("noop_email_in_prod");
-    expect(
-      warnings.some((w) =>
-        w.message.includes("transactional mail (password reset"),
-      ),
-    ).toBe(true);
+    expect(warnings.some((w) => w.message.includes("transactional mail (password reset"))).toBe(
+      true,
+    );
   });
 
   it("warns when NP_EMAIL_ADAPTER='noop' (explicit) in production", () => {
@@ -277,33 +332,26 @@ describe("verifyStartupSafety", () => {
       emailAdapterEnv: "smtp",
       siteUrl: "https://example.com",
     });
-    expect(
-      warnings.some((w) => w.message.includes("Email adapter")),
-    ).toBe(false);
+    expect(warnings.some((w) => w.message.includes("Email adapter"))).toBe(false);
   });
 
-  it.each([
-    ["localhost"],
-    ["127.0.0.1"],
-    ["::1"],
-    ["0.0.0.0"],
-    ["LOCALHOST"],
-  ])("warns about loopback DATABASE_URL host '%s' in production", (host) => {
-    const { warnings } = captureWarnings();
-    const emitted = verifyStartupSafety({
-      storageAdapter: "s3",
-      secret: "x".repeat(64),
-      nodeEnv: "production",
-      multiNodeFlag: undefined,
-      databaseHost: host,
-      siteUrl: "https://example.com",
-      emailAdapterEnv: "smtp",
-    });
-    expect(emitted).toContain("loopback_database_in_prod");
-    expect(
-      warnings.find((w) => w.message.includes("loopback"))?.context,
-    ).toMatchObject({ host });
-  });
+  it.each([["localhost"], ["127.0.0.1"], ["::1"], ["0.0.0.0"], ["LOCALHOST"]])(
+    "warns about loopback DATABASE_URL host '%s' in production",
+    (host) => {
+      const { warnings } = captureWarnings();
+      const emitted = verifyStartupSafety({
+        storageAdapter: "s3",
+        secret: "x".repeat(64),
+        nodeEnv: "production",
+        multiNodeFlag: undefined,
+        databaseHost: host,
+        siteUrl: "https://example.com",
+        emailAdapterEnv: "smtp",
+      });
+      expect(emitted).toContain("loopback_database_in_prod");
+      expect(warnings.find((w) => w.message.includes("loopback"))?.context).toMatchObject({ host });
+    },
+  );
 
   it("does NOT warn about a real production database host", () => {
     const { warnings } = captureWarnings();
@@ -316,9 +364,7 @@ describe("verifyStartupSafety", () => {
       siteUrl: "https://example.com",
       emailAdapterEnv: "smtp",
     });
-    expect(
-      warnings.some((w) => w.message.includes("DATABASE_URL host")),
-    ).toBe(false);
+    expect(warnings.some((w) => w.message.includes("DATABASE_URL host"))).toBe(false);
   });
 
   it("warns when SITE_URL is unset in production", () => {
@@ -332,9 +378,7 @@ describe("verifyStartupSafety", () => {
       emailAdapterEnv: "smtp",
     });
     expect(emitted).toContain("missing_site_url");
-    expect(
-      warnings.some((w) => w.message.includes("SITE_URL is unset")),
-    ).toBe(true);
+    expect(warnings.some((w) => w.message.includes("SITE_URL is unset"))).toBe(true);
   });
 
   it.each([
@@ -353,9 +397,9 @@ describe("verifyStartupSafety", () => {
       emailAdapterEnv: "smtp",
     });
     expect(emitted).toContain("loopback_site_url");
-    expect(
-      warnings.find((w) => w.message.includes("loopback origins"))?.context,
-    ).toMatchObject({ siteUrl });
+    expect(warnings.find((w) => w.message.includes("loopback origins"))?.context).toMatchObject({
+      siteUrl,
+    });
   });
 
   it("does NOT warn about a real production SITE_URL", () => {
@@ -368,9 +412,7 @@ describe("verifyStartupSafety", () => {
       siteUrl: "https://example.com",
       emailAdapterEnv: "smtp",
     });
-    expect(
-      warnings.some((w) => w.message.includes("SITE_URL")),
-    ).toBe(false);
+    expect(warnings.some((w) => w.message.includes("SITE_URL"))).toBe(false);
   });
 
   it("malformed SITE_URL skips the loopback check (caller's URL parser will catch it)", () => {
@@ -407,9 +449,7 @@ describe("verifyStartupSafety", () => {
     });
     expect(emitted).toContain("multi_node_in_memory_rate_limiter");
     expect(
-      warnings.some((w) =>
-        w.message.includes("InMemoryRateLimiter is not multi-node safe"),
-      ),
+      warnings.some((w) => w.message.includes("InMemoryRateLimiter is not multi-node safe")),
     ).toBe(true);
   });
 
@@ -428,6 +468,25 @@ describe("verifyStartupSafety", () => {
     expect(emitted).toContain("multi_node_in_memory_rate_limiter");
   });
 
+  it("warns about in-memory rate limiter via NP_REPLICAS", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      replicasFlag: "2",
+      rateLimiterCustom: false,
+      siteUrl: "https://example.com",
+      emailAdapterEnv: "smtp",
+    });
+    expect(emitted).toContain("multi_node_in_memory_rate_limiter");
+    expect(
+      warnings.find((w) => w.message.includes("InMemoryRateLimiter is not multi-node safe"))
+        ?.context,
+    ).toMatchObject({ reason: "replica_count" });
+  });
+
   it("does NOT warn when operator opted into a custom rate limiter", () => {
     const { warnings } = captureWarnings();
     verifyStartupSafety({
@@ -440,9 +499,7 @@ describe("verifyStartupSafety", () => {
       emailAdapterEnv: "smtp",
     });
     expect(
-      warnings.some((w) =>
-        w.message.includes("InMemoryRateLimiter is not multi-node safe"),
-      ),
+      warnings.some((w) => w.message.includes("InMemoryRateLimiter is not multi-node safe")),
     ).toBe(false);
   });
 
@@ -458,9 +515,7 @@ describe("verifyStartupSafety", () => {
       emailAdapterEnv: "smtp",
     });
     expect(
-      warnings.some((w) =>
-        w.message.includes("InMemoryRateLimiter is not multi-node safe"),
-      ),
+      warnings.some((w) => w.message.includes("InMemoryRateLimiter is not multi-node safe")),
     ).toBe(false);
   });
 
@@ -476,9 +531,7 @@ describe("verifyStartupSafety", () => {
       emailAdapterEnv: "smtp",
     });
     expect(
-      warnings.some((w) =>
-        w.message.includes("InMemoryRateLimiter is not multi-node safe"),
-      ),
+      warnings.some((w) => w.message.includes("InMemoryRateLimiter is not multi-node safe")),
     ).toBe(false);
   });
 

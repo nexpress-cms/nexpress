@@ -285,6 +285,19 @@ describe("doctor production target readiness", () => {
         }),
       ]);
 
+      expect(
+        checkTargetStorageProd(true, target, {
+          NP_STORAGE_ADAPTER: "local",
+          NP_REPLICAS: "1",
+        }),
+      ).toEqual([
+        expect.objectContaining({
+          id: `target.${target}.storage`,
+          state: "warn",
+          detail: "local + NP_REPLICAS=1",
+        }),
+      ]);
+
       expect(checkTargetStorageProd(true, target, { NP_STORAGE_ADAPTER: "s3" })).toEqual([
         expect.objectContaining({
           id: `target.${target}.storage`,
@@ -320,6 +333,63 @@ describe("doctor production target readiness", () => {
         id: "prod.storage_adapter",
         state: "ok",
         label: "Storage adapter (production): local",
+      }),
+    );
+  });
+
+  it("treats NP_REPLICAS greater than one as a production local-storage blocker", () => {
+    expect(
+      checkStorageProd(true, "docker", {
+        NP_STORAGE_ADAPTER: "local",
+        NP_REPLICAS: "2",
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        id: "prod.storage_adapter",
+        state: "error",
+        detail: "local + NP_REPLICAS=2",
+      }),
+    );
+
+    expect(
+      checkTargetStorageProd(true, "fly", {
+        NP_STORAGE_ADAPTER: "local",
+        NP_MULTI_NODE: "false",
+        NP_REPLICAS: "2",
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        id: "target.fly.storage",
+        state: "error",
+        detail: "local + NP_REPLICAS=2",
+      }),
+    ]);
+  });
+
+  it("blocks Docker-target local storage when a managed container env is detected", () => {
+    expect(
+      checkStorageProd(true, "docker", {
+        NP_STORAGE_ADAPTER: "local",
+        KUBERNETES_SERVICE_HOST: "10.0.0.1",
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        id: "prod.storage_adapter",
+        state: "error",
+        detail: "local + managed-container env detected",
+      }),
+    );
+
+    expect(
+      checkStorageProd(true, "docker", {
+        NP_STORAGE_ADAPTER: "local",
+        KUBERNETES_SERVICE_HOST: "10.0.0.1",
+        NP_REPLICAS: "1",
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        id: "prod.storage_adapter",
+        state: "ok",
       }),
     );
   });

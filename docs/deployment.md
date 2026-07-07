@@ -406,12 +406,13 @@ For a Sentry / pino / Datadog-specific recipe and the matching
 - **`LocalStorageAdapter` is not multi-node safe.** Different nodes will
   see different `./uploads` directories. Use S3 (or any object store) in
   HA topologies. Boot emits a `multi_node_local_storage` warning when
-  either `NP_MULTI_NODE=true` is set or `NODE_ENV=production` _and_ a
-  managed-container env var is detected (`KUBERNETES_SERVICE_HOST`,
-  `FLY_REGION`, `RENDER_INSTANCE_ID`, `RAILWAY_ENVIRONMENT_NAME`).
-  Set `NP_STORAGE_ADAPTER=s3` to
-  silence the warning, or `NP_MULTI_NODE=false` if you really are
-  running single-node on a managed platform.
+  `NP_MULTI_NODE=true` (or `=1`) is set, `NP_REPLICAS` is greater than
+  `1`, or `NODE_ENV=production` _and_ a managed-container env var is
+  detected (`KUBERNETES_SERVICE_HOST`, `FLY_REGION`,
+  `RENDER_INSTANCE_ID`, `RAILWAY_ENVIRONMENT_NAME`). Set
+  `NP_STORAGE_ADAPTER=s3` to silence the warning, or
+  `NP_MULTI_NODE=false` / `NP_REPLICAS=1` if you really are running
+  single-node on a managed platform.
 - **pg-boss leader election** — the worker uses Postgres advisory locks,
   so multiple nodes can run `NP_ENABLE_JOBS=1` simultaneously. Only one
   picks up each job.
