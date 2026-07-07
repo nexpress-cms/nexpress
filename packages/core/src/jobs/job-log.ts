@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import { and, asc, eq, gte, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lt } from "drizzle-orm";
 
 import { getDb } from "../db/runtime.js";
 import { readEnvPositiveInt } from "../config/env.js";
@@ -90,6 +90,8 @@ export interface ListJobLogsOptions {
   limit?: number;
   /** Skip this many rows for pagination. */
   offset?: number;
+  /** Sort direction. Default chronological (`asc`) for the admin log stream. */
+  order?: "asc" | "desc";
 }
 
 /**
@@ -102,13 +104,14 @@ export async function listJobLogs(
 ): Promise<NpJobLogEntry[]> {
   const limit = Math.min(Math.max(1, options.limit ?? 200), 1000);
   const offset = Math.max(0, options.offset ?? 0);
+  const orderBy = options.order === "desc" ? desc(npJobLogs.createdAt) : asc(npJobLogs.createdAt);
   const db = getDb();
 
   const rows = (await db
     .select()
     .from(npJobLogs)
     .where(eq(npJobLogs.jobId, jobId))
-    .orderBy(asc(npJobLogs.createdAt))
+    .orderBy(orderBy)
     .limit(limit)
     .offset(offset)) as Array<{
     id: string;

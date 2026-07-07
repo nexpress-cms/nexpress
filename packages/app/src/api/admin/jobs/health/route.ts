@@ -10,6 +10,7 @@ import type { NextRequest } from "next/server";
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { ensureFor, nexpressConfig } from "../../../../lib/init-core";
+import type * as OpsJobsCore from "../../../../scripts/ops-jobs-core";
 
 /**
  * Phase 19 — worker liveness endpoint. Returns each registered
@@ -45,10 +46,13 @@ export async function GET(request: NextRequest) {
     }
 
     const queue = getOptionalJobQueue();
-    const [summary, pauseState, counts] = await Promise.all([
+    const now = new Date();
+    const jobsCore = await loadJobsCore();
+    const [summary, pauseState, counts, opsReport] = await Promise.all([
       listWorkerHealth(),
       getJobsPauseState(),
       queue && typeof queue.countByState === "function" ? queue.countByState() : null,
+      jobsCore.collectOpsJobsStatus(process.env, now),
     ]);
 
     const configured = nexpressConfig.jobs?.stuckThreshold;
@@ -62,6 +66,7 @@ export async function GET(request: NextRequest) {
       ...summary,
       pause: pauseState,
       stuck,
+      recentFailures: opsReport.recentFailures,
     });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
@@ -69,3 +74,7 @@ export async function GET(request: NextRequest) {
 }
 
 export const dynamic = "force-dynamic";
+
+async function loadJobsCore(): Promise<typeof OpsJobsCore> {
+  return (await import("@nexpress/app/scripts/ops-jobs-core")) as unknown as typeof OpsJobsCore;
+}

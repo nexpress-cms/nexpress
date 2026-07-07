@@ -66,20 +66,23 @@ v0.1 stability decisions before they harden into 1.0.
 
 ### 2. Production hardening
 
-Things a real production deploy hits inside the first week. Most are known
-limitations called out in `AGENTS.md`.
+The first-week production hardening list has moved from "known limitation"
+to shipped ops surface:
 
-- **Multi-node rate limiting** — replace the in-process per-IP buckets in
-  `apps/web/src/proxy.ts` with an upstream-rate-limiter contract or
-  pluggable adapter (issue #269).
-- **Multi-node session / token revocation** — `tokenVersion` lives on the
-  user row already; document and verify the bump path under
-  multi-instance load.
-- **Job queue at scale** — heartbeat exists; add a "stuck job" detector and
-  a worker-pause UX for incident response.
-- **Backup / restore docs** — pg_dump recipe, media bucket sync, settings
-  export. Operations runbook covers incidents; the inverse (planned
-  maintenance) is thin.
+- **Multi-node rate limiting** — `@nexpress/core/rate-limit` defines the
+  adapter contract, and `@nexpress/rate-limiter-redis` is the reference
+  shared-store implementation.
+- **Multi-node session / token revocation** — token-version invalidation is
+  covered by the multi-instance verification path.
+- **Job queue at scale** — worker heartbeat, pause/resume, stuck-job
+  thresholds, retry/drain mutations, and recent-failure diagnostics are
+  visible through admin and `nexpress ops jobs`.
+- **Backup / restore** — backup manifests, verification, restore plans, and
+  isolated restore apply are covered by `nexpress ops backup`.
+
+Keep extending this section from real deploy friction rather than old
+placeholder bullets. Current candidates belong under agent-operated ops,
+plugin v2, or public issue intake depending on the failure mode.
 
 ### 3. Agent-operated operations CLI
 

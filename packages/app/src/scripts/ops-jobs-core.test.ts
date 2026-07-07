@@ -69,8 +69,66 @@ describe("ops jobs core", () => {
     expect(report.status).toBe("attention");
     expect(report.ok).toBe(true);
     expect(report.nextCommand).toBe("nexpress ops jobs retry-all --state failed --json");
-    expect(report.projectNextCommand).toBe("pnpm --silent run ops:jobs -- retry-all --state failed --json");
+    expect(report.projectNextCommand).toBe(
+      "pnpm --silent run ops:jobs -- retry-all --state failed --json",
+    );
     expect(renderBriefOpsJobsStatus(report, { color: false })).toContain("attention: enabled");
+  });
+
+  it("points expired-only failures at the expired retry command", () => {
+    const report = buildOpsJobsJson({
+      enabled: true,
+      pause,
+      counts: { ...emptyCounts, expired: 2 },
+      workers: [
+        {
+          id: "worker-1",
+          status: "running",
+          startedAt: "2026-06-09T00:00:00.000Z",
+          lastSeenAt: "2026-06-09T00:01:00.000Z",
+          lastSeenAgoMs: 1_000,
+          alive: true,
+          meta: {},
+        },
+      ],
+    });
+
+    expect(report.status).toBe("attention");
+    expect(report.nextCommand).toBe("nexpress ops jobs retry-all --state expired --json");
+  });
+
+  it("surfaces recent failure details in the stable jobs report", () => {
+    const report = buildOpsJobsJson({
+      enabled: true,
+      pause,
+      counts: { ...emptyCounts, failed: 1 },
+      workers: [],
+      recentFailures: [
+        {
+          id: "job-1",
+          name: "media.processImage",
+          state: "failed",
+          source: "archive",
+          output: "sharp failed",
+          createdOn: "2026-07-01T00:00:00.000Z",
+          startedOn: "2026-07-01T00:01:00.000Z",
+          completedOn: "2026-07-01T00:02:00.000Z",
+          logCount: 1,
+          lastLog: {
+            id: "log-1",
+            level: "error",
+            message: "variant generation failed",
+            context: null,
+            createdAt: "2026-07-01T00:02:00.000Z",
+          },
+        },
+      ],
+    });
+
+    expect(report.recentFailures).toHaveLength(1);
+    expect(renderBriefOpsJobsStatus(report, { color: false })).toContain(
+      "- failed media.processImage job-1: variant generation failed",
+    );
   });
 
   it("points paused queues at resume instead of a passive status check", () => {

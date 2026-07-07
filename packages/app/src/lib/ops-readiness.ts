@@ -358,6 +358,12 @@ function buildStorageSection(report: OpsStorageJson): OpsReadinessSection {
 }
 
 function buildJobsSection(report: OpsJobsJson): OpsReadinessSection {
+  const latestFailure = report.recentFailures[0];
+  const latestFailureDetail = latestFailure
+    ? `${latestFailure.state} ${latestFailure.name}: ${
+        latestFailure.lastLog?.message ?? latestFailure.output ?? "no job log captured"
+      }`
+    : null;
   const checks: CheckResult[] = [
     {
       id: "jobs.enabled",
@@ -393,8 +399,11 @@ function buildJobsSection(report: OpsJobsJson): OpsReadinessSection {
       id: "jobs.failures",
       state: report.summary.failed > 0 ? "warn" : "ok",
       label: "Failed jobs",
-      detail: report.summary.failed.toString(),
-      hint: report.summary.failed > 0 ? "Review failed jobs before release." : undefined,
+      detail: latestFailureDetail ?? report.summary.failed.toString(),
+      hint:
+        report.summary.failed > 0
+          ? "Run `nexpress ops jobs status --json` to inspect recent failures before release."
+          : undefined,
     },
   ];
 
@@ -416,6 +425,11 @@ function buildJobsSection(report: OpsJobsJson): OpsReadinessSection {
       ),
       numberMetric("Queued", report.summary.created, report.summary.created > 0 ? "warn" : "ok"),
       numberMetric("Failed", report.summary.failed, report.summary.failed > 0 ? "warn" : "ok"),
+      numberMetric(
+        "Recent failures",
+        report.recentFailures.length,
+        report.recentFailures.length > 0 ? "warn" : "ok",
+      ),
     ],
     nextCommand: report.nextCommand,
     projectNextCommand: report.projectNextCommand,

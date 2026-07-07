@@ -302,6 +302,7 @@ export {
   recordJobLog,
   listJobLogs,
   countJobLogs,
+  listRecentJobFailures,
   pruneJobLogsOlderThan,
   runInJobContext,
   getCurrentJobId,
@@ -325,6 +326,10 @@ export type {
   SetJobsPauseStateInput,
   NpJobLogEntry,
   ListJobLogsOptions,
+  NpRecentJobFailure,
+  NpRecentJobFailureState,
+  NpRecentJobFailuresOptions,
+  NpRecentJobFailuresResult,
 } from "./jobs/index.js";
 
 export type { NpStorageAdapter, NpFileMetadata } from "./storage/types.js";

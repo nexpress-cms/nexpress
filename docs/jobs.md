@@ -242,6 +242,10 @@ A worker-health card sits above the tabs (Phase 20.4 / 23.5):
 
 - Worker liveness (alive count, last heartbeat age).
 - Pause pill when `getJobsPauseState().paused` is true.
+- **Recent failures** — the same card lists the most recent failed,
+  expired, or retrying jobs with their latest captured log message, so
+  operators can jump from "the queue needs attention" to the likely
+  handler / payload without opening each row first.
 - **Stuck-job warning** — a red `AlertTriangle` pill appears when
   the count of `failed` or `expired` jobs (UNION across
   `pgboss.job` and `pgboss.archive`) crosses the configured
@@ -258,9 +262,14 @@ A worker-health card sits above the tabs (Phase 20.4 / 23.5):
   ```
 
   The widget reads from `/api/admin/jobs/health`, which calls
-  `NpJobQueue.countByState()` under the hood. Plugin authors
-  building their own monitoring can call `countByState({ since })`
-  on the queue directly — same shape, optionally time-bounded.
+  `NpJobQueue.countByState()` under the hood for counts and includes
+  the `recentFailures` block from the same ops contract used by
+  `nexpress ops jobs status --json`.
+
+Plugin authors building their own monitoring can call
+`countByState({ since })` on the queue directly for counts, or
+`listRecentJobFailures(queue)` from `@nexpress/core/jobs` for a curated
+failure summary joined with the latest `np_job_logs` entry.
 
 ---
 
