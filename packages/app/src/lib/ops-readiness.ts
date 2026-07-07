@@ -1,4 +1,3 @@
-import type { CheckResult } from "../scripts/doctor-readiness";
 import type * as DeployPlanCore from "../scripts/deploy-plan-core";
 import type { DeployPlanJson, EnvRequirementCheck } from "../scripts/deploy-plan-core";
 import {
@@ -17,6 +16,11 @@ import type { OpsPluginsJson } from "../scripts/ops-plugins-core";
 import type * as OpsStorageCore from "../scripts/ops-storage-core";
 import type { OpsStorageJson } from "../scripts/ops-storage-core";
 import { collectRuntimeOpsPluginsStatus } from "./ops-plugins-runtime";
+import {
+  checkProductionStorage,
+  checkTargetProductionStorage,
+  type CheckResult,
+} from "./production-readiness";
 
 type OpsReadinessEnv = Record<string, string | undefined>;
 
@@ -81,26 +85,47 @@ export function resolveOpsReadinessTarget(
   };
 }
 
-export function buildDeployReadinessSection(plan: DeployPlanJson): OpsReadinessSection {
+export function buildDeployReadinessSection(
+  plan: DeployPlanJson,
+  env: OpsReadinessEnv = process.env,
+): OpsReadinessSection {
   const requiredChecks = plan.requiredEnv.map((check) => envRequirementToCheck(check, "error"));
   const recommendedChecks = plan.recommendedEnv.map((check) =>
     envRequirementToCheck(check, "warn"),
   );
-  const checks = [...requiredChecks, ...recommendedChecks];
+  const productionChecks = [
+    checkProductionStorage(true, plan.target, env),
+    ...checkTargetProductionStorage(true, plan.target, env),
+  ].filter((check): check is CheckResult => check !== null);
+  const checks = [...requiredChecks, ...recommendedChecks, ...productionChecks];
   const requiredUnresolved = plan.summary.requiredEnv.unresolved;
   const recommendedUnresolved = plan.summary.recommendedEnv.unresolved;
+  const productionErrors = productionChecks.filter((check) => check.state === "error").length;
+  const productionWarnings = productionChecks.filter((check) => check.state === "warn").length;
   const state: OpsReadinessState =
-    requiredUnresolved > 0 ? "error" : recommendedUnresolved > 0 ? "warn" : "ok";
+    requiredUnresolved > 0 || productionErrors > 0
+      ? "error"
+      : recommendedUnresolved > 0 || productionWarnings > 0
+        ? "warn"
+        : "ok";
   const summary =
     requiredUnresolved > 0
       ? `${requiredUnresolved.toString()} required environment setting${
           requiredUnresolved === 1 ? "" : "s"
         } unresolved`
-      : recommendedUnresolved > 0
-        ? `${recommendedUnresolved.toString()} recommended environment setting${
-            recommendedUnresolved === 1 ? "" : "s"
-          } unresolved`
-        : "Required deploy environment is ready.";
+      : productionErrors > 0
+        ? `${productionErrors.toString()} production safety check${
+            productionErrors === 1 ? "" : "s"
+          } blocking deploy`
+        : recommendedUnresolved > 0
+          ? `${recommendedUnresolved.toString()} recommended environment setting${
+              recommendedUnresolved === 1 ? "" : "s"
+            } unresolved`
+          : productionWarnings > 0
+            ? `${productionWarnings.toString()} production safety warning${
+                productionWarnings === 1 ? "" : "s"
+              } needs review`
+            : "Required deploy environment is ready.";
 
   return {
     id: "deploy",
@@ -112,13 +137,19 @@ export function buildDeployReadinessSection(plan: DeployPlanJson): OpsReadinessS
         "Required env",
         plan.summary.requiredEnv.set,
         plan.summary.requiredEnv.total,
-        state,
+        requiredUnresolved > 0 ? "error" : "ok",
       ),
       ratioMetric(
         "Recommended env",
         plan.summary.recommendedEnv.set,
         plan.summary.recommendedEnv.total,
         recommendedUnresolved > 0 ? "warn" : "ok",
+      ),
+      ratioMetric(
+        "Production checks",
+        productionChecks.length - productionErrors - productionWarnings,
+        productionChecks.length,
+        productionErrors > 0 ? "error" : productionWarnings > 0 ? "warn" : "ok",
       ),
       {
         label: "Next steps",
@@ -183,7 +214,7 @@ export async function gatherOpsReadiness(
         inferredTarget,
         env,
       );
-      return buildDeployReadinessSection(deployPlan);
+      return buildDeployReadinessSection(deployPlan, env);
     }),
     captureSection("migrations", "Migrations", async () => {
       const migrationsCore = await loadMigrateCore();

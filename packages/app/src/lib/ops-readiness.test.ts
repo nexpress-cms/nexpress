@@ -25,6 +25,65 @@ describe("ops readiness", () => {
     expect(section.checks.some((check) => check.id === "deploy.env.np_s3_bucket")).toBe(true);
   });
 
+  it("blocks the deploy gate on production storage safety checks", () => {
+    const env = {
+      DATABASE_URL: "postgres://user:pass@example.com:5432/app",
+      NP_ENABLE_JOBS: "1",
+      NP_REPLICAS: "2",
+      NP_SCHEDULER_TOKEN: "0123456789abcdef",
+      NP_SECRET: "12345678901234567890123456789012",
+      NP_STORAGE_ADAPTER: "local",
+      SITE_URL: "https://example.com",
+    };
+    const plan = buildDeployPlanJson(buildDeployPlan("fly"), false, env);
+
+    const section = buildDeployReadinessSection(plan, env);
+
+    expect(section.state).toBe("error");
+    expect(section.summary).toContain("production safety");
+    expect(section.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "prod.storage_adapter",
+          state: "error",
+          detail: "local + NP_REPLICAS=2",
+        }),
+        expect.objectContaining({
+          id: "target.fly.storage",
+          state: "error",
+          detail: "local + NP_REPLICAS=2",
+        }),
+      ]),
+    );
+  });
+
+  it("surfaces deliberate single-node local storage as a deploy warning", () => {
+    const env = {
+      DATABASE_URL: "postgres://user:pass@example.com:5432/app",
+      NP_ENABLE_JOBS: "1",
+      NP_REPLICAS: "1",
+      NP_SCHEDULER_TOKEN: "0123456789abcdef",
+      NP_SECRET: "12345678901234567890123456789012",
+      NP_STORAGE_ADAPTER: "local",
+      SITE_URL: "https://example.com",
+    };
+    const plan = buildDeployPlanJson(buildDeployPlan("fly"), false, env);
+
+    const section = buildDeployReadinessSection(plan, env);
+
+    expect(section.state).toBe("warn");
+    expect(section.summary).toContain("production safety warning");
+    expect(section.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "target.fly.storage",
+          state: "warn",
+          detail: "local + NP_REPLICAS=1",
+        }),
+      ]),
+    );
+  });
+
   it("summarizes sections and selects the first blocking next command", () => {
     const sections: OpsReadinessSection[] = [
       section("deploy", "ok", null),

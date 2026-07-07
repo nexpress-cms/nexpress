@@ -1,13 +1,12 @@
 import { deployTargetTitle, type DeployTarget } from "./deploy-targets.js";
 import type { MigrationStatus } from "./migration-status.js";
+import {
+  checkProductionStorage,
+  checkTargetProductionStorage,
+  type CheckResult,
+} from "../lib/production-readiness.js";
 
-export interface CheckResult {
-  id: string;
-  state: "ok" | "warn" | "error";
-  label: string;
-  detail?: string;
-  hint?: string;
-}
+export type { CheckResult } from "../lib/production-readiness.js";
 
 type DoctorEnv = Record<string, string | undefined>;
 
@@ -102,34 +101,7 @@ export function checkStorageProd(
   target: DeployTarget | null,
   env: DoctorEnv,
 ): CheckResult | null {
-  if (!prodMode) return null;
-  const adapter = (env.NP_STORAGE_ADAPTER ?? "local").toLowerCase();
-  const multiNode = env.NP_MULTI_NODE === "true" || env.NP_MULTI_NODE === "1";
-  // Same heuristic verifyStartupSafety() uses — explicit opt-out wins.
-  const explicitSingle = env.NP_MULTI_NODE === "false" || env.NP_MULTI_NODE === "0";
-  const containerHint =
-    !explicitSingle &&
-    Boolean(
-      env.KUBERNETES_SERVICE_HOST ||
-      env.FLY_REGION ||
-      env.RENDER_INSTANCE_ID ||
-      env.RAILWAY_ENVIRONMENT_NAME,
-    );
-  const genericMultiNodeCheck = !target || target === "docker";
-  if (adapter === "local" && ((genericMultiNodeCheck && multiNode) || (!target && containerHint))) {
-    return {
-      id: "prod.storage_adapter",
-      state: "error",
-      label: "Storage adapter (production)",
-      detail: `local + ${multiNode ? "NP_MULTI_NODE=true" : "managed-container env detected"}`,
-      hint: "LocalStorageAdapter is per-process. Set NP_STORAGE_ADAPTER=s3 + NP_S3_BUCKET / NP_S3_REGION, or NP_MULTI_NODE=false on a single-node deploy.",
-    };
-  }
-  return {
-    id: "prod.storage_adapter",
-    state: "ok",
-    label: `Storage adapter (production): ${adapter}`,
-  };
+  return checkProductionStorage(prodMode, target, env);
 }
 
 export function checkSiteUrlProd(prodMode: boolean, env: DoctorEnv): CheckResult | null {
@@ -245,55 +217,7 @@ export function checkTargetStorageProd(
   target: DeployTarget | null,
   env: DoctorEnv,
 ): CheckResult[] {
-  if (!prodMode || !target) return [];
-  const adapter = (env.NP_STORAGE_ADAPTER ?? "local").toLowerCase();
-  const explicitSingle = env.NP_MULTI_NODE === "false" || env.NP_MULTI_NODE === "0";
-  const targetTitle = deployTargetTitle(target);
-
-  if (target === "vercel") {
-    if (adapter !== "s3") {
-      return [
-        {
-          id: `target.${target}.storage`,
-          state: "error",
-          label: `${targetTitle} storage`,
-          detail: `NP_STORAGE_ADAPTER=${adapter}`,
-          hint: "Vercel's filesystem is ephemeral. Set NP_STORAGE_ADAPTER=s3 plus NP_S3_BUCKET / NP_S3_REGION before deploy; add NP_S3_ENDPOINT for R2, MinIO, or another non-AWS S3 provider.",
-        },
-      ];
-    }
-    return [
-      {
-        id: `target.${target}.storage`,
-        state: "ok",
-        label: `${targetTitle} storage`,
-        detail: "S3-compatible",
-      },
-    ];
-  }
-
-  if ((target === "railway" || target === "render" || target === "fly") && adapter === "local") {
-    return [
-      {
-        id: `target.${target}.storage`,
-        state: explicitSingle ? "warn" : "error",
-        label: `${targetTitle} storage`,
-        detail: explicitSingle ? "local + NP_MULTI_NODE=false" : "local storage",
-        hint: explicitSingle
-          ? "Confirm the service has a persistent disk/volume and regular backups."
-          : "Managed container filesystems are not durable across nodes/redeploys. Set NP_STORAGE_ADAPTER=s3, or set NP_MULTI_NODE=false only for a deliberate single-node persistent-volume deploy.",
-      },
-    ];
-  }
-
-  return [
-    {
-      id: `target.${target}.storage`,
-      state: "ok",
-      label: `${targetTitle} storage`,
-      detail: adapter,
-    },
-  ];
+  return checkTargetProductionStorage(prodMode, target, env);
 }
 
 function databaseHost(env: DoctorEnv): string | null {

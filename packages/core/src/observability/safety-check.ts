@@ -20,6 +20,11 @@ export interface NpStartupSafetyInput {
    */
   multiNodeFlag: string | undefined;
   /**
+   * `process.env.NP_REPLICAS` at boot. Values greater than 1 are an
+   * explicit multi-node signal even when `NP_MULTI_NODE` is unset.
+   */
+  replicasFlag?: string | undefined;
+  /**
    * True when the boot environment looks like a managed container
    * runtime (Kubernetes / Fly.io / Render / similar). The bootstrap
    * layer evaluates the well-known env vars and hands a single bool
@@ -75,9 +80,10 @@ const MIN_PROD_SECRET_LENGTH = 32;
  * a real failure mode that has either bitten the project or been
  * called out in the deployment docs:
  *
- *   - `LocalStorageAdapter` + `NP_MULTI_NODE=true`. Different nodes
- *     see different `./uploads` directories; uploads disappear
- *     between requests. (`docs/deployment.md` — Multi-node notes.)
+ *   - `LocalStorageAdapter` + `NP_MULTI_NODE=true` or
+ *     `NP_REPLICAS>1`. Different nodes see different `./uploads`
+ *     directories; uploads disappear between requests.
+ *     (`docs/deployment.md` — Multi-node notes.)
  *   - `LocalStorageAdapter` + `NODE_ENV=production` + a managed-
  *     container env var (`KUBERNETES_SERVICE_HOST`, `FLY_REGION`,
  *     `RENDER_INSTANCE_ID`, `RAILWAY_ENVIRONMENT_NAME`, …). Same
@@ -109,8 +115,11 @@ export function verifyStartupSafety(input: NpStartupSafetyInput): readonly strin
   const log = getScopedLogger({ subsystem: "boot" });
   const emitted: string[] = [];
 
-  const multiNode = input.multiNodeFlag === "true" || input.multiNodeFlag === "1";
-  const explicitOptOut = input.multiNodeFlag === "false" || input.multiNodeFlag === "0";
+  const multiNode = envFlagIsTrue(input.multiNodeFlag);
+  const replicaCount = parseReplicaCount(input.replicasFlag);
+  const replicaMultiNode = replicaCount !== null && replicaCount > 1;
+  const explicitOptOut =
+    !replicaMultiNode && (envFlagIsFalse(input.multiNodeFlag) || replicaCount === 1);
   // Explicit opt-out wins over the container heuristic: an
   // operator who deliberately sets `NP_MULTI_NODE=false` on a
   // managed-container deploy (single-replica on Kubernetes, etc.)
@@ -118,16 +127,22 @@ export function verifyStartupSafety(input: NpStartupSafetyInput): readonly strin
   // tells them to silence isn't actually silenceable.
   const containerInProd =
     !explicitOptOut && input.nodeEnv === "production" && Boolean(input.containerEnv);
-  const likelyMultiNode = multiNode || containerInProd;
+  const likelyMultiNode = multiNode || replicaMultiNode || containerInProd;
 
   if (likelyMultiNode && input.storageAdapter === "local") {
-    const reason = multiNode ? "explicit_flag" : "container_hint";
+    const reason = multiNode
+      ? "explicit_flag"
+      : replicaMultiNode
+        ? "replica_count"
+        : "container_hint";
     const trigger = multiNode
       ? "NP_MULTI_NODE is set"
-      : "a managed-container env var was detected in production (KUBERNETES_SERVICE_HOST / FLY_REGION / RENDER_INSTANCE_ID / RAILWAY_ENVIRONMENT_NAME)";
+      : replicaMultiNode
+        ? `NP_REPLICAS=${replicaCount.toString()}`
+        : "a managed-container env var was detected in production (KUBERNETES_SERVICE_HOST / FLY_REGION / RENDER_INSTANCE_ID / RAILWAY_ENVIRONMENT_NAME)";
     log.warn(
       `LocalStorageAdapter is not multi-node safe — ${trigger} but ./uploads is per-process. ` +
-        "Set NP_STORAGE_ADAPTER=s3 (or NP_MULTI_NODE=false to silence the hint on a single-node deploy).",
+        "Set NP_STORAGE_ADAPTER=s3 (or NP_MULTI_NODE=false / NP_REPLICAS=1 to silence the hint on a single-node deploy).",
       { check: "multi_node_local_storage", reason },
     );
     emitted.push("multi_node_local_storage");
@@ -142,10 +157,14 @@ export function verifyStartupSafety(input: NpStartupSafetyInput): readonly strin
   // so the default will be installed on first request. `undefined`
   // (caller didn't supply) skips the check.
   if (likelyMultiNode && input.rateLimiterCustom === false) {
-    const reason = multiNode ? "explicit_flag" : "container_hint";
+    const reason = multiNode
+      ? "explicit_flag"
+      : replicaMultiNode
+        ? "replica_count"
+        : "container_hint";
     log.warn(
       "InMemoryRateLimiter is not multi-node safe — buckets are per-process, so a multi-replica deploy multiplies the effective limit by the replica count. " +
-        "Install a shared adapter via `setRateLimiter(new RedisRateLimiter(...))` (or your own backing store), or `NP_MULTI_NODE=false` to silence this on a single-node deploy.",
+        "Install a shared adapter via `setRateLimiter(new RedisRateLimiter(...))` (or your own backing store), or `NP_MULTI_NODE=false` / `NP_REPLICAS=1` to silence this on a single-node deploy.",
       { check: "multi_node_in_memory_rate_limiter", reason },
     );
     emitted.push("multi_node_in_memory_rate_limiter");
@@ -224,6 +243,23 @@ export function verifyStartupSafety(input: NpStartupSafetyInput): readonly strin
   }
 
   return emitted;
+}
+
+function parseReplicaCount(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 1) return null;
+  return parsed;
+}
+
+function envFlagIsTrue(value: string | undefined): boolean {
+  const normalized = value?.toLowerCase();
+  return normalized === "true" || normalized === "1";
+}
+
+function envFlagIsFalse(value: string | undefined): boolean {
+  const normalized = value?.toLowerCase();
+  return normalized === "false" || normalized === "0";
 }
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
