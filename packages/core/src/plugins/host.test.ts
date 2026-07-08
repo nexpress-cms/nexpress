@@ -5,10 +5,12 @@ import {
   getPluginPageRoutes,
   getPluginRegistration,
   getPluginRoutes,
+  getRegisteredPluginSchedules,
   loadPlugins,
   resetPlugins,
   runHook,
   runHookAndCollect,
+  runPluginScheduledTask,
 } from "./index.js";
 import type { NpPluginConfig } from "../config/types.js";
 import { resetLogger, setLogger, type NpLogger } from "../observability/logger.js";
@@ -35,6 +37,12 @@ function resolvedPlugin(
       collection?: string;
     }) => unknown>;
     routes?: Array<{ method: string; path: string; handler: () => Promise<{ status: number }> }>;
+    scheduled?: Array<{
+      id: string;
+      cron: string;
+      handler: (ctx: Record<string, unknown>) => unknown;
+      description?: string;
+    }>;
   } = {},
 ): {
   manifest: {
@@ -45,6 +53,12 @@ function resolvedPlugin(
   };
   hooks?: Record<string, unknown>;
   routes?: ReadonlyArray<{ method: string; path: string; handler: unknown }>;
+  scheduled?: ReadonlyArray<{
+    id: string;
+    cron: string;
+    handler: unknown;
+    description?: string;
+  }>;
 } {
   return {
     manifest: {
@@ -55,6 +69,7 @@ function resolvedPlugin(
     },
     hooks: options.hooks,
     routes: options.routes,
+    scheduled: options.scheduled,
   };
 }
 
@@ -170,6 +185,56 @@ describe("plugin host", () => {
 
       const reg = getPluginRegistration("full");
       expect(reg?.capabilities).toEqual(["hooks:content", "api:route"]);
+    });
+
+    it("rejects scheduled tasks when hooks:scheduled is not declared", async () => {
+      await loadPlugins([
+        resolvedPlugin("no-scheduled-cap", {
+          scheduled: [
+            {
+              id: "nightly",
+              cron: "0 2 * * *",
+              handler: () => undefined,
+            },
+          ],
+        }),
+      ]);
+
+      expect(getAllPluginIds()).not.toContain("no-scheduled-cap");
+      expect(getRegisteredPluginSchedules()).toEqual([]);
+    });
+
+    it("registers scheduled tasks and dispatches them when capabilities cover them", async () => {
+      const handler = vi.fn();
+
+      await loadPlugins([
+        resolvedPlugin("scheduled-ok", {
+          capabilities: ["hooks:scheduled"],
+          scheduled: [
+            {
+              id: "daily-rollup",
+              cron: "5 0 * * *",
+              description: "Roll up yesterday's events.",
+              handler,
+            },
+          ],
+        }),
+      ]);
+
+      expect(getRegisteredPluginSchedules()).toEqual([
+        expect.objectContaining({
+          pluginId: "scheduled-ok",
+          taskId: "daily-rollup",
+          cron: "5 0 * * *",
+          description: "Roll up yesterday's events.",
+        }),
+      ]);
+
+      await runPluginScheduledTask("scheduled-ok", "daily-rollup");
+      expect(handler).toHaveBeenCalledOnce();
+      expect(handler.mock.calls[0]?.[0]).toEqual(
+        expect.objectContaining({ pluginId: "scheduled-ok" }),
+      );
     });
 
     it("normalizes method case when registering routes", async () => {
