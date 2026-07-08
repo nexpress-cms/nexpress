@@ -102,6 +102,19 @@ interface WorkerHealthResponse {
   newestHeartbeat?: string | null;
   pause?: { paused: boolean; pausedAt?: string | null };
   stuck?: StuckJobsBlock | null;
+  recentFailures?: RecentJobFailure[];
+}
+
+interface RecentJobFailure {
+  id: string;
+  name: string;
+  state: JobSummary["state"];
+  source: "live" | "archive";
+  output: string | null;
+  createdOn: string;
+  completedOn: string | null;
+  logCount: number;
+  lastLog: JobLogEntry | null;
 }
 
 interface JobListResponse {
@@ -496,63 +509,91 @@ function WorkerHealthCard() {
   const failedOverThreshold = stuck !== null && stuck.counts.failed >= stuck.thresholds.failed;
   const expiredOverThreshold = stuck !== null && stuck.counts.expired >= stuck.thresholds.expired;
   const showStuckWarning = failedOverThreshold || expiredOverThreshold;
+  const recentFailures = (data.recentFailures ?? []).slice(0, 3);
 
   return (
     <Card className="min-w-0">
-      <CardContent className="flex min-w-0 flex-col gap-3 p-4 text-sm md:flex-row md:items-center md:justify-between">
-        <div className="flex min-w-0 items-center gap-3">
-          <span
-            className={`inline-flex h-2.5 w-2.5 rounded-full ${
-              alive > 0 ? "bg-emerald-500" : "bg-rose-500"
-            }`}
-            aria-hidden
-          />
-          <div className="min-w-0">
-            <p className="break-words font-medium text-foreground">
-              Workers: {alive} alive / {total} total
-            </p>
-            <p className="break-words text-xs text-muted-foreground">
-              {newest
-                ? `Last heartbeat ${formatAge(ageMs ?? 0)} ago`
-                : "No heartbeats recorded yet."}
-            </p>
+      <CardContent className="min-w-0 p-4 text-sm">
+        <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span
+              className={`inline-flex h-2.5 w-2.5 rounded-full ${
+                alive > 0 ? "bg-emerald-500" : "bg-rose-500"
+              }`}
+              aria-hidden
+            />
+            <div className="min-w-0">
+              <p className="break-words font-medium text-foreground">
+                Workers: {alive} alive / {total} total
+              </p>
+              <p className="break-words text-xs text-muted-foreground">
+                {newest
+                  ? `Last heartbeat ${formatAge(ageMs ?? 0)} ago`
+                  : "No heartbeats recorded yet."}
+              </p>
+            </div>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
+            {paused ? (
+              <span className="break-words rounded-md border border-amber-500/30/60 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-100">
+                Queue paused
+              </span>
+            ) : null}
+            {showStuckWarning && stuck ? (
+              <span
+                className="inline-flex min-w-0 items-center gap-1 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-300"
+                title={stuckTooltip(stuck)}
+              >
+                <AlertTriangle className="h-3 w-3" aria-hidden />
+                <span className="min-w-0 break-words">
+                  {stuckLabel(stuck, failedOverThreshold, expiredOverThreshold)}
+                </span>
+              </span>
+            ) : null}
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label="Refresh worker health"
+              className="min-h-10 min-w-10 sm:min-h-0 sm:min-w-0"
+              onClick={() => void load()}
+              disabled={refreshing}
+            >
+              {refreshing ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3" />
+              )}
+            </Button>
           </div>
         </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
-          {paused ? (
-            <span className="break-words rounded-md border border-amber-500/30/60 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-100">
-              Queue paused
-            </span>
-          ) : null}
-          {showStuckWarning && stuck ? (
-            <span
-              className="inline-flex min-w-0 items-center gap-1 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-300"
-              title={stuckTooltip(stuck)}
-            >
-              <AlertTriangle className="h-3 w-3" aria-hidden />
-              <span className="min-w-0 break-words">
-                {stuckLabel(stuck, failedOverThreshold, expiredOverThreshold)}
-              </span>
-            </span>
-          ) : null}
-          <Button
-            variant="outline"
-            size="sm"
-            aria-label="Refresh worker health"
-            className="min-h-10 min-w-10 sm:min-h-0 sm:min-w-0"
-            onClick={() => void load()}
-            disabled={refreshing}
-          >
-            {refreshing ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3 w-3" />
-            )}
-          </Button>
-        </div>
+        {recentFailures.length > 0 ? (
+          <div className="mt-3 min-w-0 border-t border-border/60 pt-3">
+            <p className="break-words text-xs font-medium text-muted-foreground">Recent failures</p>
+            <ul className="mt-2 min-w-0 space-y-2">
+              {recentFailures.map((failure) => (
+                <li key={failure.id} className="min-w-0 space-y-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <StateBadge state={failure.state} />
+                    <code className="min-w-0 break-all font-mono text-xs">{failure.name}</code>
+                    <span className="break-words text-[11px] text-muted-foreground">
+                      {failure.logCount.toString()} log{failure.logCount === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <p className="min-w-0 break-words text-xs text-muted-foreground">
+                    {recentFailureSummary(failure)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
+}
+
+function recentFailureSummary(failure: RecentJobFailure): string {
+  return failure.lastLog?.message ?? failure.output ?? "No job log captured.";
 }
 
 function stuckLabel(

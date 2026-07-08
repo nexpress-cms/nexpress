@@ -30,6 +30,28 @@ export interface OpsJobsPauseState {
   reason: string | null;
 }
 
+export interface OpsJobsRecentFailureLog {
+  id: string;
+  level: "debug" | "info" | "warn" | "error";
+  message: string;
+  context: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface OpsJobsRecentFailure {
+  id: string;
+  name: string;
+  state: "failed" | "expired" | "retry" | "cancelled";
+  source: "live" | "archive";
+  retryCount?: number;
+  output: string | null;
+  createdOn: string;
+  startedOn: string | null;
+  completedOn: string | null;
+  logCount: number;
+  lastLog: OpsJobsRecentFailureLog | null;
+}
+
 export interface OpsJobsJson {
   schemaVersion: "np.ops-jobs.v1";
   ok: boolean;
@@ -57,6 +79,7 @@ export interface OpsJobsJson {
   pause: OpsJobsPauseState;
   counts: OpsJobsCounts;
   workers: OpsJobsWorker[];
+  recentFailures: OpsJobsRecentFailure[];
 }
 
 type OpsJobsEnv = Record<string, string | undefined>;
@@ -97,6 +120,20 @@ interface RetryableJobRow {
   id: string;
   name: string;
   state: string;
+}
+
+interface RecentFailureRow {
+  id: string;
+  name: string;
+  state: string;
+  source: string;
+  retry_count?: number | null;
+  output?: string | null;
+  created_on?: Date | string | null;
+  started_on?: Date | string | null;
+  completed_on?: Date | string | null;
+  log_count?: string | number | null;
+  last_log?: Partial<OpsJobsRecentFailureLog> | null;
 }
 
 interface RenderOptions {
@@ -176,11 +213,14 @@ export function buildOpsJobsJson(args: {
   pause: OpsJobsPauseState;
   counts: OpsJobsCounts;
   workers: OpsJobsWorker[];
+  recentFailures?: OpsJobsRecentFailure[];
   mutation?: OpsJobsJson["mutation"];
 }): OpsJobsJson {
   const workersAlive = args.workers.filter((worker) => worker.alive).length;
   const workersTotal = args.workers.length;
-  const hasFailures = args.counts.failed > 0 || args.counts.expired > 0;
+  const hasFailed = args.counts.failed > 0;
+  const hasExpired = args.counts.expired > 0;
+  const hasFailures = hasFailed || hasExpired;
   const hasRetry = args.counts.retry > 0;
   const hasBacklog = args.counts.created > 0 && workersAlive === 0;
   const blocked = args.enabled && (args.pause.paused || hasBacklog);
@@ -199,7 +239,7 @@ export function buildOpsJobsJson(args: {
         : START_WORKER_COMMAND
       : status === "attention"
         ? hasFailures
-          ? "nexpress ops jobs retry-all --state failed --json"
+          ? `nexpress ops jobs retry-all --state ${hasFailed ? "failed" : "expired"} --json`
           : workersAlive === 0
             ? START_WORKER_COMMAND
             : hasRetry
@@ -226,6 +266,7 @@ export function buildOpsJobsJson(args: {
     pause: args.pause,
     counts: args.counts,
     workers: args.workers,
+    recentFailures: args.recentFailures ?? [],
   };
 }
 
@@ -280,6 +321,7 @@ export async function collectOpsJobsStatus(
            ) jobs
           group by state`,
     );
+    const recentFailures = await listRecentFailures(client);
     await client.end();
 
     const workers = workerRows.rows.map((row) => {
@@ -309,6 +351,7 @@ export async function collectOpsJobsStatus(
       pause: normalizePause(pauseRows.rows[0]?.value),
       counts,
       workers,
+      recentFailures,
     });
   } catch {
     try {
@@ -323,6 +366,94 @@ export async function collectOpsJobsStatus(
       workers: [],
     });
   }
+}
+
+async function listRecentFailures(client: PgClientLike): Promise<OpsJobsRecentFailure[]> {
+  try {
+    const rows = await client.query<RecentFailureRow>(
+      `select id, name, state::text as state, data, retry_count,
+              output::text as output, created_on, started_on, completed_on, source,
+              (
+                select count(*)::bigint
+                  from np_job_logs logs
+                 where logs.job_id = jobs.id::text
+              ) as log_count,
+              (
+                select jsonb_build_object(
+                         'id', logs.id::text,
+                         'level', logs.level,
+                         'message', logs.message,
+                         'context', logs.context,
+                         'createdAt', logs.created_at
+                       )
+                  from np_job_logs logs
+                 where logs.job_id = jobs.id::text
+                 order by logs.created_at desc
+                 limit 1
+              ) as last_log
+         from (
+           select id, name, state, data, retry_count,
+                  output, created_on, started_on, completed_on, 'live' as source
+             from pgboss.job
+           union all
+           select id, name, state, data, retry_count,
+                  output, created_on, started_on, completed_on, 'archive' as source
+             from pgboss.archive
+         ) jobs
+        where state::text in ('failed', 'expired', 'retry')
+        order by coalesce(completed_on, started_on, created_on) desc
+        limit 5`,
+    );
+    return rows.rows.map(normalizeRecentFailure);
+  } catch {
+    return [];
+  }
+}
+
+function normalizeRecentFailure(row: RecentFailureRow): OpsJobsRecentFailure {
+  return {
+    id: row.id,
+    name: row.name,
+    state:
+      row.state === "expired" || row.state === "retry" || row.state === "cancelled"
+        ? row.state
+        : "failed",
+    source: row.source === "archive" ? "archive" : "live",
+    retryCount: typeof row.retry_count === "number" ? row.retry_count : undefined,
+    output: row.output ?? null,
+    createdOn: toIso(row.created_on ?? new Date(0)) ?? new Date(0).toISOString(),
+    startedOn: toNullableIso(row.started_on),
+    completedOn: toNullableIso(row.completed_on),
+    logCount: readCount(row.log_count ?? 0),
+    lastLog: normalizeRecentFailureLog(row.last_log),
+  };
+}
+
+function normalizeRecentFailureLog(
+  value: Partial<OpsJobsRecentFailureLog> | null | undefined,
+): OpsJobsRecentFailureLog | null {
+  if (!value || typeof value.id !== "string" || typeof value.message !== "string") {
+    return null;
+  }
+  const level =
+    value.level === "debug" ||
+    value.level === "info" ||
+    value.level === "warn" ||
+    value.level === "error"
+      ? value.level
+      : "info";
+  const createdAt = typeof value.createdAt === "string" ? toIso(value.createdAt) : null;
+  return {
+    id: value.id,
+    level,
+    message: value.message,
+    context: value.context && typeof value.context === "object" ? value.context : null,
+    createdAt: createdAt ?? new Date(0).toISOString(),
+  };
+}
+
+function toNullableIso(value: Date | string | null | undefined): string | null {
+  return value ? toIso(value) : null;
 }
 
 async function writePauseState(
@@ -749,6 +880,12 @@ export function renderBriefOpsJobsStatus(
       `mutation: ${report.mutation.action} applied=${String(report.mutation.applied)}${report.mutation.error ? ` error=${report.mutation.error}` : ""}`,
     );
   }
+  if (report.recentFailures.length > 0) {
+    lines.push("recent failures:");
+    for (const failure of report.recentFailures.slice(0, 3)) {
+      lines.push(`- ${failure.state} ${failure.name} ${failure.id}: ${failureSummary(failure)}`);
+    }
+  }
   for (const worker of report.workers.slice(0, 5)) {
     lines.push(
       `${worker.alive ? "[alive]" : "[stale]"} ${worker.id} - last seen ${worker.lastSeenAgoMs.toString()}ms ago`,
@@ -759,4 +896,8 @@ export function renderBriefOpsJobsStatus(
     lines.push(`Project next: ${report.projectNextCommand}`);
   }
   return lines.join("\n");
+}
+
+function failureSummary(failure: OpsJobsRecentFailure): string {
+  return failure.lastLog?.message ?? failure.output ?? "no job log captured";
 }

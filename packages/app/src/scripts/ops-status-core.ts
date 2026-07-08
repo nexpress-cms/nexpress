@@ -282,12 +282,53 @@ async function checkWorkerHeartbeat(env: OpsEnv): Promise<CheckResult> {
     };
   }
   if (report.status === "blocked") {
+    if (report.pause.paused) {
+      return {
+        id: "jobs.paused",
+        state: "error",
+        label: "Jobs paused",
+        detail: report.pause.reason ?? "paused",
+        hint: report.nextCommand ?? "Resume job processing.",
+      };
+    }
     return {
       id: "jobs.worker_stale",
       state: "error",
       label: "Worker heartbeat",
       detail: `${report.summary.workersAlive.toString()}/${report.summary.workersTotal.toString()} workers alive`,
       hint: report.nextCommand ?? "Start or resume the worker process.",
+    };
+  }
+  if (report.summary.workersAlive === 0) {
+    return {
+      id: "jobs.worker_stale",
+      state: "warn",
+      label: "Worker heartbeat",
+      detail: `${report.summary.workersAlive.toString()}/${report.summary.workersTotal.toString()} workers alive`,
+      hint: report.nextCommand ?? "Run `nexpress ops jobs status --json` for details.",
+    };
+  }
+  if (report.summary.failed > 0) {
+    const latest = report.recentFailures[0];
+    return {
+      id: "jobs.failed_recent",
+      state: "warn",
+      label: "Recent failed jobs",
+      detail: latest
+        ? `${report.summary.failed.toString()} failed/expired; latest ${latest.state} ${latest.name}`
+        : `${report.summary.failed.toString()} failed/expired`,
+      hint: latest
+        ? `${latest.lastLog?.message ?? latest.output ?? "Review the recent failure."} Run \`${report.nextCommand ?? "nexpress ops jobs status --json"}\`.`
+        : (report.nextCommand ?? "Run `nexpress ops jobs status --json` for details."),
+    };
+  }
+  if (report.summary.retry > 0) {
+    return {
+      id: "jobs.queue_retry",
+      state: "warn",
+      label: "Retrying jobs",
+      detail: `${report.summary.retry.toString()} jobs scheduled to retry`,
+      hint: report.nextCommand ?? "Run `nexpress ops jobs drain --json` for details.",
     };
   }
   return {

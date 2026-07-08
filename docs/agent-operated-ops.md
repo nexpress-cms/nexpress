@@ -437,7 +437,8 @@ Implementation status:
   and emits `schemaVersion: "np.ops-health.v1"` for a running site.
 - `nexpress ops jobs status --json` emits
   `schemaVersion: "np.ops-jobs.v1"` with worker heartbeat, pause state,
-  and pg-boss queue counts.
+  pg-boss queue counts, and a bounded `recentFailures` list with the latest
+  captured job log for each failed / expired / retrying job.
 - `nexpress ops storage status --json` emits
   `schemaVersion: "np.ops-storage.v1"` with adapter readiness, media row
   counts, and local missing/orphaned file drift when local storage is used.

@@ -32,3 +32,10 @@ export {
   type NpJobLogEntry,
   type ListJobLogsOptions,
 } from "./job-log.js";
+export {
+  listRecentJobFailures,
+  type NpRecentJobFailure,
+  type NpRecentJobFailureState,
+  type NpRecentJobFailuresOptions,
+  type NpRecentJobFailuresResult,
+} from "./job-diagnostics.js";
