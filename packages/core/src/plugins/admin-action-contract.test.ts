@@ -153,6 +153,16 @@ describe("npValidatePluginActionResult", () => {
 
   it("turns malformed typed data into an explicit action error", () => {
     expect(
+      npValidatePluginActionResult("demo", "action", "action", {
+        ok: true,
+        error: 42,
+      }),
+    ).toEqual({
+      ok: false,
+      error:
+        '[plugin:demo] action "action" returned an invalid result: error must be a string when provided',
+    });
+    expect(
       npValidatePluginActionResult("demo", "metric", "metric", {
         ok: true,
         data: { level: "ok" },

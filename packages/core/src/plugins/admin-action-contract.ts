@@ -301,10 +301,10 @@ export function npValidatePluginActionResult(
   if (!isRecord(value) || typeof value.ok !== "boolean") {
     return invalidResult(pluginId, actionId, "expected an object with boolean ok");
   }
+  if (value.error !== undefined && typeof value.error !== "string") {
+    return invalidResult(pluginId, actionId, "error must be a string when provided");
+  }
   if (!value.ok) {
-    if (value.error !== undefined && typeof value.error !== "string") {
-      return invalidResult(pluginId, actionId, "error must be a string when provided");
-    }
     // Preserve the original valid envelope. Existing setup handlers may carry
     // additional JSON fields that inter-plugin callers already consume even
     // though the public NpActionResult type only names ok/data/error.
