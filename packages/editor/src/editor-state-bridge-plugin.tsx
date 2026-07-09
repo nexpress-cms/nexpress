@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import {
@@ -61,7 +61,7 @@ export function synchronizeEditorValue(
 
 export function NpEditorStateBridgePlugin({ value, onChange }: NpEditorStateBridgePluginProps) {
   const [editor] = useLexicalComposerContext();
-  const valueKey = serializeEditorValue(value);
+  const valueKey = useMemo(() => serializeEditorValue(value), [value]);
   const currentValueKey = useRef<string | null>(valueKey);
 
   useLayoutEffect(() => {
