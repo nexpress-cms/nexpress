@@ -161,7 +161,9 @@ test.describe("admin authoring reliability", () => {
     await page.goto("/admin/collections/pages/create");
     await expect(page).toHaveURL(/\/admin\/collections\/pages\/create$/);
     await expect(visibleSaveDraftButton(page)).toBeEnabled();
-    await expect(page.getByText(/0\s+blocks total/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("main").getByText(/0\s+blocks total/)).toBeVisible({
+      timeout: 15_000,
+    });
 
     await page.getByLabel("title", { exact: true }).fill(`Save failure ${Date.now()}`);
     await visibleSaveDraftButton(page).click();
@@ -228,6 +230,8 @@ test.describe("admin authoring reliability", () => {
   }) => {
     const title = `Autosave recovery ${Date.now()}`;
     const recoveredTitle = `${title} recovered`;
+    const recoveredBody = `Recovered body ${Date.now()}`;
+    const continuedBody = " — continued after recovery";
 
     await context.clearCookies();
     await signInAsE2EAdmin(page);
@@ -236,10 +240,13 @@ test.describe("admin authoring reliability", () => {
     await writePostAutosave(page, id, headers, {
       title: recoveredTitle,
       excerpt: "Recovered excerpt",
+      body: recoveredBody,
     });
 
     await page.goto(`/admin/collections/posts/${id}`);
     await expect(page).toHaveURL(new RegExp(`/admin/collections/posts/${id}$`));
+    const contentEditor = page.locator(".np-editor-content").first();
+    await expect(contentEditor).toContainText("Original body", { timeout: 15_000 });
 
     const recovery = page.locator("[data-np-autosave-recovery]");
     await expect(recovery).toContainText("Autosave recovery available", { timeout: 15_000 });
@@ -260,10 +267,75 @@ test.describe("admin authoring reliability", () => {
     );
     await dialog.getByRole("button", { name: "Recover autosave" }).click();
     await expect(page.getByLabel("title", { exact: true })).toHaveValue(recoveredTitle);
+    await expect(contentEditor).toContainText(recoveredBody);
+    await contentEditor.click();
+    await contentEditor.press("End");
+    await contentEditor.type(continuedBody);
+    await expect(contentEditor).toContainText(`${recoveredBody}${continuedBody}`);
     await expect(page.locator("[data-np-authoring-status]")).toContainText("Unsaved changes");
     await expect(page.locator("[data-np-autosave-recovery]")).toHaveCount(0);
-    expect((await autosaveAfterRecover).ok()).toBeTruthy();
+    const autosaveResponse = await autosaveAfterRecover;
+    expect(autosaveResponse.ok()).toBeTruthy();
+    const autosavePayload = autosaveResponse.request().postDataJSON() as {
+      content?: unknown;
+    };
+    const serializedContent = JSON.stringify(autosavePayload.content);
+    expect(serializedContent).toContain(recoveredBody);
+    expect(serializedContent).toContain(continuedBody.trim());
+    expect(serializedContent).not.toContain("Original body");
     await expect(page.getByText(/Autosaved/)).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("replaces the visible rich-text body after restoring a revision", async ({
+    page,
+    context,
+  }) => {
+    const title = `Rich-text revision restore ${Date.now()}`;
+    const updatedBody = `Updated body ${Date.now()}`;
+
+    await context.clearCookies();
+    await signInAsE2EAdmin(page);
+
+    const { id, headers } = await createDraftPost(page, context, title);
+    const updateResponse = await page.request.patch(`/api/collections/posts/${id}`, {
+      data: {
+        kind: "article",
+        title,
+        content: richTextFixture(updatedBody),
+        _status: "draft",
+      },
+      headers,
+    });
+    expect(updateResponse.status()).toBe(200);
+
+    await page.goto(`/admin/collections/posts/${id}`);
+    await expect(page).toHaveURL(new RegExp(`/admin/collections/posts/${id}$`));
+
+    const contentEditor = page.locator(".np-editor-content").first();
+    await expect(contentEditor).toContainText(updatedBody, { timeout: 15_000 });
+
+    const revisionsPanel = page.locator("[data-np-revisions-panel]");
+    await revisionsPanel.scrollIntoViewIfNeeded();
+    const versionOne = revisionsPanel.getByRole("button", { name: /v1/ });
+    await expect(versionOne).toBeVisible({ timeout: 10_000 });
+    await versionOne.click();
+
+    const revisionDialog = page.getByRole("dialog", { name: /Version 1/ });
+    await expect(revisionDialog).toBeVisible();
+    page.once("dialog", async (confirmation) => {
+      await confirmation.accept();
+    });
+    const restoreResponse = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/api/collections/posts/${id}/revisions/`) &&
+        response.url().endsWith("/restore") &&
+        response.request().method() === "POST",
+    );
+    await revisionDialog.getByRole("button", { name: "Restore this version" }).click();
+    expect((await restoreResponse).ok()).toBeTruthy();
+
+    await expect(contentEditor).toContainText("Original body", { timeout: 15_000 });
+    await expect(contentEditor).not.toContainText(updatedBody);
   });
 
   test("persists autosave recovery dismissal until a newer autosave exists", async ({
