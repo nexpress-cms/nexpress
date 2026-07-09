@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeEvent, previousUtcDay, rollupEvents } from "./index.js";
+import { analyticsLitePlugin, normalizeEvent, previousUtcDay, rollupEvents } from "./index.js";
 
 describe("analytics-lite", () => {
   it("normalizes sparse event payloads", () => {
@@ -32,5 +32,17 @@ describe("analytics-lite", () => {
     expect(previousUtcDay(new Date("2026-03-01T00:05:00.000Z")).toISOString()).toBe(
       "2026-02-28T00:05:00.000Z",
     );
+  });
+
+  it("declares the admin action id and kind inventory", () => {
+    expect(
+      Object.entries(analyticsLitePlugin.actions ?? {}).map(([id, action]) => ({
+        id,
+        kind: action.kind,
+      })),
+    ).toEqual([
+      { id: "todayViews", kind: "metric" },
+      { id: "topPaths", kind: "table" },
+    ]);
   });
 });

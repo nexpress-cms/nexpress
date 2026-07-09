@@ -1,5 +1,12 @@
 import { npAdminExtensionSchema, npPluginManifestSchema } from "./manifest.js";
-import type { NpPluginCapability, NpPluginDefinition, NpResolvedPlugin } from "./types.js";
+import type {
+  NpAdminExtension,
+  NpPluginActionKind,
+  NpPluginActionRegistry,
+  NpPluginCapability,
+  NpPluginDefinition,
+  NpResolvedPlugin,
+} from "./types.js";
 
 /**
  * Capabilities the host can confidently infer from the plugin's declared
@@ -86,6 +93,7 @@ function deriveProvides(
         fields?: readonly string[];
         collections?: readonly string[];
         adminExtensions?: readonly string[];
+        actions?: readonly string[];
         apiRoutes?: readonly string[];
         pageRoutes?: readonly string[];
         scheduledTasks?: readonly string[];
@@ -97,6 +105,7 @@ function deriveProvides(
   fields: string[];
   collections: string[];
   adminExtensions: string[];
+  actions: string[];
   apiRoutes: string[];
   pageRoutes: string[];
   scheduledTasks: string[];
@@ -139,11 +148,118 @@ function deriveProvides(
     fields: merge(declared?.fields, fieldTypes),
     collections: [...(declared?.collections ?? [])],
     adminExtensions: merge(declared?.adminExtensions, adminExtensionLabels),
+    actions: merge(declared?.actions, Object.keys(definition.actions ?? {})),
     apiRoutes: merge(declared?.apiRoutes, routePaths),
     pageRoutes: merge(declared?.pageRoutes, pageRoutePatterns),
     scheduledTasks: merge(declared?.scheduledTasks, scheduledTaskIds),
     hooks: merge(declared?.hooks, hookNames),
   };
+}
+
+type AdminActionReference = {
+  actionId: string;
+  expectedKind: NpPluginActionKind | null;
+  location: string;
+};
+
+function collectAdminActionReferences(admin: NpAdminExtension | undefined): AdminActionReference[] {
+  if (!admin) return [];
+  const references: AdminActionReference[] = [];
+  const addWidgets = (widgets: NpAdminExtension["widgets"], location: string): void => {
+    for (const widget of widgets ?? []) {
+      references.push({
+        actionId: widget.actionId,
+        expectedKind: widget.kind,
+        location: `${location}.${widget.id}`,
+      });
+    }
+  };
+  const addActions = (actions: NpAdminExtension["actions"], location: string): void => {
+    for (const action of actions ?? []) {
+      // Admin buttons intentionally accept every action kind. Existing
+      // plugins commonly share a metric/status handler with a manual button.
+      references.push({
+        actionId: action.actionId,
+        expectedKind: null,
+        location: `${location}.${action.id}`,
+      });
+    }
+  };
+
+  addWidgets(admin.widgets, "admin.widgets");
+  addActions(admin.actions, "admin.actions");
+  for (const table of admin.tables ?? []) {
+    references.push({
+      actionId: table.rowsActionId,
+      expectedKind: "table",
+      location: `admin.tables.${table.id}`,
+    });
+  }
+  for (const tab of admin.collectionTabs ?? []) {
+    addWidgets(tab.widgets, `admin.collectionTabs.${tab.id}.widgets`);
+    addActions(tab.actions, `admin.collectionTabs.${tab.id}.actions`);
+  }
+  addWidgets(admin.dashboardWidgets, "admin.dashboardWidgets");
+  return references;
+}
+
+function validateActionRegistry(
+  pluginId: string,
+  registry: NpPluginActionRegistry<unknown> | undefined,
+  admin: NpAdminExtension | undefined,
+  hasSetup: boolean,
+): void {
+  const references = collectAdminActionReferences(admin);
+  for (const reference of references) {
+    if (reference.actionId === "." || reference.actionId === "..") {
+      throw new Error(
+        `[plugin:${pluginId}] ${reference.location} uses unsafe action id "${reference.actionId}".`,
+      );
+    }
+  }
+  if (registry === undefined && hasSetup) return;
+
+  const validKinds = new Set<NpPluginActionKind>(["action", "metric", "status", "table"]);
+  for (const [actionId, definition] of Object.entries(registry ?? {})) {
+    if (actionId.length === 0) {
+      throw new Error(`[plugin:${pluginId}] action registry contains an empty action id.`);
+    }
+    if (!definition || typeof definition !== "object") {
+      throw new Error(`[plugin:${pluginId}] action "${actionId}" must be an object.`);
+    }
+    if (!validKinds.has(definition.kind)) {
+      throw new Error(
+        `[plugin:${pluginId}] action "${actionId}" has unsupported kind "${String(definition.kind)}".`,
+      );
+    }
+    if (typeof definition.handler !== "function") {
+      throw new Error(`[plugin:${pluginId}] action "${actionId}" must declare a handler.`);
+    }
+  }
+
+  for (const reference of references) {
+    if (!registry || !Object.hasOwn(registry, reference.actionId)) {
+      // A setup callback can still supply this id dynamically. The runtime
+      // host validates the completed registration after setup, while static
+      // doctor reports the unresolved id as setup-untyped.
+      if (hasSetup) continue;
+      throw new Error(
+        `[plugin:${pluginId}] ${reference.location} references missing action "${reference.actionId}".`,
+      );
+    }
+    const action = registry[reference.actionId];
+    if (!action) {
+      throw new Error(
+        `[plugin:${pluginId}] ${reference.location} references missing action "${reference.actionId}".`,
+      );
+    }
+    if (reference.expectedKind !== null && action.kind !== reference.expectedKind) {
+      throw new Error(
+        `[plugin:${pluginId}] ${reference.location} expects a ${reference.expectedKind} action, ` +
+          `but "${reference.actionId}" is registered as ${action.kind}.`,
+      );
+    }
+  }
 }
 
 export function definePlugin<TConfig = Record<string, unknown>>(
@@ -170,5 +286,11 @@ export function definePlugin<TConfig = Record<string, unknown>>(
     // actionIds, etc. at plugin-build time rather than runtime render.
     npAdminExtensionSchema.parse(definition.admin);
   }
+  validateActionRegistry(
+    manifest.id,
+    definition.actions as NpPluginActionRegistry<unknown> | undefined,
+    definition.admin,
+    typeof definition.setup === "function",
+  );
   return { ...definition, manifest };
 }

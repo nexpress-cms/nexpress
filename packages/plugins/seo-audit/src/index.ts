@@ -62,9 +62,7 @@ const configSchema = z
       .min(0)
       .max(10000)
       .default(250)
-      .describe(
-        "Minimum body word count before triggering a thin-content warning",
-      ),
+      .describe("Minimum body word count before triggering a thin-content warning"),
     includeDescription: z
       .boolean()
       .default(true)
@@ -169,7 +167,9 @@ function extractInputFromDocument(doc: JsonRecord): SeoAuditInput {
 function extractInputFromPayload(payload: unknown): SeoAuditInput {
   const data = payload && typeof payload === "object" ? (payload as JsonRecord) : {};
   const headingsFromBody = Array.isArray(data.headings)
-    ? data.headings.filter((value): value is string => typeof value === "string").map(normalizeWhitespace)
+    ? data.headings
+        .filter((value): value is string => typeof value === "string")
+        .map(normalizeWhitespace)
     : [];
 
   return {
@@ -205,7 +205,9 @@ export function auditSeo(input: SeoAuditInput, config: SeoAuditConfig): SeoAudit
       code: "missing-title",
       message: "Title is missing. Add a clear page title before publishing.",
     });
-    suggestions.add("Add a descriptive title that tells readers and search engines what the page is about.");
+    suggestions.add(
+      "Add a descriptive title that tells readers and search engines what the page is about.",
+    );
   } else if (input.title.length < config.titleMin) {
     issues.push({
       level: "info",
@@ -238,7 +240,9 @@ export function auditSeo(input: SeoAuditInput, config: SeoAuditConfig): SeoAudit
           `Description is short (${input.description.length} chars). ` +
           `Aim for ${config.descriptionMin}-${config.descriptionMax} characters.`,
       });
-      suggestions.add("Add more context to the description so the result is more compelling in search.");
+      suggestions.add(
+        "Add more context to the description so the result is more compelling in search.",
+      );
     } else if (input.description.length > config.descriptionMax) {
       issues.push({
         level: "info",
@@ -247,7 +251,9 @@ export function auditSeo(input: SeoAuditInput, config: SeoAuditConfig): SeoAudit
           `Description is long (${input.description.length} chars). ` +
           `Keep it under ${config.descriptionMax} characters when possible.`,
       });
-      suggestions.add("Shorten the description to keep the strongest message visible in search snippets.");
+      suggestions.add(
+        "Shorten the description to keep the strongest message visible in search snippets.",
+      );
     }
   }
 
@@ -278,10 +284,7 @@ export function auditSeo(input: SeoAuditInput, config: SeoAuditConfig): SeoAudit
 
   const score = Math.max(
     0,
-    Math.min(
-      100,
-      100 - issues.reduce((total, issue) => total + scorePenalty(issue.level), 0),
-    ),
+    Math.min(100, 100 - issues.reduce((total, issue) => total + scorePenalty(issue.level), 0)),
   );
 
   return {
@@ -393,12 +396,67 @@ export const seoAuditPlugin = definePlugin<SeoAuditConfig>({
       const dataSlug = typeof data.slug === "string" ? data.slug : "";
       const canonicalSlug = typeof doc.slug === "string" ? doc.slug : dataSlug;
       if (canonicalSlug) {
-        const path =
-          data.collection === "posts" ? `/blog/${canonicalSlug}` : `/${canonicalSlug}`;
+        const path = data.collection === "posts" ? `/blog/${canonicalSlug}` : `/${canonicalSlug}`;
         head.push({ tag: "link", attrs: { rel: "canonical", href: path } });
       }
 
       return head.length > 0 ? { head } : undefined;
+    },
+  },
+  actions: {
+    lastAuditScore: {
+      kind: "metric",
+      // These demo handlers prove the declarative admin surface end-to-end.
+      // Real implementations would use ctx.content.find() to iterate posts
+      // and store results somewhere the widget can read.
+      handler: () =>
+        Promise.resolve({
+          ok: true,
+          data: { value: 87, delta: "+3 vs last week" },
+        }),
+    },
+    rescanLatest: {
+      kind: "action",
+      handler: (_data, ctx) => {
+        const sample = buildAuditResponse(
+          {
+            title: "Example post title that is long enough",
+            description: "A reasonable meta description that describes the content well.",
+            content: "This is a demo. ".repeat(40),
+          },
+          ctx.config,
+        );
+        return Promise.resolve({
+          ok: true,
+          data: `Score: ${sample.score}, issues: ${sample.issues.length}`,
+        });
+      },
+    },
+    auditDocument: {
+      kind: "metric",
+      // Powers the per-document collection tab: widget shows the score, action
+      // re-runs the audit on demand. Both share the same handler — widget reads
+      // `{ value, delta }`; action displays a success toast.
+      handler: async (payload, ctx) => {
+        const data = payload && typeof payload === "object" ? (payload as JsonRecord) : {};
+        const collection = typeof data.collection === "string" ? data.collection : "";
+        const documentId = typeof data.documentId === "string" ? data.documentId : "";
+        if (!collection || !documentId) {
+          return { ok: false, error: "auditDocument requires { collection, documentId }" };
+        }
+        const doc = (await ctx.content.findOne(collection, documentId)) as JsonRecord | null;
+        if (!doc) {
+          return { ok: false, error: `Document ${collection}/${documentId} not found` };
+        }
+        const result = auditSeo(extractInputFromDocument(doc), ctx.config);
+        return {
+          ok: true,
+          data: {
+            value: result.score,
+            delta: `${result.issues.length} issue${result.issues.length === 1 ? "" : "s"}`,
+          },
+        };
+      },
     },
   },
   admin: {
@@ -454,55 +512,6 @@ export const seoAuditPlugin = definePlugin<SeoAuditConfig>({
         ],
       },
     ],
-  },
-  setup: (ctx) => {
-    // These demo handlers prove the declarative admin surface end-to-end.
-    // Real implementations would use ctx.content.find() to iterate posts
-    // and store results somewhere the widget can read.
-    ctx.actions.register("lastAuditScore", () =>
-      Promise.resolve({
-        ok: true,
-        data: { value: 87, delta: "+3 vs last week" },
-      }),
-    );
-    ctx.actions.register("rescanLatest", () => {
-      const sample = buildAuditResponse(
-        {
-          title: "Example post title that is long enough",
-          description: "A reasonable meta description that describes the content well.",
-          content: "This is a demo. ".repeat(40),
-        },
-        ctx.config,
-      );
-      return Promise.resolve({
-        ok: true,
-        data: `Score: ${sample.score}, issues: ${sample.issues.length}`,
-      });
-    });
-
-    // Powers the per-document collection tab: widget shows the score, action
-    // re-runs the audit on demand. Both share the same handler — widget reads
-    // `{ value, delta }`; action displays a success toast.
-    ctx.actions.register("auditDocument", async (payload) => {
-      const data = payload && typeof payload === "object" ? (payload as JsonRecord) : {};
-      const collection = typeof data.collection === "string" ? data.collection : "";
-      const documentId = typeof data.documentId === "string" ? data.documentId : "";
-      if (!collection || !documentId) {
-        return { ok: false, error: "auditDocument requires { collection, documentId }" };
-      }
-      const doc = (await ctx.content.findOne(collection, documentId)) as JsonRecord | null;
-      if (!doc) {
-        return { ok: false, error: `Document ${collection}/${documentId} not found` };
-      }
-      const result = auditSeo(extractInputFromDocument(doc), ctx.config);
-      return {
-        ok: true,
-        data: {
-          value: result.score,
-          delta: `${result.issues.length} issue${result.issues.length === 1 ? "" : "s"}`,
-        },
-      };
-    });
   },
   routes: [
     {

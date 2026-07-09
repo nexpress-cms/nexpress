@@ -6,6 +6,7 @@ import { AlertTriangle, CheckCircle2, Clock, Loader2, Play } from "lucide-react"
 
 import { FieldRenderer } from "../collections/field-renderer.js";
 import { npFetch } from "../lib/api-client.js";
+import { npDispatchPluginAction } from "../lib/plugin-action-results.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -93,25 +94,6 @@ interface PluginAdminPageProps {
    *  this prop drives a warning banner so the operator knows their
    *  saved values were replaced and the next save will overwrite. */
   configParseError?: string;
-}
-
-type ActionResult = { ok: boolean; data?: unknown; error?: string };
-
-async function dispatch(
-  pluginId: string,
-  actionId: string,
-  payload?: unknown,
-): Promise<ActionResult> {
-  const response = await npFetch(`/api/plugins/${pluginId}/actions/${actionId}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: payload === undefined ? "" : JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    return { ok: false, error: `HTTP ${response.status}` };
-  }
-  const body = (await response.json().catch(() => null)) as ActionResult | null;
-  return body ?? { ok: false, error: "Empty response" };
 }
 
 export function PluginAdminPage({
@@ -437,30 +419,27 @@ function WidgetCard({ pluginId, widget }: { pluginId: string; widget: WidgetDef 
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
-    const result = await dispatch(pluginId, widget.actionId);
-    if (!result.ok || !result.data) {
-      setState({ kind: "error", message: result.error ?? "No data returned" });
-      return;
-    }
-    const data = result.data as Record<string, unknown>;
     if (widget.kind === "metric") {
+      const result = await npDispatchPluginAction(pluginId, widget.actionId, "metric");
+      if (!result.ok) {
+        setState({ kind: "error", message: result.error });
+        return;
+      }
       setState({
         kind: "metric",
-        value:
-          typeof data.value === "string" || typeof data.value === "number"
-            ? String(data.value)
-            : "—",
-        delta: typeof data.delta === "string" ? data.delta : undefined,
+        value: String(result.data.value),
+        delta: result.data.delta,
       });
     } else {
-      const level =
-        data.level === "ok" || data.level === "warn" || data.level === "error"
-          ? data.level
-          : "warn";
+      const result = await npDispatchPluginAction(pluginId, widget.actionId, "status");
+      if (!result.ok) {
+        setState({ kind: "error", message: result.error });
+        return;
+      }
       setState({
         kind: "status",
-        level,
-        message: typeof data.message === "string" ? data.message : "",
+        level: result.data.level,
+        message: result.data.message,
       });
     }
   }, [pluginId, widget]);
@@ -523,10 +502,10 @@ function ActionRow({ pluginId, action }: { pluginId: string; action: ActionDef }
     if (action.confirm && !window.confirm(action.confirm)) return;
     setRunning(true);
     setToast(null);
-    const result = await dispatch(pluginId, action.actionId);
+    const result = await npDispatchPluginAction(pluginId, action.actionId, "action");
     setRunning(false);
     if (!result.ok) {
-      setToast({ type: "error", message: result.error ?? "Action failed." });
+      setToast({ type: "error", message: result.error });
       return;
     }
     setToast({
@@ -581,15 +560,12 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
-    const result = await dispatch(pluginId, table.rowsActionId);
-    if (!result.ok || !result.data) {
-      setState({ kind: "error", message: result.error ?? "No data" });
+    const result = await npDispatchPluginAction(pluginId, table.rowsActionId, "table");
+    if (!result.ok) {
+      setState({ kind: "error", message: result.error });
       return;
     }
-    const data = result.data as { rows?: unknown; total?: unknown };
-    const rows = Array.isArray(data.rows) ? (data.rows as Array<Record<string, unknown>>) : [];
-    const total = typeof data.total === "number" ? data.total : rows.length;
-    setState({ kind: "ready", rows, total });
+    setState({ kind: "ready", rows: result.data.rows, total: result.data.total });
   }, [pluginId, table]);
 
   useEffect(() => {

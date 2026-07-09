@@ -248,8 +248,10 @@ GET /api/admin/ops/plugins
 
 The `status` and `doctor` endpoints mirror the local `np.ops.v1` and
 `np.doctor.v1` contracts. The `plugins` endpoint reports the runtime registry
-that is already loaded in the process. The local `nexpress ops plugins ...` CLI
-remains the static config and package-inspection surface.
+that is already loaded in the process, including setup-time action kinds and
+Admin action-contract diagnostics. The local `nexpress ops plugins ...` CLI
+remains the static config and package-inspection surface; it validates
+definition-level actions without executing plugin setup code.
 
 ### Admin mutation ops API
 
@@ -445,7 +447,11 @@ Implementation status:
 - `nexpress ops plugins list --json` and
   `nexpress ops plugins doctor --json` emit
   `schemaVersion: "np.ops-plugins.v1"` with plugin inventory plus duplicate
-  plugin ID, block type, API route, and page route warnings. Non-ready reports
+  plugin ID, block type, API route, page route, and Admin action-contract
+  diagnostics. Missing or incompatible typed actions block the report;
+  unsafe URL-segment ids also block, while duplicate, setup-untyped, and
+  Admin-unreferenced actions request attention.
+  Non-ready reports
   include `plan.nextCommands` / `plan.projectNextCommands`; duplicate-contract
   warnings point first at `nexpress ops plugins inspect <pluginId> --json`
   for the conflicting plugins, then back to doctor for verification.

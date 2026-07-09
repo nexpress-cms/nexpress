@@ -19,7 +19,7 @@ in the `admin` block. Every `admin` section is optional; declare what
 you actually need.
 
 ```ts
-import { definePlugin } from "@nexpress/plugin-sdk";
+import { definePlugin, npAdminMetric, npAdminStatus, npAdminTable } from "@nexpress/plugin-sdk";
 import { z } from "zod";
 
 const configSchema = z.object({
@@ -28,10 +28,43 @@ const configSchema = z.object({
 });
 
 export default definePlugin({
-  manifest: {
-    /* ... */
-  },
+  manifest: {/* ... */},
   configSchema,
+
+  actions: {
+    getQuota: {
+      kind: "metric",
+      handler: async () => npAdminMetric("4,200 calls", "-60 vs yesterday"),
+    },
+    healthCheck: {
+      kind: "status",
+      handler: async (_data, ctx) => {
+        const res = await ctx.http.fetch("https://api.example.com/health");
+        return res.ok
+          ? npAdminStatus("ok", "All systems go")
+          : npAdminStatus("error", `Provider returned ${res.status}`);
+      },
+    },
+    fullResync: {
+      kind: "action",
+      handler: async () => {
+        // … run the expensive job …
+        return { ok: true, data: "Resync queued." };
+      },
+    },
+    listFailures: {
+      kind: "table",
+      handler: async (_data, ctx) => {
+        const result = await ctx.content.find("posts", { where: { status: "archived" } });
+        const rows = result.docs.map((document) => ({
+          documentId: document.id,
+          reason: "stale",
+          at: document.updatedAt,
+        }));
+        return npAdminTable(rows, result.totalDocs);
+      },
+    },
+  },
 
   admin: {
     widgets: [
@@ -59,42 +92,6 @@ export default definePlugin({
         emptyMessage: "Nothing has failed recently.",
       },
     ],
-  },
-
-  setup: async (ctx) => {
-    ctx.actions.register("getQuota", async () => ({
-      ok: true,
-      data: { value: "4,200 calls", delta: "-60 vs yesterday" },
-    }));
-
-    ctx.actions.register("healthCheck", async () => {
-      const res = await ctx.http.fetch("https://api.example.com/health");
-      return {
-        ok: true,
-        data: res.ok
-          ? { level: "ok", message: "All systems go" }
-          : { level: "error", message: `Provider returned ${res.status}` },
-      };
-    });
-
-    ctx.actions.register("fullResync", async () => {
-      // … run the expensive job …
-      return { ok: true, data: "Resync queued." };
-    });
-
-    ctx.actions.register("listFailures", async () => ({
-      ok: true,
-      data: {
-        rows: await ctx.content.find("posts", { where: { status: "archived" } }).then((r) =>
-          r.docs.map((d) => ({
-            documentId: d.id,
-            reason: "stale",
-            at: d.updatedAt,
-          })),
-        ),
-        total: 42,
-      },
-    }));
   },
 });
 ```
@@ -212,19 +209,45 @@ Requires the `admin:dashboard` capability.
 
 ## Wiring handlers
 
-Every widget / action / table references a handler registered during
-`setup`. Use the typed helpers when the action backs a known admin
-surface:
+New plugins should declare handlers in the definition-level `actions`
+registry. Each key is the `actionId` referenced by `admin`; `kind` binds the
+handler return type to the primitive that consumes it:
 
-- `ctx.actions.registerMetric(actionId, handler)` for metric widgets.
-- `ctx.actions.registerStatus(actionId, handler)` for status widgets.
-- `ctx.actions.registerTable(actionId, handler)` for tables.
-- `ctx.actions.register(actionId, handler)` for general buttons.
+- `kind: "metric"` for metric widgets.
+- `kind: "status"` for status widgets.
+- `kind: "table"` for tables.
+- `kind: "action"` for general operations.
+
+Admin-facing action ids may be any non-empty string except the URL dot
+segments `.` and `..`; those are rejected by `definePlugin()` and plugin
+doctor before an Admin request is constructed.
+
+`definePlugin()` checks registry-backed widget/table references as soon as the
+plugin module is evaluated. A missing id (when no `setup` callback can supply
+it) or metric/status/table kind mismatch fails there instead of waiting for an
+operator click. General buttons may reference any kind, so a status or metric
+handler can still power both a widget and a manual refresh button.
+
+The original setup-time API remains available for existing plugins and truly
+dynamic registrations:
+
+- `ctx.actions.registerMetric(actionId, handler)`
+- `ctx.actions.registerStatus(actionId, handler)`
+- `ctx.actions.registerTable(actionId, handler)`
+- `ctx.actions.register(actionId, handler)`
+
+The host records those kinds and validates them after `setup`. Because the
+static CLI doctor deliberately does not execute setup code, definition-level
+actions provide the strongest build-time and doctor coverage; setup-only
+typed consumers are reported as legacy/unverifiable until runtime inspection.
+During a gradual migration, registry entries are checked immediately while
+references left for `setup` remain warnings until the runtime registry is
+available.
 
 Handlers have full `ctx` access (content, media, storage, settings, http,
-…) and return the standard `{ ok, data?, error? }` shape. The SDK also
-exports `npAdminMetric()`, `npAdminStatus()`, `npAdminTable()`, and
-`npAdminActionError()` to build the common result payloads.
+…) and return the standard `{ ok, data?, error? }` shape. The SDK exports
+`npAdminMetric()`, `npAdminStatus()`, `npAdminTable()`, and
+`npAdminActionError()` for common results.
 
 The admin dispatches through `POST /api/plugins/:id/actions/:actionId`,
 which is admin-only + CSRF-protected + rate-limited by the existing
@@ -248,9 +271,10 @@ hatch is under consideration — open an issue if you hit the limit.
 
 - **No plugin code runs in the admin**. Values are JSON the admin
   renders itself. XSS-escape happens in the admin's renderer.
-- Plugin manifest is validated with Zod at `definePlugin` time — typos
-  in widget kinds or missing field properties fail the plugin build,
-  not the user's page load.
+- Plugin metadata and admin structure are validated with Zod at
+  `definePlugin` time. Definition-level actions additionally catch provably
+  missing ids and incompatible metric/status/table kinds before the admin
+  renders.
 - Action dispatch requires a staff session with `admin.manage` + CSRF
   token. Non-admin users can't trigger plugin actions even if they
   guess an actionId.

@@ -1,9 +1,11 @@
 import type { NpBlockDefinition } from "@nexpress/blocks";
 import {
   getAllPluginIds,
+  getPluginAdminActionDiagnostics,
   getPluginPageRoutes,
   getPluginRegistration,
   getPluginRoutes,
+  getRegisteredPluginActions,
   type PluginRouteHandler,
 } from "@nexpress/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,9 +16,11 @@ import { collectRuntimeOpsPluginsStatus } from "./ops-plugins-runtime";
 
 vi.mock("@nexpress/core", () => ({
   getAllPluginIds: vi.fn(),
+  getPluginAdminActionDiagnostics: vi.fn(),
   getPluginPageRoutes: vi.fn(),
   getPluginRegistration: vi.fn(),
   getPluginRoutes: vi.fn(),
+  getRegisteredPluginActions: vi.fn(),
 }));
 
 vi.mock("@nexpress/blocks", () => ({
@@ -24,17 +28,21 @@ vi.mock("@nexpress/blocks", () => ({
 }));
 
 const mockPluginIds = vi.mocked(getAllPluginIds);
+const mockPluginActionDiagnostics = vi.mocked(getPluginAdminActionDiagnostics);
 const mockPluginRoutes = vi.mocked(getPluginRoutes);
 const mockPluginPageRoutes = vi.mocked(getPluginPageRoutes);
 const mockPluginRegistration = vi.mocked(getPluginRegistration);
+const mockRegisteredPluginActions = vi.mocked(getRegisteredPluginActions);
 const mockRegisteredBlocks = vi.mocked(getRegisteredBlocks);
 
 describe("ops plugins runtime", () => {
   beforeEach(() => {
     mockPluginIds.mockReturnValue([]);
+    mockPluginActionDiagnostics.mockReturnValue([]);
     mockPluginRoutes.mockReturnValue([]);
     mockPluginPageRoutes.mockReturnValue([]);
     mockPluginRegistration.mockReturnValue(undefined);
+    mockRegisteredPluginActions.mockReturnValue([]);
     mockRegisteredBlocks.mockReturnValue([]);
   });
 
@@ -68,6 +76,9 @@ describe("ops plugins runtime", () => {
       },
     ]);
     mockRegisteredBlocks.mockReturnValue([block("discussion-list", "plugin:forum")]);
+    mockRegisteredPluginActions.mockReturnValue([
+      { id: "countDiscussions", kind: "metric", source: "definition" },
+    ]);
 
     const report = collectRuntimeOpsPluginsStatus();
 
@@ -78,6 +89,7 @@ describe("ops plugins runtime", () => {
       routes: 1,
       pageRoutes: 1,
       scheduled: 1,
+      actions: 1,
     });
     expect(report.plugins[0]).toMatchObject({
       id: "forum",
@@ -87,6 +99,7 @@ describe("ops plugins runtime", () => {
       routes: ["GET /stats"],
       pageRoutes: ["/forum"],
       scheduled: ["digest"],
+      actions: [{ id: "countDiscussions", kind: "metric", source: "definition" }],
     });
   });
 
@@ -120,6 +133,78 @@ describe("ops plugins runtime", () => {
       expect.arrayContaining([
         "plugins.runtime_page_route_conflict",
         "plugins.runtime_block_conflict",
+      ]),
+    );
+  });
+
+  it("surfaces runtime action contract diagnostics with stable check ids", () => {
+    mockPluginIds.mockReturnValue(["analytics"]);
+    mockRegisteredPluginActions.mockReturnValue([
+      { id: "quota", kind: "status", source: "setup" },
+      { id: "orphan", kind: "action", source: "setup" },
+    ]);
+    mockPluginActionDiagnostics.mockReturnValue([
+      {
+        code: "kind-mismatch",
+        severity: "error",
+        actionId: "quota",
+        message: 'Action "quota" is registered as status, but declarative admin expects metric.',
+        locations: ["admin.widgets.quota"],
+        expectedKind: "metric",
+        actualKind: "status",
+      },
+      {
+        code: "unused",
+        severity: "warning",
+        actionId: "orphan",
+        message: 'Action "orphan" is not referenced by declarative admin.',
+        locations: [],
+        actualKind: "action",
+      },
+    ]);
+
+    const report = collectRuntimeOpsPluginsStatus();
+
+    expect(report.status).toBe("blocked");
+    expect(report.summary).toMatchObject({ actions: 2, errors: 1, warnings: 1 });
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.action_kind_mismatch",
+          state: "error",
+          pluginIds: ["analytics"],
+        }),
+        expect.objectContaining({
+          id: "plugins.action_unreferenced",
+          state: "warn",
+          pluginIds: ["analytics"],
+        }),
+      ]),
+    );
+  });
+
+  it("targets runtime next commands at the plugin that owns the diagnostic", () => {
+    mockPluginIds.mockReturnValue(["clean", "broken"]);
+    mockPluginActionDiagnostics.mockImplementation((pluginId) =>
+      pluginId === "broken"
+        ? [
+            {
+              code: "missing",
+              severity: "error",
+              actionId: "sync",
+              message: 'Declarative admin references missing action "sync".',
+              locations: ["admin.actions.sync"],
+            },
+          ]
+        : [],
+    );
+
+    const report = collectRuntimeOpsPluginsStatus();
+
+    expect(report.nextCommand).toBe("nexpress ops plugins inspect broken --json");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "plugins.action_missing", pluginIds: ["broken"] }),
       ]),
     );
   });

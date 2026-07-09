@@ -275,10 +275,10 @@ import { z } from "zod";
  *   - \`widgets\` — small status / metric cards shown on the plugin's
  *     dashboard at \`/admin/plugins/<id>\`.
  *   - \`actions\` — buttons that dispatch a registered action handler
- *     (\`ctx.actions.registerStatus(actionId, …)\`).
+ *     from the definition-level \`actions\` registry.
  *
  * The action and the widget both reference \`actionId: "syncStatus"\`,
- * which the \`setup(ctx)\` block below registers. Click the action
+ * which the typed registry below declares. Click the action
  * button OR re-render the widget and the same handler runs.
  *
  * Settings persist into \`np_settings\` under \`plugin.config:<id>\`;
@@ -322,20 +322,25 @@ export const ${names.exportName} = definePlugin<${names.componentName}Config>({
       },
     ],
   },
-  setup: (ctx) => {
-    // \`ctx.actions.registerStatus\` MUST run during setup — the admin's
-    // action / widget routes look up the handler at request time.
-    ctx.actions.registerStatus("syncStatus", async () => {
-      const config = ctx.config;
-      if (!config.enabled) {
-        return npAdminStatus("warn", "Plugin is disabled in settings.");
-      }
-      if (!config.apiKey) {
-        return npAdminStatus("error", "Missing API key in settings.");
-      }
-      // Replace with a real upstream call once you've wired one up.
-      return npAdminStatus("ok", "All systems go.");
-    });
+  actions: {
+    // The registry keeps action id, result kind, and handler together so
+    // definePlugin + plugin doctor can verify every admin reference before
+    // an operator clicks it. General action buttons may share this typed
+    // status handler; only widgets/tables impose a result kind.
+    syncStatus: {
+      kind: "status",
+      handler: async (_data, ctx) => {
+        const config = ctx.config;
+        if (!config.enabled) {
+          return npAdminStatus("warn", "Plugin is disabled in settings.");
+        }
+        if (!config.apiKey) {
+          return npAdminStatus("error", "Missing API key in settings.");
+        }
+        // Replace with a real upstream call once you've wired one up.
+        return npAdminStatus("ok", "All systems go.");
+      },
+    },
   },
 });
 
@@ -352,9 +357,9 @@ The starter ships:
 - a status widget that shows up / down
 - a manual "Ping now" action button
 
-Both the widget and the action call the same \`syncStatus\` handler
-registered in \`setup(ctx)\`. Replace the body with a real upstream
-call to make this plugin do something.
+Both the widget and the action call the same typed \`syncStatus\` handler
+declared in the definition-level \`actions\` registry. Replace the body with a
+real upstream call to make this plugin do something.
 `;
 
   const files: Record<string, string> = {

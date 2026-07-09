@@ -27,6 +27,12 @@ These notes come from building two bundled example plugins in May 2026:
 - `ctx.storage` now includes `append()` and `listValues()` for event-log style
   plugin data. `analytics-lite` uses those helpers instead of rewriting an
   array under one key.
+- Definition-level `actions: { [actionId]: { kind, handler } }` now binds
+  handler result types to admin consumers. `definePlugin()` catches provably
+  missing ids and incompatible metric/status/table kinds during module evaluation,
+  while plugin doctor reports missing, mismatched, duplicate, untyped, and
+  admin-unreferenced actions. The setup-time `ctx.actions.register*` API
+  remains compatible for existing and dynamic plugins.
 
 That keeps sample plugin manifests focused on the capabilities that cannot be
 inferred from syntax, such as `storage:kv` and `network:fetch`.
@@ -42,8 +48,7 @@ inferred from syntax, such as `storage:kv` and `network:fetch`.
 - CLI plugin scaffold tests now cover package-shape consistency and ensure
   admin scaffolds use the typed status helper instead of hand-built payloads.
 
-## Follow-Ups
-
-- Consider a future manifest-level action registry if we want to validate that
-  a specific widget's `actionId` points to a compatible registered action id at
-  plugin definition time.
+The action registry landed at definition level rather than inside `manifest`.
+Handlers are runtime functions, so keeping them beside `routes` and
+`scheduled` preserves the live manifest's metadata-only contract and avoids
+repeating each id in admin, manifest metadata, and setup.

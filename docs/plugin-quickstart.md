@@ -64,14 +64,14 @@ bottom covers the npm-publish variant.
 The fastest path is the `nexpress create *-plugin` generator. It picks
 the right starter for what you're building:
 
-| Command                                                         | Starter shape                                                                                                      |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `nexpress create block-plugin <slug> --workspace`               | One static page-builder block under `packages/plugins/<slug>`.                                                     |
-| `nexpress create block-plugin <slug> --interactive --workspace` | Static block + a `"use client"` form, with the directive / `splitting: false` / self-import wiring pre-configured. |
-| `nexpress create hook-plugin <slug> --workspace`                | One `content:afterCreate` hook handler.                                                                            |
-| `nexpress create route-plugin <slug> --workspace`               | One public `GET /health` route.                                                                                    |
-| `nexpress create admin-plugin <slug> --workspace`               | `configSchema` settings form + status widget + manual action, all wired through `ctx.actions.register`.            |
-| `nexpress create scheduled-plugin <slug> --workspace`           | One nightly cron task at 02:00.                                                                                    |
+| Command                                                         | Starter shape                                                                                                            |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `nexpress create block-plugin <slug> --workspace`               | One static page-builder block under `packages/plugins/<slug>`.                                                           |
+| `nexpress create block-plugin <slug> --interactive --workspace` | Static block + a `"use client"` form, with the directive / `splitting: false` / self-import wiring pre-configured.       |
+| `nexpress create hook-plugin <slug> --workspace`                | One `content:afterCreate` hook handler.                                                                                  |
+| `nexpress create route-plugin <slug> --workspace`               | One public `GET /health` route.                                                                                          |
+| `nexpress create admin-plugin <slug> --workspace`               | `configSchema` settings form + status widget + manual action, wired through a typed definition-level `actions` registry. |
+| `nexpress create scheduled-plugin <slug> --workspace`           | One nightly cron task at 02:00.                                                                                          |
 
 ```bash
 pnpm exec nexpress create hook-plugin my-plugin --workspace
@@ -218,7 +218,10 @@ definition. The framework introspects it into a labeled form on
 required.
 
 The `nexpress create admin-plugin <slug>` starter uses this pattern
-by default, then layers widgets and actions beside the auto-form.
+by default, then layers widgets and actions beside the auto-form. Its
+definition-level `actions` registry lets `definePlugin()` and
+`nexpress ops plugins doctor` verify every admin `actionId` without running
+setup.
 
 ```ts
 import { definePlugin } from "@nexpress/plugin-sdk";

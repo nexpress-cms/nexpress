@@ -2,7 +2,13 @@ import * as fs from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { invalidatePluginEnabled } from "@nexpress/core";
+import {
+  invalidatePluginEnabled,
+  npAnalyzePluginAdminActionContract,
+  type NpPluginActionKind,
+  type NpPluginAdminActionIssue,
+  type NpRegisteredPluginAction,
+} from "@nexpress/core";
 import pg from "pg";
 
 import { toProjectCommand } from "./ops-command-format.js";
@@ -42,6 +48,9 @@ interface PluginLike {
   routes?: unknown;
   pageRoutes?: unknown;
   scheduled?: unknown;
+  actions?: unknown;
+  admin?: unknown;
+  setup?: unknown;
 }
 
 interface ConfigLike {
@@ -86,6 +95,7 @@ export interface OpsPluginEntry {
     fields: string[];
     collections: string[];
     adminExtensions: string[];
+    actions: string[];
     apiRoutes: string[];
     pageRoutes: string[];
     scheduledTasks: string[];
@@ -102,6 +112,7 @@ export interface OpsPluginEntry {
   routes: string[];
   pageRoutes: string[];
   scheduled: string[];
+  actions: NpRegisteredPluginAction[];
 }
 
 export interface OpsPluginsSummary {
@@ -110,6 +121,7 @@ export interface OpsPluginsSummary {
   routes: number;
   pageRoutes: number;
   scheduled: number;
+  actions: number;
   warnings: number;
   errors: number;
 }
@@ -285,6 +297,7 @@ function readProvides(value: unknown): OpsPluginEntry["provides"] {
     fields: readStringArray(source.fields),
     collections: readStringArray(source.collections),
     adminExtensions: readStringArray(source.adminExtensions),
+    actions: readStringArray(source.actions),
     apiRoutes: readStringArray(source.apiRoutes),
     pageRoutes: readStringArray(source.pageRoutes),
     scheduledTasks: readStringArray(source.scheduledTasks),
@@ -323,6 +336,151 @@ function blockKey(block: unknown): string | null {
   return readString(block.type);
 }
 
+function readActionDefinitions(value: unknown): NpRegisteredPluginAction[] {
+  if (!isObject(value)) return [];
+  const validKinds = new Set<NpPluginActionKind>(["action", "metric", "status", "table"]);
+  return Object.entries(value)
+    .flatMap(([id, rawAction]) => {
+      if (
+        !isObject(rawAction) ||
+        !validKinds.has(rawAction.kind as NpPluginActionKind) ||
+        typeof rawAction.handler !== "function"
+      ) {
+        return [];
+      }
+      return [
+        {
+          id,
+          kind: rawAction.kind as NpPluginActionKind,
+          source: "definition" as const,
+          description: readString(rawAction.description) ?? undefined,
+        },
+      ];
+    })
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+const ACTION_CHECK_IDS = {
+  missing: "plugins.action_missing",
+  "kind-mismatch": "plugins.action_kind_mismatch",
+  "conflicting-references": "plugins.action_conflicting_references",
+  duplicate: "plugins.action_duplicate",
+  untyped: "plugins.action_untyped",
+  unused: "plugins.action_unreferenced",
+  "unsafe-id": "plugins.action_unsafe_id",
+} as const satisfies Record<NpPluginAdminActionIssue["code"], string>;
+
+function buildActionChecks(
+  diagnostics: Array<{ pluginId: string; issues: NpPluginAdminActionIssue[] }>,
+): CheckResult[] {
+  const grouped = new Map<
+    NpPluginAdminActionIssue["code"],
+    { details: string[]; pluginIds: string[] }
+  >();
+  for (const { pluginId, issues } of diagnostics) {
+    for (const issue of issues) {
+      const locations = issue.locations.length > 0 ? ` (${issue.locations.join(", ")})` : "";
+      const detail = `${pluginId}: ${issue.message}${locations}`;
+      const current = grouped.get(issue.code) ?? { details: [], pluginIds: [] };
+      grouped.set(issue.code, {
+        details: [...current.details, detail],
+        pluginIds: [...current.pluginIds, pluginId],
+      });
+    }
+  }
+
+  return [...grouped.entries()].map(([code, group]) => {
+    const hasError = diagnostics.some(({ issues }) =>
+      issues.some((issue) => issue.code === code && issue.severity === "error"),
+    );
+    return {
+      id: ACTION_CHECK_IDS[code],
+      state: hasError ? "error" : "warn",
+      label: "Plugin admin action contracts",
+      detail: group.details.join("; "),
+      pluginIds: uniqueStrings(group.pluginIds),
+      hint: withDoctorRerun(
+        code === "untyped"
+          ? "Declare a definition-level actions registry so doctor can verify action ids and result kinds without executing setup."
+          : code === "unused"
+            ? "Reference the action from declarative admin or remove it when it is not intentionally dispatch-only."
+            : code === "unsafe-id"
+              ? 'Rename the Admin action id so it is not "." or "..".'
+              : "Align declarative admin action ids and expected kinds with the plugin's actions registry.",
+      ),
+    } satisfies CheckResult;
+  });
+}
+
+function analyzeStaticPluginActions(
+  plugin: PluginLike,
+  normalized: OpsPluginEntry,
+): NpPluginAdminActionIssue[] {
+  const issues = npAnalyzePluginAdminActionContract(plugin.admin, normalized.actions);
+  if (typeof plugin.setup !== "function") return issues;
+
+  // Missing definition entries may be supplied by setup. Static doctor must
+  // not claim they are absent without executing plugin code, but it should
+  // keep them visible until runtime doctor confirms the actual registration.
+  return issues.map((issue) =>
+    issue.code === "missing"
+      ? {
+          ...issue,
+          code: "untyped" as const,
+          severity: "warning" as const,
+          message:
+            `Action "${issue.actionId}" may be registered dynamically during setup, so ` +
+            "static doctor cannot verify that it exists or returns the expected result kind.",
+        }
+      : issue,
+  );
+}
+
+function actionContractImportCheck(error: unknown): CheckResult | null {
+  const detail = error instanceof Error ? error.message : String(error);
+  const unsafe = detail.match(/^\[plugin:([^\]]+)\].*uses unsafe action id "(\.{1,2})"\.?$/u);
+  if (unsafe) {
+    return {
+      id: ACTION_CHECK_IDS["unsafe-id"],
+      state: "error",
+      label: "Plugin admin action contracts",
+      detail,
+      pluginIds: unsafe[1] ? [unsafe[1]] : undefined,
+      hint: withDoctorRerun(`Rename action "${unsafe[2] ?? "unknown"}" to a safe URL segment.`),
+    };
+  }
+  const missing = detail.match(/^\[plugin:([^\]]+)\].*references missing action "([^"]+)"\.?$/u);
+  if (missing) {
+    return {
+      id: ACTION_CHECK_IDS.missing,
+      state: "error",
+      label: "Plugin admin action contracts",
+      detail,
+      pluginIds: missing[1] ? [missing[1]] : undefined,
+      hint: withDoctorRerun(
+        `Declare action "${missing[2] ?? "unknown"}" in the ${missing[1] ?? "plugin"} definition-level actions registry.`,
+      ),
+    };
+  }
+
+  const mismatch = detail.match(
+    /^\[plugin:([^\]]+)\].*expects a (metric|status|table) action, but "([^"]+)" is registered as (action|metric|status|table)\.?$/u,
+  );
+  if (mismatch) {
+    return {
+      id: ACTION_CHECK_IDS["kind-mismatch"],
+      state: "error",
+      label: "Plugin admin action contracts",
+      detail,
+      pluginIds: mismatch[1] ? [mismatch[1]] : undefined,
+      hint: withDoctorRerun(
+        `Change action "${mismatch[3] ?? "unknown"}" to kind ${mismatch[2] ?? "expected"}, or update the consuming admin surface.`,
+      ),
+    };
+  }
+  return null;
+}
+
 function duplicateChecks(
   id: string,
   label: string,
@@ -343,9 +501,9 @@ function duplicateChecks(
     label,
     detail: duplicates
       .map(([key, plugins]) => `${key} is claimed by plugins ${plugins.join(", ")}`)
-      .slice(0, 5)
       .join("; "),
     hint: resolution,
+    pluginIds: uniqueStrings(duplicates.flatMap(([, plugins]) => plugins)),
   };
 }
 
@@ -372,13 +530,13 @@ function buildOpsPluginNextCommands(
 ): string[] {
   if (status === "ready") return [];
 
-  const duplicateInspectCommands = checks.flatMap((check) =>
-    duplicateCheckPluginIds(check).map(
+  const targetedInspectCommands = checks.flatMap((check) =>
+    uniqueStrings([...(check.pluginIds ?? []), ...duplicateCheckPluginIds(check)]).map(
       (pluginId) => `nexpress ops plugins inspect ${pluginId} --json`,
     ),
   );
-  if (duplicateInspectCommands.length > 0) {
-    return uniqueStrings([...duplicateInspectCommands, OPS_PLUGINS_DOCTOR_COMMAND]);
+  if (targetedInspectCommands.length > 0) {
+    return uniqueStrings([...targetedInspectCommands, OPS_PLUGINS_DOCTOR_COMMAND]);
   }
 
   const firstPlugin = plugins[0];
@@ -399,6 +557,7 @@ function summarize(checks: CheckResult[], plugins: OpsPluginEntry[]): OpsPlugins
     routes: plugins.reduce((total, plugin) => total + plugin.routes.length, 0),
     pageRoutes: plugins.reduce((total, plugin) => total + plugin.pageRoutes.length, 0),
     scheduled: plugins.reduce((total, plugin) => total + plugin.scheduled.length, 0),
+    actions: plugins.reduce((total, plugin) => total + plugin.actions.length, 0),
     warnings: checks.filter((check) => check.state === "warn").length,
     errors: checks.filter((check) => check.state === "error").length,
   };
@@ -436,6 +595,7 @@ function normalizePlugin(plugin: PluginLike, index: number): OpsPluginEntry {
     scheduled: readArray(plugin.scheduled)
       .map(scheduledKey)
       .filter((key): key is string => Boolean(key)),
+    actions: readActionDefinitions(plugin.actions),
   };
 }
 
@@ -468,6 +628,9 @@ export function buildOpsPluginsJson(args: {
 }
 
 function checkMentionsPlugin(check: CheckResult, pluginId: string): boolean {
+  if (check.pluginIds && check.pluginIds.length > 0) {
+    return check.pluginIds.includes(pluginId);
+  }
   return (
     check.id === "plugins.config_file" ||
     check.id === "plugins.config" ||
@@ -500,6 +663,7 @@ export function buildOpsPluginInspectJson(
         routes: 0,
         pageRoutes: 0,
         scheduled: 0,
+        actions: 0,
         warnings: relatedChecks.filter((check) => check.state === "warn").length,
         errors: relatedChecks.filter((check) => check.state === "error").length,
       };
@@ -576,6 +740,18 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
       ),
     });
   }
+
+  checks.push(
+    ...buildActionChecks(
+      pluginObjects.map((plugin, index) => {
+        const normalized = normalizePlugin(plugin, index);
+        return {
+          pluginId: normalized.id,
+          issues: analyzeStaticPluginActions(plugin, normalized),
+        };
+      }),
+    ),
+  );
 
   const duplicateIds = duplicateChecks(
     "plugins.duplicate_id",
@@ -669,6 +845,7 @@ export async function collectOpsPluginsStatus(
       ],
     });
   } catch (error: unknown) {
+    const actionCheck = actionContractImportCheck(error);
     return buildOpsPluginsJson({
       plugins: [],
       checks: [
@@ -679,6 +856,7 @@ export async function collectOpsPluginsStatus(
           detail: error instanceof Error ? error.message : String(error),
           hint: withDoctorRerun("Fix the config import error."),
         },
+        ...(actionCheck ? [actionCheck] : []),
       ],
     });
   }
@@ -916,7 +1094,7 @@ export function renderBriefOpsPluginsStatus(
         : `${c.red}blocked${c.reset}`;
   const lines = [
     `${c.dim}NexPress ops plugins${c.reset}`,
-    `${state}: ${report.summary.plugins.toString()} plugins, ${report.summary.blocks.toString()} blocks, ${report.summary.routes.toString()} API routes, ${report.summary.pageRoutes.toString()} page routes`,
+    `${state}: ${report.summary.plugins.toString()} plugins, ${report.summary.actions.toString()} actions, ${report.summary.blocks.toString()} blocks, ${report.summary.routes.toString()} API routes, ${report.summary.pageRoutes.toString()} page routes`,
   ];
   if (mode === "list") {
     for (const plugin of report.plugins) {
@@ -939,6 +1117,11 @@ export function renderBriefOpsPluginsStatus(
       if (plugin.routes.length > 0) lines.push(`routes: ${plugin.routes.join(", ")}`);
       if (plugin.pageRoutes.length > 0) lines.push(`page routes: ${plugin.pageRoutes.join(", ")}`);
       if (plugin.scheduled.length > 0) lines.push(`scheduled: ${plugin.scheduled.join(", ")}`);
+      if (plugin.actions.length > 0) {
+        lines.push(
+          `actions: ${plugin.actions.map((action) => `${action.id} (${action.kind})`).join(", ")}`,
+        );
+      }
       if (inspectReport.relatedChecks.length > 0) {
         lines.push("checks:");
         for (const check of inspectReport.relatedChecks) {

@@ -6,6 +6,8 @@ export interface CheckResult {
   label: string;
   detail?: string;
   hint?: string;
+  /** Exact plugin ownership for plugin-ops checks; omitted by other doctors. */
+  pluginIds?: string[];
 }
 
 type ProductionReadinessEnv = Record<string, string | undefined>;

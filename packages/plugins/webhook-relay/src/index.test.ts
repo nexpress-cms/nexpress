@@ -33,4 +33,16 @@ describe("webhook-relay", () => {
   it("declares wildcard outbound hosts for operator-configured endpoints", () => {
     expect(webhookRelayPlugin.manifest.allowedHosts).toEqual(["*"]);
   });
+
+  it("declares the admin action id and kind inventory", () => {
+    expect(
+      Object.entries(webhookRelayPlugin.actions ?? {}).map(([id, action]) => ({
+        id,
+        kind: action.kind,
+      })),
+    ).toEqual([
+      { id: "lastDelivery", kind: "status" },
+      { id: "sendTest", kind: "action" },
+    ]);
+  });
 });

@@ -1,9 +1,13 @@
 import { getRegisteredBlocks } from "@nexpress/blocks";
 import {
   getAllPluginIds,
+  getPluginAdminActionDiagnostics,
   getPluginPageRoutes,
   getPluginRegistration,
   getPluginRoutes,
+  getRegisteredPluginActions,
+  type NpPluginAdminActionIssue,
+  type NpRegisteredPluginAction,
   type PluginPageRouteEntry,
   type PluginRouteHandler,
 } from "@nexpress/core";
@@ -35,6 +39,7 @@ export function collectRuntimeOpsPluginsStatus(): OpsPluginsJson {
     buildRuntimePluginEntry({
       pluginId,
       index,
+      actions: getRegisteredPluginActions(pluginId),
       routes: routesByPlugin.get(pluginId) ?? [],
       pageRoutes: pageRoutesByPlugin.get(pluginId) ?? [],
       blocks: blocksByPlugin.get(pluginId) ?? [],
@@ -49,6 +54,10 @@ export function collectRuntimeOpsPluginsStatus(): OpsPluginsJson {
       routesByPlugin,
       pageRoutesByPlugin,
       blocksByPlugin,
+      actionDiagnostics: pluginIds.map((pluginId) => ({
+        pluginId,
+        issues: getPluginAdminActionDiagnostics(pluginId),
+      })),
     }),
   });
 }
@@ -56,13 +65,13 @@ export function collectRuntimeOpsPluginsStatus(): OpsPluginsJson {
 function buildRuntimePluginEntry(args: {
   pluginId: string;
   index: number;
+  actions: NpRegisteredPluginAction[];
   routes: PluginRouteHandler[];
   pageRoutes: RuntimePageRoute[];
   blocks: string[];
 }): OpsPluginEntry {
   const registration = getPluginRegistration(args.pluginId) as
-    | RuntimePluginRegistration
-    | undefined;
+    RuntimePluginRegistration | undefined;
   const scheduled = scheduledTaskIds(registration);
 
   return {
@@ -83,6 +92,7 @@ function buildRuntimePluginEntry(args: {
       fields: [],
       collections: [],
       adminExtensions: [],
+      actions: args.actions.map((action) => action.id),
       apiRoutes: routeKeys(args.routes),
       pageRoutes: pageRouteKeys(args.pageRoutes),
       scheduledTasks: scheduled,
@@ -95,6 +105,7 @@ function buildRuntimePluginEntry(args: {
     routes: routeKeys(args.routes),
     pageRoutes: pageRouteKeys(args.pageRoutes),
     scheduled,
+    actions: args.actions,
   };
 }
 
@@ -104,6 +115,7 @@ function buildRuntimeChecks(args: {
   routesByPlugin: Map<string, PluginRouteHandler[]>;
   pageRoutesByPlugin: Map<string, RuntimePageRoute[]>;
   blocksByPlugin: Map<string, string[]>;
+  actionDiagnostics: Array<{ pluginId: string; issues: NpPluginAdminActionIssue[] }>;
 }): CheckResult[] {
   const pageRouteConflicts = duplicateCheck(
     "plugins.runtime_page_route_conflict",
@@ -151,8 +163,58 @@ function buildRuntimeChecks(args: {
         countGrouped(args.blocksByPlugin) === 1 ? "" : "s"
       } visible in the shared registry`,
     },
+    ...buildRuntimeActionChecks(args.actionDiagnostics),
     ...[pageRouteConflicts, blockConflicts].filter((check): check is CheckResult => Boolean(check)),
   ];
+}
+
+const ACTION_CHECK_IDS = {
+  missing: "plugins.action_missing",
+  "kind-mismatch": "plugins.action_kind_mismatch",
+  "conflicting-references": "plugins.action_conflicting_references",
+  duplicate: "plugins.action_duplicate",
+  untyped: "plugins.action_untyped",
+  unused: "plugins.action_unreferenced",
+  "unsafe-id": "plugins.action_unsafe_id",
+} as const satisfies Record<NpPluginAdminActionIssue["code"], string>;
+
+function buildRuntimeActionChecks(
+  diagnostics: Array<{ pluginId: string; issues: NpPluginAdminActionIssue[] }>,
+): CheckResult[] {
+  const grouped = new Map<
+    NpPluginAdminActionIssue["code"],
+    { details: string[]; pluginIds: string[] }
+  >();
+  for (const { pluginId, issues } of diagnostics) {
+    for (const issue of issues) {
+      const locations = issue.locations.length > 0 ? ` (${issue.locations.join(", ")})` : "";
+      const current = grouped.get(issue.code) ?? { details: [], pluginIds: [] };
+      grouped.set(issue.code, {
+        details: [...current.details, `${pluginId}: ${issue.message}${locations}`],
+        pluginIds: [...current.pluginIds, pluginId],
+      });
+    }
+  }
+
+  return [...grouped.entries()].map(([code, group]) => ({
+    id: ACTION_CHECK_IDS[code],
+    state: diagnostics.some(({ issues }) =>
+      issues.some((issue) => issue.code === code && issue.severity === "error"),
+    )
+      ? "error"
+      : "warn",
+    label: "Runtime plugin admin action contracts",
+    detail: group.details.join("; "),
+    pluginIds: uniqueStrings(group.pluginIds),
+    hint:
+      code === "untyped"
+        ? "Use a definition-level action or the matching typed setup registration helper."
+        : code === "unused"
+          ? "Reference the action from declarative admin or keep it only when dispatch-only use is intentional."
+          : code === "unsafe-id"
+            ? 'Rename the Admin action id so it is not "." or "..".'
+            : "Align declarative admin action ids and expected kinds with runtime registrations, then restart.",
+  }));
 }
 
 function groupRoutesByPlugin(routes: PluginRouteHandler[]): Map<string, PluginRouteHandler[]> {
@@ -225,9 +287,9 @@ function duplicateCheck(
     label,
     detail: duplicates
       .map(([key, plugins]) => `${key} is claimed by plugins ${plugins.join(", ")}`)
-      .slice(0, 5)
       .join("; "),
     hint,
+    pluginIds: uniqueStrings(duplicates.flatMap(([, plugins]) => plugins)),
   };
 }
 
@@ -245,6 +307,7 @@ function buildRuntimeOpsPluginsJson(args: {
     routes: args.plugins.reduce((total, plugin) => total + plugin.routes.length, 0),
     pageRoutes: args.plugins.reduce((total, plugin) => total + plugin.pageRoutes.length, 0),
     scheduled: args.plugins.reduce((total, plugin) => total + plugin.scheduled.length, 0),
+    actions: args.plugins.reduce((total, plugin) => total + plugin.actions.length, 0),
     warnings: args.checks.filter((check) => check.state === "warn").length,
     errors: args.checks.filter((check) => check.state === "error").length,
   };
@@ -274,13 +337,13 @@ function buildRuntimeNextCommands(
   plugins: OpsPluginEntry[],
 ): string[] {
   if (status === "ready") return [];
-  const duplicateInspectCommands = checks.flatMap((check) =>
-    duplicateCheckPluginIds(check).map(
+  const targetedInspectCommands = checks.flatMap((check) =>
+    uniqueStrings([...(check.pluginIds ?? []), ...duplicateCheckPluginIds(check)]).map(
       (pluginId) => `nexpress ops plugins inspect ${pluginId} --json`,
     ),
   );
-  if (duplicateInspectCommands.length > 0) {
-    return uniqueStrings([...duplicateInspectCommands, "nexpress ops plugins doctor --json"]);
+  if (targetedInspectCommands.length > 0) {
+    return uniqueStrings([...targetedInspectCommands, "nexpress ops plugins doctor --json"]);
   }
   const firstPlugin = plugins[0];
   return firstPlugin

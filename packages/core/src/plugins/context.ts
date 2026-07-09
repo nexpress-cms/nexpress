@@ -24,6 +24,12 @@ import { getScopedLogger } from "../observability/logger.js";
 import { reportError } from "../observability/error-reporter.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
+import {
+  npValidatePluginActionResult,
+  type NpPluginActionRegistrationConflict,
+  type NpPluginActionKind,
+  type NpRegisteredPluginAction,
+} from "./admin-action-contract.js";
 
 /**
  * Two distinct fallbacks live here, intentionally:
@@ -68,6 +74,8 @@ const pluginPrincipal = (pluginId: string): NpAuthUser => ({
 
 interface RegistrationLike {
   actions: Map<string, (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>>;
+  actionMetadata?: Map<string, NpRegisteredPluginAction>;
+  actionConflicts?: NpPluginActionRegistrationConflict[];
 }
 
 type RuntimeActionResult = { ok: boolean; data?: unknown; error?: string };
@@ -159,8 +167,28 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
   // plugin output without each plugin reaching for `console.*`.
   const pluginLog = getScopedLogger({ pluginId });
 
-  function registerAction(actionName: string, handler: RuntimeActionHandler): void {
-    registration.actions.set(actionName, (data) => handler(data, runtimeContext));
+  function registerAction(
+    actionName: string,
+    kind: NpPluginActionKind,
+    handler: RuntimeActionHandler,
+  ): void {
+    const metadata: NpRegisteredPluginAction = {
+      id: actionName,
+      kind,
+      source: "setup",
+    };
+    const previous = registration.actionMetadata?.get(actionName);
+    if (previous) {
+      registration.actionConflicts?.push({
+        actionId: actionName,
+        previous,
+        replacement: metadata,
+      });
+    }
+    registration.actionMetadata?.set(actionName, metadata);
+    registration.actions.set(actionName, async (data) =>
+      npValidatePluginActionResult(pluginId, actionName, kind, await handler(data, runtimeContext)),
+    );
   }
 
   const runtimeContext: Record<string, unknown> = {
@@ -680,16 +708,16 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
 
     actions: {
       register(actionName: string, handler: RuntimeActionHandler): void {
-        registerAction(actionName, handler);
+        registerAction(actionName, "action", handler);
       },
       registerMetric(actionName: string, handler: RuntimeActionHandler): void {
-        registerAction(actionName, handler);
+        registerAction(actionName, "metric", handler);
       },
       registerStatus(actionName: string, handler: RuntimeActionHandler): void {
-        registerAction(actionName, handler);
+        registerAction(actionName, "status", handler);
       },
       registerTable(actionName: string, handler: RuntimeActionHandler): void {
-        registerAction(actionName, handler);
+        registerAction(actionName, "table", handler);
       },
       async dispatch(
         targetPluginId: string,

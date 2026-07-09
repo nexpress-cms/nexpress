@@ -133,8 +133,7 @@ export interface NpPluginUser {
 }
 
 export type NpHookPrincipal =
-  | { kind: "staff"; user: NpPluginUser }
-  | { kind: "member"; memberId: string };
+  { kind: "staff"; user: NpPluginUser } | { kind: "member"; memberId: string };
 
 /**
  * Legacy plugin-block declaration shape from a never-implemented
@@ -202,7 +201,7 @@ export interface NpAdminWidgetExtension {
   id: string;
   label: string;
   kind: "metric" | "status";
-  /** The action id the plugin registered via `ctx.actions.register(actionId, …)`. */
+  /** Key from definition-level `actions`, or a compatible setup registration id. */
   actionId: string;
   /** Optional help text shown under the widget label. */
   description?: string;
@@ -215,6 +214,7 @@ export interface NpAdminWidgetExtension {
 export interface NpAdminActionExtension {
   id: string;
   label: string;
+  /** Key from definition-level `actions`, or a compatible setup registration id. */
   actionId: string;
   /** Shown in a confirmation dialog before dispatch. Omit to skip confirm. */
   confirm?: string;
@@ -229,7 +229,7 @@ export interface NpAdminTableExtension {
   id: string;
   label: string;
   columns: Array<{ name: string; label: string }>;
-  /** Action that returns `{ rows: Record<string, unknown>[], total: number }`. */
+  /** Table action that returns `{ rows: Record<string, unknown>[], total: number }`. */
   rowsActionId: string;
   emptyMessage?: string;
 }
@@ -451,12 +451,7 @@ export interface NpReadableStreamLike<T = Uint8Array> extends AsyncIterable<T> {
 export type NpUploadInput = Uint8Array | ArrayBuffer | NpReadableStreamLike<Uint8Array>;
 
 export type NpFetchBody =
-  | string
-  | Uint8Array
-  | ArrayBuffer
-  | ArrayBufferView
-  | Record<string, unknown>
-  | null;
+  string | Uint8Array | ArrayBuffer | ArrayBufferView | Record<string, unknown> | null;
 
 export interface NpFetchOptions {
   method?: string;
@@ -502,6 +497,49 @@ export interface NpActionResult<TData = unknown> {
   data?: TData;
   error?: string;
 }
+
+/**
+ * Result contract attached to a definition-level plugin action.
+ *
+ * `"action"` is the general-purpose shape consumed by admin buttons and
+ * inter-plugin dispatch. The other kinds bind the handler's successful data
+ * shape to the admin primitive that consumes it.
+ */
+export type NpPluginActionKind = "action" | "metric" | "status" | "table";
+
+export type NpPluginActionDefinition<TConfig = Record<string, unknown>> =
+  | {
+      kind: "action";
+      handler: NpActionHandler<TConfig>;
+      description?: string;
+    }
+  | {
+      kind: "metric";
+      handler: NpActionHandler<TConfig, NpAdminMetricResult>;
+      description?: string;
+    }
+  | {
+      kind: "status";
+      handler: NpActionHandler<TConfig, NpAdminStatusResult>;
+      description?: string;
+    }
+  | {
+      kind: "table";
+      handler: NpActionHandler<TConfig, NpAdminTableResult>;
+      description?: string;
+    };
+
+/**
+ * Definition-level action registry. The object key is the `actionId` used by
+ * declarative admin widgets, tables, and buttons.
+ *
+ * This is additive to the original `setup(ctx)` + `ctx.actions.register*`
+ * API. New plugins should prefer the registry because `definePlugin()` and
+ * plugin doctor can validate ids and result kinds without executing setup.
+ */
+export type NpPluginActionRegistry<TConfig = Record<string, unknown>> = Readonly<
+  Record<string, NpPluginActionDefinition<TConfig>>
+>;
 
 export interface NpPluginContext<TConfig = Record<string, unknown>> {
   readonly pluginId: string;
@@ -620,8 +658,7 @@ export interface NpHookContext<TConfig = Record<string, unknown>> {
 }
 
 export type NpHookHandler<TConfig = Record<string, unknown>> =
-  | ((ctx: NpHookContext<TConfig>) => unknown)
-  | string;
+  ((ctx: NpHookContext<TConfig>) => unknown) | string;
 
 /**
  * Object form of a hook registration: lets a plugin pick a non-default
@@ -685,6 +722,13 @@ export interface NpPluginDefinition<TConfig = Record<string, unknown>> {
   patterns?: NpPattern[];
   fields?: NpFieldRegistration[];
   admin?: NpAdminExtension;
+  /**
+   * Named action handlers used by declarative admin surfaces and optional
+   * inter-plugin dispatch. `definePlugin()` validates typed admin references
+   * against this registry immediately; the host registers the handlers at
+   * boot. Existing setup-time `ctx.actions.register*` calls remain supported.
+   */
+  actions?: NpPluginActionRegistry<TConfig>;
   hooks?: NpHookRegistration<TConfig>;
   routes?: NpRouteRegistration<TConfig>[];
   scheduled?: NpScheduledTask<TConfig>[];

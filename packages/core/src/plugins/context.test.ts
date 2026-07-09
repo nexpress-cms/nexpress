@@ -42,14 +42,22 @@ function buildCtx(overrides?: {
     http: {
       fetch(
         url: string,
-        opts?: { method?: string; headers?: Record<string, string>; body?: unknown; timeoutMs?: number },
+        opts?: {
+          method?: string;
+          headers?: Record<string, string>;
+          body?: unknown;
+          timeoutMs?: number;
+        },
       ): Promise<{ ok: boolean; status: number; headers: Record<string, string>; body?: unknown }>;
     };
     storage: {
       get(key: string): Promise<unknown>;
     };
     errors: {
-      report(error: unknown, context?: { extra?: Record<string, unknown>; tags?: Record<string, string> }): Promise<void>;
+      report(
+        error: unknown,
+        context?: { extra?: Record<string, unknown>; tags?: Record<string, string> },
+      ): Promise<void>;
     };
     actions: {
       register(
@@ -119,7 +127,12 @@ describe("ctx.cache", () => {
       config: {},
       registration: registrationA,
       lookupRegistration: () => undefined,
-    }) as { cache: { set: (k: string, v: unknown) => Promise<void>; get: (k: string) => Promise<unknown> } };
+    }) as {
+      cache: {
+        set: (k: string, v: unknown) => Promise<void>;
+        get: (k: string) => Promise<unknown>;
+      };
+    };
     const ctxB = createPluginRuntimeContext({
       pluginId: "plugin-b",
       capabilities: [],
@@ -155,6 +168,84 @@ describe("ctx.actions", () => {
       },
     });
   });
+
+  it("records setup registration kinds and validates typed results", async () => {
+    const registration = {
+      actions: new Map(),
+      actionMetadata: new Map(),
+      actionConflicts: [],
+    };
+    const ctx = createPluginRuntimeContext({
+      pluginId: "typed-plugin",
+      capabilities: [],
+      allowedHosts: [],
+      config: {},
+      registration,
+      lookupRegistration: () => registration,
+    }) as {
+      actions: {
+        registerMetric(
+          actionName: string,
+          handler: () => Promise<{ ok: boolean; data?: unknown }>,
+        ): void;
+        dispatch(
+          pluginId: string,
+          actionName: string,
+        ): Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      };
+    };
+
+    ctx.actions.registerMetric("views", () => Promise.resolve({ ok: true, data: { level: "ok" } }));
+
+    expect(registration.actionMetadata.get("views")).toEqual({
+      id: "views",
+      kind: "metric",
+      source: "setup",
+    });
+    await expect(ctx.actions.dispatch("typed-plugin", "views")).resolves.toEqual({
+      ok: false,
+      error:
+        '[plugin:typed-plugin] action "views" returned an invalid result: metric data.value must be a string or number',
+    });
+  });
+
+  it("keeps setup last-write-wins while recording duplicate registrations", () => {
+    const registration = {
+      actions: new Map(),
+      actionMetadata: new Map(),
+      actionConflicts: [],
+    };
+    const ctx = createPluginRuntimeContext({
+      pluginId: "duplicate-plugin",
+      capabilities: [],
+      allowedHosts: [],
+      config: {},
+      registration,
+      lookupRegistration: () => registration,
+    }) as {
+      actions: {
+        register(actionName: string, handler: () => Promise<{ ok: boolean }>): void;
+        registerStatus(
+          actionName: string,
+          handler: () => Promise<{ ok: boolean; data?: unknown }>,
+        ): void;
+      };
+    };
+
+    ctx.actions.register("shared", () => Promise.resolve({ ok: true }));
+    ctx.actions.registerStatus("shared", () =>
+      Promise.resolve({ ok: true, data: { level: "ok", message: "ok" } }),
+    );
+
+    expect(registration.actionMetadata.get("shared")?.kind).toBe("status");
+    expect(registration.actionConflicts).toEqual([
+      {
+        actionId: "shared",
+        previous: { id: "shared", kind: "action", source: "setup" },
+        replacement: { id: "shared", kind: "status", source: "setup" },
+      },
+    ]);
+  });
 });
 
 describe("ctx.http.fetch allowedHosts", () => {
@@ -177,17 +268,13 @@ describe("ctx.http.fetch allowedHosts", () => {
 
   it("requires the network:fetch capability", async () => {
     const ctx = buildCtx({ capabilities: [], allowedHosts: ["example.com"] });
-    await expect(ctx.http.fetch("https://example.com/x")).rejects.toBeInstanceOf(
-      NpForbiddenError,
-    );
+    await expect(ctx.http.fetch("https://example.com/x")).rejects.toBeInstanceOf(NpForbiddenError);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("blocks every URL when allowedHosts is empty", async () => {
     const ctx = buildCtx({ capabilities: ["network:fetch"], allowedHosts: [] });
-    await expect(ctx.http.fetch("https://example.com/x")).rejects.toThrow(
-      /allowedHosts/,
-    );
+    await expect(ctx.http.fetch("https://example.com/x")).rejects.toThrow(/allowedHosts/);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -206,9 +293,7 @@ describe("ctx.http.fetch allowedHosts", () => {
       capabilities: ["network:fetch"],
       allowedHosts: ["example.com"],
     });
-    await expect(ctx.http.fetch("https://other.com/x")).rejects.toThrow(
-      /other\.com/,
-    );
+    await expect(ctx.http.fetch("https://other.com/x")).rejects.toThrow(/other\.com/);
   });
 
   it("supports *.domain wildcards for subdomains", async () => {
@@ -241,9 +326,7 @@ describe("ctx.http.fetch allowedHosts", () => {
 describe("ctx.storage capability gating", () => {
   it("refuses storage.get without storage:kv", async () => {
     const ctx = buildCtx({ capabilities: [] });
-    await expect(ctx.storage.get("any-key")).rejects.toBeInstanceOf(
-      NpForbiddenError,
-    );
+    await expect(ctx.storage.get("any-key")).rejects.toBeInstanceOf(NpForbiddenError);
   });
 });
 
