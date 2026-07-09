@@ -44,8 +44,16 @@ import { NpRichTextEditor } from "@nexpress/editor/client";
   value={value}
   onChange={setValue}
   config={{ placeholder: "Write…", onUploadImage }}
-/>
+/>;
 ```
+
+`value` supports authoritative parent-side replacements. Normal typing stays
+inside the mounted Lexical editor and reports through `onChange`, preserving
+focus, selection, and undo history. If the parent later supplies different
+content—for example after a form reset, autosave recovery, or revision
+restore—the editor replaces its visible state and clears the stale undo stack
+so the restored content cannot be undone back to the superseded document.
+Passing `null` resets the editor to one empty paragraph.
 
 ## What's in the box
 

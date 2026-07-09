@@ -15,7 +15,7 @@ import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 
 import { ImageNode } from "./image-node.js";
-import { NpEditorOnChangePlugin } from "./on-change-plugin.js";
+import { NpEditorStateBridgePlugin } from "./editor-state-bridge-plugin.js";
 import { ToolbarPlugin } from "./toolbar-plugin.js";
 import type { NpEditorConfig, NpRichTextContent } from "./types.js";
 
@@ -39,22 +39,9 @@ const NODES = [
 ];
 
 export function NpRichTextEditor({ value, onChange, config }: NpRichTextEditorProps) {
-  // Capture the value at first mount only. After that, Lexical's
-  // internal editor state IS the source of truth — typing flows
-  // out via NpEditorOnChangePlugin → form → `value` prop, but we
-  // deliberately do NOT feed `value` back into the composer on
-  // every render. The previous implementation re-keyed the
-  // <LexicalComposer> on the serialized value, which destroyed
-  // and recreated the entire editor (including the contenteditable
-  // node) per keystroke — losing focus, undo history, and
-  // selection. (#XXX)
-  //
-  // Trade-off: this means external value resets (e.g. the form's
-  // reset() being called programmatically) won't propagate into
-  // the editor. Not a v1 use case in this codebase; if it lands,
-  // wire a separate sync effect that calls
-  // `editor.setEditorState(editor.parseEditorState(json))` on
-  // identity changes that aren't from our own onChange.
+  // Capture the initial value without keying the composer on every change.
+  // The bridge below keeps editor-originated changes internal, but replaces
+  // the state when a parent supplies an authoritative reset/recovery value.
   const [initialEditorState] = useState(() => (value ? JSON.stringify(value) : undefined));
   const [initialReadOnly] = useState(() => Boolean(config?.readOnly));
 
@@ -108,7 +95,7 @@ export function NpRichTextEditor({ value, onChange, config }: NpRichTextEditorPr
         <ListPlugin />
         <LinkPlugin />
         <HorizontalRulePlugin />
-        <NpEditorOnChangePlugin onChange={onChange} />
+        <NpEditorStateBridgePlugin value={value} onChange={onChange} />
       </div>
     </LexicalComposer>
   );
