@@ -198,24 +198,46 @@ const id = await enqueueJob("media:processImage", {
 Recurring jobs are registered via pg-boss's
 `boss.schedule(name, cron, data)`. The framework's
 `scheduleRecurring()` method (called by `startWorker()`)
-registers the two system crons:
+registers built-in maintenance crons plus plugin-declared cron
+tasks:
 
 ```ts
 // packages/core/src/jobs/pg-boss-adapter.ts
 async scheduleRecurring(): Promise<void> {
   await this.boss.schedule(toQueueName("system:revisionPrune"), "0 3 * * *", {});
   await this.boss.schedule(toQueueName("system:sessionCleanup"), "0 * * * *", {});
+  await this.boss.schedule(toQueueName("system:jobLogPrune"), "30 3 * * *", {});
+  await this.boss.schedule(toQueueName("notifications:sendDigest"), "0 8 * * *", {
+    cadence: "daily",
+  });
+
+  for (const schedule of getRegisteredPluginSchedules()) {
+    await this.boss.schedule(
+      `plugin.scheduledTask.${schedule.pluginId}.${schedule.taskId}`,
+      schedule.cron,
+      { pluginId: schedule.pluginId, taskId: schedule.taskId },
+    );
+  }
 }
 ```
 
-Plugins that want to add their own crons currently extend
-this method (or call `boss.schedule()` directly via the
-exposed `getBoss()` accessor on `PgBossAdapter`). A first-
-class plugin API for cron declarations is a documented
-follow-up.
+Plugins add recurring work through
+`definePlugin({ scheduled: [{ id, cron, handler }] })`.
+`@nexpress/plugin-sdk` auto-adds the `hooks:scheduled`
+capability for that surface; hand-rolled plugin definitions must
+declare it explicitly or the host refuses the schedule at load
+time. Each plugin schedule becomes one `pgboss.schedule` row under
+`plugin.scheduledTask.<pluginId>.<taskId>` and dispatches through
+the shared `plugin:scheduledTask` handler.
+
+`boss.schedule()` via `PgBossAdapter.getBoss()` is still an escape
+hatch for application-local code, but plugin authors should prefer
+the declarative `scheduled` surface so reload, manifest metadata,
+capability checks, and admin schedule inspection stay aligned.
 
 The full schedule list is visible at runtime in
-`/admin/jobs` → Scheduled tab → "Cron schedules" card.
+`/admin/jobs` → Scheduled tab → "Cron schedules" card. That card
+labels framework, plugin, and custom schedule rows separately.
 
 ---
 
@@ -426,14 +448,16 @@ honest about what's missing rather than letting it drift.
 - **Worker heartbeat / liveness** — Phase 19 (#212). The
   worker upserts to `np_worker_heartbeats` every 30s; alive
   = `running` AND last-seen within 90s. Surfaced via
-  `GET /api/admin/jobs/health`. Operations playbook above
-  should be updated when the admin UI exposes the health
-  endpoint visually.
+  `GET /api/admin/jobs/health`, the Jobs worker-health card,
+  and `nexpress ops jobs status --json`.
 - **Plugin-declared cron schedules** — Phase 19 (#212).
   `definePlugin({ scheduled: [...] })` is now read by the
   host; pg-boss adapter registers the cron rows on worker
-  start. `boss.schedule()` via `getBoss()` still works as
-  the escape hatch.
+  start and reconciles `plugin.scheduledTask.*` rows during
+  plugin reload. Adding a new schedule in a separate worker
+  deployment still needs a worker restart so `boss.work()` loops
+  are installed in the worker process. `boss.schedule()` via
+  `getBoss()` still works as the application-local escape hatch.
 - **Dead-letter queue inspection** — Phase 20.4. The admin
   Jobs page has a dedicated **Archive** tab that reads from
   `pgboss.archive` only, with a banner explaining that

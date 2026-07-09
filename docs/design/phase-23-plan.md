@@ -124,12 +124,17 @@ Plus a job log query helper in `@nexpress/core/jobs` so plugin
 authors can build their own monitoring on top.
 
 **Status update (2026-05-03):** the count + threshold + widget
-piece shipped. The job-log query helper was deferred to a
-follow-up — `listJobLogs`/`countJobLogs` already exist on the
-`@nexpress/core/jobs` subpath (Phase 19), so the build-your-own-
-monitoring path is unblocked; what's still missing is a curated
-"recent failures" helper that joins counts with their last log
-entries. Tracked under category 5 (API completeness).
+piece shipped. `listJobLogs` / `countJobLogs` already existed on
+the `@nexpress/core/jobs` subpath (Phase 19), so the build-your-own
+monitoring path was unblocked.
+
+**Status update (2026-07-08):** the curated recent-failures helper
+also shipped: `listRecentJobFailures(queue)` returns the latest
+failed / expired / retrying jobs with their latest captured
+`np_job_logs` entry, and the same signal is exposed through
+`nexpress ops jobs status --json`, readiness/status checks, and the
+Admin Jobs worker-health card. This closes the Phase 23.5 API
+completeness follow-up.
 
 ### 23.6 — E2E coverage on golden paths
 

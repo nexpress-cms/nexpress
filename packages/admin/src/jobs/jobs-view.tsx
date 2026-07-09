@@ -666,32 +666,45 @@ function SchedulesPanel({
               </p>
             ) : (
               <ul className="divide-y divide-border/60">
-                {schedules.map((schedule) => (
-                  <li
-                    key={`${schedule.name}#${schedule.key}`}
-                    className="min-w-0 space-y-1 px-5 py-3"
-                  >
-                    <div className="flex min-w-0 flex-wrap items-baseline gap-2">
-                      <code className="break-all font-mono text-xs">{schedule.name}</code>
-                      {schedule.key ? (
-                        <code className="break-all rounded bg-muted px-1.5 py-0.5 text-[11px]">
-                          {schedule.key}
-                        </code>
-                      ) : null}
-                      <code className="break-all rounded bg-muted px-1.5 py-0.5 text-[11px]">
-                        {schedule.cron}
-                      </code>
-                      {schedule.timezone ? (
-                        <span className="break-all text-[10px] text-muted-foreground">
-                          {schedule.timezone}
+                {schedules.map((schedule) => {
+                  const kind = scheduleKind(schedule);
+                  return (
+                    <li
+                      key={`${schedule.name}#${schedule.key}`}
+                      className="min-w-0 space-y-1 px-5 py-3"
+                    >
+                      <div className="flex min-w-0 flex-wrap items-baseline gap-2">
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${kind.className}`}
+                        >
+                          {kind.label}
                         </span>
+                        <code className="break-all font-mono text-xs">{schedule.name}</code>
+                        {schedule.key ? (
+                          <code className="break-all rounded bg-muted px-1.5 py-0.5 text-[11px]">
+                            {schedule.key}
+                          </code>
+                        ) : null}
+                        <code className="break-all rounded bg-muted px-1.5 py-0.5 text-[11px]">
+                          {schedule.cron}
+                        </code>
+                        {schedule.timezone ? (
+                          <span className="break-all text-[10px] text-muted-foreground">
+                            {schedule.timezone}
+                          </span>
+                        ) : null}
+                      </div>
+                      {kind.detail ? (
+                        <p className="break-words text-[11px] text-muted-foreground">
+                          {kind.detail}
+                        </p>
                       ) : null}
-                    </div>
-                    <p className="break-words text-[11px] text-muted-foreground">
-                      Registered {new Date(schedule.createdOn).toLocaleString()}
-                    </p>
-                  </li>
-                ))}
+                      <p className="break-words text-[11px] text-muted-foreground">
+                        Registered {new Date(schedule.createdOn).toLocaleString()}
+                      </p>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </CardContent>
@@ -729,6 +742,36 @@ function SchedulesPanel({
       <EnqueuePanel handlers={handlers} onEnqueued={onEnqueued} />
     </div>
   );
+}
+
+function scheduleKind(schedule: ScheduleSummary): {
+  label: "plugin" | "framework" | "custom";
+  className: string;
+  detail: string | null;
+} {
+  if (schedule.name.startsWith("plugin.scheduledTask.")) {
+    const data = schedule.data && typeof schedule.data === "object" ? schedule.data : {};
+    const record = data as Record<string, unknown>;
+    const pluginId = typeof record.pluginId === "string" ? record.pluginId : null;
+    const taskId = typeof record.taskId === "string" ? record.taskId : null;
+    return {
+      label: "plugin",
+      className: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
+      detail: pluginId && taskId ? `Plugin task: ${pluginId} / ${taskId}` : "Plugin task",
+    };
+  }
+  if (schedule.name.startsWith("system.") || schedule.name.startsWith("notifications.")) {
+    return {
+      label: "framework",
+      className: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+      detail: null,
+    };
+  }
+  return {
+    label: "custom",
+    className: "bg-muted text-muted-foreground",
+    detail: null,
+  };
 }
 
 function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued: () => void }) {

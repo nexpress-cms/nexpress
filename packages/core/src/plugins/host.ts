@@ -505,6 +505,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
       if (typeof e.id !== "string" || e.id.length === 0) continue;
       if (typeof e.cron !== "string" || e.cron.length === 0) continue;
       if (typeof e.handler !== "function") continue;
+      assertCapability(manifest.id, "hooks:scheduled", registration.capabilities);
       registration.schedules.set(e.id, {
         pluginId: manifest.id,
         taskId: e.id,
