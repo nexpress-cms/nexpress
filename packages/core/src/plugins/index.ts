@@ -7,6 +7,8 @@ export {
   getPluginRegistration,
   getAllPluginIds,
   getPluginAdminExtension,
+  getPluginAdminActionDiagnostics,
+  getRegisteredPluginActions,
   getCollectionTabsForSlug,
   getDashboardWidgetsFromPlugins,
   dispatchPluginAction,
@@ -17,6 +19,22 @@ export {
   isPluginEnabled,
   invalidatePluginEnabled,
 } from "./host.js";
+
+export {
+  npAnalyzePluginAdminActionContract,
+  npCollectPluginAdminActionReferences,
+  npValidatePluginActionResult,
+} from "./admin-action-contract.js";
+
+export type {
+  NpPluginActionKind,
+  NpPluginActionRegistrationConflict,
+  NpPluginActionRegistrationSource,
+  NpPluginAdminActionIssue,
+  NpPluginAdminActionIssueCode,
+  NpPluginAdminActionReference,
+  NpRegisteredPluginAction,
+} from "./admin-action-contract.js";
 
 export type {
   PluginHookHandler,
@@ -50,10 +68,5 @@ export {
 
 export type { NpPluginState, NpPluginStateUpdate } from "./persistence.js";
 
-export {
-  checkNexpressCompat,
-  compareSemver,
-  getFrameworkVersion,
-  topoSort,
-} from "./compat.js";
+export { checkNexpressCompat, compareSemver, getFrameworkVersion, topoSort } from "./compat.js";
 export type { NexpressCompatResult, SortedPlugins } from "./compat.js";

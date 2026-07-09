@@ -82,6 +82,28 @@ export const webhookRelayPlugin = definePlugin<WebhookRelayConfig>({
     "content:afterUpdate": ({ data, ctx }) => deliver("content:afterUpdate", data, ctx),
     "content:afterDelete": ({ data, ctx }) => deliver("content:afterDelete", data, ctx),
   },
+  actions: {
+    lastDelivery: {
+      kind: "status",
+      handler: async (_data, ctx) => {
+        const last = await ctx.storage.get<{ ok: boolean; message: string }>("last-delivery");
+        return last
+          ? npAdminStatus(last.ok ? "ok" : "warn", last.message)
+          : npAdminStatus("warn", "No deliveries recorded yet.");
+      },
+    },
+    sendTest: {
+      kind: "action",
+      handler: async (_data, ctx) => {
+        const result = await deliver(
+          "webhook:test",
+          { collection: "test", doc: { id: "test", status: "published" } },
+          ctx,
+        );
+        return result.ok ? { ok: true, data: result.message } : npAdminActionError(result.message);
+      },
+    },
+  },
   admin: {
     widgets: [
       {
@@ -99,23 +121,6 @@ export const webhookRelayPlugin = definePlugin<WebhookRelayConfig>({
         confirm: "Send a test webhook delivery now?",
       },
     ],
-  },
-  setup: (ctx) => {
-    ctx.actions.registerStatus("lastDelivery", async () => {
-      const last = await ctx.storage.get<{ ok: boolean; message: string }>("last-delivery");
-      return last
-        ? npAdminStatus(last.ok ? "ok" : "warn", last.message)
-        : npAdminStatus("warn", "No deliveries recorded yet.");
-    });
-
-    ctx.actions.register("sendTest", async () => {
-      const result = await deliver(
-        "webhook:test",
-        { collection: "test", doc: { id: "test", status: "published" } },
-        ctx,
-      );
-      return result.ok ? { ok: true, data: result.message } : npAdminActionError(result.message);
-    });
   },
 });
 

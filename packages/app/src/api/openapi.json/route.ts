@@ -1158,7 +1158,7 @@ function buildSpec(): OpenApiSchema {
       post: {
         summary: "Dispatch a plugin action (admin only)",
         description:
-          "Invokes the action registered by the plugin via `ctx.actions.register(actionId, handler)`. Body is forwarded to the handler; widget/action shapes pass `{ collection, documentId }` for collection tabs, or an empty body for global widgets.",
+          "Invokes an action from the plugin's definition-level `actions` registry or setup-time `ctx.actions.register*` API. Body is forwarded to the handler; widget/action shapes pass `{ collection, documentId }` for collection tabs, or an empty body for global widgets.",
         requestBody: {
           required: false,
           content: {

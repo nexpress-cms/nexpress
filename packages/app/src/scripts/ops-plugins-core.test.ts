@@ -8,6 +8,7 @@ import {
   analyzePlugins,
   buildOpsPluginInspectJson,
   buildOpsPluginsUpgradePlanJson,
+  collectOpsPluginsStatus,
   renderBriefOpsPluginsMutation,
   renderBriefOpsPluginsStatus,
   runOpsPluginsMutation,
@@ -45,6 +46,7 @@ describe("ops plugins core", () => {
           blocks: 1,
           routes: 1,
           pageRoutes: 1,
+          actions: 0,
         }),
       }),
     );
@@ -108,9 +110,207 @@ describe("ops plugins core", () => {
     expect(renderBriefOpsPluginsStatus(report, "list", { color: false })).toBe(
       [
         "NexPress ops plugins",
-        "ready: 1 plugins, 0 blocks, 0 API routes, 0 page routes",
+        "ready: 1 plugins, 0 actions, 0 blocks, 0 API routes, 0 page routes",
         "- demo@1.0.0: Demo",
       ].join("\n"),
+    );
+  });
+
+  it("reports static admin action contract failures with stable check ids", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "admin-demo", name: "Admin demo" },
+        actions: {
+          quota: { kind: "status", handler: () => Promise.resolve({ ok: true }) },
+          shared: { kind: "metric", handler: () => Promise.resolve({ ok: true }) },
+          orphan: { kind: "action", handler: () => Promise.resolve({ ok: true }) },
+        },
+        admin: {
+          widgets: [
+            { id: "quota", label: "Quota", kind: "metric", actionId: "quota" },
+            { id: "missing", label: "Missing", kind: "status", actionId: "missing" },
+            { id: "shared-metric", label: "Shared", kind: "metric", actionId: "shared" },
+          ],
+          dashboardWidgets: [
+            { id: "shared-status", label: "Shared", kind: "status", actionId: "shared" },
+          ],
+        },
+      },
+    ]);
+
+    expect(report.status).toBe("blocked");
+    expect(report.summary.actions).toBe(3);
+    expect(report.plugins[0]?.actions).toEqual([
+      { id: "orphan", kind: "action", source: "definition", description: undefined },
+      { id: "quota", kind: "status", source: "definition", description: undefined },
+      { id: "shared", kind: "metric", source: "definition", description: undefined },
+    ]);
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "plugins.action_missing", state: "error" }),
+        expect.objectContaining({ id: "plugins.action_kind_mismatch", state: "error" }),
+        expect.objectContaining({
+          id: "plugins.action_conflicting_references",
+          state: "error",
+        }),
+        expect.objectContaining({ id: "plugins.action_unreferenced", state: "warn" }),
+      ]),
+    );
+  });
+
+  it("warns when legacy setup actions cannot be inspected statically", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "legacy", name: "Legacy" },
+        admin: {
+          widgets: [{ id: "health", label: "Health", kind: "status", actionId: "health" }],
+          actions: [{ id: "sync", label: "Sync", actionId: "sync" }],
+        },
+        setup: () => undefined,
+      },
+    ]);
+
+    expect(report.status).toBe("attention");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.action_untyped",
+          state: "warn",
+          detail: expect.stringContaining("legacy"),
+        }),
+      ]),
+    );
+  });
+
+  it("blocks missing actions when no setup callback can register them", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "broken", name: "Broken" },
+        admin: {
+          actions: [{ id: "sync", label: "Sync", actionId: "missing" }],
+        },
+      },
+    ]);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.action_missing",
+          state: "error",
+          pluginIds: ["broken"],
+        }),
+      ]),
+    );
+  });
+
+  it("blocks unsafe dot-segment action ids with a stable doctor check", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "unsafe", name: "Unsafe" },
+        actions: {
+          "..": { kind: "action", handler: () => Promise.resolve({ ok: true }) },
+        },
+        admin: {
+          actions: [{ id: "sync", label: "Sync", actionId: ".." }],
+        },
+      },
+    ]);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.action_unsafe_id",
+          state: "error",
+          pluginIds: ["unsafe"],
+        }),
+      ]),
+    );
+  });
+
+  it("supports partial registry migration while marking setup-provided ids untyped", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "mixed", name: "Mixed" },
+        actions: {
+          quota: { kind: "metric", handler: () => Promise.resolve({ ok: true }) },
+        },
+        admin: {
+          widgets: [
+            { id: "quota", label: "Quota", kind: "metric", actionId: "quota" },
+            { id: "health", label: "Health", kind: "status", actionId: "health" },
+          ],
+        },
+        setup: () => undefined,
+      },
+    ]);
+
+    expect(report.status).toBe("attention");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.action_untyped",
+          state: "warn",
+          pluginIds: ["mixed"],
+          detail: expect.stringContaining('Action "health"'),
+        }),
+      ]),
+    );
+    expect(report.checks).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "plugins.action_missing" })]),
+    );
+  });
+
+  it("keeps action diagnostics attached to exact plugins and targets the broken plugin", () => {
+    const plugins = [
+      { manifest: { id: "foo", name: "Foo" } },
+      ...Array.from({ length: 6 }, (_, index) => ({
+        manifest: {
+          id: index === 0 ? "foobar" : `broken-${index.toString()}`,
+          name: `Broken ${index.toString()}`,
+        },
+        admin: {
+          actions: [{ id: "sync", label: "Sync", actionId: `missing-${index.toString()}` }],
+        },
+      })),
+    ];
+    const report = analyzePlugins(plugins);
+
+    expect(report.nextCommand).toBe("nexpress ops plugins inspect foobar --json");
+    expect(buildOpsPluginInspectJson(report, "foo").status).toBe("ready");
+    const sixth = buildOpsPluginInspectJson(report, "broken-5");
+    expect(sixth.status).toBe("blocked");
+    expect(sixth.relatedChecks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.action_missing",
+          pluginIds: expect.arrayContaining(["broken-5"]),
+          detail: expect.stringContaining("broken-5"),
+        }),
+      ]),
+    );
+  });
+
+  it("preserves a structured missing-action check when definePlugin aborts config import", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "np-ops-plugins-action-import-"));
+    writeFileSync(
+      join(cwd, "nexpress.config.ts"),
+      `throw new Error('[plugin:demo] admin.widgets.quota references missing action "quota".');\n`,
+    );
+
+    const report = await collectOpsPluginsStatus(cwd);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "plugins.config_file", state: "error" }),
+        expect.objectContaining({
+          id: "plugins.action_missing",
+          state: "error",
+          detail: expect.stringContaining("admin.widgets.quota"),
+        }),
+      ]),
     );
   });
 

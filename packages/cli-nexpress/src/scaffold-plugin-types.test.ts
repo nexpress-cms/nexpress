@@ -93,7 +93,7 @@ describe("non-block scaffold generators", () => {
   describe("admin plugin", () => {
     commonAssertions("admin", scaffoldAdminPlugin);
 
-    it("declares configSchema + widget + action wired through typed status registration", async () => {
+    it("declares configSchema + widget + action wired through the typed action registry", async () => {
       const result = await scaffoldAdminPlugin({ slug: "status-card", outDir: workdir });
       const source = await readFile(join(result.packageDir, "src/index.tsx"), "utf-8");
       // All three admin surface kinds.
@@ -104,10 +104,14 @@ describe("non-block scaffold generators", () => {
       expect(source).not.toMatch(/fields:\s*\[/);
       expect(source).toMatch(/widgets:\s*\[/);
       expect(source).toMatch(/actions:\s*\[/);
-      // Setup hook registers the shared action handler.
+      // Definition-level registry owns the shared action handler.
       expect(source).toMatch(/import \{ definePlugin, npAdminStatus \}/);
-      expect(source).toMatch(/setup:\s*\(ctx\)\s*=>/);
-      expect(source).toMatch(/ctx\.actions\.registerStatus\("syncStatus"/);
+      expect(source).toMatch(/actions:\s*\{/);
+      expect(source).toMatch(/syncStatus:\s*\{/);
+      expect(source).toMatch(/kind:\s*"status"/);
+      expect(source).toMatch(/handler:\s*async \(_data, ctx\)/);
+      expect(source).not.toMatch(/setup:\s*\(ctx\)\s*=>/);
+      expect(source).not.toMatch(/ctx\.actions\.register/);
       expect(source).toMatch(/npAdminStatus\("ok", "All systems go\."\)/);
     });
 

@@ -535,6 +535,8 @@ export {
   pluginConfigCacheTag,
   getAllPluginIds,
   getPluginAdminExtension,
+  getPluginAdminActionDiagnostics,
+  getRegisteredPluginActions,
   getCollectionTabsForSlug,
   getDashboardWidgetsFromPlugins,
   dispatchPluginAction,
@@ -551,6 +553,9 @@ export {
   checkNexpressCompat,
   compareSemver,
   getFrameworkVersion,
+  npAnalyzePluginAdminActionContract,
+  npCollectPluginAdminActionReferences,
+  npValidatePluginActionResult,
 } from "./plugins/index.js";
 
 export type { NpPluginConfigResult } from "./plugins/index.js";
@@ -561,6 +566,13 @@ export type {
   PluginRouteResponse,
   PluginAdminExtension,
   PluginPageRouteEntry,
+  NpPluginActionKind,
+  NpPluginActionRegistrationConflict,
+  NpPluginActionRegistrationSource,
+  NpPluginAdminActionIssue,
+  NpPluginAdminActionIssueCode,
+  NpPluginAdminActionReference,
+  NpRegisteredPluginAction,
   ResolvedCollectionTab,
   ResolvedDashboardWidget,
   NpPluginState,

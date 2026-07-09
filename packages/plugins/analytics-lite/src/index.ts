@@ -185,6 +185,25 @@ export const analyticsLitePlugin = definePlugin<AnalyticsLiteConfig>({
       },
     },
   ],
+  actions: {
+    todayViews: {
+      kind: "metric",
+      handler: async (_data, ctx) => {
+        const events = await ctx.storage.listValues<NormalizedAnalyticsEvent>(eventKey());
+        return npAdminMetric(events.length, `${dayKey()} local UTC key`);
+      },
+    },
+    topPaths: {
+      kind: "table",
+      handler: async (_data, ctx) => {
+        const events = (await ctx.storage.listValues<NormalizedAnalyticsEvent>(eventKey())).map(
+          (row) => row.value,
+        );
+        const rows = rollupEvents(events).topPaths;
+        return npAdminTable(rows);
+      },
+    },
+  },
   admin: {
     widgets: [
       {
@@ -215,20 +234,6 @@ export const analyticsLitePlugin = definePlugin<AnalyticsLiteConfig>({
         priority: 30,
       },
     ],
-  },
-  setup: (ctx) => {
-    ctx.actions.registerMetric("todayViews", async () => {
-      const events = await ctx.storage.listValues<NormalizedAnalyticsEvent>(eventKey());
-      return npAdminMetric(events.length, `${dayKey()} local UTC key`);
-    });
-
-    ctx.actions.registerTable("topPaths", async () => {
-      const events = (await ctx.storage.listValues<NormalizedAnalyticsEvent>(eventKey())).map(
-        (row) => row.value,
-      );
-      const rows = rollupEvents(events).topPaths;
-      return npAdminTable(rows);
-    });
   },
 });
 

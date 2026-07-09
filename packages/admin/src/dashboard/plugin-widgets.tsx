@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 
-import { npFetch } from "../lib/api-client.js";
+import { npDispatchPluginAction } from "../lib/plugin-action-results.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 
 export interface DashboardPluginWidget {
@@ -18,19 +18,6 @@ export interface DashboardPluginWidget {
 
 interface DashboardPluginWidgetsProps {
   widgets: DashboardPluginWidget[];
-}
-
-type ActionResult = { ok: boolean; data?: unknown; error?: string };
-
-async function dispatch(pluginId: string, actionId: string): Promise<ActionResult> {
-  const response = await npFetch(`/api/plugins/${pluginId}/actions/${actionId}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "",
-  });
-  if (!response.ok) return { ok: false, error: `HTTP ${response.status}` };
-  const body = (await response.json().catch(() => null)) as ActionResult | null;
-  return body ?? { ok: false, error: "Empty response" };
 }
 
 export function DashboardPluginWidgets({ widgets }: DashboardPluginWidgetsProps) {
@@ -60,30 +47,27 @@ function PluginWidgetCard({ widget }: { widget: DashboardPluginWidget }) {
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
-    const result = await dispatch(widget.pluginId, widget.actionId);
-    if (!result.ok || !result.data) {
-      setState({ kind: "error", message: result.error ?? "No data returned" });
-      return;
-    }
-    const data = result.data as Record<string, unknown>;
     if (widget.kind === "metric") {
+      const result = await npDispatchPluginAction(widget.pluginId, widget.actionId, "metric");
+      if (!result.ok) {
+        setState({ kind: "error", message: result.error });
+        return;
+      }
       setState({
         kind: "metric",
-        value:
-          typeof data.value === "string" || typeof data.value === "number"
-            ? String(data.value)
-            : "—",
-        delta: typeof data.delta === "string" ? data.delta : undefined,
+        value: String(result.data.value),
+        delta: result.data.delta,
       });
     } else {
-      const level =
-        data.level === "ok" || data.level === "warn" || data.level === "error"
-          ? data.level
-          : "warn";
+      const result = await npDispatchPluginAction(widget.pluginId, widget.actionId, "status");
+      if (!result.ok) {
+        setState({ kind: "error", message: result.error });
+        return;
+      }
       setState({
         kind: "status",
-        level,
-        message: typeof data.message === "string" ? data.message : "",
+        level: result.data.level,
+        message: result.data.message,
       });
     }
   }, [widget]);

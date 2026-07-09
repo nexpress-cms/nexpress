@@ -104,6 +104,7 @@ describe("definePlugin — capability derivation", () => {
         ],
         dashboardWidgets: [{ id: "metric", label: "Metric", kind: "metric", actionId: "metric" }],
       },
+      setup: () => undefined,
     });
 
     expect(plugin.manifest.capabilities.sort()).toEqual([
@@ -142,6 +143,20 @@ describe("definePlugin — provides derivation (regression)", () => {
     expect(plugin.manifest.provides.scheduledTasks).toEqual(["sync-events"]);
   });
 
+  it("derives provides.actions from the definition-level registry", () => {
+    const plugin = definePlugin({
+      manifest: { ...baseManifest },
+      actions: {
+        refresh: {
+          kind: "action",
+          handler: () => Promise.resolve({ ok: true }),
+        },
+      },
+    });
+
+    expect(plugin.manifest.provides.actions).toEqual(["refresh"]);
+  });
+
   it("skips malformed scheduled entries while deriving provides", () => {
     const plugin = definePlugin({
       manifest: { ...baseManifest },
@@ -152,5 +167,217 @@ describe("definePlugin — provides derivation (regression)", () => {
     });
 
     expect(plugin.manifest.provides.scheduledTasks).toEqual(["valid"]);
+  });
+});
+
+describe("definePlugin — admin action contract", () => {
+  it("links metric, status, and table references to compatible handlers", () => {
+    expect(() =>
+      definePlugin({
+        manifest: { ...baseManifest },
+        actions: {
+          quota: {
+            kind: "metric",
+            handler: () => Promise.resolve({ ok: true, data: { value: 42 } }),
+          },
+          health: {
+            kind: "status",
+            handler: () => Promise.resolve({ ok: true, data: { level: "ok", message: "Healthy" } }),
+          },
+          rows: {
+            kind: "table",
+            handler: () => Promise.resolve({ ok: true, data: { rows: [], total: 0 } }),
+          },
+        },
+        admin: {
+          widgets: [
+            { id: "quota", label: "Quota", kind: "metric", actionId: "quota" },
+            { id: "health", label: "Health", kind: "status", actionId: "health" },
+          ],
+          tables: [
+            {
+              id: "rows",
+              label: "Rows",
+              columns: [{ name: "id", label: "ID" }],
+              rowsActionId: "rows",
+            },
+          ],
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it("allows a typed handler to be shared with a general admin button", () => {
+    expect(() =>
+      definePlugin({
+        manifest: { ...baseManifest },
+        actions: {
+          health: {
+            kind: "status",
+            handler: () => Promise.resolve({ ok: true, data: { level: "ok", message: "Healthy" } }),
+          },
+        },
+        admin: {
+          widgets: [{ id: "health", label: "Health", kind: "status", actionId: "health" }],
+          actions: [{ id: "refresh", label: "Refresh", actionId: "health" }],
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects a missing action as soon as the registry is declared", () => {
+    expect(() =>
+      definePlugin({
+        manifest: { ...baseManifest },
+        actions: {},
+        admin: {
+          widgets: [{ id: "quota", label: "Quota", kind: "metric", actionId: "missing" }],
+        },
+      }),
+    ).toThrow(/admin\.widgets\.quota references missing action "missing"/);
+  });
+
+  it.each([
+    ["metric", "status"],
+    ["status", "metric"],
+  ] as const)("rejects a %s widget backed by a %s handler", (widgetKind, actionKind) => {
+    const incompatible =
+      actionKind === "metric"
+        ? {
+            kind: "metric" as const,
+            handler: () => Promise.resolve({ ok: true, data: { value: 1 } }),
+          }
+        : {
+            kind: "status" as const,
+            handler: () =>
+              Promise.resolve({ ok: true, data: { level: "ok" as const, message: "ok" } }),
+          };
+    expect(() =>
+      definePlugin({
+        manifest: { ...baseManifest },
+        actions: {
+          incompatible,
+        },
+        admin: {
+          widgets: [{ id: "bad", label: "Bad", kind: widgetKind, actionId: "incompatible" }],
+        },
+      }),
+    ).toThrow(new RegExp(`expects a ${widgetKind} action.*registered as ${actionKind}`));
+  });
+
+  it("rejects a table backed by a non-table handler", () => {
+    expect(() =>
+      definePlugin({
+        manifest: { ...baseManifest },
+        actions: {
+          rows: {
+            kind: "action",
+            handler: () => Promise.resolve({ ok: true }),
+          },
+        },
+        admin: {
+          tables: [
+            {
+              id: "rows",
+              label: "Rows",
+              columns: [{ name: "id", label: "ID" }],
+              rowsActionId: "rows",
+            },
+          ],
+        },
+      }),
+    ).toThrow(/expects a table action.*registered as action/);
+  });
+
+  it("keeps setup-only action registration compatible", () => {
+    expect(() =>
+      definePlugin({
+        manifest: { ...baseManifest },
+        admin: {
+          widgets: [{ id: "legacy", label: "Legacy", kind: "metric", actionId: "setupOnly" }],
+        },
+        setup: (ctx) => {
+          ctx.actions.register("setupOnly", () =>
+            Promise.resolve({ ok: true, data: { value: 1 } }),
+          );
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it("supports gradual migration with definition and setup actions together", () => {
+    expect(() =>
+      definePlugin({
+        manifest: { ...baseManifest },
+        actions: {
+          quota: {
+            kind: "metric",
+            handler: () => Promise.resolve({ ok: true, data: { value: 1 } }),
+          },
+        },
+        admin: {
+          widgets: [
+            { id: "quota", label: "Quota", kind: "metric", actionId: "quota" },
+            { id: "health", label: "Health", kind: "status", actionId: "health" },
+          ],
+        },
+        setup: (ctx) => {
+          ctx.actions.registerStatus("health", () =>
+            Promise.resolve({ ok: true, data: { level: "ok", message: "Healthy" } }),
+          );
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects an admin reference when neither a registry nor setup can provide it", () => {
+    expect(() =>
+      definePlugin({
+        manifest: { ...baseManifest },
+        admin: {
+          actions: [{ id: "sync", label: "Sync", actionId: "missing" }],
+        },
+      }),
+    ).toThrow(/admin\.actions\.sync references missing action "missing"/);
+  });
+
+  it("does not treat inherited object properties as registered action ids", () => {
+    expect(() =>
+      definePlugin({
+        manifest: { ...baseManifest },
+        actions: {},
+        admin: {
+          actions: [{ id: "sync", label: "Sync", actionId: "toString" }],
+        },
+      }),
+    ).toThrow(/admin\.actions\.sync references missing action "toString"/);
+  });
+
+  it("rejects dot-segment action ids on admin surfaces", () => {
+    expect(() =>
+      definePlugin({
+        manifest: { ...baseManifest },
+        actions: {
+          ".": { kind: "action", handler: () => Promise.resolve({ ok: true }) },
+        },
+        admin: {
+          actions: [{ id: "sync", label: "Sync", actionId: "." }],
+        },
+      }),
+    ).toThrow(/admin\.actions\.sync uses unsafe action id "\."/);
+  });
+
+  it("rejects dot-segment admin references on the setup-only compatibility path", () => {
+    expect(() =>
+      definePlugin({
+        manifest: { ...baseManifest },
+        admin: {
+          actions: [{ id: "sync", label: "Sync", actionId: ".." }],
+        },
+        setup: (ctx) => {
+          ctx.actions.register("..", () => Promise.resolve({ ok: true }));
+        },
+      }),
+    ).toThrow(/admin\.actions\.sync uses unsafe action id "\.\."/);
   });
 });

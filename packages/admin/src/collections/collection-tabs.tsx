@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, Play } from "lucide-react";
 
-import { npFetch } from "../lib/api-client.js";
+import { npDispatchPluginAction } from "../lib/plugin-action-results.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 
@@ -37,25 +37,6 @@ interface CollectionTabsProps {
   tabs: CollectionTabDescriptor[];
   collection: string;
   documentId: string;
-}
-
-type ActionResult = { ok: boolean; data?: unknown; error?: string };
-
-async function dispatch(
-  pluginId: string,
-  actionId: string,
-  payload: Record<string, unknown>,
-): Promise<ActionResult> {
-  const response = await npFetch(`/api/plugins/${pluginId}/actions/${actionId}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    return { ok: false, error: `HTTP ${response.status}` };
-  }
-  const body = (await response.json().catch(() => null)) as ActionResult | null;
-  return body ?? { ok: false, error: "Empty response" };
 }
 
 export function CollectionTabs({ tabs, collection, documentId }: CollectionTabsProps) {
@@ -128,30 +109,33 @@ function TabWidget({
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
-    const result = await dispatch(pluginId, widget.actionId, { collection, documentId });
-    if (!result.ok || !result.data) {
-      setState({ kind: "error", message: result.error ?? "No data returned" });
-      return;
-    }
-    const data = result.data as Record<string, unknown>;
     if (widget.kind === "metric") {
+      const result = await npDispatchPluginAction(pluginId, widget.actionId, "metric", {
+        collection,
+        documentId,
+      });
+      if (!result.ok) {
+        setState({ kind: "error", message: result.error });
+        return;
+      }
       setState({
         kind: "metric",
-        value:
-          typeof data.value === "string" || typeof data.value === "number"
-            ? String(data.value)
-            : "—",
-        delta: typeof data.delta === "string" ? data.delta : undefined,
+        value: String(result.data.value),
+        delta: result.data.delta,
       });
     } else {
-      const level =
-        data.level === "ok" || data.level === "warn" || data.level === "error"
-          ? data.level
-          : "warn";
+      const result = await npDispatchPluginAction(pluginId, widget.actionId, "status", {
+        collection,
+        documentId,
+      });
+      if (!result.ok) {
+        setState({ kind: "error", message: result.error });
+        return;
+      }
       setState({
         kind: "status",
-        level,
-        message: typeof data.message === "string" ? data.message : "",
+        level: result.data.level,
+        message: result.data.message,
       });
     }
   }, [pluginId, widget, collection, documentId]);
@@ -218,10 +202,13 @@ function TabAction({
     if (action.confirm && !window.confirm(action.confirm)) return;
     setRunning(true);
     setToast(null);
-    const result = await dispatch(pluginId, action.actionId, { collection, documentId });
+    const result = await npDispatchPluginAction(pluginId, action.actionId, "action", {
+      collection,
+      documentId,
+    });
     setRunning(false);
     if (!result.ok) {
-      setToast({ type: "error", message: result.error ?? "Action failed." });
+      setToast({ type: "error", message: result.error });
       return;
     }
     setToast({

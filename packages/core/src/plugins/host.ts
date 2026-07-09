@@ -4,6 +4,14 @@ import { reportError } from "../observability/error-reporter.js";
 import { createPluginRuntimeContext } from "./context.js";
 import { isPluginEnabled } from "./enabled-gate.js";
 import { checkNexpressCompat, topoSort } from "./compat.js";
+import {
+  npAnalyzePluginAdminActionContract,
+  npValidatePluginActionResult,
+  type NpPluginActionKind,
+  type NpPluginActionRegistrationConflict,
+  type NpPluginAdminActionIssue,
+  type NpRegisteredPluginAction,
+} from "./admin-action-contract.js";
 
 export interface PluginHookHandler {
   pluginId: string;
@@ -156,6 +164,8 @@ interface PluginRegistration {
   hooks: Map<string, PluginHookHandler[]>;
   routes: PluginRouteHandler[];
   actions: Map<string, (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>>;
+  actionMetadata: Map<string, NpRegisteredPluginAction>;
+  actionConflicts: NpPluginActionRegistrationConflict[];
   schedules: Map<string, PluginScheduleHandler>;
   /**
    * G.1 — Zod schema describing the plugin's operator-tunable
@@ -264,10 +274,7 @@ function normalizeHookValue(
  * hot path just iterates the array. Registrations happen at boot (and on
  * a hot reload), so re-sorting on each insert is fine.
  */
-function insertSortedByPriority(
-  list: PluginHookHandler[],
-  entry: PluginHookHandler,
-): void {
+function insertSortedByPriority(list: PluginHookHandler[], entry: PluginHookHandler): void {
   list.push(entry);
   list.sort((a, b) => a.priority - b.priority);
 }
@@ -308,6 +315,16 @@ export interface ResolvedPluginLike {
     description?: string;
     auth?: boolean;
   }>;
+  actions?: Readonly<
+    Record<
+      string,
+      {
+        kind: NpPluginActionKind;
+        handler: unknown;
+        description?: string;
+      }
+    >
+  >;
   admin?: PluginAdminExtension;
   /** G.1 — runtime zod schema for plugin config (auto-form). */
   configSchema?: unknown;
@@ -362,6 +379,34 @@ async function buildCtxFor(pluginId: string): Promise<Record<string, unknown>> {
     registration,
     lookupRegistration: (id) => pluginRegistry.get(id),
   });
+}
+
+function analyzeRegistrationActions(registration: PluginRegistration): NpPluginAdminActionIssue[] {
+  return npAnalyzePluginAdminActionContract(
+    registration.admin,
+    registration.actionMetadata.values(),
+    registration.actionConflicts,
+  );
+}
+
+function logPluginAdminActionContract(registration: PluginRegistration): void {
+  for (const issue of analyzeRegistrationActions(registration)) {
+    // Unreferenced actions may intentionally exist for inter-plugin dispatch.
+    // Keep them in doctor output without making every such action noisy at boot.
+    if (issue.code === "unused") continue;
+    const context = {
+      pluginId: registration.id,
+      actionId: issue.actionId,
+      code: issue.code,
+      detail: issue.message,
+      locations: issue.locations,
+    };
+    if (issue.severity === "error") {
+      getLogger().error("Plugin admin action contract is invalid", context);
+    } else {
+      getLogger().warn("Plugin admin action contract needs attention", context);
+    }
+  }
 }
 
 function isResolvedPlugin(value: unknown): value is ResolvedPluginLike {
@@ -461,6 +506,8 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     hooks: new Map(),
     routes: [],
     actions: new Map(),
+    actionMetadata: new Map(),
+    actionConflicts: [],
     schedules: new Map(),
     configSchema: plugin.configSchema,
     configVersion: plugin.configVersion,
@@ -469,6 +516,50 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   };
 
   pluginRegistry.set(manifest.id, registration);
+
+  // Definition-level actions are the statically inspectable contract used by
+  // definePlugin and plugin doctor. Register them before setup so the plugin's
+  // own setup callback (and dependent plugins loaded later) can dispatch them.
+  for (const [actionId, rawAction] of Object.entries(plugin.actions ?? {})) {
+    if (!rawAction || typeof rawAction !== "object") continue;
+    if (
+      rawAction.kind !== "action" &&
+      rawAction.kind !== "metric" &&
+      rawAction.kind !== "status" &&
+      rawAction.kind !== "table"
+    ) {
+      getLogger().error("Plugin action has an unsupported kind", {
+        pluginId: manifest.id,
+        actionId,
+        kind: String(rawAction.kind),
+      });
+      continue;
+    }
+    if (typeof rawAction.handler !== "function") {
+      getLogger().error("Plugin action is missing a handler", {
+        pluginId: manifest.id,
+        actionId,
+      });
+      continue;
+    }
+    const kind = rawAction.kind;
+    const handler = rawAction.handler as (
+      data: unknown,
+      ctx: Record<string, unknown>,
+    ) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+    registration.actionMetadata.set(actionId, {
+      id: actionId,
+      kind,
+      source: "definition",
+      description: rawAction.description,
+    });
+    registration.actions.set(actionId, async (data) => {
+      // Build the context at dispatch time so config changes made after boot
+      // are visible to definition-level handlers.
+      const ctx = await buildCtxFor(manifest.id);
+      return npValidatePluginActionResult(manifest.id, actionId, kind, await handler(data, ctx));
+    });
+  }
 
   // G.1 — declaring BOTH `configSchema` (auto-form) and
   // `admin.settings.fields` (legacy declarative form) is a sign
@@ -568,12 +659,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     // endpoint (webhooks, callback URLs) own the auth themselves —
     // log a warning at load time so this is at least visible in
     // boot logs and a tracker can grep for it.
-    if (
-      !auth &&
-      method !== "GET" &&
-      method !== "HEAD" &&
-      method !== "OPTIONS"
-    ) {
+    if (!auth && method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
       getLogger().warn("Plugin registered a public mutating route", {
         pluginId: manifest.id,
         path: route.path,
@@ -628,14 +714,17 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     registerPluginTemplates(manifest.id, pluginTemplates);
   }
 
-  // Invoke optional setup() after hooks + routes are registered so setup can
-  // call ctx.actions.register(…) and have it visible to subsequent dispatches.
+  // Invoke optional setup() after hooks, routes, and definition actions are
+  // registered. The compatible ctx.actions.register* API can add or replace
+  // handlers before subsequent plugins begin loading.
   const setup = (plugin as { setup?: (ctx: Record<string, unknown>) => void | Promise<void> })
     .setup;
   if (typeof setup === "function") {
     const ctx = await buildCtxFor(manifest.id);
     await setup(ctx);
   }
+
+  logPluginAdminActionContract(registration);
 }
 
 async function loadLegacyPlugin(plugin: NpPluginConfig): Promise<void> {
@@ -647,6 +736,8 @@ async function loadLegacyPlugin(plugin: NpPluginConfig): Promise<void> {
     hooks: new Map(),
     routes: [],
     actions: new Map(),
+    actionMetadata: new Map(),
+    actionConflicts: [],
     schedules: new Map(),
     // Legacy `init()` plugins predate the page-routes contract;
     // they always register zero routes. Kept as a literal `[]` so
@@ -777,11 +868,7 @@ async function dispatchHookHandler(
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
-        reject(
-          new Error(
-            `Plugin hook handler timed out after ${handler.timeoutMs}ms`,
-          ),
-        );
+        reject(new Error(`Plugin hook handler timed out after ${handler.timeoutMs}ms`));
       }, handler.timeoutMs);
     });
     try {
@@ -924,6 +1011,22 @@ export function getPluginAdminExtension(pluginId: string): PluginAdminExtension 
   return pluginRegistry.get(pluginId)?.admin;
 }
 
+/** Returns the runtime id/kind/source inventory used by plugin doctor. */
+export function getRegisteredPluginActions(pluginId: string): NpRegisteredPluginAction[] {
+  return [...(pluginRegistry.get(pluginId)?.actionMetadata.values() ?? [])].map((action) => ({
+    ...action,
+  }));
+}
+
+/**
+ * Reports missing, mismatched, duplicate, untyped, and admin-unreferenced
+ * actions after the plugin's setup callback has completed.
+ */
+export function getPluginAdminActionDiagnostics(pluginId: string): NpPluginAdminActionIssue[] {
+  const registration = pluginRegistry.get(pluginId);
+  return registration ? analyzeRegistrationActions(registration) : [];
+}
+
 /**
  * Resolved collection-tab descriptor for the admin collection edit view.
  * Each entry carries pluginId + pluginName so the client component can
@@ -1021,10 +1124,10 @@ export function getDashboardWidgetsFromPlugins(): ResolvedDashboardWidget[] {
 }
 
 /**
- * Dispatches a named action registered by the plugin via
- * `ctx.actions.register(actionId, handler)`. Admin widgets / actions / tables
- * call this via POST /api/plugins/:id/actions/:actionId — the handler is
- * responsible for returning `{ ok, data?, error? }`.
+ * Dispatches a named definition-level or setup-registered plugin action.
+ * Admin widgets / actions / tables call this via
+ * POST /api/plugins/:id/actions/:actionId. Typed results are validated by the
+ * registration wrapper before they reach the caller.
  */
 export async function dispatchPluginAction(
   pluginId: string,

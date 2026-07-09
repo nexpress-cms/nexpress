@@ -1,8 +1,4 @@
-import {
-  NpForbiddenError,
-  dispatchPluginAction,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, dispatchPluginAction, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "../../../../../lib/auth-helpers";
@@ -13,7 +9,8 @@ import { ensureFor } from "../../../../../lib/init-core";
 /**
  * Admin-only dispatcher for plugin-registered actions. Admin UI widgets /
  * tables / action buttons POST here. Plugins register handlers via
- * `ctx.actions.register(actionId, handler)` during setup.
+ * a definition-level `actions` registry or `ctx.actions.register*()` during
+ * setup.
  *
  * The dispatcher returns the handler's `{ ok, data?, error? }` result as-is,
  * wrapped in the standard API success envelope. Handlers that throw turn

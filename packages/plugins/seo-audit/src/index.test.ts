@@ -69,6 +69,19 @@ describe("plugin metadata", () => {
     expect(seoAuditPlugin.admin?.dashboardWidgets?.length).toBeGreaterThan(0);
     expect(seoAuditPlugin.admin?.collectionTabs?.length).toBeGreaterThan(0);
   });
+
+  it("declares the admin action id and kind inventory", () => {
+    expect(
+      Object.entries(seoAuditPlugin.actions ?? {}).map(([id, action]) => ({
+        id,
+        kind: action.kind,
+      })),
+    ).toEqual([
+      { id: "lastAuditScore", kind: "metric" },
+      { id: "rescanLatest", kind: "action" },
+      { id: "auditDocument", kind: "metric" },
+    ]);
+  });
 });
 
 describe("auditSeo (with operator-tuned config)", () => {
@@ -80,7 +93,8 @@ describe("auditSeo (with operator-tuned config)", () => {
     const result = auditSeo(
       {
         title: "Short title here", // 16 chars
-        description: "A reasonable meta description that explains the content well enough for search.",
+        description:
+          "A reasonable meta description that explains the content well enough for search.",
         content: "Body text. ".repeat(60), // 120 words
         headings: [],
       },
@@ -93,7 +107,8 @@ describe("auditSeo (with operator-tuned config)", () => {
     const result = auditSeo(
       {
         title: "A reasonably descriptive title that fits the range",
-        description: "A reasonable meta description that explains the content well enough for search.",
+        description:
+          "A reasonable meta description that explains the content well enough for search.",
         content: "Body text. ".repeat(60),
         headings: [],
       },
@@ -121,7 +136,8 @@ describe("auditSeo (with operator-tuned config)", () => {
     const result = auditSeo(
       {
         title: "A reasonably descriptive title that fits the range",
-        description: "A reasonable meta description that explains the content well enough for search.",
+        description:
+          "A reasonable meta description that explains the content well enough for search.",
         content: "Body text. ".repeat(60), // ~120 words
         headings: [],
       },
@@ -134,7 +150,8 @@ describe("auditSeo (with operator-tuned config)", () => {
     const result = auditSeo(
       {
         title: "A reasonably descriptive title that fits the range nicely",
-        description: "A reasonable meta description that explains the content well enough for search and previews.",
+        description:
+          "A reasonable meta description that explains the content well enough for search and previews.",
         content: "Body text with substantial content. ".repeat(60), // ~360 words
         headings: ["Section one", "Section two"],
       },

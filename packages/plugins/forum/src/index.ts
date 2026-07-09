@@ -75,8 +75,7 @@ export function defineDiscussionsCollection(
       type: "richText",
       name: "body",
       admin: {
-        description:
-          "The opening post. Members reply via comments rather than another field.",
+        description: "The opening post. Members reply via comments rather than another field.",
       },
     },
   ];
@@ -113,8 +112,7 @@ export function defineDiscussionsCollection(
       group: "Community",
       listColumns: ["title", "status", "pinned", "locked", "updatedAt"],
       defaultSort: "-updatedAt",
-      description:
-        "Staff-authored discussion threads. Members converse via the comment system.",
+      description: "Staff-authored discussion threads. Members converse via the comment system.",
     },
     versions: { drafts: true, max: 30 },
     community: {
@@ -207,6 +205,41 @@ export const forumPlugin = definePlugin({
       },
     ],
   },
+  actions: {
+    countDiscussions: {
+      kind: "metric",
+      // The widget action enumerates collections opted into comments and
+      // sums their doc counts. Today the user typically has one
+      // discussion collection (slug "discussions"); the plugin doesn't
+      // hard-code the slug so a site with multiple forum-flavored
+      // collections still gets a meaningful total.
+      handler: async (_data, ctx) => {
+        try {
+          // The plugin context exposes `content.count(slug)` — but we
+          // don't know the slug list. Read the conventional default
+          // first; ignore "collection not found" so an install without
+          // a discussions collection just shows zero gracefully.
+          let total = 0;
+          for (const slug of ["discussions", "topics", "questions"]) {
+            try {
+              total += await ctx.content.count(slug);
+            } catch {
+              // Skip — collection isn't registered.
+            }
+          }
+          return {
+            ok: true,
+            data: { value: total, delta: total === 0 ? "Not configured yet" : `${total} topics` },
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
+        }
+      },
+    },
+  },
   // PRT.3 — the forum plugin owns the public-site routes for
   // its collection. The catch-all in the host app dispatches
   // these via `dispatchPluginRoute` (#623); precedence is
@@ -246,38 +279,6 @@ export const forumPlugin = definePlugin({
       metadata: profileDiscussionsMetadata,
     },
   ],
-  setup: (ctx) => {
-    // The widget action enumerates collections opted into comments and
-    // sums their doc counts. Today the user typically has one
-    // discussion collection (slug "discussions"); the plugin doesn't
-    // hard-code the slug so a site with multiple forum-flavored
-    // collections still gets a meaningful total.
-    ctx.actions.register("countDiscussions", async () => {
-      try {
-        // The plugin context exposes `content.count(slug)` — but we
-        // don't know the slug list. Read the conventional default
-        // first; ignore "collection not found" so an install without
-        // a discussions collection just shows zero gracefully.
-        let total = 0;
-        for (const slug of ["discussions", "topics", "questions"]) {
-          try {
-            total += await ctx.content.count(slug);
-          } catch {
-            // Skip — collection isn't registered.
-          }
-        }
-        return {
-          ok: true,
-          data: { value: total, delta: total === 0 ? "Not configured yet" : `${total} topics` },
-        };
-      } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        };
-      }
-    });
-  },
 });
 
 export default forumPlugin;

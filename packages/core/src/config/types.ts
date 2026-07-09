@@ -577,6 +577,20 @@ export interface NpResolvedPluginLike {
     auth?: boolean;
   }>;
   /**
+   * Definition-level action registry from `@nexpress/plugin-sdk`. Core keeps
+   * the shape structural to avoid a dependency cycle back into the SDK.
+   */
+  actions?: Readonly<
+    Record<
+      string,
+      {
+        kind: "action" | "metric" | "status" | "table";
+        handler: unknown;
+        description?: string;
+      }
+    >
+  >;
+  /**
    * Phase 12.5 — optional UI string bundles per locale. Keys
    * are plugin-namespaced strings the plugin's own templates /
    * routes / admin pages call `t()` against. The host merges

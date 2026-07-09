@@ -2,10 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getAllPluginIds,
+  getPluginAdminActionDiagnostics,
   getPluginPageRoutes,
   getPluginRegistration,
   getPluginRoutes,
+  getRegisteredPluginActions,
   getRegisteredPluginSchedules,
+  dispatchPluginAction,
   loadPlugins,
   resetPlugins,
   runHook,
@@ -14,16 +17,10 @@ import {
 } from "./index.js";
 import type { NpPluginConfig } from "../config/types.js";
 import { resetLogger, setLogger, type NpLogger } from "../observability/logger.js";
-import {
-  resetEnabledGate,
-  setPluginEnabledForTest,
-} from "./enabled-gate.js";
+import { resetEnabledGate, setPluginEnabledForTest } from "./enabled-gate.js";
 import { resetFrameworkVersion, setFrameworkVersionForTest } from "./compat.js";
 
-function legacyPlugin(
-  id: string,
-  init?: NpPluginConfig["init"],
-): NpPluginConfig {
+function legacyPlugin(id: string, init?: NpPluginConfig["init"]): NpPluginConfig {
   return { id, name: `${id} plugin`, init };
 }
 
@@ -31,11 +28,10 @@ function resolvedPlugin(
   id: string,
   options: {
     capabilities?: readonly string[];
-    hooks?: Record<string, (ctx: {
-      hook: string;
-      data: Record<string, unknown>;
-      collection?: string;
-    }) => unknown>;
+    hooks?: Record<
+      string,
+      (ctx: { hook: string; data: Record<string, unknown>; collection?: string }) => unknown
+    >;
     routes?: Array<{ method: string; path: string; handler: () => Promise<{ status: number }> }>;
     scheduled?: Array<{
       id: string;
@@ -187,6 +183,176 @@ describe("plugin host", () => {
       expect(reg?.capabilities).toEqual(["hooks:content", "api:route"]);
     });
 
+    it("registers and dispatches definition-level actions with kind metadata", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("definition-actions"),
+          actions: {
+            quota: {
+              kind: "metric",
+              handler: (_data: unknown, ctx: { pluginId: string }) =>
+                Promise.resolve({ ok: true, data: { value: ctx.pluginId } }),
+            },
+          },
+          admin: {
+            widgets: [
+              {
+                id: "quota",
+                label: "Quota",
+                kind: "metric",
+                actionId: "quota",
+              },
+            ],
+          },
+        } as never,
+      ]);
+
+      expect(getRegisteredPluginActions("definition-actions")).toEqual([
+        {
+          id: "quota",
+          kind: "metric",
+          source: "definition",
+          description: undefined,
+        },
+      ]);
+      expect(getPluginAdminActionDiagnostics("definition-actions")).toEqual([]);
+      await expect(dispatchPluginAction("definition-actions", "quota")).resolves.toEqual({
+        ok: true,
+        data: { value: "definition-actions" },
+      });
+    });
+
+    it("builds a fresh config context for every definition-action dispatch", async () => {
+      const configModule = await import("./config.js");
+      let currentConfig: Record<string, unknown> = { label: "first" };
+      const configSpy = vi
+        .spyOn(configModule, "getPluginConfig")
+        .mockImplementation(() => Promise.resolve(currentConfig));
+
+      try {
+        await loadPlugins([
+          {
+            ...resolvedPlugin("fresh-action-config"),
+            actions: {
+              readConfig: {
+                kind: "action",
+                handler: (_data: unknown, ctx: { config: Record<string, unknown> }) =>
+                  Promise.resolve({ ok: true, data: ctx.config.label }),
+              },
+            },
+          } as never,
+        ]);
+
+        await expect(dispatchPluginAction("fresh-action-config", "readConfig")).resolves.toEqual({
+          ok: true,
+          data: "first",
+        });
+        currentConfig = { label: "second" };
+        await expect(dispatchPluginAction("fresh-action-config", "readConfig")).resolves.toEqual({
+          ok: true,
+          data: "second",
+        });
+      } finally {
+        configSpy.mockRestore();
+      }
+    });
+
+    it("diagnoses setup-only kind mismatches without dropping the plugin", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("legacy-actions"),
+          admin: {
+            widgets: [
+              {
+                id: "quota",
+                label: "Quota",
+                kind: "metric",
+                actionId: "quota",
+              },
+            ],
+          },
+          setup: (ctx: {
+            actions: {
+              registerStatus(
+                id: string,
+                handler: () => Promise<{
+                  ok: boolean;
+                  data: { level: string; message: string };
+                }>,
+              ): void;
+            };
+          }) => {
+            ctx.actions.registerStatus("quota", () =>
+              Promise.resolve({ ok: true, data: { level: "ok", message: "ok" } }),
+            );
+          },
+        } as never,
+      ]);
+
+      expect(getAllPluginIds()).toContain("legacy-actions");
+      expect(getPluginAdminActionDiagnostics("legacy-actions")).toEqual([
+        expect.objectContaining({
+          code: "kind-mismatch",
+          severity: "error",
+          actionId: "quota",
+          expectedKind: "metric",
+          actualKind: "status",
+        }),
+      ]);
+    });
+
+    it("keeps setup override compatibility and diagnoses definition collisions", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("action-collision"),
+          actions: {
+            shared: {
+              kind: "metric",
+              handler: () => Promise.resolve({ ok: true, data: { value: 1 } }),
+            },
+          },
+          admin: {
+            widgets: [
+              {
+                id: "shared",
+                label: "Shared",
+                kind: "metric",
+                actionId: "shared",
+              },
+            ],
+          },
+          setup: (ctx: {
+            actions: {
+              registerStatus(
+                id: string,
+                handler: () => Promise<{
+                  ok: boolean;
+                  data: { level: string; message: string };
+                }>,
+              ): void;
+            };
+          }) => {
+            ctx.actions.registerStatus("shared", () =>
+              Promise.resolve({ ok: true, data: { level: "ok", message: "override" } }),
+            );
+          },
+        } as never,
+      ]);
+
+      expect(getAllPluginIds()).toContain("action-collision");
+      expect(getPluginAdminActionDiagnostics("action-collision")).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: "duplicate", actionId: "shared" }),
+          expect.objectContaining({
+            code: "kind-mismatch",
+            actionId: "shared",
+            expectedKind: "metric",
+            actualKind: "status",
+          }),
+        ]),
+      );
+    });
+
     it("rejects scheduled tasks when hooks:scheduled is not declared", async () => {
       await loadPlugins([
         resolvedPlugin("no-scheduled-cap", {
@@ -304,10 +470,9 @@ describe("plugin host", () => {
         }),
       ]);
 
-      const results = await runHookAndCollect<{ head: Array<{ tag: string; attrs: Record<string, string> }> }>(
-        "render:beforePage",
-        { collection: "posts", slug: "hello", document: {} },
-      );
+      const results = await runHookAndCollect<{
+        head: Array<{ tag: string; attrs: Record<string, string> }>;
+      }>("render:beforePage", { collection: "posts", slug: "hello", document: {} });
 
       expect(results).toHaveLength(2);
       expect(results.flatMap((r) => r.head.map((h) => h.attrs.name))).toEqual(["a", "b"]);
@@ -411,7 +576,9 @@ describe("plugin host", () => {
       ]);
 
       // Must not throw despite first plugin's failure.
-      await expect(runHook("content:afterCreate", { collection: "posts" })).resolves.toBeUndefined();
+      await expect(
+        runHook("content:afterCreate", { collection: "posts" }),
+      ).resolves.toBeUndefined();
 
       expect(after).toHaveBeenCalledOnce();
       expect(errors).toHaveLength(1);
@@ -495,15 +662,12 @@ describe("plugin host", () => {
         }),
       ]);
 
-      const failureLogs = errors.filter((e) =>
-        e.message.includes("Plugin failed to load"),
-      );
+      const failureLogs = errors.filter((e) => e.message.includes("Plugin failed to load"));
       expect(failureLogs).toHaveLength(2);
-      expect(failureLogs.map((e) => e.context?.pluginId).sort()).toEqual([
-        "a-fails",
-        "b-fails",
-      ]);
-      expect(failureLogs.find((e) => e.context?.pluginId === "a-fails")?.context?.error).toBe("a-reason");
+      expect(failureLogs.map((e) => e.context?.pluginId).sort()).toEqual(["a-fails", "b-fails"]);
+      expect(failureLogs.find((e) => e.context?.pluginId === "a-fails")?.context?.error).toBe(
+        "a-reason",
+      );
     });
   });
 
@@ -584,10 +748,7 @@ describe("plugin host", () => {
         },
       });
 
-      await loadPlugins([
-        make("ui", ["theme"]),
-        make("theme"),
-      ]);
+      await loadPlugins([make("ui", ["theme"]), make("theme")]);
 
       await runHook("content:afterCreate", { collection: "posts" });
       expect(order).toEqual(["theme", "ui"]);
@@ -870,9 +1031,7 @@ describe("plugin host", () => {
     const Component = () => null;
 
     it("returns an empty array when no plugins declare pageRoutes", async () => {
-      await loadPlugins([
-        resolvedPlugin("no-routes", { capabilities: ["hooks:content"] }),
-      ]);
+      await loadPlugins([resolvedPlugin("no-routes", { capabilities: ["hooks:content"] })]);
       expect(getPluginPageRoutes()).toEqual([]);
     });
 
@@ -919,12 +1078,12 @@ describe("plugin host", () => {
         {
           ...resolvedPlugin("forum", { capabilities: [] }),
           pageRoutes: [
-            { pattern: "/ok", component: Component },           // valid
-            { pattern: "", component: Component },              // empty pattern
-            { component: Component },                           // no pattern
-            { pattern: "/no-component" },                       // no component
-            null,                                                // not an object
-            "string-not-object",                                 // wrong shape
+            { pattern: "/ok", component: Component }, // valid
+            { pattern: "", component: Component }, // empty pattern
+            { component: Component }, // no pattern
+            { pattern: "/no-component" }, // no component
+            null, // not an object
+            "string-not-object", // wrong shape
           ],
         } as never,
       ]);
@@ -946,10 +1105,7 @@ describe("plugin host", () => {
       ]);
       const routes = getPluginPageRoutes();
       expect(routes.map((r) => r.pluginId)).toEqual(["forum", "gallery"]);
-      expect(routes.map((r) => r.route.pattern)).toEqual([
-        "/discussions",
-        "/gallery",
-      ]);
+      expect(routes.map((r) => r.route.pattern)).toEqual(["/discussions", "/gallery"]);
     });
 
     it("legacy init-shape plugins register zero routes", async () => {
@@ -1015,7 +1171,9 @@ describe("plugin host", () => {
           ],
         } as never,
       ]);
-      const patterns = getPluginPageRoutes().map((r) => r.route.pattern).sort();
+      const patterns = getPluginPageRoutes()
+        .map((r) => r.route.pattern)
+        .sort();
       expect(patterns).toEqual(["/memo-shaped", "/ok"]);
     });
 

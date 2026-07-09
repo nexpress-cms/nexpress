@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-06-17 (docs-currentness pass — `CLAUDE.md`
+**Last refreshed:** 2026-07-10 (plugin Admin actions now support a
+definition-level typed registry, while setup-time `ctx.actions.register*`
+remains the compatibility path.)
+
+**Earlier:** 2026-06-17 (docs-currentness pass — `CLAUDE.md`
 now delegates here, `apps/web/AGENTS.md` reflects the thin
 `@nexpress/app` wrapper structure, CI/Release notes match the active
 GitHub workflows, and plugin `surface: "member"` route docs reflect
@@ -295,7 +299,7 @@ What v0.1 of the published `@nexpress/*` packages commits to. Anything not on th
 These are the public APIs we'll honor with semver and migration notes. Breaking them rides a **minor bump pre-1.0** and ships a CHANGELOG line operators can search for.
 
 - **Collection authoring** — `defineCollection({ slug, fields, hooks, access, … })` and the field-config types (`NpTextField`, `NpRichTextField`, `NpRelationshipField`, `NpBlocksField`, `NpArrayField`, `NpGroupField`, `NpRowField`, `NpCollapsibleField`, …). Adding a new field type is non-breaking. Renaming or removing one is a minor with a migration note.
-- **Plugin authoring** — `definePlugin({ manifest, hooks, actions, routes, pageRoutes, scheduled, blocks })`. The hook names `content:beforeSave`, `content:afterSave`, `content:beforeDelete`, `content:afterDelete` are stable. Member / media hooks (`member:*`, `media:*`) are stable; new hook names will be added with the same prefix scheme. `blocks` ships an `NpBlockDefinition[]` registered into the shared block registry at boot.
+- **Plugin authoring** — `definePlugin({ manifest, hooks, actions, routes, pageRoutes, scheduled, blocks })`. `actions` is a definition-level `Record<actionId, { kind, handler }>` with `action | metric | status | table` kinds; the compatible setup-time `ctx.actions.register*` methods remain supported. The hook names `content:beforeSave`, `content:afterSave`, `content:beforeDelete`, `content:afterDelete` are stable. Member / media hooks (`member:*`, `media:*`) are stable; new hook names will be added with the same prefix scheme. `blocks` ships an `NpBlockDefinition[]` registered into the shared block registry at boot.
 - **Bootstrap intent enum** — `ensureFor("read" | "plugins" | "write")`. Adding a new intent is non-breaking; semantics of the existing three are pinned.
 - **Error classes + codes** — `NpForbiddenError`, `NpNotFoundError`, `NpValidationError`, `NpAuthError`, `NpConflictError`, `NpRateLimitError`, `NpSiteContextMissingError`, and the `NpErrorCode` union. The string code per class is stable per [docs/api-error-codes.md](./docs/api-error-codes.md).
 - **Capability vocabulary** — `can(user, capability)` and the existing capability strings: `"admin.manage"`, `"content.publish"`, `"content.author"`, `"community.moderate"`. New capability strings will be added; existing ones won't be renamed or removed in 0.x.
