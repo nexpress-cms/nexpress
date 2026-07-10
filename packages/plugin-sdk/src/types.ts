@@ -867,9 +867,9 @@ export interface NpPluginDefinition<TConfig = Record<string, unknown>> {
    * collection-derived URLs. See `docs/design/plugin-routes.md`
    * for the precedence + override rules.
    *
-   * The route shape is intentionally identical to
-   * `NpThemeRoute` so the dispatcher walks both lists with the
-   * same matcher. Each entry adds two plugin-specific knobs:
+   * The render props mirror `NpThemeRoute`, while the definition
+   * follows the canonical plugin page-route contract. Each entry
+   * adds two plugin-specific knobs:
    *
    *   - `surface: "site" | "member"` — which theme shell wraps the
    *     rendered component. `"member"` selects member-facing chrome only;
@@ -904,7 +904,7 @@ export type NpPluginPageRouteMetadata = (props: NpPluginPageRouteProps) => unkno
 
 /** Definition-time page route contract used by `definePlugin({ pageRoutes })`. */
 export interface NpPluginPageRouteRegistration {
-  /** Same path-to-regexp grammar as `NpThemeRoute.pattern`. */
+  /** Canonical literal, `:name`, or `:name(regex)` route pattern. */
   pattern: string;
   /** Server component matching `NpPluginPageRouteProps`. */
   component: NpPluginPageRouteComponent;

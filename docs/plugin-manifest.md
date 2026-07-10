@@ -152,6 +152,7 @@ definePlugin<MyPluginConfig>({
   hooks: { /* ... */ },
   actions: { /* id: { kind, handler } */ },
   routes: [ /* ... */ ],
+  pageRoutes: [ /* ... */ ],
   blocks: [ /* ... */ ],
   admin: { /* widgets, actions, tables, dashboardWidgets, collectionTabs */ },
   setup: (ctx) => { /* ... */ },

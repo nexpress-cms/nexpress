@@ -156,13 +156,14 @@ shape — building metadata from URL state is straightforward:
 ```ts
 import { findDocuments } from "@nexpress/core";
 import { buildPageMetadata } from "@nexpress/next";
+import type { NpPluginPageRouteProps } from "@nexpress/plugin-sdk";
 
 interface DiscussionRow {
   title: string;
   excerpt?: string | null;
 }
 
-async function detailMetadata(ctx: NpRouteRenderProps) {
+async function detailMetadata(ctx: NpPluginPageRouteProps) {
   const slug = ctx.params.slug;
   const result = await findDocuments<DiscussionRow>("discussions", {
     where: { slug },
@@ -268,8 +269,8 @@ import { MyForm } from "@nexpress/plugin-my/client";
 Two pieces of `tsup` setup are required:
 
 1. **Dual-entry config** (one entry per output: `index` + `client`)
-   so tsup emits a separate `dist/client.js` with the `"use
-client"` banner.
+   so tsup emits a separate `dist/client.js` with the `"use client"`
+   banner at the top.
 2. **Mark the package's own `./client` subpath as `external`** for
    the `index` entry. Without this, tsup follows the relative
    imports inside the package source and bundles client code into
@@ -280,10 +281,8 @@ client"` banner.
 && tsup`), not inside either tsup config — the parallel dts
 builds otherwise race on the shared output directory.
 
-Working reference:
-[`packages/plugins/forum/tsup.config.ts`](../packages/plugins/forum/tsup.config.ts)
-
-- [`packages/plugins/forum/package.json`](../packages/plugins/forum/package.json).
+Working references: [`packages/plugins/forum/tsup.config.ts`](../packages/plugins/forum/tsup.config.ts)
+and [`packages/plugins/forum/package.json`](../packages/plugins/forum/package.json).
 
 ---
 
@@ -325,8 +324,9 @@ API calls), wrap the data fetch in `cachedPluginFetch` from
 
 ```ts
 import { cachedPluginFetch } from "@nexpress/next";
+import type { NpPluginPageRouteProps } from "@nexpress/plugin-sdk";
 
-export default async function ListRoute({ searchParams }: NpRouteRenderProps) {
+export default async function ListRoute({ searchParams }: NpPluginPageRouteProps) {
   const page = Math.max(1, Number(searchParams.page ?? 1));
   const data = await cachedPluginFetch(
     "my-forum", // plugin id

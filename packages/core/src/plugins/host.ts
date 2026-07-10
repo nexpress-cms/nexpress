@@ -198,10 +198,10 @@ interface PluginRegistration {
   /** G.1 — migration callback for v(N-1) → current. */
   configMigrate?: (old: unknown, fromVersion: number) => unknown;
   /**
-   * Plugin-contributed page routes (#623). Stored as the same
-   * shape the SDK accepts (component + optional metadata as
-   * `unknown`); the route-dispatcher in `@nexpress/next`
-   * narrows them at render time. See
+   * Plugin-contributed page routes (#623). The canonical
+   * contract validates component and metadata functions before
+   * the host stores renderer-agnostic values; the route-dispatcher
+   * in `@nexpress/next` narrows them at render time. See
    * `docs/design/plugin-routes.md` for precedence + surface
    * semantics.
    */
