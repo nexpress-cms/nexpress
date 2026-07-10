@@ -17,6 +17,7 @@ export default definePlugin({
     author: { name: "Acme" },
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
+    capabilities: ["storage:kv"],
   },
   scheduled: [
     {
@@ -31,10 +32,11 @@ export default definePlugin({
 });
 ```
 
-Add every capability used inside the handler, such as `storage:kv` in this
-example. `definePlugin()` derives `hooks:scheduled` from a non-empty registry.
-A hand-built definition that bypasses the SDK must declare that capability
-itself, and the core host still validates the tasks before registration.
+Add every capability used inside the handler; the example declares
+`storage:kv` for `ctx.storage.set()`. `definePlugin()` derives
+`hooks:scheduled` from a non-empty registry. A hand-built definition that
+bypasses the SDK must declare that capability itself, and the core host still
+validates the tasks before registration.
 
 ## Definition contract
 

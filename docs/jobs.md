@@ -457,10 +457,11 @@ honest about what's missing rather than letting it drift.
   host; pg-boss adapter registers the cron rows on worker
   start and reconciles `plugin.scheduledTask.*` rows during
   plugin reload. Definitions are validated before registration and
-  plugin doctor reports malformed or duplicate task ids. Adding a new schedule in a separate worker
-  deployment still needs a worker restart so `boss.work()` loops
-  are installed in the worker process. `boss.schedule()` via
-  `getBoss()` still works as the application-local escape hatch.
+  plugin doctor reports malformed or duplicate task ids. Adding a new
+  schedule in a separate worker deployment still needs a worker restart
+  so `boss.work()` loops are installed in the worker process.
+  `boss.schedule()` via `getBoss()` still works as the application-local
+  escape hatch.
 - **Dead-letter queue inspection** — Phase 20.4. The admin
   Jobs page has a dedicated **Archive** tab that reads from
   `pgboss.archive` only, with a banner explaining that
