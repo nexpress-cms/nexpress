@@ -97,9 +97,15 @@ test.describe("publish a page", () => {
     expect(response?.status()).toBe(200);
     await expect(page.getByText(bodyCopy)).toBeVisible({ timeout: 10_000 });
 
-    // Confirm the doc shows up in the admin list view — the more
-    // robust signal that publish wired through end-to-end.
-    await page.goto("/admin/collections/pages");
+    // `seo-audit` contributes this relative canonical link through the
+    // canonical `render:beforePage` hook. Next metadata emits an absolute
+    // canonical URL, so the relative href uniquely proves the plugin render
+    // contribution crossed the host and reached the real page DOM.
+    await expect(page.locator(`link[rel="canonical"][href="/${slug}"]`)).toHaveCount(1);
+
+    // Confirm the doc shows up in the filtered admin list. Pin the search
+    // query so repeated local runs cannot push the new row beyond page 1.
+    await page.goto(`/admin/collections/pages?search=${encodeURIComponent(title)}`);
     await expect(page.getByText(title).first()).toBeVisible({ timeout: 10_000 });
   });
 });

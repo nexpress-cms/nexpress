@@ -29,14 +29,18 @@ export default definePlugin({
     id: "reading-time",
     name: "Reading Time",
     version: "0.1.0",
+    description: "Logs newly-created content through the plugin-scoped logger.",
+    author: { name: "Example author" },
+    license: "MIT",
+    nexpress: { minVersion: "0.3.0" },
   },
   hooks: {
-    "content:beforeSave": async ({ doc, ctx }) => {
-      if (typeof doc.body === "string") {
-        const words = doc.body.split(/\s+/).length;
-        doc.readingMinutes = Math.max(1, Math.round(words / 220));
-      }
-      return doc;
+    "content:afterCreate": ({ data, ctx }) => {
+      const doc = (data.doc ?? data) as Record<string, unknown>;
+      ctx.log.info("Content created", {
+        collection: data.collection,
+        documentId: doc.id,
+      });
     },
   },
 });
@@ -53,11 +57,12 @@ export default defineConfig({
 });
 ```
 
-Restart the server — the hook fires on every `content:beforeSave`.
+Restart the server — the hook fires after every document create.
 
 ## Available extension points
 
-- **`hooks`** — `content:*`, `auth:*`, `render:*`, `media:*`
+- **`hooks`** — typed `content:*`, `auth:*`, `media:*`, plus the single
+  `render:beforePage` contribution hook
 - **`actions`** — handlers registered through `ctx.actions` and
   dispatched by admin widgets, buttons, tables, or
   `/api/plugins/<id>/actions/<name>`

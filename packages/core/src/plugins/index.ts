@@ -38,6 +38,8 @@ export type {
 
 export type {
   PluginHookHandler,
+  NpHookCollectOptions,
+  NpHookResultValidation,
   PluginRouteHandler,
   PluginRouteRequest,
   PluginRouteResponse,

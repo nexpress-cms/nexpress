@@ -1,12 +1,60 @@
 import { npAdminExtensionSchema, npPluginManifestSchema } from "./manifest.js";
-import type {
-  NpAdminExtension,
-  NpPluginActionKind,
-  NpPluginActionRegistry,
-  NpPluginCapability,
-  NpPluginDefinition,
-  NpResolvedPlugin,
+import {
+  npHookNames,
+  type NpAdminExtension,
+  type NpPluginActionKind,
+  type NpPluginActionRegistry,
+  type NpPluginCapability,
+  type NpPluginDefinition,
+  type NpResolvedPlugin,
 } from "./types.js";
+
+const supportedHookNames = new Set<string>(npHookNames);
+const hookDescriptorKeys = new Set(["handler", "priority", "timeoutMs"]);
+
+function validateHookRegistry(pluginId: string, hooks: unknown): void {
+  if (hooks === undefined) return;
+  if (!hooks || typeof hooks !== "object" || Array.isArray(hooks)) {
+    throw new Error(`[plugin:${pluginId}] hooks must be an object.`);
+  }
+
+  for (const [hookName, registration] of Object.entries(hooks)) {
+    if (!supportedHookNames.has(hookName)) {
+      throw new Error(`[plugin:${pluginId}] unsupported hook "${hookName}".`);
+    }
+    if (typeof registration === "function") continue;
+    if (!registration || typeof registration !== "object" || Array.isArray(registration)) {
+      throw new Error(
+        `[plugin:${pluginId}] hook "${hookName}" must be a function or registration descriptor.`,
+      );
+    }
+
+    const descriptor = registration as Record<string, unknown>;
+    const unsupportedKey = Object.keys(descriptor).find((key) => !hookDescriptorKeys.has(key));
+    if (unsupportedKey) {
+      throw new Error(
+        `[plugin:${pluginId}] hook "${hookName}" descriptor has unsupported field "${unsupportedKey}".`,
+      );
+    }
+    if (typeof descriptor.handler !== "function") {
+      throw new Error(`[plugin:${pluginId}] hook "${hookName}" descriptor requires a handler.`);
+    }
+    if (
+      descriptor.priority !== undefined &&
+      (typeof descriptor.priority !== "number" || !Number.isFinite(descriptor.priority))
+    ) {
+      throw new Error(`[plugin:${pluginId}] hook "${hookName}" priority must be a finite number.`);
+    }
+    if (
+      descriptor.timeoutMs !== undefined &&
+      (typeof descriptor.timeoutMs !== "number" ||
+        !Number.isFinite(descriptor.timeoutMs) ||
+        descriptor.timeoutMs <= 0)
+    ) {
+      throw new Error(`[plugin:${pluginId}] hook "${hookName}" timeoutMs must be greater than 0.`);
+    }
+  }
+}
 
 /**
  * Capabilities the host can confidently infer from the plugin's declared
@@ -265,6 +313,8 @@ function validateActionRegistry(
 export function definePlugin<TConfig = Record<string, unknown>>(
   definition: NpPluginDefinition<TConfig>,
 ): NpResolvedPlugin<TConfig> {
+  validateHookRegistry(definition.manifest.id, definition.hooks);
+
   // Auto-fill `manifest.provides.*` from the actual surface the plugin
   // contributes. Author-declared entries keep their slot; derived entries
   // append. This collapses the boilerplate floor for a block-only plugin

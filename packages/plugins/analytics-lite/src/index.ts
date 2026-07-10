@@ -1,4 +1,9 @@
-import { definePlugin, npAdminMetric, npAdminTable } from "@nexpress/plugin-sdk";
+import {
+  definePlugin,
+  npAdminMetric,
+  npAdminTable,
+  type NpRenderContribution,
+} from "@nexpress/plugin-sdk";
 import { z } from "zod";
 
 const configSchema = z.object({
@@ -10,6 +15,31 @@ const configSchema = z.object({
 });
 
 export type AnalyticsLiteConfig = z.infer<typeof configSchema>;
+
+export function createAnalyticsRenderContribution(
+  config: AnalyticsLiteConfig,
+): NpRenderContribution | undefined {
+  if (!config.enabled) return undefined;
+
+  const script = [
+    "(() => {",
+    "try {",
+    config.respectDoNotTrack
+      ? "if (navigator.doNotTrack === '1' || window.doNotTrack === '1') return;"
+      : "",
+    `if (Math.random() > ${JSON.stringify(config.sampleRate)}) return;`,
+    `fetch(${JSON.stringify(config.scriptPath)}, {`,
+    "'method': 'POST',",
+    "'headers': { 'content-type': 'application/json' },",
+    "'keepalive': true,",
+    "'body': JSON.stringify({ path: location.pathname, referrer: document.referrer, title: document.title, at: new Date().toISOString() })",
+    "});",
+    "} catch {}",
+    "})();",
+  ].join("");
+
+  return { bodyEnd: [{ tag: "script", children: script }] };
+}
 
 export interface AnalyticsEventInput {
   path?: unknown;
@@ -110,28 +140,7 @@ export const analyticsLitePlugin = definePlugin<AnalyticsLiteConfig>({
   },
   configSchema,
   hooks: {
-    "render:afterPage": ({ ctx }) => {
-      if (!ctx.config.enabled) return undefined;
-
-      const script = [
-        "(() => {",
-        "try {",
-        ctx.config.respectDoNotTrack
-          ? "if (navigator.doNotTrack === '1' || window.doNotTrack === '1') return;"
-          : "",
-        `if (Math.random() > ${JSON.stringify(ctx.config.sampleRate)}) return;`,
-        `fetch(${JSON.stringify(ctx.config.scriptPath)}, {`,
-        "'method': 'POST',",
-        "'headers': { 'content-type': 'application/json' },",
-        "'keepalive': true,",
-        "'body': JSON.stringify({ path: location.pathname, referrer: document.referrer, title: document.title, at: new Date().toISOString() })",
-        "});",
-        "} catch {}",
-        "})();",
-      ].join("");
-
-      return { bodyEnd: [{ tag: "script", children: script }] };
-    },
+    "render:beforePage": ({ ctx }) => createAnalyticsRenderContribution(ctx.config),
   },
   routes: [
     {

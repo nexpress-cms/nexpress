@@ -17,9 +17,9 @@ export interface MagazinePostCardDoc {
   publishedAt?: string | Date;
   authorName?: string;
   author?: { name?: string } | string;
-  /** Reading-time estimate; usually populated by the reading-time
-   *  plugin's `content:afterSave` hook. Number = minutes, string =
-   *  pre-formatted label. */
+  /** Reading-time estimate; usually populated by the reading-time plugin's
+   *  `content:afterCreate` / `content:afterUpdate` hooks. Number = minutes,
+   *  string = pre-formatted label. */
   readingTime?: number | string;
   /** Promotes the doc to the index template's lead position.
    *  Operator-set via the admin's posts edit view. */
@@ -96,7 +96,7 @@ export function MagazinePostCard({ doc, variant = "grid" }: MagazinePostCardProp
           {doc.kicker ? <p className="np-magazine-card-kicker">{doc.kicker}</p> : null}
           <h3 className="np-magazine-card-title">{title}</h3>
           {doc.excerpt ? <p className="np-magazine-card-excerpt">{doc.excerpt}</p> : null}
-          {(author || date) ? (
+          {author || date ? (
             <p className="np-magazine-card-meta">
               {author ? <span>{author}</span> : null}
               {author && date ? <span aria-hidden="true"> · </span> : null}

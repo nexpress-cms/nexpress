@@ -41,6 +41,13 @@ export interface PluginHookHandler {
   timeoutMs?: number;
 }
 
+export type NpHookResultValidation = { ok: true } | { ok: false; message: string };
+
+export interface NpHookCollectOptions {
+  /** Validate each non-null handler return before it enters the collected list. */
+  validateResult?: (value: unknown) => NpHookResultValidation;
+}
+
 export interface PluginRouteHandler {
   pluginId: string;
   path: string;
@@ -905,8 +912,8 @@ export async function runHook(hookName: string, data: Record<string, unknown>): 
 
 /**
  * Like `runHook`, but collects every non-null/undefined return value from
- * registered handlers. Used by render extension points (`render:beforePage`,
- * etc.) where each plugin contributes structured data — head tags, scripts —
+ * registered handlers. Used by the `render:beforePage` extension point where
+ * each plugin contributes structured data — head tags and body-end scripts —
  * that the renderer aggregates into a single output.
  *
  * Handlers that throw are isolated (logged + reported, then skipped). A
@@ -916,6 +923,7 @@ export async function runHook(hookName: string, data: Record<string, unknown>): 
 export async function runHookAndCollect<T>(
   hookName: string,
   data: Record<string, unknown>,
+  options?: NpHookCollectOptions,
 ): Promise<T[]> {
   const handlers = globalHooks.get(hookName);
   if (!handlers || handlers.length === 0) return [];
@@ -925,6 +933,21 @@ export async function runHookAndCollect<T>(
     if (!(await isPluginEnabled(handler.pluginId))) continue;
     const outcome = await dispatchHookHandler(hookName, handler, data);
     if (outcome.ok && outcome.value !== undefined && outcome.value !== null) {
+      const validation = options?.validateResult?.(outcome.value);
+      if (validation && !validation.ok) {
+        const error = new Error(
+          `[plugin:${handler.pluginId}] hook "${hookName}" returned an invalid result: ${validation.message}`,
+        );
+        getLogger().error("Plugin hook returned an invalid result", {
+          pluginId: handler.pluginId,
+          hook: hookName,
+          detail: validation.message,
+        });
+        void reportError(error, {
+          tags: { source: "plugin-hook", pluginId: handler.pluginId, hook: hookName },
+        });
+        continue;
+      }
       results.push(outcome.value as T);
     }
   }

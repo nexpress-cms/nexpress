@@ -99,9 +99,10 @@ export async function scaffoldHookPlugin(options: ScaffoldOptions): Promise<Scaf
  *
  * Full hook list: \`content:before/afterCreate\`,
  * \`content:before/afterUpdate\`, \`content:before/afterDelete\`,
- * \`content:before/afterPublish\`, \`auth:afterLogin\`,
+ * \`content:before/afterPublish\`, \`content:beforeUnpublish\`,
+ * \`auth:afterLogin\`,
  * \`auth:beforeLogout\`, \`auth:afterRegister\`,
- * \`render:beforePage\`, \`render:afterPage\`,
+ * \`render:beforePage\`,
  * \`media:before/afterUpload\`.
  *
  * \`definePlugin\` auto-derives \`manifest.capabilities\` from the

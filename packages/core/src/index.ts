@@ -561,6 +561,8 @@ export {
 export type { NpPluginConfigResult } from "./plugins/index.js";
 export type {
   PluginHookHandler,
+  NpHookCollectOptions,
+  NpHookResultValidation,
   PluginRouteHandler,
   PluginRouteRequest,
   PluginRouteResponse,
