@@ -228,7 +228,9 @@ capability for that surface; hand-rolled plugin definitions must
 declare it explicitly or the host refuses the schedule at load
 time. Each plugin schedule becomes one `pgboss.schedule` row under
 `plugin.scheduledTask.<pluginId>.<taskId>` and dispatches through
-the shared `plugin:scheduledTask` handler.
+the shared `plugin:scheduledTask` handler. Cron expressions use five fields
+and run in UTC. Definition, host, and plugin doctor share the validation
+contract; see [`plugin-scheduled-tasks.md`](plugin-scheduled-tasks.md).
 
 `boss.schedule()` via `PgBossAdapter.getBoss()` is still an escape
 hatch for application-local code, but plugin authors should prefer
@@ -454,7 +456,8 @@ honest about what's missing rather than letting it drift.
   `definePlugin({ scheduled: [...] })` is now read by the
   host; pg-boss adapter registers the cron rows on worker
   start and reconciles `plugin.scheduledTask.*` rows during
-  plugin reload. Adding a new schedule in a separate worker
+  plugin reload. Definitions are validated before registration and
+  plugin doctor reports malformed or duplicate task ids. Adding a new schedule in a separate worker
   deployment still needs a worker restart so `boss.work()` loops
   are installed in the worker process. `boss.schedule()` via
   `getBoss()` still works as the application-local escape hatch.

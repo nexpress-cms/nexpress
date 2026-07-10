@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import {
   invalidatePluginEnabled,
   npAnalyzePluginAdminActionContract,
+  npAnalyzePluginScheduledTasks,
   npValidatePluginApiRouteDefinition,
   npValidatePluginPageRouteDefinition,
   type NpPluginActionKind,
@@ -550,6 +551,28 @@ function blockContractImportCheck(error: unknown): CheckResult | null {
   };
 }
 
+function scheduledTaskContractImportCheck(error: unknown): CheckResult | null {
+  const detail = error instanceof Error ? error.message : String(error);
+  const match = detail.match(
+    /^\[plugin:([^\]]+)\] (?:scheduled must be an array|invalid scheduled task |duplicate scheduled task id )/u,
+  );
+  if (!match) return null;
+
+  const duplicate = detail.includes("duplicate scheduled task id");
+  return {
+    id: duplicate ? "plugins.schedule_duplicate" : "plugins.schedule_invalid",
+    state: "error",
+    label: "Plugin scheduled task contracts",
+    detail,
+    pluginIds: match[1] ? [match[1]] : undefined,
+    hint: withDoctorRerun(
+      duplicate
+        ? "A plugin can declare each scheduled task id only once. Remove or rename the duplicate task."
+        : "Use a safe task id, a valid five-field UTC cron, a function handler, and a valid description.",
+    ),
+  };
+}
+
 function duplicateChecks(
   id: string,
   label: string,
@@ -685,6 +708,58 @@ function buildBlockChecks(pluginObjects: PluginLike[], plugins: OpsPluginEntry[]
       detail: duplicateBlocks.join("; "),
       hint: withDoctorRerun(
         "A plugin can declare each block type only once. Remove or rename the duplicate block.",
+      ),
+      pluginIds: uniqueStrings(duplicatePluginIds),
+    });
+  }
+  return checks;
+}
+
+function buildScheduledTaskChecks(
+  pluginObjects: PluginLike[],
+  plugins: OpsPluginEntry[],
+): CheckResult[] {
+  const invalidTasks: string[] = [];
+  const invalidPluginIds: string[] = [];
+  const duplicateTasks: string[] = [];
+  const duplicatePluginIds: string[] = [];
+
+  for (const [index, plugin] of pluginObjects.entries()) {
+    if (plugin.scheduled === undefined) continue;
+    const pluginId = plugins[index]?.id ?? `plugin-${index.toString()}`;
+    for (const issue of npAnalyzePluginScheduledTasks(plugin.scheduled)) {
+      const detail = `[plugin:${pluginId}] ${issue.message}`;
+      if (issue.code === "duplicate-id") {
+        duplicateTasks.push(detail);
+        duplicatePluginIds.push(pluginId);
+      } else {
+        invalidTasks.push(detail);
+        invalidPluginIds.push(pluginId);
+      }
+    }
+  }
+
+  const checks: CheckResult[] = [];
+  if (invalidTasks.length > 0) {
+    checks.push({
+      id: "plugins.schedule_invalid",
+      state: "error",
+      label: "Plugin scheduled task contracts",
+      detail: invalidTasks.join("; "),
+      hint: withDoctorRerun(
+        "Use a safe task id, a valid five-field UTC cron, a function handler, and a valid description.",
+      ),
+      pluginIds: uniqueStrings(invalidPluginIds),
+    });
+  }
+  if (duplicateTasks.length > 0) {
+    checks.push({
+      id: "plugins.schedule_duplicate",
+      state: "error",
+      label: "Plugin scheduled task ids",
+      detail: duplicateTasks.join("; "),
+      hint: withDoctorRerun(
+        "A plugin can declare each scheduled task id only once. Remove or rename the duplicate task.",
       ),
       pluginIds: uniqueStrings(duplicatePluginIds),
     });
@@ -1006,6 +1081,7 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
     ...buildBlockChecks(pluginObjects, plugins),
     ...buildApiRouteChecks(pluginObjects, plugins),
     ...buildPageRouteChecks(pluginObjects, plugins),
+    ...buildScheduledTaskChecks(pluginObjects, plugins),
   );
 
   const duplicateIds = duplicateChecks(
@@ -1104,6 +1180,7 @@ export async function collectOpsPluginsStatus(
     const apiRouteCheck = apiRouteContractImportCheck(error);
     const pageRouteCheck = pageRouteContractImportCheck(error);
     const blockCheck = blockContractImportCheck(error);
+    const scheduledTaskCheck = scheduledTaskContractImportCheck(error);
     return buildOpsPluginsJson({
       plugins: [],
       checks: [
@@ -1118,6 +1195,7 @@ export async function collectOpsPluginsStatus(
         ...(blockCheck ? [blockCheck] : []),
         ...(apiRouteCheck ? [apiRouteCheck] : []),
         ...(pageRouteCheck ? [pageRouteCheck] : []),
+        ...(scheduledTaskCheck ? [scheduledTaskCheck] : []),
       ],
     });
   }

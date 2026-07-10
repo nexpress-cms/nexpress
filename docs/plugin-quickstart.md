@@ -77,7 +77,7 @@ the right starter for what you're building:
 | `nexpress create route-plugin <slug> --workspace`               | One public `GET /health` route.                                                                                          |
 | `nexpress create page-plugin <slug> --workspace`                | One typed `/hello/:name` public page route with metadata and locale guidance.                                            |
 | `nexpress create admin-plugin <slug> --workspace`               | `configSchema` settings form + status widget + manual action, wired through a typed definition-level `actions` registry. |
-| `nexpress create scheduled-plugin <slug> --workspace`           | One nightly cron task at 02:00.                                                                                          |
+| `nexpress create scheduled-plugin <slug> --workspace`           | One typed nightly cron task at 02:00 UTC.                                                                                |
 
 ```bash
 pnpm exec nexpress create hook-plugin my-plugin --workspace
@@ -484,8 +484,8 @@ The reference docs go deeper on each surface:
   (settings, widgets, actions, tables, dashboard, collection tabs).
 - [`agent-integration.md`](agent-integration.md) — exposing a plugin
   to LLM-driven agents through the manifest's `agent` field.
-- [`scheduled-publishing.md`](scheduled-publishing.md) — registering
-  scheduled tasks against the pg-boss worker.
+- [`plugin-scheduled-tasks.md`](plugin-scheduled-tasks.md) — typed task ids,
+  five-field UTC cron expressions, worker lifecycle, and doctor diagnostics.
 - [`api-error-codes.md`](api-error-codes.md) — what to throw and
   what to catch from a route handler.
 

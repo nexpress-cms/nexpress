@@ -3,6 +3,7 @@ import {
   npAdminMetric,
   npAdminTable,
   type NpRenderContribution,
+  type NpScheduledTask,
 } from "@nexpress/plugin-sdk";
 import { z } from "zod";
 
@@ -193,7 +194,7 @@ export const analyticsLitePlugin = definePlugin<AnalyticsLiteConfig>({
         });
       },
     },
-  ],
+  ] satisfies NpScheduledTask<AnalyticsLiteConfig>[],
   actions: {
     todayViews: {
       kind: "metric",
