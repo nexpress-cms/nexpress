@@ -493,6 +493,26 @@ describe("plugin host", () => {
       expect(getPluginRoutes()).toHaveLength(0);
     });
 
+    it("removes a previous route before rejecting an invalid replacement", async () => {
+      await loadPlugins([
+        resolvedPlugin("replacement", {
+          capabilities: ["api:route"],
+          routes: [{ method: "GET", path: "/health", handler: () => ({ status: 200 }) }],
+        }),
+      ]);
+      expect(getPluginRoutes()).toHaveLength(1);
+
+      await loadPlugins([
+        resolvedPlugin("replacement", {
+          capabilities: ["api:route"],
+          routes: [{ method: "GET", path: "/users/:id", handler: () => ({ status: 200 }) }],
+        }),
+      ]);
+
+      expect(getAllPluginIds()).not.toContain("replacement");
+      expect(getPluginRoutes()).toHaveLength(0);
+    });
+
     it("accepts synchronous handlers and validates their response at dispatch", async () => {
       await loadPlugins([
         resolvedPlugin("sync-route", {

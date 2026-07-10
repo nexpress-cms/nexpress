@@ -517,13 +517,6 @@ function createPluginContext(pluginId: string, registration: PluginRegistration)
 
 async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   const { manifest } = plugin;
-  const validatedApiRoutes = validateApiRouteRegistry(
-    manifest.id,
-    (plugin as { routes?: unknown }).routes,
-  );
-  if (validatedApiRoutes.length > 0) {
-    assertCapability(manifest.id, "api:route", manifest.capabilities);
-  }
 
   // Defense in depth: if this id was already registered, scrub the old
   // entry's hooks + routes from the global maps before overwriting. The
@@ -544,6 +537,14 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
       const idx = globalRoutes.indexOf(route);
       if (idx !== -1) globalRoutes.splice(idx, 1);
     }
+  }
+
+  const validatedApiRoutes = validateApiRouteRegistry(
+    manifest.id,
+    (plugin as { routes?: unknown }).routes,
+  );
+  if (validatedApiRoutes.length > 0) {
+    assertCapability(manifest.id, "api:route", manifest.capabilities);
   }
 
   const registration: PluginRegistration = {

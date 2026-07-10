@@ -83,6 +83,7 @@ handler: async (request, ctx) => {
   // request.body: parsed JSON for non-GET/HEAD requests, otherwise undefined
   // request.headers: request headers as a string record
   // request.user: staff summary when the request has a valid session
+  return { status: 200, body: { pluginId: ctx.pluginId } };
 };
 ```
 
@@ -112,18 +113,19 @@ an omitted body becomes JSON `null`. Statuses 204, 205, and 304 must not carry
 a body. NexPress also emits no body for every `HEAD` request.
 
 The host validates the result before it reaches Next.js. Invalid results and
-thrown handler errors use the standard NexPress error adapter. Unexpected
-failures stay opaque in production while the server log retains diagnostic
-context; intentional `NpError` subclasses keep their documented API code and
+thrown handler errors use the standard NexPress error adapter. Invalid-result
+errors include the plugin id and method/path; unexpected handler failures stay
+opaque in production while the server log records their original error and
+stack. Intentional `NpError` subclasses keep their documented API code and
 message.
 
 ## Authentication and abuse controls
 
 `auth: true` requires a valid staff session and exposes its safe summary as
 `request.user`. A public route also receives that summary when the caller
-already has a valid session. `auth: false` is public and is appropriate for webhooks,
-callbacks, and health endpoints only when the handler supplies any signature
-or token checks it needs.
+already has a valid session. `auth: false` is public and is appropriate for
+webhooks, callbacks, and health endpoints only when the handler supplies any
+signature or token checks it needs.
 
 Plugin-defined routes are CSRF-exempt because many are non-browser callbacks.
 The framework applies a default 30 requests/minute/IP bucket. That is a floor,

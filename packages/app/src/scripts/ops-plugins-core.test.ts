@@ -340,6 +340,29 @@ describe("ops plugins core", () => {
     );
   });
 
+  it("preserves a structured route check when definePlugin aborts config import", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "np-ops-plugins-route-import-"));
+    writeFileSync(
+      join(cwd, "nexpress.config.ts"),
+      `throw new Error('[plugin:demo] duplicate API route "GET /health".');\n`,
+    );
+
+    const report = await collectOpsPluginsStatus(cwd);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "plugins.config_file", state: "error" }),
+        expect.objectContaining({
+          id: "plugins.route_conflict",
+          state: "error",
+          detail: expect.stringContaining('duplicate API route "GET /health"'),
+          pluginIds: ["demo"],
+        }),
+      ]),
+    );
+  });
+
   it("renders doctor hints and ordered next commands", () => {
     const report = analyzePlugins([
       {

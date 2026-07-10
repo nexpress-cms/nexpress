@@ -482,6 +482,28 @@ function actionContractImportCheck(error: unknown): CheckResult | null {
   return null;
 }
 
+function apiRouteContractImportCheck(error: unknown): CheckResult | null {
+  const detail = error instanceof Error ? error.message : String(error);
+  const match = detail.match(
+    /^\[plugin:([^\]]+)\] (?:routes must be an array|API route |duplicate API route )/u,
+  );
+  if (!match) return null;
+
+  const duplicate = detail.includes("duplicate API route");
+  return {
+    id: duplicate ? "plugins.route_conflict" : "plugins.route_invalid",
+    state: "error",
+    label: "Plugin API route contracts",
+    detail,
+    pluginIds: match[1] ? [match[1]] : undefined,
+    hint: withDoctorRerun(
+      duplicate
+        ? "A plugin can declare each method/path pair only once. Remove or rename the duplicate route."
+        : "Use an uppercase supported method, a canonical static path, a function handler, and valid description/auth fields.",
+    ),
+  };
+}
+
 function duplicateChecks(
   id: string,
   label: string,
@@ -905,6 +927,7 @@ export async function collectOpsPluginsStatus(
     });
   } catch (error: unknown) {
     const actionCheck = actionContractImportCheck(error);
+    const apiRouteCheck = apiRouteContractImportCheck(error);
     return buildOpsPluginsJson({
       plugins: [],
       checks: [
@@ -916,6 +939,7 @@ export async function collectOpsPluginsStatus(
           hint: withDoctorRerun("Fix the config import error."),
         },
         ...(actionCheck ? [actionCheck] : []),
+        ...(apiRouteCheck ? [apiRouteCheck] : []),
       ],
     });
   }
