@@ -7,7 +7,8 @@ describe("webhook-relay", () => {
     expect(
       buildPayload("content:afterUpdate", {
         collection: "posts",
-        doc: { id: "post-1", status: "published", title: "Ignored" },
+        documentId: "post-1",
+        document: { id: "post-1", status: "published", title: "Ignored" },
       }),
     ).toMatchObject({
       event: "content:afterUpdate",

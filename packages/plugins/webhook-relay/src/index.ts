@@ -29,25 +29,19 @@ export interface WebhookRelayPayload {
   at: string;
 }
 
-type HookData = Record<string, unknown> & {
-  collection?: string;
-  doc?: Record<string, unknown>;
-};
-
-function pickDoc(data: HookData): Record<string, unknown> {
-  return data.doc && typeof data.doc === "object" ? data.doc : data;
+interface HookData {
+  collection: string;
+  documentId: string | null;
+  document: Record<string, unknown>;
 }
 
 export function buildPayload(event: string, data: HookData): WebhookRelayPayload {
-  const doc = pickDoc(data);
-  const id = typeof doc.id === "string" ? doc.id : null;
-  const status = typeof doc.status === "string" ? doc.status : null;
-  const collection = typeof data.collection === "string" ? data.collection : "unknown";
+  const status = typeof data.document.status === "string" ? data.document.status : null;
 
   return {
     event,
-    collection,
-    documentId: id,
+    collection: data.collection,
+    documentId: data.documentId,
     status,
     at: new Date().toISOString(),
   };
@@ -78,9 +72,15 @@ export const webhookRelayPlugin = definePlugin<WebhookRelayConfig>({
   },
   configSchema,
   hooks: {
-    "content:afterCreate": ({ data, ctx }) => deliver("content:afterCreate", data, ctx),
-    "content:afterUpdate": ({ data, ctx }) => deliver("content:afterUpdate", data, ctx),
-    "content:afterDelete": ({ data, ctx }) => deliver("content:afterDelete", data, ctx),
+    "content:afterCreate": async ({ data, ctx }) => {
+      await deliver("content:afterCreate", data, ctx);
+    },
+    "content:afterUpdate": async ({ data, ctx }) => {
+      await deliver("content:afterUpdate", data, ctx);
+    },
+    "content:afterDelete": async ({ data, ctx }) => {
+      await deliver("content:afterDelete", data, ctx);
+    },
   },
   actions: {
     lastDelivery: {
@@ -97,7 +97,11 @@ export const webhookRelayPlugin = definePlugin<WebhookRelayConfig>({
       handler: async (_data, ctx) => {
         const result = await deliver(
           "webhook:test",
-          { collection: "test", doc: { id: "test", status: "published" } },
+          {
+            collection: "test",
+            documentId: "test",
+            document: { id: "test", status: "published" },
+          },
           ctx,
         );
         return result.ok ? { ok: true, data: result.message } : npAdminActionError(result.message);
@@ -126,7 +130,7 @@ export const webhookRelayPlugin = definePlugin<WebhookRelayConfig>({
 
 async function deliver(
   event: string,
-  data: Record<string, unknown>,
+  data: HookData,
   ctx: Pick<NpPluginContext<WebhookRelayConfig>, "config" | "http" | "storage" | "log">,
 ): Promise<{ ok: boolean; message: string }> {
   const payload = buildPayload(event, data);

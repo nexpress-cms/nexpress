@@ -759,8 +759,8 @@ async function validateActorAccess(ctx: SaveContext): Promise<void> {
 
 /**
  * Concern 2 — prepare the document for write. Runs the
- * collection's `beforeCreate` / `beforeUpdate` hooks, applies
- * slug generation, resolves i18n locale + translation group,
+ * collection and plugin `beforeCreate` / `beforeUpdate` hooks, applies slug
+ * generation, resolves i18n locale + translation group,
  * runs `prepareDocumentData`, stamps multi-site / member-author
  * columns, demotes future-dated `published` to `scheduled`,
  * builds the search-vector SQL fragment, and computes the
@@ -779,6 +779,35 @@ async function prepareDocumentForWrite(c: SaveContext): Promise<void> {
       originalDoc: c.originalDoc,
     },
   );
+
+  // Plugin draft hooks run before slug/i18n/field preparation so in-place
+  // mutations of `document` participate in every downstream derived value and
+  // the persisted row. The host shallow-freezes only the payload wrapper, not
+  // this nested document object.
+  if (c.operation === "create") {
+    await runHook("content:beforeCreate", {
+      collection: c.collection,
+      documentId: null,
+      document: c.hookData,
+      originalDocument: null,
+      operation: "create",
+      source: "request",
+      principal: c.principal,
+    });
+  } else {
+    if (!c.docId || !c.originalDoc) {
+      throw new Error(`Update hook context for ${c.collection} is missing its original document.`);
+    }
+    await runHook("content:beforeUpdate", {
+      collection: c.collection,
+      documentId: c.docId,
+      document: c.hookData,
+      originalDocument: c.originalDoc,
+      operation: "update",
+      source: "request",
+      principal: c.principal,
+    });
+  }
 
   applySlugField(c.config, c.hookData, c.originalDoc);
 
@@ -905,34 +934,52 @@ async function prepareDocumentForWrite(c: SaveContext): Promise<void> {
 }
 
 /**
- * Concern 3 — fire pre-write plugin hooks, then run the document
- * persistence inside one transaction (main row + child + join +
- * media-ref + revision). Returns the saved doc.
+ * Concern 3 — fire publish-transition plugin hooks, then run the document
+ * persistence inside one transaction (main row + child + join + media-ref +
+ * revision). Returns the saved doc.
  */
 async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unknown>> {
-  await runHook(ctx.operation === "create" ? "content:beforeCreate" : "content:beforeUpdate", {
-    collection: ctx.collection,
-    data: ctx.hookData,
-    originalDoc: ctx.originalDoc,
-    user: ctx.userForHooks,
-    principal: ctx.principal,
-    operation: ctx.operation,
-  });
   if (ctx.publishTransition) {
-    await runHook("content:beforePublish", {
-      collection: ctx.collection,
-      data: ctx.hookData,
-      originalDoc: ctx.originalDoc,
-      user: ctx.userForHooks,
-      principal: ctx.principal,
-    });
+    if (ctx.operation === "create") {
+      await runHook("content:beforePublish", {
+        collection: ctx.collection,
+        documentId: null,
+        document: ctx.hookData,
+        originalDocument: null,
+        operation: "create",
+        source: "request",
+        principal: ctx.principal,
+      });
+    } else {
+      if (!ctx.docId || !ctx.originalDoc) {
+        throw new Error(
+          `Publish hook context for ${ctx.collection} is missing its original document.`,
+        );
+      }
+      await runHook("content:beforePublish", {
+        collection: ctx.collection,
+        documentId: ctx.docId,
+        document: ctx.hookData,
+        originalDocument: ctx.originalDoc,
+        operation: "update",
+        source: "request",
+        principal: ctx.principal,
+      });
+    }
   }
   if (ctx.unpublishTransition) {
+    if (!ctx.docId || !ctx.originalDoc) {
+      throw new Error(
+        `Unpublish hook context for ${ctx.collection} is missing its original document.`,
+      );
+    }
     await runHook("content:beforeUnpublish", {
       collection: ctx.collection,
-      data: ctx.hookData,
-      originalDoc: ctx.originalDoc,
-      user: ctx.userForHooks,
+      documentId: ctx.docId,
+      document: ctx.hookData,
+      originalDocument: ctx.originalDoc,
+      operation: "update",
+      source: "request",
       principal: ctx.principal,
     });
   }
@@ -1060,26 +1107,69 @@ async function firePostCommitHooks(
     }),
   );
 
-  const pluginHookName = ctx.operation === "create" ? "content:afterCreate" : "content:afterUpdate";
-  await runPostCommit(`hook:${pluginHookName}`, postCommitCtx, () =>
-    runHook(pluginHookName, {
-      collection: ctx.collection,
-      doc: savedDoc,
-      operation: ctx.operation,
-      user: ctx.userForHooks,
-      principal: ctx.principal,
-    }),
-  );
-  if (ctx.publishTransition) {
-    await runPostCommit("hook:content:afterPublish", postCommitCtx, () =>
-      runHook("content:afterPublish", {
+  if (ctx.operation === "create") {
+    await runPostCommit("hook:content:afterCreate", postCommitCtx, () =>
+      runHook("content:afterCreate", {
         collection: ctx.collection,
-        doc: savedDoc,
-        operation: ctx.operation,
-        user: ctx.userForHooks,
+        documentId: savedDocId,
+        document: savedDoc,
+        originalDocument: null,
+        operation: "create",
+        source: "request",
         principal: ctx.principal,
       }),
     );
+  } else {
+    const originalDocument = ctx.originalDoc;
+    if (!originalDocument) {
+      throw new Error(
+        `After-update hook context for ${ctx.collection} is missing its original document.`,
+      );
+    }
+    await runPostCommit("hook:content:afterUpdate", postCommitCtx, () =>
+      runHook("content:afterUpdate", {
+        collection: ctx.collection,
+        documentId: savedDocId,
+        document: savedDoc,
+        originalDocument,
+        operation: "update",
+        source: "request",
+        principal: ctx.principal,
+      }),
+    );
+  }
+  if (ctx.publishTransition) {
+    if (ctx.operation === "create") {
+      await runPostCommit("hook:content:afterPublish", postCommitCtx, () =>
+        runHook("content:afterPublish", {
+          collection: ctx.collection,
+          documentId: savedDocId,
+          document: savedDoc,
+          originalDocument: null,
+          operation: "create",
+          source: "request",
+          principal: ctx.principal,
+        }),
+      );
+    } else {
+      const originalDocument = ctx.originalDoc;
+      if (!originalDocument) {
+        throw new Error(
+          `After-publish hook context for ${ctx.collection} is missing its original document.`,
+        );
+      }
+      await runPostCommit("hook:content:afterPublish", postCommitCtx, () =>
+        runHook("content:afterPublish", {
+          collection: ctx.collection,
+          documentId: savedDocId,
+          document: savedDoc,
+          originalDocument,
+          operation: "update",
+          source: "request",
+          principal: ctx.principal,
+        }),
+      );
+    }
   }
 }
 
@@ -1517,8 +1607,11 @@ async function deleteDocumentImpl(
 
   await runHook("content:beforeDelete", {
     collection,
-    doc: originalDoc,
-    user: userForHooks,
+    documentId: docId,
+    document: originalDoc,
+    originalDocument: null,
+    operation: "delete",
+    source: "request",
     principal,
   });
 
@@ -1611,7 +1704,10 @@ async function deleteDocumentImpl(
     runHook("content:afterDelete", {
       collection,
       documentId: docId,
-      user: userForHooks,
+      document: originalDoc,
+      originalDocument: null,
+      operation: "delete",
+      source: "request",
       principal,
     }),
   );

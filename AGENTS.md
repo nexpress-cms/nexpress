@@ -2,9 +2,13 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-10 (plugin render contributions now use the single
-typed `render:beforePage` hook for both `head` and `bodyEnd`; definition-time
-hook validation rejects unsupported names and malformed descriptors.)
+**Last refreshed:** 2026-07-10 (plugin content, auth, media, and render hooks
+now share one typed hook registry. Lifecycle payloads are exact per name,
+validated at dispatch, and fire-and-forget handlers must return void.)
+
+**Earlier:** 2026-07-10 (plugin render contributions now use the single typed
+`render:beforePage` hook for both `head` and `bodyEnd`; definition-time hook
+validation rejects unsupported names and malformed descriptors.)
 
 **Earlier:** 2026-07-10 (plugin Admin actions now support a definition-level
 typed registry, while setup-time `ctx.actions.register*` remains the
@@ -303,7 +307,7 @@ What v0.1 of the published `@nexpress/*` packages commits to. Anything not on th
 These are the public APIs we'll honor with semver and migration notes. Breaking them rides a **minor bump pre-1.0** and ships a CHANGELOG line operators can search for.
 
 - **Collection authoring** — `defineCollection({ slug, fields, hooks, access, … })` and the field-config types (`NpTextField`, `NpRichTextField`, `NpRelationshipField`, `NpBlocksField`, `NpArrayField`, `NpGroupField`, `NpRowField`, `NpCollapsibleField`, …). Adding a new field type is non-breaking. Renaming or removing one is a minor with a migration note.
-- **Plugin authoring** — `definePlugin({ manifest, hooks, actions, routes, pageRoutes, scheduled, blocks })`. `actions` is a definition-level `Record<actionId, { kind, handler }>` with `action | metric | status | table` kinds; the compatible setup-time `ctx.actions.register*` methods remain supported. Content hooks use the operation-specific names `content:beforeCreate`, `content:afterCreate`, `content:beforeUpdate`, `content:afterUpdate`, `content:beforeDelete`, `content:afterDelete`, `content:beforePublish`, `content:afterPublish`, and `content:beforeUnpublish`. The single render hook is `render:beforePage`; its typed `NpRenderContribution` return separates `head` from `bodyEnd`. Auth / media hooks (`auth:*`, `media:*`) follow the same typed registry. `blocks` ships an `NpBlockDefinition[]` registered into the shared block registry at boot.
+- **Plugin authoring** — `definePlugin({ manifest, hooks, actions, routes, pageRoutes, scheduled, blocks })`. `actions` is a definition-level `Record<actionId, { kind, handler }>` with `action | metric | status | table` kinds; the compatible setup-time `ctx.actions.register*` methods remain supported. Content hooks use the operation-specific names `content:beforeCreate`, `content:afterCreate`, `content:beforeUpdate`, `content:afterUpdate`, `content:beforeDelete`, `content:afterDelete`, `content:beforePublish`, `content:afterPublish`, and `content:beforeUnpublish`; every phase receives its exact `document` / `documentId` / `originalDocument` / `operation` / `source` / `principal` payload. Auth and media hooks have the same per-name typed-data contract, and lifecycle handlers return void. The single render hook is `render:beforePage`; its typed `NpRenderContribution` return separates `head` from `bodyEnd`. `blocks` ships an `NpBlockDefinition[]` registered into the shared block registry at boot.
 - **Bootstrap intent enum** — `ensureFor("read" | "plugins" | "write")`. Adding a new intent is non-breaking; semantics of the existing three are pinned.
 - **Error classes + codes** — `NpForbiddenError`, `NpNotFoundError`, `NpValidationError`, `NpAuthError`, `NpConflictError`, `NpRateLimitError`, `NpSiteContextMissingError`, and the `NpErrorCode` union. The string code per class is stable per [docs/api-error-codes.md](./docs/api-error-codes.md).
 - **Capability vocabulary** — `can(user, capability)` and the existing capability strings: `"admin.manage"`, `"content.publish"`, `"content.author"`, `"community.moderate"`. New capability strings will be added; existing ones won't be renamed or removed in 0.x.

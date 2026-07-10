@@ -26,6 +26,7 @@ behavior they describe changes.
 | [operations.md](operations.md)                         | Operations runbook — incident recipes, boot warnings, recovery         |
 | [plugin-admin.md](plugin-admin.md)                     | Plugin admin UI surface                                                |
 | [plugin-capabilities.md](plugin-capabilities.md)       | Capability ↔ `ctx.*` mapping reference                                 |
+| [plugin-hooks.md](plugin-hooks.md)                     | Typed content, auth, media lifecycle hook payloads                     |
 | [plugin-manifest.md](plugin-manifest.md)               | Manifest field reference (required vs auto-defaulted)                  |
 | [plugin-quickstart.md](plugin-quickstart.md)           | Author your first plugin in ~10 minutes                                |
 | [plugin-reload.md](plugin-reload.md)                   | What `/admin/plugins` "Reload all" picks up (and what needs a restart) |

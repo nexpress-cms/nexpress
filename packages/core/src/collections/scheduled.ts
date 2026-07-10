@@ -80,15 +80,21 @@ export async function publishScheduledDocuments(
       // collection-level afterUpdate hooks run too.
       await runHook("content:afterUpdate", {
         collection: slug,
-        doc: row,
+        documentId: docId,
+        document: row,
+        originalDocument: null,
         operation: "update",
-        scheduled: true,
+        source: "scheduler",
+        principal: null,
       });
       await runHook("content:afterPublish", {
         collection: slug,
-        doc: row,
+        documentId: docId,
+        document: row,
+        originalDocument: null,
         operation: "update",
-        scheduled: true,
+        source: "scheduler",
+        principal: null,
       });
       await enqueueJob("content:afterSave", {
         collection: slug,

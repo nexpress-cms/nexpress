@@ -24,8 +24,8 @@ The v1 plugin model is **npm-package + rebuild**. A plugin can:
   auth hooks (`auth:afterLogin`, `auth:beforeLogout`,
   `auth:afterRegister`), media hooks (`media:beforeUpload`,
   `media:afterUpload`), and render contributions
-  (`render:beforePage` — see
-  [`plugin-render.md`](plugin-render.md)).
+  (`render:beforePage`). See [`plugin-hooks.md`](plugin-hooks.md) and
+  [`plugin-render.md`](plugin-render.md).
 - Register **routes** (`/api/plugins/<id>/<path>`).
 - Register **page routes** (public-site URLs the plugin owns; see
   [`plugin-pages.md`](plugin-pages.md)).
@@ -168,11 +168,10 @@ export const myPluginPlugin = definePlugin({
     nexpress: { minVersion: "0.1.0" },
   },
   hooks: {
-    "content:afterCreate": ({ data, collection, ctx }) => {
-      const doc = (data as { doc?: { id?: string } }).doc;
+    "content:afterCreate": ({ data, ctx }) => {
       ctx.log.info("New document created", {
-        collection: collection ?? "?",
-        id: doc?.id ?? "?",
+        collection: data.collection,
+        id: data.documentId,
       });
     },
   },
@@ -207,7 +206,8 @@ explicitly only when you _need_ them — see
 [`plugin-manifest.md`](plugin-manifest.md) for the full field
 reference and [`plugin-capabilities.md`](plugin-capabilities.md) for
 the capabilities `definePlugin` can't auto-derive (such as
-`storage:kv` or `network:fetch`).
+`storage:kv` or `network:fetch`). Hook payloads are listed in
+[`plugin-hooks.md`](plugin-hooks.md).
 
 ## Step 2b — Operator-tunable config (optional)
 
@@ -245,7 +245,8 @@ export default definePlugin<MyPluginConfig>({
   hooks: {
     "content:afterCreate": ({ data, ctx }) => {
       // ctx.config is typed Readonly<MyPluginConfig>
-      const minutes = wordCount / ctx.config.wordsPerMinute;
+      const text = typeof data.document.content === "string" ? data.document.content : "";
+      const minutes = text.split(/\s+/).filter(Boolean).length / ctx.config.wordsPerMinute;
       // ...
     },
   },

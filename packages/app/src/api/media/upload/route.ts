@@ -23,9 +23,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 function isAllowedMimeType(mimeType: string): boolean {
   return (
-    mimeType.startsWith("image/") ||
-    mimeType.startsWith("video/") ||
-    mimeType === "application/pdf"
+    mimeType.startsWith("image/") || mimeType.startsWith("video/") || mimeType === "application/pdf"
   );
 }
 
@@ -61,9 +59,7 @@ export async function POST(request: NextRequest) {
 
     const folderIdRaw = formData.get("folderId");
     const folderId =
-      typeof folderIdRaw === "string" && folderIdRaw.trim()
-        ? folderIdRaw.trim()
-        : undefined;
+      typeof folderIdRaw === "string" && folderIdRaw.trim() ? folderIdRaw.trim() : undefined;
 
     await ensureFor("write");
     const db = getDb();
@@ -85,14 +81,14 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
 
     await runHook("media:beforeUpload", {
-      user,
       principal,
+      member: null,
       file: {
         filename: file.name,
         mimeType: file.type,
         size: file.size,
       },
-      folderId,
+      folderId: folderId ?? null,
     });
 
     if (file.type.startsWith("image/")) {
@@ -103,9 +99,16 @@ export async function POST(request: NextRequest) {
       );
 
       await runHook("media:afterUpload", {
-        user,
         principal,
-        media: result,
+        member: null,
+        media: {
+          id: result.id,
+          status: result.status,
+          filename: file.name,
+          mimeType: file.type,
+          size: file.size,
+          folderId: folderId ?? null,
+        },
       });
 
       return npSuccessResponse(result, { status: 202 });
@@ -138,14 +141,15 @@ export async function POST(request: NextRequest) {
     });
 
     await runHook("media:afterUpload", {
-      user,
       principal,
+      member: null,
       media: {
         id,
+        status: "ready",
         filename: file.name,
         mimeType: file.type,
         size: file.size,
-        storageKey,
+        folderId: folderId ?? null,
       },
     });
 

@@ -95,16 +95,14 @@ export const readingTimePlugin = definePlugin<ReadingTimeConfig>({
   configSchema,
   hooks: {
     "content:afterCreate": ({ data, ctx }) => {
-      const doc = (data.doc ?? data) as Record<string, unknown> & { id?: string };
-      const collection = typeof data.collection === "string" ? data.collection : "unknown";
-      const minutes = estimateMinutes(extractDocText(doc), ctx.config.wordsPerMinute);
-      console.log(`[reading-time] ${collection}/${doc.id ?? "?"} — ${minutes} min read`);
+      const minutes = estimateMinutes(extractDocText(data.document), ctx.config.wordsPerMinute);
+      console.log(`[reading-time] ${data.collection}/${data.documentId} — ${minutes} min read`);
     },
     "content:afterUpdate": ({ data, ctx }) => {
-      const doc = (data.doc ?? data) as Record<string, unknown> & { id?: string };
-      const collection = typeof data.collection === "string" ? data.collection : "unknown";
-      const minutes = estimateMinutes(extractDocText(doc), ctx.config.wordsPerMinute);
-      console.log(`[reading-time] (updated) ${collection}/${doc.id ?? "?"} — ${minutes} min read`);
+      const minutes = estimateMinutes(extractDocText(data.document), ctx.config.wordsPerMinute);
+      console.log(
+        `[reading-time] (updated) ${data.collection}/${data.documentId} — ${minutes} min read`,
+      );
     },
   },
   routes: [

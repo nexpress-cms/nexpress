@@ -37,6 +37,11 @@ These notes come from building two bundled example plugins in May 2026:
   result separates `head` and `bodyEnd`; `definePlugin()` rejects unknown
   hook names and malformed descriptors, and the host validates returned
   contribution shapes before rendering them.
+- Content, auth, and media lifecycle hooks now have exact per-name payloads.
+  Content phases share `document`, `documentId`, `originalDocument`,
+  `operation`, `source`, and `principal`; media uploads expose one normalized
+  result. The core dispatcher validates payloads and diagnoses non-void
+  lifecycle returns before plugin mistakes can pass silently.
 - CLI plugin scaffold tests cover package-shape consistency, the canonical
   hook inventory, and typed Admin status helpers instead of hand-built
   payloads.

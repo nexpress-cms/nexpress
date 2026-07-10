@@ -41,8 +41,7 @@ export default definePlugin({
   },
   hooks: {
     "content:beforeCreate": ({ data }) => {
-      const draft = data.data as Record<string, unknown>;
-      draft.reviewedByPlugin = true;
+      data.document.reviewedByPlugin = true;
     },
   },
   pageRoutes: [],

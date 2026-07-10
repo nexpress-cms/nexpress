@@ -1,6 +1,33 @@
 import type { ZodType } from "zod";
 import type { NpBlockDefinition, NpPattern } from "@nexpress/blocks";
-import type { NpFieldConfig } from "@nexpress/core";
+import type {
+  NpAuthAfterLoginHookData,
+  NpAuthAfterRegisterHookData,
+  NpAuthBeforeLogoutHookData,
+  NpContentAfterCreateHookData,
+  NpContentAfterDeleteHookData,
+  NpContentAfterPublishHookData,
+  NpContentAfterUpdateHookData,
+  NpContentBeforeCreateHookData,
+  NpContentBeforeDeleteHookData,
+  NpContentBeforePublishHookData,
+  NpContentBeforeUnpublishHookData,
+  NpContentBeforeUpdateHookData,
+  NpContentHookSource,
+  NpFieldConfig,
+  NpHookPrincipal as NpCoreHookPrincipal,
+  NpMediaAfterUploadHookData,
+  NpMediaBeforeUploadHookData,
+  NpMediaUploadFile,
+  NpMediaUploadResult,
+  NpPluginDocument,
+  NpReadonlyPluginDocument,
+  NpPluginHookDataMap,
+  NpPluginHookName,
+  NpPluginMember,
+  NpPluginUser as NpCorePluginUser,
+  NpRenderHookData as NpCoreRenderHookData,
+} from "@nexpress/core";
 
 import type { NpPluginManifest, NpPluginManifestResolved } from "./manifest.js";
 
@@ -117,22 +144,39 @@ export const npHookNames = [
   "render:beforePage",
   "media:beforeUpload",
   "media:afterUpload",
-] as const;
+] as const satisfies readonly NpPluginHookName[];
 
-export type NpHookName = (typeof npHookNames)[number];
+export type NpHookName = NpPluginHookName;
 
 export const npRouteMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 
 export type NpRouteMethod = (typeof npRouteMethods)[number];
 
-export interface NpPluginUser {
-  id: string;
-  email: string;
-  role: string;
-}
+export type NpPluginUser = NpCorePluginUser;
+export type NpHookPrincipal = NpCoreHookPrincipal;
 
-export type NpHookPrincipal =
-  { kind: "staff"; user: NpPluginUser } | { kind: "member"; memberId: string };
+export type {
+  NpAuthAfterLoginHookData,
+  NpAuthAfterRegisterHookData,
+  NpAuthBeforeLogoutHookData,
+  NpContentAfterCreateHookData,
+  NpContentAfterDeleteHookData,
+  NpContentAfterPublishHookData,
+  NpContentAfterUpdateHookData,
+  NpContentBeforeCreateHookData,
+  NpContentBeforeDeleteHookData,
+  NpContentBeforePublishHookData,
+  NpContentBeforeUnpublishHookData,
+  NpContentBeforeUpdateHookData,
+  NpContentHookSource,
+  NpMediaAfterUploadHookData,
+  NpMediaBeforeUploadHookData,
+  NpMediaUploadFile,
+  NpMediaUploadResult,
+  NpPluginDocument,
+  NpReadonlyPluginDocument,
+  NpPluginMember,
+};
 
 /**
  * Legacy plugin-block declaration shape from a never-implemented
@@ -335,11 +379,7 @@ export type NpBodyEntry =
  * registered collection slug (e.g. `"pages"`, `"posts"`). `slug` is the
  * URL path slug the renderer resolved it from.
  */
-export interface NpRenderHookData {
-  collection: string;
-  slug: string;
-  document: Record<string, unknown>;
-}
+export type NpRenderHookData = NpCoreRenderHookData;
 
 export type NpRenderHookResult =
   NpRenderContribution | null | undefined | Promise<NpRenderContribution | null | undefined>;
@@ -641,13 +681,11 @@ export interface NpPluginContext<TConfig = Record<string, unknown>> {
   };
 }
 
-export type NpHookData<TName extends NpHookName> = TName extends "render:beforePage"
-  ? NpRenderHookData
-  : Record<string, unknown>;
+export type NpHookData<TName extends NpHookName> = NpPluginHookDataMap[TName];
 
 export type NpHookResult<TName extends NpHookName> = TName extends "render:beforePage"
   ? NpRenderHookResult
-  : unknown;
+  : void | Promise<void>;
 
 export interface NpHookContext<
   TConfig = Record<string, unknown>,
@@ -655,18 +693,6 @@ export interface NpHookContext<
 > {
   hook: TName;
   data: NpHookData<TName>;
-  collection?: string;
-  /**
-   * Resolved staff actor for staff-authored hooks, `null` for
-   * member-authored hooks, and `undefined` when the hook has no user
-   * context. Prefer `principal` for new code.
-   */
-  user?: NpPluginUser | null;
-  /**
-   * Polymorphic actor for hooks emitted by staff or member writes.
-   * Omitted for hooks that are not tied to an authenticated actor.
-   */
-  principal?: NpHookPrincipal;
   ctx: NpPluginContext<TConfig>;
 }
 
