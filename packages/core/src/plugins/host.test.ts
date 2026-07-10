@@ -469,6 +469,28 @@ describe("plugin host", () => {
       expect(getRegisteredPluginSchedules()).toEqual([]);
     });
 
+    it("removes a previous schedule before rejecting an invalid replacement", async () => {
+      await loadPlugins([
+        resolvedPlugin("schedule-replacement", {
+          capabilities: ["hooks:scheduled"],
+          scheduled: [
+            { id: "nightly", cron: "0 2 * * *", handler: () => undefined },
+          ],
+        }),
+      ]);
+      expect(getRegisteredPluginSchedules()).toHaveLength(1);
+
+      await loadPlugins([
+        {
+          ...resolvedPlugin("schedule-replacement", { capabilities: ["hooks:scheduled"] }),
+          scheduled: [{ id: "nightly", cron: "0 2 * *", handler: () => undefined }],
+        },
+      ]);
+
+      expect(getAllPluginIds()).not.toContain("schedule-replacement");
+      expect(getRegisteredPluginSchedules()).toEqual([]);
+    });
+
     it("rejects non-void scheduled task results at dispatch", async () => {
       await loadPlugins([
         resolvedPlugin("scheduled-result", {
