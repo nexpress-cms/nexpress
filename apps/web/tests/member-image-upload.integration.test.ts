@@ -19,11 +19,10 @@ import { NextRequest } from "next/server";
 
 interface CapturedMediaHook {
   hook: string;
-  user: unknown;
   principal: unknown;
   member: unknown;
-  file: unknown;
-  media: unknown;
+  file?: unknown;
+  media?: unknown;
 }
 
 function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
@@ -98,11 +97,12 @@ function staffUploadRequest(
 async function registerMediaHookCapture(pluginId: string): Promise<CapturedMediaHook[]> {
   const { ensureFor } = await import("@/lib/init-core");
   const { loadPlugins } = await import("@nexpress/core");
+  const { definePlugin } = await import("@nexpress/plugin-sdk");
   await ensureFor("plugins");
 
   const captured: CapturedMediaHook[] = [];
   await loadPlugins([
-    {
+    definePlugin({
       manifest: {
         id: pluginId,
         version: "0.0.0",
@@ -129,25 +129,21 @@ async function registerMediaHookCapture(pluginId: string): Promise<CapturedMedia
         "media:beforeUpload": ({ hook, data }) => {
           captured.push({
             hook,
-            user: data.user,
             principal: data.principal,
             member: data.member,
             file: data.file,
-            media: data.media,
           });
         },
         "media:afterUpload": ({ hook, data }) => {
           captured.push({
             hook,
-            user: data.user,
             principal: data.principal,
             member: data.member,
-            file: data.file,
             media: data.media,
           });
         },
       },
-    } as never,
+    }),
   ]);
   return captured;
 }
@@ -208,7 +204,7 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
     expect(row.mimeType).toBe("image/png");
   });
 
-  it("member upload emits media hooks with member principal and user=null", async () => {
+  it("member upload emits media hooks with the canonical member actor", async () => {
     const captured = await registerMediaHookCapture("test-member-media-hook-principal");
     const member = await seedActiveMember("upload-hook-member");
 
@@ -219,7 +215,6 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
 
     expect(captured.map((call) => call.hook)).toEqual(["media:beforeUpload", "media:afterUpload"]);
     for (const call of captured) {
-      expect(call.user).toBeNull();
       expect(call.principal).toEqual({ kind: "member", memberId: member.memberId });
       expect(call.member).toEqual(
         expect.objectContaining({
@@ -245,18 +240,15 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
 
     expect(captured.map((call) => call.hook)).toEqual(["media:beforeUpload", "media:afterUpload"]);
     for (const call of captured) {
-      expect(call.user).toEqual(
-        expect.objectContaining({
+      expect(call.principal).toEqual({
+        kind: "staff",
+        user: expect.objectContaining({
           id: editor.userId,
           email: editor.email,
           role: editor.role,
         }),
-      );
-      expect(call.principal).toEqual({
-        kind: "staff",
-        user: expect.objectContaining({ id: editor.userId, email: editor.email }),
       });
-      expect(call.member).toBeUndefined();
+      expect(call.member).toBeNull();
     }
   });
 

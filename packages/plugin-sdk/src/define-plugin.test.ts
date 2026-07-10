@@ -1,7 +1,11 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { definePlugin } from "./define-plugin.js";
-import { type NpPluginDefinition, type NpRenderContribution } from "./types.js";
+import {
+  type NpPluginDefinition,
+  type NpReadonlyPluginDocument,
+  type NpRenderContribution,
+} from "./types.js";
 
 const baseManifest = {
   id: "test",
@@ -46,7 +50,7 @@ describe("definePlugin — capability derivation", () => {
         "render:beforePage": ({ hook, data }) => {
           expectTypeOf(hook).toEqualTypeOf<"render:beforePage">();
           expectTypeOf(data.collection).toEqualTypeOf<string>();
-          expectTypeOf(data.document).toEqualTypeOf<Record<string, unknown>>();
+          expectTypeOf(data.document).toEqualTypeOf<NpReadonlyPluginDocument>();
           return {
             bodyEnd: [{ tag: "script", children: "window.test = true;" }],
           } satisfies NpRenderContribution;

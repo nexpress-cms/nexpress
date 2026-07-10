@@ -123,15 +123,15 @@ export const ${names.exportName} = definePlugin({
     nexpress: { minVersion: "0.1.0" },
   },
   hooks: {
-    "content:afterCreate": ({ data, collection, ctx }) => {
-      // \`data\` is the hook payload — for content events it carries
-      // \`{ doc, principal }\`. \`collection\` is the slug ("posts"). \`ctx\`
-      // is the runtime context with capability-gated namespaces.
-      const doc = (data as { doc?: { id?: string; title?: string } }).doc;
+    "content:afterCreate": ({ data, ctx }) => {
+      // Content payloads use one vocabulary across their lifecycle:
+      // \`document\`, \`documentId\`, \`originalDocument\`, \`operation\`,
+      // \`source\`, and \`principal\`. \`ctx\` provides runtime services.
       ctx.log.info("New document created", {
-        collection,
-        id: doc?.id ?? "?",
-        title: doc?.title ?? "(no title)",
+        collection: data.collection,
+        id: data.documentId,
+        title:
+          typeof data.document.title === "string" ? data.document.title : "(no title)",
       });
     },
   },

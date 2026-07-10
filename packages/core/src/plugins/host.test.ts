@@ -19,6 +19,7 @@ import type { NpPluginConfig } from "../config/types.js";
 import { resetLogger, setLogger, type NpLogger } from "../observability/logger.js";
 import { resetEnabledGate, setPluginEnabledForTest } from "./enabled-gate.js";
 import { resetFrameworkVersion, setFrameworkVersionForTest } from "./compat.js";
+import { type NpContentAfterCreateHookData, type NpRenderHookData } from "./hook-contract.js";
 
 function legacyPlugin(id: string, init?: NpPluginConfig["init"]): NpPluginConfig {
   return { id, name: `${id} plugin`, init };
@@ -28,10 +29,7 @@ function resolvedPlugin(
   id: string,
   options: {
     capabilities?: readonly string[];
-    hooks?: Record<
-      string,
-      (ctx: { hook: string; data: Record<string, unknown>; collection?: string }) => unknown
-    >;
+    hooks?: Record<string, (ctx: { hook: string; data: Record<string, unknown> }) => unknown>;
     routes?: Array<{ method: string; path: string; handler: () => Promise<{ status: number }> }>;
     scheduled?: Array<{
       id: string;
@@ -69,6 +67,31 @@ function resolvedPlugin(
   };
 }
 
+function afterCreateData(collection = "posts"): NpContentAfterCreateHookData {
+  return {
+    collection,
+    documentId: "doc-1",
+    document: { id: "doc-1" },
+    originalDocument: null,
+    operation: "create",
+    source: "request",
+    principal: {
+      kind: "staff",
+      user: {
+        id: "user-1",
+        email: "admin@example.com",
+        name: "Admin",
+        role: "admin",
+        tokenVersion: 0,
+      },
+    },
+  };
+}
+
+function renderData(): NpRenderHookData {
+  return { collection: "pages", slug: "hello", document: { id: "page-1" } };
+}
+
 describe("plugin host", () => {
   beforeEach(() => {
     resetPlugins();
@@ -91,7 +114,7 @@ describe("plugin host", () => {
 
       // Pipeline dispatches `content:afterCreate` with the collection name in
       // the payload; the legacy wrapper filters by collection internally.
-      await runHook("content:afterCreate", { collection: "posts", doc: { id: "1" } });
+      await runHook("content:afterCreate", afterCreateData("posts"));
       expect(handler).toHaveBeenCalledOnce();
     });
 
@@ -103,12 +126,35 @@ describe("plugin host", () => {
         }),
       ]);
 
-      await runHook("content:afterCreate", { collection: "pages", doc: { id: "1" } });
+      await runHook("content:afterCreate", afterCreateData("pages"));
       expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("rejects unknown legacy content hook events", async () => {
+      await loadPlugins([
+        legacyPlugin("legacy-unknown", (ctx) => {
+          ctx.addHook("posts", "afterSave", () => ({}));
+        }),
+      ]);
+
+      expect(getAllPluginIds()).not.toContain("legacy-unknown");
     });
   });
 
   describe("loadPlugins — resolved shape with manifest", () => {
+    it("rejects unsupported hook names even when definePlugin was bypassed", async () => {
+      await loadPlugins([
+        resolvedPlugin("unknown-hook", {
+          capabilities: ["hooks:content"],
+          hooks: {
+            "content:afterSave": () => undefined,
+          },
+        }),
+      ]);
+
+      expect(getAllPluginIds()).not.toContain("unknown-hook");
+    });
+
     it("rejects a content hook when hooks:content is not declared", async () => {
       // Per #620 (load-time error isolation), a capability
       // mis-declaration no longer crashes the host — it's logged
@@ -164,15 +210,15 @@ describe("plugin host", () => {
         }),
       ]);
 
-      await runHook("content:afterCreate", {
-        collection: "posts",
-        doc: { id: "1" },
-      });
+      await runHook("content:afterCreate", afterCreateData("posts"));
 
       expect(hookHandler).toHaveBeenCalledOnce();
-      const ctx = hookHandler.mock.calls[0]?.[0] as { hook: string; collection?: string };
+      const ctx = hookHandler.mock.calls[0]?.[0] as {
+        hook: string;
+        data: NpContentAfterCreateHookData;
+      };
       expect(ctx.hook).toBe("content:afterCreate");
-      expect(ctx.collection).toBe("posts");
+      expect(ctx.data.collection).toBe("posts");
 
       const routes = getPluginRoutes();
       expect(routes).toHaveLength(1);
@@ -444,12 +490,16 @@ describe("plugin host", () => {
         }),
       ]);
 
-      await runHook("content:afterCreate", {});
+      await runHook("content:afterCreate", afterCreateData());
       expect(calls).toEqual(["a", "b"]);
     });
 
-    it("is a no-op for unknown hooks", async () => {
-      await expect(runHook("content:neverFires", {})).resolves.toBeUndefined();
+    it("is a no-op when the canonical hook has no handlers", async () => {
+      await expect(
+        runHook("auth:afterLogin", {
+          user: { id: "user-1", email: "admin@example.com", role: "admin" },
+        }),
+      ).resolves.toBeUndefined();
     });
   });
 
@@ -500,7 +550,10 @@ describe("plugin host", () => {
         }),
       ]);
 
-      const results = await runHookAndCollect<{ head: unknown[] }>("render:beforePage", {});
+      const results = await runHookAndCollect<{ head: unknown[] }>(
+        "render:beforePage",
+        renderData(),
+      );
       expect(results).toHaveLength(1);
     });
 
@@ -522,7 +575,7 @@ describe("plugin host", () => {
 
       const results = await runHookAndCollect<{ bodyEnd: unknown[] }>(
         "render:beforePage",
-        {},
+        renderData(),
         {
           validateResult: (value) =>
             value && typeof value === "object" && "bodyEnd" in value
@@ -535,7 +588,7 @@ describe("plugin host", () => {
     });
 
     it("returns [] when no handler is registered", async () => {
-      await expect(runHookAndCollect("render:neverFires", {})).resolves.toEqual([]);
+      await expect(runHookAndCollect("render:beforePage", renderData())).resolves.toEqual([]);
     });
 
     it("isolates handler errors and skips the failed return value", async () => {
@@ -561,7 +614,7 @@ describe("plugin host", () => {
       // still contributes its output.
       const results = await runHookAndCollect<{ head: Array<{ attrs: { name: string } }> }>(
         "render:beforePage",
-        {},
+        renderData(),
       );
       expect(results).toHaveLength(1);
       expect(results[0]?.head[0]?.attrs.name).toBe("ok");
@@ -607,7 +660,7 @@ describe("plugin host", () => {
 
       // Must not throw despite first plugin's failure.
       await expect(
-        runHook("content:afterCreate", { collection: "posts" }),
+        runHook("content:afterCreate", afterCreateData("posts")),
       ).resolves.toBeUndefined();
 
       expect(after).toHaveBeenCalledOnce();
@@ -615,6 +668,56 @@ describe("plugin host", () => {
       expect(errors[0]?.message).toMatch(/Plugin hook handler threw/);
       expect(errors[0]?.context?.pluginId).toBe("first-throws");
       expect(errors[0]?.context?.hook).toBe("content:afterCreate");
+    });
+
+    it("diagnoses values returned from fire-and-forget lifecycle hooks", async () => {
+      await loadPlugins([
+        resolvedPlugin("returns-a-value", {
+          capabilities: ["hooks:content"],
+          hooks: {
+            "content:afterCreate": () => ({ ignored: true }),
+          },
+        }),
+      ]);
+
+      await expect(runHook("content:afterCreate", afterCreateData())).resolves.toBeUndefined();
+
+      expect(errors).toContainEqual({
+        message: "Plugin lifecycle hook returned an invalid result",
+        context: {
+          pluginId: "returns-a-value",
+          hook: "content:afterCreate",
+        },
+      });
+    });
+
+    it("shallow-freezes canonical payload metadata between handlers", async () => {
+      const observedCollections: unknown[] = [];
+      await loadPlugins([
+        resolvedPlugin("mutates-metadata", {
+          capabilities: ["hooks:content"],
+          hooks: {
+            "content:afterCreate": ({ data }) => {
+              data.collection = "changed";
+            },
+          },
+        }),
+        resolvedPlugin("observes-metadata", {
+          capabilities: ["hooks:content"],
+          hooks: {
+            "content:afterCreate": ({ data }) => {
+              observedCollections.push(data.collection);
+            },
+          },
+        }),
+      ]);
+
+      await expect(
+        runHook("content:afterCreate", afterCreateData("posts")),
+      ).resolves.toBeUndefined();
+
+      expect(observedCollections).toEqual(["posts"]);
+      expect(errors.some((entry) => entry.context?.pluginId === "mutates-metadata")).toBe(true);
     });
   });
 
@@ -780,7 +883,7 @@ describe("plugin host", () => {
 
       await loadPlugins([make("ui", ["theme"]), make("theme")]);
 
-      await runHook("content:afterCreate", { collection: "posts" });
+      await runHook("content:afterCreate", afterCreateData("posts"));
       expect(order).toEqual(["theme", "ui"]);
     });
 
@@ -859,7 +962,7 @@ describe("plugin host", () => {
         },
       ]);
 
-      await runHook("content:afterCreate", {});
+      await runHook("content:afterCreate", afterCreateData());
       // priority 10 runs before priority 50; the two priority-50 plugins
       // keep their registration order (first registered, then tied).
       expect(order).toEqual(["high", "first", "tied"]);
@@ -900,7 +1003,7 @@ describe("plugin host", () => {
         },
       ]);
 
-      await runHook("content:afterCreate", {});
+      await runHook("content:afterCreate", afterCreateData());
       expect(order).toEqual(["explicit", "plain"]);
     });
 
@@ -944,7 +1047,7 @@ describe("plugin host", () => {
           },
         ]);
 
-        await runHook("content:afterCreate", {});
+        await runHook("content:afterCreate", afterCreateData());
 
         // Slow plugin's hang must not block the dispatch chain — fast still runs.
         expect(fast).toHaveBeenCalledOnce();
@@ -994,7 +1097,7 @@ describe("plugin host", () => {
         },
       ]);
 
-      await runHook("content:afterCreate", { collection: "posts" });
+      await runHook("content:afterCreate", afterCreateData("posts"));
       expect(firstHandler).not.toHaveBeenCalled();
       expect(secondHandler).toHaveBeenCalledOnce();
       // Only one route registered, not two.
@@ -1021,7 +1124,7 @@ describe("plugin host", () => {
       setPluginEnabledForTest("on", true);
       setPluginEnabledForTest("off", false);
 
-      await runHook("content:afterCreate", { collection: "posts" });
+      await runHook("content:afterCreate", afterCreateData("posts"));
 
       expect(enabledHandler).toHaveBeenCalledOnce();
       expect(disabledHandler).not.toHaveBeenCalled();
@@ -1048,7 +1151,7 @@ describe("plugin host", () => {
 
       const results = await runHookAndCollect<{ head: Array<{ attrs: { name: string } }> }>(
         "render:beforePage",
-        {},
+        renderData(),
       );
       expect(results).toHaveLength(1);
       expect(results[0]?.head[0]?.attrs.name).toBe("on");

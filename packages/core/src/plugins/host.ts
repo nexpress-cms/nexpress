@@ -12,6 +12,14 @@ import {
   type NpPluginAdminActionIssue,
   type NpRegisteredPluginAction,
 } from "./admin-action-contract.js";
+import {
+  npIsPluginHookName,
+  npValidatePluginHookData,
+  type NpPluginHookDataMap,
+  type NpPluginHookName,
+  type NpPluginLifecycleHookName,
+  type NpRenderHookData,
+} from "./hook-contract.js";
 
 export interface PluginHookHandler {
   pluginId: string;
@@ -20,7 +28,7 @@ export interface PluginHookHandler {
    * hooks may return a value; `runHookAndCollect` gathers those, while
    * `runHook` ignores returns.
    */
-  handler: (data: Record<string, unknown>) => unknown;
+  handler: (data: unknown) => unknown;
   /**
    * Lower priority runs first. Default `100`, leaving headroom in both
    * directions: a plugin that wants to observe AFTER everyone else picks
@@ -342,11 +350,8 @@ export interface ResolvedPluginLike {
 }
 
 type ResolvedHookFn = (ctx: {
-  hook: string;
-  data: Record<string, unknown>;
-  collection?: string;
-  user?: unknown;
-  principal?: unknown;
+  hook: NpPluginHookName;
+  data: NpPluginHookDataMap[NpPluginHookName];
   ctx: Record<string, unknown>;
 }) => unknown;
 
@@ -459,6 +464,9 @@ function createPluginContext(pluginId: string, registration: PluginRegistration)
       // register there and filter by collection at dispatch time. This keeps
       // legacy hooks firing on the same stream as resolved-plugin hooks.
       const hookName = `content:${event}`;
+      if (!npIsPluginHookName(hookName) || !hookName.startsWith("content:")) {
+        throw new Error(`[plugin:${pluginId}] unsupported content hook "${hookName}".`);
+      }
       const requirement = hookCapabilityFor(hookName);
       if (requirement) {
         assertCapability(pluginId, requirement, registration.capabilities);
@@ -468,10 +476,11 @@ function createPluginContext(pluginId: string, registration: PluginRegistration)
         pluginId,
         priority: DEFAULT_HOOK_PRIORITY,
         handler: async (data) => {
-          if (typeof data.collection === "string" && data.collection !== collection) {
+          const payload = data as Record<string, unknown>;
+          if (typeof payload.collection === "string" && payload.collection !== collection) {
             return;
           }
-          await hook({ data, collection } as never);
+          await hook({ data: payload, collection } as never);
         },
       });
     },
@@ -615,6 +624,9 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   }
 
   for (const [hookName, rawValue] of Object.entries(plugin.hooks ?? {})) {
+    if (!npIsPluginHookName(hookName)) {
+      throw new Error(`[plugin:${manifest.id}] unsupported hook "${hookName}".`);
+    }
     const normalized = normalizeHookValue(rawValue);
     if (!normalized) continue;
 
@@ -629,14 +641,10 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
       priority: normalized.priority,
       timeoutMs: normalized.timeoutMs,
       handler: async (data) => {
-        const collection = typeof data.collection === "string" ? data.collection : undefined;
         const ctx = await buildCtxFor(manifest.id);
         return await userHandler({
           hook: hookName,
-          data,
-          collection,
-          user: data.user,
-          principal: data.principal,
+          data: data as NpPluginHookDataMap[NpPluginHookName],
           ctx,
         });
       },
@@ -858,7 +866,7 @@ export async function loadPlugins(
 async function dispatchHookHandler(
   hookName: string,
   handler: PluginHookHandler,
-  data: Record<string, unknown>,
+  data: unknown,
 ): Promise<{ ok: true; value: unknown } | { ok: false }> {
   try {
     const result = handler.handler(data);
@@ -900,13 +908,34 @@ async function dispatchHookHandler(
   }
 }
 
-export async function runHook(hookName: string, data: Record<string, unknown>): Promise<void> {
+export async function runHook<TName extends NpPluginLifecycleHookName>(
+  hookName: TName,
+  data: NpPluginHookDataMap[TName],
+): Promise<void> {
+  const validation = npValidatePluginHookData(hookName, data);
+  if (!validation.ok) {
+    throw new Error(`Invalid plugin hook dispatch for "${hookName}": ${validation.message}`);
+  }
+  Object.freeze(data);
+
   const handlers = globalHooks.get(hookName);
   if (!handlers || handlers.length === 0) return;
 
   for (const handler of handlers) {
     if (!(await isPluginEnabled(handler.pluginId))) continue;
-    await dispatchHookHandler(hookName, handler, data);
+    const outcome = await dispatchHookHandler(hookName, handler, data);
+    if (outcome.ok && outcome.value !== undefined) {
+      const error = new Error(
+        `[plugin:${handler.pluginId}] hook "${hookName}" returned a value, but lifecycle hooks must return void.`,
+      );
+      getLogger().error("Plugin lifecycle hook returned an invalid result", {
+        pluginId: handler.pluginId,
+        hook: hookName,
+      });
+      void reportError(error, {
+        tags: { source: "plugin-hook", pluginId: handler.pluginId, hook: hookName },
+      });
+    }
   }
 }
 
@@ -921,10 +950,16 @@ export async function runHook(hookName: string, data: Record<string, unknown>): 
  * page itself still ships — incomplete SEO output beats a 500.
  */
 export async function runHookAndCollect<T>(
-  hookName: string,
-  data: Record<string, unknown>,
+  hookName: "render:beforePage",
+  data: NpRenderHookData,
   options?: NpHookCollectOptions,
 ): Promise<T[]> {
+  const dataValidation = npValidatePluginHookData(hookName, data);
+  if (!dataValidation.ok) {
+    throw new Error(`Invalid plugin hook dispatch for "${hookName}": ${dataValidation.message}`);
+  }
+  Object.freeze(data);
+
   const handlers = globalHooks.get(hookName);
   if (!handlers || handlers.length === 0) return [];
 

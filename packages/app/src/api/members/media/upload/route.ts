@@ -34,12 +34,7 @@ import { requireMember } from "../../../../lib/member-auth-helpers";
  */
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
-const ALLOWED_MIME_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/gif",
-] as const;
+const ALLOWED_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
 type AllowedMimeType = (typeof ALLOWED_MIME_TYPES)[number];
 
 function isAllowedMimeType(mimeType: string): mimeType is AllowedMimeType {
@@ -161,7 +156,6 @@ export async function POST(request: NextRequest) {
     }
 
     await runHook("media:beforeUpload", {
-      user: null,
       principal,
       member: {
         id: member.id,
@@ -174,6 +168,7 @@ export async function POST(request: NextRequest) {
         mimeType: sniffedMime,
         size: file.size,
       },
+      folderId: null,
     });
 
     const result = await uploadMedia(
@@ -195,7 +190,6 @@ export async function POST(request: NextRequest) {
     const url = row ? await getStorageAdapter().getUrl(row.storageKey) : null;
 
     await runHook("media:afterUpload", {
-      user: null,
       principal,
       member: {
         id: member.id,
@@ -203,7 +197,14 @@ export async function POST(request: NextRequest) {
         handle: member.handle,
         displayName: member.displayName,
       },
-      media: result,
+      media: {
+        id: result.id,
+        status: result.status,
+        filename: file.name,
+        mimeType: sniffedMime,
+        size: file.size,
+        folderId: null,
+      },
     });
 
     return npSuccessResponse({ ...result, url }, { status: 202 });

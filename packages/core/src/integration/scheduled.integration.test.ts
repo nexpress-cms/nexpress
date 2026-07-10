@@ -223,15 +223,17 @@ describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () 
 
     expect(afterUpdate).toHaveBeenCalledTimes(1);
     expect(afterPublish).toHaveBeenCalledTimes(1);
-    // Handler wrapper passes { hook, data, collection, ctx }; the full
-    // row is in data.doc. Confirm it's not the {id: ...} shape the bug
-    // from audit round #2 produced.
+    // Scheduler events use the same content payload as request events, with
+    // source="scheduler", principal=null, and the full row in document.
     const afterPublishArgs = afterPublish.mock.calls[0][0];
     expect(afterPublishArgs.data.collection).toBe("posts");
-    expect(afterPublishArgs.data.doc.id).toBe(due.doc.id);
-    expect(afterPublishArgs.data.doc.title).toBe("Scheduled Post");
-    expect(afterPublishArgs.data.doc.status).toBe("published");
-    expect(afterPublishArgs.data.scheduled).toBe(true);
+    expect(afterPublishArgs.data.documentId).toBe(due.doc.id);
+    expect(afterPublishArgs.data.document.id).toBe(due.doc.id);
+    expect(afterPublishArgs.data.document.title).toBe("Scheduled Post");
+    expect(afterPublishArgs.data.document.status).toBe("published");
+    expect(afterPublishArgs.data.originalDocument).toBeNull();
+    expect(afterPublishArgs.data.source).toBe("scheduler");
+    expect(afterPublishArgs.data.principal).toBeNull();
   });
 
   it("is idempotent — second run finds nothing", async () => {

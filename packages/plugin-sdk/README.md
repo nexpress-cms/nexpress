@@ -36,10 +36,9 @@ export default definePlugin({
   },
   hooks: {
     "content:afterCreate": ({ data, ctx }) => {
-      const doc = (data.doc ?? data) as Record<string, unknown>;
       ctx.log.info("Content created", {
         collection: data.collection,
-        documentId: doc.id,
+        documentId: data.documentId,
       });
     },
   },
@@ -84,6 +83,7 @@ Restart the server — the hook fires after every document create.
 - [Repository](https://github.com/nexpress-cms/nexpress)
 - [docs/plugin-admin.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-admin.md)
 - [docs/plugin-capabilities.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-capabilities.md)
+- [docs/plugin-hooks.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-hooks.md)
 - [docs/plugin-pages.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-pages.md)
 - [docs/plugin-render.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-render.md)
 - [Reference plugins](https://github.com/nexpress-cms/nexpress/tree/main/packages/plugins) — `reading-time`, `seo-audit`, `forum`, `oauth-github`, `oauth-google`

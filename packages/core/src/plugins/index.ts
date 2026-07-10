@@ -36,6 +36,42 @@ export type {
   NpRegisteredPluginAction,
 } from "./admin-action-contract.js";
 
+export {
+  npIsPluginHookName,
+  npPluginHookNames,
+  npValidatePluginHookData,
+} from "./hook-contract.js";
+
+export type {
+  NpAuthAfterLoginHookData,
+  NpAuthAfterRegisterHookData,
+  NpAuthBeforeLogoutHookData,
+  NpContentAfterCreateHookData,
+  NpContentAfterDeleteHookData,
+  NpContentAfterPublishHookData,
+  NpContentAfterUpdateHookData,
+  NpContentBeforeCreateHookData,
+  NpContentBeforeDeleteHookData,
+  NpContentBeforePublishHookData,
+  NpContentBeforeUnpublishHookData,
+  NpContentBeforeUpdateHookData,
+  NpContentHookSource,
+  NpMediaAfterUploadHookData,
+  NpMediaBeforeUploadHookData,
+  NpMediaUploadFile,
+  NpMediaUploadResult,
+  NpPluginDocument,
+  NpReadonlyPluginDocument,
+  NpPluginHookData,
+  NpPluginHookDataMap,
+  NpPluginHookName,
+  NpPluginHookValidationResult,
+  NpPluginLifecycleHookName,
+  NpPluginMember,
+  NpPluginUser,
+  NpRenderHookData,
+} from "./hook-contract.js";
+
 export type {
   PluginHookHandler,
   NpHookCollectOptions,

@@ -13,7 +13,10 @@ import {
 } from "./harness.js";
 
 import { POST as collectionPOST } from "@/app/api/collections/[slug]/route";
-import { DELETE as collectionDELETE } from "@/app/api/collections/[slug]/[id]/route";
+import {
+  DELETE as collectionDELETE,
+  PATCH as collectionPATCH,
+} from "@/app/api/collections/[slug]/[id]/route";
 
 import { NextRequest } from "next/server";
 
@@ -25,10 +28,7 @@ interface CapturedHookCall {
   principalMemberId?: string;
 }
 
-function jsonRequest(
-  path: string,
-  init: RequestInit & { cookies?: string[] } = {},
-): NextRequest {
+function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
   const headers = new Headers(init.headers);
   if (!headers.has("content-type") && init.body) {
     headers.set("content-type", "application/json");
@@ -39,11 +39,7 @@ function jsonRequest(
   return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
 }
 
-function staffRequest(
-  path: string,
-  user: TestUserSession,
-  init: RequestInit = {},
-): NextRequest {
+function staffRequest(path: string, user: TestUserSession, init: RequestInit = {}): NextRequest {
   return jsonRequest(path, {
     ...init,
     cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
@@ -58,10 +54,7 @@ function memberRequest(
 ): NextRequest {
   return jsonRequest(path, {
     ...init,
-    cookies: [
-      `np-mb-session=${member.sessionCookie}`,
-      `np-mb-csrf=${member.csrfCookie}`,
-    ],
+    cookies: [`np-mb-session=${member.sessionCookie}`, `np-mb-csrf=${member.csrfCookie}`],
     headers: { ...(init.headers ?? {}), "x-csrf-token": member.csrfCookie },
   });
 }
@@ -98,20 +91,24 @@ describe.skipIf(skipIfNoTestDb())("hook polymorphism (Phase 9.7o)", () => {
       access: undefined,
       hooks: {
         beforeCreate: [
-          (args: Parameters<NonNullable<typeof baseConfig.hooks>["beforeCreate"]>[0] extends infer T ? T : never) => {
+          (
+            args: Parameters<
+              NonNullable<typeof baseConfig.hooks>["beforeCreate"]
+            >[0] extends infer T
+              ? T
+              : never,
+          ) => {
             const { user, principal } = args as unknown as {
               user: { id: string; email: string; role: string } | null;
               principal:
-                | { kind: "staff"; user: { id: string } }
-                | { kind: "member"; memberId: string };
+                { kind: "staff"; user: { id: string } } | { kind: "member"; memberId: string };
             };
             captured.push({
               hook: "beforeCreate",
               user,
               principalKind: principal?.kind,
               principalUserId: principal?.kind === "staff" ? principal.user.id : undefined,
-              principalMemberId:
-                principal?.kind === "member" ? principal.memberId : undefined,
+              principalMemberId: principal?.kind === "member" ? principal.memberId : undefined,
             });
             return (args as unknown as { data: Record<string, unknown> }).data;
           },
@@ -121,17 +118,14 @@ describe.skipIf(skipIfNoTestDb())("hook polymorphism (Phase 9.7o)", () => {
             const { user, principal } = args as {
               user: { id: string; email: string; role: string } | null;
               principal:
-                | { kind: "staff"; user: { id: string } }
-                | { kind: "member"; memberId: string };
+                { kind: "staff"; user: { id: string } } | { kind: "member"; memberId: string };
             };
             captured.push({
               hook: "beforeDelete",
               user,
               principalKind: principal?.kind,
-              principalUserId:
-                principal?.kind === "staff" ? principal.user.id : undefined,
-              principalMemberId:
-                principal?.kind === "member" ? principal.memberId : undefined,
+              principalUserId: principal?.kind === "staff" ? principal.user.id : undefined,
+              principalMemberId: principal?.kind === "member" ? principal.memberId : undefined,
             });
             return (args as { data: Record<string, unknown> }).data;
           },
@@ -239,15 +233,22 @@ describe.skipIf(skipIfNoTestDb())("hook polymorphism (Phase 9.7o)", () => {
     expect(calls[0].user).toBeNull();
   });
 
-  it("plugin runHook receives principal alongside user for member writes", async () => {
+  it("plugin content hooks receive the canonical principal for member writes", async () => {
     // Plugin-side hook: the `runHook("content:afterCreate", ...)`
-    // payload that fires after every save now carries `principal`
+    // payload that fires after every save carries one canonical `principal`
     // so plugins can react polymorphically. Loaded via the public
     // `loadPlugins()` API (no test-only registration helper needed).
-    const seen: Array<{ user: unknown; principal: unknown }> = [];
+    const seen: Array<{
+      hook: "content:afterCreate" | "content:afterUpdate";
+      principal: unknown;
+      documentId: string;
+      source: string;
+      marker: unknown;
+    }> = [];
     const { loadPlugins } = await import("@nexpress/core");
+    const { definePlugin } = await import("@nexpress/plugin-sdk");
     await loadPlugins([
-      {
+      definePlugin({
         manifest: {
           id: "test-hook-polymorphism",
           version: "0.0.0",
@@ -271,19 +272,37 @@ describe.skipIf(skipIfNoTestDb())("hook polymorphism (Phase 9.7o)", () => {
           styleSlots: {},
         },
         hooks: {
+          "content:beforeCreate": ({ data }) => {
+            data.document.title = "Plugin-observed by hook";
+          },
           "content:afterCreate": ({ data }) => {
             seen.push({
-              user: (data as Record<string, unknown>).user,
-              principal: (data as Record<string, unknown>).principal,
+              hook: "content:afterCreate",
+              principal: data.principal,
+              documentId: data.documentId,
+              source: data.source,
+              marker: data.document.title,
+            });
+          },
+          "content:beforeUpdate": ({ data }) => {
+            data.document.title = "Plugin-updated by hook";
+          },
+          "content:afterUpdate": ({ data }) => {
+            seen.push({
+              hook: "content:afterUpdate",
+              principal: data.principal,
+              documentId: data.documentId,
+              source: data.source,
+              marker: data.document.title,
             });
           },
         },
-      } as never,
+      }),
     ]);
 
     const member = await seedActiveMember("hook-plugin");
 
-    await collectionPOST(
+    const create = await collectionPOST(
       memberRequest("/api/collections/discussions", member, {
         method: "POST",
         body: JSON.stringify({
@@ -294,18 +313,38 @@ describe.skipIf(skipIfNoTestDb())("hook polymorphism (Phase 9.7o)", () => {
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
     );
+    const created = await readJson<{ id: string; title: string }>(create);
+    expect(created.body.title).toBe("Plugin-observed by hook");
 
     expect(seen.length).toBeGreaterThanOrEqual(1);
     const memberCall = seen.find(
       (s) =>
+        s.hook === "content:afterCreate" &&
         (s.principal as { kind?: string } | undefined)?.kind === "member",
     );
     expect(memberCall).toBeDefined();
-    expect(memberCall?.user).toBeNull();
+    expect(memberCall?.source).toBe("request");
+    expect(memberCall?.documentId).toEqual(expect.any(String));
+    expect(memberCall?.marker).toBe("Plugin-observed by hook");
     const principal = memberCall?.principal as {
       kind: "member";
       memberId: string;
     };
     expect(principal.memberId).toBe(member.memberId);
+
+    const update = await collectionPATCH(
+      memberRequest(`/api/collections/discussions/${created.body.id}`, member, {
+        method: "PATCH",
+        body: JSON.stringify({ title: "Plugin-updated", slug: "plugin-observed" }),
+      }),
+      { params: Promise.resolve({ slug: "discussions", id: created.body.id }) },
+    );
+    const updated = await readJson<{ title: string }>(update);
+    expect(updated.body.title).toBe("Plugin-updated by hook");
+    expect(
+      seen.find(
+        (call) => call.hook === "content:afterUpdate" && call.documentId === created.body.id,
+      )?.marker,
+    ).toBe("Plugin-updated by hook");
   });
 });

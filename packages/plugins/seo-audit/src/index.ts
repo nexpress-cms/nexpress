@@ -342,27 +342,23 @@ export const seoAuditPlugin = definePlugin<SeoAuditConfig>({
   configSchema,
   hooks: {
     "content:afterCreate": ({ data, ctx }) => {
-      const doc = (data.doc ?? data) as JsonRecord;
-      const collection = typeof data.collection === "string" ? data.collection : "unknown";
-      const result = auditSeo(extractInputFromDocument(doc), ctx.config);
+      const result = auditSeo(extractInputFromDocument(data.document), ctx.config);
 
       console.log(
-        `[seo-audit] ${collection}/${doc.id ?? "?"} ` +
+        `[seo-audit] ${data.collection}/${data.documentId} ` +
           `score=${result.score} words=${result.wordCount} issues=${result.issues.length}`,
       );
     },
     "content:afterUpdate": ({ data, ctx }) => {
-      const doc = (data.doc ?? data) as JsonRecord;
-      const collection = typeof data.collection === "string" ? data.collection : "unknown";
-      const result = auditSeo(extractInputFromDocument(doc), ctx.config);
+      const result = auditSeo(extractInputFromDocument(data.document), ctx.config);
 
       console.log(
-        `[seo-audit] (updated) ${collection}/${doc.id ?? "?"} ` +
+        `[seo-audit] (updated) ${data.collection}/${data.documentId} ` +
           `score=${result.score} words=${result.wordCount} issues=${result.issues.length}`,
       );
     },
     "render:beforePage": ({ data }) => {
-      const doc = (data.document ?? {}) as JsonRecord;
+      const doc: JsonRecord = data.document;
       const input = extractInputFromDocument(doc);
       const head: Array<
         | { tag: "meta"; attrs: Record<string, string> }
