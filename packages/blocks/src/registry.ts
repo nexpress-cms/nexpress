@@ -14,6 +14,7 @@ import {
   tabsBlock,
   testimonialsBlock,
 } from "./blocks/index.js";
+import { npValidateBlockDefinition } from "./block-contract.js";
 import type { NpBlockDefinition, NpBlockMetadata, NpBlockRegistry, NpPattern } from "./types.js";
 
 const defaultBlocks = [
@@ -37,11 +38,19 @@ const defaultBlocks = [
   imageGalleryBlock,
 ] satisfies NpBlockDefinition[];
 
+function assertValidBlockDefinition(definition: unknown): asserts definition is NpBlockDefinition {
+  const validation = npValidateBlockDefinition(definition);
+  if (!validation.ok) throw new Error(`Invalid block definition: ${validation.message}`);
+}
+
+for (const block of defaultBlocks) assertValidBlockDefinition(block);
+
 export const createBlockRegistry = (): NpBlockRegistry => {
   const definitions = new Map<string, NpBlockDefinition>();
 
   return {
     register(definition) {
+      assertValidBlockDefinition(definition);
       if (definitions.has(definition.type)) {
         throw new Error(`Block type "${definition.type}" is already registered.`);
       }
@@ -74,6 +83,7 @@ for (const block of defaultBlocks) sharedDefinitions.set(block.type, block);
 
 const sharedRegistry: NpBlockRegistry = {
   register(definition) {
+    assertValidBlockDefinition(definition);
     detectAndWarnBlockCollision(sharedDefinitions.get(definition.type), definition);
     sharedDefinitions.set(definition.type, definition);
   },

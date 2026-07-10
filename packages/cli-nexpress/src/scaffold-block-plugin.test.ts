@@ -48,6 +48,7 @@ describe("scaffoldBlockPlugin", () => {
     // Camel-cased export name + matching block type root.
     expect(source).toMatch(/export const myCalloutPlugin = definePlugin\(/);
     expect(source).toMatch(/type: "myCallout\.example"/);
+    expect(source).toContain("satisfies NpBlockDefinition[]");
   });
 
   it("documents CLI registration for local workspace plugins", async () => {
@@ -58,6 +59,9 @@ describe("scaffoldBlockPlugin", () => {
     expect(readme).toContain("pnpm exec nexpress plugin add my-callout");
     expect(readme).toContain("pnpm exec nexpress plugin remove my-callout");
     expect(readme).toContain("pnpm --silent run ops:plugins -- doctor --json");
+    expect(readme).toContain("plugins.block_invalid");
+    expect(readme).toContain("plugins.block_duplicate");
+    expect(readme).toContain("plugins.block_conflict");
     expect(readme).toContain('import { defineConfig } from "@nexpress/core";');
     expect(readme).toContain('import myCalloutPlugin from "my-callout";');
     expect(readme).toContain("plugins: [myCalloutPlugin]");

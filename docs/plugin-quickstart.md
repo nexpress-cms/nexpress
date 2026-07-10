@@ -60,6 +60,10 @@ The walkthrough below uses the local workspace path because it's
 faster to iterate against. The **External projects** section at the
 bottom covers the npm-publish variant.
 
+For a block-first starter, run `nexpress create block-plugin <slug>` (or add
+`--interactive` for a separate client entry). The generated definition follows
+the validation and collision rules in [`plugin-blocks.md`](plugin-blocks.md).
+
 ## Step 1 — Scaffold
 
 The fastest path is the `nexpress create *-plugin` generator. It picks
@@ -474,6 +478,8 @@ The reference docs go deeper on each surface:
   and why pg-boss work loops can't reconcile across processes.
 - [`plugin-render.md`](plugin-render.md) — render-extension hook
   semantics, head-tag and script contributions.
+- [`plugin-blocks.md`](plugin-blocks.md) — block definition, props schema,
+  container, collision, and diagnostics contracts.
 - [`plugin-admin.md`](plugin-admin.md) — declarative admin extensions
   (settings, widgets, actions, tables, dashboard, collection tabs).
 - [`agent-integration.md`](agent-integration.md) — exposing a plugin

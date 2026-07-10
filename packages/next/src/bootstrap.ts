@@ -30,6 +30,7 @@ import {
   type NpResolvedPluginLike,
 } from "@nexpress/core";
 import {
+  npAnalyzeBlockDefinitions,
   registerBlock,
   registerPattern,
   resetSharedBlockRegistry,
@@ -45,14 +46,10 @@ import { cookies, headers } from "next/headers";
 // the bootstrap path that owns this wiring.
 function pluginBlocks(plugin: NpPluginConfig | NpResolvedPluginLike): NpBlockDefinition[] {
   const blocks = (plugin as { blocks?: unknown }).blocks;
-  if (!Array.isArray(blocks)) return [];
-  return blocks.filter(
-    (b): b is NpBlockDefinition =>
-      b !== null &&
-      typeof b === "object" &&
-      typeof (b as { type?: unknown }).type === "string" &&
-      typeof (b as { render?: unknown }).render === "function",
-  );
+  if (blocks === undefined) return [];
+  const issue = npAnalyzeBlockDefinitions(blocks)[0];
+  if (issue) throw new Error(`[plugin:${resolvePluginId(plugin)}] ${issue.message}`);
+  return blocks as NpBlockDefinition[];
 }
 
 // Phase F.4 — same narrowing for theme-shipped blocks. The theme
@@ -517,15 +514,19 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       const disabledIds = new Set(states.filter((s) => !s.enabled).map((s) => s.id));
 
       const enabled = configured.filter((plugin) => !disabledIds.has(resolvePluginId(plugin)));
+      const enabledWithBlocks = enabled.map((plugin) => ({
+        plugin,
+        blocks: pluginBlocks(plugin),
+      }));
       await loadPlugins(enabled);
       // Push each enabled plugin's blocks into the shared block
       // registry so they appear in the admin's Add-block popover
       // and resolve correctly during server render.
-      // `registerBlock` overwrites on duplicate type, so HMR /
-      // re-bootstrap on the same process don't blow up.
-      for (const plugin of enabled) {
+      // `registerBlock` overwrites an existing source on HMR /
+      // re-bootstrap. Same-plugin duplicates were rejected above.
+      for (const { plugin, blocks } of enabledWithBlocks) {
         const pluginId = resolvePluginId(plugin);
-        for (const block of pluginBlocks(plugin)) {
+        for (const block of blocks) {
           // Phase F.4 — auto-stamp concrete source identity
           // (`plugin:<pluginId>`) so the activation filter can
           // distinguish each plugin's blocks. Author-supplied
@@ -617,10 +618,14 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       const disabledIds = new Set(states.filter((s) => !s.enabled).map((s) => s.id));
 
       const enabled = configured.filter((plugin) => !disabledIds.has(resolvePluginId(plugin)));
+      const enabledWithBlocks = enabled.map((plugin) => ({
+        plugin,
+        blocks: pluginBlocks(plugin),
+      }));
       await loadPlugins(enabled);
-      for (const plugin of enabled) {
+      for (const { plugin, blocks } of enabledWithBlocks) {
         const pluginId = resolvePluginId(plugin);
-        for (const block of pluginBlocks(plugin)) {
+        for (const block of blocks) {
           // Same concrete-source stamping as `ensurePluginsLoaded`.
           registerBlock({ ...block, source: `plugin:${pluginId}` });
         }

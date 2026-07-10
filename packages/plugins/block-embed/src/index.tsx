@@ -152,7 +152,7 @@ export const embedPlugin = definePlugin({
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
   },
-  blocks: [youtubeBlock],
+  blocks: [youtubeBlock] satisfies NpBlockDefinition[],
 });
 
 export default embedPlugin;

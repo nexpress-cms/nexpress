@@ -156,7 +156,7 @@ export const calloutPlugin = definePlugin({
     // all default sensibly — `definePlugin` derives `provides.blocks` from
     // the `blocks: [...]` array below, so we don't repeat ourselves.
   },
-  blocks: [calloutBlock],
+  blocks: [calloutBlock] satisfies NpBlockDefinition[],
 });
 
 export default calloutPlugin;

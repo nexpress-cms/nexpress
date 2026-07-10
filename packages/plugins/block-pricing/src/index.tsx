@@ -227,7 +227,7 @@ export const pricingPlugin = definePlugin({
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
   },
-  blocks: [pricingBlock],
+  blocks: [pricingBlock] satisfies NpBlockDefinition[],
 });
 
 export default pricingPlugin;

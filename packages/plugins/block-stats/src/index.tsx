@@ -108,7 +108,7 @@ export const statsBlockPlugin = definePlugin({
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
   },
-  blocks: [statsCounterBlock],
+  blocks: [statsCounterBlock] satisfies NpBlockDefinition[],
 });
 
 export default statsBlockPlugin;

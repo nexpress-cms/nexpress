@@ -121,7 +121,7 @@ export const newsletterPlugin = definePlugin({
     // would silently grant privilege the author didn't ask for.
     capabilities: ["storage:kv"],
   },
-  blocks: [newsletterBlock],
+  blocks: [newsletterBlock] satisfies NpBlockDefinition[],
   routes: [
     {
       method: "POST",

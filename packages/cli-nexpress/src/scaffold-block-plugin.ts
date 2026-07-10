@@ -239,6 +239,12 @@ pnpm --silent run ops:plugins -- doctor --json
 prints the restart step. Restart your dev server or redeploy before checking
 that the plugin no longer appears in the loaded plugin list.
 
+\`definePlugin()\` validates every block type, metadata field, props schema,
+container constraint, and renderer while the module loads. The doctor reports
+malformed definitions as \`plugins.block_invalid\`, same-plugin duplicates as
+\`plugins.block_duplicate\`, and cross-plugin ownership as
+\`plugins.block_conflict\`.
+
 ## What's inside
 
 ${
@@ -335,7 +341,7 @@ export const ${exportName} = definePlugin({
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
   },
-  blocks: [${blockComponentName}Block],
+  blocks: [${blockComponentName}Block] satisfies NpBlockDefinition[],
 });
 
 export default ${exportName};
@@ -418,7 +424,7 @@ export const ${exportName} = definePlugin({
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
   },
-  blocks: [${blockComponentName}Block],
+  blocks: [${blockComponentName}Block] satisfies NpBlockDefinition[],
 });
 
 export default ${exportName};
