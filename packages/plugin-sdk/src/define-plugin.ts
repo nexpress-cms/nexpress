@@ -1,3 +1,5 @@
+import { npValidatePluginPageRouteDefinition } from "@nexpress/core";
+
 import { npAdminExtensionSchema, npPluginManifestSchema } from "./manifest.js";
 import {
   npHookNames,
@@ -141,6 +143,28 @@ function validateRouteRegistry(pluginId: string, routes: unknown): void {
       throw new Error(`[plugin:${pluginId}] duplicate API route "${key}".`);
     }
     seen.add(key);
+  }
+}
+
+function validatePageRouteRegistry(pluginId: string, pageRoutes: unknown): void {
+  if (pageRoutes === undefined) return;
+  if (!Array.isArray(pageRoutes)) {
+    throw new Error(`[plugin:${pluginId}] pageRoutes must be an array.`);
+  }
+
+  const patterns = new Set<string>();
+  for (const [index, route] of pageRoutes.entries()) {
+    const validation = npValidatePluginPageRouteDefinition(route);
+    if (!validation.ok) {
+      throw new Error(
+        `[plugin:${pluginId}] invalid page route at index ${index.toString()}: ${validation.message}`,
+      );
+    }
+    const pattern = (route as { pattern: string }).pattern;
+    if (patterns.has(pattern)) {
+      throw new Error(`[plugin:${pluginId}] duplicate page route "${pattern}".`);
+    }
+    patterns.add(pattern);
   }
 }
 
@@ -403,6 +427,7 @@ export function definePlugin<TConfig = Record<string, unknown>>(
 ): NpResolvedPlugin<TConfig> {
   validateHookRegistry(definition.manifest.id, definition.hooks);
   validateRouteRegistry(definition.manifest.id, definition.routes);
+  validatePageRouteRegistry(definition.manifest.id, definition.pageRoutes);
 
   // Auto-fill `manifest.provides.*` from the actual surface the plugin
   // contributes. Author-declared entries keep their slot; derived entries

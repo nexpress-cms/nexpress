@@ -16,6 +16,7 @@ import { scaffoldBlockPlugin } from "./scaffold-block-plugin.js";
 import {
   scaffoldAdminPlugin,
   scaffoldHookPlugin,
+  scaffoldPagePlugin,
   scaffoldRoutePlugin,
   scaffoldScheduledPlugin,
 } from "./scaffold-plugin-types.js";
@@ -86,6 +87,7 @@ Usage:
   nexpress create block-plugin <slug> --interactive              Scaffold with a "use client" form
   nexpress create hook-plugin <slug> [--workspace|--out <dir>]   Scaffold a content-hook plugin
   nexpress create route-plugin <slug> [--workspace|--out <dir>]  Scaffold an API-route plugin
+  nexpress create page-plugin <slug> [--workspace|--out <dir>]   Scaffold a public page-route plugin
   nexpress create admin-plugin <slug> [--workspace|--out <dir>]  Scaffold an admin-extension plugin
   nexpress create scheduled-plugin <slug> [--workspace|--out <dir>] Scaffold a scheduled-task plugin
   nexpress create theme <slug> [--workspace|--out <dir>]         Scaffold a theme package
@@ -590,6 +592,12 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
         supportsInteractive: false,
         workspaceDir: "packages/plugins",
       },
+      "page-plugin": {
+        kind: "page",
+        label: "public page-route",
+        supportsInteractive: false,
+        workspaceDir: "packages/plugins",
+      },
       "admin-plugin": {
         kind: "admin",
         label: "admin-extension",
@@ -663,6 +671,9 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
           break;
         case "route":
           result = await scaffoldRoutePlugin({ slug, outDir, dependencyRanges });
+          break;
+        case "page":
+          result = await scaffoldPagePlugin({ slug, outDir, dependencyRanges });
           break;
         case "admin":
           result = await scaffoldAdminPlugin({ slug, outDir, dependencyRanges });

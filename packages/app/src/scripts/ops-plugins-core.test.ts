@@ -26,7 +26,7 @@ describe("ops plugins core", () => {
         },
         blocks: [{ type: "callout" }],
         routes: [{ method: "GET", path: "/demo", handler: () => ({ status: 200 }) }],
-        pageRoutes: [{ pattern: "/demo/:slug" }],
+        pageRoutes: [{ pattern: "/demo/:slug", component: () => null }],
       },
     ]);
 
@@ -125,6 +125,65 @@ describe("ops plugins core", () => {
             "[plugin:one] API route at index 2: route.method must be",
           ),
           pluginIds: ["one"],
+        }),
+      ]),
+    );
+  });
+
+  it("rejects malformed and same-plugin duplicate page routes", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "one", name: "One" },
+        pageRoutes: [
+          { pattern: "/events", component: () => null },
+          { pattern: "/events", component: () => null, locale: "none" },
+          { pattern: "/events/:year([)", component: "./page.js" },
+        ],
+      },
+    ]);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.page_route_duplicate",
+          state: "error",
+          detail: "[plugin:one] /events is declared more than once",
+          pluginIds: ["one"],
+        }),
+        expect.objectContaining({
+          id: "plugins.page_route_invalid",
+          state: "error",
+          detail: expect.stringContaining("[plugin:one] page route at index 2"),
+          pluginIds: ["one"],
+        }),
+      ]),
+    );
+    expect(
+      report.checks.find((check) => check.id === "plugins.page_route_conflict"),
+    ).toBeUndefined();
+  });
+
+  it("warns when different plugins claim the same page route", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "one", name: "One" },
+        pageRoutes: [{ pattern: "/events", component: () => null }],
+      },
+      {
+        manifest: { id: "two", name: "Two" },
+        pageRoutes: [{ pattern: "/events", component: () => null }],
+      },
+    ]);
+
+    expect(report.status).toBe("attention");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.page_route_conflict",
+          state: "warn",
+          detail: "/events is claimed by plugins one, two",
+          pluginIds: ["one", "two"],
         }),
       ]),
     );
@@ -357,6 +416,29 @@ describe("ops plugins core", () => {
           id: "plugins.route_conflict",
           state: "error",
           detail: expect.stringContaining('duplicate API route "GET /health"'),
+          pluginIds: ["demo"],
+        }),
+      ]),
+    );
+  });
+
+  it("preserves a structured page-route check when definePlugin aborts config import", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "np-ops-plugins-page-route-import-"));
+    writeFileSync(
+      join(cwd, "nexpress.config.ts"),
+      `throw new Error('[plugin:demo] duplicate page route "/events".');\n`,
+    );
+
+    const report = await collectOpsPluginsStatus(cwd);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "plugins.config_file", state: "error" }),
+        expect.objectContaining({
+          id: "plugins.page_route_duplicate",
+          state: "error",
+          detail: expect.stringContaining('duplicate page route "/events"'),
           pluginIds: ["demo"],
         }),
       ]),

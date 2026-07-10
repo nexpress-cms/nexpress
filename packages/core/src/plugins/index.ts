@@ -55,6 +55,25 @@ export type {
 } from "./api-route-contract.js";
 
 export {
+  npCompilePluginPageRoutePattern,
+  npIsPluginPageRouteLocale,
+  npIsPluginPageRouteSurface,
+  npMatchPluginPageRoutePattern,
+  npPluginPageRouteLocales,
+  npPluginPageRouteSurfaces,
+  npValidatePluginPageRouteDefinition,
+  npValidatePluginPageRoutePattern,
+} from "./page-route-contract.js";
+
+export type {
+  NpPluginPageRouteDefinition,
+  NpPluginPageRouteLocale,
+  NpPluginPageRouteMatcher,
+  NpPluginPageRouteSurface,
+  NpPluginPageRouteValidationResult,
+} from "./page-route-contract.js";
+
+export {
   npIsPluginHookName,
   npPluginHookNames,
   npValidatePluginHookData,

@@ -48,6 +48,11 @@ These notes come from building two bundled example plugins in May 2026:
   and validates every handler result. `GET` routes support `HEAD`, no-body
   statuses stay bodyless, and plugin doctor scopes duplicate checks to the
   owning plugin id instead of warning on valid cross-plugin namespaces.
+- Plugin page routes now share one pattern and definition contract across the
+  SDK, core host, Next dispatcher, and plugin doctor. Invalid or duplicate
+  patterns fail during module evaluation or boot instead of being dropped;
+  `locale: "none"` matches the raw URL without automatic hreflang aliases, and
+  the CLI ships a typed `page-plugin` starter.
 - CLI plugin scaffold tests cover package-shape consistency, the canonical
   hook inventory, and typed Admin status helpers instead of hand-built
   payloads.

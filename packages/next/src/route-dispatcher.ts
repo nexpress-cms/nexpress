@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import {
   getPluginPageRoutes,
   isPluginEnabled,
+  npMatchPluginPageRoutePattern,
   type PluginPageRouteEntry,
 } from "@nexpress/core";
 import type {
@@ -40,9 +41,7 @@ const DEFAULT_ARCHIVE_PATTERNS = {
   search: "/search",
 } as const;
 
-function dateArchivePattern(
-  granularity: NpThemeDateArchiveEntry["granularity"],
-): string {
+function dateArchivePattern(granularity: NpThemeDateArchiveEntry["granularity"]): string {
   switch (granularity) {
     case "year":
       return "/:year(\\d{4})";
@@ -71,10 +70,7 @@ function expandArchives(archives: NpThemeArchives): NpThemeRoute[] {
   for (const [, raw] of Object.entries(archives)) {
     const byKind = raw;
     if (!byKind) continue;
-    const entry = (
-      e: NpThemeArchiveEntry | undefined,
-      defaultPattern: string,
-    ) => {
+    const entry = (e: NpThemeArchiveEntry | undefined, defaultPattern: string) => {
       if (!e) return;
       out.push({
         pattern: e.pattern ?? defaultPattern,
@@ -87,8 +83,7 @@ function expandArchives(archives: NpThemeArchives): NpThemeRoute[] {
     entry(byKind.byAuthor, DEFAULT_ARCHIVE_PATTERNS.byAuthor);
     if (byKind.byDate) {
       out.push({
-        pattern:
-          byKind.byDate.pattern ?? dateArchivePattern(byKind.byDate.granularity),
+        pattern: byKind.byDate.pattern ?? dateArchivePattern(byKind.byDate.granularity),
         component: byKind.byDate.component,
         metadata: byKind.byDate.metadata,
       });
@@ -119,7 +114,7 @@ function detectAndWarnCollisions(routes: NpThemeRoute[]): void {
   for (const [pattern, count] of seen) {
     if (count > 1 && !warnedPatterns.has(pattern)) {
       warnedPatterns.add(pattern);
-       
+
       console.warn(
         `[nexpress/theme] route pattern "${pattern}" is declared ${count} ` +
           `times in the active theme — only the first declaration will ` +
@@ -141,9 +136,7 @@ function detectAndWarnCollisions(routes: NpThemeRoute[]): void {
  */
 export function collectThemeRoutes(theme: NpTheme): NpThemeRoute[] {
   const explicit = theme.impl.routes ?? [];
-  const expanded = theme.impl.archives
-    ? expandArchives(theme.impl.archives)
-    : [];
+  const expanded = theme.impl.archives ? expandArchives(theme.impl.archives) : [];
   const all = [...explicit, ...expanded];
   detectAndWarnCollisions(all);
   return all;
@@ -157,10 +150,7 @@ export function collectThemeRoutes(theme: NpTheme): NpThemeRoute[] {
  *
  * Returns the captured params on success, null otherwise.
  */
-function matchPattern(
-  pattern: string,
-  path: string,
-): Record<string, string> | null {
+function matchPattern(pattern: string, path: string): Record<string, string> | null {
   const patternSegs = pattern.split("/").filter(Boolean);
   const pathSegs = path.split("/").filter(Boolean);
   if (patternSegs.length !== pathSegs.length) return null;
@@ -170,7 +160,6 @@ function matchPattern(
     const ps = patternSegs[i];
     const xs = pathSegs[i];
     if (ps.startsWith(":")) {
-      // `:name` or `:name(regex)`
       const parenStart = ps.indexOf("(");
       if (parenStart >= 0) {
         if (!ps.endsWith(")")) return null;
@@ -189,10 +178,7 @@ function matchPattern(
   return params;
 }
 
-export function dispatchThemeRoute(
-  theme: NpTheme | null,
-  path: string,
-): NpThemeRouteMatch | null {
+export function dispatchThemeRoute(theme: NpTheme | null, path: string): NpThemeRouteMatch | null {
   if (!theme) return null;
   const normalized = path.startsWith("/") ? path : `/${path}`;
   const routes = collectThemeRoutes(theme);
@@ -314,37 +300,26 @@ function detectAndWarnPluginCollisions(
  * catch-all): theme dispatch runs first, plugin dispatch runs
  * only when theme returned null.
  *
- * `localeAwarePath` is the locale-stripped path the catch-all
- * already computes for the page-document lookup. `rawPath` is
- * the path before locale stripping; today only used by future
- * `locale: "none"` plugin routes (deferred per PRT.2 scope —
- * the field is accepted but `"auto"` is what every plugin
- * actually receives in this slice).
+ * `localeAwarePath` is the locale-stripped path the catch-all computes for
+ * page lookup. `rawPath` preserves any locale prefix. Routes with
+ * `locale: "auto"` match the first path; `locale: "none"` matches the raw
+ * path so localized aliases are not created implicitly.
  */
-export async function dispatchPluginRoute(
-  ctx: { localeAwarePath: string; themeRoutes: ReadonlyArray<NpThemeRoute> },
-): Promise<NpPluginRouteMatch | null> {
+export async function dispatchPluginRoute(ctx: {
+  localeAwarePath: string;
+  rawPath: string;
+  themeRoutes: ReadonlyArray<NpThemeRoute>;
+}): Promise<NpPluginRouteMatch | null> {
   const entries = getPluginPageRoutes();
   detectAndWarnPluginCollisions(ctx.themeRoutes, entries);
-
-  const normalized = ctx.localeAwarePath.startsWith("/")
-    ? ctx.localeAwarePath
-    : `/${ctx.localeAwarePath}`;
 
   for (const { pluginId, route } of entries) {
     // Disabled plugins skip — checked per-request so admin
     // toggles take effect without a process restart.
     if (!(await isPluginEnabled(pluginId))) continue;
-    // Skip non-function/non-object components defensively (the
-    // registry already filters at registration time, but the
-    // dispatcher is the last line before React renders).
-    if (
-      typeof route.component !== "function" &&
-      (typeof route.component !== "object" || route.component === null)
-    ) {
-      continue;
-    }
-    const params = matchPattern(route.pattern, normalized);
+    if (typeof route.component !== "function") continue;
+    const path = route.locale === "none" ? ctx.rawPath : ctx.localeAwarePath;
+    const params = npMatchPluginPageRoutePattern(route.pattern, path);
     if (!params) continue;
     return {
       pluginId,
@@ -352,8 +327,7 @@ export async function dispatchPluginRoute(
         pattern: route.pattern,
         component: route.component as ComponentType<NpRouteRenderProps>,
         metadata: route.metadata as
-          | ((ctx: NpRouteRenderProps) => Promise<Metadata> | Metadata)
-          | undefined,
+          ((ctx: NpRouteRenderProps) => Promise<Metadata> | Metadata) | undefined,
         surface: route.surface,
         locale: route.locale,
       },
@@ -368,29 +342,20 @@ export async function dispatchPluginRoute(
  * the enabled state externally (e.g. tests, or surfaces that
  * don't gate on enable). Skips the `isPluginEnabled` await.
  */
-export function dispatchPluginRouteSync(
-  ctx: {
-    localeAwarePath: string;
-    themeRoutes: ReadonlyArray<NpThemeRoute>;
-    enabled?: (pluginId: string) => boolean;
-  },
-): NpPluginRouteMatch | null {
+export function dispatchPluginRouteSync(ctx: {
+  localeAwarePath: string;
+  rawPath: string;
+  themeRoutes: ReadonlyArray<NpThemeRoute>;
+  enabled?: (pluginId: string) => boolean;
+}): NpPluginRouteMatch | null {
   const entries = getPluginPageRoutes();
   detectAndWarnPluginCollisions(ctx.themeRoutes, entries);
 
-  const normalized = ctx.localeAwarePath.startsWith("/")
-    ? ctx.localeAwarePath
-    : `/${ctx.localeAwarePath}`;
-
   for (const { pluginId, route } of entries) {
     if (ctx.enabled && !ctx.enabled(pluginId)) continue;
-    if (
-      typeof route.component !== "function" &&
-      (typeof route.component !== "object" || route.component === null)
-    ) {
-      continue;
-    }
-    const params = matchPattern(route.pattern, normalized);
+    if (typeof route.component !== "function") continue;
+    const path = route.locale === "none" ? ctx.rawPath : ctx.localeAwarePath;
+    const params = npMatchPluginPageRoutePattern(route.pattern, path);
     if (!params) continue;
     return {
       pluginId,
@@ -398,8 +363,7 @@ export function dispatchPluginRouteSync(
         pattern: route.pattern,
         component: route.component as ComponentType<NpRouteRenderProps>,
         metadata: route.metadata as
-          | ((ctx: NpRouteRenderProps) => Promise<Metadata> | Metadata)
-          | undefined,
+          ((ctx: NpRouteRenderProps) => Promise<Metadata> | Metadata) | undefined,
         surface: route.surface,
         locale: route.locale,
       },

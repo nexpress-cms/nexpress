@@ -1,13 +1,13 @@
 /**
- * Generators for the four non-block plugin kinds — hook, route, admin
- * settings, scheduled task. Each one writes a self-contained starter
+ * Generators for the five non-block plugin kinds — hook, API route, public
+ * page route, admin settings, and scheduled task. Each one writes a self-contained starter
  * package the operator can drop into `packages/plugins/<slug>/` (or any
  * workspace member), build, and register with `nexpress plugin add`.
  *
  * The block scaffold lives in its own file (`scaffold-block-plugin.ts`)
  * because it has more variants (static vs interactive) and more moving
  * parts (`"use client"` directive preservation, self-import wiring).
- * Splitting keeps either side readable — the four kinds in this file
+ * Splitting keeps either side readable — the five kinds in this file
  * are deliberately uniform: minimal manifest, single feature surface,
  * exhaustively commented `definePlugin()` body that explains *why* each
  * field is there, not just *what* it does.
@@ -175,7 +175,7 @@ export async function scaffoldRoutePlugin(options: ScaffoldOptions): Promise<Sca
   assertDirAvailable(names.pluginDir);
 
   const description = `API route plugin: ${names.packageName}`;
-  const indexSource = `import { definePlugin, npAdminStatus } from "@nexpress/plugin-sdk";
+  const indexSource = `import { definePlugin } from "@nexpress/plugin-sdk";
 
 /**
  * API route plugin scaffold. Plugin routes mount under
@@ -256,6 +256,94 @@ or chain in your own auth / validation.
     files: await writeScaffoldFiles(names.pluginDir, files),
     packageDir: names.pluginDir,
     kind: "route",
+    interactive: false,
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Public page-route plugin
+// ────────────────────────────────────────────────────────────────────────
+
+export async function scaffoldPagePlugin(options: ScaffoldOptions): Promise<ScaffoldResult> {
+  const { slug, outDir, dependencyRanges } = options;
+  const names = deriveNames(slug, outDir);
+  assertDirAvailable(names.pluginDir);
+
+  const description = `Public page-route plugin: ${names.packageName}`;
+  const indexSource = `import {
+  definePlugin,
+  type NpPluginPageRouteProps,
+} from "@nexpress/plugin-sdk";
+
+function GreetingPage({ params, searchParams }: NpPluginPageRouteProps) {
+  const name = params.name ?? "visitor";
+  const source = typeof searchParams.from === "string" ? searchParams.from : null;
+
+  return (
+    <main>
+      <h1>Hello, {name}</h1>
+      {source ? <p>You arrived from {source}.</p> : null}
+    </main>
+  );
+}
+
+/**
+ * Public page-route scaffold. This starter owns \`/hello/:name\` in the
+ * active site's catch-all. Patterns are canonical, first-match-wins, and
+ * support literals, \`:name\`, and \`:name(regex)\` segments.
+ *
+ * \`locale: "auto"\` matches both \`/hello/alex\` and locale-prefixed forms
+ * such as \`/ko/hello/alex\`. Use \`locale: "none"\` when a route must match
+ * only its raw unprefixed URL. \`surface: "member"\` changes the theme shell;
+ * it does not authenticate the visitor.
+ */
+export const ${names.exportName} = definePlugin({
+  manifest: {
+    id: "${names.pluginId}",
+    version: "0.1.0",
+    name: "${names.packageName}",
+    description: "${description}",
+    author: { name: "" },
+    license: "MIT",
+    nexpress: { minVersion: "0.1.0" },
+  },
+  pageRoutes: [
+    {
+      pattern: "/hello/:name",
+      component: GreetingPage,
+      metadata: ({ params }) => ({
+        title: params.name ? "Hello, " + params.name : "Hello",
+      }),
+      surface: "site",
+      locale: "auto",
+    },
+  ],
+});
+
+export default ${names.exportName};
+`;
+
+  const readmeTop = `# ${names.packageName}
+
+A public page-route plugin scaffolded by \`nexpress create page-plugin\`.
+
+The starter renders \`/hello/:name\` inside the active site shell and builds
+matching metadata from the captured route parameter. Edit \`src/index.tsx\`
+to add your own page components and patterns.
+`;
+
+  const files: Record<string, string> = {
+    "package.json": basePackageJson(names.packageName, description, { dependencyRanges }),
+    "tsconfig.json": baseTsconfig({ extendsPath: resolveTsconfigExtends(names.pluginDir) }),
+    "tsup.config.ts": SERVER_TSUP_CONFIG,
+    "README.md": readmeTop + fillReadme(README_FOOTER, names.packageName, names.exportName),
+    "src/index.tsx": indexSource,
+  };
+
+  return {
+    files: await writeScaffoldFiles(names.pluginDir, files),
+    packageDir: names.pluginDir,
+    kind: "page",
     interactive: false,
   };
 }

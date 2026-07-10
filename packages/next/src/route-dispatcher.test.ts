@@ -293,13 +293,20 @@ describe("dispatchPluginRouteSync", () => {
   });
 
   it("returns null when no plugin routes registered", () => {
-    expect(dispatchPluginRouteSync({ localeAwarePath: "/anything", themeRoutes: [] })).toBeNull();
+    expect(
+      dispatchPluginRouteSync({
+        localeAwarePath: "/anything",
+        rawPath: "/anything",
+        themeRoutes: [],
+      }),
+    ).toBeNull();
   });
 
   it("matches a literal plugin route", () => {
     mockPageRoutes = [pluginEntry("forum", "/discussions")];
     const match = dispatchPluginRouteSync({
       localeAwarePath: "/discussions",
+      rawPath: "/discussions",
       themeRoutes: [],
     });
     expect(match?.pluginId).toBe("forum");
@@ -311,6 +318,7 @@ describe("dispatchPluginRouteSync", () => {
     mockPageRoutes = [pluginEntry("forum", "/discussions/:slug")];
     const match = dispatchPluginRouteSync({
       localeAwarePath: "/discussions/my-thread",
+      rawPath: "/discussions/my-thread",
       themeRoutes: [],
     });
     expect(match?.params).toEqual({ slug: "my-thread" });
@@ -321,6 +329,7 @@ describe("dispatchPluginRouteSync", () => {
     expect(
       dispatchPluginRouteSync({
         localeAwarePath: "discussions",
+        rawPath: "discussions",
         themeRoutes: [],
       }),
     ).not.toBeNull();
@@ -333,6 +342,7 @@ describe("dispatchPluginRouteSync", () => {
     ];
     const match = dispatchPluginRouteSync({
       localeAwarePath: "/discussions",
+      rawPath: "/discussions",
       themeRoutes: [],
     });
     expect(match?.pluginId).toBe("forum-a");
@@ -345,6 +355,7 @@ describe("dispatchPluginRouteSync", () => {
     ];
     const match = dispatchPluginRouteSync({
       localeAwarePath: "/discussions",
+      rawPath: "/discussions",
       themeRoutes: [],
       enabled: (id) => id !== "forum-a",
     });
@@ -356,6 +367,7 @@ describe("dispatchPluginRouteSync", () => {
     expect(
       dispatchPluginRouteSync({
         localeAwarePath: "/elsewhere",
+        rawPath: "/elsewhere",
         themeRoutes: [],
       }),
     ).toBeNull();
@@ -363,7 +375,9 @@ describe("dispatchPluginRouteSync", () => {
 
   it("rejects entries whose component is a primitive (defense-in-depth)", () => {
     mockPageRoutes = [pluginEntry("bad", "/x", { component: "not-a-component" })];
-    expect(dispatchPluginRouteSync({ localeAwarePath: "/x", themeRoutes: [] })).toBeNull();
+    expect(
+      dispatchPluginRouteSync({ localeAwarePath: "/x", rawPath: "/x", themeRoutes: [] }),
+    ).toBeNull();
   });
 
   it("preserves surface and locale fields on the match", () => {
@@ -375,16 +389,46 @@ describe("dispatchPluginRouteSync", () => {
     ];
     const match = dispatchPluginRouteSync({
       localeAwarePath: "/discussions/new",
+      rawPath: "/discussions/new",
       themeRoutes: [],
     });
     expect(match?.route.surface).toBe("member");
     expect(match?.route.locale).toBe("none");
   });
 
+  it("matches locale=auto against the locale-stripped path", () => {
+    mockPageRoutes = [pluginEntry("forum", "/discussions")];
+    const match = dispatchPluginRouteSync({
+      localeAwarePath: "/discussions",
+      rawPath: "/ko/discussions",
+      themeRoutes: [],
+    });
+    expect(match?.pluginId).toBe("forum");
+  });
+
+  it("matches locale=none only against the raw unprefixed path", () => {
+    mockPageRoutes = [pluginEntry("forum", "/discussions", { locale: "none" })];
+    expect(
+      dispatchPluginRouteSync({
+        localeAwarePath: "/discussions",
+        rawPath: "/ko/discussions",
+        themeRoutes: [],
+      }),
+    ).toBeNull();
+    expect(
+      dispatchPluginRouteSync({
+        localeAwarePath: "/discussions",
+        rawPath: "/discussions",
+        themeRoutes: [],
+      })?.pluginId,
+    ).toBe("forum");
+  });
+
   it("matches a plugin route registered at site root '/'", () => {
     mockPageRoutes = [pluginEntry("landing", "/")];
     const match = dispatchPluginRouteSync({
       localeAwarePath: "/",
+      rawPath: "/",
       themeRoutes: [],
     });
     expect(match?.pluginId).toBe("landing");
@@ -403,6 +447,7 @@ describe("dispatchPluginRoute (async, with enabled-gate)", () => {
     mockPageRoutes = [pluginEntry("forum", "/discussions")];
     const match = await dispatchPluginRoute({
       localeAwarePath: "/discussions",
+      rawPath: "/discussions",
       themeRoutes: [],
     });
     expect(match?.pluginId).toBe("forum");
@@ -413,6 +458,7 @@ describe("dispatchPluginRoute (async, with enabled-gate)", () => {
     mockEnabledMap.set("forum", false);
     const match = await dispatchPluginRoute({
       localeAwarePath: "/discussions",
+      rawPath: "/discussions",
       themeRoutes: [],
     });
     expect(match).toBeNull();
@@ -426,6 +472,7 @@ describe("dispatchPluginRoute (async, with enabled-gate)", () => {
     mockEnabledMap.set("forum-a", false);
     const match = await dispatchPluginRoute({
       localeAwarePath: "/discussions",
+      rawPath: "/discussions",
       themeRoutes: [],
     });
     expect(match?.pluginId).toBe("forum-b");
@@ -454,6 +501,7 @@ describe("dispatchPluginRoute — collision warnings", () => {
     };
     dispatchPluginRouteSync({
       localeAwarePath: "/discussions",
+      rawPath: "/discussions",
       themeRoutes: [themeRoute],
     });
     expect(warnSpy).toHaveBeenCalledTimes(1);
@@ -469,6 +517,7 @@ describe("dispatchPluginRoute — collision warnings", () => {
     ];
     dispatchPluginRouteSync({
       localeAwarePath: "/discussions",
+      rawPath: "/discussions",
       themeRoutes: [],
     });
     expect(warnSpy).toHaveBeenCalledTimes(1);
@@ -483,14 +532,17 @@ describe("dispatchPluginRoute — collision warnings", () => {
     ];
     dispatchPluginRouteSync({
       localeAwarePath: "/discussions",
+      rawPath: "/discussions",
       themeRoutes: [],
     });
     dispatchPluginRouteSync({
       localeAwarePath: "/discussions",
+      rawPath: "/discussions",
       themeRoutes: [],
     });
     dispatchPluginRouteSync({
       localeAwarePath: "/discussions",
+      rawPath: "/discussions",
       themeRoutes: [],
     });
     expect(warnSpy).toHaveBeenCalledTimes(1);
@@ -504,6 +556,7 @@ describe("dispatchPluginRoute — collision warnings", () => {
     };
     dispatchPluginRouteSync({
       localeAwarePath: "/discussions",
+      rawPath: "/discussions",
       themeRoutes: [themeRoute],
     });
     expect(warnSpy).not.toHaveBeenCalled();

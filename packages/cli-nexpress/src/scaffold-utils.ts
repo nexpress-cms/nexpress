@@ -54,8 +54,8 @@ export interface ScaffoldOptions {
   slug: string;
   outDir: string;
   /**
-   * Block-only generator flag. The other kinds (hook / route / admin /
-   * scheduled) ignore this — kept on the shared shape so a future merge
+   * Block-only generator flag. The other kinds (hook / API route / page route /
+   * admin / scheduled) ignore this — kept on the shared shape so a future merge
    * into a single dispatcher doesn't have to widen the API again.
    */
   interactive?: boolean;
@@ -78,7 +78,7 @@ export interface ScaffoldResult {
   interactive: boolean;
 }
 
-export type ScaffoldKind = "block" | "hook" | "route" | "admin" | "scheduled" | "theme";
+export type ScaffoldKind = "block" | "hook" | "route" | "page" | "admin" | "scheduled" | "theme";
 
 export type ScaffoldFrameworkDependency =
   "@nexpress/blocks" | "@nexpress/plugin-sdk" | "@nexpress/theme";

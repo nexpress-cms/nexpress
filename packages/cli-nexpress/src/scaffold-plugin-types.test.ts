@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   scaffoldAdminPlugin,
   scaffoldHookPlugin,
+  scaffoldPagePlugin,
   scaffoldRoutePlugin,
   scaffoldScheduledPlugin,
 } from "./scaffold-plugin-types.js";
@@ -99,6 +100,23 @@ describe("non-block scaffold generators", () => {
     });
   });
 
+  describe("page plugin", () => {
+    commonAssertions("page", scaffoldPagePlugin);
+
+    it("declares a typed public page route with metadata and locale semantics", async () => {
+      const result = await scaffoldPagePlugin({ slug: "greeting", outDir: workdir });
+      const source = await readFile(join(result.packageDir, "src/index.tsx"), "utf-8");
+      expect(source).toContain("type NpPluginPageRouteProps");
+      expect(source).toMatch(/pageRoutes:\s*\[/);
+      expect(source).toMatch(/pattern: "\/hello\/:name"/);
+      expect(source).toMatch(/component: GreetingPage/);
+      expect(source).toMatch(/metadata: \(\{ params \}\)/);
+      expect(source).toMatch(/locale: "auto"/);
+      expect(source).toContain('`locale: "none"`');
+      expect(source).toContain('`surface: "member"`');
+    });
+  });
+
   describe("admin plugin", () => {
     commonAssertions("admin", scaffoldAdminPlugin);
 
@@ -157,6 +175,7 @@ describe("non-block scaffold generators", () => {
       for (const generator of [
         scaffoldHookPlugin,
         scaffoldRoutePlugin,
+        scaffoldPagePlugin,
         scaffoldAdminPlugin,
         scaffoldScheduledPlugin,
       ]) {
@@ -181,6 +200,7 @@ describe("non-block scaffold generators", () => {
       for (const generator of [
         scaffoldHookPlugin,
         scaffoldRoutePlugin,
+        scaffoldPagePlugin,
         scaffoldAdminPlugin,
         scaffoldScheduledPlugin,
       ]) {
@@ -214,6 +234,7 @@ describe("non-block scaffold generators", () => {
       for (const generator of [
         scaffoldHookPlugin,
         scaffoldRoutePlugin,
+        scaffoldPagePlugin,
         scaffoldAdminPlugin,
         scaffoldScheduledPlugin,
       ]) {
