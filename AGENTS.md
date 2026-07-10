@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-10 (plugin scheduled tasks now share one validated
+**Last refreshed:** 2026-07-11 (plugin page-builder patterns now share one
+validated recursive definition and block-reference contract across blocks, the
+SDK, Next bootstrap, the shared registry, and plugin doctor. Bootstrap assigns
+concrete sources and registers all blocks before patterns.)
+
+**Earlier:** 2026-07-10 (plugin scheduled tasks now share one validated
 definition across the SDK, core host, pg-boss registration, and plugin doctor.
 Invalid cron expressions, duplicate task ids, and non-void results fail
 explicitly; schedules use five-field UTC cron.)
@@ -210,6 +215,14 @@ The data pipeline (`packages/core/src/collections/pipeline.ts`) handles access c
 For original rationale see `docs/design/plugin-system-design.md` (frozen 2026-04-17 snapshot — high-level decisions still apply, code samples may have drifted). v1 plugins are **npm-package + rebuild**, not hot-loadable. A plugin can register hooks (`content:afterCreate`, etc.), actions (custom API handlers), routes, **public-site page routes** (`definePlugin({ pageRoutes: NpPluginPageRouteRegistration[] })` — see `docs/plugin-pages.md`), scheduled tasks, and **page builder blocks** (`definePlugin({ blocks: NpBlockDefinition[] })`) at startup. It **cannot** add collections/fields at runtime — those require codegen + migrate. Plugins run in-process with full Node access; there is no sandbox in v1. Author plugins with `definePlugin()` from `@nexpress/plugin-sdk`.
 
 Plugin-contributed blocks merge into the same shared registry as the built-ins (`@nexpress/blocks`'s `getSharedRegistry()`). `definePlugin()`, the Next bootstrap, `registerBlock()`, and plugin doctor use the same canonical definition/props-schema validator; malformed blocks and same-plugin duplicates fail before registration. The `@nexpress/next` bootstrap calls `registerBlock` for each plugin block right after `loadPlugins`. The admin's Add-block popover (`field-renderer.tsx`) reads via `getRegisteredBlocks()` so plugin blocks surface there automatically. Re-registering the same source stays idempotent for HMR/reload; cross-source collisions retain last-loaded-wins behavior with an operator-visible warning. Author docs: `docs/plugin-blocks.md`.
+
+Plugin page-builder patterns use the same contract shape across
+`@nexpress/blocks/contracts`, `definePlugin()`, the Next bootstrap, the shared
+registry, and plugin doctor. Author contributions use `NpPatternDefinition`
+and may omit `source`; bootstrap validates every recursive block instance and
+referenced block type, assigns `plugin:<id>` / `theme:<id>`, registers all
+blocks before patterns, and derives pattern ids into
+`manifest.provides.patterns`. Author docs: `docs/plugin-patterns.md`.
 
 Plugin scheduled tasks use one canonical core validator from `definePlugin()`,
 the core host, and plugin doctor. Task ids are safe per-plugin queue segments,

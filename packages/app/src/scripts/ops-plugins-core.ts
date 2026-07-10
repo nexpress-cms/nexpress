@@ -12,7 +12,13 @@ import {
   type NpPluginAdminActionIssue,
   type NpRegisteredPluginAction,
 } from "@nexpress/core";
-import { npAnalyzeBlockDefinitions, npValidateBlockDefinition } from "@nexpress/blocks/contracts";
+import {
+  npAnalyzeBlockDefinitions,
+  npAnalyzePatternDefinitions,
+  npValidateBlockDefinition,
+  npValidatePatternDefinition,
+} from "@nexpress/blocks/contracts";
+import { getDefaultBlocks } from "@nexpress/blocks";
 import pg from "pg";
 
 import { toProjectCommand } from "./ops-command-format.js";
@@ -49,6 +55,7 @@ interface PluginManifestLike {
 interface PluginLike {
   manifest?: PluginManifestLike;
   blocks?: unknown;
+  patterns?: unknown;
   routes?: unknown;
   pageRoutes?: unknown;
   scheduled?: unknown;
@@ -96,6 +103,7 @@ export interface OpsPluginEntry {
   requires: string[];
   provides: {
     blocks: string[];
+    patterns: string[];
     fields: string[];
     collections: string[];
     adminExtensions: string[];
@@ -113,6 +121,7 @@ export interface OpsPluginEntry {
   usesTokens: string[];
   styleSlots: string[];
   blocks: string[];
+  patterns: string[];
   routes: string[];
   pageRoutes: string[];
   scheduled: string[];
@@ -122,6 +131,7 @@ export interface OpsPluginEntry {
 export interface OpsPluginsSummary {
   plugins: number;
   blocks: number;
+  patterns: number;
   routes: number;
   pageRoutes: number;
   scheduled: number;
@@ -298,6 +308,7 @@ function readProvides(value: unknown): OpsPluginEntry["provides"] {
   const source = isObject(value) ? value : {};
   return {
     blocks: readStringArray(source.blocks),
+    patterns: readStringArray(source.patterns),
     fields: readStringArray(source.fields),
     collections: readStringArray(source.collections),
     adminExtensions: readStringArray(source.adminExtensions),
@@ -338,6 +349,11 @@ function scheduledKey(task: unknown): string | null {
 function blockKey(block: unknown): string | null {
   if (!isObject(block)) return null;
   return readString(block.type);
+}
+
+function patternKey(pattern: unknown): string | null {
+  if (!isObject(pattern)) return null;
+  return readString(pattern.id);
 }
 
 function readActionDefinitions(value: unknown): NpRegisteredPluginAction[] {
@@ -551,6 +567,28 @@ function blockContractImportCheck(error: unknown): CheckResult | null {
   };
 }
 
+function patternContractImportCheck(error: unknown): CheckResult | null {
+  const detail = error instanceof Error ? error.message : String(error);
+  const match = detail.match(
+    /^\[plugin:([^\]]+)\] (?:patterns must be an array|invalid pattern |duplicate pattern id )/u,
+  );
+  if (!match) return null;
+
+  const duplicate = detail.includes("duplicate pattern id");
+  return {
+    id: duplicate ? "plugins.pattern_duplicate" : "plugins.pattern_invalid",
+    state: "error",
+    label: "Plugin pattern contracts",
+    detail,
+    pluginIds: match[1] ? [match[1]] : undefined,
+    hint: withDoctorRerun(
+      duplicate
+        ? "A plugin can declare each pattern id only once. Remove or rename the duplicate pattern."
+        : "Use canonical pattern metadata and a non-empty recursive tree of serializable block instances.",
+    ),
+  };
+}
+
 function scheduledTaskContractImportCheck(error: unknown): CheckResult | null {
   const detail = error instanceof Error ? error.message : String(error);
   const match = detail.match(
@@ -708,6 +746,64 @@ function buildBlockChecks(pluginObjects: PluginLike[], plugins: OpsPluginEntry[]
       detail: duplicateBlocks.join("; "),
       hint: withDoctorRerun(
         "A plugin can declare each block type only once. Remove or rename the duplicate block.",
+      ),
+      pluginIds: uniqueStrings(duplicatePluginIds),
+    });
+  }
+  return checks;
+}
+
+function buildPatternChecks(pluginObjects: PluginLike[], plugins: OpsPluginEntry[]): CheckResult[] {
+  const invalidPatterns: string[] = [];
+  const invalidPluginIds: string[] = [];
+  const duplicatePatterns: string[] = [];
+  const duplicatePluginIds: string[] = [];
+  const knownBlockTypes = new Set([
+    ...getDefaultBlocks().map((block) => block.type),
+    ...pluginObjects.flatMap((plugin) =>
+      readArray(plugin.blocks).flatMap((block) => {
+        const key = blockKey(block);
+        return key && npValidateBlockDefinition(block).ok ? [key] : [];
+      }),
+    ),
+  ]);
+
+  for (const [index, plugin] of pluginObjects.entries()) {
+    if (plugin.patterns === undefined) continue;
+    const pluginId = plugins[index]?.id ?? `plugin-${index.toString()}`;
+    for (const issue of npAnalyzePatternDefinitions(plugin.patterns, { knownBlockTypes })) {
+      const detail = `[plugin:${pluginId}] ${issue.message}`;
+      if (issue.code === "duplicate-id") {
+        duplicatePatterns.push(detail);
+        duplicatePluginIds.push(pluginId);
+      } else {
+        invalidPatterns.push(detail);
+        invalidPluginIds.push(pluginId);
+      }
+    }
+  }
+
+  const checks: CheckResult[] = [];
+  if (invalidPatterns.length > 0) {
+    checks.push({
+      id: "plugins.pattern_invalid",
+      state: "error",
+      label: "Plugin pattern contracts",
+      detail: invalidPatterns.join("; "),
+      hint: withDoctorRerun(
+        "Use canonical pattern metadata and a non-empty recursive tree of serializable block instances.",
+      ),
+      pluginIds: uniqueStrings(invalidPluginIds),
+    });
+  }
+  if (duplicatePatterns.length > 0) {
+    checks.push({
+      id: "plugins.pattern_duplicate",
+      state: "error",
+      label: "Plugin pattern ids",
+      detail: duplicatePatterns.join("; "),
+      hint: withDoctorRerun(
+        "A plugin can declare each pattern id only once. Remove or rename the duplicate pattern.",
       ),
       pluginIds: uniqueStrings(duplicatePluginIds),
     });
@@ -881,6 +977,7 @@ function summarize(checks: CheckResult[], plugins: OpsPluginEntry[]): OpsPlugins
   return {
     plugins: plugins.length,
     blocks: plugins.reduce((total, plugin) => total + plugin.blocks.length, 0),
+    patterns: plugins.reduce((total, plugin) => total + plugin.patterns.length, 0),
     routes: plugins.reduce((total, plugin) => total + plugin.routes.length, 0),
     pageRoutes: plugins.reduce((total, plugin) => total + plugin.pageRoutes.length, 0),
     scheduled: plugins.reduce((total, plugin) => total + plugin.scheduled.length, 0),
@@ -912,6 +1009,9 @@ function normalizePlugin(plugin: PluginLike, index: number): OpsPluginEntry {
     styleSlots: readStringRecordKeys(manifest.styleSlots),
     blocks: readArray(plugin.blocks)
       .map(blockKey)
+      .filter((key): key is string => Boolean(key)),
+    patterns: readArray(plugin.patterns)
+      .map(patternKey)
       .filter((key): key is string => Boolean(key)),
     routes: readArray(plugin.routes)
       .map(routeKey)
@@ -987,6 +1087,7 @@ export function buildOpsPluginInspectJson(
     : {
         plugins: 0,
         blocks: 0,
+        patterns: 0,
         routes: 0,
         pageRoutes: 0,
         scheduled: 0,
@@ -1079,6 +1180,7 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
       }),
     ),
     ...buildBlockChecks(pluginObjects, plugins),
+    ...buildPatternChecks(pluginObjects, plugins),
     ...buildApiRouteChecks(pluginObjects, plugins),
     ...buildPageRouteChecks(pluginObjects, plugins),
     ...buildScheduledTaskChecks(pluginObjects, plugins),
@@ -1111,6 +1213,24 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
     ),
   );
   if (blockConflicts) checks.push(blockConflicts);
+
+  const patternConflicts = duplicateChecks(
+    "plugins.pattern_conflict",
+    "Plugin pattern ids",
+    pluginObjects.flatMap((plugin, index) => {
+      const pluginId = plugins[index]?.id ?? `plugin-${index.toString()}`;
+      const validKeys = readArray(plugin.patterns).flatMap((pattern) => {
+        const validation = npValidatePatternDefinition(pattern);
+        const key = patternKey(pattern);
+        return validation.ok && key ? [key] : [];
+      });
+      return [...new Set(validKeys)].map((key) => ({ key, plugin: pluginId }));
+    }),
+    withDoctorRerun(
+      "Pattern ids share one registry. Namespace one pattern id or disable one plugin, then rebuild.",
+    ),
+  );
+  if (patternConflicts) checks.push(patternConflicts);
 
   const pageRouteConflicts = duplicateChecks(
     "plugins.page_route_conflict",
@@ -1180,6 +1300,7 @@ export async function collectOpsPluginsStatus(
     const apiRouteCheck = apiRouteContractImportCheck(error);
     const pageRouteCheck = pageRouteContractImportCheck(error);
     const blockCheck = blockContractImportCheck(error);
+    const patternCheck = patternContractImportCheck(error);
     const scheduledTaskCheck = scheduledTaskContractImportCheck(error);
     return buildOpsPluginsJson({
       plugins: [],
@@ -1193,6 +1314,7 @@ export async function collectOpsPluginsStatus(
         },
         ...(actionCheck ? [actionCheck] : []),
         ...(blockCheck ? [blockCheck] : []),
+        ...(patternCheck ? [patternCheck] : []),
         ...(apiRouteCheck ? [apiRouteCheck] : []),
         ...(pageRouteCheck ? [pageRouteCheck] : []),
         ...(scheduledTaskCheck ? [scheduledTaskCheck] : []),

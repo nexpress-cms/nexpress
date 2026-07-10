@@ -25,6 +25,15 @@ function pluginBlock(type: string, overrides: Record<string, unknown> = {}) {
   };
 }
 
+function pluginPattern(id: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    label: id,
+    blocks: [{ id: `${id}-block`, type: "rich-text", props: {} }],
+    ...overrides,
+  };
+}
+
 function pluginSchedule(id: string, overrides: Record<string, unknown> = {}) {
   return {
     id,
@@ -45,6 +54,7 @@ describe("ops plugins core", () => {
           capabilities: ["blocks"],
         },
         blocks: [pluginBlock("callout")],
+        patterns: [pluginPattern("demo.callout")],
         routes: [{ method: "GET", path: "/demo", handler: () => ({ status: 200 }) }],
         pageRoutes: [{ pattern: "/demo/:slug", component: () => null }],
       },
@@ -64,6 +74,7 @@ describe("ops plugins core", () => {
         summary: expect.objectContaining({
           plugins: 1,
           blocks: 1,
+          patterns: 1,
           routes: 1,
           pageRoutes: 1,
           actions: 0,
@@ -74,6 +85,7 @@ describe("ops plugins core", () => {
       expect.objectContaining({
         id: "demo",
         blocks: ["callout"],
+        patterns: ["demo.callout"],
         routes: ["GET /demo"],
         pageRoutes: ["/demo/:slug"],
       }),
@@ -207,6 +219,81 @@ describe("ops plugins core", () => {
       ]),
     );
     expect(report.checks.find((check) => check.id === "plugins.block_conflict")).toBeUndefined();
+  });
+
+  it("rejects malformed and same-plugin duplicate pattern definitions", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "one", name: "One" },
+        patterns: [
+          pluginPattern("one.hero"),
+          pluginPattern("one.hero"),
+          pluginPattern("one.empty", { blocks: [] }),
+        ],
+      },
+    ]);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.pattern_duplicate",
+          state: "error",
+          detail: '[plugin:one] duplicate pattern id "one.hero".',
+          pluginIds: ["one"],
+        }),
+        expect.objectContaining({
+          id: "plugins.pattern_invalid",
+          state: "error",
+          detail: expect.stringContaining("pattern.blocks must contain at least one"),
+          pluginIds: ["one"],
+        }),
+      ]),
+    );
+    expect(report.checks.find((check) => check.id === "plugins.pattern_conflict")).toBeUndefined();
+  });
+
+  it("warns when valid pattern ids collide across plugins", () => {
+    const report = analyzePlugins([
+      { manifest: { id: "one", name: "One" }, patterns: [pluginPattern("shared.hero")] },
+      { manifest: { id: "two", name: "Two" }, patterns: [pluginPattern("shared.hero")] },
+    ]);
+
+    expect(report.status).toBe("attention");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.pattern_conflict",
+          state: "warn",
+          detail: "shared.hero is claimed by plugins one, two",
+          pluginIds: ["one", "two"],
+        }),
+      ]),
+    );
+  });
+
+  it("rejects pattern references to unavailable block types", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "one", name: "One" },
+        patterns: [
+          pluginPattern("one.hero", {
+            blocks: [{ id: "template", type: "missing.hero", props: {} }],
+          }),
+        ],
+      },
+    ]);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.pattern_invalid",
+          detail: '[plugin:one] pattern "one.hero" references unknown block type "missing.hero".',
+          pluginIds: ["one"],
+        }),
+      ]),
+    );
   });
 
   it("rejects malformed and same-plugin duplicate page routes", () => {
@@ -584,6 +671,29 @@ describe("ops plugins core", () => {
           id: "plugins.block_duplicate",
           state: "error",
           detail: expect.stringContaining('duplicate block type "callout"'),
+          pluginIds: ["demo"],
+        }),
+      ]),
+    );
+  });
+
+  it("preserves a structured pattern check when definePlugin aborts config import", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "np-ops-plugins-pattern-import-"));
+    writeFileSync(
+      join(cwd, "nexpress.config.ts"),
+      `throw new Error('[plugin:demo] duplicate pattern id "demo.hero".');\n`,
+    );
+
+    const report = await collectOpsPluginsStatus(cwd);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "plugins.config_file", state: "error" }),
+        expect.objectContaining({
+          id: "plugins.pattern_duplicate",
+          state: "error",
+          detail: expect.stringContaining('duplicate pattern id "demo.hero"'),
           pluginIds: ["demo"],
         }),
       ]),

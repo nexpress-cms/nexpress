@@ -239,11 +239,14 @@ pnpm --silent run ops:plugins -- doctor --json
 prints the restart step. Restart your dev server or redeploy before checking
 that the plugin no longer appears in the loaded plugin list.
 
-\`definePlugin()\` validates every block type, metadata field, props schema,
-container constraint, and renderer while the module loads. The doctor reports
+\`definePlugin()\` validates every block and pattern while the module loads. The
+example pattern omits \`source\` because bootstrap stamps the concrete plugin id.
+The doctor reports
 malformed definitions as \`plugins.block_invalid\`, same-plugin duplicates as
 \`plugins.block_duplicate\`, and cross-plugin ownership as
-\`plugins.block_conflict\`.
+\`plugins.block_conflict\`. Pattern diagnostics use
+\`plugins.pattern_invalid\`, \`plugins.pattern_duplicate\`, and
+\`plugins.pattern_conflict\`.
 
 ## What's inside
 
@@ -271,7 +274,7 @@ make it your own. Reference: [Block plugin guide](https://github.com/nexpress-cm
   const indexSource = interactive
     ? `import type { CSSProperties } from "react";
 
-import type { NpBlockDefinition } from "@nexpress/blocks";
+import type { NpBlockDefinition, NpPatternDefinition } from "@nexpress/blocks";
 import { definePlugin } from "@nexpress/plugin-sdk";
 
 // Imported via the package's own \`./client\` subpath (not a relative
@@ -331,6 +334,21 @@ const ${blockComponentName}Block: NpBlockDefinition = {
   },
 };
 
+const ${blockComponentName}Patterns = [
+  {
+    id: "${blockTypeRoot}.starter",
+    label: "${blockComponentName} starter",
+    description: "Ready-to-edit ${blockComponentName} example.",
+    blocks: [
+      {
+        id: "template-${blockTypeRoot}",
+        type: "${blockTypeRoot}.example",
+        props: { title: "Hello, ${blockComponentName}", placeholder: "Type something…" },
+      },
+    ],
+  },
+] satisfies NpPatternDefinition[];
+
 export const ${exportName} = definePlugin({
   manifest: {
     id: "${pluginId}",
@@ -342,13 +360,14 @@ export const ${exportName} = definePlugin({
     nexpress: { minVersion: "0.1.0" },
   },
   blocks: [${blockComponentName}Block] satisfies NpBlockDefinition[],
+  patterns: ${blockComponentName}Patterns,
 });
 
 export default ${exportName};
 `
     : `import type { CSSProperties } from "react";
 
-import type { NpBlockDefinition } from "@nexpress/blocks";
+import type { NpBlockDefinition, NpPatternDefinition } from "@nexpress/blocks";
 import { definePlugin } from "@nexpress/plugin-sdk";
 
 function readString(value: unknown, fallback: string): string {
@@ -414,6 +433,25 @@ const ${blockComponentName}Block: NpBlockDefinition = {
   },
 };
 
+const ${blockComponentName}Patterns = [
+  {
+    id: "${blockTypeRoot}.starter",
+    label: "${blockComponentName} starter",
+    description: "Ready-to-edit ${blockComponentName} example.",
+    blocks: [
+      {
+        id: "template-${blockTypeRoot}",
+        type: "${blockTypeRoot}.example",
+        props: {
+          title: "Hello, ${blockComponentName}",
+          body: "Edit src/index.tsx to make this block your own.",
+          showBorder: true,
+        },
+      },
+    ],
+  },
+] satisfies NpPatternDefinition[];
+
 export const ${exportName} = definePlugin({
   manifest: {
     id: "${pluginId}",
@@ -425,6 +463,7 @@ export const ${exportName} = definePlugin({
     nexpress: { minVersion: "0.1.0" },
   },
   blocks: [${blockComponentName}Block] satisfies NpBlockDefinition[],
+  patterns: ${blockComponentName}Patterns,
 });
 
 export default ${exportName};

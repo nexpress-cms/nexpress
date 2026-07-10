@@ -1,5 +1,9 @@
 import type { ZodType } from "zod";
-import type { NpBlockDefinition, NpBlockRenderContext, NpPattern } from "@nexpress/blocks";
+import type {
+  NpBlockDefinition,
+  NpBlockRenderContext,
+  NpPatternDefinition,
+} from "@nexpress/blocks";
 import type {
   NpAuthAfterLoginHookData,
   NpAuthAfterRegisterHookData,
@@ -39,7 +43,7 @@ import type { NpPluginManifest, NpPluginManifestResolved } from "./manifest.js";
 // Re-export NpBlockDefinition so plugin authors get a single
 // import: definePlugin({ blocks: [...] }) typed via the same
 // package they reach for everything else.
-export type { NpBlockDefinition, NpPattern } from "@nexpress/blocks";
+export type { NpBlockDefinition, NpPattern, NpPatternDefinition } from "@nexpress/blocks";
 
 export const npPluginCapabilities = [
   "content:read",
@@ -762,10 +766,12 @@ export interface NpPluginDefinition<TConfig = Record<string, unknown>> {
    * in the editor's command-menu pattern picker alongside built-in
    * and operator-saved patterns. Each pattern is a pre-shaped
    * subtree (`NpBlockInstance[]`) — see `@nexpress/blocks`'s
-   * `NpPattern` shape. Wire format = page-builder tree state, so
+   * `NpPatternDefinition` shape. Wire format = page-builder tree state, so
    * plugin authors can copy a saved-pattern JSON straight in.
+   * `source` is optional here because bootstrap replaces it with
+   * `plugin:<manifest.id>` before the pattern enters the shared registry.
    */
-  patterns?: NpPattern[];
+  patterns?: NpPatternDefinition[];
   fields?: NpFieldRegistration[];
   admin?: NpAdminExtension;
   /**

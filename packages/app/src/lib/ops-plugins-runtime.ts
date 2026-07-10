@@ -1,4 +1,4 @@
-import { getRegisteredBlocks } from "@nexpress/blocks";
+import { getRegisteredBlocks, getRegisteredPatterns } from "@nexpress/blocks";
 import {
   getAllPluginIds,
   getPluginAdminActionDiagnostics,
@@ -35,6 +35,7 @@ export function collectRuntimeOpsPluginsStatus(): OpsPluginsJson {
   const routesByPlugin = groupRoutesByPlugin(getPluginRoutes());
   const pageRoutesByPlugin = groupPageRoutesByPlugin(getPluginPageRoutes());
   const blocksByPlugin = groupRegisteredBlocksByPlugin();
+  const patternsByPlugin = groupRegisteredPatternsByPlugin();
   const plugins = pluginIds.map((pluginId, index) =>
     buildRuntimePluginEntry({
       pluginId,
@@ -43,6 +44,7 @@ export function collectRuntimeOpsPluginsStatus(): OpsPluginsJson {
       routes: routesByPlugin.get(pluginId) ?? [],
       pageRoutes: pageRoutesByPlugin.get(pluginId) ?? [],
       blocks: blocksByPlugin.get(pluginId) ?? [],
+      patterns: patternsByPlugin.get(pluginId) ?? [],
     }),
   );
 
@@ -54,6 +56,7 @@ export function collectRuntimeOpsPluginsStatus(): OpsPluginsJson {
       routesByPlugin,
       pageRoutesByPlugin,
       blocksByPlugin,
+      patternsByPlugin,
       actionDiagnostics: pluginIds.map((pluginId) => ({
         pluginId,
         issues: getPluginAdminActionDiagnostics(pluginId),
@@ -69,6 +72,7 @@ function buildRuntimePluginEntry(args: {
   routes: PluginRouteHandler[];
   pageRoutes: RuntimePageRoute[];
   blocks: string[];
+  patterns: string[];
 }): OpsPluginEntry {
   const registration = getPluginRegistration(args.pluginId) as
     RuntimePluginRegistration | undefined;
@@ -89,6 +93,7 @@ function buildRuntimePluginEntry(args: {
     requires: [],
     provides: {
       blocks: args.blocks,
+      patterns: args.patterns,
       fields: [],
       collections: [],
       adminExtensions: [],
@@ -102,6 +107,7 @@ function buildRuntimePluginEntry(args: {
     usesTokens: [],
     styleSlots: [],
     blocks: args.blocks,
+    patterns: args.patterns,
     routes: routeKeys(args.routes),
     pageRoutes: pageRouteKeys(args.pageRoutes),
     scheduled,
@@ -115,6 +121,7 @@ function buildRuntimeChecks(args: {
   routesByPlugin: Map<string, PluginRouteHandler[]>;
   pageRoutesByPlugin: Map<string, RuntimePageRoute[]>;
   blocksByPlugin: Map<string, string[]>;
+  patternsByPlugin: Map<string, string[]>;
   actionDiagnostics: Array<{ pluginId: string; issues: NpPluginAdminActionIssue[] }>;
 }): CheckResult[] {
   const pageRouteConflicts = duplicateCheck(
@@ -161,6 +168,14 @@ function buildRuntimeChecks(args: {
       label: "Runtime plugin blocks",
       detail: `${countGrouped(args.blocksByPlugin).toString()} block${
         countGrouped(args.blocksByPlugin) === 1 ? "" : "s"
+      } visible in the shared registry`,
+    },
+    {
+      id: "plugins.runtime_patterns",
+      state: "ok",
+      label: "Runtime plugin patterns",
+      detail: `${countGrouped(args.patternsByPlugin).toString()} pattern${
+        countGrouped(args.patternsByPlugin) === 1 ? "" : "s"
       } visible in the shared registry`,
     },
     ...buildRuntimeActionChecks(args.actionDiagnostics),
@@ -249,6 +264,18 @@ function groupRegisteredBlocksByPlugin(): Map<string, string[]> {
   return byPlugin;
 }
 
+function groupRegisteredPatternsByPlugin(): Map<string, string[]> {
+  const byPlugin = new Map<string, string[]>();
+  for (const pattern of getRegisteredPatterns()) {
+    const pluginId = readPluginSource(pattern.source);
+    if (!pluginId) continue;
+    const existing = byPlugin.get(pluginId) ?? [];
+    existing.push(pattern.id);
+    byPlugin.set(pluginId, existing);
+  }
+  return byPlugin;
+}
+
 function readPluginSource(source: unknown): string | null {
   if (typeof source !== "string") return null;
   const prefix = "plugin:";
@@ -304,6 +331,7 @@ function buildRuntimeOpsPluginsJson(args: {
   const summary = {
     plugins: args.plugins.length,
     blocks: args.plugins.reduce((total, plugin) => total + plugin.blocks.length, 0),
+    patterns: args.plugins.reduce((total, plugin) => total + plugin.patterns.length, 0),
     routes: args.plugins.reduce((total, plugin) => total + plugin.routes.length, 0),
     pageRoutes: args.plugins.reduce((total, plugin) => total + plugin.pageRoutes.length, 0),
     scheduled: args.plugins.reduce((total, plugin) => total + plugin.scheduled.length, 0),

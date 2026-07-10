@@ -1,5 +1,5 @@
 import { npAnalyzePluginScheduledTasks, npValidatePluginPageRouteDefinition } from "@nexpress/core";
-import { npAnalyzeBlockDefinitions } from "@nexpress/blocks/contracts";
+import { npAnalyzeBlockDefinitions, npAnalyzePatternDefinitions } from "@nexpress/blocks/contracts";
 
 import { npAdminExtensionSchema, npPluginManifestSchema } from "./manifest.js";
 import {
@@ -22,6 +22,12 @@ const routeSegmentPattern = /^[A-Za-z0-9._~-]+$/;
 function validateBlockRegistry(pluginId: string, blocks: unknown): void {
   if (blocks === undefined) return;
   const issue = npAnalyzeBlockDefinitions(blocks)[0];
+  if (issue) throw new Error(`[plugin:${pluginId}] ${issue.message}`);
+}
+
+function validatePatternRegistry(pluginId: string, patterns: unknown): void {
+  if (patterns === undefined) return;
+  const issue = npAnalyzePatternDefinitions(patterns)[0];
   if (issue) throw new Error(`[plugin:${pluginId}] ${issue.message}`);
 }
 
@@ -263,6 +269,7 @@ function deriveProvides(
   declared:
     | {
         blocks?: readonly string[];
+        patterns?: readonly string[];
         fields?: readonly string[];
         collections?: readonly string[];
         adminExtensions?: readonly string[];
@@ -275,6 +282,7 @@ function deriveProvides(
     | undefined,
 ): {
   blocks: string[];
+  patterns: string[];
   fields: string[];
   collections: string[];
   adminExtensions: string[];
@@ -293,6 +301,9 @@ function deriveProvides(
   const blockTypes = (definition.blocks ?? [])
     .map((b) => b.type)
     .filter((t): t is string => typeof t === "string");
+  const patternIds = (definition.patterns ?? [])
+    .map((pattern) => pattern.id)
+    .filter((id): id is string => typeof id === "string");
   const routePaths = (definition.routes ?? []).map((r) => `${r.method} ${r.path}`);
   const pageRoutePatterns = (definition.pageRoutes ?? []).map((r) => r.pattern);
   const scheduledTaskIds = (definition.scheduled ?? [])
@@ -318,6 +329,7 @@ function deriveProvides(
 
   return {
     blocks: merge(declared?.blocks, blockTypes),
+    patterns: merge(declared?.patterns, patternIds),
     fields: merge(declared?.fields, fieldTypes),
     collections: [...(declared?.collections ?? [])],
     adminExtensions: merge(declared?.adminExtensions, adminExtensionLabels),
@@ -439,6 +451,7 @@ export function definePlugin<TConfig = Record<string, unknown>>(
   definition: NpPluginDefinition<TConfig>,
 ): NpResolvedPlugin<TConfig> {
   validateBlockRegistry(definition.manifest.id, definition.blocks);
+  validatePatternRegistry(definition.manifest.id, definition.patterns);
   validateScheduledTaskRegistry(definition.manifest.id, definition.scheduled);
   validateHookRegistry(definition.manifest.id, definition.hooks);
   validateRouteRegistry(definition.manifest.id, definition.routes);

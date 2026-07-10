@@ -1,4 +1,4 @@
-import type { NpPattern } from "@nexpress/blocks";
+import type { NpPatternDefinition } from "@nexpress/blocks";
 
 /**
  * Phase F.9 — magazine-shipped patterns.
@@ -17,14 +17,13 @@ import type { NpPattern } from "@nexpress/blocks";
  * today these surface in Cmd-K's "Pattern" group.
  */
 
-export const magazinePatterns: NpPattern[] = [
+export const magazinePatterns: NpPatternDefinition[] = [
   {
     id: "magazine.homepage-feature-grid",
     label: "Homepage: feature + grid",
     description:
       "Lead hero feature followed by a three-column section strip — the canonical magazine homepage opener.",
     category: "homepage",
-    source: "theme:magazine",
     blocks: [
       {
         id: "tpl-hero",
@@ -57,7 +56,6 @@ export const magazinePatterns: NpPattern[] = [
     description:
       "Section strip + call-to-action block. Drop at the bottom of a long-form post to surface related coverage.",
     category: "section",
-    source: "theme:magazine",
     blocks: [
       {
         id: "tpl-strip-related",
@@ -71,12 +69,12 @@ export const magazinePatterns: NpPattern[] = [
       },
       {
         id: "tpl-cta",
-        type: "ctaBlock",
+        type: "cta",
         props: {
           heading: "Stay subscribed",
-          subheading: "Get the weekly digest in your inbox.",
-          ctaText: "Subscribe",
-          ctaUrl: "/subscribe",
+          description: "Get the weekly digest in your inbox.",
+          buttonText: "Subscribe",
+          buttonUrl: "/subscribe",
         },
       },
     ],

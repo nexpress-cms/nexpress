@@ -153,7 +153,7 @@ const stubPattern = (
   id,
   label: id,
   source,
-  blocks: [],
+  blocks: [{ id: `${id}-block`, type: "rich-text", props: {} }],
   ...extras,
 });
 
