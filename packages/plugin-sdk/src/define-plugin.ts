@@ -1,4 +1,5 @@
 import { npValidatePluginPageRouteDefinition } from "@nexpress/core";
+import { npAnalyzeBlockDefinitions } from "@nexpress/blocks/contracts";
 
 import { npAdminExtensionSchema, npPluginManifestSchema } from "./manifest.js";
 import {
@@ -17,6 +18,12 @@ const supportedRouteMethods = new Set<string>(npRouteMethods);
 const hookDescriptorKeys = new Set(["handler", "priority", "timeoutMs"]);
 const routeDefinitionKeys = new Set(["method", "path", "handler", "description", "auth"]);
 const routeSegmentPattern = /^[A-Za-z0-9._~-]+$/;
+
+function validateBlockRegistry(pluginId: string, blocks: unknown): void {
+  if (blocks === undefined) return;
+  const issue = npAnalyzeBlockDefinitions(blocks)[0];
+  if (issue) throw new Error(`[plugin:${pluginId}] ${issue.message}`);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
@@ -425,6 +432,7 @@ function validateActionRegistry(
 export function definePlugin<TConfig = Record<string, unknown>>(
   definition: NpPluginDefinition<TConfig>,
 ): NpResolvedPlugin<TConfig> {
+  validateBlockRegistry(definition.manifest.id, definition.blocks);
   validateHookRegistry(definition.manifest.id, definition.hooks);
   validateRouteRegistry(definition.manifest.id, definition.routes);
   validatePageRouteRegistry(definition.manifest.id, definition.pageRoutes);

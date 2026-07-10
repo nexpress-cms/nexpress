@@ -171,7 +171,7 @@ The full list:
 | `actions`        | Named `{ kind, handler }` registry for admin and inter-plugin dispatch.                                                                                        | Prefer this when an admin widget, table, or button references an `actionId`; `definePlugin` and plugin doctor can validate it before setup runs. |
 | `routes`         | Typed plugin API routes mounted under `/api/plugins/<id>`. See [`plugin-api-routes.md`](plugin-api-routes.md).                                                 | When the plugin needs a static, namespaced HTTP surface.                                                                                         |
 | `pageRoutes`     | Typed public-site URL routes the plugin owns. Definition, host, and doctor validate canonical patterns and handlers. See [`plugin-pages.md`](plugin-pages.md). | When the plugin ships its own pages (e.g. forum threads, calendar events).                                                                       |
-| `blocks`         | Block definitions for the page builder.                                                                                                                        | Block-shipping plugins.                                                                                                                          |
+| `blocks`         | Validated block definitions for the page builder. See [`plugin-blocks.md`](plugin-blocks.md).                                                                  | Block-shipping plugins.                                                                                                                          |
 | `admin`          | Declarative admin extension (widgets, actions, tables, dashboard, collectionTabs).                                                                             | When the plugin contributes UI to `/admin`.                                                                                                      |
 | `setup`          | `(ctx) => …` invoked once per plugin load.                                                                                                                     | Validate environment, log a startup line, or use the compatible `ctx.actions.register*` API for genuinely dynamic/legacy actions.                |
 | `teardown`       | Cleanup callback for graceful shutdown.                                                                                                                        | When the plugin holds long-lived resources.                                                                                                      |
@@ -207,5 +207,7 @@ without authors repeating ids in metadata and setup code.
   "Reload all" does and what it doesn't.
 - [`plugin-render.md`](plugin-render.md) — render-extension hook
   semantics.
+- [`plugin-blocks.md`](plugin-blocks.md) — block definition, props schema,
+  container, collision, and diagnostics contracts.
 - [`plugin-pages.md`](plugin-pages.md) — `pageRoutes` field in depth:
   pattern grammar, server / client boundary, precedence, collisions.

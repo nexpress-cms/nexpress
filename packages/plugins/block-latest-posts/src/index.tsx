@@ -269,7 +269,7 @@ export const latestPostsPlugin = definePlugin({
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
   },
-  blocks: [latestPostsBlock],
+  blocks: [latestPostsBlock] satisfies NpBlockDefinition[],
 });
 
 export default latestPostsPlugin;

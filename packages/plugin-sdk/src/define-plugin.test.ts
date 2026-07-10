@@ -290,6 +290,45 @@ describe("definePlugin — provides derivation (regression)", () => {
     expect(plugin.manifest.provides.blocks).toContain("callout");
   });
 
+  it.each([
+    [{}, /blocks must be an array/],
+    [[{ type: "callout" }], /invalid block at index 0/],
+    [
+      [
+        {
+          type: "callout",
+          label: "Callout",
+          defaultProps: {},
+          propsSchema: [{ name: "tone", label: "Tone", type: "select" }],
+          render: () => null,
+        },
+      ],
+      /at least one option/,
+    ],
+  ])("rejects malformed block registries during evaluation", (blocks, message) => {
+    const definition = {
+      manifest: { ...baseManifest },
+      blocks,
+    } as unknown as NpPluginDefinition;
+    expect(() => definePlugin(definition)).toThrow(message);
+  });
+
+  it("rejects duplicate block types within one plugin", () => {
+    const block = {
+      type: "callout",
+      label: "Callout",
+      defaultProps: {},
+      propsSchema: [],
+      render: () => null,
+    };
+    const definition = {
+      manifest: { ...baseManifest },
+      blocks: [block, { ...block }],
+    } as unknown as NpPluginDefinition;
+
+    expect(() => definePlugin(definition)).toThrow(/duplicate block type "callout"/);
+  });
+
   it("derives page route and scheduled task provides from definition surfaces", () => {
     const plugin = definePlugin({
       manifest: { ...baseManifest },

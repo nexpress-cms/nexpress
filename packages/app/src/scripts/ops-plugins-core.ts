@@ -11,6 +11,7 @@ import {
   type NpPluginAdminActionIssue,
   type NpRegisteredPluginAction,
 } from "@nexpress/core";
+import { npAnalyzeBlockDefinitions, npValidateBlockDefinition } from "@nexpress/blocks/contracts";
 import pg from "pg";
 
 import { toProjectCommand } from "./ops-command-format.js";
@@ -527,6 +528,28 @@ function pageRouteContractImportCheck(error: unknown): CheckResult | null {
   };
 }
 
+function blockContractImportCheck(error: unknown): CheckResult | null {
+  const detail = error instanceof Error ? error.message : String(error);
+  const match = detail.match(
+    /^\[plugin:([^\]]+)\] (?:blocks must be an array|invalid block |duplicate block type )/u,
+  );
+  if (!match) return null;
+
+  const duplicate = detail.includes("duplicate block type");
+  return {
+    id: duplicate ? "plugins.block_duplicate" : "plugins.block_invalid",
+    state: "error",
+    label: "Plugin block contracts",
+    detail,
+    pluginIds: match[1] ? [match[1]] : undefined,
+    hint: withDoctorRerun(
+      duplicate
+        ? "A plugin can declare each block type only once. Remove or rename the duplicate block."
+        : "Use a canonical block type, serializable metadata, a valid props schema, and a function renderer.",
+    ),
+  };
+}
+
 function duplicateChecks(
   id: string,
   label: string,
@@ -613,6 +636,55 @@ function buildApiRouteChecks(
       detail: duplicateRoutes.join("; "),
       hint: withDoctorRerun(
         "A plugin can declare each method/path pair only once. Remove or rename the duplicate route.",
+      ),
+      pluginIds: uniqueStrings(duplicatePluginIds),
+    });
+  }
+  return checks;
+}
+
+function buildBlockChecks(pluginObjects: PluginLike[], plugins: OpsPluginEntry[]): CheckResult[] {
+  const invalidBlocks: string[] = [];
+  const invalidPluginIds: string[] = [];
+  const duplicateBlocks: string[] = [];
+  const duplicatePluginIds: string[] = [];
+
+  for (const [index, plugin] of pluginObjects.entries()) {
+    if (plugin.blocks === undefined) continue;
+    const pluginId = plugins[index]?.id ?? `plugin-${index.toString()}`;
+    for (const issue of npAnalyzeBlockDefinitions(plugin.blocks)) {
+      const detail = `[plugin:${pluginId}] ${issue.message}`;
+      if (issue.code === "duplicate-type") {
+        duplicateBlocks.push(detail);
+        duplicatePluginIds.push(pluginId);
+      } else {
+        invalidBlocks.push(detail);
+        invalidPluginIds.push(pluginId);
+      }
+    }
+  }
+
+  const checks: CheckResult[] = [];
+  if (invalidBlocks.length > 0) {
+    checks.push({
+      id: "plugins.block_invalid",
+      state: "error",
+      label: "Plugin block contracts",
+      detail: invalidBlocks.join("; "),
+      hint: withDoctorRerun(
+        "Use a canonical block type, serializable metadata, a valid props schema, and a function renderer.",
+      ),
+      pluginIds: uniqueStrings(invalidPluginIds),
+    });
+  }
+  if (duplicateBlocks.length > 0) {
+    checks.push({
+      id: "plugins.block_duplicate",
+      state: "error",
+      label: "Plugin block types",
+      detail: duplicateBlocks.join("; "),
+      hint: withDoctorRerun(
+        "A plugin can declare each block type only once. Remove or rename the duplicate block.",
       ),
       pluginIds: uniqueStrings(duplicatePluginIds),
     });
@@ -931,6 +1003,7 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
         };
       }),
     ),
+    ...buildBlockChecks(pluginObjects, plugins),
     ...buildApiRouteChecks(pluginObjects, plugins),
     ...buildPageRouteChecks(pluginObjects, plugins),
   );
@@ -948,7 +1021,15 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
   const blockConflicts = duplicateChecks(
     "plugins.block_conflict",
     "Plugin block types",
-    plugins.flatMap((plugin) => plugin.blocks.map((key) => ({ key, plugin: plugin.id }))),
+    pluginObjects.flatMap((plugin, index) => {
+      const pluginId = plugins[index]?.id ?? `plugin-${index.toString()}`;
+      const validKeys = readArray(plugin.blocks).flatMap((block) => {
+        const validation = npValidateBlockDefinition(block);
+        const key = blockKey(block);
+        return validation.ok && key ? [key] : [];
+      });
+      return [...new Set(validKeys)].map((key) => ({ key, plugin: pluginId }));
+    }),
     withDoctorRerun(
       "Block type names share one registry. Rename one block type or disable one plugin, then rebuild.",
     ),
@@ -1022,6 +1103,7 @@ export async function collectOpsPluginsStatus(
     const actionCheck = actionContractImportCheck(error);
     const apiRouteCheck = apiRouteContractImportCheck(error);
     const pageRouteCheck = pageRouteContractImportCheck(error);
+    const blockCheck = blockContractImportCheck(error);
     return buildOpsPluginsJson({
       plugins: [],
       checks: [
@@ -1033,6 +1115,7 @@ export async function collectOpsPluginsStatus(
           hint: withDoctorRerun("Fix the config import error."),
         },
         ...(actionCheck ? [actionCheck] : []),
+        ...(blockCheck ? [blockCheck] : []),
         ...(apiRouteCheck ? [apiRouteCheck] : []),
         ...(pageRouteCheck ? [pageRouteCheck] : []),
       ],

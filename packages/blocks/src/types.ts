@@ -1,6 +1,7 @@
 import type { ReactElement, ReactNode } from "react";
 
 import type { NpFindOptions, NpFindResult } from "@nexpress/core";
+import type { NpBlockPropFieldType } from "./block-contract.js";
 
 /**
  * Read-only data API exposed to a block's `render()` so blocks can
@@ -179,43 +180,8 @@ export interface NpBlockDefinition extends NpBlockMetadata {
 export interface NpBlockPropField {
   name: string;
   label: string;
-  type:
-    | "text"
-    | "textarea"
-    | "number"
-    | "boolean"
-    | "select"
-    | "url"
-    | "richtext"
-    | "image"
-    /** CSS color picker (`<input type="color">`). Stores `#rrggbb`. */
-    | "color"
-    /**
-     * Picker that lists collection slugs registered with the host. The
-     * admin renderer feeds the option list at form time via
-     * `useCollectionOptions()` (see registry-context). Stops
-     * `latest-posts` / `stats.counter` style blocks from silently
-     * empty-listing on a typed slug.
-     */
-    | "collection"
-    /**
-     * Repeating list of nested fields. Stores `unknown[]` on the block
-     * props; the admin renderer shows an Add / Remove UI and
-     * recurses into `itemSchema` for each entry. Use for things like a
-     * pricing table's tiers, a feature-grid's items, or a CTA strip's
-     * buttons. `itemSchema` may contain nested `array` fields for
-     * rectangular data such as API tables (`rows[].cells[]`), but
-     * authors should keep those shapes shallow and predictable.
-     */
-    | "array"
-    /**
-     * Media-library picker. Stores the media id (string) the host's
-     * media service hands back. `image` is the legacy "URL string"
-     * field; `media` is the proper picker with a thumbnail preview.
-     * Resolves to a real `<img>` at render time via the host's media
-     * adapter (`ctx.media.getUrl()`).
-     */
-    | "media";
+  /** Supported editor control. Runtime inventory: `npBlockPropFieldTypes`. */
+  type: NpBlockPropFieldType;
   required?: boolean;
   defaultValue?: unknown;
   options?: { label: string; value: string }[];
@@ -240,9 +206,9 @@ export interface NpBlockPropField {
   /**
    * For `type: "text"` / `type: "url"`. Regex source string —
    * the validation pass tests the stored value against
-   * `new RegExp(pattern)`. Invalid patterns are silently dropped
-   * (we don't want a typo in an author's schema to crash the
-   * editor). Use anchors (`^…$`) to constrain the entire value.
+   * `new RegExp(pattern)`. The block definition contract rejects
+   * invalid patterns before registration. Use anchors (`^…$`) to
+   * constrain the entire value.
    */
   pattern?: string;
   /** Custom error message paired with `pattern` / `min` / `max`. */

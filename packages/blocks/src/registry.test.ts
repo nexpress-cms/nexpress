@@ -12,10 +12,7 @@ import type { NpBlockDefinition, NpPattern } from "./types.js";
 
 const StubRender = (() => null) as unknown as NpBlockDefinition["render"];
 
-const stubBlock = (
-  type: string,
-  source: NpBlockDefinition["source"],
-): NpBlockDefinition => ({
+const stubBlock = (type: string, source: NpBlockDefinition["source"]): NpBlockDefinition => ({
   type,
   label: type,
   iconKind: "lucide",
@@ -26,10 +23,7 @@ const stubBlock = (
   render: StubRender,
 });
 
-const stubPattern = (
-  id: string,
-  source: NpPattern["source"],
-): NpPattern => ({
+const stubPattern = (id: string, source: NpPattern["source"]): NpPattern => ({
   id,
   label: id,
   source,
@@ -93,6 +87,12 @@ describe("block registry collision warning", () => {
     registerBlock(stubBlock("widget", "plugin:reading-time"));
     registerBlock(stubBlock("widget", "theme:magazine"));
     expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects malformed definitions before they reach the shared registry", () => {
+    expect(() =>
+      registerBlock({ ...stubBlock("bad", "plugin:bad"), render: "bad" } as never),
+    ).toThrow(/Invalid block definition: block\.render must be a function/);
   });
 });
 

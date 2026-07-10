@@ -6,6 +6,7 @@ vi.mock("next/headers", () => ({
 }));
 
 vi.mock("@nexpress/blocks", () => ({
+  npAnalyzeBlockDefinitions: vi.fn(() => []),
   registerBlock: vi.fn(),
   registerPattern: vi.fn(),
   resetSharedBlockRegistry: vi.fn(),
@@ -113,5 +114,30 @@ describe("createBootstrap", () => {
     // Pattern registry follows the same invariant — disabled
     // plugins must not leave their patterns behind.
     expect(blocks.resetSharedPatternRegistry).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects invalid plugin blocks before mutating the core plugin registry", async () => {
+    const config = Object.assign({}, buildConfig(), {
+      plugins: [
+        {
+          id: "broken-block",
+          blocks: [{ type: "broken" }],
+        },
+      ],
+    });
+    vi.mocked(blocks.npAnalyzeBlockDefinitions).mockReturnValueOnce([
+      {
+        code: "invalid-definition",
+        index: 0,
+        message: "invalid block at index 0: block.render must be a function.",
+      },
+    ]);
+    const bootstrap = createBootstrap({ config, generatedSchema: {} });
+
+    await expect(bootstrap.ensurePluginsLoaded()).rejects.toThrow(
+      "[plugin:broken-block] invalid block at index 0",
+    );
+    expect(core.loadPlugins).not.toHaveBeenCalled();
+    expect(blocks.registerBlock).not.toHaveBeenCalled();
   });
 });

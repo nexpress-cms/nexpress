@@ -53,6 +53,12 @@ These notes come from building two bundled example plugins in May 2026:
   patterns fail during module evaluation or boot instead of being dropped;
   `locale: "none"` matches the raw URL without automatic hreflang aliases, and
   the CLI ships a typed `page-plugin` starter.
+- Plugin blocks now share one definition and props-schema contract across the
+  blocks package, SDK, Next bootstrap, shared registry, and plugin doctor.
+  Invalid definitions fail instead of disappearing during bootstrap;
+  same-plugin duplicate types are errors while cross-plugin ownership remains
+  an operator-visible warning. The CLI and six bundled block plugins exercise
+  the same contract.
 - CLI plugin scaffold tests cover package-shape consistency, the canonical
   hook inventory, and typed Admin status helpers instead of hand-built
   payloads.

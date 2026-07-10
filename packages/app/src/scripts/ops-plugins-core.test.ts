@@ -14,6 +14,17 @@ import {
   runOpsPluginsMutation,
 } from "./ops-plugins-core.js";
 
+function pluginBlock(type: string, overrides: Record<string, unknown> = {}) {
+  return {
+    type,
+    label: type,
+    defaultProps: {},
+    propsSchema: [],
+    render: () => null,
+    ...overrides,
+  };
+}
+
 describe("ops plugins core", () => {
   it("reports a clean plugin inventory", () => {
     const report = analyzePlugins([
@@ -24,7 +35,7 @@ describe("ops plugins core", () => {
           version: "1.0.0",
           capabilities: ["blocks"],
         },
-        blocks: [{ type: "callout" }],
+        blocks: [pluginBlock("callout")],
         routes: [{ method: "GET", path: "/demo", handler: () => ({ status: 200 }) }],
         pageRoutes: [{ pattern: "/demo/:slug", component: () => null }],
       },
@@ -64,12 +75,12 @@ describe("ops plugins core", () => {
     const report = analyzePlugins([
       {
         manifest: { id: "one", name: "One" },
-        blocks: [{ type: "shared" }],
+        blocks: [pluginBlock("shared")],
         routes: [{ method: "POST", path: "/shared", handler: () => ({ status: 200 }) }],
       },
       {
         manifest: { id: "two", name: "Two" },
-        blocks: [{ type: "shared" }],
+        blocks: [pluginBlock("shared")],
         routes: [{ method: "POST", path: "/shared", handler: () => ({ status: 200 }) }],
       },
     ]);
@@ -128,6 +139,65 @@ describe("ops plugins core", () => {
         }),
       ]),
     );
+  });
+
+  it("rejects malformed and same-plugin duplicate block definitions", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "one", name: "One" },
+        blocks: [
+          pluginBlock("callout"),
+          pluginBlock("callout"),
+          pluginBlock("bad", {
+            propsSchema: [{ name: "tone", label: "Tone", type: "select" }],
+          }),
+        ],
+      },
+    ]);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.block_duplicate",
+          state: "error",
+          detail: '[plugin:one] duplicate block type "callout".',
+          pluginIds: ["one"],
+        }),
+        expect.objectContaining({
+          id: "plugins.block_invalid",
+          state: "error",
+          detail: expect.stringContaining("block.propsSchema[0].options"),
+          pluginIds: ["one"],
+        }),
+      ]),
+    );
+    expect(report.checks.find((check) => check.id === "plugins.block_conflict")).toBeUndefined();
+  });
+
+  it("does not report cross-plugin conflicts for malformed block definitions", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "broken", name: "Broken" },
+        blocks: [pluginBlock("shared", { render: "missing" })],
+      },
+      {
+        manifest: { id: "valid", name: "Valid" },
+        blocks: [pluginBlock("shared")],
+      },
+    ]);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.block_invalid",
+          state: "error",
+          pluginIds: ["broken"],
+        }),
+      ]),
+    );
+    expect(report.checks.find((check) => check.id === "plugins.block_conflict")).toBeUndefined();
   });
 
   it("rejects malformed and same-plugin duplicate page routes", () => {
@@ -445,15 +515,38 @@ describe("ops plugins core", () => {
     );
   });
 
+  it("preserves a structured block check when definePlugin aborts config import", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "np-ops-plugins-block-import-"));
+    writeFileSync(
+      join(cwd, "nexpress.config.ts"),
+      `throw new Error('[plugin:demo] duplicate block type "callout".');\n`,
+    );
+
+    const report = await collectOpsPluginsStatus(cwd);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "plugins.config_file", state: "error" }),
+        expect.objectContaining({
+          id: "plugins.block_duplicate",
+          state: "error",
+          detail: expect.stringContaining('duplicate block type "callout"'),
+          pluginIds: ["demo"],
+        }),
+      ]),
+    );
+  });
+
   it("renders doctor hints and ordered next commands", () => {
     const report = analyzePlugins([
       {
         manifest: { id: "one", name: "One" },
-        blocks: [{ type: "shared" }],
+        blocks: [pluginBlock("shared")],
       },
       {
         manifest: { id: "two", name: "Two" },
-        blocks: [{ type: "shared" }],
+        blocks: [pluginBlock("shared")],
       },
     ]);
 

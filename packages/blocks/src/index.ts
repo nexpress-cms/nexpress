@@ -11,6 +11,17 @@ export type {
   NpPattern,
 } from "./types.js";
 export {
+  npAnalyzeBlockDefinitions,
+  npBlockPropFieldTypes,
+  npValidateBlockDefinition,
+} from "./block-contract.js";
+export type {
+  NpBlockDefinitionIssue,
+  NpBlockDefinitionIssueCode,
+  NpBlockDefinitionValidationResult,
+  NpBlockPropFieldType,
+} from "./block-contract.js";
+export {
   createBlockRegistry,
   getDefaultBlocks,
   getRegisteredBlockMetadata,

@@ -8,5 +8,5 @@ export default defineConfig({
   dts: !fast,
   clean: true,
   target: "es2022",
-  external: ["@nexpress/core", "zod"],
+  external: ["@nexpress/blocks", "@nexpress/blocks/contracts", "@nexpress/core", "zod"],
 });
