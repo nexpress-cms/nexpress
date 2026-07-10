@@ -3,7 +3,7 @@
 "@nexpress/cli": patch
 "@nexpress/core": patch
 "@nexpress/plugin-analytics-lite": patch
-"@nexpress/plugin-sdk": patch
+"@nexpress/plugin-sdk": minor
 "@nexpress/theme-docs": patch
 ---
 
