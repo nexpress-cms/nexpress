@@ -56,6 +56,17 @@ describe("block definition contract", () => {
     }
   });
 
+  it("compiles text patterns with the same no-flag grammar as Admin validation", () => {
+    expect(
+      npValidateBlockDefinition(
+        validBlock({
+          propsSchema: [{ name: "slug", label: "Slug", type: "text", pattern: "\\_" }],
+          summaryFields: ["slug"],
+        }),
+      ),
+    ).toEqual({ ok: true });
+  });
+
   it.each([
     [{ ...validBlock(), typo: true }, /unsupported field "typo"/],
     [validBlock({ type: "bad/type" }), /block\.type/],

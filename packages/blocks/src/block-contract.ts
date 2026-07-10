@@ -309,7 +309,7 @@ function validatePropField(
     }
     if (typeof value.pattern !== "string") return invalid(`${path}.pattern must be a string.`);
     try {
-      new RegExp(value.pattern, "u");
+      new RegExp(value.pattern);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       return invalid(`${path}.pattern is not a valid regular expression: ${reason}`);
