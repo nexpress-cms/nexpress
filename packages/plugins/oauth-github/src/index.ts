@@ -77,7 +77,6 @@ export const githubOAuthPlugin = definePlugin<GitHubOAuthConfig>({
     allowedHosts: ["github.com", "api.github.com"],
     provides: {
       blocks: [],
-      fields: [],
       collections: [],
       adminExtensions: [],
       apiRoutes: [],

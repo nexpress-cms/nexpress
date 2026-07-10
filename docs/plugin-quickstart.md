@@ -31,7 +31,8 @@ The v1 plugin model is **npm-package + rebuild**. A plugin can:
   [`plugin-pages.md`](plugin-pages.md)).
 - Register **actions** (`/api/plugins/<id>/actions/<id>`).
 - Register **scheduled tasks** (run via the pg-boss worker).
-- Provide **blocks**, **fields**, **admin extensions**, **collections**.
+- Provide **blocks**, **patterns**, **page templates**, **translations**, and
+  **admin extensions**.
 - Read and write **plugin-scoped storage** (`np_plugin_storage`).
 
 It cannot:
@@ -77,7 +78,7 @@ the right starter for what you're building:
 | `nexpress create block-plugin <slug> --interactive --workspace` | Static block + a `"use client"` form, with the directive / `splitting: false` / self-import wiring pre-configured.       |
 | `nexpress create hook-plugin <slug> --workspace`                | One `content:afterCreate` hook handler.                                                                                  |
 | `nexpress create route-plugin <slug> --workspace`               | One public `GET /health` route.                                                                                          |
-| `nexpress create page-plugin <slug> --workspace`                | One typed `/hello/:name` public page route with metadata and locale guidance.                                            |
+| `nexpress create page-plugin <slug> --workspace`                | Typed public page route plus page-template and ICU translation examples.                                                 |
 | `nexpress create admin-plugin <slug> --workspace`               | `configSchema` settings form + status widget + manual action, wired through a typed definition-level `actions` registry. |
 | `nexpress create scheduled-plugin <slug> --workspace`           | One typed nightly cron task at 02:00 UTC.                                                                                |
 

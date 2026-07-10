@@ -4,10 +4,13 @@ import { resetI18nConfig, setI18nConfig } from "./registry.js";
 import {
   addStrings,
   getAllStrings,
+  getRegisteredPluginStrings,
+  registerPluginStrings,
   resetStrings,
   resetTranslationCache,
   setStrings,
   tSync,
+  unregisterPluginStrings,
 } from "./strings.js";
 
 /**
@@ -108,8 +111,7 @@ describe("ICU MessageFormat (Phase 12.7)", () => {
   it("plural — English picks the right branch for 0/1/n", () => {
     setI18nConfig({ locales: ["en"], defaultLocale: "en" });
     addStrings("en", {
-      "items.count":
-        "{count, plural, =0 {No items} one {1 item} other {# items}}",
+      "items.count": "{count, plural, =0 {No items} one {1 item} other {# items}}",
     });
     expect(tSync("items.count", "en", { count: 0 })).toBe("No items");
     expect(tSync("items.count", "en", { count: 1 })).toBe("1 item");
@@ -133,15 +135,10 @@ describe("ICU MessageFormat (Phase 12.7)", () => {
   it("select — branches on a string value", () => {
     setI18nConfig({ locales: ["en"], defaultLocale: "en" });
     addStrings("en", {
-      "auth.greeting":
-        "{role, select, admin {Welcome, admin} editor {Hi, editor} other {Hi}}",
+      "auth.greeting": "{role, select, admin {Welcome, admin} editor {Hi, editor} other {Hi}}",
     });
-    expect(tSync("auth.greeting", "en", { role: "admin" })).toBe(
-      "Welcome, admin",
-    );
-    expect(tSync("auth.greeting", "en", { role: "editor" })).toBe(
-      "Hi, editor",
-    );
+    expect(tSync("auth.greeting", "en", { role: "admin" })).toBe("Welcome, admin");
+    expect(tSync("auth.greeting", "en", { role: "editor" })).toBe("Hi, editor");
     expect(tSync("auth.greeting", "en", { role: "viewer" })).toBe("Hi");
   });
 
@@ -184,5 +181,32 @@ describe("ICU MessageFormat (Phase 12.7)", () => {
     // 500 over a missing variable.
     expect(() => tSync("greet", "en")).not.toThrow();
     expect(tSync("greet", "en")).toBe("Hello, {name}!");
+  });
+
+  it("layers plugin strings by load order and removes one plugin cleanly", () => {
+    setI18nConfig({ locales: ["en"], defaultLocale: "en" });
+    addStrings("en", { shared: "Framework", base: "Base" });
+    registerPluginStrings("a", { en: { shared: "Plugin A", a: "A" } });
+    registerPluginStrings("b", { en: { shared: "Plugin B", b: "B" } });
+
+    expect(tSync("shared", "en")).toBe("Plugin B");
+    expect(getRegisteredPluginStrings()).toHaveLength(4);
+
+    unregisterPluginStrings("b");
+    expect(tSync("shared", "en")).toBe("Plugin A");
+    expect(getAllStrings().en).toEqual({ shared: "Plugin A", base: "Base", a: "A" });
+  });
+
+  it("re-registering a plugin replaces keys it no longer declares", () => {
+    registerPluginStrings("a", { en: { stale: "old", current: "v1" } });
+    registerPluginStrings("a", { en: { current: "v2" } });
+    expect(getAllStrings().en).toEqual({ current: "v2" });
+  });
+
+  it("rejects invalid bundles at the direct plugin registry boundary", () => {
+    expect(() => registerPluginStrings("broken", { EN: { greeting: "Hello" } })).toThrow(
+      /\[plugin:broken\].*canonical BCP 47/u,
+    );
+    expect(getRegisteredPluginStrings()).toEqual([]);
   });
 });

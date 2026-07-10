@@ -324,7 +324,6 @@ export const seoAuditPlugin = definePlugin<SeoAuditConfig>({
     allowedHosts: [],
     provides: {
       blocks: [],
-      fields: [],
       collections: [],
       adminExtensions: [],
       apiRoutes: ["/analyze"],

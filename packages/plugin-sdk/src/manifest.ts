@@ -51,7 +51,8 @@ export const npPluginManifestSchema = z.object({
     .object({
       blocks: z.array(z.string()).default([]),
       patterns: z.array(z.string()).default([]),
-      fields: z.array(z.string()).default([]),
+      templates: z.array(z.string()).default([]),
+      translations: z.array(z.string()).default([]),
       collections: z.array(z.string()).default([]),
       adminExtensions: z.array(z.string()).default([]),
       actions: z.array(z.string()).default([]),
@@ -63,7 +64,8 @@ export const npPluginManifestSchema = z.object({
     .default({
       blocks: [],
       patterns: [],
-      fields: [],
+      templates: [],
+      translations: [],
       collections: [],
       adminExtensions: [],
       actions: [],

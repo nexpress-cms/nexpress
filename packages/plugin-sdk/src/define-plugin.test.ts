@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { npPluginApiRouteMethods } from "@nexpress/core";
+import { z } from "zod";
 
 import { definePlugin } from "./define-plugin.js";
 import {
@@ -7,6 +8,7 @@ import {
   type NpPluginDefinition,
   type NpPatternDefinition,
   type NpPluginPageRouteProps,
+  type NpPluginTemplates,
   type NpReadonlyPluginDocument,
   type NpRenderContribution,
   type NpRouteRequest,
@@ -643,5 +645,40 @@ describe("definePlugin — admin action contract", () => {
         },
       }),
     ).toThrow(/admin\.actions\.sync uses unsafe action id "\.\."/);
+  });
+
+  it("validates templates and translations and derives their catalog keys", () => {
+    const templates = {
+      pages: {
+        docs: { label: "Docs", component: () => null },
+      },
+    } satisfies NpPluginTemplates;
+    const plugin = definePlugin({
+      manifest: { ...baseManifest },
+      templates,
+      i18n: {
+        en: { "test.greeting": "Hello, {name}!" },
+        ko: { "test.greeting": "안녕하세요, {name}!" },
+      },
+    });
+
+    expect(plugin.manifest.provides.templates).toEqual(["pages:docs"]);
+    expect(plugin.manifest.provides.translations).toEqual(["en:test.greeting", "ko:test.greeting"]);
+  });
+
+  it.each([
+    [{ templates: { pages: { docs: { label: "Docs" } } } }, /component must be a function/],
+    [{ i18n: { "en-us": { key: "value" } } }, /canonical BCP 47/],
+    [{ setup: "later" }, /setup must be a function/],
+    [{ teardown: {} }, /teardown must be a function/],
+    [{ configVersion: 2 }, /require configSchema/],
+    [
+      { configSchema: z.object({ enabled: z.boolean().default(true) }), configVersion: 2 },
+      /requires configMigrate/,
+    ],
+  ])("rejects malformed remaining plugin surfaces", (surface, message) => {
+    expect(() =>
+      definePlugin({ manifest: { ...baseManifest }, ...surface } as unknown as NpPluginDefinition),
+    ).toThrow(message);
   });
 });

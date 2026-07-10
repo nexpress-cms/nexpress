@@ -15,10 +15,35 @@ export {
   schedulePluginTask,
   getRegisteredPluginSchedules,
   runPluginScheduledTask,
+  teardownPlugins,
   resetPlugins,
   isPluginEnabled,
   invalidatePluginEnabled,
 } from "./host.js";
+
+export {
+  npAnalyzePageTemplateRegistry,
+  npValidatePageTemplateRegistry,
+  npPageTemplateKeys,
+} from "./template-contract.js";
+export type {
+  NpPageTemplateRenderProps,
+  NpPageTemplateDefinition,
+  NpPageTemplateRegistry,
+  NpPageTemplateContractIssue,
+  NpPluginTemplateRegistration,
+} from "./template-contract.js";
+
+export {
+  npAnalyzePluginDefinitionContract,
+  npAnalyzePluginI18nBundles,
+  npPluginTranslationKeys,
+  npValidatePluginVoidResult,
+} from "./definition-contract.js";
+export type {
+  NpPluginDefinitionContractInput,
+  NpPluginDefinitionContractIssue,
+} from "./definition-contract.js";
 
 export {
   npAnalyzePluginAdminActionContract,
@@ -148,6 +173,15 @@ export {
 } from "./config.js";
 
 export type { NpPluginConfigResult, NpVersionedPluginConfig } from "./config.js";
+
+export {
+  registerPluginTemplates,
+  unregisterPluginTemplates,
+  resetPluginTemplates,
+  getPluginTemplatesForCollection,
+  getRegisteredPluginTemplates,
+} from "./templates.js";
+export type { NpRegisteredPluginTemplate } from "./templates.js";
 
 export {
   listPluginStates,

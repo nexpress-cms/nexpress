@@ -6,6 +6,8 @@ import {
   getPluginRegistration,
   getPluginRoutes,
   getRegisteredPluginActions,
+  getRegisteredPluginStrings,
+  getRegisteredPluginTemplates,
   type PluginRouteHandler,
 } from "@nexpress/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -21,6 +23,8 @@ vi.mock("@nexpress/core", () => ({
   getPluginRegistration: vi.fn(),
   getPluginRoutes: vi.fn(),
   getRegisteredPluginActions: vi.fn(),
+  getRegisteredPluginStrings: vi.fn(),
+  getRegisteredPluginTemplates: vi.fn(),
 }));
 
 vi.mock("@nexpress/blocks", () => ({
@@ -34,6 +38,8 @@ const mockPluginRoutes = vi.mocked(getPluginRoutes);
 const mockPluginPageRoutes = vi.mocked(getPluginPageRoutes);
 const mockPluginRegistration = vi.mocked(getPluginRegistration);
 const mockRegisteredPluginActions = vi.mocked(getRegisteredPluginActions);
+const mockRegisteredPluginStrings = vi.mocked(getRegisteredPluginStrings);
+const mockRegisteredPluginTemplates = vi.mocked(getRegisteredPluginTemplates);
 const mockRegisteredBlocks = vi.mocked(getRegisteredBlocks);
 const mockRegisteredPatterns = vi.mocked(getRegisteredPatterns);
 
@@ -45,6 +51,8 @@ describe("ops plugins runtime", () => {
     mockPluginPageRoutes.mockReturnValue([]);
     mockPluginRegistration.mockReturnValue(undefined);
     mockRegisteredPluginActions.mockReturnValue([]);
+    mockRegisteredPluginStrings.mockReturnValue([]);
+    mockRegisteredPluginTemplates.mockReturnValue([]);
     mockRegisteredBlocks.mockReturnValue([]);
     mockRegisteredPatterns.mockReturnValue([]);
   });
@@ -90,6 +98,17 @@ describe("ops plugins runtime", () => {
     mockRegisteredPluginActions.mockReturnValue([
       { id: "countDiscussions", kind: "metric", source: "definition" },
     ]);
+    mockRegisteredPluginTemplates.mockReturnValue([
+      {
+        pluginId: "forum",
+        collection: "pages",
+        id: "forum",
+        definition: { label: "Forum", component: () => null },
+      },
+    ]);
+    mockRegisteredPluginStrings.mockReturnValue([
+      { pluginId: "forum", locale: "en", key: "forum.title", message: "Forum" },
+    ]);
 
     const report = collectRuntimeOpsPluginsStatus();
 
@@ -98,6 +117,8 @@ describe("ops plugins runtime", () => {
       plugins: 1,
       blocks: 1,
       patterns: 1,
+      templates: 1,
+      translations: 1,
       routes: 1,
       pageRoutes: 1,
       scheduled: 1,
@@ -109,6 +130,8 @@ describe("ops plugins runtime", () => {
       version: "1.2.3",
       blocks: ["discussion-list"],
       patterns: ["forum.thread-list"],
+      templates: ["pages:forum"],
+      translations: ["en:forum.title"],
       routes: ["GET /stats"],
       pageRoutes: ["/forum"],
       scheduled: ["digest"],
@@ -136,16 +159,26 @@ describe("ops plugins runtime", () => {
       block("shared-card", "plugin:alpha"),
       block("shared-card", "plugin:beta"),
     ]);
+    mockRegisteredPluginTemplates.mockReturnValue([
+      { pluginId: "alpha", collection: "pages", id: "shared", definition: {} as never },
+      { pluginId: "beta", collection: "pages", id: "shared", definition: {} as never },
+    ]);
+    mockRegisteredPluginStrings.mockReturnValue([
+      { pluginId: "alpha", locale: "en", key: "shared", message: "A" },
+      { pluginId: "beta", locale: "en", key: "shared", message: "B" },
+    ]);
 
     const report = collectRuntimeOpsPluginsStatus();
 
     expect(report.status).toBe("attention");
-    expect(report.summary.warnings).toBe(2);
+    expect(report.summary.warnings).toBe(4);
     expect(report.nextCommand).toBe("nexpress ops plugins inspect alpha --json");
     expect(report.checks.map((check) => check.id)).toEqual(
       expect.arrayContaining([
         "plugins.runtime_page_route_conflict",
         "plugins.runtime_block_conflict",
+        "plugins.runtime_template_conflict",
+        "plugins.runtime_translation_conflict",
       ]),
     );
   });

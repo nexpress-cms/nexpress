@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   getPluginTemplatesForCollection,
+  getRegisteredPluginTemplates,
   registerPluginTemplates,
   resetPluginTemplates,
+  unregisterPluginTemplates,
 } from "./templates.js";
 
 /**
@@ -42,8 +44,7 @@ describe("plugin template registry (Phase 14.5)", () => {
       pages: { docs: { label: "v2", component: () => null } },
     });
     const entry = getPluginTemplatesForCollection("pages").get("docs") as
-      | { label: string }
-      | undefined;
+      { label: string } | undefined;
     expect(entry?.label).toBe("v2");
   });
 
@@ -71,9 +72,19 @@ describe("plugin template registry (Phase 14.5)", () => {
       pages: { shared: { label: "From B", component: () => null } },
     });
     const entry = getPluginTemplatesForCollection("pages").get("shared") as
-      | { label: string }
-      | undefined;
+      { label: string } | undefined;
     expect(entry?.label).toBe("From B");
+  });
+
+  it("restores the previous owner when a colliding plugin unregisters", () => {
+    registerPluginTemplates("a", {
+      pages: { shared: { label: "From A", component: () => null } },
+    });
+    registerPluginTemplates("b", {
+      pages: { shared: { label: "From B", component: () => null } },
+    });
+    unregisterPluginTemplates("b");
+    expect(getPluginTemplatesForCollection("pages").get("shared")?.label).toBe("From A");
   });
 
   it("multiple collections are isolated", () => {
@@ -84,8 +95,7 @@ describe("plugin template registry (Phase 14.5)", () => {
     expect(getPluginTemplatesForCollection("pages").size).toBe(1);
     expect(getPluginTemplatesForCollection("posts").size).toBe(1);
     expect(
-      (getPluginTemplatesForCollection("posts").get("tutorial") as { label: string })
-        .label,
+      (getPluginTemplatesForCollection("posts").get("tutorial") as { label: string }).label,
     ).toBe("Tutorial");
   });
 
@@ -95,5 +105,44 @@ describe("plugin template registry (Phase 14.5)", () => {
     });
     resetPluginTemplates();
     expect(getPluginTemplatesForCollection("pages").size).toBe(0);
+  });
+
+  it("removes collections dropped by the same plugin on re-registration", () => {
+    registerPluginTemplates("docs", {
+      pages: { docs: { label: "Docs", component: () => null } },
+      posts: { tutorial: { label: "Tutorial", component: () => null } },
+    });
+    registerPluginTemplates("docs", {
+      pages: { docs: { label: "Docs v2", component: () => null } },
+    });
+    expect(getPluginTemplatesForCollection("posts").size).toBe(0);
+  });
+
+  it("rejects malformed definitions instead of silently registering them", () => {
+    expect(() =>
+      registerPluginTemplates("broken", {
+        pages: { broken: { label: "Broken" } as never },
+      }),
+    ).toThrow(/component must be a function/);
+  });
+
+  it("keeps a snapshot when the caller mutates its definition after registration", () => {
+    const definition = { label: "Original", component: () => null };
+    registerPluginTemplates("docs", { pages: { docs: definition } });
+
+    definition.label = "Mutated";
+    const exposed = getPluginTemplatesForCollection("pages").get("docs");
+    if (exposed) exposed.label = "Mutated through getter";
+
+    expect(getPluginTemplatesForCollection("pages").get("docs")?.label).toBe("Original");
+  });
+
+  it("exposes source provenance for runtime doctor", () => {
+    registerPluginTemplates("docs", {
+      pages: { docs: { label: "Docs", component: () => null } },
+    });
+    expect(getRegisteredPluginTemplates()).toMatchObject([
+      { pluginId: "docs", collection: "pages", id: "docs" },
+    ]);
   });
 });

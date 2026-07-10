@@ -1,4 +1,11 @@
-import { npAnalyzePluginScheduledTasks, npValidatePluginPageRouteDefinition } from "@nexpress/core";
+import {
+  npAnalyzePageTemplateRegistry,
+  npAnalyzePluginDefinitionContract,
+  npAnalyzePluginScheduledTasks,
+  npPageTemplateKeys,
+  npPluginTranslationKeys,
+  npValidatePluginPageRouteDefinition,
+} from "@nexpress/core";
 import { npAnalyzeBlockDefinitions, npAnalyzePatternDefinitions } from "@nexpress/blocks/contracts";
 
 import { npAdminExtensionSchema, npPluginManifestSchema } from "./manifest.js";
@@ -28,6 +35,20 @@ function validateBlockRegistry(pluginId: string, blocks: unknown): void {
 function validatePatternRegistry(pluginId: string, patterns: unknown): void {
   if (patterns === undefined) return;
   const issue = npAnalyzePatternDefinitions(patterns)[0];
+  if (issue) throw new Error(`[plugin:${pluginId}] ${issue.message}`);
+}
+
+function validateTemplateRegistry(pluginId: string, templates: unknown): void {
+  if (templates === undefined) return;
+  const issue = npAnalyzePageTemplateRegistry(templates)[0];
+  if (issue) throw new Error(`[plugin:${pluginId}] ${issue.message}`);
+}
+
+function validateDefinitionContract(
+  pluginId: string,
+  definition: NpPluginDefinition<unknown>,
+): void {
+  const issue = npAnalyzePluginDefinitionContract(definition)[0];
   if (issue) throw new Error(`[plugin:${pluginId}] ${issue.message}`);
 }
 
@@ -270,7 +291,8 @@ function deriveProvides(
     | {
         blocks?: readonly string[];
         patterns?: readonly string[];
-        fields?: readonly string[];
+        templates?: readonly string[];
+        translations?: readonly string[];
         collections?: readonly string[];
         adminExtensions?: readonly string[];
         actions?: readonly string[];
@@ -283,7 +305,8 @@ function deriveProvides(
 ): {
   blocks: string[];
   patterns: string[];
-  fields: string[];
+  templates: string[];
+  translations: string[];
   collections: string[];
   adminExtensions: string[];
   actions: string[];
@@ -323,14 +346,11 @@ function deriveProvides(
         ...(definition.admin.dashboardWidgets?.length ? ["dashboardWidgets"] : []),
       ]
     : [];
-  const fieldTypes = (definition.fields ?? [])
-    .map((f) => f.type)
-    .filter((t): t is string => typeof t === "string");
-
   return {
     blocks: merge(declared?.blocks, blockTypes),
     patterns: merge(declared?.patterns, patternIds),
-    fields: merge(declared?.fields, fieldTypes),
+    templates: merge(declared?.templates, npPageTemplateKeys(definition.templates)),
+    translations: merge(declared?.translations, npPluginTranslationKeys(definition.i18n)),
     collections: [...(declared?.collections ?? [])],
     adminExtensions: merge(declared?.adminExtensions, adminExtensionLabels),
     actions: merge(declared?.actions, Object.keys(definition.actions ?? {})),
@@ -452,6 +472,8 @@ export function definePlugin<TConfig = Record<string, unknown>>(
 ): NpResolvedPlugin<TConfig> {
   validateBlockRegistry(definition.manifest.id, definition.blocks);
   validatePatternRegistry(definition.manifest.id, definition.patterns);
+  validateTemplateRegistry(definition.manifest.id, definition.templates);
+  validateDefinitionContract(definition.manifest.id, definition as NpPluginDefinition<unknown>);
   validateScheduledTaskRegistry(definition.manifest.id, definition.scheduled);
   validateHookRegistry(definition.manifest.id, definition.hooks);
   validateRouteRegistry(definition.manifest.id, definition.routes);

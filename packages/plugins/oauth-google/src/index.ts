@@ -75,7 +75,6 @@ export const googleOAuthPlugin = definePlugin<GoogleOAuthConfig>({
     allowedHosts: ["accounts.google.com", "oauth2.googleapis.com", "openidconnect.googleapis.com"],
     provides: {
       blocks: [],
-      fields: [],
       collections: [],
       adminExtensions: [],
       apiRoutes: [],

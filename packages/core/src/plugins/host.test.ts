@@ -14,7 +14,10 @@ import {
   runHook,
   runHookAndCollect,
   runPluginScheduledTask,
+  teardownPlugins,
 } from "./index.js";
+import { getRegisteredPluginTemplates } from "./templates.js";
+import { getRegisteredPluginStrings } from "../i18n/strings.js";
 import type { NpPluginConfig } from "../config/types.js";
 import { resetLogger, setLogger, type NpLogger } from "../observability/logger.js";
 import { resetEnabledGate, setPluginEnabledForTest } from "./enabled-gate.js";
@@ -250,7 +253,7 @@ describe("plugin host", () => {
               },
             ],
           },
-        } as never,
+        },
       ]);
 
       expect(getRegisteredPluginActions("definition-actions")).toEqual([
@@ -332,7 +335,7 @@ describe("plugin host", () => {
               Promise.resolve({ ok: true, data: { level: "ok", message: "ok" } }),
             );
           },
-        } as never,
+        },
       ]);
 
       expect(getAllPluginIds()).toContain("legacy-actions");
@@ -382,7 +385,7 @@ describe("plugin host", () => {
               Promise.resolve({ ok: true, data: { level: "ok", message: "override" } }),
             );
           },
-        } as never,
+        },
       ]);
 
       expect(getAllPluginIds()).toContain("action-collision");
@@ -473,9 +476,7 @@ describe("plugin host", () => {
       await loadPlugins([
         resolvedPlugin("schedule-replacement", {
           capabilities: ["hooks:scheduled"],
-          scheduled: [
-            { id: "nightly", cron: "0 2 * * *", handler: () => undefined },
-          ],
+          scheduled: [{ id: "nightly", cron: "0 2 * * *", handler: () => undefined }],
         }),
       ]);
       expect(getRegisteredPluginSchedules()).toHaveLength(1);
@@ -932,7 +933,7 @@ describe("plugin host", () => {
         {
           ...resolvedPlugin("setup-throws", { capabilities: ["hooks:content"] }),
           setup,
-        } as never,
+        },
         resolvedPlugin("survives", {
           capabilities: ["hooks:content"],
           hooks: { "content:afterCreate": () => undefined },
@@ -947,6 +948,44 @@ describe("plugin host", () => {
       // registry — `setup-throws` was scrubbed.
       expect(getPluginRegistration("setup-throws")).toBeUndefined();
       expect(setup).toHaveBeenCalledOnce();
+    });
+
+    it("rejects non-void setup results and scrubs every partial contribution", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("setup-result"),
+          templates: {
+            pages: { demo: { label: "Demo", component: () => null } },
+          },
+          i18n: { en: { "setup-result.label": "Demo" } },
+          setup: () => "unexpected",
+        },
+      ]);
+
+      expect(getPluginRegistration("setup-result")).toBeUndefined();
+      expect(getRegisteredPluginTemplates()).toEqual([]);
+      expect(getRegisteredPluginStrings()).toEqual([]);
+    });
+
+    it("runs teardown in reverse load order", async () => {
+      const calls: string[] = [];
+      await loadPlugins([
+        {
+          ...resolvedPlugin("first"),
+          teardown: () => {
+            calls.push("first");
+          },
+        },
+        {
+          ...resolvedPlugin("second"),
+          teardown: () => {
+            calls.push("second");
+          },
+        },
+      ]);
+
+      await teardownPlugins();
+      expect(calls).toEqual(["second", "first"]);
     });
 
     it("logs the error message + plugin id for each failed plugin", async () => {
@@ -1266,6 +1305,13 @@ describe("plugin host", () => {
       expect(secondHandler).toHaveBeenCalledOnce();
       // Only one route registered, not two.
       expect(getPluginRoutes().filter((r) => r.pluginId === "double")).toHaveLength(0);
+    });
+
+    it("tears down the previous instance before replacing it", async () => {
+      const teardown = vi.fn();
+      await loadPlugins([{ ...resolvedPlugin("replace"), teardown }]);
+      await loadPlugins([resolvedPlugin("replace")]);
+      expect(teardown).toHaveBeenCalledOnce();
     });
   });
 

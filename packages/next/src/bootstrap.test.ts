@@ -37,6 +37,7 @@ vi.mock("@nexpress/core", () => ({
   setStorageAdapter: vi.fn(),
   startProducer: vi.fn(() => Promise.resolve()),
   syncPluginRegistrations: vi.fn(() => Promise.resolve()),
+  teardownPlugins: vi.fn(() => Promise.resolve()),
   verifyStartupSafety: vi.fn(),
   verifyTokenFull: vi.fn(),
 }));
@@ -112,6 +113,12 @@ describe("createBootstrap", () => {
     await bootstrap.reloadPlugins();
 
     expect(core.resetPlugins).toHaveBeenCalledTimes(1);
+    expect(core.teardownPlugins).toHaveBeenCalledTimes(1);
+    expect(
+      vi.mocked(core.teardownPlugins).mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    ).toBeLessThan(
+      vi.mocked(core.resetPlugins).mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
     expect(blocks.resetSharedBlockRegistry).toHaveBeenCalledTimes(1);
     // Pattern registry follows the same invariant — disabled
     // plugins must not leave their patterns behind.

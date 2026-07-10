@@ -35,6 +35,7 @@ import type {
   NpPluginApiRouteResponse as NpCorePluginApiRouteResponse,
   NpPluginPageRouteLocale,
   NpPluginPageRouteSurface,
+  NpPageTemplateDefinition,
   NpRenderHookData as NpCoreRenderHookData,
 } from "@nexpress/core";
 
@@ -212,14 +213,6 @@ export interface NpBlockRegistration {
   defaultProps?: Record<string, unknown>;
   usesTokens?: string[];
   styleSlots?: Record<string, string>;
-}
-
-export interface NpFieldRegistration {
-  type: string;
-  label: string;
-  component: string;
-  cellComponent?: string;
-  schema: Record<string, unknown>;
 }
 
 /**
@@ -772,7 +765,6 @@ export interface NpPluginDefinition<TConfig = Record<string, unknown>> {
    * `plugin:<manifest.id>` before the pattern enters the shared registry.
    */
   patterns?: NpPatternDefinition[];
-  fields?: NpFieldRegistration[];
   admin?: NpAdminExtension;
   /**
    * Named action handlers used by declarative admin surfaces and optional
@@ -866,7 +858,7 @@ export interface NpPluginDefinition<TConfig = Record<string, unknown>> {
    *     },
    *   }
    */
-  templates?: Record<string, Record<string, unknown>>;
+  templates?: NpPluginTemplates;
   /**
    * Plugin route contribution (#623 design lock).
    *
@@ -895,6 +887,14 @@ export interface NpPluginDefinition<TConfig = Record<string, unknown>> {
    */
   pageRoutes?: NpPluginPageRouteRegistration[];
 }
+
+export type NpPluginTemplateDefinition<TDocument = Record<string, unknown>> =
+  NpPageTemplateDefinition<TDocument, NpBlockRenderContext>;
+
+export type NpPluginTemplates<TDocument = Record<string, unknown>> = Record<
+  string,
+  Record<string, NpPluginTemplateDefinition<TDocument>>
+>;
 
 /**
  * Props shared by plugin page components and metadata builders. This mirrors

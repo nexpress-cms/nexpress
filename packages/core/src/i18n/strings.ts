@@ -1,14 +1,12 @@
 import IntlMessageFormat from "intl-messageformat";
 
+import { getLogger } from "../observability/logger.js";
+import { npAnalyzePluginI18nBundles } from "../plugins/definition-contract.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
-import { getLogger } from "../observability/logger.js";
 
 import { getI18nConfig } from "./registry.js";
-import {
-  getStringOverride,
-  getStringOverridesForSite,
-} from "./string-overrides.js";
+import { getStringOverride, getStringOverridesForSite } from "./string-overrides.js";
 
 /**
  * Phase 12.5 — UI string translation registry.
@@ -46,6 +44,64 @@ import {
 export type NpTranslationBundle = Record<string, string>;
 
 const registry = new Map<string, NpTranslationBundle>();
+const pluginRegistries = new Map<string, Record<string, NpTranslationBundle>>();
+const effectiveBundleCache = new Map<string, NpTranslationBundle>();
+
+export interface NpRegisteredPluginTranslation {
+  pluginId: string;
+  locale: string;
+  key: string;
+  message: string;
+}
+
+function effectiveBundle(locale: string): NpTranslationBundle {
+  const cached = effectiveBundleCache.get(locale);
+  if (cached) return cached;
+
+  const merged = { ...(registry.get(locale) ?? {}) };
+  for (const bundles of pluginRegistries.values()) {
+    Object.assign(merged, bundles[locale] ?? {});
+  }
+  effectiveBundleCache.set(locale, merged);
+  return merged;
+}
+
+function invalidateEffectiveBundles(): void {
+  effectiveBundleCache.clear();
+}
+
+export function registerPluginStrings(
+  pluginId: string,
+  bundles: Record<string, NpTranslationBundle>,
+): void {
+  const issue = npAnalyzePluginI18nBundles(bundles)[0];
+  if (issue) throw new Error(`[plugin:${pluginId}] ${issue.message}`);
+
+  pluginRegistries.delete(pluginId);
+  pluginRegistries.set(
+    pluginId,
+    Object.fromEntries(Object.entries(bundles).map(([locale, bundle]) => [locale, { ...bundle }])),
+  );
+  invalidateEffectiveBundles();
+}
+
+export function unregisterPluginStrings(pluginId: string): void {
+  pluginRegistries.delete(pluginId);
+  invalidateEffectiveBundles();
+}
+
+export function resetPluginStrings(): void {
+  pluginRegistries.clear();
+  invalidateEffectiveBundles();
+}
+
+export function getRegisteredPluginStrings(): NpRegisteredPluginTranslation[] {
+  return [...pluginRegistries.entries()].flatMap(([pluginId, bundles]) =>
+    Object.entries(bundles).flatMap(([locale, bundle]) =>
+      Object.entries(bundle).map(([key, message]) => ({ pluginId, locale, key, message })),
+    ),
+  );
+}
 
 /**
  * Merge a translation bundle into the registry for the given
@@ -55,37 +111,39 @@ const registry = new Map<string, NpTranslationBundle>();
  * registration code via the `i18n` manifest field; sites
  * call it directly for app-level overrides.
  */
-export function addStrings(
-  locale: string,
-  bundle: NpTranslationBundle,
-): void {
+export function addStrings(locale: string, bundle: NpTranslationBundle): void {
   const existing = registry.get(locale) ?? {};
   registry.set(locale, { ...existing, ...bundle });
+  invalidateEffectiveBundles();
 }
 
 /** Replace (not merge) a locale's bundle. Tests use this between cases. */
-export function setStrings(
-  locale: string,
-  bundle: NpTranslationBundle,
-): void {
+export function setStrings(locale: string, bundle: NpTranslationBundle): void {
   registry.set(locale, { ...bundle });
+  invalidateEffectiveBundles();
 }
 
 /** Wipe every locale's bundle. Tests use this between cases. */
 export function resetStrings(): void {
   registry.clear();
+  pluginRegistries.clear();
+  invalidateEffectiveBundles();
 }
 
 /** Read a single locale's merged bundle (frozen view). */
 export function getStrings(locale: string): NpTranslationBundle {
-  return { ...(registry.get(locale) ?? {}) };
+  return { ...effectiveBundle(locale) };
 }
 
 /** Read the full registry, keyed by locale. Useful for export / admin tooling. */
 export function getAllStrings(): Record<string, NpTranslationBundle> {
   const out: Record<string, NpTranslationBundle> = {};
-  for (const [locale, bundle] of registry.entries()) {
-    out[locale] = { ...bundle };
+  const locales = new Set(registry.keys());
+  for (const bundles of pluginRegistries.values()) {
+    for (const locale of Object.keys(bundles)) locales.add(locale);
+  }
+  for (const locale of locales) {
+    out[locale] = { ...effectiveBundle(locale) };
   }
   return out;
 }
@@ -161,7 +219,7 @@ export async function t(
   }
   // 2. requested-locale bundle
   if (requested) {
-    const bundle = registry.get(requested)?.[key];
+    const bundle = effectiveBundle(requested)[key];
     if (bundle !== undefined) return interpolate(bundle, params, requested);
   }
   // 3. defaultLocale override (cross-locale fallback)
@@ -171,7 +229,7 @@ export async function t(
   }
   // 4. defaultLocale bundle
   if (defaultLocale && defaultLocale !== requested) {
-    const bundle = registry.get(defaultLocale)?.[key];
+    const bundle = effectiveBundle(defaultLocale)[key];
     if (bundle !== undefined) return interpolate(bundle, params, defaultLocale);
   }
   // 5. key fallback — use the requested locale (or default)
@@ -187,22 +245,18 @@ export async function t(
  * possible — that's the surface admins control via the
  * Strings settings tab.
  */
-export function tSync(
-  key: string,
-  locale?: string,
-  params?: NpTranslationParams,
-): string {
+export function tSync(key: string, locale?: string, params?: NpTranslationParams): string {
   const config = getI18nConfig();
   const requested = locale ?? config?.defaultLocale ?? null;
   const defaultLocale = config?.defaultLocale ?? null;
   let template: string | undefined;
   let foundLocale: string | null = null;
   if (requested) {
-    template = registry.get(requested)?.[key];
+    template = effectiveBundle(requested)[key];
     if (template !== undefined) foundLocale = requested;
   }
   if (template === undefined && defaultLocale && defaultLocale !== requested) {
-    template = registry.get(defaultLocale)?.[key];
+    template = effectiveBundle(defaultLocale)[key];
     if (template !== undefined) foundLocale = defaultLocale;
   }
   if (template === undefined) {

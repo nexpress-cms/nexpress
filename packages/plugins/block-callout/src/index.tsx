@@ -1,7 +1,12 @@
 import type { CSSProperties } from "react";
 
-import type { NpBlockDefinition, NpPatternDefinition } from "@nexpress/blocks";
-import { definePlugin } from "@nexpress/plugin-sdk";
+import { renderBlocks } from "@nexpress/blocks";
+import type { NpBlockDefinition, NpPageBlocks, NpPatternDefinition } from "@nexpress/blocks";
+import {
+  definePlugin,
+  type NpPluginTemplateDefinition,
+  type NpPluginTemplates,
+} from "@nexpress/plugin-sdk";
 
 const TONE_PALETTES = {
   info: { bg: "#eff6ff", border: "#3b82f6", icon: "ℹ️", title: "#1e40af" },
@@ -164,6 +169,29 @@ const calloutPatterns = [
   },
 ] satisfies NpPatternDefinition[];
 
+function CalloutGuideTemplate({
+  doc,
+  blockCtx,
+}: Parameters<NpPluginTemplateDefinition["component"]>[0]) {
+  const title = typeof doc.title === "string" ? doc.title : "Callout guide";
+  const blocks = (doc as { blocks?: NpPageBlocks }).blocks;
+  return (
+    <main style={{ maxWidth: "48rem", margin: "0 auto", padding: "3rem 1.5rem" }}>
+      {blocks ? renderBlocks(blocks, { ctx: blockCtx }) : <h1>{title}</h1>}
+    </main>
+  );
+}
+
+const calloutTemplates = {
+  pages: {
+    "callout-guide": {
+      label: "Callout guide",
+      description: "Focused documentation layout for pages that explain callout usage.",
+      component: CalloutGuideTemplate,
+    },
+  },
+} satisfies NpPluginTemplates;
+
 export const calloutPlugin = definePlugin({
   manifest: {
     id: "block-callout",
@@ -179,6 +207,11 @@ export const calloutPlugin = definePlugin({
   },
   blocks: [calloutBlock] satisfies NpBlockDefinition[],
   patterns: calloutPatterns,
+  templates: calloutTemplates,
+  i18n: {
+    en: { "block-callout.defaultTitle": "Heads up" },
+    ko: { "block-callout.defaultTitle": "안내" },
+  },
 });
 
 export default calloutPlugin;
