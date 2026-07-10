@@ -1,9 +1,10 @@
 # Render contributions
 
-Plugins can inject tags into the public site's `<head>` and body by
-handling the `render:beforePage` hook. The host fires the hook on every
-site page render, collects contributions from every plugin, and emits
-the returned tags as real DOM elements.
+Plugins inject tags into the public site's `<head>` and body through one
+hook: `render:beforePage`. The returned contribution has separate `head`
+and `bodyEnd` arrays, so a second lifecycle hook is not needed. The host
+fires the hook on every site page render, validates and collects every
+plugin result, and emits the tags as real DOM elements.
 
 No plugin React code runs on the site — plugins describe what they want
 rendered, and the host renders it. Same principle as the admin
@@ -18,7 +19,13 @@ import { definePlugin, type NpRenderContribution } from "@nexpress/plugin-sdk";
 
 export default definePlugin({
   manifest: {
-    /* …seven required fields; see plugin-manifest.md… */
+    id: "render-example",
+    version: "0.1.0",
+    name: "Render example",
+    description: "Adds document metadata and a body-end script.",
+    author: { name: "Example author" },
+    license: "MIT",
+    nexpress: { minVersion: "0.3.0" },
   },
   hooks: {
     "render:beforePage": ({ data }): NpRenderContribution | undefined => {
@@ -37,9 +44,18 @@ export default definePlugin({
 });
 ```
 
-The hook receives `{ collection, slug, document }` in `data`. Return
-`undefined` (or `null`) to contribute nothing — plugins often only want
-to act on specific collections. Throw to fail the render.
+The hook receives a typed `{ collection, slug, document }` value in
+`data`, and TypeScript constrains its return to `NpRenderContribution`,
+`null`, or `undefined` (including async forms). Return `undefined` or
+`null` to contribute nothing — plugins often only want to act on specific
+collections. Throwing fails that plugin contribution without failing the
+page render.
+
+`definePlugin()` rejects unknown hook names, string handlers, and malformed
+registration descriptors during module evaluation. The host also validates
+the value after each render handler returns, so JavaScript plugins or casted
+values with unsupported tags, non-string attributes, or misspelled fields are
+logged and skipped before any markup is emitted.
 
 ---
 
@@ -69,9 +85,9 @@ your page tree so tag order is preserved.
 
 1. Resolves the document for the current URL (`pages/:slug` or
    `posts/:slug`).
-2. Calls `runHookAndCollect<NpRenderContribution>("render:beforePage", {
-   collection, slug, document })` — fires every registered handler in
-   registration order, collects non-null returns.
+2. Calls `runHookAndCollect<NpRenderContribution>("render:beforePage", data)`
+   with `{ collection, slug, document }`; this fires every registered handler
+   in registration order and validates every non-null return.
 3. Flattens all `head` and `bodyEnd` arrays into two lists.
 4. Renders `<RenderHead>` and `<RenderBodyEnd>` inside the page tree;
    React places them correctly.
@@ -79,6 +95,10 @@ your page tree so tag order is preserved.
 Plugins compose: two plugins that both emit `<meta name="description">`
 both get rendered. The last tag in the `<head>` usually wins for
 user-agent dedup — declare plugin load order accordingly.
+
+There is no `render:afterPage` hook. Use `bodyEnd` on the
+`render:beforePage` result for analytics collectors and other end-of-body
+scripts.
 
 ---
 

@@ -115,7 +115,6 @@ export const npHookNames = [
   "auth:beforeLogout",
   "auth:afterRegister",
   "render:beforePage",
-  "render:afterPage",
   "media:beforeUpload",
   "media:afterUpload",
 ] as const;
@@ -341,6 +340,9 @@ export interface NpRenderHookData {
   slug: string;
   document: Record<string, unknown>;
 }
+
+export type NpRenderHookResult =
+  NpRenderContribution | null | undefined | Promise<NpRenderContribution | null | undefined>;
 
 export interface NpContentFilterOperator {
   equals?: unknown;
@@ -639,9 +641,20 @@ export interface NpPluginContext<TConfig = Record<string, unknown>> {
   };
 }
 
-export interface NpHookContext<TConfig = Record<string, unknown>> {
-  hook: string;
-  data: Record<string, unknown>;
+export type NpHookData<TName extends NpHookName> = TName extends "render:beforePage"
+  ? NpRenderHookData
+  : Record<string, unknown>;
+
+export type NpHookResult<TName extends NpHookName> = TName extends "render:beforePage"
+  ? NpRenderHookResult
+  : unknown;
+
+export interface NpHookContext<
+  TConfig = Record<string, unknown>,
+  TName extends NpHookName = NpHookName,
+> {
+  hook: TName;
+  data: NpHookData<TName>;
   collection?: string;
   /**
    * Resolved staff actor for staff-authored hooks, `null` for
@@ -657,8 +670,10 @@ export interface NpHookContext<TConfig = Record<string, unknown>> {
   ctx: NpPluginContext<TConfig>;
 }
 
-export type NpHookHandler<TConfig = Record<string, unknown>> =
-  ((ctx: NpHookContext<TConfig>) => unknown) | string;
+export type NpHookHandler<
+  TConfig = Record<string, unknown>,
+  TName extends NpHookName = NpHookName,
+> = (ctx: NpHookContext<TConfig, TName>) => NpHookResult<TName>;
 
 /**
  * Object form of a hook registration: lets a plugin pick a non-default
@@ -670,15 +685,19 @@ export type NpHookHandler<TConfig = Record<string, unknown>> =
  * - `timeoutMs` — when set, the host treats a handler that doesn't settle in
  *   time as a failure (logged + reported, then skipped). Untouched payload.
  */
-export interface NpHookRegistrationDescriptor<TConfig = Record<string, unknown>> {
-  handler: NpHookHandler<TConfig>;
+export interface NpHookRegistrationDescriptor<
+  TConfig = Record<string, unknown>,
+  TName extends NpHookName = NpHookName,
+> {
+  handler: NpHookHandler<TConfig, TName>;
   priority?: number;
   timeoutMs?: number;
 }
 
-export type NpHookRegistration<TConfig = Record<string, unknown>> = Partial<
-  Record<NpHookName, NpHookHandler<TConfig> | NpHookRegistrationDescriptor<TConfig>>
->;
+export type NpHookRegistration<TConfig = Record<string, unknown>> = {
+  [TName in NpHookName]?:
+    NpHookHandler<TConfig, TName> | NpHookRegistrationDescriptor<TConfig, TName>;
+};
 
 export type NpRouteHandler<TConfig = Record<string, unknown>> = (
   req: NpRouteRequest,

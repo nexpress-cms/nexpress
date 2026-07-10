@@ -74,6 +74,9 @@ describe("non-block scaffold generators", () => {
       const source = await readFile(join(result.packageDir, "src/index.tsx"), "utf-8");
       expect(source).toMatch(/"content:afterCreate":/);
       expect(source).toMatch(/ctx\.log\.info/);
+      expect(source).toContain("`render:beforePage`");
+      expect(source).toContain("`content:beforeUnpublish`");
+      expect(source).not.toContain("render:afterPage");
     });
   });
 

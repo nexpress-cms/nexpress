@@ -1,4 +1,9 @@
-import type { NpBodyEntry, NpHeadEntry, NpRenderContribution } from "@nexpress/plugin-sdk";
+import {
+  npValidateRenderContribution,
+  type NpBodyEntry,
+  type NpHeadEntry,
+  type NpRenderContribution,
+} from "@nexpress/plugin-sdk";
 import { runHookAndCollect } from "@nexpress/core";
 
 /**
@@ -12,11 +17,17 @@ export async function collectRenderContributions(data: {
   slug: string;
   document: Record<string, unknown>;
 }): Promise<{ head: NpHeadEntry[]; bodyEnd: NpBodyEntry[] }> {
-  const contributions = await runHookAndCollect<NpRenderContribution>("render:beforePage", {
-    collection: data.collection,
-    slug: data.slug,
-    document: data.document,
-  });
+  const contributions = await runHookAndCollect<NpRenderContribution>(
+    "render:beforePage",
+    {
+      collection: data.collection,
+      slug: data.slug,
+      document: data.document,
+    },
+    {
+      validateResult: npValidateRenderContribution,
+    },
+  );
 
   const head: NpHeadEntry[] = [];
   const bodyEnd: NpBodyEntry[] = [];
@@ -40,20 +51,12 @@ export async function collectRenderContributions(data: {
  */
 export function RenderHead({ entries }: { entries: NpHeadEntry[] }) {
   if (entries.length === 0) return null;
-  return (
-    <>
-      {entries.map((entry, index) => renderHeadEntry(entry, index))}
-    </>
-  );
+  return <>{entries.map((entry, index) => renderHeadEntry(entry, index))}</>;
 }
 
 export function RenderBodyEnd({ entries }: { entries: NpBodyEntry[] }) {
   if (entries.length === 0) return null;
-  return (
-    <>
-      {entries.map((entry, index) => renderBodyEntry(entry, index))}
-    </>
-  );
+  return <>{entries.map((entry, index) => renderBodyEntry(entry, index))}</>;
 }
 
 function renderHeadEntry(entry: NpHeadEntry, key: number) {
@@ -98,9 +101,7 @@ function renderBodyEntry(entry: NpBodyEntry, key: number) {
         <script key={key} {...(entry.attrs ?? {})} />
       );
     case "noscript":
-      return (
-        <noscript key={key} dangerouslySetInnerHTML={{ __html: entry.children }} />
-      );
+      return <noscript key={key} dangerouslySetInnerHTML={{ __html: entry.children }} />;
     default:
       return null;
   }

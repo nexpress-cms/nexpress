@@ -33,6 +33,13 @@ These notes come from building two bundled example plugins in May 2026:
   while plugin doctor reports missing, mismatched, duplicate, untyped, and
   admin-unreferenced actions. The setup-time `ctx.actions.register*` API
   remains compatible for existing and dynamic plugins.
+- Render contributions now use one typed `render:beforePage` hook. Its
+  result separates `head` and `bodyEnd`; `definePlugin()` rejects unknown
+  hook names and malformed descriptors, and the host validates returned
+  contribution shapes before rendering them.
+- CLI plugin scaffold tests cover package-shape consistency, the canonical
+  hook inventory, and typed Admin status helpers instead of hand-built
+  payloads.
 
 That keeps sample plugin manifests focused on the capabilities that cannot be
 inferred from syntax, such as `storage:kv` and `network:fetch`.
@@ -42,11 +49,6 @@ inferred from syntax, such as `storage:kv` and `network:fetch`.
 - Plugin package scaffolding still repeats the same `package.json`,
   `tsconfig.json`, and `tsup.config.ts` shape. The CLI generator covers this,
   but hand-authored in-repo examples still pay the copy cost.
-- `render:afterPage` accepts body-end script contributions through the same
-  contribution type as `render:beforePage`, but the naming makes examples look
-  more surprising than they need to.
-- CLI plugin scaffold tests now cover package-shape consistency and ensure
-  admin scaffolds use the typed status helper instead of hand-built payloads.
 
 The action registry landed at definition level rather than inside `manifest`.
 Handlers are runtime functions, so keeping them beside `routes` and

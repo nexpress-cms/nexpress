@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { definePlugin } from "./define-plugin.js";
+import { type NpPluginDefinition, type NpRenderContribution } from "./types.js";
 
 const baseManifest = {
   id: "test",
@@ -36,6 +37,60 @@ describe("definePlugin — capability derivation", () => {
       },
     });
     expect(plugin.manifest.capabilities.sort()).toEqual(["hooks:auth", "hooks:content"]);
+  });
+
+  it("types render hook data and contributions through the single canonical hook", () => {
+    const plugin = definePlugin({
+      manifest: { ...baseManifest },
+      hooks: {
+        "render:beforePage": ({ hook, data }) => {
+          expectTypeOf(hook).toEqualTypeOf<"render:beforePage">();
+          expectTypeOf(data.collection).toEqualTypeOf<string>();
+          expectTypeOf(data.document).toEqualTypeOf<Record<string, unknown>>();
+          return {
+            bodyEnd: [{ tag: "script", children: "window.test = true;" }],
+          } satisfies NpRenderContribution;
+        },
+      },
+    });
+
+    expect(plugin.manifest.capabilities).toContain("hooks:render");
+    expect(plugin.manifest.provides.hooks).toEqual(["render:beforePage"]);
+  });
+
+  it("rejects removed or unknown hook names during definition evaluation", () => {
+    const definition = {
+      manifest: { ...baseManifest },
+      hooks: {
+        "render:afterPage": () => ({ bodyEnd: [] }),
+      },
+    } as unknown as NpPluginDefinition;
+
+    expect(() => definePlugin(definition)).toThrow(/unsupported hook "render:afterPage"/);
+  });
+
+  it("rejects malformed hook descriptors during definition evaluation", () => {
+    const definition = {
+      manifest: { ...baseManifest },
+      hooks: {
+        "render:beforePage": { handler: "./render-handler.js", timeoutMs: 0 },
+      },
+    } as unknown as NpPluginDefinition;
+
+    expect(() => definePlugin(definition)).toThrow(
+      /hook "render:beforePage" descriptor requires a handler/,
+    );
+  });
+
+  it("rejects invalid hook descriptor controls during definition evaluation", () => {
+    const definition = {
+      manifest: { ...baseManifest },
+      hooks: {
+        "render:beforePage": { handler: () => undefined, timeoutMs: 0 },
+      },
+    } as unknown as NpPluginDefinition;
+
+    expect(() => definePlugin(definition)).toThrow(/timeoutMs must be greater than 0/);
   });
 
   it("merges author-declared capabilities with derived ones (no duplicates)", () => {

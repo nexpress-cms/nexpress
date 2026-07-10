@@ -19,11 +19,12 @@ The v1 plugin model is **npm-package + rebuild**. A plugin can:
 - Register **hooks** — content lifecycle (`content:beforeCreate`,
   `content:afterCreate`, `content:beforeUpdate`, `content:afterUpdate`,
   `content:beforePublish`, `content:afterPublish`,
+  `content:beforeUnpublish`,
   `content:beforeDelete`, `content:afterDelete`), plus
   auth hooks (`auth:afterLogin`, `auth:beforeLogout`,
   `auth:afterRegister`), media hooks (`media:beforeUpload`,
   `media:afterUpload`), and render contributions
-  (`render:beforePage` and friends — see
+  (`render:beforePage` — see
   [`plugin-render.md`](plugin-render.md)).
 - Register **routes** (`/api/plugins/<id>/<path>`).
 - Register **page routes** (public-site URLs the plugin owns; see

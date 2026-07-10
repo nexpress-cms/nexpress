@@ -504,6 +504,36 @@ describe("plugin host", () => {
       expect(results).toHaveLength(1);
     });
 
+    it("skips a collected result that fails the caller's runtime contract", async () => {
+      await loadPlugins([
+        resolvedPlugin("invalid", {
+          capabilities: ["hooks:render"],
+          hooks: {
+            "render:beforePage": () => ({ footer: [{ tag: "script" }] }),
+          },
+        }),
+        resolvedPlugin("valid", {
+          capabilities: ["hooks:render"],
+          hooks: {
+            "render:beforePage": () => ({ bodyEnd: [{ tag: "script", children: "ok" }] }),
+          },
+        }),
+      ]);
+
+      const results = await runHookAndCollect<{ bodyEnd: unknown[] }>(
+        "render:beforePage",
+        {},
+        {
+          validateResult: (value) =>
+            value && typeof value === "object" && "bodyEnd" in value
+              ? { ok: true }
+              : { ok: false, message: "bodyEnd is required" },
+        },
+      );
+
+      expect(results).toEqual([{ bodyEnd: [{ tag: "script", children: "ok" }] }]);
+    });
+
     it("returns [] when no handler is registered", async () => {
       await expect(runHookAndCollect("render:neverFires", {})).resolves.toEqual([]);
     });
