@@ -31,12 +31,14 @@ import {
 } from "@nexpress/core";
 import {
   npAnalyzeBlockDefinitions,
+  npAnalyzePatternDefinitions,
+  getDefaultBlocks,
   registerBlock,
   registerPattern,
   resetSharedBlockRegistry,
   resetSharedPatternRegistry,
   type NpBlockDefinition,
-  type NpPattern,
+  type NpPatternDefinition,
 } from "@nexpress/blocks";
 import { cookies, headers } from "next/headers";
 
@@ -68,41 +70,40 @@ function themeBlocks(theme: { impl: unknown }): NpBlockDefinition[] {
   );
 }
 
-// Phase F.5 — sister narrowing for theme-shipped patterns.
-// Same loose-shape approach: id + label + blocks suffice.
-function themePatterns(theme: { impl: unknown }): NpPattern[] {
+// Theme contributions use the same validated author shape as plugins.
+// Bootstrap owns the concrete source identity, so source remains optional here.
+function themePatterns(theme: { manifest: { id: string }; impl: unknown }): NpPatternDefinition[] {
   const impl = theme.impl as { patterns?: unknown } | undefined;
   const patterns = impl?.patterns;
-  if (!Array.isArray(patterns)) return [];
-  return patterns.filter(
-    (p): p is NpPattern =>
-      p !== null &&
-      typeof p === "object" &&
-      typeof (p as { id?: unknown }).id === "string" &&
-      typeof (p as { label?: unknown }).label === "string" &&
-      Array.isArray((p as { blocks?: unknown }).blocks),
-  );
+  if (patterns === undefined) return [];
+  const issue = npAnalyzePatternDefinitions(patterns)[0];
+  if (issue) throw new Error(`[theme:${theme.manifest.id}] ${issue.message}`);
+  return patterns as NpPatternDefinition[];
 }
 
-// Sister to `pluginBlocks` — narrows a plugin's `patterns` field
-// without forcing core to depend on the pattern type. Same loose-
-// shape duck-typing pattern (id + label + blocks). Source defaults
-// are stamped at registration time below.
-function pluginPatterns(plugin: NpPluginConfig | NpResolvedPluginLike): NpPattern[] {
+// Sister to `pluginBlocks` — validates the whole recursive pattern tree
+// without forcing core to depend on the pattern type. Source is stamped below.
+function pluginPatterns(plugin: NpPluginConfig | NpResolvedPluginLike): NpPatternDefinition[] {
   const patterns = (plugin as { patterns?: unknown }).patterns;
-  if (!Array.isArray(patterns)) return [];
-  return patterns.filter(
-    (p): p is NpPattern =>
-      p !== null &&
-      typeof p === "object" &&
-      typeof (p as { id?: unknown }).id === "string" &&
-      typeof (p as { label?: unknown }).label === "string" &&
-      Array.isArray((p as { blocks?: unknown }).blocks),
-  );
+  if (patterns === undefined) return [];
+  const issue = npAnalyzePatternDefinitions(patterns)[0];
+  if (issue) throw new Error(`[plugin:${resolvePluginId(plugin)}] ${issue.message}`);
+  return patterns as NpPatternDefinition[];
 }
 
 function resolvePluginId(plugin: NpPluginConfig | NpResolvedPluginLike): string {
   return "manifest" in plugin ? plugin.manifest.id : plugin.id;
+}
+
+function assertKnownPatternBlockTypes(
+  owner: string,
+  patterns: NpPatternDefinition[],
+  knownBlockTypes: ReadonlySet<string>,
+): void {
+  const issue = npAnalyzePatternDefinitions(patterns, { knownBlockTypes }).find(
+    (candidate) => candidate.code === "unknown-block-type",
+  );
+  if (issue) throw new Error(`[${owner}] ${issue.message}`);
 }
 
 export type NpDb = ReturnType<typeof createDbConnection>;
@@ -514,17 +515,41 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       const disabledIds = new Set(states.filter((s) => !s.enabled).map((s) => s.id));
 
       const enabled = configured.filter((plugin) => !disabledIds.has(resolvePluginId(plugin)));
-      const enabledWithBlocks = enabled.map((plugin) => ({
+      const enabledWithContributions = enabled.map((plugin) => ({
         plugin,
         blocks: pluginBlocks(plugin),
+        patterns: pluginPatterns(plugin),
       }));
+      const themesWithContributions = (config.themes ?? []).map((theme) => ({
+        theme,
+        blocks: themeBlocks(theme),
+        patterns: themePatterns(theme),
+      }));
+      const pluginBlockTypes = new Set([
+        ...getDefaultBlocks().map((block) => block.type),
+        ...enabledWithContributions.flatMap(({ blocks }) => blocks.map((block) => block.type)),
+      ]);
+      for (const { plugin, patterns } of enabledWithContributions) {
+        assertKnownPatternBlockTypes(
+          `plugin:${resolvePluginId(plugin)}`,
+          patterns,
+          pluginBlockTypes,
+        );
+      }
+      for (const { theme, blocks, patterns } of themesWithContributions) {
+        assertKnownPatternBlockTypes(
+          `theme:${theme.manifest.id}`,
+          patterns,
+          new Set([...pluginBlockTypes, ...blocks.map((block) => block.type)]),
+        );
+      }
       await loadPlugins(enabled);
       // Push each enabled plugin's blocks into the shared block
       // registry so they appear in the admin's Add-block popover
       // and resolve correctly during server render.
       // `registerBlock` overwrites an existing source on HMR /
       // re-bootstrap. Same-plugin duplicates were rejected above.
-      for (const { plugin, blocks } of enabledWithBlocks) {
+      for (const { plugin, blocks } of enabledWithContributions) {
         const pluginId = resolvePluginId(plugin);
         for (const block of blocks) {
           // Phase F.4 — auto-stamp concrete source identity
@@ -533,10 +558,6 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
           // `source` is overridden unconditionally per design
           // doc §4.4 ("authors don't pass source manually").
           registerBlock({ ...block, source: `plugin:${pluginId}` });
-        }
-        for (const pattern of pluginPatterns(plugin)) {
-          // Same concrete-identity stamping for patterns.
-          registerPattern({ ...pattern, source: `plugin:${pluginId}` });
         }
       }
       // Phase F.4 — register theme-shipped blocks too. Themes are
@@ -548,18 +569,24 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       // Phase F.5 — same for theme-shipped patterns; both use
       // concrete `theme:<id>` source identity so the activation
       // filter scopes them per site.
-      for (const theme of config.themes ?? []) {
-        for (const block of themeBlocks(theme)) {
+      for (const { theme, blocks } of themesWithContributions) {
+        for (const block of blocks) {
           registerBlock({
             ...block,
             source: `theme:${theme.manifest.id}`,
           });
         }
-        for (const pattern of themePatterns(theme)) {
-          registerPattern({
-            ...pattern,
-            source: `theme:${theme.manifest.id}`,
-          });
+      }
+      // Register patterns only after every referenced block is present.
+      for (const { plugin, patterns } of enabledWithContributions) {
+        const pluginId = resolvePluginId(plugin);
+        for (const pattern of patterns) {
+          registerPattern({ ...pattern, source: `plugin:${pluginId}` });
+        }
+      }
+      for (const { theme, patterns } of themesWithContributions) {
+        for (const pattern of patterns) {
+          registerPattern({ ...pattern, source: `theme:${theme.manifest.id}` });
         }
       }
       pluginsLoaded = true;
@@ -618,19 +645,40 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       const disabledIds = new Set(states.filter((s) => !s.enabled).map((s) => s.id));
 
       const enabled = configured.filter((plugin) => !disabledIds.has(resolvePluginId(plugin)));
-      const enabledWithBlocks = enabled.map((plugin) => ({
+      const enabledWithContributions = enabled.map((plugin) => ({
         plugin,
         blocks: pluginBlocks(plugin),
+        patterns: pluginPatterns(plugin),
       }));
+      const themesWithContributions = (config.themes ?? []).map((theme) => ({
+        theme,
+        blocks: themeBlocks(theme),
+        patterns: themePatterns(theme),
+      }));
+      const pluginBlockTypes = new Set([
+        ...getDefaultBlocks().map((block) => block.type),
+        ...enabledWithContributions.flatMap(({ blocks }) => blocks.map((block) => block.type)),
+      ]);
+      for (const { plugin, patterns } of enabledWithContributions) {
+        assertKnownPatternBlockTypes(
+          `plugin:${resolvePluginId(plugin)}`,
+          patterns,
+          pluginBlockTypes,
+        );
+      }
+      for (const { theme, blocks, patterns } of themesWithContributions) {
+        assertKnownPatternBlockTypes(
+          `theme:${theme.manifest.id}`,
+          patterns,
+          new Set([...pluginBlockTypes, ...blocks.map((block) => block.type)]),
+        );
+      }
       await loadPlugins(enabled);
-      for (const { plugin, blocks } of enabledWithBlocks) {
+      for (const { plugin, blocks } of enabledWithContributions) {
         const pluginId = resolvePluginId(plugin);
         for (const block of blocks) {
           // Same concrete-source stamping as `ensurePluginsLoaded`.
           registerBlock({ ...block, source: `plugin:${pluginId}` });
-        }
-        for (const pattern of pluginPatterns(plugin)) {
-          registerPattern({ ...pattern, source: `plugin:${pluginId}` });
         }
       }
       // Re-register theme blocks + patterns after the registry
@@ -638,18 +686,23 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       // reseed built-in defaults). Theme contributions don't
       // change between reloads, but they live in the same
       // process-global registries so we have to put them back.
-      for (const theme of config.themes ?? []) {
-        for (const block of themeBlocks(theme)) {
+      for (const { theme, blocks } of themesWithContributions) {
+        for (const block of blocks) {
           registerBlock({
             ...block,
             source: `theme:${theme.manifest.id}`,
           });
         }
-        for (const pattern of themePatterns(theme)) {
-          registerPattern({
-            ...pattern,
-            source: `theme:${theme.manifest.id}`,
-          });
+      }
+      for (const { plugin, patterns } of enabledWithContributions) {
+        const pluginId = resolvePluginId(plugin);
+        for (const pattern of patterns) {
+          registerPattern({ ...pattern, source: `plugin:${pluginId}` });
+        }
+      }
+      for (const { theme, patterns } of themesWithContributions) {
+        for (const pattern of patterns) {
+          registerPattern({ ...pattern, source: `theme:${theme.manifest.id}` });
         }
       }
       pluginsLoaded = true;

@@ -27,7 +27,7 @@ const stubPattern = (id: string, source: NpPattern["source"]): NpPattern => ({
   id,
   label: id,
   source,
-  blocks: [],
+  blocks: [{ id: `${id}-block`, type: "rich-text", props: {} }],
 });
 
 describe("block registry collision warning", () => {
@@ -138,5 +138,20 @@ describe("pattern registry collision warning", () => {
     registerPattern(stubPattern("hero", "theme:portfolio"));
     registerPattern(stubPattern("hero", "plugin:foo"));
     expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects malformed patterns before they reach the shared registry", () => {
+    expect(() => registerPattern({ ...stubPattern("bad", "plugin:bad"), blocks: [] })).toThrow(
+      /Invalid pattern definition: pattern\.blocks must contain at least one/,
+    );
+  });
+
+  it("rejects patterns that reference an unregistered block type", () => {
+    expect(() =>
+      registerPattern({
+        ...stubPattern("bad-reference", "plugin:bad"),
+        blocks: [{ id: "template", type: "missing.block", props: {} }],
+      }),
+    ).toThrow(/references unknown block type "missing\.block"/);
   });
 });

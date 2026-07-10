@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import type { NpBlockDefinition } from "@nexpress/blocks";
+import type { NpBlockDefinition, NpPatternDefinition } from "@nexpress/blocks";
 import { definePlugin } from "@nexpress/plugin-sdk";
 
 const TONE_PALETTES = {
@@ -143,6 +143,27 @@ const calloutBlock: NpBlockDefinition = {
   },
 };
 
+const calloutPatterns = [
+  {
+    id: "block-callout.notice",
+    label: "Notice callout",
+    description: "A ready-to-edit informational notice.",
+    category: "section",
+    blocks: [
+      {
+        id: "template-callout-notice",
+        type: "callout",
+        props: {
+          tone: "info",
+          title: "Heads up",
+          body: "Replace this copy with the notice readers should not miss.",
+          showIcon: true,
+        },
+      },
+    ],
+  },
+] satisfies NpPatternDefinition[];
+
 export const calloutPlugin = definePlugin({
   manifest: {
     id: "block-callout",
@@ -153,10 +174,11 @@ export const calloutPlugin = definePlugin({
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
     // capabilities, allowedHosts, provides, agent, usesTokens, styleSlots
-    // all default sensibly — `definePlugin` derives `provides.blocks` from
-    // the `blocks: [...]` array below, so we don't repeat ourselves.
+    // all default sensibly — `definePlugin` derives the block type and pattern
+    // id below, so we don't repeat ourselves in `provides`.
   },
   blocks: [calloutBlock] satisfies NpBlockDefinition[],
+  patterns: calloutPatterns,
 });
 
 export default calloutPlugin;

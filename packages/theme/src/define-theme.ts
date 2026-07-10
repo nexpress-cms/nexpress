@@ -4,7 +4,7 @@ import type { ComponentType, ReactNode } from "react";
 import type {
   NpBlockDefinition,
   NpBlockRenderContext,
-  NpPattern,
+  NpPatternDefinition,
 } from "@nexpress/blocks";
 
 /**
@@ -532,7 +532,7 @@ export interface NpThemeImpl {
    * each pattern so the active-source filter scopes patterns
    * the same way it scopes blocks (multi-site safe).
    */
-  patterns?: NpPattern[];
+  patterns?: NpPatternDefinition[];
   /**
    * Phase F.6 — declared nav menu mount points.
    *

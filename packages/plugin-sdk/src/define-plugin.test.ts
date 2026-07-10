@@ -5,6 +5,7 @@ import { definePlugin } from "./define-plugin.js";
 import {
   npRouteMethods,
   type NpPluginDefinition,
+  type NpPatternDefinition,
   type NpPluginPageRouteProps,
   type NpReadonlyPluginDocument,
   type NpRenderContribution,
@@ -354,6 +355,45 @@ describe("definePlugin — provides derivation (regression)", () => {
     } as unknown as NpPluginDefinition;
 
     expect(() => definePlugin(definition)).toThrow(/duplicate block type "callout"/);
+  });
+
+  it("validates source-less pattern contributions and derives provides.patterns", () => {
+    const patterns = [
+      {
+        id: "test.callout-stack",
+        label: "Callout stack",
+        blocks: [{ id: "template-callout", type: "callout", props: { tone: "info" } }],
+      },
+    ] satisfies NpPatternDefinition[];
+    const plugin = definePlugin({ manifest: { ...baseManifest }, patterns });
+
+    expect(plugin.patterns).toEqual(patterns);
+    expect(plugin.manifest.provides.patterns).toEqual(["test.callout-stack"]);
+  });
+
+  it.each([
+    [{}, /patterns must be an array/],
+    [[{ id: "test.empty", label: "Empty", blocks: [] }], /at least one block instance/],
+  ])("rejects malformed pattern registries during evaluation", (patterns, message) => {
+    const definition = {
+      manifest: { ...baseManifest },
+      patterns,
+    } as unknown as NpPluginDefinition;
+    expect(() => definePlugin(definition)).toThrow(message);
+  });
+
+  it("rejects duplicate pattern ids within one plugin", () => {
+    const pattern = {
+      id: "test.hero",
+      label: "Hero",
+      blocks: [{ id: "template-hero", type: "hero", props: {} }],
+    };
+    const definition = {
+      manifest: { ...baseManifest },
+      patterns: [pattern, { ...pattern }],
+    } as NpPluginDefinition;
+
+    expect(() => definePlugin(definition)).toThrow(/duplicate pattern id "test\.hero"/);
   });
 
   it("derives page route and scheduled task provides from definition surfaces", () => {

@@ -8,13 +8,26 @@ export type {
   NpBlockRenderContext,
   NpPageBlocks,
   NpDataBinding,
+  NpPatternDefinition,
   NpPattern,
+  NpPatternSource,
 } from "./types.js";
 export {
   npAnalyzeBlockDefinitions,
   npBlockPropFieldTypes,
   npValidateBlockDefinition,
 } from "./block-contract.js";
+export {
+  npAnalyzePatternDefinitions,
+  npValidatePattern,
+  npValidatePatternDefinition,
+} from "./pattern-contract.js";
+export type {
+  NpPatternDefinitionAnalysisOptions,
+  NpPatternDefinitionIssue,
+  NpPatternDefinitionIssueCode,
+  NpPatternDefinitionValidationResult,
+} from "./pattern-contract.js";
 export type {
   NpBlockDefinitionIssue,
   NpBlockDefinitionIssueCode,

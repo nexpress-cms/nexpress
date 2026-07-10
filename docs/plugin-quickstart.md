@@ -62,7 +62,9 @@ bottom covers the npm-publish variant.
 
 For a block-first starter, run `nexpress create block-plugin <slug>` (or add
 `--interactive` for a separate client entry). The generated definition follows
-the validation and collision rules in [`plugin-blocks.md`](plugin-blocks.md).
+the validation and collision rules in [`plugin-blocks.md`](plugin-blocks.md)
+and includes a source-less starter pattern following
+[`plugin-patterns.md`](plugin-patterns.md).
 
 ## Step 1 — Scaffold
 
@@ -480,6 +482,8 @@ The reference docs go deeper on each surface:
   semantics, head-tag and script contributions.
 - [`plugin-blocks.md`](plugin-blocks.md) — block definition, props schema,
   container, collision, and diagnostics contracts.
+- [`plugin-patterns.md`](plugin-patterns.md) — reusable block trees, source
+  stamping, block-reference validation, and pattern diagnostics.
 - [`plugin-admin.md`](plugin-admin.md) — declarative admin extensions
   (settings, widgets, actions, tables, dashboard, collection tabs).
 - [`agent-integration.md`](agent-integration.md) — exposing a plugin

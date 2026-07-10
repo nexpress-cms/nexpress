@@ -531,3 +531,15 @@ export function npAnalyzeBlockDefinitions(value: unknown): NpBlockDefinitionIssu
   }
   return issues;
 }
+
+export {
+  npAnalyzePatternDefinitions,
+  npValidatePattern,
+  npValidatePatternDefinition,
+} from "./pattern-contract.js";
+export type {
+  NpPatternDefinitionAnalysisOptions,
+  NpPatternDefinitionIssue,
+  NpPatternDefinitionIssueCode,
+  NpPatternDefinitionValidationResult,
+} from "./pattern-contract.js";

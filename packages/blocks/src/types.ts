@@ -336,11 +336,18 @@ export interface NpBlockRegistry {
  * String-and-loose for forward compatibility — additional sources
  * (e.g. `"marketplace"`) can land without bumping the union.
  */
-export interface NpPattern {
+export type NpPatternSource = "built-in" | "custom" | "plugin" | "theme" | (string & {});
+
+/**
+ * Author-facing pattern contribution. Plugins and themes may omit `source`;
+ * the Next bootstrap replaces it with the concrete `plugin:<id>` or
+ * `theme:<id>` identity before registration.
+ */
+export interface NpPatternDefinition {
   id: string;
   label: string;
   description?: string;
-  source: "built-in" | "custom" | "plugin" | "theme" | (string & {});
+  source?: NpPatternSource;
   blocks: NpBlockInstance[];
   /**
    * Phase F.5 — optional preview image path. Themes can ship a
@@ -376,6 +383,11 @@ export interface NpPattern {
    * intentionally loose.
    */
   category?: "homepage" | "page" | "section" | (string & {});
+}
+
+/** A validated pattern after its concrete source has been assigned. */
+export interface NpPattern extends NpPatternDefinition {
+  source: NpPatternSource;
 }
 
 void (0 as ReactNode | undefined);

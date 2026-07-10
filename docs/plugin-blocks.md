@@ -152,6 +152,9 @@ nexpress create block-plugin my-block --interactive
 
 See `packages/plugins/block-callout` for a static reference and
 `packages/plugins/block-newsletter` for the server/client split.
+The block scaffold also emits a reusable starter pattern; see
+[`plugin-patterns.md`](plugin-patterns.md) for its recursive tree and reference
+contract.
 
 ## Runtime helpers
 

@@ -15,6 +15,7 @@ import {
   testimonialsBlock,
 } from "./blocks/index.js";
 import { npValidateBlockDefinition } from "./block-contract.js";
+import { npAnalyzePatternDefinitions, npValidatePattern } from "./pattern-contract.js";
 import type { NpBlockDefinition, NpBlockMetadata, NpBlockRegistry, NpPattern } from "./types.js";
 
 const defaultBlocks = [
@@ -204,6 +205,15 @@ export const getSharedRegistry = (): NpBlockRegistry => sharedRegistry;
 
 const sharedPatterns = new Map<string, NpPattern>();
 
+function assertValidPattern(pattern: unknown): asserts pattern is NpPattern {
+  const validation = npValidatePattern(pattern);
+  if (!validation.ok) throw new Error(`Invalid pattern definition: ${validation.message}`);
+  const referenceIssue = npAnalyzePatternDefinitions([pattern], {
+    knownBlockTypes: new Set(sharedDefinitions.keys()),
+  }).find((issue) => issue.code === "unknown-block-type");
+  if (referenceIssue) throw new Error(`Invalid pattern definition: ${referenceIssue.message}`);
+}
+
 /**
  * Same collision-warning policy for patterns.
  * Last-loaded still wins; warning fires once per id per process
@@ -243,6 +253,7 @@ function detectAndWarnPatternCollision(existing: NpPattern | undefined, incoming
  * registration wins, mirroring `registerBlock`.
  */
 export const registerPattern = (pattern: NpPattern): void => {
+  assertValidPattern(pattern);
   detectAndWarnPatternCollision(sharedPatterns.get(pattern.id), pattern);
   sharedPatterns.set(pattern.id, pattern);
 };

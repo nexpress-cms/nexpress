@@ -7,6 +7,8 @@ vi.mock("next/headers", () => ({
 
 vi.mock("@nexpress/blocks", () => ({
   npAnalyzeBlockDefinitions: vi.fn(() => []),
+  npAnalyzePatternDefinitions: vi.fn(() => []),
+  getDefaultBlocks: vi.fn(() => [{ type: "rich-text" }]),
   registerBlock: vi.fn(),
   registerPattern: vi.fn(),
   resetSharedBlockRegistry: vi.fn(),
@@ -139,5 +141,102 @@ describe("createBootstrap", () => {
     );
     expect(core.loadPlugins).not.toHaveBeenCalled();
     expect(blocks.registerBlock).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid plugin patterns before mutating the core plugin registry", async () => {
+    const config = Object.assign({}, buildConfig(), {
+      plugins: [{ id: "broken-pattern", patterns: [{ id: "broken" }] }],
+    });
+    vi.mocked(blocks.npAnalyzePatternDefinitions).mockReturnValueOnce([
+      {
+        code: "invalid-definition",
+        index: 0,
+        message: "invalid pattern at index 0: pattern.label must be a non-empty string.",
+      },
+    ]);
+    const bootstrap = createBootstrap({ config, generatedSchema: {} });
+
+    await expect(bootstrap.ensurePluginsLoaded()).rejects.toThrow(
+      "[plugin:broken-pattern] invalid pattern at index 0",
+    );
+    expect(core.loadPlugins).not.toHaveBeenCalled();
+    expect(blocks.registerPattern).not.toHaveBeenCalled();
+  });
+
+  it("registers validated plugin patterns with a concrete source", async () => {
+    const pattern = {
+      id: "reading-time.summary",
+      label: "Reading time summary",
+      blocks: [{ id: "template", type: "rich-text", props: {} }],
+    };
+    const config = Object.assign({}, buildConfig(), {
+      plugins: [{ id: "reading-time", patterns: [pattern] }],
+    });
+    const bootstrap = createBootstrap({ config, generatedSchema: {} });
+
+    await bootstrap.ensurePluginsLoaded();
+
+    expect(blocks.registerPattern).toHaveBeenCalledWith({
+      ...pattern,
+      source: "plugin:reading-time",
+    });
+  });
+
+  it("rejects plugin patterns that reference unavailable block types", async () => {
+    const config = Object.assign({}, buildConfig(), {
+      plugins: [
+        {
+          id: "broken-reference",
+          patterns: [
+            {
+              id: "broken-reference.hero",
+              label: "Broken hero",
+              blocks: [{ id: "template", type: "missing.hero", props: {} }],
+            },
+          ],
+        },
+      ],
+    });
+    vi.mocked(blocks.npAnalyzePatternDefinitions)
+      .mockReturnValueOnce([])
+      .mockReturnValueOnce([
+        {
+          code: "unknown-block-type",
+          index: 0,
+          id: "broken-reference.hero",
+          blockType: "missing.hero",
+          message: 'pattern "broken-reference.hero" references unknown block type "missing.hero".',
+        },
+      ]);
+    const bootstrap = createBootstrap({ config, generatedSchema: {} });
+
+    await expect(bootstrap.ensurePluginsLoaded()).rejects.toThrow(
+      '[plugin:broken-reference] pattern "broken-reference.hero" references unknown block type',
+    );
+    expect(core.loadPlugins).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid theme patterns instead of silently dropping them", async () => {
+    const config = Object.assign({}, buildConfig(), {
+      themes: [
+        {
+          manifest: { id: "broken-theme" },
+          impl: { patterns: [{ id: "broken" }] },
+        },
+      ],
+    });
+    vi.mocked(blocks.npAnalyzePatternDefinitions).mockReturnValueOnce([
+      {
+        code: "invalid-definition",
+        index: 0,
+        message: "invalid pattern at index 0: pattern.label must be a non-empty string.",
+      },
+    ]);
+    const bootstrap = createBootstrap({ config, generatedSchema: {} });
+
+    await expect(bootstrap.ensurePluginsLoaded()).rejects.toThrow(
+      "[theme:broken-theme] invalid pattern at index 0",
+    );
+    expect(core.loadPlugins).not.toHaveBeenCalled();
   });
 });

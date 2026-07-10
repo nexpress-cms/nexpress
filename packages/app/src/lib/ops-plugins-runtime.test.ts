@@ -10,7 +10,7 @@ import {
 } from "@nexpress/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getRegisteredBlocks } from "@nexpress/blocks";
+import { getRegisteredBlocks, getRegisteredPatterns } from "@nexpress/blocks";
 
 import { collectRuntimeOpsPluginsStatus } from "./ops-plugins-runtime";
 
@@ -25,6 +25,7 @@ vi.mock("@nexpress/core", () => ({
 
 vi.mock("@nexpress/blocks", () => ({
   getRegisteredBlocks: vi.fn(),
+  getRegisteredPatterns: vi.fn(),
 }));
 
 const mockPluginIds = vi.mocked(getAllPluginIds);
@@ -34,6 +35,7 @@ const mockPluginPageRoutes = vi.mocked(getPluginPageRoutes);
 const mockPluginRegistration = vi.mocked(getPluginRegistration);
 const mockRegisteredPluginActions = vi.mocked(getRegisteredPluginActions);
 const mockRegisteredBlocks = vi.mocked(getRegisteredBlocks);
+const mockRegisteredPatterns = vi.mocked(getRegisteredPatterns);
 
 describe("ops plugins runtime", () => {
   beforeEach(() => {
@@ -44,6 +46,7 @@ describe("ops plugins runtime", () => {
     mockPluginRegistration.mockReturnValue(undefined);
     mockRegisteredPluginActions.mockReturnValue([]);
     mockRegisteredBlocks.mockReturnValue([]);
+    mockRegisteredPatterns.mockReturnValue([]);
   });
 
   it("reports an empty runtime registry as ready", () => {
@@ -76,6 +79,14 @@ describe("ops plugins runtime", () => {
       },
     ]);
     mockRegisteredBlocks.mockReturnValue([block("discussion-list", "plugin:forum")]);
+    mockRegisteredPatterns.mockReturnValue([
+      {
+        id: "forum.thread-list",
+        label: "Thread list",
+        source: "plugin:forum",
+        blocks: [{ id: "template", type: "discussion-list", props: {} }],
+      },
+    ]);
     mockRegisteredPluginActions.mockReturnValue([
       { id: "countDiscussions", kind: "metric", source: "definition" },
     ]);
@@ -86,6 +97,7 @@ describe("ops plugins runtime", () => {
     expect(report.summary).toMatchObject({
       plugins: 1,
       blocks: 1,
+      patterns: 1,
       routes: 1,
       pageRoutes: 1,
       scheduled: 1,
@@ -96,6 +108,7 @@ describe("ops plugins runtime", () => {
       name: "Forum",
       version: "1.2.3",
       blocks: ["discussion-list"],
+      patterns: ["forum.thread-list"],
       routes: ["GET /stats"],
       pageRoutes: ["/forum"],
       scheduled: ["digest"],

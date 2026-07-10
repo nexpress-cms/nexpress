@@ -59,6 +59,13 @@ These notes come from building two bundled example plugins in May 2026:
   same-plugin duplicate types are errors while cross-plugin ownership remains
   an operator-visible warning. The CLI and six bundled block plugins exercise
   the same contract.
+- Plugin page-builder patterns now share one recursive definition contract
+  across blocks, the SDK, Next bootstrap, the shared registry, and plugin
+  doctor. Invalid trees, duplicate ids, unavailable block references, and
+  cross-plugin ownership surface before an Admin insertion can silently drop
+  content. Pattern ids are derived into `manifest.provides.patterns`, and the
+  block scaffold plus bundled callout plugin exercise the source-less authoring
+  shape.
 - Plugin scheduled tasks now share one definition contract across the SDK,
   core host, pg-boss registration, and plugin doctor. Invalid cron expressions,
   unsafe or duplicate ids, non-function handlers, and non-void results fail
