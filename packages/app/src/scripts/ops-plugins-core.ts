@@ -6,6 +6,7 @@ import {
   invalidatePluginEnabled,
   npAnalyzePluginAdminActionContract,
   npValidatePluginApiRouteDefinition,
+  npValidatePluginPageRouteDefinition,
   type NpPluginActionKind,
   type NpPluginAdminActionIssue,
   type NpRegisteredPluginAction,
@@ -504,6 +505,28 @@ function apiRouteContractImportCheck(error: unknown): CheckResult | null {
   };
 }
 
+function pageRouteContractImportCheck(error: unknown): CheckResult | null {
+  const detail = error instanceof Error ? error.message : String(error);
+  const match = detail.match(
+    /^\[plugin:([^\]]+)\] (?:pageRoutes must be an array|invalid page route |duplicate page route )/u,
+  );
+  if (!match) return null;
+
+  const duplicate = detail.includes("duplicate page route");
+  return {
+    id: duplicate ? "plugins.page_route_duplicate" : "plugins.page_route_invalid",
+    state: "error",
+    label: "Plugin page route contracts",
+    detail,
+    pluginIds: match[1] ? [match[1]] : undefined,
+    hint: withDoctorRerun(
+      duplicate
+        ? "A plugin can declare each page route pattern only once. Remove or rename the duplicate route."
+        : "Use a canonical supported pattern, function component/metadata handlers, and valid surface/locale fields.",
+    ),
+  };
+}
+
 function duplicateChecks(
   id: string,
   label: string,
@@ -590,6 +613,73 @@ function buildApiRouteChecks(
       detail: duplicateRoutes.join("; "),
       hint: withDoctorRerun(
         "A plugin can declare each method/path pair only once. Remove or rename the duplicate route.",
+      ),
+      pluginIds: uniqueStrings(duplicatePluginIds),
+    });
+  }
+  return checks;
+}
+
+function buildPageRouteChecks(
+  pluginObjects: PluginLike[],
+  plugins: OpsPluginEntry[],
+): CheckResult[] {
+  const invalidRoutes: string[] = [];
+  const invalidPluginIds: string[] = [];
+  const duplicateRoutes: string[] = [];
+  const duplicatePluginIds: string[] = [];
+
+  for (const [index, plugin] of pluginObjects.entries()) {
+    const pluginId = plugins[index]?.id ?? `plugin-${index.toString()}`;
+    if (plugin.pageRoutes === undefined) continue;
+    if (!Array.isArray(plugin.pageRoutes)) {
+      invalidRoutes.push(`[plugin:${pluginId}] pageRoutes must be an array`);
+      invalidPluginIds.push(pluginId);
+      continue;
+    }
+
+    const seen = new Set<string>();
+    for (const [routeIndex, route] of plugin.pageRoutes.entries()) {
+      const validation = npValidatePluginPageRouteDefinition(route);
+      if (!validation.ok) {
+        invalidRoutes.push(
+          `[plugin:${pluginId}] page route at index ${routeIndex.toString()}: ${validation.message}`,
+        );
+        invalidPluginIds.push(pluginId);
+        continue;
+      }
+
+      const key = pageRouteKey(route);
+      if (!key) continue;
+      if (seen.has(key)) {
+        duplicateRoutes.push(`[plugin:${pluginId}] ${key} is declared more than once`);
+        duplicatePluginIds.push(pluginId);
+      }
+      seen.add(key);
+    }
+  }
+
+  const checks: CheckResult[] = [];
+  if (invalidRoutes.length > 0) {
+    checks.push({
+      id: "plugins.page_route_invalid",
+      state: "error",
+      label: "Plugin page route contracts",
+      detail: invalidRoutes.join("; "),
+      hint: withDoctorRerun(
+        "Use a canonical supported pattern, function component/metadata handlers, and valid surface/locale fields.",
+      ),
+      pluginIds: uniqueStrings(invalidPluginIds),
+    });
+  }
+  if (duplicateRoutes.length > 0) {
+    checks.push({
+      id: "plugins.page_route_duplicate",
+      state: "error",
+      label: "Plugin page routes",
+      detail: duplicateRoutes.join("; "),
+      hint: withDoctorRerun(
+        "A plugin can declare each page route pattern only once. Remove or rename the duplicate route.",
       ),
       pluginIds: uniqueStrings(duplicatePluginIds),
     });
@@ -842,6 +932,7 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
       }),
     ),
     ...buildApiRouteChecks(pluginObjects, plugins),
+    ...buildPageRouteChecks(pluginObjects, plugins),
   );
 
   const duplicateIds = duplicateChecks(
@@ -867,7 +958,9 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
   const pageRouteConflicts = duplicateChecks(
     "plugins.page_route_conflict",
     "Plugin page routes",
-    plugins.flatMap((plugin) => plugin.pageRoutes.map((key) => ({ key, plugin: plugin.id }))),
+    plugins.flatMap((plugin) =>
+      [...new Set(plugin.pageRoutes)].map((key) => ({ key, plugin: plugin.id })),
+    ),
     withDoctorRerun(
       "Plugin page routes share the public site router. Change one pattern or disable one plugin, then restart.",
     ),
@@ -928,6 +1021,7 @@ export async function collectOpsPluginsStatus(
   } catch (error: unknown) {
     const actionCheck = actionContractImportCheck(error);
     const apiRouteCheck = apiRouteContractImportCheck(error);
+    const pageRouteCheck = pageRouteContractImportCheck(error);
     return buildOpsPluginsJson({
       plugins: [],
       checks: [
@@ -940,6 +1034,7 @@ export async function collectOpsPluginsStatus(
         },
         ...(actionCheck ? [actionCheck] : []),
         ...(apiRouteCheck ? [apiRouteCheck] : []),
+        ...(pageRouteCheck ? [pageRouteCheck] : []),
       ],
     });
   }

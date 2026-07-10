@@ -240,4 +240,17 @@ describe("plugin commands", () => {
     expect(stdout.read()).toContain("Restart your dev server or redeploy");
     expect(stdout.read()).toContain("pnpm --silent run ops:plugins -- doctor --json");
   });
+
+  it("dispatches the public page-route plugin scaffold", async () => {
+    const stdout = captureStdout();
+
+    const code = await runNexpressCli(["node", "nexpress", "create", "page-plugin", "greeting"], {
+      cwd: workdir,
+    });
+
+    stdout.restore();
+    expect(code).toBe(0);
+    expect(stdout.read()).toContain("✓ Scaffolded public page-route plugin");
+    expect(stdout.read()).toContain("pnpm --filter greeting build");
+  });
 });

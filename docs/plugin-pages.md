@@ -19,10 +19,9 @@ the operator-facing how-to.
 ## Quickstart
 
 ```ts
-import { definePlugin, type NpPluginPageRouteRegistration } from "@nexpress/plugin-sdk";
-import type { NpRouteRenderProps } from "@nexpress/next";
+import { definePlugin, type NpPluginPageRouteProps } from "@nexpress/plugin-sdk";
 
-async function ListPage(_props: NpRouteRenderProps) {
+async function ListPage(_props: NpPluginPageRouteProps) {
   return (
     <main>
       <h1>Discussions</h1>
@@ -65,24 +64,19 @@ the metadata your `metadata()` function returned.
 
 Each entry in `pageRoutes` is an `NpPluginPageRouteRegistration`:
 
-| Field | Type | Required | Default | Purpose |
-| --- | --- | --- | --- | --- |
-| `pattern` | string | yes | — | The URL pattern. See "Pattern grammar" below. |
-| `component` | `unknown` (expected: `ComponentType<NpRouteRenderProps>`) | yes | — | Your route component. **Must be a Server Component** unless wrapped — see "Server / client boundary." |
-| `metadata` | `unknown` (expected: `(ctx: NpRouteRenderProps) => Metadata \| Promise<Metadata>`) | no | — | Builder for the route's `<head>` (Next.js `Metadata` type). Without it, the framework emits site-wide fallback SEO. |
-| `surface` | `"site" \| "member"` | no | `"site"` | Which audience this route is for. `"member"` routes render with `impl.members.shell` + the F-track fallback chain (a theme that doesn't define `impl.members.shell` falls back to the top-level `impl.shell` with chrome slots). **Does not gate access**: a `surface: "member"` route is rendered to anyone, and the route component is responsible for calling `getSiteMember()` and `notFound()` / redirecting on null. The flag controls visual chrome only. |
-| `locale` | `"auto" \| "none"` | no | `"auto"` | `"auto"` (the only setting plumbed today) means the host strips the locale prefix before matching, so `/en/discussions` and `/discussions` both match `/discussions`. `"none"` is reserved for v1.x. |
+| Field       | Type                                         | Required | Default  | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ----------- | -------------------------------------------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pattern`   | string                                       | yes      | —        | The URL pattern. See "Pattern grammar" below.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `component` | `(props: NpPluginPageRouteProps) => unknown` | yes      | —        | Your route component. It may be async and **must be a Server Component**; compose client components inside it when needed.                                                                                                                                                                                                                                                                                                                                       |
+| `metadata`  | `(props: NpPluginPageRouteProps) => unknown` | no       | —        | Sync or async builder for the route's Next.js `Metadata`. Without it, the framework emits site-wide fallback SEO.                                                                                                                                                                                                                                                                                                                                                |
+| `surface`   | `"site" \| "member"`                         | no       | `"site"` | Which audience this route is for. `"member"` routes render with `impl.members.shell` + the F-track fallback chain (a theme that doesn't define `impl.members.shell` falls back to the top-level `impl.shell` with chrome slots). **Does not gate access**: a `surface: "member"` route is rendered to anyone, and the route component is responsible for calling `getSiteMember()` and `notFound()` / redirecting on null. The flag controls visual chrome only. |
+| `locale`    | `"auto" \| "none"`                           | no       | `"auto"` | `"auto"` matches the locale-stripped path; `"none"` matches the raw URL and does not create localized aliases or automatic hreflang entries.                                                                                                                                                                                                                                                                                                                     |
 
-> **Why `component` and `metadata` are typed as `unknown`:** the
-> SDK (`@nexpress/plugin-sdk`) deliberately stays React-free at
-> the type layer so the SDK package doesn't drag a React peer
-> dep into server-only plugin code. The route dispatcher in
-> `@nexpress/next` narrows both fields to their expected shapes
-> at the call site where the component is actually rendered.
->
-> In practice, type your component's *own* props as
-> `NpRouteRenderProps` (TS will catch shape mismatches there) —
-> the entry-level `unknown` is just a structural escape hatch.
+The SDK deliberately types the handler returns as `unknown` so it stays free
+of Next.js and React runtime dependencies. The function inputs are strict:
+components and metadata builders receive `NpPluginPageRouteProps`, and a
+string/module indirection or non-function metadata value fails both TypeScript
+and runtime definition validation.
 
 Order matters in the array because the dispatcher is **first-match-
 wins**. Put more-specific patterns before parametric ones:
@@ -108,10 +102,16 @@ pageRoutes: [
 ```
 
 - Literal segments must match exactly.
+- Literal segments may contain Unicode letters/numbers plus `.`, `_`, `~`,
+  and `-`.
 - `:name` captures a single non-slash segment.
 - `:name(regex)` adds a constraint: `:year(\\d{4})` requires four digits.
+- Parameter names use JavaScript identifier-style ASCII names and may appear
+  only once per pattern. Regular expressions compile during plugin loading.
 - Segment **count must agree** — `/discussions` does not match
   `/discussions/foo`. There is no glob / wildcard / catch-all in v0.1.
+- Patterns start with `/`, use no empty/trailing/dot segments, and are limited
+  to 256 characters. `/` itself is a valid plugin route.
 
 The captured params arrive on the route component's props as
 `params: Record<string, string>`. Numeric params are still strings —
@@ -119,15 +119,13 @@ parse them yourself.
 
 ---
 
-## Component shape — `NpRouteRenderProps`
+## Component shape — `NpPluginPageRouteProps`
 
 ```ts
-import type { NpRouteRenderProps } from "@nexpress/next";
+import type { NpPluginPageRouteProps } from "@nexpress/plugin-sdk";
 
-export interface NpRouteRenderProps {
-  params: Record<string, string>;
-  searchParams: Record<string, string | string[] | undefined>;
-  blockCtx: NpBlockRenderContext;
+async function EventPage({ params, searchParams, blockCtx }: NpPluginPageRouteProps) {
+  // ...
 }
 ```
 
@@ -138,19 +136,34 @@ export interface NpRouteRenderProps {
 - `blockCtx` is the same render context the host passes to themes;
   use it if you call `renderBlocks(...)` inside your route.
 
+---
+
+## Locale matching
+
+`locale: "auto"` matches the locale-stripped path. A pattern such as
+`/discussions/:slug` therefore handles both `/discussions/topic` and
+`/ko/discussions/topic`, and the host adds its normal hreflang alternates.
+
+`locale: "none"` matches the raw path. The same pattern handles only
+`/discussions/topic`; `/ko/discussions/topic` does not match it. The host also
+leaves the route's metadata alternates untouched instead of inventing
+localized copies. Use this for protocol callbacks, locale-neutral tools, or a
+plugin that owns locale parsing itself.
+
 `metadata({ params, searchParams, blockCtx })` receives the same
 shape — building metadata from URL state is straightforward:
 
 ```ts
 import { findDocuments } from "@nexpress/core";
 import { buildPageMetadata } from "@nexpress/next";
+import type { NpPluginPageRouteProps } from "@nexpress/plugin-sdk";
 
 interface DiscussionRow {
   title: string;
   excerpt?: string | null;
 }
 
-async function detailMetadata(ctx: NpRouteRenderProps) {
+async function detailMetadata(ctx: NpPluginPageRouteProps) {
   const slug = ctx.params.slug;
   const result = await findDocuments<DiscussionRow>("discussions", {
     where: { slug },
@@ -204,6 +217,19 @@ Drop the override from the theme or rename the plugin's route.
 
 Both warnings name the conflicting pattern + plugin id(s).
 
+Malformed routes fail earlier than collision handling:
+
+- `definePlugin()` rejects invalid patterns, non-function component/metadata
+  values, unsupported fields, and same-plugin duplicate patterns while the
+  plugin module is evaluated.
+- The core host repeats the same validation for definitions that bypass the
+  SDK and requires the derived `site:route` capability.
+- `nexpress ops plugins doctor --json` reports
+  `plugins.page_route_invalid` and `plugins.page_route_duplicate` as errors.
+  Cross-plugin ownership remains the warning
+  `plugins.page_route_conflict`, because plugin order still determines the
+  winner until the operator resolves it.
+
 ---
 
 ## Server / client boundary
@@ -243,8 +269,8 @@ import { MyForm } from "@nexpress/plugin-my/client";
 Two pieces of `tsup` setup are required:
 
 1. **Dual-entry config** (one entry per output: `index` + `client`)
-   so tsup emits a separate `dist/client.js` with the `"use
-   client"` banner.
+   so tsup emits a separate `dist/client.js` with the `"use client"`
+   banner at the top.
 2. **Mark the package's own `./client` subpath as `external`** for
    the `index` entry. Without this, tsup follows the relative
    imports inside the package source and bundles client code into
@@ -255,9 +281,8 @@ Two pieces of `tsup` setup are required:
 && tsup`), not inside either tsup config — the parallel dts
 builds otherwise race on the shared output directory.
 
-Working reference:
-[`packages/plugins/forum/tsup.config.ts`](../packages/plugins/forum/tsup.config.ts)
-+ [`packages/plugins/forum/package.json`](../packages/plugins/forum/package.json).
+Working references: [`packages/plugins/forum/tsup.config.ts`](../packages/plugins/forum/tsup.config.ts)
+and [`packages/plugins/forum/package.json`](../packages/plugins/forum/package.json).
 
 ---
 
@@ -299,12 +324,13 @@ API calls), wrap the data fetch in `cachedPluginFetch` from
 
 ```ts
 import { cachedPluginFetch } from "@nexpress/next";
+import type { NpPluginPageRouteProps } from "@nexpress/plugin-sdk";
 
-export default async function ListRoute({ searchParams }: NpRouteRenderProps) {
+export default async function ListRoute({ searchParams }: NpPluginPageRouteProps) {
   const page = Math.max(1, Number(searchParams.page ?? 1));
   const data = await cachedPluginFetch(
-    "my-forum",                               // plugin id
-    ["list", String(page)],                   // key parts (key per page)
+    "my-forum", // plugin id
+    ["list", String(page)], // key parts (key per page)
     async () => findDocuments("discussions", { page, limit: 20 }),
     { revalidate: 60, extraTags: ["nx:collection:discussions"] },
   );

@@ -28,6 +28,7 @@ import { JsonLd } from "@nexpress/next";
 import { ShellWrap } from "../../components/shell-wrap";
 import { i18nConfig, isLocale } from "@/i18n.config";
 import { ensureFor } from "../../lib/init-core";
+import { npApplyPluginPageRouteLocaleMetadata } from "./plugin-route-metadata";
 
 /**
  * Phase 12.2 — peel a locale prefix off the path. Returns
@@ -92,6 +93,8 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   // Search engines use this to deduplicate translated copies.
   const alternates = buildHreflangAlternates(path === "/" ? "" : path);
   const xDefault = path === "/" ? "/" : `/${path}`;
+  const languageAlternates = Object.fromEntries(alternates.map((a) => [a.hreflang, a.href]));
+  let pluginRouteLocale: "auto" | "none" | null = null;
 
   // Phase F.2 — when no page document matches but a theme route
   // does, defer to the route's `metadata` builder. Without this,
@@ -102,60 +105,62 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   if (!page) {
     const activeTheme = await getCachedActiveTheme();
     const match = dispatchThemeRoute(activeTheme, path);
-    if (match?.route.metadata) {
-      const sp = await searchParams;
-      const themeMetadata = await match.route.metadata(
-        buildRouteRenderProps({
-          match,
-          searchParams: sp,
-          // metadata builders rarely render blocks, but pass the
-          // site-scoped ctx for symmetry with the Page render
-          // path so any theme that does dispatch blocks from
-          // metadata gets the same source filtering.
-          blockCtx: await createSiteScopedBlockRenderContext(),
-        }),
-      );
-      return {
-        ...themeMetadata,
-        alternates: {
-          ...(themeMetadata.alternates ?? {}),
-          languages: {
-            ...Object.fromEntries(alternates.map((a) => [a.hreflang, a.href])),
-            "x-default": xDefault,
+    if (match) {
+      if (match.route.metadata) {
+        const sp = await searchParams;
+        const themeMetadata = await match.route.metadata(
+          buildRouteRenderProps({
+            match,
+            searchParams: sp,
+            // metadata builders rarely render blocks, but pass the
+            // site-scoped ctx for symmetry with the Page render
+            // path so any theme that does dispatch blocks from
+            // metadata gets the same source filtering.
+            blockCtx: await createSiteScopedBlockRenderContext(),
+          }),
+        );
+        return {
+          ...themeMetadata,
+          alternates: {
+            ...(themeMetadata.alternates ?? {}),
+            languages: {
+              ...languageAlternates,
+              "x-default": xDefault,
+            },
           },
-        },
-      };
-    }
-
-    // PRT.2 — plugin route metadata. Same precedence as the
-    // renderer: theme metadata wins, then plugin metadata.
-    // Without this branch, plugin-served URLs would emit
-    // page-fallback SEO based on whatever DefaultHomePage
-    // carries — same bug F.2 closed for theme routes.
-    const themeRoutes = activeTheme ? collectThemeRoutes(activeTheme) : [];
-    const pluginMatch = await dispatchPluginRoute({
-      localeAwarePath: path,
-      themeRoutes,
-    });
-    if (pluginMatch?.route.metadata) {
-      const sp = await searchParams;
-      const pluginMetadata = await pluginMatch.route.metadata(
-        buildPluginRouteRenderProps({
-          match: pluginMatch,
-          searchParams: sp,
-          blockCtx: await createSiteScopedBlockRenderContext(),
-        }),
-      );
-      return {
-        ...pluginMetadata,
-        alternates: {
-          ...(pluginMetadata.alternates ?? {}),
-          languages: {
-            ...Object.fromEntries(alternates.map((a) => [a.hreflang, a.href])),
-            "x-default": xDefault,
-          },
-        },
-      };
+        };
+      }
+    } else {
+      // PRT.2 — plugin route metadata. Same precedence as the
+      // renderer: theme metadata wins, then plugin metadata.
+      // Without this branch, plugin-served URLs would emit
+      // page-fallback SEO based on whatever DefaultHomePage
+      // carries — same bug F.2 closed for theme routes.
+      const themeRoutes = activeTheme ? collectThemeRoutes(activeTheme) : [];
+      const pluginMatch = await dispatchPluginRoute({
+        localeAwarePath: path,
+        rawPath,
+        themeRoutes,
+      });
+      if (pluginMatch) {
+        pluginRouteLocale = pluginMatch.route.locale;
+        if (pluginMatch.route.metadata) {
+          const sp = await searchParams;
+          const pluginMetadata = await pluginMatch.route.metadata(
+            buildPluginRouteRenderProps({
+              match: pluginMatch,
+              searchParams: sp,
+              blockCtx: await createSiteScopedBlockRenderContext(),
+            }),
+          );
+          return npApplyPluginPageRouteLocaleMetadata(
+            pluginMetadata,
+            pluginMatch.route.locale,
+            languageAlternates,
+            xDefault,
+          );
+        }
+      }
     }
   }
 
@@ -170,12 +175,20 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     locale,
   });
 
+  if (pluginRouteLocale) {
+    return npApplyPluginPageRouteLocaleMetadata(
+      metadata,
+      pluginRouteLocale,
+      languageAlternates,
+      xDefault,
+    );
+  }
   return {
     ...metadata,
     alternates: {
       ...(metadata.alternates ?? {}),
       languages: {
-        ...Object.fromEntries(alternates.map((a) => [a.hreflang, a.href])),
+        ...languageAlternates,
         "x-default": xDefault,
       },
     },
@@ -261,6 +274,7 @@ export default async function CatchAllPage({ params, searchParams }: PageProps) 
     const themeRoutes = activeTheme ? collectThemeRoutes(activeTheme) : [];
     const pluginMatch = await dispatchPluginRoute({
       localeAwarePath: path,
+      rawPath,
       themeRoutes,
     });
     if (pluginMatch) {
@@ -391,9 +405,7 @@ export default async function CatchAllPage({ params, searchParams }: PageProps) 
  * historical block renderer). Returns the component itself so
  * the route doesn't have to know how the theme stored it.
  */
-async function resolvePageTemplate(
-  templateId: string | null,
-): Promise<ComponentType<{
+async function resolvePageTemplate(templateId: string | null): Promise<ComponentType<{
   doc: Record<string, unknown>;
   blockCtx?: NpBlockRenderContext;
 }> | null> {
@@ -411,8 +423,7 @@ async function resolvePageTemplate(
   // Default fallback: prefer theme's `default` over plugin's.
   const active = await getCachedActiveTheme();
   const themeDefault = active?.impl.templates?.pages?.default?.component as
-    | ComponentType<{ doc: Record<string, unknown>; blockCtx?: NpBlockRenderContext }>
-    | undefined;
+    ComponentType<{ doc: Record<string, unknown>; blockCtx?: NpBlockRenderContext }> | undefined;
   if (themeDefault) return themeDefault;
 
   const pluginDefault = (

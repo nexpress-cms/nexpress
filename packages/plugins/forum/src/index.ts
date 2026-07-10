@@ -4,7 +4,7 @@ import {
   isOwnerOrAdmin,
   type NpCollectionConfig,
 } from "@nexpress/core";
-import { definePlugin } from "@nexpress/plugin-sdk";
+import { definePlugin, type NpPluginPageRouteRegistration } from "@nexpress/plugin-sdk";
 
 import DiscussionsListRoute, { listMetadata } from "./routes/list.js";
 import NewDiscussionRoute from "./routes/new.js";
@@ -242,10 +242,13 @@ export const forumPlugin = definePlugin({
   },
   // PRT.3 — the forum plugin owns the public-site routes for
   // its collection. The catch-all in the host app dispatches
-  // these via `dispatchPluginRoute` (#623); precedence is
-  // theme > plugin > collection. Order here matters because the
-  // dispatcher is first-match-wins: more-specific patterns
-  // (`/discussions/new`, `/discussions/:slug/edit`) must precede
+  // these via `dispatchPluginRoute` (#623); page documents and
+  // redirects win first, followed by theme routes, then plugin
+  // routes. Order here matters because the
+  // dispatcher is first-match-wins. definePlugin validates every
+  // pattern/component/metadata entry and rejects exact duplicates;
+  // more-specific patterns (`/discussions/new`,
+  // `/discussions/:slug/edit`) must precede
   // the parametric `/discussions/:slug`.
   pageRoutes: [
     {
@@ -278,7 +281,7 @@ export const forumPlugin = definePlugin({
       component: ProfileDiscussionsRoute,
       metadata: profileDiscussionsMetadata,
     },
-  ],
+  ] satisfies NpPluginPageRouteRegistration[],
 });
 
 export default forumPlugin;

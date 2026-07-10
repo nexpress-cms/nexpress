@@ -1,5 +1,5 @@
 import type { ZodType } from "zod";
-import type { NpBlockDefinition, NpPattern } from "@nexpress/blocks";
+import type { NpBlockDefinition, NpBlockRenderContext, NpPattern } from "@nexpress/blocks";
 import type {
   NpAuthAfterLoginHookData,
   NpAuthAfterRegisterHookData,
@@ -29,6 +29,8 @@ import type {
   NpPluginApiRouteMethod,
   NpPluginApiRouteRequest as NpCorePluginApiRouteRequest,
   NpPluginApiRouteResponse as NpCorePluginApiRouteResponse,
+  NpPluginPageRouteLocale,
+  NpPluginPageRouteSurface,
   NpRenderHookData as NpCoreRenderHookData,
 } from "@nexpress/core";
 
@@ -865,9 +867,9 @@ export interface NpPluginDefinition<TConfig = Record<string, unknown>> {
    * collection-derived URLs. See `docs/design/plugin-routes.md`
    * for the precedence + override rules.
    *
-   * The route shape is intentionally identical to
-   * `NpThemeRoute` so the dispatcher walks both lists with the
-   * same matcher. Each entry adds two plugin-specific knobs:
+   * The render props mirror `NpThemeRoute`, while the definition
+   * follows the canonical plugin page-route contract. Each entry
+   * adds two plugin-specific knobs:
    *
    *   - `surface: "site" | "member"` — which theme shell wraps the
    *     rendered component. `"member"` selects member-facing chrome only;
@@ -886,37 +888,39 @@ export interface NpPluginDefinition<TConfig = Record<string, unknown>> {
 }
 
 /**
- * Plugin-side shape of a page route entry. Stored as
- * `unknown`-typed `component` because `@nexpress/plugin-sdk`
- * deliberately stays React-free at the type layer (the SDK is
- * imported by server-side plugin host code that doesn't need
- * the React peer dep). The `@nexpress/next` route dispatcher
- * narrows it to `ComponentType<NpRouteRenderProps>` at the
- * call site where it's actually rendered.
- *
- * Plugin authors get the strict type by importing
- * `NpPluginPageRoute` from `@nexpress/plugin-sdk` (re-exported
- * from `define-plugin.ts` via a type-only file that augments
- * the React peer dep).
+ * Props shared by plugin page components and metadata builders. This mirrors
+ * `NpRouteRenderProps` structurally without making the SDK depend on Next.js
+ * or React at runtime.
  */
+export interface NpPluginPageRouteProps {
+  readonly params: Readonly<Record<string, string>>;
+  readonly searchParams: Readonly<Record<string, string | string[] | undefined>>;
+  readonly blockCtx: NpBlockRenderContext;
+}
+
+export type NpPluginPageRouteComponent = (props: NpPluginPageRouteProps) => unknown;
+
+export type NpPluginPageRouteMetadata = (props: NpPluginPageRouteProps) => unknown;
+
+/** Definition-time page route contract used by `definePlugin({ pageRoutes })`. */
 export interface NpPluginPageRouteRegistration {
-  /** Same path-to-regexp grammar as `NpThemeRoute.pattern`. */
+  /** Canonical literal, `:name`, or `:name(regex)` route pattern. */
   pattern: string;
-  /** React component matching `NpRouteRenderProps`. */
-  component: unknown;
-  /** Optional metadata builder (same shape as theme routes). */
-  metadata?: unknown;
+  /** Server component matching `NpPluginPageRouteProps`. */
+  component: NpPluginPageRouteComponent;
+  /** Optional metadata builder receiving the same route props. */
+  metadata?: NpPluginPageRouteMetadata;
   /**
    * Which shell wraps the rendered component. Defaults to
    * `"site"` (theme's `impl.shell`). `"member"` selects member-facing
    * chrome only; it is not an auth gate.
    */
-  surface?: "site" | "member";
+  surface?: NpPluginPageRouteSurface;
   /**
    * Locale handling. `"auto"` (default) inherits the site's
    * i18n config; `"none"` keeps the path verbatim.
    */
-  locale?: "auto" | "none";
+  locale?: NpPluginPageRouteLocale;
 }
 
 export type NpResolvedPlugin<TConfig = Record<string, unknown>> = Omit<

@@ -21,6 +21,12 @@ import {
   type NpPluginApiRouteResponse,
 } from "./api-route-contract.js";
 import {
+  npCompilePluginPageRoutePattern,
+  npValidatePluginPageRouteDefinition,
+  type NpPluginPageRouteLocale,
+  type NpPluginPageRouteSurface,
+} from "./page-route-contract.js";
+import {
   npIsPluginHookName,
   npValidatePluginHookData,
   type NpPluginHookDataMap,
@@ -192,10 +198,10 @@ interface PluginRegistration {
   /** G.1 — migration callback for v(N-1) → current. */
   configMigrate?: (old: unknown, fromVersion: number) => unknown;
   /**
-   * Plugin-contributed page routes (#623). Stored as the same
-   * shape the SDK accepts (component + optional metadata as
-   * `unknown`); the route-dispatcher in `@nexpress/next`
-   * narrows them at render time. See
+   * Plugin-contributed page routes (#623). The canonical
+   * contract validates component and metadata functions before
+   * the host stores renderer-agnostic values; the route-dispatcher
+   * in `@nexpress/next` narrows them at render time. See
    * `docs/design/plugin-routes.md` for precedence + surface
    * semantics.
    */
@@ -206,8 +212,8 @@ export interface PluginPageRouteEntry {
   pattern: string;
   component: unknown;
   metadata?: unknown;
-  surface: "site" | "member";
-  locale: "auto" | "none";
+  surface: NpPluginPageRouteSurface;
+  locale: NpPluginPageRouteLocale;
 }
 
 /**
@@ -326,6 +332,13 @@ export interface ResolvedPluginLike {
     description?: string;
     auth?: boolean;
   }>;
+  pageRoutes?: ReadonlyArray<{
+    pattern: string;
+    component: unknown;
+    metadata?: unknown;
+    surface?: NpPluginPageRouteSurface;
+    locale?: NpPluginPageRouteLocale;
+  }>;
   actions?: Readonly<
     Record<
       string,
@@ -384,6 +397,44 @@ function validateApiRouteRegistry(pluginId: string, value: unknown): ValidatedAp
     }
     routeKeys.add(routeKey);
     routes.push(route);
+  }
+  return routes;
+}
+
+function validatePageRouteRegistry(pluginId: string, value: unknown): PluginPageRouteEntry[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new Error(`[plugin:${pluginId}] pageRoutes must be an array.`);
+  }
+
+  const routes: PluginPageRouteEntry[] = [];
+  const patterns = new Set<string>();
+  for (const [index, rawRoute] of value.entries()) {
+    const validation = npValidatePluginPageRouteDefinition(rawRoute);
+    if (!validation.ok) {
+      throw new Error(
+        `[plugin:${pluginId}] invalid page route at index ${index.toString()}: ${validation.message}`,
+      );
+    }
+    const route = rawRoute as {
+      pattern: string;
+      component: unknown;
+      metadata?: unknown;
+      surface?: NpPluginPageRouteSurface;
+      locale?: NpPluginPageRouteLocale;
+    };
+    if (patterns.has(route.pattern)) {
+      throw new Error(`[plugin:${pluginId}] duplicate page route "${route.pattern}".`);
+    }
+    patterns.add(route.pattern);
+    npCompilePluginPageRoutePattern(route.pattern);
+    routes.push({
+      pattern: route.pattern,
+      component: route.component,
+      metadata: route.metadata,
+      surface: route.surface ?? "site",
+      locale: route.locale ?? "auto",
+    });
   }
   return routes;
 }
@@ -537,6 +588,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
       const idx = globalRoutes.indexOf(route);
       if (idx !== -1) globalRoutes.splice(idx, 1);
     }
+    pluginRegistry.delete(manifest.id);
   }
 
   const validatedApiRoutes = validateApiRouteRegistry(
@@ -545,6 +597,13 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   );
   if (validatedApiRoutes.length > 0) {
     assertCapability(manifest.id, "api:route", manifest.capabilities);
+  }
+  const validatedPageRoutes = validatePageRouteRegistry(
+    manifest.id,
+    (plugin as { pageRoutes?: unknown }).pageRoutes,
+  );
+  if (validatedPageRoutes.length > 0) {
+    assertCapability(manifest.id, "site:route", manifest.capabilities);
   }
 
   const registration: PluginRegistration = {
@@ -564,7 +623,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     configSchema: plugin.configSchema,
     configVersion: plugin.configVersion,
     configMigrate: plugin.configMigrate,
-    pageRoutes: normalizePageRoutes(plugin),
+    pageRoutes: validatedPageRoutes,
   };
 
   pluginRegistry.set(manifest.id, registration);
@@ -1053,48 +1112,6 @@ export function getPluginPageRoutes(): Array<{
     for (const route of registration.pageRoutes) {
       out.push({ pluginId, route });
     }
-  }
-  return out;
-}
-
-/**
- * Normalize a plugin's `pageRoutes` field at registration time.
- * Drops malformed entries silently — same defensive shape as
- * `scheduled` / hooks normalization above. Defaults `surface` to
- * `"site"` and `locale` to `"auto"` so the dispatcher always gets
- * concrete values.
- */
-function normalizePageRoutes(plugin: ResolvedPluginLike): readonly PluginPageRouteEntry[] {
-  const raw = (plugin as { pageRoutes?: unknown }).pageRoutes;
-  if (!Array.isArray(raw)) return [];
-  const out: PluginPageRouteEntry[] = [];
-  for (const entry of raw) {
-    if (!entry || typeof entry !== "object") continue;
-    const r = entry as {
-      pattern?: unknown;
-      component?: unknown;
-      metadata?: unknown;
-      surface?: unknown;
-      locale?: unknown;
-    };
-    if (typeof r.pattern !== "string" || r.pattern.length === 0) continue;
-    // Accept either a function (functional / class component) or a
-    // non-null object (memo / forwardRef / Suspense-wrapped, all of
-    // which are objects with a `$$typeof` brand). Reject anything
-    // else — strings, numbers, booleans — that the dispatcher would
-    // hand to React only to crash at render time. Same defensive
-    // shape as the scheduled / hooks normalization above; tighter
-    // than the earlier draft which only rejected null / undefined.
-    if (typeof r.component !== "function") {
-      if (typeof r.component !== "object" || r.component === null) continue;
-    }
-    out.push({
-      pattern: r.pattern,
-      component: r.component,
-      metadata: r.metadata,
-      surface: r.surface === "member" ? "member" : "site",
-      locale: r.locale === "none" ? "none" : "auto",
-    });
   }
   return out;
 }

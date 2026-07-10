@@ -5,6 +5,7 @@ import { definePlugin } from "./define-plugin.js";
 import {
   npRouteMethods,
   type NpPluginDefinition,
+  type NpPluginPageRouteProps,
   type NpReadonlyPluginDocument,
   type NpRenderContribution,
   type NpRouteRequest,
@@ -190,9 +191,46 @@ describe("definePlugin — capability derivation", () => {
   it("auto-adds site:route when page routes are declared", () => {
     const plugin = definePlugin({
       manifest: { ...baseManifest },
-      pageRoutes: [{ pattern: "/status", component: () => null }],
+      pageRoutes: [
+        {
+          pattern: "/status/:id",
+          component: (props) => {
+            expectTypeOf(props).toEqualTypeOf<NpPluginPageRouteProps>();
+            expectTypeOf(props.params.id).toEqualTypeOf<string>();
+            return null;
+          },
+          metadata: (props) => ({ title: props.params.id }),
+        },
+      ],
     });
     expect(plugin.manifest.capabilities).toContain("site:route");
+  });
+
+  it.each([
+    [[{ pattern: "status", component: (): null => null }], /pattern must start with/],
+    [[{ pattern: "/status/:id([)", component: (): null => null }], /invalid regular expression/],
+    [[{ pattern: "/status", component: "./page.js" }], /component must be a function/],
+    [[{ pattern: "/status", component: (): null => null, metadata: {} }], /metadata/],
+    [[{ pattern: "/status", component: (): null => null, locale: "inherit" }], /locale/],
+    [[{ pattern: "/status", component: (): null => null, surface: "admin" }], /surface/],
+  ])("rejects malformed page routes during evaluation", (pageRoutes, message) => {
+    const definition = {
+      manifest: { ...baseManifest },
+      pageRoutes,
+    } as unknown as NpPluginDefinition;
+    expect(() => definePlugin(definition)).toThrow(message);
+  });
+
+  it("rejects duplicate page route patterns within one plugin", () => {
+    const definition = {
+      manifest: { ...baseManifest },
+      pageRoutes: [
+        { pattern: "/status", component: () => null },
+        { pattern: "/status", component: () => null, locale: "none" },
+      ],
+    } as unknown as NpPluginDefinition;
+
+    expect(() => definePlugin(definition)).toThrow(/duplicate page route "\/status"/);
   });
 
   it("auto-adds hooks:scheduled when scheduled tasks are declared", () => {

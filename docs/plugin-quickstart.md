@@ -71,6 +71,7 @@ the right starter for what you're building:
 | `nexpress create block-plugin <slug> --interactive --workspace` | Static block + a `"use client"` form, with the directive / `splitting: false` / self-import wiring pre-configured.       |
 | `nexpress create hook-plugin <slug> --workspace`                | One `content:afterCreate` hook handler.                                                                                  |
 | `nexpress create route-plugin <slug> --workspace`               | One public `GET /health` route.                                                                                          |
+| `nexpress create page-plugin <slug> --workspace`                | One typed `/hello/:name` public page route with metadata and locale guidance.                                            |
 | `nexpress create admin-plugin <slug> --workspace`               | `configSchema` settings form + status widget + manual action, wired through a typed definition-level `actions` registry. |
 | `nexpress create scheduled-plugin <slug> --workspace`           | One nightly cron task at 02:00.                                                                                          |
 
