@@ -273,9 +273,17 @@ describe.skipIf(skipIfNoTestDb())("hook polymorphism (Phase 9.7o)", () => {
         },
         hooks: {
           "content:beforeCreate": ({ data }) => {
-            data.document.title = "Plugin-observed by hook";
+            if (data.collection === "discussions" && data.document.title === "Plugin-observed") {
+              data.document.title = "Plugin-observed by hook";
+            }
           },
           "content:afterCreate": ({ data }) => {
+            if (
+              data.collection !== "discussions" ||
+              data.document.title !== "Plugin-observed by hook"
+            ) {
+              return;
+            }
             seen.push({
               hook: "content:afterCreate",
               principal: data.principal,
@@ -285,9 +293,17 @@ describe.skipIf(skipIfNoTestDb())("hook polymorphism (Phase 9.7o)", () => {
             });
           },
           "content:beforeUpdate": ({ data }) => {
-            data.document.title = "Plugin-updated by hook";
+            if (data.collection === "discussions" && data.document.title === "Plugin-updated") {
+              data.document.title = "Plugin-updated by hook";
+            }
           },
           "content:afterUpdate": ({ data }) => {
+            if (
+              data.collection !== "discussions" ||
+              data.document.title !== "Plugin-updated by hook"
+            ) {
+              return;
+            }
             seen.push({
               hook: "content:afterUpdate",
               principal: data.principal,
