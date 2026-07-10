@@ -1,4 +1,4 @@
-import { npValidatePluginPageRouteDefinition } from "@nexpress/core";
+import { npAnalyzePluginScheduledTasks, npValidatePluginPageRouteDefinition } from "@nexpress/core";
 import { npAnalyzeBlockDefinitions } from "@nexpress/blocks/contracts";
 
 import { npAdminExtensionSchema, npPluginManifestSchema } from "./manifest.js";
@@ -22,6 +22,12 @@ const routeSegmentPattern = /^[A-Za-z0-9._~-]+$/;
 function validateBlockRegistry(pluginId: string, blocks: unknown): void {
   if (blocks === undefined) return;
   const issue = npAnalyzeBlockDefinitions(blocks)[0];
+  if (issue) throw new Error(`[plugin:${pluginId}] ${issue.message}`);
+}
+
+function validateScheduledTaskRegistry(pluginId: string, scheduled: unknown): void {
+  if (scheduled === undefined) return;
+  const issue = npAnalyzePluginScheduledTasks(scheduled)[0];
   if (issue) throw new Error(`[plugin:${pluginId}] ${issue.message}`);
 }
 
@@ -433,6 +439,7 @@ export function definePlugin<TConfig = Record<string, unknown>>(
   definition: NpPluginDefinition<TConfig>,
 ): NpResolvedPlugin<TConfig> {
   validateBlockRegistry(definition.manifest.id, definition.blocks);
+  validateScheduledTaskRegistry(definition.manifest.id, definition.scheduled);
   validateHookRegistry(definition.manifest.id, definition.hooks);
   validateRouteRegistry(definition.manifest.id, definition.routes);
   validatePageRouteRegistry(definition.manifest.id, definition.pageRoutes);

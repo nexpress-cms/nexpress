@@ -74,6 +74,21 @@ export type {
 } from "./page-route-contract.js";
 
 export {
+  npAnalyzePluginScheduledTasks,
+  npValidatePluginCronExpression,
+  npValidatePluginScheduledTaskDefinition,
+  npValidatePluginScheduledTaskId,
+  npValidatePluginScheduledTaskResult,
+} from "./scheduled-task-contract.js";
+
+export type {
+  NpPluginScheduledTaskDefinition,
+  NpPluginScheduledTaskIssue,
+  NpPluginScheduledTaskIssueCode,
+  NpPluginScheduledTaskValidationResult,
+} from "./scheduled-task-contract.js";
+
+export {
   npIsPluginHookName,
   npPluginHookNames,
   npValidatePluginHookData,

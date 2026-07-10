@@ -27,6 +27,10 @@ import {
   type NpPluginPageRouteSurface,
 } from "./page-route-contract.js";
 import {
+  npAnalyzePluginScheduledTasks,
+  npValidatePluginScheduledTaskResult,
+} from "./scheduled-task-contract.js";
+import {
   npIsPluginHookName,
   npValidatePluginHookData,
   type NpPluginHookDataMap,
@@ -339,6 +343,12 @@ export interface ResolvedPluginLike {
     surface?: NpPluginPageRouteSurface;
     locale?: NpPluginPageRouteLocale;
   }>;
+  scheduled?: ReadonlyArray<{
+    id: string;
+    cron: string;
+    handler: unknown;
+    description?: string;
+  }>;
   actions?: Readonly<
     Record<
       string,
@@ -375,6 +385,13 @@ interface ValidatedApiRoute {
   handler: ResolvedRouteFn;
   description?: string;
   auth?: boolean;
+}
+
+interface ValidatedScheduledTask {
+  id: string;
+  cron: string;
+  handler: (ctx: Record<string, unknown>) => unknown;
+  description?: string;
 }
 
 function validateApiRouteRegistry(pluginId: string, value: unknown): ValidatedApiRoute[] {
@@ -437,6 +454,13 @@ function validatePageRouteRegistry(pluginId: string, value: unknown): PluginPage
     });
   }
   return routes;
+}
+
+function validateScheduledTaskRegistry(pluginId: string, value: unknown): ValidatedScheduledTask[] {
+  if (value === undefined) return [];
+  const issue = npAnalyzePluginScheduledTasks(value)[0];
+  if (issue) throw new Error(`[plugin:${pluginId}] ${issue.message}`);
+  return value as ValidatedScheduledTask[];
 }
 
 /**
@@ -605,6 +629,13 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   if (validatedPageRoutes.length > 0) {
     assertCapability(manifest.id, "site:route", manifest.capabilities);
   }
+  const validatedScheduledTasks = validateScheduledTaskRegistry(
+    manifest.id,
+    (plugin as { scheduled?: unknown }).scheduled,
+  );
+  if (validatedScheduledTasks.length > 0) {
+    assertCapability(manifest.id, "hooks:scheduled", manifest.capabilities);
+  }
 
   const registration: PluginRegistration = {
     id: manifest.id,
@@ -690,32 +721,16 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     });
   }
 
-  // Phase 19 — first-class cron schedules. Each entry maps to
-  // one pg-boss schedule. Duplicates within a plugin overwrite
-  // (idempotent across hot reloads); cross-plugin id collisions
-  // are fine because the queue name namespaces by plugin id.
-  const scheduledRaw = (plugin as { scheduled?: unknown }).scheduled;
-  if (Array.isArray(scheduledRaw)) {
-    for (const entry of scheduledRaw) {
-      if (!entry || typeof entry !== "object") continue;
-      const e = entry as {
-        id?: unknown;
-        cron?: unknown;
-        handler?: unknown;
-        description?: unknown;
-      };
-      if (typeof e.id !== "string" || e.id.length === 0) continue;
-      if (typeof e.cron !== "string" || e.cron.length === 0) continue;
-      if (typeof e.handler !== "function") continue;
-      assertCapability(manifest.id, "hooks:scheduled", registration.capabilities);
-      registration.schedules.set(e.id, {
-        pluginId: manifest.id,
-        taskId: e.id,
-        cron: e.cron,
-        description: typeof e.description === "string" ? e.description : undefined,
-        handler: e.handler as PluginScheduleHandler["handler"],
-      });
-    }
+  // Phase 19 — first-class cron schedules. Definition validation above
+  // guarantees every entry maps to exactly one namespaced pg-boss row.
+  for (const task of validatedScheduledTasks) {
+    registration.schedules.set(task.id, {
+      pluginId: manifest.id,
+      taskId: task.id,
+      cron: task.cron,
+      description: task.description,
+      handler: task.handler,
+    });
   }
 
   for (const [hookName, rawValue] of Object.entries(plugin.hooks ?? {})) {
@@ -1313,7 +1328,10 @@ export async function runPluginScheduledTask(pluginId: string, taskId: string): 
     throw new Error(`Plugin "${pluginId}" has no scheduled task with id "${taskId}"`);
   }
   const ctx = await buildCtxFor(pluginId);
-  await entry.handler(ctx);
+  const resultValidation = npValidatePluginScheduledTaskResult(await entry.handler(ctx));
+  if (!resultValidation.ok) {
+    throw new Error(`[plugin:${pluginId}] scheduled task "${taskId}": ${resultValidation.message}`);
+  }
 }
 
 export function resetPlugins(): void {

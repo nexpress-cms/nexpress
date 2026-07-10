@@ -485,19 +485,20 @@ export async function scaffoldScheduledPlugin(options: ScaffoldOptions): Promise
   assertDirAvailable(names.pluginDir);
 
   const description = `Scheduled-task plugin: ${names.packageName}`;
-  const indexSource = `import { definePlugin } from "@nexpress/plugin-sdk";
+  const indexSource = `import { definePlugin, type NpScheduledTask } from "@nexpress/plugin-sdk";
 
 /**
  * Scheduled-task plugin scaffold. Each \`scheduled\` entry becomes one
  * row in \`pgboss.schedule\` plus a per-task worker queue
  * (\`plugin.scheduledTask.<pluginId>.<taskId>\`).
  *
- * Cron expressions follow standard 5-field syntax (m h dom mon dow). A
+ * Cron expressions run in UTC and follow standard 5-field syntax
+ * (m h dom mon dow). A
  * quick reference:
  *   - every 15 minutes — use a step value in the minute field
  *   - \`0 * * * *\`    — top of every hour
- *   - \`0 2 * * *\`    — every day at 02:00
- *   - \`0 9 * * 1\`    — every Monday at 09:00
+ *   - \`0 2 * * *\`    — every day at 02:00 UTC
+ *   - \`0 9 * * 1\`    — every Monday at 09:00 UTC
  *
  * Adding a new \`scheduled\` entry after the worker is already running
  * needs a worker restart to pick up the new boss.work() loop —
@@ -523,7 +524,7 @@ export const ${names.exportName} = definePlugin({
     {
       id: "dailyHousekeeping",
       cron: "0 2 * * *",
-      description: "Runs nightly at 02:00 server-local time.",
+      description: "Runs nightly at 02:00 UTC.",
       handler: async (ctx) => {
         // \`ctx\` here is the same shape \`setup()\` and route handlers
         // receive — \`content\` / \`media\` / \`storage\` / \`log\` /
@@ -535,7 +536,7 @@ export const ${names.exportName} = definePlugin({
         // ...do work here.
       },
     },
-  ],
+  ] satisfies NpScheduledTask[],
 });
 
 export default ${names.exportName};
@@ -545,10 +546,13 @@ export default ${names.exportName};
 
 A scheduled-task plugin scaffolded by \`nexpress create scheduled-plugin\`.
 
-The starter declares one cron task that runs daily at 02:00. Edit
+The starter declares one cron task that runs daily at 02:00 UTC. Edit
 \`src/index.tsx\` to change the cron expression or add more \`scheduled\`
 entries. Each entry maps to one row in \`pgboss.schedule\` and one
-worker queue.
+worker queue. \`definePlugin()\` validates ids, five-field cron syntax,
+handlers, descriptions, and duplicate ids when the module loads. Run
+\`nexpress ops plugins doctor --json\` to surface failures as
+\`plugins.schedule_invalid\` or \`plugins.schedule_duplicate\`.
 `;
 
   const files: Record<string, string> = {

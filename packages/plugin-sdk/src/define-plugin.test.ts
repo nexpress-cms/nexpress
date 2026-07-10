@@ -247,6 +247,33 @@ describe("definePlugin — capability derivation", () => {
     expect(plugin.manifest.capabilities).toContain("hooks:scheduled");
   });
 
+  it.each([
+    [{}, /scheduled must be an array/],
+    [
+      [{ id: "nightly", cron: "0 2 * *", handler: () => undefined }],
+      /cron must use exactly five fields/,
+    ],
+    [[{ id: "nightly", cron: "0 2 * * *", handler: "./handler.js" }], /handler must be a function/],
+  ])("rejects malformed scheduled task registries during evaluation", (scheduled, message) => {
+    const definition = {
+      manifest: { ...baseManifest },
+      scheduled,
+    } as unknown as NpPluginDefinition;
+    expect(() => definePlugin(definition)).toThrow(message);
+  });
+
+  it("rejects duplicate scheduled task ids within one plugin", () => {
+    const definition = {
+      manifest: { ...baseManifest },
+      scheduled: [
+        { id: "nightly", cron: "0 2 * * *", handler: () => undefined },
+        { id: "nightly", cron: "0 3 * * *", handler: () => undefined },
+      ],
+    } as unknown as NpPluginDefinition;
+
+    expect(() => definePlugin(definition)).toThrow(/duplicate scheduled task id "nightly"/);
+  });
+
   it("auto-adds admin capabilities from the declared admin surface", () => {
     const plugin = definePlugin({
       manifest: { ...baseManifest },
@@ -354,16 +381,16 @@ describe("definePlugin — provides derivation (regression)", () => {
     expect(plugin.manifest.provides.actions).toEqual(["refresh"]);
   });
 
-  it("skips malformed scheduled entries while deriving provides", () => {
-    const plugin = definePlugin({
-      manifest: { ...baseManifest },
-      scheduled: [
-        { id: "valid", cron: "*/15 * * * *", handler: () => undefined },
-        { cron: "*/15 * * * *", handler: () => undefined } as never,
-      ],
-    });
-
-    expect(plugin.manifest.provides.scheduledTasks).toEqual(["valid"]);
+  it("rejects malformed scheduled entries before deriving provides", () => {
+    expect(() =>
+      definePlugin({
+        manifest: { ...baseManifest },
+        scheduled: [
+          { id: "valid", cron: "*/15 * * * *", handler: () => undefined },
+          { cron: "*/15 * * * *", handler: () => undefined } as never,
+        ],
+      }),
+    ).toThrow(/invalid scheduled task at index 1/);
   });
 });
 

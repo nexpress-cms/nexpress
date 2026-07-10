@@ -137,53 +137,47 @@ describe.skipIf(skipIfNoTestDb())("Phase 19 — plugin scheduled tasks", () => {
     await expect(runPluginScheduledTask("unknown", "noop")).rejects.toThrow(/not registered/);
   });
 
-  it("invalid scheduled entries are silently skipped", async () => {
+  it("invalid scheduled entries fail before registration", async () => {
     const { definePlugin } = await import("@nexpress/plugin-sdk");
-    const { loadPlugins, getRegisteredPluginSchedules } = await import("@nexpress/core");
+    const { getRegisteredPluginSchedules } = await import("@nexpress/core");
 
-    const plugin = definePlugin({
-      manifest: {
-        id: "phase19-c",
-        name: "Phase 19 test plugin C",
-        description: "Phase 19 test fixture",
-        version: "0.0.1",
-        author: { name: "Test" },
-        license: "MIT",
-        nexpress: { minVersion: "0.1.0" },
-        capabilities: ["content:read"],
-        allowedHosts: [],
-        provides: {
-          blocks: [],
-          fields: [],
-          collections: [],
-          adminExtensions: [],
-          apiRoutes: [],
-          hooks: [],
+    expect(() =>
+      definePlugin({
+        manifest: {
+          id: "phase19-c",
+          name: "Phase 19 test plugin C",
+          description: "Phase 19 test fixture",
+          version: "0.0.1",
+          author: { name: "Test" },
+          license: "MIT",
+          nexpress: { minVersion: "0.1.0" },
+          capabilities: ["content:read"],
+          allowedHosts: [],
+          provides: {
+            blocks: [],
+            fields: [],
+            collections: [],
+            adminExtensions: [],
+            apiRoutes: [],
+            hooks: [],
+          },
+          agent: { description: "test", category: "content", tags: [] },
+          usesTokens: [],
+          styleSlots: {},
         },
-        agent: { description: "test", category: "content", tags: [] },
-        usesTokens: [],
-        styleSlots: {},
-      },
-      // One valid + several malformed entries — host should
-      // store only the valid one.
-      scheduled: [
-        {
-          id: "valid",
-          cron: "* * * * *",
-          handler: () => undefined,
-        },
-        // Missing handler.
-        { id: "no-handler", cron: "* * * * *" } as never,
-        // Missing cron.
-        { id: "no-cron", handler: () => undefined } as never,
-        // Missing id.
-        { cron: "* * * * *", handler: () => undefined } as never,
-      ],
-    });
-    await loadPlugins([plugin]);
+        scheduled: [
+          {
+            id: "valid",
+            cron: "* * * * *",
+            handler: () => undefined,
+          },
+          { id: "no-handler", cron: "* * * * *" } as never,
+        ],
+      }),
+    ).toThrow(/invalid scheduled task at index 1: scheduled task\.handler must be a function/);
 
     const schedules = getRegisteredPluginSchedules();
     const ids = schedules.filter((s) => s.pluginId === "phase19-c").map((s) => s.taskId);
-    expect(ids).toEqual(["valid"]);
+    expect(ids).toEqual([]);
   });
 });

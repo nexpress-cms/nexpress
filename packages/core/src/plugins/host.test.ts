@@ -449,6 +449,67 @@ describe("plugin host", () => {
       );
     });
 
+    it("rejects malformed and duplicate scheduled tasks when definePlugin was bypassed", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("bad-schedule", { capabilities: ["hooks:scheduled"] }),
+          scheduled: [{ id: "nightly", cron: "0 2 * *", handler: () => undefined }],
+        },
+        {
+          ...resolvedPlugin("duplicate-schedule", { capabilities: ["hooks:scheduled"] }),
+          scheduled: [
+            { id: "nightly", cron: "0 2 * * *", handler: () => undefined },
+            { id: "nightly", cron: "0 3 * * *", handler: () => undefined },
+          ],
+        },
+      ]);
+
+      expect(getAllPluginIds()).not.toContain("bad-schedule");
+      expect(getAllPluginIds()).not.toContain("duplicate-schedule");
+      expect(getRegisteredPluginSchedules()).toEqual([]);
+    });
+
+    it("removes a previous schedule before rejecting an invalid replacement", async () => {
+      await loadPlugins([
+        resolvedPlugin("schedule-replacement", {
+          capabilities: ["hooks:scheduled"],
+          scheduled: [
+            { id: "nightly", cron: "0 2 * * *", handler: () => undefined },
+          ],
+        }),
+      ]);
+      expect(getRegisteredPluginSchedules()).toHaveLength(1);
+
+      await loadPlugins([
+        {
+          ...resolvedPlugin("schedule-replacement", { capabilities: ["hooks:scheduled"] }),
+          scheduled: [{ id: "nightly", cron: "0 2 * *", handler: () => undefined }],
+        },
+      ]);
+
+      expect(getAllPluginIds()).not.toContain("schedule-replacement");
+      expect(getRegisteredPluginSchedules()).toEqual([]);
+    });
+
+    it("rejects non-void scheduled task results at dispatch", async () => {
+      await loadPlugins([
+        resolvedPlugin("scheduled-result", {
+          capabilities: ["hooks:scheduled"],
+          scheduled: [
+            {
+              id: "nightly",
+              cron: "0 2 * * *",
+              handler: () => ({ ok: true }),
+            },
+          ],
+        }),
+      ]);
+
+      await expect(runPluginScheduledTask("scheduled-result", "nightly")).rejects.toThrow(
+        '[plugin:scheduled-result] scheduled task "nightly": scheduled task handlers must return void.',
+      );
+    });
+
     it("rejects lowercase methods when definePlugin was bypassed", async () => {
       await loadPlugins([
         resolvedPlugin("case", {

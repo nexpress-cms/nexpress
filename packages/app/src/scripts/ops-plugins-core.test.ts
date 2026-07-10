@@ -25,6 +25,15 @@ function pluginBlock(type: string, overrides: Record<string, unknown> = {}) {
   };
 }
 
+function pluginSchedule(id: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    cron: "5 0 * * *",
+    handler: () => undefined,
+    ...overrides,
+  };
+}
+
 describe("ops plugins core", () => {
   it("reports a clean plugin inventory", () => {
     const report = analyzePlugins([
@@ -232,6 +241,49 @@ describe("ops plugins core", () => {
     expect(
       report.checks.find((check) => check.id === "plugins.page_route_conflict"),
     ).toBeUndefined();
+  });
+
+  it("rejects malformed and same-plugin duplicate scheduled tasks", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "one", name: "One" },
+        scheduled: [
+          pluginSchedule("nightly"),
+          pluginSchedule("nightly", { cron: "0 2 * * *" }),
+          pluginSchedule("broken", { cron: "0 2 * *", handler: "./handler.js" }),
+        ],
+      },
+    ]);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.schedule_duplicate",
+          state: "error",
+          detail: '[plugin:one] duplicate scheduled task id "nightly".',
+          pluginIds: ["one"],
+        }),
+        expect.objectContaining({
+          id: "plugins.schedule_invalid",
+          state: "error",
+          detail: expect.stringContaining("cron must use exactly five fields"),
+          pluginIds: ["one"],
+        }),
+      ]),
+    );
+    expect(report.plugins[0]?.scheduled).toEqual(["nightly", "nightly", "broken"]);
+  });
+
+  it("allows scheduled task ids to repeat across plugin namespaces", () => {
+    const report = analyzePlugins([
+      { manifest: { id: "one", name: "One" }, scheduled: [pluginSchedule("nightly")] },
+      { manifest: { id: "two", name: "Two" }, scheduled: [pluginSchedule("nightly")] },
+    ]);
+
+    expect(report.status).toBe("ready");
+    expect(report.summary.scheduled).toBe(2);
+    expect(report.checks.find((check) => check.id.startsWith("plugins.schedule_"))).toBeUndefined();
   });
 
   it("warns when different plugins claim the same page route", () => {
@@ -532,6 +584,29 @@ describe("ops plugins core", () => {
           id: "plugins.block_duplicate",
           state: "error",
           detail: expect.stringContaining('duplicate block type "callout"'),
+          pluginIds: ["demo"],
+        }),
+      ]),
+    );
+  });
+
+  it("preserves a structured schedule check when definePlugin aborts config import", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "np-ops-plugins-schedule-import-"));
+    writeFileSync(
+      join(cwd, "nexpress.config.ts"),
+      `throw new Error('[plugin:demo] duplicate scheduled task id "nightly".');\n`,
+    );
+
+    const report = await collectOpsPluginsStatus(cwd);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "plugins.config_file", state: "error" }),
+        expect.objectContaining({
+          id: "plugins.schedule_duplicate",
+          state: "error",
+          detail: expect.stringContaining('duplicate scheduled task id "nightly"'),
           pluginIds: ["demo"],
         }),
       ]),

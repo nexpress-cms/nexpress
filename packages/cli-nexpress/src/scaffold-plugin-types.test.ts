@@ -166,7 +166,14 @@ describe("non-block scaffold generators", () => {
       expect(source).toMatch(/scheduled:\s*\[/);
       expect(source).toMatch(/cron: "0 2 \* \* \*"/);
       expect(source).toMatch(/handler: async \(ctx\)/);
+      expect(source).toContain("satisfies NpScheduledTask[]");
+      expect(source).toContain("02:00 UTC");
+      expect(source).not.toContain("server-local");
       expect(source).not.toContain("*/15");
+
+      const readme = await readFile(join(result.packageDir, "README.md"), "utf-8");
+      expect(readme).toContain("plugins.schedule_invalid");
+      expect(readme).toContain("plugins.schedule_duplicate");
     });
   });
 

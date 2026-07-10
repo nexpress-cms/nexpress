@@ -737,9 +737,12 @@ export interface NpRouteRegistration<TConfig = Record<string, unknown>> {
 }
 
 export interface NpScheduledTask<TConfig = Record<string, unknown>> {
+  /** Stable task id used in the pg-boss queue name and manual-run URL. */
   id: string;
+  /** Five-field UTC cron: minute hour day-of-month month day-of-week. */
   cron: string;
-  handler: ((ctx: NpPluginContext<TConfig>) => void | Promise<void>) | string;
+  /** Runs with the normal plugin context and must resolve to void. */
+  handler: (ctx: NpPluginContext<TConfig>) => void | Promise<void>;
   description?: string;
 }
 

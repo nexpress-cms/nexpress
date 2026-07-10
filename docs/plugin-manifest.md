@@ -179,7 +179,7 @@ The full list:
 | `templates`      | Page-template contributions per collection.                                                                                                                    | Plugins that ship templates for the dispatcher.                                                                                                  |
 | `patterns`       | Page-builder pattern presets.                                                                                                                                  | When the plugin ships pre-shaped block trees.                                                                                                    |
 | `fields`         | Custom field types for the admin field renderer.                                                                                                               | Plugins extending the field-config vocabulary.                                                                                                   |
-| `scheduled`      | Cron-style scheduled tasks.                                                                                                                                    | Background jobs the plugin owns.                                                                                                                 |
+| `scheduled`      | Validated typed scheduled tasks. See [`plugin-scheduled-tasks.md`](plugin-scheduled-tasks.md).                                                                 | Background jobs the plugin owns.                                                                                                                 |
 
 `admin.settings.fields` (a hand-rolled NpFieldConfig array) is
 the legacy version of `configSchema`. When BOTH are declared on
@@ -211,3 +211,5 @@ without authors repeating ids in metadata and setup code.
   container, collision, and diagnostics contracts.
 - [`plugin-pages.md`](plugin-pages.md) — `pageRoutes` field in depth:
   pattern grammar, server / client boundary, precedence, collisions.
+- [`plugin-scheduled-tasks.md`](plugin-scheduled-tasks.md) — task ids,
+  five-field UTC cron syntax, handler results, worker lifecycle, and diagnostics.

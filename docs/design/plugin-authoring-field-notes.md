@@ -59,6 +59,11 @@ These notes come from building two bundled example plugins in May 2026:
   same-plugin duplicate types are errors while cross-plugin ownership remains
   an operator-visible warning. The CLI and six bundled block plugins exercise
   the same contract.
+- Plugin scheduled tasks now share one definition contract across the SDK,
+  core host, pg-boss registration, and plugin doctor. Invalid cron expressions,
+  unsafe or duplicate ids, non-function handlers, and non-void results fail
+  explicitly; schedules are documented as five-field UTC cron expressions, and
+  the CLI plus `analytics-lite` use the typed `NpScheduledTask` registry.
 - CLI plugin scaffold tests cover package-shape consistency, the canonical
   hook inventory, and typed Admin status helpers instead of hand-built
   payloads.

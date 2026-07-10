@@ -27,7 +27,8 @@ you don't have to repeat yourself:
 - **Public site routes** — any entry in `pageRoutes: [...]` adds
   `site:route`.
 - **Scheduled tasks** — any entry in `scheduled: [...]` adds
-  `hooks:scheduled`.
+  `hooks:scheduled`. See
+  [`plugin-scheduled-tasks.md`](plugin-scheduled-tasks.md) for the task contract.
 - **Hooks** — every key in `hooks: { ... }` adds `hooks:<namespace>`
   (e.g. `content:afterCreate` → `hooks:content`).
 - **Admin extensions** — `admin.settings`, `admin.widgets`,
