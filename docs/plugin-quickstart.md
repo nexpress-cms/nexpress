@@ -179,7 +179,7 @@ export const myPluginPlugin = definePlugin({
     {
       method: "GET",
       path: "/ping",
-      handler: async () => ({
+      handler: () => ({
         status: 200,
         body: { ok: true, at: new Date().toISOString() },
       }),
@@ -204,7 +204,8 @@ catalog metadata, and the optional metadata blocks (`agent`,
 `apiVersion`) all default to empty/sensible values. You add them
 explicitly only when you _need_ them — see
 [`plugin-manifest.md`](plugin-manifest.md) for the full field
-reference and [`plugin-capabilities.md`](plugin-capabilities.md) for
+reference, [`plugin-api-routes.md`](plugin-api-routes.md) for the exact
+route/request/response contract, and [`plugin-capabilities.md`](plugin-capabilities.md) for
 the capabilities `definePlugin` can't auto-derive (such as
 `storage:kv` or `network:fetch`). Hook payloads are listed in
 [`plugin-hooks.md`](plugin-hooks.md).

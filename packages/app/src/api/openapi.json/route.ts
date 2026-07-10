@@ -2359,18 +2359,22 @@ function buildSpec(): OpenApiSchema {
     const fullPath = `/api/plugins/${route.pluginId}${route.path}`;
     const method = route.method.toLowerCase();
     const existing = (paths[fullPath] as Record<string, unknown> | undefined) ?? {};
+    const operation = {
+      summary: `Plugin route: ${route.method} ${route.path}`,
+      tags: [`plugin:${route.pluginId}`],
+      description: route.description ?? `Exposed by plugin \`${route.pluginId}\`.`,
+      responses: {
+        "200": { description: "Plugin response (shape depends on the plugin)" },
+        "404": { description: "Plugin or route not found" },
+      },
+    };
 
     paths[fullPath] = {
       ...existing,
-      [method]: {
-        summary: `Plugin route: ${route.method.toUpperCase()} ${route.path}`,
-        tags: [`plugin:${route.pluginId}`],
-        description: `Exposed by plugin \`${route.pluginId}\`.`,
-        responses: {
-          "200": { description: "Plugin response (shape depends on the plugin)" },
-          "404": { description: "Plugin or route not found" },
-        },
-      },
+      [method]: operation,
+      ...(route.method === "GET"
+        ? { head: { ...operation, summary: `Plugin route: HEAD ${route.path}` } }
+        : {}),
     };
   }
 

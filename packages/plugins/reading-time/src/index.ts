@@ -114,14 +114,14 @@ export const readingTimePlugin = definePlugin<ReadingTimeConfig>({
         const text = typeof req.query.text === "string" ? req.query.text : "";
         const wordsPerMinute = ctx.config.wordsPerMinute;
         const minutes = estimateMinutes(text, wordsPerMinute);
-        return Promise.resolve({
+        return {
           status: 200,
           body: {
             minutes,
             wordsPerMinute,
             wordCount: text.trim().split(/\s+/).filter(Boolean).length,
           },
-        });
+        };
       },
     },
   ],

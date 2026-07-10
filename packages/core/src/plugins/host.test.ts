@@ -30,7 +30,7 @@ function resolvedPlugin(
   options: {
     capabilities?: readonly string[];
     hooks?: Record<string, (ctx: { hook: string; data: Record<string, unknown> }) => unknown>;
-    routes?: Array<{ method: string; path: string; handler: () => Promise<{ status: number }> }>;
+    routes?: Array<{ method: string; path: string; handler: unknown }>;
     scheduled?: Array<{
       id: string;
       cron: string;
@@ -449,7 +449,7 @@ describe("plugin host", () => {
       );
     });
 
-    it("normalizes method case when registering routes", async () => {
+    it("rejects lowercase methods when definePlugin was bypassed", async () => {
       await loadPlugins([
         resolvedPlugin("case", {
           capabilities: ["api:route"],
@@ -463,7 +463,90 @@ describe("plugin host", () => {
         }),
       ]);
 
-      expect(getPluginRoutes()[0]?.method).toBe("GET");
+      expect(getAllPluginIds()).not.toContain("case");
+      expect(getPluginRoutes()).toHaveLength(0);
+    });
+
+    it("rejects malformed and duplicate API route definitions", async () => {
+      await loadPlugins([
+        resolvedPlugin("bad-path", {
+          capabilities: ["api:route"],
+          routes: [
+            {
+              method: "GET",
+              path: "/users/:id",
+              handler: () => ({ status: 200 }),
+            },
+          ],
+        }),
+        resolvedPlugin("duplicate-route", {
+          capabilities: ["api:route"],
+          routes: [
+            { method: "GET", path: "/health", handler: () => ({ status: 200 }) },
+            { method: "GET", path: "/health", handler: () => ({ status: 204 }) },
+          ],
+        }),
+      ]);
+
+      expect(getAllPluginIds()).not.toContain("bad-path");
+      expect(getAllPluginIds()).not.toContain("duplicate-route");
+      expect(getPluginRoutes()).toHaveLength(0);
+    });
+
+    it("accepts synchronous handlers and validates their response at dispatch", async () => {
+      await loadPlugins([
+        resolvedPlugin("sync-route", {
+          capabilities: ["api:route"],
+          routes: [
+            {
+              method: "GET",
+              path: "/health",
+              handler: () => ({ status: 200, body: { ok: true } }),
+            },
+          ],
+        }),
+      ]);
+
+      const route = getPluginRoutes()[0];
+      await expect(
+        route?.handler({
+          method: "GET",
+          path: "/health",
+          params: { pluginId: "sync-route" },
+          query: {},
+          body: undefined,
+          headers: {},
+        }),
+      ).resolves.toEqual({ status: 200, body: { ok: true } });
+    });
+
+    it("rejects malformed handler responses with plugin and route context", async () => {
+      await loadPlugins([
+        resolvedPlugin("invalid-response", {
+          capabilities: ["api:route"],
+          routes: [
+            {
+              method: "GET",
+              path: "/health",
+              handler: () => ({ status: 204, body: { impossible: true } }),
+            },
+          ],
+        }),
+      ]);
+
+      const route = getPluginRoutes()[0];
+      await expect(
+        route?.handler({
+          method: "GET",
+          path: "/health",
+          params: { pluginId: "invalid-response" },
+          query: {},
+          body: undefined,
+          headers: {},
+        }),
+      ).rejects.toThrow(
+        '[plugin:invalid-response] API route "GET /health" returned an invalid response',
+      );
     });
   });
 

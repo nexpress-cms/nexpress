@@ -194,6 +194,11 @@ export async function scaffoldRoutePlugin(options: ScaffoldOptions): Promise<Sca
  * on it, so forgetting to declare it would crash boot. Capabilities for
  * what the handler actually does (\`storage:kv\`, \`network:fetch\`,
  * \`content:read\`, etc.) still have to be listed manually.
+ *
+ * Route paths are static and canonical: start with \`/\`, use no trailing
+ * slash, and declare each method/path pair once. Handlers may return either
+ * synchronously or asynchronously. Every result must contain an HTTP status;
+ * statuses 204, 205, and 304 must not include a body.
  */
 export const ${names.exportName} = definePlugin({
   manifest: {
@@ -212,7 +217,7 @@ export const ${names.exportName} = definePlugin({
       auth: false,
       description: "Liveness probe — returns the current server time.",
       handler: (req, _ctx) => {
-        return Promise.resolve({
+        return {
           status: 200,
           body: {
             ok: true,
@@ -221,7 +226,7 @@ export const ${names.exportName} = definePlugin({
             // request shape end-to-end without setting up a UI.
             echo: typeof req.query.echo === "string" ? req.query.echo : null,
           },
-        });
+        };
       },
     },
   ],

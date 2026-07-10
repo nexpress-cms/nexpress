@@ -524,21 +524,20 @@ export const seoAuditPlugin = definePlugin<SeoAuditConfig>({
               }
             : req.body;
 
-        return Promise.resolve({
+        return {
           status: 200,
           body: buildAuditResponse(input, ctx.config),
-        });
+        };
       },
     },
     {
       method: "POST",
       path: "/analyze",
       description: "Audit title, description, and content provided as JSON.",
-      handler: (req, ctx) =>
-        Promise.resolve({
-          status: 200,
-          body: buildAuditResponse(req.body, ctx.config),
-        }),
+      handler: (req, ctx) => ({
+        status: 200,
+        body: buildAuditResponse(req.body, ctx.config),
+      }),
     },
   ],
 });

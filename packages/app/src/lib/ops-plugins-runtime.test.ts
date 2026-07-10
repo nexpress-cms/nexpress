@@ -210,7 +210,11 @@ describe("ops plugins runtime", () => {
   });
 });
 
-function route(pluginId: string, method: string, path: string): PluginRouteHandler {
+function route(
+  pluginId: string,
+  method: PluginRouteHandler["method"],
+  path: string,
+): PluginRouteHandler {
   return {
     pluginId,
     method,

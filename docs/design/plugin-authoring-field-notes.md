@@ -42,6 +42,12 @@ These notes come from building two bundled example plugins in May 2026:
   `operation`, `source`, and `principal`; media uploads expose one normalized
   result. The core dispatcher validates payloads and diagnoses non-void
   lifecycle returns before plugin mistakes can pass silently.
+- Plugin API routes now share one typed core/SDK request and response contract.
+  `definePlugin()` rejects malformed methods, non-canonical static paths, and
+  duplicates before boot; the host repeats validation for bypassed definitions
+  and validates every handler result. `GET` routes support `HEAD`, no-body
+  statuses stay bodyless, and plugin doctor scopes duplicate checks to the
+  owning plugin id instead of warning on valid cross-plugin namespaces.
 - CLI plugin scaffold tests cover package-shape consistency, the canonical
   hook inventory, and typed Admin status helpers instead of hand-built
   payloads.

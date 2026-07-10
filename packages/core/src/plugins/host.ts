@@ -13,6 +13,14 @@ import {
   type NpRegisteredPluginAction,
 } from "./admin-action-contract.js";
 import {
+  npPluginApiRouteKey,
+  npValidatePluginApiRouteDefinition,
+  npValidatePluginApiRouteResponse,
+  type NpPluginApiRouteMethod,
+  type NpPluginApiRouteRequest,
+  type NpPluginApiRouteResponse,
+} from "./api-route-contract.js";
+import {
   npIsPluginHookName,
   npValidatePluginHookData,
   type NpPluginHookDataMap,
@@ -59,7 +67,8 @@ export interface NpHookCollectOptions {
 export interface PluginRouteHandler {
   pluginId: string;
   path: string;
-  method: string;
+  method: NpPluginApiRouteMethod;
+  description?: string;
   /** When true, the dispatcher must verify a staff session before
    *  invoking `handler` and pass the resolved user as `req.user`.
    *  When false (default), the route is publicly reachable. */
@@ -67,21 +76,8 @@ export interface PluginRouteHandler {
   handler: (req: PluginRouteRequest) => Promise<PluginRouteResponse>;
 }
 
-export interface PluginRouteRequest {
-  method: string;
-  path: string;
-  params: Record<string, string>;
-  query: Record<string, string>;
-  body: unknown;
-  headers: Record<string, string>;
-  user?: { id: string; email: string; role: string };
-}
-
-export interface PluginRouteResponse {
-  status: number;
-  body?: unknown;
-  headers?: Record<string, string>;
-}
+export type PluginRouteRequest = NpPluginApiRouteRequest;
+export type PluginRouteResponse = NpPluginApiRouteResponse;
 
 export interface PluginCapabilityRequirement {
   requirement: string;
@@ -358,7 +354,39 @@ type ResolvedHookFn = (ctx: {
 type ResolvedRouteFn = (
   req: PluginRouteRequest,
   ctx: Record<string, unknown>,
-) => Promise<PluginRouteResponse>;
+) => PluginRouteResponse | Promise<PluginRouteResponse>;
+
+interface ValidatedApiRoute {
+  method: NpPluginApiRouteMethod;
+  path: string;
+  handler: ResolvedRouteFn;
+  description?: string;
+  auth?: boolean;
+}
+
+function validateApiRouteRegistry(pluginId: string, value: unknown): ValidatedApiRoute[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new Error(`[plugin:${pluginId}] routes must be an array.`);
+  }
+
+  const routes: ValidatedApiRoute[] = [];
+  const routeKeys = new Set<string>();
+  for (const rawRoute of value) {
+    const routeValidation = npValidatePluginApiRouteDefinition(rawRoute);
+    if (!routeValidation.ok) {
+      throw new Error(`[plugin:${pluginId}] invalid API route: ${routeValidation.message}`);
+    }
+    const route = rawRoute as ValidatedApiRoute;
+    const routeKey = npPluginApiRouteKey(route);
+    if (routeKeys.has(routeKey)) {
+      throw new Error(`[plugin:${pluginId}] duplicate API route "${routeKey}".`);
+    }
+    routeKeys.add(routeKey);
+    routes.push(route);
+  }
+  return routes;
+}
 
 /**
  * G.1 — read a plugin's persisted config from `np_settings`.
@@ -489,6 +517,13 @@ function createPluginContext(pluginId: string, registration: PluginRegistration)
 
 async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   const { manifest } = plugin;
+  const validatedApiRoutes = validateApiRouteRegistry(
+    manifest.id,
+    (plugin as { routes?: unknown }).routes,
+  );
+  if (validatedApiRoutes.length > 0) {
+    assertCapability(manifest.id, "api:route", manifest.capabilities);
+  }
 
   // Defense in depth: if this id was already registered, scrub the old
   // entry's hooks + routes from the global maps before overwriting. The
@@ -651,19 +686,24 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     });
   }
 
-  for (const route of plugin.routes ?? []) {
-    if (typeof route.handler !== "function") continue;
+  for (const route of validatedApiRoutes) {
+    const routeKey = npPluginApiRouteKey(route);
 
-    assertCapability(manifest.id, "api:route", registration.capabilities);
-
-    const userHandler = route.handler as ResolvedRouteFn;
+    const userHandler = route.handler;
     const wrapped: (req: PluginRouteRequest) => Promise<PluginRouteResponse> = async (req) => {
       const ctx = await buildCtxFor(manifest.id);
-      return userHandler(req, ctx);
+      const result = await userHandler(req, ctx);
+      const responseValidation = npValidatePluginApiRouteResponse(result);
+      if (!responseValidation.ok) {
+        throw new Error(
+          `[plugin:${manifest.id}] API route "${routeKey}" returned an invalid response: ${responseValidation.message}`,
+        );
+      }
+      return result;
     };
 
     const auth = route.auth === true;
-    const method = route.method.toUpperCase();
+    const method = route.method;
 
     // #316 — public plugin routes carry the framework's least-
     // protected default rate limit (proxy.ts caps the catch-all at
@@ -674,7 +714,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     // endpoint (webhooks, callback URLs) own the auth themselves —
     // log a warning at load time so this is at least visible in
     // boot logs and a tracker can grep for it.
-    if (!auth && method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+    if (!auth && method !== "GET") {
       getLogger().warn("Plugin registered a public mutating route", {
         pluginId: manifest.id,
         path: route.path,
@@ -691,6 +731,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
       pluginId: manifest.id,
       path: route.path,
       method,
+      description: route.description,
       auth,
       handler: wrapped,
     };

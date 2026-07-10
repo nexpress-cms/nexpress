@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import {
   invalidatePluginEnabled,
   npAnalyzePluginAdminActionContract,
+  npValidatePluginApiRouteDefinition,
   type NpPluginActionKind,
   type NpPluginAdminActionIssue,
   type NpRegisteredPluginAction,
@@ -507,6 +508,73 @@ function duplicateChecks(
   };
 }
 
+function buildApiRouteChecks(
+  pluginObjects: PluginLike[],
+  plugins: OpsPluginEntry[],
+): CheckResult[] {
+  const invalidRoutes: string[] = [];
+  const invalidPluginIds: string[] = [];
+  const duplicateRoutes: string[] = [];
+  const duplicatePluginIds: string[] = [];
+
+  for (const [index, plugin] of pluginObjects.entries()) {
+    const pluginId = plugins[index]?.id ?? `plugin-${index.toString()}`;
+    if (plugin.routes === undefined) continue;
+    if (!Array.isArray(plugin.routes)) {
+      invalidRoutes.push(`[plugin:${pluginId}] routes must be an array`);
+      invalidPluginIds.push(pluginId);
+      continue;
+    }
+
+    const seen = new Set<string>();
+    for (const [routeIndex, route] of plugin.routes.entries()) {
+      const validation = npValidatePluginApiRouteDefinition(route);
+      if (!validation.ok) {
+        invalidRoutes.push(
+          `[plugin:${pluginId}] API route at index ${routeIndex.toString()}: ${validation.message}`,
+        );
+        invalidPluginIds.push(pluginId);
+        continue;
+      }
+
+      const key = routeKey(route);
+      if (!key) continue;
+      if (seen.has(key)) {
+        duplicateRoutes.push(`[plugin:${pluginId}] ${key} is declared more than once`);
+        duplicatePluginIds.push(pluginId);
+      }
+      seen.add(key);
+    }
+  }
+
+  const checks: CheckResult[] = [];
+  if (invalidRoutes.length > 0) {
+    checks.push({
+      id: "plugins.route_invalid",
+      state: "error",
+      label: "Plugin API route contracts",
+      detail: invalidRoutes.join("; "),
+      hint: withDoctorRerun(
+        "Use an uppercase supported method, a canonical static path, a function handler, and valid description/auth fields.",
+      ),
+      pluginIds: uniqueStrings(invalidPluginIds),
+    });
+  }
+  if (duplicateRoutes.length > 0) {
+    checks.push({
+      id: "plugins.route_conflict",
+      state: "error",
+      label: "Plugin API routes",
+      detail: duplicateRoutes.join("; "),
+      hint: withDoctorRerun(
+        "A plugin can declare each method/path pair only once. Remove or rename the duplicate route.",
+      ),
+      pluginIds: uniqueStrings(duplicatePluginIds),
+    });
+  }
+  return checks;
+}
+
 function uniqueStrings(values: string[]): string[] {
   return [...new Set(values)];
 }
@@ -751,6 +819,7 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
         };
       }),
     ),
+    ...buildApiRouteChecks(pluginObjects, plugins),
   );
 
   const duplicateIds = duplicateChecks(
@@ -772,16 +841,6 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
     ),
   );
   if (blockConflicts) checks.push(blockConflicts);
-
-  const routeConflicts = duplicateChecks(
-    "plugins.route_conflict",
-    "Plugin API routes",
-    plugins.flatMap((plugin) => plugin.routes.map((key) => ({ key, plugin: plugin.id }))),
-    withDoctorRerun(
-      "Plugin API routes share /api/plugins/<id> ownership. Change one method/path pair or disable one plugin, then restart.",
-    ),
-  );
-  if (routeConflicts) checks.push(routeConflicts);
 
   const pageRouteConflicts = duplicateChecks(
     "plugins.page_route_conflict",

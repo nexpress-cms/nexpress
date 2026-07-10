@@ -93,6 +93,8 @@ describe("non-block scaffold generators", () => {
       expect(source).toMatch(/method: "GET"/);
       expect(source).toMatch(/path: "\/health"/);
       expect(source).toMatch(/auth: false/);
+      expect(source).toContain("statuses 204, 205, and 304 must not include a body");
+      expect(source).not.toContain("Promise.resolve");
       expect(source).not.toMatch(/from "zod"/);
     });
   });
