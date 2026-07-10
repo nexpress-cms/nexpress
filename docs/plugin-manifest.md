@@ -168,7 +168,7 @@ The full list:
 | `configMigrate`  | `(old, fromVersion) => current` migrator.                                                     | Pair with a `configVersion` bump so existing operator data upgrades on first cold read.                                                          |
 | `hooks`          | Lifecycle hook handlers keyed by hook name.                                                   | Most plugins start here.                                                                                                                         |
 | `actions`        | Named `{ kind, handler }` registry for admin and inter-plugin dispatch.                       | Prefer this when an admin widget, table, or button references an `actionId`; `definePlugin` and plugin doctor can validate it before setup runs. |
-| `routes`         | Plugin API routes mounted under `/api/plugins/<id>`.                                          | When the plugin needs an HTTP surface.                                                                                                           |
+| `routes`         | Typed plugin API routes mounted under `/api/plugins/<id>`. See [`plugin-api-routes.md`](plugin-api-routes.md). | When the plugin needs a static, namespaced HTTP surface.                                                                                         |
 | `pageRoutes`     | Public-site URL routes the plugin owns. See [`plugin-pages.md`](plugin-pages.md).             | When the plugin ships its own pages (e.g. forum threads, calendar events).                                                                       |
 | `blocks`         | Block definitions for the page builder.                                                       | Block-shipping plugins.                                                                                                                          |
 | `admin`          | Declarative admin extension (widgets, actions, tables, dashboard, collectionTabs).            | When the plugin contributes UI to `/admin`.                                                                                                      |
@@ -200,6 +200,8 @@ without authors repeating ids in metadata and setup code.
   scaffold to running plugin.
 - [`plugin-capabilities.md`](plugin-capabilities.md) — capability ↔
   `ctx.*` mapping table.
+- [`plugin-api-routes.md`](plugin-api-routes.md) — API route definition,
+  request, response, auth, and diagnostics contracts.
 - [`plugin-reload.md`](plugin-reload.md) — what `/admin/plugins`
   "Reload all" does and what it doesn't.
 - [`plugin-render.md`](plugin-render.md) — render-extension hook

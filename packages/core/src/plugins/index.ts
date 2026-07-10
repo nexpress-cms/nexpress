@@ -37,6 +37,24 @@ export type {
 } from "./admin-action-contract.js";
 
 export {
+  npIsPluginApiRouteMethod,
+  npPluginApiRouteKey,
+  npPluginApiRouteMethods,
+  npValidatePluginApiRouteDefinition,
+  npValidatePluginApiRoutePath,
+  npValidatePluginApiRouteResponse,
+} from "./api-route-contract.js";
+
+export type {
+  NpPluginApiRouteMethod,
+  NpPluginApiRouteRequest,
+  NpPluginApiRouteRequestMethod,
+  NpPluginApiRouteResponse,
+  NpPluginApiRouteUser,
+  NpPluginApiRouteValidationResult,
+} from "./api-route-contract.js";
+
+export {
   npIsPluginHookName,
   npPluginHookNames,
   npValidatePluginHookData,

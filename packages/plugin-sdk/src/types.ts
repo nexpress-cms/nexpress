@@ -26,6 +26,9 @@ import type {
   NpPluginHookName,
   NpPluginMember,
   NpPluginUser as NpCorePluginUser,
+  NpPluginApiRouteMethod,
+  NpPluginApiRouteRequest as NpCorePluginApiRouteRequest,
+  NpPluginApiRouteResponse as NpCorePluginApiRouteResponse,
   NpRenderHookData as NpCoreRenderHookData,
 } from "@nexpress/core";
 
@@ -148,9 +151,15 @@ export const npHookNames = [
 
 export type NpHookName = NpPluginHookName;
 
-export const npRouteMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
+export const npRouteMethods = [
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+] as const satisfies readonly NpPluginApiRouteMethod[];
 
-export type NpRouteMethod = (typeof npRouteMethods)[number];
+export type NpRouteMethod = NpPluginApiRouteMethod;
 
 export type NpPluginUser = NpCorePluginUser;
 export type NpHookPrincipal = NpCoreHookPrincipal;
@@ -513,21 +522,8 @@ export type NpSiteSettings = Record<string, unknown>;
 
 export type NpThemeTokens = Record<string, string | number>;
 
-export interface NpRouteRequest {
-  method: string;
-  path: string;
-  params: Record<string, string>;
-  query: Record<string, string>;
-  body: unknown;
-  headers: Record<string, string>;
-  user?: NpPluginUser;
-}
-
-export interface NpRouteResponse {
-  status: number;
-  body?: unknown;
-  headers?: Record<string, string>;
-}
+export type NpRouteRequest = NpCorePluginApiRouteRequest;
+export type NpRouteResponse = NpCorePluginApiRouteResponse;
 
 export type NpActionHandler<TConfig = Record<string, unknown>, TData = unknown> = (
   data: unknown,
@@ -728,12 +724,12 @@ export type NpHookRegistration<TConfig = Record<string, unknown>> = {
 export type NpRouteHandler<TConfig = Record<string, unknown>> = (
   req: NpRouteRequest,
   ctx: NpPluginContext<TConfig>,
-) => Promise<NpRouteResponse>;
+) => NpRouteResponse | Promise<NpRouteResponse>;
 
 export interface NpRouteRegistration<TConfig = Record<string, unknown>> {
   path: string;
   method: NpRouteMethod;
-  handler: NpRouteHandler<TConfig> | string;
+  handler: NpRouteHandler<TConfig>;
   description?: string;
   auth?: boolean;
 }

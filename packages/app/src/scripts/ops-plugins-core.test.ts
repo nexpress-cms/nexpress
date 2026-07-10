@@ -25,7 +25,7 @@ describe("ops plugins core", () => {
           capabilities: ["blocks"],
         },
         blocks: [{ type: "callout" }],
-        routes: [{ method: "GET", path: "/demo" }],
+        routes: [{ method: "GET", path: "/demo", handler: () => ({ status: 200 }) }],
         pageRoutes: [{ pattern: "/demo/:slug" }],
       },
     ]);
@@ -60,17 +60,17 @@ describe("ops plugins core", () => {
     );
   });
 
-  it("warns on duplicate plugin-owned contracts", () => {
+  it("allows API method/path pairs to repeat across plugin id namespaces", () => {
     const report = analyzePlugins([
       {
         manifest: { id: "one", name: "One" },
         blocks: [{ type: "shared" }],
-        routes: [{ method: "POST", path: "/shared" }],
+        routes: [{ method: "POST", path: "/shared", handler: () => ({ status: 200 }) }],
       },
       {
         manifest: { id: "two", name: "Two" },
         blocks: [{ type: "shared" }],
-        routes: [{ method: "POST", path: "/shared" }],
+        routes: [{ method: "POST", path: "/shared", handler: () => ({ status: 200 }) }],
       },
     ]);
 
@@ -92,13 +92,39 @@ describe("ops plugins core", () => {
             /Rename one block type.*pnpm --silent run ops:plugins -- doctor --json/,
           ),
         }),
+      ]),
+    );
+    expect(report.checks.find((check) => check.id === "plugins.route_conflict")).toBeUndefined();
+  });
+
+  it("rejects malformed and duplicate routes within one plugin", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "one", name: "One" },
+        routes: [
+          { method: "GET", path: "/shared", handler: () => ({ status: 200 }) },
+          { method: "GET", path: "/shared", handler: () => ({ status: 204 }) },
+          { method: "get", path: "/users/:id", handler: "missing" },
+        ],
+      },
+    ]);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
         expect.objectContaining({
           id: "plugins.route_conflict",
-          state: "warn",
-          detail: "POST /shared is claimed by plugins one, two",
-          hint: expect.stringMatching(
-            /Change one method\/path pair.*pnpm --silent run ops:plugins -- doctor --json/,
+          state: "error",
+          detail: "[plugin:one] GET /shared is declared more than once",
+          pluginIds: ["one"],
+        }),
+        expect.objectContaining({
+          id: "plugins.route_invalid",
+          state: "error",
+          detail: expect.stringContaining(
+            "[plugin:one] API route at index 2: route.method must be",
           ),
+          pluginIds: ["one"],
         }),
       ]),
     );
@@ -314,6 +340,29 @@ describe("ops plugins core", () => {
     );
   });
 
+  it("preserves a structured route check when definePlugin aborts config import", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "np-ops-plugins-route-import-"));
+    writeFileSync(
+      join(cwd, "nexpress.config.ts"),
+      `throw new Error('[plugin:demo] duplicate API route "GET /health".');\n`,
+    );
+
+    const report = await collectOpsPluginsStatus(cwd);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "plugins.config_file", state: "error" }),
+        expect.objectContaining({
+          id: "plugins.route_conflict",
+          state: "error",
+          detail: expect.stringContaining('duplicate API route "GET /health"'),
+          pluginIds: ["demo"],
+        }),
+      ]),
+    );
+  });
+
   it("renders doctor hints and ordered next commands", () => {
     const report = analyzePlugins([
       {
@@ -355,7 +404,7 @@ describe("ops plugins core", () => {
           usesTokens: ["demo.token"],
           styleSlots: { badge: "Badge class" },
         },
-        routes: [{ method: "GET", path: "/demo" }],
+        routes: [{ method: "GET", path: "/demo", handler: () => ({ status: 200 }) }],
       },
     ]);
 

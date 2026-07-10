@@ -22,7 +22,8 @@ definePlugin({
 `definePlugin` auto-derives capabilities from the declared surface so
 you don't have to repeat yourself:
 
-- **REST routes** — any entry in `routes: [...]` adds `api:route`.
+- **REST routes** — any entry in `routes: [...]` adds `api:route`. See
+  [`plugin-api-routes.md`](plugin-api-routes.md) for the route contract.
 - **Public site routes** — any entry in `pageRoutes: [...]` adds
   `site:route`.
 - **Scheduled tasks** — any entry in `scheduled: [...]` adds
@@ -59,7 +60,7 @@ form. Both stay in sync via a unit test
 | `theme:write`          | `ctx.theme.setTokens`                                                                                                                              | Merges into existing tokens.                              |
 | `network:fetch`        | `ctx.http.fetch`                                                                                                                                   | Hostname must be in `manifest.allowedHosts`.              |
 | `storage:kv`           | `ctx.storage.{get,set,delete,list,has}`                                                                                                            | Plugin-scoped, site-scoped key/value store.               |
-| `api:route`            | route registration in `routes: [...]`                                                                                                              | Auto-derived. Required for plugin REST endpoints.         |
+| `api:route`            | route registration in `routes: [...]`                                                                                                              | Auto-derived. See [`plugin-api-routes.md`](plugin-api-routes.md). |
 | `site:route`           | route registration in `pageRoutes: [...]`                                                                                                          | Auto-derived. Required for public-site page routes.       |
 | `admin:panel`          | `admin.settings`, `admin.widgets`, `admin.actions`, `admin.tables`                                                                                 | Auto-derived. Documents the plugin admin panel surface.   |
 | `admin:dashboard`      | `admin.dashboardWidgets`                                                                                                                           | Auto-derived.                                             |

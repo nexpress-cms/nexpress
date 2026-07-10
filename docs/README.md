@@ -25,6 +25,7 @@ behavior they describe changes.
 | [observability.md](observability.md)                   | Logging, heartbeats, job logs                                          |
 | [operations.md](operations.md)                         | Operations runbook — incident recipes, boot warnings, recovery         |
 | [plugin-admin.md](plugin-admin.md)                     | Plugin admin UI surface                                                |
+| [plugin-api-routes.md](plugin-api-routes.md)           | Typed plugin HTTP route and response contracts                         |
 | [plugin-capabilities.md](plugin-capabilities.md)       | Capability ↔ `ctx.*` mapping reference                                 |
 | [plugin-hooks.md](plugin-hooks.md)                     | Typed content, auth, media lifecycle hook payloads                     |
 | [plugin-manifest.md](plugin-manifest.md)               | Manifest field reference (required vs auto-defaulted)                  |

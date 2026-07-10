@@ -1,10 +1,14 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
+import { npPluginApiRouteMethods } from "@nexpress/core";
 
 import { definePlugin } from "./define-plugin.js";
 import {
+  npRouteMethods,
   type NpPluginDefinition,
   type NpReadonlyPluginDocument,
   type NpRenderContribution,
+  type NpRouteRequest,
+  type NpRouteResponse,
 } from "./types.js";
 
 const baseManifest = {
@@ -18,6 +22,10 @@ const baseManifest = {
 } as const;
 
 describe("definePlugin — capability derivation", () => {
+  it("keeps the SDK API method inventory aligned with core", () => {
+    expect(npRouteMethods).toEqual(npPluginApiRouteMethods);
+  });
+
   it("auto-adds api:route when routes are declared", () => {
     const plugin = definePlugin({
       manifest: { ...baseManifest },
@@ -30,6 +38,59 @@ describe("definePlugin — capability derivation", () => {
       ],
     });
     expect(plugin.manifest.capabilities).toContain("api:route");
+  });
+
+  it("contextually types API route requests and accepts synchronous responses", () => {
+    const plugin = definePlugin({
+      manifest: { ...baseManifest },
+      routes: [
+        {
+          method: "GET",
+          path: "/health",
+          handler: (request) => {
+            expectTypeOf(request).toEqualTypeOf<NpRouteRequest>();
+            expectTypeOf(request.method).toEqualTypeOf<
+              "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE"
+            >();
+            return { status: 204 } satisfies NpRouteResponse;
+          },
+        },
+      ],
+    });
+
+    expect(plugin.manifest.provides.apiRoutes).toContain("GET /health");
+  });
+
+  it.each([
+    [
+      [{ method: "get", path: "/health", handler: () => ({ status: 200 }) }],
+      /method must be one of/,
+    ],
+    [[{ method: "GET", path: "health", handler: () => ({ status: 200 }) }], /path must start with/],
+    [
+      [{ method: "GET", path: "/users/:id", handler: () => ({ status: 200 }) }],
+      /unsupported segment/,
+    ],
+    [[{ method: "GET", path: "/health", handler: "./handler.js" }], /needs a handler/],
+    [
+      [{ method: "GET", path: "/health", handler: () => ({ status: 200 }), auth: "yes" }],
+      /auth must be boolean/,
+    ],
+  ])("rejects malformed API route definitions during evaluation", (routes, message) => {
+    const definition = { manifest: { ...baseManifest }, routes } as unknown as NpPluginDefinition;
+    expect(() => definePlugin(definition)).toThrow(message);
+  });
+
+  it("rejects duplicate method/path pairs within one plugin", () => {
+    const definition = {
+      manifest: { ...baseManifest },
+      routes: [
+        { method: "GET", path: "/health", handler: () => ({ status: 200 }) },
+        { method: "GET", path: "/health", handler: () => ({ status: 204 }) },
+      ],
+    } as unknown as NpPluginDefinition;
+
+    expect(() => definePlugin(definition)).toThrow(/duplicate API route "GET \/health"/);
   });
 
   it("auto-adds hooks:<namespace> for every hook namespace", () => {

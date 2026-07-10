@@ -556,6 +556,12 @@ export {
   npAnalyzePluginAdminActionContract,
   npCollectPluginAdminActionReferences,
   npValidatePluginActionResult,
+  npIsPluginApiRouteMethod,
+  npPluginApiRouteKey,
+  npPluginApiRouteMethods,
+  npValidatePluginApiRouteDefinition,
+  npValidatePluginApiRoutePath,
+  npValidatePluginApiRouteResponse,
   npIsPluginHookName,
   npPluginHookNames,
   npValidatePluginHookData,
@@ -563,6 +569,12 @@ export {
 
 export type { NpPluginConfigResult } from "./plugins/index.js";
 export type {
+  NpPluginApiRouteMethod,
+  NpPluginApiRouteRequest,
+  NpPluginApiRouteRequestMethod,
+  NpPluginApiRouteResponse,
+  NpPluginApiRouteUser,
+  NpPluginApiRouteValidationResult,
   NpAuthAfterLoginHookData,
   NpAuthAfterRegisterHookData,
   NpAuthBeforeLogoutHookData,

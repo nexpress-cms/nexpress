@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-10 (plugin content, auth, media, and render hooks
+**Last refreshed:** 2026-07-10 (plugin API routes now share a typed core/SDK
+request and response contract. Definition and host validation reject malformed
+or duplicate static routes, handler results are validated before dispatch, and
+GET registrations also serve bodyless HEAD responses.)
+
+**Earlier:** 2026-07-10 (plugin content, auth, media, and render hooks
 now share one typed hook registry. Lifecycle payloads are exact per name,
 validated at dispatch, and fire-and-forget handlers must return void.)
 
@@ -191,7 +196,7 @@ For original rationale see `docs/design/plugin-system-design.md` (frozen 2026-04
 
 Plugin-contributed blocks merge into the same shared registry as the built-ins (`@nexpress/blocks`'s `getSharedRegistry()`). The `@nexpress/next` bootstrap calls `registerBlock` for each plugin block right after `loadPlugins`. The admin's Add-block popover (`field-renderer.tsx`) reads via `getRegisteredBlocks()` so plugin blocks surface there automatically. Re-registering a type overwrites silently — HMR / repeated boots in the same process don't blow up the editor.
 
-Plugin wiring is centralized in `packages/core/src/plugins/host.ts` (registry + `runHook`) and surfaced via `loadPlugins()` / `runHook()` / `getPluginRoutes()` exports. The catch-all plugin route (`/api/plugins/<id>/<...>` for paths other than `/actions`) is rate-limited at the framework level by `apps/web/src/proxy.ts` (#316) — the conservative default applies to anything matching the catch-all pattern, so plugin authors get a sane floor automatically. A plugin that needs a higher ceiling for a specific endpoint must add its own per-handler rate-limiter on top.
+Plugin wiring is centralized in `packages/core/src/plugins/host.ts` (registry + `runHook`) and surfaced via `loadPlugins()` / `runHook()` / `getPluginRoutes()` exports. API routes use uppercase `GET`/`POST`/`PUT`/`PATCH`/`DELETE`, canonical static paths, and exact `{ status, body?, headers? }` results; GET registrations also handle HEAD. Definition validation, the core host, and plugin doctor enforce the same contract. See `docs/plugin-api-routes.md`. The catch-all plugin route (`/api/plugins/<id>/<...>` for paths other than `/actions`) is rate-limited at the framework level by `apps/web/src/proxy.ts` (#316) — the conservative default applies to anything matching the catch-all pattern, so plugin authors get a sane floor automatically. A plugin that needs a higher ceiling for a specific endpoint must add its own per-handler rate-limiter on top.
 
 Plugin **page routes** (`pageRoutes` field — #623) let a plugin own public-site URLs end-to-end. The host catch-all (`apps/web/src/app/(site)/[[...slug]]/page.tsx`) calls `dispatchPluginRoute()` from `@nexpress/next` after the page-slug + slug-redirect + theme-route lookups; a matched plugin component receives `{ params, searchParams, blockCtx }` and renders into the active shell. `surface: "site"` routes use the site shell; `surface: "member"` routes use `impl.members.shell` with the member-surface fallback chain. The flag controls chrome only and is not an auth gate. Server / client boundaries follow the same pattern as `@nexpress/admin`: route components (server) import client widgets via the package's own `./client` subpath (e.g. `@nexpress/plugin-forum/client`), which is marked external in the index entry's tsup config so the bundle preserves the `"use client"` directive. Reference: `packages/plugins/forum/` migrated 2026-05-10. Author docs in `docs/plugin-pages.md`.
 

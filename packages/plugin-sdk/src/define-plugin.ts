@@ -1,6 +1,7 @@
 import { npAdminExtensionSchema, npPluginManifestSchema } from "./manifest.js";
 import {
   npHookNames,
+  npRouteMethods,
   type NpAdminExtension,
   type NpPluginActionKind,
   type NpPluginActionRegistry,
@@ -10,7 +11,16 @@ import {
 } from "./types.js";
 
 const supportedHookNames = new Set<string>(npHookNames);
+const supportedRouteMethods = new Set<string>(npRouteMethods);
 const hookDescriptorKeys = new Set(["handler", "priority", "timeoutMs"]);
+const routeDefinitionKeys = new Set(["method", "path", "handler", "description", "auth"]);
+const routeSegmentPattern = /^[A-Za-z0-9._~-]+$/;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  return prototype === Object.prototype || prototype === null;
+}
 
 function validateHookRegistry(pluginId: string, hooks: unknown): void {
   if (hooks === undefined) return;
@@ -53,6 +63,84 @@ function validateHookRegistry(pluginId: string, hooks: unknown): void {
     ) {
       throw new Error(`[plugin:${pluginId}] hook "${hookName}" timeoutMs must be greater than 0.`);
     }
+  }
+}
+
+function validateRoutePath(pluginId: string, path: unknown): asserts path is string {
+  if (typeof path !== "string" || path.length === 0) {
+    throw new Error(`[plugin:${pluginId}] API route path must be a non-empty string.`);
+  }
+  if (path.length > 256) {
+    throw new Error(`[plugin:${pluginId}] API route path must be 256 characters or fewer.`);
+  }
+  if (!path.startsWith("/") || path === "/") {
+    throw new Error(
+      `[plugin:${pluginId}] API route path must start with "/" and contain at least one segment.`,
+    );
+  }
+  if (path.endsWith("/") || path.includes("//")) {
+    throw new Error(
+      `[plugin:${pluginId}] API route path must not contain empty or trailing segments.`,
+    );
+  }
+  const segments = path.slice(1).split("/");
+  if (segments.some((segment) => segment === "." || segment === "..")) {
+    throw new Error(`[plugin:${pluginId}] API route path must not contain dot segments.`);
+  }
+  if (segments.some((segment) => !routeSegmentPattern.test(segment))) {
+    throw new Error(`[plugin:${pluginId}] API route path contains unsupported segment characters.`);
+  }
+}
+
+function validateRouteRegistry(pluginId: string, routes: unknown): void {
+  if (routes === undefined) return;
+  if (!Array.isArray(routes)) {
+    throw new Error(`[plugin:${pluginId}] routes must be an array.`);
+  }
+
+  const seen = new Set<string>();
+  for (const [index, route] of routes.entries()) {
+    if (!isRecord(route)) {
+      throw new Error(
+        `[plugin:${pluginId}] API route at index ${index.toString()} must be an object.`,
+      );
+    }
+    const unsupportedKey = Object.keys(route).find((key) => !routeDefinitionKeys.has(key));
+    if (unsupportedKey) {
+      throw new Error(
+        `[plugin:${pluginId}] API route at index ${index.toString()} has unsupported field "${unsupportedKey}".`,
+      );
+    }
+    if (typeof route.method !== "string" || !supportedRouteMethods.has(route.method)) {
+      throw new Error(
+        `[plugin:${pluginId}] API route method must be one of ${npRouteMethods.join(", ")}.`,
+      );
+    }
+    validateRoutePath(pluginId, route.path);
+    if (typeof route.handler !== "function") {
+      throw new Error(
+        `[plugin:${pluginId}] API route "${route.method} ${route.path}" needs a handler.`,
+      );
+    }
+    if (
+      route.description !== undefined &&
+      (typeof route.description !== "string" || route.description.trim().length === 0)
+    ) {
+      throw new Error(
+        `[plugin:${pluginId}] API route "${route.method} ${route.path}" description must be non-empty.`,
+      );
+    }
+    if (route.auth !== undefined && typeof route.auth !== "boolean") {
+      throw new Error(
+        `[plugin:${pluginId}] API route "${route.method} ${route.path}" auth must be boolean.`,
+      );
+    }
+
+    const key = `${route.method} ${route.path}`;
+    if (seen.has(key)) {
+      throw new Error(`[plugin:${pluginId}] duplicate API route "${key}".`);
+    }
+    seen.add(key);
   }
 }
 
@@ -314,6 +402,7 @@ export function definePlugin<TConfig = Record<string, unknown>>(
   definition: NpPluginDefinition<TConfig>,
 ): NpResolvedPlugin<TConfig> {
   validateHookRegistry(definition.manifest.id, definition.hooks);
+  validateRouteRegistry(definition.manifest.id, definition.routes);
 
   // Auto-fill `manifest.provides.*` from the actual surface the plugin
   // contributes. Author-declared entries keep their slot; derived entries
