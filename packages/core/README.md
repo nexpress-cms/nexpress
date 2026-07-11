@@ -57,6 +57,13 @@ The collection becomes a typed Drizzle table, generated Zod validators,
 and a CRUD API at `/api/collections/posts` once you re-run
 `pnpm db:generate && pnpm db:migrate`.
 
+`defineCollection()` is also the runtime definition boundary: it rejects
+unknown keys, invalid nested field shapes, duplicate or reserved names,
+inconsistent bounds, and broken slug/Admin references before codegen.
+`npAnalyzeCollectionDefinition()` and `npValidateCollectionDefinition()` expose
+the same non-throwing contract for tooling; the plural forms additionally check
+duplicate slugs and cross-collection relationship targets.
+
 ## Links
 
 - [Repository](https://github.com/nexpress-cms/nexpress)

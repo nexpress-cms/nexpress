@@ -4,6 +4,10 @@ import { mergeThemeRequirements } from "../themes/merge-requirements.js";
 import { npValidateRegisteredThemeDefinition } from "../themes/definition-contract.js";
 import { type NpConfig } from "./types.js";
 import { npConfigSchema } from "./validation.js";
+import {
+  npValidateCollectionDefinition,
+  npValidateCollectionDefinitions,
+} from "./collection-definition-contract.js";
 
 /**
  * Validates the project's NpConfig against the declarative schema and returns
@@ -51,6 +55,8 @@ export function defineConfig(config: NpConfig): NpConfig {
     }
   }
 
+  validateCollectionEntries(config.collections, "config.collections");
+
   const themeIds = new Set<string>();
   for (const [index, theme] of (config.themes ?? []).entries()) {
     const validation = npValidateRegisteredThemeDefinition(theme);
@@ -73,10 +79,43 @@ export function defineConfig(config: NpConfig): NpConfig {
   // array unchanged in that case, so the equality semantics
   // existing callers rely on hold.
   const mergedCollections = mergeThemeRequirements(config.collections, config.themes);
+  validateCollections(
+    mergedCollections,
+    mergedCollections === config.collections ? "config.collections" : "resolved collections",
+  );
   if (mergedCollections === config.collections) {
     return config;
   }
   return { ...config, collections: mergedCollections };
+}
+
+function validateCollectionEntries(collections: NpConfig["collections"], location: string): void {
+  const slugs = new Set<string>();
+  for (const [index, collection] of collections.entries()) {
+    const validation = npValidateCollectionDefinition(collection);
+    if (!validation.ok) {
+      const issueLocation = validation.issue.location ? `.${validation.issue.location}` : "";
+      throw new Error(
+        `Invalid collection at ${location}[${index.toString()}]${issueLocation}: ${validation.issue.message}`,
+      );
+    }
+    if (slugs.has(collection.slug)) {
+      throw new Error(
+        `Invalid collection config: duplicate collection slug "${collection.slug}" at ${location}[${index.toString()}].`,
+      );
+    }
+    slugs.add(collection.slug);
+  }
+}
+
+function validateCollections(collections: NpConfig["collections"], location: string): void {
+  const validation = npValidateCollectionDefinitions(collections);
+  if (!validation.ok) {
+    const issueLocation = validation.issue.location.replace(/^(\d+)/u, "[$1]");
+    throw new Error(
+      `Invalid collection at ${location}${issueLocation}: ${validation.issue.message}`,
+    );
+  }
 }
 
 const FRIENDLY_HINTS: Record<string, string> = {

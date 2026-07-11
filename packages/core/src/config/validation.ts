@@ -6,33 +6,31 @@ const functionSchema = z.custom<(...args: unknown[]) => unknown>(
 
 /**
  * Serializable condition predicate (NpFieldConditionExpr) — the
- * Zod mirror of the type defined in `config/types.ts`. Permissive
- * (no exhaustive variant validation) because adding new operators
- * to the type union shouldn't force a schema bump. `z.unknown()`
- * on the value slots tolerates the wide payload shapes the editor
- * uses; the runtime evaluator (`evaluateFieldCondition`)
- * fail-opens on malformed expressions.
+ * Zod mirror of the type defined in `config/types.ts`. Each operator is exact
+ * so malformed or ambiguous expressions fail at the collection definition
+ * boundary. `z.unknown()` on comparison values still supports the wide JSON
+ * payloads the editor uses.
  */
 const conditionExprSchema: z.ZodType = z.lazy(() =>
   z.union([
-    z.object({ when: z.string().min(1), equals: z.unknown() }),
-    z.object({ when: z.string().min(1), notEquals: z.unknown() }),
-    z.object({ when: z.string().min(1), in: z.array(z.unknown()) }),
-    z.object({ when: z.string().min(1), notIn: z.array(z.unknown()) }),
-    z.object({ when: z.string().min(1), exists: z.boolean() }),
-    z.object({ all: z.array(conditionExprSchema) }),
-    z.object({ any: z.array(conditionExprSchema) }),
+    z.strictObject({ when: z.string().min(1), equals: z.unknown() }),
+    z.strictObject({ when: z.string().min(1), notEquals: z.unknown() }),
+    z.strictObject({ when: z.string().min(1), in: z.array(z.unknown()) }),
+    z.strictObject({ when: z.string().min(1), notIn: z.array(z.unknown()) }),
+    z.strictObject({ when: z.string().min(1), exists: z.boolean() }),
+    z.strictObject({ all: z.array(conditionExprSchema).min(1) }),
+    z.strictObject({ any: z.array(conditionExprSchema).min(1) }),
   ]),
 );
 
-const fieldBaseSchema = z.object({
+const fieldBaseSchema = z.strictObject({
   name: z.string().min(1),
   label: z.string().min(1).optional(),
   required: z.boolean().optional(),
   defaultValue: z.unknown().optional(),
   hidden: z.boolean().optional(),
   admin: z
-    .object({
+    .strictObject({
       description: z.string().min(1).optional(),
       placeholder: z.string().optional(),
       readOnly: z.boolean().optional(),
@@ -41,12 +39,16 @@ const fieldBaseSchema = z.object({
       // (#764). The runtime evaluator handles both.
       condition: z.union([functionSchema, conditionExprSchema]).optional(),
       width: z.string().optional(),
+      kind: z.enum(["templatePicker", "title"]).optional(),
+      position: z.enum(["main", "sidebar"]).optional(),
+      group: z.string().min(1).optional(),
+      _themeOrigin: z.string().min(1).optional(),
     })
     .optional(),
   validate: functionSchema.optional(),
 });
 
-const optionSchema = z.object({
+const optionSchema = z.strictObject({
   label: z.string().min(1),
   value: z.string().min(1),
 });
@@ -74,7 +76,7 @@ const fieldSchema: z.ZodType = z.lazy(() =>
     }),
     fieldBaseSchema.extend({
       type: z.literal("richText"),
-      editor: z.object({ features: z.array(z.string()).optional() }).optional(),
+      editor: z.strictObject({ features: z.array(z.string().min(1)).optional() }).optional(),
     }),
     fieldBaseSchema.extend({
       type: z.literal("blocks"),
@@ -89,7 +91,7 @@ const fieldSchema: z.ZodType = z.lazy(() =>
     fieldBaseSchema.extend({
       type: z.literal("date"),
       pickerOptions: z
-        .object({
+        .strictObject({
           format: z.string().optional(),
           includeTime: z.boolean().optional(),
         })
@@ -130,11 +132,11 @@ const fieldSchema: z.ZodType = z.lazy(() =>
       type: z.literal("group"),
       fields: z.array(fieldSchema).min(1),
     }),
-    z.object({
+    z.strictObject({
       type: z.literal("row"),
       fields: z.array(fieldSchema).min(1),
     }),
-    z.object({
+    z.strictObject({
       type: z.literal("collapsible"),
       label: z.string().min(1),
       fields: z.array(fieldSchema).min(1),
@@ -229,16 +231,34 @@ export const npConfigSchema = z.object({
     .optional(),
 });
 
-export const collectionConfigSchema = z.object({
-  slug: z.string().min(1).max(63).regex(/^[a-z][a-z0-9-]*$/),
-  labels: z.object({
+const adminGroupMetaSchema = z.strictObject({
+  icon: z.string().min(1).optional(),
+  description: z.string().min(1).optional(),
+});
+
+const collectionKindSchema = z.strictObject({
+  label: z.string().min(1),
+  labelPlural: z.string().min(1),
+  icon: z.string().min(1).optional(),
+  urlPattern: z.string().min(1).optional(),
+  hierarchical: z.boolean().optional(),
+  _themeOrigin: z.string().min(1).optional(),
+});
+
+export const collectionConfigSchema = z.strictObject({
+  slug: z
+    .string()
+    .min(1)
+    .max(63)
+    .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
+  labels: z.strictObject({
     singular: z.string().min(1),
     plural: z.string().min(1),
   }),
   slugField: z
     .union([
       z.boolean(),
-      z.object({
+      z.strictObject({
         useField: z.string().min(1).optional(),
         unique: z.boolean().optional(),
       }),
@@ -247,7 +267,7 @@ export const collectionConfigSchema = z.object({
   i18n: z.boolean().optional(),
   fields: z.array(fieldSchema).min(1),
   access: z
-    .object({
+    .strictObject({
       create: functionSchema.optional(),
       read: functionSchema.optional(),
       update: functionSchema.optional(),
@@ -255,7 +275,7 @@ export const collectionConfigSchema = z.object({
     })
     .optional(),
   hooks: z
-    .object({
+    .strictObject({
       beforeCreate: z.array(functionSchema).optional(),
       afterCreate: z.array(functionSchema).optional(),
       beforeUpdate: z.array(functionSchema).optional(),
@@ -267,11 +287,11 @@ export const collectionConfigSchema = z.object({
     })
     .optional(),
   versions: z
-    .object({
+    .strictObject({
       drafts: z
         .union([
           z.boolean(),
-          z.object({
+          z.strictObject({
             autosave: z.boolean().optional(),
             autosaveInterval: z.number().int().positive().optional(),
           }),
@@ -281,10 +301,10 @@ export const collectionConfigSchema = z.object({
     })
     .optional(),
   community: z
-    .object({
+    .strictObject({
       comments: z.boolean().optional(),
       memberWrite: z
-        .object({
+        .strictObject({
           create: z.boolean().optional(),
           update: z.boolean().optional(),
           delete: z.boolean().optional(),
@@ -293,30 +313,44 @@ export const collectionConfigSchema = z.object({
         .optional(),
     })
     .optional(),
+  seo: z
+    .strictObject({
+      urlPath: functionSchema.optional(),
+      changefreq: z
+        .enum(["always", "hourly", "daily", "weekly", "monthly", "yearly", "never"])
+        .optional(),
+      priority: z.number().min(0).max(1).optional(),
+    })
+    .optional(),
   timestamps: z.boolean().optional(),
   admin: z
-    .object({
+    .strictObject({
       listColumns: z.array(z.string().min(1)).optional(),
       defaultSort: z.string().min(1).optional(),
       group: z.string().min(1).optional(),
       hidden: z.boolean().optional(),
       description: z.string().optional(),
       components: z
-        .object({
+        .strictObject({
           listView: z.string().optional(),
           editView: z.string().optional(),
           createView: z.string().optional(),
         })
         .optional(),
+      navMembership: z.boolean().optional(),
+      icon: z.string().min(1).optional(),
+      _themeOrigin: z.string().min(1).optional(),
+      kinds: z.record(z.string().min(1), collectionKindSchema).optional(),
+      groupMeta: z.record(z.string().min(1), adminGroupMetaSchema).optional(),
     })
     .optional(),
   upload: z
-    .object({
+    .strictObject({
       maxFileSize: z.number().positive().optional(),
       allowedMimeTypes: z.array(z.string().min(1)).optional(),
       imageSizes: z
         .array(
-          z.object({
+          z.strictObject({
             name: z.string().min(1),
             width: z.number().positive(),
             height: z.number().positive().optional(),

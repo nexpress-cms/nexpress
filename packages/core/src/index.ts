@@ -60,6 +60,19 @@ export { isNpBlockContent, npValidateBlockContent } from "./fields/block-content
 export { ROLE_HIERARCHY } from "./config/types.js";
 export { defineConfig } from "./config/define-config.js";
 export { defineCollection } from "./config/define-collection.js";
+export {
+  npAnalyzeCollectionDefinition,
+  npAnalyzeCollectionDefinitions,
+  npAssertCollectionDefinition,
+  npAssertCollectionDefinitions,
+  npValidateCollectionDefinition,
+  npValidateCollectionDefinitions,
+} from "./config/collection-definition-contract.js";
+export type {
+  NpCollectionDefinitionIssue,
+  NpCollectionDefinitionIssueCode,
+  NpCollectionDefinitionValidationResult,
+} from "./config/collection-definition-contract.js";
 export { authenticated, isAdmin, isEditorOrAbove, isOwnerOrAdmin } from "./config/access.js";
 
 export {
