@@ -158,14 +158,15 @@ typechecking + `next build`. Tests catch regressions like the stub
 top-level narrowing creeping back, or the admin login `onSubmit`
 losing its void wrapper.
 
-**API routes (14+ tests, `apps/web/tests/`):**
+**API routes (18+ tests, `apps/web/tests/`):**
 
-| File                                    | Covers                                                                                           |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `health.integration.test.ts` (1)        | `/api/health` smoke (no DB)                                                                      |
-| `auth.integration.test.ts` (3)          | `/api/auth/me` with valid/missing/tampered session cookie                                        |
-| `collections.integration.test.ts` (3)   | `/api/collections/[slug]` + `/[id]` — POST/GET round-trip, PATCH, DELETE, 401 without auth       |
-| `import-export.integration.test.ts` (7) | export full / partial / unknown-slug / non-admin; import dry-run / partial filter / unknown-slug |
+| File                                                    | Covers                                                                                           |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `health.integration.test.ts` (1)                        | `/api/health` smoke (no DB)                                                                      |
+| `auth.integration.test.ts` (3)                          | `/api/auth/me` with valid/missing/tampered session cookie                                        |
+| `collections.integration.test.ts` (3)                   | `/api/collections/[slug]` + `/[id]` — POST/GET round-trip, PATCH, DELETE, 401 without auth       |
+| `import-export.integration.test.ts` (7)                 | export full / partial / unknown-slug / non-admin; import dry-run / partial filter / unknown-slug |
+| `translation-interchange-admin.integration.test.ts` (4) | Admin XLIFF/PO export, preview/apply, capability errors, and bounded upload rejection            |
 
 Run the API suite with the same `TEST_DATABASE_URL` via
 `pnpm --filter @nexpress/web test:integration` or the root
