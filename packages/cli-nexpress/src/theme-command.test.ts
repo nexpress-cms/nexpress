@@ -179,6 +179,35 @@ describe("theme commands", () => {
     expect(config).toContain("    newsroomTheme,");
   });
 
+  it("probes an ESM-only package with import and types export conditions", async () => {
+    await writeFile(join(workdir, "nexpress.config.ts"), themeMarkerConfig, "utf-8");
+    const packageDir = join(workdir, "node_modules/theme-newsroom");
+    await mkdir(join(packageDir, "dist"), { recursive: true });
+    await writeFile(
+      join(packageDir, "package.json"),
+      JSON.stringify({
+        name: "theme-newsroom",
+        type: "module",
+        exports: { ".": { types: "./dist/index.d.ts", import: "./dist/index.js" } },
+      }),
+      "utf-8",
+    );
+    await writeFile(
+      join(packageDir, "dist/index.js"),
+      'export const newsroomTheme = { manifest: { id: "newsroom", name: "Newsroom", version: "0.1.0" }, impl: {} };\n',
+      "utf-8",
+    );
+
+    const code = await runNexpressCli(
+      ["node", "nexpress", "theme", "add", "theme-newsroom", "--yes"],
+      { cwd: workdir, runPackageManager: () => Promise.resolve() },
+    );
+
+    const config = await readFile(join(workdir, "nexpress.config.ts"), "utf-8");
+    expect(code).toBe(0);
+    expect(config).toContain('import { newsroomTheme } from "theme-newsroom";');
+  });
+
   it("does not register a theme whose installed export fails the definition contract", async () => {
     await writeFile(join(workdir, "nexpress.config.ts"), themeMarkerConfig, "utf-8");
     const stderr = captureStderr();

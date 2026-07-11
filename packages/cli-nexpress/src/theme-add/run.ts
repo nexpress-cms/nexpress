@@ -154,8 +154,59 @@ async function confirm(message: string): Promise<boolean> {
   }
 }
 
+function selectImportExport(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    for (const candidate of value) {
+      const selected = selectImportExport(candidate);
+      if (selected) return selected;
+    }
+    return null;
+  }
+  if (!value || typeof value !== "object") return null;
+  const conditions = value as Record<string, unknown>;
+  for (const condition of ["import", "node", "default"] as const) {
+    const selected = selectImportExport(conditions[condition]);
+    if (selected) return selected;
+  }
+  return null;
+}
+
+async function resolveThemeImport(themePackage: string, cwd: string): Promise<string> {
+  // `createRequire().resolve()` uses the `require` export condition, so it
+  // cannot resolve a correct ESM-only package whose root exposes only
+  // `{ import, types }`. Read the installed package's root import target first;
+  // retain createRequire as a fallback for classic main/default packages and
+  // package-manager resolvers that do not expose a normal node_modules path.
+  try {
+    const packageDirectory = resolve(cwd, "node_modules", ...themePackage.split("/"));
+    const packageJson = JSON.parse(
+      await readFile(resolve(packageDirectory, "package.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    const exportsField = packageJson.exports;
+    const rootExport =
+      exportsField && typeof exportsField === "object" && !Array.isArray(exportsField)
+        ? ((exportsField as Record<string, unknown>)["."] ?? exportsField)
+        : exportsField;
+    const target =
+      selectImportExport(rootExport) ??
+      (typeof packageJson.module === "string" ? packageJson.module : null) ??
+      (typeof packageJson.main === "string" ? packageJson.main : null);
+    if (target) {
+      const resolvedTarget = resolve(packageDirectory, target);
+      const relativeTarget = relative(packageDirectory, resolvedTarget);
+      if (relativeTarget !== "" && !relativeTarget.startsWith("..")) return resolvedTarget;
+    }
+  } catch {
+    // Fall through to the package manager's CommonJS-compatible resolver.
+  }
+
+  const { createRequire } = await import("node:module");
+  return createRequire(resolve(cwd, "package.json")).resolve(themePackage);
+}
+
 /**
- * Best-effort dynamic-import sanity check. The lazy-import fix
+ * Dynamic-import contract check. The lazy-import fix
  * landed in #726 ensures themes don't boot Next during their
  * top-level module evaluation, so loading `<pkg>` here is cheap
  * and side-effect free. We accept either:
@@ -182,9 +233,7 @@ async function probeThemeExport(
   // installed peer.
   let resolved: string;
   try {
-    const { createRequire } = await import("node:module");
-    const requireFromCwd = createRequire(resolve(cwd, "package.json"));
-    resolved = requireFromCwd.resolve(themePackage);
+    resolved = await resolveThemeImport(themePackage, cwd);
   } catch (err) {
     return `Could not resolve "${themePackage}" from ${cwd}: ${err instanceof Error ? err.message : String(err)}`;
   }
