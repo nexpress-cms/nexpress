@@ -103,8 +103,16 @@ describe.skipIf(skipIfNoTestDb())("Admin translation interchange", () => {
     const exported = await GET(exportRequest(editor, "xliff"));
     const { parseXliff, renderXliff } = await import("@nexpress/xliff");
     const parsed = parseXliff(await exported.text());
-    parsed.files[0]!.units.find((unit) => unit.id === "title")!.target = "관리자 번역";
-    parsed.files[0]!.units.find((unit) => unit.id === "seoDescription")!.target = "번역 본문";
+    const translatedFile = parsed.files[0];
+    const titleUnit = translatedFile?.units.find((unit) => unit.id === "title");
+    const descriptionUnit = translatedFile?.units.find((unit) => unit.id === "seoDescription");
+    expect(titleUnit).toBeDefined();
+    expect(descriptionUnit).toBeDefined();
+    if (!titleUnit || !descriptionUnit) {
+      throw new Error("Expected exported XLIFF title and description units");
+    }
+    titleUnit.target = "관리자 번역";
+    descriptionUnit.target = "번역 본문";
     const translated = renderXliff(parsed);
 
     const previewResponse = await POST(

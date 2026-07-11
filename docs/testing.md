@@ -158,7 +158,7 @@ typechecking + `next build`. Tests catch regressions like the stub
 top-level narrowing creeping back, or the admin login `onSubmit`
 losing its void wrapper.
 
-**API routes (14+ tests, `apps/web/tests/`):**
+**API routes (18+ tests, `apps/web/tests/`):**
 
 | File                                                    | Covers                                                                                           |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
