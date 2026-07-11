@@ -1,3 +1,6 @@
+import { access } from "node:fs/promises";
+import { join, relative, resolve } from "node:path";
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -189,6 +192,7 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
         uploadedBy: npMedia.uploadedBy,
         uploadedByMemberId: npMedia.uploadedByMemberId,
         mimeType: npMedia.mimeType,
+        storageKey: npMedia.storageKey,
       })
       .from(npMedia)
       .where(eq(npMedia.id, body.body.id!))
@@ -197,10 +201,19 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
       uploadedBy: string | null;
       uploadedByMemberId: string | null;
       mimeType: string;
+      storageKey: string;
     }>;
     expect(row.uploadedBy).toBeNull();
     expect(row.uploadedByMemberId).toBe(member.memberId);
     expect(row.mimeType).toBe("image/png");
+
+    const storageDirectory = process.env.NP_STORAGE_DIR;
+    expect(storageDirectory).toBeDefined();
+    expect(relative(process.cwd(), storageDirectory!).startsWith("..")).toBe(true);
+    await expect(access(join(storageDirectory!, row.storageKey))).resolves.toBeUndefined();
+    await expect(
+      access(resolve(process.cwd(), "public/media", row.storageKey)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("member upload emits media hooks with the canonical member actor", async () => {
