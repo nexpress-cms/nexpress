@@ -20,6 +20,13 @@ export {
   getCollectionZodSchema,
 } from "../collections/validation.js";
 export {
+  isNpBlockContent,
+  npValidateBlockContent,
+  type NpBlockContent,
+  type NpBlockContentValidationResult,
+  type NpBlockInstance,
+} from "./block-content.js";
+export {
   NP_RICH_TEXT_CONTENT_VERSION,
   isNpRichTextContent,
   npCreateEmptyRichTextContent,

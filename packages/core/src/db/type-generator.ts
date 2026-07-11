@@ -2,22 +2,33 @@ import { type NpCollectionConfig, type NpFieldConfig } from "../config/types.js"
 
 export function generateTypeScript(collections: NpCollectionConfig[]): string {
   const interfaces = collections.map((collection) => renderCollectionInterface(collection));
-  const imports = collections.some((collection) => hasRichTextFields(collection.fields))
-    ? 'import type { NpRichTextContent } from "@nexpress/core/fields";\n\n'
-    : "";
+  const imports = renderFieldTypeImport(collections);
   return `${imports}${interfaces.join("\n\n")}`;
 }
 
-function hasRichTextFields(fields: NpFieldConfig[]): boolean {
+function renderFieldTypeImport(collections: NpCollectionConfig[]): string {
+  const types: string[] = [];
+  if (collections.some((collection) => hasFieldType(collection.fields, "blocks"))) {
+    types.push("NpBlockContent");
+  }
+  if (collections.some((collection) => hasFieldType(collection.fields, "richText"))) {
+    types.push("NpRichTextContent");
+  }
+  return types.length > 0
+    ? `import type { ${types.join(", ")} } from "@nexpress/core/fields";\n\n`
+    : "";
+}
+
+function hasFieldType(fields: NpFieldConfig[], target: "blocks" | "richText"): boolean {
   return fields.some((field) => {
-    if (field.type === "richText") return true;
+    if (field.type === target) return true;
     if (
       field.type === "array" ||
       field.type === "group" ||
       field.type === "row" ||
       field.type === "collapsible"
     ) {
-      return hasRichTextFields(field.fields);
+      return hasFieldType(field.fields, target);
     }
     return false;
   });
@@ -84,9 +95,7 @@ export function generateDocumentsModule(collections: NpCollectionConfig[]): stri
     `  type NpFindResult,`,
     `} from "@nexpress/core";`,
   ].join("\n");
-  const fieldImports = collections.some((collection) => hasRichTextFields(collection.fields))
-    ? 'import type { NpRichTextContent } from "@nexpress/core/fields";'
-    : "";
+  const fieldImports = renderFieldTypeImport(collections).trim();
 
   // Drizzle + join-table imports only when at least one collection
   // has a hasMany relationship — keeps the file lean for sites
@@ -376,6 +385,7 @@ function getTypeSource(
     case "richText":
       return "NpRichTextContent";
     case "blocks":
+      return "NpBlockContent";
     case "json":
       return "unknown";
     default:

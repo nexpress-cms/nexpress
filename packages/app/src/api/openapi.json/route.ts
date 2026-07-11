@@ -57,6 +57,10 @@ function fieldToSchema(field: NpFieldManifest): OpenApiSchema {
         },
       };
     case "blocks":
+      return {
+        type: "array",
+        items: { $ref: "#/components/schemas/block_instance" },
+      };
     case "json":
       return { type: "object", additionalProperties: true };
     case "upload":
@@ -138,6 +142,28 @@ function collectionSchema(manifest: ReturnType<typeof collectionToManifest>): Op
 function buildSpec(): OpenApiSchema {
   const slugs = getAllCollectionSlugs();
   const schemas: Record<string, OpenApiSchema> = {
+    block_instance: {
+      type: "object",
+      additionalProperties: false,
+      required: ["id", "type", "props"],
+      properties: {
+        id: {
+          type: "string",
+          maxLength: 128,
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+        },
+        type: {
+          type: "string",
+          maxLength: 128,
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+        },
+        props: { type: "object", additionalProperties: true },
+        children: {
+          type: "array",
+          items: { $ref: "#/components/schemas/block_instance" },
+        },
+      },
+    },
     plugin_item: {
       type: "object",
       properties: {

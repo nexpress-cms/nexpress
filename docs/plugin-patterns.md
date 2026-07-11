@@ -89,8 +89,9 @@ documents:
 
 `props` must contain finite, serializable primitives, arrays, and plain objects.
 Functions, class instances, circular values, circular block trees, unsupported
-instance fields, and trees deeper than 32 levels are rejected before Admin can
-see them.
+instance fields, duplicate ids anywhere in the tree, and trees deeper than 32
+levels are rejected before Admin can see them. Patterns use the same validator
+as persisted collection content; see [`block-content.md`](block-content.md).
 
 ## Block references
 

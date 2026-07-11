@@ -628,9 +628,9 @@ Slot-by-slot rules:
   that don't resolve are skipped silently.
 - **`pages`** — `{ title, slug?, seoDescription?, blocks }`.
   `slug` overrides the pipeline's title-derived slug (used for
-  `/` on the home page). `blocks` is `NpBlockInstance[]` kept
-  as `unknown[]` in the type so the JSON shape doesn't cross
-  the package boundary; the seeder treats it opaquely.
+  `/` on the home page). `blocks` is the stable `NpBlockContent`
+  wire shape shared with collection fields, patterns, Admin, and
+  translation. See [`block-content.md`](block-content.md).
 - **`posts`** — `{ title, excerpt, content, publishedAt, status?, tagNames? }`.
   `content` uses the versioned [`NpRichTextContent`](rich-text.md) envelope;
   node-specific editor data remains opaque. Past `publishedAt` = published; future = scheduled

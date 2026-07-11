@@ -7,6 +7,7 @@ import {
   type NpFieldConfig,
 } from "../config/types.js";
 import { npValidateRichTextContent } from "../fields/rich-text.js";
+import { npValidateBlockContent } from "../fields/block-content.js";
 
 /**
  * Evaluate a field condition — handles both the legacy function
@@ -261,6 +262,12 @@ function buildFieldSchema(
         }
       });
     case "blocks":
+      return z.unknown().superRefine((value, ctx) => {
+        const result = npValidateBlockContent(value);
+        if (!result.ok) {
+          ctx.addIssue({ code: "custom", message: result.message });
+        }
+      });
     case "json":
       return z.unknown();
     case "array": {

@@ -1,4 +1,7 @@
 import type { ReactElement, ReactNode } from "react";
+import type { NpBlockInstance } from "@nexpress/core/fields";
+
+export type { NpBlockInstance } from "@nexpress/core/fields";
 
 import type { NpFindOptions, NpFindResult } from "@nexpress/core";
 import type { NpBlockPropFieldType } from "./block-contract.js";
@@ -290,24 +293,6 @@ export type NpBlockPropField = NpBlockPropFieldBase &
         translatable?: never;
       }
   );
-
-export interface NpBlockInstance {
-  id: string;
-  type: string;
-  props: Record<string, unknown>;
-  /**
-   * Nested block instances. Set on container blocks (those whose
-   * definition has `acceptsChildren: true`). Empty / undefined on
-   * leaf blocks. The renderer walks the tree depth-first and feeds
-   * each level's rendered output to the parent's `render(_, children)`.
-   *
-   * Children may carry layout-meta props the parent reads (e.g. a
-   * grid's children read `_layout: { colSpan }`). The shape of
-   * that meta is the parent block's contract — not part of the
-   * core type.
-   */
-  children?: NpBlockInstance[];
-}
 
 // The `blocks` field on a document is stored and edited as a flat
 // array of block instances — the editor, the JSONB column, the

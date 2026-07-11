@@ -1,5 +1,5 @@
 import { NpForbiddenError, can, getTheme } from "@nexpress/core";
-import { renderBlocks, type NpBlockInstance } from "@nexpress/blocks";
+import { npValidateBlockContent, renderBlocks } from "@nexpress/blocks";
 import { createSiteScopedBlockRenderContext } from "@nexpress/next";
 import { generateThemeCss } from "@nexpress/theme";
 import type { NextRequest } from "next/server";
@@ -59,7 +59,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (await request.json()) as { blocks?: unknown };
-    const blocks = Array.isArray(body.blocks) ? (body.blocks as NpBlockInstance[]) : [];
+    const validation = npValidateBlockContent(body.blocks);
+    if (!validation.ok) {
+      return new Response(buildErrorDocument(validation.message), {
+        status: 400,
+        headers: previewHeaders(),
+      });
+    }
+    const blocks = validation.value;
 
     const themeStyle = await resolveThemeStyle();
 

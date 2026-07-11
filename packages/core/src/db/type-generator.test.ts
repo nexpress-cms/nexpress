@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { generateDocumentsModule } from "./type-generator.js";
+import { generateDocumentsModule, generateTypeScript } from "./type-generator.js";
 import type { NpCollectionConfig } from "../config/types.js";
 
 function collection(slug: string, fields: NpCollectionConfig["fields"] = []): NpCollectionConfig {
@@ -138,6 +138,30 @@ describe("generateDocumentsModule — hasMany filter wrapper", () => {
     ]);
 
     expect(out).toContain('import type { NpRichTextContent } from "@nexpress/core/fields";');
+    expect(out).toContain("body: NpRichTextContent;");
+  });
+
+  it("uses the stable block-content type for blocks fields", () => {
+    const out = generateDocumentsModule([
+      collection("pages", [{ type: "blocks", name: "content", required: true }]),
+    ]);
+
+    expect(out).toContain('import type { NpBlockContent } from "@nexpress/core/fields";');
+    expect(out).toContain("content: NpBlockContent;");
+  });
+
+  it("uses both stable content types in standalone generated interfaces", () => {
+    const out = generateTypeScript([
+      collection("pages", [
+        { type: "blocks", name: "blocks", required: true },
+        { type: "richText", name: "body", required: true },
+      ]),
+    ]);
+
+    expect(out).toContain(
+      'import type { NpBlockContent, NpRichTextContent } from "@nexpress/core/fields";',
+    );
+    expect(out).toContain("blocks: NpBlockContent;");
     expect(out).toContain("body: NpRichTextContent;");
   });
 });

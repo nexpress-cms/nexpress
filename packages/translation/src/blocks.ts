@@ -1,5 +1,6 @@
 import {
   getRegisteredBlocks,
+  npValidateBlockContent,
   type NpBlockDefinition,
   type NpBlockInstance,
   type NpBlockPropField,
@@ -293,22 +294,17 @@ function indexBlocks(value: unknown): {
   ordered: NpBlockInstance[];
   unique: Map<string, NpBlockInstance>;
 } | null {
-  if (!Array.isArray(value)) return null;
+  const validation = npValidateBlockContent(value);
+  if (!validation.ok) return null;
   const ordered: NpBlockInstance[] = [];
-  const counts = new Map<string, number>();
-  const visit = (candidate: unknown): void => {
-    if (!isBlockInstance(candidate)) return;
+  const visit = (candidate: NpBlockInstance): void => {
     ordered.push(candidate);
-    counts.set(candidate.id, (counts.get(candidate.id) ?? 0) + 1);
     if (Array.isArray(candidate.children)) {
       for (const child of candidate.children) visit(child);
     }
   };
-  for (const candidate of value) visit(candidate);
-  const unique = new Map<string, NpBlockInstance>();
-  for (const block of ordered) {
-    if (counts.get(block.id) === 1) unique.set(block.id, block);
-  }
+  for (const candidate of validation.value) visit(candidate);
+  const unique = new Map(ordered.map((block) => [block.id, block]));
   return { ordered, unique };
 }
 
@@ -351,24 +347,13 @@ function setValueAtPath(root: unknown, path: PropPath, value: unknown): boolean 
 }
 
 function cloneBlocks(value: unknown): NpBlockInstance[] | null {
-  if (!Array.isArray(value)) return null;
+  const validation = npValidateBlockContent(value);
+  if (!validation.ok) return null;
   try {
-    const cloned: unknown = structuredClone(value);
-    return Array.isArray(cloned) ? (cloned as NpBlockInstance[]) : null;
+    return structuredClone(validation.value);
   } catch {
     return null;
   }
-}
-
-function isBlockInstance(value: unknown): value is NpBlockInstance {
-  return (
-    isRecord(value) &&
-    typeof value.id === "string" &&
-    value.id.length > 0 &&
-    typeof value.type === "string" &&
-    value.type.length > 0 &&
-    isRecord(value.props)
-  );
 }
 
 function isPropPath(value: unknown): value is PropPath {

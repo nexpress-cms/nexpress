@@ -32,7 +32,6 @@ export type {
   NpImageSize,
   NpCollectionConfig,
   NpBlockConfig,
-  NpBlockInstance,
   NpPluginConfig,
   NpPluginContext,
   NpResolvedPluginLike,
@@ -54,6 +53,8 @@ export type {
   NpSaveResult,
   NpDocumentStatus,
 } from "./config/types.js";
+export type { NpBlockContent, NpBlockInstance } from "./fields/block-content.js";
+export { isNpBlockContent, npValidateBlockContent } from "./fields/block-content.js";
 
 // `hasRole` / `isStaffMod` were retired in favour of `can(user, capability)` (#273).
 export { ROLE_HIERARCHY } from "./config/types.js";

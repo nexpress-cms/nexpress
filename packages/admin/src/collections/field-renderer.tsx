@@ -2,7 +2,7 @@
 
 import { lazy, Suspense, type ComponentType } from "react";
 import type { NpFieldConfig } from "@nexpress/core";
-import { isNpRichTextContent } from "@nexpress/core/fields";
+import { isNpRichTextContent, npValidateBlockContent } from "@nexpress/core/fields";
 import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 
 import { useBlocksRegistry } from "../blocks/registry-context.js";
@@ -100,46 +100,6 @@ const LazyBlockPageEditor = lazy(async () => {
 const buildFieldName = (fieldName: string, namePrefix?: string): string =>
   namePrefix ? `${namePrefix}.${fieldName}` : fieldName;
 
-const toBlockInstances = (value: unknown): NpBlockInstance[] => {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.flatMap((item) => {
-    if (typeof item !== "object" || item === null) {
-      return [];
-    }
-
-    const candidate = item as Partial<NpBlockInstance>;
-    if (typeof candidate.id !== "string" || typeof candidate.type !== "string") {
-      return [];
-    }
-
-    const instance: NpBlockInstance = {
-      id: candidate.id,
-      type: candidate.type,
-      props:
-        typeof candidate.props === "object" &&
-        candidate.props !== null &&
-        !Array.isArray(candidate.props)
-          ? candidate.props
-          : {},
-    };
-
-    // Recursively hydrate `children` so nested container/grid trees
-    // round-trip through the editor without dropping descendants.
-    // Without this, opening a saved page that contains a populated
-    // grid would mount the editor with empty children — and the next
-    // save would persist the truncated tree, silently deleting the
-    // operator's content.
-    if (Array.isArray(candidate.children)) {
-      instance.children = toBlockInstances(candidate.children);
-    }
-
-    return [instance];
-  });
-};
-
 const formatDateValue = (value: unknown, includeTime: boolean): string => {
   if (typeof value === "string") {
     return includeTime ? value.slice(0, 16) : value.slice(0, 10);
@@ -208,33 +168,46 @@ function BlocksFieldRender({
     <FormField
       control={control}
       name={name as never}
-      render={({ field: formField }) => (
-        <FormItem>
-          <FormLabel>{label}</FormLabel>
-          <FormControl>
-            <Suspense
-              fallback={
-                <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
-                  Loading blocks editor…
-                </div>
-              }
-            >
-              <LazyBlockPageEditor
-                blocks={toBlockInstances(formField.value)}
-                onChange={formField.onChange}
-                availableBlocks={availableBlocks}
-                viewScope={collectionSlug ? `${collectionSlug}.${name}` : undefined}
-              />
-            </Suspense>
-          </FormControl>
-          <FormDescription>
-            {availableBlocks.length === 0
-              ? "No block definitions available."
-              : `Available blocks: ${blockLabels}`}
-          </FormDescription>
-          <FormMessage />
-        </FormItem>
-      )}
+      render={({ field: formField }) => {
+        const validation = npValidateBlockContent(formField.value ?? []);
+        return (
+          <FormItem>
+            <FormLabel>{label}</FormLabel>
+            {validation.ok ? (
+              <FormControl>
+                <Suspense
+                  fallback={
+                    <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
+                      Loading blocks editor…
+                    </div>
+                  }
+                >
+                  <LazyBlockPageEditor
+                    blocks={validation.value}
+                    onChange={formField.onChange}
+                    availableBlocks={availableBlocks}
+                    viewScope={collectionSlug ? `${collectionSlug}.${name}` : undefined}
+                  />
+                </Suspense>
+              </FormControl>
+            ) : (
+              <div
+                role="alert"
+                className="rounded-xl border border-destructive/50 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+              >
+                This field contains invalid block content and cannot be edited safely:{" "}
+                {validation.message}
+              </div>
+            )}
+            <FormDescription>
+              {availableBlocks.length === 0
+                ? "No block definitions available."
+                : `Available blocks: ${blockLabels}`}
+            </FormDescription>
+            <FormMessage />
+          </FormItem>
+        );
+      }}
     />
   );
 }

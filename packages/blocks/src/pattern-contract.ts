@@ -1,3 +1,5 @@
+import { npValidateBlockContent } from "@nexpress/core/fields";
+
 export type NpPatternDefinitionValidationResult =
   { readonly ok: true } | { readonly ok: false; readonly message: string };
 
@@ -25,10 +27,7 @@ const patternKeys = new Set([
   "preview",
   "category",
 ]);
-const blockInstanceKeys = new Set(["id", "type", "props", "children"]);
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
-const maxBlockTreeDepth = 32;
-const maxSerializableDepth = 32;
 
 function valid(): NpPatternDefinitionValidationResult {
   return { ok: true };
@@ -67,130 +66,6 @@ function validateOptionalString(
       );
 }
 
-function validateSerializable(
-  value: unknown,
-  path: string,
-  depth: number,
-  activeValues: WeakSet<object>,
-): NpPatternDefinitionValidationResult {
-  if (
-    value === null ||
-    value === undefined ||
-    typeof value === "string" ||
-    typeof value === "boolean"
-  ) {
-    return valid();
-  }
-  if (typeof value === "number") {
-    return Number.isFinite(value)
-      ? valid()
-      : invalid(`${path} must not contain a non-finite number.`);
-  }
-  if (typeof value !== "object") return invalid(`${path} must contain only serializable values.`);
-  if (depth > maxSerializableDepth) {
-    return invalid(
-      `${path} exceeds the maximum serializable depth of ${maxSerializableDepth.toString()}.`,
-    );
-  }
-  if (activeValues.has(value)) return invalid(`${path} must not contain circular values.`);
-  activeValues.add(value);
-
-  if (Array.isArray(value)) {
-    for (const [index, item] of value.entries()) {
-      const result = validateSerializable(
-        item,
-        `${path}[${index.toString()}]`,
-        depth + 1,
-        activeValues,
-      );
-      if (!result.ok) {
-        activeValues.delete(value);
-        return result;
-      }
-    }
-    activeValues.delete(value);
-    return valid();
-  }
-
-  if (!isPlainRecord(value)) {
-    activeValues.delete(value);
-    return invalid(`${path} must contain only arrays and plain objects.`);
-  }
-  for (const [key, item] of Object.entries(value)) {
-    const result = validateSerializable(item, `${path}.${key}`, depth + 1, activeValues);
-    if (!result.ok) {
-      activeValues.delete(value);
-      return result;
-    }
-  }
-  activeValues.delete(value);
-  return valid();
-}
-
-function validateBlockInstance(
-  value: unknown,
-  path: string,
-  depth: number,
-  activeBlocks: WeakSet<object>,
-): NpPatternDefinitionValidationResult {
-  if (!isPlainRecord(value)) return invalid(`${path} must be an object.`);
-  if (depth > maxBlockTreeDepth) {
-    return invalid(
-      `${path} exceeds the maximum block tree depth of ${maxBlockTreeDepth.toString()}.`,
-    );
-  }
-  if (activeBlocks.has(value)) return invalid(`${path} must not contain a circular block tree.`);
-  activeBlocks.add(value);
-
-  const extra = unsupportedKey(value, blockInstanceKeys);
-  if (extra) {
-    activeBlocks.delete(value);
-    return invalid(`${path} has unsupported field "${extra}".`);
-  }
-  if (!isNonEmptyString(value.id, 128) || !identifierPattern.test(value.id)) {
-    activeBlocks.delete(value);
-    return invalid(
-      `${path}.id must start with a letter or number and use only letters, numbers, dots, underscores, or hyphens.`,
-    );
-  }
-  if (!isNonEmptyString(value.type, 128) || !identifierPattern.test(value.type)) {
-    activeBlocks.delete(value);
-    return invalid(
-      `${path}.type must start with a letter or number and use only letters, numbers, dots, underscores, or hyphens.`,
-    );
-  }
-  if (!isPlainRecord(value.props)) {
-    activeBlocks.delete(value);
-    return invalid(`${path}.props must be an object.`);
-  }
-  const propsResult = validateSerializable(value.props, `${path}.props`, 0, new WeakSet());
-  if (!propsResult.ok) {
-    activeBlocks.delete(value);
-    return propsResult;
-  }
-  if (value.children !== undefined) {
-    if (!Array.isArray(value.children)) {
-      activeBlocks.delete(value);
-      return invalid(`${path}.children must be an array.`);
-    }
-    for (const [index, child] of value.children.entries()) {
-      const childResult = validateBlockInstance(
-        child,
-        `${path}.children[${index.toString()}]`,
-        depth + 1,
-        activeBlocks,
-      );
-      if (!childResult.ok) {
-        activeBlocks.delete(value);
-        return childResult;
-      }
-    }
-  }
-
-  activeBlocks.delete(value);
-  return valid();
-}
-
 function validatePattern(
   value: unknown,
   requireSource: boolean,
@@ -222,15 +97,9 @@ function validatePattern(
   if (!Array.isArray(value.blocks) || value.blocks.length === 0) {
     return invalid("pattern.blocks must contain at least one block instance.");
   }
-  const activeBlocks = new WeakSet<object>();
-  for (const [index, block] of value.blocks.entries()) {
-    const result = validateBlockInstance(
-      block,
-      `pattern.blocks[${index.toString()}]`,
-      0,
-      activeBlocks,
-    );
-    if (!result.ok) return result;
+  const blocksResult = npValidateBlockContent(value.blocks);
+  if (!blocksResult.ok) {
+    return invalid(blocksResult.message.replace(/^block content/u, "pattern.blocks"));
   }
   return valid();
 }
