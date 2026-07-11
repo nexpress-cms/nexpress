@@ -154,6 +154,7 @@ describe("theme commands", () => {
       ["node", "nexpress", "theme", "add", "theme-newsroom", "--yes"],
       {
         cwd: workdir,
+        themeExportProbe: () => Promise.resolve(null),
         runPackageManager: (manager, action, packageName, cwd, options = {}) => {
           packageManagerCalls.push({ manager, action, packageName, cwd, options });
           return Promise.resolve();
@@ -176,6 +177,29 @@ describe("theme commands", () => {
     expect(stdout.read()).toContain("Detected local workspace theme");
     expect(config).toContain('import { newsroomTheme } from "theme-newsroom";');
     expect(config).toContain("    newsroomTheme,");
+  });
+
+  it("does not register a theme whose installed export fails the definition contract", async () => {
+    await writeFile(join(workdir, "nexpress.config.ts"), themeMarkerConfig, "utf-8");
+    const stderr = captureStderr();
+
+    const code = await runNexpressCli(
+      ["node", "nexpress", "theme", "add", "theme-newsroom", "--yes"],
+      {
+        cwd: workdir,
+        runPackageManager: () => Promise.resolve(),
+        themeExportProbe: () =>
+          Promise.resolve(
+            '"theme-newsroom" exports an invalid theme at manifest.version: manifest.version must be a semantic version.',
+          ),
+      },
+    );
+
+    stderr.restore();
+    const config = await readFile(join(workdir, "nexpress.config.ts"), "utf-8");
+    expect(code).toBe(1);
+    expect(stderr.read()).toContain("Theme registration was not written");
+    expect(config).not.toContain('from "theme-newsroom"');
   });
 
   it("refuses to add an unbuilt local workspace theme", async () => {

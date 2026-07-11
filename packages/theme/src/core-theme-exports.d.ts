@@ -5,10 +5,12 @@ declare module "@nexpress/core" {
     NpThemeTokens,
     NpThemeTypography,
   } from "../../../core/src/theme/types.js";
+  export type { NpThemeManifest, NpRegisteredTheme } from "../../../core/src/config/types.js";
   export type {
-    NpThemeManifest,
-    NpRegisteredTheme,
-  } from "../../../core/src/config/types.js";
+    NpThemeDefinitionIssue,
+    NpThemeDefinitionIssueCode,
+    NpThemeDefinitionValidationResult,
+  } from "../../../core/src/themes/definition-contract.js";
   export { DEFAULT_THEME } from "../../../core/src/theme/defaults.js";
   export { sanitizeTokenValue } from "../../../core/src/theme/sanitize.js";
   export {
@@ -16,4 +18,8 @@ declare module "@nexpress/core" {
     getRegisteredThemes,
     getThemeById,
   } from "../../../core/src/themes/registry.js";
+  export {
+    npAnalyzeRegisteredThemeDefinition,
+    npValidateRegisteredThemeDefinition,
+  } from "../../../core/src/themes/definition-contract.js";
 }

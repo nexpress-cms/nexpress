@@ -42,6 +42,7 @@ import type {
   NpThemeShape,
   NpThemeTypography,
 } from "@nexpress/core";
+import { npAssertThemeDefinition } from "./theme-contract.js";
 
 /**
  * Local mirror of `NpNavItem` from `@nexpress/core` — same
@@ -271,10 +272,9 @@ export interface NpThemeArchives {
    * same archive kind for multiple collections (e.g. both
    * `posts.byCategory` AND `products.byCategory`) MUST override
    * the `pattern` for at least N-1 of them — otherwise both
-   * register the same default pattern and only the first
-   * declared one is reachable. The framework logs a one-time
-   * dev warning when it detects pattern collisions in
-   * `collectThemeRoutes`.
+   * register the same default pattern. `defineTheme()` rejects
+   * the duplicate before boot; `collectThemeRoutes` retains a
+   * warning only for raw callers that bypass the contract.
    */
   [collectionSlug: string]: {
     byCategory?: NpThemeArchiveEntry;
@@ -331,8 +331,8 @@ export interface NpThemeSeedPage {
    * `templates.pages[<key>]` entry. Used by magazine / portfolio /
    * docs to land the seeded home page on `front` instead of the
    * collection's default template. Forwarded as the `template`
-   * field on the seeded row; unknown keys silently fall back to
-   * the default template (the public renderer's same fallback).
+   * field on the seeded row; `defineTheme()` rejects keys that are
+   * not declared in `templates.pages`.
    */
   template?: string;
   /**
@@ -721,11 +721,12 @@ export interface NpTheme extends NpRegisteredTheme {
 }
 
 /**
- * Identity helper. Themes call this so TypeScript infers the
- * full `NpTheme` shape; the runtime is a no-op pass-through.
- * Mirrors `definePlugin()` and `defineCollection()` from the
- * rest of the framework.
+ * Typed definition boundary. Besides preserving inference, this validates
+ * the complete runtime shape while the authoring module is evaluated so a
+ * malformed theme fails before config/bootstrap consumers can silently drop
+ * a contribution.
  */
 export function defineTheme(theme: NpTheme): NpTheme {
+  npAssertThemeDefinition(theme);
   return theme;
 }

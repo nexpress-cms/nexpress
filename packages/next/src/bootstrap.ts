@@ -29,6 +29,7 @@ import {
   type NpPluginConfig,
   type NpReconcileSchedulesResult,
   type NpResolvedPluginLike,
+  type NpRegisteredTheme,
 } from "@nexpress/core";
 import {
   npAnalyzeBlockDefinitions,
@@ -41,6 +42,7 @@ import {
   type NpBlockDefinition,
   type NpPatternDefinition,
 } from "@nexpress/blocks";
+import { npAssertThemeDefinition, type NpTheme } from "@nexpress/theme";
 import { cookies, headers } from "next/headers";
 
 // Plugin definitions can ship a `blocks` array (see plugin-sdk's
@@ -55,31 +57,21 @@ function pluginBlocks(plugin: NpPluginConfig | NpResolvedPluginLike): NpBlockDef
   return blocks as NpBlockDefinition[];
 }
 
-// Phase F.4 — same narrowing for theme-shipped blocks. The theme
-// `impl` is opaque from core's perspective (`unknown`), so we
-// duck-type the array shape here.
-function themeBlocks(theme: { impl: unknown }): NpBlockDefinition[] {
-  const impl = theme.impl as { blocks?: unknown } | undefined;
-  const blocks = impl?.blocks;
-  if (!Array.isArray(blocks)) return [];
-  return blocks.filter(
-    (b): b is NpBlockDefinition =>
-      b !== null &&
-      typeof b === "object" &&
-      typeof (b as { type?: unknown }).type === "string" &&
-      typeof (b as { render?: unknown }).render === "function",
-  );
-}
-
-// Theme contributions use the same validated author shape as plugins.
-// Bootstrap owns the concrete source identity, so source remains optional here.
-function themePatterns(theme: { manifest: { id: string }; impl: unknown }): NpPatternDefinition[] {
-  const impl = theme.impl as { patterns?: unknown } | undefined;
-  const patterns = impl?.patterns;
-  if (patterns === undefined) return [];
-  const issue = npAnalyzePatternDefinitions(patterns)[0];
-  if (issue) throw new Error(`[theme:${theme.manifest.id}] ${issue.message}`);
-  return patterns as NpPatternDefinition[];
+// Core intentionally keeps `impl` opaque to stay React-free. Next is the host
+// boundary that can load @nexpress/theme, so it repeats the complete contract
+// for config objects that bypassed defineTheme() and returns a safely narrowed
+// contribution bundle instead of filtering malformed entries.
+function themeContributions(theme: NpRegisteredTheme): {
+  theme: NpTheme;
+  blocks: NpBlockDefinition[];
+  patterns: NpPatternDefinition[];
+} {
+  npAssertThemeDefinition(theme);
+  return {
+    theme,
+    blocks: theme.impl.blocks ?? [],
+    patterns: theme.impl.patterns ?? [],
+  };
 }
 
 // Sister to `pluginBlocks` — validates the whole recursive pattern tree
@@ -521,11 +513,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
         blocks: pluginBlocks(plugin),
         patterns: pluginPatterns(plugin),
       }));
-      const themesWithContributions = (config.themes ?? []).map((theme) => ({
-        theme,
-        blocks: themeBlocks(theme),
-        patterns: themePatterns(theme),
-      }));
+      const themesWithContributions = (config.themes ?? []).map(themeContributions);
       const pluginBlockTypes = new Set([
         ...getDefaultBlocks().map((block) => block.type),
         ...enabledWithContributions.flatMap(({ blocks }) => blocks.map((block) => block.type)),
@@ -652,11 +640,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
         blocks: pluginBlocks(plugin),
         patterns: pluginPatterns(plugin),
       }));
-      const themesWithContributions = (config.themes ?? []).map((theme) => ({
-        theme,
-        blocks: themeBlocks(theme),
-        patterns: themePatterns(theme),
-      }));
+      const themesWithContributions = (config.themes ?? []).map(themeContributions);
       const pluginBlockTypes = new Set([
         ...getDefaultBlocks().map((block) => block.type),
         ...enabledWithContributions.flatMap(({ blocks }) => blocks.map((block) => block.type)),

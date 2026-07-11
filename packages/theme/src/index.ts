@@ -12,6 +12,12 @@ export { DEFAULT_THEME, sanitizeTokenValue } from "@nexpress/core";
 export type { NpThemeColors, NpThemeShape, NpThemeTokens, NpThemeTypography } from "@nexpress/core";
 
 export { defineTheme } from "./define-theme.js";
+export {
+  npAnalyzeThemeDefinition,
+  npAssertThemeDefinition,
+  npValidateThemeDefinition,
+} from "./theme-contract.js";
+export type { NpThemeContractIssue, NpThemeContractValidationResult } from "./theme-contract.js";
 export type {
   NpTheme,
   NpThemeImpl,

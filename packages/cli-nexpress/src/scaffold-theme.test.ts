@@ -58,6 +58,7 @@ describe("scaffoldTheme", () => {
     expect(pkg.dependencies["@nexpress/plugin-sdk"]).toBeUndefined();
     expect(source).toContain("export const newsRoomTheme = defineTheme");
     expect(source).toContain('id: "news-room"');
+    expect(source).toContain('author: { name: "Theme author" }');
     expect(source).not.toContain("license:");
   });
 

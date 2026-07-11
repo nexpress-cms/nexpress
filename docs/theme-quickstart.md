@@ -45,8 +45,10 @@ pnpm --filter theme-newsroom build
 ```
 
 `theme add` refuses to register a local workspace theme if its runtime
-`dist/index.js` is missing. That catches the common "registered but the app
-cannot import it on boot" failure before it reaches Next.js.
+`dist/index.js` is missing. It also imports the named theme export and runs the
+theme definition contract before changing project config. Missing artifacts,
+the wrong export shape, and invalid manifests or implementation surfaces stop
+at the CLI instead of reaching Next.js boot.
 
 ## 3. Register it
 
@@ -57,7 +59,7 @@ pnpm exec nexpress theme add theme-newsroom --yes
 For a local workspace theme, the command installs
 `theme-newsroom@workspace:*` at the pnpm workspace root, updates the theme
 marker sections in `src/nexpress.config.ts`, and probes the package export
-shape.
+shape and complete React-free definition contract.
 
 The config change looks like:
 

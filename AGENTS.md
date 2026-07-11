@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-12 (block instances now add one definition-aware
+**Last refreshed:** 2026-07-12 (theme definitions now fail closed across
+module evaluation, config merge, core registration, Next bootstrap, CLI add,
+and seed content; bundled themes and scaffolds share the same contract.)
+
+**Earlier:** 2026-07-12 (block instances now add one definition-aware
 prop/container contract across defaults, Admin/app writes, preview, patterns,
 rendering, and plugin doctor while inactive content remains preservable.)
 
