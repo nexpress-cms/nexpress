@@ -13,10 +13,6 @@ function hasPublishedAtField(fields: NpFieldConfig[]): boolean {
       if (hasPublishedAtField(field.fields)) return true;
       continue;
     }
-    if (field.type === "group" || field.type === "array") {
-      if (hasPublishedAtField(field.fields)) return true;
-      continue;
-    }
     if (field.type === "date" && field.name === "publishedAt") {
       return true;
     }

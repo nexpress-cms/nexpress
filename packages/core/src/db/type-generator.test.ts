@@ -132,6 +132,17 @@ describe("generateDocumentsModule — hasMany filter wrapper", () => {
     expect(out.match(/publishedAt: Date \| null;/g)).toHaveLength(1);
   });
 
+  it("does not duplicate publishedAt fields inside layout-only rows", () => {
+    const out = generateDocumentsModule([
+      {
+        ...collection("posts", [{ type: "row", fields: [{ type: "date", name: "publishedAt" }] }]),
+        versions: { drafts: true },
+      },
+    ]);
+
+    expect(out.match(/publishedAt: Date \| null;/g)).toHaveLength(1);
+  });
+
   it("uses the stable rich-text type for richText fields", () => {
     const out = generateDocumentsModule([
       collection("posts", [{ type: "richText", name: "body", required: true }]),

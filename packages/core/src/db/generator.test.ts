@@ -65,6 +65,17 @@ describe("generateDrizzleSchema", () => {
     expect(out.match(/publishedAt: timestamp\("published_at"/g)).toHaveLength(1);
   });
 
+  it("treats publishedAt inside layout-only rows as a top-level column", () => {
+    const out = generateDrizzleSchema([
+      {
+        ...collection("posts", [{ type: "row", fields: [{ type: "date", name: "publishedAt" }] }]),
+        versions: { drafts: true },
+      },
+    ]);
+
+    expect(out.match(/publishedAt: timestamp\("published_at"/g)).toHaveLength(1);
+  });
+
   it("points upload fields at npMedia and relationship fields at the target table", () => {
     const out = generateDrizzleSchema([
       collection("posts", [

@@ -590,7 +590,12 @@ function hasDraftVersions(collection: NpCollectionConfig): boolean {
 }
 
 function hasTopLevelField(collection: NpCollectionConfig, name: string): boolean {
-  return collection.fields.some((field) => "name" in field && field.name === name);
+  return collection.fields.some((field) => {
+    if (field.type === "row" || field.type === "collapsible") {
+      return hasTopLevelField({ ...collection, fields: field.fields }, name);
+    }
+    return field.name === name;
+  });
 }
 
 function resolveRelationTarget(relationTo: string, collectionTables: Map<string, string>): string {

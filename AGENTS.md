@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-12 (theme definitions now fail closed across
+**Last refreshed:** 2026-07-12 (collection definitions now fail closed during
+module evaluation and config resolution; strict nested schemas, semantic field
+rules, codegen-safe persistence shapes, references, and duplicate collection
+slugs share one contract before and after theme requirement merging.)
+
+**Earlier:** 2026-07-12 (theme definitions now fail closed across
 module evaluation, config merge, core registration, Next bootstrap, CLI add,
 and seed content; bundled themes and scaffolds share the same contract.)
 

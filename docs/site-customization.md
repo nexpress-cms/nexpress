@@ -156,6 +156,24 @@ export const projectsCollection = defineCollection({
 });
 ```
 
+`defineCollection()` validates the complete definition while this module is
+evaluated. Unknown properties, unsafe or framework-reserved field names,
+duplicate names (including fields flattened through row/collapsible layout
+containers), duplicate select/radio/block/relationship inventories, inverted
+min/max bounds, stale `slugField` or Admin column references, non-`media`
+upload targets, and malformed nested Admin conditions fail before codegen or
+application bootstrap. Declarations the persistence layer cannot represent—such
+as polymorphic relationships, multi-select persistence, or nested child tables
+inside stored group/array records—also fail instead of being silently omitted.
+
+Tooling can inspect the same contract without throwing through
+`npAnalyzeCollectionDefinition()` or `npValidateCollectionDefinition()` from
+`@nexpress/core`. Their plural counterparts validate a complete collection set,
+including duplicate slugs and relationship targets. `defineConfig()` repeats
+definition validation before theme requirements merge and validates the complete
+resolved set afterward, covering hand-built objects that bypass
+`defineCollection()`.
+
 The generated document type for `body` is `NpRichTextContent | null`. Admin,
 API writes, themes, and plugins share the versioned contract documented in
 [`rich-text.md`](rich-text.md); raw Lexical `{ root: ... }` JSON is rejected.

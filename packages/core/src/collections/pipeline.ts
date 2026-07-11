@@ -2333,7 +2333,14 @@ function prepareDocumentData(
 
 function hasFrameworkPublishedAt(config: NpCollectionConfig): boolean {
   if (!config.versions?.drafts) return false;
-  return !config.fields.some((field) => "name" in field && field.name === "publishedAt");
+  const hasTopLevelPublishedAt = (fields: NpFieldConfig[]): boolean =>
+    fields.some((field) => {
+      if (field.type === "row" || field.type === "collapsible") {
+        return hasTopLevelPublishedAt(field.fields);
+      }
+      return field.name === "publishedAt";
+    });
+  return !hasTopLevelPublishedAt(config.fields);
 }
 
 function normalizeFrameworkPublishedAt(value: unknown): Date | null | undefined {

@@ -81,4 +81,93 @@ describe("defineConfig — friendly error messages (#A)", () => {
       }),
     ).toThrow(/duplicate theme id "same"/);
   });
+
+  it("rejects duplicate collection slugs before bootstrap registration", () => {
+    const collection = {
+      slug: "posts",
+      labels: { singular: "Post", plural: "Posts" },
+      fields: [{ name: "title", type: "text" as const }],
+    };
+    expect(() =>
+      defineConfig({
+        ...validBase,
+        collections: [collection, { ...collection }],
+      }),
+    ).toThrow(/duplicate collection slug "posts"/);
+  });
+
+  it("validates the resolved collection contract after theme requirements merge", () => {
+    expect(() =>
+      defineConfig({
+        ...validBase,
+        themes: [
+          {
+            manifest: {
+              id: "reserved-field",
+              name: "Reserved field",
+              version: "0.1.0",
+              requires: {
+                collections: {
+                  posts: { fields: { createdAt: { type: "date" } } },
+                },
+              },
+            },
+            impl: {},
+          },
+        ],
+      }),
+    ).toThrow(/resolved collections\[0\]\.fields\.1\.name.*framework-reserved/);
+  });
+
+  it("rejects relationship targets missing from the resolved collection set", () => {
+    expect(() =>
+      defineConfig({
+        ...validBase,
+        collections: [
+          {
+            ...validBase.collections[0],
+            fields: [
+              ...validBase.collections[0].fields,
+              { name: "topic", type: "relationship" as const, relationTo: "topics" },
+            ],
+          },
+        ],
+      }),
+    ).toThrow(/config\.collections\[0\]\.fields\.1\.relationTo.*not a declared collection/);
+  });
+
+  it("resolves relationship targets contributed by theme collection creation", () => {
+    const resolved = defineConfig({
+      ...validBase,
+      collections: [
+        {
+          ...validBase.collections[0],
+          fields: [
+            ...validBase.collections[0].fields,
+            { name: "author", type: "relationship" as const, relationTo: "authors" },
+          ],
+        },
+      ],
+      themes: [
+        {
+          manifest: {
+            id: "authors",
+            name: "Authors",
+            version: "0.1.0",
+            requires: {
+              collections: {
+                authors: {
+                  createIfAbsent: true,
+                  fields: { name: { type: "text" } },
+                },
+              },
+            },
+          },
+          impl: {},
+        },
+      ],
+    });
+
+    expect(resolved.collections.map((collection) => collection.slug)).toEqual(["posts", "authors"]);
+  });
 });
