@@ -10,6 +10,7 @@ import {
   type NpFindOptions,
   type NpFindResult,
 } from "@nexpress/core";
+import type { NpRichTextContent } from "@nexpress/core/fields";
 import { inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { postsCategoriesTable, postsTagsTable } from "./collections";
@@ -26,7 +27,7 @@ export interface PostsDocument {
   kind: string;
   title: string;
   excerpt: string | null;
-  content: unknown;
+  content: NpRichTextContent;
   coverImage: string | null;
   publishedAt: Date | null;
   author: string | null;
@@ -108,7 +109,7 @@ export interface DiscussionsDocument {
   publishedAt: Date | null;
   _status: "draft" | "published";
   title: string;
-  body: unknown | null;
+  body: NpRichTextContent | null;
   category: string | null;
   pinned: boolean | null;
   locked: boolean | null;

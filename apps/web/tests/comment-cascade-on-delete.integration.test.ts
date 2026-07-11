@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -83,7 +84,7 @@ async function seedStaffPost(staff: TestUserSession): Promise<string> {
       method: "POST",
       body: JSON.stringify({
         title: `Cascade target ${suffix}`,
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
     }),
@@ -293,7 +294,7 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
         body: JSON.stringify({
           title: "Self-doc",
           slug: "cas-self-doc",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },

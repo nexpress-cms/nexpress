@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -80,7 +81,7 @@ async function seedStaffPost(staff: TestUserSession): Promise<string> {
       body: JSON.stringify({
         title: "Purge target",
         slug: `purge-target-${Math.random().toString(36).slice(2)}`,
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
     }),
@@ -101,7 +102,7 @@ async function memberDiscussion(
       body: JSON.stringify({
         title: `Member discussion ${slug}`,
         slug,
-        body: { root: { type: "root", children: [] } },
+        body: npCreateEmptyRichTextContent(),
       }),
     }),
     { params: Promise.resolve({ slug: "discussions" }) },

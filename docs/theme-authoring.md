@@ -632,8 +632,8 @@ Slot-by-slot rules:
   as `unknown[]` in the type so the JSON shape doesn't cross
   the package boundary; the seeder treats it opaquely.
 - **`posts`** — `{ title, excerpt, content, publishedAt, status?, tagNames? }`.
-  Lexical `content` is opaque to the type for the
-  same reason. Past `publishedAt` = published; future = scheduled
+  `content` uses the versioned [`NpRichTextContent`](rich-text.md) envelope;
+  node-specific editor data remains opaque. Past `publishedAt` = published; future = scheduled
   (the scheduled-publish cron promotes when the timestamp passes).
 - **`navigation.header` / `navigation.footer`** — `NpNavItem[]`.
   Each entry needs a stable `id`; the framework doesn't generate

@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 
@@ -64,7 +65,7 @@ async function seedStaffPostId(slug: string): Promise<string> {
       body: JSON.stringify({
         title: "prefs target",
         slug,
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
     }),

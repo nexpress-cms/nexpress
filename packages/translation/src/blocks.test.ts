@@ -9,16 +9,22 @@ import {
 
 function richText(text: string): Record<string, unknown> {
   return {
-    root: {
-      type: "root",
-      version: 1,
-      children: [
-        {
-          type: "paragraph",
-          version: 1,
-          children: [{ type: "text", version: 1, text }],
-        },
-      ],
+    version: 1,
+    document: {
+      root: {
+        type: "root",
+        version: 1,
+        direction: null,
+        format: "",
+        indent: 0,
+        children: [
+          {
+            type: "paragraph",
+            version: 1,
+            children: [{ type: "text", version: 1, text }],
+          },
+        ],
+      },
     },
   };
 }
@@ -134,9 +140,9 @@ describe("block translation codec", () => {
     const richBlock = children.find((block) => block.id === "rich-1")!;
     const root = (
       richBlock.props.content as {
-        root: { children: Array<{ children: Array<{ text: string }> }> };
+        document: { root: { children: Array<{ children: Array<{ text: string }> }> } };
       }
-    ).root;
+    ).document.root;
     expect(root.children[0].children[0].text).toBe("Contenu formaté");
   });
 

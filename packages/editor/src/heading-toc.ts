@@ -1,3 +1,5 @@
+import type { NpRichTextContent } from "@nexpress/core/fields";
+
 /**
  * Slugify a heading's plain text into a URL-safe id. Shared by
  * `renderRichText` (which writes the id onto h2/h3) and
@@ -49,21 +51,17 @@ export interface NpHeadingTocEntry {
  * heading ids 1:1. Themes call this for their on-page TOC; the
  * docs theme is the reference consumer.
  */
-export function extractHeadingToc(content: unknown): NpHeadingTocEntry[] {
-  if (!content || typeof content !== "object") return [];
-  const root = (content as { root?: { children?: unknown[] } }).root;
-  if (!root || !Array.isArray(root.children)) return [];
+export function extractHeadingToc(
+  content: NpRichTextContent | null | undefined,
+): NpHeadingTocEntry[] {
+  if (!content) return [];
   const out: NpHeadingTocEntry[] = [];
   const seen = new Map<string, number>();
-  walk(root.children, out, seen);
+  walk(content.document.root.children, out, seen);
   return out;
 }
 
-function walk(
-  nodes: unknown[],
-  out: NpHeadingTocEntry[],
-  seen: Map<string, number>,
-): void {
+function walk(nodes: unknown[], out: NpHeadingTocEntry[], seen: Map<string, number>): void {
   for (const raw of nodes) {
     if (!raw || typeof raw !== "object") continue;
     const node = raw as { type?: unknown; tag?: unknown; children?: unknown };

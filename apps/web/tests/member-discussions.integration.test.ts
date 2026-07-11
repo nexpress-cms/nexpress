@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -101,7 +102,7 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
         body: JSON.stringify({
           title: "First member-authored thread",
           slug: "first-member-thread",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
@@ -133,7 +134,7 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
         body: JSON.stringify({
           title: "Has revision",
           slug: "has-revision",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
@@ -174,7 +175,7 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
         body: JSON.stringify({
           title: "Reputation thread",
           slug: "rep-thread",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
@@ -210,7 +211,7 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
         body: JSON.stringify({
           title: "Should not work",
           slug: "no-go",
-          content: { root: { type: "root", children: [] } },
+          content: npCreateEmptyRichTextContent(),
         }),
       }),
       { params: Promise.resolve({ slug: "posts" }) },
@@ -247,7 +248,7 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
         body: JSON.stringify({
           title: "Should fail",
           slug: "banned-attempt",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
@@ -269,7 +270,7 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
         body: JSON.stringify({
           title: "Anon",
           slug: "anon",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
@@ -292,7 +293,7 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
         body: JSON.stringify({
           title: "Draft attempt",
           slug: "draft-attempt",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
           _status: "draft",
         }),
       }),
@@ -311,7 +312,7 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
         body: JSON.stringify({
           title: "Audited",
           slug: "audited",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
@@ -349,7 +350,7 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
         body: JSON.stringify({
           title: "Staff thread",
           slug: "staff-thread",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
           _status: "published",
         }),
       }),

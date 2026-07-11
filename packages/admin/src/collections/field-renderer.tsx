@@ -2,6 +2,7 @@
 
 import { lazy, Suspense, type ComponentType } from "react";
 import type { NpFieldConfig } from "@nexpress/core";
+import { isNpRichTextContent } from "@nexpress/core/fields";
 import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 
 import { useBlocksRegistry } from "../blocks/registry-context.js";
@@ -98,15 +99,6 @@ const LazyBlockPageEditor = lazy(async () => {
 
 const buildFieldName = (fieldName: string, namePrefix?: string): string =>
   namePrefix ? `${namePrefix}.${fieldName}` : fieldName;
-
-const isRichTextContent = (value: unknown): value is NpRichTextContent => {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  const root = (value as { root?: unknown }).root;
-  return typeof root === "object" && root !== null;
-};
 
 const toBlockInstances = (value: unknown): NpBlockInstance[] => {
   if (!Array.isArray(value)) {
@@ -377,7 +369,7 @@ const renderNamedField = (
                   }
                 >
                   <LazyRichTextEditor
-                    value={isRichTextContent(formField.value) ? formField.value : null}
+                    value={isNpRichTextContent(formField.value) ? formField.value : null}
                     onChange={formField.onChange}
                     config={{
                       ...field.editor,

@@ -21,10 +21,9 @@ describe("rewriteLexicalMedia", () => {
   it("stamps mediaId on the matching image node", () => {
     const root = htmlToLexical('<p>before <img src="https://a/b.jpg" alt="a"/> after</p>');
     const out = rewriteLexicalMedia(root, resolution([["https://a/b.jpg", "media-7"]]));
-    const para = out.root.children[0];
+    const para = out.document.root.children[0];
     const img = para?.children?.find((c) => c.type === "image") as unknown as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     expect(img?.mediaId).toBe("media-7");
     expect(img?.src).toBe("https://a/b.jpg"); // original src preserved for SSR fallback
   });
@@ -41,8 +40,8 @@ describe("rewriteLexicalMedia", () => {
       '<img src="https://a/known.jpg" /><img src="https://a/unknown.jpg" />',
     );
     const out = rewriteLexicalMedia(root, resolution([["https://a/known.jpg", "media-1"]]));
-    const known = out.root.children[0] as unknown as Record<string, unknown>;
-    const unknown = out.root.children[1] as unknown as Record<string, unknown>;
+    const known = out.document.root.children[0] as unknown as Record<string, unknown>;
+    const unknown = out.document.root.children[1] as unknown as Record<string, unknown>;
     expect(known.mediaId).toBe("media-1");
     expect(unknown.mediaId).toBeUndefined();
   });

@@ -37,10 +37,7 @@ describe.skipIf(skipIfNoTestDb())("portfolio /work/:slug guard", () => {
     // validator. The base `registerTestCollections()` skips the
     // merge that `defineConfig` runs at boot in the real app —
     // same trick the front-page test uses.
-    const {
-      mergeThemeRequirements,
-      registerCollection,
-    } = await import("@nexpress/core");
+    const { mergeThemeRequirements, registerCollection } = await import("@nexpress/core");
     const { defaultTheme } = await import("@nexpress/theme-default");
     const { portfolioTheme } = await import("@nexpress/theme-portfolio");
     const { postsCollection } = await import("@nexpress/app/collections/posts");
@@ -48,10 +45,7 @@ describe.skipIf(skipIfNoTestDb())("portfolio /work/:slug guard", () => {
       // eslint-disable-next-line import-x/no-relative-packages
       "../../../packages/core/src/integration/fixtures.js"
     );
-    const merged = mergeThemeRequirements(
-      [postsCollection],
-      [defaultTheme, portfolioTheme],
-    );
+    const merged = mergeThemeRequirements([postsCollection], [defaultTheme, portfolioTheme]);
     const mergedPosts = merged.find((c) => c.slug === "posts");
     if (!mergedPosts) throw new Error("posts merge dropped");
     registerCollection("posts", postsTable, {
@@ -75,13 +69,16 @@ describe.skipIf(skipIfNoTestDb())("portfolio /work/:slug guard", () => {
    * tree. Empty root is the cheapest legal payload.
    */
   const EMPTY_CONTENT = {
-    root: {
-      type: "root",
-      version: 1,
-      direction: null,
-      format: "",
-      indent: 0,
-      children: [],
+    version: 1,
+    document: {
+      root: {
+        type: "root",
+        version: 1,
+        direction: null,
+        format: "",
+        indent: 0,
+        children: [],
+      },
     },
   };
 

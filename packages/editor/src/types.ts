@@ -1,4 +1,4 @@
-import type { SerializedLexicalNode } from "lexical";
+export type { NpRichTextContent } from "@nexpress/core/fields";
 
 export interface NpEditorConfig {
   features?: NpEditorFeature[];
@@ -45,14 +45,3 @@ export const DEFAULT_FEATURES: NpEditorFeature[] = [
   "horizontalRule",
   "alignment",
 ];
-
-export interface NpRichTextContent {
-  root: {
-    type: "root";
-    children: SerializedLexicalNode[];
-    direction: "ltr" | "rtl" | null;
-    format: string;
-    indent: number;
-    version: number;
-  };
-}

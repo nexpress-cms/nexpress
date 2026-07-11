@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-11 (Admin Settings now exposes bounded XLIFF 1.2
+**Last refreshed:** 2026-07-11 (rich-text content now uses a stable NexPress
+v1 envelope across editor, validation, codegen, SSR, search, translation,
+imports, themes, and plugins; malformed or raw Lexical JSON fails closed.)
+
+**Earlier:** 2026-07-11 (Admin Settings now exposes bounded XLIFF 1.2
 and Gettext PO content interchange. Editors can export one collection/locale
 pair, preview every create/update/skip, and explicitly confirm an import while
 the shared fail-closed engine reparses and revalidates the upload before writes.)
@@ -180,6 +184,7 @@ cli  (standalone scaffolder, no workspace deps)
 | `@nexpress/core/auth`          | capability checks, JWT/OAuth, password, sessions, principal           |
 | `@nexpress/core/community`     | comments, reactions, follows, reports, bans, audit, mentions, digests |
 | `@nexpress/core/db`            | connection factory, runtime accessors, schema codegen                 |
+| `@nexpress/core/fields`        | client-safe field helpers and rich-text v1 contracts                  |
 | `@nexpress/core/i18n`          | locale registry, translations, formatting, per-site overrides         |
 | `@nexpress/core/jobs`          | pg-boss adapter, handlers, worker, heartbeat, pause state, job logs   |
 | `@nexpress/core/media`         | media service, processor, ref tracking                                |
@@ -382,11 +387,12 @@ What v0.1 of the published `@nexpress/*` packages commits to. Anything not on th
 These are the public APIs we'll honor with semver and migration notes. Breaking them rides a **minor bump pre-1.0** and ships a CHANGELOG line operators can search for.
 
 - **Collection authoring** — `defineCollection({ slug, fields, hooks, access, … })` and the field-config types (`NpTextField`, `NpRichTextField`, `NpRelationshipField`, `NpBlocksField`, `NpArrayField`, `NpGroupField`, `NpRowField`, `NpCollapsibleField`, …). Adding a new field type is non-breaking. Renaming or removing one is a minor with a migration note.
+- **Rich-text content** — `NpRichTextContent` is the NexPress-owned `{ version: 1, document }` wire format. `@nexpress/core/fields` exports the client-safe type, validator, type guard, version constant, and empty-document factory; `@nexpress/editor` re-exports the type. Raw Lexical `{ root }` payloads are rejected before collection writes. Future format changes use a new envelope version plus an explicit migration path. Author docs: `docs/rich-text.md`.
 - **Plugin authoring** — `definePlugin({ manifest, hooks, actions, routes, pageRoutes, scheduled, blocks })`. `actions` is a definition-level `Record<actionId, { kind, handler }>` with `action | metric | status | table` kinds; the compatible setup-time `ctx.actions.register*` methods remain supported. Content hooks use the operation-specific names `content:beforeCreate`, `content:afterCreate`, `content:beforeUpdate`, `content:afterUpdate`, `content:beforeDelete`, `content:afterDelete`, `content:beforePublish`, `content:afterPublish`, and `content:beforeUnpublish`; every phase receives its exact `document` / `documentId` / `originalDocument` / `operation` / `source` / `principal` payload. Auth and media hooks have the same per-name typed-data contract, and lifecycle handlers return void. The single render hook is `render:beforePage`; its typed `NpRenderContribution` return separates `head` from `bodyEnd`. `scheduled` ships typed five-field UTC cron tasks whose handlers return void. `blocks` ships an `NpBlockDefinition[]` registered into the shared block registry at boot.
 - **Bootstrap intent enum** — `ensureFor("read" | "plugins" | "write")`. Adding a new intent is non-breaking; semantics of the existing three are pinned.
 - **Error classes + codes** — `NpForbiddenError`, `NpNotFoundError`, `NpValidationError`, `NpAuthError`, `NpConflictError`, `NpRateLimitError`, `NpSiteContextMissingError`, and the `NpErrorCode` union. The string code per class is stable per [docs/api-error-codes.md](./docs/api-error-codes.md).
 - **Capability vocabulary** — `can(user, capability)` and the existing capability strings: `"admin.manage"`, `"content.publish"`, `"content.author"`, `"community.moderate"`. New capability strings will be added; existing ones won't be renamed or removed in 0.x.
-- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/i18n`, `/jobs`, `/media`, `/observability`, `/seo`. Symbols inside each are stable per the rules above.
+- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/fields`, `/i18n`, `/jobs`, `/media`, `/observability`, `/seo`. Symbols inside each are stable per the rules above.
 - **Adapters** — `NpStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NpJobQueue` (with `PgBossAdapter`), `NpLogger` + `setLogger`, `NpErrorReporter` + `setErrorReporter`, `NpEmailAdapter` + `setEmailAdapter`. Optional methods (e.g. `NpJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
 - **`NpPrincipal` union** — adding a variant is breaking (every `switch (principal.kind)` site needs updating, enforced by `_exhaustive: never`). The existing `"staff"` / `"member"` shape is committed.
 - **Block authoring** — `NpBlockDefinition` (`type`, `label`, `defaultProps`, `propsSchema`, `acceptsChildren?`, `render(props, children?)`) and the `NpBlockInstance` wire shape (`id`, `type`, `props`, optional `children: NpBlockInstance[]`). Adding optional fields to either is non-breaking. `NpBlockMetadata` (= `NpBlockDefinition` minus `render`) is the serializable subset the admin uses for the picker / props form. The shared registry helpers `registerBlock`, `getRegisteredBlocks`, `getRegisteredBlockMetadata`, `getSharedRegistry` are stable. The lightweight `@nexpress/blocks/contracts` subpath exports `npValidateBlockDefinition`, `npAnalyzeBlockDefinitions`, and `npBlockPropFieldTypes` for authoring tools.
@@ -398,7 +404,6 @@ These are the public APIs we'll honor with semver and migration notes. Breaking 
 
 These exist on the published surface but are explicitly NOT covered by the rules above. Use them; expect to migrate when they shift.
 
-- **Lexical content shape** — `NpRichTextContent` is whatever Lexical's serializer emits. We track Lexical upstream; their JSON shape is not part of NexPress's commitment.
 - **`_layout` meta convention on grid children** — children of a `gridBlock` carry `props._layout: { colSpan: 1–12 }`. Today only the built-in `gridBlock` reads it; if more container blocks land before 1.0 the convention may move to a top-level `NpBlockInstance.layout?` field instead of being nested inside `props`.
 - **Block prop field types** — the `propsSchema` field type set (`text` / `textarea` / `number` / `boolean` / `select` / `url` / `richtext` / `image`) is what the admin renders today. Adding new types is non-breaking; existing ones won't be renamed in 0.x but the _editor renderer_ for a type may upgrade visually (e.g. phase 5 swapped the `richtext` JSON-textarea for a Lexical editor without changing the wire format).
 - **Theme token names** — `colors`, `fonts`, `radii`, etc. are stable as a _category_, but specific token keys may be renamed if a token system overhaul lands before 1.0.

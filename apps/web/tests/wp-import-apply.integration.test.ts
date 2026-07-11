@@ -105,10 +105,12 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     await applyBundle(bundle, { actor, dryRun: false });
 
     const posts = await findDocuments("posts", { where: { slug: "hello-world" }, limit: 1 }, actor);
-    const content = posts.docs[0]?.content as { root: { children: Array<{ type: string }> } };
-    expect(content?.root?.type).toBe("root");
+    const content = posts.docs[0]?.content as {
+      document: { root: { type: string; children: Array<{ type: string }> } };
+    };
+    expect(content?.document.root.type).toBe("root");
     // Paragraph wrapping the inline content + img survives.
-    const types = content.root.children.map((c) => c.type);
+    const types = content.document.root.children.map((c) => c.type);
     expect(types[0]).toBe("paragraph");
   });
 
@@ -230,9 +232,11 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     expect(post.coverImage).toBe(mediaId);
 
     const content = post.content as {
-      root: { children: Array<{ type: string; children?: Array<Record<string, unknown>> }> };
+      document: {
+        root: { children: Array<{ type: string; children?: Array<Record<string, unknown>> }> };
+      };
     };
-    const para = content.root.children[0];
+    const para = content.document.root.children[0];
     const img = para?.children?.find((c) => c.type === "image");
     expect(img?.mediaId).toBe(mediaId);
     expect(img?.src).toBe(heroUrl);
@@ -626,7 +630,7 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
       dryRun: false,
       reportHtml: {
         emit: ({ slug, lexical }) => {
-          samples.push({ slug, lexicalChildrenLen: lexical.root.children.length });
+          samples.push({ slug, lexicalChildrenLen: lexical.document.root.children.length });
         },
       },
     });
@@ -650,7 +654,11 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
       dryRun: true,
       reportHtml: {
         emit: ({ slug, rawContent, lexical }) => {
-          samples.push({ slug, rawContent, lexicalChildrenLen: lexical.root.children.length });
+          samples.push({
+            slug,
+            rawContent,
+            lexicalChildrenLen: lexical.document.root.children.length,
+          });
         },
       },
     });
@@ -689,9 +697,9 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     expect(post.coverImage).toBeFalsy();
     // Lexical img keeps its original src for SSR fallback rendering.
     const content = post.content as {
-      root: { children: Array<{ children?: Array<Record<string, unknown>> }> };
+      document: { root: { children: Array<{ children?: Array<Record<string, unknown>> }> } };
     };
-    const img = content.root.children[0]?.children?.find((c) => c.type === "image");
+    const img = content.document.root.children[0]?.children?.find((c) => c.type === "image");
     expect(img?.mediaId).toBeUndefined();
     expect(img?.src).toBe("https://acme.example.com/wp-content/uploads/2025/04/hero.jpg");
   });

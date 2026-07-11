@@ -19,3 +19,13 @@ export {
   buildZodSchema,
   getCollectionZodSchema,
 } from "../collections/validation.js";
+export {
+  NP_RICH_TEXT_CONTENT_VERSION,
+  isNpRichTextContent,
+  npCreateEmptyRichTextContent,
+  npValidateRichTextContent,
+  type NpRichTextContent,
+  type NpRichTextContentValidationResult,
+  type NpRichTextDocumentV1,
+  type NpRichTextSerializedNode,
+} from "./rich-text.js";

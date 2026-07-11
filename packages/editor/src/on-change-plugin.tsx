@@ -2,6 +2,7 @@ import { useRef } from "react";
 
 import { OnChangePlugin as LexicalOnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { $getRoot } from "lexical";
+import { NP_RICH_TEXT_CONTENT_VERSION, npValidateRichTextContent } from "@nexpress/core/fields";
 
 import type { NpRichTextContent } from "./types.js";
 
@@ -9,22 +10,22 @@ interface NpEditorOnChangePluginProps {
   onChange: (value: NpRichTextContent) => void;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isRichTextContent(value: unknown): value is NpRichTextContent {
-  if (!isRecord(value)) {
-    return false;
+export function createRichTextContent(document: unknown): NpRichTextContent {
+  // Lexical's in-memory JSON can include enumerable `undefined` properties
+  // that disappear on the wire. Normalize through JSON before applying the
+  // exact NexPress content contract so editor changes and API payloads share
+  // the same representation.
+  const serialized: unknown = JSON.parse(
+    JSON.stringify({
+      version: NP_RICH_TEXT_CONTENT_VERSION,
+      document,
+    }),
+  );
+  const result = npValidateRichTextContent(serialized);
+  if (!result.ok) {
+    throw new Error(`Lexical emitted invalid NexPress rich-text content: ${result.message}`);
   }
-
-  const root = value.root;
-
-  if (!isRecord(root)) {
-    return false;
-  }
-
-  return root.type === "root" && Array.isArray(root.children);
+  return result.value;
 }
 
 function isInitialEditorState(): boolean {
@@ -67,13 +68,7 @@ export function NpEditorOnChangePlugin({ onChange }: NpEditorOnChangePluginProps
           return;
         }
 
-        const serialized = editorState.toJSON();
-
-        if (!isRichTextContent(serialized)) {
-          return;
-        }
-
-        onChange(serialized);
+        onChange(createRichTextContent(editorState.toJSON()));
       }}
     />
   );

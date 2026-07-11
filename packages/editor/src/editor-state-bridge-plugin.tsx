@@ -8,6 +8,7 @@ import {
   HISTORY_MERGE_TAG,
   type LexicalEditor,
 } from "lexical";
+import { npValidateRichTextContent } from "@nexpress/core/fields";
 
 import { NpEditorOnChangePlugin } from "./on-change-plugin.js";
 import type { NpRichTextContent } from "./types.js";
@@ -21,8 +22,13 @@ interface NpEditorStateBridgePluginProps {
   onChange: (value: NpRichTextContent) => void;
 }
 
-export function serializeEditorValue(value: NpRichTextContent | null): string | null {
-  return value === null ? null : JSON.stringify(value);
+export function serializeEditorValue(value: unknown): string | null {
+  if (value === null) return null;
+  const result = npValidateRichTextContent(value);
+  if (!result.ok) {
+    throw new Error(`Invalid NexPress rich-text content: ${result.message}`);
+  }
+  return JSON.stringify(result.value.document);
 }
 
 /**

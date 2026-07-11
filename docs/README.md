@@ -33,6 +33,7 @@ behavior they describe changes.
 | [plugin-reload.md](plugin-reload.md)                   | What `/admin/plugins` "Reload all" picks up (and what needs a restart) |
 | [plugin-render.md](plugin-render.md)                   | Plugin render hooks                                                    |
 | [releasing.md](releasing.md)                           | Changesets release and npm publish checklist                           |
+| [rich-text.md](rich-text.md)                           | Versioned rich-text wire format, validation, and authoring helpers     |
 | [scheduled-publishing.md](scheduled-publishing.md)     | Scheduled publish flow                                                 |
 | [site-customization.md](site-customization.md)         | Track A — what to customise in a scaffolded site without forking       |
 | [testing.md](testing.md)                               | Unit + integration test setup                                          |

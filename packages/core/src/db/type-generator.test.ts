@@ -131,4 +131,13 @@ describe("generateDocumentsModule — hasMany filter wrapper", () => {
 
     expect(out.match(/publishedAt: Date \| null;/g)).toHaveLength(1);
   });
+
+  it("uses the stable rich-text type for richText fields", () => {
+    const out = generateDocumentsModule([
+      collection("posts", [{ type: "richText", name: "body", required: true }]),
+    ]);
+
+    expect(out).toContain('import type { NpRichTextContent } from "@nexpress/core/fields";');
+    expect(out).toContain("body: NpRichTextContent;");
+  });
 });

@@ -17,6 +17,7 @@ import {
   type NpHookPrincipal,
 } from "../config/types.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
+import { isNpRichTextContent } from "../fields/rich-text.js";
 import { applySlugField } from "./slug.js";
 import { getI18nConfig } from "../i18n/registry.js";
 import { getCurrentSiteId } from "../sites/context.js";
@@ -2492,8 +2493,8 @@ function extractMediaIdsFromFields(
 
     if (field.type === "richText") {
       const richTextValue = data[field.name];
-      if (richTextValue && typeof richTextValue === "object") {
-        refs.push(...extractMediaIdsFromLexicalJson(richTextValue, fieldPath));
+      if (isNpRichTextContent(richTextValue)) {
+        refs.push(...extractMediaIdsFromLexicalJson(richTextValue.document.root, fieldPath));
       }
       continue;
     }

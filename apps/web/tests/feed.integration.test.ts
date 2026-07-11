@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -45,7 +46,7 @@ describe.skipIf(skipIfNoTestDb())("Atom feed (Phase 10.4)", () => {
       staffPostsRequest(staff, {
         title: "Feed entry alpha",
         slug: "feed-alpha",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         excerpt: "Short summary alpha.",
         _status: "published",
       }),
@@ -71,7 +72,7 @@ describe.skipIf(skipIfNoTestDb())("Atom feed (Phase 10.4)", () => {
       staffPostsRequest(staff, {
         title: "Hidden draft tomato",
         slug: "hidden-draft-tomato",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "draft",
       }),
       { params: Promise.resolve({ slug: "posts" }) },
@@ -111,7 +112,7 @@ describe.skipIf(skipIfNoTestDb())("Atom feed (Phase 10.4)", () => {
       staffPostsRequest(staff, {
         title: "Tag <script> & Co.",
         slug: "escape-test",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
       { params: Promise.resolve({ slug: "posts" }) },
@@ -128,7 +129,7 @@ describe.skipIf(skipIfNoTestDb())("Atom feed (Phase 10.4)", () => {
       staffPostsRequest(staff, {
         title: "Older entry papaya",
         slug: "older-papaya",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
       { params: Promise.resolve({ slug: "posts" }) },
@@ -139,7 +140,7 @@ describe.skipIf(skipIfNoTestDb())("Atom feed (Phase 10.4)", () => {
       staffPostsRequest(staff, {
         title: "Newer entry quince",
         slug: "newer-quince",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
       { params: Promise.resolve({ slug: "posts" }) },

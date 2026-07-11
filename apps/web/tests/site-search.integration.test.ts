@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -41,7 +42,7 @@ function actor(staff: TestUserSession) {
 }
 
 function lexicalParagraph(text: string): unknown {
-  return {
+  const document = {
     root: {
       type: "root",
       version: 1,
@@ -70,6 +71,7 @@ function lexicalParagraph(text: string): unknown {
       ],
     },
   };
+  return { version: 1, document };
 }
 
 describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
@@ -97,7 +99,7 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
       staffPostsRequest(staff, {
         title: "Quick brown fox",
         slug: "quick-brown-fox",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
       { params: Promise.resolve({ slug: "posts" }) },
@@ -118,7 +120,7 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
       staffPostsRequest(staff, {
         title: "Hidden draft term-zebra",
         slug: "hidden-zebra",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "draft",
       }),
       { params: Promise.resolve({ slug: "posts" }) },
@@ -135,7 +137,7 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
       staffPostsRequest(staff, {
         title: "Hidden scheduled term-orchid",
         slug: "hidden-scheduled-orchid",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         publishedAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
         _status: "published",
       }),
@@ -157,7 +159,7 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
       staffPostsRequest(staff, {
         title: "URL resolver pumpkin",
         slug: "url-resolver",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
       { params: Promise.resolve({ slug: "posts" }) },
@@ -190,7 +192,7 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
       staffPostsRequest(staff, {
         title: "API shape probe walnut",
         slug: "api-shape",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
       { params: Promise.resolve({ slug: "posts" }) },
@@ -306,7 +308,7 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
       staffPostsRequest(staff, {
         title: "Tropical pineapples are delicious",
         slug: "tropical-pineapples",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
       { params: Promise.resolve({ slug: "posts" }) },

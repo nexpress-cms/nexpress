@@ -2,7 +2,25 @@ import { type NpCollectionConfig, type NpFieldConfig } from "../config/types.js"
 
 export function generateTypeScript(collections: NpCollectionConfig[]): string {
   const interfaces = collections.map((collection) => renderCollectionInterface(collection));
-  return interfaces.join("\n\n");
+  const imports = collections.some((collection) => hasRichTextFields(collection.fields))
+    ? 'import type { NpRichTextContent } from "@nexpress/core/fields";\n\n'
+    : "";
+  return `${imports}${interfaces.join("\n\n")}`;
+}
+
+function hasRichTextFields(fields: NpFieldConfig[]): boolean {
+  return fields.some((field) => {
+    if (field.type === "richText") return true;
+    if (
+      field.type === "array" ||
+      field.type === "group" ||
+      field.type === "row" ||
+      field.type === "collapsible"
+    ) {
+      return hasRichTextFields(field.fields);
+    }
+    return false;
+  });
 }
 
 interface HasManyDescriptor {
@@ -66,6 +84,9 @@ export function generateDocumentsModule(collections: NpCollectionConfig[]): stri
     `  type NpFindResult,`,
     `} from "@nexpress/core";`,
   ].join("\n");
+  const fieldImports = collections.some((collection) => hasRichTextFields(collection.fields))
+    ? 'import type { NpRichTextContent } from "@nexpress/core/fields";'
+    : "";
 
   // Drizzle + join-table imports only when at least one collection
   // has a hasMany relationship — keeps the file lean for sites
@@ -98,7 +119,9 @@ export function generateDocumentsModule(collections: NpCollectionConfig[]): stri
   const joinTableImports =
     joinTables.length > 0 ? `import { ${joinTables.join(", ")} } from "./collections";` : "";
 
-  const imports = [coreImports, drizzleImports, joinTableImports].filter(Boolean).join("\n");
+  const imports = [coreImports, fieldImports, drizzleImports, joinTableImports]
+    .filter(Boolean)
+    .join("\n");
 
   const interfaces = collections.map((c) => renderCollectionInterface(c)).join("\n\n");
   const helpers = collections
@@ -351,6 +374,7 @@ function getTypeSource(
     case "array":
       return `Array<${renderObjectType(field.fields)}>`;
     case "richText":
+      return "NpRichTextContent";
     case "blocks":
     case "json":
       return "unknown";

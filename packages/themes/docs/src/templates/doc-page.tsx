@@ -130,15 +130,7 @@ export async function DocPageTemplate({
 
       <div className="np-docs-page-body">
         {richText ? (
-          // Core types `NpRichTextContent` as the opaque
-          // `Record<string, unknown>`; the editor's renderer
-          // refines it to `{ root: ... }`. Structural cast at
-          // the boundary — both sides go through the same
-          // Lexical serializer.
-          renderRichText(
-            richText as unknown as Parameters<typeof renderRichText>[0],
-            { headingAnchors: true },
-          )
+          renderRichText(richText, { headingAnchors: true })
         ) : (
           <p style={{ color: "var(--np-color-muted-foreground)" }}>
             No body content yet.

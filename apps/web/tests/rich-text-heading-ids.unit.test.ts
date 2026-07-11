@@ -30,18 +30,25 @@ function html(content: NpRichTextContent): string {
   return tree === null ? "" : renderToStaticMarkup(tree);
 }
 
-function doc(
-  ...headings: Array<{ tag: string; text: string }>
-): NpRichTextContent {
+function doc(...headings: Array<{ tag: string; text: string }>): NpRichTextContent {
   return {
-    root: {
-      children: headings.map((h) => ({
-        type: "heading",
-        tag: h.tag,
-        children: [{ type: "text", text: h.text }],
-      })),
+    version: 1,
+    document: {
+      root: {
+        type: "root",
+        direction: null,
+        format: "",
+        indent: 0,
+        version: 1,
+        children: headings.map((h) => ({
+          type: "heading",
+          version: 1,
+          tag: h.tag,
+          children: [{ type: "text", version: 1, text: h.text }],
+        })),
+      },
     },
-  } as unknown as NpRichTextContent;
+  };
 }
 
 describe("renderRichText heading id emission", () => {
@@ -77,11 +84,7 @@ describe("renderRichText heading id emission", () => {
 
   it("dedupes collisions within a single render", () => {
     const out = html(
-      doc(
-        { tag: "h2", text: "Notes" },
-        { tag: "h2", text: "Notes" },
-        { tag: "h3", text: "Notes" },
-      ),
+      doc({ tag: "h2", text: "Notes" }, { tag: "h2", text: "Notes" }, { tag: "h3", text: "Notes" }),
     );
     expect(out).toContain('<h2 id="notes">');
     expect(out).toContain('<h2 id="notes-2">');
@@ -105,9 +108,7 @@ describe("renderRichText heading id emission", () => {
   });
 
   it("collapses runs of separators into a single hyphen", () => {
-    const out = html(
-      doc({ tag: "h2", text: "Heading -- with — many   separators" }),
-    );
+    const out = html(doc({ tag: "h2", text: "Heading -- with — many   separators" }));
     expect(out).toContain('<h2 id="heading-with-many-separators">');
   });
 

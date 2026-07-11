@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "../fields/rich-text.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 
@@ -48,7 +49,7 @@ describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () 
 
   const baseDoc = {
     title: "Scheduled Post",
-    content: { root: { type: "root", children: [] } },
+    content: npCreateEmptyRichTextContent(),
   };
 
   it("pipeline coerces published + future publishedAt to scheduled", async () => {

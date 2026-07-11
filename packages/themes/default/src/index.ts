@@ -16,18 +16,18 @@ import { PostDefaultTemplate } from "./templates/post-default.js";
 import { PostListTemplate } from "./templates/post-list.js";
 
 /**
- * Build a minimal Lexical-shaped rich-text doc from a list of
- * paragraphs. The framework's renderer reads `root → paragraph →
- * text`, so this is the smallest valid shape that survives the
+ * Build a minimal NexPress rich-text v1 value from a list of
+ * paragraphs. The framework's renderer reads `document → root → paragraph →
+ * text`, so this is the smallest valid envelope that survives the
  * pipeline and renders as prose in the post-default template.
  *
  * Lives inline (not imported from `@nexpress/editor`) so the
  * theme package stays free of editor / Lexical dependencies — the
- * structure is stable enough that a small literal is cheaper
- * than pulling in the editor runtime just to call its serializer.
+ * stable contract is small enough to author as a literal and avoids
+ * pulling in the editor runtime just to call its serializer.
  */
 function lexicalDoc(paragraphs: string[]): unknown {
-  return {
+  const document = {
     root: {
       type: "root",
       version: 1,
@@ -54,6 +54,7 @@ function lexicalDoc(paragraphs: string[]): unknown {
       })),
     },
   };
+  return { version: 1, document };
 }
 
 const DAY = 1000 * 60 * 60 * 24;

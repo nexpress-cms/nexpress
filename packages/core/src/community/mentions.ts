@@ -2,6 +2,7 @@ import { inArray } from "drizzle-orm";
 
 import { getDb } from "../db/runtime.js";
 import { npMembers } from "../db/schema/community.js";
+import { isNpRichTextContent } from "../fields/rich-text.js";
 
 import { createNotification } from "./notifications.js";
 
@@ -67,11 +68,9 @@ export function extractMentionHandles(source: string): string[] {
  * resolves correctly — text nodes are joined without separators.
  */
 export function extractMentionHandlesFromRichText(content: unknown): string[] {
-  if (!content || typeof content !== "object") return [];
-  const root = (content as { root?: { children?: unknown } }).root;
-  if (!root || !Array.isArray(root.children)) return [];
+  if (!isNpRichTextContent(content)) return [];
   const parts: string[] = [];
-  walkRichTextNodes(root.children, parts);
+  walkRichTextNodes(content.document.root.children, parts);
   return extractMentionHandles(parts.join(""));
 }
 
@@ -89,7 +88,7 @@ function walkRichTextNodes(nodes: unknown[], parts: string[]): void {
  * to `createMemberDocument` / `updateMemberDocument`) and pull
  * out every mention handle it contains. String values are scanned
  * with the markdown extractor; object values shaped like Lexical
- * rich text (`{ root: { children: [...] } }`) are walked. Other
+ * v1 rich text (`{ version: 1, document: { root: ... } }`) values are walked. Other
  * values are ignored.
  *
  * Field names are not assumed: any string or rich-text field
@@ -105,11 +104,8 @@ export function extractMentionHandlesFromDocData(data: Record<string, unknown>):
       for (const h of extractMentionHandles(value)) seen.add(h);
       continue;
     }
-    if (value && typeof value === "object") {
-      const root = (value as { root?: { children?: unknown } }).root;
-      if (root && Array.isArray(root.children)) {
-        for (const h of extractMentionHandlesFromRichText(value)) seen.add(h);
-      }
+    if (isNpRichTextContent(value)) {
+      for (const h of extractMentionHandlesFromRichText(value)) seen.add(h);
     }
   }
   return Array.from(seen);

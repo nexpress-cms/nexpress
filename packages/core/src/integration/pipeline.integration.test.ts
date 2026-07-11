@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "../fields/rich-text.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq, asc } from "drizzle-orm";
 
@@ -11,13 +12,7 @@ import {
   saveDocument,
 } from "../collections/pipeline.js";
 import { resetPlugins } from "../plugins/host.js";
-import {
-  closeTestDb,
-  ensureMigrated,
-  getTestDb,
-  skipIfNoTestDb,
-  truncateAll,
-} from "./setup.js";
+import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } from "./setup.js";
 import { postsTable, registerTestCollections } from "./fixtures.js";
 
 describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () => {
@@ -60,7 +55,7 @@ describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () =
 
   const baseDoc = {
     title: "Hello",
-    content: { root: { type: "root", children: [] } },
+    content: npCreateEmptyRichTextContent(),
   };
 
   it("creates a document with a generated slug and writes a draft revision", async () => {
@@ -91,20 +86,12 @@ describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () =
     const user = await seedUser();
     const created = await saveDocument("posts", null, baseDoc, user, { status: "draft" });
 
-    await saveDocument(
-      "posts",
-      created.doc.id as string,
-      { ...baseDoc, title: "Second" },
-      user,
-      { status: "draft" },
-    );
-    await saveDocument(
-      "posts",
-      created.doc.id as string,
-      { ...baseDoc, title: "Third" },
-      user,
-      { status: "published" },
-    );
+    await saveDocument("posts", created.doc.id as string, { ...baseDoc, title: "Second" }, user, {
+      status: "draft",
+    });
+    await saveDocument("posts", created.doc.id as string, { ...baseDoc, title: "Third" }, user, {
+      status: "published",
+    });
 
     const db = await getTestDb();
     const revs = await db
@@ -141,7 +128,10 @@ describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () =
     await deleteDocument("posts", created.doc.id as string, user);
 
     const db = await getTestDb();
-    const rows = await db.select().from(postsTable).where(eq(postsTable.id, created.doc.id as string));
+    const rows = await db
+      .select()
+      .from(postsTable)
+      .where(eq(postsTable.id, created.doc.id as string));
     expect(rows).toHaveLength(0);
   });
 });

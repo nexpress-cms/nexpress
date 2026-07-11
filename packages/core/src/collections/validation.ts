@@ -6,6 +6,7 @@ import {
   type NpFieldConditionExpr,
   type NpFieldConfig,
 } from "../config/types.js";
+import { npValidateRichTextContent } from "../fields/rich-text.js";
 
 /**
  * Evaluate a field condition — handles both the legacy function
@@ -35,10 +36,7 @@ export function evaluateFieldCondition(
   return evaluateExpr(condition, data);
 }
 
-function evaluateExpr(
-  expr: NpFieldConditionExpr,
-  data: Record<string, unknown>,
-): boolean {
+function evaluateExpr(expr: NpFieldConditionExpr, data: Record<string, unknown>): boolean {
   if ("all" in expr) return expr.all.every((e) => evaluateExpr(e, data));
   if ("any" in expr) return expr.any.some((e) => evaluateExpr(e, data));
   const value = data[expr.when];
@@ -84,10 +82,7 @@ export function buildZodSchema(
     if (field.type === "group") {
       const schema = buildZodSchema(field.fields, hiddenByCondition);
       const effectiveRequired = field.required && !hiddenByCondition.has(field.name);
-      shape[field.name] = applyFieldDefault(
-        applyOptionality(schema, effectiveRequired),
-        field,
-      );
+      shape[field.name] = applyFieldDefault(applyOptionality(schema, effectiveRequired), field);
       continue;
     }
 
@@ -221,7 +216,9 @@ export function getCollectionZodSchema(
   return base;
 }
 
-function buildFieldSchema(field: Exclude<NpFieldConfig, { type: "row" | "collapsible" | "group" }>): z.ZodTypeAny {
+function buildFieldSchema(
+  field: Exclude<NpFieldConfig, { type: "row" | "collapsible" | "group" }>,
+): z.ZodTypeAny {
   switch (field.type) {
     case "text": {
       let schema = z.string();
@@ -257,6 +254,12 @@ function buildFieldSchema(field: Exclude<NpFieldConfig, { type: "row" | "collaps
     case "date":
       return z.coerce.date();
     case "richText":
+      return z.unknown().superRefine((value, ctx) => {
+        const result = npValidateRichTextContent(value);
+        if (!result.ok) {
+          ctx.addIssue({ code: "custom", message: result.message });
+        }
+      });
     case "blocks":
     case "json":
       return z.unknown();

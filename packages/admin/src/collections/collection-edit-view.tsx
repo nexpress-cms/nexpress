@@ -987,6 +987,14 @@ function CollectionEditViewInner({
       return;
     }
 
+    if (autosaveTimer.current !== null) {
+      window.clearTimeout(autosaveTimer.current);
+      autosaveTimer.current = null;
+    }
+    // The recovered values already exist as the latest server-side autosave.
+    // Establish them as the debounce baseline before resetting the form so an
+    // immediate follow-up edit cannot race a redundant recovery autosave.
+    autosaveBaselineRef.current = JSON.stringify(autosaveRecovery.recoveredValues);
     form.reset(autosaveRecovery.recoveredValues, { keepDefaultValues: true });
     setAutosaveStatus({ kind: "idle" });
     latestAutosavePayloadRef.current = null;

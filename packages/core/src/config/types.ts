@@ -1,3 +1,5 @@
+export type { NpRichTextContent } from "../fields/rich-text.js";
+
 export type NpUserRole = "admin" | "editor" | "moderator" | "author" | "viewer";
 
 export interface NpAuthUser {
@@ -59,8 +61,6 @@ export type NpFieldValidator = (
   value: unknown,
   args: { data: Record<string, unknown>; siblingData: Record<string, unknown> },
 ) => string | true | Promise<string | true>;
-
-export type NpRichTextContent = Record<string, unknown>;
 
 export interface NpEditorConfig {
   features?: string[];

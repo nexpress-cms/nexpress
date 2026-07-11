@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -92,7 +93,7 @@ async function seedPendingDoc(member: {
       body: JSON.stringify({
         title,
         slug,
-        body: { root: { type: "root", children: [] } },
+        body: npCreateEmptyRichTextContent(),
       }),
     }),
     { params: Promise.resolve({ slug: "discussions" }) },
@@ -220,7 +221,7 @@ describe.skipIf(skipIfNoTestDb())("admin pending queue (Phase 9.7e)", () => {
         body: JSON.stringify({
           title: "Staff pending",
           slug: "staff-pending",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
           _status: "pending",
         }),
       }),

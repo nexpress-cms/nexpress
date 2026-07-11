@@ -149,13 +149,16 @@ function bulletList(items: string[]) {
 
 function lexicalDoc(blocks: unknown[]): unknown {
   return {
-    root: {
-      type: "root",
-      version: 1,
-      direction: null,
-      format: "",
-      indent: 0,
-      children: blocks,
+    version: 1,
+    document: {
+      root: {
+        type: "root",
+        version: 1,
+        direction: null,
+        format: "",
+        indent: 0,
+        children: blocks,
+      },
     },
   };
 }

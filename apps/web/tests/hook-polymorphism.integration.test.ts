@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -159,7 +160,7 @@ describe.skipIf(skipIfNoTestDb())("hook polymorphism (Phase 9.7o)", () => {
         body: JSON.stringify({
           title: "Staff thread",
           slug: "staff-thread",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
@@ -187,7 +188,7 @@ describe.skipIf(skipIfNoTestDb())("hook polymorphism (Phase 9.7o)", () => {
         body: JSON.stringify({
           title: "Member thread",
           slug: "member-thread",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
@@ -210,7 +211,7 @@ describe.skipIf(skipIfNoTestDb())("hook polymorphism (Phase 9.7o)", () => {
         body: JSON.stringify({
           title: "Doomed thread",
           slug: "doomed",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
@@ -323,7 +324,7 @@ describe.skipIf(skipIfNoTestDb())("hook polymorphism (Phase 9.7o)", () => {
         body: JSON.stringify({
           title: "Plugin-observed",
           slug: "plugin-observed",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },

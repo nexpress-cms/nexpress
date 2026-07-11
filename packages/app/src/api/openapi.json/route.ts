@@ -21,6 +21,41 @@ function fieldToSchema(field: NpFieldManifest): OpenApiSchema {
     case "date":
       return { type: "string", format: "date-time" };
     case "richText":
+      return {
+        type: "object",
+        additionalProperties: false,
+        required: ["version", "document"],
+        properties: {
+          version: { type: "integer", enum: [1] },
+          document: {
+            type: "object",
+            additionalProperties: false,
+            required: ["root"],
+            properties: {
+              root: {
+                type: "object",
+                additionalProperties: false,
+                required: ["type", "children", "direction", "format", "indent", "version"],
+                properties: {
+                  type: { type: "string", enum: ["root"] },
+                  children: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      required: ["type", "version"],
+                      additionalProperties: true,
+                    },
+                  },
+                  direction: { type: ["string", "null"], enum: ["ltr", "rtl", null] },
+                  format: { type: "string" },
+                  indent: { type: "integer", minimum: 0 },
+                  version: { type: "integer", minimum: 1 },
+                },
+              },
+            },
+          },
+        },
+      };
     case "blocks":
     case "json":
       return { type: "object", additionalProperties: true };

@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 
@@ -35,6 +36,14 @@ function memberRequest(
     cookies: [`np-mb-session=${member.sessionCookie}`, `np-mb-csrf=${member.csrfCookie}`],
     headers: { ...(init.headers ?? {}), "x-csrf-token": member.csrfCookie },
   });
+}
+
+function richText(text: string) {
+  const content = npCreateEmptyRichTextContent();
+  const paragraph = content.document.root.children[0];
+  if (!paragraph) throw new Error("empty rich text must contain a paragraph");
+  paragraph.children = [{ type: "text", version: 1, text }];
+  return content;
 }
 
 async function seedActiveMember(
@@ -75,7 +84,7 @@ async function seedStaffPostId(slug: string): Promise<string> {
       body: JSON.stringify({
         title: "Mention target",
         slug,
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
     }),
@@ -252,17 +261,7 @@ describe.skipIf(skipIfNoTestDb())("16.2 @mention notifications (integration)", (
         body: JSON.stringify({
           title: "Hello world",
           slug: "hello-from-mention-test",
-          body: {
-            root: {
-              type: "root",
-              children: [
-                {
-                  type: "paragraph",
-                  children: [{ type: "text", text: `cc @${target.handle}` }],
-                },
-              ],
-            },
-          },
+          body: richText(`cc @${target.handle}`),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
@@ -287,17 +286,7 @@ describe.skipIf(skipIfNoTestDb())("16.2 @mention notifications (integration)", (
         body: JSON.stringify({
           title: "Edit case",
           slug: "edit-mention-case",
-          body: {
-            root: {
-              type: "root",
-              children: [
-                {
-                  type: "paragraph",
-                  children: [{ type: "text", text: `cc @${a.handle}` }],
-                },
-              ],
-            },
-          },
+          body: richText(`cc @${a.handle}`),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
@@ -315,17 +304,7 @@ describe.skipIf(skipIfNoTestDb())("16.2 @mention notifications (integration)", (
         body: JSON.stringify({
           title: "Edit case",
           slug: "edit-mention-case",
-          body: {
-            root: {
-              type: "root",
-              children: [
-                {
-                  type: "paragraph",
-                  children: [{ type: "text", text: `cc @${a.handle} and @${b.handle}` }],
-                },
-              ],
-            },
-          },
+          body: richText(`cc @${a.handle} and @${b.handle}`),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions", id: docId }) },

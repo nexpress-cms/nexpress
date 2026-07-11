@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -73,7 +74,7 @@ async function seedStaffPost(): Promise<string> {
       body: JSON.stringify({
         title: "Profanity target",
         slug: "profanity-target",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
     }),

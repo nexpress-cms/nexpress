@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -41,6 +42,14 @@ function memberRequest(
   });
 }
 
+function richText(text: string) {
+  const content = npCreateEmptyRichTextContent();
+  const paragraph = content.document.root.children[0];
+  if (!paragraph) throw new Error("empty rich text must contain a paragraph");
+  paragraph.children = [{ type: "text", version: 1, text }];
+  return content;
+}
+
 async function seedActiveMember(
   handle: string,
 ): Promise<{ memberId: string; sessionCookie: string; csrfCookie: string }> {
@@ -62,7 +71,7 @@ async function memberCreate(
       body: JSON.stringify({
         title: body.title,
         slug: body.slug,
-        body: { root: { type: "root", children: [] } },
+        body: npCreateEmptyRichTextContent(),
       }),
     }),
     { params: Promise.resolve({ slug: "discussions" }) },
@@ -382,17 +391,7 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
           body: JSON.stringify({
             title: "Innocent title",
             slug: "innocent-1",
-            body: {
-              root: {
-                type: "root",
-                children: [
-                  {
-                    type: "paragraph",
-                    children: [{ type: "text", text: "this contains badword inside" }],
-                  },
-                ],
-              },
-            },
+            body: richText("this contains badword inside"),
           }),
         }),
         { params: Promise.resolve({ slug: "discussions" }) },

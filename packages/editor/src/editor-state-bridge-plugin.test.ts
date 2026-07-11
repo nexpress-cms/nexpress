@@ -35,13 +35,16 @@ function richTextContent(text: string): NpRichTextContent {
   };
 
   return {
-    root: {
-      children: [paragraph],
-      direction: null,
-      format: "",
-      indent: 0,
-      type: "root",
-      version: 1,
+    version: 1,
+    document: {
+      root: {
+        children: [paragraph],
+        direction: null,
+        format: "",
+        indent: 0,
+        type: "root",
+        version: 1,
+      },
     },
   };
 }
@@ -138,5 +141,18 @@ describe("synchronizeEditorValue", () => {
     expect(() => synchronizeEditorValue(editor, "{malformed", currentValueKey)).toThrow();
     expect(editorText(editor)).toBe("Safe body");
     expect(currentValueKey.current).toBe(initialValueKey);
+  });
+
+  it("rejects raw Lexical JSON at the editor boundary", () => {
+    const rawLexical = {
+      root: {
+        type: "root",
+        children: [],
+      },
+    };
+
+    expect(() => serializeEditorValue(rawLexical)).toThrow(
+      'exactly "version" and "document"',
+    );
   });
 });

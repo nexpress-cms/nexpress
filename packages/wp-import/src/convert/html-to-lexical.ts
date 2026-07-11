@@ -1,4 +1,5 @@
 import { type HTMLElement, type Node, NodeType, parse } from "node-html-parser";
+import type { NpRichTextContent, NpRichTextSerializedNode } from "@nexpress/core/fields";
 
 import { isGutenbergSource, parseGutenbergBlocks, type GutenbergBlock } from "./gutenberg.js";
 
@@ -32,18 +33,9 @@ import { isGutenbergSource, parseGutenbergBlocks, type GutenbergBlock } from "./
  *     design doc §2 — handled by the long-tail conversion pass.
  */
 
-export interface LexicalRoot {
-  root: {
-    type: "root";
-    direction: null;
-    format: "";
-    indent: 0;
-    version: 1;
-    children: LexicalBlock[];
-  };
-}
+export type LexicalRoot = NpRichTextContent;
 
-interface LexicalBlock {
+interface LexicalBlock extends NpRichTextSerializedNode {
   type: string;
   version: 1;
   format: "" | number;
@@ -133,13 +125,16 @@ export function htmlToLexical(html: string, options: HtmlToLexicalOptions = {}):
   }
 
   return {
-    root: {
-      type: "root",
-      direction: null,
-      format: "",
-      indent: 0,
-      version: 1,
-      children: blocks,
+    version: 1,
+    document: {
+      root: {
+        type: "root",
+        direction: null,
+        format: "",
+        indent: 0,
+        version: 1,
+        children: blocks,
+      },
     },
   };
 }
@@ -443,13 +438,16 @@ function stripTags(html: string): string {
 
 function emptyDocument(): LexicalRoot {
   return {
-    root: {
-      type: "root",
-      direction: null,
-      format: "",
-      indent: 0,
-      version: 1,
-      children: [paragraph([])],
+    version: 1,
+    document: {
+      root: {
+        type: "root",
+        direction: null,
+        format: "",
+        indent: 0,
+        version: 1,
+        children: [paragraph([])],
+      },
     },
   };
 }

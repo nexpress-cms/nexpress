@@ -1,3 +1,5 @@
+import { isNpRichTextContent, type NpRichTextContent } from "@nexpress/core/fields";
+
 import type { NpTranslationInlinePart } from "./types.js";
 
 export const NP_TRANSLATION_LEXICAL_CTYPE = "x-nexpress-lexical";
@@ -23,7 +25,7 @@ export interface RichTextTranslationValue {
 }
 
 export type RichTextTranslationApplyResult =
-  | { ok: true; value: Record<string, unknown>; translatedFragmentCount: number }
+  | { ok: true; value: NpRichTextContent; translatedFragmentCount: number }
   | { ok: false; reason: string; empty: boolean };
 
 const BLOCK_NODE_TYPES = new Set([
@@ -139,9 +141,8 @@ export function applyRichTextTranslationValue(args: {
 }
 
 function analyzeRichText(value: unknown): RichTextAnalysis | null {
-  if (!isRecord(value)) return null;
-  const root = value.root;
-  if (!isRecord(root) || !Array.isArray(root.children)) return null;
+  if (!isNpRichTextContent(value)) return null;
+  const root = value.document.root;
 
   const leaves: RichTextLeaf[] = [];
   walkNodes(root.children, [], null, leaves);
@@ -237,8 +238,8 @@ function hasNonEmptyGroup(parts: NpTranslationInlinePart[]): boolean {
   return parts.some((part) => part.type === "group" && part.text.length > 0);
 }
 
-function cloneRichText(value: unknown): Record<string, unknown> | null {
-  if (!isRecord(value)) return null;
+function cloneRichText(value: unknown): NpRichTextContent | null {
+  if (!isNpRichTextContent(value)) return null;
   try {
     return structuredClone(value);
   } catch {
@@ -246,8 +247,8 @@ function cloneRichText(value: unknown): Record<string, unknown> | null {
   }
 }
 
-function setTextAtPath(content: Record<string, unknown>, path: number[], text: string): boolean {
-  let current: unknown = content.root;
+function setTextAtPath(content: NpRichTextContent, path: number[], text: string): boolean {
+  let current: unknown = content.document.root;
   for (const index of path) {
     if (!isRecord(current) || !Array.isArray(current.children)) return false;
     current = current.children[index];

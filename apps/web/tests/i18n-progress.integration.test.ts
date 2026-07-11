@@ -71,20 +71,13 @@ describe.skipIf(skipIfNoTestDb())("i18n progress (Phase 12.6b)", () => {
       actor(),
       { status: "published" },
     );
-    await createTranslation(
-      "pages",
-      a.doc.id as string,
-      "ko",
-      actor(),
-    );
+    await createTranslation("pages", a.doc.id as string, "ko", actor());
 
     const progress = await getTranslationProgress();
     expect(progress).not.toBeNull();
     expect(progress?.locales).toEqual(["en", "ko"]);
 
-    const lp = progress?.collections.find(
-      (c) => c.collection === "pages",
-    );
+    const lp = progress?.collections.find((c) => c.collection === "pages");
     expect(lp).toBeDefined();
     expect(lp?.totalGroups).toBe(2);
     expect(lp?.perLocale.en).toEqual({ count: 2, missing: 0 });
@@ -94,18 +87,14 @@ describe.skipIf(skipIfNoTestDb())("i18n progress (Phase 12.6b)", () => {
   it("treats every locale as zero/missing when no rows exist", async () => {
     const { getTranslationProgress } = await import("@nexpress/core");
     const progress = await getTranslationProgress();
-    const lp = progress?.collections.find(
-      (c) => c.collection === "pages",
-    );
+    const lp = progress?.collections.find((c) => c.collection === "pages");
     expect(lp?.totalGroups).toBe(0);
     expect(lp?.perLocale.en).toEqual({ count: 0, missing: 0 });
     expect(lp?.perLocale.ko).toEqual({ count: 0, missing: 0 });
   });
 
   it("skips non-i18n collections silently", async () => {
-    const { getTranslationProgress, saveDocument } = await import(
-      "@nexpress/core"
-    );
+    const { getTranslationProgress, saveDocument } = await import("@nexpress/core");
     // posts is NOT i18n-enabled in the reference config; this
     // write should not influence translation progress.
     await saveDocument(
@@ -168,7 +157,7 @@ describe.skipIf(skipIfNoTestDb())("i18n progress (Phase 12.6b)", () => {
 });
 
 function lexical(text: string): unknown {
-  return {
+  const document = {
     root: {
       type: "root",
       version: 1,
@@ -197,4 +186,5 @@ function lexical(text: string): unknown {
       ],
     },
   };
+  return { version: 1, document };
 }
