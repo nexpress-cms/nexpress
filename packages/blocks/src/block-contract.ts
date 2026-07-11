@@ -50,6 +50,7 @@ const propFieldKeys = new Set([
   "name",
   "label",
   "type",
+  "translatable",
   "required",
   "defaultValue",
   "options",
@@ -258,6 +259,15 @@ function validatePropField(
   }
   if (typeof value.type !== "string" || !propFieldTypeSet.has(value.type)) {
     return invalid(`${path}.type must be one of ${npBlockPropFieldTypes.join(", ")}.`);
+  }
+  const textual = value.type === "text" || value.type === "textarea" || value.type === "richtext";
+  if (textual && typeof value.translatable !== "boolean") {
+    return invalid(`${path}.translatable must be boolean for ${value.type} fields.`);
+  }
+  if (!textual && value.translatable !== undefined) {
+    return invalid(
+      `${path}.translatable is supported only for text, textarea, and richtext fields.`,
+    );
   }
   if (value.required !== undefined && typeof value.required !== "boolean") {
     return invalid(`${path}.required must be boolean.`);

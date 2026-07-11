@@ -578,7 +578,7 @@ function blockContractImportCheck(error: unknown): CheckResult | null {
     hint: withDoctorRerun(
       duplicate
         ? "A plugin can declare each block type only once. Remove or rename the duplicate block."
-        : "Use a canonical block type, serializable metadata, a valid props schema, and a function renderer.",
+        : "Use a canonical block type, serializable metadata, explicit text-prop translation intent, a valid props schema, and a function renderer.",
     ),
   };
 }
@@ -849,7 +849,7 @@ function buildBlockChecks(pluginObjects: PluginLike[], plugins: OpsPluginEntry[]
       label: "Plugin block contracts",
       detail: invalidBlocks.join("; "),
       hint: withDoctorRerun(
-        "Use a canonical block type, serializable metadata, a valid props schema, and a function renderer.",
+        "Use a canonical block type, serializable metadata, explicit text-prop translation intent, a valid props schema, and a function renderer.",
       ),
       pluginIds: uniqueStrings(invalidPluginIds),
     });

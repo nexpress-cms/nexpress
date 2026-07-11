@@ -243,6 +243,32 @@ describe("ops plugins core", () => {
     expect(report.checks.find((check) => check.id === "plugins.block_conflict")).toBeUndefined();
   });
 
+  it("reports textual block props that omit explicit translation intent", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "implicit-copy", name: "Implicit copy" },
+        blocks: [
+          pluginBlock("implicit.notice", {
+            propsSchema: [{ name: "title", label: "Title", type: "text" }],
+          }),
+        ],
+      },
+    ]);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.block_invalid",
+          state: "error",
+          detail: expect.stringContaining("translatable must be boolean"),
+          pluginIds: ["implicit-copy"],
+          hint: expect.stringContaining("explicit text-prop translation intent"),
+        }),
+      ]),
+    );
+  });
+
   it("does not report cross-plugin conflicts for malformed block definitions", () => {
     const report = analyzePlugins([
       {

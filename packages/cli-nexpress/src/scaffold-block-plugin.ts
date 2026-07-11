@@ -248,6 +248,12 @@ malformed definitions as \`plugins.block_invalid\`, same-plugin duplicates as
 \`plugins.pattern_invalid\`, \`plugins.pattern_duplicate\`, and
 \`plugins.pattern_conflict\`.
 
+Every \`text\`, \`textarea\`, and \`richtext\` prop must declare
+\`translatable: true | false\`. Use \`true\` only for visitor-facing copy;
+operational strings such as ids, CSS values, and JSON blobs use \`false\`.
+The XLIFF exporter follows the declaration recursively through array
+\`itemSchema\` fields.
+
 ## What's inside
 
 ${
@@ -301,6 +307,7 @@ const ${blockComponentName}Block: NpBlockDefinition = {
       name: "title",
       label: "Title",
       type: "text",
+      translatable: true,
       required: true,
       defaultValue: "Hello, ${blockComponentName}",
     },
@@ -308,6 +315,7 @@ const ${blockComponentName}Block: NpBlockDefinition = {
       name: "placeholder",
       label: "Input placeholder",
       type: "text",
+      translatable: true,
       defaultValue: "Type something…",
     },
   ],
@@ -393,6 +401,7 @@ const ${blockComponentName}Block: NpBlockDefinition = {
       name: "title",
       label: "Title",
       type: "text",
+      translatable: true,
       required: true,
       defaultValue: "Hello, ${blockComponentName}",
     },
@@ -400,6 +409,7 @@ const ${blockComponentName}Block: NpBlockDefinition = {
       name: "body",
       label: "Body",
       type: "textarea",
+      translatable: true,
       defaultValue: "Edit src/index.tsx to make this block your own.",
     },
     {

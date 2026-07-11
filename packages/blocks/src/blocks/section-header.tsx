@@ -5,8 +5,7 @@ import type { NpBlockDefinition } from "../types.js";
 const readString = (value: unknown, fallback: string): string =>
   typeof value === "string" && value.trim().length > 0 ? value : fallback;
 
-const readAlign = (value: unknown): "left" | "center" =>
-  value === "left" ? "left" : "center";
+const readAlign = (value: unknown): "left" | "center" => (value === "left" ? "left" : "center");
 
 /**
  * Section header — eyebrow + heading + optional subtitle. Drop above
@@ -36,6 +35,7 @@ export const sectionHeaderBlock: NpBlockDefinition = {
       name: "eyebrow",
       label: "Eyebrow",
       type: "text",
+      translatable: true,
       defaultValue: "Why teams choose this",
       description: "Small uppercase label above the heading. Leave blank to omit.",
     },
@@ -43,6 +43,7 @@ export const sectionHeaderBlock: NpBlockDefinition = {
       name: "heading",
       label: "Heading",
       type: "text",
+      translatable: true,
       defaultValue: "A clean section header",
       required: true,
     },
@@ -50,6 +51,7 @@ export const sectionHeaderBlock: NpBlockDefinition = {
       name: "subtitle",
       label: "Subtitle",
       type: "textarea",
+      translatable: true,
       defaultValue: "One short sentence to set up the section that follows.",
     },
     {

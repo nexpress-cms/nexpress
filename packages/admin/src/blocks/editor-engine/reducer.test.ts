@@ -14,7 +14,6 @@ const def = (
   propsSchema: [],
   ...overrides,
 });
-
 const block = (
   id: string,
   type: string,
@@ -41,15 +40,15 @@ const fixtureDefs: NpBlockMetadata[] = [
   def("pricing-tier", {}),
   def("paragraph", {
     defaultProps: { text: "" },
-    propsSchema: [{ name: "text", type: "text", label: "Text" }],
+    propsSchema: [{ name: "text", type: "text", translatable: true, label: "Text" }],
   }),
   def("heading", {
     defaultProps: { text: "" },
-    propsSchema: [{ name: "text", type: "text", label: "Text" }],
+    propsSchema: [{ name: "text", type: "text", translatable: true, label: "Text" }],
   }),
   def("image", {
     defaultProps: { caption: "" },
-    propsSchema: [{ name: "caption", type: "text", label: "Caption" }],
+    propsSchema: [{ name: "caption", type: "text", translatable: true, label: "Caption" }],
   }),
 ];
 

@@ -8,15 +8,17 @@ import {
 } from "@nexpress/core";
 
 import { parseXliff } from "./format.js";
+import { applyBlockXliffUnit, createBlockImportBaseline, parseBlockUnitId } from "./blocks.js";
 import { applyRichTextXliffValue } from "./rich-text.js";
 
 /**
  * Field types whose values round-trip through XLIFF — kept in sync with the
  * export side so import accepts exactly what export emits. Rich text has a
- * stricter inline-code contract; blocks and other structured values remain
+ * stricter inline-code contract; block fields accept only registered schema
+ * paths explicitly declared translatable. Other structured values remain
  * rejected.
  */
-const TRANSLATABLE_TYPES = new Set(["text", "textarea", "email", "richText"]);
+const TRANSLATABLE_TYPES = new Set(["text", "textarea", "email", "richText", "blocks"]);
 
 type TranslatableFieldType = "text" | "textarea" | "email" | "richText";
 
@@ -147,8 +149,13 @@ export async function importXliff(options: XliffImportOptions): Promise<XliffImp
     // (locale, translationGroupId) sibling structure.
     const translatableFields = new Map<string, TranslatableFieldType>(
       config.fields
-        .filter((f) => "name" in f && TRANSLATABLE_TYPES.has(f.type))
+        .filter((f) => "name" in f && f.type !== "blocks" && TRANSLATABLE_TYPES.has(f.type))
         .map((f) => [(f as { name: string }).name, f.type as TranslatableFieldType]),
+    );
+    const blockFields = new Set(
+      config.fields
+        .filter((field) => "name" in field && field.type === "blocks")
+        .map((field) => (field as { name: string }).name),
     );
 
     // Resolve the source sibling — needed both for the create
@@ -176,9 +183,11 @@ export async function importXliff(options: XliffImportOptions): Promise<XliffImp
     // translatable field. Rich-text units are additionally checked against the
     // live source Lexical structure before any target fragments are applied.
     const overrides: Record<string, unknown> = {};
+    const blockValues = new Map<string, unknown>();
     const rejectedFieldIds: string[] = [];
     const seenFieldIds = new Set<string>();
     const fileSkipCount = skipped.length;
+    let appliedUnitCount = 0;
     for (const unit of file.units) {
       if (seenFieldIds.has(unit.id)) {
         skipped.push({
@@ -190,6 +199,50 @@ export async function importXliff(options: XliffImportOptions): Promise<XliffImp
         continue;
       }
       seenFieldIds.add(unit.id);
+
+      const blockDescriptor = parseBlockUnitId(unit.id);
+      if (blockDescriptor) {
+        if (!blockFields.has(blockDescriptor.fieldName)) {
+          rejectedFieldIds.push(unit.id);
+          continue;
+        }
+        let workingValue = blockValues.get(blockDescriptor.fieldName);
+        if (workingValue === undefined) {
+          workingValue = createBlockImportBaseline(
+            sourceSibling[blockDescriptor.fieldName],
+            targetSibling?.[blockDescriptor.fieldName],
+          );
+        }
+        if (!workingValue) {
+          skipped.push({
+            reason: `Ignored block unit "${unit.id}": block field is not a valid array`,
+            collection,
+            groupId,
+            locale: file.targetLocale,
+          });
+          continue;
+        }
+        const result = applyBlockXliffUnit({
+          sourceValue: sourceSibling[blockDescriptor.fieldName],
+          targetValue: workingValue,
+          unit,
+        });
+        if (!result.ok) {
+          if (!result.empty) {
+            skipped.push({
+              reason: `Ignored block unit "${unit.id}": ${result.reason}`,
+              collection,
+              groupId,
+              locale: file.targetLocale,
+            });
+          }
+          continue;
+        }
+        blockValues.set(blockDescriptor.fieldName, result.value);
+        overrides[blockDescriptor.fieldName] = result.value;
+        appliedUnitCount++;
+        continue;
+      }
 
       const fieldType = translatableFields.get(unit.id);
       if (!fieldType) {
@@ -216,6 +269,7 @@ export async function importXliff(options: XliffImportOptions): Promise<XliffImp
           continue;
         }
         overrides[unit.id] = result.value;
+        appliedUnitCount++;
         continue;
       }
 
@@ -230,6 +284,7 @@ export async function importXliff(options: XliffImportOptions): Promise<XliffImp
       }
       if (unit.target.length === 0) continue;
       overrides[unit.id] = unit.target;
+      appliedUnitCount++;
     }
     if (rejectedFieldIds.length > 0) {
       skipped.push({
@@ -257,7 +312,7 @@ export async function importXliff(options: XliffImportOptions): Promise<XliffImp
         docId: targetSibling ? (targetSibling as { id: string }).id : "(would-create)",
         locale: file.targetLocale,
         operation: targetSibling ? "update" : "create",
-        unitCount: Object.keys(overrides).length,
+        unitCount: appliedUnitCount,
       });
       continue;
     }
@@ -280,7 +335,7 @@ export async function importXliff(options: XliffImportOptions): Promise<XliffImp
         docId: result.doc.id as string,
         locale: file.targetLocale,
         operation: "update",
-        unitCount: Object.keys(overrides).length,
+        unitCount: appliedUnitCount,
       });
     } else {
       // CREATE: two-step to mirror the admin TranslationTabs flow
@@ -314,7 +369,7 @@ export async function importXliff(options: XliffImportOptions): Promise<XliffImp
         docId: result.doc.id as string,
         locale: file.targetLocale,
         operation: "create",
-        unitCount: Object.keys(overrides).length,
+        unitCount: appliedUnitCount,
       });
     }
   }

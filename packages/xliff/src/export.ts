@@ -7,6 +7,7 @@ import {
 } from "@nexpress/core";
 
 import { renderXliff, type XliffFile, type XliffTransUnit } from "./format.js";
+import { createBlockXliffUnits } from "./blocks.js";
 import { createRichTextXliffValue } from "./rich-text.js";
 
 export interface XliffExportOptions {
@@ -64,15 +65,15 @@ export interface XliffExportBundle {
 }
 
 /**
- * Atomic strings and Lexical rich text round-trip through XLIFF. Blocks and
- * other structured types remain outside this contract until their schemas can
- * declare exactly which nested values are translatable.
+ * Atomic strings, Lexical rich text, and block props explicitly declared
+ * translatable in their registered schema round-trip through XLIFF. Other
+ * structured types remain outside this contract.
  */
-const TRANSLATABLE_TYPES = new Set(["text", "textarea", "email", "richText"]);
+const TRANSLATABLE_TYPES = new Set(["text", "textarea", "email", "richText", "blocks"]);
 
 type TranslatableField = {
   name: string;
-  type: "text" | "textarea" | "email" | "richText";
+  type: "text" | "textarea" | "email" | "richText" | "blocks";
 };
 
 /**
@@ -190,6 +191,12 @@ export async function exportXliff(options: XliffExportOptions = {}): Promise<Xli
 
         const docUnits: XliffTransUnit[] = [];
         for (const field of translatableFields) {
+          if (field.type === "blocks") {
+            docUnits.push(
+              ...createBlockXliffUnits(field.name, sourceDoc[field.name], targetDoc?.[field.name]),
+            );
+            continue;
+          }
           if (field.type === "richText") {
             const richText = createRichTextXliffValue(
               sourceDoc[field.name],

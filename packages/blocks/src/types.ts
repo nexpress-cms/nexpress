@@ -177,11 +177,9 @@ export interface NpBlockDefinition extends NpBlockMetadata {
   ) => ReactElement | Promise<ReactElement>;
 }
 
-export interface NpBlockPropField {
+export interface NpBlockPropFieldBase {
   name: string;
   label: string;
-  /** Supported editor control. Runtime inventory: `npBlockPropFieldTypes`. */
-  type: NpBlockPropFieldType;
   required?: boolean;
   defaultValue?: unknown;
   options?: { label: string; value: string }[];
@@ -271,6 +269,27 @@ export interface NpBlockPropField {
    */
   accept?: readonly string[];
 }
+
+/**
+ * Serializable block editor field. Textual controls must explicitly declare
+ * whether they contain visitor-facing copy. Translation exporters follow only
+ * `translatable: true`; operational strings use `false`. Non-textual controls
+ * cannot declare translation intent. Array fields declare it recursively on
+ * their `itemSchema` leaves.
+ */
+export type NpBlockPropField = NpBlockPropFieldBase &
+  (
+    | {
+        /** Supported textual editor control. */
+        type: "text" | "textarea" | "richtext";
+        translatable: boolean;
+      }
+    | {
+        /** Supported non-textual editor control. Runtime inventory: `npBlockPropFieldTypes`. */
+        type: Exclude<NpBlockPropFieldType, "text" | "textarea" | "richtext">;
+        translatable?: never;
+      }
+  );
 
 export interface NpBlockInstance {
   id: string;

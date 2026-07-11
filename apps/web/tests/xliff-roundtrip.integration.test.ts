@@ -18,7 +18,8 @@ import {
  * non-translatable fields preserved.
  */
 describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
-  let restorePagesCollection: (() => void) | null = null;
+  let usePagesBlocksCollection: (() => void) | null = null;
+  let usePagesRichTextCollection: (() => void) | null = null;
 
   beforeAll(async () => {
     await ensureMigrated();
@@ -46,14 +47,16 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
           : field,
       ),
     };
-    registerCollection("pages", pagesTable, richTextConfig);
-    restorePagesCollection = () => registerCollection("pages", pagesTable, baseConfig);
+    usePagesBlocksCollection = () => registerCollection("pages", pagesTable, baseConfig);
+    usePagesRichTextCollection = () => registerCollection("pages", pagesTable, richTextConfig);
+    usePagesRichTextCollection();
   });
   beforeEach(async () => {
+    usePagesRichTextCollection?.();
     await truncateAll();
   });
   afterAll(async () => {
-    restorePagesCollection?.();
+    usePagesBlocksCollection?.();
     await closeTestDb();
   });
 
@@ -136,6 +139,42 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
         ],
       },
     };
+  }
+
+  function blockFixture(): Array<Record<string, unknown>> {
+    return [
+      {
+        id: "layout-translation",
+        type: "grid",
+        props: { columns: 12, gap: "2rem" },
+        children: [
+          {
+            id: "hero-translation",
+            type: "hero",
+            props: {
+              title: "Block hero",
+              subtitle: "Translate nested content.",
+              ctaText: "Read more",
+              ctaUrl: "/docs",
+              backgroundImage: "/media/hero.png",
+            },
+          },
+          {
+            id: "faq-translation",
+            type: "faq",
+            props: {
+              heading: "Block questions",
+              items: [{ question: "How?", answer: "With explicit schema paths." }],
+            },
+          },
+          {
+            id: "rich-translation",
+            type: "rich-text",
+            props: { content: richTextFixture() },
+          },
+        ],
+      },
+    ];
   }
 
   it("exports a published source row, imports an edited target, and creates a sibling", async () => {
@@ -625,5 +664,84 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
       ko!.blocks as { root: { children: Array<{ children: Array<{ text: string }> }> } }
     ).root.children[0]!.children[0]!.text;
     expect(firstText).toBe("Hello ");
+  });
+
+  it("round-trips schema-declared block props through nested blocks and arrays", async () => {
+    usePagesBlocksCollection?.();
+    try {
+      const { findDocuments, getDocumentById, saveDocument } = await import("@nexpress/core");
+      const { exportXliff, importXliff, parseXliff, renderXliff } = await import("@nexpress/xliff");
+      const source = await saveDocument(
+        "pages",
+        null,
+        { title: "Block source", blocks: blockFixture(), locale: "en" },
+        actor(),
+        { status: "published" },
+      );
+      const groupId = (source.doc as { translationGroupId: string }).translationGroupId;
+
+      const bundle = await exportXliff();
+      const parsed = parseXliff(bundle.files[0]!.xml);
+      const units = parsed.files[0]!.units;
+      expect(units.some((unit) => unit.source === "2rem")).toBe(false);
+      expect(units.some((unit) => unit.source === "/docs")).toBe(false);
+
+      for (const unit of units) {
+        if (unit.source === "Block source") unit.target = "블록 번역";
+        if (unit.source === "Block hero") unit.target = "블록 히어로";
+        if (unit.source === "How?") unit.target = "어떻게?";
+        if (unit.source === "With explicit schema paths.") unit.target = "명시적 스키마 경로로.";
+        if (unit.sourceInline) {
+          const sourceTextById = new Map(
+            unit.sourceInline
+              .filter((part) => part.type === "group")
+              .map((part) => [part.id, part.text]),
+          );
+          unit.targetInline = unit.targetInline!.map((part) =>
+            part.type === "group"
+              ? { ...part, text: `번역:${sourceTextById.get(part.id) ?? ""}` }
+              : part,
+          );
+        }
+      }
+
+      const result = await importXliff({ xml: renderXliff(parsed), user: actor() });
+      expect(result.applied).toEqual([
+        expect.objectContaining({ operation: "create", unitCount: expect.any(Number) }),
+      ]);
+      expect(result.applied[0]!.unitCount).toBeGreaterThan(4);
+
+      const rows = await findDocuments("pages", {
+        where: { translationGroupId: groupId },
+        locale: "ko",
+      });
+      const target = await getDocumentById("pages", (rows.docs[0] as { id: string }).id, actor());
+      expect(target!.title).toBe("블록 번역");
+      const layout = (target!.blocks as Array<Record<string, unknown>>)[0]!;
+      expect((layout.props as Record<string, unknown>).gap).toBe("2rem");
+      const children = layout.children as Array<Record<string, unknown>>;
+      const hero = children.find((block) => block.id === "hero-translation")!;
+      expect(hero.props).toEqual(
+        expect.objectContaining({ title: "블록 히어로", ctaUrl: "/docs" }),
+      );
+      const faq = children.find((block) => block.id === "faq-translation")!;
+      const faqItems = (faq.props as { items: Array<Record<string, unknown>> }).items;
+      expect(faqItems[0]).toEqual(
+        expect.objectContaining({ question: "어떻게?", answer: "명시적 스키마 경로로." }),
+      );
+      const rich = children.find((block) => block.id === "rich-translation")!;
+      const content = (
+        rich.props as { content: { root: { children: Array<Record<string, unknown>> } } }
+      ).content;
+      const firstParagraph = content.root.children[0] as {
+        children: Array<Record<string, unknown>>;
+      };
+      expect(firstParagraph.children[0]!.text).toBe("번역:Hello ");
+      expect(firstParagraph.children[2]).toEqual(
+        expect.objectContaining({ type: "image", src: "/media/example.png" }),
+      );
+    } finally {
+      usePagesRichTextCollection?.();
+    }
   });
 });

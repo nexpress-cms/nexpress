@@ -52,6 +52,7 @@ export const richTextBlock: NpBlockDefinition = {
       name: "content",
       label: "Content",
       type: "richtext",
+      translatable: true,
       defaultValue: {
         root: {
           children: [
@@ -87,7 +88,10 @@ export const richTextBlock: NpBlockDefinition = {
     const content = props.content;
 
     return (
-      <section className="np-block-rich-text" style={{ padding: "3rem 1.5rem", background: "#ffffff" }}>
+      <section
+        className="np-block-rich-text"
+        style={{ padding: "3rem 1.5rem", background: "#ffffff" }}
+      >
         <div style={{ maxWidth: "48rem", margin: "0 auto", lineHeight: 1.8, color: "#1f2937" }}>
           {isRichTextContent(content) ? renderRichText(content) : null}
         </div>

@@ -15,7 +15,7 @@ const noticeBlock: NpBlockDefinition = {
   type: "acme.notice",
   label: "Notice",
   defaultProps: { message: "Heads up" },
-  propsSchema: [{ name: "message", label: "Message", type: "textarea" }],
+  propsSchema: [{ name: "message", label: "Message", type: "textarea", translatable: true }],
   render: ({ message }) => <aside>{typeof message === "string" ? message : ""}</aside>,
 };
 

@@ -26,7 +26,6 @@ interface CaseStudyHeroProps {
   role?: string;
   imageUrl?: string;
 }
-
 function CaseStudyHero(props: Record<string, unknown>): React.ReactElement {
   const { title, subtitle, client, year, role, imageUrl } =
     props as unknown as CaseStudyHeroProps;
@@ -189,11 +188,11 @@ export const portfolioBlocks: NpBlockDefinition[] = [
       imageUrl: "",
     },
     propsSchema: [
-      { name: "title", label: "Project title", type: "text" },
-      { name: "subtitle", label: "Subtitle", type: "textarea" },
-      { name: "client", label: "Client", type: "text" },
-      { name: "year", label: "Year", type: "text" },
-      { name: "role", label: "Role", type: "text" },
+      { name: "title", label: "Project title", type: "text", translatable: true },
+      { name: "subtitle", label: "Subtitle", type: "textarea", translatable: true },
+      { name: "client", label: "Client", type: "text", translatable: true },
+      { name: "year", label: "Year", type: "text", translatable: false },
+      { name: "role", label: "Role", type: "text", translatable: true },
       { name: "imageUrl", label: "Hero image URL", type: "url" },
     ],
     render: (props) => <CaseStudyHero {...props} />,
@@ -215,7 +214,7 @@ export const portfolioBlocks: NpBlockDefinition[] = [
       { name: "columns", label: "Columns", type: "number" },
       // `items` edited as JSON in v0.2; richer per-item editor
       // (drag-to-reorder, add/remove) tracked as F.5.1 polish.
-      { name: "items", label: "Items (JSON)", type: "textarea" },
+      { name: "items", label: "Items (JSON)", type: "textarea", translatable: false },
     ],
     render: (props) => <ImageGrid {...props} />,
   },
@@ -229,7 +228,7 @@ export const portfolioBlocks: NpBlockDefinition[] = [
       heading: "Selected clients",
     },
     propsSchema: [
-      { name: "heading", label: "Section heading", type: "text" },
+      { name: "heading", label: "Section heading", type: "text", translatable: true },
     ],
     // `ClientLogosStrip` is itself an async server component —
     // it reads `settings.clientLogos` so the operator manages

@@ -5,9 +5,9 @@
  * hand them to a translation SaaS (Crowdin, Phrase, Smartling,
  * etc.), and apply the returned bundles via `importXliff`.
  *
- * Atomic strings and Lexical `richText` fields round-trip directly. Rich text
- * uses protected XLIFF inline codes so translations replace text leaves without
- * flattening formatting, links, lists, or embedded non-text nodes.
+ * Atomic strings, Lexical `richText`, and schema-declared block props
+ * round-trip directly. Protected ids and inline codes let translations replace
+ * visitor-facing text without flattening formatting or guessing block paths.
  */
 
 export {

@@ -76,6 +76,7 @@ const youtubeBlock: NpBlockDefinition = {
       name: "title",
       label: "Accessible title",
       type: "text",
+      translatable: true,
       defaultValue: "YouTube video",
     },
   ],

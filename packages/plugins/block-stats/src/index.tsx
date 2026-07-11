@@ -50,7 +50,14 @@ async function StatsCounterBody({
   return (
     <div className="np-block-stats" style={wrapperStyle}>
       <span style={valueStyle}>{formatNumber(count)}</span>
-      <span style={{ fontSize: "0.875rem", color: "#475569", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+      <span
+        style={{
+          fontSize: "0.875rem",
+          color: "#475569",
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+        }}
+      >
         {label}
       </span>
     </div>
@@ -78,6 +85,7 @@ const statsCounterBlock: NpBlockDefinition = {
       name: "label",
       label: "Display label",
       type: "text",
+      translatable: true,
       defaultValue: "Total posts",
     },
   ],

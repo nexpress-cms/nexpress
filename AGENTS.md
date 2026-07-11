@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-11 (XLIFF 1.2 now round-trips Lexical rich text
+**Last refreshed:** 2026-07-11 (block prop schemas now require explicit
+translation intent for textual controls. XLIFF follows that contract through
+nested blocks and arrays, validates live ids/types/paths/text, and fails closed
+for unknown, duplicated, stale, or structurally incompatible block units.)
+
+**Earlier:** 2026-07-11 (XLIFF 1.2 now round-trips Lexical rich text
 through protected inline codes. Import validates live source paths, ordering,
 and text before replacing leaves, preserving formatting and non-text nodes.)
 

@@ -67,11 +67,18 @@ const pricingBlock: NpBlockDefinition = {
     ],
   },
   propsSchema: [
-    { name: "heading", label: "Heading", type: "text", defaultValue: "Pricing" },
+    {
+      name: "heading",
+      label: "Heading",
+      type: "text",
+      translatable: true,
+      defaultValue: "Pricing",
+    },
     {
       name: "subheading",
       label: "Subheading",
       type: "text",
+      translatable: true,
       defaultValue: "Pick the plan that fits.",
     },
     {
@@ -89,10 +96,36 @@ const pricingBlock: NpBlockDefinition = {
         features: "Feature one\nFeature two",
       },
       itemSchema: [
-        { name: "name", label: "Tier name", type: "text", required: true, defaultValue: "" },
-        { name: "price", label: "Price", type: "text", required: true, defaultValue: "$0" },
-        { name: "cadence", label: "Cadence", type: "text", defaultValue: "/mo" },
-        { name: "ctaText", label: "CTA text", type: "text", defaultValue: "Choose plan" },
+        {
+          name: "name",
+          label: "Tier name",
+          type: "text",
+          translatable: true,
+          required: true,
+          defaultValue: "",
+        },
+        {
+          name: "price",
+          label: "Price",
+          type: "text",
+          translatable: false,
+          required: true,
+          defaultValue: "$0",
+        },
+        {
+          name: "cadence",
+          label: "Cadence",
+          type: "text",
+          translatable: true,
+          defaultValue: "/mo",
+        },
+        {
+          name: "ctaText",
+          label: "CTA text",
+          type: "text",
+          translatable: true,
+          defaultValue: "Choose plan",
+        },
         { name: "ctaUrl", label: "CTA URL", type: "url", defaultValue: "#" },
         {
           name: "highlight",
@@ -104,6 +137,7 @@ const pricingBlock: NpBlockDefinition = {
           name: "features",
           label: "Features",
           type: "textarea",
+          translatable: true,
           description: "One per line.",
           defaultValue: "",
         },
