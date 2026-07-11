@@ -1,33 +1,21 @@
 import { XMLParser } from "fast-xml-parser";
 
-/**
- * XLIFF 1.2 reader/writer scoped to the subset we round-trip.
- *
- * Shape contract:
- *   - One `<xliff version="1.2">` root with the standard namespace.
- *   - One or more `<file>` elements, each with `source-language`,
- *     `target-language`, `datatype="plaintext"`, and an `original`
- *     attribute that encodes the routing back to a NexPress doc:
- *       original = "{collectionSlug}/{translationGroupId}"
- *   - Each `<file>` contains a single `<body>` with a flat list of
- *     `<trans-unit>` elements:
- *       <trans-unit id="{fieldName}">
- *         <source>...</source>
- *         <target>...</target>   // optional / empty pre-translation
- *       </trans-unit>
- *
- * We deliberately ignore segmentation (`<seg-source>`), inline
- * markup (`<g>`, `<x>`, etc.), groups, alt-trans, and notes — XLIFF
- * supports them but the round-trip we ship handles atomic-string
- * fields only. Files that come back from a SaaS with extra inline
- * markup will round-trip as if the markup were part of the target
- * text; that's acceptable for v1 since we only export simple text.
- */
+export const NP_XLIFF_RICH_TEXT_RESTYPE = "x-nexpress-richtext";
+
+export type XliffInlinePart =
+  | { type: "group"; id: string; ctype: string; text: string }
+  | { type: "placeholder"; id: string; ctype: string };
 
 export interface XliffTransUnit {
   id: string;
+  /** Plain-text projection retained for atomic fields and API ergonomics. */
   source: string;
+  /** Plain-text projection retained for atomic fields and API ergonomics. */
   target: string;
+  /** Present when `<source>` contains NexPress-managed XLIFF inline codes. */
+  sourceInline?: XliffInlinePart[];
+  /** Present when `<target>` contains NexPress-managed XLIFF inline codes. */
+  targetInline?: XliffInlinePart[];
 }
 
 export interface XliffFile {
@@ -43,10 +31,9 @@ export interface XliffDocument {
 }
 
 /**
- * Render an XLIFF 1.2 XML document. Output is deterministic
- * (stable element + attribute order, two-space indentation, LF
- * line endings) so a round-tripped file compares clean against
- * the original except for the translator's `<target>` edits.
+ * Render the NexPress XLIFF 1.2 subset deterministically. Atomic fields stay
+ * plain text. Rich-text fields use flat `<g>` codes for Lexical text leaves
+ * and protected `<x ctype="lb">` placeholders for block boundaries.
  */
 export function renderXliff(doc: XliffDocument): string {
   const lines: string[] = [
@@ -59,9 +46,11 @@ export function renderXliff(doc: XliffDocument): string {
     );
     lines.push("    <body>");
     for (const unit of file.units) {
-      lines.push(`      <trans-unit id="${escapeAttr(unit.id)}">`);
-      lines.push(`        <source>${escapeText(unit.source)}</source>`);
-      lines.push(`        <target>${escapeText(unit.target)}</target>`);
+      const inline = unit.sourceInline !== undefined || unit.targetInline !== undefined;
+      const restype = inline ? ` restype="${NP_XLIFF_RICH_TEXT_RESTYPE}"` : "";
+      lines.push(`      <trans-unit id="${escapeAttr(unit.id)}"${restype}>`);
+      lines.push(`        <source>${renderContent(unit.source, unit.sourceInline)}</source>`);
+      lines.push(`        <target>${renderContent(unit.target, unit.targetInline)}</target>`);
       lines.push("      </trans-unit>");
     }
     lines.push("    </body>");
@@ -72,106 +61,212 @@ export function renderXliff(doc: XliffDocument): string {
 }
 
 const PARSER = new XMLParser({
+  preserveOrder: true,
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
-  // Preserve whitespace inside <source> / <target> — translators
-  // may want leading/trailing space for things like " — " or
-  // newlines between paragraphs.
   trimValues: false,
-  // Keep elements parsed as objects even when there's only one
-  // child, so `file.body.trans-unit` is always an array we can
-  // iterate without runtime branching.
-  isArray: (name, jpath) => {
-    return (
-      jpath === "xliff.file" ||
-      jpath === "xliff.file.body.trans-unit"
-    );
-  },
+  parseTagValue: false,
+  parseAttributeValue: false,
 });
 
-interface ParsedXml {
-  xliff?: {
-    file?: ParsedFile[];
-    "@_version"?: string;
-  };
-}
-
-interface ParsedFile {
-  "@_source-language"?: string;
-  "@_target-language"?: string;
-  "@_original"?: string;
-  body?: {
-    "trans-unit"?: ParsedUnit[];
-  };
-}
-
-interface ParsedUnit {
-  "@_id"?: string;
-  source?: string | { "#text"?: string };
-  target?: string | { "#text"?: string };
-}
+type OrderedNode = Record<string, unknown>;
+type OrderedAttributes = Record<string, string>;
 
 /**
- * Parse an XLIFF 1.2 XML body into the document shape. Throws on
- * malformed XML or missing required attributes (`source-language`,
- * `target-language`, `original`); per-unit `target` may be empty
- * but the element itself must exist (XLIFF spec allows `<target>`
- * to be omitted but our round-trip emits it always).
+ * Parse plain and NexPress-rich XLIFF units without discarding mixed-content
+ * order. Unknown inline elements and raw text mixed around inline codes are
+ * rejected so import never guesses how a translation maps back to Lexical.
  */
 export function parseXliff(xml: string): XliffDocument {
-  let parsed: ParsedXml;
+  let parsed: unknown;
   try {
-    parsed = PARSER.parse(xml) as ParsedXml;
+    parsed = PARSER.parse(xml);
   } catch (error) {
-    throw new XliffParseError(
-      `Malformed XLIFF XML: ${(error as Error).message}`,
-    );
+    throw new XliffParseError(`Malformed XLIFF XML: ${(error as Error).message}`);
   }
-  const root = parsed.xliff;
-  if (!root) {
+  if (!Array.isArray(parsed)) {
     throw new XliffParseError("Missing root <xliff> element");
   }
-  const files = root.file ?? [];
-  const out: XliffFile[] = [];
-  for (const f of files) {
-    const sourceLocale = f["@_source-language"];
-    const targetLocale = f["@_target-language"];
-    const original = f["@_original"];
+  const rootNode = parsed.find(
+    (candidate): candidate is OrderedNode => isRecord(candidate) && Array.isArray(candidate.xliff),
+  );
+  if (!rootNode) {
+    throw new XliffParseError("Missing root <xliff> element");
+  }
+
+  const rootAttributes = attributes(rootNode);
+  if (rootAttributes["@_version"] !== "1.2") {
+    throw new XliffParseError('Root <xliff> must declare version="1.2"');
+  }
+
+  const files: XliffFile[] = [];
+  for (const fileNode of children(rootNode, "xliff").filter((node) => "file" in node)) {
+    const fileAttributes = attributes(fileNode);
+    const sourceLocale = fileAttributes["@_source-language"];
+    const targetLocale = fileAttributes["@_target-language"];
+    const original = fileAttributes["@_original"];
     if (!sourceLocale || !targetLocale || !original) {
       throw new XliffParseError(
         "Each <file> must declare source-language, target-language, and original",
       );
     }
+
+    const fileChildren = children(fileNode, "file");
+    const bodyNode = fileChildren.find((node) => "body" in node);
     const units: XliffTransUnit[] = [];
-    for (const u of f.body?.["trans-unit"] ?? []) {
-      const id = u["@_id"];
+    for (const unitNode of bodyNode ? children(bodyNode, "body") : []) {
+      if (!("trans-unit" in unitNode)) continue;
+      const unitAttributes = attributes(unitNode);
+      const id = unitAttributes["@_id"];
       if (!id) {
+        throw new XliffParseError(`<trans-unit> in file "${original}" is missing the id attribute`);
+      }
+
+      const unitChildren = children(unitNode, "trans-unit");
+      const sourceNode = unitChildren.find((node) => "source" in node);
+      const targetNode = unitChildren.find((node) => "target" in node);
+      const source = parseContent(sourceNode ? children(sourceNode, "source") : [], id, "source");
+      const target = parseContent(targetNode ? children(targetNode, "target") : [], id, "target");
+      const restype = unitAttributes["@_restype"];
+      const hasInline = source.inline !== undefined || target.inline !== undefined;
+      if (restype === NP_XLIFF_RICH_TEXT_RESTYPE && source.inline === undefined) {
         throw new XliffParseError(
-          `<trans-unit> in file "${original}" is missing the id attribute`,
+          `Rich-text trans-unit "${id}" must contain inline codes in <source>`,
         );
       }
+      if (hasInline && restype !== NP_XLIFF_RICH_TEXT_RESTYPE) {
+        throw new XliffParseError(
+          `Inline trans-unit "${id}" must declare restype="${NP_XLIFF_RICH_TEXT_RESTYPE}"`,
+        );
+      }
+
       units.push({
         id,
-        source: extractText(u.source),
-        target: extractText(u.target),
+        source: source.text,
+        target: target.text,
+        ...(source.inline ? { sourceInline: source.inline } : {}),
+        ...(target.inline ? { targetInline: target.inline } : {}),
       });
     }
-    out.push({ original, sourceLocale, targetLocale, units });
+    files.push({ original, sourceLocale, targetLocale, units });
   }
-  return { files: out };
+  return { files };
 }
 
 export class XliffParseError extends Error {
   override readonly name = "XliffParseError";
 }
 
-function extractText(node: string | { "#text"?: string } | undefined): string {
-  if (node === undefined || node === null) return "";
-  if (typeof node === "string") return node;
-  if (typeof node === "object" && typeof node["#text"] === "string") {
-    return node["#text"];
+function renderContent(text: string, inline: XliffInlinePart[] | undefined): string {
+  if (!inline) return escapeText(text);
+  return inline
+    .map((part) => {
+      if (part.type === "group") {
+        return `<g id="${escapeAttr(part.id)}" ctype="${escapeAttr(part.ctype)}">${escapeText(part.text)}</g>`;
+      }
+      return `<x id="${escapeAttr(part.id)}" ctype="${escapeAttr(part.ctype)}"/>`;
+    })
+    .join("");
+}
+
+function parseContent(
+  nodes: OrderedNode[],
+  unitId: string,
+  element: "source" | "target",
+): { text: string; inline?: XliffInlinePart[] } {
+  let plainText = "";
+  let sawInline = false;
+  const inline: XliffInlinePart[] = [];
+
+  for (const node of nodes) {
+    if ("#text" in node) {
+      const value = node["#text"];
+      const text = orderedText(value);
+      if (sawInline && text.trim().length > 0) {
+        throw new XliffParseError(
+          `Rich-text trans-unit "${unitId}" mixes raw text with inline codes in <${element}>`,
+        );
+      }
+      plainText += text;
+      continue;
+    }
+    if ("g" in node) {
+      sawInline = true;
+      const partAttributes = attributes(node);
+      const id = partAttributes["@_id"];
+      const ctype = partAttributes["@_ctype"];
+      if (!id || !ctype) {
+        throw new XliffParseError(`<g> in trans-unit "${unitId}" must declare id and ctype`);
+      }
+      const groupChildren = children(node, "g");
+      const unsupported = groupChildren.find((child) => !("#text" in child));
+      if (unsupported) {
+        throw new XliffParseError(
+          `<g id="${id}"> in trans-unit "${unitId}" contains unsupported nested markup`,
+        );
+      }
+      const text = groupChildren
+        .map((child) => {
+          const value = child["#text"];
+          return orderedText(value);
+        })
+        .join("");
+      inline.push({ type: "group", id, ctype, text });
+      continue;
+    }
+    if ("x" in node) {
+      sawInline = true;
+      const partAttributes = attributes(node);
+      const id = partAttributes["@_id"];
+      const ctype = partAttributes["@_ctype"];
+      if (!id || !ctype) {
+        throw new XliffParseError(`<x> in trans-unit "${unitId}" must declare id and ctype`);
+      }
+      inline.push({ type: "placeholder", id, ctype });
+      continue;
+    }
+    const unknown = Object.keys(node).find((key) => key !== ":@");
+    if (unknown) {
+      throw new XliffParseError(
+        `Unsupported <${unknown}> inside trans-unit "${unitId}" <${element}>`,
+      );
+    }
   }
-  return "";
+
+  if (!sawInline) return { text: plainText };
+  if (plainText.trim().length > 0) {
+    throw new XliffParseError(
+      `Rich-text trans-unit "${unitId}" mixes raw text with inline codes in <${element}>`,
+    );
+  }
+  return {
+    text: inline.map((part) => (part.type === "group" ? part.text : "\n")).join(""),
+    inline,
+  };
+}
+
+function children(node: OrderedNode, key: string): OrderedNode[] {
+  const value = node[key];
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord);
+}
+
+function attributes(node: OrderedNode): OrderedAttributes {
+  const value = node[":@"];
+  if (!isRecord(value)) return {};
+  const out: OrderedAttributes = {};
+  for (const [key, candidate] of Object.entries(value)) {
+    if (typeof candidate === "string") out[key] = candidate;
+  }
+  return out;
+}
+
+function isRecord(value: unknown): value is OrderedNode {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function orderedText(value: unknown): string {
+  return typeof value === "string" ? value : "";
 }
 
 function escapeAttr(value: string): string {

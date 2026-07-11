@@ -8,15 +8,17 @@ import {
 } from "@nexpress/core";
 
 import { parseXliff } from "./format.js";
+import { applyRichTextXliffValue } from "./rich-text.js";
 
 /**
- * Field types whose values round-trip through XLIFF — kept in
- * sync with the export side so import accepts exactly what
- * export emits. Hand-edited XLIFFs that reference non-string
- * field types (richText, blocks, relationships, etc.) are
+ * Field types whose values round-trip through XLIFF — kept in sync with the
+ * export side so import accepts exactly what export emits. Rich text has a
+ * stricter inline-code contract; blocks and other structured values remain
  * rejected.
  */
-const TRANSLATABLE_TYPES = new Set(["text", "textarea", "email"]);
+const TRANSLATABLE_TYPES = new Set(["text", "textarea", "email", "richText"]);
+
+type TranslatableFieldType = "text" | "textarea" | "email" | "richText";
 
 export interface XliffImportOptions {
   /** XLIFF 1.2 XML body to apply. */
@@ -80,9 +82,7 @@ export interface XliffImportResult {
  * the bundle still applies. Throwing is reserved for global
  * problems (i18n not configured, malformed XML).
  */
-export async function importXliff(
-  options: XliffImportOptions,
-): Promise<XliffImportResult> {
+export async function importXliff(options: XliffImportOptions): Promise<XliffImportResult> {
   const i18n = getI18nConfig();
   if (!i18n) {
     throw new XliffImportError(
@@ -137,18 +137,18 @@ export async function importXliff(
     }
 
     // Whitelist of `trans-unit` ids the importer will honor —
-    // matches the export side's translatable-types contract
-    // (text / textarea / email). Anything else is rejected with
+    // matches the export side's translatable-types contract.
+    // Anything else is rejected with
     // a `skipped` entry rather than silently spread onto the
     // row: a malicious or hand-edited XLIFF that ships e.g.
     // `<trans-unit id="locale">` could otherwise mutate the
     // sibling's locale or `translation_group_id` (i18n columns
     // pass through Zod by design) and corrupt the
     // (locale, translationGroupId) sibling structure.
-    const translatableNames = new Set(
+    const translatableFields = new Map<string, TranslatableFieldType>(
       config.fields
         .filter((f) => "name" in f && TRANSLATABLE_TYPES.has(f.type))
-        .map((f) => (f as { name: string }).name),
+        .map((f) => [(f as { name: string }).name, f.type as TranslatableFieldType]),
     );
 
     // Resolve the source sibling — needed both for the create
@@ -159,12 +159,7 @@ export async function importXliff(
     // pipeline's anonymous-visibility guard restricts to public
     // and a private translation target is invisible, which
     // would either skip the row or trigger a duplicate-create.
-    const sourceSibling = await findSibling(
-      collection,
-      groupId,
-      file.sourceLocale,
-      options.user,
-    );
+    const sourceSibling = await findSibling(collection, groupId, file.sourceLocale, options.user);
     if (!sourceSibling) {
       skipped.push({
         reason: `No source row for groupId=${groupId} locale=${file.sourceLocale}`,
@@ -175,23 +170,65 @@ export async function importXliff(
       continue;
     }
 
-    const targetSibling = await findSibling(
-      collection,
-      groupId,
-      file.targetLocale,
-      options.user,
-    );
+    const targetSibling = await findSibling(collection, groupId, file.targetLocale, options.user);
 
-    // Build the field overrides from non-empty `<target>` units
-    // whose id matches a translatable field on this collection.
-    const overrides: Record<string, string> = {};
+    // Build field overrides from non-empty targets whose ids match a
+    // translatable field. Rich-text units are additionally checked against the
+    // live source Lexical structure before any target fragments are applied.
+    const overrides: Record<string, unknown> = {};
     const rejectedFieldIds: string[] = [];
+    const seenFieldIds = new Set<string>();
+    const fileSkipCount = skipped.length;
     for (const unit of file.units) {
-      if (unit.target.length === 0) continue;
-      if (!translatableNames.has(unit.id)) {
+      if (seenFieldIds.has(unit.id)) {
+        skipped.push({
+          reason: `Ignored duplicate trans-unit id "${unit.id}"`,
+          collection,
+          groupId,
+          locale: file.targetLocale,
+        });
+        continue;
+      }
+      seenFieldIds.add(unit.id);
+
+      const fieldType = translatableFields.get(unit.id);
+      if (!fieldType) {
         rejectedFieldIds.push(unit.id);
         continue;
       }
+
+      if (fieldType === "richText") {
+        const result = applyRichTextXliffValue({
+          sourceValue: sourceSibling[unit.id],
+          targetValue: targetSibling?.[unit.id],
+          sourceInline: unit.sourceInline,
+          targetInline: unit.targetInline,
+        });
+        if (!result.ok) {
+          if (!result.empty) {
+            skipped.push({
+              reason: `Ignored rich-text unit "${unit.id}": ${result.reason}`,
+              collection,
+              groupId,
+              locale: file.targetLocale,
+            });
+          }
+          continue;
+        }
+        overrides[unit.id] = result.value;
+        continue;
+      }
+
+      if (unit.sourceInline || unit.targetInline) {
+        skipped.push({
+          reason: `Ignored atomic unit "${unit.id}" with rich-text inline codes`,
+          collection,
+          groupId,
+          locale: file.targetLocale,
+        });
+        continue;
+      }
+      if (unit.target.length === 0) continue;
       overrides[unit.id] = unit.target;
     }
     if (rejectedFieldIds.length > 0) {
@@ -203,21 +240,21 @@ export async function importXliff(
       });
     }
     if (Object.keys(overrides).length === 0) {
-      skipped.push({
-        reason: "All <target> elements in this file were empty",
-        collection,
-        groupId,
-        locale: file.targetLocale,
-      });
+      if (skipped.length === fileSkipCount) {
+        skipped.push({
+          reason: "All <target> elements in this file were empty",
+          collection,
+          groupId,
+          locale: file.targetLocale,
+        });
+      }
       continue;
     }
 
     if (options.dryRun) {
       applied.push({
         collection,
-        docId: targetSibling
-          ? (targetSibling as { id: string }).id
-          : "(would-create)",
+        docId: targetSibling ? (targetSibling as { id: string }).id : "(would-create)",
         locale: file.targetLocale,
         operation: targetSibling ? "update" : "create",
         unitCount: Object.keys(overrides).length,
@@ -262,13 +299,9 @@ export async function importXliff(
       const baseline = stripFrameworkFields({ ...sourceSibling });
       baseline.locale = file.targetLocale;
       baseline.translationGroupId = groupId;
-      const created = await saveDocument(
-        collection,
-        null,
-        baseline,
-        options.user,
-        { status: "draft" },
-      );
+      const created = await saveDocument(collection, null, baseline, options.user, {
+        status: "draft",
+      });
       const newId = created.doc.id as string;
       const result = await saveDocument(
         collection,
@@ -297,9 +330,7 @@ export class XliffImportError extends Error {
   override readonly name = "XliffImportError";
 }
 
-function parseOriginal(
-  original: string,
-): { collection: string; groupId: string } | null {
+function parseOriginal(original: string): { collection: string; groupId: string } | null {
   // Match `{slug}/{uuid}` where slug is `[a-z0-9-]+` and groupId is
   // a UUID. We don't blindly split on `/` because some slugs may
   // contain `-` and a UUID looks like `xxxxxxxx-xxxx-...`; a
@@ -314,9 +345,7 @@ function parseOriginal(
 }
 
 function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-    value,
-  );
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
 async function findSibling(
@@ -357,9 +386,7 @@ const FRAMEWORK_FIELDS = new Set([
   "searchVector",
 ]);
 
-function stripFrameworkFields(
-  doc: Record<string, unknown>,
-): Record<string, unknown> {
+function stripFrameworkFields(doc: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(doc)) {
     if (FRAMEWORK_FIELDS.has(key)) continue;

@@ -18,16 +18,42 @@ import {
  * non-translatable fields preserved.
  */
 describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
+  let restorePagesCollection: (() => void) | null = null;
+
   beforeAll(async () => {
     await ensureMigrated();
     registerTestCollections();
     const { ensureFor } = await import("@/lib/init-core");
     await ensureFor("read");
+
+    // The reference pages table already has a JSONB `blocks` column but the
+    // shipped collection declares it as a blocks field. Re-register that one
+    // test column as richText so this suite exercises real pipeline + Postgres
+    // round-trips without adding a production-only schema column just for QA.
+    const { registerCollection } = await import("@nexpress/core");
+    const { pagesTable } = await import("../../../packages/core/src/integration/fixtures.js");
+    const { pagesCollection } = await import("@nexpress/app/collections/pages");
+    const baseConfig = {
+      ...pagesCollection,
+      access: undefined,
+      hooks: undefined,
+    };
+    const richTextConfig = {
+      ...baseConfig,
+      fields: baseConfig.fields.map((field) =>
+        "name" in field && field.name === "blocks"
+          ? { type: "richText" as const, name: "blocks" }
+          : field,
+      ),
+    };
+    registerCollection("pages", pagesTable, richTextConfig);
+    restorePagesCollection = () => registerCollection("pages", pagesTable, baseConfig);
   });
   beforeEach(async () => {
     await truncateAll();
   });
   afterAll(async () => {
+    restorePagesCollection?.();
     await closeTestDb();
   });
 
@@ -45,11 +71,76 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     };
   }
 
+  function richTextFixture(): Record<string, unknown> {
+    return {
+      root: {
+        type: "root",
+        version: 1,
+        direction: null,
+        format: "",
+        indent: 0,
+        children: [
+          {
+            type: "paragraph",
+            version: 1,
+            direction: null,
+            format: "",
+            indent: 0,
+            children: [
+              {
+                type: "text",
+                version: 1,
+                detail: 0,
+                format: 1,
+                mode: "normal",
+                style: "",
+                text: "Hello ",
+              },
+              {
+                type: "link",
+                version: 1,
+                url: "https://example.com/docs",
+                children: [
+                  {
+                    type: "text",
+                    version: 1,
+                    detail: 0,
+                    format: 2,
+                    mode: "normal",
+                    style: "",
+                    text: "world",
+                  },
+                ],
+              },
+              { type: "image", version: 1, src: "/media/example.png", altText: "Example" },
+            ],
+          },
+          {
+            type: "paragraph",
+            version: 1,
+            direction: null,
+            format: "",
+            indent: 0,
+            children: [
+              {
+                type: "text",
+                version: 1,
+                detail: 0,
+                format: 0,
+                mode: "normal",
+                style: "",
+                text: "Second paragraph",
+              },
+            ],
+          },
+        ],
+      },
+    };
+  }
+
   it("exports a published source row, imports an edited target, and creates a sibling", async () => {
     const { saveDocument, findDocuments } = await import("@nexpress/core");
-    const { exportXliff, importXliff, parseXliff, renderXliff } = await import(
-      "@nexpress/xliff"
-    );
+    const { exportXliff, importXliff, parseXliff, renderXliff } = await import("@nexpress/xliff");
 
     // 1. Author the source-locale (en) row.
     const en = await saveDocument(
@@ -65,9 +156,7 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     // 2. Export. Should emit one file: pages-en-ko.xliff
     //    (no -ja because the harness only configures en + ko).
     const bundle = await exportXliff();
-    const koFile = bundle.files.find(
-      (f) => f.collection === "pages" && f.targetLocale === "ko",
-    );
+    const koFile = bundle.files.find((f) => f.collection === "pages" && f.targetLocale === "ko");
     expect(koFile).toBeDefined();
     expect(bundle.summary.docCount).toBe(1);
     expect(bundle.summary.targetLocales).toEqual(["ko"]);
@@ -114,9 +203,7 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
 
   it("re-importing the same XLIFF updates the sibling instead of duplicating", async () => {
     const { saveDocument, findDocuments } = await import("@nexpress/core");
-    const { exportXliff, importXliff, parseXliff, renderXliff } = await import(
-      "@nexpress/xliff"
-    );
+    const { exportXliff, importXliff, parseXliff, renderXliff } = await import("@nexpress/xliff");
 
     const en = await saveDocument(
       "pages",
@@ -143,9 +230,7 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     bundle = await exportXliff();
     parsed = parseXliff(bundle.files[0]!.xml);
     // Pre-existing target text is round-tripped on the export.
-    expect(
-      parsed.files[0]!.units.find((u) => u.id === "title")!.target,
-    ).toBe("인사");
+    expect(parsed.files[0]!.units.find((u) => u.id === "title")!.target).toBe("인사");
     parsed.files[0]!.units.find((u) => u.id === "title")!.target = "환영";
     result = await importXliff({
       xml: renderXliff(parsed),
@@ -163,9 +248,7 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
 
   it("dryRun reports the planned operations without writing", async () => {
     const { saveDocument, findDocuments } = await import("@nexpress/core");
-    const { exportXliff, importXliff, parseXliff, renderXliff } = await import(
-      "@nexpress/xliff"
-    );
+    const { exportXliff, importXliff, parseXliff, renderXliff } = await import("@nexpress/xliff");
     await saveDocument(
       "pages",
       null,
@@ -325,9 +408,7 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     // both export and the import sibling lookup so private docs
     // round-trip end-to-end.
     const { saveDocument, findDocuments } = await import("@nexpress/core");
-    const { exportXliff, importXliff, parseXliff, renderXliff } = await import(
-      "@nexpress/xliff"
-    );
+    const { exportXliff, importXliff, parseXliff, renderXliff } = await import("@nexpress/xliff");
 
     // 1. Author a PRIVATE source-locale row.
     const en = await saveDocument(
@@ -350,9 +431,7 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     // 2b. Export WITH the operator — the private row surfaces.
     const bundle = await exportXliff({ user: actor() });
     expect(bundle.summary.docCount).toBe(1);
-    const koFile = bundle.files.find(
-      (f) => f.collection === "pages" && f.targetLocale === "ko",
-    );
+    const koFile = bundle.files.find((f) => f.collection === "pages" && f.targetLocale === "ko");
     expect(koFile).toBeDefined();
 
     // 3. Translator fills in `<target>`; import lands a sibling.
@@ -372,9 +451,7 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     const round2 = await exportXliff({ user: actor() });
     const koFile2 = round2.files.find((f) => f.targetLocale === "ko");
     const parsed2 = parseXliff(koFile2!.xml);
-    expect(parsed2.files[0]!.units.find((u) => u.id === "title")!.target).toBe(
-      "비밀",
-    );
+    expect(parsed2.files[0]!.units.find((u) => u.id === "title")!.target).toBe("비밀");
 
     // 5. Translator updates the title; import should UPDATE — not
     //    create a duplicate sibling — because findSibling now sees
@@ -415,5 +492,138 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     const parsed = parseXliff(bundle.files[0]!.xml);
     const ids = parsed.files[0]!.units.map((u) => u.id);
     expect(ids).toEqual(["title"]);
+  });
+
+  it("round-trips Lexical rich text without flattening formatting, links, or media", async () => {
+    const { findDocuments, getDocumentById, saveDocument } = await import("@nexpress/core");
+    const { exportXliff, importXliff, parseXliff, renderXliff } = await import("@nexpress/xliff");
+    const source = await saveDocument(
+      "pages",
+      null,
+      {
+        title: "Rich source",
+        seoDescription: "Source summary",
+        blocks: richTextFixture(),
+        locale: "en",
+      },
+      actor(),
+      { status: "published" },
+    );
+    const groupId = (source.doc as { translationGroupId: string }).translationGroupId;
+
+    let bundle = await exportXliff();
+    let parsed = parseXliff(bundle.files[0]!.xml);
+    const file = parsed.files[0]!;
+    file.units.find((unit) => unit.id === "title")!.target = "풍부한 번역";
+    const richUnit = file.units.find((unit) => unit.id === "blocks")!;
+    expect(richUnit.sourceInline).toBeDefined();
+    expect(richUnit.source).toBe("Hello world\nSecond paragraph");
+    richUnit.targetInline = richUnit.targetInline!.map((part) => {
+      if (part.type !== "group") return part;
+      if (part.id === "n-0-0") return { ...part, text: "안녕 " };
+      if (part.id === "n-0-1-0") return { ...part, text: "세계" };
+      return { ...part, text: "두 번째 문단" };
+    });
+
+    const translatedXml = renderXliff(parsed);
+    const dryRun = await importXliff({ xml: translatedXml, user: actor(), dryRun: true });
+    expect(dryRun).toEqual(
+      expect.objectContaining({
+        wrote: false,
+        applied: [expect.objectContaining({ operation: "create", unitCount: 2 })],
+      }),
+    );
+    expect(
+      (await findDocuments("pages", { where: { translationGroupId: groupId }, locale: "ko" })).docs,
+    ).toHaveLength(0);
+
+    const created = await importXliff({ xml: translatedXml, user: actor() });
+    expect(created.applied).toEqual([
+      expect.objectContaining({ operation: "create", unitCount: 2, locale: "ko" }),
+    ]);
+
+    const koRows = await findDocuments("pages", {
+      where: { translationGroupId: groupId },
+      locale: "ko",
+    });
+    const ko = await getDocumentById("pages", (koRows.docs[0] as { id: string }).id, actor());
+    const root = (ko!.blocks as { root: { children: Array<Record<string, unknown>> } }).root;
+    const paragraph = root.children[0] as { children: Array<Record<string, unknown>> };
+    expect(paragraph.children[0]).toEqual(expect.objectContaining({ text: "안녕 ", format: 1 }));
+    const link = paragraph.children[1] as { url: string; children: Array<{ text: string }> };
+    expect(link.url).toBe("https://example.com/docs");
+    expect(link.children[0]!.text).toBe("세계");
+    expect(paragraph.children[2]).toEqual(
+      expect.objectContaining({ type: "image", src: "/media/example.png", altText: "Example" }),
+    );
+    const second = root.children[1] as { children: Array<{ text: string }> };
+    expect(second.children[0]!.text).toBe("두 번째 문단");
+
+    // Existing translated text pre-fills the next export. An empty fragment on
+    // re-import retains its current target text instead of blanking it.
+    bundle = await exportXliff();
+    parsed = parseXliff(bundle.files[0]!.xml);
+    const updateUnit = parsed.files[0]!.units.find((unit) => unit.id === "blocks")!;
+    expect(updateUnit.target).toBe("안녕 세계\n두 번째 문단");
+    updateUnit.targetInline = updateUnit.targetInline!.map((part) => {
+      if (part.type !== "group") return part;
+      if (part.id === "n-0-0") return { ...part, text: "환영 " };
+      if (part.id === "n-0-1-0") return { ...part, text: "" };
+      return part;
+    });
+    const updated = await importXliff({ xml: renderXliff(parsed), user: actor() });
+    expect(updated.applied[0]).toEqual(expect.objectContaining({ operation: "update" }));
+
+    const afterUpdate = await getDocumentById(
+      "pages",
+      (koRows.docs[0] as { id: string }).id,
+      actor(),
+    );
+    const updatedParagraph = (
+      afterUpdate!.blocks as { root: { children: Array<{ children: Array<{ text: string }> }> } }
+    ).root.children[0]!;
+    expect(updatedParagraph.children[0]!.text).toBe("환영 ");
+    expect(
+      (updatedParagraph.children[1] as unknown as { children: Array<{ text: string }> })
+        .children[0]!.text,
+    ).toBe("세계");
+  });
+
+  it("rejects damaged rich-text inline codes while still applying valid atomic units", async () => {
+    const { findDocuments, getDocumentById, saveDocument } = await import("@nexpress/core");
+    const { exportXliff, importXliff, parseXliff, renderXliff } = await import("@nexpress/xliff");
+    const source = await saveDocument(
+      "pages",
+      null,
+      { title: "Guarded", blocks: richTextFixture(), locale: "en" },
+      actor(),
+      { status: "published" },
+    );
+    const groupId = (source.doc as { translationGroupId: string }).translationGroupId;
+    const bundle = await exportXliff();
+    const parsed = parseXliff(bundle.files[0]!.xml);
+    parsed.files[0]!.units.find((unit) => unit.id === "title")!.target = "보호됨";
+    const richUnit = parsed.files[0]!.units.find((unit) => unit.id === "blocks")!;
+    richUnit.targetInline = richUnit.targetInline!.map((part) =>
+      part.type === "group" ? { ...part, text: "번역" } : part,
+    );
+    richUnit.targetInline.splice(1, 1);
+
+    const result = await importXliff({ xml: renderXliff(parsed), user: actor() });
+    expect(result.applied).toEqual([expect.objectContaining({ unitCount: 1 })]);
+    expect(result.skipped).toEqual([
+      expect.objectContaining({ reason: expect.stringContaining("target inline-code structure") }),
+    ]);
+
+    const koRows = await findDocuments("pages", {
+      where: { translationGroupId: groupId },
+      locale: "ko",
+    });
+    const ko = await getDocumentById("pages", (koRows.docs[0] as { id: string }).id, actor());
+    expect(ko!.title).toBe("보호됨");
+    const firstText = (
+      ko!.blocks as { root: { children: Array<{ children: Array<{ text: string }> }> } }
+    ).root.children[0]!.children[0]!.text;
+    expect(firstText).toBe("Hello ");
   });
 });

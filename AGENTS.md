@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-11 (the remaining plugin definition surfaces are
+**Last refreshed:** 2026-07-11 (XLIFF 1.2 now round-trips Lexical rich text
+through protected inline codes. Import validates live source paths, ordering,
+and text before replacing leaves, preserving formatting and non-text nodes.)
+
+**Earlier:** 2026-07-11 (the remaining plugin definition surfaces are
 now contract-complete: page templates, ICU translations, config/lifecycle
 callbacks, teardown/reload cleanup, and doctor inventories share validated
 runtime rules. The never-implemented custom-field registration surface was

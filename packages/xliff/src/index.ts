@@ -5,9 +5,9 @@
  * hand them to a translation SaaS (Crowdin, Phrase, Smartling,
  * etc.), and apply the returned bundles via `importXliff`.
  *
- * v1 covers atomic-string fields only (`text`, `textarea`,
- * `email`). Rich-text and structured fields stay out of scope —
- * those still go through the admin TranslationTabs flow.
+ * Atomic strings and Lexical `richText` fields round-trip directly. Rich text
+ * uses protected XLIFF inline codes so translations replace text leaves without
+ * flattening formatting, links, lists, or embedded non-text nodes.
  */
 
 export {
@@ -34,6 +34,7 @@ export {
   type XliffDocument,
   type XliffFile,
   type XliffTransUnit,
+  type XliffInlinePart,
 } from "./format.js";
 
 export { runCli, type CliIo, type CliRunResult } from "./cli.js";
