@@ -1,5 +1,7 @@
 "use client";
 
+import { isNpRichTextContent } from "@nexpress/core/fields";
+
 export interface RevisionSummary {
   id: string;
   version: number;
@@ -85,17 +87,16 @@ function collectText(value: unknown): string {
     const childText = collectText(value.children);
     if (childText) parts.push(childText);
   }
-  if (isRecord(value.root)) {
-    const rootText = collectText(value.root);
-    if (rootText) parts.push(rootText);
+  if (isNpRichTextContent(value)) {
+    const documentText = collectText(value.document.root);
+    if (documentText) parts.push(documentText);
   }
   return parts.join(" ");
 }
 
 function countLexicalBlocks(value: unknown): number {
-  if (!isRecord(value)) return 0;
-  const root = isRecord(value.root) ? value.root : value;
-  return Array.isArray(root.children) ? root.children.length : 0;
+  if (!isNpRichTextContent(value)) return 0;
+  return value.document.root.children.length;
 }
 
 function plural(count: number, singular: string, pluralLabel = `${singular}s`): string {
@@ -132,7 +133,7 @@ export function summarizeSnapshotValue(value: unknown): string {
   }
 
   if (isRecord(value)) {
-    if (isRecord(value.root)) {
+    if (isNpRichTextContent(value)) {
       const text = collectText(value).trim();
       const wordCount = text.length > 0 ? text.split(/\s+/).filter(Boolean).length : 0;
       const blockCount = countLexicalBlocks(value);

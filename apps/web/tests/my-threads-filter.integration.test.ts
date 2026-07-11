@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -93,7 +94,7 @@ describe.skipIf(skipIfNoTestDb())("findDocuments memberAuthorId filter (Phase 9.
           body: JSON.stringify({
             title: `By a slug ${slug}`,
             slug,
-            body: { root: { type: "root", children: [] } },
+            body: npCreateEmptyRichTextContent(),
           }),
         }),
         { params: Promise.resolve({ slug: "discussions" }) },
@@ -105,7 +106,7 @@ describe.skipIf(skipIfNoTestDb())("findDocuments memberAuthorId filter (Phase 9.
         body: JSON.stringify({
           title: "By b",
           slug: "b-1",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
@@ -174,7 +175,7 @@ describe.skipIf(skipIfNoTestDb())("findDocuments memberAuthorId filter (Phase 9.
         body: JSON.stringify({
           title: "Pending submission",
           slug: "pending-sub",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
@@ -215,7 +216,7 @@ describe.skipIf(skipIfNoTestDb())("findDocuments memberAuthorId filter (Phase 9.
         body: JSON.stringify({
           title: "Member doc",
           slug: "member-doc",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
@@ -228,7 +229,7 @@ describe.skipIf(skipIfNoTestDb())("findDocuments memberAuthorId filter (Phase 9.
         body: JSON.stringify({
           title: "Staff doc",
           slug: "staff-doc",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
           _status: "published",
         }),
       }),

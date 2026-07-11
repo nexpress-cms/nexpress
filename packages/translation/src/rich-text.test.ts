@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { NpRichTextContent } from "@nexpress/core/fields";
 
 import { applyRichTextTranslationValue, createRichTextTranslationValue } from "./rich-text.js";
 
-function richTextFixture(): Record<string, unknown> {
-  return {
+function richTextFixture(): NpRichTextContent {
+  const document: NpRichTextContent["document"] = {
     root: {
       type: "root",
       version: 1,
@@ -86,6 +87,7 @@ function richTextFixture(): Record<string, unknown> {
       ],
     },
   };
+  return { version: 1, document };
 }
 
 describe("Lexical translation inline codec", () => {
@@ -109,7 +111,7 @@ describe("Lexical translation inline codec", () => {
 
   it("prefills targets only when the existing Lexical structure is compatible", () => {
     const target = richTextFixture();
-    const root = target.root as { children: Array<Record<string, unknown>> };
+    const root = target.document.root;
     const paragraph = root.children[0] as { children: Array<Record<string, unknown>> };
     paragraph.children[0].text = "안녕 ";
     const link = paragraph.children[1] as { children: Array<Record<string, unknown>> };
@@ -126,7 +128,7 @@ describe("Lexical translation inline codec", () => {
   it("applies translated leaves while preserving target formatting, links, and media nodes", () => {
     const source = richTextFixture();
     const existingTarget = richTextFixture();
-    const targetRoot = existingTarget.root as { children: Array<Record<string, unknown>> };
+    const targetRoot = existingTarget.document.root;
     const targetParagraph = targetRoot.children[0] as {
       children: Array<Record<string, unknown>>;
     };
@@ -157,7 +159,7 @@ describe("Lexical translation inline codec", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    const root = result.value.root as { children: Array<Record<string, unknown>> };
+    const root = result.value.document.root;
     const paragraph = root.children[0] as { children: Array<Record<string, unknown>> };
     expect(paragraph.children[0]).toEqual(expect.objectContaining({ text: "Bonjour ", format: 8 }));
     const link = paragraph.children[1] as { url: string; children: Array<Record<string, unknown>> };

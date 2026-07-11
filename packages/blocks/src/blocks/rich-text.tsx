@@ -1,11 +1,7 @@
 import { renderRichText } from "@nexpress/editor/server";
+import { isNpRichTextContent } from "@nexpress/core/fields";
 
 import type { NpBlockDefinition } from "../types.js";
-
-type RichTextContent = Parameters<typeof renderRichText>[0];
-
-const isRichTextContent = (value: unknown): value is RichTextContent =>
-  typeof value === "object" && value !== null;
 
 export const richTextBlock: NpBlockDefinition = {
   type: "rich-text",
@@ -18,42 +14,8 @@ export const richTextBlock: NpBlockDefinition = {
   keywords: ["text", "paragraph", "body", "long-form", "article"],
   defaultProps: {
     content: {
-      root: {
-        children: [
-          {
-            type: "paragraph",
-            version: 1,
-            direction: null,
-            format: "",
-            indent: 0,
-            children: [
-              {
-                type: "text",
-                version: 1,
-                detail: 0,
-                format: 0,
-                mode: "normal",
-                style: "",
-                text: "Start writing rich content here.",
-              },
-            ],
-          },
-        ],
-        direction: null,
-        format: "",
-        indent: 0,
-        type: "root",
-        version: 1,
-      },
-    },
-  },
-  propsSchema: [
-    {
-      name: "content",
-      label: "Content",
-      type: "richtext",
-      translatable: true,
-      defaultValue: {
+      version: 1,
+      document: {
         root: {
           children: [
             {
@@ -83,6 +45,46 @@ export const richTextBlock: NpBlockDefinition = {
         },
       },
     },
+  },
+  propsSchema: [
+    {
+      name: "content",
+      label: "Content",
+      type: "richtext",
+      translatable: true,
+      defaultValue: {
+        version: 1,
+        document: {
+          root: {
+            children: [
+              {
+                type: "paragraph",
+                version: 1,
+                direction: null,
+                format: "",
+                indent: 0,
+                children: [
+                  {
+                    type: "text",
+                    version: 1,
+                    detail: 0,
+                    format: 0,
+                    mode: "normal",
+                    style: "",
+                    text: "Start writing rich content here.",
+                  },
+                ],
+              },
+            ],
+            direction: null,
+            format: "",
+            indent: 0,
+            type: "root",
+            version: 1,
+          },
+        },
+      },
+    },
   ],
   render: (props) => {
     const content = props.content;
@@ -93,7 +95,7 @@ export const richTextBlock: NpBlockDefinition = {
         style={{ padding: "3rem 1.5rem", background: "#ffffff" }}
       >
         <div style={{ maxWidth: "48rem", margin: "0 auto", lineHeight: 1.8, color: "#1f2937" }}>
-          {isRichTextContent(content) ? renderRichText(content) : null}
+          {isNpRichTextContent(content) ? renderRichText(content) : null}
         </div>
       </section>
     );

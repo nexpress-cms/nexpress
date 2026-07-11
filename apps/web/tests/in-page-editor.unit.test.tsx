@@ -519,20 +519,30 @@ describe("Document mode text metrics", () => {
       type: "rich-text",
       props: {
         content: {
-          root: {
-            children: [
-              {
-                type: "paragraph",
-                children: [
-                  { type: "text", text: "Hello document" },
-                  { type: "text", text: "mode" },
-                ],
-              },
-              {
-                type: "heading",
-                children: [{ type: "text", text: "Preview status" }],
-              },
-            ],
+          version: 1,
+          document: {
+            root: {
+              type: "root",
+              version: 1,
+              direction: null,
+              format: "",
+              indent: 0,
+              children: [
+                {
+                  type: "paragraph",
+                  version: 1,
+                  children: [
+                    { type: "text", version: 1, text: "Hello document" },
+                    { type: "text", version: 1, text: "mode" },
+                  ],
+                },
+                {
+                  type: "heading",
+                  version: 1,
+                  children: [{ type: "text", version: 1, text: "Preview status" }],
+                },
+              ],
+            },
           },
         },
       },

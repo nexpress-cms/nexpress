@@ -7,12 +7,9 @@ import {
 } from "@nexpress/core";
 import { renderRichText } from "@nexpress/editor/server";
 import type { NpRichTextContent } from "@nexpress/editor";
+import { isNpRichTextContent } from "@nexpress/core/fields";
 import { Comments } from "@nexpress/next/client";
-import {
-  buildPageMetadata,
-  JsonLd,
-  getSiteMember,
-} from "@nexpress/next";
+import { buildPageMetadata, JsonLd, getSiteMember } from "@nexpress/next";
 import type { NpRouteRenderProps } from "@nexpress/next";
 import { eq } from "drizzle-orm";
 import type { Metadata } from "next";
@@ -48,8 +45,7 @@ export async function detailMetadata(ctx: NpRouteRenderProps): Promise<Metadata>
   // crawlers fetching just the head still need a sane title.
   return buildPageMetadata({
     title: typeof doc?.title === "string" ? doc.title : "Discussion",
-    description:
-      typeof doc?.excerpt === "string" && doc.excerpt ? doc.excerpt : null,
+    description: typeof doc?.excerpt === "string" && doc.excerpt ? doc.excerpt : null,
     path: `/discussions/${slug}`,
     ogType: "article",
     publishedTime: doc?.createdAt instanceof Date ? doc.createdAt : null,
@@ -57,9 +53,7 @@ export async function detailMetadata(ctx: NpRouteRenderProps): Promise<Metadata>
   });
 }
 
-export default async function DiscussionDetailRoute({
-  params,
-}: NpRouteRenderProps) {
+export default async function DiscussionDetailRoute({ params }: NpRouteRenderProps) {
   const slug = typeof params.slug === "string" ? params.slug : "";
   if (!slug) notFound();
 
@@ -99,7 +93,7 @@ export default async function DiscussionDetailRoute({
     }
   }
 
-  const body = (doc.body as NpRichTextContent | undefined) ?? null;
+  const body: NpRichTextContent | null = isNpRichTextContent(doc.body) ? doc.body : null;
 
   // DiscussionForumPosting JSON-LD — only for published rows so
   // pending / draft submissions don't surface in search before
@@ -111,8 +105,7 @@ export default async function DiscussionDetailRoute({
       ? await buildDiscussionForumPostingJsonLd({
           url: `${settings.siteUrl.replace(/\/+$/, "")}/discussions/${slug}`,
           headline: doc.title as string,
-          description:
-            typeof doc.excerpt === "string" && doc.excerpt ? doc.excerpt : null,
+          description: typeof doc.excerpt === "string" && doc.excerpt ? doc.excerpt : null,
           datePublished: (doc.createdAt as Date | undefined) ?? null,
           dateModified: (doc.updatedAt as Date | undefined) ?? null,
           authorName: author?.displayName ?? null,
@@ -121,9 +114,7 @@ export default async function DiscussionDetailRoute({
 
   return (
     <article className="np-discussion">
-      {jsonLd ? (
-        <JsonLd data={jsonLd as unknown as Record<string, unknown>} />
-      ) : null}
+      {jsonLd ? <JsonLd data={jsonLd as unknown as Record<string, unknown>} /> : null}
       <header className="np-discussion-header">
         <Link href="/discussions" className="np-tab">
           ← Back to discussions
@@ -131,10 +122,7 @@ export default async function DiscussionDetailRoute({
         <h1>{doc.title as string}</h1>
         <div className="np-discussion-meta">
           {author ? (
-            <Link
-              href={`/u/${author.handle}`}
-              className="np-discussion-author"
-            >
+            <Link href={`/u/${author.handle}`} className="np-discussion-author">
               @{author.handle}
             </Link>
           ) : (
@@ -147,15 +135,11 @@ export default async function DiscussionDetailRoute({
           {status !== "published" ? (
             <>
               <span aria-hidden="true">·</span>
-              <span className="np-discussions-status-badge">
-                {STATUS_LABELS[status] ?? status}
-              </span>
+              <span className="np-discussions-status-badge">{STATUS_LABELS[status] ?? status}</span>
             </>
           ) : null}
         </div>
-        {isOwner ? (
-          <DiscussionAuthorActions docId={doc.id as string} slug={slug} />
-        ) : null}
+        {isOwner ? <DiscussionAuthorActions docId={doc.id as string} slug={slug} /> : null}
       </header>
 
       {body ? (
@@ -171,10 +155,7 @@ export default async function DiscussionDetailRoute({
       {status === "published" ? (
         <section className="np-discussion-comments">
           <h2>Comments</h2>
-          <Comments
-            collectionSlug="discussions"
-            documentId={doc.id as string}
-          />
+          <Comments collectionSlug="discussions" documentId={doc.id as string} />
         </section>
       ) : null}
     </article>

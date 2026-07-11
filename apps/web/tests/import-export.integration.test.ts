@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -91,7 +92,7 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
               {
                 title: "Imported",
                 slug: "imported",
-                content: { root: { type: "root", children: [] } },
+                content: npCreateEmptyRichTextContent(),
                 _status: "draft",
               },
             ],
@@ -125,7 +126,7 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
               {
                 title: "P",
                 slug: "p",
-                content: { root: { type: "root", children: [] } },
+                content: npCreateEmptyRichTextContent(),
                 _status: "draft",
               },
             ],

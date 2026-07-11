@@ -302,38 +302,41 @@ export function DocCanvas({
 
   const insertTextBlock = (text: string, targetId: string | null) => {
     // Plain text → rich-text block at the bottom. The rich-text
-    // editor stores Lexical JSON; the simplest valid root for a
+    // editor stores the NexPress v1 envelope; its simplest valid document for a
     // bare text run is one paragraph node carrying one text node.
     // ADD's optional `props` slot threads the content in at
     // insertion time so we don't need a post-dispatch hydration
     // race to find the new block's id.
     const lexicalRoot = {
-      root: {
-        type: "root",
-        version: 1,
-        format: "" as const,
-        indent: 0,
-        direction: "ltr" as const,
-        children: [
-          {
-            type: "paragraph",
-            version: 1,
-            format: "" as const,
-            indent: 0,
-            direction: "ltr" as const,
-            children: [
-              {
-                type: "text",
-                version: 1,
-                format: 0,
-                style: "",
-                mode: "normal" as const,
-                text,
-                detail: 0,
-              },
-            ],
-          },
-        ],
+      version: 1 as const,
+      document: {
+        root: {
+          type: "root" as const,
+          version: 1,
+          format: "" as const,
+          indent: 0,
+          direction: "ltr" as const,
+          children: [
+            {
+              type: "paragraph",
+              version: 1,
+              format: "" as const,
+              indent: 0,
+              direction: "ltr" as const,
+              children: [
+                {
+                  type: "text",
+                  version: 1,
+                  format: 0,
+                  style: "",
+                  mode: "normal" as const,
+                  text,
+                  detail: 0,
+                },
+              ],
+            },
+          ],
+        },
       },
     };
     const props = { content: lexicalRoot };

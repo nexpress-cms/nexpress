@@ -169,7 +169,11 @@ function renderNode(node: RichTextNode, key: string, ctx: RenderContext): React.
     case "text":
       return applyTextFormats(node.text ?? "", toFormatMask(node.format), key);
     case "paragraph":
-      return React.createElement("p", { key, dir: node.direction ?? undefined }, renderChildren(toArray(node.children), key, ctx));
+      return React.createElement(
+        "p",
+        { key, dir: node.direction ?? undefined },
+        renderChildren(toArray(node.children), key, ctx),
+      );
     case "heading": {
       const tag = typeof node.tag === "string" && /^h[1-6]$/.test(node.tag) ? node.tag : "h1";
       // h2/h3 get auto-emitted ids for TOC anchoring (docs theme
@@ -186,33 +190,43 @@ function renderNode(node: RichTextNode, key: string, ctx: RenderContext): React.
       }
       const children = renderChildren(toArray(node.children), key, ctx);
       const finalChildren: React.ReactNode[] =
-        ctx.headingAnchors && id ? [
-          ...children,
-          React.createElement(
-            "a",
-            {
-              key: `${key}:anchor`,
-              className: "np-docs-anchor",
-              href: `#${id}`,
-              "aria-hidden": "true",
-            },
-            "#",
-          ),
-        ] : children;
-      return React.createElement(
-        tag,
-        { key, id, dir: node.direction ?? undefined },
-        finalChildren,
-      );
+        ctx.headingAnchors && id
+          ? [
+              ...children,
+              React.createElement(
+                "a",
+                {
+                  key: `${key}:anchor`,
+                  className: "np-docs-anchor",
+                  href: `#${id}`,
+                  "aria-hidden": "true",
+                },
+                "#",
+              ),
+            ]
+          : children;
+      return React.createElement(tag, { key, id, dir: node.direction ?? undefined }, finalChildren);
     }
     case "quote":
-      return React.createElement("blockquote", { key, dir: node.direction ?? undefined }, renderChildren(toArray(node.children), key, ctx));
+      return React.createElement(
+        "blockquote",
+        { key, dir: node.direction ?? undefined },
+        renderChildren(toArray(node.children), key, ctx),
+      );
     case "list": {
       const tag = node.listType === "number" ? "ol" : "ul";
-      return React.createElement(tag, { key, dir: node.direction ?? undefined }, renderChildren(toArray(node.children), key, ctx));
+      return React.createElement(
+        tag,
+        { key, dir: node.direction ?? undefined },
+        renderChildren(toArray(node.children), key, ctx),
+      );
     }
     case "listitem":
-      return React.createElement("li", { key, dir: node.direction ?? undefined }, renderChildren(toArray(node.children), key, ctx));
+      return React.createElement(
+        "li",
+        { key, dir: node.direction ?? undefined },
+        renderChildren(toArray(node.children), key, ctx),
+      );
     case "link":
       return React.createElement(
         "a",
@@ -265,6 +279,6 @@ export function renderRichText(
   return React.createElement(
     React.Fragment,
     null,
-    renderChildren(toArray(content.root.children), "root", ctx),
+    renderChildren(toArray(content.document.root.children), "root", ctx),
   );
 }

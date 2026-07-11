@@ -1,3 +1,4 @@
+import { isNpRichTextContent } from "@nexpress/core/fields";
 import { definePlugin } from "@nexpress/plugin-sdk";
 import { z } from "zod";
 
@@ -151,9 +152,9 @@ function pickFirstString(...values: unknown[]): string {
 
 function extractInputFromDocument(doc: JsonRecord): SeoAuditInput {
   const headings: string[] = [];
-  const contentNode = doc.content as { root?: unknown } | undefined;
-  const content = contentNode?.root
-    ? normalizeWhitespace(collectRichText(contentNode.root, headings).join(" "))
+  const contentNode = doc.content;
+  const content = isNpRichTextContent(contentNode)
+    ? normalizeWhitespace(collectRichText(contentNode.document.root, headings).join(" "))
     : "";
 
   return {

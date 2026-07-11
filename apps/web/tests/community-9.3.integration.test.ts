@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -74,7 +75,7 @@ async function seedStaffPostId(): Promise<string> {
       body: JSON.stringify({
         title: "9.3 target",
         slug: "9-3-target",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
     }),

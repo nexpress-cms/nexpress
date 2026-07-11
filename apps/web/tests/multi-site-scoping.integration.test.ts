@@ -293,32 +293,35 @@ describe.skipIf(skipIfNoTestDb())(
 
 function lexicalParagraph(text: string): unknown {
   return {
-    root: {
-      type: "root",
-      version: 1,
-      direction: null,
-      format: "",
-      indent: 0,
-      children: [
-        {
-          type: "paragraph",
-          version: 1,
-          direction: null,
-          format: "",
-          indent: 0,
-          children: [
-            {
-              type: "text",
-              version: 1,
-              detail: 0,
-              format: 0,
-              mode: "normal",
-              style: "",
-              text,
-            },
-          ],
-        },
-      ],
+    version: 1,
+    document: {
+      root: {
+        type: "root",
+        version: 1,
+        direction: null,
+        format: "",
+        indent: 0,
+        children: [
+          {
+            type: "paragraph",
+            version: 1,
+            direction: null,
+            format: "",
+            indent: 0,
+            children: [
+              {
+                type: "text",
+                version: 1,
+                detail: 0,
+                format: 0,
+                mode: "normal",
+                style: "",
+                text,
+              },
+            ],
+          },
+        ],
+      },
     },
   };
 }

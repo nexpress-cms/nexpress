@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -100,7 +101,7 @@ describe.skipIf(skipIfNoTestDb())("forum (plugin-forum + discussions collection)
         body: JSON.stringify({
           title: "Welcome to the forum",
           slug: "welcome",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
           category: "general",
           pinned: true,
           locked: false,
@@ -158,7 +159,7 @@ describe.skipIf(skipIfNoTestDb())("forum (plugin-forum + discussions collection)
         body: JSON.stringify({
           title: "Member-authored",
           slug: "by-member",
-          body: { root: { type: "root", children: [] } },
+          body: npCreateEmptyRichTextContent(),
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },

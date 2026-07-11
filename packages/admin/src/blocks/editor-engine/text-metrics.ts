@@ -1,4 +1,5 @@
 import type { NpBlockInstance } from "@nexpress/blocks";
+import { isNpRichTextContent } from "@nexpress/core/fields";
 
 const TEXT_PROP_NAMES = ["text", "heading", "title", "label", "code", "caption"] as const;
 
@@ -13,6 +14,9 @@ function countWordsInText(value: string): number {
 }
 
 function collectLexicalText(value: unknown): string[] {
+  if (isNpRichTextContent(value)) {
+    return collectLexicalText(value.document.root);
+  }
   if (typeof value === "string") return [value];
   if (Array.isArray(value)) return value.flatMap((item) => collectLexicalText(item));
   if (!isRecord(value)) return [];
@@ -24,11 +28,6 @@ function collectLexicalText(value: unknown): string[] {
   const children = value.children;
   if (Array.isArray(children)) {
     out.push(...children.flatMap((child) => collectLexicalText(child)));
-  }
-
-  const root = value.root;
-  if (root !== undefined) {
-    out.push(...collectLexicalText(root));
   }
 
   return out;

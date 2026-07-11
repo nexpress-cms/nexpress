@@ -2,6 +2,7 @@
 
 import { Suspense, lazy, type ComponentType } from "react";
 import type { NpBlockPropField } from "@nexpress/blocks";
+import { isNpRichTextContent } from "@nexpress/core/fields";
 
 import { parseFieldInput } from "../editor-engine/index.js";
 import { useCollectionOptions } from "../registry-context.js";
@@ -32,16 +33,10 @@ const LazyRichTextEditor = lazy(async () => {
 });
 
 /**
- * Type-guards a value as a Lexical content tree (`{ root: {…} }`).
+ * Type-guards a value as a NexPress rich-text v1 envelope.
  * Used to decide whether to feed the loaded editor an existing
  * value or `null` (initial state).
  */
-function isRichTextContent(value: unknown): boolean {
-  if (typeof value !== "object" || value === null) return false;
-  const root = (value as { root?: unknown }).root;
-  return typeof root === "object" && root !== null;
-}
-
 export interface FieldControlProps {
   field: NpBlockPropField;
   value: unknown;
@@ -122,7 +117,7 @@ export function FieldControl({ field, value, onChange, inputId }: FieldControlPr
         }
       >
         <LazyRichTextEditor
-          value={isRichTextContent(value) ? value : null}
+          value={isNpRichTextContent(value) ? value : null}
           onChange={(next) => onChange(next)}
         />
       </Suspense>

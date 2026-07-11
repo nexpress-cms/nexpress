@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -54,7 +55,7 @@ describe.skipIf(skipIfNoTestDb())("per-doc visibility (Phase 21.17)", () => {
       {
         title: "Public",
         slug: "pub",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         publishedAt: new Date().toISOString(),
         author: admin.userId,
       },
@@ -67,7 +68,7 @@ describe.skipIf(skipIfNoTestDb())("per-doc visibility (Phase 21.17)", () => {
       {
         title: "Private",
         slug: "priv",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         publishedAt: new Date().toISOString(),
         author: admin.userId,
         visibility: "private",
@@ -95,7 +96,7 @@ describe.skipIf(skipIfNoTestDb())("per-doc visibility (Phase 21.17)", () => {
       {
         title: "Hidden",
         slug: "hid",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         publishedAt: new Date().toISOString(),
         author: admin.userId,
         visibility: "private",
@@ -125,7 +126,7 @@ describe.skipIf(skipIfNoTestDb())("per-doc visibility (Phase 21.17)", () => {
       {
         title: "Default",
         slug: "def",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         publishedAt: new Date().toISOString(),
         author: admin.userId,
       },
@@ -146,7 +147,7 @@ describe.skipIf(skipIfNoTestDb())("per-doc visibility (Phase 21.17)", () => {
         {
           title: "Bad",
           slug: "bad",
-          content: { root: { type: "root", children: [] } },
+          content: npCreateEmptyRichTextContent(),
           publishedAt: new Date().toISOString(),
           author: admin.userId,
           visibility: "secret",
@@ -165,7 +166,7 @@ describe.skipIf(skipIfNoTestDb())("per-doc visibility (Phase 21.17)", () => {
       {
         title: "UpdMe",
         slug: "upd",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         publishedAt: new Date().toISOString(),
         author: admin.userId,
         visibility: "private",
@@ -182,7 +183,7 @@ describe.skipIf(skipIfNoTestDb())("per-doc visibility (Phase 21.17)", () => {
       {
         title: "UpdMe (edited)",
         slug: "upd",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         publishedAt: new Date().toISOString(),
         author: admin.userId,
       },
@@ -198,7 +199,7 @@ describe.skipIf(skipIfNoTestDb())("per-doc visibility (Phase 21.17)", () => {
       {
         title: "UpdMe (public)",
         slug: "upd",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         publishedAt: new Date().toISOString(),
         author: admin.userId,
         visibility: "public",

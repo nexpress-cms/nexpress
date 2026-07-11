@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Suspense, lazy, useState, type ComponentType } from "react";
+import { isNpRichTextContent, npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import type { NpRichTextContent } from "@nexpress/editor";
 
 interface DiscussionFormProps {
@@ -87,16 +88,14 @@ async function uploadMemberImage(file: File): Promise<{ url: string }> {
     body: formData,
   });
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as
-      | { error?: { message?: string; details?: Array<{ message?: string }> } }
-      | null;
+    const body = (await res.json().catch(() => null)) as {
+      error?: { message?: string; details?: Array<{ message?: string }> };
+    } | null;
     const detail = body?.error?.details?.[0]?.message;
     const message = detail ?? body?.error?.message ?? `HTTP ${res.status}`;
     throw new Error(message);
   }
-  const json = (await res.json()) as
-    | { data?: { url?: string }; url?: string }
-    | null;
+  const json = (await res.json()) as { data?: { url?: string }; url?: string } | null;
   const url = json?.data?.url ?? json?.url ?? null;
   if (!url) throw new Error("Upload succeeded but no URL was returned.");
   return { url };
@@ -153,16 +152,20 @@ export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
         headers,
         body: JSON.stringify(payload),
       });
-      const json = (await res.json().catch(() => null)) as
-        | { id?: string; slug?: string; status?: string; error?: unknown }
-        | null;
+      const json = (await res.json().catch(() => null)) as {
+        id?: string;
+        slug?: string;
+        status?: string;
+        error?: unknown;
+      } | null;
       if (!res.ok) {
         setError(extractMessage(json) ?? `HTTP ${res.status}`);
         return;
       }
-      const docPayload = (json && typeof json === "object" && "data" in json
-        ? (json as { data: { id?: string; slug?: string; status?: string } }).data
-        : json) ?? null;
+      const docPayload =
+        (json && typeof json === "object" && "data" in json
+          ? (json as { data: { id?: string; slug?: string; status?: string } }).data
+          : json) ?? null;
       const slugOut = docPayload?.slug ?? finalSlug;
       const status = docPayload?.status;
 
@@ -251,7 +254,7 @@ export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
               // because the admin field-renderer uses `react-hook-form`
               // and accepts whatever the editor emits. Here we know
               // the shape — Lexical JSON or null — so we narrow.
-              setBody(isRichTextContent(value) ? value : null);
+              setBody(isNpRichTextContent(value) ? value : null);
             }}
             config={{ onUploadImage: uploadMemberImage }}
           />
@@ -273,28 +276,11 @@ export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
   );
 }
 
-function isRichTextContent(value: unknown): value is NpRichTextContent {
-  if (typeof value !== "object" || value === null) return false;
-  const root = (value as { root?: unknown }).root;
-  return typeof root === "object" && root !== null;
-}
-
 /**
  * The editor returns null when the user hasn't typed anything; the
- * `richText` server renderer expects a `{ root: { children: [...] } }`
- * shape. Submit a single empty paragraph so the row has a valid
- * structure on the way to render.
+ * collection contract requires a complete v1 envelope. Submit the shared
+ * empty document so the row remains valid on its way to render.
  */
 function emptyRichText(): NpRichTextContent {
-  return {
-    root: {
-      type: "root",
-      children: [
-        {
-          type: "paragraph",
-          children: [],
-        },
-      ],
-    },
-  } as unknown as NpRichTextContent;
+  return npCreateEmptyRichTextContent();
 }

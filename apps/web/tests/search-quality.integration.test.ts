@@ -63,9 +63,7 @@ describe.skipIf(skipIfNoTestDb())("search quality (Phase 10.7)", () => {
       {
         title: "URL handling",
         excerpt: "x",
-        content: lexicalParagraph(
-          "Visit https://example.com and run pnpm seed:content.",
-        ),
+        content: lexicalParagraph("Visit https://example.com and run pnpm seed:content."),
         publishedAt: new Date().toISOString(),
         author: session.userId,
       },
@@ -163,9 +161,7 @@ describe.skipIf(skipIfNoTestDb())("search quality (Phase 10.7)", () => {
   });
 
   it("reindex re-applies the weighted vector to existing rows (operator workflow)", async () => {
-    const { reindexCollection, saveDocument, searchCollections } = await import(
-      "@nexpress/core"
-    );
+    const { reindexCollection, saveDocument, searchCollections } = await import("@nexpress/core");
 
     // Two rows, both contain "tortoise". Title-match first;
     // body-match second.
@@ -215,7 +211,7 @@ describe.skipIf(skipIfNoTestDb())("search quality (Phase 10.7)", () => {
 });
 
 function lexicalParagraph(text: string): unknown {
-  return {
+  const document = {
     root: {
       type: "root",
       version: 1,
@@ -244,4 +240,5 @@ function lexicalParagraph(text: string): unknown {
       ],
     },
   };
+  return { version: 1, document };
 }

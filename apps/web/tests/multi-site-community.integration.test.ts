@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -73,7 +74,7 @@ describe.skipIf(skipIfNoTestDb())("Phase 18 — community site scope", () => {
         {
           title: `Mention target ${slug}`,
           slug,
-          content: { root: { type: "root", children: [] } },
+          content: npCreateEmptyRichTextContent(),
         },
         actor,
         { status: "published" },

@@ -1,15 +1,13 @@
 import { findDocuments } from "@nexpress/core";
 import { getSiteMember } from "@nexpress/next";
-import type { NpRichTextContent } from "@nexpress/editor";
+import { isNpRichTextContent } from "@nexpress/core/fields";
 import type { NpRouteRenderProps } from "@nexpress/next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { DiscussionForm } from "@nexpress/plugin-forum/client";
 
-export default async function EditDiscussionRoute({
-  params,
-}: NpRouteRenderProps) {
+export default async function EditDiscussionRoute({ params }: NpRouteRenderProps) {
   const slug = typeof params.slug === "string" ? params.slug : "";
   if (!slug) notFound();
 
@@ -53,7 +51,7 @@ export default async function EditDiscussionRoute({
           docId: doc.id as string,
           slug,
           title: doc.title as string,
-          body: (doc.body as NpRichTextContent | null) ?? null,
+          body: isNpRichTextContent(doc.body) ? doc.body : null,
         }}
       />
     </div>

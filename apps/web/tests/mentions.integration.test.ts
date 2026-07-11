@@ -75,7 +75,7 @@ async function seedStaffPostId(slug: string): Promise<string> {
       body: JSON.stringify({
         title: "Mention target",
         slug,
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
     }),

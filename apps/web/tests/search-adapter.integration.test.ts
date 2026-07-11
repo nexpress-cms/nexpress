@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -48,7 +49,7 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
       staffPostsRequest(staff, {
         title: "Native walnut search",
         slug: "native-walnut",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
       { params: Promise.resolve({ slug: "posts" }) },
@@ -66,7 +67,7 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
       staffPostsRequest(staff, {
         title: "Native pumpkin",
         slug: "native-pumpkin",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
       { params: Promise.resolve({ slug: "posts" }) },
@@ -110,7 +111,7 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
       staffPostsRequest(staff, {
         title: "Native brown fox",
         slug: "native-brown",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
       { params: Promise.resolve({ slug: "posts" }) },
@@ -138,7 +139,7 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
       staffPostsRequest(staff, {
         title: "Resilient walnut",
         slug: "resilient-walnut",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
       { params: Promise.resolve({ slug: "posts" }) },

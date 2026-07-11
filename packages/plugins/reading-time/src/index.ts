@@ -1,3 +1,4 @@
+import { isNpRichTextContent } from "@nexpress/core/fields";
 import { definePlugin } from "@nexpress/plugin-sdk";
 import { z } from "zod";
 
@@ -52,10 +53,10 @@ export function estimateMinutes(text: string, wordsPerMinute: number): number {
 }
 
 function extractDocText(doc: Record<string, unknown>): string {
-  const content = doc.content as { root?: { children?: unknown[] } } | undefined;
+  const content = doc.content;
 
-  if (content?.root?.children) {
-    return extractText(content.root);
+  if (isNpRichTextContent(content)) {
+    return extractText(content.document.root);
   }
 
   const excerpt = typeof doc.excerpt === "string" ? doc.excerpt : "";

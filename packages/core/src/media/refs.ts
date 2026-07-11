@@ -3,6 +3,7 @@ import type { PgTable } from "drizzle-orm/pg-core";
 
 import type { NpFieldConfig } from "../config/types.js";
 import { npMediaRefs } from "../db/schema/media.js";
+import { isNpRichTextContent } from "../fields/rich-text.js";
 
 interface InsertValuesQuery extends Promise<unknown> {
   returning(): Promise<unknown[]>;
@@ -41,9 +42,9 @@ export async function syncMediaRefs(
   documentId: string,
   refs: Array<{ mediaId: string; field: string }>,
 ): Promise<void> {
-  await tx.delete(npMediaRefs).where(
-    and(eq(npMediaRefs.collection, collection), eq(npMediaRefs.documentId, documentId)),
-  );
+  await tx
+    .delete(npMediaRefs)
+    .where(and(eq(npMediaRefs.collection, collection), eq(npMediaRefs.documentId, documentId)));
 
   const uniqueRefs = dedupeRefs(refs);
 
@@ -123,7 +124,8 @@ function collectRichTextMediaIds(
   field: string,
   refs: Array<{ mediaId: string; field: string }>,
 ): void {
-  walkRichTextValue(value, (node) => {
+  if (!isNpRichTextContent(value)) return;
+  walkRichTextValue(value.document.root, (node) => {
     if (node.type !== "image") {
       return;
     }
@@ -136,10 +138,7 @@ function collectRichTextMediaIds(
   });
 }
 
-function walkRichTextValue(
-  value: unknown,
-  visit: (node: Record<string, unknown>) => void,
-): void {
+function walkRichTextValue(value: unknown, visit: (node: Record<string, unknown>) => void): void {
   if (Array.isArray(value)) {
     for (const item of value) {
       walkRichTextValue(item, visit);

@@ -19,22 +19,25 @@ async function csrfHeaders(context: BrowserContext): Promise<Record<string, stri
 }
 
 const richTextFixture = (text: string): Record<string, unknown> => ({
-  root: {
-    type: "root",
-    version: 1,
-    direction: null,
-    format: "",
-    indent: 0,
-    children: [
-      {
-        type: "paragraph",
-        version: 1,
-        direction: null,
-        format: "",
-        indent: 0,
-        children: [{ type: "text", version: 1, text }],
-      },
-    ],
+  version: 1,
+  document: {
+    root: {
+      type: "root",
+      version: 1,
+      direction: null,
+      format: "",
+      indent: 0,
+      children: [
+        {
+          type: "paragraph",
+          version: 1,
+          direction: null,
+          format: "",
+          indent: 0,
+          children: [{ type: "text", version: 1, text }],
+        },
+      ],
+    },
   },
 });
 

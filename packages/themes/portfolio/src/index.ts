@@ -21,12 +21,12 @@ import { ProjectDetailTemplate } from "./templates/project-detail.js";
 import { ProjectIndexTemplate, type PortfolioProjectDoc } from "./templates/project-index.js";
 
 /**
- * Minimal Lexical-shaped rich-text doc helper. Inlined so the
+ * Minimal NexPress rich-text v1 helper. Inlined so the
  * theme package stays free of an `@nexpress/editor` dependency
  * just for serialization.
  */
 function lexicalDoc(paragraphs: string[]): unknown {
-  return {
+  const document = {
     root: {
       type: "root",
       version: 1,
@@ -53,6 +53,7 @@ function lexicalDoc(paragraphs: string[]): unknown {
       })),
     },
   };
+  return { version: 1, document };
 }
 
 const ISO = (year: number, month = 1, day = 1): string =>

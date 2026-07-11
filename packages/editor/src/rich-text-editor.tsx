@@ -15,7 +15,7 @@ import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 
 import { ImageNode } from "./image-node.js";
-import { NpEditorStateBridgePlugin } from "./editor-state-bridge-plugin.js";
+import { NpEditorStateBridgePlugin, serializeEditorValue } from "./editor-state-bridge-plugin.js";
 import { ToolbarPlugin } from "./toolbar-plugin.js";
 import type { NpEditorConfig, NpRichTextContent } from "./types.js";
 
@@ -42,7 +42,7 @@ export function NpRichTextEditor({ value, onChange, config }: NpRichTextEditorPr
   // Capture the initial value without keying the composer on every change.
   // The bridge below keeps editor-originated changes internal, but replaces
   // the state when a parent supplies an authoritative reset/recovery value.
-  const [initialEditorState] = useState(() => (value ? JSON.stringify(value) : undefined));
+  const [initialEditorState] = useState(() => serializeEditorValue(value) ?? undefined);
   const [initialReadOnly] = useState(() => Boolean(config?.readOnly));
 
   const initialConfig = useMemo<InitialConfigType>(

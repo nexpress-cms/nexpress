@@ -21,14 +21,14 @@ import { PostFeatureTemplate } from "./templates/post-feature.js";
 import { PostListTemplate } from "./templates/post-list.js";
 
 /**
- * Minimal Lexical-shaped rich-text doc helper. Inlined here so
+ * Minimal NexPress rich-text v1 helper. Inlined here so
  * the theme package stays free of an `@nexpress/editor`
- * dependency just for serialization — the structure is stable
- * enough that a small literal is cheaper than pulling in the
+ * dependency just for serialization — the stable envelope is
+ * cheaper than pulling in the
  * editor runtime.
  */
 function lexicalDoc(paragraphs: string[]): unknown {
-  return {
+  const document = {
     root: {
       type: "root",
       version: 1,
@@ -55,6 +55,7 @@ function lexicalDoc(paragraphs: string[]): unknown {
       })),
     },
   };
+  return { version: 1, document };
 }
 
 const DAY = 1000 * 60 * 60 * 24;

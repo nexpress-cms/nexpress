@@ -156,6 +156,10 @@ export const projectsCollection = defineCollection({
 });
 ```
 
+The generated document type for `body` is `NpRichTextContent | null`. Admin,
+API writes, themes, and plugins share the versioned contract documented in
+[`rich-text.md`](rich-text.md); raw Lexical `{ root: ... }` JSON is rejected.
+
 Register in `nexpress.config.ts`:
 
 ```ts

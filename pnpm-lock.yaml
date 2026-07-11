@@ -659,6 +659,9 @@ importers:
       '@lexical/utils':
         specifier: ^0.46.0
         version: 0.46.0(typescript@5.9.3)
+      '@nexpress/core':
+        specifier: workspace:*
+        version: link:../core
       lexical:
         specifier: ^0.46.0
         version: 0.46.0(typescript@5.9.3)
@@ -1058,6 +1061,9 @@ importers:
 
   packages/plugins/reading-time:
     dependencies:
+      '@nexpress/core':
+        specifier: workspace:*
+        version: link:../../core
       '@nexpress/plugin-sdk':
         specifier: workspace:*
         version: link:../../plugin-sdk
@@ -1080,6 +1086,9 @@ importers:
 
   packages/plugins/seo-audit:
     dependencies:
+      '@nexpress/core':
+        specifier: workspace:*
+        version: link:../../core
       '@nexpress/plugin-sdk':
         specifier: workspace:*
         version: link:../../plugin-sdk

@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -46,7 +47,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
         body: {
           title: "Hello world",
           slug: "hello-world",
-          content: { root: { type: "root", children: [] } },
+          content: npCreateEmptyRichTextContent(),
           _status: "published",
         },
       }),
@@ -73,7 +74,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
         body: {
           title: "Original",
           slug: "original",
-          content: { root: { type: "root", children: [] } },
+          content: npCreateEmptyRichTextContent(),
           _status: "draft",
         },
       }),
@@ -89,7 +90,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
         body: {
           title: "Updated",
           slug: "original",
-          content: { root: { type: "root", children: [] } },
+          content: npCreateEmptyRichTextContent(),
           _status: "draft",
         },
       }),
@@ -134,7 +135,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
         body: {
           title: "Scheduled",
           slug: "scheduled",
-          content: { root: { type: "root", children: [] } },
+          content: npCreateEmptyRichTextContent(),
           publishedAt: futureIso,
           _status: "published",
         },
@@ -159,7 +160,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
         body: {
           title: "Visible public post",
           slug: "visible-public-post",
-          content: { root: { type: "root", children: [] } },
+          content: npCreateEmptyRichTextContent(),
           _status: "published",
         },
       }),
@@ -172,7 +173,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
         body: {
           title: "Hidden scheduled post",
           slug: "hidden-scheduled-post",
-          content: { root: { type: "root", children: [] } },
+          content: npCreateEmptyRichTextContent(),
           publishedAt: futureIso,
           _status: "published",
         },
@@ -209,7 +210,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
           body: {
             title: `Bulk ${i}`,
             slug: `bulk-${i}`,
-            content: { root: { type: "root", children: [] } },
+            content: npCreateEmptyRichTextContent(),
             _status: "draft",
           },
         }),
@@ -252,7 +253,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
         body: {
           title: "Will be deleted",
           slug: "will-be-deleted",
-          content: { root: { type: "root", children: [] } },
+          content: npCreateEmptyRichTextContent(),
           _status: "draft",
         },
       }),
@@ -311,7 +312,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
         body: {
           title: "Autosave seed",
           slug: "autosave-seed",
-          content: { root: { type: "root", children: [] } },
+          content: npCreateEmptyRichTextContent(),
           _status: "draft",
         },
       }),
@@ -326,7 +327,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
         body: {
           title: "Autosave draft typing in progress",
           slug: "autosave-seed",
-          content: { root: { type: "root", children: [] } },
+          content: npCreateEmptyRichTextContent(),
         },
       }),
       { params: Promise.resolve({ slug: "posts", id: created.id }) },
@@ -361,7 +362,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
         body: {
           title: "Dedup",
           slug: "dedup",
-          content: { root: { type: "root", children: [] } },
+          content: npCreateEmptyRichTextContent(),
           _status: "draft",
         },
       }),
@@ -372,7 +373,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
     const snapshot = {
       title: "Dedup typing",
       slug: "dedup",
-      content: { root: { type: "root", children: [] } },
+      content: npCreateEmptyRichTextContent(),
     };
     const ctx = { params: Promise.resolve({ slug: "posts", id: created.id }) };
     const first = await autosavePOST(
@@ -409,7 +410,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
         body: {
           title: "Will-cancel",
           slug: "will-cancel",
-          content: { root: { type: "root", children: [] } },
+          content: npCreateEmptyRichTextContent(),
           publishedAt: futureIso,
           _status: "published",
         },
@@ -426,7 +427,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
         body: {
           title: "Will-cancel",
           slug: "will-cancel",
-          content: { root: { type: "root", children: [] } },
+          content: npCreateEmptyRichTextContent(),
           publishedAt: null,
           _status: "draft",
         },
@@ -451,7 +452,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
           body: {
             title: "Due scheduled trigger",
             slug: "due-scheduled-trigger",
-            content: { root: { type: "root", children: [] } },
+            content: npCreateEmptyRichTextContent(),
             publishedAt: dueIso,
             _status: "scheduled",
           },

@@ -75,7 +75,7 @@ describe.skipIf(skipIfNoTestDb())("translation interchange round-trip", () => {
   }
 
   function richTextFixture(): Record<string, unknown> {
-    return {
+    const document = {
       root: {
         type: "root",
         version: 1,
@@ -139,6 +139,7 @@ describe.skipIf(skipIfNoTestDb())("translation interchange round-trip", () => {
         ],
       },
     };
+    return { version: 1, document };
   }
 
   function blockFixture(): Array<Record<string, unknown>> {
@@ -644,7 +645,7 @@ describe.skipIf(skipIfNoTestDb())("translation interchange round-trip", () => {
       locale: "ko",
     });
     const ko = await getDocumentById("pages", (koRows.docs[0] as { id: string }).id, actor());
-    const root = (ko!.blocks as { root: { children: Array<Record<string, unknown>> } }).root;
+    const root = (ko!.blocks as { document: { root: { children: Array<Record<string, unknown>> } } }).document.root;
     const paragraph = root.children[0] as { children: Array<Record<string, unknown>> };
     expect(paragraph.children[0]).toEqual(expect.objectContaining({ text: "안녕 ", format: 1 }));
     const link = paragraph.children[1] as { url: string; children: Array<{ text: string }> };
@@ -677,8 +678,10 @@ describe.skipIf(skipIfNoTestDb())("translation interchange round-trip", () => {
       actor(),
     );
     const updatedParagraph = (
-      afterUpdate!.blocks as { root: { children: Array<{ children: Array<{ text: string }> }> } }
-    ).root.children[0]!;
+      afterUpdate!.blocks as {
+        document: { root: { children: Array<{ children: Array<{ text: string }> }> } };
+      }
+    ).document.root.children[0]!;
     expect(updatedParagraph.children[0]!.text).toBe("환영 ");
     expect(
       (updatedParagraph.children[1] as unknown as { children: Array<{ text: string }> })
@@ -719,8 +722,10 @@ describe.skipIf(skipIfNoTestDb())("translation interchange round-trip", () => {
     const ko = await getDocumentById("pages", (koRows.docs[0] as { id: string }).id, actor());
     expect(ko!.title).toBe("보호됨");
     const firstText = (
-      ko!.blocks as { root: { children: Array<{ children: Array<{ text: string }> }> } }
-    ).root.children[0]!.children[0]!.text;
+      ko!.blocks as {
+        document: { root: { children: Array<{ children: Array<{ text: string }> }> };
+      }
+    ).document.root.children[0]!.children[0]!.text;
     expect(firstText).toBe("Hello ");
   });
 
@@ -789,9 +794,9 @@ describe.skipIf(skipIfNoTestDb())("translation interchange round-trip", () => {
       );
       const rich = children.find((block) => block.id === "rich-translation")!;
       const content = (
-        rich.props as { content: { root: { children: Array<Record<string, unknown>> } } }
+        rich.props as { content: { document: { root: { children: Array<Record<string, unknown>> } } } }
       ).content;
-      const firstParagraph = content.root.children[0] as {
+      const firstParagraph = content.document.root.children[0] as {
         children: Array<Record<string, unknown>>;
       };
       expect(firstParagraph.children[0]!.text).toBe("번역:Hello ");
@@ -898,7 +903,7 @@ describe.skipIf(skipIfNoTestDb())("translation interchange round-trip", () => {
       locale: "ko",
     });
     const target = await getDocumentById("pages", (rows.docs[0] as { id: string }).id, actor());
-    const root = (target!.blocks as { root: { children: Array<Record<string, unknown>> } }).root;
+    const root = (target!.blocks as { document: { root: { children: Array<Record<string, unknown>> } } }).document.root;
     const paragraph = root.children[0] as { children: Array<Record<string, unknown>> };
     expect(paragraph.children[0]).toEqual(expect.objectContaining({ text: "안녕 ", format: 1 }));
     const link = paragraph.children[1] as { url: string; children: Array<{ text: string }> };
@@ -959,9 +964,9 @@ describe.skipIf(skipIfNoTestDb())("translation interchange round-trip", () => {
       );
       const rich = children.find((block) => block.id === "rich-translation")!;
       const content = (
-        rich.props as { content: { root: { children: Array<Record<string, unknown>> } } }
+        rich.props as { content: { document: { root: { children: Array<Record<string, unknown>> } } } }
       ).content;
-      const paragraph = content.root.children[0] as {
+      const paragraph = content.document.root.children[0] as {
         children: Array<Record<string, unknown>>;
       };
       expect(paragraph.children[0]!.text).toBe("PO:Hello ");

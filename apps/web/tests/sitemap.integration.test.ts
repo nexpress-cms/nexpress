@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -73,7 +74,7 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
       staffPostsRequest(staff, {
         title: "Sitemap regression",
         slug: "sitemap-regression",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
       { params: Promise.resolve({ slug: "posts" }) },
@@ -97,7 +98,7 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
       staffPostsRequest(staff, {
         title: "Hidden draft",
         slug: "hidden-draft",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "draft",
       }),
       { params: Promise.resolve({ slug: "posts" }) },
@@ -114,7 +115,7 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
       staffPostsRequest(staff, {
         title: "Hidden scheduled sitemap",
         slug: "hidden-scheduled-sitemap",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         publishedAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
         _status: "published",
       }),
@@ -252,7 +253,7 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
       staffPostsRequest(staff, {
         title: "English-only post",
         slug: "english-only",
-        content: { root: { type: "root", children: [] } },
+        content: npCreateEmptyRichTextContent(),
         _status: "published",
       }),
       { params: Promise.resolve({ slug: "posts" }) },

@@ -62,7 +62,7 @@ async function memberCreate(
       body: JSON.stringify({
         title: body.title,
         slug: body.slug,
-        body: { root: { type: "root", children: [] } },
+        body: npCreateEmptyRichTextContent(),
       }),
     }),
     { params: Promise.resolve({ slug: "discussions" }) },

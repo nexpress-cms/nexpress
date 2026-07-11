@@ -2,29 +2,12 @@ import { useRef } from "react";
 
 import { OnChangePlugin as LexicalOnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { $getRoot } from "lexical";
+import { NP_RICH_TEXT_CONTENT_VERSION, isNpRichTextContent } from "@nexpress/core/fields";
 
 import type { NpRichTextContent } from "./types.js";
 
 interface NpEditorOnChangePluginProps {
   onChange: (value: NpRichTextContent) => void;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isRichTextContent(value: unknown): value is NpRichTextContent {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  const root = value.root;
-
-  if (!isRecord(root)) {
-    return false;
-  }
-
-  return root.type === "root" && Array.isArray(root.children);
 }
 
 function isInitialEditorState(): boolean {
@@ -67,10 +50,13 @@ export function NpEditorOnChangePlugin({ onChange }: NpEditorOnChangePluginProps
           return;
         }
 
-        const serialized = editorState.toJSON();
+        const serialized: unknown = {
+          version: NP_RICH_TEXT_CONTENT_VERSION,
+          document: editorState.toJSON(),
+        };
 
-        if (!isRichTextContent(serialized)) {
-          return;
+        if (!isNpRichTextContent(serialized)) {
+          throw new Error("Lexical emitted invalid NexPress rich-text content");
         }
 
         onChange(serialized);

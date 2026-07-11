@@ -66,8 +66,7 @@ describe.skipIf(skipIfNoTestDb())("i18n search + feed (Phase 12.4)", () => {
         title: "KO",
         seoDescription: "tigerlily korean body",
         locale: "ko",
-        translationGroupId: (en.doc as { translationGroupId: string })
-          .translationGroupId,
+        translationGroupId: (en.doc as { translationGroupId: string }).translationGroupId,
       },
       actor(),
       { status: "published" },
@@ -139,8 +138,7 @@ describe.skipIf(skipIfNoTestDb())("i18n search + feed (Phase 12.4)", () => {
         title: "KO feed entry",
         seoDescription: "...",
         locale: "ko",
-        translationGroupId: (en.doc as { translationGroupId: string })
-          .translationGroupId,
+        translationGroupId: (en.doc as { translationGroupId: string }).translationGroupId,
       },
       actor(),
       { status: "published" },
@@ -194,7 +192,7 @@ describe.skipIf(skipIfNoTestDb())("i18n search + feed (Phase 12.4)", () => {
 });
 
 function lexicalParagraph(text: string): unknown {
-  return {
+  const document = {
     root: {
       type: "root",
       version: 1,
@@ -223,4 +221,5 @@ function lexicalParagraph(text: string): unknown {
       ],
     },
   };
+  return { version: 1, document };
 }

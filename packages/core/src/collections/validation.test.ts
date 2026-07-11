@@ -7,6 +7,7 @@ import {
   evaluateFieldCondition,
   getCollectionZodSchema,
 } from "./validation.js";
+import { npCreateEmptyRichTextContent } from "../fields/rich-text.js";
 
 function field<T extends NpFieldConfig>(f: T): T {
   return f;
@@ -164,6 +165,30 @@ describe("buildZodSchema — hiddenByCondition param", () => {
   });
 });
 
+describe("buildZodSchema — rich-text v1 contract", () => {
+  const schema = buildZodSchema([field({ type: "richText", name: "body", required: true })]);
+
+  it("accepts the versioned NexPress envelope", () => {
+    expect(schema.safeParse({ body: npCreateEmptyRichTextContent() }).success).toBe(true);
+  });
+
+  it("rejects raw Lexical JSON before a collection write", () => {
+    const result = schema.safeParse({
+      body: {
+        root: {
+          type: "root",
+          children: [],
+        },
+      },
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toContain('exactly "version" and "document"');
+    }
+  });
+});
+
 describe("evaluateFieldCondition — serializable expressions (#763)", () => {
   it("undefined → returns true (field visible)", () => {
     expect(evaluateFieldCondition(undefined, {})).toBe(true);
@@ -175,19 +200,31 @@ describe("evaluateFieldCondition — serializable expressions (#763)", () => {
   });
 
   it("function form: throw → fail open (return true)", () => {
-    expect(evaluateFieldCondition(() => { throw new Error("oops"); }, {})).toBe(true);
+    expect(
+      evaluateFieldCondition(() => {
+        throw new Error("oops");
+      }, {}),
+    ).toBe(true);
   });
 
   it("equals / notEquals", () => {
     expect(evaluateFieldCondition({ when: "kind", equals: "doc" }, { kind: "doc" })).toBe(true);
-    expect(evaluateFieldCondition({ when: "kind", equals: "doc" }, { kind: "article" })).toBe(false);
-    expect(evaluateFieldCondition({ when: "kind", notEquals: "doc" }, { kind: "article" })).toBe(true);
+    expect(evaluateFieldCondition({ when: "kind", equals: "doc" }, { kind: "article" })).toBe(
+      false,
+    );
+    expect(evaluateFieldCondition({ when: "kind", notEquals: "doc" }, { kind: "article" })).toBe(
+      true,
+    );
     expect(evaluateFieldCondition({ when: "kind", notEquals: "doc" }, { kind: "doc" })).toBe(false);
   });
 
   it("in / notIn", () => {
-    expect(evaluateFieldCondition({ when: "kind", in: ["doc", "page"] }, { kind: "doc" })).toBe(true);
-    expect(evaluateFieldCondition({ when: "kind", in: ["doc", "page"] }, { kind: "x" })).toBe(false);
+    expect(evaluateFieldCondition({ when: "kind", in: ["doc", "page"] }, { kind: "doc" })).toBe(
+      true,
+    );
+    expect(evaluateFieldCondition({ when: "kind", in: ["doc", "page"] }, { kind: "x" })).toBe(
+      false,
+    );
     expect(evaluateFieldCondition({ when: "kind", notIn: ["doc"] }, { kind: "x" })).toBe(true);
     expect(evaluateFieldCondition({ when: "kind", notIn: ["doc"] }, { kind: "doc" })).toBe(false);
   });
@@ -240,7 +277,10 @@ describe("evaluateFieldCondition — serializable expressions (#763)", () => {
 
   it("malformed expression → fails open (field visible)", () => {
     expect(
-      evaluateFieldCondition({ bogus: true } as unknown as Parameters<typeof evaluateFieldCondition>[0], {}),
+      evaluateFieldCondition(
+        { bogus: true } as unknown as Parameters<typeof evaluateFieldCondition>[0],
+        {},
+      ),
     ).toBe(true);
   });
 

@@ -1,3 +1,4 @@
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -76,7 +77,7 @@ async function seedMemberDiscussion(
       body: JSON.stringify({
         title,
         slug,
-        body: { root: { type: "root", children: [] } },
+        body: npCreateEmptyRichTextContent(),
       }),
     }),
     { params: Promise.resolve({ slug: "discussions" }) },
@@ -136,7 +137,7 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
           body: JSON.stringify({
             title: "Staff thread",
             slug: "stamp-staff",
-            body: { root: { type: "root", children: [] } },
+            body: npCreateEmptyRichTextContent(),
             _status: "published",
           }),
         }),
@@ -196,7 +197,7 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
           body: JSON.stringify({
             title: "Staff",
             slug: "no-edit-staff",
-            body: { root: { type: "root", children: [] } },
+            body: npCreateEmptyRichTextContent(),
             _status: "published",
           }),
         }),
@@ -276,7 +277,7 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
           body: JSON.stringify({
             title: "Post",
             slug: "post-no-edit",
-            content: { root: { type: "root", children: [] } },
+            content: npCreateEmptyRichTextContent(),
             _status: "published",
           }),
         }),
@@ -604,7 +605,7 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
           body: JSON.stringify({
             title: "Should not pass moderation",
             slug: "banned-create-1",
-            body: { root: { type: "root", children: [] } },
+            body: npCreateEmptyRichTextContent(),
           }),
         }),
         { params: Promise.resolve({ slug: "discussions" }) },
@@ -666,7 +667,7 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
           body: JSON.stringify({
             title: "Authorized",
             slug: "auth-clean-1",
-            body: { root: { type: "root", children: [] } },
+            body: npCreateEmptyRichTextContent(),
           }),
         }),
         { params: Promise.resolve({ slug: "discussions" }) },

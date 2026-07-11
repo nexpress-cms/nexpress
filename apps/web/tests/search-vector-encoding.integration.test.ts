@@ -79,9 +79,7 @@ describe.skipIf(skipIfNoTestDb())(
         {
           title: "URL post",
           excerpt: "shrubbery",
-          content: lexicalParagraph(
-            "shrubbery rare https://shrubberydb.example/path",
-          ),
+          content: lexicalParagraph("shrubbery rare https://shrubberydb.example/path"),
           publishedAt: new Date().toISOString(),
           author: editor.userId,
         },
@@ -110,7 +108,7 @@ describe.skipIf(skipIfNoTestDb())(
 );
 
 function lexicalParagraph(text: string): unknown {
-  return {
+  const document = {
     root: {
       type: "root",
       version: 1,
@@ -139,4 +137,5 @@ function lexicalParagraph(text: string): unknown {
       ],
     },
   };
+  return { version: 1, document };
 }

@@ -4,6 +4,7 @@ import {
   getSiteSeoSettings,
   resolveTemplateComponent,
 } from "@nexpress/core";
+import { isNpRichTextContent } from "@nexpress/core/fields";
 import { renderRichText } from "@nexpress/editor/server";
 import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
@@ -19,7 +20,6 @@ import { Comments } from "@nexpress/next/client";
 import { JsonLd, createSiteScopedBlockRenderContext } from "@nexpress/next";
 import type { Metadata } from "next";
 import type { ComponentType } from "react";
-import type { NpRichTextContent } from "@nexpress/editor";
 
 interface PostPageProps {
   params: Promise<{ slug: string }>;
@@ -43,7 +43,7 @@ export default async function PostPage({ params }: PostPageProps) {
   const postKind = typeof post.kind === "string" ? post.kind : "article";
   if (postKind !== "article") notFound();
 
-  const content = post.content as NpRichTextContent | undefined;
+  const content = isNpRichTextContent(post.content) ? post.content : null;
 
   const { head, bodyEnd } = await collectRenderContributions({
     collection: "posts",
@@ -185,9 +185,9 @@ async function resolvePostDetailTemplate(
   if (kind && kind.length > 0) candidates.push(kind);
   candidates.push("detail", "default", "feature");
   for (const templateId of candidates) {
-    const entry = (await resolveTemplateComponent("posts", templateId)) as
-      | { component?: PostDetailTemplate }
-      | null;
+    const entry = (await resolveTemplateComponent("posts", templateId)) as {
+      component?: PostDetailTemplate;
+    } | null;
     if (entry?.component) return entry.component;
   }
   return null;

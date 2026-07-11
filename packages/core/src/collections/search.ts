@@ -1,6 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 
 import { type NpCollectionConfig, type NpRichTextContent } from "../config/types.js";
+import { isNpRichTextContent } from "../fields/rich-text.js";
 
 /**
  * Plain-text concatenation of every searchable field. Used by
@@ -20,7 +21,7 @@ export function buildSearchVector(
     }
     if (field.type === "richText") {
       const value = data[field.name];
-      if (value) parts.push(extractPlainText(value as NpRichTextContent));
+      if (isNpRichTextContent(value)) parts.push(extractPlainText(value));
     }
   }
 
@@ -70,11 +71,7 @@ export function buildSearchVectorParts(
   };
 
   for (const field of config.fields) {
-    if (
-      field.type === "text" ||
-      field.type === "textarea" ||
-      field.type === "email"
-    ) {
+    if (field.type === "text" || field.type === "textarea" || field.type === "email") {
       const value = data[field.name];
       if (typeof value !== "string" || value.length === 0) continue;
       if (TITLE_LIKE_NAMES.has(field.name)) {
@@ -85,8 +82,8 @@ export function buildSearchVectorParts(
     }
     if (field.type === "richText") {
       const value = data[field.name];
-      if (!value) continue;
-      const text = extractPlainText(value as NpRichTextContent);
+      if (!isNpRichTextContent(value)) continue;
+      const text = extractPlainText(value);
       if (text.length > 0) append("c", text);
     }
   }
@@ -112,14 +109,10 @@ export function buildWeightedSearchVectorSql(
 ): SQL {
   const parts = buildSearchVectorParts(config, data);
   const chunks: SQL[] = [];
-  if (parts.a)
-    chunks.push(sql`setweight(to_tsvector('english', ${parts.a}), 'A')`);
-  if (parts.b)
-    chunks.push(sql`setweight(to_tsvector('english', ${parts.b}), 'B')`);
-  if (parts.c)
-    chunks.push(sql`setweight(to_tsvector('english', ${parts.c}), 'C')`);
-  if (parts.d)
-    chunks.push(sql`setweight(to_tsvector('english', ${parts.d}), 'D')`);
+  if (parts.a) chunks.push(sql`setweight(to_tsvector('english', ${parts.a}), 'A')`);
+  if (parts.b) chunks.push(sql`setweight(to_tsvector('english', ${parts.b}), 'B')`);
+  if (parts.c) chunks.push(sql`setweight(to_tsvector('english', ${parts.c}), 'C')`);
+  if (parts.d) chunks.push(sql`setweight(to_tsvector('english', ${parts.d}), 'D')`);
   if (chunks.length === 0) {
     return sql`''::tsvector`;
   }
@@ -134,11 +127,8 @@ export function buildWeightedSearchVectorSql(
 function extractPlainText(content: NpRichTextContent): string {
   if (!content || typeof content !== "object") return "";
 
-  const root = content.root as { children?: unknown[] } | undefined;
-  if (!root?.children) return "";
-
   const parts: string[] = [];
-  walkNodes(root.children, parts);
+  walkNodes(content.document.root.children, parts);
   return parts.join(" ");
 }
 
