@@ -55,7 +55,7 @@ describe("pattern definition contract", () => {
       validPattern({
         blocks: [{ id: "one", type: "acme.notice", props: { value: Infinity } }],
       }),
-      /non-finite/,
+      /finite number/,
     ],
     [
       validPattern({
@@ -88,7 +88,20 @@ describe("pattern definition contract", () => {
       npValidatePatternDefinition(
         validPattern({ blocks: [{ id: "one", type: "acme.notice", props: circularProps }] }),
       ),
-    ).toMatchObject({ ok: false, message: expect.stringMatching(/circular values/) });
+    ).toMatchObject({ ok: false, message: expect.stringMatching(/circular references/) });
+  });
+
+  it("rejects duplicate block ids across a pattern tree", () => {
+    expect(
+      npValidatePatternDefinition(
+        validPattern({
+          blocks: [
+            { id: "shared", type: "acme.notice", props: {} },
+            { id: "shared", type: "richText", props: {} },
+          ],
+        }),
+      ),
+    ).toMatchObject({ ok: false, message: expect.stringMatching(/duplicates block id/) });
   });
 
   it("requires concrete source only at registry time", () => {

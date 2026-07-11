@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { NpBlockInstance } from "@nexpress/blocks";
+import { npValidateBlockContent, type NpBlockInstance } from "@nexpress/blocks";
 
 import { cloneBlockDeep } from "../editor-engine/index.js";
 import { Button } from "../../ui/button.js";
@@ -141,35 +141,6 @@ function PageJsonDialogContent({
     warning: string | null;
   } | null>(null);
 
-  function validateBlock(value: unknown, path: string): NpBlockInstance | string {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-      return `${path}: expected a JSON object`;
-    }
-    const obj = value as Record<string, unknown>;
-    if (typeof obj.id !== "string") return `${path}: missing string \`id\``;
-    if (typeof obj.type !== "string") return `${path}: missing string \`type\``;
-    const props =
-      obj.props !== undefined && typeof obj.props === "object" && obj.props !== null
-        ? (obj.props as Record<string, unknown>)
-        : {};
-    let children: NpBlockInstance[] | undefined;
-    if (Array.isArray(obj.children)) {
-      const validated: NpBlockInstance[] = [];
-      for (let i = 0; i < obj.children.length; i++) {
-        const childResult = validateBlock(obj.children[i], `${path}.children[${i}]`);
-        if (typeof childResult === "string") return childResult;
-        validated.push(childResult);
-      }
-      children = validated;
-    }
-    return {
-      id: obj.id,
-      type: obj.type,
-      props,
-      ...(children ? { children } : {}),
-    };
-  }
-
   function handleFormat() {
     try {
       const parsed: unknown = JSON.parse(text);
@@ -199,19 +170,12 @@ function PageJsonDialogContent({
       setError(err instanceof Error ? err.message : "Invalid JSON");
       return;
     }
-    if (!Array.isArray(parsed)) {
-      setError("Expected a top-level array of block instances.");
+    const result = npValidateBlockContent(parsed);
+    if (!result.ok) {
+      setError(result.message);
       return;
     }
-    const validated: NpBlockInstance[] = [];
-    for (let i = 0; i < parsed.length; i++) {
-      const result = validateBlock(parsed[i], `[${i}]`);
-      if (typeof result === "string") {
-        setError(result);
-        return;
-      }
-      validated.push(result);
-    }
+    const validated = result.value;
 
     const unknownTypes = collectUnknownTypes(validated, new Set(knownTypes));
     const unknownWarning =

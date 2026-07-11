@@ -544,11 +544,6 @@ export interface NpBlockConfig {
   imageUrl?: string;
 }
 
-export type NpBlockInstance = {
-  blockType: string;
-  [key: string]: unknown;
-};
-
 export interface NpPluginConfig {
   id: string;
   name: string;

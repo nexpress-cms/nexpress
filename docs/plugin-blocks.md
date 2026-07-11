@@ -74,6 +74,10 @@ The framework validates the same contract in four places:
 Definitions that bypass the SDK therefore cannot rely on the old bootstrap
 behavior that silently dropped malformed blocks.
 
+Stored instances use the separate stable `NpBlockContent` wire contract. See
+[`block-content.md`](block-content.md) for its exact keys, identifier and JSON
+rules, duplicate-id handling, and validation boundaries.
+
 ## Prop schema
 
 The runtime field inventory is exported as `npBlockPropFieldTypes`:

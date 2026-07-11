@@ -45,6 +45,7 @@ import { useForm, useFormState, useWatch } from "react-hook-form";
 import { z } from "zod";
 
 import { CollectionTabs, type CollectionTabDescriptor } from "./collection-tabs.js";
+import { getCollectionFieldDefaultValue } from "./collection-edit-defaults.js";
 import { FieldRenderer } from "./field-renderer.js";
 import { NavMembershipPanel } from "./nav-membership-panel.js";
 import { RevisionsPanel } from "./revisions-panel.js";
@@ -150,56 +151,6 @@ const pushUnsavedHistoryTrap = (): void => {
   );
 };
 
-const buildInputDateValue = (value: unknown, includeTime: boolean): string => {
-  if (typeof value === "string") {
-    return includeTime ? value.slice(0, 16) : value.slice(0, 10);
-  }
-
-  if (value instanceof Date) {
-    const iso = value.toISOString();
-    return includeTime ? iso.slice(0, 16) : iso.slice(0, 10);
-  }
-
-  return "";
-};
-
-const getDefaultValue = (field: NpFieldConfig, source: Record<string, unknown>): unknown => {
-  if (field.type === "row" || field.type === "collapsible") {
-    return undefined;
-  }
-
-  const currentValue = source[field.name];
-
-  if (currentValue !== undefined && currentValue !== null) {
-    if (field.type === "date") {
-      return buildInputDateValue(currentValue, Boolean(field.pickerOptions?.includeTime));
-    }
-
-    return currentValue;
-  }
-
-  if (field.defaultValue !== undefined) {
-    return field.defaultValue;
-  }
-
-  switch (field.type) {
-    case "checkbox":
-      return false;
-    case "array":
-      return [];
-    case "group":
-      return {};
-    case "json":
-      return {};
-    case "select":
-      return field.hasMany ? [] : "";
-    case "relationship":
-      return field.hasMany ? [] : "";
-    default:
-      return "";
-  }
-};
-
 const buildDefaultValues = (
   fields: NpFieldConfig[],
   source: Record<string, unknown>,
@@ -218,7 +169,7 @@ const buildDefaultValues = (
       continue;
     }
 
-    result[field.name] = getDefaultValue(field, source);
+    result[field.name] = getCollectionFieldDefaultValue(field, source);
   }
 
   return result;

@@ -13,6 +13,12 @@ export type {
   NpPatternSource,
 } from "./types.js";
 export {
+  isNpBlockContent,
+  npValidateBlockContent,
+  type NpBlockContent,
+  type NpBlockContentValidationResult,
+} from "@nexpress/core/fields";
+export {
   npAnalyzeBlockDefinitions,
   npBlockPropFieldTypes,
   npValidateBlockDefinition,

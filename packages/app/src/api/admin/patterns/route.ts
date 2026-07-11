@@ -8,6 +8,7 @@ import {
   getSetting,
 } from "@nexpress/core";
 import { npSettings } from "@nexpress/core/db";
+import { npValidateBlockContent, type NpBlockContent } from "@nexpress/core/fields";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
@@ -38,7 +39,7 @@ interface ServerPattern {
   id: string;
   label: string;
   description?: string;
-  blocks: unknown[];
+  blocks: NpBlockContent;
   createdAt: string;
   updatedAt: string;
 }
@@ -49,7 +50,7 @@ function isPattern(value: unknown): value is ServerPattern {
   return (
     typeof candidate.id === "string" &&
     typeof candidate.label === "string" &&
-    Array.isArray(candidate.blocks)
+    npValidateBlockContent(candidate.blocks).ok
   );
 }
 
@@ -115,9 +116,10 @@ export async function POST(request: NextRequest) {
         { field: "label", message: "label is required" },
       ]);
     }
-    if (!Array.isArray(body.blocks)) {
+    const blocksValidation = npValidateBlockContent(body.blocks);
+    if (!blocksValidation.ok) {
       throw new NpValidationError("Invalid input", [
-        { field: "blocks", message: "blocks must be an array" },
+        { field: "blocks", message: blocksValidation.message },
       ]);
     }
     const id =
@@ -131,7 +133,7 @@ export async function POST(request: NextRequest) {
       id,
       label: body.label.trim(),
       description: typeof body.description === "string" ? body.description : undefined,
-      blocks: body.blocks,
+      blocks: blocksValidation.value,
       createdAt: previous?.createdAt ?? now,
       updatedAt: now,
     };

@@ -15,6 +15,7 @@ behavior they describe changes.
 | [agent-operated-ops.md](agent-operated-ops.md)         | Shipped agent-operated ops CLI, mutation, and admin API contracts      |
 | [api-error-codes.md](api-error-codes.md)               | Stable `code` strings on error responses                               |
 | [backup-restore.md](backup-restore.md)                 | Backup procedures, restore order, DR drill                             |
+| [block-content.md](block-content.md)                   | Stable block-content wire format and validation boundaries             |
 | [caching.md](caching.md)                               | Cache strategy and invalidation                                        |
 | [community.md](community.md)                           | Community / member features (live behavior)                            |
 | [deployment.md](deployment.md)                         | Production deployment notes                                            |

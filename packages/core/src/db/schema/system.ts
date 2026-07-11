@@ -14,11 +14,8 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { npMedia } from "./media.js";
-import {
-  type NpBlockInstance,
-  type NpNavItem,
-  type NpRichTextContent,
-} from "../../config/types.js";
+import { type NpNavItem, type NpRichTextContent } from "../../config/types.js";
+import type { NpBlockInstance } from "../../fields/block-content.js";
 
 export const npUserRoleEnum = pgEnum("np_user_role", [
   "admin",

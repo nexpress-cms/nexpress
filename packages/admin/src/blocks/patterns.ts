@@ -1,4 +1,4 @@
-import { type NpPattern } from "@nexpress/blocks";
+import { npValidateBlockContent, type NpPattern } from "@nexpress/blocks";
 
 import { npFetch } from "../lib/api-client.js";
 
@@ -263,8 +263,7 @@ function isPattern(value: unknown): value is NpPattern {
   const candidate = value as Record<string, unknown>;
   if (typeof candidate.id !== "string") return false;
   if (typeof candidate.label !== "string") return false;
-  if (!Array.isArray(candidate.blocks)) return false;
-  return true;
+  return npValidateBlockContent(candidate.blocks).ok;
 }
 
 // ---------------------------------------------------------------

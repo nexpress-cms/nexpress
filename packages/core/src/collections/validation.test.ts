@@ -189,6 +189,36 @@ describe("buildZodSchema — rich-text v1 contract", () => {
   });
 });
 
+describe("buildZodSchema — block content v1 contract", () => {
+  const schema = buildZodSchema([field({ type: "blocks", name: "content", required: true })]);
+
+  it("accepts canonical nested block content", () => {
+    expect(
+      schema.safeParse({
+        content: [
+          {
+            id: "grid-1",
+            type: "grid",
+            props: {},
+            children: [{ id: "hero-1", type: "hero", props: { title: "Hello" } }],
+          },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects malformed blocks before a collection write", () => {
+    const result = schema.safeParse({
+      content: [{ id: "hero-1", type: "hero", props: {}, children: "invalid" }],
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toContain("children must be an array");
+    }
+  });
+});
+
 describe("evaluateFieldCondition — serializable expressions (#763)", () => {
   it("undefined → returns true (field visible)", () => {
     expect(evaluateFieldCondition(undefined, {})).toBe(true);

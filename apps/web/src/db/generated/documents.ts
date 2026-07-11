@@ -10,7 +10,7 @@ import {
   type NpFindOptions,
   type NpFindResult,
 } from "@nexpress/core";
-import type { NpRichTextContent } from "@nexpress/core/fields";
+import type { NpBlockContent, NpRichTextContent } from "@nexpress/core/fields";
 import { inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { postsCategoriesTable, postsTagsTable } from "./collections";
@@ -69,7 +69,7 @@ export interface PagesDocument {
   title: string;
   seoDescription: string | null;
   template: string | null;
-  blocks: unknown | null;
+  blocks: NpBlockContent | null;
   seedSource: string | null;
 }
 

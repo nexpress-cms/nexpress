@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { NpBlockInstance, NpPattern } from "@nexpress/blocks";
+import { npValidateBlockContent, type NpBlockInstance, type NpPattern } from "@nexpress/blocks";
 
 import { Button } from "../../ui/button.js";
 import {
@@ -23,16 +23,10 @@ import { Textarea } from "../../ui/textarea.js";
  * `INSERT_PATTERN`. Reuse path for the existing reducer keeps the
  * id-regeneration + parent-aware insertion in one place.
  *
- * Validation surface (kept minimal — `INSERT_PATTERN`'s clone path
- * already drops bad shapes):
+ * Validation surface:
  *   1. valid JSON
- *   2. either an object (single block) or array of objects
- *   3. each block has string `id` + string `type`
- *
- * The looser shape than `PageJsonDialog`'s page-tree validation
- * (which knows the full tree contract) is intentional — a paste
- * snippet can come from anywhere, and warnings are friendlier
- * than hard rejects.
+ *   2. either an object (single block), an array, or a pattern object
+ *   3. the complete shared block-content wire contract
  */
 
 export interface PastePatternDialogProps {
@@ -47,37 +41,6 @@ interface ValidationResult {
   parsed?: NpBlockInstance[];
   error?: string;
   warning?: string;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
- * Defensive shape check. Recurses into `children` so a paste with
- * a malformed deep node can't pass top-level validation only to
- * crash the reducer's `cloneBlockDeep` (which calls
- * `block.children.map(...)` — would throw on string / non-array).
- *
- * Rejects:
- *   - missing string `id` or `type`
- *   - `props` present but not a plain object
- *   - `children` present but not an array, or an array with any
- *     element that fails the same check
- */
-function isBlockShape(value: unknown): value is NpBlockInstance {
-  if (!isPlainObject(value)) return false;
-  if (typeof value.id !== "string" || typeof value.type !== "string") {
-    return false;
-  }
-  if (value.props !== undefined && !isPlainObject(value.props)) return false;
-  if (value.children !== undefined) {
-    if (!Array.isArray(value.children)) return false;
-    for (const child of value.children) {
-      if (!isBlockShape(child)) return false;
-    }
-  }
-  return true;
 }
 
 function validate(raw: string, known: Set<string>): ValidationResult {
@@ -96,30 +59,29 @@ function validate(raw: string, known: Set<string>): ValidationResult {
   // Accept three shapes: a single block, an array of blocks, or
   // a pattern object with `blocks: [...]`. The third lets an
   // operator copy a built-in pattern dump straight in.
-  let blocks: NpBlockInstance[];
+  let candidate: unknown;
   if (Array.isArray(parsed)) {
-    blocks = parsed.filter(isBlockShape);
-    if (blocks.length === 0) {
-      return { ok: false, error: "Array contained no valid block objects." };
-    }
+    candidate = parsed;
   } else if (
     parsed &&
     typeof parsed === "object" &&
     Array.isArray((parsed as { blocks?: unknown }).blocks)
   ) {
-    const inner = (parsed as { blocks: unknown[] }).blocks.filter(isBlockShape);
-    if (inner.length === 0) {
-      return { ok: false, error: "Pattern's `blocks` array was empty or invalid." };
-    }
-    blocks = inner;
-  } else if (isBlockShape(parsed)) {
-    blocks = [parsed];
+    candidate = (parsed as { blocks: unknown }).blocks;
+  } else if (parsed && typeof parsed === "object") {
+    candidate = [parsed];
   } else {
     return {
       ok: false,
       error: "Top level must be a block, an array of blocks, or a pattern object.",
     };
   }
+  const validation = npValidateBlockContent(candidate);
+  if (!validation.ok) return { ok: false, error: validation.message };
+  if (validation.value.length === 0) {
+    return { ok: false, error: "Block list must not be empty." };
+  }
+  const blocks = validation.value;
 
   // Soft warning for unknown types — we still let the operator
   // apply, since a plugin reload after the paste may register

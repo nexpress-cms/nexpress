@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ComponentType, ReactNode } from "react";
 
 import type {
+  NpBlockContent,
   NpBlockDefinition,
   NpBlockRenderContext,
   NpPatternDefinition,
@@ -21,14 +22,7 @@ import type {
 type LocalNpSitemapEntry = {
   loc: string;
   lastmod?: string;
-  changefreq?:
-    | "always"
-    | "hourly"
-    | "daily"
-    | "weekly"
-    | "monthly"
-    | "yearly"
-    | "never";
+  changefreq?: "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";
   priority?: number;
 };
 
@@ -180,10 +174,7 @@ export interface NpThemeTemplate<T = Record<string, unknown>> {
  * declare templates for a collection let the framework's existing
  * rendering path run.
  */
-export type NpThemeTemplates = Record<
-  string,
-  Record<string, NpThemeTemplate>
->;
+export type NpThemeTemplates = Record<string, Record<string, NpThemeTemplate>>;
 
 /**
  * Phase F.2 — props passed to a theme route component.
@@ -230,9 +221,7 @@ export interface NpThemeRoute {
    * Without it, theme-rendered routes would emit framework-default
    * SEO — a real bug.
    */
-  metadata?: (
-    ctx: NpRouteRenderProps,
-  ) => Promise<Metadata> | Metadata;
+  metadata?: (ctx: NpRouteRenderProps) => Promise<Metadata> | Metadata;
   // Note: a `revalidate` hint was considered but dropped from
   // v0.2 — Next's route-segment `revalidate` export is static
   // and can't vary per URL pattern from a single catch-all.
@@ -335,13 +324,8 @@ export interface NpThemeSeedPage {
    */
   slug?: string;
   seoDescription?: string;
-  /**
-   * `NpBlockInstance[]` — kept as `unknown[]` here so the seed
-   * types don't drag the blocks JSON shape across the package
-   * boundary. The framework's seeder treats the array opaquely
-   * and writes it to the `blocks` field on the seeded page.
-   */
-  blocks: unknown[];
+  /** Stable block-content wire shape written to the seeded page's `blocks` field. */
+  blocks: NpBlockContent;
   /**
    * Theme template key — locks the seeded page to a specific
    * `templates.pages[<key>]` entry. Used by magazine / portfolio /
@@ -708,14 +692,10 @@ export interface NpThemeSeoHooks {
   /** Extra sitemap entries beyond the framework's collection
    *  walk. Returned entries are deduplicated by `loc` against
    *  the framework output (framework wins on collision). */
-  sitemapEntries?: () =>
-    | Promise<LocalNpSitemapEntry[]>
-    | LocalNpSitemapEntry[];
+  sitemapEntries?: () => Promise<LocalNpSitemapEntry[]> | LocalNpSitemapEntry[];
   /** Extra feed entries beyond the framework's collection feed.
    *  Same dedup behavior. */
-  feedEntries?: () =>
-    | Promise<LocalNpFeedEntry[]>
-    | LocalNpFeedEntry[];
+  feedEntries?: () => Promise<LocalNpFeedEntry[]> | LocalNpFeedEntry[];
   /** Replace the framework's default `robots.txt` body. Returns
    *  the full body string. Omitting falls back to the framework
    *  default. */

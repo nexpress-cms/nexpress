@@ -7,6 +7,11 @@ layout that's been there since day one). Both views work on the
 same `NpBlockInstance[]` tree, so content authored in one mode
 renders correctly in the other.
 
+The tree is validated with the shared `NpBlockContent` contract before a
+collection write or server preview. JSON editing and paste import use that same
+fail-closed validator instead of dropping malformed nodes. The exact wire rules
+are documented in [`block-content.md`](block-content.md).
+
 ## Toggling between views
 
 The header of the editor surfaces a Document / Page builder
