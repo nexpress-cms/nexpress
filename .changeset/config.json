@@ -11,6 +11,7 @@
       "@nexpress/cli",
       "@nexpress/core",
       "@nexpress/editor",
+      "@nexpress/gettext",
       "@nexpress/next",
       "@nexpress/oauth-providers",
       "@nexpress/plugin-block-callout",
@@ -31,6 +32,7 @@
       "@nexpress/theme-docs",
       "@nexpress/theme-magazine",
       "@nexpress/theme-portfolio",
+      "@nexpress/translation",
       "@nexpress/wp-import",
       "@nexpress/xliff"
     ]

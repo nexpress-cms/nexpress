@@ -69,6 +69,7 @@ const CASES = [
   { script: "super-admin.ts", args: ["admin@example.test"] },
   { script: "worker.ts" },
   { script: "wp-import.ts", args: ["--help"] },
+  { script: "gettext.ts", args: ["--help"] },
   { script: "xliff.ts", args: ["--help"] },
 ];
 

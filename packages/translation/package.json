@@ -1,14 +1,14 @@
 {
-  "name": "@nexpress/xliff",
+  "name": "@nexpress/translation",
   "version": "0.3.26",
-  "description": "XLIFF translation export/import for NexPress i18n.",
+  "description": "Format-neutral content translation contracts for NexPress.",
   "license": "MIT",
   "author": "Nexpress",
   "homepage": "https://github.com/nexpress-cms/nexpress#readme",
   "repository": {
     "type": "git",
     "url": "https://github.com/nexpress-cms/nexpress.git",
-    "directory": "packages/xliff"
+    "directory": "packages/translation"
   },
   "bugs": {
     "url": "https://github.com/nexpress-cms/nexpress/issues"
@@ -16,7 +16,6 @@
   "keywords": [
     "nexpress",
     "i18n",
-    "xliff",
     "translation"
   ],
   "type": "module",
@@ -35,9 +34,8 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@nexpress/core": "workspace:*",
-    "@nexpress/translation": "workspace:*",
-    "fast-xml-parser": "^5.9.3"
+    "@nexpress/blocks": "workspace:*",
+    "@nexpress/core": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.5.0",

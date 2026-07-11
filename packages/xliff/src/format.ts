@@ -1,22 +1,11 @@
 import { XMLParser } from "fast-xml-parser";
+import { type NpTranslationInlinePart, type NpTranslationUnit } from "@nexpress/translation";
 
 export const NP_XLIFF_RICH_TEXT_RESTYPE = "x-nexpress-richtext";
 
-export type XliffInlinePart =
-  | { type: "group"; id: string; ctype: string; text: string }
-  | { type: "placeholder"; id: string; ctype: string };
+export type XliffInlinePart = NpTranslationInlinePart;
 
-export interface XliffTransUnit {
-  id: string;
-  /** Plain-text projection retained for atomic fields and API ergonomics. */
-  source: string;
-  /** Plain-text projection retained for atomic fields and API ergonomics. */
-  target: string;
-  /** Present when `<source>` contains NexPress-managed XLIFF inline codes. */
-  sourceInline?: XliffInlinePart[];
-  /** Present when `<target>` contains NexPress-managed XLIFF inline codes. */
-  targetInline?: XliffInlinePart[];
-}
+export type XliffTransUnit = NpTranslationUnit;
 
 export interface XliffFile {
   /** `original` attribute — `{collectionSlug}/{translationGroupId}` */

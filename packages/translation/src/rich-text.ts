@@ -1,7 +1,7 @@
-import type { XliffInlinePart } from "./format.js";
+import type { NpTranslationInlinePart } from "./types.js";
 
-export const NP_XLIFF_LEXICAL_CTYPE = "x-nexpress-lexical";
-export const NP_XLIFF_BREAK_CTYPE = "lb";
+export const NP_TRANSLATION_LEXICAL_CTYPE = "x-nexpress-lexical";
+export const NP_TRANSLATION_BREAK_CTYPE = "lb";
 
 interface RichTextLeaf {
   id: string;
@@ -11,18 +11,18 @@ interface RichTextLeaf {
 }
 
 interface RichTextAnalysis {
-  parts: XliffInlinePart[];
+  parts: NpTranslationInlinePart[];
   pathById: Map<string, number[]>;
 }
 
-export interface RichTextXliffValue {
+export interface RichTextTranslationValue {
   source: string;
   target: string;
-  sourceInline: XliffInlinePart[];
-  targetInline: XliffInlinePart[];
+  sourceInline: NpTranslationInlinePart[];
+  targetInline: NpTranslationInlinePart[];
 }
 
-export type RichTextXliffApplyResult =
+export type RichTextTranslationApplyResult =
   | { ok: true; value: Record<string, unknown>; translatedFragmentCount: number }
   | { ok: false; reason: string; empty: boolean };
 
@@ -40,10 +40,10 @@ const BLOCK_NODE_TYPES = new Set([
  * Every text leaf receives a deterministic path id, while block boundaries are
  * represented as protected line-break placeholders for translator context.
  */
-export function createRichTextXliffValue(
+export function createRichTextTranslationValue(
   sourceValue: unknown,
   targetValue: unknown,
-): RichTextXliffValue | null {
+): RichTextTranslationValue | null {
   const source = analyzeRichText(sourceValue);
   if (!source || !hasNonEmptyGroup(source.parts)) return null;
 
@@ -67,12 +67,12 @@ export function createRichTextXliffValue(
  * Empty fragments retain the current target text (or source text on create),
  * matching the atomic-string contract that empty targets never blank content.
  */
-export function applyRichTextXliffValue(args: {
+export function applyRichTextTranslationValue(args: {
   sourceValue: unknown;
   targetValue: unknown;
-  sourceInline: XliffInlinePart[] | undefined;
-  targetInline: XliffInlinePart[] | undefined;
-}): RichTextXliffApplyResult {
+  sourceInline: NpTranslationInlinePart[] | undefined;
+  targetInline: NpTranslationInlinePart[] | undefined;
+}): RichTextTranslationApplyResult {
   const canonical = analyzeRichText(args.sourceValue);
   if (!canonical || !hasNonEmptyGroup(canonical.parts)) {
     return { ok: false, reason: "source rich-text value has no translatable text", empty: false };
@@ -107,7 +107,7 @@ export function applyRichTextXliffValue(args: {
   }
 
   const translated = args.targetInline.filter(
-    (part): part is Extract<XliffInlinePart, { type: "group" }> =>
+    (part): part is Extract<NpTranslationInlinePart, { type: "group" }> =>
       part.type === "group" && part.text.length > 0,
   );
   if (translated.length === 0) {
@@ -147,7 +147,7 @@ function analyzeRichText(value: unknown): RichTextAnalysis | null {
   walkNodes(root.children, [], null, leaves);
   if (leaves.length === 0) return null;
 
-  const parts: XliffInlinePart[] = [];
+  const parts: NpTranslationInlinePart[] = [];
   const pathById = new Map<string, number[]>();
   let breakIndex = 0;
   for (let index = 0; index < leaves.length; index++) {
@@ -157,13 +157,13 @@ function analyzeRichText(value: unknown): RichTextAnalysis | null {
       parts.push({
         type: "placeholder",
         id: `b-${breakIndex++}`,
-        ctype: NP_XLIFF_BREAK_CTYPE,
+        ctype: NP_TRANSLATION_BREAK_CTYPE,
       });
     }
     parts.push({
       type: "group",
       id: leaf.id,
-      ctype: NP_XLIFF_LEXICAL_CTYPE,
+      ctype: NP_TRANSLATION_LEXICAL_CTYPE,
       text: leaf.text,
     });
     pathById.set(leaf.id, leaf.path);
@@ -198,7 +198,10 @@ function walkNodes(
   }
 }
 
-function hasSameInlineShape(expected: XliffInlinePart[], actual: XliffInlinePart[]): boolean {
+function hasSameInlineShape(
+  expected: NpTranslationInlinePart[],
+  actual: NpTranslationInlinePart[],
+): boolean {
   if (expected.length !== actual.length) return false;
   return expected.every((part, index) => {
     const candidate = actual[index];
@@ -211,7 +214,10 @@ function hasSameInlineShape(expected: XliffInlinePart[], actual: XliffInlinePart
   });
 }
 
-function hasSameInlineText(expected: XliffInlinePart[], actual: XliffInlinePart[]): boolean {
+function hasSameInlineText(
+  expected: NpTranslationInlinePart[],
+  actual: NpTranslationInlinePart[],
+): boolean {
   return expected.every((part, index) => {
     const candidate = actual[index];
     if (part.type === "placeholder") return candidate?.type === "placeholder";
@@ -219,15 +225,15 @@ function hasSameInlineText(expected: XliffInlinePart[], actual: XliffInlinePart[
   });
 }
 
-function blankInlineGroups(parts: XliffInlinePart[]): XliffInlinePart[] {
+function blankInlineGroups(parts: NpTranslationInlinePart[]): NpTranslationInlinePart[] {
   return parts.map((part) => (part.type === "group" ? { ...part, text: "" } : { ...part }));
 }
 
-function inlinePlainText(parts: XliffInlinePart[]): string {
+function inlinePlainText(parts: NpTranslationInlinePart[]): string {
   return parts.map((part) => (part.type === "group" ? part.text : "\n")).join("");
 }
 
-function hasNonEmptyGroup(parts: XliffInlinePart[]): boolean {
+function hasNonEmptyGroup(parts: NpTranslationInlinePart[]): boolean {
   return parts.some((part) => part.type === "group" && part.text.length > 0);
 }
 

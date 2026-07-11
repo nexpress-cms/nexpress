@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-11 (block prop schemas now require explicit
+**Last refreshed:** 2026-07-11 (content translation interchange now uses one
+format-neutral extraction/application engine. XLIFF 1.2 and Gettext PO share
+live source, Lexical, block-schema, sibling-routing, dry-run, and fail-closed
+import rules.)
+
+**Earlier:** 2026-07-11 (block prop schemas now require explicit
 translation intent for textual controls. XLIFF follows that contract through
 nested blocks and arrays, validates live ids/types/paths/text, and fails closed
 for unknown, duplicated, stale, or structurally incompatible block units.)
@@ -153,6 +158,7 @@ Monorepo: `packages/*` (library code) + `apps/web` (Next.js 16 reference app). W
 ```
 core  ←  editor, theme, plugin-sdk, next, wp-import
 core, editor  ←  blocks
+core, blocks  ←  translation  ←  xliff, gettext
 core, editor, blocks  ←  admin
 all of the above  ←  apps/web
 cli  (standalone scaffolder, no workspace deps)

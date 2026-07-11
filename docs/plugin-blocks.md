@@ -108,13 +108,14 @@ Type-specific rules are checked during plugin loading:
 `summaryFields` must reference names in the top-level `propsSchema`, which
 catches stale collapsed-row summaries during plugin evaluation.
 
-For i18n-enabled collections with a `blocks` field, `@nexpress/xliff` follows
-only props marked `translatable: true`. It resolves nested blocks by stable
-block instance id and walks array `itemSchema` values positionally. Unknown or
+For i18n-enabled collections with a `blocks` field, the XLIFF and Gettext
+translation adapters follow only props marked `translatable: true`. They
+resolve nested blocks by stable block instance id and walk array `itemSchema`
+values positionally. Unknown or
 unloaded block types, duplicate ids, stale source text, and paths that no longer
 match the registered schema are skipped rather than guessed. Keep block ids
 stable across translation siblings and avoid independently reordering array
-items while an XLIFF bundle is in flight.
+items while a translation bundle is in flight.
 
 ## Container blocks
 

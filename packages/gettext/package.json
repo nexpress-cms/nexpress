@@ -1,14 +1,14 @@
 {
-  "name": "@nexpress/xliff",
+  "name": "@nexpress/gettext",
   "version": "0.3.26",
-  "description": "XLIFF translation export/import for NexPress i18n.",
+  "description": "Gettext PO translation export/import for NexPress i18n.",
   "license": "MIT",
   "author": "Nexpress",
   "homepage": "https://github.com/nexpress-cms/nexpress#readme",
   "repository": {
     "type": "git",
     "url": "https://github.com/nexpress-cms/nexpress.git",
-    "directory": "packages/xliff"
+    "directory": "packages/gettext"
   },
   "bugs": {
     "url": "https://github.com/nexpress-cms/nexpress/issues"
@@ -16,7 +16,8 @@
   "keywords": [
     "nexpress",
     "i18n",
-    "xliff",
+    "gettext",
+    "po",
     "translation"
   ],
   "type": "module",
@@ -37,9 +38,10 @@
   "dependencies": {
     "@nexpress/core": "workspace:*",
     "@nexpress/translation": "workspace:*",
-    "fast-xml-parser": "^5.9.3"
+    "gettext-parser": "^9.1.1"
   },
   "devDependencies": {
+    "@types/gettext-parser": "^9.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0",
     "vitest": "^4.1.10"

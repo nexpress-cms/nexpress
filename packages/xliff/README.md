@@ -4,7 +4,7 @@ XLIFF translation export/import for
 [NexPress](https://github.com/nexpress-cms/nexpress) i18n.
 
 Round-trips translation strings between the NexPress i18n surface and
-XLIFF 2.x — the format the major translation memory tools (memoQ,
+XLIFF 1.2 — the format the major translation memory tools (memoQ,
 Trados, Smartcat, Crowdin's XLIFF connector) understand.
 
 ## Install

@@ -132,6 +132,9 @@ packages/app        shared Next.js routes, scripts, config helpers
 packages/admin      Admin UI
 packages/editor     Lexical editor and SSR renderer
 packages/blocks     page-builder blocks
+packages/translation format-neutral content translation engine
+packages/xliff      XLIFF 1.2 translation adapter
+packages/gettext    Gettext PO translation adapter
 packages/theme      theme token CSS generation
 packages/cli        create-nexpress
 packages/themes/*   built-in themes
