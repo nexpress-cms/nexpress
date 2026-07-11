@@ -679,7 +679,9 @@ describe.skipIf(skipIfNoTestDb())("translation interchange round-trip", () => {
     );
     const updatedParagraph = (
       afterUpdate!.blocks as {
-        document: { root: { children: Array<{ children: Array<{ text: string }> }> } };
+        document: {
+          root: { children: Array<{ children: Array<{ text: string }> }> };
+        };
       }
     ).document.root.children[0]!;
     expect(updatedParagraph.children[0]!.text).toBe("환영 ");
@@ -723,7 +725,9 @@ describe.skipIf(skipIfNoTestDb())("translation interchange round-trip", () => {
     expect(ko!.title).toBe("보호됨");
     const firstText = (
       ko!.blocks as {
-        document: { root: { children: Array<{ children: Array<{ text: string }> }> };
+        document: {
+          root: { children: Array<{ children: Array<{ text: string }> }> };
+        };
       }
     ).document.root.children[0]!.children[0]!.text;
     expect(firstText).toBe("Hello ");

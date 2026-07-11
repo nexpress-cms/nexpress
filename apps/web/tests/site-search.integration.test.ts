@@ -42,7 +42,7 @@ function actor(staff: TestUserSession) {
 }
 
 function lexicalParagraph(text: string): unknown {
-  return {
+  const document = {
     root: {
       type: "root",
       version: 1,
@@ -71,6 +71,7 @@ function lexicalParagraph(text: string): unknown {
       ],
     },
   };
+  return { version: 1, document };
 }
 
 describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
