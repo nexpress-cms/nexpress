@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-12 (collection definitions now fail closed during
+**Last refreshed:** 2026-07-12 (project config now exposes only active runtime
+settings and fails closed on unknown keys, invalid origins/storage/locales,
+duplicate plugin ids, and missing or cyclic plugin dependencies.)
+
+**Earlier:** 2026-07-12 (collection definitions now fail closed during
 module evaluation and config resolution; strict nested schemas, semantic field
 rules, codegen-safe persistence shapes, references, and duplicate collection
 slugs share one contract before and after theme requirement merging.)

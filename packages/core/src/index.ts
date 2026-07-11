@@ -59,6 +59,16 @@ export { isNpBlockContent, npValidateBlockContent } from "./fields/block-content
 // `hasRole` / `isStaffMod` were retired in favour of `can(user, capability)` (#273).
 export { ROLE_HIERARCHY } from "./config/types.js";
 export { defineConfig } from "./config/define-config.js";
+export {
+  npAnalyzeProjectConfig,
+  npAssertProjectConfig,
+  npValidateProjectConfig,
+} from "./config/project-config-contract.js";
+export type {
+  NpProjectConfigIssue,
+  NpProjectConfigIssueCode,
+  NpProjectConfigValidationResult,
+} from "./config/project-config-contract.js";
 export { defineCollection } from "./config/define-collection.js";
 export {
   npAnalyzeCollectionDefinition,

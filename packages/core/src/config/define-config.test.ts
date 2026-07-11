@@ -12,7 +12,7 @@ const validBase = {
       fields: [{ type: "text" as const, name: "title" }],
     },
   ],
-  auth: { secret: "abcdef" },
+  auth: { secret: "x".repeat(32) },
 };
 
 describe("defineConfig — friendly error messages (#A)", () => {
@@ -53,6 +53,27 @@ describe("defineConfig — friendly error messages (#A)", () => {
   it("returns the input unchanged when valid", () => {
     const out = defineConfig(validBase);
     expect(out).toEqual(validBase);
+  });
+
+  it("rejects unknown and retired project config properties", () => {
+    expect(() => defineConfig({ ...validBase, images: { format: "webp" } } as never)).toThrow(
+      /Unrecognized key.*images/u,
+    );
+  });
+
+  it("rejects a site URL that is not a public HTTP origin", () => {
+    expect(() =>
+      defineConfig({
+        ...validBase,
+        site: { name: "Test", url: "https://example.com/admin?preview=1" },
+      }),
+    ).toThrow(/site\.url.*HTTP\(S\) origin/u);
+  });
+
+  it("accepts the active jobs threshold config", () => {
+    expect(
+      defineConfig({ ...validBase, jobs: { stuckThreshold: { failed: 0, expired: 25 } } }),
+    ).toEqual({ ...validBase, jobs: { stuckThreshold: { failed: 0, expired: 25 } } });
   });
 
   it("validates themes before merging their collection requirements", () => {

@@ -7,8 +7,6 @@ export type { NpFileMetadata, NpStorageAdapter } from "./types.js";
 export { LocalStorageAdapter } from "./local.js";
 export { S3StorageAdapter } from "./s3.js";
 
-type NpStorageConfig = NonNullable<NpConfig["storage"]>;
-
 export function createStorageAdapter(config: NpConfig["storage"]): NpStorageAdapter {
   if (!config) {
     throw new Error("Storage configuration is required.");
@@ -26,12 +24,5 @@ export function createStorageAdapter(config: NpConfig["storage"]): NpStorageAdap
     throw new Error("S3 storage configuration is required.");
   }
 
-  const s3Config = config.s3 as NpStorageConfig["s3"] & {
-    credentials?: {
-      accessKeyId: string;
-      secretAccessKey: string;
-    };
-  };
-
-  return new S3StorageAdapter(s3Config);
+  return new S3StorageAdapter(config.s3);
 }

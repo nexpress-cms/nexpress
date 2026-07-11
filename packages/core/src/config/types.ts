@@ -562,6 +562,9 @@ export interface NpResolvedPluginLike {
     version?: string;
     description?: string;
     capabilities: readonly string[];
+    allowedHosts?: readonly string[];
+    nexpress?: { minVersion?: string; maxVersion?: string };
+    requires?: readonly string[];
   };
   hooks?: Record<string, unknown>;
   routes?: ReadonlyArray<{
@@ -1021,16 +1024,17 @@ export interface NpConfig {
   };
   db: {
     connectionString: string;
-    pool?: { max?: number };
   };
-  storage?: {
-    adapter: "local" | "s3";
-    local?: { directory: string; baseUrl: string };
-    s3?: { bucket: string; region: string; endpoint?: string };
-  };
+  storage?:
+    | {
+        adapter: "local";
+        local: { directory: string; baseUrl: string };
+      }
+    | {
+        adapter: "s3";
+        s3: { bucket: string; region: string; endpoint?: string };
+      };
   collections: NpCollectionConfig[];
-  blocks?: NpBlockConfig[];
-  editor?: NpEditorConfig;
   /**
    * Phase 11.1 — multi-theme registry. Sites declare every
    * theme they want available; admins switch between them
@@ -1058,22 +1062,10 @@ export interface NpConfig {
    * doesn't exist in any locale).
    */
   i18n?: NpI18nConfig;
-  images?: {
-    sizes?: NpImageSize[];
-    format?: "webp" | "avif" | "jpeg" | "png";
-    quality?: number;
-  };
   auth?: {
     secret: string;
-    tokenExpiration?: number;
-    refreshTokenExpiration?: number;
-    maxLoginAttempts?: number;
-    lockoutDuration?: number;
   };
   plugins?: Array<NpPluginConfig | NpResolvedPluginLike>;
-  typescript?: {
-    outputFile?: string;
-  };
   /**
    * Phase 23.5 — operational thresholds and policies for the job
    * queue. Currently only carries the stuck-job thresholds the

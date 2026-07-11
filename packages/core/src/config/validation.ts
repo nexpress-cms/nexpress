@@ -144,29 +144,22 @@ const fieldSchema: z.ZodType = z.lazy(() =>
   ]),
 );
 
-const imageSizeSchema = z.object({
-  name: z.string().min(1),
-  width: z.number().positive(),
-  height: z.number().positive().optional(),
-  crop: z.enum(["center", "top", "bottom", "left", "right"]).optional(),
-});
-
 // Discriminated union ties `adapter` to its required backend block —
 // previously both `local` and `s3` were optional regardless of the
 // adapter choice, so a config with `{ adapter: "s3" }` and no `s3`
 // block passed validation and only blew up at runtime when the storage
 // factory tried to read the missing block. (#64)
 const storageSchema = z.discriminatedUnion("adapter", [
-  z.object({
+  z.strictObject({
     adapter: z.literal("local"),
-    local: z.object({
+    local: z.strictObject({
       directory: z.string().min(1),
       baseUrl: z.string().min(1),
     }),
   }),
-  z.object({
+  z.strictObject({
     adapter: z.literal("s3"),
-    s3: z.object({
+    s3: z.strictObject({
       bucket: z.string().min(1),
       region: z.string().min(1),
       endpoint: z.string().url().optional(),
@@ -175,58 +168,46 @@ const storageSchema = z.discriminatedUnion("adapter", [
 ]);
 
 // Plugins are a mix of legacy NpPluginConfig (object with optional init fn)
-// and SDK-built NpResolvedPluginLike (object with manifest). Parse with
-// `z.unknown()` — deeper validation happens when loadPlugins() runs.
+// and SDK-built NpResolvedPluginLike (object with manifest). Preserve each
+// definition here; the project contract validates identity/dependencies and
+// the plugin host validates contribution registries before registration.
 const pluginEntrySchema = z.unknown();
 
-export const npConfigSchema = z.object({
-  site: z.object({
+export const npConfigSchema = z.strictObject({
+  site: z.strictObject({
     name: z.string().min(1),
     url: z.string().url(),
   }),
-  db: z.object({
-    connectionString: z.string(),
-    pool: z
-      .object({
-        max: z.number().int().positive().optional(),
-      })
-      .optional(),
+  db: z.strictObject({
+    connectionString: z.string().min(1),
   }),
   storage: storageSchema.optional(),
   collections: z.array(z.lazy((): z.ZodType => collectionConfigSchema)),
-  blocks: z.array(z.unknown()).optional(),
-  editor: z
-    .object({
-      features: z.array(z.string().min(1)).optional(),
-    })
-    .optional(),
-  images: z
-    .object({
-      sizes: z.array(imageSizeSchema).optional(),
-      format: z.enum(["webp", "avif", "jpeg", "png"]).optional(),
-      quality: z.number().int().min(1).max(100).optional(),
-    })
-    .optional(),
   auth: z
-    .object({
-      secret: z.string().min(1),
-      tokenExpiration: z.number().int().positive().optional(),
-      refreshTokenExpiration: z.number().int().positive().optional(),
-      maxLoginAttempts: z.number().int().positive().optional(),
-      lockoutDuration: z.number().int().positive().optional(),
+    .strictObject({
+      secret: z.string().min(32),
     })
     .optional(),
   plugins: z.array(pluginEntrySchema).optional(),
-  typescript: z.unknown().optional(),
   themes: z.array(z.unknown()).optional(),
   i18n: z
-    .object({
+    .strictObject({
       locales: z.array(z.string().min(1).max(35)).min(1),
       defaultLocale: z.string().min(1),
     })
     .refine((val) => val.locales.includes(val.defaultLocale), {
       message: "defaultLocale must be one of the declared locales",
       path: ["defaultLocale"],
+    })
+    .optional(),
+  jobs: z
+    .strictObject({
+      stuckThreshold: z
+        .strictObject({
+          failed: z.number().int().nonnegative().optional(),
+          expired: z.number().int().nonnegative().optional(),
+        })
+        .optional(),
     })
     .optional(),
 });
