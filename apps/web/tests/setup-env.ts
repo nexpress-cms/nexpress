@@ -15,6 +15,12 @@
  */
 // eslint-disable-next-line import-x/no-relative-packages
 import { getTestDatabaseUrl } from "../../../packages/core/src/integration/setup.js";
+import { configureIntegrationWorkerStorage } from "./integration-storage.js";
+
+// Integration global setup publishes a disposable storage root before Vitest
+// forks workers. Unit tests also load this setup file but have no root, so this
+// intentionally becomes a no-op for them.
+configureIntegrationWorkerStorage();
 
 if (!process.env.NP_SECRET) {
   process.env.NP_SECRET = "test-secret-for-integration-tests-only-32ch";

@@ -49,6 +49,12 @@ transaction would make those paths look cleaner than production. Per-worker
 databases plus truncate cleanup are a little heavier, but they match the app
 runtime more closely.
 
+The `apps/web` integration global setup also creates a disposable local-media
+root under the operating-system temp directory. Each Vitest worker receives a
+separate subdirectory through `NP_STORAGE_DIR`, regardless of storage settings
+in the developer's `.env`, and global teardown removes the entire run root even
+when tests fail. Integration uploads must never write to `apps/web/public/media`.
+
 The default `pnpm test` excludes `*.integration.test.ts` from the core
 package so unit tests stay parallel and fast — run integration suites
 with `pnpm test:integration` (or per-package `pnpm test:integration`).
@@ -82,6 +88,8 @@ with `pnpm test:integration` (or per-package `pnpm test:integration`).
   package, files run in forked workers against isolated cloned databases.
 - Each test truncates every framework table it touches in `beforeEach`, so
   order doesn't matter and state never leaks inside a worker database.
+- Media uploads use per-worker directories under a disposable OS temp root;
+  global teardown removes every file created by the run.
 - Migrations (everything under `apps/web/drizzle/*.sql`) are applied once
   to the template database per test run. Worker databases are cloned from
   that migrated template.

@@ -1,5 +1,6 @@
 // eslint-disable-next-line import-x/no-relative-packages
 import { prepareTemplateDatabase } from "../../../packages/core/src/integration/setup.js";
+import { createIntegrationStorageRoot } from "./integration-storage.js";
 
 /**
  * Vitest globalSetup hook. Runs once in the parent process before any
@@ -9,6 +10,34 @@ import { prepareTemplateDatabase } from "../../../packages/core/src/integration/
  * `_wN` DB on first connect — see setup.ts:ensureWorkerDatabase.
  */
 export default async function () {
-  const teardown = await prepareTemplateDatabase();
-  return teardown;
+  const storage = await createIntegrationStorageRoot();
+
+  let teardownDatabase: () => Promise<void>;
+  try {
+    teardownDatabase = await prepareTemplateDatabase();
+  } catch (error) {
+    try {
+      await storage.cleanup();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "Integration database setup and storage cleanup failed",
+      );
+    }
+    throw error;
+  }
+
+  return async () => {
+    const results = await Promise.allSettled([
+      Promise.resolve().then(teardownDatabase),
+      storage.cleanup(),
+    ]);
+    const errors = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, "Integration database and storage cleanup failed");
+    }
+  };
 }
