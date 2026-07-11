@@ -100,6 +100,7 @@ describe("pattern registry collision warning", () => {
   let warnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    resetSharedBlockRegistry();
     resetSharedPatternRegistry();
     __resetPatternCollisionWarnings();
     warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -153,5 +154,27 @@ describe("pattern registry collision warning", () => {
         blocks: [{ id: "template", type: "missing.block", props: {} }],
       }),
     ).toThrow(/references unknown block type "missing\.block"/);
+  });
+
+  it("rejects pattern props that violate the registered block definition", () => {
+    registerBlock({
+      ...stubBlock("plugin.card", "plugin:cards"),
+      propsSchema: [
+        {
+          name: "title",
+          label: "Title",
+          type: "text",
+          translatable: true,
+          required: true,
+        },
+      ],
+    });
+
+    expect(() =>
+      registerPattern({
+        ...stubPattern("bad-props", "plugin:cards"),
+        blocks: [{ id: "card", type: "plugin.card", props: {} }],
+      }),
+    ).toThrow(/requires prop "title"/);
   });
 });

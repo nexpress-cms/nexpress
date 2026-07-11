@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { NpBlockPropField } from "@nexpress/blocks";
+import { npAnalyzeBlockProps, type NpBlockMetadata } from "@nexpress/blocks";
 
 import { Button } from "../../ui/button.js";
 import {
@@ -19,8 +19,9 @@ import { Textarea } from "../../ui/textarea.js";
  * printed JSON, lets the operator hand-edit, and dispatches
  * REPLACE_PROPS on Apply (replace, not merge — operators expect
  * "remove key in JSON" to actually remove). Validates JSON.parse
- * + non-array object shape, plus soft warnings against the
- * registered propsSchema (missing required / unknown keys).
+ * + non-array object shape, then checks the registered prop
+ * contract. Definition errors block Apply; preservation warnings
+ * still use the two-stage confirmation.
  *
  * Two-stage Apply when there's a lint warning: first click
  * surfaces the banner, second click commits.
@@ -31,39 +32,29 @@ export interface BlockJsonDialogProps {
   onOpenChange: (open: boolean) => void;
   blockType: string;
   props: Record<string, unknown>;
-  propsSchema?: NpBlockPropField[];
+  definition?: NpBlockMetadata;
   onApply: (nextProps: Record<string, unknown>) => void;
 }
 
 /**
- * Lints `props` against the registered prop schema and returns
- * soft warnings (missing required, unknown keys). Returning a
- * string (not throwing) keeps Apply non-blocking — operators can
- * still save a paste that hasn't been schema-finalized yet, the
- * banner just flags it.
+ * Analyzes `props` against the same registered contract used by
+ * save and render. Errors stop Apply; stale-key warnings remain
+ * confirmable so the editor can preserve forward-compatible data.
  */
-function lintBlockProps(
+function analyzeBlockProps(
   props: Record<string, unknown>,
-  schema: NpBlockPropField[] | undefined,
-): string | null {
-  if (!schema || schema.length === 0) return null;
-  const known = new Set(schema.map((field) => field.name));
-  const warnings: string[] = [];
-
-  for (const field of schema) {
-    if (!field.required) continue;
-    const value = props[field.name];
-    if (value === undefined || value === "" || value === null) {
-      warnings.push(`missing required \`${field.name}\``);
-    }
-  }
-
-  for (const key of Object.keys(props)) {
-    if (key === "_layout") continue; // grid-child layout meta, not in propsSchema
-    if (!known.has(key)) warnings.push(`unknown key \`${key}\``);
-  }
-
-  return warnings.length > 0 ? warnings.join("; ") : null;
+  definition: NpBlockMetadata | undefined,
+): { error: string | null; warning: string | null } {
+  if (!definition) return { error: null, warning: null };
+  const issues = npAnalyzeBlockProps(props, definition);
+  return {
+    error: issues.find((issue) => issue.severity === "error")?.message ?? null,
+    warning:
+      issues
+        .filter((issue) => issue.severity === "warning")
+        .map((issue) => issue.message)
+        .join(" ") || null,
+  };
 }
 
 export function BlockJsonDialog({
@@ -71,7 +62,7 @@ export function BlockJsonDialog({
   onOpenChange,
   blockType,
   props,
-  propsSchema,
+  definition,
   onApply,
 }: BlockJsonDialogProps) {
   return (
@@ -80,7 +71,7 @@ export function BlockJsonDialog({
         <BlockJsonDialogContent
           blockType={blockType}
           props={props}
-          propsSchema={propsSchema}
+          definition={definition}
           onApply={onApply}
           onOpenChange={onOpenChange}
         />
@@ -92,7 +83,7 @@ export function BlockJsonDialog({
 function BlockJsonDialogContent({
   blockType,
   props,
-  propsSchema,
+  definition,
   onOpenChange,
   onApply,
 }: Omit<BlockJsonDialogProps, "open">) {
@@ -134,12 +125,16 @@ function BlockJsonDialogContent({
       setError("Block props must be a JSON object.");
       return;
     }
-    const lintWarning = lintBlockProps(parsed as Record<string, unknown>, propsSchema);
-    if (lintWarning && lintWarning !== warning) {
+    const analysis = analyzeBlockProps(parsed as Record<string, unknown>, definition);
+    if (analysis.error) {
+      setError(analysis.error);
+      return;
+    }
+    if (analysis.warning && analysis.warning !== warning) {
       // First time seeing this exact warning — show it and pause.
       // The operator clicks Apply again to confirm; the comparison
       // resets the moment they edit the textarea.
-      setWarning(lintWarning);
+      setWarning(analysis.warning);
       return;
     }
     onApply(parsed as Record<string, unknown>);

@@ -56,6 +56,44 @@ describe("block definition contract", () => {
     }
   });
 
+  it("rejects default prop values that violate the declared prop schema", () => {
+    const direct = npValidateBlockDefinition(
+      validBlock({
+        defaultProps: { count: "three" },
+        propsSchema: [{ name: "count", label: "Count", type: "number" }],
+        summaryFields: ["count"],
+      }),
+    );
+    expect(direct).toEqual(
+      expect.objectContaining({
+        ok: false,
+        message: expect.stringContaining("must be a finite number"),
+      }),
+    );
+
+    const fieldDefault = npValidateBlockDefinition(
+      validBlock({
+        defaultProps: {},
+        propsSchema: [
+          {
+            name: "tone",
+            label: "Tone",
+            type: "select",
+            defaultValue: "missing",
+            options: [{ label: "Info", value: "info" }],
+          },
+        ],
+        summaryFields: ["tone"],
+      }),
+    );
+    expect(fieldDefault).toEqual(
+      expect.objectContaining({
+        ok: false,
+        message: expect.stringContaining("registered option values"),
+      }),
+    );
+  });
+
   it("compiles text patterns with the same no-flag grammar as Admin validation", () => {
     expect(
       npValidateBlockDefinition(

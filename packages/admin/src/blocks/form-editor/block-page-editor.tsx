@@ -1034,7 +1034,7 @@ export function BlockPageEditor({
         open={pageJsonOpen}
         onOpenChange={setPageJsonOpen}
         blocks={blocks}
-        knownTypes={availableBlocks.map((b) => b.type)}
+        definitions={availableBlocks}
         onApply={(nextBlocks) =>
           // Route through `dispatch` (not `historyDispatch
           // RESET_HISTORY`) so the apply lands as one undo step.
@@ -1063,7 +1063,7 @@ export function BlockPageEditor({
       <PastePatternDialog
         open={pasteImportOpen}
         onOpenChange={setPasteImportOpen}
-        knownTypes={availableBlocks.map((b) => b.type)}
+        definitions={availableBlocks}
         onApply={(pattern) => dispatch({ type: "INSERT_PATTERN", pattern })}
       />
 

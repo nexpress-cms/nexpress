@@ -66,6 +66,10 @@ These notes come from building two bundled example plugins in May 2026:
   content. Pattern ids are derived into `manifest.provides.patterns`, and the
   block scaffold plus bundled callout plugin exercise the source-less authoring
   shape.
+- Block instances now add a definition-aware contract above the stable wire
+  shape. Known prop, rich-text, nested-array, and container mismatches fail at
+  defaults, Admin/app saves, preview, pattern registration, rendering, and
+  plugin doctor; inactive types and stale props remain preservation warnings.
 - Plugin scheduled tasks now share one definition contract across the SDK,
   core host, pg-boss registration, and plugin doctor. Invalid cron expressions,
   unsafe or duplicate ids, non-function handlers, and non-void results fail

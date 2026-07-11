@@ -45,6 +45,7 @@ import { useForm, useFormState, useWatch } from "react-hook-form";
 import { z } from "zod";
 
 import { CollectionTabs, type CollectionTabDescriptor } from "./collection-tabs.js";
+import { findCollectionBlockContentError } from "./collection-block-validation.js";
 import { getCollectionFieldDefaultValue } from "./collection-edit-defaults.js";
 import { FieldRenderer } from "./field-renderer.js";
 import { NavMembershipPanel } from "./nav-membership-panel.js";
@@ -59,6 +60,7 @@ import {
 import { ScheduleDialog } from "./schedule-dialog.js";
 import { TranslationTabs } from "./translation-tabs.js";
 import { SaveEventsProvider, useSaveEmitter } from "../blocks/shared/save-events.js";
+import { useBlocksRegistry } from "../blocks/registry-context.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -613,6 +615,7 @@ function CollectionEditViewInner({
 }: CollectionEditViewProps) {
   const router = useRouter();
   const emitSave = useSaveEmitter();
+  const blockDefinitions = useBlocksRegistry();
   const [toast, setToast] = useState<ToastState>(null);
   const [savingAs, setSavingAs] = useState<SaveStatus | null>(null);
   const [isOpeningPreview, setIsOpeningPreview] = useState(false);
@@ -1307,6 +1310,12 @@ function CollectionEditViewInner({
     status: SaveStatus,
     publishedAtOverride?: string,
   ): Promise<{ nextId: string | undefined }> => {
+    const blockError = findCollectionBlockContentError(effectiveFields, values, blockDefinitions);
+    if (blockError) {
+      throw new Error(
+        `Invalid block content in "${fieldLabelByName(blockError.fieldPath)}": ${blockError.issue.message}`,
+      );
+    }
     const method = doc?.id ? "PATCH" : "POST";
     const endpoint = doc?.id
       ? `/api/collections/${collectionSlug}/${String(doc.id)}`

@@ -21,6 +21,8 @@ import type {
   NpThemeSeedTerm,
 } from "@nexpress/theme";
 
+import { validateDocumentBlockContent } from "./block-content-validation";
+
 /**
  * Demo-content seeders shared by the CLI script (`pnpm seed:content`)
  * and the first-boot Admin Setup wizard (#A, follow-up to #396).
@@ -211,6 +213,7 @@ export async function seedPages(
       ...rest,
     };
     if (seedSource) payload.seedSource = seedSource;
+    validateDocumentBlockContent("pages", payload);
     const result = await saveDocument("pages", null, payload, actor, {
       status: "published",
       tx: options.tx,
@@ -219,15 +222,11 @@ export async function seedPages(
       const id = result.doc.id as string;
       // The pipeline's slugField derives from title, so we override
       // the home page's slug with a direct DB write after save.
-      await writeHandle.execute(
-        sql`update np_c_pages set slug = ${slug} where id = ${id}`,
-      );
+      await writeHandle.execute(sql`update np_c_pages set slug = ${slug} where id = ${id}`);
     }
   }
   return { created: pages.length, skipped: false };
 }
-
-
 
 export interface SeedPostsOptions {
   posts?: NpThemeSeedPost[];
@@ -305,20 +304,15 @@ export async function seedPosts(
     if (kind) payload.kind = kind;
     if (typeof order === "number") payload.order = order;
     if (seedSource) payload.seedSource = seedSource;
-    const saved = await saveDocument(
-      "posts",
-      null,
-      payload,
-      actor,
-      { status: status ?? "published", tx: options.tx },
-    );
-    const savedSlug =
-      typeof saved.doc.slug === "string" ? saved.doc.slug : null;
+    validateDocumentBlockContent("posts", payload);
+    const saved = await saveDocument("posts", null, payload, actor, {
+      status: status ?? "published",
+      tx: options.tx,
+    });
+    const savedSlug = typeof saved.doc.slug === "string" ? saved.doc.slug : null;
     const savedId = typeof saved.doc.id === "string" ? saved.doc.id : null;
     if (slug && savedId) {
-      await writeHandle.execute(
-        sql`update np_c_posts set slug = ${slug} where id = ${savedId}`,
-      );
+      await writeHandle.execute(sql`update np_c_posts set slug = ${slug} where id = ${savedId}`);
     }
     const finalSlug = slug ?? savedSlug;
     if (finalSlug && savedId) slugToId.set(finalSlug, savedId);
@@ -387,17 +381,13 @@ export async function seedNavigation(
   const headerExisting = await dbHandle
     .select({ id: npNavigation.id })
     .from(npNavigation)
-    .where(
-      and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, "header")),
-    )
+    .where(and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, "header")))
     .limit(1);
 
   const footerExisting = await dbHandle
     .select({ id: npNavigation.id })
     .from(npNavigation)
-    .where(
-      and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, "footer")),
-    )
+    .where(and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, "footer")))
     .limit(1);
 
   let headerCount = 0;
@@ -579,9 +569,7 @@ function readSeededParentId(parent: unknown): string | null {
 }
 
 function orderSeededTargetsForDelete(targets: SeededTarget[]): SeededTarget[] {
-  const byId = new Map(
-    targets.filter((t) => t.collection === "posts").map((t) => [t.id, t]),
-  );
+  const byId = new Map(targets.filter((t) => t.collection === "posts").map((t) => [t.id, t]));
   const depthCache = new Map<string, number>();
 
   const depth = (target: SeededTarget, visiting = new Set<string>()): number => {
@@ -611,9 +599,7 @@ function orderSeededTargetsForDelete(targets: SeededTarget[]): SeededTarget[] {
  * thousands the cap should fire and the operator should reseed
  * after a manual cleanup instead.
  */
-async function collectSeededTargets(
-  themeIds: string[],
-): Promise<SeededTarget[]> {
+async function collectSeededTargets(themeIds: string[]): Promise<SeededTarget[]> {
   const targets: SeededTarget[] = [];
   for (const themeId of themeIds) {
     const seedSource = `theme:${themeId}`;

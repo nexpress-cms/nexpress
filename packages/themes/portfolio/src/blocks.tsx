@@ -27,8 +27,7 @@ interface CaseStudyHeroProps {
   imageUrl?: string;
 }
 function CaseStudyHero(props: Record<string, unknown>): React.ReactElement {
-  const { title, subtitle, client, year, role, imageUrl } =
-    props as unknown as CaseStudyHeroProps;
+  const { title, subtitle, client, year, role, imageUrl } = props as unknown as CaseStudyHeroProps;
   return (
     <section
       className="np-portfolio-case-study-hero"
@@ -77,7 +76,7 @@ function CaseStudyHero(props: Record<string, unknown>): React.ReactElement {
             {subtitle}
           </p>
         ) : null}
-        {(client || year || role) ? (
+        {client || year || role ? (
           <div
             style={{
               display: "flex",
@@ -90,7 +89,15 @@ function CaseStudyHero(props: Record<string, unknown>): React.ReactElement {
           >
             {client ? (
               <div>
-                <span style={{ display: "block", opacity: 0.6, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                <span
+                  style={{
+                    display: "block",
+                    opacity: 0.6,
+                    fontSize: "0.75rem",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                  }}
+                >
                   Client
                 </span>
                 {client}
@@ -98,7 +105,15 @@ function CaseStudyHero(props: Record<string, unknown>): React.ReactElement {
             ) : null}
             {year ? (
               <div>
-                <span style={{ display: "block", opacity: 0.6, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                <span
+                  style={{
+                    display: "block",
+                    opacity: 0.6,
+                    fontSize: "0.75rem",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                  }}
+                >
                   Year
                 </span>
                 {year}
@@ -106,7 +121,15 @@ function CaseStudyHero(props: Record<string, unknown>): React.ReactElement {
             ) : null}
             {role ? (
               <div>
-                <span style={{ display: "block", opacity: 0.6, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                <span
+                  style={{
+                    display: "block",
+                    opacity: 0.6,
+                    fontSize: "0.75rem",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                  }}
+                >
                   Role
                 </span>
                 {role}
@@ -212,9 +235,17 @@ export const portfolioBlocks: NpBlockDefinition[] = [
     },
     propsSchema: [
       { name: "columns", label: "Columns", type: "number" },
-      // `items` edited as JSON in v0.2; richer per-item editor
-      // (drag-to-reorder, add/remove) tracked as F.5.1 polish.
-      { name: "items", label: "Items (JSON)", type: "textarea", translatable: false },
+      {
+        name: "items",
+        label: "Items",
+        type: "array",
+        itemDefault: { url: "https://placehold.co/800x600", alt: "", caption: "" },
+        itemSchema: [
+          { name: "url", label: "Image URL", type: "url", required: true },
+          { name: "alt", label: "Alt text", type: "text", translatable: true },
+          { name: "caption", label: "Caption", type: "text", translatable: true },
+        ],
+      },
     ],
     render: (props) => <ImageGrid {...props} />,
   },
@@ -227,9 +258,7 @@ export const portfolioBlocks: NpBlockDefinition[] = [
     defaultProps: {
       heading: "Selected clients",
     },
-    propsSchema: [
-      { name: "heading", label: "Section heading", type: "text", translatable: true },
-    ],
+    propsSchema: [{ name: "heading", label: "Section heading", type: "text", translatable: true }],
     // `ClientLogosStrip` is itself an async server component —
     // it reads `settings.clientLogos` so the operator manages
     // logos in admin's Theme settings panel (a single canonical

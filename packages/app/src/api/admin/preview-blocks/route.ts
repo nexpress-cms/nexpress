@@ -1,5 +1,9 @@
 import { NpForbiddenError, can, getTheme } from "@nexpress/core";
-import { npValidateBlockContent, renderBlocks } from "@nexpress/blocks";
+import {
+  getRegisteredBlockMetadata,
+  npValidateBlockContentAgainstDefinitions,
+  renderBlocks,
+} from "@nexpress/blocks";
 import { createSiteScopedBlockRenderContext } from "@nexpress/next";
 import { generateThemeCss } from "@nexpress/theme";
 import type { NextRequest } from "next/server";
@@ -59,9 +63,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (await request.json()) as { blocks?: unknown };
-    const validation = npValidateBlockContent(body.blocks);
+    const validation = npValidateBlockContentAgainstDefinitions(
+      body.blocks,
+      getRegisteredBlockMetadata(),
+    );
     if (!validation.ok) {
-      return new Response(buildErrorDocument(validation.message), {
+      const firstError = validation.issues.find((issue) => issue.severity === "error");
+      return new Response(buildErrorDocument(firstError?.message ?? "Invalid block content."), {
         status: 400,
         headers: previewHeaders(),
       });

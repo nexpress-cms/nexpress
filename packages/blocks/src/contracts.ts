@@ -15,6 +15,15 @@ export {
   type NpBlockPropFieldType,
 } from "./block-contract.js";
 export {
+  npAnalyzeBlockContent,
+  npAnalyzeBlockProps,
+  npValidateBlockContentAgainstDefinitions,
+  type NpBlockContentContractResult,
+  type NpBlockContentIssue,
+  type NpBlockContentIssueCode,
+  type NpBlockContentIssueSeverity,
+} from "./content-contract.js";
+export {
   npAnalyzePatternDefinitions,
   npValidatePattern,
   npValidatePatternDefinition,

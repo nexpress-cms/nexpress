@@ -62,16 +62,14 @@ describe("parseFindOptions", () => {
   });
 
   it("rejects a non-JSON where", () => {
-    expect(() =>
-      helpers.parseFindOptions(new URLSearchParams("where=not-json")),
-    ).toThrow(NpValidationError);
+    expect(() => helpers.parseFindOptions(new URLSearchParams("where=not-json"))).toThrow(
+      NpValidationError,
+    );
   });
 
   it("rejects a non-object where", () => {
     expect(() =>
-      helpers.parseFindOptions(
-        new URLSearchParams(`where=${encodeURIComponent("[1,2]")}`),
-      ),
+      helpers.parseFindOptions(new URLSearchParams(`where=${encodeURIComponent("[1,2]")}`)),
     ).toThrow(NpValidationError);
   });
 
@@ -85,9 +83,7 @@ describe("parseFindOptions", () => {
 
   it("strips reserved `siteId` from user-supplied where (#598 cross-tenant smuggling guard)", () => {
     const out = helpers.parseFindOptions(
-      new URLSearchParams(
-        `where=${encodeURIComponent('{"siteId":"*","status":"published"}')}`,
-      ),
+      new URLSearchParams(`where=${encodeURIComponent('{"siteId":"*","status":"published"}')}`),
     );
     // The pipeline interprets `siteId === "*"` as a trusted-caller
     // cross-tenant sentinel. An anonymous query parameter must not
@@ -98,9 +94,7 @@ describe("parseFindOptions", () => {
 
   it("strips reserved `visibility` from user-supplied where (#598 visibility smuggling guard)", () => {
     const out = helpers.parseFindOptions(
-      new URLSearchParams(
-        `where=${encodeURIComponent('{"visibility":"*","status":"published"}')}`,
-      ),
+      new URLSearchParams(`where=${encodeURIComponent('{"visibility":"*","status":"published"}')}`),
     );
     // `visibility === "*"` would drop the public-only filter for
     // anonymous reads, exposing private posts.
@@ -122,9 +116,7 @@ describe("parseFindOptions", () => {
   it("preserves non-reserved keys verbatim", () => {
     const out = helpers.parseFindOptions(
       new URLSearchParams(
-        `where=${encodeURIComponent(
-          '{"author":"u-1","tag":"news","status":"published"}',
-        )}`,
+        `where=${encodeURIComponent('{"author":"u-1","tag":"news","status":"published"}')}`,
       ),
     );
     expect(out.where).toEqual({
@@ -213,7 +205,32 @@ describe("collection operations", () => {
     const user = { id: "u", email: "u@x", name: "u", role: "admin" as const, tokenVersion: 0 };
     await helpers.saveCollectionDocument("posts", null, { title: "x" }, user, { status: "draft" });
 
-    expect(core.saveDocument).toHaveBeenCalledWith("posts", null, { title: "x" }, user, { status: "draft" });
+    expect(core.saveDocument).toHaveBeenCalledWith("posts", null, { title: "x" }, user, {
+      status: "draft",
+    });
+  });
+
+  it("runs the optional host save validator after readiness and before the core write", async () => {
+    const calls: string[] = [];
+    const validateSave = vi.fn().mockImplementation(() => {
+      calls.push("validate");
+    });
+    vi.mocked(core.saveDocument).mockImplementation(() => {
+      calls.push("save");
+      return Promise.resolve({ doc: { id: "new" }, operation: "create" });
+    });
+    const helpers = createCollectionHelpers({
+      ensureReady: () => {
+        calls.push("ready");
+      },
+      validateSave,
+    });
+    const user = { id: "u", email: "u@x", name: "u", role: "admin" as const, tokenVersion: 0 };
+
+    await helpers.saveCollectionDocument("pages", null, { blocks: [] }, user);
+
+    expect(calls).toEqual(["ready", "validate", "save"]);
+    expect(validateSave).toHaveBeenCalledWith("pages", { blocks: [] });
   });
 
   it("deleteCollectionDocument awaits ensureReady even though it returns void", async () => {

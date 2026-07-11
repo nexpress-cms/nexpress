@@ -1,7 +1,8 @@
-import type {
-  NpBlockInstance,
-  NpBlockMetadata,
-  NpBlockPropField,
+import {
+  npAnalyzeBlockContent,
+  type NpBlockInstance,
+  type NpBlockMetadata,
+  type NpBlockPropField,
 } from "@nexpress/blocks";
 
 import type { FieldGroupSection } from "./types.js";
@@ -24,10 +25,7 @@ export const isRecord = (value: unknown): value is Record<string, unknown> =>
  * so e.g. a required number with no default still flags
  * undefined as missing.
  */
-export const getFieldValue = (
-  field: NpBlockPropField,
-  value: unknown,
-): unknown => {
+export const getFieldValue = (field: NpBlockPropField, value: unknown): unknown => {
   if (value !== undefined) return value;
   if (field.defaultValue !== undefined) return field.defaultValue;
   if (field.type === "boolean") return false;
@@ -40,10 +38,7 @@ export const getFieldValue = (
  * the wire shape for the given field type. Handles richtext JSON
  * round-trip + number coercion fallbacks.
  */
-export const parseFieldInput = (
-  field: NpBlockPropField,
-  rawValue: string | boolean,
-): unknown => {
+export const parseFieldInput = (field: NpBlockPropField, rawValue: string | boolean): unknown => {
   if (field.type === "boolean") return Boolean(rawValue);
   if (field.type === "number") {
     if (typeof rawValue === "string") {
@@ -109,10 +104,7 @@ export function isFieldHidden(
  * pattern>` semantics so the soft warning and the native browser
  * validation agree on whether a value passes.
  */
-export function lintFieldValue(
-  field: NpBlockPropField,
-  value: unknown,
-): string | null {
+export function lintFieldValue(field: NpBlockPropField, value: unknown): string | null {
   if (field.type === "number") {
     if (typeof value !== "number" || !Number.isFinite(value)) return null;
     if (typeof field.min === "number" && value < field.min) {
@@ -125,9 +117,7 @@ export function lintFieldValue(
   }
   if ((field.type === "text" || field.type === "url") && field.pattern) {
     if (typeof value !== "string" || value.length === 0) return null;
-    const sourceWithoutAnchors = field.pattern
-      .replace(/^\^/, "")
-      .replace(/\$$/, "");
+    const sourceWithoutAnchors = field.pattern.replace(/^\^/, "").replace(/\$$/, "");
     let regex: RegExp;
     try {
       regex = new RegExp(`^(?:${sourceWithoutAnchors})$`);
@@ -185,22 +175,12 @@ export function groupVisibleFields(
 export function getRowValidationStatus(
   definition: NpBlockMetadata | undefined,
   block: NpBlockInstance,
+  definitions: Iterable<NpBlockMetadata> = definition ? [definition] : [],
 ): "error" | "warning" | null {
   if (!definition) return null;
-  let warning = false;
-  for (const field of definition.propsSchema) {
-    if (isFieldHidden(field, block.props)) continue;
-    const rawValue = block.props[field.name];
-    if (
-      field.required === true &&
-      (rawValue === undefined || rawValue === "" || rawValue === null)
-    ) {
-      return "error";
-    }
-    const value = getFieldValue(field, rawValue);
-    if (lintFieldValue(field, value)) warning = true;
-  }
-  return warning ? "warning" : null;
+  const issues = npAnalyzeBlockContent([block], definitions);
+  if (issues.some((issue) => issue.severity === "error")) return "error";
+  return issues.some((issue) => issue.severity === "warning") ? "warning" : null;
 }
 
 /**
@@ -216,10 +196,7 @@ export function deleteNeedsConfirmation(
 ): boolean {
   if (block.children && block.children.length > 0) return true;
   const defaults = definition?.defaultProps ?? {};
-  const propKeys = new Set([
-    ...Object.keys(defaults),
-    ...Object.keys(block.props),
-  ]);
+  const propKeys = new Set([...Object.keys(defaults), ...Object.keys(block.props)]);
   for (const key of propKeys) {
     if (key === "_layout") continue; // grid-child layout meta is structural
     const next = block.props[key];

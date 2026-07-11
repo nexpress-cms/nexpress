@@ -2,6 +2,7 @@ import { NpValidationError, type NpDocumentStatus, type NpSaveOptions } from "@n
 import { createCollectionHelpers } from "@nexpress/next";
 
 import { ensureFor } from "./init-core";
+import { validateDocumentBlockContent } from "./block-content-validation";
 
 export const {
   parseFindOptions,
@@ -11,6 +12,7 @@ export const {
   deleteCollectionDocument,
 } = createCollectionHelpers({
   ensureReady: () => ensureFor("write"),
+  validateSave: validateDocumentBlockContent,
 });
 
 const VALID_STATUSES: readonly NpDocumentStatus[] = [

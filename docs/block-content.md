@@ -64,11 +64,33 @@ Generated collection document types use `NpBlockContent` rather than
 `unknown`, and OpenAPI collection schemas reference the recursive
 `block_instance` component.
 
-The wire validator checks structure, not a registered block's author-defined
-`propsSchema`. Definition-aware editor validation is a separate layer because
-the client-safe collection validator cannot import the server-rendering block
-registry. This separation also keeps inactive plugin/theme content
-round-trippable.
+The wire validator checks structure without consulting a registry. The
+definition-aware layer in `@nexpress/blocks` then connects an instance to the
+currently registered `propsSchema` and container contract:
+
+```ts
+import {
+  getRegisteredBlockMetadata,
+  npAnalyzeBlockContent,
+  npValidateBlockContentAgainstDefinitions,
+} from "@nexpress/blocks";
+
+const issues = npAnalyzeBlockContent(content, getRegisteredBlockMetadata());
+const result = npValidateBlockContentAgainstDefinitions(content, getRegisteredBlockMetadata());
+```
+
+Known prop type, required value, pattern, numeric bound/step, select option,
+rich-text envelope, nested array schema, leaf/container, maximum-child, and
+allowed-child violations are errors. Unknown block types and stale extra props
+are warnings: disabling a plugin or tightening a schema must not destroy stored
+content. `_layout` remains reserved parent-owned layout metadata and is not
+treated as a stale prop. `minChildren` remains a warning because an in-progress
+edit naturally passes through incomplete container states.
+
+The definition-aware validator runs before Admin saves, app collection writes,
+live preview, pattern persistence/registration, and block rendering. Plugin
+doctor applies it to contributed patterns. This layer stays outside core so the
+client-safe collection validator does not import the rendering registry.
 
 ## Evolution
 

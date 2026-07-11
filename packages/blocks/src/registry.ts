@@ -15,6 +15,7 @@ import {
   testimonialsBlock,
 } from "./blocks/index.js";
 import { npValidateBlockDefinition } from "./block-contract.js";
+import { npAnalyzeBlockContent } from "./content-contract.js";
 import { npAnalyzePatternDefinitions, npValidatePattern } from "./pattern-contract.js";
 import type { NpBlockDefinition, NpBlockMetadata, NpBlockRegistry, NpPattern } from "./types.js";
 
@@ -212,6 +213,11 @@ function assertValidPattern(pattern: unknown): asserts pattern is NpPattern {
     knownBlockTypes: new Set(sharedDefinitions.keys()),
   }).find((issue) => issue.code === "unknown-block-type");
   if (referenceIssue) throw new Error(`Invalid pattern definition: ${referenceIssue.message}`);
+  const validPattern = pattern as NpPattern;
+  const contentIssue = npAnalyzeBlockContent(validPattern.blocks, sharedDefinitions.values()).find(
+    (issue) => issue.severity === "error",
+  );
+  if (contentIssue) throw new Error(`Invalid pattern definition: ${contentIssue.message}`);
 }
 
 /**

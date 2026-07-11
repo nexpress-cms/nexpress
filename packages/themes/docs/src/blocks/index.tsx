@@ -330,11 +330,20 @@ const docsApiTableBlock: NpBlockDefinition = {
   source: "theme",
   keywords: ["api", "reference", "table", "schema", "props"],
   defaultProps: {
-    columns: ["Name", "Type", "Description"],
+    columns: [{ value: "Name" }, { value: "Type" }, { value: "Description" }],
     rows: [
-      { cells: ["slug", "string", "Unique URL fragment."], required: true },
-      { cells: ["title", "string", "Document title."], required: true },
-      { cells: ["body", "RichText", "Lexical body content."], required: false },
+      {
+        cells: [{ value: "slug" }, { value: "string" }, { value: "Unique URL fragment." }],
+        required: true,
+      },
+      {
+        cells: [{ value: "title" }, { value: "string" }, { value: "Document title." }],
+        required: true,
+      },
+      {
+        cells: [{ value: "body" }, { value: "RichText" }, { value: "Lexical body content." }],
+        required: false,
+      },
     ],
   },
   propsSchema: [
@@ -342,7 +351,7 @@ const docsApiTableBlock: NpBlockDefinition = {
       name: "columns",
       label: "Columns",
       type: "array",
-      defaultValue: ["Name", "Type", "Description"],
+      defaultValue: [{ value: "Name" }, { value: "Type" }, { value: "Description" }],
       itemDefault: { value: "Column" },
       itemSchema: [
         {
@@ -358,7 +367,12 @@ const docsApiTableBlock: NpBlockDefinition = {
       name: "rows",
       label: "Rows",
       type: "array",
-      defaultValue: [{ cells: ["slug", "string", "Unique URL fragment."], required: true }],
+      defaultValue: [
+        {
+          cells: [{ value: "slug" }, { value: "string" }, { value: "Unique URL fragment." }],
+          required: true,
+        },
+      ],
       itemDefault: { cells: [], required: false },
       itemSchema: [
         {
@@ -387,10 +401,9 @@ const docsApiTableBlock: NpBlockDefinition = {
     },
   ],
   render: (props) => {
-    // The propsSchema `array.itemSchema` UI nests cell objects with a
-    // `{ value }` shape; runtime / seed data ships flat string arrays.
-    // Normalise both shapes back to `string[]` so the seeded fixtures
-    // and the admin-authored data render identically.
+    // The registered nested array schema stores headers and cells as
+    // `{ value }` objects. Keep the string branch defensive for data
+    // imported before the structured contract was enforced.
     const rawColumns: unknown = props.columns;
     const columns = Array.isArray(rawColumns)
       ? rawColumns.map((entry) => {

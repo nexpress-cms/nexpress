@@ -19,6 +19,7 @@ import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { requireAuth } from "../../../../lib/auth-helpers";
+import { validateDocumentBlockContent } from "../../../../lib/block-content-validation";
 import { ensureFor } from "../../../../lib/init-core";
 
 /**
@@ -124,6 +125,7 @@ export async function POST(request: NextRequest) {
       const stripped = stripUnknownInstances(validation.value, await getKnownTypes(), filterTypes);
       if (stripped.removed === 0) continue;
       const updatedData = { ...row, [doc.fieldName]: stripped.kept };
+      validateDocumentBlockContent(doc.collection, updatedData);
       await saveDocument(doc.collection, doc.docId, updatedData, user);
       removedInstances += stripped.removed;
       updatedDocs += 1;

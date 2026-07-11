@@ -9,6 +9,10 @@ import {
 } from "@nexpress/core";
 import { npSettings } from "@nexpress/core/db";
 import { npValidateBlockContent, type NpBlockContent } from "@nexpress/core/fields";
+import {
+  getRegisteredBlockMetadata,
+  npValidateBlockContentAgainstDefinitions,
+} from "@nexpress/blocks";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
@@ -116,10 +120,14 @@ export async function POST(request: NextRequest) {
         { field: "label", message: "label is required" },
       ]);
     }
-    const blocksValidation = npValidateBlockContent(body.blocks);
+    const blocksValidation = npValidateBlockContentAgainstDefinitions(
+      body.blocks,
+      getRegisteredBlockMetadata(),
+    );
     if (!blocksValidation.ok) {
+      const firstError = blocksValidation.issues.find((issue) => issue.severity === "error");
       throw new NpValidationError("Invalid input", [
-        { field: "blocks", message: blocksValidation.message },
+        { field: "blocks", message: firstError?.message ?? "Invalid block content" },
       ]);
     }
     const id =

@@ -137,7 +137,7 @@ export function SortableBlockItem({
   const isChildOfGrid = parentBlock?.type === "grid";
   const summary = getRowSummary(definition, block);
   const childCount = block.children?.length ?? 0;
-  const validationStatus = getRowValidationStatus(definition, block);
+  const validationStatus = getRowValidationStatus(definition, block, definitions.values());
   const selfOpen = isOpen(block.id);
   const selfSelected = isSelected(block.id);
 
@@ -338,7 +338,7 @@ export function SortableBlockItem({
           onOpenChange={setJsonOpen}
           blockType={block.type}
           props={block.props}
-          propsSchema={definition?.propsSchema}
+          definition={definition}
           onApply={(nextProps) => onReplaceProps(block.id, nextProps)}
         />
         <DeleteBlockDialog

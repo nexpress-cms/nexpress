@@ -8,6 +8,7 @@ import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { optionalAuth } from "../../../lib/auth-helpers";
+import { validateDocumentBlockContent } from "../../../lib/block-content-validation";
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import {
   extractSaveOptions,
@@ -20,10 +21,7 @@ import { ensureFor } from "../../../lib/init-core";
 import { optionalMember } from "../../../lib/member-auth-helpers";
 import { revalidateCollection } from "../../../lib/revalidate";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> },
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
     const user = await optionalAuth(request);
@@ -91,6 +89,7 @@ export async function POST(
     await ensureFor("write");
     const data = parseBodyRecord(await readJsonBody(request));
     const saveOptions = extractSaveOptions(data);
+    validateDocumentBlockContent(slug, data);
     const result = await createMemberDocument(slug, data, member.id, saveOptions);
     revalidateCollection(slug, result.doc);
     return npSuccessResponse(result.doc, { status: 201 });

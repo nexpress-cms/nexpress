@@ -41,30 +41,20 @@ interface HeroFeatureProps {
 type HeroStyle = "featured" | "carousel" | "grid";
 
 /**
- * Parse a textarea-driven items prop. The admin's JSON-textarea
- * field-control stores its value AS A STRING — so when an operator
- * edits `items` in the props form, what comes back at render time
- * is the JSON string, not a parsed array. Newly-inserted blocks
- * still hit the `defaultProps` array branch (no operator edit yet),
- * so we have to handle both shapes.
- *
- * Returns `[]` for any unparseable input — the block surfaces an
- * "Add items" placeholder, never throws on malformed JSON.
+ * The registered array field stores structured items. The string
+ * branch remains defensive for content imported from the earlier
+ * JSON-textarea definition and never lets malformed input throw.
  */
 function parseItems(raw: unknown): HeroItem[] {
-  const arr =
-    Array.isArray(raw)
-      ? raw
-      : typeof raw === "string" && raw.trim().length > 0
-        ? safeJsonArray(raw)
-        : [];
+  const arr = Array.isArray(raw)
+    ? raw
+    : typeof raw === "string" && raw.trim().length > 0
+      ? safeJsonArray(raw)
+      : [];
   // Filter to objects only — null / number / string array elements
   // (e.g. from a malformed operator paste) are dropped silently
   // rather than tripping `item.title` access on a non-object.
-  return arr.filter(
-    (item): item is HeroItem =>
-      typeof item === "object" && item !== null,
-  );
+  return arr.filter((item): item is HeroItem => typeof item === "object" && item !== null);
 }
 
 function safeJsonArray(raw: string): unknown[] {
@@ -76,9 +66,7 @@ function safeJsonArray(raw: string): unknown[] {
   }
 }
 
-async function HeroFeature(
-  props: Record<string, unknown>,
-): Promise<React.ReactElement> {
+async function HeroFeature(props: Record<string, unknown>): Promise<React.ReactElement> {
   const {
     title,
     subtitle,
@@ -93,8 +81,7 @@ async function HeroFeature(
   // from theme settings. The cached read shares one DB hit
   // across multiple block instances on the same page.
   const settings = await resolveMagazineSettings();
-  const style: HeroStyle =
-    styleOverride !== "auto" ? styleOverride : settings.heroStyle;
+  const style: HeroStyle = styleOverride !== "auto" ? styleOverride : settings.heroStyle;
 
   if (style === "carousel") {
     return (
@@ -109,13 +96,7 @@ async function HeroFeature(
   }
   if (style === "grid") {
     return (
-      <HeroGrid
-        title={title}
-        subtitle={subtitle}
-        ctaText={ctaText}
-        ctaUrl={ctaUrl}
-        items={items}
-      />
+      <HeroGrid title={title} subtitle={subtitle} ctaText={ctaText} ctaUrl={ctaUrl} items={items} />
     );
   }
   return (
@@ -237,23 +218,13 @@ function HeroCarousel({
       {items.length > 0 ? (
         <div className="np-magazine-hero-carousel-track" role="list">
           {items.map((item, i) => (
-            <article
-              key={i}
-              className="np-magazine-hero-carousel-card"
-              role="listitem"
-            >
-              {item.imageUrl ? (
-                <img src={item.imageUrl} alt="" loading="lazy" />
-              ) : null}
+            <article key={i} className="np-magazine-hero-carousel-card" role="listitem">
+              {item.imageUrl ? <img src={item.imageUrl} alt="" loading="lazy" /> : null}
               <div>
                 {item.category ? (
-                  <p className="np-magazine-hero-card-category">
-                    {item.category}
-                  </p>
+                  <p className="np-magazine-hero-card-category">{item.category}</p>
                 ) : null}
-                <h2>
-                  {item.url ? <a href={item.url}>{item.title}</a> : item.title}
-                </h2>
+                <h2>{item.url ? <a href={item.url}>{item.title}</a> : item.title}</h2>
               </div>
             </article>
           ))}
@@ -270,18 +241,9 @@ function HeroCarousel({
 /** Grid layout — heading row + 3-column responsive grid of
  *  story tiles. Same items shape as carousel; CSS handles the
  *  layout switch. */
-function HeroGrid({
-  title,
-  subtitle,
-  ctaText,
-  ctaUrl,
-  items,
-}: MultiHeroProps): React.ReactElement {
+function HeroGrid({ title, subtitle, ctaText, ctaUrl, items }: MultiHeroProps): React.ReactElement {
   return (
-    <section
-      className="np-magazine-hero-feature np-magazine-hero-grid"
-      data-hero-style="grid"
-    >
+    <section className="np-magazine-hero-feature np-magazine-hero-grid" data-hero-style="grid">
       <header className="np-magazine-hero-header">
         <h1>{title}</h1>
         {subtitle ? <p>{subtitle}</p> : null}
@@ -295,18 +257,12 @@ function HeroGrid({
         <div className="np-magazine-hero-grid-tiles">
           {items.map((item, i) => (
             <article key={i} className="np-magazine-hero-grid-tile">
-              {item.imageUrl ? (
-                <img src={item.imageUrl} alt="" loading="lazy" />
-              ) : null}
+              {item.imageUrl ? <img src={item.imageUrl} alt="" loading="lazy" /> : null}
               <div>
                 {item.category ? (
-                  <p className="np-magazine-hero-card-category">
-                    {item.category}
-                  </p>
+                  <p className="np-magazine-hero-card-category">{item.category}</p>
                 ) : null}
-                <h2>
-                  {item.url ? <a href={item.url}>{item.title}</a> : item.title}
-                </h2>
+                <h2>{item.url ? <a href={item.url}>{item.title}</a> : item.title}</h2>
               </div>
             </article>
           ))}
@@ -391,10 +347,7 @@ function SectionStrip(props: Record<string, unknown>): React.ReactElement {
               </p>
             ) : null}
             <h3 style={{ margin: "0.25rem 0 0", fontSize: "1.125rem" }}>
-              <a
-                href={item.url}
-                style={{ color: "inherit", textDecoration: "none" }}
-              >
+              <a href={item.url} style={{ color: "inherit", textDecoration: "none" }}>
                 {item.title}
               </a>
             </h3>
@@ -414,8 +367,7 @@ export const magazineBlocks: NpBlockDefinition[] = [
     keywords: ["hero", "magazine", "lead", "feature"],
     defaultProps: {
       title: "The Story Above the Fold",
-      subtitle:
-        "Subdeck — a one- or two-line summary of the lead piece.",
+      subtitle: "Subdeck — a one- or two-line summary of the lead piece.",
       ctaText: "Read the article",
       ctaUrl: "#",
       imageUrl: "",
@@ -446,14 +398,25 @@ export const magazineBlocks: NpBlockDefinition[] = [
           { label: "Grid (3-column tiles)", value: "grid" },
         ],
       },
-      // Items array used by carousel/grid variants. Edited as
-      // JSON in v0.2 — same UX as section-strip's `items`.
-      // Featured layout ignores this field.
+      // Items array used by carousel/grid variants. Featured
+      // layout ignores this field.
       {
         name: "items",
-        label: "Items (carousel/grid only, JSON)",
-        type: "textarea",
-        translatable: false,
+        label: "Items (carousel/grid only)",
+        type: "array",
+        itemDefault: { title: "New story", url: "#", imageUrl: "", category: "" },
+        itemSchema: [
+          {
+            name: "title",
+            label: "Headline",
+            type: "text",
+            translatable: true,
+            required: true,
+          },
+          { name: "url", label: "URL", type: "url" },
+          { name: "imageUrl", label: "Image URL", type: "url" },
+          { name: "category", label: "Category", type: "text", translatable: true },
+        ],
       },
     ],
     render: (props) => HeroFeature(props),
@@ -474,9 +437,23 @@ export const magazineBlocks: NpBlockDefinition[] = [
     },
     propsSchema: [
       { name: "heading", label: "Section heading", type: "text", translatable: true },
-      // The `items` array is edited as JSON in v0.2; a richer
-      // editor (drag-to-reorder, item picker) is F.5.1 polish.
-      { name: "items", label: "Items (JSON)", type: "textarea", translatable: false },
+      {
+        name: "items",
+        label: "Items",
+        type: "array",
+        itemDefault: { title: "New story", url: "#", category: "" },
+        itemSchema: [
+          {
+            name: "title",
+            label: "Headline",
+            type: "text",
+            translatable: true,
+            required: true,
+          },
+          { name: "url", label: "URL", type: "url", required: true },
+          { name: "category", label: "Category", type: "text", translatable: true },
+        ],
+      },
     ],
     render: (props) => <SectionStrip {...props} />,
   },

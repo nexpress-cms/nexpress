@@ -110,7 +110,11 @@ Type-specific rules are checked during plugin loading:
 - `media` owns the optional `accept` MIME-prefix list.
 
 `summaryFields` must reference names in the top-level `propsSchema`, which
-catches stale collapsed-row summaries during plugin evaluation.
+catches stale collapsed-row summaries during plugin evaluation. Values in
+`defaultProps` and field-level `defaultValue` entries are also checked against
+their declared field types, constraints, rich-text envelope, and nested array
+schema. A malformed default therefore fails while the plugin module loads,
+rather than after an operator inserts the first instance.
 
 For i18n-enabled collections with a `blocks` field, the XLIFF and Gettext
 translation adapters follow only props marked `translatable: true`. They
@@ -130,9 +134,9 @@ Only container blocks may declare:
 - `minChildren`: non-negative integer.
 - `maxChildren`: non-negative integer.
 
-When both bounds exist, `minChildren` must not exceed `maxChildren`. These
-constraints guide Admin editing; an in-progress document can still temporarily
-contain too few children.
+When both bounds exist, `minChildren` must not exceed `maxChildren`. Disallowed
+child types and excess children block save and render; an in-progress document
+can still temporarily contain too few children and receives a warning instead.
 
 ## Registration and collisions
 
@@ -182,5 +186,9 @@ contract.
 - `npValidateBlockDefinition(value)` for one definition.
 - `npAnalyzeBlockDefinitions(value)` for array and duplicate analysis.
 - `npBlockPropFieldTypes` for tools that need the supported field inventory.
+- `npAnalyzeBlockContent(value, definitions)` for error/warning diagnostics.
+- `npAnalyzeBlockProps(value, definition)` for prop-only editor boundaries.
+- `npValidateBlockContentAgainstDefinitions(value, definitions)` for a
+  fail-closed boundary result.
 
 These are the same helpers used by the SDK, bootstrap, registry, and doctor.
