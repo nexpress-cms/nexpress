@@ -54,6 +54,19 @@ on purpose (see "Unwrap a wrapper" below).
 
 The `pnpm run setup` wizard writes the `.env`; manual edits work too.
 
+`defineConfig()` is an exact module-evaluation boundary. The active top-level
+keys are `site`, `db`, `storage`, `collections`, `themes`, `i18n`, `auth`,
+`plugins`, and `jobs`; unknown keys and unknown nested properties fail instead
+of being silently retained or ignored. Runtime auth TTL/lockout values are env
+settings (`NP_TOKEN_EXPIRATION`, `NP_REFRESH_TOKEN_EXPIRATION`,
+`NP_MAX_LOGIN_ATTEMPTS`, `NP_LOCKOUT_DURATION`), not config properties.
+
+The same non-throwing contract is available to tooling through
+`npAnalyzeProjectConfig()` and `npValidateProjectConfig()` from
+`@nexpress/core`. It also checks that `site.url` is an HTTP(S) origin, storage
+URLs are usable, locales are canonical and unique, and plugin ids/dependencies
+form one complete acyclic inventory.
+
 ### Plugins
 
 ```bash

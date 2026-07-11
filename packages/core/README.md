@@ -21,6 +21,11 @@ Server-only — `@nexpress/core` imports `pg`, `sharp`, `@node-rs/argon2`,
 The standard NexPress app declares it in
 [`serverExternalPackages`](https://nextjs.org/docs/app/api-reference/config/next-config-js/serverExternalPackages).
 
+`defineConfig()` validates the exact active project surface at module
+evaluation. `npAnalyzeProjectConfig()` and `npValidateProjectConfig()` expose
+the same non-throwing site, storage, i18n, and plugin-inventory contract for
+tooling.
+
 ## Subpath exports
 
 Domain-bounded entries — prefer these over the catch-all root:

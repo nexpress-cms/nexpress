@@ -8,6 +8,7 @@ import {
   npValidateCollectionDefinition,
   npValidateCollectionDefinitions,
 } from "./collection-definition-contract.js";
+import { npAnalyzeProjectConfig } from "./project-config-contract.js";
 
 /**
  * Validates the project's NpConfig against the declarative schema and returns
@@ -22,8 +23,8 @@ import {
  * "set NP_SECRET in .env, or run `pnpm run setup`" hints so the new operator
  * isn't googling Zod path strings.
  *
- * Unknown plugin entries are accepted here — the plugin loader does the
- * deeper validation of manifests against @nexpress/plugin-sdk.
+ * Plugin identity and dependency graphs are validated here; the plugin loader
+ * performs the deeper contribution-registry validation at its host boundary.
  *
  * After validation, theme requirements are auto-merged into the
  * `collections` array via `mergeThemeRequirements`. Operators no
@@ -40,6 +41,13 @@ export function defineConfig(config: NpConfig): NpConfig {
       throw new Error(formatConfigError(err), { cause: err });
     }
     throw err;
+  }
+
+  const projectIssue = npAnalyzeProjectConfig(config)[0];
+  if (projectIssue) {
+    throw new Error(
+      `Invalid NexPress config at ${projectIssue.location || "<root>"}: ${projectIssue.message}`,
+    );
   }
 
   // Phase 12.1 cross-field check — a collection can only opt
