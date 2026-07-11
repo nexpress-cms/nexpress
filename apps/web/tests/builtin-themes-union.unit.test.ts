@@ -1,12 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { defaultCollections, defaultThemes } from "@nexpress/app/config-defaults";
-import {
-  mergeThemeRequirements,
-  resetLogger,
-  setLogger,
-  type NpLogger,
-} from "@nexpress/core";
+import { npValidateBlockDefinition } from "@nexpress/blocks/contracts";
+import { mergeThemeRequirements, resetLogger, setLogger, type NpLogger } from "@nexpress/core";
 
 /**
  * Bundled-themes "prebake" gate.
@@ -136,15 +132,29 @@ describe("built-in themes — requires union", () => {
     }
     const overlaps = Object.entries(owners).filter(([, ids]) => ids.length > 1);
     if (overlaps.length > 0) {
-      const detail = overlaps
-        .map(([slug, ids]) => `${slug}: [${ids.join(", ")}]`)
-        .join(" | ");
+      const detail = overlaps.map(([slug, ids]) => `${slug}: [${ids.join(", ")}]`).join(" | ");
       throw new Error(
         `Two built-in themes claim createIfAbsent on the same slug: ${detail}. ` +
           `The admin's _themeOrigin tag is single-string, so the first claimant wins ` +
           `and the second is invisible when active. Distinguish the slug, drop one ` +
           `theme's createIfAbsent, or promote _themeOrigin to a multi-origin list.`,
       );
+    }
+  });
+});
+
+describe("built-in themes — block definitions", () => {
+  it("keeps every bundled block's defaults aligned with its props schema", () => {
+    for (const theme of defaultThemes) {
+      const blocks = (theme.impl as { blocks?: unknown[] }).blocks ?? [];
+      for (const block of blocks) {
+        const validation = npValidateBlockDefinition(block);
+        if (!validation.ok) {
+          throw new Error(
+            `Built-in theme "${theme.manifest.id}" has an invalid block definition: ${validation.message}`,
+          );
+        }
+      }
     }
   });
 });
