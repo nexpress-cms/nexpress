@@ -779,6 +779,19 @@ test.describe("admin mobile layout", () => {
       ignoreClosedSidebar: true,
     });
 
+    await activateSettingsTab(page, "Translations", /^Export catalog$/);
+    await expectNoHorizontalOverflow(page, "admin settings translations tab", {
+      ignoreClosedSidebar: true,
+    });
+    await expectTouchTarget(
+      page.getByRole("button", { name: /^Download catalog$/ }),
+      "translation export",
+    );
+    await expectTouchTarget(
+      page.getByRole("button", { name: /^Preview import$/ }),
+      "translation preview",
+    );
+
     await activateSettingsTab(page, "Strings", /^UI Strings$/);
     await expectNoHorizontalOverflow(page, "admin settings strings tab", {
       ignoreClosedSidebar: true,

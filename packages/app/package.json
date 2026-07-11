@@ -126,6 +126,7 @@
     "@nexpress/blocks": "workspace:*",
     "@nexpress/core": "workspace:*",
     "@nexpress/editor": "workspace:*",
+    "@nexpress/gettext": "workspace:*",
     "@nexpress/next": "workspace:*",
     "@nexpress/plugin-block-callout": "workspace:*",
     "@nexpress/plugin-block-embed": "workspace:*",
@@ -144,7 +145,9 @@
     "@nexpress/theme-docs": "workspace:*",
     "@nexpress/theme-magazine": "workspace:*",
     "@nexpress/theme-portfolio": "workspace:*",
+    "@nexpress/translation": "workspace:*",
     "@nexpress/wp-import": "workspace:*",
+    "@nexpress/xliff": "workspace:*",
     "dotenv": "^17.2.4",
     "drizzle-orm": "^0.45.2"
   },

@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-11 (content translation interchange now uses one
+**Last refreshed:** 2026-07-11 (Admin Settings now exposes bounded XLIFF 1.2
+and Gettext PO content interchange. Editors can export one collection/locale
+pair, preview every create/update/skip, and explicitly confirm an import while
+the shared fail-closed engine reparses and revalidates the upload before writes.)
+
+**Earlier:** 2026-07-11 (content translation interchange now uses one
 format-neutral extraction/application engine. XLIFF 1.2 and Gettext PO share
 live source, Lexical, block-schema, sibling-routing, dry-run, and fail-closed
 import rules.)

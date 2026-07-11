@@ -320,6 +320,9 @@ importers:
       '@nexpress/editor':
         specifier: workspace:*
         version: link:../editor
+      '@nexpress/gettext':
+        specifier: workspace:*
+        version: link:../gettext
       '@nexpress/next':
         specifier: workspace:*
         version: link:../next
@@ -374,9 +377,15 @@ importers:
       '@nexpress/theme-portfolio':
         specifier: workspace:*
         version: link:../themes/portfolio
+      '@nexpress/translation':
+        specifier: workspace:*
+        version: link:../translation
       '@nexpress/wp-import':
         specifier: workspace:*
         version: link:../wp-import
+      '@nexpress/xliff':
+        specifier: workspace:*
+        version: link:../xliff
       dotenv:
         specifier: ^17.2.4
         version: 17.4.2
