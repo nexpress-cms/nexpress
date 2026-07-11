@@ -11,6 +11,10 @@ test.describe("Admin translation interchange", () => {
     const title = `Translation exchange ${Date.now()}`;
     const targetTitle = `번역 교환 ${Date.now()}`;
     await context.clearCookies();
+    // This flow hits several Admin endpoints and may run late in the full E2E
+    // suite. Keep its proxy bucket isolated from unrelated specs that share the
+    // same worker IP.
+    await context.setExtraHTTPHeaders({ "x-forwarded-for": "198.51.100.118" });
     await signInAsE2EAdmin(page);
     const headers = await csrfHeaders(context);
 
