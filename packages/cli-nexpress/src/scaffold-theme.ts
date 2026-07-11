@@ -199,7 +199,7 @@ export const ${names.exportName} = defineTheme({
     version: "0.1.0",
     name: "${names.displayName}",
     description: "Custom NexPress theme.",
-    author: { name: "" },
+    author: { name: "Theme author" },
     nexpress: { minVersion: "0.1.0" },
   },
   impl: {

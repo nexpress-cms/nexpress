@@ -7,6 +7,7 @@ import { addStrings } from "../i18n/strings.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID as DEFAULT_SITE } from "../sites/registry.js";
 import type { NpRegisteredTheme } from "../config/types.js";
+import { npValidateRegisteredThemeDefinition } from "./definition-contract.js";
 
 /**
  * Phase 11.1 — theme registry. Sites declare an array of themes
@@ -30,10 +31,21 @@ const registry = new Map<string, NpRegisteredTheme>();
  * by `manifest.id`; later registrations replace earlier ones.
  */
 export function registerThemes(themes: NpRegisteredTheme[]): void {
+  const incomingIds = new Set<string>();
   for (const theme of themes) {
-    if (!theme?.manifest?.id) {
-      throw new Error("Theme is missing manifest.id");
+    const validation = npValidateRegisteredThemeDefinition(theme);
+    if (!validation.ok) {
+      throw new Error(
+        `Invalid theme definition at ${validation.issue.location}: ${validation.issue.message}`,
+      );
     }
+    if (incomingIds.has(theme.manifest.id)) {
+      throw new Error(`Invalid theme registry: duplicate theme id "${theme.manifest.id}".`);
+    }
+    incomingIds.add(theme.manifest.id);
+  }
+
+  for (const theme of themes) {
     registry.set(theme.manifest.id, theme);
 
     // Phase 12.5 — themes can ship UI-string bundles via
@@ -176,26 +188,20 @@ export async function getThemeTemplateSummaries(
   // Lazy import keeps the registry → plugin coupling one-way
   // (plugins know about themes' template shape; themes don't
   // depend on plugins at type-import time).
-  const { getPluginTemplatesForCollection } = await import(
-    "../plugins/templates.js"
-  );
+  const { getPluginTemplatesForCollection } = await import("../plugins/templates.js");
   for (const [id, value] of getPluginTemplatesForCollection(collectionSlug)) {
     const def = value as { label?: unknown; description?: unknown };
     summaries.set(id, {
       id,
       label: typeof def.label === "string" ? def.label : id,
-      description:
-        typeof def.description === "string" ? def.description : undefined,
+      description: typeof def.description === "string" ? def.description : undefined,
     });
   }
 
   const active = await getActiveTheme();
   if (active) {
     const impl = active.impl as {
-      templates?: Record<
-        string,
-        Record<string, { label?: string; description?: string }>
-      >;
+      templates?: Record<string, Record<string, { label?: string; description?: string }>>;
     };
     const set = impl.templates?.[collectionSlug];
     if (set) {
@@ -203,8 +209,7 @@ export async function getThemeTemplateSummaries(
         summaries.set(id, {
           id,
           label: typeof def.label === "string" ? def.label : id,
-          description:
-            typeof def.description === "string" ? def.description : undefined,
+          description: typeof def.description === "string" ? def.description : undefined,
         });
       }
     }
@@ -233,10 +238,7 @@ export async function resolveTemplateComponent(
     if (themeEntry) return themeEntry;
   }
 
-  const { getPluginTemplatesForCollection } = await import(
-    "../plugins/templates.js"
-  );
-  const pluginEntry =
-    getPluginTemplatesForCollection(collectionSlug).get(templateId);
+  const { getPluginTemplatesForCollection } = await import("../plugins/templates.js");
+  const pluginEntry = getPluginTemplatesForCollection(collectionSlug).get(templateId);
   return pluginEntry ?? null;
 }

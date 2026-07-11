@@ -54,4 +54,31 @@ describe("defineConfig — friendly error messages (#A)", () => {
     const out = defineConfig(validBase);
     expect(out).toEqual(validBase);
   });
+
+  it("validates themes before merging their collection requirements", () => {
+    expect(() =>
+      defineConfig({
+        ...validBase,
+        themes: [
+          {
+            manifest: { id: "broken", name: "Broken", version: "0.1.0" },
+            impl: { routes: [{ component: () => null }] },
+          },
+        ],
+      }),
+    ).toThrow(/config\.themes\[0\]\.impl\.routes\.0\.pattern/);
+  });
+
+  it("rejects duplicate theme ids before registry last-write-wins can hide them", () => {
+    const theme = {
+      manifest: { id: "same", name: "Same", version: "0.1.0" },
+      impl: {},
+    };
+    expect(() =>
+      defineConfig({
+        ...validBase,
+        themes: [theme, { ...theme, manifest: { ...theme.manifest, name: "Other" } }],
+      }),
+    ).toThrow(/duplicate theme id "same"/);
+  });
 });

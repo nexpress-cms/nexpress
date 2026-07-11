@@ -94,10 +94,9 @@ function expandArchives(archives: NpThemeArchives): NpThemeRoute[] {
 }
 
 /**
- * Module-level set tracking patterns we've already warned about,
- * so the multi-collection collision warning fires once per
- * pattern per process (not per request). Reset is exposed for
- * tests via `__resetCollisionWarnings`.
+ * Compatibility guard for themes that bypass `defineTheme()` and the
+ * bootstrap contract. Valid definitions reject duplicate patterns before
+ * dispatch; raw callers still receive one warning per pattern and process.
  */
 const warnedPatterns = new Set<string>();
 
@@ -126,13 +125,9 @@ function detectAndWarnCollisions(routes: NpThemeRoute[]): void {
 }
 
 /**
- * Concatenate explicit `routes` and expanded `archives` into a
- * single ordered list. Explicit routes come first so a theme
- * that declares both can override the archive sugar's default
- * pattern by adding an explicit route earlier. Logs a one-time
- * dev warning when two routes share the same pattern (a real
- * foot-gun for themes using archive sugar across multiple
- * collections — see `NpThemeArchives` JSDoc).
+ * Concatenate explicit `routes` and expanded `archives` into a single ordered
+ * list. Contract-valid themes have unique patterns. The collision warning is
+ * retained for direct/raw callers that bypass the definition boundary.
  */
 export function collectThemeRoutes(theme: NpTheme): NpThemeRoute[] {
   const explicit = theme.impl.routes ?? [];

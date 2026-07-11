@@ -395,6 +395,16 @@ export {
 } from "./themes/registry.js";
 export type { NpThemeTemplateSummary } from "./themes/registry.js";
 
+export {
+  npAnalyzeRegisteredThemeDefinition,
+  npValidateRegisteredThemeDefinition,
+} from "./themes/definition-contract.js";
+export type {
+  NpThemeDefinitionIssue,
+  NpThemeDefinitionIssueCode,
+  NpThemeDefinitionValidationResult,
+} from "./themes/definition-contract.js";
+
 export { checkThemeRequirements } from "./themes/requirements.js";
 export type {
   NpThemeRequirementResult,

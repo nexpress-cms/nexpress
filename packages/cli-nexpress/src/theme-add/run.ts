@@ -5,6 +5,7 @@ import { relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import pc from "picocolors";
+import { npValidateRegisteredThemeDefinition } from "@nexpress/core";
 
 import {
   addThemeToConfig,
@@ -72,6 +73,11 @@ type PackageManagerRunner = (
 interface ThemeAddRuntime {
   cwd?: string;
   runPackageManager?: PackageManagerRunner;
+  themeExportProbe?: (
+    themePackage: string,
+    identifier: string,
+    cwd: string,
+  ) => Promise<string | null>;
 }
 
 interface ResolvedProject {
@@ -148,8 +154,59 @@ async function confirm(message: string): Promise<boolean> {
   }
 }
 
+function selectImportExport(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    for (const candidate of value) {
+      const selected = selectImportExport(candidate);
+      if (selected) return selected;
+    }
+    return null;
+  }
+  if (!value || typeof value !== "object") return null;
+  const conditions = value as Record<string, unknown>;
+  for (const condition of ["import", "node", "default"] as const) {
+    const selected = selectImportExport(conditions[condition]);
+    if (selected) return selected;
+  }
+  return null;
+}
+
+async function resolveThemeImport(themePackage: string, cwd: string): Promise<string> {
+  // `createRequire().resolve()` uses the `require` export condition, so it
+  // cannot resolve a correct ESM-only package whose root exposes only
+  // `{ import, types }`. Read the installed package's root import target first;
+  // retain createRequire as a fallback for classic main/default packages and
+  // package-manager resolvers that do not expose a normal node_modules path.
+  try {
+    const packageDirectory = resolve(cwd, "node_modules", ...themePackage.split("/"));
+    const packageJson = JSON.parse(
+      await readFile(resolve(packageDirectory, "package.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    const exportsField = packageJson.exports;
+    const rootExport =
+      exportsField && typeof exportsField === "object" && !Array.isArray(exportsField)
+        ? ((exportsField as Record<string, unknown>)["."] ?? exportsField)
+        : exportsField;
+    const target =
+      selectImportExport(rootExport) ??
+      (typeof packageJson.module === "string" ? packageJson.module : null) ??
+      (typeof packageJson.main === "string" ? packageJson.main : null);
+    if (target) {
+      const resolvedTarget = resolve(packageDirectory, target);
+      const relativeTarget = relative(packageDirectory, resolvedTarget);
+      if (relativeTarget !== "" && !relativeTarget.startsWith("..")) return resolvedTarget;
+    }
+  } catch {
+    // Fall through to the package manager's CommonJS-compatible resolver.
+  }
+
+  const { createRequire } = await import("node:module");
+  return createRequire(resolve(cwd, "package.json")).resolve(themePackage);
+}
+
 /**
- * Best-effort dynamic-import sanity check. The lazy-import fix
+ * Dynamic-import contract check. The lazy-import fix
  * landed in #726 ensures themes don't boot Next during their
  * top-level module evaluation, so loading `<pkg>` here is cheap
  * and side-effect free. We accept either:
@@ -161,10 +218,9 @@ async function confirm(message: string): Promise<boolean> {
  * doesn't look like a theme" message so the operator can fix
  * the package or add the import manually.
  *
- * Returns null on success; an error message on failure. The
- * caller decides whether to fail the run or just warn — we
- * always warn because a network/install hiccup is more likely
- * than a structurally wrong theme.
+ * Returns null only for a valid named export. Import, export-shape, and
+ * definition failures stop registration so a broken package cannot be written
+ * into nexpress.config.ts and deferred until application boot.
  */
 async function probeThemeExport(
   themePackage: string,
@@ -177,9 +233,7 @@ async function probeThemeExport(
   // installed peer.
   let resolved: string;
   try {
-    const { createRequire } = await import("node:module");
-    const requireFromCwd = createRequire(resolve(cwd, "package.json"));
-    resolved = requireFromCwd.resolve(themePackage);
+    resolved = await resolveThemeImport(themePackage, cwd);
   } catch (err) {
     return `Could not resolve "${themePackage}" from ${cwd}: ${err instanceof Error ? err.message : String(err)}`;
   }
@@ -193,13 +247,12 @@ async function probeThemeExport(
 
   const named = mod[identifier];
   const defaultExport = mod["default"];
-  const looksLikeTheme = (candidate: unknown): boolean => {
-    if (!candidate || typeof candidate !== "object") return false;
-    return "manifest" in candidate;
-  };
-
-  if (looksLikeTheme(named)) return null;
-  if (looksLikeTheme(defaultExport)) {
+  if (named && typeof named === "object") {
+    const validation = npValidateRegisteredThemeDefinition(named);
+    if (validation.ok) return null;
+    return `"${themePackage}" exports an invalid theme at ${validation.issue.location}: ${validation.issue.message}`;
+  }
+  if (defaultExport && typeof defaultExport === "object") {
     // Operator's package exports as default — we still register
     // via a named import (`import { magazineTheme } from ...`),
     // so warn so they know the import will need a default-shape
@@ -382,12 +435,16 @@ export async function runThemeAdd(input: RunInput, runtime: ThemeAddRuntime = {}
   // 2. Probe the freshly-installed module so structurally wrong
   //    themes surface NOW with a fix-it hint rather than booting
   //    Next first.
-  const probeMsg = await probeThemeExport(input.themePackage, identifier, project.cwd);
+  const probeMsg = await (runtime.themeExportProbe ?? probeThemeExport)(
+    input.themePackage,
+    identifier,
+    project.cwd,
+  );
   if (probeMsg) {
-    process.stdout.write(
-      `\n${pc.yellow("⚠")} ${probeMsg}\n` +
-        `  Registration will still proceed; remove the import manually if the package is wrong.\n`,
+    process.stderr.write(
+      `\n${pc.red("error:")} ${probeMsg}\n  Theme registration was not written.\n`,
     );
+    return 1;
   }
 
   // 3. Re-read the config (some installers run formatters /

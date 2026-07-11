@@ -931,7 +931,10 @@ export interface NpThemeFieldRequirement {
     | "upload"
     | "relationship"
     | "blocks";
-  /** For `relationship` — the collection slug it points to. */
+  /**
+   * Target collection. `relationship` accepts one slug or a slug array;
+   * `upload` requires one scalar slug (normally `media`).
+   */
   relationTo?: string | string[];
   /** For `relationship` / `select` — accepts list values. */
   hasMany?: boolean;

@@ -27,6 +27,7 @@ vi.mock("@nexpress/core", () => ({
   listMembershipsForUser: vi.fn(() => Promise.resolve([])),
   listPluginStates: vi.fn(() => Promise.resolve([])),
   loadPlugins: vi.fn(() => Promise.resolve()),
+  npAnalyzeRegisteredThemeDefinition: vi.fn(() => []),
   registerCollection: vi.fn(),
   registerThemes: vi.fn(),
   resetPlugins: vi.fn(),
@@ -227,7 +228,7 @@ describe("createBootstrap", () => {
     const config = Object.assign({}, buildConfig(), {
       themes: [
         {
-          manifest: { id: "broken-theme" },
+          manifest: { id: "broken-theme", name: "Broken theme", version: "0.1.0" },
           impl: { patterns: [{ id: "broken" }] },
         },
       ],
@@ -242,7 +243,7 @@ describe("createBootstrap", () => {
     const bootstrap = createBootstrap({ config, generatedSchema: {} });
 
     await expect(bootstrap.ensurePluginsLoaded()).rejects.toThrow(
-      "[theme:broken-theme] invalid pattern at index 0",
+      "Invalid theme definition at impl.patterns: invalid pattern at index 0",
     );
     expect(core.loadPlugins).not.toHaveBeenCalled();
   });

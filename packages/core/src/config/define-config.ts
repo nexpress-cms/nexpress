@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 
 import { mergeThemeRequirements } from "../themes/merge-requirements.js";
+import { npValidateRegisteredThemeDefinition } from "../themes/definition-contract.js";
 import { type NpConfig } from "./types.js";
 import { npConfigSchema } from "./validation.js";
 
@@ -50,6 +51,22 @@ export function defineConfig(config: NpConfig): NpConfig {
     }
   }
 
+  const themeIds = new Set<string>();
+  for (const [index, theme] of (config.themes ?? []).entries()) {
+    const validation = npValidateRegisteredThemeDefinition(theme);
+    if (!validation.ok) {
+      throw new Error(
+        `Invalid theme at config.themes[${index.toString()}].${validation.issue.location}: ${validation.issue.message}`,
+      );
+    }
+    if (themeIds.has(theme.manifest.id)) {
+      throw new Error(
+        `Invalid theme config: duplicate theme id "${theme.manifest.id}" at config.themes[${index.toString()}].`,
+      );
+    }
+    themeIds.add(theme.manifest.id);
+  }
+
   // Theme auto-merge. Non-destructive: operator-authored fields
   // are never overwritten, and a no-op when no themes (or no
   // themes with `requires`) are registered. Returns the input
@@ -65,8 +82,7 @@ export function defineConfig(config: NpConfig): NpConfig {
 const FRIENDLY_HINTS: Record<string, string> = {
   "auth.secret":
     "Set `NP_SECRET` in `.env` (≥32 random chars) — `pnpm run setup` will generate one for you.",
-  "site.url":
-    "Set `SITE_URL` in `.env` to your public origin — `pnpm run setup` collects it.",
+  "site.url": "Set `SITE_URL` in `.env` to your public origin — `pnpm run setup` collects it.",
   "db.connectionString":
     "Set `DATABASE_URL` in `.env` to your Postgres connection string — `pnpm run setup` will write it.",
   "storage.s3.bucket": "Set `NP_S3_BUCKET` in `.env` (or switch storage to local).",

@@ -103,9 +103,11 @@ section.
 
 ## 3. The `defineTheme` Contract
 
-`defineTheme()` is an identity function: it accepts an
-`NpTheme` and returns it. Its job is to give TypeScript the
-hook to infer the full shape so editor IntelliSense works.
+`defineTheme()` is the authoring and runtime contract boundary. It preserves
+the `NpTheme` inference used by editor IntelliSense, then validates the complete
+definition while the theme module is evaluated. Invalid metadata, settings,
+requirements, routes, templates, UI strings, blocks, patterns, tokens, member
+slots, SEO callbacks, or seed content fail before the project config can boot.
 
 ```ts
 // src/index.ts
@@ -149,6 +151,35 @@ export const mybrandTheme = defineTheme({
 The `manifest` is pure metadata (used by the admin theme
 switcher). The `impl` carries React component refs, the CSS
 string, and per-collection templates.
+
+Validation is intentionally repeated at trust boundaries:
+
+- `defineTheme()` is the earliest author-facing check.
+- `defineConfig()` validates SDK-bypassing entries and rejects duplicate theme
+  ids before merging `manifest.requires` into collections.
+- The core registry repeats the React-free contract before mutating global
+  theme state.
+- Next bootstrap repeats the complete theme contract, including block and
+  pattern definitions, before registering contributions.
+- `nexpress theme add` imports and validates the installed named export before
+  writing it into `nexpress.config.ts`.
+
+Route patterns must be unique across explicit `impl.routes` entries and every
+expanded `impl.archives` entry. To customize archive behavior, override that
+archive entry's `pattern`; do not add a second explicit route with the same
+pattern. Duplicate patterns fail during theme definition instead of relying on
+dispatch order.
+
+`npAnalyzeThemeDefinition()` and `npValidateThemeDefinition()` are exported
+from `@nexpress/theme` for tooling and tests. The React-free
+`npAnalyzeRegisteredThemeDefinition()` and
+`npValidateRegisteredThemeDefinition()` variants are exported from
+`@nexpress/core`.
+
+The contract uses fail-closed errors for values the runtime would otherwise
+execute or persist. Seed page blocks with an unknown type remain allowed so a
+theme can seed a block supplied by a separately configured plugin; structurally
+invalid content and known prop/schema mismatches are errors.
 
 ---
 

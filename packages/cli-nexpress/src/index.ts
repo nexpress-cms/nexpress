@@ -206,6 +206,11 @@ export interface CliRuntime {
   cwd?: string;
   runPackageManager?: PackageManagerRunner;
   runProjectScript?: ProjectScriptRunner;
+  themeExportProbe?: (
+    themePackage: string,
+    identifier: string,
+    cwd: string,
+  ) => Promise<string | null>;
 }
 
 function formatPackageManagerCommand(
@@ -453,7 +458,11 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
       }
       return runThemeAdd(
         { themePackage, flags: { dryRun, yes, apply } },
-        { cwd, runPackageManager: packageManagerRunner },
+        {
+          cwd,
+          runPackageManager: packageManagerRunner,
+          themeExportProbe: runtime.themeExportProbe,
+        },
       );
     }
     if (sub === "remove") {
