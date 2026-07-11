@@ -9,6 +9,7 @@ import type { XliffTransUnit } from "./format.js";
 import { applyRichTextXliffValue, createRichTextXliffValue } from "./rich-text.js";
 
 const BLOCK_UNIT_PREFIX = "np:block:";
+const UNSAFE_PATH_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
 
 type PropPath = Array<string | number>;
 type TextualField = NpBlockPropField & {
@@ -314,7 +315,7 @@ function valueAtPath(root: unknown, path: PropPath): unknown {
       if (!Array.isArray(current)) return undefined;
       current = current[segment];
     } else {
-      if (!isRecord(current)) return undefined;
+      if (!isRecord(current) || !Object.hasOwn(current, segment)) return undefined;
       current = current[segment];
     }
   }
@@ -330,7 +331,7 @@ function setValueAtPath(root: unknown, path: PropPath, value: unknown): boolean 
       if (!Array.isArray(current) || current[segment] === undefined) return false;
       current = current[segment];
     } else {
-      if (!isRecord(current) || !(segment in current)) return false;
+      if (!isRecord(current) || !Object.hasOwn(current, segment)) return false;
       current = current[segment];
     }
   }
@@ -340,7 +341,7 @@ function setValueAtPath(root: unknown, path: PropPath, value: unknown): boolean 
     current[final] = value;
     return true;
   }
-  if (!isRecord(current) || !(final in current)) return false;
+  if (!isRecord(current) || !Object.hasOwn(current, final)) return false;
   current[final] = value;
   return true;
 }
@@ -373,7 +374,10 @@ function isPropPath(value: unknown): value is PropPath {
     value.length <= 17 &&
     value.every(
       (segment) =>
-        (typeof segment === "string" && segment.length > 0 && segment.length <= 128) ||
+        (typeof segment === "string" &&
+          segment.length > 0 &&
+          segment.length <= 128 &&
+          !UNSAFE_PATH_SEGMENTS.has(segment)) ||
         (Number.isInteger(segment) && (segment as number) >= 0 && (segment as number) <= 1_000_000),
     )
   );

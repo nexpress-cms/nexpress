@@ -169,5 +169,11 @@ describe("block XLIFF codec", () => {
     ).toEqual(
       expect.objectContaining({ ok: false, reason: expect.stringContaining("not declared") }),
     );
+
+    const unsafeId = unit.id.replace(
+      encodeURIComponent(JSON.stringify(descriptor.path)),
+      encodeURIComponent(JSON.stringify(["__proto__"])),
+    );
+    expect(parseBlockUnitId(unsafeId)).toBeNull();
   });
 });
