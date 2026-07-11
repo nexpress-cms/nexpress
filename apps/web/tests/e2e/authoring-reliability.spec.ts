@@ -263,21 +263,26 @@ test.describe("admin authoring reliability", () => {
       recoveredTitle,
     );
 
-    const autosaveAfterRecover = page.waitForResponse(
-      (response) =>
-        response.url().endsWith(`/api/collections/posts/${id}/autosave`) &&
-        response.request().method() === "POST",
-    );
     await dialog.getByRole("button", { name: "Recover autosave" }).click();
     await expect(page.getByLabel("title", { exact: true })).toHaveValue(recoveredTitle);
     await expect(contentEditor).toContainText(recoveredBody);
     await contentEditor.click();
     await contentEditor.press("End");
+    const autosaveAfterContinue = page.waitForResponse((response) => {
+      if (
+        !response.url().endsWith(`/api/collections/posts/${id}/autosave`) ||
+        response.request().method() !== "POST"
+      ) {
+        return false;
+      }
+      const payload = response.request().postDataJSON() as { content?: unknown };
+      return JSON.stringify(payload.content).includes(continuedBody.trim());
+    });
     await contentEditor.type(continuedBody);
     await expect(contentEditor).toContainText(`${recoveredBody}${continuedBody}`);
     await expect(page.locator("[data-np-authoring-status]")).toContainText("Unsaved changes");
     await expect(page.locator("[data-np-autosave-recovery]")).toHaveCount(0);
-    const autosaveResponse = await autosaveAfterRecover;
+    const autosaveResponse = await autosaveAfterContinue;
     expect(autosaveResponse.ok()).toBeTruthy();
     const autosavePayload = autosaveResponse.request().postDataJSON() as {
       content?: unknown;

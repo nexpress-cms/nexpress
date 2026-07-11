@@ -22,7 +22,7 @@ interface NpEditorStateBridgePluginProps {
   onChange: (value: NpRichTextContent) => void;
 }
 
-export function serializeEditorValue(value: unknown | null): string | null {
+export function serializeEditorValue(value: unknown): string | null {
   if (value === null) return null;
   const result = npValidateRichTextContent(value);
   if (!result.ok) {
