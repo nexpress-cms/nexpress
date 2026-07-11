@@ -631,6 +631,11 @@ export interface NpResolvedPluginLike {
     surface?: "site" | "member";
     locale?: "auto" | "none";
   }>;
+  configSchema?: unknown;
+  configVersion?: number;
+  configMigrate?: (old: unknown, fromVersion: number) => unknown;
+  setup?: (...args: never[]) => unknown;
+  teardown?: () => unknown;
 }
 
 export interface NpPluginContext {

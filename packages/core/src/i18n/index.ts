@@ -9,21 +9,26 @@
 
 export { setI18nConfig, getI18nConfig, resetI18nConfig } from "./registry.js";
 export { resolveLocale, getCurrentLocale } from "./locale-resolver.js";
-export type {
-  NpResolveLocaleInput,
-  NpResolveLocaleResult,
-} from "./locale-resolver.js";
+export type { NpResolveLocaleInput, NpResolveLocaleResult } from "./locale-resolver.js";
 export {
   addStrings,
   setStrings,
   resetStrings,
+  registerPluginStrings,
+  unregisterPluginStrings,
+  resetPluginStrings,
+  getRegisteredPluginStrings,
   resetTranslationCache,
   getStrings,
   getAllStrings,
   t,
   tSync,
 } from "./strings.js";
-export type { NpTranslationBundle, NpTranslationParams } from "./strings.js";
+export type {
+  NpTranslationBundle,
+  NpTranslationParams,
+  NpRegisteredPluginTranslation,
+} from "./strings.js";
 export { getLocaleDirection } from "./direction.js";
 export type { NpLocaleDirection } from "./direction.js";
 export { formatNumber, formatDate, formatRelativeTime, resetIntlFormatterCache } from "./format.js";

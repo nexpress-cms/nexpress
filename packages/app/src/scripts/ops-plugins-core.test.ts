@@ -57,6 +57,8 @@ describe("ops plugins core", () => {
         patterns: [pluginPattern("demo.callout")],
         routes: [{ method: "GET", path: "/demo", handler: () => ({ status: 200 }) }],
         pageRoutes: [{ pattern: "/demo/:slug", component: () => null }],
+        templates: { pages: { docs: { label: "Docs", component: () => null } } },
+        i18n: { en: { "demo.title": "Demo" } },
       },
     ]);
 
@@ -75,6 +77,8 @@ describe("ops plugins core", () => {
           plugins: 1,
           blocks: 1,
           patterns: 1,
+          templates: 1,
+          translations: 1,
           routes: 1,
           pageRoutes: 1,
           actions: 0,
@@ -86,9 +90,52 @@ describe("ops plugins core", () => {
         id: "demo",
         blocks: ["callout"],
         patterns: ["demo.callout"],
+        templates: ["pages:docs"],
+        translations: ["en:demo.title"],
         routes: ["GET /demo"],
         pageRoutes: ["/demo/:slug"],
       }),
+    );
+  });
+
+  it("diagnoses invalid remaining definition contracts", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "broken", name: "Broken" },
+        configVersion: 2,
+        setup: "later",
+        templates: { pages: { docs: { label: "Docs" } } },
+        i18n: { "en-us": { key: "value" } },
+      },
+    ]);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "plugins.config_contract", state: "error" }),
+        expect.objectContaining({ id: "plugins.lifecycle_invalid", state: "error" }),
+        expect.objectContaining({ id: "plugins.i18n_invalid", state: "error" }),
+        expect.objectContaining({ id: "plugins.template_invalid", state: "error" }),
+      ]),
+    );
+  });
+
+  it("surfaces cross-plugin template and translation ownership", () => {
+    const contributions = {
+      templates: { pages: { shared: { label: "Shared", component: () => null } } },
+      i18n: { en: { shared: "Shared" } },
+    };
+    const report = analyzePlugins([
+      { manifest: { id: "one", name: "One" }, ...contributions },
+      { manifest: { id: "two", name: "Two" }, ...contributions },
+    ]);
+
+    expect(report.status).toBe("attention");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "plugins.template_conflict", state: "warn" }),
+        expect.objectContaining({ id: "plugins.translation_conflict", state: "warn" }),
+      ]),
     );
   });
 

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { renderToString } from "react-dom/server";
 
 import {
@@ -28,10 +28,15 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
   });
   beforeEach(async () => {
     await truncateAll();
-    const { resetThemes, registerThemes } = await import("@nexpress/core");
+    const { resetPluginTemplates, resetThemes, registerThemes } = await import("@nexpress/core");
     const { defaultTheme } = await import("@nexpress/theme-default");
+    resetPluginTemplates();
     resetThemes();
     registerThemes([defaultTheme]);
+  });
+  afterEach(async () => {
+    const { resetPluginTemplates } = await import("@nexpress/core");
+    resetPluginTemplates();
   });
   afterAll(async () => {
     await closeTestDb();
@@ -77,8 +82,10 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
     expect(docs).toEqual([]);
   });
 
-  it("admin endpoint returns the active theme's templates for editor+", async () => {
+  it("admin endpoint returns active theme and plugin templates for editor+", async () => {
     const editor = await seedUser({ role: "editor" });
+    const { reloadPlugins } = await import("@/lib/bootstrap");
+    await reloadPlugins();
     const { GET } = await import("@/app/api/admin/themes/active/templates/route");
     const req = buildRequest("/api/admin/themes/active/templates", {
       session: editor,
@@ -90,7 +97,15 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
     }>(res);
     expect(status).toBe(200);
     const ids = (body.docs ?? []).map((d) => d.id).sort();
-    expect(ids).toEqual(["about", "default", "front", "landing", "sidebar", "wide"]);
+    expect(ids).toEqual([
+      "about",
+      "callout-guide",
+      "default",
+      "front",
+      "landing",
+      "sidebar",
+      "wide",
+    ]);
   });
 
   it("admin endpoint requires a `collection` query param", async () => {

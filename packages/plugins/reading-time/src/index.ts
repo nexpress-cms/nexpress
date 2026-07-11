@@ -77,7 +77,6 @@ export const readingTimePlugin = definePlugin<ReadingTimeConfig>({
     allowedHosts: [],
     provides: {
       blocks: [],
-      fields: [],
       collections: [],
       adminExtensions: [],
       apiRoutes: ["/estimate"],

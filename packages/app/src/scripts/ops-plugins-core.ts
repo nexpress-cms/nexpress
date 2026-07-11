@@ -4,10 +4,14 @@ import { pathToFileURL } from "node:url";
 
 import {
   invalidatePluginEnabled,
+  npAnalyzePageTemplateRegistry,
+  npAnalyzePluginDefinitionContract,
   npAnalyzePluginAdminActionContract,
   npAnalyzePluginScheduledTasks,
   npValidatePluginApiRouteDefinition,
   npValidatePluginPageRouteDefinition,
+  npPageTemplateKeys,
+  npPluginTranslationKeys,
   type NpPluginActionKind,
   type NpPluginAdminActionIssue,
   type NpRegisteredPluginAction,
@@ -62,6 +66,12 @@ interface PluginLike {
   actions?: unknown;
   admin?: unknown;
   setup?: unknown;
+  teardown?: unknown;
+  configSchema?: unknown;
+  configVersion?: unknown;
+  configMigrate?: unknown;
+  templates?: unknown;
+  i18n?: unknown;
 }
 
 interface ConfigLike {
@@ -104,7 +114,8 @@ export interface OpsPluginEntry {
   provides: {
     blocks: string[];
     patterns: string[];
-    fields: string[];
+    templates: string[];
+    translations: string[];
     collections: string[];
     adminExtensions: string[];
     actions: string[];
@@ -122,6 +133,8 @@ export interface OpsPluginEntry {
   styleSlots: string[];
   blocks: string[];
   patterns: string[];
+  templates: string[];
+  translations: string[];
   routes: string[];
   pageRoutes: string[];
   scheduled: string[];
@@ -132,6 +145,8 @@ export interface OpsPluginsSummary {
   plugins: number;
   blocks: number;
   patterns: number;
+  templates: number;
+  translations: number;
   routes: number;
   pageRoutes: number;
   scheduled: number;
@@ -309,7 +324,8 @@ function readProvides(value: unknown): OpsPluginEntry["provides"] {
   return {
     blocks: readStringArray(source.blocks),
     patterns: readStringArray(source.patterns),
-    fields: readStringArray(source.fields),
+    templates: readStringArray(source.templates),
+    translations: readStringArray(source.translations),
     collections: readStringArray(source.collections),
     adminExtensions: readStringArray(source.adminExtensions),
     actions: readStringArray(source.actions),
@@ -608,6 +624,106 @@ function scheduledTaskContractImportCheck(error: unknown): CheckResult | null {
         ? "A plugin can declare each scheduled task id only once. Remove or rename the duplicate task."
         : "Use a safe task id, a valid five-field UTC cron, a function handler, and a valid description.",
     ),
+  };
+}
+
+function buildRemainingDefinitionChecks(
+  pluginObjects: PluginLike[],
+  plugins: OpsPluginEntry[],
+): CheckResult[] {
+  const grouped = new Map<
+    "config" | "lifecycle" | "i18n" | "templates",
+    {
+      details: string[];
+      pluginIds: string[];
+    }
+  >();
+  const add = (
+    code: "config" | "lifecycle" | "i18n" | "templates",
+    pluginId: string,
+    detail: string,
+  ): void => {
+    const current = grouped.get(code) ?? { details: [], pluginIds: [] };
+    current.details.push(`${pluginId}: ${detail}`);
+    current.pluginIds.push(pluginId);
+    grouped.set(code, current);
+  };
+
+  for (const [index, plugin] of pluginObjects.entries()) {
+    const pluginId = plugins[index]?.id ?? `plugin-${index.toString()}`;
+    for (const issue of npAnalyzePluginDefinitionContract(plugin)) {
+      add(issue.code, pluginId, issue.message);
+    }
+    if (plugin.templates !== undefined) {
+      for (const issue of npAnalyzePageTemplateRegistry(plugin.templates)) {
+        add("templates", pluginId, issue.message);
+      }
+    }
+  }
+
+  const metadata = {
+    config: {
+      id: "plugins.config_contract",
+      label: "Plugin config contracts",
+      hint: "Use a Zod-compatible configSchema, a positive configVersion, and pair versions above 1 with configMigrate.",
+    },
+    lifecycle: {
+      id: "plugins.lifecycle_invalid",
+      label: "Plugin lifecycle contracts",
+      hint: "Declare setup and teardown as functions that resolve to void.",
+    },
+    i18n: {
+      id: "plugins.i18n_invalid",
+      label: "Plugin translation contracts",
+      hint: "Use canonical BCP 47 locale tags, string values, and valid ICU MessageFormat messages.",
+    },
+    templates: {
+      id: "plugins.template_invalid",
+      label: "Plugin page template contracts",
+      hint: "Use canonical collection/template ids, non-empty metadata, and a function component.",
+    },
+  } as const;
+
+  return [...grouped.entries()].map(([code, group]) => ({
+    id: metadata[code].id,
+    state: "error" as const,
+    label: metadata[code].label,
+    detail: group.details.join("; "),
+    pluginIds: uniqueStrings(group.pluginIds),
+    hint: withDoctorRerun(metadata[code].hint),
+  }));
+}
+
+function remainingDefinitionContractImportCheck(error: unknown): CheckResult | null {
+  const detail = error instanceof Error ? error.message : String(error);
+  const match = detail.match(/^\[plugin:([^\]]+)\] (.+)$/u);
+  if (!match) return null;
+  const message = match[2] ?? "";
+  const kind = message.includes("template")
+    ? "template"
+    : message.includes("i18n") || message.includes("locale") || message.includes("translation")
+      ? "i18n"
+      : message.includes("config")
+        ? "config"
+        : message.includes("setup") || message.includes("teardown")
+          ? "lifecycle"
+          : null;
+  if (!kind) return null;
+  const id =
+    kind === "config"
+      ? "plugins.config_contract"
+      : kind === "lifecycle"
+        ? "plugins.lifecycle_invalid"
+        : kind === "i18n"
+          ? "plugins.i18n_invalid"
+          : "plugins.template_invalid";
+  return {
+    id,
+    state: "error",
+    label: `Plugin ${kind} contracts`,
+    detail,
+    pluginIds: match[1] ? [match[1]] : undefined,
+    hint: withDoctorRerun("Fix the invalid plugin definition and import the config again."),
   };
 }
 
@@ -978,6 +1094,8 @@ function summarize(checks: CheckResult[], plugins: OpsPluginEntry[]): OpsPlugins
     plugins: plugins.length,
     blocks: plugins.reduce((total, plugin) => total + plugin.blocks.length, 0),
     patterns: plugins.reduce((total, plugin) => total + plugin.patterns.length, 0),
+    templates: plugins.reduce((total, plugin) => total + plugin.templates.length, 0),
+    translations: plugins.reduce((total, plugin) => total + plugin.translations.length, 0),
     routes: plugins.reduce((total, plugin) => total + plugin.routes.length, 0),
     pageRoutes: plugins.reduce((total, plugin) => total + plugin.pageRoutes.length, 0),
     scheduled: plugins.reduce((total, plugin) => total + plugin.scheduled.length, 0),
@@ -1013,6 +1131,8 @@ function normalizePlugin(plugin: PluginLike, index: number): OpsPluginEntry {
     patterns: readArray(plugin.patterns)
       .map(patternKey)
       .filter((key): key is string => Boolean(key)),
+    templates: npPageTemplateKeys(plugin.templates),
+    translations: npPluginTranslationKeys(plugin.i18n),
     routes: readArray(plugin.routes)
       .map(routeKey)
       .filter((key): key is string => Boolean(key)),
@@ -1088,6 +1208,8 @@ export function buildOpsPluginInspectJson(
         plugins: 0,
         blocks: 0,
         patterns: 0,
+        templates: 0,
+        translations: 0,
         routes: 0,
         pageRoutes: 0,
         scheduled: 0,
@@ -1184,6 +1306,7 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
     ...buildApiRouteChecks(pluginObjects, plugins),
     ...buildPageRouteChecks(pluginObjects, plugins),
     ...buildScheduledTaskChecks(pluginObjects, plugins),
+    ...buildRemainingDefinitionChecks(pluginObjects, plugins),
   );
 
   const duplicateIds = duplicateChecks(
@@ -1231,6 +1354,26 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
     ),
   );
   if (patternConflicts) checks.push(patternConflicts);
+
+  const templateConflicts = duplicateChecks(
+    "plugins.template_conflict",
+    "Plugin page templates",
+    plugins.flatMap((plugin) => plugin.templates.map((key) => ({ key, plugin: plugin.id }))),
+    withDoctorRerun(
+      "Plugin page templates share collection/id keys. Namespace one template id or disable one plugin, then restart.",
+    ),
+  );
+  if (templateConflicts) checks.push(templateConflicts);
+
+  const translationConflicts = duplicateChecks(
+    "plugins.translation_conflict",
+    "Plugin translations",
+    plugins.flatMap((plugin) => plugin.translations.map((key) => ({ key, plugin: plugin.id }))),
+    withDoctorRerun(
+      "Plugin translations share locale/key entries. Namespace one key or make the load-order override intentional.",
+    ),
+  );
+  if (translationConflicts) checks.push(translationConflicts);
 
   const pageRouteConflicts = duplicateChecks(
     "plugins.page_route_conflict",
@@ -1302,6 +1445,7 @@ export async function collectOpsPluginsStatus(
     const blockCheck = blockContractImportCheck(error);
     const patternCheck = patternContractImportCheck(error);
     const scheduledTaskCheck = scheduledTaskContractImportCheck(error);
+    const remainingDefinitionCheck = remainingDefinitionContractImportCheck(error);
     return buildOpsPluginsJson({
       plugins: [],
       checks: [
@@ -1318,6 +1462,7 @@ export async function collectOpsPluginsStatus(
         ...(apiRouteCheck ? [apiRouteCheck] : []),
         ...(pageRouteCheck ? [pageRouteCheck] : []),
         ...(scheduledTaskCheck ? [scheduledTaskCheck] : []),
+        ...(remainingDefinitionCheck ? [remainingDefinitionCheck] : []),
       ],
     });
   }
@@ -1575,6 +1720,9 @@ export function renderBriefOpsPluginsStatus(
         lines.push(`capabilities: ${plugin.capabilities.join(", ")}`);
       if (plugin.requires.length > 0) lines.push(`requires: ${plugin.requires.join(", ")}`);
       if (plugin.blocks.length > 0) lines.push(`blocks: ${plugin.blocks.join(", ")}`);
+      if (plugin.templates.length > 0) lines.push(`templates: ${plugin.templates.join(", ")}`);
+      if (plugin.translations.length > 0)
+        lines.push(`translations: ${plugin.translations.join(", ")}`);
       if (plugin.routes.length > 0) lines.push(`routes: ${plugin.routes.join(", ")}`);
       if (plugin.pageRoutes.length > 0) lines.push(`page routes: ${plugin.pageRoutes.join(", ")}`);
       if (plugin.scheduled.length > 0) lines.push(`scheduled: ${plugin.scheduled.join(", ")}`);

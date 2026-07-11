@@ -1,9 +1,19 @@
 import type { NpFieldConfig, NpPluginConfig, NpPluginContext } from "../config/types.js";
 import { getLogger } from "../observability/logger.js";
 import { reportError } from "../observability/error-reporter.js";
+import {
+  registerPluginStrings,
+  resetPluginStrings,
+  unregisterPluginStrings,
+} from "../i18n/strings.js";
 import { createPluginRuntimeContext } from "./context.js";
 import { isPluginEnabled } from "./enabled-gate.js";
 import { checkNexpressCompat, topoSort } from "./compat.js";
+import {
+  registerPluginTemplates,
+  resetPluginTemplates,
+  unregisterPluginTemplates,
+} from "./templates.js";
 import {
   npAnalyzePluginAdminActionContract,
   npValidatePluginActionResult,
@@ -30,6 +40,14 @@ import {
   npAnalyzePluginScheduledTasks,
   npValidatePluginScheduledTaskResult,
 } from "./scheduled-task-contract.js";
+import {
+  npAnalyzePluginDefinitionContract,
+  npValidatePluginVoidResult,
+} from "./definition-contract.js";
+import {
+  npAnalyzePageTemplateRegistry,
+  type NpPluginTemplateRegistration,
+} from "./template-contract.js";
 import {
   npIsPluginHookName,
   npValidatePluginHookData,
@@ -201,6 +219,7 @@ interface PluginRegistration {
   configVersion?: number;
   /** G.1 — migration callback for v(N-1) → current. */
   configMigrate?: (old: unknown, fromVersion: number) => unknown;
+  teardown?: () => unknown;
   /**
    * Plugin-contributed page routes (#623). The canonical
    * contract validates component and metadata functions before
@@ -250,6 +269,39 @@ function assertCapability(
 const pluginRegistry = new Map<string, PluginRegistration>();
 const globalHooks = new Map<string, PluginHookHandler[]>();
 const globalRoutes: PluginRouteHandler[] = [];
+
+function scrubPluginRegistration(pluginId: string): void {
+  const registration = pluginRegistry.get(pluginId);
+  if (registration) {
+    for (const [hookName, ownedHandlers] of registration.hooks) {
+      const handlers = globalHooks.get(hookName);
+      if (!handlers) continue;
+      const kept = handlers.filter((handler) => !ownedHandlers.includes(handler));
+      if (kept.length === 0) globalHooks.delete(hookName);
+      else globalHooks.set(hookName, kept);
+    }
+    for (const route of registration.routes) {
+      const index = globalRoutes.indexOf(route);
+      if (index >= 0) globalRoutes.splice(index, 1);
+    }
+  }
+  pluginRegistry.delete(pluginId);
+  unregisterPluginTemplates(pluginId);
+  unregisterPluginStrings(pluginId);
+}
+
+async function runPluginTeardown(registration: PluginRegistration): Promise<void> {
+  if (!registration.teardown) return;
+  try {
+    const validation = npValidatePluginVoidResult("teardown", await registration.teardown());
+    if (!validation.ok) throw new Error(validation.message);
+  } catch (error) {
+    getLogger().error("Plugin teardown failed", {
+      pluginId: registration.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 /**
  * Default priority assigned to a hook handler that doesn't pick one. The
@@ -366,6 +418,10 @@ export interface ResolvedPluginLike {
   configVersion?: number;
   /** G.1 — old → current value migrator. */
   configMigrate?: (old: unknown, fromVersion: number) => unknown;
+  i18n?: Record<string, Record<string, string>>;
+  templates?: Record<string, Record<string, unknown>>;
+  setup?: (...args: never[]) => unknown;
+  teardown?: () => unknown;
 }
 
 type ResolvedHookFn = (ctx: {
@@ -461,6 +517,21 @@ function validateScheduledTaskRegistry(pluginId: string, value: unknown): Valida
   const issue = npAnalyzePluginScheduledTasks(value)[0];
   if (issue) throw new Error(`[plugin:${pluginId}] ${issue.message}`);
   return value as ValidatedScheduledTask[];
+}
+
+function validateDefinitionContract(pluginId: string, plugin: ResolvedPluginLike): void {
+  const issue = npAnalyzePluginDefinitionContract(plugin)[0];
+  if (issue) throw new Error(`[plugin:${pluginId}] ${issue.message}`);
+}
+
+function validateTemplateRegistry(
+  pluginId: string,
+  value: unknown,
+): Record<string, Record<string, NpPluginTemplateRegistration>> | undefined {
+  if (value === undefined) return undefined;
+  const issue = npAnalyzePageTemplateRegistry(value)[0];
+  if (issue) throw new Error(`[plugin:${pluginId}] ${issue.message}`);
+  return value as Record<string, Record<string, NpPluginTemplateRegistration>>;
 }
 
 /**
@@ -593,6 +664,9 @@ function createPluginContext(pluginId: string, registration: PluginRegistration)
 async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   const { manifest } = plugin;
 
+  validateDefinitionContract(manifest.id, plugin);
+  const validatedTemplates = validateTemplateRegistry(manifest.id, plugin.templates);
+
   // Defense in depth: if this id was already registered, scrub the old
   // entry's hooks + routes from the global maps before overwriting. The
   // documented reload flow (`reloadPlugins()`) always calls `resetPlugins()`
@@ -601,18 +675,8 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   // harder to diagnose than a clean re-register.
   const previous = pluginRegistry.get(manifest.id);
   if (previous) {
-    for (const [hookName, list] of previous.hooks) {
-      const global = globalHooks.get(hookName);
-      if (!global) continue;
-      const filtered = global.filter((h) => !list.includes(h));
-      if (filtered.length === 0) globalHooks.delete(hookName);
-      else globalHooks.set(hookName, filtered);
-    }
-    for (const route of previous.routes) {
-      const idx = globalRoutes.indexOf(route);
-      if (idx !== -1) globalRoutes.splice(idx, 1);
-    }
-    pluginRegistry.delete(manifest.id);
+    await runPluginTeardown(previous);
+    scrubPluginRegistration(manifest.id);
   }
 
   const validatedApiRoutes = validateApiRouteRegistry(
@@ -654,6 +718,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     configSchema: plugin.configSchema,
     configVersion: plugin.configVersion,
     configMigrate: plugin.configMigrate,
+    teardown: plugin.teardown,
     pageRoutes: validatedPageRoutes,
   };
 
@@ -821,14 +886,8 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   // priority. Plugin authors typically namespace their keys
   // (e.g. `forum.replyButton`) to avoid collisions across
   // unrelated plugins.
-  const i18nBundles = (plugin as { i18n?: Record<string, Record<string, string>> }).i18n;
-  if (i18nBundles && typeof i18nBundles === "object") {
-    const { addStrings } = await import("../i18n/strings.js");
-    for (const [locale, bundle] of Object.entries(i18nBundles)) {
-      if (bundle && typeof bundle === "object") {
-        addStrings(locale, bundle);
-      }
-    }
+  if (plugin.i18n) {
+    registerPluginStrings(manifest.id, plugin.i18n);
   }
 
   // Phase 14.5 — merge any page templates the plugin
@@ -838,21 +897,18 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   // active theme — the theme just stays authoritative. Re-
   // registering the same plugin overwrites its previous
   // entries (idempotent across hot reloads).
-  const pluginTemplates = (plugin as { templates?: Record<string, Record<string, unknown>> })
-    .templates;
-  if (pluginTemplates && typeof pluginTemplates === "object") {
-    const { registerPluginTemplates } = await import("./templates.js");
-    registerPluginTemplates(manifest.id, pluginTemplates);
+  if (validatedTemplates) {
+    registerPluginTemplates(manifest.id, validatedTemplates);
   }
 
   // Invoke optional setup() after hooks, routes, and definition actions are
   // registered. The compatible ctx.actions.register* API can add or replace
   // handlers before subsequent plugins begin loading.
-  const setup = (plugin as { setup?: (ctx: Record<string, unknown>) => void | Promise<void> })
-    .setup;
-  if (typeof setup === "function") {
+  if (plugin.setup) {
     const ctx = await buildCtxFor(manifest.id);
-    await setup(ctx);
+    const setup = plugin.setup as (ctx: Record<string, unknown>) => unknown;
+    const validation = npValidatePluginVoidResult("setup", await setup(ctx));
+    if (!validation.ok) throw new Error(`[plugin:${manifest.id}] ${validation.message}`);
   }
 
   logPluginAdminActionContract(registration);
@@ -948,7 +1004,7 @@ export async function loadPlugins(
     try {
       await loadLegacyPlugin(plugin);
     } catch (err) {
-      pluginRegistry.delete(plugin.id);
+      scrubPluginRegistration(plugin.id);
       getLogger().error("Plugin failed to load — skipped", {
         pluginId: plugin.id,
         error: err instanceof Error ? err.message : String(err),
@@ -960,7 +1016,9 @@ export async function loadPlugins(
       await loadResolvedPlugin(entry.plugin);
     } catch (err) {
       const pluginId = entry.plugin.manifest.id;
-      pluginRegistry.delete(pluginId);
+      const partial = pluginRegistry.get(pluginId);
+      if (partial) await runPluginTeardown(partial);
+      scrubPluginRegistration(pluginId);
       getLogger().error("Plugin failed to load — skipped", {
         pluginId,
         error: err instanceof Error ? err.message : String(err),
@@ -1334,10 +1392,19 @@ export async function runPluginScheduledTask(pluginId: string, taskId: string): 
   }
 }
 
+export async function teardownPlugins(): Promise<void> {
+  const registrations = [...pluginRegistry.values()].reverse();
+  for (const registration of registrations) {
+    await runPluginTeardown(registration);
+  }
+}
+
 export function resetPlugins(): void {
   pluginRegistry.clear();
   globalHooks.clear();
   globalRoutes.length = 0;
+  resetPluginTemplates();
+  resetPluginStrings();
 }
 
 export { isPluginEnabled, invalidatePluginEnabled } from "./enabled-gate.js";

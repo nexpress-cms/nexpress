@@ -270,9 +270,13 @@ export async function scaffoldPagePlugin(options: ScaffoldOptions): Promise<Scaf
   assertDirAvailable(names.pluginDir);
 
   const description = `Public page-route plugin: ${names.packageName}`;
-  const indexSource = `import {
+  const indexSource = `import { renderBlocks } from "@nexpress/blocks";
+import type { NpPageBlocks } from "@nexpress/blocks";
+import {
   definePlugin,
   type NpPluginPageRouteProps,
+  type NpPluginTemplateDefinition,
+  type NpPluginTemplates,
 } from "@nexpress/plugin-sdk";
 
 function GreetingPage({ params, searchParams }: NpPluginPageRouteProps) {
@@ -286,6 +290,29 @@ function GreetingPage({ params, searchParams }: NpPluginPageRouteProps) {
     </main>
   );
 }
+
+function GreetingTemplate({
+  doc,
+  blockCtx,
+}: Parameters<NpPluginTemplateDefinition["component"]>[0]) {
+  const title = typeof doc.title === "string" ? doc.title : "Greeting page";
+  const blocks = (doc as { blocks?: NpPageBlocks }).blocks;
+  return (
+    <main>
+      {blocks ? renderBlocks(blocks, { ctx: blockCtx }) : <h1>{title}</h1>}
+    </main>
+  );
+}
+
+const templates = {
+  pages: {
+    greeting: {
+      label: "Greeting",
+      description: "Minimal page template contributed by this plugin.",
+      component: GreetingTemplate,
+    },
+  },
+} satisfies NpPluginTemplates;
 
 /**
  * Public page-route scaffold. This starter owns \`/hello/:name\` in the
@@ -318,6 +345,11 @@ export const ${names.exportName} = definePlugin({
       locale: "auto",
     },
   ],
+  templates,
+  i18n: {
+    en: { "${names.pluginId}.greeting": "Hello, {name}!" },
+    ko: { "${names.pluginId}.greeting": "안녕하세요, {name}!" },
+  },
 });
 
 export default ${names.exportName};
@@ -327,9 +359,9 @@ export default ${names.exportName};
 
 A public page-route plugin scaffolded by \`nexpress create page-plugin\`.
 
-The starter renders \`/hello/:name\` inside the active site shell and builds
-matching metadata from the captured route parameter. Edit \`src/index.tsx\`
-to add your own page components and patterns.
+The starter renders \`/hello/:name\` inside the active site shell, contributes
+a typed \`pages:greeting\` document template, and registers English/Korean ICU
+strings. Edit \`src/index.tsx\` to add your own presentation surfaces.
 `;
 
   const files: Record<string, string> = {

@@ -107,6 +107,10 @@ describe("non-block scaffold generators", () => {
       const result = await scaffoldPagePlugin({ slug: "greeting", outDir: workdir });
       const source = await readFile(join(result.packageDir, "src/index.tsx"), "utf-8");
       expect(source).toContain("type NpPluginPageRouteProps");
+      expect(source).toContain("type NpPluginTemplates");
+      expect(source).toContain('import { renderBlocks } from "@nexpress/blocks"');
+      expect(source).toContain('type { NpPageBlocks } from "@nexpress/blocks"');
+      expect(source).toContain("renderBlocks(blocks, { ctx: blockCtx })");
       expect(source).toMatch(/pageRoutes:\s*\[/);
       expect(source).toMatch(/pattern: "\/hello\/:name"/);
       expect(source).toMatch(/component: GreetingPage/);
@@ -114,6 +118,8 @@ describe("non-block scaffold generators", () => {
       expect(source).toMatch(/locale: "auto"/);
       expect(source).toContain('`locale: "none"`');
       expect(source).toContain('`surface: "member"`');
+      expect(source).toMatch(/templates,\s*\n\s*i18n:/);
+      expect(source).toContain('en: { "greeting.greeting": "Hello, {name}!" }');
     });
   });
 

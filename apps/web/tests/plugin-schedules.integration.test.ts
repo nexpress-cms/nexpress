@@ -52,7 +52,6 @@ describe.skipIf(skipIfNoTestDb())("Phase 19 — plugin scheduled tasks", () => {
         allowedHosts: [],
         provides: {
           blocks: [],
-          fields: [],
           collections: [],
           adminExtensions: [],
           apiRoutes: [],
@@ -105,7 +104,6 @@ describe.skipIf(skipIfNoTestDb())("Phase 19 — plugin scheduled tasks", () => {
         allowedHosts: [],
         provides: {
           blocks: [],
-          fields: [],
           collections: [],
           adminExtensions: [],
           apiRoutes: [],
@@ -155,7 +153,6 @@ describe.skipIf(skipIfNoTestDb())("Phase 19 — plugin scheduled tasks", () => {
           allowedHosts: [],
           provides: {
             blocks: [],
-            fields: [],
             collections: [],
             adminExtensions: [],
             apiRoutes: [],

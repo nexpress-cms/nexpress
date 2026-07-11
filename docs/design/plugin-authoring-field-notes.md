@@ -71,6 +71,17 @@ These notes come from building two bundled example plugins in May 2026:
   unsafe or duplicate ids, non-function handlers, and non-void results fail
   explicitly; schedules are documented as five-field UTC cron expressions, and
   the CLI plus `analytics-lite` use the typed `NpScheduledTask` registry.
+- Plugin page templates and translations now have definition-time and host-time
+  validation, derived catalog inventories, source-aware reload behavior, and
+  static/runtime doctor diagnostics. Template ownership restores the previous
+  contributor when an override unloads; ICU syntax fails before first render.
+- Plugin config and lifecycle callbacks now have one remaining-definition
+  contract. Invalid schema/version/migrator combinations fail early, setup and
+  teardown must resolve to void, teardown runs in reverse load order before
+  reload/replacement, and partial setup failures scrub every contribution.
+- The never-implemented `NpFieldRegistration` / `definition.fields` surface was
+  removed. Collection field types remain codegen-owned; plugin admin settings
+  use `configSchema` rather than string component indirection.
 - CLI plugin scaffold tests cover package-shape consistency, the canonical
   hook inventory, and typed Admin status helpers instead of hand-built
   payloads.
@@ -83,6 +94,9 @@ inferred from syntax, such as `storage:kv` and `network:fetch`.
 - Plugin package scaffolding still repeats the same `package.json`,
   `tsconfig.json`, and `tsup.config.ts` shape. The CLI generator covers this,
   but hand-authored in-repo examples still pay the copy cost.
+
+The runtime plugin contribution surfaces are now contract-complete. Further
+work in this area should add product capability, not another parallel registry.
 
 The action registry landed at definition level rather than inside `manifest`.
 Handlers are runtime functions, so keeping them beside `routes` and

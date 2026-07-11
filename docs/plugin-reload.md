@@ -36,8 +36,9 @@ The admin toast renders a one-line summary:
 | -------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `np_plugins.enabled` toggle                              | Already live                                           | Caches via `enabled-gate.ts` (5s TTL); `updatePluginState` invalidates the gate so the very next dispatch sees the new value. Doesn't even need a reload.                                                                             |
 | `np_settings` plugin config edits (`plugin.config:<id>`) | Yes                                                    | `setup(ctx)` re-runs against the freshly-read `ctx.config`. Hooks read from `ctx.config` already see the new value on every invocation.                                                                                               |
-| Hook / route / action registry                           | Yes                                                    | The host calls `resetPlugins()` (clears `globalHooks`, `globalRoutes`, `pluginRegistry`) before running `loadPlugins(enabled)` again.                                                                                                 |
-| Block metadata                                           | Yes                                                    | Plugin-contributed blocks land back in the shared registry. Re-registration overwrites by `type` so HMR-style flicker doesn't double-register.                                                                                        |
+| Hook / route / action registry                           | Yes                                                    | The host awaits plugin teardown in reverse load order, clears the runtime registries, then runs `loadPlugins(enabled)` again.                                                                                                         |
+| Blocks and patterns                                      | Yes                                                    | Plugin contributions are cleared and the currently enabled set is registered again with concrete source ownership.                                                                                                                    |
+| Page templates and translations                          | Yes                                                    | Source-aware registries remove disabled/stale contributions. If an override disappears, the previous plugin or app/theme value becomes effective again.                                                                               |
 | `pgboss.schedule` rows                                   | Yes (added / updated / removed counts in the response) | `reconcilePluginSchedules()` diffs the registry against rows under `plugin.scheduledTask.*` and applies the delta.                                                                                                                    |
 | pg-boss **work loops** for new schedules                 | **No** (multi-process limit)                           | `boss.work()` registrations live in the worker process. The web process can update cron rows but can't install / drop work loops in another process — you must restart the worker for newly-added schedules to actually be processed. |
 | Plugin handler code edits                                | **No**                                                 | Reload doesn't touch the Node module cache. `setup` / route handlers / hook handlers retain whatever they were when the process imported them.                                                                                        |
@@ -81,6 +82,10 @@ The admin toast adapts to the situation:
   more jobs for that name.
 
 ## Limits on the reload itself
+
+- **`teardown()` runs before the reset.** Callbacks run in reverse plugin load
+  order and must resolve to void. A failing teardown is logged but does not
+  prevent the remaining plugins from cleaning up or reloading.
 
 - **The Node module cache is untouched.** Editing
   `packages/plugins/my-plugin/src/index.ts` and clicking reload won't

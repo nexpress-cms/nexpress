@@ -261,7 +261,6 @@ describe.skipIf(skipIfNoTestDb())("hook polymorphism (Phase 9.7o)", () => {
           allowedHosts: [],
           provides: {
             blocks: [],
-            fields: [],
             collections: [],
             adminExtensions: [],
             apiRoutes: [],

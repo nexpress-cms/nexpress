@@ -2,7 +2,13 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-11 (plugin page-builder patterns now share one
+**Last refreshed:** 2026-07-11 (the remaining plugin definition surfaces are
+now contract-complete: page templates, ICU translations, config/lifecycle
+callbacks, teardown/reload cleanup, and doctor inventories share validated
+runtime rules. The never-implemented custom-field registration surface was
+removed.)
+
+**Earlier:** 2026-07-11 (plugin page-builder patterns now share one
 validated recursive definition and block-reference contract across blocks, the
 SDK, Next bootstrap, the shared registry, and plugin doctor. Bootstrap assigns
 concrete sources and registers all blocks before patterns.)
@@ -223,6 +229,15 @@ and may omit `source`; bootstrap validates every recursive block instance and
 referenced block type, assigns `plugin:<id>` / `theme:<id>`, registers all
 blocks before patterns, and derives pattern ids into
 `manifest.provides.patterns`. Author docs: `docs/plugin-patterns.md`.
+
+Plugin page templates and UI translations are definition-level registries.
+Templates validate collection/id metadata and function components;
+translations validate canonical BCP 47 locales plus ICU MessageFormat. Both
+derive catalog inventory, retain source ownership for doctor, and cleanly
+restore overridden values on reload/unload. Config schema/version/migrator and
+setup/teardown callbacks are also validated; lifecycle callbacks resolve to
+void and teardown runs in reverse load order before reload. Author docs:
+`docs/plugin-templates.md`, `docs/plugin-i18n.md`, and `docs/plugin-reload.md`.
 
 Plugin scheduled tasks use one canonical core validator from `definePlugin()`,
 the core host, and plugin doctor. Task ids are safe per-plugin queue segments,

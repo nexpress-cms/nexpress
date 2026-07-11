@@ -19,6 +19,7 @@ import {
   setStorageAdapter,
   startProducer,
   syncPluginRegistrations,
+  teardownPlugins,
   verifyStartupSafety,
   verifyTokenFull,
   NP_DEFAULT_SITE_ID,
@@ -621,6 +622,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     // makes `ensurePluginsLoaded()` callers piggyback on the in-progress
     // reload instead of starting a parallel one.
     const loading = (async () => {
+      await teardownPlugins();
       resetPlugins();
       // Issue #477 — also drop plugin-contributed blocks from the
       // shared block registry. `resetPlugins()` clears hooks /

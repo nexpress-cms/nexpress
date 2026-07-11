@@ -5,6 +5,8 @@ import {
   getPluginPageRoutes,
   getPluginRegistration,
   getPluginRoutes,
+  getRegisteredPluginStrings,
+  getRegisteredPluginTemplates,
   getRegisteredPluginActions,
   type NpPluginAdminActionIssue,
   type NpRegisteredPluginAction,
@@ -36,6 +38,8 @@ export function collectRuntimeOpsPluginsStatus(): OpsPluginsJson {
   const pageRoutesByPlugin = groupPageRoutesByPlugin(getPluginPageRoutes());
   const blocksByPlugin = groupRegisteredBlocksByPlugin();
   const patternsByPlugin = groupRegisteredPatternsByPlugin();
+  const templatesByPlugin = groupRegisteredTemplatesByPlugin();
+  const translationsByPlugin = groupRegisteredTranslationsByPlugin();
   const plugins = pluginIds.map((pluginId, index) =>
     buildRuntimePluginEntry({
       pluginId,
@@ -45,6 +49,8 @@ export function collectRuntimeOpsPluginsStatus(): OpsPluginsJson {
       pageRoutes: pageRoutesByPlugin.get(pluginId) ?? [],
       blocks: blocksByPlugin.get(pluginId) ?? [],
       patterns: patternsByPlugin.get(pluginId) ?? [],
+      templates: templatesByPlugin.get(pluginId) ?? [],
+      translations: translationsByPlugin.get(pluginId) ?? [],
     }),
   );
 
@@ -57,6 +63,8 @@ export function collectRuntimeOpsPluginsStatus(): OpsPluginsJson {
       pageRoutesByPlugin,
       blocksByPlugin,
       patternsByPlugin,
+      templatesByPlugin,
+      translationsByPlugin,
       actionDiagnostics: pluginIds.map((pluginId) => ({
         pluginId,
         issues: getPluginAdminActionDiagnostics(pluginId),
@@ -73,6 +81,8 @@ function buildRuntimePluginEntry(args: {
   pageRoutes: RuntimePageRoute[];
   blocks: string[];
   patterns: string[];
+  templates: string[];
+  translations: string[];
 }): OpsPluginEntry {
   const registration = getPluginRegistration(args.pluginId) as
     RuntimePluginRegistration | undefined;
@@ -94,7 +104,8 @@ function buildRuntimePluginEntry(args: {
     provides: {
       blocks: args.blocks,
       patterns: args.patterns,
-      fields: [],
+      templates: args.templates,
+      translations: args.translations,
       collections: [],
       adminExtensions: [],
       actions: args.actions.map((action) => action.id),
@@ -108,6 +119,8 @@ function buildRuntimePluginEntry(args: {
     styleSlots: [],
     blocks: args.blocks,
     patterns: args.patterns,
+    templates: args.templates,
+    translations: args.translations,
     routes: routeKeys(args.routes),
     pageRoutes: pageRouteKeys(args.pageRoutes),
     scheduled,
@@ -122,6 +135,8 @@ function buildRuntimeChecks(args: {
   pageRoutesByPlugin: Map<string, RuntimePageRoute[]>;
   blocksByPlugin: Map<string, string[]>;
   patternsByPlugin: Map<string, string[]>;
+  templatesByPlugin: Map<string, string[]>;
+  translationsByPlugin: Map<string, string[]>;
   actionDiagnostics: Array<{ pluginId: string; issues: NpPluginAdminActionIssue[] }>;
 }): CheckResult[] {
   const pageRouteConflicts = duplicateCheck(
@@ -135,6 +150,20 @@ function buildRuntimeChecks(args: {
     "Runtime plugin block types",
     args.plugins.flatMap((plugin) => plugin.blocks.map((key) => ({ key, plugin: plugin.id }))),
     "Block type names share one registry. Rename one block type or disable one plugin, then restart.",
+  );
+  const templateConflicts = duplicateCheck(
+    "plugins.runtime_template_conflict",
+    "Runtime plugin page templates",
+    args.plugins.flatMap((plugin) => plugin.templates.map((key) => ({ key, plugin: plugin.id }))),
+    "Plugin page templates share collection/id keys. Namespace one template id or disable one plugin, then restart.",
+  );
+  const translationConflicts = duplicateCheck(
+    "plugins.runtime_translation_conflict",
+    "Runtime plugin translations",
+    args.plugins.flatMap((plugin) =>
+      plugin.translations.map((key) => ({ key, plugin: plugin.id })),
+    ),
+    "Plugin translations share locale/key entries. Namespace one key or make the load-order override intentional.",
   );
 
   return [
@@ -178,8 +207,22 @@ function buildRuntimeChecks(args: {
         countGrouped(args.patternsByPlugin) === 1 ? "" : "s"
       } visible in the shared registry`,
     },
+    {
+      id: "plugins.runtime_templates",
+      state: "ok",
+      label: "Runtime plugin page templates",
+      detail: `${countGrouped(args.templatesByPlugin).toString()} template contributions`,
+    },
+    {
+      id: "plugins.runtime_translations",
+      state: "ok",
+      label: "Runtime plugin translations",
+      detail: `${countGrouped(args.translationsByPlugin).toString()} translated strings`,
+    },
     ...buildRuntimeActionChecks(args.actionDiagnostics),
-    ...[pageRouteConflicts, blockConflicts].filter((check): check is CheckResult => Boolean(check)),
+    ...[pageRouteConflicts, blockConflicts, templateConflicts, translationConflicts].filter(
+      (check): check is CheckResult => Boolean(check),
+    ),
   ];
 }
 
@@ -276,6 +319,26 @@ function groupRegisteredPatternsByPlugin(): Map<string, string[]> {
   return byPlugin;
 }
 
+function groupRegisteredTemplatesByPlugin(): Map<string, string[]> {
+  const byPlugin = new Map<string, string[]>();
+  for (const template of getRegisteredPluginTemplates()) {
+    const existing = byPlugin.get(template.pluginId) ?? [];
+    existing.push(`${template.collection}:${template.id}`);
+    byPlugin.set(template.pluginId, existing);
+  }
+  return byPlugin;
+}
+
+function groupRegisteredTranslationsByPlugin(): Map<string, string[]> {
+  const byPlugin = new Map<string, string[]>();
+  for (const translation of getRegisteredPluginStrings()) {
+    const existing = byPlugin.get(translation.pluginId) ?? [];
+    existing.push(`${translation.locale}:${translation.key}`);
+    byPlugin.set(translation.pluginId, existing);
+  }
+  return byPlugin;
+}
+
 function readPluginSource(source: unknown): string | null {
   if (typeof source !== "string") return null;
   const prefix = "plugin:";
@@ -332,6 +395,8 @@ function buildRuntimeOpsPluginsJson(args: {
     plugins: args.plugins.length,
     blocks: args.plugins.reduce((total, plugin) => total + plugin.blocks.length, 0),
     patterns: args.plugins.reduce((total, plugin) => total + plugin.patterns.length, 0),
+    templates: args.plugins.reduce((total, plugin) => total + plugin.templates.length, 0),
+    translations: args.plugins.reduce((total, plugin) => total + plugin.translations.length, 0),
     routes: args.plugins.reduce((total, plugin) => total + plugin.routes.length, 0),
     pageRoutes: args.plugins.reduce((total, plugin) => total + plugin.pageRoutes.length, 0),
     scheduled: args.plugins.reduce((total, plugin) => total + plugin.scheduled.length, 0),

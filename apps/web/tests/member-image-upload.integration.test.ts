@@ -115,7 +115,6 @@ async function registerMediaHookCapture(pluginId: string): Promise<CapturedMedia
         allowedHosts: [],
         provides: {
           blocks: [],
-          fields: [],
           collections: [],
           adminExtensions: [],
           apiRoutes: [],

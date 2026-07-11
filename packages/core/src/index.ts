@@ -444,9 +444,12 @@ export type {
 
 export {
   registerPluginTemplates,
+  unregisterPluginTemplates,
   resetPluginTemplates,
   getPluginTemplatesForCollection,
+  getRegisteredPluginTemplates,
 } from "./plugins/templates.js";
+export type { NpRegisteredPluginTemplate } from "./plugins/templates.js";
 
 export {
   ensureDefaultSite,
@@ -493,6 +496,10 @@ export {
   addStrings,
   setStrings,
   resetStrings,
+  registerPluginStrings,
+  unregisterPluginStrings,
+  resetPluginStrings,
+  getRegisteredPluginStrings,
   resetTranslationCache,
   getStrings,
   getAllStrings,
@@ -501,6 +508,7 @@ export {
   type NpTranslationParams,
 } from "./i18n/strings.js";
 export type { NpTranslationBundle } from "./i18n/strings.js";
+export type { NpRegisteredPluginTranslation } from "./i18n/strings.js";
 export { getLocaleDirection, type NpLocaleDirection } from "./i18n/direction.js";
 export {
   formatNumber,
@@ -543,6 +551,7 @@ export {
   schedulePluginTask,
   getRegisteredPluginSchedules,
   runPluginScheduledTask,
+  teardownPlugins,
   resetPlugins,
   isPluginEnabled,
   invalidatePluginEnabled,
@@ -578,6 +587,13 @@ export {
   npIsPluginHookName,
   npPluginHookNames,
   npValidatePluginHookData,
+  npAnalyzePageTemplateRegistry,
+  npValidatePageTemplateRegistry,
+  npPageTemplateKeys,
+  npAnalyzePluginDefinitionContract,
+  npAnalyzePluginI18nBundles,
+  npPluginTranslationKeys,
+  npValidatePluginVoidResult,
 } from "./plugins/index.js";
 
 export type { NpPluginConfigResult } from "./plugins/index.js";
@@ -644,6 +660,13 @@ export type {
   NpPluginState,
   NpPluginStateUpdate,
   NexpressCompatResult,
+  NpPageTemplateRenderProps,
+  NpPageTemplateDefinition,
+  NpPageTemplateRegistry,
+  NpPageTemplateContractIssue,
+  NpPluginTemplateRegistration,
+  NpPluginDefinitionContractInput,
+  NpPluginDefinitionContractIssue,
 } from "./plugins/index.js";
 
 export {

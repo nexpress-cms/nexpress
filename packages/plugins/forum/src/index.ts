@@ -174,7 +174,6 @@ export const forumPlugin = definePlugin({
     allowedHosts: [],
     provides: {
       blocks: [],
-      fields: [],
       collections: [],
       // Existing plugins (reading-time, seo-audit) keep this empty
       // even when populating `admin.*` extensions — the field is
