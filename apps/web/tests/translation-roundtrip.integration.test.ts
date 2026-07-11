@@ -11,13 +11,13 @@ import {
 } from "./harness.js";
 
 /**
- * Phase 12.12 — XLIFF round-trip. Writes a source-locale row,
- * exports an XLIFF bundle, edits the `<target>` text the way a
- * translator would, imports the result, and verifies the new
+ * Translation interchange round-trip. Writes a source-locale row, exports an
+ * XLIFF or Gettext bundle, edits target text the way a translator would,
+ * imports the result, and verifies the new
  * sibling row landed with the translated content + the original
  * non-translatable fields preserved.
  */
-describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
+describe.skipIf(skipIfNoTestDb())("translation interchange round-trip", () => {
   let usePagesBlocksCollection: (() => void) | null = null;
   let usePagesRichTextCollection: (() => void) | null = null;
 
@@ -331,7 +331,7 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     });
     expect(result.applied).toHaveLength(0);
     expect(result.skipped).toHaveLength(1);
-    expect(result.skipped[0]!.reason).toMatch(/all <target> elements/i);
+    expect(result.skipped[0]!.reason).toMatch(/all target values/i);
   });
 
   it("rejects trans-units whose id isn't a translatable field (no locale/groupId hijack)", async () => {
@@ -437,6 +437,64 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     expect(result.applied).toHaveLength(0);
     expect(result.skipped).toHaveLength(1);
     expect(result.skipped[0]!.reason).toMatch(/Unknown collection/);
+  });
+
+  it("skips every duplicate unit instead of applying the first copy", async () => {
+    const { findDocuments, saveDocument } = await import("@nexpress/core");
+    const { exportXliff, importXliff, parseXliff, renderXliff } = await import("@nexpress/xliff");
+    const source = await saveDocument(
+      "pages",
+      null,
+      { title: "Duplicate source", seoDescription: "Safe source", locale: "en" },
+      actor(),
+      { status: "published" },
+    );
+    const groupId = (source.doc as { translationGroupId: string }).translationGroupId;
+    const bundle = await exportXliff();
+    const parsed = parseXliff(bundle.files[0]!.xml);
+    const file = parsed.files[0]!;
+    const title = file.units.find((unit) => unit.id === "title")!;
+    title.target = "첫 번째";
+    file.units.push({ ...title, target: "두 번째" });
+    file.units.find((unit) => unit.id === "seoDescription")!.target = "안전한 번역";
+
+    const result = await importXliff({ xml: renderXliff(parsed), user: actor() });
+    expect(result.applied).toEqual([expect.objectContaining({ unitCount: 1 })]);
+    expect(result.skipped).toEqual([
+      expect.objectContaining({ reason: expect.stringContaining("duplicate translation unit") }),
+    ]);
+    const rows = await findDocuments("pages", {
+      where: { translationGroupId: groupId },
+      locale: "ko",
+    });
+    expect(rows.docs[0]).toEqual(
+      expect.objectContaining({ title: "Duplicate source", seoDescription: "안전한 번역" }),
+    );
+  });
+
+  it("skips every duplicate routed document before any write", async () => {
+    const { findDocuments, saveDocument } = await import("@nexpress/core");
+    const { exportXliff, importXliff, parseXliff, renderXliff } = await import("@nexpress/xliff");
+    await saveDocument(
+      "pages",
+      null,
+      { title: "Duplicate document", seoDescription: "Source", locale: "en" },
+      actor(),
+      { status: "published" },
+    );
+    const bundle = await exportXliff();
+    const parsed = parseXliff(bundle.files[0]!.xml);
+    parsed.files[0]!.units.find((unit) => unit.id === "title")!.target = "중복 문서";
+    parsed.files.push(structuredClone(parsed.files[0]!));
+
+    const result = await importXliff({ xml: renderXliff(parsed), user: actor() });
+    expect(result.applied).toHaveLength(0);
+    expect(result.skipped).toEqual([
+      expect.objectContaining({
+        reason: expect.stringContaining("duplicate translation document"),
+      }),
+    ]);
+    expect((await findDocuments("pages", { locale: "ko" })).docs).toHaveLength(0);
   });
 
   it("Issue #383 — private source rows still round-trip when the operator is threaded", async () => {
@@ -740,6 +798,173 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
       expect(firstParagraph.children[2]).toEqual(
         expect.objectContaining({ type: "image", src: "/media/example.png" }),
       );
+    } finally {
+      usePagesRichTextCollection?.();
+    }
+  });
+
+  it("Gettext dry-runs a sibling create and skips stale atomic source text", async () => {
+    const { findDocuments, getDocumentById, saveDocument } = await import("@nexpress/core");
+    const { exportGettext, importGettext, parseGettext, renderGettext } =
+      await import("@nexpress/gettext");
+    const source = await saveDocument(
+      "pages",
+      null,
+      { title: "PO source", seoDescription: "Stable summary", locale: "en" },
+      actor(),
+      { status: "published" },
+    );
+    const sourceId = source.doc.id as string;
+    const groupId = (source.doc as { translationGroupId: string }).translationGroupId;
+    const bundle = await exportGettext();
+    expect(bundle.files).toEqual([
+      expect.objectContaining({ name: "pages-en-ko.po", collection: "pages" }),
+    ]);
+
+    const parsed = parseGettext(bundle.files[0]!.po);
+    const units = parsed.documents[0]!.units;
+    units.find((unit) => unit.id === "title")!.target = "PO 번역";
+    units.find((unit) => unit.id === "seoDescription")!.target = "안정적인 요약";
+    const translatedPo = renderGettext(parsed);
+
+    const dryRun = await importGettext({ po: translatedPo, user: actor(), dryRun: true });
+    expect(dryRun).toEqual(
+      expect.objectContaining({
+        wrote: false,
+        applied: [expect.objectContaining({ operation: "create", unitCount: 2 })],
+      }),
+    );
+    expect((await findDocuments("pages", { locale: "ko" })).docs).toHaveLength(0);
+
+    await saveDocument(
+      "pages",
+      sourceId,
+      { title: "Changed after export", seoDescription: "Stable summary", locale: "en" },
+      actor(),
+      { status: "published" },
+    );
+    const imported = await importGettext({ po: translatedPo, user: actor() });
+    expect(imported.applied).toEqual([expect.objectContaining({ unitCount: 1 })]);
+    expect(imported.skipped).toEqual([
+      expect.objectContaining({ reason: expect.stringContaining("source text") }),
+    ]);
+
+    const targetRows = await findDocuments("pages", {
+      where: { translationGroupId: groupId },
+      locale: "ko",
+    });
+    const target = await getDocumentById(
+      "pages",
+      (targetRows.docs[0] as { id: string }).id,
+      actor(),
+    );
+    expect(target!.title).toBe("Changed after export");
+    expect(target!.seoDescription).toBe("안정적인 요약");
+  });
+
+  it("Gettext round-trips protected Lexical text without flattening nodes", async () => {
+    const { findDocuments, getDocumentById, saveDocument } = await import("@nexpress/core");
+    const { exportGettext, importGettext, parseGettext, renderGettext } =
+      await import("@nexpress/gettext");
+    const source = await saveDocument(
+      "pages",
+      null,
+      {
+        title: "PO rich source",
+        seoDescription: "PO rich summary",
+        blocks: richTextFixture(),
+        locale: "en",
+      },
+      actor(),
+      { status: "published" },
+    );
+    const groupId = (source.doc as { translationGroupId: string }).translationGroupId;
+    const bundle = await exportGettext();
+    const parsed = parseGettext(bundle.files[0]!.po);
+    const units = parsed.documents[0]!.units;
+    units.find((unit) => unit.id === "title")!.target = "PO 리치 번역";
+    const richUnit = units.find((unit) => unit.id === "blocks")!;
+    richUnit.targetInline = richUnit.targetInline!.map((part) => {
+      if (part.type !== "group") return part;
+      if (part.id === "n-0-0") return { ...part, text: "안녕 " };
+      if (part.id === "n-0-1-0") return { ...part, text: "세계" };
+      return { ...part, text: "다음 문단" };
+    });
+
+    const result = await importGettext({ po: renderGettext(parsed), user: actor() });
+    expect(result.applied).toEqual([expect.objectContaining({ unitCount: 2 })]);
+    const rows = await findDocuments("pages", {
+      where: { translationGroupId: groupId },
+      locale: "ko",
+    });
+    const target = await getDocumentById("pages", (rows.docs[0] as { id: string }).id, actor());
+    const root = (target!.blocks as { root: { children: Array<Record<string, unknown>> } }).root;
+    const paragraph = root.children[0] as { children: Array<Record<string, unknown>> };
+    expect(paragraph.children[0]).toEqual(expect.objectContaining({ text: "안녕 ", format: 1 }));
+    const link = paragraph.children[1] as { url: string; children: Array<{ text: string }> };
+    expect(link.url).toBe("https://example.com/docs");
+    expect(link.children[0]!.text).toBe("세계");
+    expect(paragraph.children[2]).toEqual(expect.objectContaining({ type: "image" }));
+  });
+
+  it("Gettext round-trips schema-declared nested block props", async () => {
+    usePagesBlocksCollection?.();
+    try {
+      const { findDocuments, getDocumentById, saveDocument } = await import("@nexpress/core");
+      const { exportGettext, importGettext, parseGettext, renderGettext } =
+        await import("@nexpress/gettext");
+      const source = await saveDocument(
+        "pages",
+        null,
+        { title: "PO block source", blocks: blockFixture(), locale: "en" },
+        actor(),
+        { status: "published" },
+      );
+      const groupId = (source.doc as { translationGroupId: string }).translationGroupId;
+      const bundle = await exportGettext();
+      const parsed = parseGettext(bundle.files[0]!.po);
+      const units = parsed.documents[0]!.units;
+      expect(units.some((unit) => unit.source === "2rem")).toBe(false);
+      expect(units.some((unit) => unit.source === "/docs")).toBe(false);
+      for (const unit of units) {
+        if (unit.source === "PO block source") unit.target = "PO 블록 번역";
+        if (unit.source === "Block hero") unit.target = "PO 블록 히어로";
+        if (unit.source === "How?") unit.target = "PO 어떻게?";
+        if (unit.sourceInline) {
+          const sourceById = new Map(
+            unit.sourceInline
+              .filter((part) => part.type === "group")
+              .map((part) => [part.id, part.text]),
+          );
+          unit.targetInline = unit.targetInline!.map((part) =>
+            part.type === "group" ? { ...part, text: `PO:${sourceById.get(part.id) ?? ""}` } : part,
+          );
+        }
+      }
+
+      const result = await importGettext({ po: renderGettext(parsed), user: actor() });
+      expect(result.applied[0]!.unitCount).toBeGreaterThan(3);
+      const rows = await findDocuments("pages", {
+        where: { translationGroupId: groupId },
+        locale: "ko",
+      });
+      const target = await getDocumentById("pages", (rows.docs[0] as { id: string }).id, actor());
+      expect(target!.title).toBe("PO 블록 번역");
+      const layout = (target!.blocks as Array<Record<string, unknown>>)[0]!;
+      expect((layout.props as Record<string, unknown>).gap).toBe("2rem");
+      const children = layout.children as Array<Record<string, unknown>>;
+      const hero = children.find((block) => block.id === "hero-translation")!;
+      expect(hero.props).toEqual(
+        expect.objectContaining({ title: "PO 블록 히어로", ctaUrl: "/docs" }),
+      );
+      const rich = children.find((block) => block.id === "rich-translation")!;
+      const content = (
+        rich.props as { content: { root: { children: Array<Record<string, unknown>> } } }
+      ).content;
+      const paragraph = content.root.children[0] as {
+        children: Array<Record<string, unknown>>;
+      };
+      expect(paragraph.children[0]!.text).toBe("PO:Hello ");
     } finally {
       usePagesRichTextCollection?.();
     }

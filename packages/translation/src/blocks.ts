@@ -5,8 +5,9 @@ import {
   type NpBlockPropField,
 } from "@nexpress/blocks";
 
-import type { XliffTransUnit } from "./format.js";
-import { applyRichTextXliffValue, createRichTextXliffValue } from "./rich-text.js";
+import type { NpTranslationUnit } from "./types.js";
+import { NP_TRANSLATION_UNIT_ID_MAX_LENGTH } from "./types.js";
+import { applyRichTextTranslationValue, createRichTextTranslationValue } from "./rich-text.js";
 
 const BLOCK_UNIT_PREFIX = "np:block:";
 const UNSAFE_PATH_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
@@ -29,25 +30,25 @@ interface TranslationSlot extends BlockDescriptor {
   value: unknown;
 }
 
-export type BlockXliffApplyResult =
+export type BlockTranslationApplyResult =
   { ok: true; value: NpBlockInstance[] } | { ok: false; reason: string; empty: boolean };
 
 /**
- * Emit one protected XLIFF unit per schema-declared translatable block prop.
+ * Emit one protected translation unit per schema-declared translatable block prop.
  * Block ids make nested block order irrelevant; array item paths stay
  * positional because block prop arrays do not carry framework-owned ids.
  */
-export function createBlockXliffUnits(
+export function createBlockTranslationUnits(
   fieldName: string,
   sourceValue: unknown,
   targetValue: unknown,
-): XliffTransUnit[] {
+): NpTranslationUnit[] {
   if (fieldName.length === 0 || fieldName.length > 128) return [];
   const definitions = blockDefinitions();
   const source = indexBlocks(sourceValue);
   if (!source) return [];
   const target = indexBlocks(targetValue);
-  const units: XliffTransUnit[] = [];
+  const units: NpTranslationUnit[] = [];
 
   for (const block of source.ordered) {
     if (!source.unique.has(block.id) || block.id.length > 512) continue;
@@ -58,12 +59,13 @@ export function createBlockXliffUnits(
 
     for (const slot of collectSlots(fieldName, block, definition.propsSchema)) {
       const id = renderBlockUnitId(slot);
+      if (id.length > NP_TRANSLATION_UNIT_ID_MAX_LENGTH) continue;
       const targetSlotValue = compatibleTarget
         ? valueAtPath(compatibleTarget.props, slot.path)
         : undefined;
 
       if (slot.field.type === "richtext") {
-        const richText = createRichTextXliffValue(slot.value, targetSlotValue);
+        const richText = createRichTextTranslationValue(slot.value, targetSlotValue);
         if (!richText) continue;
         units.push({
           id,
@@ -88,7 +90,9 @@ export function createBlockXliffUnits(
 }
 
 export function parseBlockUnitId(id: string): BlockDescriptor | null {
-  if (!id.startsWith(BLOCK_UNIT_PREFIX)) return null;
+  if (id.length > NP_TRANSLATION_UNIT_ID_MAX_LENGTH || !id.startsWith(BLOCK_UNIT_PREFIX)) {
+    return null;
+  }
   const parts = id.slice(BLOCK_UNIT_PREFIX.length).split(":");
   if (parts.length !== 4) return null;
   try {
@@ -119,11 +123,11 @@ export function parseBlockUnitId(id: string): BlockDescriptor | null {
  * then apply it to a cloned working target tree. Missing/ambiguous blocks,
  * stale source text, schema drift, and malformed inline codes fail closed.
  */
-export function applyBlockXliffUnit(args: {
+export function applyBlockTranslationUnit(args: {
   sourceValue: unknown;
   targetValue: unknown;
-  unit: XliffTransUnit;
-}): BlockXliffApplyResult {
+  unit: NpTranslationUnit;
+}): BlockTranslationApplyResult {
   const descriptor = parseBlockUnitId(args.unit.id);
   if (!descriptor) {
     return { ok: false, reason: "block unit id is malformed", empty: false };
@@ -174,7 +178,7 @@ export function applyBlockXliffUnit(args: {
   const liveTarget = valueAtPath(targetBlock.props, descriptor.path);
 
   if (field.type === "richtext") {
-    const result = applyRichTextXliffValue({
+    const result = applyRichTextTranslationValue({
       sourceValue: liveSource,
       targetValue: liveTarget,
       sourceInline: args.unit.sourceInline,

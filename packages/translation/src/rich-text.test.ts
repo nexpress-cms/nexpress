@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyRichTextXliffValue, createRichTextXliffValue } from "./rich-text.js";
+import { applyRichTextTranslationValue, createRichTextTranslationValue } from "./rich-text.js";
 
 function richTextFixture(): Record<string, unknown> {
   return {
@@ -88,9 +88,9 @@ function richTextFixture(): Record<string, unknown> {
   };
 }
 
-describe("Lexical XLIFF inline codec", () => {
+describe("Lexical translation inline codec", () => {
   it("assigns deterministic text paths and protected block breaks", () => {
-    const value = createRichTextXliffValue(richTextFixture(), null);
+    const value = createRichTextTranslationValue(richTextFixture(), null);
 
     expect(value).not.toBeNull();
     expect(value!.sourceInline).toEqual([
@@ -115,11 +115,11 @@ describe("Lexical XLIFF inline codec", () => {
     const link = paragraph.children[1] as { children: Array<Record<string, unknown>> };
     link.children[0].text = "세계";
 
-    const compatible = createRichTextXliffValue(richTextFixture(), target);
+    const compatible = createRichTextTranslationValue(richTextFixture(), target);
     expect(compatible!.target).toContain("안녕 세계");
 
     paragraph.children.push({ type: "text", text: "extra" });
-    const incompatible = createRichTextXliffValue(richTextFixture(), target);
+    const incompatible = createRichTextTranslationValue(richTextFixture(), target);
     expect(incompatible!.target).toBe("\n\n");
   });
 
@@ -139,7 +139,7 @@ describe("Lexical XLIFF inline codec", () => {
     targetLink.url = "https://example.com/target";
     targetLink.children[0].text = "link";
 
-    const unit = createRichTextXliffValue(source, existingTarget)!;
+    const unit = createRichTextTranslationValue(source, existingTarget)!;
     unit.targetInline = unit.targetInline.map((part) => {
       if (part.type !== "group") return part;
       if (part.id === "n-0-0") return { ...part, text: "Bonjour " };
@@ -148,7 +148,7 @@ describe("Lexical XLIFF inline codec", () => {
       return { ...part, text: "Deuxième" };
     });
 
-    const result = applyRichTextXliffValue({
+    const result = applyRichTextTranslationValue({
       sourceValue: source,
       targetValue: existingTarget,
       sourceInline: unit.sourceInline,
@@ -173,12 +173,12 @@ describe("Lexical XLIFF inline codec", () => {
 
   it("rejects tampered source text and reordered target inline codes", () => {
     const source = richTextFixture();
-    const unit = createRichTextXliffValue(source, null)!;
+    const unit = createRichTextTranslationValue(source, null)!;
     const firstGroup = unit.sourceInline.find((part) => part.type === "group")!;
     const tamperedSource = unit.sourceInline.map((part) =>
       part === firstGroup && part.type === "group" ? { ...part, text: "tampered" } : part,
     );
-    const sourceResult = applyRichTextXliffValue({
+    const sourceResult = applyRichTextTranslationValue({
       sourceValue: source,
       targetValue: null,
       sourceInline: tamperedSource,
@@ -192,7 +192,7 @@ describe("Lexical XLIFF inline codec", () => {
       part.type === "group" ? { ...part, text: "translated" } : part,
     );
     [translatedTarget[0], translatedTarget[1]] = [translatedTarget[1], translatedTarget[0]];
-    const targetResult = applyRichTextXliffValue({
+    const targetResult = applyRichTextTranslationValue({
       sourceValue: source,
       targetValue: null,
       sourceInline: unit.sourceInline,

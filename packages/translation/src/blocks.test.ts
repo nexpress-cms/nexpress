@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  applyBlockXliffUnit,
+  applyBlockTranslationUnit,
   createBlockImportBaseline,
-  createBlockXliffUnits,
+  createBlockTranslationUnits,
   parseBlockUnitId,
 } from "./blocks.js";
 
@@ -62,9 +62,9 @@ function sourceBlocks(): Array<Record<string, unknown>> {
   ];
 }
 
-describe("block XLIFF codec", () => {
+describe("block translation codec", () => {
   it("derives units only from schema-declared translatable props", () => {
-    const units = createBlockXliffUnits("blocks", sourceBlocks(), null);
+    const units = createBlockTranslationUnits("blocks", sourceBlocks(), null);
     const descriptors = units.map((unit) => parseBlockUnitId(unit.id)!);
 
     expect(descriptors).toEqual(
@@ -92,7 +92,7 @@ describe("block XLIFF codec", () => {
     const hero = children.find((block) => block.id === "hero-1")!;
     (hero.props as Record<string, unknown>).title = "환영합니다";
 
-    const units = createBlockXliffUnits("blocks", sourceBlocks(), target);
+    const units = createBlockTranslationUnits("blocks", sourceBlocks(), target);
     const title = units.find((unit) => {
       const descriptor = parseBlockUnitId(unit.id);
       return descriptor?.blockId === "hero-1" && descriptor.path.join(".") === "title";
@@ -103,10 +103,14 @@ describe("block XLIFF codec", () => {
   it("applies atomic and rich-text props while preserving target structure and non-translatable props", () => {
     const source = sourceBlocks();
     const baseline = createBlockImportBaseline(source, null)!;
-    const units = createBlockXliffUnits("blocks", source, null);
+    const units = createBlockTranslationUnits("blocks", source, null);
     const title = units.find((unit) => parseBlockUnitId(unit.id)?.path.join(".") === "title")!;
     title.target = "Bienvenue";
-    let result = applyBlockXliffUnit({ sourceValue: source, targetValue: baseline, unit: title });
+    let result = applyBlockTranslationUnit({
+      sourceValue: source,
+      targetValue: baseline,
+      unit: title,
+    });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -114,7 +118,11 @@ describe("block XLIFF codec", () => {
     rich.targetInline = rich.targetInline!.map((part) =>
       part.type === "group" ? { ...part, text: "Contenu formaté" } : part,
     );
-    result = applyBlockXliffUnit({ sourceValue: source, targetValue: result.value, unit: rich });
+    result = applyBlockTranslationUnit({
+      sourceValue: source,
+      targetValue: result.value,
+      unit: rich,
+    });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -134,14 +142,14 @@ describe("block XLIFF codec", () => {
 
   it("rejects stale source text, duplicate block ids, and schema path tampering", () => {
     const source = sourceBlocks();
-    const unit = createBlockXliffUnits("blocks", source, null).find(
+    const unit = createBlockTranslationUnits("blocks", source, null).find(
       (candidate) => parseBlockUnitId(candidate.id)?.path.join(".") === "title",
     )!;
     unit.target = "Translated";
     const baseline = createBlockImportBaseline(source, null)!;
 
     expect(
-      applyBlockXliffUnit({
+      applyBlockTranslationUnit({
         sourceValue: source,
         targetValue: baseline,
         unit: { ...unit, source: "tampered" },
@@ -151,7 +159,9 @@ describe("block XLIFF codec", () => {
     );
 
     const duplicated = [...source, structuredClone(source[0])];
-    expect(applyBlockXliffUnit({ sourceValue: duplicated, targetValue: duplicated, unit })).toEqual(
+    expect(
+      applyBlockTranslationUnit({ sourceValue: duplicated, targetValue: duplicated, unit }),
+    ).toEqual(
       expect.objectContaining({ ok: false, reason: expect.stringContaining("duplicated") }),
     );
 
@@ -161,7 +171,7 @@ describe("block XLIFF codec", () => {
       encodeURIComponent(JSON.stringify(["ctaUrl"])),
     );
     expect(
-      applyBlockXliffUnit({
+      applyBlockTranslationUnit({
         sourceValue: source,
         targetValue: baseline,
         unit: { ...unit, id: tamperedId },

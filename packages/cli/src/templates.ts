@@ -64,6 +64,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "scripts/dev-notice.ts": utf8(devNoticeScriptTemplate()),
     "scripts/doctor.ts": utf8(doctorScriptTemplate()),
     "scripts/generate-schema.ts": utf8(generateSchemaScriptTemplate()),
+    "scripts/gettext.ts": utf8(translationCliScriptTemplate("gettext")),
     "scripts/ops-backup.ts": utf8(opsBackupScriptTemplate()),
     "scripts/ops-contracts.ts": utf8(opsContractsScriptTemplate()),
     "scripts/ops-health.ts": utf8(opsHealthScriptTemplate()),
@@ -81,6 +82,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "scripts/setup-server.ts": utf8(setupServerScriptTemplate()),
     "scripts/run-migrations.ts": utf8(runMigrationsScriptTemplate()),
     "scripts/worker.ts": utf8(workerScriptTemplate()),
+    "scripts/xliff.ts": utf8(translationCliScriptTemplate("xliff")),
   };
 
   // Snapshot of `apps/web/src/{app,lib,i18n.config.ts,proxy.ts}` —
@@ -155,6 +157,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "deploy:plan": "tsx scripts/deploy-plan.ts",
         doctor: "tsx scripts/doctor.ts",
         "doctor:prod": "tsx scripts/doctor.ts --prod",
+        gettext: "tsx scripts/gettext.ts",
         "ops:backup": "tsx scripts/ops-backup.ts",
         "ops:contracts": "tsx scripts/ops-contracts.ts",
         "ops:health": "tsx scripts/ops-health.ts",
@@ -174,6 +177,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "seed:content": "tsx scripts/seed-content.ts",
         setup: "tsx scripts/setup-server.ts",
         worker: "tsx scripts/worker.ts",
+        xliff: "tsx scripts/xliff.ts",
         "db:generate": "pnpm schema:gen && drizzle-kit generate",
         "db:migrate": "tsx scripts/run-migrations.ts",
         "db:push": "pnpm schema:gen && drizzle-kit push",
@@ -185,6 +189,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "@nexpress/app": nexpressVersion,
         "@nexpress/auth-pages": nexpressVersion,
         "@nexpress/editor": nexpressVersion,
+        "@nexpress/gettext": nexpressVersion,
         "@nexpress/blocks": nexpressVersion,
         "@nexpress/theme": nexpressVersion,
         // Built-in theme packs — scaffold admin's Appearance → Themes
@@ -197,6 +202,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "@nexpress/theme-portfolio": nexpressVersion,
         "@nexpress/next": nexpressVersion,
         "@nexpress/plugin-sdk": nexpressVersion,
+        "@nexpress/xliff": nexpressVersion,
         "drizzle-orm": "^0.45.2",
         // `pg` is in @nexpress/core's install graph, but pnpm 10's
         // strict hoisting won't surface a nested package's bare
@@ -369,6 +375,44 @@ function generateSchemaScriptTemplate(): string {
 
 function buildScriptTemplate(): string {
   return `import "@nexpress/app/scripts/build";\n`;
+}
+
+function translationCliScriptTemplate(adapter: "gettext" | "xliff"): string {
+  const packageName = `@nexpress/${adapter}`;
+  const actorName = adapter === "gettext" ? "Gettext importer" : "XLIFF importer";
+  return (
+    `import "./_load-env.js";\n\n` +
+    `import type { NpAuthUser } from "@nexpress/core";\n` +
+    `import { runCli } from "${packageName}";\n` +
+    `import { createBootstrap } from "@nexpress/next";\n\n` +
+    `import nexpressConfig from "../src/nexpress.config.js";\n` +
+    `import * as generatedSchema from "../src/db/generated/collections.js";\n\n` +
+    `const { ensureCoreServices, ensurePluginsLoaded } = createBootstrap({\n` +
+    `  config: nexpressConfig,\n` +
+    `  generatedSchema: generatedSchema as unknown as Record<string, unknown>,\n` +
+    `});\n\n` +
+    `async function main(): Promise<void> {\n` +
+    `  ensureCoreServices();\n` +
+    `  await ensurePluginsLoaded();\n\n` +
+    `  const user: NpAuthUser = {\n` +
+    `    id: "00000000-0000-0000-0000-000000000000",\n` +
+    `    email: "${adapter}-import@local",\n` +
+    `    name: "${actorName}",\n` +
+    `    role: "admin",\n` +
+    `    tokenVersion: 0,\n` +
+    `  };\n` +
+    `  const io = {\n` +
+    `    out(message: string): void { process.stdout.write(message); },\n` +
+    `    err(message: string): void { process.stderr.write(message); },\n` +
+    `  };\n` +
+    `  const result = await runCli(io, process.argv.slice(2), { user });\n` +
+    `  process.exit(result.exitCode);\n` +
+    `}\n\n` +
+    `main().catch((error) => {\n` +
+    `  process.stderr.write(\`${adapter}: \${(error as Error).stack ?? String(error)}\\n\`);\n` +
+    `  process.exit(1);\n` +
+    `});\n`
+  );
 }
 
 function workerScriptTemplate(): string {

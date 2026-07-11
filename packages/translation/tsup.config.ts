@@ -8,5 +8,5 @@ export default defineConfig({
   dts: !fast,
   clean: true,
   target: "es2022",
-  external: ["fast-xml-parser", "@nexpress/core", "@nexpress/translation"],
+  external: ["@nexpress/blocks", "@nexpress/core"],
 });

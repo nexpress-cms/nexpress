@@ -177,6 +177,7 @@ describe("getProjectFiles", () => {
       "@nexpress/blocks",
       "@nexpress/core",
       "@nexpress/editor",
+      "@nexpress/gettext",
       "@nexpress/next",
       "@nexpress/plugin-sdk",
       "@nexpress/theme",
@@ -184,6 +185,7 @@ describe("getProjectFiles", () => {
       "@nexpress/theme-docs",
       "@nexpress/theme-magazine",
       "@nexpress/theme-portfolio",
+      "@nexpress/xliff",
     ];
     for (const dep of families) {
       expect(remote["package.json"], `expected ${dep} pinned to ${CORE_PACKAGE_VERSION}`).toContain(
@@ -384,6 +386,25 @@ describe("getProjectFiles", () => {
     expect(pkg.scripts["ops:storage"]).toBe("tsx scripts/ops-storage.ts");
     expect(pkg.scripts.release).toBe("tsx scripts/release.ts");
     expect(pkg.scripts.runbook).toBe("tsx scripts/runbook.ts");
+  });
+
+  it("ships bootstrapped XLIFF and Gettext translation CLIs", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const pkg = JSON.parse(files["package.json"]) as {
+      scripts: Record<string, string>;
+      dependencies: Record<string, string>;
+    };
+    expect(pkg.scripts.xliff).toBe("tsx scripts/xliff.ts");
+    expect(pkg.scripts.gettext).toBe("tsx scripts/gettext.ts");
+    expect(pkg.dependencies["@nexpress/xliff"]).toBe("workspace:*");
+    expect(pkg.dependencies["@nexpress/gettext"]).toBe("workspace:*");
+    for (const adapter of ["xliff", "gettext"]) {
+      const script = files[`scripts/${adapter}.ts`];
+      expect(script).toMatch(new RegExp(`@nexpress/${adapter}`));
+      expect(script).toMatch(/createBootstrap/);
+      expect(script).toMatch(/ensurePluginsLoaded/);
+      expect(script).not.toMatch(/@\/lib\/init-core/);
+    }
   });
 
   it("routes build through the shared NexPress build guard", () => {
