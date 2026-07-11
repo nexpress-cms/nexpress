@@ -20,20 +20,35 @@ export const ctaBlock: NpBlockDefinition = {
   keywords: ["call to action", "button banner", "conversion", "signup"],
   defaultProps: {
     heading: "Launch your next page faster",
-    description: "Turn structured content into polished pages with reusable server-renderable blocks.",
+    description:
+      "Turn structured content into polished pages with reusable server-renderable blocks.",
     buttonText: "Start building",
     buttonUrl: "/start",
     variant: "primary",
   },
   propsSchema: [
-    { name: "heading", label: "Heading", type: "text", defaultValue: "Launch your next page faster" },
+    {
+      name: "heading",
+      label: "Heading",
+      type: "text",
+      translatable: true,
+      defaultValue: "Launch your next page faster",
+    },
     {
       name: "description",
       label: "Description",
       type: "textarea",
-      defaultValue: "Turn structured content into polished pages with reusable server-renderable blocks.",
+      translatable: true,
+      defaultValue:
+        "Turn structured content into polished pages with reusable server-renderable blocks.",
     },
-    { name: "buttonText", label: "Button Text", type: "text", defaultValue: "Start building" },
+    {
+      name: "buttonText",
+      label: "Button Text",
+      type: "text",
+      translatable: true,
+      defaultValue: "Start building",
+    },
     { name: "buttonUrl", label: "Button URL", type: "url", defaultValue: "/start" },
     {
       name: "variant",
@@ -70,7 +85,15 @@ export const ctaBlock: NpBlockDefinition = {
 
     return (
       <section className="np-block-cta" style={sectionStyle}>
-        <div style={{ maxWidth: "48rem", margin: "0 auto", textAlign: "center", display: "grid", gap: "1rem" }}>
+        <div
+          style={{
+            maxWidth: "48rem",
+            margin: "0 auto",
+            textAlign: "center",
+            display: "grid",
+            gap: "1rem",
+          }}
+        >
           <h2 style={{ margin: 0, fontSize: "clamp(2rem, 4vw, 3rem)" }}>{heading}</h2>
           <p style={{ margin: 0, lineHeight: 1.75, opacity: 0.86 }}>{description}</p>
           <div>

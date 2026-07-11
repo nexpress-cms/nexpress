@@ -25,7 +25,9 @@ const readBoolean = (value: unknown, fallback: boolean): boolean =>
 // `string[]` on the wire. Accept both to keep older pages renderable.
 const parsePlanFeatures = (value: unknown): string[] => {
   if (Array.isArray(value)) {
-    return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+    return value.filter(
+      (item): item is string => typeof item === "string" && item.trim().length > 0,
+    );
   }
 
   if (typeof value === "string") {
@@ -85,17 +87,15 @@ const parsePlans = (value: unknown): PricingPlan[] => {
     return DEFAULT_PLANS;
   }
 
-  const plans = source
-    .filter(isRecord)
-    .map((item) => ({
-      name: readString(item.name, "Plan"),
-      price: readString(item.price, "$0"),
-      period: readString(item.period, "/month"),
-      features: parsePlanFeatures(item.features),
-      ctaText: readString(item.ctaText, "Get started"),
-      ctaUrl: readString(item.ctaUrl, "/start"),
-      highlighted: readBoolean(item.highlighted, false),
-    }));
+  const plans = source.filter(isRecord).map((item) => ({
+    name: readString(item.name, "Plan"),
+    price: readString(item.price, "$0"),
+    period: readString(item.period, "/month"),
+    features: parsePlanFeatures(item.features),
+    ctaText: readString(item.ctaText, "Get started"),
+    ctaUrl: readString(item.ctaUrl, "/start"),
+    highlighted: readBoolean(item.highlighted, false),
+  }));
 
   return plans.length > 0 ? plans : DEFAULT_PLANS;
 };
@@ -115,7 +115,13 @@ export const pricingBlock: NpBlockDefinition = {
     plans: DEFAULT_PLANS.map((plan) => ({ ...plan, features: plan.features.join("\n") })),
   },
   propsSchema: [
-    { name: "heading", label: "Heading", type: "text", defaultValue: "Simple pricing for every stage" },
+    {
+      name: "heading",
+      label: "Heading",
+      type: "text",
+      translatable: true,
+      defaultValue: "Simple pricing for every stage",
+    },
     {
       name: "plans",
       label: "Plans",
@@ -131,17 +137,42 @@ export const pricingBlock: NpBlockDefinition = {
         highlighted: false,
       },
       itemSchema: [
-        { name: "name", label: "Plan name", type: "text", defaultValue: "New plan" },
-        { name: "price", label: "Price", type: "text", defaultValue: "$0" },
-        { name: "period", label: "Period", type: "text", defaultValue: "/month" },
+        {
+          name: "name",
+          label: "Plan name",
+          type: "text",
+          translatable: true,
+          defaultValue: "New plan",
+        },
+        {
+          name: "price",
+          label: "Price",
+          type: "text",
+          translatable: false,
+          defaultValue: "$0",
+        },
+        {
+          name: "period",
+          label: "Period",
+          type: "text",
+          translatable: true,
+          defaultValue: "/month",
+        },
         {
           name: "features",
           label: "Features",
           type: "textarea",
+          translatable: true,
           defaultValue: "Feature one\nFeature two\nFeature three",
           description: "One feature per line.",
         },
-        { name: "ctaText", label: "CTA text", type: "text", defaultValue: "Get started" },
+        {
+          name: "ctaText",
+          label: "CTA text",
+          type: "text",
+          translatable: true,
+          defaultValue: "Get started",
+        },
         { name: "ctaUrl", label: "CTA URL", type: "url", defaultValue: "/start" },
         { name: "highlighted", label: "Highlight this plan", type: "boolean", defaultValue: false },
       ],
@@ -157,9 +188,14 @@ export const pricingBlock: NpBlockDefinition = {
     };
 
     return (
-      <section className="np-block-pricing" style={{ padding: "4rem 1.5rem", background: "#0f172a" }}>
+      <section
+        className="np-block-pricing"
+        style={{ padding: "4rem 1.5rem", background: "#0f172a" }}
+      >
         <div style={{ maxWidth: "72rem", margin: "0 auto", display: "grid", gap: "1.75rem" }}>
-          <h2 style={{ margin: 0, color: "#f8fafc", fontSize: "clamp(2rem, 4vw, 3rem)" }}>{heading}</h2>
+          <h2 style={{ margin: 0, color: "#f8fafc", fontSize: "clamp(2rem, 4vw, 3rem)" }}>
+            {heading}
+          </h2>
           <div style={gridStyle}>
             {plans.map((plan) => (
               <article
@@ -168,15 +204,21 @@ export const pricingBlock: NpBlockDefinition = {
                 style={{
                   padding: "1.6rem",
                   borderRadius: "1.4rem",
-                  background: plan.highlighted ? "linear-gradient(180deg, #fff7ed, #ffffff)" : "rgba(255, 255, 255, 0.08)",
+                  background: plan.highlighted
+                    ? "linear-gradient(180deg, #fff7ed, #ffffff)"
+                    : "rgba(255, 255, 255, 0.08)",
                   color: plan.highlighted ? "#111827" : "#f8fafc",
-                  border: plan.highlighted ? "1px solid rgba(249, 115, 22, 0.24)" : "1px solid rgba(255, 255, 255, 0.12)",
+                  border: plan.highlighted
+                    ? "1px solid rgba(249, 115, 22, 0.24)"
+                    : "1px solid rgba(255, 255, 255, 0.12)",
                 }}
               >
                 <h3 style={{ margin: 0 }}>{plan.name}</h3>
                 <p style={{ margin: "0.85rem 0 1rem", fontSize: "2.4rem", fontWeight: 800 }}>
                   {plan.price}
-                  <span style={{ fontSize: "1rem", fontWeight: 500, opacity: 0.7 }}>{plan.period}</span>
+                  <span style={{ fontSize: "1rem", fontWeight: 500, opacity: 0.7 }}>
+                    {plan.period}
+                  </span>
                 </p>
                 <ul style={{ margin: "0 0 1.4rem", paddingLeft: "1.1rem", lineHeight: 1.8 }}>
                   {plan.features.map((feature) => (

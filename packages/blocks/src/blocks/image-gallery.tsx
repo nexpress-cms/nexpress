@@ -93,7 +93,13 @@ export const imageGalleryBlock: NpBlockDefinition = {
     images: DEFAULT_IMAGES,
   },
   propsSchema: [
-    { name: "heading", label: "Heading", type: "text", defaultValue: "Moments from the workflow" },
+    {
+      name: "heading",
+      label: "Heading",
+      type: "text",
+      translatable: true,
+      defaultValue: "Moments from the workflow",
+    },
     { name: "columns", label: "Columns", type: "number", defaultValue: 3 },
     {
       name: "images",
@@ -103,7 +109,13 @@ export const imageGalleryBlock: NpBlockDefinition = {
       itemDefault: { src: "", alt: "" },
       itemSchema: [
         { name: "src", label: "Image", type: "image", defaultValue: "" },
-        { name: "alt", label: "Alt text", type: "text", defaultValue: "" },
+        {
+          name: "alt",
+          label: "Alt text",
+          type: "text",
+          translatable: true,
+          defaultValue: "",
+        },
       ],
     },
   ],
@@ -119,17 +131,31 @@ export const imageGalleryBlock: NpBlockDefinition = {
     };
 
     return (
-      <section className="np-block-image-gallery" style={{ padding: "4rem 1.5rem", background: "#ffffff" }}>
+      <section
+        className="np-block-image-gallery"
+        style={{ padding: "4rem 1.5rem", background: "#ffffff" }}
+      >
         <div style={{ maxWidth: "72rem", margin: "0 auto", display: "grid", gap: "1.5rem" }}>
-          <h2 style={{ margin: 0, fontSize: "clamp(2rem, 4vw, 2.8rem)", color: "#111827" }}>{heading}</h2>
+          <h2 style={{ margin: 0, fontSize: "clamp(2rem, 4vw, 2.8rem)", color: "#111827" }}>
+            {heading}
+          </h2>
           <div style={gridStyle}>
             {images.map((image) => (
               <figure
                 key={`${image.src}-${image.alt}`}
                 className="np-block-image-gallery__item"
-                style={{ margin: 0, overflow: "hidden", borderRadius: "1.25rem", background: "#e5e7eb" }}
+                style={{
+                  margin: 0,
+                  overflow: "hidden",
+                  borderRadius: "1.25rem",
+                  background: "#e5e7eb",
+                }}
               >
-                <img src={image.src} alt={image.alt} style={{ display: "block", width: "100%", height: "18rem", objectFit: "cover" }} />
+                <img
+                  src={image.src}
+                  alt={image.alt}
+                  style={{ display: "block", width: "100%", height: "18rem", objectFit: "cover" }}
+                />
               </figure>
             ))}
           </div>

@@ -55,19 +55,50 @@ const newsletterBlock: NpBlockDefinition = {
     successMessage: "Thanks — you're on the list.",
   },
   propsSchema: [
-    { name: "title", label: "Title", type: "text", defaultValue: "Subscribe to the newsletter" },
-    { name: "subtitle", label: "Subtitle", type: "textarea", defaultValue: "Get new posts in your inbox." },
+    {
+      name: "title",
+      label: "Title",
+      type: "text",
+      translatable: true,
+      defaultValue: "Subscribe to the newsletter",
+    },
+    {
+      name: "subtitle",
+      label: "Subtitle",
+      type: "textarea",
+      translatable: true,
+      defaultValue: "Get new posts in your inbox.",
+    },
     {
       name: "listId",
       label: "List id",
       type: "text",
+      translatable: false,
       defaultValue: "default",
       description:
         "Slug-safe identifier (A-Z, 0-9, _, -). Subscribers are stored under `subscriber:<listId>:<email>`.",
     },
-    { name: "buttonText", label: "Button text", type: "text", defaultValue: "Subscribe" },
-    { name: "placeholder", label: "Email placeholder", type: "text", defaultValue: "you@example.com" },
-    { name: "successMessage", label: "Success message", type: "text", defaultValue: "Thanks — you're on the list." },
+    {
+      name: "buttonText",
+      label: "Button text",
+      type: "text",
+      translatable: true,
+      defaultValue: "Subscribe",
+    },
+    {
+      name: "placeholder",
+      label: "Email placeholder",
+      type: "text",
+      translatable: true,
+      defaultValue: "you@example.com",
+    },
+    {
+      name: "successMessage",
+      label: "Success message",
+      type: "text",
+      translatable: true,
+      defaultValue: "Thanks — you're on the list.",
+    },
   ],
   render: (props) => {
     const title = readString(props.title, "Subscribe to the newsletter");
@@ -134,7 +165,10 @@ export const newsletterPlugin = definePlugin({
       // stricter limiter on top via plugin storage / a custom proxy.
       auth: false,
       handler: async (req, ctx) => {
-        const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+        const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<
+          string,
+          unknown
+        >;
         const rawEmail = typeof body.email === "string" ? body.email.trim() : "";
         const listId = readListId(body.listId);
 

@@ -56,8 +56,20 @@ export const contactFormBlock: NpBlockDefinition = {
     fields: DEFAULT_FIELDS,
   },
   propsSchema: [
-    { name: "heading", label: "Heading", type: "text", defaultValue: "Talk to our team" },
-    { name: "email", label: "Email", type: "text", defaultValue: "hello@example.com" },
+    {
+      name: "heading",
+      label: "Heading",
+      type: "text",
+      translatable: true,
+      defaultValue: "Talk to our team",
+    },
+    {
+      name: "email",
+      label: "Email",
+      type: "text",
+      translatable: false,
+      defaultValue: "hello@example.com",
+    },
     {
       name: "fields",
       label: "Fields",
@@ -65,7 +77,13 @@ export const contactFormBlock: NpBlockDefinition = {
       defaultValue: DEFAULT_FIELDS,
       itemDefault: { label: "New field" },
       itemSchema: [
-        { name: "label", label: "Field label", type: "text", defaultValue: "New field" },
+        {
+          name: "label",
+          label: "Field label",
+          type: "text",
+          translatable: true,
+          defaultValue: "New field",
+        },
       ],
     },
   ],
@@ -83,22 +101,42 @@ export const contactFormBlock: NpBlockDefinition = {
     };
 
     return (
-      <section className="np-block-contact-form" style={{ padding: "4rem 1.5rem", background: "#f1f5f9" }}>
+      <section
+        className="np-block-contact-form"
+        style={{ padding: "4rem 1.5rem", background: "#f1f5f9" }}
+      >
         <div style={{ maxWidth: "40rem", margin: "0 auto", display: "grid", gap: "1.2rem" }}>
           <header style={{ display: "grid", gap: "0.5rem" }}>
-            <h2 style={{ margin: 0, fontSize: "clamp(2rem, 4vw, 2.8rem)", color: "#0f172a" }}>{heading}</h2>
-            <p style={{ margin: 0, color: "#475569" }}>Responses can be routed to {email} with your preferred form plugin.</p>
+            <h2 style={{ margin: 0, fontSize: "clamp(2rem, 4vw, 2.8rem)", color: "#0f172a" }}>
+              {heading}
+            </h2>
+            <p style={{ margin: 0, color: "#475569" }}>
+              Responses can be routed to {email} with your preferred form plugin.
+            </p>
           </header>
           <form style={{ display: "grid", gap: "0.9rem" }}>
             {fields.map((field) => (
-              <label key={field} style={{ display: "grid", gap: "0.45rem", color: "#0f172a", fontWeight: 600 }}>
+              <label
+                key={field}
+                style={{ display: "grid", gap: "0.45rem", color: "#0f172a", fontWeight: 600 }}
+              >
                 <span>{field}</span>
-                <input name={field.toLowerCase().replace(/\s+/g, "-")} type="text" placeholder={field} style={inputStyle} />
+                <input
+                  name={field.toLowerCase().replace(/\s+/g, "-")}
+                  type="text"
+                  placeholder={field}
+                  style={inputStyle}
+                />
               </label>
             ))}
             <label style={{ display: "grid", gap: "0.45rem", color: "#0f172a", fontWeight: 600 }}>
               <span>Message</span>
-              <textarea name="message" rows={5} placeholder="Tell us more" style={{ ...inputStyle, resize: "vertical" }} />
+              <textarea
+                name="message"
+                rows={5}
+                placeholder="Tell us more"
+                style={{ ...inputStyle, resize: "vertical" }}
+              />
             </label>
             <button
               type="button"

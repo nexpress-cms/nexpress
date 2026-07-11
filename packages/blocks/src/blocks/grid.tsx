@@ -58,6 +58,7 @@ export const gridBlock: NpBlockDefinition = {
       name: "gap",
       label: "Gap (CSS length)",
       type: "text",
+      translatable: false,
       defaultValue: "1rem",
     },
   ],

@@ -21,6 +21,7 @@ const noticeBlock: NpBlockDefinition = {
       name: "message",
       label: "Message",
       type: "textarea",
+      translatable: true,
       required: true,
       defaultValue: "Heads up",
     },
@@ -89,6 +90,10 @@ Default and conditional values must be serializable.
 
 Type-specific rules are checked during plugin loading:
 
+- `text`, `textarea`, and `richtext` require an explicit
+  `translatable: true | false`. Use `true` for visitor-facing copy and `false`
+  for operational strings such as ids, CSS lengths, email addresses, and JSON
+  blobs. Other field types must omit `translatable`.
 - `select` requires at least one `{ label, value }` option, and option values
   must be unique.
 - `number` owns `min`, `max`, and positive `step`; `min` cannot exceed `max`.
@@ -96,11 +101,20 @@ Type-specific rules are checked during plugin loading:
   immediately instead of being ignored by the editor.
 - `textarea` owns positive integer `rows`.
 - `array` requires `itemSchema`, may provide a serializable `itemDefault`, and
-  supports nested schemas up to eight levels without cycles.
+  supports nested schemas up to eight levels without cycles. Translation intent
+  is declared on its recursive textual leaves, not on the array itself.
 - `media` owns the optional `accept` MIME-prefix list.
 
 `summaryFields` must reference names in the top-level `propsSchema`, which
 catches stale collapsed-row summaries during plugin evaluation.
+
+For i18n-enabled collections with a `blocks` field, `@nexpress/xliff` follows
+only props marked `translatable: true`. It resolves nested blocks by stable
+block instance id and walks array `itemSchema` values positionally. Unknown or
+unloaded block types, duplicate ids, stale source text, and paths that no longer
+match the registered schema are skipped rather than guessed. Keep block ids
+stable across translation siblings and avoid independently reordering array
+items while an XLIFF bundle is in flight.
 
 ## Container blocks
 

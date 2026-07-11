@@ -36,7 +36,8 @@ const readItem = (raw: unknown): TabItem | null => {
 export const tabsBlock: NpBlockDefinition = {
   type: "tabs",
   label: "Tabs",
-  description: "Exclusive accordion (one panel open at a time). Use for product features or docs sections.",
+  description:
+    "Exclusive accordion (one panel open at a time). Use for product features or docs sections.",
   icon: "LayoutPanelTop",
   iconKind: "lucide",
   summaryFields: ["heading"],
@@ -68,6 +69,7 @@ export const tabsBlock: NpBlockDefinition = {
       name: "heading",
       label: "Heading (optional)",
       type: "text",
+      translatable: true,
       defaultValue: "",
     },
     {
@@ -75,8 +77,14 @@ export const tabsBlock: NpBlockDefinition = {
       label: "Tabs",
       type: "array",
       itemSchema: [
-        { name: "label", label: "Tab label", type: "text", required: true },
-        { name: "content", label: "Panel content", type: "textarea", rows: 6 },
+        { name: "label", label: "Tab label", type: "text", translatable: true, required: true },
+        {
+          name: "content",
+          label: "Panel content",
+          type: "textarea",
+          translatable: true,
+          rows: 6,
+        },
       ],
       itemDefault: { label: "New tab", content: "Tab body." },
     },
@@ -121,8 +129,7 @@ export const tabsBlock: NpBlockDefinition = {
             same page emit the same selector with no side effects. */}
         <style
           dangerouslySetInnerHTML={{
-            __html:
-              ".np-block-tabs summary::-webkit-details-marker { display: none; }",
+            __html: ".np-block-tabs summary::-webkit-details-marker { display: none; }",
           }}
         />
         <div style={wrapperStyle}>
@@ -138,7 +145,9 @@ export const tabsBlock: NpBlockDefinition = {
             </h2>
           ) : null}
           {items.length === 0 ? (
-            <p style={{ color: "var(--np-color-muted-foreground, #64748b)" }}>Add tab items in the block editor.</p>
+            <p style={{ color: "var(--np-color-muted-foreground, #64748b)" }}>
+              Add tab items in the block editor.
+            </p>
           ) : (
             <div className="np-block-tabs__group" style={{ display: "grid", gap: "0.5rem" }}>
               {items.map((item, index) => (

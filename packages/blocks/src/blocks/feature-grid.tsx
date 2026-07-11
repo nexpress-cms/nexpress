@@ -30,9 +30,21 @@ const readNumber = (value: unknown, fallback: number): number => {
 };
 
 const DEFAULT_FEATURES: FeatureItem[] = [
-  { icon: "⚡", title: "Fast to launch", description: "Compose sections quickly with reusable defaults." },
-  { icon: "🧩", title: "Modular", description: "Mix content patterns without rebuilding the page shell." },
-  { icon: "🖥️", title: "Server-friendly", description: "Render blocks into stable markup for production pages." },
+  {
+    icon: "⚡",
+    title: "Fast to launch",
+    description: "Compose sections quickly with reusable defaults.",
+  },
+  {
+    icon: "🧩",
+    title: "Modular",
+    description: "Mix content patterns without rebuilding the page shell.",
+  },
+  {
+    icon: "🖥️",
+    title: "Server-friendly",
+    description: "Render blocks into stable markup for production pages.",
+  },
 ];
 
 const parseFeatures = (value: unknown): FeatureItem[] => {
@@ -52,13 +64,11 @@ const parseFeatures = (value: unknown): FeatureItem[] => {
     return DEFAULT_FEATURES;
   }
 
-  const features = source
-    .filter(isRecord)
-    .map((item) => ({
-      icon: readString(item.icon, "✨"),
-      title: readString(item.title, "Feature"),
-      description: readString(item.description, "Add a short explanation for this feature."),
-    }));
+  const features = source.filter(isRecord).map((item) => ({
+    icon: readString(item.icon, "✨"),
+    title: readString(item.title, "Feature"),
+    description: readString(item.description, "Add a short explanation for this feature."),
+  }));
 
   return features.length > 0 ? features : DEFAULT_FEATURES;
 };
@@ -79,18 +89,47 @@ export const featureGridBlock: NpBlockDefinition = {
     features: DEFAULT_FEATURES,
   },
   propsSchema: [
-    { name: "heading", label: "Heading", type: "text", defaultValue: "Everything your team needs" },
+    {
+      name: "heading",
+      label: "Heading",
+      type: "text",
+      translatable: true,
+      defaultValue: "Everything your team needs",
+    },
     { name: "columns", label: "Columns", type: "number", defaultValue: 3 },
     {
       name: "features",
       label: "Features",
       type: "array",
       defaultValue: DEFAULT_FEATURES,
-      itemDefault: { icon: "✨", title: "New feature", description: "Add a short explanation for this feature." },
+      itemDefault: {
+        icon: "✨",
+        title: "New feature",
+        description: "Add a short explanation for this feature.",
+      },
       itemSchema: [
-        { name: "icon", label: "Icon", type: "text", defaultValue: "✨", description: "Emoji or short symbol." },
-        { name: "title", label: "Title", type: "text", defaultValue: "New feature" },
-        { name: "description", label: "Description", type: "textarea", defaultValue: "Add a short explanation for this feature." },
+        {
+          name: "icon",
+          label: "Icon",
+          type: "text",
+          translatable: false,
+          defaultValue: "✨",
+          description: "Emoji or short symbol.",
+        },
+        {
+          name: "title",
+          label: "Title",
+          type: "text",
+          translatable: true,
+          defaultValue: "New feature",
+        },
+        {
+          name: "description",
+          label: "Description",
+          type: "textarea",
+          translatable: true,
+          defaultValue: "Add a short explanation for this feature.",
+        },
       ],
     },
   ],
@@ -139,8 +178,23 @@ export const featureGridBlock: NpBlockDefinition = {
                 }}
               >
                 <div style={{ fontSize: "1.8rem", marginBottom: "0.9rem" }}>{feature.icon}</div>
-                <h3 style={{ margin: "0 0 0.6rem", color: "var(--np-color-card-foreground, #0f172a)" }}>{feature.title}</h3>
-                <p style={{ margin: 0, lineHeight: 1.7, color: "var(--np-color-muted-foreground, #475569)" }}>{feature.description}</p>
+                <h3
+                  style={{
+                    margin: "0 0 0.6rem",
+                    color: "var(--np-color-card-foreground, #0f172a)",
+                  }}
+                >
+                  {feature.title}
+                </h3>
+                <p
+                  style={{
+                    margin: 0,
+                    lineHeight: 1.7,
+                    color: "var(--np-color-muted-foreground, #475569)",
+                  }}
+                >
+                  {feature.description}
+                </p>
               </article>
             ))}
           </div>

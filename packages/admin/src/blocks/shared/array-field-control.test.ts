@@ -14,7 +14,7 @@ describe("array field control helpers", () => {
           name: "cells",
           label: "Cells",
           type: "array",
-          itemSchema: [{ name: "value", label: "Cell", type: "text" }],
+          itemSchema: [{ name: "value", label: "Cell", type: "text", translatable: true }],
         },
         { name: "required", label: "Required", type: "boolean" },
       ],
@@ -27,7 +27,9 @@ describe("array field control helpers", () => {
   });
 
   it("normalizes primitive arrays into the first item field", () => {
-    const itemSchema: NpBlockPropField[] = [{ name: "value", label: "Cell", type: "text" }];
+    const itemSchema: NpBlockPropField[] = [
+      { name: "value", label: "Cell", type: "text", translatable: true },
+    ];
 
     expect(normalizeArrayValue(["slug", "string"], itemSchema)).toEqual([
       { value: "slug" },

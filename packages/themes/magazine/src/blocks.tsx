@@ -426,9 +426,9 @@ export const magazineBlocks: NpBlockDefinition[] = [
       items: [],
     },
     propsSchema: [
-      { name: "title", label: "Headline", type: "text" },
-      { name: "subtitle", label: "Subdeck", type: "textarea" },
-      { name: "ctaText", label: "CTA text", type: "text" },
+      { name: "title", label: "Headline", type: "text", translatable: true },
+      { name: "subtitle", label: "Subdeck", type: "textarea", translatable: true },
+      { name: "ctaText", label: "CTA text", type: "text", translatable: true },
       { name: "ctaUrl", label: "CTA URL", type: "url" },
       // Featured-only — ignored by carousel/grid variants which
       // pull imagery from per-item entries instead.
@@ -453,6 +453,7 @@ export const magazineBlocks: NpBlockDefinition[] = [
         name: "items",
         label: "Items (carousel/grid only, JSON)",
         type: "textarea",
+        translatable: false,
       },
     ],
     render: (props) => HeroFeature(props),
@@ -472,10 +473,10 @@ export const magazineBlocks: NpBlockDefinition[] = [
       ],
     },
     propsSchema: [
-      { name: "heading", label: "Section heading", type: "text" },
+      { name: "heading", label: "Section heading", type: "text", translatable: true },
       // The `items` array is edited as JSON in v0.2; a richer
       // editor (drag-to-reorder, item picker) is F.5.1 polish.
-      { name: "items", label: "Items (JSON)", type: "textarea" },
+      { name: "items", label: "Items (JSON)", type: "textarea", translatable: false },
     ],
     render: (props) => <SectionStrip {...props} />,
   },

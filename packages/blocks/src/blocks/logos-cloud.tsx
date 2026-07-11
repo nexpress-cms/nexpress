@@ -58,6 +58,7 @@ export const logosCloudBlock: NpBlockDefinition = {
       name: "heading",
       label: "Heading (optional)",
       type: "text",
+      translatable: true,
       defaultValue: "Trusted by teams shipping production sites",
     },
     {
@@ -66,7 +67,7 @@ export const logosCloudBlock: NpBlockDefinition = {
       type: "array",
       itemSchema: [
         { name: "src", label: "Image URL", type: "url", required: true },
-        { name: "alt", label: "Alt text", type: "text" },
+        { name: "alt", label: "Alt text", type: "text", translatable: true },
         { name: "href", label: "Link URL (optional)", type: "url" },
       ],
       itemDefault: { src: "", alt: "" },

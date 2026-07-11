@@ -14,7 +14,7 @@ const validBlock = (overrides: Record<string, unknown> = {}): Record<string, unk
   description: "A reusable callout.",
   defaultProps: { title: "Hello", tone: "info" },
   propsSchema: [
-    { name: "title", label: "Title", type: "text", required: true },
+    { name: "title", label: "Title", type: "text", translatable: true, required: true },
     {
       name: "tone",
       label: "Tone",
@@ -60,7 +60,15 @@ describe("block definition contract", () => {
     expect(
       npValidateBlockDefinition(
         validBlock({
-          propsSchema: [{ name: "slug", label: "Slug", type: "text", pattern: "\\_" }],
+          propsSchema: [
+            {
+              name: "slug",
+              label: "Slug",
+              type: "text",
+              translatable: false,
+              pattern: "\\_",
+            },
+          ],
           summaryFields: ["slug"],
         }),
       ),
@@ -84,14 +92,16 @@ describe("block definition contract", () => {
 
   it.each([
     [
-      validBlock({ propsSchema: [{ name: "title", label: "Title", type: "markdown" }] }),
+      validBlock({
+        propsSchema: [{ name: "title", label: "Title", type: "markdown", translatable: true }],
+      }),
       /type must be one of/,
     ],
     [
       validBlock({
         propsSchema: [
-          { name: "title", label: "Title", type: "text" },
-          { name: "title", label: "Again", type: "text" },
+          { name: "title", label: "Title", type: "text", translatable: true },
+          { name: "title", label: "Again", type: "text", translatable: true },
         ],
       }),
       /must not repeat field name "title"/,
@@ -118,7 +128,7 @@ describe("block definition contract", () => {
     ],
     [
       validBlock({
-        propsSchema: [{ name: "title", label: "Title", type: "text", min: 1 }],
+        propsSchema: [{ name: "title", label: "Title", type: "text", translatable: true, min: 1 }],
       }),
       /min is supported only for number/,
     ],
@@ -130,7 +140,9 @@ describe("block definition contract", () => {
     ],
     [
       validBlock({
-        propsSchema: [{ name: "title", label: "Title", type: "text", pattern: "[" }],
+        propsSchema: [
+          { name: "title", label: "Title", type: "text", translatable: true, pattern: "[" },
+        ],
       }),
       /not a valid regular expression/,
     ],
@@ -140,13 +152,29 @@ describe("block definition contract", () => {
     ],
     [
       validBlock({
-        propsSchema: [{ name: "title", label: "Title", type: "text", defaultValue: () => "bad" }],
+        propsSchema: [
+          {
+            name: "title",
+            label: "Title",
+            type: "text",
+            translatable: true,
+            defaultValue: () => "bad",
+          },
+        ],
       }),
       /serializable values/,
     ],
     [
       validBlock({
-        propsSchema: [{ name: "title", label: "Title", type: "text", itemSchema: [] }],
+        propsSchema: [
+          {
+            name: "title",
+            label: "Title",
+            type: "text",
+            translatable: true,
+            itemSchema: [],
+          },
+        ],
       }),
       /supported only for array/,
     ],
@@ -174,7 +202,7 @@ describe("block definition contract", () => {
               name: "items",
               label: "Items",
               type: "array",
-              itemSchema: [{ name: "title", label: "Title", type: "text" }],
+              itemSchema: [{ name: "title", label: "Title", type: "text", translatable: true }],
               itemDefault: { title: "New item" },
             },
           ],
@@ -189,6 +217,28 @@ describe("block definition contract", () => {
     );
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.message).toMatch(/circular schema/);
+  });
+
+  it("requires explicit translation intent on textual leaves only", () => {
+    const missing = npValidateBlockDefinition(
+      validBlock({
+        propsSchema: [{ name: "title", label: "Title", type: "text" }],
+        summaryFields: ["title"],
+      }),
+    );
+    expect(missing).toEqual(
+      expect.objectContaining({ ok: false, message: expect.stringContaining("translatable") }),
+    );
+
+    const misplaced = npValidateBlockDefinition(
+      validBlock({
+        propsSchema: [{ name: "enabled", label: "Enabled", type: "boolean", translatable: false }],
+        summaryFields: [],
+      }),
+    );
+    expect(misplaced).toEqual(
+      expect.objectContaining({ ok: false, message: expect.stringContaining("supported only") }),
+    );
   });
 
   it.each([

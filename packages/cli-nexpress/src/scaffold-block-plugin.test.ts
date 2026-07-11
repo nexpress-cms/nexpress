@@ -52,6 +52,7 @@ describe("scaffoldBlockPlugin", () => {
     expect(source).toContain("satisfies NpPatternDefinition[]");
     expect(source).toContain('id: "myCallout.starter"');
     expect(source).toContain("patterns: MyCalloutPatterns");
+    expect(source).toContain("translatable: true");
   });
 
   it("documents CLI registration for local workspace plugins", async () => {
@@ -68,6 +69,7 @@ describe("scaffoldBlockPlugin", () => {
     expect(readme).toContain("plugins.pattern_invalid");
     expect(readme).toContain("plugins.pattern_duplicate");
     expect(readme).toContain("plugins.pattern_conflict");
+    expect(readme).toContain("translatable: true | false");
     expect(readme).toContain('import { defineConfig } from "@nexpress/core";');
     expect(readme).toContain('import myCalloutPlugin from "my-callout";');
     expect(readme).toContain("plugins: [myCalloutPlugin]");

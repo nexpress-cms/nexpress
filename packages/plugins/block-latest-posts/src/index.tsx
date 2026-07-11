@@ -226,6 +226,7 @@ const latestPostsBlock: NpBlockDefinition = {
       name: "heading",
       label: "Heading",
       type: "text",
+      translatable: true,
       defaultValue: "Latest posts",
       description: "Leave empty to render without a heading.",
     },
@@ -240,8 +241,8 @@ const latestPostsBlock: NpBlockDefinition = {
       return (
         <div className="np-block-latest-posts np-block-latest-posts--no-ctx">
           <p style={{ fontSize: "0.875rem", color: "#94a3b8" }}>
-            Latest posts: data ctx unavailable. Pass{" "}
-            <code>createDefaultBlockRenderContext()</code> from
+            Latest posts: data ctx unavailable. Pass <code>createDefaultBlockRenderContext()</code>{" "}
+            from
             <code>@nexpress/next</code> to renderBlocks to enable.
           </p>
         </div>

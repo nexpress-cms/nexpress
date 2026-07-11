@@ -12,9 +12,19 @@ const readString = (value: unknown, fallback: string): string =>
   typeof value === "string" && value.trim().length > 0 ? value : fallback;
 
 const DEFAULT_ITEMS: FaqItem[] = [
-  { question: "How do blocks work?", answer: "Each block definition controls its schema, default props, and server-rendered output." },
-  { question: "Can editors reorder sections?", answer: "Yes. The page editor supports drag-and-drop plus keyboard-friendly reordering controls." },
-  { question: "Do blocks support SSR?", answer: "Yes. All default blocks render to plain React elements that work on the server." },
+  {
+    question: "How do blocks work?",
+    answer: "Each block definition controls its schema, default props, and server-rendered output.",
+  },
+  {
+    question: "Can editors reorder sections?",
+    answer:
+      "Yes. The page editor supports drag-and-drop plus keyboard-friendly reordering controls.",
+  },
+  {
+    question: "Do blocks support SSR?",
+    answer: "Yes. All default blocks render to plain React elements that work on the server.",
+  },
 ];
 
 const parseFaqItems = (value: unknown): FaqItem[] => {
@@ -34,12 +44,10 @@ const parseFaqItems = (value: unknown): FaqItem[] => {
     return DEFAULT_ITEMS;
   }
 
-  const items = source
-    .filter(isRecord)
-    .map((item) => ({
-      question: readString(item.question, "Question"),
-      answer: readString(item.answer, "Answer"),
-    }));
+  const items = source.filter(isRecord).map((item) => ({
+    question: readString(item.question, "Question"),
+    answer: readString(item.answer, "Answer"),
+  }));
 
   return items.length > 0 ? items : DEFAULT_ITEMS;
 };
@@ -59,7 +67,13 @@ export const faqBlock: NpBlockDefinition = {
     items: DEFAULT_ITEMS,
   },
   propsSchema: [
-    { name: "heading", label: "Heading", type: "text", defaultValue: "Frequently asked questions" },
+    {
+      name: "heading",
+      label: "Heading",
+      type: "text",
+      translatable: true,
+      defaultValue: "Frequently asked questions",
+    },
     {
       name: "items",
       label: "Items",
@@ -67,8 +81,20 @@ export const faqBlock: NpBlockDefinition = {
       defaultValue: DEFAULT_ITEMS,
       itemDefault: { question: "New question", answer: "New answer" },
       itemSchema: [
-        { name: "question", label: "Question", type: "text", defaultValue: "New question" },
-        { name: "answer", label: "Answer", type: "textarea", defaultValue: "New answer" },
+        {
+          name: "question",
+          label: "Question",
+          type: "text",
+          translatable: true,
+          defaultValue: "New question",
+        },
+        {
+          name: "answer",
+          label: "Answer",
+          type: "textarea",
+          translatable: true,
+          defaultValue: "New answer",
+        },
       ],
     },
   ],

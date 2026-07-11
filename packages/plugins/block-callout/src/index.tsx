@@ -60,11 +60,18 @@ const calloutBlock: NpBlockDefinition = {
         { label: "Danger (red)", value: "danger" },
       ],
     },
-    { name: "title", label: "Title", type: "text", defaultValue: "Heads up" },
+    {
+      name: "title",
+      label: "Title",
+      type: "text",
+      translatable: true,
+      defaultValue: "Heads up",
+    },
     {
       name: "body",
       label: "Body",
       type: "textarea",
+      translatable: true,
       defaultValue: "Use this block to flag something the reader shouldn't miss.",
     },
     {

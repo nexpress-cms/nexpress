@@ -78,6 +78,7 @@ export const testimonialsBlock: NpBlockDefinition = {
       name: "heading",
       label: "Heading",
       type: "text",
+      translatable: true,
       defaultValue: "Loved by teams shipping faster",
     },
     {
@@ -85,9 +86,9 @@ export const testimonialsBlock: NpBlockDefinition = {
       label: "Testimonials",
       type: "array",
       itemSchema: [
-        { name: "quote", label: "Quote", type: "textarea", required: true },
-        { name: "name", label: "Name", type: "text", required: true },
-        { name: "role", label: "Role / company", type: "text" },
+        { name: "quote", label: "Quote", type: "textarea", translatable: true, required: true },
+        { name: "name", label: "Name", type: "text", translatable: true, required: true },
+        { name: "role", label: "Role / company", type: "text", translatable: true },
         { name: "avatar", label: "Avatar URL", type: "url" },
         {
           name: "rating",
@@ -184,9 +185,7 @@ export const testimonialsBlock: NpBlockDefinition = {
                           color override `.np-block-testimonials__card
                           [aria-label^="Rated"]` from their CSS. */}
                       {"★".repeat(item.rating)}
-                      <span style={{ color: "#cbd5e1" }}>
-                        {"★".repeat(5 - item.rating)}
-                      </span>
+                      <span style={{ color: "#cbd5e1" }}>{"★".repeat(5 - item.rating)}</span>
                     </div>
                   ) : null}
                   <blockquote
@@ -245,11 +244,21 @@ export const testimonialsBlock: NpBlockDefinition = {
                       </div>
                     )}
                     <div style={{ display: "grid" }}>
-                      <span style={{ fontWeight: 600, color: "var(--np-color-card-foreground, #0f172a)" }}>
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          color: "var(--np-color-card-foreground, #0f172a)",
+                        }}
+                      >
                         {item.name}
                       </span>
                       {item.role ? (
-                        <span style={{ fontSize: "0.85rem", color: "var(--np-color-muted-foreground, #64748b)" }}>
+                        <span
+                          style={{
+                            fontSize: "0.85rem",
+                            color: "var(--np-color-muted-foreground, #64748b)",
+                          }}
+                        >
                           {item.role}
                         </span>
                       ) : null}

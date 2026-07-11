@@ -35,6 +35,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@nexpress/blocks": "workspace:*",
     "@nexpress/core": "workspace:*",
     "fast-xml-parser": "^5.9.3"
   },
