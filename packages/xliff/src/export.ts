@@ -7,6 +7,7 @@ import {
 } from "@nexpress/core";
 
 import { renderXliff, type XliffFile, type XliffTransUnit } from "./format.js";
+import { createRichTextXliffValue } from "./rich-text.js";
 
 export interface XliffExportOptions {
   /**
@@ -63,14 +64,16 @@ export interface XliffExportBundle {
 }
 
 /**
- * The set of field types whose values we round-trip through
- * XLIFF. Atomic strings only — `richText`, `blocks`, structured
- * types, and non-string scalars stay on the source row and are
- * NOT translated through this surface. Sites that need rich-text
- * translation should keep using the admin TranslationTabs flow
- * for now (XLIFF inline-markup support is a future expansion).
+ * Atomic strings and Lexical rich text round-trip through XLIFF. Blocks and
+ * other structured types remain outside this contract until their schemas can
+ * declare exactly which nested values are translatable.
  */
-const TRANSLATABLE_TYPES = new Set(["text", "textarea", "email"]);
+const TRANSLATABLE_TYPES = new Set(["text", "textarea", "email", "richText"]);
+
+type TranslatableField = {
+  name: string;
+  type: "text" | "textarea" | "email" | "richText";
+};
 
 /**
  * Walk every i18n-enabled collection (or the subset the caller
@@ -86,9 +89,7 @@ const TRANSLATABLE_TYPES = new Set(["text", "textarea", "email"]);
  * incrementally rather than re-translating from scratch on each
  * round-trip.
  */
-export async function exportXliff(
-  options: XliffExportOptions = {},
-): Promise<XliffExportBundle> {
+export async function exportXliff(options: XliffExportOptions = {}): Promise<XliffExportBundle> {
   const i18n = getI18nConfig();
   if (!i18n) {
     throw new XliffExportError(
@@ -108,9 +109,7 @@ export async function exportXliff(
   ).filter((l) => l !== sourceLocale);
   for (const t of targetLocales) {
     if (!i18n.locales.includes(t)) {
-      throw new XliffExportError(
-        `targetLocale "${t}" is not in the configured locale list`,
-      );
+      throw new XliffExportError(`targetLocale "${t}" is not in the configured locale list`);
     }
   }
 
@@ -131,7 +130,13 @@ export async function exportXliff(
 
     const translatableFields = config.fields
       .filter((f) => "name" in f && TRANSLATABLE_TYPES.has(f.type))
-      .map((f) => (f as { name: string }).name);
+      .map(
+        (f) =>
+          ({
+            name: (f as { name: string }).name,
+            type: f.type,
+          }) as TranslatableField,
+      );
     if (translatableFields.length === 0) continue;
 
     // Source-locale rows. We scan published only — drafts are
@@ -184,14 +189,30 @@ export async function exportXliff(
         const targetDoc = targetByGroupId.get(groupId) ?? null;
 
         const docUnits: XliffTransUnit[] = [];
-        for (const fieldName of translatableFields) {
-          const sourceValue = stringField(sourceDoc, fieldName);
+        for (const field of translatableFields) {
+          if (field.type === "richText") {
+            const richText = createRichTextXliffValue(
+              sourceDoc[field.name],
+              targetDoc?.[field.name],
+            );
+            if (!richText) continue;
+            docUnits.push({
+              id: field.name,
+              source: richText.source,
+              target: richText.target,
+              sourceInline: richText.sourceInline,
+              targetInline: richText.targetInline,
+            });
+            continue;
+          }
+
+          const sourceValue = stringField(sourceDoc, field.name);
           // Skip empty source — nothing to translate. (An
           // operator can re-export after filling the source.)
           if (sourceValue === "") continue;
-          const targetValue = targetDoc ? stringField(targetDoc, fieldName) : "";
+          const targetValue = targetDoc ? stringField(targetDoc, field.name) : "";
           docUnits.push({
-            id: fieldName,
+            id: field.name,
             source: sourceValue,
             target: targetValue,
           });
