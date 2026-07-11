@@ -17,12 +17,13 @@ import {
   type NpRegisteredPluginAction,
 } from "@nexpress/core";
 import {
+  npAnalyzeBlockContent,
   npAnalyzeBlockDefinitions,
   npAnalyzePatternDefinitions,
   npValidateBlockDefinition,
   npValidatePatternDefinition,
 } from "@nexpress/blocks/contracts";
-import { getDefaultBlocks } from "@nexpress/blocks";
+import { getDefaultBlocks, type NpBlockMetadata } from "@nexpress/blocks";
 import pg from "pg";
 
 import { toProjectCommand } from "./ops-command-format.js";
@@ -874,15 +875,17 @@ function buildPatternChecks(pluginObjects: PluginLike[], plugins: OpsPluginEntry
   const invalidPluginIds: string[] = [];
   const duplicatePatterns: string[] = [];
   const duplicatePluginIds: string[] = [];
-  const knownBlockTypes = new Set([
-    ...getDefaultBlocks().map((block) => block.type),
+  const contentWarnings: string[] = [];
+  const warningPluginIds: string[] = [];
+  const knownBlockDefinitions: NpBlockMetadata[] = [
+    ...getDefaultBlocks(),
     ...pluginObjects.flatMap((plugin) =>
-      readArray(plugin.blocks).flatMap((block) => {
-        const key = blockKey(block);
-        return key && npValidateBlockDefinition(block).ok ? [key] : [];
-      }),
+      readArray(plugin.blocks).flatMap((block) =>
+        npValidateBlockDefinition(block).ok ? [block as NpBlockMetadata] : [],
+      ),
     ),
-  ]);
+  ];
+  const knownBlockTypes = new Set(knownBlockDefinitions.map((block) => block.type));
 
   for (const [index, plugin] of pluginObjects.entries()) {
     if (plugin.patterns === undefined) continue;
@@ -895,6 +898,24 @@ function buildPatternChecks(pluginObjects: PluginLike[], plugins: OpsPluginEntry
       } else {
         invalidPatterns.push(detail);
         invalidPluginIds.push(pluginId);
+      }
+    }
+    for (const pattern of readArray(plugin.patterns)) {
+      if (!npValidatePatternDefinition(pattern).ok) continue;
+      const patternRecord = pattern as Record<string, unknown>;
+      const patternId = typeof patternRecord.id === "string" ? patternRecord.id : "unknown";
+      for (const issue of npAnalyzeBlockContent(patternRecord.blocks, knownBlockDefinitions)) {
+        // Unknown block references are already promoted to the canonical
+        // pattern error above; don't emit the same finding twice.
+        if (issue.code === "unknown-block-type") continue;
+        const detail = `[plugin:${pluginId}] pattern "${patternId}": ${issue.message}`;
+        if (issue.severity === "error") {
+          invalidPatterns.push(detail);
+          invalidPluginIds.push(pluginId);
+        } else {
+          contentWarnings.push(detail);
+          warningPluginIds.push(pluginId);
+        }
       }
     }
   }
@@ -922,6 +943,18 @@ function buildPatternChecks(pluginObjects: PluginLike[], plugins: OpsPluginEntry
         "A plugin can declare each pattern id only once. Remove or rename the duplicate pattern.",
       ),
       pluginIds: uniqueStrings(duplicatePluginIds),
+    });
+  }
+  if (contentWarnings.length > 0) {
+    checks.push({
+      id: "plugins.pattern_content_warning",
+      state: "warn",
+      label: "Plugin pattern block content",
+      detail: contentWarnings.join("; "),
+      hint: withDoctorRerun(
+        "Remove stale props or satisfy the registered container recommendations while preserving intentionally inactive plugin content.",
+      ),
+      pluginIds: uniqueStrings(warningPluginIds),
     });
   }
   return checks;

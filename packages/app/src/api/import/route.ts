@@ -18,6 +18,7 @@ const SUPPORTED_EXPORT_VERSION = "1";
 
 import { requireAuth } from "../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
+import { validateDocumentBlockContent } from "../../lib/block-content-validation";
 import { getDb } from "../../lib/db";
 import { ensureFor } from "../../lib/init-core";
 
@@ -41,9 +42,7 @@ interface ImportPayload {
   version?: string;
   theme?: Record<string, unknown>;
   settings?: Record<string, unknown>;
-  navigation?:
-    | Record<string, NpNavItem[]>
-    | Array<{ location?: string; items: NpNavItem[] }>;
+  navigation?: Record<string, NpNavItem[]> | Array<{ location?: string; items: NpNavItem[] }>;
   collections?: Record<string, Record<string, unknown>[]>;
   media?: ImportMedia[];
   plugins?: ImportPlugin[];
@@ -272,9 +271,7 @@ export async function POST(request: NextRequest) {
         // super-admin picking a target site explicitly via a
         // request param) isn't built; the resolved siteId is
         // the only target today.
-        const { getCurrentSiteId, NP_DEFAULT_SITE_ID } = await import(
-          "@nexpress/core"
-        );
+        const { getCurrentSiteId, NP_DEFAULT_SITE_ID } = await import("@nexpress/core");
         const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
         await db.transaction(async (tx) => {
           const now = new Date();
@@ -282,7 +279,13 @@ export async function POST(request: NextRequest) {
           if (payload.theme) {
             await tx
               .insert(npSettings)
-              .values({ siteId, key: "theme", value: payload.theme, updatedAt: now, updatedBy: user.id })
+              .values({
+                siteId,
+                key: "theme",
+                value: payload.theme,
+                updatedAt: now,
+                updatedBy: user.id,
+              })
               .onConflictDoUpdate({
                 target: [npSettings.siteId, npSettings.key],
                 set: { value: payload.theme, updatedAt: now, updatedBy: user.id },
@@ -336,10 +339,19 @@ export async function POST(request: NextRequest) {
         for (const doc of docs) {
           const transformed = replaceMediaRefs(doc, mediaMap) as Record<string, unknown>;
 
+          try {
+            validateDocumentBlockContent(slug, transformed);
+          } catch (error) {
+            warnings.push(
+              `Failed to import doc in '${slug}': ${error instanceof Error ? error.message : "unknown"}`,
+            );
+            continue;
+          }
+
           if (dryRun) {
-            // Pipeline validation is the source of truth, but we can't run
-            // it without writing. Report the count optimistically — errors
-            // that only surface at write time will show up on the real run.
+            // Definition-aware block validation is safe to run above. The
+            // remaining collection pipeline checks require a write, so their
+            // failures can still surface only during the real import.
             imported.pages++;
             continue;
           }

@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { npValidateBlockContent, type NpBlockInstance } from "@nexpress/blocks";
+import {
+  npValidateBlockContentAgainstDefinitions,
+  type NpBlockInstance,
+  type NpBlockMetadata,
+} from "@nexpress/blocks";
 
 import { cloneBlockDeep } from "../editor-engine/index.js";
 import { Button } from "../../ui/button.js";
@@ -22,8 +26,8 @@ import { Textarea } from "../../ui/textarea.js";
  * operator hand-edit, and dispatches RESET on Apply. Validates:
  *   1. valid JSON
  *   2. top level is an array
- *   3. each block has string `id` + string `type`
- *   4. (warning, not blocking) every `type` is registered
+ *   3. the complete shared block-content wire contract
+ *   4. known prop/container definitions (unknown types remain warnings)
  *
  * Two modes:
  * - Replace (default): Apply replaces the entire tree.
@@ -39,7 +43,7 @@ export interface PageJsonDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   blocks: NpBlockInstance[];
-  knownTypes: string[];
+  definitions: NpBlockMetadata[];
   onApply: (nextBlocks: NpBlockInstance[]) => void;
 }
 
@@ -91,23 +95,11 @@ function summarizeApplyDiff(before: NpBlockInstance[], after: NpBlockInstance[])
   };
 }
 
-function collectUnknownTypes(blocks: NpBlockInstance[], known: Set<string>): string[] {
-  const seen = new Set<string>();
-  const walk = (arr: NpBlockInstance[]): void => {
-    for (const b of arr) {
-      if (!known.has(b.type)) seen.add(b.type);
-      if (b.children) walk(b.children);
-    }
-  };
-  walk(blocks);
-  return [...seen].sort();
-}
-
 export function PageJsonDialog({
   open,
   onOpenChange,
   blocks,
-  knownTypes,
+  definitions,
   onApply,
 }: PageJsonDialogProps) {
   return (
@@ -115,7 +107,7 @@ export function PageJsonDialog({
       {open ? (
         <PageJsonDialogContent
           blocks={blocks}
-          knownTypes={knownTypes}
+          definitions={definitions}
           onApply={onApply}
           onOpenChange={onOpenChange}
         />
@@ -126,7 +118,7 @@ export function PageJsonDialog({
 
 function PageJsonDialogContent({
   blocks,
-  knownTypes,
+  definitions,
   onOpenChange,
   onApply,
 }: Omit<PageJsonDialogProps, "open">) {
@@ -170,18 +162,18 @@ function PageJsonDialogContent({
       setError(err instanceof Error ? err.message : "Invalid JSON");
       return;
     }
-    const result = npValidateBlockContent(parsed);
+    const result = npValidateBlockContentAgainstDefinitions(parsed, definitions);
     if (!result.ok) {
-      setError(result.message);
+      setError(
+        result.issues.find((issue) => issue.severity === "error")?.message ??
+          "Invalid block content.",
+      );
       return;
     }
     const validated = result.value;
 
-    const unknownTypes = collectUnknownTypes(validated, new Set(knownTypes));
-    const unknownWarning =
-      unknownTypes.length > 0
-        ? `Unknown block type${unknownTypes.length > 1 ? "s" : ""}: ${unknownTypes.join(", ")}. The blocks will save but won't render until those types are registered.`
-        : null;
+    const contractWarning =
+      result.warnings.length > 0 ? result.warnings.map((issue) => issue.message).join(" ") : null;
 
     // `cloneBlockDeep` re-ids the whole subtree (recursive over
     // `children`), so a paste from another page doesn't bring its
@@ -189,8 +181,8 @@ function PageJsonDialogContent({
     // or carry stale dnd-kit state across sessions.
     const next = importAsNew ? [...blocks, ...validated.map(cloneBlockDeep)] : validated;
     const diff = summarizeApplyDiff(blocks, next);
-    setPendingApply({ next, diff, warning: unknownWarning });
-    setWarning(unknownWarning);
+    setPendingApply({ next, diff, warning: contractWarning });
+    setWarning(contractWarning);
   }
 
   function handleConfirm() {

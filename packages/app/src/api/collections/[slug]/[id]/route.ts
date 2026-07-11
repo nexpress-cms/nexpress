@@ -10,6 +10,7 @@ import { readJsonBody } from "@nexpress/next";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { optionalAuth } from "../../../../lib/auth-helpers";
+import { validateDocumentBlockContent } from "../../../../lib/block-content-validation";
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import {
   deleteCollectionDocument,
@@ -94,6 +95,7 @@ export async function PATCH(
     await ensureFor("write");
     const data = parseBodyRecord(await readJsonBody(request));
     const saveOptions = extractSaveOptions(data);
+    validateDocumentBlockContent(slug, data);
     const previous = await getCollectionDocument(slug, id, null);
     const result = await updateMemberDocument(slug, id, data, member.id, saveOptions);
 

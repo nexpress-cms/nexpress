@@ -2,8 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-12 (block content now uses one stable recursive
-wire contract across collection validation, generated types, OpenAPI, patterns,
+**Last refreshed:** 2026-07-12 (block instances now add one definition-aware
+prop/container contract across defaults, Admin/app writes, preview, patterns,
+rendering, and plugin doctor while inactive content remains preservable.)
+
+**Earlier:** 2026-07-12 (block content now uses one stable recursive wire
+contract across collection validation, generated types, OpenAPI, patterns,
 Admin JSON/paste/preview, translation, and unknown-block operations.)
 
 **Earlier:** 2026-07-11 (rich-text content now uses a stable NexPress

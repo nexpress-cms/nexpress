@@ -1,7 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { npValidateBlockContent, type NpBlockInstance, type NpPattern } from "@nexpress/blocks";
+import {
+  npValidateBlockContentAgainstDefinitions,
+  type NpBlockInstance,
+  type NpBlockMetadata,
+  type NpPattern,
+} from "@nexpress/blocks";
 
 import { Button } from "../../ui/button.js";
 import {
@@ -26,13 +31,13 @@ import { Textarea } from "../../ui/textarea.js";
  * Validation surface:
  *   1. valid JSON
  *   2. either an object (single block), an array, or a pattern object
- *   3. the complete shared block-content wire contract
+ *   3. the shared wire and registered prop/container contracts
  */
 
 export interface PastePatternDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  knownTypes: string[];
+  definitions: NpBlockMetadata[];
   onApply: (pattern: NpPattern) => void;
 }
 
@@ -43,7 +48,7 @@ interface ValidationResult {
   warning?: string;
 }
 
-function validate(raw: string, known: Set<string>): ValidationResult {
+function validate(raw: string, definitions: readonly NpBlockMetadata[]): ValidationResult {
   if (raw.trim().length === 0) {
     return { ok: false, error: "Paste a block or array of blocks." };
   }
@@ -76,28 +81,23 @@ function validate(raw: string, known: Set<string>): ValidationResult {
       error: "Top level must be a block, an array of blocks, or a pattern object.",
     };
   }
-  const validation = npValidateBlockContent(candidate);
-  if (!validation.ok) return { ok: false, error: validation.message };
+  const validation = npValidateBlockContentAgainstDefinitions(candidate, definitions);
+  if (!validation.ok) {
+    return {
+      ok: false,
+      error:
+        validation.issues.find((issue) => issue.severity === "error")?.message ??
+        "Invalid block content.",
+    };
+  }
   if (validation.value.length === 0) {
     return { ok: false, error: "Block list must not be empty." };
   }
   const blocks = validation.value;
 
-  // Soft warning for unknown types — we still let the operator
-  // apply, since a plugin reload after the paste may register
-  // them. The reducer / renderer treat unknown types as no-ops
-  // gracefully.
-  const unknown = new Set<string>();
-  const walk = (arr: NpBlockInstance[]): void => {
-    for (const b of arr) {
-      if (!known.has(b.type)) unknown.add(b.type);
-      if (b.children) walk(b.children);
-    }
-  };
-  walk(blocks);
   const warning =
-    unknown.size > 0
-      ? `Unknown block types will render as placeholders: ${Array.from(unknown).join(", ")}`
+    validation.warnings.length > 0
+      ? validation.warnings.map((issue) => issue.message).join(" ")
       : undefined;
   return { ok: true, parsed: blocks, warning };
 }
@@ -105,14 +105,14 @@ function validate(raw: string, known: Set<string>): ValidationResult {
 export function PastePatternDialog({
   open,
   onOpenChange,
-  knownTypes,
+  definitions,
   onApply,
 }: PastePatternDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {open ? (
         <PastePatternDialogContent
-          knownTypes={knownTypes}
+          definitions={definitions}
           onApply={onApply}
           onOpenChange={onOpenChange}
         />
@@ -122,19 +122,17 @@ export function PastePatternDialog({
 }
 
 function PastePatternDialogContent({
-  knownTypes,
+  definitions,
   onOpenChange,
   onApply,
-}: Pick<PastePatternDialogProps, "knownTypes" | "onOpenChange" | "onApply">) {
+}: Pick<PastePatternDialogProps, "definitions" | "onOpenChange" | "onApply">) {
   const [raw, setRaw] = useState("");
   const [result, setResult] = useState<ValidationResult | null>(null);
 
-  const knownSet = new Set(knownTypes);
-
-  const handleValidate = () => setResult(validate(raw, knownSet));
+  const handleValidate = () => setResult(validate(raw, definitions));
 
   const handleApply = () => {
-    const validated = result ?? validate(raw, knownSet);
+    const validated = result ?? validate(raw, definitions);
     if (!validated.ok || !validated.parsed) {
       setResult(validated);
       return;

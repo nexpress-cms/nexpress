@@ -1,14 +1,10 @@
-import {
-  NpValidationError,
-  deleteDocument,
-  getDocumentById,
-  saveDocument,
-} from "@nexpress/core";
+import { NpValidationError, deleteDocument, getDocumentById, saveDocument } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
+import { validateDocumentBlockContent } from "../../../../lib/block-content-validation";
 import { ensureFor } from "../../../../lib/init-core";
 import { revalidateCollection } from "../../../../lib/revalidate";
 
@@ -92,6 +88,7 @@ export async function POST(
           updatedBy: _updatedBy,
           ...rest
         } = existing;
+        validateDocumentBlockContent(slug, rest);
         await saveDocument(slug, id, rest, user, {
           status: action === "publish" ? "published" : "draft",
         });

@@ -369,6 +369,59 @@ describe("ops plugins core", () => {
     );
   });
 
+  it("reports definition-level pattern prop errors and preservation warnings", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "cards", name: "Cards" },
+        blocks: [
+          pluginBlock("cards.card", {
+            propsSchema: [
+              {
+                name: "title",
+                label: "Title",
+                type: "text",
+                translatable: true,
+                required: true,
+              },
+            ],
+          }),
+        ],
+        patterns: [
+          pluginPattern("cards.invalid", {
+            blocks: [{ id: "card", type: "cards.card", props: {} }],
+          }),
+          pluginPattern("cards.stale", {
+            blocks: [
+              {
+                id: "card-2",
+                type: "cards.card",
+                props: { title: "Hello", legacy: true },
+              },
+            ],
+          }),
+        ],
+      },
+    ]);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.pattern_invalid",
+          state: "error",
+          detail: expect.stringContaining('requires prop "title"'),
+          pluginIds: ["cards"],
+        }),
+        expect.objectContaining({
+          id: "plugins.pattern_content_warning",
+          state: "warn",
+          detail: expect.stringContaining('unregistered prop "legacy"'),
+          pluginIds: ["cards"],
+        }),
+      ]),
+    );
+  });
+
   it("rejects malformed and same-plugin duplicate page routes", () => {
     const report = analyzePlugins([
       {

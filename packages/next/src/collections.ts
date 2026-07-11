@@ -14,6 +14,8 @@ import {
 export interface CollectionHelpersOptions {
   /** Called before every collection operation — wire DB/storage/plugins here. */
   ensureReady(): void | Promise<void>;
+  /** Optional host-level contract check run after bootstrap and before a save. */
+  validateSave?(slug: string, data: Record<string, unknown>): void | Promise<void>;
 }
 
 export type CollectionHelpers = {
@@ -95,11 +97,7 @@ function parseWhere(where: string | null): Record<string, unknown> | undefined {
   return sanitized;
 }
 
-function parsePositiveInt(
-  value: string | null,
-  field: string,
-  max?: number,
-): number | undefined {
+function parsePositiveInt(value: string | null, field: string, max?: number): number | undefined {
   if (value === null) return undefined;
 
   const parsed = Number(value);
@@ -125,10 +123,10 @@ function parsePositiveInt(
  * `ensurePluginsLoaded()`).
  */
 export function createCollectionHelpers(
-  options: CollectionHelpersOptions,
+  helperOptions: CollectionHelpersOptions,
 ): CollectionHelpers {
   async function ready(): Promise<void> {
-    await options.ensureReady();
+    await helperOptions.ensureReady();
   }
 
   const parseFindOptions = (searchParams: URLSearchParams): NpFindOptions => {
@@ -169,6 +167,7 @@ export function createCollectionHelpers(
     options?: NpSaveOptions,
   ): Promise<NpSaveResult> => {
     await ready();
+    await helperOptions.validateSave?.(slug, data);
     return coreSaveDocument(slug, id, data, user, options);
   };
 

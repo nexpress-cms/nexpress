@@ -1,3 +1,6 @@
+import { npAnalyzeBlockProps } from "./content-contract.js";
+import type { NpBlockMetadata } from "./types.js";
+
 export const npBlockPropFieldTypes = [
   "text",
   "textarea",
@@ -507,6 +510,13 @@ export function npValidateBlockDefinition(value: unknown): NpBlockDefinitionVali
     value.minChildren > value.maxChildren
   ) {
     return invalid("block.minChildren must be less than or equal to maxChildren.");
+  }
+  const defaultIssue = npAnalyzeBlockProps(
+    value.defaultProps,
+    value as unknown as NpBlockMetadata,
+  ).find((issue) => issue.severity === "error" && issue.code !== "missing-required-prop");
+  if (defaultIssue) {
+    return invalid(`block.defaultProps violates propsSchema: ${defaultIssue.message}`);
   }
   return valid();
 }

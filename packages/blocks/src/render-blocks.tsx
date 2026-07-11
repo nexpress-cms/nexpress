@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { readGridChildLayout } from "./blocks/grid.js";
+import { npAnalyzeBlockContent } from "./content-contract.js";
 import { getSharedRegistry } from "./registry.js";
 import { isBlockSourceActive } from "./source.js";
 import type {
@@ -79,10 +80,29 @@ export function renderBlocks(
   const registry = options.registry ?? getSharedRegistry();
   const ctx = options.ctx;
   const previewMarkers = options.previewMarkers ?? false;
+  const contentErrors = new Map<string, string>();
+  const contentIssues = npAnalyzeBlockContent(pageBlocks, registry.getAll());
+  const rootContractError = contentIssues.find(
+    (issue) => issue.severity === "error" && !issue.blockId,
+  );
+  if (rootContractError) {
+    const isProd = typeof process !== "undefined" && process.env.NODE_ENV === "production";
+    return (
+      <div className="np-blocks-invalid" hidden={isProd}>
+        {isProd ? null : `Invalid block content: ${rootContractError.message}`}
+      </div>
+    );
+  }
+  for (const issue of contentIssues) {
+    if (issue.severity !== "error" || !issue.blockId || contentErrors.has(issue.blockId)) continue;
+    contentErrors.set(issue.blockId, issue.message);
+  }
 
   return (
     <div className="np-blocks">
-      {pageBlocks.map((b) => renderBlock(b, registry, ctx, undefined, previewMarkers))}
+      {pageBlocks.map((b) =>
+        renderBlock(b, registry, ctx, undefined, previewMarkers, contentErrors),
+      )}
     </div>
   );
 }
@@ -145,7 +165,7 @@ async function SafeBlock({
     // only package back into the client graph (the same trap that broke
     // the build in PR #465's earlier round). console.error is fine —
     // Next pipes it into its own error reporter.
-     
+
     console.error(`[blocks] render failed for "${definition.type}"`, error);
 
     const isProd = typeof process !== "undefined" && process.env.NODE_ENV === "production";
@@ -165,8 +185,7 @@ async function SafeBlock({
           backgroundColor: "#fef2f2",
           color: "#991b1b",
           fontSize: "0.85rem",
-          fontFamily:
-            "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
         }}
       >
         Block <strong>{definition.type}</strong> failed to render: {message}
@@ -181,6 +200,7 @@ function renderBlock(
   ctx: NpBlockRenderContext | undefined,
   parentType: string | undefined,
   previewMarkers: boolean,
+  contentErrors: ReadonlyMap<string, string>,
 ): React.ReactElement {
   const definition = registry.get(instance.type);
 
@@ -188,6 +208,21 @@ function renderBlock(
     return (
       <div key={instance.id} className="np-block-unknown">
         Unknown block type: {instance.type}
+      </div>
+    );
+  }
+
+  const contractError = contentErrors.get(instance.id);
+  if (contractError) {
+    const isProd = typeof process !== "undefined" && process.env.NODE_ENV === "production";
+    return (
+      <div
+        key={instance.id}
+        className="np-block-invalid"
+        data-block-type={instance.type}
+        hidden={isProd}
+      >
+        {isProd ? null : `Invalid block ${instance.type}: ${contractError}`}
       </div>
     );
   }
@@ -215,12 +250,11 @@ function renderBlock(
             backgroundColor: "rgba(241, 245, 249, 0.5)",
             color: "rgba(71, 85, 105, 0.85)",
             fontSize: "0.8125rem",
-            fontFamily:
-              "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
           }}
         >
-          Block <strong>{instance.type}</strong> is from a theme or plugin
-          that isn't active for this site.
+          Block <strong>{instance.type}</strong> is from a theme or plugin that isn't active for
+          this site.
         </div>
       );
     }
@@ -232,7 +266,7 @@ function renderBlock(
     // render() so the parent decides where to place children
     // (inside its grid wrapper, columns, etc.).
     rendered = instance.children.map((child) =>
-      renderBlock(child, registry, ctx, instance.type, previewMarkers),
+      renderBlock(child, registry, ctx, instance.type, previewMarkers, contentErrors),
     );
   }
 
@@ -311,10 +345,7 @@ function renderBlock(
   // per-breakpoint spans. The grid block's scoped `<style>` block
   // applies them through media queries.
   if (parentType === "grid") {
-    const { colSpan, mdColSpan, lgColSpan } = readGridChildLayout(
-      instance.props,
-      12,
-    );
+    const { colSpan, mdColSpan, lgColSpan } = readGridChildLayout(instance.props, 12);
     // Compose the inline style with the base span fixed and the
     // optional md/lg overrides only when set — leaving them
     // unset keeps the CSS fallback chain (lg → md → base) intact.
@@ -324,11 +355,7 @@ function renderBlock(
     if (mdColSpan !== undefined) cellStyle["--np-cell-span-md"] = mdColSpan;
     if (lgColSpan !== undefined) cellStyle["--np-cell-span-lg"] = lgColSpan;
     return (
-      <div
-        key={instance.id}
-        className="np-block-grid-cell"
-        style={cellStyle}
-      >
+      <div key={instance.id} className="np-block-grid-cell" style={cellStyle}>
         {markedNode}
       </div>
     );

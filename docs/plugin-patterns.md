@@ -106,7 +106,10 @@ validation runs in bootstrap, when the host knows the enabled contribution set:
 All blocks register before any pattern, so a valid cross-plugin reference does
 not depend on configuration order. An unavailable `type` fails boot explicitly
 instead of reaching Admin and disappearing during insertion. The registry
-repeats the reference check for callers that bypass bootstrap.
+repeats the reference check for callers that bypass bootstrap. It also validates
+every known instance against the registered block's prop and container contract,
+so a required prop, invalid option, malformed nested array, or forbidden child
+fails before the pattern enters Admin.
 
 ## Validation and collisions
 
@@ -122,11 +125,12 @@ last-loaded-wins registry, but both static doctor and the runtime registry emit
 operator-visible ownership diagnostics. Namespace IDs with the contributor,
 for example `acme.notice-section`.
 
-| Check ID                    | State   | Meaning                                                 |
-| --------------------------- | ------- | ------------------------------------------------------- |
-| `plugins.pattern_invalid`   | error   | Malformed tree or reference to an unavailable block.    |
-| `plugins.pattern_duplicate` | error   | One plugin declares the same pattern ID more than once. |
-| `plugins.pattern_conflict`  | warning | Different plugins claim the same pattern ID.            |
+| Check ID                          | State   | Meaning                                                    |
+| --------------------------------- | ------- | ---------------------------------------------------------- |
+| `plugins.pattern_invalid`         | error   | Malformed tree, unavailable type, or known block mismatch. |
+| `plugins.pattern_duplicate`       | error   | One plugin declares the same pattern ID more than once.    |
+| `plugins.pattern_content_warning` | warning | Stale prop or soft container recommendation.               |
+| `plugins.pattern_conflict`        | warning | Different plugins claim the same pattern ID.               |
 
 Run:
 
