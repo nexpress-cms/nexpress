@@ -57,11 +57,12 @@ jobs:
     timeout-minutes: 20
 
     # `pnpm build` ends with `next build`'s page-data collection step,
-    # which imports `nexpress.config.ts` and trips the Zod schema for
-    # auth.secret / site.url. ci.yml supplies these for its own jobs
-    # (#394); release needs the same shim, otherwise every push to
-    # main fails before the changesets action even runs.
+    # which imports `nexpress.config.ts` and validates the project contract.
+    # ci.yml supplies build-only config for its own jobs (#394); release
+    # needs the same shim, otherwise every push to main fails before the
+    # changesets action even runs.
     env:
+      DATABASE_URL: postgres://nexpress:nexpress@localhost:5432/nexpress_build
       NP_SECRET: ci-secret-which-is-long-enough-for-jwt-signing
       SITE_URL: http://localhost:3000
 
