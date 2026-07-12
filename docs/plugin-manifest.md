@@ -42,13 +42,16 @@ _need_ them, not because the type system forces you.
 
 | Field                 | Type                     | Notes                                                                                                                      |
 | --------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `id`                  | string                   | npm-package-shaped slug. Also the row key in `np_plugins`.                                                                 |
+| `id`                  | string (max 128 chars)   | npm-package-shaped slug, including optional `@scope/name`. Also the row key in `np_plugins`.                               |
 | `version`             | semver                   | Authored by you, NOT the framework version.                                                                                |
 | `name`                | string                   | Human label. Surfaces in `/admin/plugins`.                                                                                 |
 | `description`         | string (1–500 chars)     | One-line summary. The agent block falls back to this when its own description is empty.                                    |
 | `author`              | `{ name, email?, url? }` | At minimum, `name`.                                                                                                        |
 | `license`             | string                   | SPDX id (`"MIT"`, `"Apache-2.0"`, etc.).                                                                                   |
 | `nexpress.minVersion` | semver                   | Lowest framework version this plugin is known to work against. The host refuses to load it on older versions and logs why. |
+
+Scoped ids are percent-encoded when embedded in Admin and API URL path
+segments, so `@acme/analytics` is addressed as `%40acme%2Fanalytics`.
 
 ### Auto-defaulted (you can omit)
 
@@ -167,7 +170,7 @@ The full list:
 
 | Definition field | Purpose                                                                                                                                                        | When to use                                                                                                                                      |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `configSchema`   | Zod schema for operator-tunable plugin config. Renders an auto-form on `/admin/plugins/<id>`.                                                                  | When you want the operator to tune plugin behavior at runtime. See [`plugin-quickstart.md`](plugin-quickstart.md) Step 2b.                       |
+| `configSchema`   | Top-level Zod object for operator-tunable plugin config. Renders an auto-form on `/admin/plugins/<id>`.                                                        | When you want the operator to tune plugin behavior at runtime. See [`plugin-quickstart.md`](plugin-quickstart.md) Step 2b.                       |
 | `configVersion`  | Schema version (defaults to 1).                                                                                                                                | Bump when `configSchema` changes shape non-additively.                                                                                           |
 | `configMigrate`  | `(old, fromVersion) => current` migrator.                                                                                                                      | Pair with a `configVersion` bump so existing operator data upgrades on first cold read.                                                          |
 | `hooks`          | Lifecycle hook handlers keyed by hook name.                                                                                                                    | Most plugins start here.                                                                                                                         |

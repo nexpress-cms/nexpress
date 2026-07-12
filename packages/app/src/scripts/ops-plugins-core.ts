@@ -633,14 +633,14 @@ function buildRemainingDefinitionChecks(
   plugins: OpsPluginEntry[],
 ): CheckResult[] {
   const grouped = new Map<
-    "config" | "lifecycle" | "i18n" | "templates",
+    "manifest" | "config" | "lifecycle" | "i18n" | "templates",
     {
       details: string[];
       pluginIds: string[];
     }
   >();
   const add = (
-    code: "config" | "lifecycle" | "i18n" | "templates",
+    code: "manifest" | "config" | "lifecycle" | "i18n" | "templates",
     pluginId: string,
     detail: string,
   ): void => {
@@ -663,6 +663,11 @@ function buildRemainingDefinitionChecks(
   }
 
   const metadata = {
+    manifest: {
+      id: "plugins.manifest_invalid",
+      label: "Plugin manifest contracts",
+      hint: "Use a valid npm-shaped plugin id no longer than 128 characters.",
+    },
     config: {
       id: "plugins.config_contract",
       label: "Plugin config contracts",
@@ -700,24 +705,29 @@ function remainingDefinitionContractImportCheck(error: unknown): CheckResult | n
   const match = detail.match(/^\[plugin:([^\]]+)\] (.+)$/u);
   if (!match) return null;
   const message = match[2] ?? "";
-  const kind = message.includes("template")
-    ? "template"
-    : message.includes("i18n") || message.includes("locale") || message.includes("translation")
-      ? "i18n"
-      : message.includes("config")
-        ? "config"
-        : message.includes("setup") || message.includes("teardown")
-          ? "lifecycle"
-          : null;
+  const kind =
+    message.includes("plugin id") || message.includes("manifest")
+      ? "manifest"
+      : message.includes("template")
+        ? "template"
+        : message.includes("i18n") || message.includes("locale") || message.includes("translation")
+          ? "i18n"
+          : message.includes("config")
+            ? "config"
+            : message.includes("setup") || message.includes("teardown")
+              ? "lifecycle"
+              : null;
   if (!kind) return null;
   const id =
-    kind === "config"
-      ? "plugins.config_contract"
-      : kind === "lifecycle"
-        ? "plugins.lifecycle_invalid"
-        : kind === "i18n"
-          ? "plugins.i18n_invalid"
-          : "plugins.template_invalid";
+    kind === "manifest"
+      ? "plugins.manifest_invalid"
+      : kind === "config"
+        ? "plugins.config_contract"
+        : kind === "lifecycle"
+          ? "plugins.lifecycle_invalid"
+          : kind === "i18n"
+            ? "plugins.i18n_invalid"
+            : "plugins.template_invalid";
   return {
     id,
     state: "error",

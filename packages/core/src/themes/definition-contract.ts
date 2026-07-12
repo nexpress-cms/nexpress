@@ -143,6 +143,29 @@ function validateSettings(manifest: Record<string, unknown>): NpThemeDefinitionI
         "settingsSchema must be a Zod-compatible schema.",
       ),
     );
+  } else if (hasSchema) {
+    let node = schema as { _def?: { type?: unknown; innerType?: unknown } };
+    const visited = new Set<unknown>();
+    while (
+      node &&
+      typeof node === "object" &&
+      node._def &&
+      ["default", "optional", "nullable"].includes(String(node._def.type)) &&
+      node._def.innerType &&
+      !visited.has(node)
+    ) {
+      visited.add(node);
+      node = node._def.innerType;
+    }
+    if (node?._def?.type !== "object") {
+      issues.push(
+        issue(
+          "settings",
+          "manifest.settingsSchema",
+          "settingsSchema must be a top-level Zod object (optionally wrapped by default, optional, or nullable).",
+        ),
+      );
+    }
   }
   const version = manifest.settingsVersion;
   if (

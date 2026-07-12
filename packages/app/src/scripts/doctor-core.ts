@@ -1,6 +1,6 @@
 import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { npAnalyzeSettingValue, npAnalyzeSiteRecord } from "@nexpress/core/settings";
+import { npAnalyzeSettingRecord, npAnalyzeSiteRecord } from "@nexpress/core/settings";
 
 import { inferDeployTargetFromEnv, type DeployTarget } from "./deploy-targets.js";
 import { buildDoctorJson, type DoctorJsonOutput } from "./doctor-output.js";
@@ -322,9 +322,21 @@ async function checkSettingsContracts(env: DoctorEnv): Promise<CheckResult> {
       ),
     ]);
     await client.end();
+    const siteIds = new Set(sites.rows.map((site) => site.id));
     const issues = [
       ...sites.rows.flatMap((site) => npAnalyzeSiteRecord(site)),
-      ...settings.rows.flatMap((row) => npAnalyzeSettingValue(row.key, row.value)),
+      ...settings.rows.flatMap((row) => [
+        ...npAnalyzeSettingRecord(row.siteId, row.key, row.value),
+        ...(row.key !== "jobs.paused" && !siteIds.has(row.siteId)
+          ? [
+              {
+                code: "invalid-field" as const,
+                path: "settings.siteId",
+                message: `setting row references missing site '${row.siteId}'.`,
+              },
+            ]
+          : []),
+      ]),
     ];
     return issues.length === 0
       ? {

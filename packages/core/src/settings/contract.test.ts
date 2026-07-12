@@ -4,6 +4,7 @@ import {
   DEFAULT_SEO_SETTINGS,
   isNpAdminSettingsSnapshot,
   isNpSiteWireRecord,
+  npAnalyzeSettingRecord,
   npAnalyzeSettingValue,
   npAnalyzeSiteRuntimeSettings,
   npClassifySettingKey,
@@ -93,6 +94,8 @@ describe("framework settings contract", () => {
     expect(npClassifySettingKey("seo")).toBe("seo");
     expect(npClassifySettingKey("theme.settings:portfolio")).toBe("theme-settings");
     expect(npClassifySettingKey("plugin.config:analytics-lite")).toBe("plugin-config");
+    expect(npClassifySettingKey("plugin.config:@acme/analytics_lite")).toBe("plugin-config");
+    expect(npClassifySettingKey("theme.settings:@acme/portfolio")).toBeNull();
     expect(npClassifySettingKey("site")).toBeNull();
     expect(npClassifySettingKey("arbitrary.key")).toBeNull();
   });
@@ -121,6 +124,12 @@ describe("framework settings contract", () => {
         extra: true,
       })[0]?.code,
     ).toBe("unknown-field");
+    expect(
+      npAnalyzeSettingValue("plugin.config:demo", {
+        __npVersion: 1,
+        __npSettings: { oversized: "x".repeat(1_000_001) },
+      }),
+    ).not.toEqual([]);
     expect(npAnalyzeSettingValue("theme", { colors: { accent: "#123456" } })).toEqual([]);
     expect(npAnalyzeSettingValue("activeTheme", "portfolio")).toEqual([]);
     expect(npAnalyzeSettingValue("activeTheme", "Portfolio Theme")).not.toEqual([]);
@@ -146,5 +155,17 @@ describe("framework settings contract", () => {
         reason: null,
       }),
     ).not.toEqual([]);
+  });
+
+  it("enforces global versus site-scoped setting ownership", () => {
+    const paused = {
+      paused: false,
+      changedAt: "2026-07-12T00:00:00.000Z",
+      changedByUserId: null,
+      reason: null,
+    };
+    expect(npAnalyzeSettingRecord("_system", "jobs.paused", paused)).toEqual([]);
+    expect(npAnalyzeSettingRecord("default", "jobs.paused", paused)).not.toEqual([]);
+    expect(npAnalyzeSettingRecord("_system", "seo", DEFAULT_SEO_SETTINGS)).not.toEqual([]);
   });
 });

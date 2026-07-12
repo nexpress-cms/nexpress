@@ -18,6 +18,7 @@ export const npSettingsContractLimits = {
   hostnameLength: 253,
   descriptionLength: 4096,
   settingKeyLength: 160,
+  jsonStringLength: 1_000_000,
   timezoneLength: 100,
   urlLength: 2048,
   localeLength: 35,
@@ -25,6 +26,10 @@ export const npSettingsContractLimits = {
 
 export const npSiteIdPattern = "^[a-z][a-z0-9-]{0,62}$";
 export const npDynamicSettingOwnerPattern = "^[a-z][a-z0-9-]{0,62}$";
+export const npPluginIdPattern = "^(?:@[A-Za-z0-9_-]+/)?[A-Za-z0-9_-]+$";
+export const npPluginIdMaxLength = 128;
+/** Alias naming the plugin-id rule in its dynamic setting-owner role. */
+export const npPluginSettingOwnerPattern = npPluginIdPattern;
 
 export const DEFAULT_SITE_RUNTIME_SETTINGS: NpSiteRuntimeSettings = {
   siteUrl: null,
@@ -40,6 +45,7 @@ export const DEFAULT_SEO_SETTINGS: NpSeoSettings = {
 
 const siteIdPattern = new RegExp(npSiteIdPattern, "u");
 const ownerPattern = new RegExp(npDynamicSettingOwnerPattern, "u");
+const pluginOwnerPattern = new RegExp(npPluginIdPattern, "u");
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const hostnamePattern =
   /^(?:localhost|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*)$/u;
@@ -464,8 +470,12 @@ export function npClassifySettingKey(key: unknown): NpSettingContractKind | null
   if (typeof key !== "string" || key.length > npSettingsContractLimits.settingKeyLength)
     return null;
   const dynamic = /^(theme\.settings|plugin\.config):(.+)$/u.exec(key);
-  if (!dynamic || !ownerPattern.test(dynamic[2] ?? "")) return null;
-  return dynamic[1] === "theme.settings" ? "theme-settings" : "plugin-config";
+  if (!dynamic) return null;
+  const owner = dynamic[2] ?? "";
+  if (dynamic[1] === "theme.settings") {
+    return ownerPattern.test(owner) ? "theme-settings" : null;
+  }
+  return pluginOwnerPattern.test(owner) ? "plugin-config" : null;
 }
 
 export function npValidateSettingKey(key: unknown): NpSettingValidationResult {
@@ -483,7 +493,10 @@ export function npValidateSettingKey(key: unknown): NpSettingValidationResult {
 function isJsonValue(value: unknown, depth = 0, state = { nodes: 0 }): boolean {
   state.nodes++;
   if (state.nodes > 10_000 || depth > 32) return false;
-  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (value === null || typeof value === "boolean") return true;
+  if (typeof value === "string") {
+    return value.length <= npSettingsContractLimits.jsonStringLength;
+  }
   if (typeof value === "number") return Number.isFinite(value);
   if (Array.isArray(value)) return value.every((entry) => isJsonValue(entry, depth + 1, state));
   if (!isPlainRecord(value)) return false;
@@ -710,6 +723,36 @@ export function npAnalyzeSettingValue(key: unknown, value: unknown): NpSettingCo
     case "jobs-pause":
       return analyzeJobsPause(value);
   }
+}
+
+/** Validates a complete `np_settings` row, including its site/global scope. */
+export function npAnalyzeSettingRecord(
+  siteId: unknown,
+  key: unknown,
+  value: unknown,
+): NpSettingContractIssue[] {
+  const issues = npAnalyzeSettingValue(key, value);
+  const kind = npClassifySettingKey(key);
+  if (kind === "jobs-pause") {
+    if (siteId !== "_system") {
+      issues.push(
+        issue(
+          "invalid-field",
+          "settings.siteId",
+          'jobs.paused must use the reserved global site id "_system".',
+        ),
+      );
+    }
+  } else if (typeof siteId !== "string" || !siteIdPattern.test(siteId)) {
+    issues.push(
+      issue(
+        "invalid-field",
+        "settings.siteId",
+        "site-scoped settings must use a canonical site id.",
+      ),
+    );
+  }
+  return issues;
 }
 
 export function npValidateSettingValue(key: unknown, value: unknown): NpSettingValidationResult {

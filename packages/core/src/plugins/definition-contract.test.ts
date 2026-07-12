@@ -24,7 +24,10 @@ describe("remaining plugin definition contracts", () => {
   });
 
   it.each([
+    [{ manifest: { id: "x".repeat(129) } }, /at most 128 characters/],
+    [{ manifest: { id: "bad id" } }, /npm-shaped id/],
     [{ configSchema: {} }, /Zod-compatible/],
+    [{ configSchema: z.string() }, /top-level Zod object/],
     [{ configVersion: 0 }, /positive integer/],
     [{ configVersion: 2 }, /require configSchema/],
     [{ configSchema: z.object({}), configVersion: 2 }, /requires configMigrate/],

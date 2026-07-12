@@ -195,7 +195,7 @@ function ConfigAutoFormCard({
     setSaving(true);
     setToast(null);
     try {
-      const response = await npFetch(`/api/admin/plugins/${pluginId}/config`, {
+      const response = await npFetch(`/api/admin/plugins/${encodeURIComponent(pluginId)}/config`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value }),
@@ -291,7 +291,7 @@ function SettingsCard({
     setSaving(true);
     setToast(null);
     try {
-      const response = await npFetch(`/api/admin/plugins/${pluginId}/config`, {
+      const response = await npFetch(`/api/admin/plugins/${encodeURIComponent(pluginId)}/config`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: values }),
@@ -611,9 +611,10 @@ function SchedulesCard({ pluginId, schedules }: { pluginId: string; schedules: S
       setBusyTaskId(taskId);
       setToast(null);
       try {
-        const response = await npFetch(`/api/plugins/${pluginId}/schedules/${taskId}/run`, {
-          method: "POST",
-        });
+        const response = await npFetch(
+          `/api/plugins/${encodeURIComponent(pluginId)}/schedules/${encodeURIComponent(taskId)}/run`,
+          { method: "POST" },
+        );
         if (!response.ok) {
           const payload = (await response.json().catch(() => null)) as {
             error?: { message?: string };

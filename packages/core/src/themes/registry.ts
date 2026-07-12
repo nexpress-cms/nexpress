@@ -99,12 +99,17 @@ export async function getActiveThemeId(): Promise<string | null> {
     .limit(1)) as Array<{ value: unknown }>;
   const row = rows[0];
   if (!row) return null;
-  if (typeof row.value !== "string" || !/^[a-z][a-z0-9-]{0,62}$/u.test(row.value)) {
+  try {
+    npAssertSettingValue("activeTheme", row.value);
+  } catch (error) {
     throw new NpValidationError("Invalid persisted active theme", [
-      { field: "settings.activeTheme", message: "Active theme id is malformed" },
+      {
+        field: "settings.activeTheme",
+        message: error instanceof Error ? error.message : "Active theme id is malformed",
+      },
     ]);
   }
-  return row.value;
+  return row.value as string;
 }
 
 /**

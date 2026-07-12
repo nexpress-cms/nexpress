@@ -164,6 +164,17 @@ async function loadOptionalNextCache(): Promise<{
   }
 }
 
+async function revalidateOptionalTag(tag: string): Promise<void> {
+  const cache = await loadOptionalNextCache();
+  const revalidateTag = cache?.revalidateTag;
+  if (typeof revalidateTag !== "function") return;
+  if (revalidateTag.length >= 2) {
+    (revalidateTag as (cacheTag: string, profile: string) => void)(tag, "default");
+  } else {
+    revalidateTag(tag);
+  }
+}
+
 /**
  * Produces the runtime ctx passed to plugin hook / route / setup handlers.
  * Matches the `NpPluginContext` shape declared in `@nexpress/plugin-sdk`.
@@ -531,8 +542,9 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         // All writes route through the registered plugin contract. Plugins
         // without configSchema still get the exact versioned envelope, but
         // an unregistered owner can no longer mint arbitrary settings keys.
-        const { setPluginConfig } = await import("./config.js");
+        const { pluginConfigCacheTag, setPluginConfig } = await import("./config.js");
         await setPluginConfig(pluginId, data, null);
+        await revalidateOptionalTag(pluginConfigCacheTag(pluginId));
       },
     },
 
@@ -564,18 +576,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
             set: { value: merged, updatedAt },
           });
 
-        const cache = await loadOptionalNextCache();
-        const revalidateTag = cache?.revalidateTag;
-        if (typeof revalidateTag === "function") {
-          if (revalidateTag.length >= 2) {
-            (revalidateTag as (tag: string, profile: string) => void)(
-              `nx:theme:${siteId}`,
-              "default",
-            );
-          } else {
-            revalidateTag(`nx:theme:${siteId}`);
-          }
-        }
+        await revalidateOptionalTag(`nx:theme:${siteId}`);
       },
     },
 

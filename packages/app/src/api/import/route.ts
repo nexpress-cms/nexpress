@@ -5,12 +5,16 @@ import {
   npPlugins,
   npSettings,
   npNavigation,
+  NP_DEFAULT_SITE_ID,
   getAllCollectionSlugs,
+  getCurrentSiteId,
   getPluginRegistration,
   getThemeById,
+  pluginConfigCacheTag,
   saveDocument,
   setPluginConfig,
   setSiteGeneralSettings,
+  updatePluginState,
   can,
 } from "@nexpress/core";
 import {
@@ -24,7 +28,13 @@ import {
   npAnalyzeNavigationLocation,
   type NpNavItem,
 } from "@nexpress/core/navigation";
-import { invalidateCacheTargets, navCacheTag, readJsonBody } from "@nexpress/next";
+import {
+  bustThemeCache,
+  invalidateCacheTargets,
+  navCacheTag,
+  readJsonBody,
+  siteCacheTag,
+} from "@nexpress/next";
 import { and, eq, isNull } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
@@ -51,7 +61,7 @@ interface ImportPlugin {
   id: string;
   enabled?: boolean;
   config?: Record<string, unknown>;
-  manifestVersion?: string;
+  manifestVersion?: string | null;
 }
 
 interface ImportPayload {
@@ -220,6 +230,7 @@ function validatePayload(body: unknown): ImportPayload {
     }
   }
 
+  let normalizedSettings: Record<string, unknown> | undefined;
   if (body.settings !== undefined) {
     if (!isRecord(body.settings)) {
       throw new NpValidationError("Invalid input", [
@@ -235,7 +246,24 @@ function validatePayload(body: unknown): ImportPayload {
     if (settingErrors.length > 0) {
       throw new NpValidationError("Invalid input", settingErrors);
     }
+    normalizedSettings = { ...body.settings };
     for (const [key, value] of Object.entries(body.settings)) {
+      if (key === "theme") {
+        throw new NpValidationError("Invalid input", [
+          {
+            field: "settings.theme",
+            message: "Theme token overrides belong in the top-level theme field.",
+          },
+        ]);
+      }
+      if (key === "jobs.paused") {
+        throw new NpValidationError("Invalid input", [
+          {
+            field: "settings.jobs.paused",
+            message: "Global worker pause state is not part of a site-config import.",
+          },
+        ]);
+      }
       if (key.startsWith("plugin.config:")) {
         throw new NpValidationError("Invalid input", [
           {
@@ -264,19 +292,49 @@ function validatePayload(body: unknown): ImportPayload {
           ]);
         }
         const envelope = value as { __npSettings: unknown };
+        const expectedVersion = theme.manifest.settingsVersion ?? 1;
+        if ((value as { __npVersion: unknown }).__npVersion !== expectedVersion) {
+          throw new NpValidationError("Invalid input", [
+            {
+              field: `settings.${key}.__npVersion`,
+              message: `Theme '${themeId}' settings must use version ${expectedVersion.toString()}.`,
+            },
+          ]);
+        }
         const schema = theme.manifest.settingsSchema as
-          | { safeParse(input: unknown): { success: boolean; error?: { message: string } } }
+          | {
+              safeParse(
+                input: unknown,
+              ): { success: true; data: unknown } | { success: false; error?: { message: string } };
+            }
           | undefined;
-        const parsed = schema?.safeParse(envelope.__npSettings);
-        if (!schema || !parsed?.success) {
+        if (!schema) {
           throw new NpValidationError("Invalid input", [
             {
               field: `settings.${key}`,
-              message: !schema
-                ? `Theme '${themeId}' does not declare settingsSchema.`
-                : (parsed?.error?.message ?? "Theme settings failed validation"),
+              message: `Theme '${themeId}' does not declare settingsSchema.`,
             },
           ]);
+        }
+        const parsed = schema.safeParse(envelope.__npSettings);
+        if (!parsed.success) {
+          throw new NpValidationError("Invalid input", [
+            {
+              field: `settings.${key}`,
+              message: parsed.error?.message ?? "Theme settings failed validation",
+            },
+          ]);
+        }
+        normalizedSettings[key] = {
+          __npVersion: expectedVersion,
+          __npSettings: parsed.data,
+        };
+        const normalizedIssues = npAnalyzeSettingValue(key, normalizedSettings[key]);
+        if (normalizedIssues.length > 0) {
+          throw new NpValidationError(
+            "Invalid input",
+            normalizedIssues.map((issue) => ({ field: issue.path, message: issue.message })),
+          );
         }
       }
     }
@@ -307,12 +365,19 @@ function validatePayload(body: unknown): ImportPayload {
       ]);
     }
 
+    const mediaIds = new Set<string>();
     for (const [i, entry] of body.media.entries()) {
       if (!isRecord(entry) || typeof entry.id !== "string") {
         throw new NpValidationError("Invalid input", [
           { field: `media.${i}`, message: "Each media item must include an id" },
         ]);
       }
+      if (mediaIds.has(entry.id)) {
+        throw new NpValidationError("Invalid input", [
+          { field: `media.${i}.id`, message: `Duplicate media id '${entry.id}'` },
+        ]);
+      }
+      mediaIds.add(entry.id);
       const unknown = Object.keys(entry).find(
         (key) => key !== "id" && key !== "filename" && key !== "hash" && key !== "mimeType",
       );
@@ -337,12 +402,19 @@ function validatePayload(body: unknown): ImportPayload {
         { field: "plugins", message: "plugins must be an array" },
       ]);
     }
+    const pluginIds = new Set<string>();
     for (const [i, entry] of body.plugins.entries()) {
       if (!isRecord(entry) || typeof entry.id !== "string") {
         throw new NpValidationError("Invalid input", [
           { field: `plugins.${i}.id`, message: "Each plugin must include an id" },
         ]);
       }
+      if (pluginIds.has(entry.id)) {
+        throw new NpValidationError("Invalid input", [
+          { field: `plugins.${i}.id`, message: `Duplicate plugin id '${entry.id}'` },
+        ]);
+      }
+      pluginIds.add(entry.id);
       const unknown = Object.keys(entry).find(
         (key) => key !== "id" && key !== "enabled" && key !== "config" && key !== "manifestVersion",
       );
@@ -361,15 +433,25 @@ function validatePayload(body: unknown): ImportPayload {
           { field: `plugins.${i}.config`, message: "config must be a plain object" },
         ]);
       }
-      if (entry.manifestVersion !== undefined && typeof entry.manifestVersion !== "string") {
+      if (
+        entry.manifestVersion !== undefined &&
+        entry.manifestVersion !== null &&
+        typeof entry.manifestVersion !== "string"
+      ) {
         throw new NpValidationError("Invalid input", [
-          { field: `plugins.${i}.manifestVersion`, message: "manifestVersion must be a string" },
+          {
+            field: `plugins.${i}.manifestVersion`,
+            message: "manifestVersion must be a string or null",
+          },
         ]);
       }
     }
   }
 
-  return body;
+  return {
+    ...body,
+    ...(normalizedSettings ? { settings: normalizedSettings } : {}),
+  };
 }
 
 function replaceMediaRefs(value: unknown, mediaMap: ReadonlyMap<string, string | null>): unknown {
@@ -445,6 +527,7 @@ export async function POST(request: NextRequest) {
     const registeredSlugs = new Set(getAllCollectionSlugs());
     const filter = parseCollectionsFilter(request, registeredSlugs);
     const partial = filter !== null;
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 
     const warnings: string[] = [];
     const imported = {
@@ -455,6 +538,70 @@ export async function POST(request: NextRequest) {
       mediaMatched: 0,
       pluginsUpdated: 0,
     };
+
+    // Validate every installed plugin owner and config before any import
+    // mutation. Otherwise a bad plugin entry discovered at the end of the
+    // request could leave site/settings/doc writes committed before the 400.
+    const pluginsToImport: ImportPlugin[] = [];
+    if (!partial && payload.plugins) {
+      for (const plugin of payload.plugins) {
+        const [existing] = await db
+          .select({ id: npPlugins.id })
+          .from(npPlugins)
+          .where(eq(npPlugins.id, plugin.id))
+          .limit(1);
+        if (!existing) {
+          warnings.push(
+            `Plugin '${plugin.id}' state not imported — plugin is not installed on this instance.`,
+          );
+          continue;
+        }
+        const registration = getPluginRegistration(plugin.id);
+        if (!registration) {
+          throw new NpValidationError("Invalid input", [
+            {
+              field: `plugins.${plugin.id}`,
+              message: `Plugin '${plugin.id}' is installed in the database but is not loaded from nexpress.config.ts.`,
+            },
+          ]);
+        }
+        if (plugin.config !== undefined) {
+          const schema = registration.configSchema as
+            | {
+                safeParse(
+                  value: unknown,
+                ):
+                  | { success: true; data: unknown }
+                  | { success: false; error?: { message: string } };
+              }
+            | undefined;
+          const parsed = schema?.safeParse(plugin.config);
+          if (parsed && !parsed.success) {
+            throw new NpValidationError("Invalid input", [
+              {
+                field: `plugins.${plugin.id}.config`,
+                message: parsed.error?.message ?? "Plugin config failed its registered schema",
+              },
+            ]);
+          }
+          const configValue = parsed?.success ? parsed.data : plugin.config;
+          const configIssues = npAnalyzeSettingValue(`plugin.config:${plugin.id}`, {
+            __npVersion: registration.configVersion ?? 1,
+            __npSettings: configValue,
+          });
+          if (configIssues.length > 0) {
+            throw new NpValidationError(
+              "Invalid input",
+              configIssues.map((issue) => ({
+                field: `plugins.${plugin.id}.config`,
+                message: issue.message,
+              })),
+            );
+          }
+        }
+        pluginsToImport.push(plugin);
+      }
+    }
 
     const mediaMap = new Map<string, string | null>();
 
@@ -502,7 +649,7 @@ export async function POST(request: NextRequest) {
         if (payload.site) imported.settings++;
         if (payload.theme) imported.theme = 1;
         if (payload.settings) {
-          imported.settings += Object.keys(payload.settings).filter((k) => k !== "theme").length;
+          imported.settings += Object.keys(payload.settings).length;
         }
         imported.navigation = resolveNavEntries(payload.navigation).length;
       } else {
@@ -511,8 +658,6 @@ export async function POST(request: NextRequest) {
         // super-admin picking a target site explicitly via a
         // request param) isn't built; the resolved siteId is
         // the only target today.
-        const { getCurrentSiteId, NP_DEFAULT_SITE_ID } = await import("@nexpress/core");
-        const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
         if (payload.site) {
           await setSiteGeneralSettings(payload.site, siteId);
           imported.settings++;
@@ -539,8 +684,6 @@ export async function POST(request: NextRequest) {
 
           if (payload.settings) {
             for (const [key, value] of Object.entries(payload.settings)) {
-              if (key === "theme") continue;
-
               await tx
                 .insert(npSettings)
                 .values({ siteId, key, value, updatedAt: now, updatedBy: user.id })
@@ -572,6 +715,22 @@ export async function POST(request: NextRequest) {
             tags: [navCacheTag(siteId, location)],
             paths: [{ path: "/", type: "layout" }],
           });
+        }
+
+        if (payload.site || payload.settings?.seo) {
+          invalidateCacheTargets({
+            source: "site",
+            siteId,
+            tags: [siteCacheTag(siteId), `nx:sitemap:${siteId}`, `nx:feed:${siteId}`],
+            paths: [{ path: "/", type: "layout" }],
+          });
+        }
+        if (
+          payload.theme ||
+          payload.settings?.activeTheme ||
+          Object.keys(payload.settings ?? {}).some((key) => key.startsWith("theme.settings:"))
+        ) {
+          await bustThemeCache(siteId);
         }
       }
     } else if (
@@ -628,57 +787,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (!partial && payload.plugins) {
-      for (const plugin of payload.plugins) {
-        // Only update rows that already exist (the plugin itself has to be
-        // installed via nexpress.config.ts — importing never registers new
-        // plugin code). Missing plugins are warned but not error.
-        const [existing] = await db
-          .select({ id: npPlugins.id })
-          .from(npPlugins)
-          .where(eq(npPlugins.id, plugin.id))
-          .limit(1);
-        if (!existing) {
-          warnings.push(
-            `Plugin '${plugin.id}' state not imported — plugin is not installed on this instance.`,
-          );
-          continue;
-        }
-        const registration = getPluginRegistration(plugin.id);
-        if (!registration) {
-          throw new NpValidationError("Invalid input", [
-            {
-              field: `plugins.${plugin.id}`,
-              message: `Plugin '${plugin.id}' is installed in the database but is not loaded from nexpress.config.ts.`,
-            },
-          ]);
-        }
-
-        const updateValues: Record<string, unknown> = { updatedAt: new Date() };
+    if (!partial) {
+      for (const plugin of pluginsToImport) {
         let changed = false;
-        if (plugin.enabled !== undefined) {
-          updateValues.enabled = plugin.enabled;
-          changed = true;
-        }
         if (plugin.config !== undefined) {
-          const schema = registration.configSchema as
-            | { safeParse(value: unknown): { success: boolean; error?: { message: string } } }
-            | undefined;
-          const parsed = schema?.safeParse(plugin.config);
-          if (parsed && !parsed.success) {
-            throw new NpValidationError("Invalid input", [
-              {
-                field: `plugins.${plugin.id}.config`,
-                message: parsed.error?.message ?? "Plugin config failed its registered schema",
-              },
-            ]);
+          if (!dryRun) {
+            await setPluginConfig(plugin.id, plugin.config, user.id);
+            invalidateCacheTargets({
+              source: "plugin-config",
+              siteId,
+              pluginId: plugin.id,
+              tags: [pluginConfigCacheTag(plugin.id)],
+            });
           }
-          if (!dryRun) await setPluginConfig(plugin.id, plugin.config, user.id);
           changed = true;
         }
+        if (plugin.enabled !== undefined) changed = true;
         if (changed) {
           if (!dryRun) {
-            await db.update(npPlugins).set(updateValues).where(eq(npPlugins.id, plugin.id));
+            await updatePluginState(db, plugin.id, { enabled: plugin.enabled });
           }
           imported.pluginsUpdated++;
         }

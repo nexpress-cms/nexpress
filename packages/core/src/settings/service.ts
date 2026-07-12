@@ -17,6 +17,10 @@ async function resolveSiteId(siteId?: string): Promise<string> {
   return siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 }
 
+async function requireSettingsSite(siteId: string): Promise<void> {
+  if (!(await getSiteById(siteId))) throw new NpNotFoundError("site", siteId);
+}
+
 export async function getSiteGeneralSettings(siteId?: string): Promise<NpSiteGeneralSettings> {
   const resolved = await resolveSiteId(siteId);
   const site = await getSiteById(resolved);
@@ -57,6 +61,7 @@ export async function setSiteGeneralSettings(
 
 export async function getSeoSettings(siteId?: string): Promise<NpSeoSettings> {
   const resolved = await resolveSiteId(siteId);
+  await requireSettingsSite(resolved);
   const db = getDb();
   const [row] = await db
     .select({ value: npSettings.value })
@@ -90,6 +95,7 @@ export async function setSeoSettings(
     ]);
   }
   const resolved = await resolveSiteId(siteId);
+  await requireSettingsSite(resolved);
   const db = getDb();
   const updatedAt = new Date();
   await db

@@ -17,7 +17,7 @@ import {
   NP_DEFAULT_SITE_ID,
   can,
 } from "@nexpress/core";
-import { npAnalyzeSettingValue } from "@nexpress/core/settings";
+import { npAnalyzeSettingRecord } from "@nexpress/core/settings";
 import { npAnalyzeThemeTokensOverlay } from "@nexpress/core/theme";
 import { npAnalyzeNavigationItems, npAnalyzeNavigationLocation } from "@nexpress/core/navigation";
 import { and, eq, inArray, isNull } from "drizzle-orm";
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
       await getPluginConfig(pluginId);
     }
     const settingIssues = exportedSettingRows.flatMap((row) =>
-      npAnalyzeSettingValue(row.key, row.value).map((entry) => ({
+      npAnalyzeSettingRecord(row.siteId, row.key, row.value).map((entry) => ({
         field: entry.path,
         message: entry.message,
       })),
@@ -121,6 +121,7 @@ export async function GET(request: NextRequest) {
     if (settingIssues.length > 0) {
       throw new NpValidationError("Invalid stored settings", settingIssues);
     }
+    const canonicalSettingValues = new Map<string, unknown>();
     for (const row of exportedSettingRows) {
       if (
         row.key === "activeTheme" &&
@@ -135,7 +136,8 @@ export async function GET(request: NextRequest) {
       }
       if (row.key.startsWith("theme.settings:")) {
         const themeId = row.key.slice("theme.settings:".length);
-        if (!getThemeById(themeId)) {
+        const theme = getThemeById(themeId);
+        if (!theme) {
           throw new NpValidationError("Invalid stored settings", [
             {
               field: `settings.${row.key}`,
@@ -143,10 +145,16 @@ export async function GET(request: NextRequest) {
             },
           ]);
         }
-        await getThemeSettingsWithStatus(themeId);
+        const status = await getThemeSettingsWithStatus(themeId);
+        canonicalSettingValues.set(row.key, {
+          __npVersion: theme.manifest.settingsVersion ?? 1,
+          __npSettings: status.value,
+        });
       }
     }
-    const settings = Object.fromEntries(exportedSettingRows.map((row) => [row.key, row.value]));
+    const settings = Object.fromEntries(
+      exportedSettingRows.map((row) => [row.key, canonicalSettingValues.get(row.key) ?? row.value]),
+    );
     const site = partial ? null : await getSiteGeneralSettings(siteId);
     const navigationIssues = navRows.flatMap((row) => [
       ...npAnalyzeNavigationLocation(row.location).map((issue) => ({
@@ -214,7 +222,7 @@ export async function GET(request: NextRequest) {
           id: row.id,
           enabled: row.enabled,
           config,
-          manifestVersion: registration.version,
+          manifestVersion: registration.version ?? null,
         };
       }),
     );

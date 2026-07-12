@@ -99,6 +99,20 @@ function defaultsFrom(fields: NpThemeSettingsField[]): Record<string, unknown> {
   return out;
 }
 
+function requirePluginConfigObject(value: unknown, field: string): Record<string, unknown> {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
+  ) {
+    throw new NpValidationError("Invalid plugin config", [
+      { field, message: "Plugin config schemas must resolve to a plain object." },
+    ]);
+  }
+  return value as Record<string, unknown>;
+}
+
 export interface NpPluginConfigResult {
   pluginId: string;
   /** Parsed config or schema defaults. Empty object when the plugin has
@@ -209,7 +223,11 @@ export async function getPluginConfigWithStatus(pluginId: string): Promise<NpPlu
 
   const parsed = schema.safeParse(valueToParse);
   if (parsed.success) {
-    return { pluginId, value: parsed.data, hasPersisted: true };
+    return {
+      pluginId,
+      value: requirePluginConfigObject(parsed.data, `settings.${configKey(pluginId)}`),
+      hasPersisted: true,
+    };
   }
 
   throw new NpValidationError("Invalid persisted plugin config", [
@@ -268,12 +286,9 @@ export async function setPluginConfig(
     );
   }
 
-  return persistPluginConfigEnvelope(
-    pluginId,
-    parsed.data,
-    registration.configVersion ?? 1,
-    updatedBy,
-  );
+  const config = requirePluginConfigObject(parsed.data, "value");
+
+  return persistPluginConfigEnvelope(pluginId, config, registration.configVersion ?? 1, updatedBy);
 }
 
 async function persistPluginConfigEnvelope(

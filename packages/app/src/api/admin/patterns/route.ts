@@ -6,7 +6,7 @@ import {
   getCurrentSiteId,
   getDb,
   getSetting,
-  npAssertSettingValue,
+  npAnalyzeSettingValue,
 } from "@nexpress/core";
 import { npSettings } from "@nexpress/core/db";
 import { npValidateBlockContent, type NpBlockContent } from "@nexpress/core/fields";
@@ -70,7 +70,13 @@ async function writePatterns(
   patterns: ServerPattern[],
   updatedBy: string,
 ): Promise<void> {
-  npAssertSettingValue(SETTING_KEY, patterns);
+  const issues = npAnalyzeSettingValue(SETTING_KEY, patterns);
+  if (issues.length > 0) {
+    throw new NpValidationError(
+      "Invalid input",
+      issues.map((issue) => ({ field: issue.path, message: issue.message })),
+    );
+  }
   const db = getDb();
   const now = new Date();
   await db

@@ -8,9 +8,8 @@ import { npAssertSettingValue, npValidateSettingValue } from "../settings/contra
 /**
  * Site-wide community settings, persisted in the generic `np_settings`
  * table under the `community` key. Sites that never visit the admin UI
- * inherit `DEFAULT_COMMUNITY_SETTINGS` — every read goes through
- * `getCommunitySettings()` which merges the stored value over the
- * defaults so adding a new field doesn't break existing installs.
+ * inherit `DEFAULT_COMMUNITY_SETTINGS`. Once a row exists it must contain
+ * the exact current shape; malformed or partial persisted values fail closed.
  *
  * Reads and writes both validate the same exact shape. Malformed persisted
  * values fail closed instead of silently falling back to defaults.

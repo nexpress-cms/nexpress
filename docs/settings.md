@@ -53,6 +53,8 @@ Theme and plugin values use `{ __npVersion, __npSettings }` with no extra
 envelope fields. Owner schemas validate the inner value. Missing rows may use
 documented defaults; an existing malformed row never does. Schema migration
 errors propagate to the caller.
+Scoped plugin ids such as `@acme/analytics` are valid owners; all plugin ids
+remain bounded to the SDK's 128-character manifest limit.
 
 Use dedicated domain services instead of writing `np_settings` directly:
 
@@ -82,6 +84,8 @@ Site-config exports use format version `2`. A full export includes top-level
 Exports and imports are current-site scoped. Plugin config appears only in the
 top-level `plugins` array so its loaded plugin schema can validate it. A dry
 run applies the same validation without writes.
+The process-wide `jobs.paused` row belongs to `_system` and is intentionally
+excluded from site-config import/export.
 
 `pnpm run doctor` emits the blocking `settings.contract` check. It scans every
 `np_sites` record and `np_settings` row and reports unknown or malformed

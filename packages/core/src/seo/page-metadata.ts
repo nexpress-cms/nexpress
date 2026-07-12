@@ -25,7 +25,7 @@ export interface NpSiteSeoSettings {
 }
 
 export const DEFAULT_SITE_SEO_SETTINGS: NpSiteSeoSettings = {
-  siteName: "NexPress",
+  siteName: "Default site",
   siteUrl: "http://localhost:3000",
   defaultDescription: "",
   defaultOgImage: null,

@@ -254,7 +254,7 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
             className="col-span-2 min-h-10 w-full sm:min-h-0 sm:w-auto"
             asChild
           >
-            <Link href={`/admin/plugins/${plugin.id}`}>
+            <Link href={`/admin/plugins/${encodeURIComponent(plugin.id)}`}>
               <ExternalLink className="size-3.5" />
               Open admin
             </Link>
@@ -381,7 +381,7 @@ export function PluginsManager() {
     setToast(null);
 
     try {
-      const response = await npFetch(`/api/plugins/${plugin.id}`, {
+      const response = await npFetch(`/api/plugins/${encodeURIComponent(plugin.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: nextEnabled }),
@@ -435,11 +435,14 @@ export function PluginsManager() {
     }
 
     try {
-      const response = await npFetch(`/api/admin/plugins/${configPlugin.id}/config`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value: parsed }),
-      });
+      const response = await npFetch(
+        `/api/admin/plugins/${encodeURIComponent(configPlugin.id)}/config`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: parsed }),
+        },
+      );
       const payload = (await response.json().catch(() => null)) as unknown;
       if (!response.ok) {
         setConfigError(getErrorMessage(payload, "Failed to save config."));
@@ -761,7 +764,7 @@ function PluginAutoConfigForm({
     setSaving(true);
     setErrorMessage(null);
     try {
-      const response = await npFetch(`/api/admin/plugins/${pluginId}/config`, {
+      const response = await npFetch(`/api/admin/plugins/${encodeURIComponent(pluginId)}/config`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value }),
@@ -856,7 +859,7 @@ function PluginConfigForm({
     setSaving(true);
     setErrorMessage(null);
     try {
-      const response = await npFetch(`/api/admin/plugins/${pluginId}/config`, {
+      const response = await npFetch(`/api/admin/plugins/${encodeURIComponent(pluginId)}/config`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: values }),

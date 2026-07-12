@@ -17,7 +17,7 @@ import {
   npMediaStatuses,
   npMediaVariantNamePattern,
 } from "@nexpress/core/media-contract";
-import { npSettingsContractLimits } from "@nexpress/core/settings";
+import { npDynamicSettingOwnerPattern, npSettingsContractLimits } from "@nexpress/core/settings";
 import { NextResponse } from "next/server";
 
 import { ensureFor } from "../../lib/init-core";
@@ -52,6 +52,32 @@ const themeTokensSchema: OpenApiSchema = {
   required: [...npThemeTokenGroups],
   properties: Object.fromEntries(
     npThemeTokenGroups.map((group) => [group, themeTokenGroupSchema(group)]),
+  ),
+};
+
+const themeTokensOverlaySchema: OpenApiSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: Object.fromEntries(
+    npThemeTokenGroups.map((group) => [
+      group,
+      {
+        type: "object",
+        additionalProperties: false,
+        properties: Object.fromEntries(
+          npThemeTokenKeys[group].map((key) => [
+            key,
+            {
+              type: "string",
+              minLength: 1,
+              maxLength: 200,
+              description:
+                "Trimmed CSS token value; statement and resource-loading syntax is rejected.",
+            },
+          ]),
+        ),
+      },
+    ]),
   ),
 };
 
@@ -248,6 +274,72 @@ function buildSpec(): OpenApiSchema {
       properties: {
         site: { $ref: "#/components/schemas/site_general_settings" },
         seo: { $ref: "#/components/schemas/seo_settings" },
+      },
+    },
+    versioned_settings_envelope: {
+      type: "object",
+      additionalProperties: false,
+      required: ["__npVersion", "__npSettings"],
+      properties: {
+        __npVersion: { type: "integer", minimum: 1, maximum: 1_000_000 },
+        __npSettings: {
+          description: "Bounded JSON validated again by the registered owner schema.",
+        },
+      },
+    },
+    community_settings: {
+      type: "object",
+      additionalProperties: false,
+      required: ["reactionKinds", "registrationEnabled", "memberUploadQuota"],
+      properties: {
+        reactionKinds: {
+          type: "array",
+          maxItems: 32,
+          uniqueItems: true,
+          items: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,29}$" },
+        },
+        registrationEnabled: { type: "boolean" },
+        memberUploadQuota: {
+          type: "object",
+          additionalProperties: false,
+          required: ["perDay", "total"],
+          properties: {
+            perDay: { type: ["integer", "null"], minimum: 0, maximum: 1_000_000 },
+            total: { type: ["integer", "null"], minimum: 0, maximum: 1_000_000 },
+          },
+        },
+      },
+    },
+    saved_page_pattern: {
+      type: "object",
+      additionalProperties: false,
+      required: ["id", "label", "blocks", "createdAt", "updatedAt"],
+      properties: {
+        id: { type: "string", minLength: 1, maxLength: 160 },
+        label: { type: "string", minLength: 1, maxLength: 160 },
+        description: { type: "string", maxLength: 1000 },
+        blocks: { type: "array", items: { $ref: "#/components/schemas/block_instance" } },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+    framework_settings: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        seo: { $ref: "#/components/schemas/seo_settings" },
+        community: { $ref: "#/components/schemas/community_settings" },
+        activeTheme: { type: "string", pattern: npDynamicSettingOwnerPattern },
+        "page-builder.patterns": {
+          type: "array",
+          maxItems: 200,
+          items: { $ref: "#/components/schemas/saved_page_pattern" },
+        },
+      },
+      patternProperties: {
+        [`^theme\\.settings:${npDynamicSettingOwnerPattern.slice(1, -1)}$`]: {
+          $ref: "#/components/schemas/versioned_settings_envelope",
+        },
       },
     },
     block_instance: {
@@ -1769,7 +1861,7 @@ function buildSpec(): OpenApiSchema {
                       type: "string",
                       nullable: true,
                       description:
-                        "SITE_URL env at export time, useful for downstream URL rewrites.",
+                        "Canonical site URL when configured, otherwise SITE_URL at export time.",
                     },
                     partial: {
                       type: "boolean",
@@ -1782,8 +1874,10 @@ function buildSpec(): OpenApiSchema {
                         { $ref: "#/components/schemas/site_general_settings" },
                       ],
                     },
-                    theme: { type: "object", additionalProperties: true, nullable: true },
-                    settings: { type: "object", additionalProperties: true },
+                    theme: {
+                      oneOf: [{ type: "null" }, themeTokensOverlaySchema],
+                    },
+                    settings: { $ref: "#/components/schemas/framework_settings" },
                     navigation: {
                       type: "object",
                       additionalProperties: { $ref: "#/components/schemas/navigation_items" },
@@ -1806,7 +1900,7 @@ function buildSpec(): OpenApiSchema {
                           id: { type: "string" },
                           enabled: { type: "boolean" },
                           config: { type: "object", additionalProperties: true },
-                          manifestVersion: { type: "string" },
+                          manifestVersion: { type: ["string", "null"] },
                         },
                       },
                     },
@@ -1856,8 +1950,8 @@ function buildSpec(): OpenApiSchema {
                   partial: { type: "boolean" },
                   collectionsExported: { type: "array", items: { type: "string" } },
                   site: { $ref: "#/components/schemas/site_general_settings" },
-                  theme: { type: "object", additionalProperties: true },
-                  settings: { type: "object", additionalProperties: true },
+                  theme: themeTokensOverlaySchema,
+                  settings: { $ref: "#/components/schemas/framework_settings" },
                   navigation: {
                     oneOf: [
                       {
@@ -1909,7 +2003,7 @@ function buildSpec(): OpenApiSchema {
                         id: { type: "string" },
                         enabled: { type: "boolean" },
                         config: { type: "object", additionalProperties: true },
-                        manifestVersion: { type: "string" },
+                        manifestVersion: { type: ["string", "null"] },
                       },
                     },
                   },
@@ -2933,7 +3027,7 @@ function buildSpec(): OpenApiSchema {
   // Plugin-provided routes. These are resolved from the in-process registry,
   // so the spec only lists plugins that actually loaded (enabled + no errors).
   for (const route of getPluginRoutes()) {
-    const fullPath = `/api/plugins/${route.pluginId}${route.path}`;
+    const fullPath = `/api/plugins/${encodeURIComponent(route.pluginId)}${route.path}`;
     const method = route.method.toLowerCase();
     const existing = (paths[fullPath] as Record<string, unknown> | undefined) ?? {};
     const operation = {

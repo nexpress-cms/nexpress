@@ -672,6 +672,8 @@ describe("definePlugin — admin action contract", () => {
     [{ setup: "later" }, /setup must be a function/],
     [{ teardown: {} }, /teardown must be a function/],
     [{ configVersion: 2 }, /require configSchema/],
+    [{ manifest: { ...baseManifest, id: "x".repeat(129) } }, /at most 128 characters/],
+    [{ configSchema: z.string() }, /top-level Zod object/],
     [
       { configSchema: z.object({ enabled: z.boolean().default(true) }), configVersion: 2 },
       /requires configMigrate/,

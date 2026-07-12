@@ -110,6 +110,26 @@ describe.skipIf(skipIfNoTestDb())("ctx.settings / ctx.theme (integration)", () =
     });
   });
 
+  it("round-trips config for a scoped plugin id", async () => {
+    const pluginId = "@acme/settings_demo";
+    await loadPlugins([
+      {
+        manifest: {
+          id: pluginId,
+          name: "Scoped settings",
+          version: "0.1.0",
+          capabilities: ["settings:read", "settings:write"],
+        },
+      },
+    ]);
+    const db = await getTestDb();
+    await db.insert(npPlugins).values({ id: pluginId, enabled: true });
+
+    const ctx = makeCtx({ pluginId });
+    await ctx.settings.setPlugin({ enabled: true });
+    expect(await ctx.settings.getPlugin()).toEqual({ enabled: true });
+  });
+
   it("setPluginConfig persists legacy admin.settings plugins without configSchema", async () => {
     await loadPlugins([
       {
