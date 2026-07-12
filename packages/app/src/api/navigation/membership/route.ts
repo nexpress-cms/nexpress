@@ -4,7 +4,11 @@ import {
   getCurrentSiteId,
   npNavigation,
 } from "@nexpress/core";
-import type { NpNavItem } from "@nexpress/core";
+import {
+  npAnalyzeNavigationItems,
+  npAnalyzeNavigationLocation,
+  type NpNavItem,
+} from "@nexpress/core/navigation";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
@@ -55,6 +59,25 @@ export async function GET(request: NextRequest) {
 
     const memberships: MembershipRow[] = [];
     for (const row of rows) {
+      const issues = [
+        ...npAnalyzeNavigationLocation(row.location).map((entry) => ({
+          ...entry,
+          path: entry.path.replace(/^navigation\.location/u, `navigation.${row.location}`),
+        })),
+        ...npAnalyzeNavigationItems(row.items).map((entry) => ({
+          ...entry,
+          path: entry.path.replace(/^navigation/u, `navigation.${row.location}`),
+        })),
+      ];
+      if (issues.length > 0) {
+        throw new NpValidationError(
+          "Invalid stored navigation",
+          issues.map((entry) => ({
+            field: entry.path,
+            message: entry.message,
+          })),
+        );
+      }
       walk(row.items, row.location, pageId, collection, memberships);
     }
 

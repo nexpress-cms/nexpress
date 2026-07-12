@@ -1,4 +1,4 @@
-import type { NpNavItem } from "@nexpress/core";
+import type { NpResolvedNavItem } from "@nexpress/core/navigation";
 import { getCachedNavigation, getCachedSite } from "@nexpress/next";
 import Link from "next/link";
 
@@ -46,7 +46,7 @@ export async function DefaultFooter() {
             <h2 className="np-site-footer-heading">Sitemap</h2>
             <ul className="np-site-footer-links">
               {footerNav.length > 0 ? (
-                footerNav.map((item: NpNavItem, index: number) => (
+                footerNav.map((item: NpResolvedNavItem, index: number) => (
                   <li key={`footer-sitemap-${index.toString()}`}>
                     {item.url ? (
                       <Link href={item.url}>{item.label}</Link>
@@ -55,7 +55,7 @@ export async function DefaultFooter() {
                     )}
                     {item.children && item.children.length > 0 ? (
                       <ul className="np-site-footer-subnav">
-                        {item.children.map((child: NpNavItem, childIndex: number) => (
+                        {item.children.map((child: NpResolvedNavItem, childIndex: number) => (
                           <li key={`footer-sitemap-${index.toString()}-${childIndex.toString()}`}>
                             {child.url ? (
                               <Link href={child.url}>{child.label}</Link>

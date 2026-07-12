@@ -8,7 +8,12 @@ import {
   npNavigation,
   can,
 } from "@nexpress/core";
-import type { NpNavItem } from "@nexpress/core";
+import {
+  npAnalyzeNavigationItems,
+  npAnalyzeNavigationLocation,
+  type NpNavigationContractIssue,
+  type NpNavItem,
+} from "@nexpress/core/navigation";
 import { invalidateCacheTargets, navCacheTag, readJsonBody } from "@nexpress/next";
 import { and, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
@@ -22,10 +27,10 @@ import { getDb } from "../../lib/db";
 // by name and would silently render nothing if the slug moved.
 const PROTECTED_LOCATIONS = new Set(["header", "footer", "main"]);
 
-const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  return prototype === Object.prototype || prototype === null;
 }
 
 function bustNavCache(siteId: string, location: string): void {
@@ -37,19 +42,39 @@ function bustNavCache(siteId: string, location: string): void {
   });
 }
 
-function isNavItem(value: unknown): value is NpNavItem {
-  if (!isRecord(value)) return false;
-
-  return (
-    typeof value.id === "string" &&
-    typeof value.label === "string" &&
-    (value.type === "link" || value.type === "collection" || value.type === "page") &&
-    // collectionSlug is optional; when present, it scopes a `page`-
-    // typed item to a non-`pages` collection.
-    (value.collectionSlug === undefined || typeof value.collectionSlug === "string") &&
-    (value.children === undefined ||
-      (Array.isArray(value.children) && value.children.every(isNavItem)))
+function throwNavigationIssues(
+  issues: readonly NpNavigationContractIssue[],
+  message = "Invalid input",
+  storedLocation?: string,
+): void {
+  if (issues.length === 0) return;
+  throw new NpValidationError(
+    message,
+    issues.map((entry) => ({
+      field: storedLocation
+        ? entry.path.replace(/^navigation/u, `navigation.${storedLocation}`)
+        : entry.path.replace(/^navigation\./u, ""),
+      message: entry.message,
+    })),
   );
+}
+
+function rejectUnknownBodyFields(
+  body: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+): void {
+  const key = Object.keys(body).find((entry) => !allowed.has(entry));
+  if (key) {
+    throw new NpValidationError("Invalid input", [
+      { field: key, message: `unsupported navigation request field "${key}"` },
+    ]);
+  }
+}
+
+function isCanonicalIsoDateTime(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
 }
 
 export async function GET(request: NextRequest) {
@@ -57,6 +82,7 @@ export async function GET(request: NextRequest) {
     await optionalAuth(request);
 
     const location = request.nextUrl.searchParams.get("location") ?? "main";
+    throwNavigationIssues(npAnalyzeNavigationLocation(location));
     const db = getDb();
     const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
     const [row] = await db
@@ -65,7 +91,18 @@ export async function GET(request: NextRequest) {
       .where(and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, location)))
       .limit(1);
 
-    return npSuccessResponse(row ?? { location, items: [] });
+    if (row) {
+      throwNavigationIssues(
+        npAnalyzeNavigationItems(row.items),
+        "Invalid stored navigation",
+        location,
+      );
+    }
+    return npSuccessResponse(
+      row
+        ? { location: row.location, items: row.items, updatedAt: row.updatedAt.toISOString() }
+        : { location, items: [], updatedAt: null },
+    );
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
@@ -79,10 +116,15 @@ export async function PUT(request: NextRequest) {
       throw new NpForbiddenError("navigation", "update");
     }
 
-    const body = (await readJsonBody(request)) as Record<string, unknown>;
+    const body = await readJsonBody(request);
+    if (!isRecord(body)) {
+      throw new NpValidationError("Invalid input", [
+        { field: "body", message: "Request body must be a JSON object" },
+      ]);
+    }
+    rejectUnknownBodyFields(body, new Set(["location", "items", "expectedUpdatedAt"]));
     const items = body.items;
-    const location =
-      typeof body.location === "string" && body.location.trim() ? body.location.trim() : "main";
+    const rawLocation = Object.hasOwn(body, "location") ? body.location : "main";
     // Optimistic concurrency token. Clients that loaded the row
     // pass back the `updatedAt` they got from GET; if it doesn't
     // match what's currently in the DB, another writer has landed
@@ -90,14 +132,24 @@ export async function PUT(request: NextRequest) {
     // Omitting the token preserves the legacy last-write-wins
     // semantics for back-compat (server-side scripts, older
     // admin builds).
-    const expectedUpdatedAt =
-      typeof body.expectedUpdatedAt === "string" ? body.expectedUpdatedAt : null;
-
-    if (!Array.isArray(items) || !items.every(isNavItem)) {
+    const expectedUpdatedAt = isCanonicalIsoDateTime(body.expectedUpdatedAt)
+      ? body.expectedUpdatedAt
+      : null;
+    if (
+      Object.hasOwn(body, "expectedUpdatedAt") &&
+      (expectedUpdatedAt === null || !Number.isFinite(Date.parse(expectedUpdatedAt)))
+    ) {
       throw new NpValidationError("Invalid input", [
-        { field: "items", message: "items must be a valid navigation item array" },
+        {
+          field: "expectedUpdatedAt",
+          message: "expectedUpdatedAt must be the canonical UTC date-time returned by this API",
+        },
       ]);
     }
+
+    throwNavigationIssues(npAnalyzeNavigationLocation(rawLocation));
+    throwNavigationIssues(npAnalyzeNavigationItems(items));
+    const location = rawLocation as string;
 
     const db = getDb();
     const now = new Date();
@@ -124,13 +176,13 @@ export async function PUT(request: NextRequest) {
       .values({
         siteId,
         location,
-        items,
+        items: items as NpNavItem[],
         updatedAt: now,
         updatedBy: user.id,
       })
       .onConflictDoUpdate({
         target: [npNavigation.siteId, npNavigation.location],
-        set: { items, updatedAt: now, updatedBy: user.id },
+        set: { items: items as NpNavItem[], updatedAt: now, updatedBy: user.id },
       })
       .returning();
 
@@ -139,7 +191,11 @@ export async function PUT(request: NextRequest) {
     // pick up the edit on the next render.
     bustNavCache(siteId, location);
 
-    return npSuccessResponse(result);
+    return npSuccessResponse({
+      location: result.location,
+      items: result.items,
+      updatedAt: result.updatedAt.toISOString(),
+    });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
@@ -159,6 +215,7 @@ export async function DELETE(request: NextRequest) {
         { field: "location", message: "location query param is required" },
       ]);
     }
+    throwNavigationIssues(npAnalyzeNavigationLocation(location));
     if (PROTECTED_LOCATIONS.has(location)) {
       throw new NpForbiddenError("navigation", "delete-default-location");
     }
@@ -197,22 +254,26 @@ export async function PATCH(request: NextRequest) {
         { field: "location", message: "location query param is required" },
       ]);
     }
+    throwNavigationIssues(npAnalyzeNavigationLocation(oldLocation));
     if (PROTECTED_LOCATIONS.has(oldLocation)) {
       throw new NpForbiddenError("navigation", "rename-default-location");
     }
 
-    const body = (await readJsonBody(request)) as Record<string, unknown>;
-    const newLocation =
-      typeof body.newLocation === "string" ? body.newLocation.trim().toLowerCase() : "";
-
-    if (!newLocation || !SLUG_RE.test(newLocation)) {
+    const body = await readJsonBody(request);
+    if (!isRecord(body)) {
       throw new NpValidationError("Invalid input", [
-        {
-          field: "newLocation",
-          message: "newLocation must be lowercase letters, numbers, or hyphens",
-        },
+        { field: "body", message: "Request body must be a JSON object" },
       ]);
     }
+    rejectUnknownBodyFields(body, new Set(["newLocation"]));
+    const rawNewLocation = body.newLocation;
+
+    const newLocationIssues = npAnalyzeNavigationLocation(rawNewLocation).map((entry) => ({
+      ...entry,
+      path: "navigation.newLocation",
+    }));
+    throwNavigationIssues(newLocationIssues);
+    const newLocation = rawNewLocation as string;
     if (newLocation === oldLocation) {
       throw new NpValidationError("Invalid input", [
         { field: "newLocation", message: "newLocation must differ from current" },
@@ -250,7 +311,11 @@ export async function PATCH(request: NextRequest) {
     bustNavCache(siteId, oldLocation);
     bustNavCache(siteId, newLocation);
 
-    return npSuccessResponse(renamed);
+    return npSuccessResponse({
+      location: renamed.location,
+      items: renamed.items,
+      updatedAt: renamed.updatedAt.toISOString(),
+    });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

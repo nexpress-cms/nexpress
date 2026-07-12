@@ -9,9 +9,13 @@ import {
   saveDocument,
   can,
 } from "@nexpress/core";
-import type { NpNavItem } from "@nexpress/core";
 import { npAnalyzeThemeTokensOverlay, type NpThemeTokensOverlay } from "@nexpress/core/theme";
-import { readJsonBody } from "@nexpress/next";
+import {
+  npAnalyzeNavigationItems,
+  npAnalyzeNavigationLocation,
+  type NpNavItem,
+} from "@nexpress/core/navigation";
+import { invalidateCacheTargets, navCacheTag, readJsonBody } from "@nexpress/next";
 import { and, eq, isNull } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
@@ -49,6 +53,71 @@ interface ImportPayload {
   plugins?: ImportPlugin[];
 }
 
+function validateNavigationPayload(value: unknown): void {
+  if (value === undefined) return;
+  const errors: Array<{ field: string; message: string }> = [];
+
+  if (Array.isArray(value)) {
+    const locations = new Set<string>();
+    for (const [index, entry] of value.entries()) {
+      const path = `navigation.${index.toString()}`;
+      if (!isRecord(entry)) {
+        errors.push({ field: path, message: "navigation entries must be plain objects" });
+        continue;
+      }
+      for (const key of Object.keys(entry)) {
+        if (key !== "location" && key !== "items") {
+          errors.push({
+            field: `${path}.${key}`,
+            message: `unsupported navigation field "${key}"`,
+          });
+        }
+      }
+      const location = entry.location === undefined ? "main" : entry.location;
+      for (const issue of npAnalyzeNavigationLocation(location)) {
+        errors.push({
+          field: issue.path.replace(/^navigation\.location/u, `${path}.location`),
+          message: issue.message,
+        });
+      }
+      if (typeof location === "string") {
+        if (locations.has(location)) {
+          errors.push({
+            field: `${path}.location`,
+            message: `duplicate navigation location "${location}"`,
+          });
+        }
+        locations.add(location);
+      }
+      for (const issue of npAnalyzeNavigationItems(entry.items)) {
+        errors.push({
+          field: issue.path.replace(/^navigation/u, path),
+          message: issue.message,
+        });
+      }
+    }
+  } else if (isRecord(value)) {
+    for (const [location, items] of Object.entries(value)) {
+      for (const issue of npAnalyzeNavigationLocation(location)) {
+        errors.push({
+          field: issue.path.replace(/^navigation\.location/u, `navigation.${location}`),
+          message: issue.message,
+        });
+      }
+      for (const issue of npAnalyzeNavigationItems(items)) {
+        errors.push({
+          field: issue.path.replace(/^navigation\.items/u, `navigation.${location}`),
+          message: issue.message,
+        });
+      }
+    }
+  } else {
+    errors.push({ field: "navigation", message: "navigation must be an object or entry array" });
+  }
+
+  if (errors.length > 0) throw new NpValidationError("Invalid input", errors);
+}
+
 function validatePayload(body: unknown): ImportPayload {
   if (!isRecord(body)) {
     throw new NpValidationError("Invalid input", [
@@ -84,6 +153,8 @@ function validatePayload(body: unknown): ImportPayload {
       { field: "settings", message: "settings must be an object" },
     ]);
   }
+
+  validateNavigationPayload(body.navigation);
 
   if (body.collections !== undefined) {
     if (!isRecord(body.collections)) {
@@ -158,10 +229,7 @@ function resolveNavEntries(
 
   if (Array.isArray(navigation)) {
     return navigation.map((entry) => ({
-      location:
-        typeof entry.location === "string" && entry.location.trim()
-          ? entry.location.trim()
-          : "main",
+      location: entry.location ?? "main",
       items: entry.items,
     }));
   }
@@ -324,6 +392,16 @@ export async function POST(request: NextRequest) {
             imported.navigation++;
           }
         });
+
+        for (const { location } of resolveNavEntries(payload.navigation)) {
+          invalidateCacheTargets({
+            source: "navigation",
+            siteId,
+            navigationLocation: location,
+            tags: [navCacheTag(siteId, location)],
+            paths: [{ path: "/", type: "layout" }],
+          });
+        }
       }
     } else if (payload.theme || payload.settings || payload.navigation || payload.plugins) {
       warnings.push(

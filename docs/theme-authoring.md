@@ -675,7 +675,10 @@ Slot-by-slot rules:
 - **`navigation.header` / `navigation.footer`** — `NpNavItem[]`.
   Each entry needs a stable `id`; the framework doesn't generate
   ids for theme-seeded nav items, so author them as part of the
-  static data (e.g. `id: "nav-magazine-politics"`).
+  static data (e.g. `id: "nav-magazine-politics"`). The same exact
+  discriminated contract, two-level/200-item bounds, globally unique ids,
+  and safe-URL rules apply to theme evaluation and the final seed write.
+  See [`navigation.md`](navigation.md).
 - **`documents`** — keyed by collection slug for everything
   beyond pages/posts. Each entry is `{ slug, title, status?, publishedAt?, data? }`;
   `data` holds the collection-specific fields. Use this for `authors`, `glossary`, `projects`, or any

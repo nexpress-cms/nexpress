@@ -23,6 +23,7 @@ behavior they describe changes.
 | [i18n.md](i18n.md)                                     | Internationalization                                                   |
 | [jobs.md](jobs.md)                                     | pg-boss-backed job queue                                               |
 | [multi-site.md](multi-site.md)                         | Multi-tenant site model                                                |
+| [navigation.md](navigation.md)                         | Navigation wire/resolved types, validation, and enforcement boundaries |
 | [observability.md](observability.md)                   | Logging, heartbeats, job logs                                          |
 | [operations.md](operations.md)                         | Operations runbook — incident recipes, boot warnings, recovery         |
 | [plugin-admin.md](plugin-admin.md)                     | Plugin admin UI surface                                                |

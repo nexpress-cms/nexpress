@@ -1,5 +1,6 @@
 import { npAnalyzeRegisteredThemeDefinition } from "@nexpress/core";
 import { npValidateRichTextContent } from "@nexpress/core/fields";
+import { npAnalyzeNavigationItems } from "@nexpress/core/navigation";
 import {
   getDefaultBlocks,
   npAnalyzeBlockContent,
@@ -143,21 +144,6 @@ function validateString(
   return typeof value === "string" && value.trim().length > 0 && value === value.trim()
     ? null
     : issue("seed-content", location, `${location} must be a trimmed, non-empty string.`);
-}
-
-function validateCollectionSlug(
-  value: unknown,
-  location: string,
-  required = true,
-): NpThemeContractIssue | null {
-  if (!required && value === undefined) return null;
-  return typeof value === "string" && /^[a-z][a-z0-9-]{0,62}$/u.test(value)
-    ? null
-    : issue(
-        "seed-content",
-        location,
-        `${location} must be a lowercase collection slug up to 63 characters.`,
-      );
 }
 
 function validateTerms(value: unknown, location: string): NpThemeContractIssue[] {
@@ -351,95 +337,10 @@ function validateSeedPosts(value: unknown): NpThemeContractIssue[] {
   return issues;
 }
 
-function validateNavItems(value: unknown, location: string, depth = 0): NpThemeContractIssue[] {
-  if (!Array.isArray(value)) {
-    return [issue("seed-content", location, `${location} must be an array.`)];
-  }
-  if (depth > 12) {
-    return [issue("seed-content", location, "seed navigation must not exceed 12 levels.")];
-  }
-  const issues: NpThemeContractIssue[] = [];
-  for (const [index, raw] of value.entries()) {
-    const itemLocation = `${location}.${index.toString()}`;
-    if (!isRecord(raw)) {
-      issues.push(issue("seed-content", itemLocation, "navigation items must be plain objects."));
-      continue;
-    }
-    const extra = unsupportedSeedField(
-      raw,
-      new Set(["id", "label", "type", "url", "collection", "collectionSlug", "pageId", "children"]),
-      itemLocation,
-    );
-    if (extra) issues.push(extra);
-    for (const key of ["id", "label"] as const) {
-      const stringIssue = validateString(raw[key], `${itemLocation}.${key}`);
-      if (stringIssue) issues.push(stringIssue);
-    }
-    if (!["link", "collection", "page"].includes(String(raw.type))) {
-      issues.push(
-        issue(
-          "seed-content",
-          `${itemLocation}.type`,
-          'navigation item type must be "link", "collection", or "page".',
-        ),
-      );
-    }
-    if (raw.type === "link") {
-      const urlIssue = validateString(raw.url, `${itemLocation}.url`);
-      if (urlIssue) issues.push(urlIssue);
-      for (const key of ["collection", "collectionSlug", "pageId"] as const) {
-        if (raw[key] !== undefined) {
-          issues.push(
-            issue(
-              "seed-content",
-              `${itemLocation}.${key}`,
-              `navigation field ${key} is not supported for link items.`,
-            ),
-          );
-        }
-      }
-    }
-    if (raw.type === "collection") {
-      const collectionIssue = validateCollectionSlug(raw.collection, `${itemLocation}.collection`);
-      if (collectionIssue) issues.push(collectionIssue);
-      for (const key of ["url", "collectionSlug", "pageId"] as const) {
-        if (raw[key] !== undefined) {
-          issues.push(
-            issue(
-              "seed-content",
-              `${itemLocation}.${key}`,
-              `navigation field ${key} is not supported for collection items.`,
-            ),
-          );
-        }
-      }
-    }
-    if (raw.type === "page") {
-      const pageIssue = validateString(raw.pageId, `${itemLocation}.pageId`);
-      if (pageIssue) issues.push(pageIssue);
-      const collectionSlugIssue = validateCollectionSlug(
-        raw.collectionSlug,
-        `${itemLocation}.collectionSlug`,
-        false,
-      );
-      if (collectionSlugIssue) issues.push(collectionSlugIssue);
-      for (const key of ["url", "collection"] as const) {
-        if (raw[key] !== undefined) {
-          issues.push(
-            issue(
-              "seed-content",
-              `${itemLocation}.${key}`,
-              `navigation field ${key} is not supported for page items.`,
-            ),
-          );
-        }
-      }
-    }
-    if (raw.children !== undefined) {
-      issues.push(...validateNavItems(raw.children, `${itemLocation}.children`, depth + 1));
-    }
-  }
-  return issues;
+function validateNavItems(value: unknown, location: string): NpThemeContractIssue[] {
+  return npAnalyzeNavigationItems(value).map((entry) =>
+    issue("seed-content", entry.path.replace(/^navigation\.items/u, location), entry.message),
+  );
 }
 
 function validateSeedContent(

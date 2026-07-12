@@ -11,7 +11,8 @@ import {
   getThemeSettings,
   pluginConfigCacheTag,
 } from "@nexpress/core";
-import type { NpNavItem, NpRegisteredTheme, NpSite, NpThemeTokens } from "@nexpress/core";
+import type { NpRegisteredTheme, NpSite, NpThemeTokens } from "@nexpress/core";
+import type { NpResolvedNavItem } from "@nexpress/core/navigation";
 import { unstable_cache } from "next/cache";
 import { invalidateCacheTargets } from "./cdn-purge.js";
 
@@ -402,7 +403,9 @@ export async function getCachedActiveTheme(): Promise<NpRegisteredTheme | null> 
   return all[0] ?? null;
 }
 
-export async function getCachedNavigation(location: string = "header"): Promise<NpNavItem[]> {
+export async function getCachedNavigation(
+  location: string = "header",
+): Promise<NpResolvedNavItem[]> {
   const siteId = await resolveSiteId();
   const cached = unstable_cache(() => getNavigation(location), ["nx:nav", siteId, location], {
     tags: [navCacheTag(siteId, location)],

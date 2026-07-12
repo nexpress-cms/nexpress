@@ -1,10 +1,12 @@
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
+import { npNavigation } from "@nexpress/core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   buildRequest,
   closeTestDb,
   ensureMigrated,
+  getTestDb,
   readJson,
   registerTestCollections,
   seedUser,
@@ -173,6 +175,45 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
         },
       }),
     );
+    expect(res.status).toBe(400);
+  });
+
+  it("import rejects invalid navigation before dry-run or persistence", async () => {
+    const session = await seedUser({ role: "admin" });
+    const res = await importPOST(
+      buildRequest("/api/import", {
+        method: "POST",
+        session,
+        query: { dryRun: "true" },
+        body: {
+          version: "1",
+          navigation: {
+            header: [{ id: "unsafe", label: "Unsafe", type: "link", url: "javascript:alert(1)" }],
+          },
+        },
+      }),
+    );
+    expect(res.status).toBe(400);
+    const db = await getTestDb();
+    expect(await db.select().from(npNavigation)).toHaveLength(0);
+  });
+
+  it("export refuses malformed stored navigation", async () => {
+    const session = await seedUser({ role: "admin" });
+    const db = await getTestDb();
+    await db.insert(npNavigation).values({
+      location: "header",
+      items: [
+        { id: "duplicate", label: "One", type: "link", url: "/" },
+        {
+          id: "duplicate",
+          label: "Two",
+          type: "link",
+          url: "/two",
+        },
+      ],
+    });
+    const res = await exportGET(buildRequest("/api/export", { session }));
     expect(res.status).toBe(400);
   });
 });

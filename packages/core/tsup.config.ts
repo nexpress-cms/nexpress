@@ -19,9 +19,7 @@ const fast = process.env.NP_DEV_FAST === "1";
 // `package.json.version` is the only source of truth — and the
 // sync test can retire.
 const here = dirname(fileURLToPath(import.meta.url));
-const pkg = JSON.parse(
-  readFileSync(resolve(here, "package.json"), "utf-8"),
-) as { version: string };
+const pkg = JSON.parse(readFileSync(resolve(here, "package.json"), "utf-8")) as { version: string };
 
 export default defineConfig({
   entry: {
@@ -42,6 +40,8 @@ export default defineConfig({
     i18n: "src/i18n/index.ts",
     jobs: "src/jobs/index.ts",
     media: "src/media/index.ts",
+    // Client-safe persisted navigation tree/location contract.
+    navigation: "src/navigation/index.ts",
     observability: "src/observability/index.ts",
     "rate-limit": "src/rate-limit/index.ts",
     routes: "src/routes/index.ts",

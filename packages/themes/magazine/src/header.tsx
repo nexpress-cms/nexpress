@@ -1,5 +1,5 @@
 import { t } from "@nexpress/core";
-import type { NpNavItem } from "@nexpress/core";
+import type { NpResolvedNavItem } from "@nexpress/core/navigation";
 import { getCachedNavigation } from "@nexpress/next";
 
 import { MagazineMobileNav } from "./components/mobile-nav.js";
@@ -109,7 +109,7 @@ export async function MagazineHeader() {
             <>
               <nav aria-label="Sections">
                 <ul className="np-magazine-sections">
-                  {items.map((item: NpNavItem, index: number) => {
+                  {items.map((item: NpResolvedNavItem, index: number) => {
                     const isCurrent = isCurrentNavItem(item.url, pathname);
                     return (
                       <li key={`magazine-nav-${index.toString()}`} className="np-magazine-nav-item">
@@ -118,7 +118,7 @@ export async function MagazineHeader() {
                         </a>
                         {item.children && item.children.length > 0 ? (
                           <ul className="np-magazine-subnav">
-                            {item.children.map((child: NpNavItem, childIndex: number) => {
+                            {item.children.map((child: NpResolvedNavItem, childIndex: number) => {
                               const childCurrent = isCurrentNavItem(child.url, pathname);
                               return (
                                 <li

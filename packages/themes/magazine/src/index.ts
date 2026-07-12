@@ -598,17 +598,17 @@ export const magazineTheme = defineTheme({
     blocks: magazineBlocks,
     patterns: magazinePatterns,
     navLocations: {
-      primary: {
+      header: {
         label: "Masthead nav",
         description: "Sections shown in the masthead header.",
         maxItems: 7,
       },
-      footerSections: {
+      footer: {
         label: "Footer sections",
         description: "Sections column in the three-column footer.",
         maxItems: 8,
       },
-      footerColophon: {
+      "footer-colophon": {
         label: "Footer colophon",
         description: "About / contact links beside the colophon.",
         maxItems: 6,

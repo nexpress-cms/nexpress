@@ -1,4 +1,5 @@
 export type { NpRichTextContent } from "../fields/rich-text.js";
+export type { NpNavItem } from "../navigation/types.js";
 
 export type NpUserRole = "admin" | "editor" | "moderator" | "author" | "viewer";
 
@@ -640,28 +641,6 @@ export interface NpPluginContext {
   addCollection: (config: NpCollectionConfig) => void;
   addBlock: (config: NpBlockConfig) => void;
   addHook: (collection: string, event: string, hook: NpCollectionHook) => void;
-}
-
-export interface NpNavItem {
-  id: string;
-  label: string;
-  type: "link" | "collection" | "page";
-  url?: string;
-  collection?: string;
-  /**
-   * Set when `type === "page"` to record which collection the
-   * referenced doc lives in. Defaults to `"pages"` when absent so
-   * existing nav rows keep resolving against the reference page
-   * collection unchanged. The URL resolver walks the doc through
-   * the collection's `seo.urlPath` to produce the public path.
-   *
-   * The editor doesn't expose this as an editable field — the
-   * panel that adds the item knows its source collection and
-   * stamps it at write time.
-   */
-  collectionSlug?: string;
-  pageId?: string;
-  children?: NpNavItem[];
 }
 
 /**

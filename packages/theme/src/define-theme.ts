@@ -35,28 +35,12 @@ type LocalNpFeedEntry = {
   published: string | null;
 };
 import type { NpRegisteredTheme, NpThemeManifest } from "@nexpress/core";
+import type { NpNavItem as CoreNpNavItem } from "@nexpress/core/navigation";
 import type { NpThemeTokensOverlay as CoreNpThemeTokensOverlay } from "@nexpress/core/theme";
 import { npAssertThemeDefinition } from "./theme-contract.js";
 
-/**
- * Local mirror of `NpNavItem` from `@nexpress/core` — the same
- * tsup-DTS-bundler workaround as `LocalNpSitemapEntry` elsewhere in this file. The bundler
- * intermittently fails to resolve the named type across the
- * `@nexpress/core` boundary; the structural mirror keeps
- * theme authors able to declare nav items against the same
- * shape. The runtime passes values through unchanged so the
- * structural identity is enough.
- */
-type LocalNpNavItem = {
-  id: string;
-  label: string;
-  type: "link" | "collection" | "page";
-  url?: string;
-  collection?: string;
-  collectionSlug?: string;
-  pageId?: string;
-  children?: LocalNpNavItem[];
-};
+/** Canonical persisted navigation item contract for theme seed data. */
+type LocalNpNavItem = CoreNpNavItem;
 
 /** Canonical partial token tree re-exported for theme authors. */
 export type NpThemeTokensOverlay = CoreNpThemeTokensOverlay;

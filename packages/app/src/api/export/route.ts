@@ -13,6 +13,7 @@ import {
   can,
 } from "@nexpress/core";
 import { npAnalyzeThemeTokensOverlay } from "@nexpress/core/theme";
+import { npAnalyzeNavigationItems, npAnalyzeNavigationLocation } from "@nexpress/core/navigation";
 import { and, inArray, isNull } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
@@ -78,9 +79,20 @@ export async function GET(request: NextRequest) {
     const settings = Object.fromEntries(
       settingsRows.filter((r) => r.key !== "theme").map((r) => [r.key, r.value]),
     );
-    const navigation = Object.fromEntries(
-      navRows.map((r) => [r.location, r.items]),
-    );
+    const navigationIssues = navRows.flatMap((row) => [
+      ...npAnalyzeNavigationLocation(row.location).map((issue) => ({
+        field: issue.path.replace(/^navigation\.location/u, `navigation.${row.location}`),
+        message: issue.message,
+      })),
+      ...npAnalyzeNavigationItems(row.items).map((issue) => ({
+        field: issue.path.replace(/^navigation\.items/u, `navigation.${row.location}`),
+        message: issue.message,
+      })),
+    ]);
+    if (navigationIssues.length > 0) {
+      throw new NpValidationError("Invalid stored navigation", navigationIssues);
+    }
+    const navigation = Object.fromEntries(navRows.map((r) => [r.location, r.items]));
 
     const exportSlugs = collectionsFilter ?? getAllCollectionSlugs();
     const collections: Record<string, Record<string, unknown>[]> = {};
@@ -93,9 +105,7 @@ export async function GET(request: NextRequest) {
       collections[slug] = result.docs;
     }
 
-    const refRows = await db
-      .selectDistinct({ mediaId: npMediaRefs.mediaId })
-      .from(npMediaRefs);
+    const refRows = await db.selectDistinct({ mediaId: npMediaRefs.mediaId }).from(npMediaRefs);
     const mediaIds = refRows.map((r) => r.mediaId);
 
     const media =

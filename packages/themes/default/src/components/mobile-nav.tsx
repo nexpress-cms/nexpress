@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { NpNavItem } from "@nexpress/core";
+import type { NpResolvedNavItem } from "@nexpress/core/navigation";
 
 /**
  * Mobile-first nav drawer. The desktop header keeps its inline
@@ -17,7 +17,7 @@ import type { NpNavItem } from "@nexpress/core";
  * the drawer is closed.
  */
 export interface MobileNavProps {
-  items: NpNavItem[];
+  items: NpResolvedNavItem[];
   member?: MobileNavMember | null;
   notificationUnread?: number | null;
   /** Optional brand label for the drawer header. Defaults to "Menu". */

@@ -2,9 +2,13 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-12 (theme tokens now share one closed group/key
-inventory and fail-closed value contract across theme definitions, persisted
-overrides, Admin/import APIs, plugin reads/writes, OpenAPI, and CSS generation.)
+**Last refreshed:** 2026-07-12 (navigation now shares one exact recursive wire
+contract across themes, Admin/API writes, backup import/export, OpenAPI, cached
+reads, and public rendering; malformed persisted trees fail closed.)
+
+**Earlier:** 2026-07-12 (theme tokens now share one closed group/key inventory
+and fail-closed value contract across theme definitions, persisted overrides,
+Admin/import APIs, plugin reads/writes, OpenAPI, and CSS generation.)
 
 **Earlier:** 2026-07-12 (project config exposes only active runtime
 settings and fails closed on invalid values and dependency graphs; storage URL
@@ -213,6 +217,7 @@ cli  (standalone scaffolder, no workspace deps)
 | `@nexpress/core/i18n`          | locale registry, translations, formatting, per-site overrides         |
 | `@nexpress/core/jobs`          | pg-boss adapter, handlers, worker, heartbeat, pause state, job logs   |
 | `@nexpress/core/media`         | media service, processor, ref tracking                                |
+| `@nexpress/core/navigation`    | client-safe navigation wire/resolved types and validators             |
 | `@nexpress/core/observability` | logger, error reporter, `verifyStartupSafety`                         |
 | `@nexpress/core/seo`           | sitemap, page metadata, Atom feeds, JSON-LD                           |
 | `@nexpress/core/theme`         | client-safe theme token inventory, validators, and merge helpers      |
@@ -418,7 +423,7 @@ These are the public APIs we'll honor with semver and migration notes. Breaking 
 - **Bootstrap intent enum** — `ensureFor("read" | "plugins" | "write")`. Adding a new intent is non-breaking; semantics of the existing three are pinned.
 - **Error classes + codes** — `NpForbiddenError`, `NpNotFoundError`, `NpValidationError`, `NpAuthError`, `NpConflictError`, `NpRateLimitError`, `NpSiteContextMissingError`, and the `NpErrorCode` union. The string code per class is stable per [docs/api-error-codes.md](./docs/api-error-codes.md).
 - **Capability vocabulary** — `can(user, capability)` and the existing capability strings: `"admin.manage"`, `"content.publish"`, `"content.author"`, `"community.moderate"`. New capability strings will be added; existing ones won't be renamed or removed in 0.x.
-- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/fields`, `/i18n`, `/jobs`, `/media`, `/observability`, `/seo`, `/theme`. Symbols inside each are stable per the rules above.
+- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/fields`, `/i18n`, `/jobs`, `/media`, `/navigation`, `/observability`, `/seo`, `/theme`. Symbols inside each are stable per the rules above.
 - **Adapters** — `NpStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NpJobQueue` (with `PgBossAdapter`), `NpLogger` + `setLogger`, `NpErrorReporter` + `setErrorReporter`, `NpEmailAdapter` + `setEmailAdapter`. Optional methods (e.g. `NpJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
 - **`NpPrincipal` union** — adding a variant is breaking (every `switch (principal.kind)` site needs updating, enforced by `_exhaustive: never`). The existing `"staff"` / `"member"` shape is committed.
 - **Block authoring and content** — `NpBlockDefinition` (`type`, `label`, `defaultProps`, `propsSchema`, `acceptsChildren?`, `render(props, children?)`) and the `NpBlockInstance` wire shape (`id`, `type`, `props`, optional `children: NpBlockInstance[]`). `NpBlockContent` is the stored array type. `@nexpress/core/fields`, `@nexpress/blocks`, and `@nexpress/blocks/contracts` share `npValidateBlockContent` and `isNpBlockContent`; collection writes, generated types, OpenAPI, patterns, Admin JSON/paste/preview, translation, and unknown-block operations use that contract. Instance ids are unique across the whole tree; unknown/inactive block types remain structurally valid so content survives plugin/theme removal. Adding optional fields to the definition or instance is non-breaking. `NpBlockMetadata` (= `NpBlockDefinition` minus `render`) is the serializable subset the admin uses for the picker / props form. The shared registry helpers `registerBlock`, `getRegisteredBlocks`, `getRegisteredBlockMetadata`, `getSharedRegistry` are stable. The lightweight `@nexpress/blocks/contracts` subpath also exports `npValidateBlockDefinition`, `npAnalyzeBlockDefinitions`, and `npBlockPropFieldTypes`. Author docs: `docs/block-content.md`.
@@ -426,6 +431,7 @@ These are the public APIs we'll honor with semver and migration notes. Breaking 
 - **Plugin page-route contribution** (added 2026-05-11, #623) — `definePlugin({ pageRoutes: NpPluginPageRouteRegistration[] })`. Each entry has a function `component`, optional function `metadata`, plus `surface: "site" | "member"` and `locale: "auto" | "none"` knobs. Definition and host validation reject malformed patterns/handlers and same-plugin duplicates; plugin doctor reports those errors plus cross-plugin conflicts. The catch-all dispatches via `dispatchPluginRoute` (`@nexpress/next`); precedence is page > slug-redirect > theme > plugin > 404. `locale: "none"` uses the raw URL and receives no automatic hreflang aliases. Adding optional fields to the registration type is non-breaking. Author docs: `docs/plugin-pages.md`. Pattern grammar (`/`, `:name`, `:name(regex)`, segment-count match) is stable; glob / catch-all is **not** part of the v0.1 commitment. The `surface: "member"` shell wrap is **stable** as of the v0.2 layout refactor (2026-05-11) — `surface: "member"` plugin routes render with `impl.members.shell` + the F-track fallback chain via `apps/web/src/components/shell-wrap.tsx`, dispatched from the (site) catch-all based on `match.route.surface` (no parallel `(member)` catch-all is needed; a layout-bound dispatch isn't possible in Next.js anyway).
 - **Block server → client metadata bridge** — host apps wrap their admin children with `<BlocksRegistryProvider metadata={getRegisteredBlockMetadata()}>` (called server-side). The page builder reads it via the `useBlocksRegistry()` hook. Without the provider, plugin blocks render correctly on the public site but are absent from the admin's Add-block popover (the registry singleton is module-scoped and the browser instance only has the built-in defaults).
 - **Theme tokens** — `NpThemeTokens` is the closed `colors` / `typography` / `shape` tree; `NpThemeTokensOverlay` is its partial author/plugin/persistence form. `@nexpress/core/theme` exports the canonical inventory, full/overlay validators, analyzers, type guards, defaults, sanitization, and deep-merge helpers. Theme definitions, Admin/API writes, backup import/export, plugin `ctx.theme`, OpenAPI, effective reads, and CSS generation use the same fail-closed contract. New optional keys are additive; renaming/removing groups or keys requires a migration note. Author docs: `docs/theme-tokens.md`.
+- **Navigation trees** — `NpNavItem` is the exact stored `link | collection | page` wire union; `NpResolvedNavItem` is the public-read form with a concrete `url`. `@nexpress/core/navigation` exports both types plus the canonical location/tree analyzers, validators, type guards, patterns, and limits. Theme seed content, Admin/API writes, backup import/export, OpenAPI, cached reads, and public rendering share that contract and fail closed on malformed persisted rows. Author docs: `docs/navigation.md`.
 
 ### Experimental — no stability promise
 
