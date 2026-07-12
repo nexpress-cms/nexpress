@@ -1,5 +1,6 @@
 import { npAnalyzePluginI18nBundles } from "../plugins/definition-contract.js";
 import { npValidatePluginPageRoutePattern } from "../plugins/page-route-contract.js";
+import { npAnalyzeThemeTokensOverlay } from "../theme/contract.js";
 
 export type NpThemeDefinitionIssueCode =
   "definition" | "manifest" | "requirements" | "settings" | "implementation" | "routes" | "seed";
@@ -733,86 +734,9 @@ function validateTemplates(value: unknown): NpThemeDefinitionIssue[] {
 
 function validateTokens(value: unknown): NpThemeDefinitionIssue[] {
   if (value === undefined) return [];
-  if (!isRecord(value)) {
-    return [issue("implementation", "impl.tokens", "impl.tokens must be a plain object.")];
-  }
-  const groups: Record<string, ReadonlySet<string>> = {
-    colors: new Set([
-      "primary",
-      "primaryForeground",
-      "primarySoft",
-      "background",
-      "foreground",
-      "muted",
-      "mutedForeground",
-      "border",
-      "card",
-      "cardForeground",
-      "accent",
-      "accentForeground",
-      "destructive",
-      "destructiveForeground",
-    ]),
-    typography: new Set([
-      "fontHeading",
-      "fontBody",
-      "fontMono",
-      "fontSizeBase",
-      "lineHeight",
-      "fontSizeSm",
-      "fontSizeLg",
-      "fontSizeXl",
-      "fontSize2xl",
-      "fontSize3xl",
-      "fontSize4xl",
-    ]),
-    shape: new Set([
-      "radiusSm",
-      "radiusMd",
-      "radiusLg",
-      "radiusFull",
-      "shadowSm",
-      "shadowMd",
-      "shadowLg",
-    ]),
-  };
-  const issues: NpThemeDefinitionIssue[] = [];
-  const extraGroup = unsupportedKey(value, new Set(Object.keys(groups)));
-  if (extraGroup)
-    issues.push(
-      issue(
-        "implementation",
-        `impl.tokens.${extraGroup}`,
-        `unsupported token group "${extraGroup}".`,
-      ),
-    );
-  for (const [group, allowed] of Object.entries(groups)) {
-    const raw = value[group];
-    if (raw === undefined) continue;
-    if (!isRecord(raw)) {
-      issues.push(
-        issue("implementation", `impl.tokens.${group}`, "token groups must be plain objects."),
-      );
-      continue;
-    }
-    const extra = unsupportedKey(raw, allowed);
-    if (extra)
-      issues.push(
-        issue("implementation", `impl.tokens.${group}.${extra}`, `unsupported token "${extra}".`),
-      );
-    for (const [name, token] of Object.entries(raw)) {
-      if (allowed.has(name) && !isTrimmedString(token, 1000)) {
-        issues.push(
-          issue(
-            "implementation",
-            `impl.tokens.${group}.${name}`,
-            "token values must be non-empty strings.",
-          ),
-        );
-      }
-    }
-  }
-  return issues;
+  return npAnalyzeThemeTokensOverlay(value).map((tokenIssue) =>
+    issue("implementation", tokenIssue.path.replace(/^theme/u, "impl.tokens"), tokenIssue.message),
+  );
 }
 
 function validateRoute(

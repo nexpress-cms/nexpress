@@ -46,6 +46,9 @@ export default defineConfig({
     "rate-limit": "src/rate-limit/index.ts",
     routes: "src/routes/index.ts",
     seo: "src/seo/index.ts",
+    // Pure, client-safe theme token inventory and validation contract.
+    // Admin imports this subpath without pulling server-only core deps.
+    theme: "src/theme/index.ts",
   },
   format: ["esm"],
   dts: !fast,

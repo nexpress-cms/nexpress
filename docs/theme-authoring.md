@@ -384,6 +384,12 @@ A theme can declare its own preferred token defaults via
 intentional: brand color decisions made in the admin shouldn't
 revert when an admin tries a different theme.
 
+Tokens are not an open-ended string map. Theme definitions submit a partial
+`NpThemeTokensOverlay`; the Admin API and public renderer share the canonical
+group/key inventory, CSS-safe value rules, and deep-merge behavior exported
+from `@nexpress/core/theme`. See [Theme token contract](theme-tokens.md) for
+the complete inventory, plugin API semantics, and validation helpers.
+
 ---
 
 ## 9. Registering and Activating

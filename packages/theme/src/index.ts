@@ -8,8 +8,30 @@ export {
   type NpColorScheme,
 } from "./color-scheme-keys.js";
 
-export { DEFAULT_THEME, sanitizeTokenValue } from "@nexpress/core";
-export type { NpThemeColors, NpThemeShape, NpThemeTokens, NpThemeTypography } from "@nexpress/core";
+export {
+  DEFAULT_THEME,
+  isNpThemeTokens,
+  isNpThemeTokensOverlay,
+  npAnalyzeThemeTokens,
+  npAnalyzeThemeTokensOverlay,
+  npMergeThemeTokenOverlays,
+  npMergeThemeTokens,
+  npThemeOptionalTokenKeys,
+  npThemeTokenGroups,
+  npThemeTokenKeys,
+  npValidateThemeTokens,
+  npValidateThemeTokensOverlay,
+  sanitizeTokenValue,
+} from "@nexpress/core/theme";
+export type {
+  NpThemeColors,
+  NpThemeShape,
+  NpThemeTokenContractIssue,
+  NpThemeTokenGroup,
+  NpThemeTokens,
+  NpThemeTokensOverlay,
+  NpThemeTypography,
+} from "@nexpress/core/theme";
 
 export { defineTheme } from "./define-theme.js";
 export {

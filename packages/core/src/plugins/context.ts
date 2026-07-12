@@ -24,6 +24,9 @@ import { getScopedLogger } from "../observability/logger.js";
 import { reportError } from "../observability/error-reporter.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { npMergeThemeTokenOverlays } from "../theme/contract.js";
+import { getTheme, npRequireThemeTokensOverlay } from "../theme/runtime.js";
+import type { NpThemeTokens, NpThemeTokensOverlay } from "../theme/types.js";
 import {
   npValidatePluginActionResult,
   type NpPluginActionRegistrationConflict,
@@ -526,41 +529,45 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
     },
 
     theme: {
-      async getTokens(): Promise<Record<string, unknown>> {
+      async getTokens(): Promise<NpThemeTokens> {
         assertCap(pluginId, capabilities, "theme:read");
-        const siteId = await resolveSettingsSiteId();
-        const rows = await db()
-          .select()
-          .from(npSettings)
-          .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "theme")));
-        const row = rows[0] as { value?: unknown } | undefined;
-        if (!row || !row.value || typeof row.value !== "object" || Array.isArray(row.value)) {
-          return {};
-        }
-        return row.value as Record<string, unknown>;
+        return getTheme();
       },
-      async setTokens(partial: Record<string, unknown>): Promise<void> {
+      async setTokens(partial: NpThemeTokensOverlay): Promise<void> {
         assertCap(pluginId, capabilities, "theme:write");
+        const validatedPartial = npRequireThemeTokensOverlay(
+          partial,
+          `plugin.${pluginId}.theme.tokens`,
+        );
         const siteId = await resolveSettingsSiteId();
         const rows = await db()
           .select()
           .from(npSettings)
-          .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "theme")));
-        const existing =
-          rows[0] &&
-          (rows[0] as { value?: unknown }).value &&
-          typeof (rows[0] as { value?: unknown }).value === "object" &&
-          !Array.isArray((rows[0] as { value?: unknown }).value)
-            ? ((rows[0] as { value: unknown }).value as Record<string, unknown>)
-            : {};
-        const merged = { ...existing, ...partial };
+          .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "theme")))
+          .limit(1);
+        const existing = npRequireThemeTokensOverlay(rows[0]?.value, "settings.theme");
+        const merged = npMergeThemeTokenOverlays(existing, validatedPartial);
+        const updatedAt = new Date();
         await db()
           .insert(npSettings)
-          .values({ siteId, key: "theme", value: merged, updatedAt: new Date() })
+          .values({ siteId, key: "theme", value: merged, updatedAt })
           .onConflictDoUpdate({
             target: [npSettings.siteId, npSettings.key],
-            set: { value: merged, updatedAt: new Date() },
+            set: { value: merged, updatedAt },
           });
+
+        const cache = await loadOptionalNextCache();
+        const revalidateTag = cache?.revalidateTag;
+        if (typeof revalidateTag === "function") {
+          if (revalidateTag.length >= 2) {
+            (revalidateTag as (tag: string, profile: string) => void)(
+              `nx:theme:${siteId}`,
+              "default",
+            );
+          } else {
+            revalidateTag(`nx:theme:${siteId}`);
+          }
+        }
       },
     },
 

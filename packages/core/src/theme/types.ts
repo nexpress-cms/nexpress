@@ -59,7 +59,7 @@ export interface NpThemeTokens {
  * `impl.tokens`. Each sub-tree is `Partial<...>` so a theme that
  * sets only `colors.primary` doesn't have to copy the rest of
  * `colors` from `DEFAULT_THEME`. The runtime merger
- * (`getTheme()` in `content/helpers.ts`) layers an overlay onto
+ * (`getTheme()` in `theme/runtime.ts`) layers an overlay onto
  * `DEFAULT_THEME` field-by-field.
  */
 export interface NpThemeTokensOverlay {

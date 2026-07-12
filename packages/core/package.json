@@ -87,6 +87,11 @@
       "types": "./dist/seo.d.ts",
       "import": "./dist/seo.js",
       "default": "./dist/seo.js"
+    },
+    "./theme": {
+      "types": "./dist/theme.d.ts",
+      "import": "./dist/theme.js",
+      "default": "./dist/theme.js"
     }
   },
   "files": [

@@ -41,6 +41,7 @@ behavior they describe changes.
 | [theme-and-page-authors.md](theme-and-page-authors.md) | Cookbook — what to call from a custom page or theme                    |
 | [theme-authoring.md](theme-authoring.md)               | Authoring a theme                                                      |
 | [theme-quickstart.md](theme-quickstart.md)             | Author your first theme                                                |
+| [theme-tokens.md](theme-tokens.md)                     | Canonical theme token inventory, validation, and merge boundaries      |
 | [troubleshooting.md](troubleshooting.md)               | First-boot and scaffold troubleshooting                                |
 | [wordpress-import-guide.md](wordpress-import-guide.md) | Running the WP importer                                                |
 

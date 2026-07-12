@@ -159,4 +159,20 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  it("import rejects invalid theme overlays even during dry-run", async () => {
+    const session = await seedUser({ role: "admin" });
+    const res = await importPOST(
+      buildRequest("/api/import", {
+        method: "POST",
+        session,
+        query: { dryRun: "true" },
+        body: {
+          version: "1",
+          theme: { colors: { primary: "url(https://example.com/x)" } },
+        },
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
 });

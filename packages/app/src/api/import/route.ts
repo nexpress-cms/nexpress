@@ -10,6 +10,7 @@ import {
   can,
 } from "@nexpress/core";
 import type { NpNavItem } from "@nexpress/core";
+import { npAnalyzeThemeTokensOverlay, type NpThemeTokensOverlay } from "@nexpress/core/theme";
 import { readJsonBody } from "@nexpress/next";
 import { and, eq, isNull } from "drizzle-orm";
 import type { NextRequest } from "next/server";
@@ -40,7 +41,7 @@ interface ImportPlugin {
 
 interface ImportPayload {
   version?: string;
-  theme?: Record<string, unknown>;
+  theme?: NpThemeTokensOverlay;
   settings?: Record<string, unknown>;
   navigation?: Record<string, NpNavItem[]> | Array<{ location?: string; items: NpNavItem[] }>;
   collections?: Record<string, Record<string, unknown>[]>;
@@ -68,10 +69,14 @@ function validatePayload(body: unknown): ImportPayload {
     ]);
   }
 
-  if (body.theme !== undefined && !isRecord(body.theme)) {
-    throw new NpValidationError("Invalid input", [
-      { field: "theme", message: "theme must be an object" },
-    ]);
+  if (body.theme !== undefined) {
+    const tokenIssues = npAnalyzeThemeTokensOverlay(body.theme);
+    if (tokenIssues.length > 0) {
+      throw new NpValidationError(
+        "Invalid input",
+        tokenIssues.map((issue) => ({ field: issue.path, message: issue.message })),
+      );
+    }
   }
 
   if (body.settings !== undefined && !isRecord(body.settings)) {
