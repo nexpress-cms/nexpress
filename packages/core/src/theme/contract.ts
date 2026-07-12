@@ -117,7 +117,7 @@ function analyzeTokenValue(value: unknown, path: string): NpThemeTokenContractIs
   });
   if (
     hasControlCharacter ||
-    /[;{}\\]/u.test(value) ||
+    /[;{}\\<>]/u.test(value) ||
     /\/\*|\*\/|url\s*\(|image-set\s*\(|src\s*\(|expression\s*\(|@import/iu.test(value)
   ) {
     return {

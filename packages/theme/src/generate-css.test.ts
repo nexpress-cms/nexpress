@@ -22,5 +22,11 @@ describe("generateThemeCss", () => {
         colors: { ...DEFAULT_THEME.colors, primary: "url(https://example.com/x)" },
       }),
     ).toThrow(/invalid theme tokens/);
+    expect(() =>
+      generateThemeCss({
+        ...DEFAULT_THEME,
+        colors: { ...DEFAULT_THEME.colors, primary: "</style><script>alert(1)</script>" },
+      }),
+    ).toThrow(/invalid theme tokens/);
   });
 });

@@ -74,6 +74,11 @@ describe("theme token contract", () => {
     expect(
       npAnalyzeThemeTokensOverlay({ colors: { primary: "u/**/rl(https://example.com/a)" } })[0],
     ).toMatchObject({ path: "theme.colors.primary" });
+    expect(
+      npAnalyzeThemeTokensOverlay({
+        colors: { primary: "</style><script>alert(1)</script>" },
+      })[0],
+    ).toMatchObject({ path: "theme.colors.primary" });
     expect(npAnalyzeThemeTokensOverlay({ colors: undefined })[0]).toMatchObject({
       path: "theme.colors",
     });
@@ -103,5 +108,6 @@ describe("theme token contract", () => {
   it("keeps the standalone sanitizer safe against escaped or commented url syntax", () => {
     expect(sanitizeTokenValue("u/**/rl(https://example.com/a);")).not.toMatch(/url\s*\(/iu);
     expect(sanitizeTokenValue("u\\72l(https://example.com/a)")).not.toContain("\\");
+    expect(sanitizeTokenValue("</style><script>alert(1)</script>")).not.toMatch(/[<>]/u);
   });
 });

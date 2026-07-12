@@ -7,7 +7,7 @@ export function sanitizeTokenValue(value: string): string {
     .join("");
 
   return withoutControlCharacters
-    .replace(/[;{}]/g, "")
+    .replace(/[;{}<>]/g, "")
     .replace(/\\|\/\*|\*\//g, "")
     .replace(/(?:url|image-set|src)\s*\(/gi, "")
     .replace(/expression\s*\(/gi, "")

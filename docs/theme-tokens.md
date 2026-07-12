@@ -32,7 +32,7 @@ resource-loading syntax fail closed at the boundary that received them.
 | `shape`      | `radiusSm`, `radiusMd`, `radiusLg`, `radiusFull`, `shadowSm`, `shadowMd`, `shadowLg`                                                                                                                             |
 
 Values must be trimmed, non-empty strings up to 200 characters. They cannot
-contain control characters, `;`, `{`, `}`, backslash escapes, CSS comments,
+contain control characters, `;`, `{`, `}`, `<`, `>`, backslash escapes, CSS comments,
 `url(...)`, `image-set(...)`, `src(...)`, `expression(...)`, or `@import`.
 These rules keep one token value from opening a second CSS statement or loading
 a resource. CSS generation still sanitizes values as defense in depth.
