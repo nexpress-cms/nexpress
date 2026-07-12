@@ -1,5 +1,6 @@
 import { npAnalyzePluginI18nBundles } from "../plugins/definition-contract.js";
 import { npValidatePluginPageRoutePattern } from "../plugins/page-route-contract.js";
+import { npAnalyzeNavigationLocation } from "../navigation/contract.js";
 import { npAnalyzeThemeTokensOverlay } from "../theme/contract.js";
 
 export type NpThemeDefinitionIssueCode =
@@ -882,7 +883,7 @@ function validateNavLocations(value: unknown): NpThemeDefinitionIssue[] {
   for (const [key, raw] of Object.entries(value)) {
     const location = `impl.navLocations.${key}`;
     if (
-      !keyPattern.test(key) ||
+      npAnalyzeNavigationLocation(key).length > 0 ||
       !isRecord(raw) ||
       unsupportedKey(raw, new Set(["label", "description", "maxItems"]))
     ) {

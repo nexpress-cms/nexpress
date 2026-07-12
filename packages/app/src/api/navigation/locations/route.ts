@@ -1,12 +1,17 @@
 import {
   NP_DEFAULT_SITE_ID,
   NpForbiddenError,
-  type NpNavItem,
+  NpValidationError,
   can,
   getActiveThemeNavLocations,
   getCurrentSiteId,
   npNavigation,
 } from "@nexpress/core";
+import {
+  npAnalyzeNavigationItems,
+  npAnalyzeNavigationLocation,
+  type NpNavItem,
+} from "@nexpress/core/navigation";
 import { eq } from "drizzle-orm";
 
 import { requireAuth } from "../../../lib/auth-helpers";
@@ -94,6 +99,19 @@ export async function GET(request: NextRequest) {
 
     const countByLocation = new Map<string, number>();
     for (const row of rows) {
+      const issues = [
+        ...npAnalyzeNavigationLocation(row.location).map((entry) => ({
+          field: entry.path.replace(/^navigation\.location/u, `navigation.${row.location}`),
+          message: entry.message,
+        })),
+        ...npAnalyzeNavigationItems(row.items).map((entry) => ({
+          field: entry.path.replace(/^navigation\.items/u, `navigation.${row.location}`),
+          message: entry.message,
+        })),
+      ];
+      if (issues.length > 0) {
+        throw new NpValidationError("Invalid stored navigation", issues);
+      }
       countByLocation.set(row.location, countNavItems(row.items));
     }
 
@@ -136,7 +154,5 @@ export async function GET(request: NextRequest) {
 }
 
 function titleCase(value: string): string {
-  return value
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+  return value.replace(/[-_]+/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
 }

@@ -309,13 +309,14 @@ if (media) {
 
 ```ts
 import { getSetting, getNavigation } from "@nexpress/core";
+import type { NpResolvedNavItem } from "@nexpress/core/navigation";
 
 // Site identity
 const site = await getSetting<{ name: string; url: string }>("site");
 const description = await getSetting<string>("description");
 
 // Navigation menus by location slug
-const header = await getNavigation("header"); // returns NpNavItem[] tree
+const header: NpResolvedNavItem[] = await getNavigation("header");
 const footer = await getNavigation("footer");
 ```
 
@@ -323,11 +324,13 @@ const footer = await getNavigation("footer");
 parameter. The framework doesn't validate; you should wrap with a
 Zod parse if the shape is plugin-controlled.
 
-`getNavigation` returns the saved tree (with `children: NpNavItem[]`
-for nested items). Items have `type: "link" | "page" | "collection"` —
-render accordingly. The location slug is whatever the operator
-created in **Settings → Navigation**. Built-ins: `"header"`,
-`"footer"`, `"main"`.
+`getNavigation` validates the stored tree and returns resolved items (with
+`children: NpResolvedNavItem[]` for nested items). Every item has a concrete
+`url`; `type: "link" | "page" | "collection"` preserves its source kind. The
+location slug is whatever the operator created in **Settings → Navigation**.
+Built-ins: `"header"`, `"footer"`, `"main"`. Use `NpNavItem` only for stored
+or authored payloads. See [`navigation.md`](navigation.md) for the exact wire
+union, bounds, URL policy, and validation API.
 
 The navigation editor's **link** type can autocomplete from the
 custom-routes registry — make sure your hand-coded routes are

@@ -7,6 +7,7 @@ import {
   getDb,
   getRegisteredThemes,
   NP_DEFAULT_SITE_ID,
+  NpValidationError,
   npNavigation,
   saveDocument,
   type NpAuthUser,
@@ -14,6 +15,7 @@ import {
   type NpRegisteredTheme,
   type NpTransaction,
 } from "@nexpress/core";
+import { npAnalyzeNavigationItems } from "@nexpress/core/navigation";
 import type {
   NpThemeSeedContent,
   NpThemeSeedPage,
@@ -361,6 +363,19 @@ export async function seedNavigation(
 ): Promise<SeedNavigationResult> {
   const headerItems = options.header ?? [];
   const footerItems = options.footer ?? [];
+  const navigationIssues = [
+    ...npAnalyzeNavigationItems(headerItems).map((entry) => ({
+      field: entry.path.replace(/^navigation\.items/u, "navigation.header"),
+      message: entry.message,
+    })),
+    ...npAnalyzeNavigationItems(footerItems).map((entry) => ({
+      field: entry.path.replace(/^navigation\.items/u, "navigation.footer"),
+      message: entry.message,
+    })),
+  ];
+  if (navigationIssues.length > 0) {
+    throw new NpValidationError("Invalid seed navigation", navigationIssues);
+  }
   if (headerItems.length === 0 && footerItems.length === 0) {
     return {
       header: 0,

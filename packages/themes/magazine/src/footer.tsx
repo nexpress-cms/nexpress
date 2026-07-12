@@ -1,4 +1,4 @@
-import type { NpNavItem } from "@nexpress/core";
+import type { NpResolvedNavItem } from "@nexpress/core/navigation";
 import { getCachedNavigation } from "@nexpress/next";
 
 import { resolveMagazineSettings } from "./settings-helpers.js";
@@ -27,14 +27,14 @@ const FOOTER_CREDITS_DEFAULT = "Editor · Art · Web — Built on NexPress";
  *     settings (`footerColophon` / `footerCredits`).
  *   - Sections: the `footer` navigation menu, fallback stub on
  *     fresh installs.
- *   - Colophon: the `footerColophon` location's nav.
+ *   - Colophon: the `footer-colophon` location's nav.
  *
  * Subscribe form lives in the post-list template's subscribe
  * band — keeping it out of the footer matches the design.
  */
 export async function MagazineFooter() {
   const sectionsNav = await getCachedNavigation("footer");
-  const colophonNav = await getCachedNavigation("footerColophon");
+  const colophonNav = await getCachedNavigation("footer-colophon");
   const settings = await resolveMagazineSettings();
   const year = new Date().getFullYear();
   const colophon = settings.footerColophon ?? FOOTER_COLOPHON_DEFAULT;
@@ -64,7 +64,7 @@ export async function MagazineFooter() {
           <h2 className="np-magazine-footer-heading">Sections</h2>
           <ul className="np-magazine-footer-nav">
             {sectionsNav.length > 0 ? (
-              sectionsNav.map((item: NpNavItem, index: number) => (
+              sectionsNav.map((item: NpResolvedNavItem, index: number) => (
                 <li key={`magazine-footer-sections-${index.toString()}`}>
                   <a href={item.url}>{item.label}</a>
                 </li>
@@ -79,7 +79,7 @@ export async function MagazineFooter() {
           <h2 className="np-magazine-footer-heading">Colophon</h2>
           <ul className="np-magazine-footer-nav">
             {colophonNav.length > 0 ? (
-              colophonNav.map((item: NpNavItem, index: number) => (
+              colophonNav.map((item: NpResolvedNavItem, index: number) => (
                 <li key={`magazine-footer-colophon-${index.toString()}`}>
                   <a href={item.url}>{item.label}</a>
                 </li>

@@ -5,8 +5,8 @@ import {
   isTokenVerificationError,
   verifyMemberToken,
   type NpMemberAuthRow,
-  type NpNavItem,
 } from "@nexpress/core";
+import type { NpResolvedNavItem } from "@nexpress/core/navigation";
 import { unreadNotificationCount } from "@nexpress/core/community";
 import { getCachedNavigation, getCachedSite, resolveAvailableLocales } from "@nexpress/next";
 import Link from "next/link";
@@ -80,12 +80,12 @@ export async function DefaultHeader() {
         </Link>
         <nav className="np-site-nav-desktop" aria-label="Primary">
           <ul className="np-site-nav">
-            {headerNav.map((item: NpNavItem, index: number) => (
+            {headerNav.map((item: NpResolvedNavItem, index: number) => (
               <li key={`nav-${index.toString()}`} className="np-site-nav-item">
                 {item.url ? <Link href={item.url}>{item.label}</Link> : <span>{item.label}</span>}
                 {item.children && item.children.length > 0 ? (
                   <ul className="np-site-subnav">
-                    {item.children.map((child: NpNavItem, childIndex: number) => (
+                    {item.children.map((child: NpResolvedNavItem, childIndex: number) => (
                       <li key={`nav-${index.toString()}-${childIndex.toString()}`}>
                         {child.url ? (
                           <Link href={child.url}>{child.label}</Link>

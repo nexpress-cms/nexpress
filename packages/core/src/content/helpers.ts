@@ -4,6 +4,9 @@ import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { npSettings } from "../db/schema/system.js";
 import { npNavigation, npSlugHistory } from "../db/schema/system.js";
 import type { NpNavItem, NpFindOptions, NpFindResult, NpAuthUser } from "../config/types.js";
+import { NpValidationError } from "../errors.js";
+import { npAnalyzeNavigationItems, npAnalyzeNavigationLocation } from "../navigation/contract.js";
+import type { NpResolvedNavItem } from "../navigation/types.js";
 import {
   findDocuments,
   getCollectionConfig,
@@ -28,21 +31,35 @@ async function resolveSiteId(): Promise<string> {
   return (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 }
 
-export async function getNavigation(
-  location: string = "header",
-): Promise<NpNavItem[]> {
+export async function getNavigation(location: string = "header"): Promise<NpResolvedNavItem[]> {
+  const locationIssues = npAnalyzeNavigationLocation(location);
+  if (locationIssues.length > 0) {
+    throw new NpValidationError(
+      "Invalid navigation location",
+      locationIssues.map((entry) => ({ field: entry.path, message: entry.message })),
+    );
+  }
   const db = getDb();
   const siteId = await resolveSiteId();
   const rows = await db
     .select()
     .from(npNavigation)
-    .where(
-      and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, location)),
-    )
+    .where(and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, location)))
     .limit(1);
 
   if (rows.length === 0 || !rows[0]) {
     return [];
+  }
+
+  const itemIssues = npAnalyzeNavigationItems(rows[0].items);
+  if (itemIssues.length > 0) {
+    throw new NpValidationError(
+      "Invalid stored navigation",
+      itemIssues.map((entry) => ({
+        field: entry.path.replace(/^navigation/u, `navigation.${location}`),
+        message: entry.message,
+      })),
+    );
   }
 
   return resolveNavItemUrls(rows[0].items);
@@ -71,7 +88,7 @@ export async function getNavigation(
  * stable across status flips — dropping the item would invalidate
  * the cache shape every time.
  */
-async function resolveNavItemUrls(items: NpNavItem[]): Promise<NpNavItem[]> {
+async function resolveNavItemUrls(items: NpNavItem[]): Promise<NpResolvedNavItem[]> {
   // Group page-typed refs by source collection so we issue one
   // batch of lookups per collection. Items missing `collectionSlug`
   // default to `"pages"` so existing nav rows keep resolving
@@ -127,13 +144,11 @@ function collectPageRefs(items: NpNavItem[]): Map<string, string[]> {
 function mapNavItem(
   item: NpNavItem,
   docByKey: Map<string, Record<string, unknown>>,
-): NpNavItem {
+): NpResolvedNavItem {
   const children = item.children
     ? item.children.map((child) => mapNavItem(child, docByKey))
     : undefined;
-  const withChildren = children ? { ...item, children } : item;
-
-  if (item.type === "page" && item.pageId) {
+  if (item.type === "page") {
     const collection = item.collectionSlug ?? "pages";
     const doc = docByKey.get(`${collection}\0${item.pageId}`);
     let url = "#";
@@ -147,16 +162,37 @@ function mapNavItem(
         // the "#" fallback so rendering doesn't blow up.
       }
     }
-    return { ...withChildren, url };
+    return {
+      id: item.id,
+      label: item.label,
+      type: "page",
+      pageId: item.pageId,
+      ...(item.collectionSlug ? { collectionSlug: item.collectionSlug } : {}),
+      ...(children ? { children } : {}),
+      url,
+    };
   }
 
-  if (item.type === "collection" && item.collection) {
+  if (item.type === "collection") {
     const slug = item.collection.replace(/^\/+/, "");
     const url = slug ? `/${slug}` : "#";
-    return { ...withChildren, url };
+    return {
+      id: item.id,
+      label: item.label,
+      type: "collection",
+      collection: item.collection,
+      ...(children ? { children } : {}),
+      url,
+    };
   }
 
-  return withChildren;
+  return {
+    id: item.id,
+    label: item.label,
+    type: "link",
+    url: item.url,
+    ...(children ? { children } : {}),
+  };
 }
 
 export async function getPageBySlug(
@@ -201,10 +237,7 @@ export async function getPostBySlug(
   return result.docs[0] ?? null;
 }
 
-export async function findPosts(
-  options: NpFindOptions,
-  user?: NpAuthUser,
-): Promise<NpFindResult> {
+export async function findPosts(options: NpFindOptions, user?: NpAuthUser): Promise<NpFindResult> {
   const resolved = await resolveHasManyRelationshipWhere("posts", options);
   if (resolved.empty) {
     return emptyFindResult(options);
@@ -316,9 +349,7 @@ export async function getAllPageSlugs(): Promise<string[]> {
     limit: 10000,
   });
 
-  return result.docs
-    .map((doc) => doc.slug as string)
-    .filter(Boolean);
+  return result.docs.map((doc) => doc.slug as string).filter(Boolean);
 }
 
 /**

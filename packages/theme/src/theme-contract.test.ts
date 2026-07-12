@@ -155,6 +155,41 @@ describe("theme definition contract", () => {
     );
   });
 
+  it("delegates seed trees and location keys to the canonical navigation contract", () => {
+    const theme = validTheme();
+    if (!theme.impl.seedContent) throw new Error("fixture missing seed content");
+    theme.impl.seedContent.navigation = {
+      header: [
+        {
+          id: "duplicate",
+          label: "Unsafe",
+          type: "link",
+          url: "javascript:alert(1)",
+          children: [{ id: "duplicate", label: "Duplicate", type: "link", url: "/duplicate" }],
+        },
+      ],
+    };
+    theme.impl.navLocations = { "Bad Location": { label: "Bad" } };
+
+    expect(npAnalyzeThemeDefinition(theme)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "seed-content",
+          location: "impl.seedContent.navigation.header.0.url",
+        }),
+        expect.objectContaining({
+          code: "seed-content",
+          location: "impl.seedContent.navigation.header.0.children.0.id",
+          message: expect.stringMatching(/duplicates/),
+        }),
+        expect.objectContaining({
+          code: "implementation",
+          location: "impl.navLocations.Bad Location",
+        }),
+      ]),
+    );
+  });
+
   it("rejects unsupported and malformed seed fields", () => {
     const unsupported = validTheme() as unknown as Record<string, unknown>;
     const unsupportedImpl = unsupported.impl as { seedContent: { posts: object[] } };

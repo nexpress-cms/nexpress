@@ -9,7 +9,12 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import type { NpNavItem } from "@nexpress/core";
+import {
+  isNpNavigationLocation,
+  npValidateNavigationItems,
+  npValidateNavigationLocation,
+  type NpNavItem,
+} from "@nexpress/core/navigation";
 import { CornerDownRight, GripVertical, Loader2, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import {
   DndContext,
@@ -250,7 +255,13 @@ export function NavigationEditor() {
         return;
       }
 
-      const next = normalizeNavItems(payload);
+      const rawItems = extractNavigationItems(payload);
+      const validation = npValidateNavigationItems(rawItems);
+      if (!validation.ok) {
+        setError(`${validation.issue.path}: ${validation.issue.message}`);
+        return;
+      }
+      const next = normalizeNavItems(rawItems as NpNavItem[]);
       setItems(next);
       setSavedSnapshot(JSON.stringify(next));
       setSavedUpdatedAt(extractUpdatedAt(payload));
@@ -345,6 +356,13 @@ export function NavigationEditor() {
   }, [items]);
 
   async function saveNavigation() {
+    const tree = buildNavTree(items);
+    const validation = npValidateNavigationItems(tree);
+    if (!validation.ok) {
+      setError(`${validation.issue.path}: ${validation.issue.message}`);
+      setMessage(null);
+      return;
+    }
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -355,7 +373,7 @@ export function NavigationEditor() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           location,
-          items: buildNavTree(items),
+          items: tree,
           // Echo back the token from the last load (or the last
           // successful save). `null` skips the check — happens on
           // the very first save of a fresh location.
@@ -398,6 +416,11 @@ export function NavigationEditor() {
       .replace(/[^a-z0-9-]/g, "");
     if (!slug) {
       setError("Location name must be lowercase letters, numbers, or hyphens.");
+      return;
+    }
+    const locationValidation = npValidateNavigationLocation(slug);
+    if (!locationValidation.ok) {
+      setError(locationValidation.issue.message);
       return;
     }
     if (locations.some((l) => l.value === slug)) {
@@ -461,6 +484,11 @@ export function NavigationEditor() {
       .replace(/[^a-z0-9-]/g, "");
     if (!newSlug) {
       setError("Location name must be lowercase letters, numbers, or hyphens.");
+      return;
+    }
+    const locationValidation = npValidateNavigationLocation(newSlug);
+    if (!locationValidation.ok) {
+      setError(locationValidation.issue.message);
       return;
     }
     if (newSlug === oldSlug) {
@@ -1489,57 +1517,50 @@ function toNavItem(item: EditableNavItem): NpNavItem {
   };
 }
 
-function normalizeNavItems(payload: unknown): EditableNavItem[] {
-  const source = Array.isArray(payload)
-    ? payload
-    : isRecord(payload) && Array.isArray(payload.items)
-      ? payload.items
-      : [];
+function extractNavigationItems(payload: unknown): unknown {
+  if (Array.isArray(payload)) return payload;
+  return isRecord(payload) ? payload.items : undefined;
+}
 
+function normalizeNavItems(source: NpNavItem[]): EditableNavItem[] {
   const result: EditableNavItem[] = [];
-  source.filter(isRecord).forEach((item, index) => {
-    const top = toEditableNavItem(item, index, undefined);
+  source.forEach((item) => {
+    const top = toEditableNavItem(item, undefined);
     result.push(top);
-    if (Array.isArray(item.children)) {
-      item.children.filter(isRecord).forEach((child, childIndex) => {
-        result.push(toEditableNavItem(child, index * 1000 + childIndex, top.id));
+    if (item.children) {
+      item.children.forEach((child) => {
+        result.push(toEditableNavItem(child, top.id));
       });
     }
   });
   return result;
 }
 
-function toEditableNavItem(
-  item: Record<string, unknown>,
-  index: number,
-  parentId: string | undefined,
-): EditableNavItem {
-  const id = typeof item.id === "string" ? item.id : `nav-${index}`;
-  const label = typeof item.label === "string" ? item.label : "";
+function toEditableNavItem(item: NpNavItem, parentId: string | undefined): EditableNavItem {
   if (item.type === "page") {
     return {
-      id,
-      label,
-      type: "page" as const,
-      pageId: typeof item.pageId === "string" ? item.pageId : undefined,
-      collectionSlug: typeof item.collectionSlug === "string" ? item.collectionSlug : undefined,
+      id: item.id,
+      label: item.label,
+      type: "page",
+      pageId: item.pageId,
+      collectionSlug: item.collectionSlug,
       parentId,
     };
   }
   if (item.type === "collection") {
     return {
-      id,
-      label,
-      type: "collection" as const,
-      collection: typeof item.collection === "string" ? item.collection : undefined,
+      id: item.id,
+      label: item.label,
+      type: "collection",
+      collection: item.collection,
       parentId,
     };
   }
   return {
-    id,
-    label,
-    type: "link" as const,
-    url: typeof item.url === "string" ? item.url : "/",
+    id: item.id,
+    label: item.label,
+    type: "link",
+    url: item.url,
     parentId,
   };
 }
@@ -1815,7 +1836,7 @@ function labelFor(location: NavLocation, locations: LocationOption[]): string {
 
 function parseLocationOption(value: unknown): LocationOption | null {
   if (!isRecord(value)) return null;
-  if (typeof value.value !== "string" || typeof value.label !== "string") {
+  if (!isNpNavigationLocation(value.value) || typeof value.label !== "string") {
     return null;
   }
   // Defensive narrowing — the endpoint adds these fields in
@@ -1844,6 +1865,12 @@ function getErrorMessage(payload: unknown, fallback: string) {
       return payload.error;
     }
     if (isRecord(payload.error) && typeof payload.error.message === "string") {
+      const details = payload.error.details;
+      if (Array.isArray(details) && isRecord(details[0])) {
+        const field = typeof details[0].field === "string" ? details[0].field : null;
+        const message = typeof details[0].message === "string" ? details[0].message : null;
+        if (message) return field ? `${field}: ${message}` : message;
+      }
       return payload.error.message;
     }
   }
@@ -1852,5 +1879,7 @@ function getErrorMessage(payload: unknown, fallback: string) {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  return prototype === Object.prototype || prototype === null;
 }

@@ -1,4 +1,4 @@
-import type { NpNavItem } from "@nexpress/core";
+import type { NpResolvedNavItem } from "@nexpress/core/navigation";
 import * as React from "react";
 
 import { getCachedNavigation } from "./cache.js";
@@ -34,10 +34,10 @@ export interface NpNavMenuProps {
   /** Render an item override. Themes that want custom item
    *  rendering pass a function; the default emits a plain
    *  `<li><a>` pair. */
-  renderItem?: (item: NpNavItem, index: number) => React.ReactNode;
+  renderItem?: (item: NpResolvedNavItem, index: number) => React.ReactNode;
 }
 
-function defaultRenderItem(item: NpNavItem, index: number): React.ReactNode {
+function defaultRenderItem(item: NpResolvedNavItem, index: number): React.ReactNode {
   return (
     <li key={`${item.url}:${index}`}>
       <a href={item.url}>{item.label}</a>

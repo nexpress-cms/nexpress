@@ -1,4 +1,4 @@
-import type { NpNavItem } from "@nexpress/core";
+import type { NpResolvedNavItem } from "@nexpress/core/navigation";
 import { getCachedNavigation } from "@nexpress/next";
 
 import { resolvePortfolioSettings } from "./settings-helpers.js";
@@ -10,7 +10,7 @@ import { resolvePortfolioSettings } from "./settings-helpers.js";
  *     pulse dot indicator. The pulse is decorative; the pill
  *     text is driven by `settings.footerHoursLine`.
  *   - **Right**: secondary meta links. Pulls from the
- *     `footerSecondary` nav location when the operator has wired
+ *     `footer-secondary` nav location when the operator has wired
  *     one; falls back to Index / Colophon / "Built on NexPress"
  *     so a fresh install matches the design out of the box. The
  *     "Built on NexPress" credit is still gated by
@@ -22,17 +22,14 @@ import { resolvePortfolioSettings } from "./settings-helpers.js";
  */
 export async function PortfolioFooter() {
   const settings = await resolvePortfolioSettings();
-  const secondary = await getCachedNavigation("footerSecondary");
+  const secondary = await getCachedNavigation("footer-secondary");
   const year = settings.copyrightYear ?? new Date().getFullYear();
-  const links: NpNavItem[] = secondary.length > 0 ? secondary : [];
+  const links: NpResolvedNavItem[] = secondary.length > 0 ? secondary : [];
 
   return (
     <footer className="np-portfolio-footer">
       {settings.aboutCopy.length > 0 ? (
-        <div
-          className="np-portfolio-container"
-          style={{ marginBottom: "1.5rem" }}
-        >
+        <div className="np-portfolio-container" style={{ marginBottom: "1.5rem" }}>
           <p
             style={{
               maxWidth: "60ch",
@@ -51,20 +48,14 @@ export async function PortfolioFooter() {
             © {year.toString()} {settings.studioName}
           </span>
           <span className="np-portfolio-footer-clock">
-            <span
-              className="np-portfolio-footer-clock-dot"
-              aria-hidden="true"
-            />
+            <span className="np-portfolio-footer-clock-dot" aria-hidden="true" />
             {settings.footerHoursLine}
           </span>
         </div>
         <div className="np-portfolio-footer-right">
           {links.length > 0 ? (
             links.map((item, index) => (
-              <a
-                key={`portfolio-footer-link-${index.toString()}`}
-                href={item.url}
-              >
+              <a key={`portfolio-footer-link-${index.toString()}`} href={item.url}>
                 {item.label}
               </a>
             ))
@@ -74,9 +65,7 @@ export async function PortfolioFooter() {
               <a href="/colophon">Colophon</a>
             </>
           )}
-          {settings.showFooterCredit ? (
-            <a href="https://nexpress.dev">Built on NexPress</a>
-          ) : null}
+          {settings.showFooterCredit ? <a href="https://nexpress.dev">Built on NexPress</a> : null}
         </div>
       </div>
     </footer>

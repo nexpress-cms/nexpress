@@ -1,5 +1,5 @@
 import * as React from "react";
-import type { NpNavItem } from "@nexpress/core";
+import type { NpResolvedNavItem } from "@nexpress/core/navigation";
 import { getCachedNavigation } from "@nexpress/next";
 
 import { LocalTimeTicker } from "./components/local-time-ticker.js";
@@ -44,7 +44,7 @@ export async function PortfolioHeader() {
         </a>
         {items.length > 0 ? (
           <ul className="np-portfolio-nav" aria-label="Main">
-            {items.map((item: NpNavItem, index: number) => (
+            {items.map((item: NpResolvedNavItem, index: number) => (
               <li key={`portfolio-nav-${index.toString()}`}>
                 <a href={item.url}>{item.label}</a>
               </li>

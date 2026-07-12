@@ -5,6 +5,12 @@ import {
   npThemeOptionalTokenKeys,
   type NpThemeTokenGroup,
 } from "@nexpress/core/theme";
+import {
+  npNavigationCollectionSlugPattern,
+  npNavigationItemIdPattern,
+  npNavigationLimits,
+  npNavigationLocationPattern,
+} from "@nexpress/core/navigation";
 import { NextResponse } from "next/server";
 
 import { ensureFor } from "../../lib/init-core";
@@ -198,6 +204,104 @@ function buildSpec(): OpenApiSchema {
           type: "array",
           items: { $ref: "#/components/schemas/block_instance" },
         },
+      },
+    },
+    navigation_item: {
+      description: `Exact persisted navigation item. Trees support ${npNavigationLimits.maxDepth.toString()} levels and ${npNavigationLimits.maxItems.toString()} total items per location.`,
+      oneOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["id", "label", "type", "url"],
+          properties: {
+            id: {
+              type: "string",
+              maxLength: npNavigationLimits.itemIdLength,
+              pattern: npNavigationItemIdPattern,
+            },
+            label: { type: "string", minLength: 1, maxLength: npNavigationLimits.labelLength },
+            type: { type: "string", enum: ["link"] },
+            url: { type: "string", minLength: 1, maxLength: npNavigationLimits.urlLength },
+            children: {
+              type: "array",
+              maxItems: npNavigationLimits.maxItems,
+              items: { $ref: "#/components/schemas/navigation_item" },
+            },
+          },
+        },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["id", "label", "type", "collection"],
+          properties: {
+            id: {
+              type: "string",
+              maxLength: npNavigationLimits.itemIdLength,
+              pattern: npNavigationItemIdPattern,
+            },
+            label: { type: "string", minLength: 1, maxLength: npNavigationLimits.labelLength },
+            type: { type: "string", enum: ["collection"] },
+            collection: {
+              type: "string",
+              maxLength: npNavigationLimits.collectionSlugLength,
+              pattern: npNavigationCollectionSlugPattern,
+            },
+            children: {
+              type: "array",
+              maxItems: npNavigationLimits.maxItems,
+              items: { $ref: "#/components/schemas/navigation_item" },
+            },
+          },
+        },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["id", "label", "type", "pageId"],
+          properties: {
+            id: {
+              type: "string",
+              maxLength: npNavigationLimits.itemIdLength,
+              pattern: npNavigationItemIdPattern,
+            },
+            label: { type: "string", minLength: 1, maxLength: npNavigationLimits.labelLength },
+            type: { type: "string", enum: ["page"] },
+            pageId: {
+              type: "string",
+              maxLength: npNavigationLimits.itemIdLength,
+              pattern: npNavigationItemIdPattern,
+            },
+            collectionSlug: {
+              type: "string",
+              maxLength: npNavigationLimits.collectionSlugLength,
+              pattern: npNavigationCollectionSlugPattern,
+            },
+            children: {
+              type: "array",
+              maxItems: npNavigationLimits.maxItems,
+              items: { $ref: "#/components/schemas/navigation_item" },
+            },
+          },
+        },
+      ],
+    },
+    navigation_items: {
+      type: "array",
+      maxItems: npNavigationLimits.maxItems,
+      items: { $ref: "#/components/schemas/navigation_item" },
+    },
+    navigation_location: {
+      type: "string",
+      maxLength: npNavigationLimits.locationLength,
+      pattern: npNavigationLocationPattern,
+    },
+    navigation_payload: {
+      type: "object",
+      additionalProperties: false,
+      required: ["location", "items", "updatedAt"],
+      properties: {
+        location: { $ref: "#/components/schemas/navigation_location" },
+        items: { $ref: "#/components/schemas/navigation_items" },
+        updatedAt: { type: ["string", "null"], format: "date-time" },
       },
     },
     plugin_item: {
@@ -782,11 +886,12 @@ function buildSpec(): OpenApiSchema {
     "/api/navigation": {
       get: {
         summary: "Get a navigation tree by location",
+        security: [],
         parameters: [
           {
             in: "query",
             name: "location",
-            schema: { type: "string" },
+            schema: { $ref: "#/components/schemas/navigation_location" },
             description: "Defaults to `main`.",
           },
         ],
@@ -795,13 +900,7 @@ function buildSpec(): OpenApiSchema {
             description: "Navigation payload",
             content: {
               "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    location: { type: "string" },
-                    items: { type: "array", items: { type: "object", additionalProperties: true } },
-                  },
-                },
+                schema: { $ref: "#/components/schemas/navigation_payload" },
               },
             },
           },
@@ -815,10 +914,15 @@ function buildSpec(): OpenApiSchema {
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
                 required: ["items"],
                 properties: {
-                  location: { type: "string", description: "Defaults to `main`." },
-                  items: { type: "array", items: { type: "object", additionalProperties: true } },
+                  location: {
+                    $ref: "#/components/schemas/navigation_location",
+                    description: "Defaults to `main`.",
+                  },
+                  items: { $ref: "#/components/schemas/navigation_items" },
+                  expectedUpdatedAt: { type: "string", format: "date-time" },
                 },
               },
             },
@@ -828,6 +932,62 @@ function buildSpec(): OpenApiSchema {
           "200": { description: "Updated navigation payload" },
           "403": { description: "Caller is not an admin" },
           "400": { description: "Invalid items structure" },
+        },
+      },
+      patch: {
+        summary: "Rename a custom navigation location (admin only)",
+        parameters: [
+          {
+            in: "query",
+            name: "location",
+            required: true,
+            schema: { $ref: "#/components/schemas/navigation_location" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["newLocation"],
+                properties: {
+                  newLocation: { $ref: "#/components/schemas/navigation_location" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Renamed navigation payload",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/navigation_payload" },
+              },
+            },
+          },
+          "400": { description: "Invalid location" },
+          "403": { description: "Protected location or caller is not an admin" },
+          "409": { description: "Target location already exists" },
+        },
+      },
+      delete: {
+        summary: "Delete a custom navigation location (admin only)",
+        parameters: [
+          {
+            in: "query",
+            name: "location",
+            required: true,
+            schema: { $ref: "#/components/schemas/navigation_location" },
+          },
+        ],
+        responses: {
+          "200": { description: "Deleted location" },
+          "400": { description: "Invalid location" },
+          "403": { description: "Protected location or caller is not an admin" },
+          "404": { description: "Location not found" },
         },
       },
     },
@@ -1335,7 +1495,10 @@ function buildSpec(): OpenApiSchema {
                     collectionsExported: { type: "array", items: { type: "string" } },
                     theme: { type: "object", additionalProperties: true, nullable: true },
                     settings: { type: "object", additionalProperties: true },
-                    navigation: { type: "object", additionalProperties: true },
+                    navigation: {
+                      type: "object",
+                      additionalProperties: { $ref: "#/components/schemas/navigation_items" },
+                    },
                     collections: {
                       type: "object",
                       additionalProperties: {
@@ -1397,7 +1560,26 @@ function buildSpec(): OpenApiSchema {
                   version: { type: "string", enum: ["1"] },
                   theme: { type: "object", additionalProperties: true },
                   settings: { type: "object", additionalProperties: true },
-                  navigation: { type: "object", additionalProperties: true },
+                  navigation: {
+                    oneOf: [
+                      {
+                        type: "object",
+                        additionalProperties: { $ref: "#/components/schemas/navigation_items" },
+                      },
+                      {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          additionalProperties: false,
+                          required: ["items"],
+                          properties: {
+                            location: { $ref: "#/components/schemas/navigation_location" },
+                            items: { $ref: "#/components/schemas/navigation_items" },
+                          },
+                        },
+                      },
+                    ],
+                  },
                   collections: {
                     type: "object",
                     additionalProperties: {

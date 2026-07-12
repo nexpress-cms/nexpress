@@ -655,20 +655,15 @@ export const portfolioTheme = defineTheme({
     routes: [{ pattern: "/work/:slug", component: PortfolioProjectDetailRoute }],
     blocks: portfolioBlocks,
     navLocations: {
-      primary: {
+      header: {
         label: "Primary nav",
         description: "Top nav links (Work / Studio / Journal).",
         maxItems: 5,
       },
-      footerSecondary: {
+      "footer-secondary": {
         label: "Footer secondary links",
         description:
           "Meta links shown on the right of the footer (Index / Colophon / etc.). Falls back to a default Index + Colophon pair when empty.",
-        maxItems: 6,
-      },
-      footerSocial: {
-        label: "Footer social links",
-        description: "Social profile links shown in the footer.",
         maxItems: 6,
       },
     },

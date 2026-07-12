@@ -55,6 +55,35 @@ export type {
 } from "./config/types.js";
 export type { NpBlockContent, NpBlockInstance } from "./fields/block-content.js";
 export { isNpBlockContent, npValidateBlockContent } from "./fields/block-content.js";
+export {
+  isNpNavigationItems,
+  isNpNavigationLocation,
+  npAnalyzeNavigationItems,
+  npAnalyzeNavigationLocation,
+  npNavigationCollectionSlugPattern,
+  npNavigationItemIdPattern,
+  npNavigationItemTypes,
+  npNavigationLimits,
+  npNavigationLocationPattern,
+  npNavigationMaxDepth,
+  npNavigationMaxItems,
+  npValidateNavigationItems,
+  npValidateNavigationLocation,
+} from "./navigation/contract.js";
+export type {
+  NpNavCollectionItem,
+  NpNavLinkItem,
+  NpNavigationItems,
+  NpNavPageItem,
+  NpResolvedNavItem,
+  NpResolvedNavigationItems,
+} from "./navigation/types.js";
+export type {
+  NpNavigationContractIssue,
+  NpNavigationContractIssueCode,
+  NpNavigationItemType,
+  NpNavigationValidationResult,
+} from "./navigation/contract.js";
 
 // `hasRole` / `isStaffMod` were retired in favour of `can(user, capability)` (#273).
 export { ROLE_HIERARCHY } from "./config/types.js";
