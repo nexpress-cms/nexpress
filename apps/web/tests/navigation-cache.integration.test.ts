@@ -167,6 +167,30 @@ describe.skipIf(skipIfNoTestDb())("navigation cache (Phase 14.3)", () => {
     expect(await db.select().from(npNavigation)).toHaveLength(0);
   });
 
+  it("rejects noncanonical rename and delete locations instead of normalizing them", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { DELETE, PATCH } = await import("@/app/api/navigation/route");
+
+    const rename = await PATCH(
+      buildRequest("/api/navigation", {
+        session: admin,
+        method: "PATCH",
+        query: { location: " custom-location " },
+        body: { newLocation: "renamed-location" },
+      }),
+    );
+    expect(rename.status).toBe(400);
+
+    const remove = await DELETE(
+      buildRequest("/api/navigation", {
+        session: admin,
+        method: "DELETE",
+        query: { location: " custom-location " },
+      }),
+    );
+    expect(remove.status).toBe(400);
+  });
+
   it("fails closed when a malformed persisted tree is read", async () => {
     const db = await getTestDb();
     await db.insert(npNavigation).values({

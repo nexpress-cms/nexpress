@@ -135,10 +135,7 @@ export async function PUT(request: NextRequest) {
     const expectedUpdatedAt = isCanonicalIsoDateTime(body.expectedUpdatedAt)
       ? body.expectedUpdatedAt
       : null;
-    if (
-      Object.hasOwn(body, "expectedUpdatedAt") &&
-      (expectedUpdatedAt === null || !Number.isFinite(Date.parse(expectedUpdatedAt)))
-    ) {
+    if (Object.hasOwn(body, "expectedUpdatedAt") && expectedUpdatedAt === null) {
       throw new NpValidationError("Invalid input", [
         {
           field: "expectedUpdatedAt",
@@ -209,7 +206,7 @@ export async function DELETE(request: NextRequest) {
       throw new NpForbiddenError("navigation", "delete");
     }
 
-    const location = request.nextUrl.searchParams.get("location")?.trim();
+    const location = request.nextUrl.searchParams.get("location");
     if (!location) {
       throw new NpValidationError("Invalid input", [
         { field: "location", message: "location query param is required" },
@@ -248,7 +245,7 @@ export async function PATCH(request: NextRequest) {
       throw new NpForbiddenError("navigation", "rename");
     }
 
-    const oldLocation = request.nextUrl.searchParams.get("location")?.trim();
+    const oldLocation = request.nextUrl.searchParams.get("location");
     if (!oldLocation) {
       throw new NpValidationError("Invalid input", [
         { field: "location", message: "location query param is required" },
