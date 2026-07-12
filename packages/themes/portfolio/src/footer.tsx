@@ -10,7 +10,7 @@ import { resolvePortfolioSettings } from "./settings-helpers.js";
  *     pulse dot indicator. The pulse is decorative; the pill
  *     text is driven by `settings.footerHoursLine`.
  *   - **Right**: secondary meta links. Pulls from the
- *     `footer` nav location when the operator has wired
+ *     `footer-secondary` nav location when the operator has wired
  *     one; falls back to Index / Colophon / "Built on NexPress"
  *     so a fresh install matches the design out of the box. The
  *     "Built on NexPress" credit is still gated by
@@ -22,7 +22,7 @@ import { resolvePortfolioSettings } from "./settings-helpers.js";
  */
 export async function PortfolioFooter() {
   const settings = await resolvePortfolioSettings();
-  const secondary = await getCachedNavigation("footer");
+  const secondary = await getCachedNavigation("footer-secondary");
   const year = settings.copyrightYear ?? new Date().getFullYear();
   const links: NpResolvedNavItem[] = secondary.length > 0 ? secondary : [];
 

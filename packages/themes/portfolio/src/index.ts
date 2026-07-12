@@ -660,7 +660,7 @@ export const portfolioTheme = defineTheme({
         description: "Top nav links (Work / Studio / Journal).",
         maxItems: 5,
       },
-      footer: {
+      "footer-secondary": {
         label: "Footer secondary links",
         description:
           "Meta links shown on the right of the footer (Index / Colophon / etc.). Falls back to a default Index + Colophon pair when empty.",
