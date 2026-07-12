@@ -10,8 +10,7 @@ import type {
 
 /**
  * Local mirrors of `NpSitemapEntry` / `NpFeedEntry` from
- * `@nexpress/core` — same workaround as `NpThemeTokensOverlay`
- * elsewhere in this file. tsup's DTS bundler intermittently
+ * `@nexpress/core`. tsup's DTS bundler intermittently
  * fails to resolve named types across the `@nexpress/core`
  * boundary even when the symbols are present in the consumed
  * `dist/index.d.ts`. The structural mirror keeps theme authors
@@ -35,19 +34,13 @@ type LocalNpFeedEntry = {
   updated: string;
   published: string | null;
 };
-import type {
-  NpRegisteredTheme,
-  NpThemeColors,
-  NpThemeManifest,
-  NpThemeShape,
-  NpThemeTypography,
-} from "@nexpress/core";
+import type { NpRegisteredTheme, NpThemeManifest } from "@nexpress/core";
+import type { NpThemeTokensOverlay as CoreNpThemeTokensOverlay } from "@nexpress/core/theme";
 import { npAssertThemeDefinition } from "./theme-contract.js";
 
 /**
- * Local mirror of `NpNavItem` from `@nexpress/core` — same
- * tsup-DTS-bundler workaround as `NpThemeTokensOverlay` /
- * `LocalNpSitemapEntry` elsewhere in this file. The bundler
+ * Local mirror of `NpNavItem` from `@nexpress/core` — the same
+ * tsup-DTS-bundler workaround as `LocalNpSitemapEntry` elsewhere in this file. The bundler
  * intermittently fails to resolve the named type across the
  * `@nexpress/core` boundary; the structural mirror keeps
  * theme authors able to declare nav items against the same
@@ -65,30 +58,8 @@ type LocalNpNavItem = {
   children?: LocalNpNavItem[];
 };
 
-/**
- * Local mirror of `NpThemeTokensOverlay` from `@nexpress/core` —
- * authored as `Partial`s of each sub-tree so a theme that overrides
- * only a few tokens (e.g. `colors.primary`) doesn't have to copy
- * the rest from `DEFAULT_THEME`. The runtime merger in
- * `@nexpress/core`'s `getTheme()` accepts the same shape and layers
- * it onto framework defaults before serving them.
- *
- * Re-declared here (instead of imported by name) as a workaround:
- * tsup's DTS bundler failed to resolve the named type from
- * `@nexpress/core/dist/index.d.ts` even though the symbol was
- * present in the file — likely a quirk in how the bundler walks
- * cross-package exports for type-only imports. Structural identity
- * is what consumers depend on, so the duplicated declaration is
- * functionally equivalent. If you're consuming this externally,
- * prefer importing `NpThemeTokensOverlay` from `@nexpress/core`
- * directly — this copy is a build-time crutch, not a parallel
- * surface.
- */
-export interface NpThemeTokensOverlay {
-  colors?: Partial<NpThemeColors>;
-  typography?: Partial<NpThemeTypography>;
-  shape?: Partial<NpThemeShape>;
-}
+/** Canonical partial token tree re-exported for theme authors. */
+export type NpThemeTokensOverlay = CoreNpThemeTokensOverlay;
 
 /**
  * Phase 11.1 — `NpTheme` is the typed shape themes export.

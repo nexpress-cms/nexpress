@@ -136,6 +136,33 @@ describe("registered theme definition contract", () => {
     );
   });
 
+  it("uses the canonical token overlay contract for theme defaults", () => {
+    const theme = validTheme();
+    theme.impl = {
+      ...(theme.impl as object),
+      tokens: {
+        colors: {
+          primary: "url(https://example.com/tracker)",
+          brand: "#fff",
+        },
+      },
+    };
+
+    expect(npAnalyzeRegisteredThemeDefinition(theme)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "implementation",
+          location: "impl.tokens.colors.primary",
+          message: expect.stringMatching(/resource-loading/),
+        }),
+        expect.objectContaining({
+          location: "impl.tokens.colors.brand",
+          message: expect.stringMatching(/unsupported/),
+        }),
+      ]),
+    );
+  });
+
   it("rejects requirement properties that do not apply to the field type", () => {
     const theme = validTheme();
     theme.manifest = {

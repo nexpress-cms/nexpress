@@ -12,6 +12,7 @@ import {
   findDocuments,
   can,
 } from "@nexpress/core";
+import { npAnalyzeThemeTokensOverlay } from "@nexpress/core/theme";
 import { and, inArray, isNull } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
@@ -64,6 +65,16 @@ export async function GET(request: NextRequest) {
     const navRows = partial ? [] : await db.select().from(npNavigation);
 
     const theme = settingsRows.find((r) => r.key === "theme")?.value;
+    const themeIssues = theme === undefined ? [] : npAnalyzeThemeTokensOverlay(theme);
+    if (themeIssues.length > 0) {
+      throw new NpValidationError(
+        "Invalid stored theme tokens",
+        themeIssues.map((issue) => ({
+          field: issue.path.replace(/^theme/u, "settings.theme"),
+          message: issue.message,
+        })),
+      );
+    }
     const settings = Object.fromEntries(
       settingsRows.filter((r) => r.key !== "theme").map((r) => [r.key, r.value]),
     );

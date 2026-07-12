@@ -7,7 +7,6 @@ import {
   serializeTheme,
 } from "../../../packages/admin/src/settings/theme-io.js";
 import { DEFAULT_THEME } from "@nexpress/core";
-import type { NpThemeTokens } from "@nexpress/core";
 
 /**
  * Phase 11.6 — theme JSON export/import helpers. The admin
@@ -30,7 +29,7 @@ describe("serializeTheme", () => {
 
   it("round-trips the default theme through parse → normalize", () => {
     const text = serializeTheme(DEFAULT_THEME);
-    const result = parseImportedTheme(text, identityNormalize);
+    const result = parseImportedTheme(text, DEFAULT_THEME);
     if (!result.ok) throw new Error("expected parse to succeed");
     expect(result.theme).toEqual(DEFAULT_THEME);
   });
@@ -50,26 +49,26 @@ describe("downloadFilename", () => {
 
 describe("parseImportedTheme", () => {
   it("rejects invalid JSON with a clear reason", () => {
-    const result = parseImportedTheme("{ not json", identityNormalize);
+    const result = parseImportedTheme("{ not json", DEFAULT_THEME);
     if (result.ok) throw new Error("expected parse to fail");
     expect(result.reason).toBe("invalid_json");
     expect(PARSE_ERROR_MESSAGES[result.reason]).toContain("Invalid JSON");
   });
 
   it("rejects non-object JSON (arrays, primitives)", () => {
-    const arr = parseImportedTheme("[1,2,3]", identityNormalize);
+    const arr = parseImportedTheme("[1,2,3]", DEFAULT_THEME);
     if (arr.ok) throw new Error("expected parse to fail");
     expect(arr.reason).toBe("not_an_object");
 
-    const num = parseImportedTheme("42", identityNormalize);
+    const num = parseImportedTheme("42", DEFAULT_THEME);
     if (num.ok) throw new Error("expected parse to fail");
     expect(num.reason).toBe("not_an_object");
 
-    const str = parseImportedTheme('"a string"', identityNormalize);
+    const str = parseImportedTheme('"a string"', DEFAULT_THEME);
     if (str.ok) throw new Error("expected parse to fail");
     expect(str.reason).toBe("not_an_object");
 
-    const nul = parseImportedTheme("null", identityNormalize);
+    const nul = parseImportedTheme("null", DEFAULT_THEME);
     if (nul.ok) throw new Error("expected parse to fail");
     expect(nul.reason).toBe("not_an_object");
   });
@@ -77,7 +76,7 @@ describe("parseImportedTheme", () => {
   it("rejects an object that lacks any theme top-level key", () => {
     const result = parseImportedTheme(
       JSON.stringify({ name: "my package", version: "1.0.0" }),
-      identityNormalize,
+      DEFAULT_THEME,
     );
     if (result.ok) throw new Error("expected parse to fail");
     expect(result.reason).toBe("no_theme_fields");
@@ -87,32 +86,43 @@ describe("parseImportedTheme", () => {
     const text = JSON.stringify({
       colors: { primary: "#ff00ff" },
     });
-    const calls: unknown[] = [];
-    const result = parseImportedTheme(text, (raw) => {
-      calls.push(raw);
-      return DEFAULT_THEME;
-    });
+    const result = parseImportedTheme(text, DEFAULT_THEME);
     if (!result.ok) throw new Error("expected parse to succeed");
-    expect(calls).toHaveLength(1);
-    expect(result.theme).toEqual(DEFAULT_THEME);
+    expect(result.theme).toEqual({
+      ...DEFAULT_THEME,
+      colors: { ...DEFAULT_THEME.colors, primary: "#ff00ff" },
+    });
   });
 
   it("unwraps a `{ theme: { ... } }` envelope (matches the GET response shape)", () => {
     const text = JSON.stringify({
       theme: { colors: { primary: "#000000" } },
     });
-    let received: unknown = null;
-    const result = parseImportedTheme(text, (raw) => {
-      received = raw;
-      return DEFAULT_THEME;
-    });
+    const result = parseImportedTheme(text, DEFAULT_THEME);
     if (!result.ok) throw new Error("expected parse to succeed");
-    // The candidate the normalizer sees should be the unwrapped
-    // theme object, not the outer envelope.
-    expect(received).toMatchObject({ colors: { primary: "#000000" } });
+    expect(result.theme.colors.primary).toBe("#000000");
+  });
+
+  it("rejects a null theme envelope without throwing", () => {
+    const result = parseImportedTheme(JSON.stringify({ theme: null }), DEFAULT_THEME);
+    if (result.ok) throw new Error("expected parse to fail");
+    expect(result.reason).toBe("no_theme_fields");
+  });
+
+  it("rejects unknown keys and unsafe CSS values with contract details", () => {
+    const unknown = parseImportedTheme(
+      JSON.stringify({ colors: { brand: "#fff" } }),
+      DEFAULT_THEME,
+    );
+    if (unknown.ok) throw new Error("expected parse to fail");
+    expect(unknown.reason).toBe("invalid_contract");
+    expect(unknown.message).toContain("theme.colors.brand");
+
+    const unsafe = parseImportedTheme(
+      JSON.stringify({ colors: { primary: "url(https://example.com/x)" } }),
+      DEFAULT_THEME,
+    );
+    if (unsafe.ok) throw new Error("expected parse to fail");
+    expect(unsafe.reason).toBe("invalid_contract");
   });
 });
-
-function identityNormalize(raw: unknown): NpThemeTokens {
-  return raw as NpThemeTokens;
-}

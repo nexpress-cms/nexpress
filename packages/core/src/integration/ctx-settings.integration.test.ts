@@ -4,6 +4,8 @@ import { npPlugins, npSettings } from "../db/schema/system.js";
 import { getPluginConfig, setPluginConfig } from "../plugins/config.js";
 import { createPluginRuntimeContext } from "../plugins/context.js";
 import { loadPlugins, resetPlugins } from "../plugins/host.js";
+import { DEFAULT_THEME } from "../theme/defaults.js";
+import type { NpThemeTokens, NpThemeTokensOverlay } from "../theme/types.js";
 import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } from "./setup.js";
 
 describe.skipIf(skipIfNoTestDb())("ctx.settings / ctx.theme (integration)", () => {
@@ -41,8 +43,8 @@ describe.skipIf(skipIfNoTestDb())("ctx.settings / ctx.theme (integration)", () =
         setPlugin(data: Record<string, unknown>): Promise<void>;
       };
       theme: {
-        getTokens(): Promise<Record<string, unknown>>;
-        setTokens(tokens: Record<string, unknown>): Promise<void>;
+        getTokens(): Promise<NpThemeTokens>;
+        setTokens(tokens: NpThemeTokensOverlay): Promise<void>;
       };
     };
   }
@@ -127,28 +129,66 @@ describe.skipIf(skipIfNoTestDb())("ctx.settings / ctx.theme (integration)", () =
   it("theme.setTokens merges with existing tokens rather than replacing", async () => {
     const ctx = makeCtx();
 
-    await ctx.theme.setTokens({ accent: "#f00", radius: "8px" });
-    expect(await ctx.theme.getTokens()).toEqual({ accent: "#f00", radius: "8px" });
+    await ctx.theme.setTokens({
+      colors: { accent: "#f00" },
+      shape: { radiusMd: "8px" },
+    });
+    expect(await ctx.theme.getTokens()).toEqual({
+      ...DEFAULT_THEME,
+      colors: { ...DEFAULT_THEME.colors, accent: "#f00" },
+      shape: { ...DEFAULT_THEME.shape, radiusMd: "8px" },
+    });
 
     // Second call partial-updates a single token; unrelated keys preserved.
-    await ctx.theme.setTokens({ accent: "#0f0" });
-    expect(await ctx.theme.getTokens()).toEqual({ accent: "#0f0", radius: "8px" });
+    await ctx.theme.setTokens({ colors: { accent: "#0f0" } });
+    expect(await ctx.theme.getTokens()).toMatchObject({
+      colors: { accent: "#0f0" },
+      shape: { radiusMd: "8px" },
+    });
   });
 
   it("theme.setTokens uses INSERT ON CONFLICT — no duplicate row even under repeated writes", async () => {
     const ctx = makeCtx();
 
-    await ctx.theme.setTokens({ a: 1 });
-    await ctx.theme.setTokens({ b: 2 });
-    await ctx.theme.setTokens({ c: 3 });
+    await ctx.theme.setTokens({ colors: { primary: "#111" } });
+    await ctx.theme.setTokens({ typography: { fontBody: "serif" } });
+    await ctx.theme.setTokens({ shape: { radiusSm: "2px" } });
 
     const db = await getTestDb();
     const rows = await db.select().from(npSettings);
     expect(rows.filter((r) => r.key === "theme")).toHaveLength(1);
   });
 
+  it("theme.setTokens rejects unknown and unsafe token values before writing", async () => {
+    const ctx = makeCtx();
+
+    await expect(
+      ctx.theme.setTokens({ colors: { primary: "url(https://example.com/x)" } }),
+    ).rejects.toMatchObject({ name: "NpValidationError" });
+    await expect(
+      ctx.theme.setTokens({ colors: { brand: "#fff" } } as unknown as NpThemeTokensOverlay),
+    ).rejects.toMatchObject({ name: "NpValidationError" });
+
+    const db = await getTestDb();
+    const rows = await db.select().from(npSettings);
+    expect(rows.filter((row) => row.key === "theme")).toHaveLength(0);
+  });
+
   it("theme.getTokens rejects without theme:read capability", async () => {
     const ctx = makeCtx({ capabilities: [] });
     await expect(ctx.theme.getTokens()).rejects.toThrow();
+  });
+
+  it("theme.getTokens fails closed on malformed persisted overlays", async () => {
+    const db = await getTestDb();
+    await db.insert(npSettings).values({
+      key: "theme",
+      value: { colors: { primary: 42 } },
+    });
+
+    await expect(makeCtx().theme.getTokens()).rejects.toMatchObject({
+      name: "NpValidationError",
+      errors: [expect.objectContaining({ field: "settings.theme.colors.primary" })],
+    });
   });
 });

@@ -1,10 +1,46 @@
 import { getAllCollectionSlugs, getCollectionConfig, getPluginRoutes } from "@nexpress/core";
+import {
+  npThemeTokenGroups,
+  npThemeTokenKeys,
+  npThemeOptionalTokenKeys,
+  type NpThemeTokenGroup,
+} from "@nexpress/core/theme";
 import { NextResponse } from "next/server";
 
 import { ensureFor } from "../../lib/init-core";
 import { collectionToManifest, type NpFieldManifest } from "../../lib/manifest";
 
 type OpenApiSchema = Record<string, unknown>;
+
+function themeTokenGroupSchema(group: NpThemeTokenGroup): OpenApiSchema {
+  const optional = new Set<string>(npThemeOptionalTokenKeys[group]);
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: npThemeTokenKeys[group].filter((key) => !optional.has(key)),
+    properties: Object.fromEntries(
+      npThemeTokenKeys[group].map((key) => [
+        key,
+        {
+          type: "string",
+          minLength: 1,
+          maxLength: 200,
+          description:
+            "Trimmed CSS token value; statement and resource-loading syntax is rejected.",
+        },
+      ]),
+    ),
+  };
+}
+
+const themeTokensSchema: OpenApiSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [...npThemeTokenGroups],
+  properties: Object.fromEntries(
+    npThemeTokenGroups.map((group) => [group, themeTokenGroupSchema(group)]),
+  ),
+};
 
 function fieldToSchema(field: NpFieldManifest): OpenApiSchema {
   switch (field.type) {
@@ -848,20 +884,14 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Active theme tokens",
         description:
-          "Public endpoint — returns `DEFAULT_THEME` when no theme has been persisted yet.",
+          "Public endpoint — returns the fully resolved framework defaults + active theme + persisted override token tree.",
+        security: [],
         responses: {
           "200": {
             description: "Theme tokens",
             content: {
               "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    colors: { type: "object", additionalProperties: true },
-                    typography: { type: "object", additionalProperties: true },
-                    shape: { type: "object", additionalProperties: true },
-                  },
-                },
+                schema: themeTokensSchema,
               },
             },
           },
@@ -873,15 +903,7 @@ function buildSpec(): OpenApiSchema {
           required: true,
           content: {
             "application/json": {
-              schema: {
-                type: "object",
-                required: ["colors", "typography", "shape"],
-                properties: {
-                  colors: { type: "object", additionalProperties: true },
-                  typography: { type: "object", additionalProperties: true },
-                  shape: { type: "object", additionalProperties: true },
-                },
-              },
+              schema: themeTokensSchema,
             },
           },
         },
@@ -893,7 +915,15 @@ function buildSpec(): OpenApiSchema {
       },
       patch: {
         summary: "Alias of PUT — replace the theme tokens (admin only)",
-        responses: { "200": { description: "Updated theme" } },
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: themeTokensSchema } },
+        },
+        responses: {
+          "200": { description: "Updated theme; triggers public-site revalidation." },
+          "403": { description: "Caller is not an admin" },
+          "400": { description: "Theme token contract invalid" },
+        },
       },
     },
     "/api/media": {

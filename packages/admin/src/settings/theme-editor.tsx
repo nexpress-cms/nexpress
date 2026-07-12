@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { NpThemeTokens } from "@nexpress/core";
+import { DEFAULT_THEME, npValidateThemeTokens, type NpThemeTokens } from "@nexpress/core/theme";
 import { Download, Palette, RotateCcw, Save, Square, Type, Upload } from "lucide-react";
 
 import { Button } from "../ui/button.js";
@@ -15,46 +15,6 @@ import {
   parseImportedTheme,
   serializeTheme,
 } from "./theme-io.js";
-
-const defaultTheme: NpThemeTokens = {
-  colors: {
-    primary: "#111827",
-    primaryForeground: "#ffffff",
-    background: "#f8fafc",
-    foreground: "#111827",
-    muted: "#e2e8f0",
-    mutedForeground: "#475569",
-    border: "#cbd5e1",
-    card: "#ffffff",
-    cardForeground: "#111827",
-    accent: "#0f766e",
-    accentForeground: "#f8fafc",
-    destructive: "#dc2626",
-    destructiveForeground: "#ffffff",
-  },
-  typography: {
-    fontHeading: '"Fraunces", serif',
-    fontBody: '"Source Serif 4", serif',
-    fontMono: '"IBM Plex Mono", monospace',
-    fontSizeBase: "16px",
-    lineHeight: "1.6",
-    fontSizeSm: "14px",
-    fontSizeLg: "18px",
-    fontSizeXl: "20px",
-    fontSize2xl: "24px",
-    fontSize3xl: "30px",
-    fontSize4xl: "38px",
-  },
-  shape: {
-    radiusSm: "6px",
-    radiusMd: "12px",
-    radiusLg: "20px",
-    radiusFull: "999px",
-    shadowSm: "0 1px 2px rgba(15, 23, 42, 0.08)",
-    shadowMd: "0 18px 40px rgba(15, 23, 42, 0.12)",
-    shadowLg: "0 26px 80px rgba(15, 23, 42, 0.18)",
-  },
-};
 
 const colorFields: Array<{ key: keyof NpThemeTokens["colors"]; label: string }> = [
   { key: "primary", label: "Primary" },
@@ -100,7 +60,7 @@ const shapeFields: Array<{ key: keyof NpThemeTokens["shape"]; label: string }> =
 ];
 
 export function ThemeEditor() {
-  const [theme, setTheme] = useState<NpThemeTokens>(defaultTheme);
+  const [theme, setTheme] = useState<NpThemeTokens>(DEFAULT_THEME);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,7 +80,12 @@ export function ThemeEditor() {
         return;
       }
 
-      setTheme(normalizeTheme(payload));
+      const validation = npValidateThemeTokens(payload);
+      if (!validation.ok) {
+        setError(`${validation.issue.path}: ${validation.issue.message}`);
+        return;
+      }
+      setTheme(payload as NpThemeTokens);
     } catch {
       setError("Unable to load theme settings.");
     } finally {
@@ -134,6 +99,12 @@ export function ThemeEditor() {
   }, []);
 
   async function saveTheme() {
+    const validation = npValidateThemeTokens(theme);
+    if (!validation.ok) {
+      setError(`${validation.issue.path}: ${validation.issue.message}`);
+      setMessage(null);
+      return;
+    }
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -186,9 +157,9 @@ export function ThemeEditor() {
       setError("Could not read the selected file.");
       return;
     }
-    const result = parseImportedTheme(text, normalizeTheme);
+    const result = parseImportedTheme(text, theme);
     if (!result.ok) {
-      setError(PARSE_ERROR_MESSAGES[result.reason]);
+      setError(result.message ?? PARSE_ERROR_MESSAGES[result.reason]);
       return;
     }
     setTheme(result.theme);
@@ -350,7 +321,7 @@ export function ThemeEditor() {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => setTheme(defaultTheme)}
+                onClick={() => setTheme(DEFAULT_THEME)}
                 className="w-full sm:w-auto"
               >
                 <RotateCcw className="size-3.5" />
@@ -458,77 +429,19 @@ export function ThemeEditor() {
   );
 }
 
-function normalizeTheme(payload: unknown): NpThemeTokens {
-  if (!isRecord(payload)) {
-    return defaultTheme;
-  }
-
-  const source = isRecord(payload.theme) ? payload.theme : payload;
-
-  return {
-    colors: mergeColors(source.colors),
-    typography: mergeTypography(source.typography),
-    shape: mergeShape(source.shape),
-  };
-}
-
-function mergeColors(incoming: unknown): NpThemeTokens["colors"] {
-  const next = { ...defaultTheme.colors };
-
-  if (!isRecord(incoming)) {
-    return next;
-  }
-
-  for (const { key } of colorFields) {
-    const value = incoming[key];
-
-    if (typeof value === "string") {
-      next[key] = value;
-    }
-  }
-
-  return next;
-}
-
-function mergeTypography(incoming: unknown): NpThemeTokens["typography"] {
-  const next = { ...defaultTheme.typography };
-
-  if (!isRecord(incoming)) {
-    return next;
-  }
-
-  for (const { key } of typographyFields) {
-    const value = incoming[key];
-
-    if (typeof value === "string") {
-      next[key] = value;
-    }
-  }
-
-  return next;
-}
-
-function mergeShape(incoming: unknown): NpThemeTokens["shape"] {
-  const next = { ...defaultTheme.shape };
-
-  if (!isRecord(incoming)) {
-    return next;
-  }
-
-  for (const { key } of shapeFields) {
-    const value = incoming[key];
-
-    if (typeof value === "string") {
-      next[key] = value;
-    }
-  }
-
-  return next;
-}
-
 function getErrorMessage(payload: unknown, fallback: string) {
   if (isRecord(payload) && typeof payload.error === "string") {
     return payload.error;
+  }
+
+  if (isRecord(payload) && isRecord(payload.error)) {
+    const details = payload.error.details;
+    if (Array.isArray(details) && isRecord(details[0])) {
+      const field = typeof details[0].field === "string" ? details[0].field : null;
+      const message = typeof details[0].message === "string" ? details[0].message : null;
+      if (message) return field ? `${field}: ${message}` : message;
+    }
+    if (typeof payload.error.message === "string") return payload.error.message;
   }
 
   return fallback;

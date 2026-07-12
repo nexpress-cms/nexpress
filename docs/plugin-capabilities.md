@@ -57,8 +57,8 @@ form. Both stay in sync via a unit test
 | `media:write`          | `ctx.media.upload`                                                                                                                                 | Uploads attribute via plugin-storage, not `np_users`.     |
 | `media:delete`         | `ctx.media.delete`                                                                                                                                 | Refuses when the doc has refs (`NpConflictError`).        |
 | `settings:read`        | `ctx.settings.getSite`                                                                                                                             | Site-wide settings. `settings:write` is reserved.         |
-| `theme:read`           | `ctx.theme.getTokens`                                                                                                                              |                                                           |
-| `theme:write`          | `ctx.theme.setTokens`                                                                                                                              | Merges into existing tokens.                              |
+| `theme:read`           | `ctx.theme.getTokens`                                                                                                                              | Returns the fully resolved token tree.                    |
+| `theme:write`          | `ctx.theme.setTokens`                                                                                                                              | Validates and deeply merges a nested token overlay.       |
 | `network:fetch`        | `ctx.http.fetch`                                                                                                                                   | Hostname must be in `manifest.allowedHosts`.              |
 | `storage:kv`           | `ctx.storage.{get,set,delete,list,has}`                                                                                                            | Plugin-scoped, site-scoped key/value store.               |
 | `api:route`            | route registration in `routes: [...]`                                                                                                              | Auto-derived. See [`plugin-api-routes.md`](plugin-api-routes.md). |
@@ -82,6 +82,11 @@ Methods NOT in the table (`ctx.cache.*`, `ctx.log.*`, `ctx.errors.*`,
 `ctx.next.*`, `ctx.actions.*`) are ungated — they're either in-process
 bookkeeping (`cache`, `log`) or already gated upstream (`actions`
 dispatch is `admin.manage` at the API layer).
+
+Theme methods use the canonical `NpThemeTokens` / `NpThemeTokensOverlay`
+contract. `setTokens({ colors: { accent: "#0f766e" } })` is valid; flat maps,
+unknown keys, and unsafe CSS values fail before persistence. See
+[`theme-tokens.md`](theme-tokens.md).
 
 ## What runtime errors look like
 

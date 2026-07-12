@@ -404,6 +404,24 @@ export type {
 } from "./theme/types.js";
 export { DEFAULT_THEME } from "./theme/defaults.js";
 export { sanitizeTokenValue } from "./theme/sanitize.js";
+export {
+  isNpThemeTokens,
+  isNpThemeTokensOverlay,
+  npAnalyzeThemeTokens,
+  npAnalyzeThemeTokensOverlay,
+  npMergeThemeTokenOverlays,
+  npMergeThemeTokens,
+  npThemeTokenGroups,
+  npThemeTokenKeys,
+  npThemeOptionalTokenKeys,
+  npValidateThemeTokens,
+  npValidateThemeTokensOverlay,
+} from "./theme/contract.js";
+export type {
+  NpThemeTokenContractIssue,
+  NpThemeTokenGroup,
+  NpThemeTokenValidationResult,
+} from "./theme/contract.js";
 
 export {
   registerThemes,

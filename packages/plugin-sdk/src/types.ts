@@ -38,6 +38,10 @@ import type {
   NpPageTemplateDefinition,
   NpRenderHookData as NpCoreRenderHookData,
 } from "@nexpress/core";
+import type {
+  NpThemeTokens as NpCoreThemeTokens,
+  NpThemeTokensOverlay as NpCoreThemeTokensOverlay,
+} from "@nexpress/core/theme";
 
 import type { NpPluginManifest, NpPluginManifestResolved } from "./manifest.js";
 
@@ -519,7 +523,8 @@ export interface NpFetchResponse {
 
 export type NpSiteSettings = Record<string, unknown>;
 
-export type NpThemeTokens = Record<string, string | number>;
+export type NpThemeTokens = NpCoreThemeTokens;
+export type NpThemeTokensOverlay = NpCoreThemeTokensOverlay;
 
 export type NpRouteRequest = NpCorePluginApiRouteRequest;
 export type NpRouteResponse = NpCorePluginApiRouteResponse;
@@ -621,7 +626,7 @@ export interface NpPluginContext<TConfig = Record<string, unknown>> {
   };
   readonly theme: {
     getTokens(): Promise<NpThemeTokens>;
-    setTokens(tokens: Partial<NpThemeTokens>): Promise<void>;
+    setTokens(tokens: NpThemeTokensOverlay): Promise<void>;
   };
   readonly http: {
     fetch(url: string, options?: NpFetchOptions): Promise<NpFetchResponse>;

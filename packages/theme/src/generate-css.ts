@@ -1,55 +1,12 @@
-import { sanitizeTokenValue } from "@nexpress/core";
-import type {
-  NpThemeColors,
-  NpThemeShape,
-  NpThemeTokens,
-  NpThemeTypography,
-} from "@nexpress/core";
+import {
+  isNpThemeTokens,
+  npThemeTokenKeys,
+  sanitizeTokenValue,
+  type NpThemeTokens,
+  type NpThemeTypography,
+} from "@nexpress/core/theme";
 
-type ThemeColorKey = Extract<keyof NpThemeColors, string>;
 type ThemeTypographyKey = Extract<keyof NpThemeTypography, string>;
-type ThemeShapeKey = Extract<keyof NpThemeShape, string>;
-
-const COLOR_KEYS: ThemeColorKey[] = [
-  "primary",
-  "primaryForeground",
-  "primarySoft",
-  "background",
-  "foreground",
-  "muted",
-  "mutedForeground",
-  "border",
-  "card",
-  "cardForeground",
-  "accent",
-  "accentForeground",
-  "destructive",
-  "destructiveForeground",
-];
-
-const TYPOGRAPHY_KEYS: ThemeTypographyKey[] = [
-  "fontHeading",
-  "fontBody",
-  "fontMono",
-  "fontSizeBase",
-  "lineHeight",
-  "fontSizeSm",
-  "fontSizeLg",
-  "fontSizeXl",
-  "fontSize2xl",
-  "fontSize3xl",
-  "fontSize4xl",
-];
-
-const SHAPE_KEYS: ThemeShapeKey[] = [
-  "radiusSm",
-  "radiusMd",
-  "radiusLg",
-  "radiusFull",
-  "shadowSm",
-  "shadowMd",
-  "shadowLg",
-];
 
 function camelToKebab(value: string): string {
   return value.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
@@ -81,8 +38,11 @@ function formatDeclaration(name: string, value: string): string {
  * flip and how.
  */
 export function generateThemeCss(theme: NpThemeTokens): string {
+  if (!isNpThemeTokens(theme)) {
+    throw new Error("Cannot generate theme CSS from invalid theme tokens.");
+  }
   const rootDeclarations = [
-    ...COLOR_KEYS.flatMap((key) => {
+    ...npThemeTokenKeys.colors.flatMap((key) => {
       // Optional color slots — only emit a declaration when the
       // theme actually populated the value. Consumers reference
       // these vars with a `color-mix(...)` fallback so the omitted
@@ -91,8 +51,12 @@ export function generateThemeCss(theme: NpThemeTokens): string {
       if (value === undefined) return [];
       return [formatDeclaration(`--np-color-${camelToKebab(key)}`, value)];
     }),
-    ...TYPOGRAPHY_KEYS.map((key) => formatDeclaration(getTypographyVarName(key), theme.typography[key])),
-    ...SHAPE_KEYS.map((key) => formatDeclaration(`--np-${camelToKebab(key)}`, theme.shape[key])),
+    ...npThemeTokenKeys.typography.map((key) =>
+      formatDeclaration(getTypographyVarName(key), theme.typography[key]),
+    ),
+    ...npThemeTokenKeys.shape.map((key) =>
+      formatDeclaration(`--np-${camelToKebab(key)}`, theme.shape[key]),
+    ),
   ];
 
   return ["@layer np-theme {", "  :root {", ...rootDeclarations, "  }", "}"].join("\n");

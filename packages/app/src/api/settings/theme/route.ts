@@ -3,40 +3,21 @@ import {
   NpForbiddenError,
   NpValidationError,
   getCurrentSiteId,
+  getTheme,
   npSettings,
-  DEFAULT_THEME,
   can,
 } from "@nexpress/core";
-import type { NpThemeTokens } from "@nexpress/core";
+import { npAnalyzeThemeTokens } from "@nexpress/core/theme";
 import { bustThemeCache, readJsonBody } from "@nexpress/next";
-import { and, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import { getDb } from "../../../lib/db";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-function isValidTheme(value: unknown): value is NpThemeTokens {
-  return (
-    isRecord(value) && isRecord(value.colors) && isRecord(value.typography) && isRecord(value.shape)
-  );
-}
-
 export async function GET(_request: NextRequest) {
   try {
-    const db = getDb();
-    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-    const [row] = await db
-      .select()
-      .from(npSettings)
-      .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "theme")))
-      .limit(1);
-
-    return npSuccessResponse(row?.value ?? DEFAULT_THEME);
+    return npSuccessResponse(await getTheme());
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
@@ -52,10 +33,12 @@ export async function PUT(request: NextRequest) {
 
     const theme = await readJsonBody(request);
 
-    if (!isValidTheme(theme)) {
-      throw new NpValidationError("Invalid input", [
-        { field: "theme", message: "Theme must have colors, typography, and shape objects" },
-      ]);
+    const tokenIssues = npAnalyzeThemeTokens(theme);
+    if (tokenIssues.length > 0) {
+      throw new NpValidationError(
+        "Invalid input",
+        tokenIssues.map((issue) => ({ field: issue.path, message: issue.message })),
+      );
     }
 
     const db = getDb();
@@ -64,7 +47,13 @@ export async function PUT(request: NextRequest) {
 
     await db
       .insert(npSettings)
-      .values({ siteId, key: "theme", value: theme, updatedAt: now, updatedBy: user.id })
+      .values({
+        siteId,
+        key: "theme",
+        value: theme,
+        updatedAt: now,
+        updatedBy: user.id,
+      })
       .onConflictDoUpdate({
         target: [npSettings.siteId, npSettings.key],
         set: { value: theme, updatedAt: now, updatedBy: user.id },
