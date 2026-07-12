@@ -149,6 +149,9 @@ export interface SortedPlugins<T> {
  * Sorts plugins so each one's declared `requires` are loaded first. Missing
  * deps and cycles produce a `skipped` entry with a human-readable reason
  * instead of throwing — boot logs will surface the issue to the operator.
+ * `satisfiedDependencies` names prerequisites that loaded before this set and
+ * therefore participate in missing-dependency checks without appearing in the
+ * returned order.
  *
  * Algorithm: Kahn's. Stable for plugins with no incoming edges (preserves
  * the input order for a tie), so users still get a deterministic sort when
@@ -156,8 +159,10 @@ export interface SortedPlugins<T> {
  */
 export function topoSort<T extends { id: string; requires: readonly string[] }>(
   plugins: T[],
+  satisfiedDependencies: Iterable<string> = [],
 ): SortedPlugins<T> {
   const skipped: Array<{ id: string; reason: string }> = [];
+  const satisfiedIds = new Set(satisfiedDependencies);
 
   // Iteratively narrow the eligible set: any plugin whose `requires` aren't
   // all in the *current* eligible set gets skipped, which may then make its
@@ -168,7 +173,7 @@ export function topoSort<T extends { id: string; requires: readonly string[] }>(
   // edge-build phase silently dropped the B → A link.
   let eligible: T[] = [...plugins];
   while (true) {
-    const eligibleIds = new Set(eligible.map((p) => p.id));
+    const eligibleIds = new Set([...satisfiedIds, ...eligible.map((p) => p.id)]);
     const stillEligible: T[] = [];
     let dropped = false;
     for (const plugin of eligible) {

@@ -44,11 +44,16 @@ export class LocalStorageAdapter implements NpStorageAdapter {
     // the URL constructor requires an absolute base. Concatenate
     // for relative baseUrls and let the URL constructor handle
     // absolute ones (full origin, S3-style, etc.).
-    const base = this.normalizeBaseUrl(this.config.baseUrl);
-    if (base.startsWith("/")) {
+    if (this.config.baseUrl.startsWith("/")) {
+      const base = this.config.baseUrl.replace(/\/+$/u, "");
       return Promise.resolve(`${base}/${key}`);
     }
-    return Promise.resolve(new URL(key, `${base}/`).toString());
+
+    const base = new URL(this.config.baseUrl);
+    base.pathname = `${base.pathname.replace(/\/+$/u, "")}/`;
+    base.search = "";
+    base.hash = "";
+    return Promise.resolve(new URL(key, base).toString());
   }
 
   async delete(key: string): Promise<void> {
@@ -66,9 +71,5 @@ export class LocalStorageAdapter implements NpStorageAdapter {
 
   private resolvePath(key: string): string {
     return join(this.config.directory, key);
-  }
-
-  private normalizeBaseUrl(baseUrl: string): string {
-    return baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
   }
 }

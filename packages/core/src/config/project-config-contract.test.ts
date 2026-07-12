@@ -65,6 +65,45 @@ describe("project config contract", () => {
     );
   });
 
+  it.each([
+    ["credentials", "https://user@cdn.example.com/media"],
+    ["a query", "https://cdn.example.com/media?version=1"],
+    ["a fragment", "https://cdn.example.com/media#preview"],
+  ])("rejects a local storage base URL with %s", (_label, baseUrl) => {
+    const config = validConfig();
+    if (config.storage?.adapter !== "local") throw new Error("fixture drift");
+    config.storage.local.baseUrl = baseUrl;
+
+    expect(npAnalyzeProjectConfig(config)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ location: "storage.local.baseUrl" }),
+      ]),
+    );
+  });
+
+  it("rejects an S3 endpoint fragment that would break path appends", () => {
+    const s3 = validConfig();
+    s3.storage = {
+      adapter: "s3",
+      s3: {
+        bucket: "media",
+        region: "us-east-1",
+        endpoint: "https://s3.example.com/root#fragment",
+      },
+    };
+    expect(npAnalyzeProjectConfig(s3)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ location: "storage.s3.endpoint" })]),
+    );
+  });
+
+  it("accepts the root path as an appendable local storage base URL", () => {
+    const config = validConfig();
+    if (config.storage?.adapter !== "local") throw new Error("fixture drift");
+    config.storage.local.baseUrl = "/";
+
+    expect(npValidateProjectConfig(config)).toEqual({ ok: true });
+  });
+
   it("requires a PostgreSQL connection URL and a strong configured secret", () => {
     const invalidDatabase = validConfig();
     invalidDatabase.db.connectionString = "https://example.com/database";
@@ -144,6 +183,16 @@ describe("project config contract", () => {
   it("accepts an acyclic resolved plugin inventory", () => {
     const config = validConfig();
     config.plugins = [resolvedPlugin("base"), resolvedPlugin("consumer", ["base"])] as never;
+
+    expect(npValidateProjectConfig(config)).toEqual({ ok: true });
+  });
+
+  it("accepts a resolved dependency on a declared legacy plugin", () => {
+    const config = validConfig();
+    config.plugins = [
+      { id: "legacy-base", name: "Legacy base", init: () => undefined },
+      resolvedPlugin("modern-dependent", ["legacy-base"]),
+    ] as never;
 
     expect(npValidateProjectConfig(config)).toEqual({ ok: true });
   });

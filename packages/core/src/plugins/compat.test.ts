@@ -96,6 +96,13 @@ describe("topoSort", () => {
     expect(result.skipped[0]?.reason).toMatch(/missing/);
   });
 
+  it("accepts dependencies that were satisfied before sorting", () => {
+    const result = topoSort([{ id: "modern", requires: ["legacy"] }], ["legacy"]);
+
+    expect(result.ordered.map((plugin) => plugin.id)).toEqual(["modern"]);
+    expect(result.skipped).toEqual([]);
+  });
+
   it("cascades skips: a plugin whose dep was skipped is itself skipped (#464)", () => {
     // A requires B; B requires missing C. The earlier single-pass check let
     // A slip through because B was in the input set — but B never actually

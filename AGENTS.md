@@ -2,9 +2,9 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-12 (project config now exposes only active runtime
-settings and fails closed on unknown keys, invalid origins/storage/locales,
-duplicate plugin ids, and missing or cyclic plugin dependencies.)
+**Last refreshed:** 2026-07-12 (project config exposes only active runtime
+settings and fails closed on invalid values and dependency graphs; storage URL
+construction and plugin loading now preserve the same validated contract.)
 
 **Earlier:** 2026-07-12 (collection definitions now fail closed during
 module evaluation and config resolution; strict nested schemas, semantic field
@@ -132,7 +132,7 @@ Package manager is pnpm (v10.33, required). Node >=20.
 ```bash
 pnpm install
 docker compose -f docker/docker-compose.yml up -d       # Postgres :5433 + Mailpit (SMTP :1025, inbox http://localhost:8025)
-cp .env.example .env                                    # DATABASE_URL, NP_SECRET, SITE_URL, SMTP defaults pointing at Mailpit
+cp .env.example .env                                    # then replace NP_SECRET with 32+ random characters
 pnpm build                                              # build all packages (dist/) — needed before dev
 pnpm dev                                                # next dev (apps/web only) + collection schema:gen on src/collections/* changes
 ```

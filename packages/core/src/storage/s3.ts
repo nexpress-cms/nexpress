@@ -70,12 +70,12 @@ export class S3StorageAdapter implements NpStorageAdapter {
 
   getUrl(key: string): Promise<string> {
     if (this.config.endpoint) {
-      return Promise.resolve(
-        new URL(
-          key,
-          `${normalizeUrl(this.config.endpoint)}/${this.config.bucket}/`,
-        ).toString(),
-      );
+      const endpoint = new URL(this.config.endpoint);
+      const endpointPath = endpoint.pathname.replace(/\/+$/u, "");
+      endpoint.pathname = `${endpointPath}/${this.config.bucket}/`;
+      endpoint.search = "";
+      endpoint.hash = "";
+      return Promise.resolve(new URL(key, endpoint).toString());
     }
 
     return Promise.resolve(
@@ -178,8 +178,4 @@ function isNotFoundError(error: unknown): boolean {
         && error.$metadata !== null
         && "httpStatusCode" in error.$metadata
         && error.$metadata.httpStatusCode === 404));
-}
-
-function normalizeUrl(value: string): string {
-  return value.endsWith("/") ? value.slice(0, -1) : value;
 }

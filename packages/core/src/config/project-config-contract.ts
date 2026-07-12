@@ -32,10 +32,16 @@ function pathOf(parts: readonly PropertyKey[]): string {
   return parts.map(String).join(".");
 }
 
-function isHttpUrl(value: string): boolean {
+function isHttpBaseUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      url.username === "" &&
+      url.password === "" &&
+      url.search === "" &&
+      url.hash === ""
+    );
   } catch {
     return false;
   }
@@ -90,10 +96,14 @@ function analyzeStorage(config: NpConfig, issues: NpProjectConfigIssue[]): void 
     }
     if (!(
       (baseUrl.startsWith("/") && !baseUrl.startsWith("//") && !/[?#]/u.test(baseUrl)) ||
-      isHttpUrl(baseUrl)
+      isHttpBaseUrl(baseUrl)
     )) {
       issues.push(
-        issue("shape", "storage.local.baseUrl", "baseUrl must be an absolute path or HTTP(S) URL."),
+        issue(
+          "shape",
+          "storage.local.baseUrl",
+          "baseUrl must be an absolute path or HTTP(S) base URL without credentials, a query, or fragment.",
+        ),
       );
     }
     return;
@@ -105,8 +115,14 @@ function analyzeStorage(config: NpConfig, issues: NpProjectConfigIssue[]): void 
   if (config.storage.s3.region.trim() !== config.storage.s3.region) {
     issues.push(issue("shape", "storage.s3.region", "region must be trimmed."));
   }
-  if (config.storage.s3.endpoint && !isHttpUrl(config.storage.s3.endpoint)) {
-    issues.push(issue("shape", "storage.s3.endpoint", "endpoint must be an HTTP(S) URL."));
+  if (config.storage.s3.endpoint && !isHttpBaseUrl(config.storage.s3.endpoint)) {
+    issues.push(
+      issue(
+        "shape",
+        "storage.s3.endpoint",
+        "endpoint must be an HTTP(S) base URL without credentials, a query, or fragment.",
+      ),
+    );
   }
 }
 
