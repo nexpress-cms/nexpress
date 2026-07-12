@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
 import { npSettings } from "../db/schema/system.js";
 import { NpValidationError } from "../errors.js";
-import { npValidateSettingValue } from "../settings/contract.js";
+import { npAssertSettingValue, npValidateSettingValue } from "../settings/contract.js";
 
 /**
  * Site-wide community settings, persisted in the generic `np_settings`
@@ -211,6 +211,7 @@ export async function updateCommunitySettings(
 ): Promise<NpCommunitySettings> {
   const current = await getCommunitySettings();
   const next = validateCommunitySettingsPatch(current, patch);
+  npAssertSettingValue(SETTINGS_KEY, next);
   const db = getDb();
   // #272 — write: must NOT silently fall through. A staff member
   // on tenant A who saves community settings without a resolved

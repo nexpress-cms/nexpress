@@ -4,6 +4,7 @@ import {
   NpValidationError,
   getCurrentSiteId,
   getTheme,
+  npAssertSettingValue,
   npSettings,
   can,
 } from "@nexpress/core";
@@ -40,6 +41,7 @@ export async function PUT(request: NextRequest) {
         tokenIssues.map((issue) => ({ field: issue.path, message: issue.message })),
       );
     }
+    npAssertSettingValue("theme", theme);
 
     const db = getDb();
     const now = new Date();

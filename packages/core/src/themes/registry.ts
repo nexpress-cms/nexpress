@@ -6,6 +6,7 @@ import { NpValidationError } from "../errors.js";
 import { addStrings } from "../i18n/strings.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID as DEFAULT_SITE } from "../sites/registry.js";
+import { npAssertSettingValue } from "../settings/contract.js";
 import type { NpRegisteredTheme } from "../config/types.js";
 import { npValidateRegisteredThemeDefinition } from "./definition-contract.js";
 
@@ -164,6 +165,7 @@ export async function setActiveThemeId(
   const dbHandle = (options.tx ?? getDb()) as ReturnType<typeof getDb>;
   const now = new Date();
   const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
+  npAssertSettingValue("activeTheme", id);
   // Phase 15.4 — composite (site_id, key) PK.
   await dbHandle
     .insert(npSettings)
