@@ -116,9 +116,10 @@ manifest: {
 
 The host topologically sorts the load order so your `setup(ctx)` runs
 _after_ every plugin in `requires` has finished its own setup. If a
-required plugin is missing, the dependent is skipped with a `missing
-required plugin(s)` warning — and the cascade continues, so a plugin
-whose dep was skipped is also skipped (issue #464).
+required plugin is missing or fails setup, the dependent is skipped with an
+unsatisfied-dependency warning — and the cascade continues, so a plugin whose
+dep was skipped is also skipped (issue #464). Successfully loaded legacy
+plugins can satisfy `requires` during the compatibility window.
 
 Cycles are detected and break with `dependency cycle — refusing to
 load` warnings; the rest of the plugin set still loads.

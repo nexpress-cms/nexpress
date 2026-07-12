@@ -1108,6 +1108,75 @@ describe("plugin host", () => {
         /unsatisfied dependency/,
       );
     });
+
+    it("loads a resolved plugin whose legacy dependency loaded first", async () => {
+      await loadPlugins([
+        legacyPlugin("legacy-base"),
+        {
+          manifest: {
+            id: "modern-dependent",
+            name: "Modern dependent",
+            version: "1.0.0",
+            capabilities: [],
+            requires: ["legacy-base"],
+          },
+        },
+      ]);
+
+      expect(getAllPluginIds()).toEqual(["legacy-base", "modern-dependent"]);
+    });
+
+    it("skips a resolved plugin when its legacy dependency fails to load", async () => {
+      await loadPlugins([
+        legacyPlugin("broken-legacy", () => {
+          throw new Error("legacy setup failed");
+        }),
+        {
+          manifest: {
+            id: "legacy-dependent",
+            name: "Legacy dependent",
+            version: "1.0.0",
+            capabilities: [],
+            requires: ["broken-legacy"],
+          },
+        },
+      ]);
+
+      expect(getAllPluginIds()).toEqual([]);
+      expect(
+        warnings.find((warning) => warning.context?.pluginId === "legacy-dependent")?.message,
+      ).toMatch(/unsatisfied dependency/);
+    });
+
+    it("skips dependents when a resolved prerequisite fails setup", async () => {
+      await loadPlugins([
+        {
+          manifest: {
+            id: "broken-base",
+            name: "Broken base",
+            version: "1.0.0",
+            capabilities: [],
+          },
+          setup: () => {
+            throw new Error("setup failed");
+          },
+        },
+        {
+          manifest: {
+            id: "modern-child",
+            name: "Modern child",
+            version: "1.0.0",
+            capabilities: [],
+            requires: ["broken-base"],
+          },
+        },
+      ]);
+
+      expect(getAllPluginIds()).toEqual([]);
+      expect(
+        warnings.find((warning) => warning.context?.pluginId === "modern-child")?.context,
+      ).toEqual(expect.objectContaining({ reason: expect.stringMatching(/failed to load/) }));
+    });
   });
 
   describe("hook priority + timeout", () => {

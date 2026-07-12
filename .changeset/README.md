@@ -34,11 +34,10 @@ package. The result is a markdown file under `.changeset/` — commit it.
 Until any `@nexpress/*` package reaches `1.0`, **default to `patch`** —
 even for new features. Reasons:
 
-- **`fixed` group cascades.** `@nexpress/core`, `admin`, `blocks`,
-  `editor`, `theme`, `next`, `plugin-sdk` bump together; a single
-  `minor` on any of them pulls all seven up. The 0.1.0 → 0.2.0 jump
-  on a single first-time-UX feature in `@nexpress/admin` taught us
-  this the hard way.
+- **`fixed` group cascades.** Published workspace packages currently move
+  together according to [`.changeset/config.json`](config.json); a single
+  `minor` pulls the whole group up. The 0.1.0 → 0.2.0 jump on a single
+  first-time-UX feature in `@nexpress/admin` taught us this the hard way.
 - **0.x means everything is "subject to change" by semver
   convention.** Operators don't expect `0.1.x → 0.2.x` to be a "new
   features" boundary — they read it as breaking. Save `minor` for
@@ -54,8 +53,7 @@ additions you want highlighted in the changelog.
 Reserve `major` for: actually-breaking changes the user must
 migrate for, even pre-1.0.
 
-`@nexpress/web` (the reference app) is in the `ignore` list, so you'll
-never need to bump it.
+`@nexpress/web` is the private reference app, so it is not published.
 
 ## Release flow (maintainer)
 

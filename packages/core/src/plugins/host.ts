@@ -963,10 +963,9 @@ export async function loadPlugins(
     filtered.push(plugin);
   }
 
-  // Pass 2 — order resolved plugins by their `requires` graph. Legacy
-  // (init()-shape) plugins have no manifest so they ride at the front in
-  // their original order; they predate the dependency model and never
-  // declare requirements.
+  // Pass 2 — partition legacy and resolved plugins. Legacy (init()-shape)
+  // plugins predate the dependency model, never declare requirements, and
+  // load first in their original order.
   const legacy: NpPluginConfig[] = [];
   const resolved: ResolvedPluginLike[] = [];
   for (const plugin of filtered) {
@@ -977,19 +976,6 @@ export async function loadPlugins(
     }
   }
 
-  const sortInput = resolved.map((plugin) => ({
-    id: plugin.manifest.id,
-    requires: plugin.manifest.requires ?? [],
-    plugin,
-  }));
-  const { ordered, skipped } = topoSort(sortInput);
-  for (const entry of skipped) {
-    getLogger().warn("Skipping plugin with unsatisfied dependency", {
-      pluginId: entry.id,
-      reason: entry.reason,
-    });
-  }
-
   // Pass 3 — actually load. Legacy first, then resolved in topo order.
   // Each load is wrapped in error isolation: a throwing plugin (most
   // commonly a buggy `setup()` callback or a missing required config)
@@ -997,9 +983,8 @@ export async function loadPlugins(
   // whole boot. Partial state from a half-loaded plugin (hooks/routes
   // registered before `setup` threw) is scrubbed via
   // `pluginRegistry.delete(id)` so callers don't see an inconsistent
-  // shell registration. Plugins that depend on the failed one will
-  // either fail their own require check (handled cleanly) or fail at
-  // dispatch time (also caught at the dispatch layer).
+  // shell registration. A dependency gate below skips every dependent whose
+  // prerequisite failed before its own setup can run.
   for (const plugin of legacy) {
     try {
       await loadLegacyPlugin(plugin);
@@ -1011,7 +996,39 @@ export async function loadPlugins(
       });
     }
   }
+
+  const sortInput = resolved.map((plugin) => ({
+    id: plugin.manifest.id,
+    requires: plugin.manifest.requires ?? [],
+    plugin,
+  }));
+  // A resolved plugin may depend on a successfully loaded legacy plugin during
+  // the compatibility window. Failed legacy registrations are deliberately
+  // absent so their dependents become unsatisfied instead of booting against a
+  // missing prerequisite.
+  const loadedLegacyIds = legacy
+    .filter((plugin) => pluginRegistry.has(plugin.id))
+    .map((plugin) => plugin.id);
+  const { ordered, skipped } = topoSort(sortInput, loadedLegacyIds);
+  for (const entry of skipped) {
+    getLogger().warn("Skipping plugin with unsatisfied dependency", {
+      pluginId: entry.id,
+      reason: entry.reason,
+    });
+  }
+
   for (const entry of ordered) {
+    // Topological ordering proves the graph is complete, but an earlier
+    // plugin's setup can still fail at runtime. Preserve the manifest promise
+    // that every required plugin is registered before setup begins.
+    const missing = entry.requires.filter((dependency) => !pluginRegistry.has(dependency));
+    if (missing.length > 0) {
+      getLogger().warn("Skipping plugin with unsatisfied dependency", {
+        pluginId: entry.id,
+        reason: `required plugin(s) failed to load: ${missing.join(", ")}`,
+      });
+      continue;
+    }
     try {
       await loadResolvedPlugin(entry.plugin);
     } catch (err) {

@@ -117,9 +117,10 @@ For framework development:
 git clone https://github.com/nexpress-cms/nexpress.git
 cd nexpress
 pnpm install
+cp .env.example .env
+# Replace NP_SECRET with 32+ random characters, e.g. `openssl rand -hex 32`.
 pnpm build
 docker compose -f docker/docker-compose.yml up -d
-cp .env.example apps/web/.env
 pnpm --filter @nexpress/web run setup
 pnpm dev
 ```

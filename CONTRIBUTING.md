@@ -11,6 +11,7 @@ the contribution mechanics: setup, branching, versioning, and releases.
 pnpm install
 docker compose -f docker/docker-compose.yml up -d db    # Postgres 16 on :5433
 cp .env.example .env
+# Replace NP_SECRET with 32+ random characters, e.g. `openssl rand -hex 32`.
 pnpm build       # populate dist/ for every workspace
 pnpm dev         # turbo watch (tsup --watch + next dev)
 ```
@@ -32,45 +33,18 @@ runs the Postgres-backed suite, gated on `TEST_DATABASE_URL` — see
 
 ## Versioning policy (pre-1.0)
 
-NexPress is in the `0.x` range. We follow standard semver with one
-caveat: pre-1.0 *allows* breaking changes in any `0.x.y` bump, but we
-still try to signal them.
-
-| Bump                         | When                                                |
-| ---------------------------- | --------------------------------------------------- |
-| major (1.x → 2.x — not yet)  | reserved for after the 1.0 commitment               |
-| minor (0.x → 0.x+1)          | new features (additive); breaking changes also land here under 0.x |
-| patch (0.x.y → 0.x.y+1)      | bug fixes only                                      |
-
-Breaking changes during 0.x ride a minor bump and **must** be called
-out in the changeset summary line — that line lands in `CHANGELOG.md`
-and is the only signal users get for "I need to read the upgrade
-notes before bumping." Once we cut 1.0 we'll move breakage to major.
+The canonical policy lives in [`.changeset/README.md`](.changeset/README.md).
+While NexPress remains in the `0.x` range, default to `patch` even for ordinary
+features. Use `minor` for an intentional milestone or a public API addition
+that should be highlighted. Reserve `major` for a breaking change that users
+must actively migrate, even before 1.0.
 
 ### Fixed-version group
 
-The seven framework packages bump together — see
-[`.changeset/config.json`](.changeset/config.json) `fixed` array:
-
-- `@nexpress/core`
-- `@nexpress/admin`
-- `@nexpress/blocks`
-- `@nexpress/editor`
-- `@nexpress/theme`
-- `@nexpress/next`
-- `@nexpress/plugin-sdk`
-
-These move in lockstep because their public APIs reference each other —
-an upgrade where only some are bumped puts users in version-resolution
-churn for no real benefit.
-
-The reference plugins (`@nexpress/plugin-*`) and reference themes
-(`@nexpress/theme-*`) version independently — they're examples, not
-framework. `create-nexpress`, `@nexpress/wp-import`, and
-`@nexpress/xliff` are also independent.
-
-`@nexpress/web` (the reference app under `apps/web`) is `private` and
-not published — `ignore`'d in the changeset config.
+Published workspace packages move together according to the `fixed` array in
+[`.changeset/config.json`](.changeset/config.json). Treat that file as the
+source of truth rather than duplicating its package inventory here. The
+reference app `@nexpress/web` remains private and is not published.
 
 ## Changesets
 
@@ -83,7 +57,7 @@ pnpm changeset
 
 The CLI walks you through:
 1. Which packages are affected
-2. The semver bump for each (see the policy table above — most contributions are `patch`)
+2. The semver bump for each (most contributions are `patch`)
 3. A one-line summary that lands in the package's `CHANGELOG.md`
 
 The result is a markdown file under `.changeset/` — commit it.

@@ -67,6 +67,11 @@ The same non-throwing contract is available to tooling through
 URLs are usable, locales are canonical and unique, and plugin ids/dependencies
 form one complete acyclic inventory.
 
+Storage base URLs are path prefixes: absolute local paths such as `/media` or
+`/`, and HTTP(S) bases such as `https://cdn.example.com/media`, are accepted.
+Credentials, query strings, and fragments are rejected because appending an
+object key would discard or reinterpret those components.
+
 ### Plugins
 
 ```bash
