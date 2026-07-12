@@ -101,6 +101,11 @@ pnpm run doctor -- --fix-plan
 pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan
 ```
 
+The blocking `settings.contract` check validates every `np_sites` record and
+registered `np_settings` value. Unknown keys, malformed exact objects, and
+invalid versioned envelopes must be repaired or removed before startup;
+runtime reads deliberately do not reset them to defaults.
+
 For bundled providers, set credentials from one source only:
 
 - Env: set both `NP_OAUTH_GITHUB_CLIENT_ID` and

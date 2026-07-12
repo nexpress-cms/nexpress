@@ -88,12 +88,6 @@ interface PluginAdminPageProps {
    *  `initialConfig`, which is the same persisted value shaped for the
    *  legacy `admin.settings.fields` form. */
   initialAutoConfig?: unknown;
-  /** G.1 — set when the persisted config failed `safeParse`
-   *  (buggy migrator, schema drift the migrator didn't cover).
-   *  The auto-form receives schema defaults as `initialAutoConfig`;
-   *  this prop drives a warning banner so the operator knows their
-   *  saved values were replaced and the next save will overwrite. */
-  configParseError?: string;
 }
 
 export function PluginAdminPage({
@@ -104,7 +98,6 @@ export function PluginAdminPage({
   schedules,
   configFields,
   initialAutoConfig,
-  configParseError,
 }: PluginAdminPageProps) {
   const hasAutoForm = configFields !== undefined;
   const sections: Array<"autoForm" | "settings" | "widgets" | "actions" | "tables" | "schedules"> =
@@ -144,7 +137,6 @@ export function PluginAdminPage({
               ? (initialAutoConfig as ZodFormValue)
               : {}
           }
-          parseError={configParseError}
         />
       ) : admin.settings ? (
         <SettingsCard pluginId={pluginId} settings={admin.settings} initialConfig={initialConfig} />
@@ -190,22 +182,14 @@ function ConfigAutoFormCard({
   pluginId,
   fields,
   initialValue,
-  parseError,
 }: {
   pluginId: string;
   fields: NpThemeSettingsField[];
   initialValue: ZodFormValue;
-  parseError?: string;
 }) {
   const [value, setValue] = useState<ZodFormValue>(initialValue);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  // Once the operator dismisses the banner (or saves over the
-  // schema-default values), the parse-error condition is
-  // resolved on the server; we hide the banner client-side too
-  // so a successful save doesn't leave it stuck.
-  const [bannerDismissed, setBannerDismissed] = useState(false);
-  const showBanner = !bannerDismissed && Boolean(parseError);
 
   const handleSubmit = useCallback(async () => {
     setSaving(true);
@@ -227,11 +211,6 @@ function ConfigAutoFormCard({
         return;
       }
       setToast({ type: "success", message: "Config saved." });
-      // The save persisted a fresh value over the schema-defaults
-      // shown after the parse error; the banner is no longer
-      // accurate (the next page load won't surface parseError),
-      // so dismiss it client-side too.
-      setBannerDismissed(true);
     } catch (error) {
       setToast({
         type: "error",
@@ -248,31 +227,6 @@ function ConfigAutoFormCard({
         <CardTitle className="break-words">Settings</CardTitle>
       </CardHeader>
       <CardContent className="min-w-0">
-        {showBanner ? (
-          <div className="mb-4 grid min-w-0 gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 sm:flex sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              <div className="break-words font-medium">Saved settings were reset to defaults</div>
-              <p className="mt-1 break-words text-xs text-amber-700 dark:text-amber-300">
-                The persisted value didn&rsquo;t match the current schema (likely a plugin upgrade).
-                Saving will overwrite the stored value with what you see below.
-              </p>
-              {parseError ? (
-                <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded bg-amber-500/10 p-2 text-[11px] leading-snug">
-                  {parseError}
-                </pre>
-              ) : null}
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setBannerDismissed(true)}
-              className="w-full sm:w-auto"
-            >
-              Dismiss
-            </Button>
-          </div>
-        ) : null}
         {toast ? (
           <div
             className={

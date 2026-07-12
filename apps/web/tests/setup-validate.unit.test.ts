@@ -49,29 +49,21 @@ describe("setup-server validateBody", () => {
   });
 
   it("rejects DATABASE_URL with no host (e.g. `postgres://`)", () => {
-    expect(err({ ...baseValid, databaseUrl: "postgres://" })).toMatch(
-      /missing the host portion/,
-    );
+    expect(err({ ...baseValid, databaseUrl: "postgres://" })).toMatch(/missing the host portion/);
   });
 
   it("rejects DATABASE_URL that doesn't parse as URL", () => {
-    expect(
-      err({ ...baseValid, databaseUrl: "postgres://[malformed" }),
-    ).toMatch(/not a valid URL/);
+    expect(err({ ...baseValid, databaseUrl: "postgres://[malformed" })).toMatch(/not a valid URL/);
   });
 
   // ── NP_SECRET ─────────────────────────────────────────────────
 
   it("rejects NP_SECRET shorter than 32 chars", () => {
-    expect(err({ ...baseValid, npSecret: "short" })).toMatch(
-      /at least 32 characters/,
-    );
+    expect(err({ ...baseValid, npSecret: "short" })).toMatch(/at least 32 characters/);
   });
 
   it("rejects low-entropy NP_SECRET (single char repeated 32×)", () => {
-    expect(err({ ...baseValid, npSecret: "a".repeat(32) })).toMatch(
-      /low-entropy/,
-    );
+    expect(err({ ...baseValid, npSecret: "a".repeat(32) })).toMatch(/low-entropy/);
   });
 
   it("rejects low-entropy NP_SECRET (only 7 distinct chars)", () => {
@@ -89,9 +81,7 @@ describe("setup-server validateBody", () => {
   // ── SITE_URL ──────────────────────────────────────────────────
 
   it("rejects SITE_URL with the wrong protocol", () => {
-    expect(err({ ...baseValid, siteUrl: "ftp://example.com" })).toMatch(
-      /must start with http/,
-    );
+    expect(err({ ...baseValid, siteUrl: "ftp://example.com" })).toMatch(/must start with http/);
   });
 
   it("rejects SITE_URL with no host (e.g. `https://`)", () => {
@@ -104,29 +94,37 @@ describe("setup-server validateBody", () => {
   });
 
   it("rejects SITE_URL that's just whitespace", () => {
-    expect(err({ ...baseValid, siteUrl: "   " })).toMatch(
-      /must start with http/,
-    );
+    expect(err({ ...baseValid, siteUrl: "   " })).toMatch(/must start with http/);
   });
 
   it("rejects SITE_URL that doesn't parse as URL", () => {
-    expect(err({ ...baseValid, siteUrl: "https://[malformed" })).toMatch(
-      /not a valid URL/,
-    );
+    expect(err({ ...baseValid, siteUrl: "https://[malformed" })).toMatch(/not a valid URL/);
+  });
+
+  it("rejects SITE_URL paths, queries, and credentials outside the site-origin contract", () => {
+    for (const siteUrl of [
+      "https://example.com/admin",
+      "https://example.com?preview=1",
+      "https://user:secret@example.com",
+    ]) {
+      expect(err({ ...baseValid, siteUrl })).toMatch(/Invalid site settings/);
+    }
+  });
+
+  it("canonicalizes the setup locale before persistence", () => {
+    expect(ok({ ...baseValid, defaultLocale: "ko_kr" }).defaultLocale).toBe("ko-KR");
   });
 
   // ── S3 storage ────────────────────────────────────────────────
 
   it("rejects storage=s3 with no bucket", () => {
-    expect(
-      err({ ...baseValid, storage: "s3", s3Region: "us-east-1" }),
-    ).toMatch(/bucket is required/);
+    expect(err({ ...baseValid, storage: "s3", s3Region: "us-east-1" })).toMatch(
+      /bucket is required/,
+    );
   });
 
   it("rejects storage=s3 with no region", () => {
-    expect(err({ ...baseValid, storage: "s3", s3Bucket: "media" })).toMatch(
-      /region is required/,
-    );
+    expect(err({ ...baseValid, storage: "s3", s3Bucket: "media" })).toMatch(/region is required/);
   });
 
   it("accepts storage=s3 with bucket + region (no endpoint)", () => {

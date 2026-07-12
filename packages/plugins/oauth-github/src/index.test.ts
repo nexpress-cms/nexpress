@@ -23,9 +23,8 @@ describe("oauth-github configSchema", () => {
     // Empty defaults make the schema parse cleanly when neither env
     // nor admin form is filled — `setup()` then detects the empty
     // strings and skips registration with a clear setup hint. Without
-    // defaults, `getPluginConfig` returns schema-defaults that fail
-    // safeParse on first cold read, surfacing as parseError on the
-    // admin page (noisy for fresh installs).
+    // defaults, the first cold read has no valid schema defaults and
+    // cannot construct the plugin config form.
     const parsed = schema.parse({});
     expect(parsed).toEqual({
       clientId: "",

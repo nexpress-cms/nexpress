@@ -17,6 +17,7 @@ import {
   npMediaStatuses,
   npMediaVariantNamePattern,
 } from "@nexpress/core/media-contract";
+import { npSettingsContractLimits } from "@nexpress/core/settings";
 import { NextResponse } from "next/server";
 
 import { ensureFor } from "../../lib/init-core";
@@ -190,6 +191,65 @@ function collectionSchema(manifest: ReturnType<typeof collectionToManifest>): Op
 function buildSpec(): OpenApiSchema {
   const slugs = getAllCollectionSlugs();
   const schemas: Record<string, OpenApiSchema> = {
+    site_general_settings: {
+      type: "object",
+      additionalProperties: false,
+      required: ["name", "url", "description", "defaultLocale", "timezone"],
+      properties: {
+        name: {
+          type: "string",
+          minLength: 1,
+          maxLength: npSettingsContractLimits.siteNameLength,
+        },
+        url: {
+          type: ["string", "null"],
+          format: "uri",
+          maxLength: npSettingsContractLimits.urlLength,
+          description: "HTTP(S) origin without credentials, path, query, or hash.",
+        },
+        description: {
+          type: ["string", "null"],
+          maxLength: npSettingsContractLimits.descriptionLength,
+        },
+        defaultLocale: {
+          type: ["string", "null"],
+          maxLength: npSettingsContractLimits.localeLength,
+        },
+        timezone: {
+          type: ["string", "null"],
+          maxLength: npSettingsContractLimits.timezoneLength,
+        },
+      },
+    },
+    seo_settings: {
+      type: "object",
+      additionalProperties: false,
+      required: ["defaultOgImage", "twitterHandle", "defaultLocale"],
+      properties: {
+        defaultOgImage: {
+          type: ["string", "null"],
+          maxLength: npSettingsContractLimits.urlLength,
+        },
+        twitterHandle: {
+          type: ["string", "null"],
+          pattern: "^[A-Za-z0-9_]{1,15}$",
+        },
+        defaultLocale: {
+          type: "string",
+          minLength: 2,
+          maxLength: npSettingsContractLimits.localeLength,
+        },
+      },
+    },
+    admin_settings_snapshot: {
+      type: "object",
+      additionalProperties: false,
+      required: ["site", "seo"],
+      properties: {
+        site: { $ref: "#/components/schemas/site_general_settings" },
+        seo: { $ref: "#/components/schemas/seo_settings" },
+      },
+    },
     block_instance: {
       type: "object",
       additionalProperties: false,
@@ -1170,27 +1230,46 @@ function buildSpec(): OpenApiSchema {
     },
     "/api/settings": {
       get: {
-        summary: "Site settings map (admin only)",
+        summary: "Canonical site identity and SEO settings (admin only)",
         responses: {
           "200": {
-            description: "Flattened `key → value` map across every settings row except `theme`.",
+            description: "Exact site + SEO settings snapshot.",
             content: {
-              "application/json": { schema: { type: "object", additionalProperties: true } },
+              "application/json": {
+                schema: { $ref: "#/components/schemas/admin_settings_snapshot" },
+              },
             },
           },
           "403": { description: "Caller is not an admin" },
         },
       },
       put: {
-        summary: "Upsert a single setting key (admin only)",
+        summary: "Replace canonical site identity or SEO settings (admin only)",
         requestBody: {
           required: true,
           content: {
             "application/json": {
               schema: {
-                type: "object",
-                required: ["key", "value"],
-                properties: { key: { type: "string" }, value: {} },
+                oneOf: [
+                  {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["key", "value"],
+                    properties: {
+                      key: { type: "string", enum: ["site"] },
+                      value: { $ref: "#/components/schemas/site_general_settings" },
+                    },
+                  },
+                  {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["key", "value"],
+                    properties: {
+                      key: { type: "string", enum: ["seo"] },
+                      value: { $ref: "#/components/schemas/seo_settings" },
+                    },
+                  },
+                ],
               },
             },
           },
@@ -1202,18 +1281,23 @@ function buildSpec(): OpenApiSchema {
               "application/json": {
                 schema: {
                   type: "object",
+                  additionalProperties: false,
+                  required: ["key", "value"],
                   properties: {
-                    key: { type: "string" },
-                    value: {},
-                    updatedAt: { type: "string", format: "date-time" },
-                    updatedBy: { type: "string", format: "uuid", nullable: true },
+                    key: { type: "string", enum: ["site", "seo"] },
+                    value: {
+                      oneOf: [
+                        { $ref: "#/components/schemas/site_general_settings" },
+                        { $ref: "#/components/schemas/seo_settings" },
+                      ],
+                    },
                   },
                 },
               },
             },
           },
           "403": { description: "Caller is not an admin" },
-          "400": { description: "key or value missing" },
+          "400": { description: "Unknown key, extra field, or value contract mismatch" },
         },
       },
     },
@@ -1668,8 +1752,18 @@ function buildSpec(): OpenApiSchema {
               "application/json": {
                 schema: {
                   type: "object",
+                  additionalProperties: false,
+                  required: [
+                    "version",
+                    "exportedAt",
+                    "siteUrl",
+                    "partial",
+                    "collectionsExported",
+                    "collections",
+                    "media",
+                  ],
                   properties: {
-                    version: { type: "string", enum: ["1"] },
+                    version: { type: "string", enum: ["2"] },
                     exportedAt: { type: "string", format: "date-time" },
                     siteUrl: {
                       type: "string",
@@ -1682,6 +1776,12 @@ function buildSpec(): OpenApiSchema {
                       description: "True when the `collections` filter was applied.",
                     },
                     collectionsExported: { type: "array", items: { type: "string" } },
+                    site: {
+                      oneOf: [
+                        { type: "null" },
+                        { $ref: "#/components/schemas/site_general_settings" },
+                      ],
+                    },
                     theme: { type: "object", additionalProperties: true, nullable: true },
                     settings: { type: "object", additionalProperties: true },
                     navigation: {
@@ -1700,11 +1800,13 @@ function buildSpec(): OpenApiSchema {
                       type: "array",
                       items: {
                         type: "object",
+                        additionalProperties: false,
+                        required: ["id", "enabled", "config", "manifestVersion"],
                         properties: {
                           id: { type: "string" },
                           enabled: { type: "boolean" },
                           config: { type: "object", additionalProperties: true },
-                          manifestVersion: { type: "string", nullable: true },
+                          manifestVersion: { type: "string" },
                         },
                       },
                     },
@@ -1745,8 +1847,15 @@ function buildSpec(): OpenApiSchema {
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
+                required: ["version"],
                 properties: {
-                  version: { type: "string", enum: ["1"] },
+                  version: { type: "string", enum: ["2"] },
+                  exportedAt: { type: "string", format: "date-time" },
+                  siteUrl: { type: ["string", "null"], format: "uri" },
+                  partial: { type: "boolean" },
+                  collectionsExported: { type: "array", items: { type: "string" } },
+                  site: { $ref: "#/components/schemas/site_general_settings" },
                   theme: { type: "object", additionalProperties: true },
                   settings: { type: "object", additionalProperties: true },
                   navigation: {
@@ -1780,10 +1889,13 @@ function buildSpec(): OpenApiSchema {
                     type: "array",
                     items: {
                       type: "object",
+                      additionalProperties: false,
+                      required: ["id"],
                       properties: {
                         id: { type: "string" },
                         filename: { type: "string" },
                         hash: { type: "string" },
+                        mimeType: { type: "string" },
                       },
                     },
                   },
@@ -1791,10 +1903,13 @@ function buildSpec(): OpenApiSchema {
                     type: "array",
                     items: {
                       type: "object",
+                      additionalProperties: false,
+                      required: ["id"],
                       properties: {
                         id: { type: "string" },
                         enabled: { type: "boolean" },
                         config: { type: "object", additionalProperties: true },
+                        manifestVersion: { type: "string" },
                       },
                     },
                   },

@@ -91,14 +91,7 @@ interface FormDefaults {
 }
 
 type SetupTaskId =
-  | "env"
-  | "database"
-  | "generate"
-  | "status"
-  | "migrate"
-  | "admin"
-  | "theme"
-  | "seed";
+  "env" | "database" | "generate" | "status" | "migrate" | "admin" | "theme" | "seed";
 
 interface SetupStepResult {
   ok: boolean;
@@ -926,8 +919,8 @@ async function completeFirstBoot(body: SetupBody): Promise<SetupStepResult> {
 
     const now = new Date();
     const siteSettings = {
-      ...(body.defaultLocale ? { defaultLocale: body.defaultLocale } : {}),
-      ...(body.timezone ? { timezone: body.timezone } : {}),
+      defaultLocale: body.defaultLocale ?? null,
+      timezone: body.timezone ?? null,
       siteUrl: body.siteUrl,
     };
     await db
@@ -947,34 +940,6 @@ async function completeFirstBoot(body: SetupBody): Promise<SetupStepResult> {
           ...(body.siteName ? { name: body.siteName } : {}),
           settings: siteSettings,
           updatedAt: now,
-        },
-      });
-
-    await db
-      .insert(core.npSettings)
-      .values({
-        siteId: core.NP_DEFAULT_SITE_ID,
-        key: "site",
-        value: {
-          name: body.siteName ?? "Default site",
-          url: body.siteUrl,
-          ...(body.defaultLocale ? { defaultLocale: body.defaultLocale } : {}),
-          ...(body.timezone ? { timezone: body.timezone } : {}),
-        },
-        updatedAt: now,
-        updatedBy: admin.id,
-      })
-      .onConflictDoUpdate({
-        target: [core.npSettings.siteId, core.npSettings.key],
-        set: {
-          value: {
-            name: body.siteName ?? "Default site",
-            url: body.siteUrl,
-            ...(body.defaultLocale ? { defaultLocale: body.defaultLocale } : {}),
-            ...(body.timezone ? { timezone: body.timezone } : {}),
-          },
-          updatedAt: now,
-          updatedBy: admin.id,
         },
       });
 

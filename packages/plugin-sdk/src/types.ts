@@ -48,6 +48,7 @@ import type {
   NpMediaStatus,
   NpMediaVariants,
 } from "@nexpress/core/media-contract";
+import type { NpSiteGeneralSettings } from "@nexpress/core/settings";
 
 import type { NpPluginManifest, NpPluginManifestResolved } from "./manifest.js";
 
@@ -529,7 +530,7 @@ export interface NpFetchResponse {
   body?: unknown;
 }
 
-export type NpSiteSettings = Record<string, unknown>;
+export type NpSiteSettings = NpSiteGeneralSettings;
 
 export type NpThemeTokens = NpCoreThemeTokens;
 export type NpThemeTokensOverlay = NpCoreThemeTokensOverlay;

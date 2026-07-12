@@ -3,9 +3,7 @@ import type { NpThemeManifest } from "../config/types.js";
 
 import { applyMigration, isVersionedSettings } from "./settings.js";
 
-const baseManifest = (
-  overrides: Partial<NpThemeManifest>,
-): NpThemeManifest => ({
+const baseManifest = (overrides: Partial<NpThemeManifest>): NpThemeManifest => ({
   id: "test-theme",
   name: "Test Theme",
   version: "0.0.0",
@@ -24,10 +22,13 @@ describe("isVersionedSettings", () => {
   });
 
   it("returns false when version is not a number", () => {
-    expect(
-      isVersionedSettings({ __npVersion: "2", __npSettings: {} }),
-    ).toBe(false);
+    expect(isVersionedSettings({ __npVersion: "2", __npSettings: {} })).toBe(false);
     expect(isVersionedSettings({ __npSettings: {} })).toBe(false);
+  });
+
+  it("returns false for extra fields and non-positive versions", () => {
+    expect(isVersionedSettings({ __npVersion: 1, __npSettings: {}, extra: true })).toBe(false);
+    expect(isVersionedSettings({ __npVersion: 0, __npSettings: {} })).toBe(false);
   });
 
   it("returns false for primitives / null", () => {
@@ -44,15 +45,13 @@ describe("isVersionedSettings", () => {
   });
 
   it("returns false for NaN / Infinity versions (corrupted DB row guard)", () => {
-    // typeof NaN === "number" — without Number.isFinite, the
+    // typeof NaN === "number" — without safe-integer validation, the
     // version comparison would silently skip the migration
     // path (NaN >= N is always false).
-    expect(isVersionedSettings({ __npVersion: Number.NaN, __npSettings: {} })).toBe(
+    expect(isVersionedSettings({ __npVersion: Number.NaN, __npSettings: {} })).toBe(false);
+    expect(isVersionedSettings({ __npVersion: Number.POSITIVE_INFINITY, __npSettings: {} })).toBe(
       false,
     );
-    expect(
-      isVersionedSettings({ __npVersion: Number.POSITIVE_INFINITY, __npSettings: {} }),
-    ).toBe(false);
   });
 });
 
@@ -93,18 +92,14 @@ describe("applyMigration", () => {
     expect(out).toEqual({ accentColor: "#abc123" });
   });
 
-  it("falls back to the raw value when the migrate fn throws", () => {
+  it("propagates migrate failures", () => {
     const manifest = baseManifest({
       settingsVersion: 2,
       settingsMigrate: () => {
         throw new Error("migrate explosion");
       },
     });
-    // Defensive — a buggy migrate fn shouldn't crash the read
-    // path. The downstream schema parse decides what to do with
-    // the (still-old) value.
-    const out = applyMigration(manifest, { hero: "x" }, 1);
-    expect(out).toEqual({ hero: "x" });
+    expect(() => applyMigration(manifest, { hero: "x" }, 1)).toThrow("migrate explosion");
   });
 
   it("treats absent settingsVersion as 1", () => {
@@ -130,12 +125,10 @@ describe("applyMigration", () => {
       addedAtV2: true,
       addedAtV3: true,
     });
-    expect(applyMigration(manifest, { hero: "x", addedAtV2: true }, 2)).toEqual(
-      {
-        hero: "x",
-        addedAtV2: true,
-        addedAtV3: true,
-      },
-    );
+    expect(applyMigration(manifest, { hero: "x", addedAtV2: true }, 2)).toEqual({
+      hero: "x",
+      addedAtV2: true,
+      addedAtV3: true,
+    });
   });
 });

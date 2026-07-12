@@ -175,14 +175,12 @@ Framework implementations:
 
 - `getPluginConfig(pluginId): Promise<unknown>` — read with
   versioning + lazy migration. Mirrors `getThemeSettings`
-  exactly, including its defensive try/catch and parse-fallback
-  semantics (locked answer Q3). Storage: `np_settings` row
+  exactly, including its fail-closed migration and schema semantics.
+  Storage: `np_settings` row
   with key `plugin.config:<id>` (decision E).
 - `getPluginConfigWithStatus(pluginId): Promise<NpPluginConfigResult>`
-  — same read with `{ value, hasPersisted, parseError? }` shape.
-  Mirror of `getThemeSettingsWithStatus`. Admin uses this to
-  render a "settings were reset" banner when the migrator
-  threw or the post-migrate value failed `safeParse`.
+  — same read with `{ value, hasPersisted }` shape. Mirror of
+  `getThemeSettingsWithStatus`; invalid persisted values throw.
 - `setPluginConfig(pluginId, value, updatedBy?)` — write,
   validate, wrap in versioned envelope.
 - `getCachedPluginConfig(pluginId)` — `unstable_cache` wrapper
@@ -436,18 +434,13 @@ Locked 2026-05-09 alongside § 2.
    `packages/core/src/themes/settings.ts` `applyMigration` +
    `getThemeSettingsWithStatus`). On a read where the stored
    `__npVersion` is below `manifest.configVersion`:
-   1. Run `configMigrate(rawValue, fromVersion)` inside a
-      defensive `try / catch`. A throwing migrator falls back
-      to the original `rawValue` (not stale cache, not error
-      card).
+   1. Run `configMigrate(rawValue, fromVersion)`. A throwing
+      migrator fails the read.
    2. `safeParse` the result against the current
       `configSchema`. On parse success, return the parsed
       value.
-   3. On parse failure (buggy migrator, schema drift the
-      migrator didn't cover), return schema defaults with
-      `parseError` surfaced via the status variant
-      (`getPluginConfigWithStatus`) so the admin can render a
-      "settings were reset" banner.
+   3. On parse failure (buggy migrator or uncovered schema drift),
+      fail the read with the owning settings key named in the error.
       The read path **does not re-save** the migrated value —
       themes don't either. Persistence happens only on the next
       operator save through `setPluginConfig`.

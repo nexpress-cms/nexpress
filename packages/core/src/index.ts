@@ -188,13 +188,11 @@ export {
   DEFAULT_SITE_SEO_SETTINGS,
   buildPageMetadata,
   getSiteSeoSettings,
-  validateSeoSettingsPatch,
 } from "./seo/page-metadata.js";
 export type {
   NpSiteSeoSettings,
   NpPageMetadata,
   NpPageMetadataInput,
-  NpSeoSettingsPatch,
 } from "./seo/page-metadata.js";
 export { buildAtomFeed, renderAtomFeed } from "./seo/feed.js";
 export type { NpFeedEntry, BuildAtomFeedOptions } from "./seo/feed.js";
@@ -204,6 +202,14 @@ export {
   buildPersonJsonLd,
   buildWebSiteJsonLd,
 } from "./seo/json-ld.js";
+export * from "./settings/index.js";
+export {
+  getAdminSettingsSnapshot,
+  getSeoSettings,
+  getSiteGeneralSettings,
+  setSeoSettings,
+  setSiteGeneralSettings,
+} from "./settings/service.js";
 export type {
   ArticleJsonLd,
   ArticleJsonLdInput,

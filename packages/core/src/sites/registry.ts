@@ -27,6 +27,14 @@ import {
   npStringOverrides,
 } from "../db/schema/system.js";
 import { NpValidationError } from "../errors.js";
+import {
+  DEFAULT_SITE_RUNTIME_SETTINGS,
+  npAssertSiteRecord,
+  npNormalizeSiteGeneralSettings,
+  npNormalizeSiteRuntimeSettings,
+  npSiteIdPattern,
+} from "../settings/contract.js";
+import type { NpSiteRecord, NpSiteRuntimeSettings } from "../settings/types.js";
 
 /**
  * Phase 15.1 — multi-site registry. The framework treats
@@ -43,30 +51,23 @@ import { NpValidationError } from "../errors.js";
  * exist and the default site backfills.
  */
 
-export interface NpSite {
-  id: string;
-  name: string;
-  hostname: string | null;
-  description: string | null;
-  settings: Record<string, unknown>;
-  isDefault: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
+export type NpSite = NpSiteRecord;
 
 const DEFAULT_SITE_ID = "default";
 
 function rowToSite(row: typeof npSites.$inferSelect): NpSite {
-  return {
+  const site = {
     id: row.id,
     name: row.name,
     hostname: row.hostname,
     description: row.description,
-    settings: row.settings ?? {},
+    settings: row.settings,
     isDefault: row.isDefault,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+  npAssertSiteRecord(site);
+  return site;
 }
 
 /**
@@ -91,7 +92,7 @@ export async function ensureDefaultSite(): Promise<NpSite> {
       name: "Default site",
       hostname: null,
       isDefault: true,
-      settings: {},
+      settings: DEFAULT_SITE_RUNTIME_SETTINGS,
       createdAt: now,
       updatedAt: now,
     })
@@ -100,11 +101,7 @@ export async function ensureDefaultSite(): Promise<NpSite> {
   if (created) return rowToSite(created);
 
   // Conflict path: another worker raced us. Re-read.
-  const [row] = await db
-    .select()
-    .from(npSites)
-    .where(eq(npSites.id, DEFAULT_SITE_ID))
-    .limit(1);
+  const [row] = await db.select().from(npSites).where(eq(npSites.id, DEFAULT_SITE_ID)).limit(1);
   if (!row) {
     throw new Error("Failed to create or read the default site");
   }
@@ -119,11 +116,7 @@ export async function listSites(): Promise<NpSite[]> {
 
 export async function getSiteById(id: string): Promise<NpSite | null> {
   const db = getDb();
-  const [row] = await db
-    .select()
-    .from(npSites)
-    .where(eq(npSites.id, id))
-    .limit(1);
+  const [row] = await db.select().from(npSites).where(eq(npSites.id, id)).limit(1);
   return row ? rowToSite(row) : null;
 }
 
@@ -134,26 +127,16 @@ export async function getSiteById(id: string): Promise<NpSite | null> {
  * site rather than 404'ing). Case-insensitive on the host
  * string.
  */
-export async function getSiteByHostname(
-  hostname: string,
-): Promise<NpSite | null> {
+export async function getSiteByHostname(hostname: string): Promise<NpSite | null> {
   const db = getDb();
   const lower = hostname.toLowerCase();
-  const [row] = await db
-    .select()
-    .from(npSites)
-    .where(eq(npSites.hostname, lower))
-    .limit(1);
+  const [row] = await db.select().from(npSites).where(eq(npSites.hostname, lower)).limit(1);
   return row ? rowToSite(row) : null;
 }
 
 export async function getDefaultSite(): Promise<NpSite | null> {
   const db = getDb();
-  const [row] = await db
-    .select()
-    .from(npSites)
-    .where(eq(npSites.isDefault, true))
-    .limit(1);
+  const [row] = await db.select().from(npSites).where(eq(npSites.isDefault, true)).limit(1);
   return row ? rowToSite(row) : null;
 }
 
@@ -178,29 +161,58 @@ export interface CreateSiteInput {
   name: string;
   hostname?: string | null;
   description?: string | null;
-  settings?: Record<string, unknown>;
+  settings?: NpSiteRuntimeSettings;
 }
 
 export async function createSite(input: CreateSiteInput): Promise<NpSite> {
-  if (!/^[a-z][a-z0-9-]*$/.test(input.id)) {
+  if (!new RegExp(npSiteIdPattern, "u").test(input.id)) {
     throw new NpValidationError("Invalid input", [
       {
         field: "id",
-        message:
-          "Site id must be lowercase alphanumeric + hyphens, starting with a letter",
+        message: "Site id must be lowercase alphanumeric + hyphens, starting with a letter",
       },
     ]);
   }
-  const db = getDb();
+  let settings: NpSiteRuntimeSettings;
+  let name: string;
+  let description: string | null;
+  const hostname = input.hostname ? input.hostname.trim().toLowerCase() : null;
   const now = new Date();
+  try {
+    settings = npNormalizeSiteRuntimeSettings(input.settings ?? DEFAULT_SITE_RUNTIME_SETTINGS);
+    const general = npNormalizeSiteGeneralSettings({
+      name: input.name,
+      url: settings.siteUrl,
+      description: input.description ?? null,
+      defaultLocale: settings.defaultLocale,
+      timezone: settings.timezone,
+    });
+    name = general.name;
+    description = general.description;
+    npAssertSiteRecord({
+      id: input.id,
+      name,
+      hostname,
+      description,
+      settings,
+      isDefault: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+  } catch (error) {
+    throw new NpValidationError("Invalid input", [
+      { field: "site", message: error instanceof Error ? error.message : "Invalid site" },
+    ]);
+  }
+  const db = getDb();
   const [row] = await db
     .insert(npSites)
     .values({
       id: input.id,
-      name: input.name,
-      hostname: input.hostname?.toLowerCase() ?? null,
-      description: input.description ?? null,
-      settings: input.settings ?? {},
+      name,
+      hostname,
+      description,
+      settings,
       isDefault: false,
       createdAt: now,
       updatedAt: now,
@@ -218,17 +230,43 @@ export async function updateSite(
 ): Promise<NpSite> {
   const db = getDb();
   const updates: Record<string, unknown> = { updatedAt: new Date() };
-  if (patch.name !== undefined) updates.name = patch.name;
-  if (patch.hostname !== undefined) {
-    updates.hostname = patch.hostname ? patch.hostname.toLowerCase() : null;
+  const current = await getSiteById(id);
+  if (!current) {
+    throw new NpValidationError("Invalid input", [
+      { field: "id", message: `Site "${id}" not found` },
+    ]);
   }
-  if (patch.description !== undefined) updates.description = patch.description;
-  if (patch.settings !== undefined) updates.settings = patch.settings;
-  const [row] = await db
-    .update(npSites)
-    .set(updates)
-    .where(eq(npSites.id, id))
-    .returning();
+  const candidateSettings = patch.settings ?? current.settings;
+  try {
+    const normalizedSettings = npNormalizeSiteRuntimeSettings(candidateSettings);
+    const general = npNormalizeSiteGeneralSettings({
+      name: patch.name ?? current.name,
+      url: normalizedSettings.siteUrl,
+      description: patch.description !== undefined ? patch.description : current.description,
+      defaultLocale: normalizedSettings.defaultLocale,
+      timezone: normalizedSettings.timezone,
+    });
+    if (patch.name !== undefined) updates.name = general.name;
+    if (patch.description !== undefined) updates.description = general.description;
+    if (patch.settings !== undefined) updates.settings = normalizedSettings;
+  } catch (error) {
+    throw new NpValidationError("Invalid input", [
+      { field: "site", message: error instanceof Error ? error.message : "Invalid site" },
+    ]);
+  }
+  if (patch.hostname !== undefined) {
+    const hostname = patch.hostname ? patch.hostname.trim().toLowerCase() : null;
+    const candidate = { ...current, ...updates, hostname, updatedAt: new Date() };
+    try {
+      npAssertSiteRecord(candidate);
+    } catch (error) {
+      throw new NpValidationError("Invalid input", [
+        { field: "hostname", message: error instanceof Error ? error.message : "Invalid hostname" },
+      ]);
+    }
+    updates.hostname = hostname;
+  }
+  const [row] = await db.update(npSites).set(updates).where(eq(npSites.id, id)).returning();
   if (!row) {
     throw new NpValidationError("Invalid input", [
       { field: "id", message: `Site "${id}" not found` },
@@ -316,44 +354,26 @@ export async function getSiteUsageSummary(id: string): Promise<NpSiteUsage> {
 
   const settings = await countWhere(npSettings, eq(npSettings.siteId, id));
   const navigation = await countWhere(npNavigation, eq(npNavigation.siteId, id));
-  const memberships = await countWhere(
-    npSiteMemberships,
-    eq(npSiteMemberships.siteId, id),
-  );
-  const stringOverrides = await countWhere(
-    npStringOverrides,
-    eq(npStringOverrides.siteId, id),
-  );
+  const memberships = await countWhere(npSiteMemberships, eq(npSiteMemberships.siteId, id));
+  const stringOverrides = await countWhere(npStringOverrides, eq(npStringOverrides.siteId, id));
   // Issue #220 — include the tables that landed after Phase 15.9
   // shipped. Without them a site looks "empty" in the admin
   // even though it owns thousands of community rows; deleting
   // it would silently leave them orphaned.
-  const pluginStorage = await countWhere(
-    npPluginStorage,
-    eq(npPluginStorage.siteId, id),
-  );
+  const pluginStorage = await countWhere(npPluginStorage, eq(npPluginStorage.siteId, id));
   const comments = await countWhere(npComments, eq(npComments.siteId, id));
   const reactions = await countWhere(npReactions, eq(npReactions.siteId, id));
   const follows = await countWhere(npFollows, eq(npFollows.siteId, id));
   const mutes = await countWhere(npMemberMutes, eq(npMemberMutes.siteId, id));
-  const notifications = await countWhere(
-    npNotifications,
-    eq(npNotifications.siteId, id),
-  );
+  const notifications = await countWhere(npNotifications, eq(npNotifications.siteId, id));
   const reports = await countWhere(npReports, eq(npReports.siteId, id));
   // Audit events with `site_id IS NULL` are the cross-tenant /
   // background-job rows; we deliberately don't count them here.
-  const auditEvents = await countWhere(
-    npAuditEvents,
-    eq(npAuditEvents.siteId, id),
-  );
+  const auditEvents = await countWhere(npAuditEvents, eq(npAuditEvents.siteId, id));
   const bans = await countWhere(npBans, eq(npBans.siteId, id));
   const memberRoles = await countWhere(npMemberRoles, eq(npMemberRoles.siteId, id));
 
-  const collectionsTotal = Object.values(collections).reduce(
-    (sum, n) => sum + n,
-    0,
-  );
+  const collectionsTotal = Object.values(collections).reduce((sum, n) => sum + n, 0);
 
   return {
     collections,
@@ -415,16 +435,9 @@ export interface NpDeleteSiteOptions {
  * the admin UI surfaces a usage summary first so the operator
  * sees what cascade would touch.
  */
-export async function deleteSite(
-  id: string,
-  options?: NpDeleteSiteOptions,
-): Promise<void> {
+export async function deleteSite(id: string, options?: NpDeleteSiteOptions): Promise<void> {
   const db = getDb();
-  const [target] = await db
-    .select()
-    .from(npSites)
-    .where(eq(npSites.id, id))
-    .limit(1);
+  const [target] = await db.select().from(npSites).where(eq(npSites.id, id)).limit(1);
   if (!target) {
     throw new NpValidationError("Invalid input", [
       { field: "id", message: `Site "${id}" not found` },
@@ -434,8 +447,7 @@ export async function deleteSite(
     throw new NpValidationError("Invalid input", [
       {
         field: "id",
-        message:
-          "Cannot delete the default site. Promote another site to default first.",
+        message: "Cannot delete the default site. Promote another site to default first.",
       },
     ]);
   }

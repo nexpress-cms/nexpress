@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isNpSiteWireRecord, type NpSiteWireRecord } from "@nexpress/core/settings";
 import Link from "next/link";
 import { AlertTriangle, Globe2, Loader2, Plus, Star, Trash2, Users } from "lucide-react";
 
@@ -50,14 +51,15 @@ interface DeleteDialogState {
  * to the matching site, falling back to the default when
  * unmatched.
  */
-interface Site {
-  id: string;
-  name: string;
-  hostname: string | null;
-  description: string | null;
-  isDefault: boolean;
-  createdAt: string;
-  updatedAt: string;
+type Site = NpSiteWireRecord;
+
+function readApiError(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const error = (value as Record<string, unknown>).error;
+  if (typeof error === "string") return error;
+  if (!error || typeof error !== "object" || Array.isArray(error)) return null;
+  const message = (error as Record<string, unknown>).message;
+  return typeof message === "string" ? message : null;
 }
 
 export function SitesView() {
@@ -75,15 +77,21 @@ export function SitesView() {
     setError(null);
     try {
       const res = await npFetch("/api/admin/sites");
-      const body = (await res.json().catch(() => null)) as {
-        docs?: Site[];
-        error?: { message?: string };
-      } | null;
+      const body = (await res.json().catch(() => null)) as unknown;
       if (!res.ok) {
-        setError(body?.error?.message ?? "Unable to load sites.");
+        setError(readApiError(body) ?? "Unable to load sites.");
         return;
       }
-      setSites(body?.docs ?? []);
+      if (
+        !body ||
+        typeof body !== "object" ||
+        !("docs" in body) ||
+        !Array.isArray(body.docs) ||
+        !body.docs.every(isNpSiteWireRecord)
+      ) {
+        throw new Error("Sites API returned an invalid contract.");
+      }
+      setSites(body.docs);
     } catch {
       setError("Unable to load sites.");
     }

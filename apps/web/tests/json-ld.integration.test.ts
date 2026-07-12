@@ -31,14 +31,12 @@ describe.skipIf(skipIfNoTestDb())("JSON-LD structured data (Phase 10.5)", () => 
     const json = await buildWebSiteJsonLd();
     expect(json["@context"]).toBe("https://schema.org");
     expect(json["@type"]).toBe("WebSite");
-    expect(json.name).toBe("NexPress");
+    expect(json.name).toBe("Default site");
     expect(json.url).toBe("http://localhost:3000/");
     expect(json.potentialAction?.target.urlTemplate).toBe(
       "http://localhost:3000/search?q={search_term_string}",
     );
-    expect(json.potentialAction?.["query-input"]).toBe(
-      "required name=search_term_string",
-    );
+    expect(json.potentialAction?.["query-input"]).toBe("required name=search_term_string");
   });
 
   it("Article descriptor carries headline, dates, author, image; resolves /-rooted paths", async () => {
@@ -64,7 +62,7 @@ describe.skipIf(skipIfNoTestDb())("JSON-LD structured data (Phase 10.5)", () => 
     expect(json.datePublished).toBe(published.toISOString());
     expect(json.dateModified).toBe(modified.toISOString());
     expect(json.author).toEqual({ "@type": "Person", name: "Ada Lovelace" });
-    expect(json.publisher.name).toBe("NexPress");
+    expect(json.publisher.name).toBe("Default site");
   });
 
   it("DiscussionForumPosting reuses Article shape with the right @type", async () => {
@@ -123,17 +121,17 @@ describe.skipIf(skipIfNoTestDb())("JSON-LD structured data (Phase 10.5)", () => 
   });
 
   it("settings updates propagate to JSON-LD (siteName, origin)", async () => {
-    const { updateCommunitySettings, buildWebSiteJsonLd, npSettings } =
+    const { updateCommunitySettings, buildWebSiteJsonLd, updateSite } =
       await import("@nexpress/core");
     void updateCommunitySettings;
     // Persist a site setting so siteName/url change at the next read.
-    const { getTestDb } = await import("./harness.js");
-    const db = await getTestDb();
-    await db.insert(npSettings).values({
-      key: "site",
-      value: { name: "Acme Inc.", url: "https://acme.example/" },
-      updatedAt: new Date(),
-      updatedBy: null,
+    await updateSite("default", {
+      name: "Acme Inc.",
+      settings: {
+        siteUrl: "https://acme.example",
+        defaultLocale: null,
+        timezone: null,
+      },
     });
 
     const json = await buildWebSiteJsonLd();

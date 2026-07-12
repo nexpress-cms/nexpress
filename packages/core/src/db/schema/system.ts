@@ -16,6 +16,7 @@ import {
 import { npMedia } from "./media.js";
 import { type NpNavItem, type NpRichTextContent } from "../../config/types.js";
 import type { NpBlockInstance } from "../../fields/block-content.js";
+import type { NpSiteRuntimeSettings } from "../../settings/types.js";
 
 export const npUserRoleEnum = pgEnum("np_user_role", [
   "admin",
@@ -295,7 +296,10 @@ export const npSites = pgTable(
     name: text("name").notNull(),
     hostname: text("hostname"),
     description: text("description"),
-    settings: jsonb("settings").$type<Record<string, unknown>>().default({}).notNull(),
+    settings: jsonb("settings")
+      .$type<NpSiteRuntimeSettings>()
+      .default({ siteUrl: null, defaultLocale: null, timezone: null })
+      .notNull(),
     isDefault: boolean("is_default").default(false).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),

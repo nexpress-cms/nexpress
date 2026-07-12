@@ -98,15 +98,19 @@ export async function getActiveThemeId(): Promise<string | null> {
     .limit(1)) as Array<{ value: unknown }>;
   const row = rows[0];
   if (!row) return null;
-  return typeof row.value === "string" ? row.value : null;
+  if (typeof row.value !== "string" || !/^[a-z][a-z0-9-]{0,62}$/u.test(row.value)) {
+    throw new NpValidationError("Invalid persisted active theme", [
+      { field: "settings.activeTheme", message: "Active theme id is malformed" },
+    ]);
+  }
+  return row.value;
 }
 
 /**
  * Resolves the active theme to render. Looks up the persisted id
- * in the registry; falls back to the first registered theme when
- * the id is unset, missing, or points at a theme that's no
- * longer in the registry (e.g. it was removed from
- * `nexpress.config.ts` between deploys). Returns `null` only
+ * in the registry; falls back to the first registered theme only when
+ * the id is unset. A persisted id that no longer resolves fails closed
+ * so configuration drift is operator-visible. Returns `null` only
  * when the registry is completely empty.
  */
 export async function getActiveTheme(): Promise<NpRegisteredTheme | null> {
@@ -114,6 +118,12 @@ export async function getActiveTheme(): Promise<NpRegisteredTheme | null> {
   if (id) {
     const theme = registry.get(id);
     if (theme) return theme;
+    throw new NpValidationError("Invalid persisted active theme", [
+      {
+        field: "settings.activeTheme",
+        message: `Theme '${id}' is persisted as active but is not registered.`,
+      },
+    ]);
   }
   // Registry preserves insertion order; the first registered
   // theme is the implicit default.

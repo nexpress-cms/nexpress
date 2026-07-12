@@ -1,16 +1,8 @@
-import { getDb } from "../db/runtime.js";
-import { npSettings } from "../db/schema/system.js";
+import { getSeoSettings, getSiteGeneralSettings } from "../settings/service.js";
 
 /**
- * Phase 10.3 — site-wide SEO defaults read from `np_settings`.
- * Reads three existing keys + a new `seo` key:
- *
- *   - `site`        → { name, url }   (existing General settings)
- *   - `description` → string           (existing General settings)
- *   - `seo`         → { defaultOgImage, twitterHandle, defaultLocale }
- *
- * The shape is a flat merge so callers don't have to hop across
- * keys to pre-fill metadata.
+ * Site-wide SEO defaults resolve site identity from the canonical
+ * `np_sites` row and SEO-only values from the validated `seo` setting.
  */
 export interface NpSiteSeoSettings {
   /** Site name shown in the title bar suffix and `og:site_name`. */
@@ -42,55 +34,23 @@ export const DEFAULT_SITE_SEO_SETTINGS: NpSiteSeoSettings = {
 };
 
 /**
- * Reads the three settings keys that contribute to site-wide
- * SEO and merges into a single flat object. Missing fields fall
+ * Reads the canonical site + SEO contracts and merges them into a
+ * single flat object. Missing values fall
  * back to `DEFAULT_SITE_SEO_SETTINGS`. Read-only access — no
  * permission gate; the values are surfaced in public HTML
  * `<head>` tags.
  */
 export async function getSiteSeoSettings(): Promise<NpSiteSeoSettings> {
-  const db = getDb();
-  const rows = (await db
-    .select()
-    .from(npSettings)) as Array<{ key: string; value: unknown }>;
-
-  const map = new Map<string, unknown>();
-  for (const row of rows) map.set(row.key, row.value);
-
-  const site = readObject(map.get("site"));
-  const seo = readObject(map.get("seo"));
-  const description = map.get("description");
+  const [site, seo] = await Promise.all([getSiteGeneralSettings(), getSeoSettings()]);
 
   return {
-    siteName:
-      readString(site?.name) ?? DEFAULT_SITE_SEO_SETTINGS.siteName,
-    siteUrl:
-      readString(site?.url) ?? DEFAULT_SITE_SEO_SETTINGS.siteUrl,
-    defaultDescription:
-      (typeof description === "string" ? description : null) ??
-      DEFAULT_SITE_SEO_SETTINGS.defaultDescription,
-    defaultOgImage:
-      readString(seo?.defaultOgImage) ??
-      DEFAULT_SITE_SEO_SETTINGS.defaultOgImage,
-    twitterHandle:
-      readString(seo?.twitterHandle) ??
-      DEFAULT_SITE_SEO_SETTINGS.twitterHandle,
-    defaultLocale:
-      readString(seo?.defaultLocale) ??
-      DEFAULT_SITE_SEO_SETTINGS.defaultLocale,
+    siteName: site.name,
+    siteUrl: site.url ?? DEFAULT_SITE_SEO_SETTINGS.siteUrl,
+    defaultDescription: site.description ?? DEFAULT_SITE_SEO_SETTINGS.defaultDescription,
+    defaultOgImage: seo.defaultOgImage,
+    twitterHandle: seo.twitterHandle,
+    defaultLocale: seo.defaultLocale,
   };
-}
-
-function readObject(v: unknown): Record<string, unknown> | null {
-  if (v && typeof v === "object" && !Array.isArray(v)) {
-    return v as Record<string, unknown>;
-  }
-  return null;
-}
-
-function readString(v: unknown): string | null {
-  if (typeof v === "string" && v.trim().length > 0) return v.trim();
-  return null;
 }
 
 /**
@@ -181,9 +141,7 @@ export interface NpPageMetadata {
  * fall back through to defaults; the OG and Twitter blocks are
  * mirrored so both crawler families see consistent values.
  */
-export async function buildPageMetadata(
-  input: NpPageMetadataInput = {},
-): Promise<NpPageMetadata> {
+export async function buildPageMetadata(input: NpPageMetadataInput = {}): Promise<NpPageMetadata> {
   const settings = await getSiteSeoSettings();
   const path = normalizePath(input.path);
   const canonicalPath = normalizePath(input.canonicalPath ?? input.path);
@@ -191,8 +149,7 @@ export async function buildPageMetadata(
   const titleText = input.title?.trim()
     ? `${input.title.trim()} · ${settings.siteName}`
     : settings.siteName;
-  const descriptionText =
-    input.description?.trim() ?? settings.defaultDescription;
+  const descriptionText = input.description?.trim() ?? settings.defaultDescription;
   const siteOrigin = settings.siteUrl.replace(/\/+$/, "");
   const canonicalUrl = `${siteOrigin}${canonicalPath}`;
   const ogUrl = `${siteOrigin}${path}`;
@@ -251,87 +208,4 @@ function resolveOgImage(
     return `${settings.siteUrl.replace(/\/+$/, "")}${candidate}`;
   }
   return candidate;
-}
-
-/**
- * Validates a partial patch against the `seo` settings shape.
- * Throws when fields are mistyped; returns the merged settings
- * the admin endpoint should persist. Mirrors
- * `validateCommunitySettingsPatch` in the community module.
- */
-export interface NpSeoSettingsPatch {
-  defaultOgImage?: string | null;
-  twitterHandle?: string | null;
-  defaultLocale?: string | null;
-}
-
-export function validateSeoSettingsPatch(
-  patch: unknown,
-): NpSeoSettingsPatch {
-  if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
-    throw new Error("Body must be a JSON object");
-  }
-  const raw = patch as Record<string, unknown>;
-  const out: NpSeoSettingsPatch = {};
-
-  if ("defaultOgImage" in raw) {
-    const v = raw.defaultOgImage;
-    if (v === null || v === "") {
-      out.defaultOgImage = null;
-    } else if (typeof v === "string") {
-      // Accept absolute URLs or `/`-rooted paths. Reject anything
-      // else — a stray `javascript:` URL would be a content-injection
-      // hazard since the value lands in `<meta>` tags and `<img>`
-      // src on social cards.
-      const trimmed = v.trim();
-      if (
-        !/^https?:\/\//i.test(trimmed) &&
-        !trimmed.startsWith("/")
-      ) {
-        throw new Error(
-          "defaultOgImage must be an absolute URL or a /-rooted path",
-        );
-      }
-      out.defaultOgImage = trimmed;
-    } else {
-      throw new Error("defaultOgImage must be a string or null");
-    }
-  }
-
-  if ("twitterHandle" in raw) {
-    const v = raw.twitterHandle;
-    if (v === null || v === "") {
-      out.twitterHandle = null;
-    } else if (typeof v === "string") {
-      // Strip a leading @ — we'll re-add it when emitting tags.
-      const trimmed = v.trim().replace(/^@/, "");
-      if (!/^[A-Za-z0-9_]{1,15}$/.test(trimmed)) {
-        throw new Error(
-          "twitterHandle must be 1–15 alphanumeric/underscore characters",
-        );
-      }
-      out.twitterHandle = trimmed;
-    } else {
-      throw new Error("twitterHandle must be a string or null");
-    }
-  }
-
-  if ("defaultLocale" in raw) {
-    const v = raw.defaultLocale;
-    if (v === null || v === "") {
-      out.defaultLocale = null;
-    } else if (typeof v === "string") {
-      const trimmed = v.trim();
-      // BCP 47 language tag — loose check (full validation is
-      // overkill; ICU does the real work downstream).
-      if (!/^[a-z]{2,3}(?:[_-][A-Za-z0-9]{2,8})?$/.test(trimmed)) {
-        throw new Error("defaultLocale must look like 'en' or 'en_US'");
-      }
-      out.defaultLocale = trimmed.replace("-", "_");
-    } else {
-      throw new Error("defaultLocale must be a string or null");
-    }
-  }
-
-  return out;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isNpAdminSettingsSnapshot } from "@nexpress/core/settings";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
@@ -43,19 +44,19 @@ export function SeoSettingsTab() {
     setError(null);
     try {
       const res = await npFetch("/api/settings");
-      const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+      const raw = (await res.json().catch(() => null)) as unknown;
       if (!res.ok) {
-        setError(extract(raw) ?? `HTTP ${res.status}`);
+        setError(extract(isRecord(raw) ? raw : null) ?? `HTTP ${res.status}`);
         return;
       }
-      const seo =
-        raw && typeof raw === "object" && raw.seo && typeof raw.seo === "object"
-          ? (raw.seo as Record<string, unknown>)
-          : {};
+      if (!isNpAdminSettingsSnapshot(raw)) {
+        throw new Error("Settings API returned an invalid contract.");
+      }
+      const seo = raw.seo;
       setSettings({
-        defaultOgImage: typeof seo.defaultOgImage === "string" ? seo.defaultOgImage : "",
-        twitterHandle: typeof seo.twitterHandle === "string" ? seo.twitterHandle : "",
-        defaultLocale: typeof seo.defaultLocale === "string" ? seo.defaultLocale : "en_US",
+        defaultOgImage: seo.defaultOgImage ?? "",
+        twitterHandle: seo.twitterHandle ?? "",
+        defaultLocale: seo.defaultLocale,
       });
     } catch {
       setError("Unable to load SEO settings.");
@@ -193,4 +194,8 @@ function extract(raw: Record<string, unknown> | null): string | null {
   if (typeof err?.message === "string") return err.message;
   if (typeof raw.message === "string") return raw.message;
   return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

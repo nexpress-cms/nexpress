@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-12 (media records and image variants now share one
+**Last refreshed:** 2026-07-12 (site identity now has one canonical `np_sites`
+owner and framework settings use a closed, fail-closed registry across core,
+Admin, plugins, backup import/export, OpenAPI, and doctor.)
+
+**Earlier:** 2026-07-12 (media records and image variants now share one
 exact runtime contract across processing, persisted reads, URL resolution,
 Admin/API responses, OpenAPI, plugin reads, cleanup, and storage diagnostics;
 malformed rows fail closed.)
@@ -226,6 +230,7 @@ cli  (standalone scaffolder, no workspace deps)
 | `@nexpress/core/navigation`     | client-safe navigation wire/resolved types and validators             |
 | `@nexpress/core/observability`  | logger, error reporter, `verifyStartupSafety`                         |
 | `@nexpress/core/seo`            | sitemap, page metadata, Atom feeds, JSON-LD                           |
+| `@nexpress/core/settings`       | client-safe site identity, settings types, and validators             |
 | `@nexpress/core/theme`          | client-safe theme token inventory, validators, and merge helpers      |
 
 The root `@nexpress/core` keeps re-exporting everything for back-compat; existing call sites are not forced to migrate. Treat the root as the lowest-common-denominator surface and the subpaths as the canonical domain APIs.

@@ -5,6 +5,8 @@
  * module top level by design — it's an entrypoint script).
  */
 
+import { npNormalizeSiteGeneralSettings } from "@nexpress/core/settings";
+
 export interface SetupBody {
   databaseUrl: string;
   testDatabaseUrl?: string;
@@ -78,6 +80,20 @@ export function validateBody(raw: Partial<SetupBody>): { body: SetupBody } | { e
   } catch {
     return { error: "SITE_URL is not a valid URL — check the host portion" };
   }
+  let canonicalSite: ReturnType<typeof npNormalizeSiteGeneralSettings>;
+  try {
+    canonicalSite = npNormalizeSiteGeneralSettings({
+      name: raw.siteName?.trim() || "Default site",
+      url: siteUrl,
+      description: null,
+      defaultLocale: raw.defaultLocale?.trim() || null,
+      timezone: raw.timezone?.trim() || null,
+    });
+  } catch (error) {
+    return {
+      error: `Invalid site settings: ${error instanceof Error ? error.message : "unknown error"}`,
+    };
+  }
 
   const storage = raw.storage === "s3" ? "s3" : "local";
   if (storage === "s3") {
@@ -124,7 +140,7 @@ export function validateBody(raw: Partial<SetupBody>): { body: SetupBody } | { e
       databaseUrl,
       testDatabaseUrl: raw.testDatabaseUrl?.trim() || undefined,
       npSecret,
-      siteUrl,
+      siteUrl: canonicalSite.url ?? siteUrl,
       storage,
       s3Bucket: raw.s3Bucket?.trim() || undefined,
       s3Region: raw.s3Region?.trim() || undefined,
@@ -134,9 +150,9 @@ export function validateBody(raw: Partial<SetupBody>): { body: SetupBody } | { e
       ...(adminPassword ? { adminPassword } : {}),
       ...(raw.adminName?.trim() ? { adminName: raw.adminName.trim() } : {}),
       ...(raw.adminThemeId?.trim() ? { adminThemeId: raw.adminThemeId.trim() } : {}),
-      ...(raw.siteName?.trim() ? { siteName: raw.siteName.trim() } : {}),
-      ...(raw.defaultLocale?.trim() ? { defaultLocale: raw.defaultLocale.trim() } : {}),
-      ...(raw.timezone?.trim() ? { timezone: raw.timezone.trim() } : {}),
+      ...(raw.siteName?.trim() ? { siteName: canonicalSite.name } : {}),
+      ...(canonicalSite.defaultLocale ? { defaultLocale: canonicalSite.defaultLocale } : {}),
+      ...(canonicalSite.timezone ? { timezone: canonicalSite.timezone } : {}),
       ...(wantsFirstAdmin && raw.sampleContent === true ? { sampleContent: true } : {}),
     },
   };

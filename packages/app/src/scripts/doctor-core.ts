@@ -1,5 +1,6 @@
 import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
+import { npAnalyzeSettingValue, npAnalyzeSiteRecord } from "@nexpress/core/settings";
 
 import { inferDeployTargetFromEnv, type DeployTarget } from "./deploy-targets.js";
 import { buildDoctorJson, type DoctorJsonOutput } from "./doctor-output.js";
@@ -100,6 +101,7 @@ export async function collectDoctorChecks(
   checks.push(...checkOAuthEnvPairs(env));
   checks.push(await checkLocalStorage(env, cwd));
   checks.push(await checkDatabase(env));
+  checks.push(await checkSettingsContracts(env));
   checks.push(await checkMigrationsApplied({ prodMode, env, cwd }));
 
   for (const result of [
@@ -281,6 +283,74 @@ async function checkDatabase(env: DoctorEnv): Promise<CheckResult> {
       state: "error",
       label: "Postgres reachable",
       detail: messageForConnectionError(url, err, { suggestedPort }),
+    };
+  }
+}
+
+async function checkSettingsContracts(env: DoctorEnv): Promise<CheckResult> {
+  const url = env.DATABASE_URL;
+  if (!url) {
+    return {
+      id: "settings.contract",
+      state: "warn",
+      label: "Framework settings contracts",
+      detail: "skipped (no DATABASE_URL)",
+    };
+  }
+  let pg: PgModuleLike;
+  try {
+    pg = (await loadPg()) as PgModuleLike;
+  } catch {
+    return {
+      id: "settings.contract",
+      state: "warn",
+      label: "Framework settings contracts",
+      detail: "skipped (no `pg`)",
+    };
+  }
+  const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
+  try {
+    await client.connect();
+    const [sites, settings] = await Promise.all([
+      client.query<Record<string, unknown>>(
+        `select id, name, hostname, description, settings, is_default as "isDefault",
+                created_at as "createdAt", updated_at as "updatedAt"
+           from np_sites`,
+      ),
+      client.query<{ siteId: string; key: string; value: unknown }>(
+        `select site_id as "siteId", key, value from np_settings`,
+      ),
+    ]);
+    await client.end();
+    const issues = [
+      ...sites.rows.flatMap((site) => npAnalyzeSiteRecord(site)),
+      ...settings.rows.flatMap((row) => npAnalyzeSettingValue(row.key, row.value)),
+    ];
+    return issues.length === 0
+      ? {
+          id: "settings.contract",
+          state: "ok",
+          label: "Framework settings contracts",
+          detail: `${sites.rows.length.toString()} site(s), ${settings.rows.length.toString()} setting row(s)`,
+        }
+      : {
+          id: "settings.contract",
+          state: "error",
+          label: "Framework settings contracts",
+          detail: `${issues.length.toString()} contract issue(s); first: ${issues[0]?.path ?? "settings"} ${issues[0]?.message ?? "invalid"}`,
+          hint: "Repair or remove malformed/unknown np_sites and np_settings values before starting the app.",
+        };
+  } catch (error) {
+    try {
+      await client.end();
+    } catch {
+      /* swallow */
+    }
+    return {
+      id: "settings.contract",
+      state: "warn",
+      label: "Framework settings contracts",
+      detail: `could not inspect settings: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }

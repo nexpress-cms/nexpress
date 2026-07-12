@@ -117,7 +117,6 @@ export default async function PluginAdminRoute({ params }: PageProps) {
       schedules={schedules}
       configFields={configFields}
       initialAutoConfig={configStatus.value}
-      configParseError={configStatus.parseError}
     />
   );
 }

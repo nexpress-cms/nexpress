@@ -304,7 +304,10 @@ When you change the schema in a non-additive way (rename a field,
 remove one, tighten a default), bump `configVersion` and pair it
 with a `configMigrate(old, fromVersion)` callback. The framework
 runs the migrator lazily on first cold read after upgrade,
-mirroring the theme-settings migration pipeline.
+mirroring the theme-settings migration pipeline. Stored values always use the
+exact `{ __npVersion, __npSettings }` envelope. A throwing migrator or a value
+that fails the current schema stops the read and must be fixed; it is never
+silently replaced with defaults.
 
 ```ts
 definePlugin<MyPluginConfig>({

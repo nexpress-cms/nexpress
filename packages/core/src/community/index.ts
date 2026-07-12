@@ -39,6 +39,7 @@ export { applyReputation } from "./reputation.js";
 export {
   DEFAULT_COMMUNITY_SETTINGS,
   getCommunitySettings,
+  npRequireCommunitySettings,
   updateCommunitySettings,
   validateCommunitySettingsPatch,
 } from "./settings.js";

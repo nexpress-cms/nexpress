@@ -6,6 +6,8 @@ import { createPluginRuntimeContext } from "../plugins/context.js";
 import { loadPlugins, resetPlugins } from "../plugins/host.js";
 import { DEFAULT_THEME } from "../theme/defaults.js";
 import type { NpThemeTokens, NpThemeTokensOverlay } from "../theme/types.js";
+import type { NpSiteGeneralSettings } from "../settings/types.js";
+import { updateSite } from "../sites/registry.js";
 import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } from "./setup.js";
 
 describe.skipIf(skipIfNoTestDb())("ctx.settings / ctx.theme (integration)", () => {
@@ -38,7 +40,7 @@ describe.skipIf(skipIfNoTestDb())("ctx.settings / ctx.theme (integration)", () =
       lookupRegistration: () => undefined,
     }) as {
       settings: {
-        getSite(): Promise<Record<string, unknown>>;
+        getSite(): Promise<NpSiteGeneralSettings>;
         getPlugin(): Promise<Record<string, unknown>>;
         setPlugin(data: Record<string, unknown>): Promise<void>;
       };
@@ -49,29 +51,51 @@ describe.skipIf(skipIfNoTestDb())("ctx.settings / ctx.theme (integration)", () =
     };
   }
 
-  it("settings.getSite returns {} when npSettings has no site row", async () => {
+  it("settings.getSite projects the canonical default site row", async () => {
     const ctx = makeCtx();
-    expect(await ctx.settings.getSite()).toEqual({});
+    expect(await ctx.settings.getSite()).toEqual({
+      name: "Default site",
+      url: null,
+      description: null,
+      defaultLocale: null,
+      timezone: null,
+    });
   });
 
-  it("settings.getSite returns the stored value when a site row exists", async () => {
-    const db = await getTestDb();
-    await db.insert(npSettings).values({
-      key: "site",
-      value: { name: "Acme", description: "A site" },
+  it("settings.getSite returns the canonical site identity", async () => {
+    await updateSite("default", {
+      name: "Acme",
+      description: "A site",
+      settings: {
+        siteUrl: "https://example.com",
+        defaultLocale: "en-US",
+        timezone: "Asia/Seoul",
+      },
     });
     const ctx = makeCtx();
-    expect(await ctx.settings.getSite()).toEqual({ name: "Acme", description: "A site" });
+    expect(await ctx.settings.getSite()).toEqual({
+      name: "Acme",
+      url: "https://example.com",
+      description: "A site",
+      defaultLocale: "en-US",
+      timezone: "Asia/Seoul",
+    });
   });
 
   it("settings.getPlugin/setPlugin round-trip plugin config through np_settings", async () => {
-    // G.1 — config moved from np_plugins.config to np_settings
-    // (key="plugin.config:<id>"). setPlugin no longer requires a
-    // pre-existing np_plugins row because the new path uses
-    // INSERT … ON CONFLICT DO UPDATE on np_settings directly.
-    // Seeding the np_plugins row is still done so the plugin
-    // appears in `listPluginStates` for adjacent assertions, but
-    // it's not load-bearing for this test.
+    await loadPlugins([
+      {
+        manifest: {
+          id: "test-plugin",
+          name: "Test Plugin",
+          version: "0.1.0",
+          capabilities: ["settings:read", "settings:write"],
+        },
+      },
+    ]);
+
+    // The persisted owner must be a loaded plugin. A manifest id can no
+    // longer mint an unregistered `plugin.config:*` setting row.
     const db = await getTestDb();
     await db.insert(npPlugins).values({
       id: "test-plugin",

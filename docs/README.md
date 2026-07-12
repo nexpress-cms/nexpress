@@ -38,6 +38,7 @@ behavior they describe changes.
 | [releasing.md](releasing.md)                           | Changesets release and npm publish checklist                           |
 | [rich-text.md](rich-text.md)                           | Versioned rich-text wire format, validation, and authoring helpers     |
 | [scheduled-publishing.md](scheduled-publishing.md)     | Scheduled publish flow                                                 |
+| [settings.md](settings.md)                             | Canonical site identity and closed persisted-settings registry         |
 | [site-customization.md](site-customization.md)         | Track A — what to customise in a scaffolded site without forking       |
 | [testing.md](testing.md)                               | Unit + integration test setup                                          |
 | [theme-and-page-authors.md](theme-and-page-authors.md) | Cookbook — what to call from a custom page or theme                    |

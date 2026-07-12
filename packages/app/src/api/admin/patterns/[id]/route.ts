@@ -5,6 +5,7 @@ import {
   getCurrentSiteId,
   getDb,
   getSetting,
+  npAssertSettingValue,
 } from "@nexpress/core";
 import { npSettings } from "@nexpress/core/db";
 import { npValidateBlockContent, type NpBlockContent } from "@nexpress/core/fields";
@@ -55,6 +56,7 @@ export async function DELETE(
       return npSuccessResponse({ deleted: 0 });
     }
     const db = getDb();
+    npAssertSettingValue(SETTING_KEY, next);
     const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
     const now = new Date();
     await db

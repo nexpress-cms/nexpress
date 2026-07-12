@@ -7,10 +7,8 @@ import { npSettings } from "../db/schema/system.js";
 import { NpValidationError } from "../errors.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { getActiveTheme, getThemeById } from "./registry.js";
-import {
-  introspectThemeSettingsSchema,
-  type NpThemeSettingsField,
-} from "./settings-schema.js";
+import { introspectThemeSettingsSchema, type NpThemeSettingsField } from "./settings-schema.js";
+import { npAssertSettingValue } from "../settings/contract.js";
 
 const DEFAULT_SITE = "default";
 
@@ -38,9 +36,8 @@ function settingsKey(themeId: string): string {
  * considered but rejected because both names are plausible
  * theme-author choices for actual settings).
  *
- * Legacy unwrapped values (written by v0.2 before this PR) are
- * detected by the absence of the sentinel keys and migrated
- * in-place to v1 → current.
+ * Persisted values must use this exact envelope. Bare values and
+ * extra envelope fields fail before schema parsing.
  */
 /** Internal — exported for unit tests only. */
 export interface NpVersionedSettings {
@@ -50,24 +47,26 @@ export interface NpVersionedSettings {
 
 /** Internal — exported for unit tests only. */
 export function isVersionedSettings(value: unknown): value is NpVersionedSettings {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Partial<NpVersionedSettings>;
-  // Number.isFinite rejects NaN / Infinity / non-numbers — a
+  // Safe-integer validation rejects NaN / Infinity / fractions — a
   // hand-crafted or corrupted DB value with `__npVersion: NaN`
   // would otherwise pass typeof and trip the migration path's
   // `>=` comparisons (NaN >= N always false).
   return (
     typeof candidate.__npVersion === "number" &&
-    Number.isFinite(candidate.__npVersion) &&
+    Number.isSafeInteger(candidate.__npVersion) &&
+    candidate.__npVersion >= 1 &&
+    candidate.__npVersion <= 1_000_000 &&
+    Object.keys(candidate).length === 2 &&
     "__npSettings" in candidate
   );
 }
 
 /** Run the theme's `settingsMigrate` from `from` to current
- *  schema version. No-op when versions match (or when the theme
- *  doesn't declare a migrator). Defensive try/catch — a buggy
- *  migrate fn shouldn't blow up the read path; we fall back to
- *  the original value and let `safeParse` decide. */
+ * schema version. No-op when versions match or when the theme
+ * doesn't declare a migrator. Migrator failures propagate so a
+ * partially migrated value cannot be accepted silently. */
 /** Internal — exported for unit tests only. */
 export function applyMigration(
   manifest: NpThemeManifest,
@@ -78,11 +77,7 @@ export function applyMigration(
   if (fromVersion >= target) return rawValue;
   const migrate = manifest.settingsMigrate;
   if (typeof migrate !== "function") return rawValue;
-  try {
-    return migrate(rawValue, fromVersion);
-  } catch {
-    return rawValue;
-  }
+  return migrate(rawValue, fromVersion);
 }
 
 function defaultsFrom(fields: NpThemeSettingsField[]): Record<string, unknown> {
@@ -104,10 +99,8 @@ function defaultsFrom(fields: NpThemeSettingsField[]): Record<string, unknown> {
 
 /**
  * Read the persisted settings row for a theme and parse it via
- * the theme's schema. Returns the parsed value when valid;
- * falls back to schema defaults on parse failure (with the
- * failure recorded for the admin to surface, see
- * `getThemeSettingsWithStatus`).
+ * the theme's schema. Missing rows use schema defaults; malformed
+ * persisted rows and migration/schema failures fail closed.
  *
  * `themeId` defaults to the active theme. Pass an explicit id
  * to read another installed theme's settings (used by the
@@ -126,9 +119,7 @@ function defaultsFrom(fields: NpThemeSettingsField[]): Record<string, unknown> {
  *   // a theme component
  *   const settings = (await getThemeSettings()) as MagazineSettings;
  */
-export async function getThemeSettings(
-  themeId?: string,
-): Promise<unknown> {
+export async function getThemeSettings(themeId?: string): Promise<unknown> {
   const result = await getThemeSettingsWithStatus(themeId);
   return result.value;
 }
@@ -138,44 +129,49 @@ export interface NpThemeSettingsResult {
   /** Parsed settings or schema defaults (never null when a theme
    *  has a schema; empty object when the theme has no schema). */
   value: unknown;
-  /** True when there's a stored row, regardless of whether it
-   *  passed validation. */
+  /** True when a valid stored row exists. */
   hasPersisted: boolean;
-  /** Set when the persisted value failed `schema.parse()`. The
-   *  admin surface uses this to show a "values reset to
-   *  defaults" banner. */
-  parseError?: string;
 }
 
-export async function getThemeSettingsWithStatus(
-  themeId?: string,
-): Promise<NpThemeSettingsResult> {
+export async function getThemeSettingsWithStatus(themeId?: string): Promise<NpThemeSettingsResult> {
   const theme = themeId ? getThemeById(themeId) : await getActiveTheme();
+  if (themeId && !theme) {
+    throw new NpValidationError("Invalid input", [
+      {
+        field: "themeId",
+        message: `Unknown theme '${themeId}'. Register it in nexpress.config.ts first.`,
+      },
+    ]);
+  }
   if (!theme) {
     return { themeId: null, value: {}, hasPersisted: false };
   }
   const schema = theme.manifest.settingsSchema as ZodTypeAny | undefined;
-  if (!schema) {
-    return { themeId: theme.manifest.id, value: {}, hasPersisted: false };
-  }
 
   const db = getDb();
   const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
   const rows = (await db
     .select()
     .from(npSettings)
-    .where(
-      and(
-        eq(npSettings.siteId, siteId),
-        eq(npSettings.key, settingsKey(theme.manifest.id)),
-      ),
-    )
+    .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, settingsKey(theme.manifest.id))))
     .limit(1)) as Array<{ value: unknown }>;
+  const row = rows[0];
+
+  if (!schema) {
+    if (row) {
+      throw new NpValidationError("Invalid persisted theme settings", [
+        {
+          field: `settings.${settingsKey(theme.manifest.id)}`,
+          message: `Theme '${theme.manifest.id}' does not declare settingsSchema.`,
+        },
+      ]);
+    }
+    return { themeId: theme.manifest.id, value: {}, hasPersisted: false };
+  }
 
   const fields = introspectThemeSettingsSchema(schema);
   const defaults = defaultsFrom(fields);
 
-  const row = rows[0];
   if (!row) {
     // No row stored yet — first access returns schema defaults.
     // We don't write a row eagerly; the operator's first save
@@ -187,20 +183,13 @@ export async function getThemeSettingsWithStatus(
       hasPersisted: false,
     };
   }
+  npAssertSettingValue(settingsKey(theme.manifest.id), row.value);
 
-  // v0.3 (D) — version detection + migration.
-  //
-  // Storage shape options:
-  //   - `{ __npVersion: N, __npSettings: ... }` (v0.3+ wrapped)
-  //   - bare value (legacy v0.2 unwrapped — treated as v1)
-  //
-  // When stored version < manifest.settingsVersion, run the
-  // migrator. Re-parse the result; on parse failure (buggy
-  // migrate, or schema drift the migrator doesn't cover), fall
-  // back to defaults with parseError so the admin surfaces it.
-  const versioned = isVersionedSettings(row.value) ? row.value : null;
-  const storedVersion = versioned ? versioned.__npVersion : 1;
-  const rawValue = versioned ? versioned.__npSettings : row.value;
+  // The registry assertion above guarantees the exact versioned envelope.
+  // A schema mismatch or buggy migrator is an operator-visible hard failure.
+  const versioned = row.value as NpVersionedSettings;
+  const storedVersion = versioned.__npVersion;
+  const rawValue = versioned.__npSettings;
   const valueToParse = applyMigration(theme.manifest, rawValue, storedVersion);
 
   const parsed = schema.safeParse(valueToParse);
@@ -212,16 +201,12 @@ export async function getThemeSettingsWithStatus(
     };
   }
 
-  // Schema mismatch (theme upgrade changed the shape and either
-  // declared no migrator, or the migrator didn't cover this path).
-  // Fall back to defaults and surface the error; the admin
-  // renders a "settings were reset" banner.
-  return {
-    themeId: theme.manifest.id,
-    value: defaults,
-    hasPersisted: true,
-    parseError: parsed.error.message,
-  };
+  throw new NpValidationError("Invalid persisted theme settings", [
+    {
+      field: `settings.${settingsKey(theme.manifest.id)}`,
+      message: parsed.error.message,
+    },
+  ]);
 }
 
 /**
@@ -282,6 +267,7 @@ export async function setThemeSettings(
     __npVersion: theme.manifest.settingsVersion ?? 1,
     __npSettings: parsed.data,
   };
+  npAssertSettingValue(settingsKey(themeId), wrapped);
 
   const db = getDb();
   const now = new Date();
@@ -316,8 +302,7 @@ export async function activeThemeContributesSeo(): Promise<boolean> {
   if (!theme) return false;
   // `impl` is opaque to core; we do a structural check.
   const impl = theme.impl as
-    | { seo?: { sitemapEntries?: unknown; feedEntries?: unknown } }
-    | undefined;
+    { seo?: { sitemapEntries?: unknown; feedEntries?: unknown } } | undefined;
   if (!impl?.seo) return false;
   return Boolean(impl.seo.sitemapEntries || impl.seo.feedEntries);
 }

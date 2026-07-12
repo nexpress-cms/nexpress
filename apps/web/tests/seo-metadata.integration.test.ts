@@ -3,7 +3,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   closeTestDb,
   ensureMigrated,
-  getTestDb,
   registerTestCollections,
   seedUser,
   skipIfNoTestDb,
@@ -11,23 +10,13 @@ import {
   type TestUserSession,
 } from "./harness.js";
 
-import {
-  GET as settingsGET,
-  PUT as settingsPUT,
-} from "@/app/api/settings/route";
+import { GET as settingsGET, PUT as settingsPUT } from "@/app/api/settings/route";
 
 import { NextRequest } from "next/server";
 
-function adminRequest(
-  staff: TestUserSession,
-  path: string,
-  init: RequestInit = {},
-): NextRequest {
+function adminRequest(staff: TestUserSession, path: string, init: RequestInit = {}): NextRequest {
   const headers = new Headers(init.headers);
-  headers.set(
-    "cookie",
-    `np-session=${staff.accessToken}; np-csrf=${staff.csrfToken}`,
-  );
+  headers.set("cookie", `np-session=${staff.accessToken}; np-csrf=${staff.csrfToken}`);
   if (init.body) headers.set("content-type", "application/json");
   if (init.method && init.method !== "GET") {
     headers.set("x-csrf-token", staff.csrfToken);
@@ -55,12 +44,10 @@ describe.skipIf(skipIfNoTestDb())("site SEO metadata + settings (Phase 10.3)", (
   });
 
   it("buildPageMetadata falls back to site defaults when input is empty", async () => {
-    const { buildPageMetadata, DEFAULT_SITE_SEO_SETTINGS } = await import(
-      "@nexpress/core"
-    );
+    const { buildPageMetadata } = await import("@nexpress/core");
     const meta = await buildPageMetadata({ path: "/" });
-    expect(meta.title).toBe(DEFAULT_SITE_SEO_SETTINGS.siteName);
-    expect(meta.openGraph?.siteName).toBe(DEFAULT_SITE_SEO_SETTINGS.siteName);
+    expect(meta.title).toBe("Default site");
+    expect(meta.openGraph?.siteName).toBe("Default site");
     expect(meta.alternates?.canonical).toBe("http://localhost:3000/");
     // No image set, no defaults → twitter card stays summary.
     expect(meta.twitter?.card).toBe("summary");
@@ -73,7 +60,7 @@ describe.skipIf(skipIfNoTestDb())("site SEO metadata + settings (Phase 10.3)", (
       description: "All about us.",
       path: "/about/",
     });
-    expect(meta.title).toBe("About · NexPress");
+    expect(meta.title).toBe("About · Default site");
     expect(meta.description).toBe("All about us.");
     // Trailing slash normalized off (canonical convention).
     expect(meta.alternates?.canonical).toBe("http://localhost:3000/about");
@@ -112,9 +99,7 @@ describe.skipIf(skipIfNoTestDb())("site SEO metadata + settings (Phase 10.3)", (
     );
     expect(put.status).toBe(200);
 
-    const { getSiteSeoSettings, buildPageMetadata } = await import(
-      "@nexpress/core"
-    );
+    const { getSiteSeoSettings, buildPageMetadata } = await import("@nexpress/core");
     const settings = await getSiteSeoSettings();
     expect(settings.defaultOgImage).toBe("/og.png");
     expect(settings.twitterHandle).toBe("nexpress");
@@ -128,6 +113,114 @@ describe.skipIf(skipIfNoTestDb())("site SEO metadata + settings (Phase 10.3)", (
     expect(meta.twitter?.site).toBe("@nexpress");
   });
 
+  it("writes and reads the exact canonical site identity without legacy setting rows", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const value = {
+      name: "Acme",
+      url: "https://example.com",
+      description: "Canonical site identity",
+      defaultLocale: "ko-KR",
+      timezone: "Asia/Seoul",
+    };
+    const put = await settingsPUT(
+      adminRequest(admin, "/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({ key: "site", value }),
+      }),
+    );
+    expect(put.status).toBe(200);
+    expect(await put.json()).toMatchObject({ key: "site", value });
+
+    const get = await settingsGET(adminRequest(admin, "/api/settings"));
+    expect(get.status).toBe(200);
+    expect(await get.json()).toMatchObject({
+      site: value,
+      seo: {
+        defaultOgImage: null,
+        twitterHandle: null,
+        defaultLocale: "en_US",
+      },
+    });
+
+    const { getDb, npSettings, npSites } = await import("@nexpress/core");
+    const db = getDb();
+    const [site] = await db.select().from(npSites);
+    expect(site).toMatchObject({
+      name: "Acme",
+      description: "Canonical site identity",
+      settings: {
+        siteUrl: "https://example.com",
+        defaultLocale: "ko-KR",
+        timezone: "Asia/Seoul",
+      },
+    });
+    expect((await db.select().from(npSettings)).filter((row) => row.key === "site")).toEqual([]);
+  });
+
+  it("rejects unknown general-setting keys and extra request fields", async () => {
+    const admin = await seedUser({ role: "admin" });
+    for (const body of [
+      { key: "description", value: "legacy" },
+      {
+        key: "site",
+        value: {
+          name: "Default site",
+          url: null,
+          description: null,
+          defaultLocale: null,
+          timezone: null,
+        },
+        typo: true,
+      },
+    ]) {
+      const response = await settingsPUT(
+        adminRequest(admin, "/api/settings", {
+          method: "PUT",
+          body: JSON.stringify(body),
+        }),
+      );
+      expect(response.status).toBe(400);
+    }
+  });
+
+  it("fails closed when persisted SEO settings violate the registry", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { getDb, npSettings } = await import("@nexpress/core");
+    await getDb()
+      .insert(npSettings)
+      .values({
+        key: "seo",
+        value: { defaultOgImage: "javascript:alert(1)" },
+      });
+
+    const response = await settingsGET(adminRequest(admin, "/api/settings"));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { message: "Invalid persisted SEO settings" },
+    });
+  });
+
+  it("does not silently canonicalize persisted SEO settings", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { getDb, npSettings } = await import("@nexpress/core");
+    await getDb()
+      .insert(npSettings)
+      .values({
+        key: "seo",
+        value: {
+          defaultOgImage: null,
+          twitterHandle: "@nexpress",
+          defaultLocale: "en-US",
+        },
+      });
+
+    const response = await settingsGET(adminRequest(admin, "/api/settings"));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { message: "Invalid persisted SEO settings" },
+    });
+  });
+
   it("validator rejects javascript: URLs and stray protocols on defaultOgImage", async () => {
     const admin = await seedUser({ role: "admin" });
     const res = await settingsPUT(
@@ -135,7 +228,11 @@ describe.skipIf(skipIfNoTestDb())("site SEO metadata + settings (Phase 10.3)", (
         method: "PUT",
         body: JSON.stringify({
           key: "seo",
-          value: { defaultOgImage: "javascript:alert(1)" },
+          value: {
+            defaultOgImage: "javascript:alert(1)",
+            twitterHandle: null,
+            defaultLocale: "en_US",
+          },
         }),
       }),
     );
@@ -143,9 +240,7 @@ describe.skipIf(skipIfNoTestDb())("site SEO metadata + settings (Phase 10.3)", (
     const body = (await res.json()) as {
       error?: { details?: Array<{ message?: string }> };
     };
-    expect(body.error?.details?.[0]?.message).toMatch(
-      /absolute URL or a \/-rooted path/,
-    );
+    expect(body.error?.details?.[0]?.message).toMatch(/HTTP\(S\) URL or a \/-rooted path/);
   });
 
   it("validator rejects malformed Twitter handles", async () => {
@@ -156,7 +251,11 @@ describe.skipIf(skipIfNoTestDb())("site SEO metadata + settings (Phase 10.3)", (
         body: JSON.stringify({
           key: "seo",
           // Spaces in a handle — invalid.
-          value: { twitterHandle: "with spaces" },
+          value: {
+            defaultOgImage: null,
+            twitterHandle: "with spaces",
+            defaultLocale: "en_US",
+          },
         }),
       }),
     );

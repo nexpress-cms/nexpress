@@ -6,6 +6,7 @@ import {
   getCurrentSiteId,
   getDb,
   getSetting,
+  npAssertSettingValue,
 } from "@nexpress/core";
 import { npSettings } from "@nexpress/core/db";
 import { npValidateBlockContent, type NpBlockContent } from "@nexpress/core/fields";
@@ -69,6 +70,7 @@ async function writePatterns(
   patterns: ServerPattern[],
   updatedBy: string,
 ): Promise<void> {
+  npAssertSettingValue(SETTING_KEY, patterns);
   const db = getDb();
   const now = new Date();
   await db
