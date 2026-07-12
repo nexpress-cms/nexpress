@@ -98,6 +98,11 @@
       "import": "./dist/seo.js",
       "default": "./dist/seo.js"
     },
+    "./settings": {
+      "types": "./dist/settings.d.ts",
+      "import": "./dist/settings.js",
+      "default": "./dist/settings.js"
+    },
     "./theme": {
       "types": "./dist/theme.d.ts",
       "import": "./dist/theme.js",

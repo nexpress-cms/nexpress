@@ -3,18 +3,16 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
 import { npSettings } from "../db/schema/system.js";
 import { NpValidationError } from "../errors.js";
+import { npAssertSettingValue, npValidateSettingValue } from "../settings/contract.js";
 
 /**
  * Site-wide community settings, persisted in the generic `np_settings`
  * table under the `community` key. Sites that never visit the admin UI
- * inherit `DEFAULT_COMMUNITY_SETTINGS` — every read goes through
- * `getCommunitySettings()` which merges the stored value over the
- * defaults so adding a new field doesn't break existing installs.
+ * inherit `DEFAULT_COMMUNITY_SETTINGS`. Once a row exists it must contain
+ * the exact current shape; malformed or partial persisted values fail closed.
  *
- * Validation runs on the write path only — readers trust whatever is
- * in the table because the only writer is the admin API which
- * pre-validates. Tests poke values directly into `np_settings` for
- * fault-injection cases.
+ * Reads and writes both validate the same exact shape. Malformed persisted
+ * values fail closed instead of silently falling back to defaults.
  */
 /**
  * Per-member upload quota / rate limit. `null` on either field
@@ -61,37 +59,14 @@ const KIND_RE = /^[a-z][a-z0-9_-]{0,29}$/;
 const MAX_REACTION_KINDS = 32;
 const MAX_QUOTA_VALUE = 1_000_000;
 
-function mergeWithDefaults(stored: unknown): NpCommunitySettings {
-  if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
-    return { ...DEFAULT_COMMUNITY_SETTINGS };
+export function npRequireCommunitySettings(stored: unknown): NpCommunitySettings {
+  const validation = npValidateSettingValue(SETTINGS_KEY, stored);
+  if (!validation.ok) {
+    throw new NpValidationError("Invalid persisted community settings", [
+      { field: validation.issue.path, message: validation.issue.message },
+    ]);
   }
-  const raw = stored as Record<string, unknown>;
-  const reactionKinds =
-    Array.isArray(raw.reactionKinds) && raw.reactionKinds.every((k) => typeof k === "string")
-      ? (raw.reactionKinds)
-      : DEFAULT_COMMUNITY_SETTINGS.reactionKinds;
-  const registrationEnabled =
-    typeof raw.registrationEnabled === "boolean"
-      ? raw.registrationEnabled
-      : DEFAULT_COMMUNITY_SETTINGS.registrationEnabled;
-  const memberUploadQuota = readQuota(raw.memberUploadQuota);
-  return { reactionKinds, registrationEnabled, memberUploadQuota };
-}
-
-function readQuota(raw: unknown): NpMemberUploadQuota {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return { ...DEFAULT_COMMUNITY_SETTINGS.memberUploadQuota };
-  }
-  const v = raw as Record<string, unknown>;
-  const perDay =
-    typeof v.perDay === "number" && Number.isFinite(v.perDay) && v.perDay >= 0
-      ? Math.floor(v.perDay)
-      : null;
-  const total =
-    typeof v.total === "number" && Number.isFinite(v.total) && v.total >= 0
-      ? Math.floor(v.total)
-      : null;
-  return { perDay, total };
+  return validateCommunitySettingsPatch(DEFAULT_COMMUNITY_SETTINGS, stored);
 }
 
 export async function getCommunitySettings(): Promise<NpCommunitySettings> {
@@ -104,7 +79,7 @@ export async function getCommunitySettings(): Promise<NpCommunitySettings> {
     .from(npSettings)
     .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, SETTINGS_KEY)))
     .limit(1)) as Array<{ value: unknown }>;
-  return mergeWithDefaults(row?.value);
+  return row ? npRequireCommunitySettings(row.value) : structuredClone(DEFAULT_COMMUNITY_SETTINGS);
 }
 
 /**
@@ -124,6 +99,12 @@ export function validateCommunitySettingsPatch(
   const raw = patch as Record<string, unknown>;
   const errors: Array<{ field: string; message: string }> = [];
   let next: NpCommunitySettings = { ...current };
+
+  for (const key of Object.keys(raw)) {
+    if (key !== "reactionKinds" && key !== "registrationEnabled" && key !== "memberUploadQuota") {
+      errors.push({ field: key, message: `Unsupported community settings field '${key}'` });
+    }
+  }
 
   if ("reactionKinds" in raw) {
     if (!Array.isArray(raw.reactionKinds)) {
@@ -177,9 +158,15 @@ export function validateCommunitySettingsPatch(
       });
     } else {
       const obj = q as Record<string, unknown>;
-      const validateBound = (
-        key: "perDay" | "total",
-      ): number | null | undefined => {
+      for (const key of Object.keys(obj)) {
+        if (key !== "perDay" && key !== "total") {
+          errors.push({
+            field: `memberUploadQuota.${key}`,
+            message: `Unsupported upload quota field '${key}'`,
+          });
+        }
+      }
+      const validateBound = (key: "perDay" | "total"): number | null | undefined => {
         if (!(key in obj)) return undefined; // not patched — keep current
         const v = obj[key];
         if (v === null) return null;
@@ -223,6 +210,7 @@ export async function updateCommunitySettings(
 ): Promise<NpCommunitySettings> {
   const current = await getCommunitySettings();
   const next = validateCommunitySettingsPatch(current, patch);
+  npAssertSettingValue(SETTINGS_KEY, next);
   const db = getDb();
   // #272 — write: must NOT silently fall through. A staff member
   // on tenant A who saves community settings without a resolved

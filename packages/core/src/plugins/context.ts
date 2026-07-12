@@ -20,6 +20,7 @@ import {
 } from "../media/service.js";
 import { getMediaUrl as coreGetMediaUrl } from "../media/url.js";
 import type { NpGetMediaUrlOptions, NpMediaRecord } from "../media-contract/types.js";
+import { getSiteGeneralSettings } from "../settings/service.js";
 import { getDb } from "../db/runtime.js";
 import { NP_GLOBAL_PLUGIN_SITE_ID, npPluginStorage, npSettings } from "../db/schema/system.js";
 import { getScopedLogger } from "../observability/logger.js";
@@ -160,6 +161,17 @@ async function loadOptionalNextCache(): Promise<{
     return mod;
   } catch {
     return null;
+  }
+}
+
+async function revalidateOptionalTag(tag: string): Promise<void> {
+  const cache = await loadOptionalNextCache();
+  const revalidateTag = cache?.revalidateTag;
+  if (typeof revalidateTag !== "function") return;
+  if (revalidateTag.length >= 2) {
+    (revalidateTag as (cacheTag: string, profile: string) => void)(tag, "default");
+  } else {
+    revalidateTag(tag);
   }
 }
 
@@ -507,20 +519,13 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
     },
 
     settings: {
-      async getSite(): Promise<Record<string, unknown>> {
+      async getSite() {
         assertCap(pluginId, capabilities, "settings:read");
         const siteId = await resolveSettingsSiteId();
-        const rows = await db()
-          .select()
-          .from(npSettings)
-          .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "site")));
-        const row = rows[0] as { value?: unknown } | undefined;
-        if (!row || !row.value || typeof row.value !== "object" || Array.isArray(row.value)) {
-          return {};
-        }
-        return row.value as Record<string, unknown>;
+        return getSiteGeneralSettings(siteId);
       },
       async getPlugin(): Promise<Record<string, unknown>> {
+        assertCap(pluginId, capabilities, "settings:read");
         // G.1 — plugin config moved from np_plugins.config to
         // np_settings.(siteId, "plugin.config:<id>"). Read via the
         // versioned-envelope-aware helper so plugins still see the
@@ -533,39 +538,13 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         return {};
       },
       async setPlugin(data: Record<string, unknown>): Promise<void> {
-        // G.1 — plugin config moved to np_settings. When the plugin
-        // declares a configSchema, route through `setPluginConfig`
-        // so the plugin's own schema validates writes coming from
-        // its own setup() / handlers (the same path the admin form
-        // uses). Plugins without configSchema bypass validation and
-        // write the v1 envelope directly — preserves legacy
-        // ctx.settings.setPlugin behavior.
-        const { setPluginConfig } = await import("./config.js");
-        const { getPluginRegistration } = await import("./host.js");
-        const reg = getPluginRegistration(pluginId);
-        if (reg?.configSchema) {
-          await setPluginConfig(pluginId, data, null);
-          return;
-        }
-        const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-        const now = new Date();
-        await db()
-          .insert(npSettings)
-          .values({
-            siteId,
-            key: `plugin.config:${pluginId}`,
-            value: { __npVersion: 1, __npSettings: data },
-            updatedAt: now,
-            updatedBy: null,
-          })
-          .onConflictDoUpdate({
-            target: [npSettings.siteId, npSettings.key],
-            set: {
-              value: { __npVersion: 1, __npSettings: data },
-              updatedAt: now,
-              updatedBy: null,
-            },
-          });
+        assertCap(pluginId, capabilities, "settings:write");
+        // All writes route through the registered plugin contract. Plugins
+        // without configSchema still get the exact versioned envelope, but
+        // an unregistered owner can no longer mint arbitrary settings keys.
+        const { pluginConfigCacheTag, setPluginConfig } = await import("./config.js");
+        await setPluginConfig(pluginId, data, null);
+        await revalidateOptionalTag(pluginConfigCacheTag(pluginId));
       },
     },
 
@@ -597,18 +576,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
             set: { value: merged, updatedAt },
           });
 
-        const cache = await loadOptionalNextCache();
-        const revalidateTag = cache?.revalidateTag;
-        if (typeof revalidateTag === "function") {
-          if (revalidateTag.length >= 2) {
-            (revalidateTag as (tag: string, profile: string) => void)(
-              `nx:theme:${siteId}`,
-              "default",
-            );
-          } else {
-            revalidateTag(`nx:theme:${siteId}`);
-          }
-        }
+        await revalidateOptionalTag(`nx:theme:${siteId}`);
       },
     },
 

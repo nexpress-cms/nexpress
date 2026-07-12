@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { ZodTypeAny } from "zod";
 
-import { getDb } from "../db/index.js";
+import { getDb, getOptionalDb } from "../db/runtime.js";
 import { npSettings } from "../db/schema/system.js";
 import { NpValidationError } from "../errors.js";
 import { getCurrentSiteId } from "../sites/context.js";
@@ -10,6 +10,7 @@ import {
   introspectThemeSettingsSchema,
   type NpThemeSettingsField,
 } from "../themes/settings-schema.js";
+import { npAssertSettingValue } from "../settings/contract.js";
 
 const DEFAULT_SITE = "default";
 const CONFIG_KEY_PREFIX = "plugin.config:";
@@ -45,11 +46,14 @@ export interface NpVersionedPluginConfig {
 }
 
 export function isVersionedPluginConfig(value: unknown): value is NpVersionedPluginConfig {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Partial<NpVersionedPluginConfig>;
   return (
     typeof candidate.__npVersion === "number" &&
-    Number.isFinite(candidate.__npVersion) &&
+    Number.isSafeInteger(candidate.__npVersion) &&
+    candidate.__npVersion >= 1 &&
+    candidate.__npVersion <= 1_000_000 &&
+    Object.keys(candidate).length === 2 &&
     "__npSettings" in candidate
   );
 }
@@ -57,8 +61,8 @@ export function isVersionedPluginConfig(value: unknown): value is NpVersionedPlu
 /**
  * Run the plugin's `configMigrate` from `from` to current schema version.
  * No-op when versions match or the plugin doesn't declare a migrator.
- * Defensive try/catch — a buggy migrate fn shouldn't blow up the read
- * path; we fall back to the original value and let `safeParse` decide.
+ * Migrator failures propagate so partially migrated config cannot be
+ * accepted silently.
  *
  * Mirrors `applyMigration` in `packages/core/src/themes/settings.ts` line
  * for line.
@@ -75,11 +79,7 @@ export function applyPluginConfigMigration(
   if (fromVersion >= target) return rawValue;
   const migrate = registration.configMigrate;
   if (typeof migrate !== "function") return rawValue;
-  try {
-    return migrate(rawValue, fromVersion);
-  } catch {
-    return rawValue;
-  }
+  return migrate(rawValue, fromVersion);
 }
 
 function defaultsFrom(fields: NpThemeSettingsField[]): Record<string, unknown> {
@@ -99,24 +99,33 @@ function defaultsFrom(fields: NpThemeSettingsField[]): Record<string, unknown> {
   return out;
 }
 
+function requirePluginConfigObject(value: unknown, field: string): Record<string, unknown> {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
+  ) {
+    throw new NpValidationError("Invalid plugin config", [
+      { field, message: "Plugin config schemas must resolve to a plain object." },
+    ]);
+  }
+  return value as Record<string, unknown>;
+}
+
 export interface NpPluginConfigResult {
   pluginId: string;
   /** Parsed config or schema defaults. Empty object when the plugin has
    *  no configSchema. */
   value: unknown;
-  /** True when there's a stored row, regardless of whether it passed
-   *  validation. */
+  /** True when a valid stored row exists. */
   hasPersisted: boolean;
-  /** Set when the persisted value failed `schema.parse()`. The admin
-   *  surface uses this to render a "settings were reset" banner. */
-  parseError?: string;
 }
 
 /**
  * Read the persisted config for a plugin and parse it via the plugin's
- * `configSchema`. Returns the parsed value when valid; falls back to
- * schema defaults on parse failure (with the failure recorded for the
- * admin to surface, see `getPluginConfigWithStatus`).
+ * `configSchema`. Missing rows use schema defaults; malformed persisted
+ * rows and migration/schema failures fail closed.
  *
  * Return type is `unknown` because core can't type-narrow to the plugin's
  * `z.infer<typeof configSchema>` — the schema lives in the plugin
@@ -137,44 +146,53 @@ export async function getPluginConfig(pluginId: string): Promise<unknown> {
 }
 
 export async function getPluginConfigWithStatus(pluginId: string): Promise<NpPluginConfigResult> {
-  // Registration is consulted for schema-driven validation + defaults
-  // when present, but a missing registration MUST NOT short-circuit the
-  // DB read. `ctx.settings.setPlugin` writes to `np_settings` for any
-  // pluginId regardless of registration — bailing here would create a
-  // read/write asymmetry where stored config silently disappears on
-  // read. Treat "not registered" the same as "registered with no
-  // schema": surface the row raw if it exists.
   const registration = getPluginRegistration(pluginId);
-  const schema = registration?.configSchema as ZodTypeAny | undefined;
-
-  let row: { value: unknown } | undefined;
-  try {
-    const db = getDb();
-    const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
-    const rows = (await db
-      .select()
-      .from(npSettings)
-      .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, configKey(pluginId))))
-      .limit(1)) as Array<{ value: unknown }>;
-    row = rows[0];
-  } catch {
-    // DB not ready — caller is asking before bootstrap. Return empty
-    // shape; treats DB-not-ready the same as "no row stored yet".
-    return { pluginId, value: schema ? defaultsFromSchema(schema) : {}, hasPersisted: false };
+  if (!registration) {
+    throw new NpValidationError("Invalid input", [
+      {
+        field: "pluginId",
+        message: `Unknown plugin '${pluginId}'. Register it in nexpress.config.ts first.`,
+      },
+    ]);
   }
+  const schema = registration.configSchema as ZodTypeAny | undefined;
+
+  const db = getOptionalDb();
+  if (!db) {
+    return {
+      pluginId,
+      value: schema ? defaultsFrom(introspectThemeSettingsSchema(schema)) : {},
+      hasPersisted: false,
+    };
+  }
+  const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
+  const rows = (await db
+    .select()
+    .from(npSettings)
+    .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, configKey(pluginId))))
+    .limit(1)) as Array<{ value: unknown }>;
+  const row = rows[0];
 
   if (!schema) {
-    // Plugin doesn't declare a configSchema. If a row exists (legacy
-    // hand-coded UI saved into np_settings, or migrated from
-    // np_plugins.config), surface it raw — callers can still read it.
+    // Plugins without configSchema still use the exact versioned envelope;
+    // their hand-authored Admin field contract owns the inner object.
     if (!row) {
       return { pluginId, value: {}, hasPersisted: false };
     }
-    const versioned = isVersionedPluginConfig(row.value) ? row.value : null;
-    const rawValue = versioned ? versioned.__npSettings : row.value;
+    npAssertSettingValue(configKey(pluginId), row.value);
+    const versioned = row.value as NpVersionedPluginConfig;
+    const rawValue = versioned.__npSettings;
+    if (!rawValue || typeof rawValue !== "object" || Array.isArray(rawValue)) {
+      throw new NpValidationError("Invalid persisted plugin config", [
+        {
+          field: `settings.${configKey(pluginId)}.__npSettings`,
+          message: "Plugin config must be a plain object when configSchema is not declared.",
+        },
+      ]);
+    }
     return {
       pluginId,
-      value: rawValue ?? {},
+      value: rawValue,
       hasPersisted: true,
     };
   }
@@ -191,36 +209,30 @@ export async function getPluginConfigWithStatus(pluginId: string): Promise<NpPlu
     };
   }
 
-  // Versioned envelope detection + lazy migration. Mirrors
+  // Exact versioned envelope + lazy migration. Mirrors
   // `getThemeSettingsWithStatus` exactly. Registration is guaranteed
   // defined here: schema is only truthy when registration exists
   // (line ~152), and the `if (!schema) return` above narrows the rest
   // of the function — but TS can't infer that across `?.` so we
   // restate it for the migration helper.
-  const versioned = isVersionedPluginConfig(row.value) ? row.value : null;
-  const storedVersion = versioned ? versioned.__npVersion : 1;
-  const rawValue = versioned ? versioned.__npSettings : row.value;
-  const valueToParse = applyPluginConfigMigration(
-    registration ?? { configVersion: 1 },
-    rawValue,
-    storedVersion,
-  );
+  npAssertSettingValue(configKey(pluginId), row.value);
+  const versioned = row.value as NpVersionedPluginConfig;
+  const storedVersion = versioned.__npVersion;
+  const rawValue = versioned.__npSettings;
+  const valueToParse = applyPluginConfigMigration(registration, rawValue, storedVersion);
 
   const parsed = schema.safeParse(valueToParse);
   if (parsed.success) {
-    return { pluginId, value: parsed.data, hasPersisted: true };
+    return {
+      pluginId,
+      value: requirePluginConfigObject(parsed.data, `settings.${configKey(pluginId)}`),
+      hasPersisted: true,
+    };
   }
 
-  return {
-    pluginId,
-    value: defaults,
-    hasPersisted: true,
-    parseError: parsed.error.message,
-  };
-}
-
-function defaultsFromSchema(schema: ZodTypeAny): Record<string, unknown> {
-  return defaultsFrom(introspectThemeSettingsSchema(schema));
+  throw new NpValidationError("Invalid persisted plugin config", [
+    { field: `settings.${configKey(pluginId)}`, message: parsed.error.message },
+  ]);
 }
 
 /**
@@ -274,12 +286,9 @@ export async function setPluginConfig(
     );
   }
 
-  return persistPluginConfigEnvelope(
-    pluginId,
-    parsed.data,
-    registration.configVersion ?? 1,
-    updatedBy,
-  );
+  const config = requirePluginConfigObject(parsed.data, "value");
+
+  return persistPluginConfigEnvelope(pluginId, config, registration.configVersion ?? 1, updatedBy);
 }
 
 async function persistPluginConfigEnvelope(
@@ -292,6 +301,7 @@ async function persistPluginConfigEnvelope(
     __npVersion: version,
     __npSettings: value,
   };
+  npAssertSettingValue(configKey(pluginId), wrapped);
   const db = getDb();
   const now = new Date();
   const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;

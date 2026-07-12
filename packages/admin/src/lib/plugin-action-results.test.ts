@@ -110,6 +110,22 @@ describe("npDispatchPluginAction", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("keeps scoped plugin ids inside one encoded URL segment", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true, data: null }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(npDispatchPluginAction("@acme/demo", "run", "action")).resolves.toEqual({
+      ok: true,
+      data: null,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/plugins/%40acme%2Fdemo/actions/run",
+      expect.any(Object),
+    );
+  });
+
   it("turns a successful HTTP response with invalid JSON into a malformed-result error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not-json", { status: 200 })));
 

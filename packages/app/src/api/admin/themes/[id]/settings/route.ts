@@ -20,7 +20,7 @@ import { ensureFor } from "../../../../../lib/init-core";
 /**
  * Phase F.3 — per-theme operator settings.
  *
- * GET returns `{ fields, value, hasPersisted, parseError? }`:
+ * GET returns `{ fields, value, hasPersisted }`:
  *   - `fields` is the form metadata (introspected from the
  *     theme's `settingsSchema`). The admin form generator
  *     consumes this directly without needing zod in the browser.
@@ -64,7 +64,6 @@ export async function GET(request: NextRequest, ctx: RouteContext) {
       fields,
       value: status.value,
       hasPersisted: status.hasPersisted,
-      parseError: status.parseError,
     });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown"));

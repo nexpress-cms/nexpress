@@ -132,10 +132,12 @@ Pipeline behavior:
 
 ## 5. Per-Site Settings
 
-`np_settings` is keyed `(site_id, key)`. Helpers
-(`getTheme`, `getNavigation`, `getActiveThemeId`,
-`getSetting`, the settings/theme/navigation API routes)
-all auto-scope via `getCurrentSiteId()`.
+`np_sites` owns the canonical site name, description, URL, default locale, and
+timezone. `np_settings` is a closed framework registry keyed `(site_id, key)`.
+Helpers (`getTheme`, `getNavigation`, `getActiveThemeId`, domain settings
+services, and the settings/theme/navigation API routes) all auto-scope via
+`getCurrentSiteId()`. See [settings.md](settings.md) for the exact key and value
+inventory.
 
 This means each site can:
 

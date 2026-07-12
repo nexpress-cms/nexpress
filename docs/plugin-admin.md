@@ -107,6 +107,9 @@ introspects the Zod schema into the same auto-form on both
 `/admin/plugins` (Configure dialog) and `/admin/plugins/<id>`
 (detail page), then saves through
 `PUT /api/admin/plugins/:id/config`.
+The schema must be a top-level `z.object(...)` (optionally wrapped by
+`default`, `optional`, or `nullable`); scalar, array, and transform wrappers
+are rejected before plugin registration.
 
 Values persist as plugin config in `np_settings` under
 `plugin.config:<id>`. The admin reads the current value from plugin state

@@ -290,6 +290,14 @@ export async function truncateAll(): Promise<void> {
   await pool.query(`
     TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE;
     DELETE FROM "np_sites" WHERE id <> 'default';
+    UPDATE "np_sites"
+       SET "name" = 'Default site',
+           "hostname" = NULL,
+           "description" = NULL,
+           "settings" = '{"siteUrl":null,"defaultLocale":null,"timezone":null}'::jsonb,
+           "is_default" = true,
+           "updated_at" = now()
+     WHERE "id" = 'default';
   `);
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isNpAdminSettingsSnapshot } from "@nexpress/core/settings";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
@@ -24,12 +25,16 @@ type GeneralSettings = {
   siteName: string;
   siteUrl: string;
   description: string;
+  defaultLocale: string | null;
+  timezone: string | null;
 };
 
 const defaultSettings: GeneralSettings = {
   siteName: "",
   siteUrl: "",
   description: "",
+  defaultLocale: null,
+  timezone: null,
 };
 
 export function SettingsView() {
@@ -73,23 +78,25 @@ export function SettingsView() {
     setMessage(null);
 
     try {
-      const updates: Array<{ key: string; value: unknown }> = [
-        { key: "site", value: { name: settings.siteName, url: settings.siteUrl } },
-        { key: "description", value: settings.description },
-      ];
+      const response = await npFetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "site",
+          value: {
+            name: settings.siteName.trim(),
+            url: settings.siteUrl.trim() || null,
+            description: settings.description || null,
+            defaultLocale: settings.defaultLocale,
+            timezone: settings.timezone,
+          },
+        }),
+      });
 
-      for (const update of updates) {
-        const response = await npFetch("/api/settings", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(update),
-        });
-
-        if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as unknown;
-          setError(getErrorMessage(payload, "Unable to save settings."));
-          return;
-        }
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as unknown;
+        setError(getErrorMessage(payload, "Unable to save settings."));
+        return;
       }
 
       setMessage("Settings saved.");
@@ -247,26 +254,16 @@ export function SettingsView() {
 }
 
 function normalizeSettings(payload: unknown): GeneralSettings {
-  if (!isRecord(payload)) {
-    return defaultSettings;
+  if (!isNpAdminSettingsSnapshot(payload)) {
+    throw new Error("Settings API returned an invalid contract.");
   }
 
-  const site = isRecord(payload.site) ? payload.site : {};
-
   return {
-    siteName:
-      typeof site.name === "string"
-        ? site.name
-        : typeof payload.siteName === "string"
-          ? payload.siteName
-          : "",
-    siteUrl:
-      typeof site.url === "string"
-        ? site.url
-        : typeof payload.siteUrl === "string"
-          ? payload.siteUrl
-          : "",
-    description: typeof payload.description === "string" ? payload.description : "",
+    siteName: payload.site.name,
+    siteUrl: payload.site.url ?? "",
+    description: payload.site.description ?? "",
+    defaultLocale: payload.site.defaultLocale,
+    timezone: payload.site.timezone,
   };
 }
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { npPluginIdMaxLength, npPluginIdPattern } from "@nexpress/core/settings";
 
 import { npPluginAgentCategories, npPluginCapabilities } from "./types.js";
 
@@ -17,7 +18,7 @@ export const NP_PLUGIN_MANIFEST_API_VERSION = "1" as const;
 
 export const npPluginManifestSchema = z.object({
   apiVersion: z.literal("1").default("1"),
-  id: z.string().regex(/^(@[\w-]+\/)?[\w-]+$/),
+  id: z.string().max(npPluginIdMaxLength).regex(new RegExp(npPluginIdPattern, "u")),
   version: npPluginVersionSchema,
   name: z.string().min(1).max(100),
   description: z.string().min(1).max(500),

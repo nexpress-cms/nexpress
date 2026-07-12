@@ -101,7 +101,7 @@ describe("ops plugins core", () => {
   it("diagnoses invalid remaining definition contracts", () => {
     const report = analyzePlugins([
       {
-        manifest: { id: "broken", name: "Broken" },
+        manifest: { id: "Invalid plugin id", name: "Broken" },
         configVersion: 2,
         setup: "later",
         templates: { pages: { docs: { label: "Docs" } } },
@@ -112,6 +112,7 @@ describe("ops plugins core", () => {
     expect(report.status).toBe("blocked");
     expect(report.checks).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ id: "plugins.manifest_invalid", state: "error" }),
         expect.objectContaining({ id: "plugins.config_contract", state: "error" }),
         expect.objectContaining({ id: "plugins.lifecycle_invalid", state: "error" }),
         expect.objectContaining({ id: "plugins.i18n_invalid", state: "error" }),

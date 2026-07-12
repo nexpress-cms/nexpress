@@ -65,7 +65,6 @@ interface PluginItem {
    * schema and should render the auto-form empty state.
    */
   configFields?: NpThemeSettingsField[] | null;
-  configParseError?: string | null;
   enabled: boolean;
   config: Record<string, unknown>;
   installedAt: string;
@@ -74,9 +73,7 @@ interface PluginItem {
 }
 
 type PanelState =
-  | { kind: "loading" }
-  | { kind: "ready"; items: PluginItem[] }
-  | { kind: "error"; message: string };
+  { kind: "loading" } | { kind: "ready"; items: PluginItem[] } | { kind: "error"; message: string };
 
 type ToastState = { type: "success" | "error"; message: string } | null;
 
@@ -257,7 +254,7 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
             className="col-span-2 min-h-10 w-full sm:min-h-0 sm:w-auto"
             asChild
           >
-            <Link href={`/admin/plugins/${plugin.id}`}>
+            <Link href={`/admin/plugins/${encodeURIComponent(plugin.id)}`}>
               <ExternalLink className="size-3.5" />
               Open admin
             </Link>
@@ -384,7 +381,7 @@ export function PluginsManager() {
     setToast(null);
 
     try {
-      const response = await npFetch(`/api/plugins/${plugin.id}`, {
+      const response = await npFetch(`/api/plugins/${encodeURIComponent(plugin.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: nextEnabled }),
@@ -438,11 +435,14 @@ export function PluginsManager() {
     }
 
     try {
-      const response = await npFetch(`/api/admin/plugins/${configPlugin.id}/config`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value: parsed }),
-      });
+      const response = await npFetch(
+        `/api/admin/plugins/${encodeURIComponent(configPlugin.id)}/config`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: parsed }),
+        },
+      );
       const payload = (await response.json().catch(() => null)) as unknown;
       if (!response.ok) {
         setConfigError(getErrorMessage(payload, "Failed to save config."));
@@ -669,7 +669,6 @@ export function PluginsManager() {
                   ? configPlugin.config
                   : {}
               }
-              parseError={configPlugin.configParseError ?? undefined}
               onSaved={() => {
                 setToast({
                   type: "success",
@@ -748,28 +747,24 @@ function PluginAutoConfigForm({
   pluginId,
   fields,
   initialConfig,
-  parseError,
   onSaved,
   onCancel,
 }: {
   pluginId: string;
   fields: NpThemeSettingsField[];
   initialConfig: ZodFormValue;
-  parseError?: string;
   onSaved: () => void;
   onCancel: () => void;
 }) {
   const [value, setValue] = useState<ZodFormValue>(initialConfig);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [bannerDismissed, setBannerDismissed] = useState(false);
-  const showBanner = !bannerDismissed && Boolean(parseError);
 
   const save = async () => {
     setSaving(true);
     setErrorMessage(null);
     try {
-      const response = await npFetch(`/api/admin/plugins/${pluginId}/config`, {
+      const response = await npFetch(`/api/admin/plugins/${encodeURIComponent(pluginId)}/config`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value }),
@@ -779,7 +774,6 @@ function PluginAutoConfigForm({
         setErrorMessage(getErrorMessage(payload, "Failed to save settings."));
         return;
       }
-      setBannerDismissed(true);
       onSaved();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to save settings.");
@@ -790,32 +784,6 @@ function PluginAutoConfigForm({
 
   return (
     <div className="min-w-0 space-y-4">
-      {showBanner ? (
-        <div className="grid min-w-0 gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 sm:flex sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <div className="break-words font-medium">Saved settings were reset to defaults</div>
-            <p className="mt-1 break-words text-xs text-amber-700 dark:text-amber-300">
-              The persisted value didn&rsquo;t match the current schema. Saving will overwrite the
-              stored value with what you see below.
-            </p>
-            {parseError ? (
-              <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded bg-amber-500/10 p-2 text-[11px] leading-snug">
-                {parseError}
-              </pre>
-            ) : null}
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setBannerDismissed(true)}
-            className="w-full sm:w-auto"
-          >
-            Dismiss
-          </Button>
-        </div>
-      ) : null}
-
       <ZodForm
         fields={fields}
         initialValue={initialConfig}
@@ -891,7 +859,7 @@ function PluginConfigForm({
     setSaving(true);
     setErrorMessage(null);
     try {
-      const response = await npFetch(`/api/admin/plugins/${pluginId}/config`, {
+      const response = await npFetch(`/api/admin/plugins/${encodeURIComponent(pluginId)}/config`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: values }),

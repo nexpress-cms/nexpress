@@ -50,12 +50,8 @@ describe.skipIf(skipIfNoTestDb())("theme registry (Phase 11.1)", () => {
   });
 
   it("setActiveThemeId persists; subsequent getActiveTheme reads it back", async () => {
-    const {
-      registerThemes,
-      setActiveThemeId,
-      getActiveTheme,
-      getActiveThemeId,
-    } = await import("@nexpress/core");
+    const { registerThemes, setActiveThemeId, getActiveTheme, getActiveThemeId } =
+      await import("@nexpress/core");
 
     // Register a second theme so we have a non-trivial choice.
     registerThemes([
@@ -65,7 +61,7 @@ describe.skipIf(skipIfNoTestDb())("theme registry (Phase 11.1)", () => {
           name: "Alternate",
           version: "0.1.0",
         },
-        impl: { /* opaque to core */ },
+        impl: {/* opaque to core */},
       },
     ]);
 
@@ -87,21 +83,20 @@ describe.skipIf(skipIfNoTestDb())("theme registry (Phase 11.1)", () => {
     }
   });
 
-  it("getActiveTheme silently falls back when the persisted id no longer resolves", async () => {
+  it("getActiveTheme fails closed when the persisted id no longer resolves", async () => {
     // Operator removed `oldTheme` from nexpress.config.ts but
     // `np_settings.activeTheme` still says `oldTheme`. The
-    // resolver should NOT throw — it should return the first
-    // registered theme so the site keeps rendering.
+    // resolver must expose the drift instead of silently rendering
+    // a different theme.
     const db = await getTestDb();
-    const { npSettings, getActiveTheme } = await import("@nexpress/core");
+    const { npSettings, getActiveTheme, NpValidationError } = await import("@nexpress/core");
     await db.insert(npSettings).values({
       key: "activeTheme",
       value: "ghost-theme",
       updatedAt: new Date(),
       updatedBy: null,
     });
-    const active = await getActiveTheme();
-    expect(active?.manifest.id).toBe("default");
+    await expect(getActiveTheme()).rejects.toBeInstanceOf(NpValidationError);
   });
 
   it("registerThemes is idempotent — re-registering by id overwrites", async () => {

@@ -48,6 +48,7 @@ import type {
   NpMediaStatus,
   NpMediaVariants,
 } from "@nexpress/core/media-contract";
+import type { NpSiteGeneralSettings } from "@nexpress/core/settings";
 
 import type { NpPluginManifest, NpPluginManifestResolved } from "./manifest.js";
 
@@ -100,8 +101,8 @@ export const npCapabilityToCtxMembers: Readonly<Record<NpPluginCapability, reado
     "media:read": ["media.list", "media.getById", "media.getUrl"],
     "media:write": ["media.upload"],
     "media:delete": ["media.delete"],
-    "settings:read": ["settings.getSite"],
-    "settings:write": [],
+    "settings:read": ["settings.getSite", "settings.getPlugin"],
+    "settings:write": ["settings.setPlugin"],
     "theme:read": ["theme.getTokens"],
     "theme:write": ["theme.setTokens"],
     "admin:panel": [],
@@ -529,7 +530,7 @@ export interface NpFetchResponse {
   body?: unknown;
 }
 
-export type NpSiteSettings = Record<string, unknown>;
+export type NpSiteSettings = NpSiteGeneralSettings;
 
 export type NpThemeTokens = NpCoreThemeTokens;
 export type NpThemeTokensOverlay = NpCoreThemeTokensOverlay;
@@ -791,6 +792,9 @@ export interface NpPluginDefinition<TConfig = Record<string, unknown>> {
   scheduled?: NpScheduledTask<TConfig>[];
   /**
    * G.1 — Zod schema for operator-tunable plugin config.
+   * Must be a top-level `z.object(...)` (optionally wrapped by
+   * `.default()`, `.optional()`, or `.nullable()`) so Admin introspection,
+   * plugin context, import/export, and persisted config share an object shape.
    *
    * When present, the framework introspects the schema (mirroring
    * theme `settingsSchema` from F.3) to render an auto-form on the
@@ -827,10 +831,9 @@ export interface NpPluginDefinition<TConfig = Record<string, unknown>> {
    * older `configVersion` up to the current shape. Called lazily
    * on read when stored version < `configVersion`.
    *
-   * Mirrors theme `settingsMigrate` exactly: defensive try/catch
-   * around the call (a buggy migrator falls back to the original
-   * value), `safeParse` against the current schema, and the
-   * framework re-parses the result. Migration is recomputed on
+   * Mirrors theme `settingsMigrate` exactly: migration errors propagate,
+   * then the framework `safeParse`s the result against the current schema.
+   * Migration is recomputed on
    * each read until the operator's NEXT save through the admin
    * form persists the migrated value.
    */

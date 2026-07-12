@@ -5,6 +5,7 @@ import { npSettings } from "../db/schema/system.js";
 import { getLogger } from "../observability/logger.js";
 import { reportError } from "../observability/error-reporter.js";
 import { type NpJobQueue } from "./queue.js";
+import { npAssertSettingValue } from "../settings/contract.js";
 
 /**
  * Phase 20.2 — global pause / resume for job processing.
@@ -46,16 +47,8 @@ export async function getJobsPauseState(): Promise<NpJobsPauseState> {
 
   const row = rows[0];
   if (!row) return DEFAULT_STATE;
-
-  const value = row.value as Partial<NpJobsPauseState> | null;
-  if (!value || typeof value.paused !== "boolean") return DEFAULT_STATE;
-
-  return {
-    paused: value.paused,
-    changedAt: typeof value.changedAt === "string" ? value.changedAt : DEFAULT_STATE.changedAt,
-    changedByUserId: typeof value.changedByUserId === "string" ? value.changedByUserId : null,
-    reason: typeof value.reason === "string" ? value.reason : null,
-  };
+  npAssertSettingValue(JOBS_PAUSED_KEY, row.value);
+  return row.value as NpJobsPauseState;
 }
 
 export interface SetJobsPauseStateInput {
@@ -72,6 +65,7 @@ export async function setJobsPauseState(input: SetJobsPauseStateInput): Promise<
     changedByUserId: input.changedByUserId ?? null,
     reason: input.reason ?? null,
   };
+  npAssertSettingValue(JOBS_PAUSED_KEY, next);
 
   await db
     .insert(npSettings)

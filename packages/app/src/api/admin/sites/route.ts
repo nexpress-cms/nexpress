@@ -6,6 +6,7 @@ import {
   listSites,
 } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
+import { npSerializeSiteRecord } from "@nexpress/core/settings";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
@@ -34,11 +35,9 @@ export async function GET(request: NextRequest) {
       throw new NpForbiddenError("sites", "list");
     }
     const sites = await listSites();
-    return npSuccessResponse({ docs: sites });
+    return npSuccessResponse({ docs: sites.map(npSerializeSiteRecord) });
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -55,33 +54,48 @@ export async function POST(request: NextRequest) {
         { field: "body", message: "Request body must be an object" },
       ]);
     }
-    const { id, name, hostname, description } = body as {
+    const raw = body as Record<string, unknown>;
+    const unknown = Object.keys(raw).find(
+      (key) => key !== "id" && key !== "name" && key !== "hostname" && key !== "description",
+    );
+    if (unknown) {
+      throw new NpValidationError("Invalid input", [
+        { field: unknown, message: `Unsupported site field "${unknown}"` },
+      ]);
+    }
+    const { id, name, hostname, description } = raw as {
       id?: unknown;
       name?: unknown;
       hostname?: unknown;
       description?: unknown;
     };
     if (typeof id !== "string" || !id) {
-      throw new NpValidationError("Invalid input", [
-        { field: "id", message: "id is required" },
-      ]);
+      throw new NpValidationError("Invalid input", [{ field: "id", message: "id is required" }]);
     }
     if (typeof name !== "string" || !name) {
       throw new NpValidationError("Invalid input", [
         { field: "name", message: "name is required" },
       ]);
     }
+    if (hostname !== undefined && typeof hostname !== "string" && hostname !== null) {
+      throw new NpValidationError("Invalid input", [
+        { field: "hostname", message: "hostname must be a string or null" },
+      ]);
+    }
+    if (description !== undefined && typeof description !== "string" && description !== null) {
+      throw new NpValidationError("Invalid input", [
+        { field: "description", message: "description must be a string or null" },
+      ]);
+    }
     const site = await createSite({
       id,
       name,
-      hostname: typeof hostname === "string" ? hostname : null,
-      description: typeof description === "string" ? description : null,
+      hostname: hostname ?? null,
+      description: description ?? null,
     });
-    return npSuccessResponse(site);
+    return npSuccessResponse(npSerializeSiteRecord(site));
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

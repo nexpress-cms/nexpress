@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  npCapabilityToCtxMembers,
-  npHookNames,
-  npPluginCapabilities,
-} from "./types.js";
+import { npCapabilityToCtxMembers, npHookNames, npPluginCapabilities } from "./types.js";
 
 describe("npPluginCapabilities", () => {
   it("includes a hooks:<namespace> entry for every hook name namespace", () => {
@@ -37,5 +33,13 @@ describe("npCapabilityToCtxMembers", () => {
     for (const cap of Object.keys(npCapabilityToCtxMembers)) {
       expect(npPluginCapabilities).toContain(cap);
     }
+  });
+
+  it("maps plugin settings reads and writes to their enforced capabilities", () => {
+    expect(npCapabilityToCtxMembers["settings:read"]).toEqual([
+      "settings.getSite",
+      "settings.getPlugin",
+    ]);
+    expect(npCapabilityToCtxMembers["settings:write"]).toEqual(["settings.setPlugin"]);
   });
 });

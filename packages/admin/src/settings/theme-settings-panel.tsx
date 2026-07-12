@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { NpThemeSettingsField } from "@nexpress/core";
-import { AlertTriangle, Loader2, Save } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
@@ -25,7 +25,6 @@ interface ThemeSettingsResponse {
   fields: NpThemeSettingsField[];
   value: ZodFormValue;
   hasPersisted: boolean;
-  parseError?: string;
 }
 
 export function ThemeSettingsPanel({ themeId }: { themeId: string }) {
@@ -41,9 +40,7 @@ export function ThemeSettingsPanel({ themeId }: { themeId: string }) {
     try {
       const res = await npFetch(`/api/admin/themes/${encodeURIComponent(themeId)}/settings`);
       const payload = (await res.json().catch(() => null)) as
-        | ThemeSettingsResponse
-        | { error?: { message?: string } }
-        | null;
+        ThemeSettingsResponse | { error?: { message?: string } } | null;
       if (!res.ok) {
         const errMsg =
           payload && "error" in payload && payload.error?.message
@@ -116,19 +113,6 @@ export function ThemeSettingsPanel({ themeId }: { themeId: string }) {
         {error ? (
           <div className="break-words rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
             {error}
-          </div>
-        ) : null}
-
-        {data?.parseError ? (
-          <div className="flex min-w-0 items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <div className="min-w-0">
-              <p className="break-words font-medium">Settings reset to defaults.</p>
-              <p className="break-words text-xs opacity-90">
-                The stored value didn't match the current schema, likely after a theme upgrade.
-                Review and save to persist new defaults.
-              </p>
-            </div>
           </div>
         ) : null}
 

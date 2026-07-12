@@ -6,6 +6,7 @@ import { NpValidationError } from "../errors.js";
 import { addStrings } from "../i18n/strings.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID as DEFAULT_SITE } from "../sites/registry.js";
+import { npAssertSettingValue } from "../settings/contract.js";
 import type { NpRegisteredTheme } from "../config/types.js";
 import { npValidateRegisteredThemeDefinition } from "./definition-contract.js";
 
@@ -98,15 +99,24 @@ export async function getActiveThemeId(): Promise<string | null> {
     .limit(1)) as Array<{ value: unknown }>;
   const row = rows[0];
   if (!row) return null;
-  return typeof row.value === "string" ? row.value : null;
+  try {
+    npAssertSettingValue("activeTheme", row.value);
+  } catch (error) {
+    throw new NpValidationError("Invalid persisted active theme", [
+      {
+        field: "settings.activeTheme",
+        message: error instanceof Error ? error.message : "Active theme id is malformed",
+      },
+    ]);
+  }
+  return row.value as string;
 }
 
 /**
  * Resolves the active theme to render. Looks up the persisted id
- * in the registry; falls back to the first registered theme when
- * the id is unset, missing, or points at a theme that's no
- * longer in the registry (e.g. it was removed from
- * `nexpress.config.ts` between deploys). Returns `null` only
+ * in the registry; falls back to the first registered theme only when
+ * the id is unset. A persisted id that no longer resolves fails closed
+ * so configuration drift is operator-visible. Returns `null` only
  * when the registry is completely empty.
  */
 export async function getActiveTheme(): Promise<NpRegisteredTheme | null> {
@@ -114,6 +124,12 @@ export async function getActiveTheme(): Promise<NpRegisteredTheme | null> {
   if (id) {
     const theme = registry.get(id);
     if (theme) return theme;
+    throw new NpValidationError("Invalid persisted active theme", [
+      {
+        field: "settings.activeTheme",
+        message: `Theme '${id}' is persisted as active but is not registered.`,
+      },
+    ]);
   }
   // Registry preserves insertion order; the first registered
   // theme is the implicit default.
@@ -154,6 +170,7 @@ export async function setActiveThemeId(
   const dbHandle = (options.tx ?? getDb()) as ReturnType<typeof getDb>;
   const now = new Date();
   const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
+  npAssertSettingValue("activeTheme", id);
   // Phase 15.4 — composite (site_id, key) PK.
   await dbHandle
     .insert(npSettings)

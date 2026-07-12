@@ -1,6 +1,9 @@
 import IntlMessageFormat from "intl-messageformat";
 
+import { npPluginIdMaxLength, npPluginIdPattern } from "../settings/contract.js";
+
 export interface NpPluginDefinitionContractInput {
+  manifest?: unknown;
   configSchema?: unknown;
   configVersion?: unknown;
   configMigrate?: unknown;
@@ -9,8 +12,33 @@ export interface NpPluginDefinitionContractInput {
   i18n?: unknown;
 }
 
+function analyzeManifest(
+  input: NpPluginDefinitionContractInput,
+): NpPluginDefinitionContractIssue[] {
+  if (input.manifest === undefined) return [];
+  if (!isRecord(input.manifest)) {
+    return [issue("manifest", "manifest", "manifest must be a plain object.")];
+  }
+  const id = input.manifest.id;
+  if (
+    typeof id !== "string" ||
+    id.length === 0 ||
+    id.length > npPluginIdMaxLength ||
+    !new RegExp(npPluginIdPattern, "u").test(id)
+  ) {
+    return [
+      issue(
+        "manifest",
+        "manifest.id",
+        `plugin id must be an npm-shaped id of at most ${npPluginIdMaxLength.toString()} characters.`,
+      ),
+    ];
+  }
+  return [];
+}
+
 export interface NpPluginDefinitionContractIssue {
-  code: "config" | "lifecycle" | "i18n";
+  code: "manifest" | "config" | "lifecycle" | "i18n";
   location: string;
   message: string;
 }
@@ -29,6 +57,23 @@ function issue(
   return { code, location, message };
 }
 
+function isTopLevelZodObject(value: unknown): boolean {
+  let node = value as { _def?: { type?: unknown; innerType?: unknown } };
+  const visited = new Set<unknown>();
+  while (
+    node &&
+    typeof node === "object" &&
+    node._def &&
+    ["default", "optional", "nullable"].includes(String(node._def.type)) &&
+    node._def.innerType &&
+    !visited.has(node)
+  ) {
+    visited.add(node);
+    node = node._def.innerType;
+  }
+  return node?._def?.type === "object";
+}
+
 function analyzeConfig(input: NpPluginDefinitionContractInput): NpPluginDefinitionContractIssue[] {
   const issues: NpPluginDefinitionContractIssue[] = [];
   const hasSchema = input.configSchema !== undefined;
@@ -39,6 +84,14 @@ function analyzeConfig(input: NpPluginDefinitionContractInput): NpPluginDefiniti
       typeof (input.configSchema as { safeParse?: unknown }).safeParse !== "function")
   ) {
     issues.push(issue("config", "configSchema", "configSchema must be a Zod-compatible schema."));
+  } else if (hasSchema && !isTopLevelZodObject(input.configSchema)) {
+    issues.push(
+      issue(
+        "config",
+        "configSchema",
+        "configSchema must be a top-level Zod object (optionally wrapped by default, optional, or nullable).",
+      ),
+    );
   }
   if (
     input.configVersion !== undefined &&
@@ -153,6 +206,7 @@ export function npAnalyzePluginDefinitionContract(
   input: NpPluginDefinitionContractInput,
 ): NpPluginDefinitionContractIssue[] {
   return [
+    ...analyzeManifest(input),
     ...analyzeConfig(input),
     ...analyzeLifecycle(input),
     ...(input.i18n === undefined ? [] : npAnalyzePluginI18nBundles(input.i18n)),

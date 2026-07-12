@@ -75,12 +75,25 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
       body: { id: "acme", name: "Acme", hostname: "acme.example.com" },
     });
     const res = await POST(req);
-    const { status, body } = await readJson<{ id?: string; hostname?: string }>(
-      res,
-    );
+    const { status, body } = await readJson<{ id?: string; hostname?: string }>(res);
     expect(status).toBe(200);
     expect(body.id).toBe("acme");
     expect(body.hostname).toBe("acme.example.com");
+  });
+
+  it("POST rejects unknown fields, invalid hostnames, and mistyped optional values", async () => {
+    const admin = await seedSuperAdmin();
+    const { POST } = await import("@/app/api/admin/sites/route");
+    for (const body of [
+      { id: "unknown-field", name: "Unknown", typo: true },
+      { id: "bad-host", name: "Bad host", hostname: "https://example.com/path" },
+      { id: "bad-description", name: "Bad description", description: 42 },
+    ]) {
+      const res = await POST(
+        buildRequest("/api/admin/sites", { session: admin, method: "POST", body }),
+      );
+      expect(res.status).toBe(400);
+    }
   });
 
   it("POST forbids non-admin roles", async () => {
@@ -193,7 +206,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
   it("Issue #216 — DELETE rejects per-site admin (super-admin only)", async () => {
     const editor = await seedUser({ role: "editor" });
     const { createSite, grantSiteMembership } = await import("@nexpress/core");
-    await createSite({ id: "no-delete-by-member", name: "" });
+    await createSite({ id: "no-delete-by-member", name: "No delete by member" });
     await grantSiteMembership("no-delete-by-member", editor.userId, "admin");
     const { DELETE } = await import("@/app/api/admin/sites/[id]/route");
     const req = buildRequest("/api/admin/sites/no-delete-by-member", {
@@ -245,14 +258,12 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     const db = getDb();
     await db.insert(npSettings).values({
       siteId: created.id,
-      key: "site",
-      value: { name: "Usage target" },
+      key: "seo",
+      value: { defaultOgImage: null, twitterHandle: null, defaultLocale: "en_US" },
       updatedAt: new Date(),
     });
 
-    const { GET } = await import(
-      "@/app/api/admin/sites/[id]/usage/route"
-    );
+    const { GET } = await import("@/app/api/admin/sites/[id]/usage/route");
     const req = buildRequest(`/api/admin/sites/${created.id}/usage`, {
       session: admin,
     });
@@ -310,8 +321,8 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
       .returning({ id: npMembers.id })) as Array<{ id: string }>;
     await db.insert(npSettings).values({
       siteId: created.id,
-      key: "site",
-      value: { name: "Usage 220" },
+      key: "seo",
+      value: { defaultOgImage: null, twitterHandle: null, defaultLocale: "en_US" },
       updatedAt: new Date(),
     });
     await db.insert(npNotifications).values({
@@ -390,8 +401,8 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
       .returning({ id: npMembers.id })) as Array<{ id: string }>;
     await db.insert(npSettings).values({
       siteId: created.id,
-      key: "site",
-      value: {},
+      key: "seo",
+      value: { defaultOgImage: null, twitterHandle: null, defaultLocale: "en_US" },
       updatedAt: new Date(),
     });
     await db.insert(npNotifications).values({
@@ -453,12 +464,14 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
       name: "No cascade",
       hostname: "no-cascade.example.com",
     });
-    await getDb().insert(npSettings).values({
-      siteId: created.id,
-      key: "site",
-      value: {},
-      updatedAt: new Date(),
-    });
+    await getDb()
+      .insert(npSettings)
+      .values({
+        siteId: created.id,
+        key: "seo",
+        value: { defaultOgImage: null, twitterHandle: null, defaultLocale: "en_US" },
+        updatedAt: new Date(),
+      });
 
     const { DELETE } = await import("@/app/api/admin/sites/[id]/route");
     const req = buildRequest(`/api/admin/sites/${created.id}`, {
@@ -479,9 +492,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     // top-level `message` is the generic "Invalid input"
     // because `NpValidationError`'s contract is one-line
     // top-level + per-field detail rows.
-    const cascadeDetail = body.error?.details?.find(
-      (d) => d.field === "cascade",
-    );
+    const cascadeDetail = body.error?.details?.find((d) => d.field === "cascade");
     expect(cascadeDetail?.message).toMatch(/cascade=true/);
 
     const { getSiteById } = await import("@nexpress/core");
@@ -490,13 +501,8 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
 
   it("DELETE ?cascade=true removes attached rows and the site", async () => {
     const admin = await seedSuperAdmin();
-    const {
-      createSite,
-      getDb,
-      npSettings,
-      npNavigation,
-      getSiteById,
-    } = await import("@nexpress/core");
+    const { createSite, getDb, npSettings, npNavigation, getSiteById } =
+      await import("@nexpress/core");
     const created = await createSite({
       id: "cascade-target",
       name: "Cascade target",
@@ -505,8 +511,8 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     const db = getDb();
     await db.insert(npSettings).values({
       siteId: created.id,
-      key: "site",
-      value: {},
+      key: "seo",
+      value: { defaultOgImage: null, twitterHandle: null, defaultLocale: "en_US" },
       updatedAt: new Date(),
     });
     await db.insert(npNavigation).values({
@@ -517,13 +523,10 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     });
 
     const { DELETE } = await import("@/app/api/admin/sites/[id]/route");
-    const req = buildRequest(
-      `/api/admin/sites/${created.id}?cascade=true`,
-      {
-        session: admin,
-        method: "DELETE",
-      },
-    );
+    const req = buildRequest(`/api/admin/sites/${created.id}?cascade=true`, {
+      session: admin,
+      method: "DELETE",
+    });
     const res = await DELETE(req, {
       params: Promise.resolve({ id: created.id }),
     });

@@ -12,14 +12,8 @@ export {
   DEFAULT_SITE_SEO_SETTINGS,
   buildPageMetadata,
   getSiteSeoSettings,
-  validateSeoSettingsPatch,
 } from "./page-metadata.js";
-export type {
-  NpSiteSeoSettings,
-  NpPageMetadata,
-  NpPageMetadataInput,
-  NpSeoSettingsPatch,
-} from "./page-metadata.js";
+export type { NpSiteSeoSettings, NpPageMetadata, NpPageMetadataInput } from "./page-metadata.js";
 export { buildAtomFeed, renderAtomFeed } from "./feed.js";
 export type { NpFeedEntry, BuildAtomFeedOptions } from "./feed.js";
 export {

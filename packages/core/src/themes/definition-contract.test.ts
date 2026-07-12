@@ -101,6 +101,13 @@ describe("registered theme definition contract", () => {
       /labels must be non-empty/,
     ],
     [{ ...validTheme(), impl: { i18n: { "en-us": { title: "Hi" } } } }, /canonical BCP 47/],
+    [
+      {
+        ...validTheme(),
+        manifest: { ...(validTheme().manifest as object), settingsSchema: z.string() },
+      },
+      /top-level Zod object/,
+    ],
   ])("rejects malformed definitions", (value, expected) => {
     expect(npAnalyzeRegisteredThemeDefinition(value)[0]?.message).toMatch(expected);
   });

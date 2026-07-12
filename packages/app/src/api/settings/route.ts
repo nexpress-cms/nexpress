@@ -1,37 +1,58 @@
 import {
-  NP_DEFAULT_SITE_ID,
   NpForbiddenError,
   NpValidationError,
-  getCurrentSiteId,
-  npSettings,
-  validateSeoSettingsPatch,
   can,
+  getAdminSettingsSnapshot,
+  getCurrentSiteId,
+  NP_DEFAULT_SITE_ID,
+  setSeoSettings,
+  setSiteGeneralSettings,
 } from "@nexpress/core";
-import { eq } from "drizzle-orm";
+import { invalidateCacheTargets, readJsonBody, siteCacheTag } from "@nexpress/next";
 import type { NextRequest } from "next/server";
-import { readJsonBody } from "@nexpress/next";
 
 import { requireAuth } from "../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
-import { getDb } from "../../lib/db";
+import { ensureFor } from "../../lib/init-core";
+
+function parseUpdate(value: unknown): { key: "site" | "seo"; value: unknown } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new NpValidationError("Invalid input", [
+      { field: "body", message: "Body must be a plain object" },
+    ]);
+  }
+  const body = value as Record<string, unknown>;
+  const unknown = Object.keys(body).find((key) => key !== "key" && key !== "value");
+  if (unknown) {
+    throw new NpValidationError("Invalid input", [
+      { field: unknown, message: `Unsupported settings request field "${unknown}"` },
+    ]);
+  }
+  if (body.key !== "site" && body.key !== "seo") {
+    throw new NpValidationError("Invalid input", [
+      {
+        field: "key",
+        message:
+          "General settings only accept 'site' or 'seo'; use the dedicated theme, community, or plugin endpoint for other settings.",
+      },
+    ]);
+  }
+  if (!("value" in body)) {
+    throw new NpValidationError("Invalid input", [
+      { field: "value", message: "Setting value is required" },
+    ]);
+  }
+  return { key: body.key, value: body.value };
+}
 
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth(request);
-
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("settings", "read");
     }
-
-    const db = getDb();
-    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-    const rows = await db
-      .select()
-      .from(npSettings)
-      .where(eq(npSettings.siteId, siteId));
-    const settings = Object.fromEntries(rows.map((row) => [row.key, row.value]));
-
-    return npSuccessResponse(settings);
+    await ensureFor("read");
+    return npSuccessResponse(await getAdminSettingsSnapshot());
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
@@ -40,59 +61,24 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const user = await requireAuth(request);
-
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("settings", "update");
     }
-
-    const body = (await readJsonBody(request)) as Record<string, unknown>;
-    const key = typeof body.key === "string" ? body.key.trim() : "";
-
-    if (!key) {
-      throw new NpValidationError("Invalid input", [
-        { field: "key", message: "Setting key is required" },
-      ]);
-    }
-
-    if (body.value === undefined) {
-      throw new NpValidationError("Invalid input", [
-        { field: "value", message: "Setting value is required" },
-      ]);
-    }
-
-    // Per-key validators run on the way in. The `seo` shape is
-    // surfaced into public `<head>` tags, so a malformed string
-    // (e.g. `javascript:` URL in defaultOgImage) would be a
-    // content-injection hazard — `validateSeoSettingsPatch`
-    // rejects those before storage.
-    let value = body.value;
-    if (key === "seo") {
-      try {
-        value = validateSeoSettingsPatch(body.value);
-      } catch (err) {
-        throw new NpValidationError("Invalid input", [
-          {
-            field: "value",
-            message: err instanceof Error ? err.message : "Invalid SEO patch",
-          },
-        ]);
-      }
-    }
-
-    const db = getDb();
-    const now = new Date();
+    await ensureFor("write");
+    const update = parseUpdate(await readJsonBody(request));
     const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+    const value =
+      update.key === "site"
+        ? await setSiteGeneralSettings(update.value, siteId)
+        : await setSeoSettings(update.value, user.id, siteId);
 
-    const [result] = await db
-      .insert(npSettings)
-      .values({ siteId, key, value, updatedAt: now, updatedBy: user.id })
-      .onConflictDoUpdate({
-        target: [npSettings.siteId, npSettings.key],
-        set: { value, updatedAt: now, updatedBy: user.id },
-      })
-      .returning();
-
-    return npSuccessResponse(result);
+    invalidateCacheTargets({
+      source: "site",
+      siteId,
+      tags: [siteCacheTag(siteId), `nx:sitemap:${siteId}`, `nx:feed:${siteId}`],
+      paths: [{ path: "/", type: "layout" }],
+    });
+    return npSuccessResponse({ key: update.key, value });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

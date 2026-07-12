@@ -64,7 +64,6 @@ export async function GET(request: NextRequest) {
             // the plugin declared an empty configSchema, so the inline dialog
             // should render the auto-form empty state instead of raw JSON.
             configFields,
-            configParseError: configStatus.parseError ?? null,
             enabled: state.enabled,
             config,
             installedAt: state.installedAt,

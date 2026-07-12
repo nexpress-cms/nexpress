@@ -20,7 +20,7 @@ import { ensureFor } from "../../../../../lib/init-core";
 /**
  * G.1 — per-plugin operator config.
  *
- * GET returns `{ fields, value, hasPersisted, parseError? }`. The
+ * GET returns `{ fields, value, hasPersisted }`. The
  * `fields` payload is the introspected metadata from the plugin's
  * `configSchema` (same shape theme settings emits via F.3); the admin
  * auto-form consumes it directly without needing zod in the browser.
@@ -68,7 +68,6 @@ export async function GET(request: NextRequest, ctx: RouteContext) {
       fields,
       value: status.value,
       hasPersisted: status.hasPersisted,
-      parseError: status.parseError,
     });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown"));

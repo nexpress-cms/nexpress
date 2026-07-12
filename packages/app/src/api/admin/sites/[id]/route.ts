@@ -7,6 +7,7 @@ import {
   updateSite,
 } from "@nexpress/core";
 import { invalidateCacheTargets, readJsonBody, siteCacheTag } from "@nexpress/next";
+import { npSerializeSiteRecord } from "@nexpress/core/settings";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
         { field: "id", message: `Site "${id}" not found` },
       ]);
     }
-    return npSuccessResponse(site);
+    return npSuccessResponse(npSerializeSiteRecord(site));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
@@ -62,17 +63,48 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if (!(await canManageSite(user, id))) {
       throw new NpForbiddenError("sites", "update");
     }
-    const body = (await readJsonBody(request)) as {
-      name?: unknown;
-      hostname?: unknown;
-      description?: unknown;
-    };
-    const patch: Record<string, unknown> = {};
-    if (typeof body.name === "string") patch.name = body.name;
-    if (typeof body.hostname === "string" || body.hostname === null) {
+    const value = await readJsonBody(request);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new NpValidationError("Invalid input", [
+        { field: "body", message: "Request body must be a plain object" },
+      ]);
+    }
+    const body = value as Record<string, unknown>;
+    const unknown = Object.keys(body).find(
+      (key) => key !== "name" && key !== "hostname" && key !== "description",
+    );
+    if (unknown) {
+      throw new NpValidationError("Invalid input", [
+        { field: unknown, message: `Unsupported site patch field "${unknown}"` },
+      ]);
+    }
+    const patch: {
+      name?: string;
+      hostname?: string | null;
+      description?: string | null;
+    } = {};
+    if ("name" in body) {
+      if (typeof body.name !== "string") {
+        throw new NpValidationError("Invalid input", [
+          { field: "name", message: "name must be a string" },
+        ]);
+      }
+      patch.name = body.name;
+    }
+    if ("hostname" in body) {
+      if (typeof body.hostname !== "string" && body.hostname !== null) {
+        throw new NpValidationError("Invalid input", [
+          { field: "hostname", message: "hostname must be a string or null" },
+        ]);
+      }
       patch.hostname = body.hostname;
     }
-    if (typeof body.description === "string" || body.description === null) {
+    if ("description" in body) {
+      if (typeof body.description !== "string" && body.description !== null) {
+        throw new NpValidationError("Invalid input", [
+          { field: "description", message: "description must be a string or null" },
+        ]);
+      }
       patch.description = body.description;
     }
     const site = await updateSite(id, patch);
@@ -88,7 +120,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         paths: [{ path: "/", type: "layout" }],
       });
     }
-    return npSuccessResponse(site);
+    return npSuccessResponse(npSerializeSiteRecord(site));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

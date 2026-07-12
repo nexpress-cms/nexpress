@@ -28,7 +28,9 @@ request (no cache) covering:
   `plugin:{pluginId}` so agents can scope to one plugin.
 - Import / export (`/api/import`, `/api/export`). Both accept
   `?collections=a,b` to scope to a subset; import also accepts
-  `?dryRun=true` to validate a payload without writing.
+  `?dryRun=true` to validate a payload without writing. Full site-config
+  payloads use export format version `2` and carry canonical site identity in
+  the top-level `site` field.
 - Public discovery (`/api/meta/blocks`, `/api/meta/collections`,
   `/api/meta/plugins`) and search (`/api/search`).
 - Draft mode entrypoints (`/api/preview`, `/api/preview/exit`) and

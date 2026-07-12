@@ -22,3 +22,8 @@ export function getDb(): NodePgDatabase<Record<string, unknown>> {
   }
   return dbInstance;
 }
+
+/** Internal bootstrap probe for registries that can be constructed before DB init. */
+export function getOptionalDb(): NodePgDatabase<Record<string, unknown>> | null {
+  return dbInstance;
+}

@@ -53,6 +53,11 @@ function buildCtx(overrides?: {
     storage: {
       get(key: string): Promise<unknown>;
     };
+    settings: {
+      getSite(): Promise<unknown>;
+      getPlugin(): Promise<Record<string, unknown>>;
+      setPlugin(value: Record<string, unknown>): Promise<void>;
+    };
     errors: {
       report(
         error: unknown,
@@ -85,6 +90,15 @@ describe("ctx.config / capabilities / pluginId", () => {
     expect(ctx.pluginId).toBe("test-plugin");
     expect(ctx.capabilities).toEqual(["content:read"]);
     expect(ctx.config).toEqual({ foo: 1 });
+  });
+
+  it("gates every settings method before touching persistence", async () => {
+    const ctx = buildCtx({ capabilities: [] });
+    await expect(ctx.settings.getSite()).rejects.toBeInstanceOf(NpForbiddenError);
+    await expect(ctx.settings.getPlugin()).rejects.toBeInstanceOf(NpForbiddenError);
+    await expect(ctx.settings.setPlugin({ enabled: true })).rejects.toBeInstanceOf(
+      NpForbiddenError,
+    );
   });
 });
 

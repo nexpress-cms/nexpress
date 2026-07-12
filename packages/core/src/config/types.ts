@@ -738,10 +738,8 @@ export interface NpThemeManifest {
    * function receives the OLD value (whatever shape v(N-1) had)
    * and the version it came from (so multi-step migrations can
    * branch). Returns a value that matches the CURRENT
-   * `settingsSchema`. The framework re-parses the result and
-   * falls back to schema defaults if the migration's output
-   * still doesn't validate (defensive — a buggy migrate fn
-   * shouldn't blow up the public site).
+   * `settingsSchema`. The framework re-parses the result and fails closed
+   * if the migrator throws or its output does not match the current schema.
    *
    * The framework persists the migrated value back on the
    * operator's NEXT save through the admin form. Read paths

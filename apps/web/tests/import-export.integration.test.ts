@@ -1,5 +1,5 @@
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
-import { npNavigation } from "@nexpress/core";
+import { npNavigation, npPlugins, npSettings, npSites } from "@nexpress/core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -16,6 +16,7 @@ import {
 
 import { GET as exportGET } from "@/app/api/export/route";
 import { POST as importPOST } from "@/app/api/import/route";
+import { GET as openApiGET } from "@/app/api/openapi.json/route";
 
 describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
   beforeAll(async () => {
@@ -37,11 +38,13 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
       partial: boolean;
       collectionsExported: string[];
       siteUrl: string | null;
+      site: { name: string; url: string | null };
       collections: Record<string, unknown[]>;
     }>(res);
     expect(status).toBe(200);
-    expect(body.version).toBe("1");
+    expect(body.version).toBe("2");
     expect(body.partial).toBe(false);
+    expect(body.site).toMatchObject({ name: "Default site", url: null });
     expect(Array.isArray(body.collectionsExported)).toBe(true);
     expect(body.collectionsExported).toContain("posts");
   });
@@ -87,8 +90,17 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
         session,
         query: { dryRun: "true" },
         body: {
-          version: "1",
-          settings: { siteName: "Test Site", footer: "© 2026" },
+          version: "2",
+          site: {
+            name: "Test Site",
+            url: "https://example.com",
+            description: "A test site",
+            defaultLocale: "en-US",
+            timezone: "UTC",
+          },
+          settings: {
+            seo: { defaultOgImage: null, twitterHandle: null, defaultLocale: "en_US" },
+          },
           collections: {
             posts: [
               {
@@ -120,9 +132,11 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
         session,
         query: { collections: "posts", dryRun: "true" },
         body: {
-          version: "1",
+          version: "2",
           theme: { colors: {} },
-          settings: { siteName: "X" },
+          settings: {
+            seo: { defaultOgImage: null, twitterHandle: null, defaultLocale: "en_US" },
+          },
           collections: {
             posts: [
               {
@@ -156,10 +170,25 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
         method: "POST",
         session,
         query: { collections: "nonexistent" },
-        body: { version: "1" },
+        body: { version: "2" },
       }),
     );
     expect(res.status).toBe(400);
+  });
+
+  it("import requires the exact v2 envelope and rejects unknown top-level fields", async () => {
+    const session = await seedUser({ role: "admin" });
+    for (const body of [{ collections: {} }, { version: "2", legacySettings: {} }]) {
+      const res = await importPOST(
+        buildRequest("/api/import", {
+          method: "POST",
+          session,
+          query: { dryRun: "true" },
+          body,
+        }),
+      );
+      expect(res.status).toBe(400);
+    }
   });
 
   it("import rejects invalid theme overlays even during dry-run", async () => {
@@ -170,12 +199,110 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
         session,
         query: { dryRun: "true" },
         body: {
-          version: "1",
+          version: "2",
           theme: { colors: { primary: "url(https://example.com/x)" } },
         },
       }),
     );
     expect(res.status).toBe(400);
+  });
+
+  it("import rejects duplicate owner ids and the legacy settings.theme location", async () => {
+    const session = await seedUser({ role: "admin" });
+    for (const body of [
+      { version: "2", settings: { theme: { colors: {} } } },
+      {
+        version: "2",
+        settings: {
+          "jobs.paused": {
+            paused: false,
+            changedAt: "2026-07-12T00:00:00.000Z",
+            changedByUserId: null,
+            reason: null,
+          },
+        },
+      },
+      { version: "2", media: [{ id: "same" }, { id: "same" }] },
+      { version: "2", plugins: [{ id: "same" }, { id: "same" }] },
+    ]) {
+      const res = await importPOST(
+        buildRequest("/api/import", {
+          method: "POST",
+          session,
+          query: { dryRun: "true" },
+          body,
+        }),
+      );
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it("rejects a site-scoped global setting during export", async () => {
+    const session = await seedUser({ role: "admin" });
+    const db = await getTestDb();
+    await db.insert(npSettings).values({
+      key: "jobs.paused",
+      value: {
+        paused: false,
+        changedAt: "2026-07-12T00:00:00.000Z",
+        changedByUserId: null,
+        reason: null,
+      },
+    });
+
+    const res = await exportGET(buildRequest("/api/export", { session }));
+    expect(res.status).toBe(400);
+  });
+
+  it("publishes the closed site-config settings registry in OpenAPI", async () => {
+    const response = await openApiGET();
+    const { body } = await readJson<{
+      components: {
+        schemas: {
+          framework_settings: {
+            additionalProperties: boolean;
+            properties: Record<string, unknown>;
+            patternProperties: Record<string, unknown>;
+          };
+        };
+      };
+    }>(response);
+    const schema = body.components.schemas.framework_settings;
+    expect(schema.additionalProperties).toBe(false);
+    expect(schema.properties).toHaveProperty("seo");
+    expect(schema.properties).not.toHaveProperty("theme");
+    expect(schema.properties).not.toHaveProperty("jobs.paused");
+    expect(Object.keys(schema.patternProperties)).toEqual([
+      "^theme\\.settings:[a-z][a-z0-9-]{0,62}$",
+    ]);
+  });
+
+  it("preflights loaded plugin ownership before changing site settings", async () => {
+    const session = await seedUser({ role: "admin" });
+    const db = await getTestDb();
+    await db.insert(npPlugins).values({ id: "not-loaded", enabled: true });
+
+    const res = await importPOST(
+      buildRequest("/api/import", {
+        method: "POST",
+        session,
+        body: {
+          version: "2",
+          site: {
+            name: "Must not persist",
+            url: null,
+            description: null,
+            defaultLocale: null,
+            timezone: null,
+          },
+          plugins: [{ id: "not-loaded", enabled: false }],
+        },
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    const [site] = await db.select({ name: npSites.name }).from(npSites);
+    expect(site?.name).toBe("Default site");
   });
 
   it("import rejects invalid navigation before dry-run or persistence", async () => {
@@ -186,7 +313,7 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
         session,
         query: { dryRun: "true" },
         body: {
-          version: "1",
+          version: "2",
           navigation: {
             header: [{ id: "unsafe", label: "Unsafe", type: "link", url: "javascript:alert(1)" }],
           },

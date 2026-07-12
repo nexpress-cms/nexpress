@@ -15,13 +15,14 @@ import {
 } from "../collections/index.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { npAssertSettingValue, npValidateSettingKey } from "../settings/contract.js";
 
 export { getTheme } from "../theme/runtime.js";
 
 /**
  * Phase 15.4 — every settings/navigation read scopes by the
  * current site id so each tenant gets its own theme tokens,
- * navigation menus, and arbitrary settings. The resolver
+ * navigation menus, and registered framework settings. The resolver
  * falls back to the default site when no request context is
  * set (background workers, scripts, tests with no resolver
  * wired) so existing single-tenant code keeps working
@@ -411,6 +412,12 @@ export async function findSlugRedirect(
 }
 
 export async function getSetting<T = unknown>(key: string): Promise<T | null> {
+  const keyValidation = npValidateSettingKey(key);
+  if (!keyValidation.ok) {
+    throw new NpValidationError("Invalid setting key", [
+      { field: keyValidation.issue.path, message: keyValidation.issue.message },
+    ]);
+  }
   const db = getDb();
   const siteId = await resolveSiteId();
   const rows = await db
@@ -423,5 +430,6 @@ export async function getSetting<T = unknown>(key: string): Promise<T | null> {
     return null;
   }
 
+  npAssertSettingValue(key, rows[0].value);
   return rows[0].value as T;
 }

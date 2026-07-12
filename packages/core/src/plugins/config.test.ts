@@ -18,9 +18,12 @@ describe("isVersionedPluginConfig", () => {
   });
 
   it("returns false when version is not a number", () => {
-    expect(
-      isVersionedPluginConfig({ __npVersion: "2", __npSettings: {} }),
-    ).toBe(false);
+    expect(isVersionedPluginConfig({ __npVersion: "2", __npSettings: {} })).toBe(false);
+  });
+
+  it("returns false for extra fields and non-positive versions", () => {
+    expect(isVersionedPluginConfig({ __npVersion: 1, __npSettings: {}, extra: true })).toBe(false);
+    expect(isVersionedPluginConfig({ __npVersion: 0, __npSettings: {} })).toBe(false);
   });
 
   it("returns false for primitives / null", () => {
@@ -30,9 +33,7 @@ describe("isVersionedPluginConfig", () => {
   });
 
   it("returns false for NaN / Infinity (corrupted DB row guard)", () => {
-    expect(
-      isVersionedPluginConfig({ __npVersion: Number.NaN, __npSettings: {} }),
-    ).toBe(false);
+    expect(isVersionedPluginConfig({ __npVersion: Number.NaN, __npSettings: {} })).toBe(false);
   });
 });
 
@@ -70,18 +71,14 @@ describe("applyPluginConfigMigration", () => {
     expect(seen).toEqual([{ value: { wpm: 250 }, from: 1 }]);
   });
 
-  it("falls back to the raw value when the migrate fn throws", () => {
-    // Mirrors the theme path's defensive try/catch — a buggy
-    // migrator must not blow up the read path.
+  it("propagates config migration failures", () => {
     const reg = {
       configVersion: 2,
       configMigrate: () => {
         throw new Error("buggy migration");
       },
     };
-    const original = { wpm: 250 };
-    const result = applyPluginConfigMigration(reg, original, 1);
-    expect(result).toBe(original);
+    expect(() => applyPluginConfigMigration(reg, { wpm: 250 }, 1)).toThrow("buggy migration");
   });
 
   it("treats absent configVersion as 1", () => {
@@ -123,8 +120,6 @@ describe("pluginConfigCacheTag", () => {
   });
 
   it("preserves the raw plugin id (no escaping)", () => {
-    expect(pluginConfigCacheTag("@nexpress/plugin-forum")).toBe(
-      "np:plugin:@nexpress/plugin-forum",
-    );
+    expect(pluginConfigCacheTag("@nexpress/plugin-forum")).toBe("np:plugin:@nexpress/plugin-forum");
   });
 });
