@@ -40,6 +40,16 @@ export interface NpMediaProcessingOptions {
   quality?: number;
 }
 
+export type NpMediaVariantName =
+  "original" | "thumbnail" | "small" | "medium" | "large" | "xlarge" | "og" | (string & {});
+
+export interface NpGetMediaUrlOptions {
+  /** Which generated variant to resolve; defaults to the uploaded original. */
+  variant?: NpMediaVariantName;
+  /** Return `null` instead of the original when a requested variant is absent. */
+  fallbackToOriginal?: boolean;
+}
+
 /** Server-side media row after canonical persisted-value validation. */
 export interface NpMediaRecord {
   id: string;

@@ -18,7 +18,8 @@ import {
   uploadMedia as coreUploadMedia,
   getStorageAdapter,
 } from "../media/service.js";
-import type { NpMediaRecord } from "../media-contract/types.js";
+import { getMediaUrl as coreGetMediaUrl } from "../media/url.js";
+import type { NpGetMediaUrlOptions, NpMediaRecord } from "../media-contract/types.js";
 import { getDb } from "../db/runtime.js";
 import { NP_GLOBAL_PLUGIN_SITE_ID, npPluginStorage, npSettings } from "../db/schema/system.js";
 import { getScopedLogger } from "../observability/logger.js";
@@ -280,12 +281,9 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         const record = await coreGetMediaById(id);
         return record ? toPluginMediaItem(record) : null;
       },
-      async getUrl(id: string) {
+      async getUrl(id: string, options?: NpGetMediaUrlOptions) {
         assertCap(pluginId, capabilities, "media:read");
-        const media = await coreGetMediaById(id);
-        if (!media || typeof media.storageKey !== "string") return "";
-        const adapter = getStorageAdapter();
-        return adapter.getUrl(media.storageKey);
+        return coreGetMediaUrl(id, options);
       },
       async upload(
         file: Uint8Array | ArrayBuffer,

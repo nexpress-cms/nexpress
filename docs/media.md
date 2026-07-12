@@ -51,8 +51,8 @@ base, so `getMediaUrl(id, { variant })` always resolves the variant's actual
 custom variant names work without guessing a `.webp` filename.
 
 Rows written by older builds may contain a cached `sizes.<name>.url`. Remove
-that member or regenerate the variants before upgrading; unknown variant
-fields fail closed by design.
+that member before optional variant reprocessing; unknown variant fields fail
+closed by design.
 
 The contract rejects unknown fields, unsafe names or storage keys, non-image
 variant MIME types, non-integer dimensions or byte counts, more than 64
@@ -94,6 +94,19 @@ Processing options are exact and validated before Sharp or storage work:
 
 Size names must be unique, safe, and different from `original`; dimensions are
 bounded positive integers, and `crop` requires an explicit height.
+
+Plugins use the same URL contract:
+
+```ts
+const cardUrl = await ctx.media.getUrl(mediaId, { variant: "medium" });
+const exactOgUrl = await ctx.media.getUrl(mediaId, {
+  variant: "og",
+  fallbackToOriginal: false,
+});
+```
+
+The result is `string | null`. NexPress does not promise on-demand width/height
+transforms; plugins select a pre-generated canonical variant instead.
 
 ## Admin API
 

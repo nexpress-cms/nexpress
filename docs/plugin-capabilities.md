@@ -75,7 +75,8 @@ form. Both stay in sync via a unit test
 Media reads and uploads return the SDK's `NpMediaItem`: its `size` maps the
 canonical record's `filesize`, its URL is resolved by the active adapter, and
 `metadata.sizes` uses the exact `NpMediaVariants` contract documented in
-[`media.md`](media.md).
+[`media.md`](media.md). `ctx.media.getUrl` selects a generated `variant`, may
+disable original fallback, and returns `null` when no acceptable object exists.
 
 Lifecycle hook payloads use `principal` as the single actor field. Staff
 uploads carry `principal: { kind: "staff", user }` and `member: null`;

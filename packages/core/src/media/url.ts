@@ -1,33 +1,10 @@
 import { getMediaById, getStorageAdapter } from "./service.js";
 import { npMediaVariantNamePattern } from "../media-contract/contract.js";
+import type { NpGetMediaUrlOptions } from "../media-contract/types.js";
+
+export type { NpGetMediaUrlOptions, NpMediaVariantName } from "../media-contract/types.js";
 
 const variantNamePattern = new RegExp(npMediaVariantNamePattern, "u");
-
-/**
- * Built-in image variants. Plugin-defined custom variants are
- * accepted as plain strings — the lookup walks `media.sizes`
- * regardless of whether the variant was named in this union.
- */
-export type NpMediaVariantName =
-  "original" | "thumbnail" | "small" | "medium" | "large" | "xlarge" | "og" | (string & {});
-
-export interface NpGetMediaUrlOptions {
-  /**
-   * Which size to resolve. Defaults to `"original"` — the bytes
-   * uploaded by the user. Sized variants (`thumbnail`, `medium`,
-   * `og`, …) are only present for processed images; non-image
-   * media has only `"original"`.
-   */
-  variant?: NpMediaVariantName;
-  /**
-   * When `true` (default) and the requested variant doesn't
-   * exist on the media row, fall back to the original. Set to
-   * `false` to get `null` instead — useful when you'd rather
-   * skip rendering than serve a 5 MB original where a thumbnail
-   * was expected.
-   */
-  fallbackToOriginal?: boolean;
-}
 
 /**
  * Resolve a media record's public URL via the active storage
