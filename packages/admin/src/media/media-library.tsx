@@ -12,6 +12,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import { isNpMediaApiItem, type NpMediaUploaderSummary } from "@nexpress/core/media-contract";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
@@ -50,9 +51,7 @@ type MediaItem = {
   uploader?: MediaUploader | null;
 };
 
-type MediaUploader =
-  | { kind: "staff"; name: string | null; email: string | null }
-  | { kind: "member"; handle: string; displayName: string | null };
+type MediaUploader = NpMediaUploaderSummary;
 
 type UploaderFilter = "all" | "staff" | "member";
 
@@ -126,7 +125,7 @@ export function MediaLibrary() {
       }
 
       if (searchQuery.trim()) {
-        params.set("search", searchQuery.trim());
+        params.set("q", searchQuery.trim());
       }
 
       if (uploaderFilter !== "all") {
@@ -831,45 +830,21 @@ function normalizeFolders(payload: unknown): MediaFolder[] {
 }
 
 function normalizeMediaItem(entry: unknown, index: number): MediaItem {
-  const record = isRecord(entry) ? entry : {};
-  const type = getString(record, "mimeType", getString(record, "type", "file"));
+  if (!isNpMediaApiItem(entry)) {
+    throw new Error(`Invalid media API item at index ${index.toString()}.`);
+  }
 
   return {
-    id: getString(record, "id", getString(record, "_id", `media-${index}`)),
-    filename: getString(record, "filename", getString(record, "name", "Untitled file")),
-    type,
-    size: getNumber(record, "size", 0),
-    createdAt: getString(record, "createdAt", getString(record, "date", new Date().toISOString())),
-    url: getOptionalString(record, "url") ?? getOptionalString(record, "src"),
-    thumbnailUrl:
-      getOptionalString(record, "thumbnailUrl") ??
-      getOptionalString(record, "thumbnail") ??
-      getOptionalString(record, "url"),
-    folderId: getOptionalString(record, "folderId"),
-    uploader: normalizeUploader(record.uploader),
+    id: entry.id,
+    filename: entry.filename,
+    type: entry.mimeType,
+    size: entry.filesize,
+    createdAt: entry.createdAt,
+    url: entry.urls.original,
+    thumbnailUrl: entry.urls.thumbnail ?? entry.urls.original,
+    folderId: entry.folderId ?? undefined,
+    uploader: entry.uploader ?? null,
   };
-}
-
-function normalizeUploader(value: unknown): MediaUploader | null {
-  if (!isRecord(value)) return null;
-  const kind = getOptionalString(value, "kind");
-  if (kind === "staff") {
-    return {
-      kind: "staff",
-      name: getOptionalString(value, "name") ?? null,
-      email: getOptionalString(value, "email") ?? null,
-    };
-  }
-  if (kind === "member") {
-    const handle = getOptionalString(value, "handle");
-    if (!handle) return null;
-    return {
-      kind: "member",
-      handle,
-      displayName: getOptionalString(value, "displayName") ?? null,
-    };
-  }
-  return null;
 }
 
 function getArrayFromPayload(payload: unknown, keys: string[]) {
@@ -908,11 +883,6 @@ function getString(record: Record<string, unknown>, key: string, fallback = "") 
 function getOptionalString(record: Record<string, unknown>, key: string) {
   const value = record[key];
   return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function getNumber(record: Record<string, unknown>, key: string, fallback = 0) {
-  const value = record[key];
-  return typeof value === "number" ? value : fallback;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

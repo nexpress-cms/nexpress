@@ -22,6 +22,10 @@ interface ContentDeleteJobData {
   userId: string;
 }
 
+interface MediaProcessImageJobData {
+  mediaId: string;
+}
+
 interface ResolvedHookContext {
   collectionConfig: NpCollectionConfig;
   data: Record<string, unknown>;
@@ -143,7 +147,13 @@ async function handleContentAfterDelete(data: unknown): Promise<void> {
 }
 
 async function handleMediaProcessImage(data: unknown): Promise<void> {
-  await builtinJobContext.processImage?.(data);
+  const payload = asMediaProcessImageJobData(data);
+  if (builtinJobContext.processImage) {
+    await builtinJobContext.processImage(payload);
+    return;
+  }
+  const { processMediaImage } = await import("../media/service.js");
+  await processMediaImage(payload.mediaId, {});
 }
 
 async function handleMediaCleanup(data: unknown): Promise<void> {
@@ -307,8 +317,7 @@ async function loadRevalidateTag(): Promise<((tag: string) => void) | null> {
   }
 
   const revalidateTag = importedModule.revalidateTag as
-    | ((tag: string) => void)
-    | ((tag: string, profile: string) => void);
+    ((tag: string) => void) | ((tag: string, profile: string) => void);
 
   if (typeof revalidateTag !== "function") {
     return null;
@@ -319,7 +328,7 @@ async function loadRevalidateTag(): Promise<((tag: string) => void) | null> {
   // and 16.x without a hard pin: pre-16 ignores extra args.
   return (tag: string) => {
     if (revalidateTag.length >= 2) {
-      (revalidateTag)(tag, "default");
+      revalidateTag(tag, "default");
     } else {
       (revalidateTag as (tag: string) => void)(tag);
     }
@@ -349,6 +358,18 @@ function asContentDeleteJobData(data: unknown): ContentDeleteJobData {
     documentId: asString(data.documentId, "documentId"),
     userId: asString(data.userId, "userId"),
   };
+}
+
+function asMediaProcessImageJobData(data: unknown): MediaProcessImageJobData {
+  if (
+    !isRecord(data) ||
+    Object.keys(data).length !== 1 ||
+    typeof data.mediaId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(data.mediaId)
+  ) {
+    throw new Error("Invalid media:processImage job payload.");
+  }
+  return { mediaId: data.mediaId };
 }
 
 function asContentOperation(value: unknown): ContentJobData["operation"] {

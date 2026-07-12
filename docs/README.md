@@ -22,6 +22,7 @@ behavior they describe changes.
 | [email.md](email.md)                                   | Email adapters and templates                                           |
 | [i18n.md](i18n.md)                                     | Internationalization                                                   |
 | [jobs.md](jobs.md)                                     | pg-boss-backed job queue                                               |
+| [media.md](media.md)                                   | Canonical media records, variants, URLs, API, and ops contract         |
 | [multi-site.md](multi-site.md)                         | Multi-tenant site model                                                |
 | [navigation.md](navigation.md)                         | Navigation wire/resolved types, validation, and enforcement boundaries |
 | [observability.md](observability.md)                   | Logging, heartbeats, job logs                                          |

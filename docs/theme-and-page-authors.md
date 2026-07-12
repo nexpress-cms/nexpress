@@ -289,8 +289,10 @@ Built-in variant names: `"original"` (default), `"thumbnail"`
 (300px), `"small"` (600px), `"medium"` (900px), `"large"`
 (1400px), `"xlarge"` (1920px), `"og"` (1200×630, cropped).
 Plugin-defined custom variants are accepted as plain strings —
-the lookup walks `media.sizes` regardless. Returns `null` for
-unknown / soft-deleted ids.
+the lookup walks the validated `media.sizes` map regardless. Variant URLs are
+resolved from each entry's actual `storageKey`; the renderer never guesses a
+file extension. Returns `null` for unknown / soft-deleted ids. See
+[media.md](media.md) for the exact persisted and API contracts.
 
 If you also need the dimensions, alt text, or filename, fetch the
 record first:
@@ -302,6 +304,10 @@ if (media) {
   return <img src={url ?? ""} alt={media.alt ?? ""} width={media.width} height={media.height} />;
 }
 ```
+
+`getMediaById()` returns a validated `NpMediaRecord`. Malformed persisted
+variant metadata, focal points, captions, uploader ownership, or dimensions
+fail closed before a theme receives the row.
 
 ---
 

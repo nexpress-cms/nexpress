@@ -443,7 +443,9 @@ Implementation status:
   captured job log for each failed / expired / retrying job.
 - `nexpress ops storage status --json` emits
   `schemaVersion: "np.ops-storage.v1"` with adapter readiness, media row
-  counts, and local missing/orphaned file drift when local storage is used.
+  counts, canonical variant-metadata validation, and local missing/orphaned
+  file drift when local storage is used. Malformed `np_media.sizes` rows emit
+  the blocking `storage.media_contract` check and are not partially indexed.
 - `nexpress ops plugins list --json` and
   `nexpress ops plugins doctor --json` emit
   `schemaVersion: "np.ops-plugins.v1"` with plugin inventory plus duplicate

@@ -1,21 +1,13 @@
-import {
-  NpForbiddenError,
-  NpNotFoundError,
-  getMediaById,
-  deleteMedia,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, NpNotFoundError, getMediaById, deleteMedia, can } from "@nexpress/core";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import { ensureFor } from "../../../lib/init-core";
+import { toMediaApiItem } from "../../../lib/media-response";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     // Admin-library detail. The public site reads media by id
@@ -34,7 +26,7 @@ export async function GET(
       throw new NpNotFoundError("media", id);
     }
 
-    return npSuccessResponse(media);
+    return npSuccessResponse(await toMediaApiItem(media));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

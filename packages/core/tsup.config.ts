@@ -40,6 +40,8 @@ export default defineConfig({
     i18n: "src/i18n/index.ts",
     jobs: "src/jobs/index.ts",
     media: "src/media/index.ts",
+    // Pure, client-safe persisted media metadata and API wire contract.
+    "media-contract": "src/media-contract/index.ts",
     // Client-safe persisted navigation tree/location contract.
     navigation: "src/navigation/index.ts",
     observability: "src/observability/index.ts",

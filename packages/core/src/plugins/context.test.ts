@@ -88,6 +88,30 @@ describe("ctx.config / capabilities / pluginId", () => {
   });
 });
 
+describe("ctx.media URL contract", () => {
+  it("forwards canonical variant options to the shared media resolver", async () => {
+    const ctx = createPluginRuntimeContext({
+      pluginId: "media-plugin",
+      capabilities: ["media:read"],
+      allowedHosts: [],
+      config: {},
+      registration: { actions: new Map() },
+      lookupRegistration: () => undefined,
+    }) as {
+      media: {
+        getUrl(
+          id: string,
+          options?: { variant?: string; fallbackToOriginal?: boolean },
+        ): Promise<string | null>;
+      };
+    };
+
+    await expect(ctx.media.getUrl("unused", { variant: "../escape" })).rejects.toThrow(
+      "Invalid media variant",
+    );
+  });
+});
+
 describe("ctx.cache", () => {
   it("round-trips a value set without TTL", async () => {
     const ctx = buildCtx();

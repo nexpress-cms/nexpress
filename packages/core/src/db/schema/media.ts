@@ -13,28 +13,16 @@ import {
 
 import { npMembers } from "./community.js";
 import { npUsers } from "./system.js";
-import { type NpRichTextContent } from "../../config/types.js";
+import { type NpRichTextContent } from "../../fields/rich-text.js";
+import type { NpMediaFocalPoint, NpMediaVariants } from "../../media-contract/types.js";
 
-export const npMediaStatusEnum = pgEnum("np_media_status", [
-  "processing",
-  "ready",
-  "error",
-]);
-
-type NpMediaFocalPoint = {
-  x: number;
-  y: number;
-};
-
-type NpMediaSizes = Record<string, Record<string, unknown>>;
+export const npMediaStatusEnum = pgEnum("np_media_status", ["processing", "ready", "error"]);
 
 export const npMediaFolders = pgTable("np_media_folders", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
   parentId: uuid("parent_id").references((): AnyPgColumn => npMediaFolders.id),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-    .defaultNow()
-    .notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
 });
 
 export const npMedia = pgTable(
@@ -50,7 +38,7 @@ export const npMedia = pgTable(
     alt: text("alt"),
     caption: jsonb("caption").$type<NpRichTextContent>(),
     focalPoint: jsonb("focal_point").$type<NpMediaFocalPoint>(),
-    sizes: jsonb("sizes").$type<NpMediaSizes>(),
+    sizes: jsonb("sizes").$type<NpMediaVariants>(),
     storageKey: text("storage_key").notNull(),
     hash: text("hash").notNull(),
     status: npMediaStatusEnum("status").notNull(),
@@ -59,31 +47,25 @@ export const npMedia = pgTable(
     /**
      * Set when a member uploaded the row instead of a staff user
      * (Phase 9.7j). Mutually exclusive with `uploadedBy`: a row
-     * has exactly one uploader. Member-side moderation tools key
-     * off this column to filter "uploads I should review."
+     * has at most one human uploader, while plugin/system uploads
+     * may have neither. Member-side moderation tools key off this
+     * column to filter "uploads I should review."
      * `ON DELETE SET NULL` so a member account deletion doesn't
      * cascade-delete their uploads — staff still need them for
      * the audit trail (just like `member_author_id` on
      * collection tables).
      */
-    uploadedByMemberId: uuid("uploaded_by_member_id").references(
-      (): AnyPgColumn => npMembers.id,
-      { onDelete: "set null" },
-    ),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    uploadedByMemberId: uuid("uploaded_by_member_id").references((): AnyPgColumn => npMembers.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
   },
   (table) => ({
     hashIdx: index("np_media_hash_idx").on(table.hash),
     statusIdx: index("np_media_status_idx").on(table.status),
-    uploadedByMemberIdx: index("np_media_uploaded_by_member_idx").on(
-      table.uploadedByMemberId,
-    ),
+    uploadedByMemberIdx: index("np_media_uploaded_by_member_idx").on(table.uploadedByMemberId),
   }),
 );
 

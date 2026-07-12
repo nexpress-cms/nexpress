@@ -18,6 +18,8 @@ import {
   uploadMedia as coreUploadMedia,
   getStorageAdapter,
 } from "../media/service.js";
+import { getMediaUrl as coreGetMediaUrl } from "../media/url.js";
+import type { NpGetMediaUrlOptions, NpMediaRecord } from "../media-contract/types.js";
 import { getDb } from "../db/runtime.js";
 import { NP_GLOBAL_PLUGIN_SITE_ID, npPluginStorage, npSettings } from "../db/schema/system.js";
 import { getScopedLogger } from "../observability/logger.js";
@@ -103,6 +105,29 @@ interface BuildContextOptions {
  */
 const pluginCache = new Map<string, { value: unknown; expiresAt: number | null }>();
 let pluginStorageAppendCounter = 0;
+
+async function toPluginMediaItem(record: NpMediaRecord): Promise<Record<string, unknown>> {
+  return {
+    id: record.id,
+    filename: record.filename,
+    mimeType: record.mimeType,
+    size: record.filesize,
+    url: await getStorageAdapter().getUrl(record.storageKey),
+    ...(record.alt !== null ? { alt: record.alt } : {}),
+    ...(record.width !== null ? { width: record.width } : {}),
+    ...(record.height !== null ? { height: record.height } : {}),
+    metadata: {
+      status: record.status,
+      storageKey: record.storageKey,
+      hash: record.hash,
+      folderId: record.folderId,
+      focalPoint: record.focalPoint,
+      sizes: record.sizes,
+    },
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
+  };
+}
 
 function cacheKey(pluginId: string, key: string): string {
   return `${pluginId}:${key}`;
@@ -231,25 +256,34 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
     },
 
     media: {
-      async list(query?: { page?: number; limit?: number; mimeType?: string; folder?: string }) {
+      async list(query?: {
+        page?: number;
+        limit?: number;
+        mimeType?: string;
+        folder?: string;
+        search?: string;
+      }) {
         assertCap(pluginId, capabilities, "media:read");
-        return coreListMedia({
+        const result = await coreListMedia({
           page: query?.page,
           limit: query?.limit,
           mimeType: query?.mimeType,
           folderId: query?.folder,
+          q: query?.search,
         });
+        return {
+          ...result,
+          docs: await Promise.all(result.docs.map((record) => toPluginMediaItem(record))),
+        };
       },
       async getById(id: string) {
         assertCap(pluginId, capabilities, "media:read");
-        return coreGetMediaById(id);
+        const record = await coreGetMediaById(id);
+        return record ? toPluginMediaItem(record) : null;
       },
-      async getUrl(id: string) {
+      async getUrl(id: string, options?: NpGetMediaUrlOptions) {
         assertCap(pluginId, capabilities, "media:read");
-        const media = await coreGetMediaById(id);
-        if (!media || typeof media.storageKey !== "string") return "";
-        const adapter = getStorageAdapter();
-        return adapter.getUrl(media.storageKey);
+        return coreGetMediaUrl(id, options);
       },
       async upload(
         file: Uint8Array | ArrayBuffer,
@@ -257,7 +291,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
       ) {
         assertCap(pluginId, capabilities, "media:write");
         const buffer = Buffer.from(file instanceof ArrayBuffer ? new Uint8Array(file) : file);
-        return coreUploadMedia(
+        const result = await coreUploadMedia(
           {
             buffer,
             originalFilename: metadata.filename,
@@ -272,6 +306,13 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
           null,
           metadata.folder,
         );
+        const record = await coreGetMediaById(result.id);
+        if (!record) {
+          throw new Error(
+            `[plugin:${pluginId}] media.upload: stored media ${result.id} is missing.`,
+          );
+        }
+        return toPluginMediaItem(record);
       },
       async delete(id: string) {
         assertCap(pluginId, capabilities, "media:delete");

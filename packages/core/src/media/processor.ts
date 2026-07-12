@@ -1,6 +1,11 @@
 import sharp from "sharp";
 
-import type { NpImageSize } from "../config/types.js";
+import { npValidateMediaProcessingOptions } from "../media-contract/contract.js";
+import type {
+  NpMediaImageFormat,
+  NpMediaImageSize,
+  NpMediaProcessingOptions,
+} from "../media-contract/types.js";
 
 type NpSharpPipeline = ReturnType<typeof sharp>;
 
@@ -23,7 +28,7 @@ export interface NpProcessedImageResult {
   variants: NpProcessedImageVariant[];
 }
 
-export const DEFAULT_IMAGE_SIZES: NpImageSize[] = [
+export const DEFAULT_IMAGE_SIZES: NpMediaImageSize[] = [
   { name: "thumbnail", width: 300 },
   { name: "small", width: 600 },
   { name: "medium", width: 900 },
@@ -34,9 +39,15 @@ export const DEFAULT_IMAGE_SIZES: NpImageSize[] = [
 
 export async function processImage(
   inputBuffer: Buffer,
-  sizes: NpImageSize[],
-  options: { format?: string; quality?: number } = {},
+  sizes: NpMediaImageSize[],
+  options: Pick<NpMediaProcessingOptions, "format" | "quality"> = {},
 ): Promise<NpProcessedImageResult> {
+  const validation = npValidateMediaProcessingOptions({ sizes, ...options });
+  if (!validation.ok) {
+    throw new Error(
+      `Invalid media processing options at ${validation.issue.path}: ${validation.issue.message}`,
+    );
+  }
   const format = options.format ?? "webp";
   const quality = options.quality ?? 80;
   const sourceImage = sharp(inputBuffer).autoOrient();
@@ -80,7 +91,11 @@ export async function processImage(
   };
 }
 
-function applyFormat(image: NpSharpPipeline, format: string, quality: number): NpSharpPipeline {
+function applyFormat(
+  image: NpSharpPipeline,
+  format: NpMediaImageFormat,
+  quality: number,
+): NpSharpPipeline {
   switch (format) {
     case "avif":
       return image.avif({ quality });
@@ -94,7 +109,7 @@ function applyFormat(image: NpSharpPipeline, format: string, quality: number): N
   }
 }
 
-function resolveCropPosition(crop?: NpImageSize["crop"]): string | number {
+function resolveCropPosition(crop?: NpMediaImageSize["crop"]): string | number {
   switch (crop) {
     case "top":
       return "top";

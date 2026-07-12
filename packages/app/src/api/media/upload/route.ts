@@ -1,14 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
-import { extname } from "node:path";
-
 import {
   NpForbiddenError,
   NpValidationError,
-  npMedia,
   npMediaFolders,
   runHook,
   uploadMedia,
-  getStorageAdapter,
   can,
 } from "@nexpress/core";
 import { eq } from "drizzle-orm";
@@ -91,61 +86,18 @@ export async function POST(request: NextRequest) {
       folderId: folderId ?? null,
     });
 
-    if (file.type.startsWith("image/")) {
-      const result = await uploadMedia(
-        { buffer, originalFilename: file.name, mimeType: file.type },
-        user.id,
-        folderId,
-      );
-
-      await runHook("media:afterUpload", {
-        principal,
-        member: null,
-        media: {
-          id: result.id,
-          status: result.status,
-          filename: file.name,
-          mimeType: file.type,
-          size: file.size,
-          folderId: folderId ?? null,
-        },
-      });
-
-      return npSuccessResponse(result, { status: 202 });
-    }
-
-    const id = randomUUID();
-    const ext = extname(file.name).slice(1).toLowerCase() || "bin";
-    const storageKey = `media/${id}/original.${ext}`;
-    const now = new Date();
-
-    await getStorageAdapter().upload(storageKey, buffer, {
-      contentType: file.type,
-      contentLength: buffer.byteLength,
-      originalFilename: file.name,
-    });
-
-    await db.insert(npMedia).values({
-      id,
-      filename: file.name,
-      originalFilename: file.name,
-      mimeType: file.type,
-      filesize: file.size,
-      storageKey,
-      hash: createHash("sha256").update(buffer).digest("hex"),
-      status: "ready",
-      folderId: folderId ?? null,
-      uploadedBy: user.id,
-      createdAt: now,
-      updatedAt: now,
-    });
+    const result = await uploadMedia(
+      { buffer, originalFilename: file.name, mimeType: file.type },
+      user.id,
+      folderId,
+    );
 
     await runHook("media:afterUpload", {
       principal,
       member: null,
       media: {
-        id,
-        status: "ready",
+        id: result.id,
+        status: result.status,
         filename: file.name,
         mimeType: file.type,
         size: file.size,
@@ -153,7 +105,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return npSuccessResponse({ id, status: "ready" }, { status: 201 });
+    return npSuccessResponse(result, {
+      status: result.status === "processing" ? 202 : 201,
+    });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

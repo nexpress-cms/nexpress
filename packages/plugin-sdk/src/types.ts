@@ -42,6 +42,12 @@ import type {
   NpThemeTokens as NpCoreThemeTokens,
   NpThemeTokensOverlay as NpCoreThemeTokensOverlay,
 } from "@nexpress/core/theme";
+import type {
+  NpGetMediaUrlOptions,
+  NpMediaFocalPoint,
+  NpMediaStatus,
+  NpMediaVariants,
+} from "@nexpress/core/media-contract";
 
 import type { NpPluginManifest, NpPluginManifestResolved } from "./manifest.js";
 
@@ -448,13 +454,8 @@ export interface NpContentResult {
   hasPrevPage: boolean;
 }
 
-export interface NpImageTransform {
-  width?: number;
-  height?: number;
-  fit?: "cover" | "contain" | "fill" | "inside" | "outside";
-  quality?: number;
-  format?: "webp" | "avif" | "jpeg" | "png";
-}
+/** `ctx.media.getUrl` resolves pre-generated variants, not on-demand transforms. */
+export type NpMediaUrlOptions = NpGetMediaUrlOptions;
 
 export interface NpMediaQuery {
   page?: number;
@@ -474,7 +475,14 @@ export interface NpMediaItem {
   alt?: string;
   width?: number;
   height?: number;
-  metadata?: Record<string, unknown>;
+  metadata?: {
+    status: NpMediaStatus;
+    storageKey: string;
+    hash: string;
+    folderId: string | null;
+    focalPoint: NpMediaFocalPoint | null;
+    sizes: NpMediaVariants | null;
+  };
   createdAt?: string;
   updatedAt?: string;
 }
@@ -598,7 +606,7 @@ export interface NpPluginContext<TConfig = Record<string, unknown>> {
   readonly media: {
     list(query?: NpMediaQuery): Promise<NpMediaResult>;
     getById(id: string): Promise<NpMediaItem | null>;
-    getUrl(id: string, transform?: NpImageTransform): Promise<string>;
+    getUrl(id: string, options?: NpMediaUrlOptions): Promise<string | null>;
     upload(file: NpUploadInput, metadata: NpMediaUpload): Promise<NpMediaItem>;
     delete(id: string): Promise<void>;
   };

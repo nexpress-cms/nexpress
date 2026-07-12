@@ -3,11 +3,24 @@ import { extname } from "node:path";
 import { buffer as consumeBuffer } from "node:stream/consumers";
 import { Readable } from "node:stream";
 
-import { and, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgTable } from "drizzle-orm/pg-core";
 
-import type { NpFindResult, NpImageSize } from "../config/types.js";
+import type { NpFindResult } from "../config/types.js";
 import { readEnvPositiveInt } from "../config/env.js";
 import { npMembers } from "../db/schema/community.js";
 import { npMedia, npMediaRefs } from "../db/schema/media.js";
@@ -16,10 +29,19 @@ import { enqueueJob } from "../jobs/queue.js";
 import { getLogger } from "../observability/logger.js";
 import { getDb } from "../db/runtime.js";
 import {
-  DEFAULT_IMAGE_SIZES,
-  processImage,
-  type NpProcessedImageResult,
-} from "./processor.js";
+  npAssertMediaRecord,
+  npValidateMediaProcessingOptions,
+  npValidateMediaVariants,
+} from "../media-contract/contract.js";
+import type {
+  NpMediaListItem,
+  NpMediaProcessingOptions,
+  NpMediaRecord,
+  NpMediaStatus,
+  NpMediaUploaderSummary,
+  NpMediaVariants,
+} from "../media-contract/types.js";
+import { DEFAULT_IMAGE_SIZES, processImage, type NpProcessedImageResult } from "./processor.js";
 import type { NpStorageAdapter } from "../storage/types.js";
 
 /**
@@ -55,30 +77,11 @@ interface DrizzleDatabaseLike {
     };
   };
   delete(table: PgTable): {
-    where(condition: ReturnType<typeof inArray>  ): Promise<unknown>;
+    where(condition: ReturnType<typeof inArray>): Promise<unknown>;
   };
   select(selection?: Record<string, unknown>): {
     from(table: PgTable): SelectQuery;
   };
-}
-
-interface MediaRecord {
-  id: string;
-  filename: string;
-  originalFilename: string;
-  mimeType: string;
-  filesize: number;
-  width: number | null;
-  height: number | null;
-  sizes: Record<string, Record<string, unknown>> | null;
-  storageKey: string;
-  hash: string;
-  status: "processing" | "ready" | "error";
-  folderId: string | null;
-  uploadedBy: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  deletedAt: Date | null;
 }
 
 let storageAdapter: NpStorageAdapter | null = null;
@@ -104,26 +107,24 @@ export function getStorageAdapter(): NpStorageAdapter {
  * the audit log carries the actor.
  */
 export type NpMediaUploader =
-  | { kind: "staff"; userId: string }
-  | { kind: "member"; memberId: string }
-  | null;
+  { kind: "staff"; userId: string } | { kind: "member"; memberId: string } | null;
 
 export async function uploadMedia(
   file: { buffer: Buffer; originalFilename: string; mimeType: string },
   uploader: NpMediaUploader | string,
   folderId?: string,
-): Promise<{ id: string; status: string }> {
+): Promise<{ id: string; status: NpMediaStatus }> {
   // Backwards-compat: the original signature was
   // `uploadMedia(file, userId: string | null, folderId?)`. Existing
   // callers (plugin context, admin bulk uploads, etc.) pass a bare
   // string. Coerce that into the staff variant of the polymorphic
   // shape so the rest of this function only deals with the union.
   const resolvedUploader: NpMediaUploader =
-    typeof uploader === "string"
-      ? { kind: "staff", userId: uploader }
-      : uploader;
+    typeof uploader === "string" ? { kind: "staff", userId: uploader } : uploader;
 
   const id = randomUUID();
+  const isProcessableImage = file.mimeType.startsWith("image/");
+  const status: NpMediaStatus = isProcessableImage ? "processing" : "ready";
   const extension = resolveFileExtension(file.originalFilename, file.mimeType);
   const storageKey = `media/${id}/original.${extension}`;
   const now = new Date();
@@ -133,21 +134,25 @@ export async function uploadMedia(
     originalFilename: file.originalFilename,
     mimeType: file.mimeType,
     filesize: file.buffer.byteLength,
+    width: null,
+    height: null,
+    alt: null,
+    caption: null,
+    focalPoint: null,
+    sizes: null,
     storageKey,
     hash: createHash("sha256").update(file.buffer).digest("hex"),
-    status: "processing" as const,
-    folderId,
+    status,
+    folderId: folderId ?? null,
     uploadedBy:
-      resolvedUploader && resolvedUploader.kind === "staff"
-        ? resolvedUploader.userId
-        : null,
+      resolvedUploader && resolvedUploader.kind === "staff" ? resolvedUploader.userId : null,
     uploadedByMemberId:
-      resolvedUploader && resolvedUploader.kind === "member"
-        ? resolvedUploader.memberId
-        : null,
+      resolvedUploader && resolvedUploader.kind === "member" ? resolvedUploader.memberId : null,
     createdAt: now,
     updatedAt: now,
+    deletedAt: null,
   };
+  npAssertMediaRecord(insertValues);
 
   // Phase 9.7p: per-member upload quota. Staff uploads are never
   // gated. Phase 9.7p-followup (#120) — the count + insert must be
@@ -176,9 +181,7 @@ export async function uploadMedia(
       // `hashtextextended` produces a stable int8 from a UUID
       // string — collisions across different member ids are
       // benign (worst case some unrelated members serialize).
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtextextended(${memberId}, 0))`,
-      );
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${memberId}, 0))`);
       await assertMemberUploadQuota(memberId, tx);
       await tx.insert(npMedia).values(insertValues);
     });
@@ -221,9 +224,11 @@ export async function uploadMedia(
     throw err;
   }
 
-  await enqueueJob("media:processImage", { mediaId: id });
+  if (isProcessableImage) {
+    await enqueueJob("media:processImage", { mediaId: id });
+  }
 
-  return { id, status: "processing" };
+  return { id, status };
 }
 
 /**
@@ -244,9 +249,7 @@ async function assertMemberUploadQuota(
   memberId: string,
   txDb?: NodePgDatabase<Record<string, unknown>>,
 ): Promise<void> {
-  const { getCommunitySettings } = await import(
-    "../community/settings.js"
-  );
+  const { getCommunitySettings } = await import("../community/settings.js");
   const { NpRateLimitError } = await import("../errors.js");
   const settings = await getCommunitySettings();
   const { perDay, total } = settings.memberUploadQuota;
@@ -257,20 +260,15 @@ async function assertMemberUploadQuota(
   // so the count must use the tx handle to see writes by sibling
   // statements. When called from elsewhere we fall back to the
   // shared media DB.
-  const db =
-    txDb ??
-    (getDb());
+  const db = txDb ?? getDb();
 
   if (total !== null) {
     const [row] = (await db
       .select({ value: count() })
       .from(npMedia)
-      .where(
-        and(
-          eq(npMedia.uploadedByMemberId, memberId),
-          isNull(npMedia.deletedAt),
-        ),
-      )) as Array<{ value: number }>;
+      .where(and(eq(npMedia.uploadedByMemberId, memberId), isNull(npMedia.deletedAt)))) as Array<{
+      value: number;
+    }>;
     const used = row?.value ?? 0;
     if (used >= total) {
       throw new NpRateLimitError(
@@ -302,8 +300,14 @@ async function assertMemberUploadQuota(
 
 export async function processMediaImage(
   mediaId: string,
-  config: { sizes?: NpImageSize[]; format?: string; quality?: number },
+  config: NpMediaProcessingOptions,
 ): Promise<void> {
+  const configValidation = npValidateMediaProcessingOptions(config);
+  if (!configValidation.ok) {
+    throw new Error(
+      `Invalid media processing options at ${configValidation.issue.path}: ${configValidation.issue.message}`,
+    );
+  }
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const adapter = getStorageAdapter();
   const media = await getMediaRecordById(mediaId);
@@ -315,14 +319,19 @@ export async function processMediaImage(
   try {
     const originalStream = await adapter.getStream(media.storageKey);
     const originalBuffer = await consumeBuffer(Readable.fromWeb(originalStream));
-    const processed = await processImage(
-      originalBuffer,
-      config.sizes ?? DEFAULT_IMAGE_SIZES,
-      { format: config.format, quality: config.quality },
-    );
+    const processed = await processImage(originalBuffer, config.sizes ?? DEFAULT_IMAGE_SIZES, {
+      format: config.format,
+      quality: config.quality,
+    });
     const format = config.format ?? "webp";
     const mimeType = getFormatMimeType(format);
     const sizes = await uploadImageVariants(adapter, media.id, processed, format, mimeType);
+    const sizesValidation = npValidateMediaVariants(sizes);
+    if (!sizesValidation.ok) {
+      throw new Error(
+        `Invalid processed media variants at ${sizesValidation.issue.path}: ${sizesValidation.issue.message}`,
+      );
+    }
 
     await db
       .update(npMedia)
@@ -349,7 +358,7 @@ export async function processMediaImage(
   }
 }
 
-export async function getMediaById(id: string): Promise<Record<string, unknown> | null> {
+export async function getMediaById(id: string): Promise<NpMediaRecord | null> {
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const [media] = await db
     .select()
@@ -357,7 +366,7 @@ export async function getMediaById(id: string): Promise<Record<string, unknown> 
     .where(and(eq(npMedia.id, id), isNull(npMedia.deletedAt)))
     .limit(1);
 
-  return media ? toRecord(media) : null;
+  return media ? toMediaRecord(media) : null;
 }
 
 export async function deleteMedia(
@@ -418,7 +427,7 @@ export async function listMedia(options: {
    * treated as no filter.
    */
   q?: string;
-}): Promise<NpFindResult> {
+}): Promise<NpFindResult<NpMediaListItem>> {
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const page = normalizePage(options.page);
   const limit = normalizeLimit(options.limit);
@@ -451,10 +460,7 @@ export async function listMedia(options: {
   // treated as a wildcard.
   if (options.q && options.q.trim().length > 0) {
     const needle = `%${options.q.trim().replace(/[%_]/g, (c) => `\\${c}`)}%`;
-    const search = or(
-      ilike(npMedia.filename, needle),
-      ilike(npMedia.alt, needle),
-    );
+    const search = or(ilike(npMedia.filename, needle), ilike(npMedia.alt, needle));
     if (search) conditions.push(search);
   }
 
@@ -465,23 +471,31 @@ export async function listMedia(options: {
   // builder pipeline. Cast through `unknown` for this query —
   // safer than widening the interface and dragging join semantics
   // into every other media call site.
-  const joined = (db as unknown as {
-    select: (s: Record<string, unknown>) => {
-      from: (t: PgTable) => {
-        leftJoin: (j: PgTable, c: unknown) => {
-          leftJoin: (j: PgTable, c: unknown) => {
-            where: (c: unknown) => {
-              orderBy: (o: unknown) => {
-                limit: (n: number) => {
-                  offset: (n: number) => Promise<Array<Record<string, unknown>>>;
+  const joined = (
+    db as unknown as {
+      select: (s: Record<string, unknown>) => {
+        from: (t: PgTable) => {
+          leftJoin: (
+            j: PgTable,
+            c: unknown,
+          ) => {
+            leftJoin: (
+              j: PgTable,
+              c: unknown,
+            ) => {
+              where: (c: unknown) => {
+                orderBy: (o: unknown) => {
+                  limit: (n: number) => {
+                    offset: (n: number) => Promise<Array<Record<string, unknown>>>;
+                  };
                 };
               };
             };
           };
         };
       };
-    };
-  })
+    }
+  )
     .select({
       media: npMedia,
       userName: npUsers.name,
@@ -504,9 +518,11 @@ export async function listMedia(options: {
     memberHandle: string | null;
     memberDisplayName: string | null;
   }>;
-  const [{ total }] = (whereClause
-    ? await db.select({ total: count() }).from(npMedia).where(whereClause)
-    : await db.select({ total: count() }).from(npMedia)) as Array<{ total: number | string }>;
+  const [{ total }] = (
+    whereClause
+      ? await db.select({ total: count() }).from(npMedia).where(whereClause)
+      : await db.select({ total: count() }).from(npMedia)
+  ) as Array<{ total: number | string }>;
   const totalDocs = Number(total ?? 0);
   const totalPages = totalDocs === 0 ? 0 : Math.ceil(totalDocs / limit);
 
@@ -514,21 +530,9 @@ export async function listMedia(options: {
   // sub-object alongside the standard media columns. Keeps the
   // shape backwards-compatible (the existing media columns are
   // still at the top level).
-  const docs = rows.map((row) => ({
-    ...row.media,
-    uploader: row.userName !== null
-      ? {
-          kind: "staff" as const,
-          name: row.userName,
-          email: row.userEmail,
-        }
-      : row.memberHandle !== null
-      ? {
-          kind: "member" as const,
-          handle: row.memberHandle,
-          displayName: row.memberDisplayName,
-        }
-      : null,
+  const docs = rows.map((row): NpMediaListItem => ({
+    ...toMediaRecord(row.media),
+    uploader: resolveUploaderSummary(row),
   }));
 
   return {
@@ -557,10 +561,7 @@ export async function cleanupDeletedMedia(olderThanDays: number): Promise<number
   }
 
   for (const media of mediaRows) {
-    const keys = new Set<string>([
-      media.storageKey,
-      ...extractVariantStorageKeys(media.sizes),
-    ]);
+    const keys = new Set<string>([media.storageKey, ...extractVariantStorageKeys(media.sizes)]);
 
     for (const key of keys) {
       try {
@@ -571,12 +572,17 @@ export async function cleanupDeletedMedia(olderThanDays: number): Promise<number
     }
   }
 
-  await db.delete(npMedia).where(inArray(npMedia.id, mediaRows.map((media) => media.id)));
+  await db.delete(npMedia).where(
+    inArray(
+      npMedia.id,
+      mediaRows.map((media) => media.id),
+    ),
+  );
 
   return mediaRows.length;
 }
 
-async function getMediaRecordById(id: string): Promise<MediaRecord | null> {
+async function getMediaRecordById(id: string): Promise<NpMediaRecord | null> {
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const [media] = await db
     .select()
@@ -593,7 +599,7 @@ async function uploadImageVariants(
   processed: NpProcessedImageResult,
   format: string,
   mimeType: string,
-): Promise<Record<string, Record<string, unknown>>> {
+): Promise<NpMediaVariants> {
   const entries = await Promise.all(
     processed.variants.map(async (variant) => {
       const filename = `${variant.name}.${format}`;
@@ -614,7 +620,6 @@ async function uploadImageVariants(
           width: variant.width,
           height: variant.height,
           storageKey,
-          url: await adapter.getUrl(storageKey),
         },
       ] as const;
     }),
@@ -623,9 +628,7 @@ async function uploadImageVariants(
   return Object.fromEntries(entries);
 }
 
-function extractVariantStorageKeys(
-  sizes: Record<string, Record<string, unknown>> | null,
-): string[] {
+function extractVariantStorageKeys(sizes: NpMediaVariants | null): string[] {
   if (!sizes) {
     return [];
   }
@@ -638,7 +641,7 @@ function extractVariantStorageKeys(
 function resolveFileExtension(originalFilename: string, mimeType: string): string {
   const extension = extname(originalFilename).slice(1).toLowerCase();
 
-  if (extension) {
+  if (/^[a-z0-9]{1,16}$/u.test(extension)) {
     return extension;
   }
 
@@ -675,8 +678,8 @@ function getFormatMimeType(format: string): string {
 }
 
 function combineConditions(
-  conditions: Array<ReturnType<typeof and> | ReturnType<typeof isNull>  >,
-): ReturnType<typeof and> | ReturnType<typeof isNull>   | undefined {
+  conditions: Array<ReturnType<typeof and> | ReturnType<typeof isNull>>,
+): ReturnType<typeof and> | ReturnType<typeof isNull> | undefined {
   if (conditions.length === 0) {
     return undefined;
   }
@@ -704,105 +707,26 @@ function normalizeLimit(limit?: number): number {
   return Math.floor(limit);
 }
 
-function toMediaRecord(value: unknown): MediaRecord {
-  const record = toRecord(value);
-
-  return {
-    id: asString(record.id, "id"),
-    filename: asString(record.filename, "filename"),
-    originalFilename: asString(record.originalFilename, "originalFilename"),
-    mimeType: asString(record.mimeType, "mimeType"),
-    filesize: asNumber(record.filesize, "filesize"),
-    width: asNullableNumber(record.width),
-    height: asNullableNumber(record.height),
-    sizes: asSizes(record.sizes),
-    storageKey: asString(record.storageKey, "storageKey"),
-    hash: asString(record.hash, "hash"),
-    status: asMediaStatus(record.status),
-    folderId: asNullableString(record.folderId),
-    uploadedBy: asNullableString(record.uploadedBy),
-    createdAt: asDate(record.createdAt, "createdAt"),
-    updatedAt: asDate(record.updatedAt, "updatedAt"),
-    deletedAt: asNullableDate(record.deletedAt),
-  };
-}
-
-function asSizes(value: unknown): Record<string, Record<string, unknown>> | null {
-  if (value == null) {
-    return null;
-  }
-
-  const record = toRecord(value);
-  const sizes: Record<string, Record<string, unknown>> = {};
-
-  for (const [key, entry] of Object.entries(record)) {
-    const sizeRecord = toRecord(entry);
-    sizes[key] = sizeRecord;
-  }
-
-  return sizes;
-}
-
-function asMediaStatus(value: unknown): MediaRecord["status"] {
-  if (value === "processing" || value === "ready" || value === "error") {
-    return value;
-  }
-
-  throw new Error("Invalid media status.");
-}
-
-function asString(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Invalid ${field}.`);
-  }
-
+function toMediaRecord(value: unknown): NpMediaRecord {
+  npAssertMediaRecord(value);
   return value;
 }
 
-function asNullableString(value: unknown): string | null {
-  if (value == null) {
-    return null;
+function resolveUploaderSummary(row: {
+  userName: string | null;
+  userEmail: string | null;
+  memberHandle: string | null;
+  memberDisplayName: string | null;
+}): NpMediaUploaderSummary | null {
+  if (row.userName !== null || row.userEmail !== null) {
+    return { kind: "staff", name: row.userName, email: row.userEmail };
   }
-
-  return asString(value, "string field");
-}
-
-function asNumber(value: unknown, field: string): number {
-  if (typeof value !== "number") {
-    throw new Error(`Invalid ${field}.`);
+  if (row.memberHandle !== null) {
+    return {
+      kind: "member",
+      handle: row.memberHandle,
+      displayName: row.memberDisplayName,
+    };
   }
-
-  return value;
-}
-
-function asNullableNumber(value: unknown): number | null {
-  if (value == null) {
-    return null;
-  }
-
-  return asNumber(value, "number field");
-}
-
-function asDate(value: unknown, field: string): Date {
-  if (!(value instanceof Date)) {
-    throw new Error(`Invalid ${field}.`);
-  }
-
-  return value;
-}
-
-function asNullableDate(value: unknown): Date | null {
-  if (value == null) {
-    return null;
-  }
-
-  return asDate(value, "date field");
-}
-
-function toRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Expected object record.");
-  }
-
-  return value as Record<string, unknown>;
+  return null;
 }

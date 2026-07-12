@@ -1,3 +1,4 @@
+import type { NpMediaImageSize } from "../media-contract/types.js";
 export type { NpRichTextContent } from "../fields/rich-text.js";
 export type { NpNavItem } from "../navigation/types.js";
 
@@ -328,12 +329,8 @@ export interface NpUploadConfig {
   imageSizes?: NpImageSize[];
 }
 
-export interface NpImageSize {
-  name: string;
-  width: number;
-  height?: number;
-  crop?: "center" | "top" | "bottom" | "left" | "right";
-}
+/** @deprecated Prefer `NpMediaImageSize` from `@nexpress/core/media-contract`. */
+export type NpImageSize = NpMediaImageSize;
 
 export interface NpCollectionConfig {
   slug: string;

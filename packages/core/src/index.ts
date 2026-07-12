@@ -84,6 +84,55 @@ export type {
   NpNavigationItemType,
   NpNavigationValidationResult,
 } from "./navigation/contract.js";
+export {
+  isNpMediaApiItem,
+  isNpMediaFocalPoint,
+  isNpMediaProcessingOptions,
+  isNpMediaRecord,
+  isNpMediaVariants,
+  isNpMediaWireRecord,
+  npAnalyzeMediaApiItem,
+  npAnalyzeMediaFocalPoint,
+  npAnalyzeMediaProcessingOptions,
+  npAnalyzeMediaRecord,
+  npAnalyzeMediaVariants,
+  npAnalyzeMediaWireRecord,
+  npAssertMediaRecord,
+  npMediaContractLimits,
+  npMediaStorageKeyPattern,
+  npMediaVariantNamePattern,
+  npSerializeMediaRecord,
+  npValidateMediaApiItem,
+  npValidateMediaFocalPoint,
+  npValidateMediaProcessingOptions,
+  npValidateMediaRecord,
+  npValidateMediaVariants,
+  npValidateMediaWireRecord,
+} from "./media-contract/contract.js";
+export {
+  npMediaCropPositions,
+  npMediaImageFormats,
+  npMediaStatuses,
+} from "./media-contract/types.js";
+export type {
+  NpMediaApiItem,
+  NpMediaContractIssue,
+  NpMediaContractIssueCode,
+  NpMediaCropPosition,
+  NpMediaFocalPoint,
+  NpMediaImageFormat,
+  NpMediaImageSize,
+  NpMediaListItem,
+  NpMediaProcessingOptions,
+  NpMediaRecord,
+  NpMediaResolvedUrls,
+  NpMediaStatus,
+  NpMediaUploaderSummary,
+  NpMediaValidationResult,
+  NpMediaVariant,
+  NpMediaVariants,
+  NpMediaWireRecord,
+} from "./media-contract/index.js";
 
 // `hasRole` / `isStaffMod` were retired in favour of `can(user, capability)` (#273).
 export { ROLE_HIERARCHY } from "./config/types.js";

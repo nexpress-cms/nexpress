@@ -11,6 +11,12 @@ import {
   npNavigationLimits,
   npNavigationLocationPattern,
 } from "@nexpress/core/navigation";
+import {
+  npMediaContractLimits,
+  npMediaStorageKeyPattern,
+  npMediaStatuses,
+  npMediaVariantNamePattern,
+} from "@nexpress/core/media-contract";
 import { NextResponse } from "next/server";
 
 import { ensureFor } from "../../lib/init-core";
@@ -347,24 +353,195 @@ function buildSpec(): OpenApiSchema {
     },
     media_item: {
       type: "object",
+      additionalProperties: false,
       description:
-        "Media record. Shape depends on the mime type — image variants (thumb/medium/large/og) live on `sizes`.",
+        "Exact Admin media API record. Persisted image variants live on `sizes`; public URLs are resolved through the active storage adapter under `urls`.",
+      required: [
+        "id",
+        "filename",
+        "originalFilename",
+        "mimeType",
+        "filesize",
+        "width",
+        "height",
+        "alt",
+        "caption",
+        "focalPoint",
+        "sizes",
+        "storageKey",
+        "hash",
+        "status",
+        "folderId",
+        "uploadedBy",
+        "uploadedByMemberId",
+        "createdAt",
+        "updatedAt",
+        "deletedAt",
+        "urls",
+      ],
       properties: {
         id: { type: "string", format: "uuid" },
-        filename: { type: "string" },
-        mimeType: { type: "string" },
-        width: { type: "integer", nullable: true },
-        height: { type: "integer", nullable: true },
+        filename: { type: "string", minLength: 1, maxLength: npMediaContractLimits.filenameLength },
+        originalFilename: {
+          type: "string",
+          minLength: 1,
+          maxLength: npMediaContractLimits.filenameLength,
+        },
+        mimeType: { type: "string", minLength: 3, maxLength: npMediaContractLimits.mimeTypeLength },
+        filesize: { type: "integer", minimum: 0 },
+        width: {
+          type: ["integer", "null"],
+          minimum: 1,
+          maximum: npMediaContractLimits.maxStoredDimension,
+        },
+        height: {
+          type: ["integer", "null"],
+          minimum: 1,
+          maximum: npMediaContractLimits.maxStoredDimension,
+        },
+        alt: { type: ["string", "null"], maxLength: npMediaContractLimits.textLength },
+        caption: {
+          oneOf: [
+            { type: "null" },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["version", "document"],
+              properties: {
+                version: { type: "integer", enum: [1] },
+                document: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["root"],
+                  properties: {
+                    root: {
+                      type: "object",
+                      additionalProperties: false,
+                      required: ["type", "children", "direction", "format", "indent", "version"],
+                      properties: {
+                        type: { type: "string", enum: ["root"] },
+                        children: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            required: ["type", "version"],
+                            additionalProperties: true,
+                          },
+                        },
+                        direction: { type: ["string", "null"], enum: ["ltr", "rtl", null] },
+                        format: { type: "string" },
+                        indent: { type: "integer", minimum: 0 },
+                        version: { type: "integer", minimum: 1 },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+        focalPoint: {
+          oneOf: [
+            { type: "null" },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["x", "y"],
+              properties: {
+                x: { type: "number", minimum: 0, maximum: 1 },
+                y: { type: "number", minimum: 0, maximum: 1 },
+              },
+            },
+          ],
+        },
         hash: {
           type: "string",
-          nullable: true,
+          pattern: "^[0-9a-f]{64}$",
           description: "Content SHA used for dedup on import.",
         },
-        folderId: { type: "string", format: "uuid", nullable: true },
-        storageKey: { type: "string" },
-        sizes: { type: "object", additionalProperties: true, nullable: true },
-        status: { type: "string", enum: ["processing", "ready", "error"] },
+        folderId: { type: ["string", "null"], format: "uuid" },
+        uploadedBy: { type: ["string", "null"], format: "uuid" },
+        uploadedByMemberId: { type: ["string", "null"], format: "uuid" },
+        storageKey: {
+          type: "string",
+          minLength: 1,
+          maxLength: npMediaContractLimits.storageKeyLength,
+          pattern: npMediaStorageKeyPattern,
+        },
+        sizes: {
+          oneOf: [
+            { type: "null" },
+            {
+              type: "object",
+              maxProperties: npMediaContractLimits.maxVariants,
+              propertyNames: { pattern: npMediaVariantNamePattern },
+              additionalProperties: { $ref: "#/components/schemas/media_variant" },
+            },
+          ],
+        },
+        status: { type: "string", enum: [...npMediaStatuses] },
         createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+        deletedAt: { type: ["string", "null"], format: "date-time" },
+        urls: { $ref: "#/components/schemas/media_resolved_urls" },
+        uploader: {
+          oneOf: [
+            { type: "null" },
+            { $ref: "#/components/schemas/media_staff_uploader" },
+            { $ref: "#/components/schemas/media_member_uploader" },
+          ],
+        },
+      },
+    },
+    media_variant: {
+      type: "object",
+      additionalProperties: false,
+      required: ["filename", "mimeType", "filesize", "width", "height", "storageKey"],
+      properties: {
+        filename: { type: "string", minLength: 1, maxLength: npMediaContractLimits.filenameLength },
+        mimeType: {
+          type: "string",
+          pattern: "^image/",
+          maxLength: npMediaContractLimits.mimeTypeLength,
+        },
+        filesize: { type: "integer", minimum: 1 },
+        width: { type: "integer", minimum: 1, maximum: npMediaContractLimits.maxStoredDimension },
+        height: { type: "integer", minimum: 1, maximum: npMediaContractLimits.maxStoredDimension },
+        storageKey: {
+          type: "string",
+          minLength: 1,
+          maxLength: npMediaContractLimits.storageKeyLength,
+          pattern: npMediaStorageKeyPattern,
+        },
+      },
+    },
+    media_resolved_urls: {
+      type: "object",
+      additionalProperties: false,
+      required: ["original", "thumbnail"],
+      properties: {
+        original: { type: "string", minLength: 1 },
+        thumbnail: { type: ["string", "null"], minLength: 1 },
+      },
+    },
+    media_staff_uploader: {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "name", "email"],
+      properties: {
+        kind: { type: "string", enum: ["staff"] },
+        name: { type: ["string", "null"] },
+        email: { type: ["string", "null"] },
+      },
+    },
+    media_member_uploader: {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "handle", "displayName"],
+      properties: {
+        kind: { type: "string", enum: ["member"] },
+        handle: { type: "string", minLength: 1 },
+        displayName: { type: ["string", "null"] },
       },
     },
     media_folder: {
@@ -1097,8 +1274,20 @@ function buildSpec(): OpenApiSchema {
             in: "query",
             name: "mimeType",
             schema: { type: "string" },
-            description: "Prefix match, e.g. `image/`.",
+            description: "Exact MIME type match, e.g. `image/webp`.",
           },
+          {
+            in: "query",
+            name: "q",
+            schema: { type: "string" },
+            description: "Filename and alt-text substring search.",
+          },
+          {
+            in: "query",
+            name: "uploaderKind",
+            schema: { type: "string", enum: ["staff", "member"] },
+          },
+          { in: "query", name: "uploadedByMemberId", schema: { type: "string", format: "uuid" } },
         ],
         responses: {
           "200": {
