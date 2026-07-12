@@ -218,10 +218,11 @@ export async function generateMetadata({ params }: PostPageProps): Promise<Metad
       : typeof post.coverImage === "string"
         ? post.coverImage
         : undefined;
+  const ogImageUrl = ogImageId ? await getMediaUrl(ogImageId, "og") : null;
 
   return {
     title: title as string,
     description: description as string | undefined,
-    openGraph: ogImageId ? { images: [{ url: await getMediaUrl(ogImageId, "og") }] } : undefined,
+    openGraph: ogImageUrl ? { images: [{ url: ogImageUrl }] } : undefined,
   };
 }

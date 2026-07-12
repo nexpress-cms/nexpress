@@ -2,6 +2,7 @@ import { access, readFile, readdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { createStorageAdapter } from "@nexpress/core";
+import { npValidateMediaVariants, type NpMediaVariants } from "@nexpress/core/media-contract";
 import pg from "pg";
 
 import { toProjectCommand } from "./ops-command-format.js";
@@ -197,49 +198,44 @@ function countChecks(checks: CheckResult[]): { errors: number; warnings: number 
 }
 
 function collectSizeStorageKeys(value: unknown): string[] {
-  if (!value || typeof value !== "object") return [];
-  const keys: string[] = [];
-  for (const size of Object.values(value as Record<string, unknown>)) {
-    if (!size || typeof size !== "object") continue;
-    const storageKey = (size as Record<string, unknown>).storageKey;
-    if (typeof storageKey === "string" && storageKey.length > 0) keys.push(storageKey);
-  }
-  return keys;
+  const variants = asCanonicalMediaVariants(value);
+  return variants ? Object.values(variants).map((variant) => variant.storageKey) : [];
 }
 
 function collectSizeStorageMetadata(
   value: unknown,
 ): Array<{ key: string; metadata: StorageObjectMetadata }> {
-  if (!value || typeof value !== "object") return [];
-  const result: Array<{ key: string; metadata: StorageObjectMetadata }> = [];
-  for (const size of Object.values(value as Record<string, unknown>)) {
-    if (!size || typeof size !== "object") continue;
-    const record = size as Record<string, unknown>;
-    const storageKey = record.storageKey;
-    if (typeof storageKey !== "string" || storageKey.length === 0) continue;
-    const mimeType =
-      typeof record.mimeType === "string" ? record.mimeType : "application/octet-stream";
-    const filename =
-      typeof record.filename === "string"
-        ? record.filename
-        : (storageKey.split("/").pop() ?? storageKey);
-    const rawSize = record.filesize;
-    const contentLength =
-      typeof rawSize === "number"
-        ? rawSize
-        : typeof rawSize === "string" && Number.isFinite(Number(rawSize))
-          ? Number(rawSize)
-          : null;
-    result.push({
-      key: storageKey,
-      metadata: {
-        contentType: mimeType,
-        contentLength,
-        originalFilename: filename,
-      },
-    });
-  }
-  return result;
+  const variants = asCanonicalMediaVariants(value);
+  if (!variants) return [];
+  return Object.values(variants).map((variant) => ({
+    key: variant.storageKey,
+    metadata: {
+      contentType: variant.mimeType,
+      contentLength: variant.filesize,
+      originalFilename: variant.filename,
+    },
+  }));
+}
+
+function asCanonicalMediaVariants(value: unknown): NpMediaVariants | null {
+  if (value === null) return null;
+  const validation = npValidateMediaVariants(value);
+  return validation.ok ? (value as NpMediaVariants) : null;
+}
+
+function appendMediaContractCheck(rows: MediaRow[], checks: CheckResult[]): void {
+  const invalid = rows.filter(
+    (row) => row.sizes !== null && !npValidateMediaVariants(row.sizes).ok,
+  ).length;
+  checks.push({
+    id: "storage.media_contract",
+    state: invalid === 0 ? "ok" : "error",
+    label: "Media variant metadata",
+    detail:
+      invalid === 0
+        ? "all persisted variant maps match the canonical media contract"
+        : `${invalid.toString()} media row(s) have malformed variant metadata`,
+  });
 }
 
 function parseContentLength(value: number | string): number | null {
@@ -444,6 +440,7 @@ async function collectLocalStorageInventory(
     label: "Media database index",
     detail: `${summary.mediaRows.toString()} rows, ${summary.indexedObjects.toString()} objects`,
   });
+  appendMediaContractCheck(media.rows, checks);
 
   const missing: OpsStorageDriftItem[] = [];
   if (localDirectoryReady) {
@@ -643,6 +640,7 @@ export async function collectOpsStorageStatus(
     label: "Media database index",
     detail: `${summary.mediaRows.toString()} rows, ${summary.indexedObjects.toString()} objects`,
   });
+  appendMediaContractCheck(media.rows, checks);
 
   if (adapter === "local" && localDirectoryReady) {
     let invalidStorageKeys = 0;

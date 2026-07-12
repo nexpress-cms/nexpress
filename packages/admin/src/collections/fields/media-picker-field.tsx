@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { NpFindResult } from "@nexpress/core";
+import { isNpMediaApiItem, type NpMediaApiItem } from "@nexpress/core/media-contract";
 
 import { Button } from "../../ui/button.js";
 import {
@@ -11,24 +11,17 @@ import {
   DialogTitle,
 } from "../../ui/dialog.js";
 
-interface MediaDocument extends Record<string, unknown> {
-  id: string;
-}
-
 interface MediaPickerFieldProps {
   value: string;
   onChange: (value: string) => void;
   relationTo: string;
 }
 
-const getMediaLabel = (doc: Record<string, unknown> & { id?: string }): string => {
-  const label = doc.filename ?? doc.alt ?? doc.title ?? doc.id;
-  return typeof label === "string" ? label : (doc.id ?? "Untitled media");
-};
+const getMediaLabel = (doc: NpMediaApiItem): string => doc.filename || doc.alt || doc.id;
 
 export function MediaPickerField({ value, onChange, relationTo }: MediaPickerFieldProps) {
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<MediaDocument[]>([]);
+  const [items, setItems] = useState<NpMediaApiItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,7 +41,16 @@ export function MediaPickerField({ value, onChange, relationTo }: MediaPickerFie
           throw new Error("Failed to load media.");
         }
 
-        const payload = (await response.json()) as NpFindResult<MediaDocument>;
+        const payload = (await response.json()) as unknown;
+        if (
+          typeof payload !== "object" ||
+          payload === null ||
+          !("docs" in payload) ||
+          !Array.isArray(payload.docs) ||
+          !payload.docs.every(isNpMediaApiItem)
+        ) {
+          throw new Error("Media API returned an invalid contract.");
+        }
         setItems(payload.docs);
       } catch (fetchError) {
         setError(fetchError instanceof Error ? fetchError.message : "Failed to load media.");

@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-12 (navigation now shares one exact recursive wire
+**Last refreshed:** 2026-07-12 (media records and image variants now share one
+exact runtime contract across processing, persisted reads, URL resolution,
+Admin/API responses, OpenAPI, plugin reads, cleanup, and storage diagnostics;
+malformed rows fail closed.)
+
+**Earlier:** 2026-07-12 (navigation now shares one exact recursive wire
 contract across themes, Admin/API writes, backup import/export, OpenAPI, cached
 reads, and public rendering; malformed persisted trees fail closed.)
 
@@ -208,19 +213,20 @@ cli  (standalone scaffolder, no workspace deps)
 
 `@nexpress/core` exposes domain-bounded subpath entries (Phase 22.6). New code should reach in through the subpath that fits the call site rather than the catch-all root, so the v1 commitment surface is bounded by domain:
 
-| Subpath                        | Domain                                                                |
-| ------------------------------ | --------------------------------------------------------------------- |
-| `@nexpress/core/auth`          | capability checks, JWT/OAuth, password, sessions, principal           |
-| `@nexpress/core/community`     | comments, reactions, follows, reports, bans, audit, mentions, digests |
-| `@nexpress/core/db`            | connection factory, runtime accessors, schema codegen                 |
-| `@nexpress/core/fields`        | client-safe field helpers plus rich-text and block-content contracts  |
-| `@nexpress/core/i18n`          | locale registry, translations, formatting, per-site overrides         |
-| `@nexpress/core/jobs`          | pg-boss adapter, handlers, worker, heartbeat, pause state, job logs   |
-| `@nexpress/core/media`         | media service, processor, ref tracking                                |
-| `@nexpress/core/navigation`    | client-safe navigation wire/resolved types and validators             |
-| `@nexpress/core/observability` | logger, error reporter, `verifyStartupSafety`                         |
-| `@nexpress/core/seo`           | sitemap, page metadata, Atom feeds, JSON-LD                           |
-| `@nexpress/core/theme`         | client-safe theme token inventory, validators, and merge helpers      |
+| Subpath                         | Domain                                                                |
+| ------------------------------- | --------------------------------------------------------------------- |
+| `@nexpress/core/auth`           | capability checks, JWT/OAuth, password, sessions, principal           |
+| `@nexpress/core/community`      | comments, reactions, follows, reports, bans, audit, mentions, digests |
+| `@nexpress/core/db`             | connection factory, runtime accessors, schema codegen                 |
+| `@nexpress/core/fields`         | client-safe field helpers plus rich-text and block-content contracts  |
+| `@nexpress/core/i18n`           | locale registry, translations, formatting, per-site overrides         |
+| `@nexpress/core/jobs`           | pg-boss adapter, handlers, worker, heartbeat, pause state, job logs   |
+| `@nexpress/core/media`          | media service, processor, ref tracking                                |
+| `@nexpress/core/media-contract` | client-safe media records, variants, processing and API validators    |
+| `@nexpress/core/navigation`     | client-safe navigation wire/resolved types and validators             |
+| `@nexpress/core/observability`  | logger, error reporter, `verifyStartupSafety`                         |
+| `@nexpress/core/seo`            | sitemap, page metadata, Atom feeds, JSON-LD                           |
+| `@nexpress/core/theme`          | client-safe theme token inventory, validators, and merge helpers      |
 
 The root `@nexpress/core` keeps re-exporting everything for back-compat; existing call sites are not forced to migrate. Treat the root as the lowest-common-denominator surface and the subpaths as the canonical domain APIs.
 
@@ -344,6 +350,13 @@ Each `./client` bundle is built by tsup with `"use client"` banner injection. Co
 
 `createStorageAdapter(config)` returns either `LocalStorageAdapter` (writes under `./uploads`, served at `/uploads`) or `S3StorageAdapter`. Selection is env-driven: `NP_STORAGE_ADAPTER=s3` + `NP_S3_BUCKET`/`NP_S3_REGION`/`NP_S3_ENDPOINT`, otherwise local with `NP_STORAGE_DIR` / `NP_STORAGE_URL`. A MinIO service is defined in `docker/docker-compose.yml` under the `s3` profile for local S3 development.
 
+Media JSON uses the canonical client-safe contract from
+`@nexpress/core/media-contract`. `NpMediaRecord`, `NpMediaVariant`, focal
+points, processing options, and Admin API items are exact and fail closed on
+unknown or malformed values. Variant rows persist storage metadata only — URLs
+are always resolved through the active adapter from the stored `storageKey`.
+Author and operator reference: `docs/media.md`.
+
 ### Jobs
 
 `pg-boss`-backed queue. Handlers register via `registerJobHandler(name, fn)`; built-in handlers (media cleanup, etc.) register via `registerBuiltinHandlers()`. The worker is started by the app (not by core) via `startWorker()`.
@@ -423,7 +436,7 @@ These are the public APIs we'll honor with semver and migration notes. Breaking 
 - **Bootstrap intent enum** — `ensureFor("read" | "plugins" | "write")`. Adding a new intent is non-breaking; semantics of the existing three are pinned.
 - **Error classes + codes** — `NpForbiddenError`, `NpNotFoundError`, `NpValidationError`, `NpAuthError`, `NpConflictError`, `NpRateLimitError`, `NpSiteContextMissingError`, and the `NpErrorCode` union. The string code per class is stable per [docs/api-error-codes.md](./docs/api-error-codes.md).
 - **Capability vocabulary** — `can(user, capability)` and the existing capability strings: `"admin.manage"`, `"content.publish"`, `"content.author"`, `"community.moderate"`. New capability strings will be added; existing ones won't be renamed or removed in 0.x.
-- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/fields`, `/i18n`, `/jobs`, `/media`, `/navigation`, `/observability`, `/seo`, `/theme`. Symbols inside each are stable per the rules above.
+- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/fields`, `/i18n`, `/jobs`, `/media`, `/media-contract`, `/navigation`, `/observability`, `/seo`, `/theme`. Symbols inside each are stable per the rules above.
 - **Adapters** — `NpStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NpJobQueue` (with `PgBossAdapter`), `NpLogger` + `setLogger`, `NpErrorReporter` + `setErrorReporter`, `NpEmailAdapter` + `setEmailAdapter`. Optional methods (e.g. `NpJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
 - **`NpPrincipal` union** — adding a variant is breaking (every `switch (principal.kind)` site needs updating, enforced by `_exhaustive: never`). The existing `"staff"` / `"member"` shape is committed.
 - **Block authoring and content** — `NpBlockDefinition` (`type`, `label`, `defaultProps`, `propsSchema`, `acceptsChildren?`, `render(props, children?)`) and the `NpBlockInstance` wire shape (`id`, `type`, `props`, optional `children: NpBlockInstance[]`). `NpBlockContent` is the stored array type. `@nexpress/core/fields`, `@nexpress/blocks`, and `@nexpress/blocks/contracts` share `npValidateBlockContent` and `isNpBlockContent`; collection writes, generated types, OpenAPI, patterns, Admin JSON/paste/preview, translation, and unknown-block operations use that contract. Instance ids are unique across the whole tree; unknown/inactive block types remain structurally valid so content survives plugin/theme removal. Adding optional fields to the definition or instance is non-breaking. `NpBlockMetadata` (= `NpBlockDefinition` minus `render`) is the serializable subset the admin uses for the picker / props form. The shared registry helpers `registerBlock`, `getRegisteredBlocks`, `getRegisteredBlockMetadata`, `getSharedRegistry` are stable. The lightweight `@nexpress/blocks/contracts` subpath also exports `npValidateBlockDefinition`, `npAnalyzeBlockDefinitions`, and `npBlockPropFieldTypes`. Author docs: `docs/block-content.md`.
@@ -432,6 +445,7 @@ These are the public APIs we'll honor with semver and migration notes. Breaking 
 - **Block server → client metadata bridge** — host apps wrap their admin children with `<BlocksRegistryProvider metadata={getRegisteredBlockMetadata()}>` (called server-side). The page builder reads it via the `useBlocksRegistry()` hook. Without the provider, plugin blocks render correctly on the public site but are absent from the admin's Add-block popover (the registry singleton is module-scoped and the browser instance only has the built-in defaults).
 - **Theme tokens** — `NpThemeTokens` is the closed `colors` / `typography` / `shape` tree; `NpThemeTokensOverlay` is its partial author/plugin/persistence form. `@nexpress/core/theme` exports the canonical inventory, full/overlay validators, analyzers, type guards, defaults, sanitization, and deep-merge helpers. Theme definitions, Admin/API writes, backup import/export, plugin `ctx.theme`, OpenAPI, effective reads, and CSS generation use the same fail-closed contract. New optional keys are additive; renaming/removing groups or keys requires a migration note. Author docs: `docs/theme-tokens.md`.
 - **Navigation trees** — `NpNavItem` is the exact stored `link | collection | page` wire union; `NpResolvedNavItem` is the public-read form with a concrete `url`. `@nexpress/core/navigation` exports both types plus the canonical location/tree analyzers, validators, type guards, patterns, and limits. Theme seed content, Admin/API writes, backup import/export, OpenAPI, cached reads, and public rendering share that contract and fail closed on malformed persisted rows. Author docs: `docs/navigation.md`.
+- **Media records and variants** — `NpMediaRecord`, `NpMediaVariant`, `NpMediaVariants`, `NpMediaFocalPoint`, and `NpMediaProcessingOptions` are exact runtime contracts. `@nexpress/core/media-contract` is the client-safe type/validator surface; `@nexpress/core/media` owns server operations and re-exports the contract. Processing, persisted reads, URL resolution, plugin reads, Admin/API payloads, OpenAPI, cleanup, and storage diagnostics share the same fail-closed rules. Variant URLs derive from the stored `storageKey` and active adapter rather than being persisted or inferred. Author docs: `docs/media.md`.
 
 ### Experimental — no stability promise
 

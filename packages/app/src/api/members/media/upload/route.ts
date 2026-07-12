@@ -1,16 +1,13 @@
 import {
   NpValidationError,
   assertNotBanned,
-  getStorageAdapter,
-  npMedia,
+  getMediaUrl,
   runHook,
   uploadMedia,
 } from "@nexpress/core";
-import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
-import { getDb } from "../../../../lib/db";
 import { ensureFor } from "../../../../lib/init-core";
 import { requireMember } from "../../../../lib/member-auth-helpers";
 
@@ -181,13 +178,7 @@ export async function POST(request: NextRequest) {
     // `/uploads/...` path; S3 returns the bucket's public URL. The
     // editor inserts this URL as the `<img src>` so the same value
     // works in both deployment modes.
-    const db = getDb();
-    const [row] = (await db
-      .select({ storageKey: npMedia.storageKey })
-      .from(npMedia)
-      .where(eq(npMedia.id, result.id))
-      .limit(1)) as Array<{ storageKey: string }>;
-    const url = row ? await getStorageAdapter().getUrl(row.storageKey) : null;
+    const url = await getMediaUrl(result.id);
 
     await runHook("media:afterUpload", {
       principal,

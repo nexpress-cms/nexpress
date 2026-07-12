@@ -42,6 +42,11 @@ import type {
   NpThemeTokens as NpCoreThemeTokens,
   NpThemeTokensOverlay as NpCoreThemeTokensOverlay,
 } from "@nexpress/core/theme";
+import type {
+  NpMediaFocalPoint,
+  NpMediaStatus,
+  NpMediaVariants,
+} from "@nexpress/core/media-contract";
 
 import type { NpPluginManifest, NpPluginManifestResolved } from "./manifest.js";
 
@@ -474,7 +479,14 @@ export interface NpMediaItem {
   alt?: string;
   width?: number;
   height?: number;
-  metadata?: Record<string, unknown>;
+  metadata?: {
+    status: NpMediaStatus;
+    storageKey: string;
+    hash: string;
+    folderId: string | null;
+    focalPoint: NpMediaFocalPoint | null;
+    sizes: NpMediaVariants | null;
+  };
   createdAt?: string;
   updatedAt?: string;
 }

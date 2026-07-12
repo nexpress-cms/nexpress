@@ -1,5 +1,6 @@
 import type { NpCollectionConfig, NpFieldConfig } from "./types.js";
 import { collectionConfigSchema } from "./validation.js";
+import { npAnalyzeMediaProcessingOptions } from "../media-contract/contract.js";
 
 export type NpCollectionDefinitionIssueCode = "shape" | "field" | "reference";
 
@@ -459,6 +460,17 @@ function semanticIssues(config: NpCollectionConfig): NpCollectionDefinitionIssue
       "image size name",
       issues,
     );
+    for (const mediaIssue of npAnalyzeMediaProcessingOptions({
+      sizes: config.upload.imageSizes,
+    })) {
+      issues.push(
+        issue(
+          "shape",
+          mediaIssue.path.replace(/^media\.processing\.sizes/u, "upload.imageSizes"),
+          mediaIssue.message,
+        ),
+      );
+    }
   }
   return issues;
 }

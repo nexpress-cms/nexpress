@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
 import { ensureFor } from "../../lib/init-core";
+import { toMediaApiItem } from "../../lib/media-response";
 
 function parsePositiveInt(
   value: string | null,
@@ -54,9 +55,7 @@ export async function GET(request: NextRequest) {
     // is operator-typed in URLs.
     const uploaderKindRaw = params.get("uploaderKind");
     const uploaderKind =
-      uploaderKindRaw === "staff" || uploaderKindRaw === "member"
-        ? uploaderKindRaw
-        : undefined;
+      uploaderKindRaw === "staff" || uploaderKindRaw === "member" ? uploaderKindRaw : undefined;
     const uploadedByMemberId = params.get("uploadedByMemberId") ?? undefined;
     // Substring search over filename + alt, server-side. Used by
     // the page-builder block-image picker; empty / missing falls
@@ -73,7 +72,11 @@ export async function GET(request: NextRequest) {
       q,
     });
 
-    return npSuccessResponse(result);
+    const docs = await Promise.all(
+      result.docs.map(({ uploader, ...record }) => toMediaApiItem(record, uploader)),
+    );
+
+    return npSuccessResponse({ ...result, docs });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

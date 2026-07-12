@@ -68,6 +68,11 @@
       "import": "./dist/media.js",
       "default": "./dist/media.js"
     },
+    "./media-contract": {
+      "types": "./dist/media-contract.d.ts",
+      "import": "./dist/media-contract.js",
+      "default": "./dist/media-contract.js"
+    },
     "./navigation": {
       "types": "./dist/navigation.d.ts",
       "import": "./dist/navigation.js",

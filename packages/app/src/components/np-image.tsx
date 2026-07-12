@@ -1,5 +1,6 @@
 import Image from "next/image";
-import { getMediaById, getStorageAdapter } from "@nexpress/core";
+import { getMediaById, getMediaUrl as resolveMediaUrl } from "@nexpress/core/media";
+import type { NpMediaRecord } from "@nexpress/core/media-contract";
 
 interface NpImageProps {
   media: NpMediaRecord | string;
@@ -11,41 +12,8 @@ interface NpImageProps {
   height?: number;
 }
 
-interface NpMediaRecord {
-  id: string;
-  storageKey: string;
-  width?: number | null;
-  height?: number | null;
-  alt?: string | null;
-  originalFilename: string;
-  sizes?: Record<
-    string,
-    { width?: number; height?: number; storageKey?: string }
-  > | null;
-}
-
-function toMediaRecord(doc: Record<string, unknown>): NpMediaRecord {
-  return {
-    id: doc.id as string,
-    storageKey: doc.storageKey as string,
-    width: (doc.width as number) ?? null,
-    height: (doc.height as number) ?? null,
-    alt: (doc.alt as string) ?? null,
-    originalFilename: doc.originalFilename as string,
-    sizes: doc.sizes as NpMediaRecord["sizes"],
-  };
-}
-
-export async function getMediaUrl(
-  storageKey: string,
-  size?: string,
-): Promise<string> {
-  const adapter = getStorageAdapter();
-  const sizeKey = size
-    ? storageKey.replace(/\/original\.\w+$/, `/${size}.webp`)
-    : storageKey;
-
-  return adapter.getUrl(sizeKey);
+export async function getMediaUrl(mediaId: string, size?: string): Promise<string | null> {
+  return resolveMediaUrl(mediaId, { variant: size ?? "original" });
 }
 
 export async function NpImage({
@@ -58,16 +26,13 @@ export async function NpImage({
   height,
 }: NpImageProps) {
   const record: NpMediaRecord | null =
-    typeof media === "string"
-      ? await getMediaById(media).then((doc) =>
-          doc ? toMediaRecord(doc) : null,
-        )
-      : media;
+    typeof media === "string" ? await getMediaById(media) : media;
 
   if (!record) return null;
 
   const sizeData = record.sizes?.[size];
-  const src = await getMediaUrl(record.storageKey, size);
+  const src = await getMediaUrl(record.id, size);
+  if (!src) return null;
   const imgWidth = width ?? sizeData?.width ?? record.width ?? 800;
   const imgHeight = height ?? sizeData?.height ?? record.height ?? 600;
 
