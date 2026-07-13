@@ -14,7 +14,7 @@ import {
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { requireAuth } from "../../../lib/auth-helpers";
+import { requireAuth, requireGlobalAuth } from "../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import { parseBodyRecord } from "../../../lib/collection-helpers";
 import { getDb } from "../../../lib/db";
@@ -139,11 +139,10 @@ export async function PATCH(
   { params }: { params: Promise<{ pluginId: string }> },
 ) {
   try {
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("plugins", "update");
     }
-
 
     const { pluginId } = await params;
     const body = parseBodyRecord(await readJsonBody(request));

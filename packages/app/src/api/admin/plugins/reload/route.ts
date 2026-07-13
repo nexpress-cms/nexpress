@@ -1,7 +1,7 @@
 import { NpForbiddenError, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { requireAuth } from "../../../../lib/auth-helpers";
+import { requireGlobalAuth } from "../../../../lib/auth-helpers";
 import { reloadPlugins } from "@/lib/bootstrap";
 import { ensureFor } from "../../../../lib/init-core";
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
@@ -26,7 +26,7 @@ import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response
  */
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("plugins", "reload");
     }

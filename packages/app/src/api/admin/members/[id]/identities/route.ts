@@ -1,12 +1,8 @@
-import {
-  NpForbiddenError,
-  listMemberIdentities,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, listMemberIdentities, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
-import { requireAuth } from "../../../../../lib/auth-helpers";
+import { requireGlobalAuth } from "../../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../../lib/init-core";
 
 /**
@@ -14,13 +10,10 @@ import { ensureFor } from "../../../../../lib/init-core";
  * provider subjects are sensitive but the moderation surface needs
  * read access to investigate ban-evasion / linked-account patterns.
  */
-export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> },
-) {
+export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
     if (!can(user, "content.publish")) {
       throw new NpForbiddenError("member.identities", "list");
     }

@@ -113,6 +113,11 @@
       "import": "./dist/settings.js",
       "default": "./dist/settings.js"
     },
+    "./sites": {
+      "types": "./dist/sites.d.ts",
+      "import": "./dist/sites.js",
+      "default": "./dist/sites.js"
+    },
     "./theme": {
       "types": "./dist/theme.d.ts",
       "import": "./dist/theme.js",

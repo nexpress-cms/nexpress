@@ -1,11 +1,8 @@
 import {
-  can,
   createDbConnection,
   createStorageAdapter,
   getDb,
   getOptionalJobQueue,
-  isSuperAdmin,
-  listMembershipsForUser,
   listPluginStates,
   loadPlugins,
   registerCollection,
@@ -31,6 +28,7 @@ import {
   type NpResolvedPluginLike,
   type NpRegisteredTheme,
 } from "@nexpress/core";
+import { canOnSite } from "@nexpress/core/sites";
 import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
 import {
   npAnalyzeBlockDefinitions,
@@ -197,17 +195,12 @@ function extractDatabaseHost(connectionString: string | null): string | null {
  *
  *   - Super-admin can switch to anywhere.
  *   - A site membership grants access to that site.
- *   - A global admin keeps the default-site fallback so single-
- *     tenant deployments aren't broken by this guard.
+ *   - Every authenticated staff user keeps the default-site fallback.
  *
  * Anyone else falls through and the resolver drops the override.
  */
 export async function canActorUseSite(user: NpAuthUser, siteId: string): Promise<boolean> {
-  if (await isSuperAdmin(user)) return true;
-  const memberships = await listMembershipsForUser(user.id);
-  if (memberships.some((m) => m.siteId === siteId)) return true;
-  if (siteId === NP_DEFAULT_SITE_ID && can(user, "admin.manage")) return true;
-  return false;
+  return canOnSite(user, "site.access", siteId);
 }
 
 function resolveTable(generatedSchema: Record<string, unknown>, slug: string): unknown {
@@ -427,9 +420,8 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     // surface that helps an attacker probe.
     // Validation inputs that can vary across requests inside the
     // same process: the cookie value and the auth secret. We call
-    // it on every `getCurrentSiteId()`, which is fine — JWT verify
-    // is microseconds and `listMembershipsForUser` is one indexed
-    // SELECT. No memo to avoid leaking across requests.
+    // it on every `getCurrentSiteId()` and do not memoize across
+    // request boundaries.
     const validateOverride = async (
       siteId: string,
       sessionToken: string | null,

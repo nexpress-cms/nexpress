@@ -248,7 +248,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
    */
   it("GET /api/admin/sites/[id]/usage returns row counts per site-scoped table", async () => {
     const admin = await seedSuperAdmin();
-    const { createSite, getDb, npSettings } = await import("@nexpress/core");
+    const { createSite, getDb, npSettings, npSlugHistory } = await import("@nexpress/core");
     const created = await createSite({
       id: "usage-target",
       name: "Usage target",
@@ -261,6 +261,13 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
       key: "seo",
       value: { defaultOgImage: null, twitterHandle: null, defaultLocale: "en_US" },
       updatedAt: new Date(),
+    });
+    await db.insert(npSlugHistory).values({
+      siteId: created.id,
+      collection: "posts",
+      documentId: "orphaned-doc",
+      oldSlug: "old-slug",
+      newSlug: "new-slug",
     });
 
     const { GET } = await import("@/app/api/admin/sites/[id]/usage/route");
@@ -275,6 +282,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
       usage?: {
         settings: number;
         navigation: number;
+        slugHistory: number;
         memberships: number;
         stringOverrides: number;
         total: number;
@@ -284,7 +292,8 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     expect(status).toBe(200);
     expect(body.site?.id).toBe(created.id);
     expect(body.usage?.settings).toBe(1);
-    expect(body.usage?.total).toBeGreaterThanOrEqual(1);
+    expect(body.usage?.slugHistory).toBe(1);
+    expect(body.usage?.total).toBeGreaterThanOrEqual(2);
   });
 
   it("Issue #220 — usage summary includes plugin storage + community tables", async () => {
@@ -560,5 +569,32 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     const { status } = await readJson(res);
     expect(status).toBe(200);
     expect(await getSiteById(created.id)).toBeNull();
+  });
+
+  it("OpenAPI exposes the exact site and membership contracts", async () => {
+    const { GET } = await import("@/app/api/openapi.json/route");
+    const response = await GET();
+    const spec = (await response.json()) as {
+      components?: { schemas?: Record<string, unknown> };
+      paths?: Record<string, unknown>;
+    };
+    expect(spec.components?.schemas).toEqual(
+      expect.objectContaining({
+        site_record: expect.any(Object),
+        site_summary: expect.any(Object),
+        site_membership: expect.any(Object),
+        site_usage: expect.any(Object),
+      }),
+    );
+    expect(spec.paths).toEqual(
+      expect.objectContaining({
+        "/api/admin/sites": expect.any(Object),
+        "/api/admin/sites/accessible": expect.any(Object),
+        "/api/admin/sites/active": expect.any(Object),
+        "/api/admin/sites/{id}": expect.any(Object),
+        "/api/admin/sites/{id}/memberships": expect.any(Object),
+        "/api/admin/sites/{id}/memberships/{userId}": expect.any(Object),
+      }),
+    );
   });
 });

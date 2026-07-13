@@ -3,13 +3,21 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SEO_SETTINGS,
   isNpAdminSettingsSnapshot,
+  isNpSiteMembershipWireRecord,
+  isNpSiteUsage,
   isNpSiteWireRecord,
+  npAnalyzeSiteRecord,
   npAnalyzeSettingRecord,
   npAnalyzeSettingValue,
   npAnalyzeSiteRuntimeSettings,
   npClassifySettingKey,
+  npNormalizeCreateSiteInput,
   npNormalizeSeoSettings,
+  npNormalizeSiteHostHeader,
+  npNormalizeSiteMembershipGrantInput,
   npNormalizeSiteGeneralSettings,
+  npNormalizeUpdateSiteInput,
+  npSerializeSiteMembership,
 } from "./contract.js";
 
 const general = {
@@ -88,6 +96,85 @@ describe("framework settings contract", () => {
         updatedAt: "2026-07-12T00:00:00.000Z",
       }),
     ).toBe(true);
+    expect(
+      npAnalyzeSiteRecord({
+        id: "other",
+        name: "Other",
+        hostname: null,
+        description: null,
+        settings: { siteUrl: null, defaultLocale: null, timezone: null },
+        isDefault: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    ).not.toEqual([]);
+  });
+
+  it("normalizes exact site create/update inputs and rejects extras", () => {
+    expect(
+      npNormalizeCreateSiteInput({
+        id: "acme",
+        name: "Acme",
+        hostname: "ACME.EXAMPLE.COM.",
+      }),
+    ).toEqual({
+      id: "acme",
+      name: "Acme",
+      hostname: "acme.example.com",
+      description: null,
+      settings: { siteUrl: null, defaultLocale: null, timezone: null },
+    });
+    expect(npNormalizeUpdateSiteInput({ hostname: "LOCALHOST" })).toEqual({
+      hostname: "localhost",
+    });
+    expect(() => npNormalizeCreateSiteInput({ id: "default", name: "Other" })).toThrow("reserved");
+    expect(() => npNormalizeUpdateSiteInput({})).toThrow("at least one");
+    expect(() => npNormalizeUpdateSiteInput({ name: "Acme", typo: true })).toThrow("unsupported");
+    expect(npNormalizeSiteHostHeader("Acme.Example.com:3000")).toBe("acme.example.com");
+  });
+
+  it("validates membership inputs, persisted values, and wire serialization", () => {
+    const input = npNormalizeSiteMembershipGrantInput({
+      userId: "123e4567-e89b-42d3-a456-426614174000",
+      role: "moderator",
+    });
+    expect(input.role).toBe("moderator");
+    expect(() =>
+      npNormalizeSiteMembershipGrantInput({ ...input, role: "owner", extra: true }),
+    ).toThrow("unsupported");
+    const wire = npSerializeSiteMembership({
+      siteId: "default",
+      ...input,
+      createdAt: new Date("2026-07-13T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-13T00:00:00.000Z"),
+    });
+    expect(isNpSiteMembershipWireRecord(wire)).toBe(true);
+    expect(isNpSiteMembershipWireRecord({ ...wire, role: "owner" })).toBe(false);
+  });
+
+  it("validates exact site usage totals", () => {
+    const usage = {
+      collections: { posts: 2 },
+      settings: 1,
+      navigation: 0,
+      slugHistory: 0,
+      memberships: 0,
+      stringOverrides: 0,
+      pluginStorage: 0,
+      comments: 0,
+      reactions: 0,
+      follows: 0,
+      mutes: 0,
+      notifications: 0,
+      reports: 0,
+      auditEvents: 0,
+      bans: 0,
+      memberRoles: 0,
+      total: 3,
+    };
+    expect(isNpSiteUsage(usage)).toBe(true);
+    expect(isNpSiteUsage({ ...usage, total: 2 })).toBe(false);
+    expect(isNpSiteUsage({ ...usage, extra: 0 })).toBe(false);
   });
 
   it("classifies only owned static and dynamic setting keys", () => {

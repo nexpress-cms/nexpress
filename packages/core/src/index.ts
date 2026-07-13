@@ -134,8 +134,7 @@ export type {
   NpMediaWireRecord,
 } from "./media-contract/index.js";
 
-// `hasRole` / `isStaffMod` were retired in favour of `can(user, capability)` (#273).
-export { ROLE_HIERARCHY } from "./config/types.js";
+// Role-rank authorization was retired in favour of named capabilities (#273).
 export { defineConfig } from "./config/define-config.js";
 export {
   npAnalyzeProjectConfig,
@@ -606,12 +605,7 @@ export {
   getSiteUsageSummary,
   NP_DEFAULT_SITE_ID,
 } from "./sites/registry.js";
-export type {
-  NpSite,
-  NpSiteUsage,
-  NpDeleteSiteOptions,
-  CreateSiteInput,
-} from "./sites/registry.js";
+export type { NpSite, NpDeleteSiteOptions } from "./sites/registry.js";
 export {
   setCurrentSiteResolver,
   resetCurrentSiteResolver,
@@ -625,11 +619,10 @@ export {
   grantSiteMembership,
   revokeSiteMembership,
   setSuperAdmin,
-  resolveUserRoleOnSite,
-  hasRoleOnSite,
+  canOnSite,
+  resolveSiteAuthUser,
   isSuperAdmin,
 } from "./sites/memberships.js";
-export type { SiteMembership } from "./sites/memberships.js";
 
 export { setI18nConfig, getI18nConfig, resetI18nConfig } from "./i18n/registry.js";
 export { resolveLocale, getCurrentLocale } from "./i18n/locale-resolver.js";

@@ -11,6 +11,8 @@ import type { NpAuthUser } from "../config/types.js";
  * check silently dropped moderators is gone by construction.
  *
  * Capability vocabulary:
+ *   - `site.access`       — select a site as the active execution
+ *                            context. Any authenticated staff role.
  *   - `content.publish`    — change publication state on staff-owned
  *                            content. Editor or admin.
  *   - `content.author`     — create / edit content. Author, moderator,
@@ -27,17 +29,13 @@ import type { NpAuthUser } from "../config/types.js";
  * switch below — TypeScript will surface the missing branch.
  */
 export type NpCapability =
-  | "content.publish"
-  | "content.author"
-  | "community.moderate"
-  | "admin.manage";
+  "site.access" | "content.publish" | "content.author" | "community.moderate" | "admin.manage";
 
-export function can(
-  user: NpAuthUser | null | undefined,
-  capability: NpCapability,
-): boolean {
+export function can(user: NpAuthUser | null | undefined, capability: NpCapability): boolean {
   if (!user) return false;
   switch (capability) {
+    case "site.access":
+      return true;
     case "content.publish":
       return user.role === "admin" || user.role === "editor";
     case "content.author":
@@ -48,11 +46,7 @@ export function can(
         user.role === "moderator"
       );
     case "community.moderate":
-      return (
-        user.role === "admin" ||
-        user.role === "editor" ||
-        user.role === "moderator"
-      );
+      return user.role === "admin" || user.role === "editor" || user.role === "moderator";
     case "admin.manage":
       return user.role === "admin";
     default: {

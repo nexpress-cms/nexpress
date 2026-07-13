@@ -9,7 +9,7 @@ import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { requireAuth } from "../../../lib/auth-helpers";
+import { requireAuth, requireGlobalAuth } from "../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import { getDb } from "../../../lib/db";
 
@@ -26,10 +26,7 @@ export async function GET(request: NextRequest) {
     const db = getDb();
 
     const folders = parentId
-      ? await db
-          .select()
-          .from(npMediaFolders)
-          .where(eq(npMediaFolders.parentId, parentId))
+      ? await db.select().from(npMediaFolders).where(eq(npMediaFolders.parentId, parentId))
       : await db.select().from(npMediaFolders);
 
     return npSuccessResponse(folders);
@@ -40,7 +37,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
 
     if (!can(user, "content.publish")) {
       throw new NpForbiddenError("media-folders", "create");
@@ -49,9 +46,7 @@ export async function POST(request: NextRequest) {
     const body = (await readJsonBody(request)) as Record<string, unknown>;
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const parentId =
-      typeof body.parentId === "string" && body.parentId.trim()
-        ? body.parentId.trim()
-        : null;
+      typeof body.parentId === "string" && body.parentId.trim() ? body.parentId.trim() : null;
 
     if (!name) {
       throw new NpValidationError("Invalid input", [
@@ -73,10 +68,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const [created] = await db
-      .insert(npMediaFolders)
-      .values({ name, parentId })
-      .returning();
+    const [created] = await db.insert(npMediaFolders).values({ name, parentId }).returning();
 
     return npSuccessResponse(created, { status: 201 });
   } catch (error) {

@@ -21,9 +21,8 @@ export async function GET(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
-    // `isStaffMod` (admin/editor/moderator) — `can(user, "content.author")`
-    // would accept `author` too because moderator and author share rank
-    // 1 in `ROLE_HIERARCHY`.
+    // `community.moderate` deliberately excludes authors; moderator and
+    // author are parallel capability roles, not points on one rank ladder.
     if (!can(user, "community.moderate")) {
       throw new NpForbiddenError("community.settings", "read");
     }

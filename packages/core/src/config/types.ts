@@ -1209,24 +1209,3 @@ export interface NpSaveResult {
   doc: Record<string, unknown>;
   operation: "create" | "update";
 }
-
-/**
- * Numeric ranking of staff roles, retained for the few non-capability
- * call sites that still need to compare role rank — chiefly
- * `hasRoleOnSite()` in `sites/memberships.ts`, which evaluates a
- * per-site membership row's role against the user's. `moderator`
- * shares author-rank because the two are parallel tracks
- * (community-mod vs. content-author authority); the rank is meaningful
- * only on the content-authoring axis.
- *
- * For staff-user authorization, use `can(user, capability)` from
- * `auth/capabilities.ts` (#273) — this hierarchy is no longer the
- * primary check.
- */
-export const ROLE_HIERARCHY: Record<NpUserRole, number> = {
-  viewer: 0,
-  author: 1,
-  moderator: 1,
-  editor: 2,
-  admin: 3,
-};

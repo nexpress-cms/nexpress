@@ -1,15 +1,10 @@
-import {
-  NP_DEFAULT_SITE_ID,
-  getCurrentSiteId,
-  isSuperAdmin,
-  listMembershipsForUser,
-  listSites,
-  can,
-} from "@nexpress/core";
+import { getCurrentSiteId, isSuperAdmin, listSites } from "@nexpress/core";
+import { canOnSite } from "@nexpress/core/sites";
+import { NP_DEFAULT_SITE_ID, npSerializeSiteSummary } from "@nexpress/core/settings";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
-import { requireAuth } from "../../../../lib/auth-helpers";
+import { requireGlobalAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
 
 /**
@@ -18,9 +13,8 @@ import { ensureFor } from "../../../../lib/init-core";
  *
  *   - super-admin → every site
  *   - explicit memberships → those sites
- *   - global admin (no memberships) → the default site only
- *     (preserves pre-15.5 single-tenant behavior so existing
- *     admin sessions still see SOMETHING in the picker)
+ *   - every authenticated staff user → the default site via the
+ *     persisted global-role fallback
  *
  * Returns the slim summary the picker actually renders
  * (id, name, hostname, isDefault) plus an `isCurrent` flag
@@ -29,21 +23,22 @@ import { ensureFor } from "../../../../lib/init-core";
 export async function GET(request: NextRequest) {
   try {
     await ensureFor("write");
-    const user = await requireAuth(request);
+    // This endpoint is the recovery path when a persisted active-site cookie
+    // points at a site whose membership has since been revoked. Authenticate
+    // globally, then derive the exact accessible set from persisted site roles.
+    const user = await requireGlobalAuth(request);
     const allSites = await listSites();
     let accessible = allSites;
 
     const superAdmin = await isSuperAdmin(user);
     if (!superAdmin) {
-      const memberships = await listMembershipsForUser(user.id);
-      const allowedIds = new Set(memberships.map((m) => m.siteId));
-      if (can(user, "admin.manage") && allowedIds.size === 0) {
-        // No explicit memberships + global admin → see the
-        // default site so existing single-tenant admins
-        // aren't locked out of their own picker.
-        allowedIds.add(NP_DEFAULT_SITE_ID);
-      }
-      accessible = allSites.filter((s) => allowedIds.has(s.id));
+      const decisions = await Promise.all(
+        allSites.map(async (site) => ({
+          site,
+          allowed: await canOnSite(user, "site.access", site.id),
+        })),
+      );
+      accessible = decisions.filter((entry) => entry.allowed).map((entry) => entry.site);
     }
 
     // Phase 15.6 — surface the resolver's current site id so
@@ -52,19 +47,12 @@ export async function GET(request: NextRequest) {
     const currentId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 
     return npSuccessResponse({
-      docs: accessible.map((site) => ({
-        id: site.id,
-        name: site.name,
-        hostname: site.hostname,
-        isDefault: site.isDefault,
-      })),
+      docs: accessible.map(npSerializeSiteSummary),
       isSuperAdmin: superAdmin,
       currentId,
     });
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

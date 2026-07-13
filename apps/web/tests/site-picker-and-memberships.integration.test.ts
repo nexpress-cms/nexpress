@@ -95,7 +95,7 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     expect(ids).toContain("default");
   });
 
-  it("accessible: non-super sees only sites with explicit memberships", async () => {
+  it("accessible: non-super sees explicit sites plus the global-role default site", async () => {
     const user = await seedUser({ role: "editor" });
     const { createSite, grantSiteMembership } = await import("@nexpress/core");
     await createSite({ id: "mine", name: "Mine" });
@@ -111,7 +111,7 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     }>(res);
     expect(body.isSuperAdmin).toBe(false);
     const ids = (body.docs ?? []).map((s) => s.id);
-    expect(ids).toEqual(["mine"]);
+    expect(ids.sort()).toEqual(["default", "mine"]);
   });
 
   it("accessible: global admin with no memberships sees the default site (single-tenant fallback)", async () => {
@@ -123,6 +123,80 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
       docs?: Array<{ id: string }>;
     }>(res);
     expect((body.docs ?? []).map((s) => s.id)).toEqual(["default"]);
+  });
+
+  it("site selection recovers when the current site's membership is absent", async () => {
+    const user = await seedUser({ role: "viewer" });
+    const { createSite, withCurrentSite } = await import("@nexpress/core");
+    await createSite({ id: "revoked-context", name: "Revoked context" });
+    const accessible = await import("@/app/api/admin/sites/accessible/route");
+    const active = await import("@/app/api/admin/sites/active/route");
+
+    await withCurrentSite("revoked-context", async () => {
+      const listResponse = await accessible.GET(
+        buildRequest("/api/admin/sites/accessible", { session: user }),
+      );
+      const listed = await readJson<{ docs?: Array<{ id: string }> }>(listResponse);
+      expect(listed.status).toBe(200);
+      expect((listed.body.docs ?? []).map((site) => site.id)).toEqual(["default"]);
+
+      const switchResponse = await active.POST(
+        buildRequest("/api/admin/sites/active", {
+          session: user,
+          method: "POST",
+          body: { id: "default" },
+        }),
+      );
+      expect(switchResponse.status).toBe(200);
+
+      const clearResponse = await active.DELETE(
+        buildRequest("/api/admin/sites/active", { session: user, method: "DELETE" }),
+      );
+      expect(clearResponse.status).toBe(200);
+    });
+  });
+
+  it("request auth projects the current site's membership role before route gates", async () => {
+    const member = await seedUser({ role: "viewer" });
+    const outsider = await seedUser({ role: "admin" });
+    const { createSite, grantSiteMembership, withCurrentSite } = await import("@nexpress/core");
+    await createSite({ id: "projected-auth", name: "Projected auth" });
+    await grantSiteMembership("projected-auth", member.userId, "admin");
+    const { GET } = await import("@/app/api/settings/route");
+
+    const memberResponse = await withCurrentSite("projected-auth", () =>
+      GET(buildRequest("/api/settings", { session: member })),
+    );
+    expect(memberResponse.status).toBe(200);
+
+    const outsiderResponse = await withCurrentSite("projected-auth", () =>
+      GET(buildRequest("/api/settings", { session: outsider })),
+    );
+    expect(outsiderResponse.status).toBe(403);
+  });
+
+  it("site roles do not elevate global operator mutations", async () => {
+    const member = await seedUser({ role: "viewer" });
+    const { createSite, grantSiteMembership, withCurrentSite } = await import("@nexpress/core");
+    await createSite({ id: "operator-boundary", name: "Operator boundary" });
+    await grantSiteMembership("operator-boundary", member.userId, "admin");
+    const { POST } = await import("@/app/api/users/route");
+
+    const response = await withCurrentSite("operator-boundary", () =>
+      POST(
+        buildRequest("/api/users", {
+          session: member,
+          method: "POST",
+          body: {
+            email: "blocked-global@example.com",
+            name: "Blocked global user",
+            password: "password-12345",
+            role: "viewer",
+          },
+        }),
+      ),
+    );
+    expect(response.status).toBe(403);
   });
 
   // Issue #221 — admin override cookie / header is untrusted.
@@ -148,7 +222,7 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     const { canActorUseSite } = await import("@nexpress/next");
     expect(await canActorUseSite(actor, "alpha")).toBe(true);
     expect(await canActorUseSite(actor, "default")).toBe(true);
-    expect(await canActorUseSite(actor, "non-existent-site")).toBe(true);
+    expect(await canActorUseSite(actor, "non-existent-site")).toBe(false);
   });
 
   it("Issue #221 — canActorUseSite: explicit membership grants access to that site only", async () => {
@@ -179,14 +253,14 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     expect(await canActorUseSite(actor, "alpha")).toBe(false);
   });
 
-  it("Issue #221 — canActorUseSite: viewer with no flags is rejected everywhere", async () => {
+  it("Issue #221 — canActorUseSite: viewer uses global fallback only on default", async () => {
     const user = await seedUser({ role: "viewer" });
     const { createSite } = await import("@nexpress/core");
     await createSite({ id: "alpha", name: "Alpha" });
     const actor = await asActorForUser(user);
     const { canActorUseSite } = await import("@nexpress/next");
     expect(await canActorUseSite(actor, "alpha")).toBe(false);
-    expect(await canActorUseSite(actor, "default")).toBe(false);
+    expect(await canActorUseSite(actor, "default")).toBe(true);
   });
 
   // ============== /api/admin/sites/active ==============
@@ -266,18 +340,14 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     await createSite({ id: "any-site", name: "Any" });
     await setSuperAdmin(admin.userId, true);
 
-    const { POST } = await import(
-      "@/app/api/admin/sites/[id]/memberships/route"
-    );
+    const { POST } = await import("@/app/api/admin/sites/[id]/memberships/route");
     const req = buildRequest("/api/admin/sites/any-site/memberships", {
       session: admin,
       method: "POST",
       body: { userId: target.userId, role: "editor" },
     });
     const res = await POST(req, { params: Promise.resolve({ id: "any-site" }) });
-    const { status, body } = await readJson<{ siteId?: string; role?: string }>(
-      res,
-    );
+    const { status, body } = await readJson<{ siteId?: string; role?: string }>(res);
     expect(status).toBe(200);
     expect(body.role).toBe("editor");
   });
@@ -289,9 +359,7 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     await createSite({ id: "site-admin-realm", name: "Realm" });
     await grantSiteMembership("site-admin-realm", siteAdmin.userId, "admin");
 
-    const { POST } = await import(
-      "@/app/api/admin/sites/[id]/memberships/route"
-    );
+    const { POST } = await import("@/app/api/admin/sites/[id]/memberships/route");
     const req = buildRequest("/api/admin/sites/site-admin-realm/memberships", {
       session: siteAdmin,
       method: "POST",
@@ -311,9 +379,7 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     await createSite({ id: "editor-realm", name: "EditorRealm" });
     await grantSiteMembership("editor-realm", editor.userId, "editor");
 
-    const { POST } = await import(
-      "@/app/api/admin/sites/[id]/memberships/route"
-    );
+    const { POST } = await import("@/app/api/admin/sites/[id]/memberships/route");
     const req = buildRequest("/api/admin/sites/editor-realm/memberships", {
       session: editor,
       method: "POST",
@@ -326,6 +392,27 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     expect(status).toBe(403);
   });
 
+  it("memberships POST rejects non-object and unknown-field inputs", async () => {
+    const admin = await seedUser({ role: "viewer" });
+    const target = await seedUser({ role: "viewer" });
+    const { createSite, setSuperAdmin } = await import("@nexpress/core");
+    await createSite({ id: "exact-membership", name: "Exact" });
+    await setSuperAdmin(admin.userId, true);
+    const { POST } = await import("@/app/api/admin/sites/[id]/memberships/route");
+
+    for (const body of [[], { userId: target.userId, role: "editor", typo: true }]) {
+      const request = buildRequest("/api/admin/sites/exact-membership/memberships", {
+        session: admin,
+        method: "POST",
+        body,
+      });
+      const response = await POST(request, {
+        params: Promise.resolve({ id: "exact-membership" }),
+      });
+      expect((await readJson(response)).status).toBe(400);
+    }
+  });
+
   it("memberships DELETE revokes a membership (super-admin)", async () => {
     const admin = await seedUser({ role: "viewer" });
     const target = await seedUser({ role: "viewer" });
@@ -335,13 +422,11 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     await setSuperAdmin(admin.userId, true);
     await grantSiteMembership("revoke-test", target.userId, "editor");
 
-    const { DELETE } = await import(
-      "@/app/api/admin/sites/[id]/memberships/[userId]/route"
-    );
-    const req = buildRequest(
-      `/api/admin/sites/revoke-test/memberships/${target.userId}`,
-      { session: admin, method: "DELETE" },
-    );
+    const { DELETE } = await import("@/app/api/admin/sites/[id]/memberships/[userId]/route");
+    const req = buildRequest(`/api/admin/sites/revoke-test/memberships/${target.userId}`, {
+      session: admin,
+      method: "DELETE",
+    });
     const res = await DELETE(req, {
       params: Promise.resolve({ id: "revoke-test", userId: target.userId }),
     });
@@ -356,9 +441,7 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     const admin = await seedUser({ role: "admin" });
     const target = await seedUser({ role: "viewer" });
 
-    const { PATCH } = await import(
-      "@/app/api/admin/users/[id]/super-admin/route"
-    );
+    const { PATCH } = await import("@/app/api/admin/users/[id]/super-admin/route");
     // admin (not super) tries to promote → 403
     const req = buildRequest(`/api/admin/users/${target.userId}/super-admin`, {
       session: admin,
@@ -376,9 +459,7 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     const { setSuperAdmin, isSuperAdmin } = await import("@nexpress/core");
     await setSuperAdmin(root.userId, true);
 
-    const { PATCH } = await import(
-      "@/app/api/admin/users/[id]/super-admin/route"
-    );
+    const { PATCH } = await import("@/app/api/admin/users/[id]/super-admin/route");
     const req = buildRequest(`/api/admin/users/${target.userId}/super-admin`, {
       session: root,
       method: "PATCH",
@@ -403,9 +484,7 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     const { setSuperAdmin } = await import("@nexpress/core");
     await setSuperAdmin(root.userId, true);
 
-    const { PATCH } = await import(
-      "@/app/api/admin/users/[id]/super-admin/route"
-    );
+    const { PATCH } = await import("@/app/api/admin/users/[id]/super-admin/route");
     const req = buildRequest(`/api/admin/users/${root.userId}/super-admin`, {
       session: root,
       method: "PATCH",

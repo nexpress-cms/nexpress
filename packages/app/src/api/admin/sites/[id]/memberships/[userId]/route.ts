@@ -1,11 +1,10 @@
 import {
   NpForbiddenError,
   NpValidationError,
-  getMembership,
   getSiteById,
-  isSuperAdmin,
   revokeSiteMembership,
 } from "@nexpress/core";
+import { canOnSite } from "@nexpress/core/sites";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../../../lib/api-response";
@@ -32,22 +31,14 @@ export async function DELETE(
       ]);
     }
 
-    const superAdmin = await isSuperAdmin(user);
-    if (!superAdmin) {
-      // Same per-site-admin check as the parent route's GET.
-      const callerMembership = await getMembership(id, user.id);
-      const isDefaultGlobalAdmin = id === "default" && user.role === "admin";
-      if (callerMembership?.role !== "admin" && !isDefaultGlobalAdmin) {
-        throw new NpForbiddenError("memberships", "delete");
-      }
+    if (!(await canOnSite(user, "admin.manage", id))) {
+      throw new NpForbiddenError("memberships", "delete");
     }
 
     await revokeSiteMembership(id, userId);
     return npSuccessResponse({ ok: true });
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

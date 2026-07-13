@@ -1,3 +1,4 @@
+export const NP_DEFAULT_SITE_ID = "default";
 export const npSiteIdPattern = "^[a-z][a-z0-9-]{0,62}$";
 
 const SITE_ID_PATTERN = new RegExp(npSiteIdPattern, "u");

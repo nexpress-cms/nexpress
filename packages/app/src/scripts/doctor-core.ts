@@ -1,7 +1,12 @@
 import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { npValidatePluginCronExpression } from "@nexpress/core";
-import { npAnalyzeSettingRecord, npAnalyzeSiteRecord } from "@nexpress/core/settings";
+import {
+  NP_DEFAULT_SITE_ID,
+  npAnalyzeSettingRecord,
+  npAnalyzeSiteMembershipRecord,
+  npAnalyzeSiteRecord,
+} from "@nexpress/core/settings";
 import { npAnalyzeRevision } from "@nexpress/core/revisions";
 import {
   npAnalyzeJobLogEntry,
@@ -306,7 +311,7 @@ async function checkSettingsContracts(env: DoctorEnv): Promise<CheckResult> {
     return {
       id: "settings.contract",
       state: "warn",
-      label: "Framework settings contracts",
+      label: "Site registry and settings contracts",
       detail: "skipped (no DATABASE_URL)",
     };
   }
@@ -317,26 +322,40 @@ async function checkSettingsContracts(env: DoctorEnv): Promise<CheckResult> {
     return {
       id: "settings.contract",
       state: "warn",
-      label: "Framework settings contracts",
+      label: "Site registry and settings contracts",
       detail: "skipped (no `pg`)",
     };
   }
   const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
   try {
     await client.connect();
-    const [sites, settings] = await Promise.all([
-      client.query<Record<string, unknown>>(
-        `select id, name, hostname, description, settings, is_default as "isDefault",
+    const sites = await client.query<Record<string, unknown>>(
+      `select id, name, hostname, description, settings, is_default as "isDefault",
                 created_at as "createdAt", updated_at as "updatedAt"
            from np_sites`,
-      ),
-      client.query<{ siteId: string; key: string; value: unknown }>(
-        `select site_id as "siteId", key, value from np_settings`,
-      ),
-    ]);
+    );
+    const settings = await client.query<{ siteId: string; key: string; value: unknown }>(
+      `select site_id as "siteId", key, value from np_settings`,
+    );
+    const memberships = await client.query<Record<string, unknown>>(
+      `select site_id as "siteId", user_id as "userId", role,
+                created_at as "createdAt", updated_at as "updatedAt"
+           from np_site_memberships`,
+    );
+    const users = await client.query<{ id: string }>(`select id from np_users`);
     await client.end();
     const siteIds = new Set(sites.rows.map((site) => site.id));
+    const userIds = new Set(users.rows.map((user) => user.id));
     const issues = [
+      ...(!siteIds.has(NP_DEFAULT_SITE_ID)
+        ? [
+            {
+              code: "invalid-field" as const,
+              path: "sites.default",
+              message: `reserved site '${NP_DEFAULT_SITE_ID}' is missing.`,
+            },
+          ]
+        : []),
       ...sites.rows.flatMap((site) => npAnalyzeSiteRecord(site)),
       ...settings.rows.flatMap((row) => [
         ...npAnalyzeSettingRecord(row.siteId, row.key, row.value),
@@ -350,20 +369,41 @@ async function checkSettingsContracts(env: DoctorEnv): Promise<CheckResult> {
             ]
           : []),
       ]),
+      ...memberships.rows.flatMap((row) => [
+        ...npAnalyzeSiteMembershipRecord(row),
+        ...(!(typeof row.siteId === "string" && siteIds.has(row.siteId))
+          ? [
+              {
+                code: "invalid-field" as const,
+                path: "membership.siteId",
+                message: `membership references missing site '${String(row.siteId)}'.`,
+              },
+            ]
+          : []),
+        ...(!(typeof row.userId === "string" && userIds.has(row.userId))
+          ? [
+              {
+                code: "invalid-field" as const,
+                path: "membership.userId",
+                message: `membership references missing user '${String(row.userId)}'.`,
+              },
+            ]
+          : []),
+      ]),
     ];
     return issues.length === 0
       ? {
           id: "settings.contract",
           state: "ok",
-          label: "Framework settings contracts",
-          detail: `${sites.rows.length.toString()} site(s), ${settings.rows.length.toString()} setting row(s)`,
+          label: "Site registry and settings contracts",
+          detail: `${sites.rows.length.toString()} site(s), ${memberships.rows.length.toString()} membership(s), ${settings.rows.length.toString()} setting row(s)`,
         }
       : {
           id: "settings.contract",
           state: "error",
-          label: "Framework settings contracts",
+          label: "Site registry and settings contracts",
           detail: `${issues.length.toString()} contract issue(s); first: ${issues[0]?.path ?? "settings"} ${issues[0]?.message ?? "invalid"}`,
-          hint: "Repair or remove malformed/unknown np_sites and np_settings values before starting the app.",
+          hint: "Repair malformed site, membership, or setting rows and remove orphan references before starting the app.",
         };
   } catch (error) {
     try {
@@ -374,7 +414,7 @@ async function checkSettingsContracts(env: DoctorEnv): Promise<CheckResult> {
     return {
       id: "settings.contract",
       state: "warn",
-      label: "Framework settings contracts",
+      label: "Site registry and settings contracts",
       detail: `could not inspect settings: ${error instanceof Error ? error.message : String(error)}`,
     };
   }

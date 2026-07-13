@@ -2,7 +2,7 @@ import { NpForbiddenError, NpNotFoundError, getMediaById, deleteMedia, can } fro
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { requireAuth } from "../../../lib/auth-helpers";
+import { requireAuth, requireGlobalAuth } from "../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import { ensureFor } from "../../../lib/init-core";
 import { toMediaApiItem } from "../../../lib/media-response";
@@ -38,7 +38,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
 
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("media", "delete");

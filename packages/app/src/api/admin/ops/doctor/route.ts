@@ -2,7 +2,7 @@ import { NpForbiddenError, NpValidationError, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
-import { requireAuth } from "../../../../lib/auth-helpers";
+import { requireGlobalAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
 import {
   DEPLOY_TARGETS,
@@ -15,7 +15,7 @@ import type * as DoctorCore from "../../../../scripts/doctor-core";
 export async function GET(request: NextRequest) {
   try {
     await ensureFor("plugins");
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("ops-doctor", "read");
     }

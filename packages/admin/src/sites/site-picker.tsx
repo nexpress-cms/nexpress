@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  isNpSiteSummaryWireRecord,
+  npIsCanonicalSiteId,
+  type NpSiteSummaryWireRecord,
+} from "@nexpress/core/settings";
 import { Check, ChevronsUpDown, Globe2, Loader2 } from "lucide-react";
 
 import { npFetch } from "../lib/api-client.js";
@@ -27,18 +32,7 @@ import {
  * page after a successful switch so server components re-
  * resolve the active site context from the new cookie.
  */
-interface AccessibleSite {
-  id: string;
-  name: string;
-  hostname: string | null;
-  isDefault: boolean;
-}
-
-interface AccessiblePayload {
-  docs?: AccessibleSite[];
-  isSuperAdmin?: boolean;
-  currentId?: string;
-}
+type AccessibleSite = NpSiteSummaryWireRecord;
 
 export function SitePicker() {
   const [sites, setSites] = useState<AccessibleSite[] | null>(null);
@@ -55,14 +49,29 @@ export function SitePicker() {
           setSites([]);
           return;
         }
-        const body = (await res.json().catch(() => null)) as AccessiblePayload | null;
+        const body = (await res.json().catch(() => null)) as unknown;
         if (!active) return;
-        setSites(body?.docs ?? []);
+        if (
+          !body ||
+          typeof body !== "object" ||
+          !("docs" in body) ||
+          !Array.isArray(body.docs) ||
+          !body.docs.every(isNpSiteSummaryWireRecord) ||
+          !("currentId" in body) ||
+          !npIsCanonicalSiteId(body.currentId) ||
+          !("isSuperAdmin" in body) ||
+          typeof body.isSuperAdmin !== "boolean"
+        ) {
+          setSites([]);
+          setCurrentId(null);
+          return;
+        }
+        setSites(body.docs);
         // The cookie is HttpOnly so we can't read it client-
         // side. The endpoint surfaces the resolver's current
         // site id explicitly so the picker can highlight the
         // active entry without leaking the cookie to JS.
-        setCurrentId(body?.currentId ?? null);
+        setCurrentId(body.currentId);
       })
       .catch(() => {
         if (active) {

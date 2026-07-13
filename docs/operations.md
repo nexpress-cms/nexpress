@@ -101,10 +101,12 @@ pnpm run doctor -- --fix-plan
 pnpm run doctor:prod -- --target vercel --brief --no-color --fix-plan
 ```
 
-The blocking `settings.contract` check validates every `np_sites` record and
-registered `np_settings` value. Unknown keys, malformed exact objects, and
-invalid versioned envelopes must be repaired or removed before startup;
-runtime reads deliberately do not reset them to defaults.
+The blocking `settings.contract` check validates every `np_sites`,
+`np_site_memberships`, and registered `np_settings` value. It also detects a
+missing/corrupt reserved default site and membership or setting rows that
+reference missing owners. Unknown keys, malformed exact objects, and invalid
+versioned envelopes must be repaired or removed before startup; runtime reads
+deliberately do not reset them to defaults.
 
 The adjacent `revisions.contract` check validates persisted revision row and
 snapshot shapes, detects missing collection tables, and reports orphan revision

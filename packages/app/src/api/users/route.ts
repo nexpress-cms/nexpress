@@ -11,18 +11,12 @@ import { asc, count, ilike, or } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { requireAuth } from "../../lib/auth-helpers";
+import { requireAuth, requireGlobalAuth } from "../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
 import { getDb } from "../../lib/db";
 import { ensureFor } from "../../lib/init-core";
 
-const VALID_ROLES: readonly NpUserRole[] = [
-  "admin",
-  "editor",
-  "moderator",
-  "author",
-  "viewer",
-];
+const VALID_ROLES: readonly NpUserRole[] = ["admin", "editor", "moderator", "author", "viewer"];
 
 function parsePositiveInt(value: string | null, fallback: number, max: number): number {
   if (!value) return fallback;
@@ -91,7 +85,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
 
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("users", "create");

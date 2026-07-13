@@ -14,7 +14,7 @@ import {
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
-import { requireAuth } from "../../../../lib/auth-helpers";
+import { requireGlobalAuth } from "../../../../lib/auth-helpers";
 import { ensureFor, nexpressConfig } from "../../../../lib/init-core";
 import { npParseEmptyJobQuery, npRequireJobApiResponse } from "../../../../lib/job-api-contract";
 
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     // Health includes queue state counts and recent failures, so the same
     // producer adapter used by the jobs list must be initialized first.
     await ensureFor("write");
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("workers", "read");
     }

@@ -9,7 +9,7 @@ import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
-import { requireAuth } from "../../../../lib/auth-helpers";
+import { requireGlobalAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
 import type * as OpsBackupCore from "../../../../scripts/ops-backup-core";
 import type * as OpsCacheCore from "../../../../scripts/ops-cache-core";
@@ -83,7 +83,7 @@ function requireString(value: unknown, field: string): string {
 export async function POST(request: NextRequest) {
   try {
     await ensureFor("write");
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("ops-actions", "mutate");
     }

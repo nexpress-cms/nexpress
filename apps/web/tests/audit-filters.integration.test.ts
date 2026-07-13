@@ -149,7 +149,7 @@ describe.skipIf(skipIfNoTestDb())("audit list filters", () => {
   it("Issue #379 — siteId=<foreign> rejects a global admin without explicit membership", async () => {
     // Plain global admin (no super-admin flag, no membership on
     // `foreign-audit`). Before #379 this passed via
-    // hasRoleOnSite's global-role fallback; now it must 403.
+    // A global role never grants access to a non-default tenant.
     const admin = await seedUser({ role: "admin" });
     const { createSite } = await import("@nexpress/core");
     await createSite({ id: "foreign-audit", name: "Foreign Audit" });

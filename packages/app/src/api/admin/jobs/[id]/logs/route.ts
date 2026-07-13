@@ -3,7 +3,7 @@ import { npRequireJobLogsWire, npSerializeJobLogEntry } from "@nexpress/core/job
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
-import { requireAuth } from "../../../../../lib/auth-helpers";
+import { requireGlobalAuth } from "../../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../../lib/init-core";
 import {
   npParseJobId,
@@ -27,7 +27,7 @@ import {
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("read");
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("job-logs", "read");
     }

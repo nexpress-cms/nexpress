@@ -22,7 +22,13 @@ import {
   npMediaStatuses,
   npMediaVariantNamePattern,
 } from "@nexpress/core/media-contract";
-import { npDynamicSettingOwnerPattern, npSettingsContractLimits } from "@nexpress/core/settings";
+import {
+  npDynamicSettingOwnerPattern,
+  npSettingsContractLimits,
+  npSiteIdPattern,
+  npUserIdPattern,
+  npUserRoles,
+} from "@nexpress/core/settings";
 import {
   NP_REVISION_STATUSES,
   npRevisionCanonicalDatePattern,
@@ -353,6 +359,203 @@ function revisionSnapshotSchema(
 function buildSpec(): OpenApiSchema {
   const slugs = getAllCollectionSlugs();
   const schemas: Record<string, OpenApiSchema> = {
+    site_runtime_settings: {
+      type: "object",
+      additionalProperties: false,
+      required: ["siteUrl", "defaultLocale", "timezone"],
+      properties: {
+        siteUrl: { type: ["string", "null"], format: "uri" },
+        defaultLocale: {
+          type: ["string", "null"],
+          maxLength: npSettingsContractLimits.localeLength,
+        },
+        timezone: {
+          type: ["string", "null"],
+          maxLength: npSettingsContractLimits.timezoneLength,
+        },
+      },
+    },
+    site_record: {
+      type: "object",
+      additionalProperties: false,
+      oneOf: [
+        {
+          properties: {
+            id: { const: "default" },
+            isDefault: { const: true },
+          },
+        },
+        {
+          properties: {
+            id: { not: { const: "default" } },
+            isDefault: { const: false },
+          },
+        },
+      ],
+      required: [
+        "id",
+        "name",
+        "hostname",
+        "description",
+        "settings",
+        "isDefault",
+        "createdAt",
+        "updatedAt",
+      ],
+      properties: {
+        id: { type: "string", pattern: npSiteIdPattern },
+        name: { type: "string", minLength: 1, maxLength: npSettingsContractLimits.siteNameLength },
+        hostname: {
+          type: ["string", "null"],
+          maxLength: npSettingsContractLimits.hostnameLength,
+        },
+        description: {
+          type: ["string", "null"],
+          maxLength: npSettingsContractLimits.descriptionLength,
+        },
+        settings: { $ref: "#/components/schemas/site_runtime_settings" },
+        isDefault: { type: "boolean" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+    site_summary: {
+      type: "object",
+      additionalProperties: false,
+      oneOf: [
+        {
+          properties: {
+            id: { const: "default" },
+            isDefault: { const: true },
+          },
+        },
+        {
+          properties: {
+            id: { not: { const: "default" } },
+            isDefault: { const: false },
+          },
+        },
+      ],
+      required: ["id", "name", "hostname", "isDefault"],
+      properties: {
+        id: { type: "string", pattern: npSiteIdPattern },
+        name: { type: "string", minLength: 1, maxLength: npSettingsContractLimits.siteNameLength },
+        hostname: {
+          type: ["string", "null"],
+          maxLength: npSettingsContractLimits.hostnameLength,
+        },
+        isDefault: { type: "boolean" },
+      },
+    },
+    site_create_input: {
+      type: "object",
+      additionalProperties: false,
+      required: ["id", "name"],
+      properties: {
+        id: {
+          type: "string",
+          pattern: npSiteIdPattern,
+          not: { enum: ["default"] },
+        },
+        name: { type: "string", minLength: 1, maxLength: npSettingsContractLimits.siteNameLength },
+        hostname: {
+          type: ["string", "null"],
+          maxLength: npSettingsContractLimits.hostnameLength,
+        },
+        description: {
+          type: ["string", "null"],
+          maxLength: npSettingsContractLimits.descriptionLength,
+        },
+        settings: { $ref: "#/components/schemas/site_runtime_settings" },
+      },
+    },
+    site_update_input: {
+      type: "object",
+      additionalProperties: false,
+      minProperties: 1,
+      properties: {
+        name: { type: "string", minLength: 1, maxLength: npSettingsContractLimits.siteNameLength },
+        hostname: {
+          type: ["string", "null"],
+          maxLength: npSettingsContractLimits.hostnameLength,
+        },
+        description: {
+          type: ["string", "null"],
+          maxLength: npSettingsContractLimits.descriptionLength,
+        },
+        settings: { $ref: "#/components/schemas/site_runtime_settings" },
+      },
+    },
+    site_membership: {
+      type: "object",
+      additionalProperties: false,
+      required: ["siteId", "userId", "role", "createdAt", "updatedAt"],
+      properties: {
+        siteId: { type: "string", pattern: npSiteIdPattern },
+        userId: { type: "string", pattern: npUserIdPattern, format: "uuid" },
+        role: { type: "string", enum: [...npUserRoles] },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+    site_membership_grant_input: {
+      type: "object",
+      additionalProperties: false,
+      required: ["userId", "role"],
+      properties: {
+        userId: { type: "string", pattern: npUserIdPattern, format: "uuid" },
+        role: { type: "string", enum: [...npUserRoles] },
+      },
+    },
+    site_usage: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "collections",
+        "settings",
+        "navigation",
+        "slugHistory",
+        "memberships",
+        "stringOverrides",
+        "pluginStorage",
+        "comments",
+        "reactions",
+        "follows",
+        "mutes",
+        "notifications",
+        "reports",
+        "auditEvents",
+        "bans",
+        "memberRoles",
+        "total",
+      ],
+      properties: {
+        collections: {
+          type: "object",
+          additionalProperties: { type: "integer", minimum: 0 },
+        },
+        ...Object.fromEntries(
+          [
+            "settings",
+            "navigation",
+            "slugHistory",
+            "memberships",
+            "stringOverrides",
+            "pluginStorage",
+            "comments",
+            "reactions",
+            "follows",
+            "mutes",
+            "notifications",
+            "reports",
+            "auditEvents",
+            "bans",
+            "memberRoles",
+            "total",
+          ].map((key) => [key, { type: "integer", minimum: 0 }]),
+        ),
+      },
+    },
     site_general_settings: {
       type: "object",
       additionalProperties: false,
@@ -3177,6 +3380,300 @@ function buildSpec(): OpenApiSchema {
       responses: {
         "200": { description: "Paginated audit-event list" },
         "403": { description: "Requires admin / editor / moderator role" },
+      },
+    },
+  };
+  paths["/api/admin/sites"] = {
+    get: {
+      summary: "List registered sites (super-admin only)",
+      responses: {
+        "200": {
+          description: "Exact registered site records",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["docs"],
+                properties: {
+                  docs: {
+                    type: "array",
+                    items: { $ref: "#/components/schemas/site_record" },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "403": { description: "Super-admin required" },
+      },
+    },
+    post: {
+      summary: "Create a registered site (super-admin only)",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/site_create_input" },
+          },
+        },
+      },
+      responses: {
+        "200": {
+          description: "Created site",
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/site_record" } },
+          },
+        },
+        "400": { description: "Exact input contract violation" },
+        "403": { description: "Super-admin required" },
+      },
+    },
+  };
+  paths["/api/admin/sites/accessible"] = {
+    get: {
+      summary: "List sites accessible to the current staff user",
+      description:
+        "Super-admins receive every registered site. Other staff receive explicit membership sites plus the reserved default site through its persisted global-role fallback. Global authentication keeps this recovery endpoint available when the saved active-site membership was revoked.",
+      responses: {
+        "200": {
+          description: "Exact site-picker contract",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["docs", "isSuperAdmin", "currentId"],
+                properties: {
+                  docs: {
+                    type: "array",
+                    items: { $ref: "#/components/schemas/site_summary" },
+                  },
+                  isSuperAdmin: { type: "boolean" },
+                  currentId: { type: "string", pattern: npSiteIdPattern },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+  paths["/api/admin/sites/active"] = {
+    post: {
+      summary: "Select the active Admin site context",
+      description:
+        "Authenticates globally, then requires site.access on the requested target so a stale inaccessible active-site cookie cannot lock out site switching.",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              required: ["id"],
+              properties: { id: { type: "string", pattern: npSiteIdPattern } },
+            },
+          },
+        },
+      },
+      responses: {
+        "200": {
+          description: "Active site selected and HttpOnly cookie set",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["id"],
+                properties: { id: { type: "string", pattern: npSiteIdPattern } },
+              },
+            },
+          },
+        },
+        "400": { description: "Unknown site or exact input contract violation" },
+        "403": { description: "Missing site.access capability on this site" },
+      },
+    },
+    delete: {
+      summary: "Clear the active Admin site override",
+      description:
+        "Uses global authentication so a stale inaccessible active-site cookie can always be cleared.",
+      responses: { "200": { description: "Active-site cookie cleared" } },
+    },
+  };
+  paths["/api/admin/sites/{id}"] = {
+    parameters: [
+      {
+        in: "path",
+        name: "id",
+        required: true,
+        schema: { type: "string", pattern: npSiteIdPattern },
+      },
+    ],
+    get: {
+      summary: "Read a site using site-scoped admin authorization",
+      responses: {
+        "200": {
+          description: "Site record",
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/site_record" } },
+          },
+        },
+        "403": { description: "Missing admin.manage capability on this site" },
+      },
+    },
+    patch: {
+      summary: "Update a site using site-scoped admin authorization",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/site_update_input" },
+          },
+        },
+      },
+      responses: {
+        "200": {
+          description: "Updated site",
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/site_record" } },
+          },
+        },
+        "400": { description: "Exact input contract violation" },
+        "403": { description: "Missing admin.manage capability on this site" },
+      },
+    },
+    delete: {
+      summary: "Delete a non-default site (super-admin only)",
+      description:
+        "Deletion is atomic. Attached rows block deletion unless cascade=true; cascade failure rolls back the whole operation.",
+      parameters: [{ in: "query", name: "cascade", schema: { type: "boolean", default: false } }],
+      responses: {
+        "200": { description: "Site deleted" },
+        "400": { description: "Default site or attached rows without cascade" },
+        "403": { description: "Super-admin required" },
+      },
+    },
+  };
+  paths["/api/admin/sites/{id}/usage"] = {
+    get: {
+      summary: "Read exact site deletion usage",
+      parameters: [
+        {
+          in: "path",
+          name: "id",
+          required: true,
+          schema: { type: "string", pattern: npSiteIdPattern },
+        },
+      ],
+      responses: {
+        "200": {
+          description: "Site identity and exact attached-row counts",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["site", "usage"],
+                properties: {
+                  site: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["id", "name"],
+                    properties: {
+                      id: { type: "string", pattern: npSiteIdPattern },
+                      name: { type: "string" },
+                    },
+                  },
+                  usage: { $ref: "#/components/schemas/site_usage" },
+                },
+              },
+            },
+          },
+        },
+        "403": { description: "Missing admin.manage capability on this site" },
+      },
+    },
+  };
+  paths["/api/admin/sites/{id}/memberships"] = {
+    parameters: [
+      {
+        in: "path",
+        name: "id",
+        required: true,
+        schema: { type: "string", pattern: npSiteIdPattern },
+      },
+    ],
+    get: {
+      summary: "List exact site membership records",
+      responses: {
+        "200": {
+          description: "Site memberships",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["docs"],
+                properties: {
+                  docs: {
+                    type: "array",
+                    items: { $ref: "#/components/schemas/site_membership" },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "403": { description: "Missing admin.manage capability on this site" },
+      },
+    },
+    post: {
+      summary: "Grant or replace a site membership role",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/site_membership_grant_input" },
+          },
+        },
+      },
+      responses: {
+        "200": {
+          description: "Membership record",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/site_membership" },
+            },
+          },
+        },
+        "400": { description: "Unknown user/site or exact input contract violation" },
+        "403": { description: "Missing admin.manage capability on this site" },
+      },
+    },
+  };
+  paths["/api/admin/sites/{id}/memberships/{userId}"] = {
+    parameters: [
+      {
+        in: "path",
+        name: "id",
+        required: true,
+        schema: { type: "string", pattern: npSiteIdPattern },
+      },
+      {
+        in: "path",
+        name: "userId",
+        required: true,
+        schema: { type: "string", pattern: npUserIdPattern, format: "uuid" },
+      },
+    ],
+    delete: {
+      summary: "Revoke a site membership",
+      responses: {
+        "200": { description: "Membership revoked or already absent" },
+        "400": { description: "Unknown site or invalid canonical user id" },
+        "403": { description: "Missing admin.manage capability on this site" },
       },
     },
   };

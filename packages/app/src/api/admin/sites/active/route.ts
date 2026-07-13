@@ -1,17 +1,11 @@
-import {
-  NP_DEFAULT_SITE_ID,
-  NpForbiddenError,
-  NpValidationError,
-  getSiteById,
-  isSuperAdmin,
-  listMembershipsForUser,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, NpValidationError, getSiteById } from "@nexpress/core";
+import { canOnSite } from "@nexpress/core/sites";
 import { readJsonBody } from "@nexpress/next";
+import { npIsCanonicalSiteId } from "@nexpress/core/settings";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
-import { requireAuth } from "../../../../lib/auth-helpers";
+import { requireGlobalAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
 
 /**
@@ -23,10 +17,9 @@ import { ensureFor } from "../../../../lib/init-core";
  *     → 403                         user has no access to that site
  *
  * Access rule: super-admins can switch to any site; everyone
- * else can only switch to a site they hold a membership on
- * (or to the global-admin default site if their global role
- * is admin and they have no explicit memberships — preserves
- * single-tenant behavior).
+ * else can switch to a non-default site only with an explicit
+ * membership. The reserved default site uses the persisted global
+ * role for every authenticated staff user.
  *
  * Cookie shape: `np-admin-site=<id>; HttpOnly; SameSite=Lax;
  * Path=/; Secure (in prod)`. HttpOnly because client JS
@@ -36,15 +29,30 @@ import { ensureFor } from "../../../../lib/init-core";
 export async function POST(request: NextRequest) {
   try {
     await ensureFor("write");
-    const user = await requireAuth(request);
+    // Site selection must remain available when the current cookie names a
+    // site whose membership was revoked. Target authorization still goes
+    // through canOnSite below.
+    const user = await requireGlobalAuth(request);
 
-    const body = (await readJsonBody(request)) as { id?: unknown };
-    const id = typeof body.id === "string" ? body.id : null;
-    if (!id) {
+    const body = await readJsonBody(request);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
       throw new NpValidationError("Invalid input", [
-        { field: "id", message: "Site id is required" },
+        { field: "body", message: "Request body must be a plain object" },
       ]);
     }
+    const input = body as Record<string, unknown>;
+    const unknown = Object.keys(input).find((key) => key !== "id");
+    if (unknown || !npIsCanonicalSiteId(input.id)) {
+      throw new NpValidationError("Invalid input", [
+        {
+          field: unknown ?? "id",
+          message: unknown
+            ? `Unsupported active-site field "${unknown}"`
+            : "Site id must be a canonical lowercase id",
+        },
+      ]);
+    }
+    const id = input.id;
 
     const target = await getSiteById(id);
     if (!target) {
@@ -53,19 +61,10 @@ export async function POST(request: NextRequest) {
       ]);
     }
 
-    // Access check: super-admin OR explicit membership OR
-    // (global admin + default site, the single-tenant
-    // fallback that preserves pre-15.5 behavior). Compose
-    // the predicate first so the chain reads top-down.
-    const superAdmin = await isSuperAdmin(user);
-    if (!superAdmin) {
-      const memberships = await listMembershipsForUser(user.id);
-      const hasMembership = memberships.some((m) => m.siteId === id);
-      const isDefaultGlobalAdmin =
-        id === NP_DEFAULT_SITE_ID && can(user, "admin.manage");
-      if (!hasMembership && !isDefaultGlobalAdmin) {
-        throw new NpForbiddenError("sites/active", "switch");
-      }
+    // Access check: super-admin OR explicit membership OR any
+    // persisted global role on the reserved default site.
+    if (!(await canOnSite(user, "site.access", id))) {
+      throw new NpForbiddenError("sites/active", "switch");
     }
 
     const isProduction = process.env.NODE_ENV === "production";
@@ -81,9 +80,7 @@ export async function POST(request: NextRequest) {
     });
     return response;
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -93,15 +90,13 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     await ensureFor("write");
-    await requireAuth(request);
+    await requireGlobalAuth(request);
 
     const response = npSuccessResponse({ ok: true });
     response.cookies.delete("np-admin-site");
     return response;
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
