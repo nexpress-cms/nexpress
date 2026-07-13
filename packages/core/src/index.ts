@@ -261,6 +261,7 @@ export type {
   NpRevisionStatus,
   NpRevisionListOptions,
   NpRevisionListResult,
+  NpRevisionSnapshotValidator,
   PublishScheduledResult,
   NpPendingDocSummary,
   NpListPendingDocsOptions,

@@ -82,16 +82,19 @@ describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () =
     expect(revs[0].version).toBe(1);
   });
 
-  it("updates keep version counter monotonic", async () => {
+  it("keeps version counters monotonic after versions.max prunes old rows", async () => {
     const user = await seedUser();
     const created = await saveDocument("posts", null, baseDoc, user, { status: "draft" });
 
-    await saveDocument("posts", created.doc.id as string, { ...baseDoc, title: "Second" }, user, {
-      status: "draft",
-    });
-    await saveDocument("posts", created.doc.id as string, { ...baseDoc, title: "Third" }, user, {
-      status: "published",
-    });
+    for (let version = 2; version <= 23; version += 1) {
+      await saveDocument(
+        "posts",
+        created.doc.id as string,
+        { ...baseDoc, title: `Version ${version.toString()}` },
+        user,
+        { status: version === 23 ? "published" : "draft" },
+      );
+    }
 
     const db = await getTestDb();
     const revs = await db
@@ -99,7 +102,8 @@ describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () =
       .from(npRevisions)
       .where(eq(npRevisions.documentId, created.doc.id as string))
       .orderBy(asc(npRevisions.version));
-    expect(revs.map((r) => r.version)).toEqual([1, 2, 3]);
+    expect(revs).toHaveLength(20);
+    expect(revs.map((r) => r.version)).toEqual(Array.from({ length: 20 }, (_, index) => index + 4));
     expect(revs.at(-1)?.status).toBe("published");
   });
 
@@ -121,7 +125,7 @@ describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () =
     expect(found.docs[0].id).toBe(created.doc.id);
   });
 
-  it("deleteDocument removes the row (revisions remain for history)", async () => {
+  it("deleteDocument removes both the row and its revision history", async () => {
     const user = await seedUser();
     const created = await saveDocument("posts", null, baseDoc, user, { status: "draft" });
 
@@ -133,5 +137,10 @@ describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () =
       .from(postsTable)
       .where(eq(postsTable.id, created.doc.id as string));
     expect(rows).toHaveLength(0);
+    const revisions = await db
+      .select()
+      .from(npRevisions)
+      .where(eq(npRevisions.documentId, created.doc.id as string));
+    expect(revisions).toHaveLength(0);
   });
 });

@@ -22,6 +22,7 @@ describe("doctor core", () => {
         "env.database_url",
         "database.reachable",
         "settings.contract",
+        "revisions.contract",
         "migrations.applied",
       ]),
     );

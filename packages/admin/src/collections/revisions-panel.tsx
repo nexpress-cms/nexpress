@@ -20,6 +20,8 @@ import { npFetch } from "../lib/api-client.js";
 import {
   diffSnapshotFields,
   formatRevisionDate,
+  parseRevisionDetailResponse,
+  parseRevisionListResponse,
   summarizeSnapshotValue,
   type RevisionDetail,
   type RevisionSummary,
@@ -78,14 +80,11 @@ export function RevisionsPanel({
       if (!response.ok) {
         throw new Error("Failed to load revisions.");
       }
-      const payload = (await response.json()) as {
-        revisions: RevisionSummary[];
-        total: number;
-      };
+      const payload = parseRevisionListResponse(await response.json());
       setState({
         kind: "ready",
-        revisions: payload.revisions ?? [],
-        total: payload.total ?? 0,
+        revisions: payload.revisions,
+        total: payload.total,
       });
     } catch (error) {
       setState({
@@ -112,7 +111,7 @@ export function RevisionsPanel({
       if (!response.ok) {
         throw new Error("Failed to load revision details.");
       }
-      const detail = (await response.json()) as RevisionDetail;
+      const detail = parseRevisionDetailResponse(await response.json());
       setSelected(detail);
     } catch (error) {
       setToast({

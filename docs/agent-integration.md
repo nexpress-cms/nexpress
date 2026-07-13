@@ -131,13 +131,22 @@ Match the agent's role to its scope (e.g. a content-importer agent =
 
 ### Revisions
 
-If the collection declares `versions.drafts: true`:
+If the collection declares `versions`:
 
 - `GET /api/collections/{slug}/{id}/revisions` — paged revision list.
 - `GET /api/collections/{slug}/{id}/revisions/{revisionId}` — single
   revision with full snapshot.
 - `POST /api/collections/{slug}/{id}/revisions/{revisionId}/restore` —
   rolls back to a prior state (creates a new revision at head).
+- `POST /api/collections/{slug}/{id}/autosave` — available only when the
+  collection explicitly enables autosave; accepts a partial collection-derived
+  snapshot and returns exact `{ saved, revisionId, version }` metadata.
+
+Revision list/detail timestamps are canonical UTC ISO strings and response
+objects are closed. Validate untrusted payloads with the client-safe
+`@nexpress/core/revisions` analyzers. See [Revisions and
+autosave](./revisions.md) for snapshot limits, restore behavior, and doctor
+diagnostics.
 
 ---
 

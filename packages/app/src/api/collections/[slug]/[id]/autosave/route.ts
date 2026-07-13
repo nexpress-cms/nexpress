@@ -5,6 +5,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "../../../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
 import { ensureFor } from "../../../../../lib/init-core";
+import { validateDocumentBlockContent } from "../../../../../lib/block-content-validation";
 
 /**
  * Editor autosave endpoint. Persists an in-flight snapshot to
@@ -35,8 +36,13 @@ export async function POST(
     const { _status: _ignored, ...data } = raw;
     void _ignored;
 
+    validateDocumentBlockContent(slug, data);
     const result = await autosaveRevision(slug, id, data, user);
-    return npSuccessResponse(result);
+    return npSuccessResponse({
+      saved: !result.reused,
+      revisionId: result.id,
+      version: result.version,
+    });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

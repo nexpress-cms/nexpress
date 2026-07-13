@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 
-import { asc, count, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { asc, count, desc, eq, inArray, max, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import {
@@ -31,6 +31,12 @@ import { npRevisions, npSlugHistory } from "../db/schema/system.js";
 import { npComments, npReactions, npReports } from "../db/schema/community.js";
 import { npMediaRefs } from "../db/schema/media.js";
 import { getDb } from "../db/runtime.js";
+import {
+  NpRevisionContractError,
+  npAnalyzeRevisionSnapshot,
+  npRevisionSnapshotKey,
+  type NpRevisionSnapshot,
+} from "../revisions/contract.js";
 
 interface PreparedDocumentData {
   mainData: Record<string, unknown>;
@@ -45,6 +51,7 @@ interface SelectQuery extends Promise<unknown[]> {
   orderBy(order: QueryCondition): SelectQuery;
   limit(limit: number): SelectQuery;
   offset(offset: number): SelectQuery;
+  for(strength: "update"): SelectQuery;
 }
 
 interface InsertValuesQuery extends Promise<unknown> {
@@ -1225,6 +1232,14 @@ export async function autosaveRevision(
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
   const db = getDb() as unknown as DrizzleDatabaseLike;
+  const snapshotResult = npAnalyzeRevisionSnapshot(data, config);
+  if (!snapshotResult.ok) {
+    throw new NpValidationError(
+      "Invalid revision snapshot",
+      snapshotResult.issues.map((entry) => ({ field: entry.path, message: entry.message })),
+    );
+  }
+  const snapshot = snapshotResult.value;
 
   const drafts = config.versions?.drafts;
   if (!drafts) {
@@ -1257,110 +1272,103 @@ export async function autosaveRevision(
   // is a write, even if it only lands in np_revisions.
   await assertWriteAccess(config, collection, "update", user, data, originalDoc);
 
-  // Dedup against the latest autosave for this doc.
-  const [latestAutosave] = (await db
-    .select({
-      id: npRevisions.id,
-      version: npRevisions.version,
-      snapshot: npRevisions.snapshot,
-      createdAt: npRevisions.createdAt,
-    })
-    .from(npRevisions)
-    .where(
-      sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, documentId)} and ${eq(npRevisions.status, "autosave")}`,
-    )
-    .orderBy(desc(npRevisions.version))
-    .limit(1)) as Array<{
-    id: string;
-    version: number;
-    snapshot: Record<string, unknown> | null;
-    createdAt: Date;
-  }>;
-  if (latestAutosave && stableJson(latestAutosave.snapshot) === stableJson(data)) {
-    return {
-      id: latestAutosave.id,
-      version: latestAutosave.version,
-      status: "autosave",
-      createdAt: latestAutosave.createdAt,
-      reused: true,
-    };
-  }
-
   const maxRevisions =
     typeof config.versions === "object" && config.versions.max !== undefined
       ? config.versions.max
       : undefined;
 
   const inserted = await db.transaction(async (tx) => {
-    const [revisionCount] = (await tx
-      .select({ total: count() })
+    // Serialize all revision writers for this document. Without the row
+    // lock two concurrent autosaves can allocate the same next version.
+    await tx
+      .select({ id: getTableColumn(table, "id") })
+      .from(table)
+      .where(eq(getTableColumn(table, "id"), documentId))
+      .limit(1)
+      .for("update");
+
+    const [latestAutosave] = (await tx
+      .select({
+        id: npRevisions.id,
+        version: npRevisions.version,
+        snapshot: npRevisions.snapshot,
+        createdAt: npRevisions.createdAt,
+      })
       .from(npRevisions)
       .where(
-        sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, documentId)}`,
-      )) as Array<{ total: number | string }>;
-    const nextVersion = Number(revisionCount?.total ?? 0) + 1;
-    const createdAt = new Date();
-
-    await tx.insert(npRevisions).values({
-      collection,
-      documentId,
-      version: nextVersion,
-      status: "autosave",
-      snapshot: data,
-      changedFields: getChangedFields(data, originalDoc, "update"),
-      authorId: user.id,
-      createdAt,
-    });
-
-    if (maxRevisions !== undefined && maxRevisions > 0 && nextVersion > maxRevisions) {
-      const overflow = nextVersion - maxRevisions;
-      const toDelete = (await tx
-        .select({ id: npRevisions.id })
-        .from(npRevisions)
-        .where(
-          sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, documentId)}`,
-        )
-        .orderBy(asc(npRevisions.version))
-        .limit(overflow)) as Array<{ id: string }>;
-      if (toDelete.length > 0) {
-        const ids = toDelete.map((r) => r.id);
-        await tx.delete(npRevisions).where(sql`${npRevisions.id} = any(${ids}::uuid[])`);
+        sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, documentId)} and ${eq(npRevisions.status, "autosave")}`,
+      )
+      .orderBy(desc(npRevisions.version))
+      .limit(1)) as Array<{
+      id: string;
+      version: number;
+      snapshot: unknown;
+      createdAt: Date;
+    }>;
+    if (latestAutosave) {
+      const persisted = npAnalyzeRevisionSnapshot(latestAutosave.snapshot, config);
+      if (!persisted.ok) {
+        throw new NpRevisionContractError("Invalid persisted revision snapshot", persisted.issues);
+      }
+      if (npRevisionSnapshotKey(persisted.value) === npRevisionSnapshotKey(snapshot)) {
+        return {
+          id: latestAutosave.id,
+          version: latestAutosave.version,
+          createdAt: latestAutosave.createdAt,
+          reused: true,
+        };
       }
     }
 
-    // Read back the row we just inserted to get its generated id —
-    // `tx.insert(...).returning(...)` isn't part of our Drizzle adapter
-    // interface, so a follow-up SELECT is the simplest portable path.
-    const [row] = (await tx
-      .select({ id: npRevisions.id })
+    const [revisionStats] = (await tx
+      .select({ total: count(), maxVersion: max(npRevisions.version) })
       .from(npRevisions)
       .where(
-        sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, documentId)} and ${eq(npRevisions.version, nextVersion)}`,
-      )
-      .limit(1)) as Array<{ id: string }>;
+        sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, documentId)}`,
+      )) as Array<{ total: number | string; maxVersion: number | string | null }>;
+    const nextVersion = Number(revisionStats?.maxVersion ?? 0) + 1;
+    const createdAt = new Date();
 
-    return { id: row?.id ?? "", version: nextVersion, createdAt };
+    const [row] = (await tx
+      .insert(npRevisions)
+      .values({
+        collection,
+        documentId,
+        version: nextVersion,
+        status: "autosave",
+        snapshot,
+        changedFields: getChangedFields(snapshot, originalDoc, "update"),
+        authorId: user.id,
+        createdAt,
+      })
+      .returning()) as Array<{ id: string }>;
+    if (!row?.id) throw new Error("Revision insert did not return an id");
+
+    if (maxRevisions !== undefined && maxRevisions > 0) {
+      const overflow = Number(revisionStats?.total ?? 0) + 1 - maxRevisions;
+      if (overflow > 0) {
+        const toDelete = (await tx
+          .select({ id: npRevisions.id })
+          .from(npRevisions)
+          .where(
+            sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, documentId)}`,
+          )
+          .orderBy(asc(npRevisions.version))
+          .limit(overflow)) as Array<{ id: string }>;
+        if (toDelete.length > 0) {
+          const ids = toDelete.map((r) => r.id);
+          await tx.delete(npRevisions).where(inArray(npRevisions.id, ids));
+        }
+      }
+    }
+
+    return { id: row.id, version: nextVersion, createdAt, reused: false };
   });
   // `registration` reference silences the unused-binding lint; we keep
   // the lookup early so misconfigured collections fail fast.
   void registration;
 
-  return { ...inserted, status: "autosave", reused: false };
-}
-
-function stableJson(value: unknown): string {
-  // JSON.stringify with deterministic key ordering is enough for dedup —
-  // autosave payloads are user-edited records, not arbitrary structures.
-  return JSON.stringify(value, (_key, val) => {
-    if (val && typeof val === "object" && !Array.isArray(val)) {
-      const sorted: Record<string, unknown> = {};
-      for (const k of Object.keys(val).sort()) {
-        sorted[k] = (val as Record<string, unknown>)[k];
-      }
-      return sorted;
-    }
-    return val;
-  });
+  return { ...inserted, status: "autosave" };
 }
 
 export async function deleteDocument(
@@ -1679,6 +1687,11 @@ async function deleteDocumentImpl(
       .delete(npReports)
       .where(
         sql`${eq(getTableColumn(npReports as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npReports as unknown as PgTable, "targetId"), docId)}`,
+      );
+    await tx
+      .delete(npRevisions)
+      .where(
+        sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, docId)}`,
       );
     await tx.delete(table).where(eq(getTableColumn(table, "id"), docId));
   };
@@ -2078,18 +2091,29 @@ async function insertRevision(
   maxRevisions?: number,
 ): Promise<void> {
   const revisionConditions = sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, documentId)}`;
-  const [revisionCount] = (await tx
-    .select({ total: count() })
+  const snapshotResult = npAnalyzeRevisionSnapshot(data, getCollectionConfig(collection));
+  if (!snapshotResult.ok) {
+    throw new NpValidationError(
+      "Invalid revision snapshot",
+      snapshotResult.issues.map((entry) => ({ field: entry.path, message: entry.message })),
+    );
+  }
+  const snapshot = snapshotResult.value;
+  const [revisionStats] = (await tx
+    .select({ total: count(), maxVersion: max(npRevisions.version) })
     .from(npRevisions)
-    .where(revisionConditions)) as Array<{ total: number | string }>;
+    .where(revisionConditions)) as Array<{
+    total: number | string;
+    maxVersion: number | string | null;
+  }>;
 
   await tx.insert(npRevisions).values({
     collection,
     documentId,
-    version: Number(revisionCount?.total ?? 0) + 1,
+    version: Number(revisionStats?.maxVersion ?? 0) + 1,
     status,
-    snapshot: data,
-    changedFields: getChangedFields(data, originalDoc, operation),
+    snapshot,
+    changedFields: getChangedFields(snapshot, originalDoc, operation),
     // `authorId` references np_users; member-authored revisions
     // store null and the audit log carries the actual member id.
     authorId: user?.id ?? null,
@@ -2100,7 +2124,7 @@ async function insertRevision(
   // accumulates more than `maxRevisions` rows. Runs in the same tx as the
   // insert so the row count is stable against races.
   if (maxRevisions !== undefined && maxRevisions > 0) {
-    const currentCount = Number(revisionCount?.total ?? 0) + 1;
+    const currentCount = Number(revisionStats?.total ?? 0) + 1;
     const overflow = currentCount - maxRevisions;
     if (overflow > 0) {
       // Select the oldest `overflow` revision ids and delete them. Postgres
@@ -2115,7 +2139,7 @@ async function insertRevision(
 
       if (toDelete.length > 0) {
         const ids = toDelete.map((r) => r.id);
-        await tx.delete(npRevisions).where(sql`${npRevisions.id} = any(${ids}::uuid[])`);
+        await tx.delete(npRevisions).where(inArray(npRevisions.id, ids));
       }
     }
   }
@@ -2588,15 +2612,26 @@ function isUuid(value: string): boolean {
 }
 
 function getChangedFields(
-  data: Record<string, unknown>,
+  data: NpRevisionSnapshot,
   originalDoc: Record<string, unknown> | null,
   operation: NpSaveResult["operation"],
 ): string[] {
   if (operation === "create" || !originalDoc) {
-    return Object.keys(data);
+    return Object.keys(data).sort();
   }
 
-  return Object.keys(data).filter((field) => !Object.is(data[field], originalDoc[field]));
+  return Object.keys(data)
+    .filter((field) => {
+      try {
+        return (
+          npRevisionSnapshotKey({ value: data[field] }) !==
+          npRevisionSnapshotKey({ value: originalDoc[field] as never })
+        );
+      } catch {
+        return true;
+      }
+    })
+    .sort();
 }
 
 function combineConditions(conditions: QueryCondition[]): ReturnType<typeof sql> | undefined {

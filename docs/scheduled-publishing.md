@@ -156,9 +156,16 @@ When `versions.drafts.autosave === true`:
   `updatedAt` stay untouched, so plugins hooking on writes don't fire on
   every keystroke.
 - Identical consecutive snapshots dedup at the server: the response
-  carries `reused: true` and reuses the previous revision's id/version.
+  carries `saved: false` and identifies the existing row with
+  `revisionId` / `version`.
+- Autosave accepts partial in-flight documents, but every present field must
+  follow the collection's recursive wire contract. Unknown fields, malformed
+  rich text or blocks, non-JSON values, and oversized snapshots fail before
+  persistence.
 - Autosave revisions count toward `versions.max` and rotate out the
-  oldest revisions (drafts + published + autosave) when the cap is hit.
+  oldest revisions (drafts + published + autosave) when the cap is hit. Version
+  numbers remain monotonic after pruning and concurrent autosaves serialize on
+  the document row.
 - When the latest autosave is newer than the saved document and differs
   from the saved form defaults, the admin edit view shows an **Autosave
   recovery available** banner. Operators can review the changed fields,
@@ -171,6 +178,9 @@ the normal manual save or the next autosave loop persists the operator's
 decision. The revisions panel still surfaces autosave entries with a
 distinct chip; restoring one writes a new draft revision via the normal
 restore path.
+
+See [Revisions and autosave](./revisions.md) for the exact snapshot, response,
+restore, and doctor contracts.
 
 The header shows a small **Autosaved 12s ago** label; transitions to
 **Autosaving…** while a request is in flight and **Autosave error: …**

@@ -7,23 +7,16 @@ import type { NpAuthUser, NpSaveResult } from "../config/types.js";
 import { getCollectionConfig } from "./registry.js";
 import { getDocumentById, saveDocument } from "./pipeline.js";
 import { getDb } from "../db/runtime.js";
+import {
+  NpRevisionContractError,
+  npAnalyzeRevision,
+  npAnalyzeRevisionSummary,
+  type NpRevision,
+  type NpRevisionStatus,
+  type NpRevisionSummary,
+} from "../revisions/contract.js";
 
-export type NpRevisionStatus = "draft" | "published" | "autosave";
-
-export interface NpRevisionSummary {
-  id: string;
-  collection: string;
-  documentId: string;
-  version: number;
-  status: NpRevisionStatus;
-  changedFields: string[];
-  authorId: string | null;
-  createdAt: Date;
-}
-
-export interface NpRevision extends NpRevisionSummary {
-  snapshot: Record<string, unknown>;
-}
+export type { NpRevision, NpRevisionStatus, NpRevisionSummary } from "../revisions/contract.js";
 
 export interface NpRevisionListOptions {
   limit?: number;
@@ -34,6 +27,11 @@ export interface NpRevisionListResult {
   revisions: NpRevisionSummary[];
   total: number;
 }
+
+export type NpRevisionSnapshotValidator = (
+  collection: string,
+  snapshot: NpRevision["snapshot"],
+) => void | Promise<void>;
 
 interface DrizzleDb {
   select: NodePgDatabase<Record<string, unknown>>["select"];
@@ -55,7 +53,7 @@ function assertVersionsEnabled(collection: string): void {
     throw new NpValidationError("Revisions not enabled", [
       {
         field: "collection",
-        message: `Collection "${collection}" has no versions config — enable versions.drafts to persist revisions.`,
+        message: `Collection "${collection}" has no versions config — configure versions to persist revisions.`,
       },
     ]);
   }
@@ -97,16 +95,6 @@ async function assertReadAccess(
   if (user.role !== "admin" && user.role !== "editor") {
     throw new NpForbiddenError(collection, "read-revision");
   }
-}
-
-function toRevisionSnapshot(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new NpValidationError("Invalid revision snapshot", [
-      { field: "snapshot", message: "Snapshot must be a JSON object" },
-    ]);
-  }
-
-  return value as Record<string, unknown>;
 }
 
 export async function listRevisions(
@@ -162,11 +150,16 @@ export async function listRevisions(
     .from(npRevisions)
     .where(filter)) as Array<{ total: number | string }>;
 
+  const revisions = rows.map((row) => {
+    const result = npAnalyzeRevisionSummary(row);
+    if (!result.ok) {
+      throw new NpRevisionContractError("Invalid persisted revision summary", result.issues);
+    }
+    return result.value;
+  });
+
   return {
-    revisions: rows.map((row) => ({
-      ...row,
-      changedFields: row.changedFields ?? [],
-    })),
+    revisions,
     total: Number(totalRow?.total ?? 0),
   };
 }
@@ -201,7 +194,7 @@ export async function getRevision(
     version: number;
     status: NpRevisionStatus;
     changedFields: string[];
-    snapshot: Record<string, unknown>;
+    snapshot: unknown;
     authorId: string | null;
     createdAt: Date;
   }>;
@@ -210,17 +203,11 @@ export async function getRevision(
     throw new NpNotFoundError("revision", revisionId);
   }
 
-  return {
-    id: row.id,
-    collection: row.collection,
-    documentId: row.documentId,
-    version: row.version,
-    status: row.status,
-    changedFields: row.changedFields ?? [],
-    snapshot: toRevisionSnapshot(row.snapshot),
-    authorId: row.authorId,
-    createdAt: row.createdAt,
-  };
+  const result = npAnalyzeRevision(row, getCollectionConfig(collection));
+  if (!result.ok) {
+    throw new NpRevisionContractError("Invalid persisted revision", result.issues);
+  }
+  return result.value;
 }
 
 export async function restoreRevision(
@@ -228,8 +215,10 @@ export async function restoreRevision(
   documentId: string,
   revisionId: string,
   user: NpAuthUser,
+  validateSnapshot?: NpRevisionSnapshotValidator,
 ): Promise<NpSaveResult> {
   const revision = await getRevision(collection, documentId, revisionId, user);
+  await validateSnapshot?.(collection, revision.snapshot);
 
   return saveDocument(collection, documentId, revision.snapshot, user, {
     status: revision.status === "published" ? "published" : "draft",

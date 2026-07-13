@@ -1,4 +1,9 @@
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
+import {
+  npAnalyzeAutosaveRevisionWireResult,
+  npAnalyzeRevisionWire,
+  npAnalyzeRevisionWireList,
+} from "@nexpress/core/revisions";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -20,6 +25,9 @@ import {
 } from "@/app/api/collections/[slug]/[id]/route";
 import { POST as bulkPOST } from "@/app/api/collections/[slug]/bulk/route";
 import { POST as autosavePOST } from "@/app/api/collections/[slug]/[id]/autosave/route";
+import { GET as revisionsGET } from "@/app/api/collections/[slug]/[id]/revisions/route";
+import { GET as revisionGET } from "@/app/api/collections/[slug]/[id]/revisions/[revisionId]/route";
+import { GET as openApiGET } from "@/app/api/openapi.json/route";
 import { POST as publishScheduledPOST } from "@/app/api/internal/publish-scheduled/route";
 
 describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
@@ -233,7 +241,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
       failed: Array<{ id: string; error: string }>;
     }>(bulkRes);
     expect(status).toBe(200);
-    expect(bulkBody.succeeded).toHaveLength(3);
+    expect(bulkBody.succeeded, JSON.stringify(bulkBody.failed)).toHaveLength(3);
     expect(bulkBody.failed).toHaveLength(0);
 
     const firstAfter = await idGET(
@@ -332,15 +340,12 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
       }),
       { params: Promise.resolve({ slug: "posts", id: created.id }) },
     );
-    const auto = await readJson<{
-      id: string;
-      version: number;
-      status: string;
-      reused: boolean;
-    }>(autosaveRes);
+    const auto = await readJson<unknown>(autosaveRes);
     expect(auto.status).toBe(200);
-    expect(auto.body.status).toBe("autosave");
-    expect(auto.body.reused).toBe(false);
+    expect(npAnalyzeAutosaveRevisionWireResult(auto.body)).toMatchObject({
+      ok: true,
+      value: { saved: true },
+    });
 
     // The main doc must be unchanged — autosave persists into np_revisions only.
     // Anonymous reads now hide drafts (#56), so re-fetch with the
@@ -384,8 +389,10 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
       }),
       ctx,
     );
-    const firstBody = await readJson<{ reused: boolean; version: number }>(first);
-    expect(firstBody.body.reused).toBe(false);
+    const firstBody = await readJson<{ saved: boolean; revisionId: string; version: number }>(
+      first,
+    );
+    expect(firstBody.body.saved).toBe(true);
 
     const second = await autosavePOST(
       buildRequest(`/api/collections/posts/${created.id}/autosave`, {
@@ -395,9 +402,153 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
       }),
       ctx,
     );
-    const secondBody = await readJson<{ reused: boolean; version: number }>(second);
-    expect(secondBody.body.reused).toBe(true);
+    const secondBody = await readJson<{ saved: boolean; revisionId: string; version: number }>(
+      second,
+    );
+    expect(secondBody.body.saved).toBe(false);
     expect(secondBody.body.version).toBe(firstBody.body.version);
+    expect(secondBody.body.revisionId).toBe(firstBody.body.revisionId);
+  });
+
+  it("autosave: accepts partial drafts and rejects malformed present fields", async () => {
+    const session = await seedUser({ role: "editor" });
+    const createRes = await listPOST(
+      buildRequest("/api/collections/posts", {
+        method: "POST",
+        session,
+        body: {
+          title: "Partial autosave",
+          slug: "partial-autosave",
+          content: npCreateEmptyRichTextContent(),
+          _status: "draft",
+        },
+      }),
+      slugParams("posts"),
+    );
+    const { body: created } = await readJson<{ id: string }>(createRes);
+    const path = `/api/collections/posts/${created.id}/autosave`;
+    const params = idParams("posts", created.id);
+
+    const partial = await autosavePOST(
+      buildRequest(path, { method: "POST", session, body: { title: "" } }),
+      params,
+    );
+    expect(partial.status).toBe(200);
+
+    for (const body of [{ unknown: true }, { content: { root: {} } }, { visibility: "yes" }]) {
+      const invalid = await autosavePOST(
+        buildRequest(path, { method: "POST", session, body }),
+        params,
+      );
+      expect(invalid.status).toBe(400);
+    }
+  });
+
+  it("autosave: serializes concurrent writers into unique monotonic versions", async () => {
+    const session = await seedUser({ role: "editor" });
+    const createRes = await listPOST(
+      buildRequest("/api/collections/posts", {
+        method: "POST",
+        session,
+        body: {
+          title: "Concurrent autosave",
+          slug: "concurrent-autosave",
+          content: npCreateEmptyRichTextContent(),
+          _status: "draft",
+        },
+      }),
+      slugParams("posts"),
+    );
+    const { body: created } = await readJson<{ id: string }>(createRes);
+    const path = `/api/collections/posts/${created.id}/autosave`;
+
+    const responses = await Promise.all(
+      ["Writer A", "Writer B"].map((title) =>
+        autosavePOST(
+          buildRequest(path, { method: "POST", session, body: { title } }),
+          idParams("posts", created.id),
+        ),
+      ),
+    );
+    const bodies = await Promise.all(
+      responses.map((response) =>
+        readJson<{ saved: boolean; revisionId: string; version: number }>(response),
+      ),
+    );
+    expect(bodies.every((entry) => entry.status === 200 && entry.body.saved)).toBe(true);
+    expect(bodies.map((entry) => entry.body.version).sort((a, b) => a - b)).toEqual([2, 3]);
+    expect(new Set(bodies.map((entry) => entry.body.revisionId)).size).toBe(2);
+  });
+
+  it("revisions: returns exact list/detail wire contracts", async () => {
+    const session = await seedUser({ role: "editor" });
+    const createRes = await listPOST(
+      buildRequest("/api/collections/posts", {
+        method: "POST",
+        session,
+        body: {
+          title: "Revision wire",
+          slug: "revision-wire",
+          content: npCreateEmptyRichTextContent(),
+          _status: "draft",
+        },
+      }),
+      slugParams("posts"),
+    );
+    const { body: created } = await readJson<{ id: string }>(createRes);
+    const listResponse = await revisionsGET(
+      buildRequest(`/api/collections/posts/${created.id}/revisions`, { session }),
+      idParams("posts", created.id),
+    );
+    const list = await readJson<unknown>(listResponse);
+    const analyzedList = npAnalyzeRevisionWireList(list.body);
+    expect(analyzedList).toMatchObject({ ok: true });
+    if (!analyzedList.ok) return;
+
+    const revisionId = analyzedList.value.revisions[0]?.id;
+    expect(revisionId).toBeDefined();
+    const detailResponse = await revisionGET(
+      buildRequest(`/api/collections/posts/${created.id}/revisions/${revisionId}`, { session }),
+      { params: Promise.resolve({ slug: "posts", id: created.id, revisionId: revisionId ?? "" }) },
+    );
+    const detail = await readJson<unknown>(detailResponse);
+    expect(npAnalyzeRevisionWire(detail.body)).toMatchObject({ ok: true });
+  });
+
+  it("revisions: publishes the closed collection-derived snapshot contract in OpenAPI", async () => {
+    const response = await openApiGET();
+    const { body } = await readJson<{
+      paths: Record<
+        string,
+        {
+          post?: { requestBody?: { content: { "application/json": { schema: unknown } } } };
+          get?: {
+            responses: Record<string, { content: { "application/json": { schema: unknown } } }>;
+          };
+        }
+      >;
+    }>(response);
+    const autosave = body.paths["/api/collections/posts/{id}/autosave"]?.post;
+    const autosaveSchema = autosave?.requestBody?.content["application/json"].schema;
+    expect(autosaveSchema).toEqual(
+      expect.objectContaining({
+        type: "object",
+        additionalProperties: false,
+        properties: expect.objectContaining({
+          title: expect.any(Object),
+          content: expect.any(Object),
+        }),
+      }),
+    );
+    expect(autosaveSchema).not.toHaveProperty("required");
+    const detail = body.paths["/api/collections/posts/{id}/revisions/{revisionId}"]?.get;
+    expect(detail?.responses["200"]?.content["application/json"].schema).toEqual(
+      expect.objectContaining({
+        additionalProperties: false,
+        required: expect.arrayContaining(["snapshot", "createdAt", "changedFields"]),
+      }),
+    );
+    expect(body.paths["/api/collections/pages/{id}/autosave"]).toBeUndefined();
   });
 
   it("cancel schedule: PATCH _status=draft + publishedAt=null returns to draft", async () => {

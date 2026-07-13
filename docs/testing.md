@@ -146,7 +146,7 @@ describe.skipIf(skipIfNoTestDb())("my thing", () => {
 | `plugin-storage.integration.test.ts` (6)     | ctx.storage set/get/delete/list/has + TTL expiry via `np_plugin_storage`                                                                                                                                                                                         |
 | `plugin-persistence.integration.test.ts` (5) | syncPluginRegistrations / updatePluginState upsert + idempotence                                                                                                                                                                                                 |
 | `reset-token.integration.test.ts` (5)        | create→consume flow: password hash rotates, tokenVersion bumps, sessions delete                                                                                                                                                                                  |
-| `pipeline.integration.test.ts` (4)           | saveDocument create/update, revision versioning, findDocuments round-trip, deleteDocument                                                                                                                                                                        |
+| `pipeline.integration.test.ts`               | saveDocument create/update, monotonic revision pruning, findDocuments round-trip, and transactional document/revision deletion                                                                                                                                   |
 | `scheduled.integration.test.ts` (8)          | pipeline coerces published+future → scheduled; framework-managed `publishedAt` columns participate in scheduling; publishScheduledDocuments flips due rows, fires afterUpdate + afterPublish with canonical scheduler payloads and the full document, idempotent |
 | `ctx-settings.integration.test.ts` (6)       | settings.getSite/getPlugin/setPlugin round-trip; theme.setTokens merges; ON CONFLICT prevents row duplication; capability gate                                                                                                                                   |
 
@@ -160,13 +160,13 @@ losing its void wrapper.
 
 **API routes (18+ tests, `apps/web/tests/`):**
 
-| File                                                    | Covers                                                                                           |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `health.integration.test.ts` (1)                        | `/api/health` smoke (no DB)                                                                      |
-| `auth.integration.test.ts` (3)                          | `/api/auth/me` with valid/missing/tampered session cookie                                        |
-| `collections.integration.test.ts` (3)                   | `/api/collections/[slug]` + `/[id]` — POST/GET round-trip, PATCH, DELETE, 401 without auth       |
-| `import-export.integration.test.ts` (7)                 | export full / partial / unknown-slug / non-admin; import dry-run / partial filter / unknown-slug |
-| `translation-interchange-admin.integration.test.ts` (4) | Admin XLIFF/PO export, preview/apply, capability errors, and bounded upload rejection            |
+| File                                                    | Covers                                                                                                            |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `health.integration.test.ts` (1)                        | `/api/health` smoke (no DB)                                                                                       |
+| `auth.integration.test.ts` (3)                          | `/api/auth/me` with valid/missing/tampered session cookie                                                         |
+| `collections.integration.test.ts`                       | Collection CRUD plus exact revision/autosave wire contracts, partial validation, concurrency, and OpenAPI schemas |
+| `import-export.integration.test.ts` (7)                 | export full / partial / unknown-slug / non-admin; import dry-run / partial filter / unknown-slug                  |
+| `translation-interchange-admin.integration.test.ts` (4) | Admin XLIFF/PO export, preview/apply, capability errors, and bounded upload rejection                             |
 
 Run the API suite with the same `TEST_DATABASE_URL` via
 `pnpm --filter @nexpress/web test:integration` or the root

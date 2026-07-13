@@ -41,6 +41,7 @@ export type {
   NpRevisionStatus,
   NpRevisionListOptions,
   NpRevisionListResult,
+  NpRevisionSnapshotValidator,
 } from "./revisions.js";
 export {
   searchCollections,

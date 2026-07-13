@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-12 (site identity now has one canonical `np_sites`
+**Last refreshed:** 2026-07-13 (revision and autosave snapshots now share one
+closed collection-aware JSON contract across persistence, API/OpenAPI, Admin,
+restore, pruning, deletion, and doctor diagnostics.)
+
+**Earlier:** 2026-07-12 (site identity now has one canonical `np_sites`
 owner and framework settings use a closed, fail-closed registry across core,
 Admin, plugins, backup import/export, OpenAPI, and doctor.)
 
@@ -229,6 +233,7 @@ cli  (standalone scaffolder, no workspace deps)
 | `@nexpress/core/media-contract` | client-safe media records, variants, processing and API validators    |
 | `@nexpress/core/navigation`     | client-safe navigation wire/resolved types and validators             |
 | `@nexpress/core/observability`  | logger, error reporter, `verifyStartupSafety`                         |
+| `@nexpress/core/revisions`      | client-safe revision snapshot, persisted-row, and API wire contracts  |
 | `@nexpress/core/seo`            | sitemap, page metadata, Atom feeds, JSON-LD                           |
 | `@nexpress/core/settings`       | client-safe site identity, settings types, and validators             |
 | `@nexpress/core/theme`          | client-safe theme token inventory, validators, and merge helpers      |
@@ -282,6 +287,15 @@ Collections are declared with `defineCollection({ slug, fields, ... })` and regi
 Adding or changing a collection's fields requires regenerating the schema and running a migration. The Drizzle schema codegen step (`pnpm schema:gen`, which writes `src/db/generated/collections.ts`) runs automatically inside `pnpm dev` whenever a file under `src/collections/` or `src/nexpress.config.ts` changes (#271). The Postgres migration is still manual (`pnpm db:generate && pnpm db:migrate`) so the SQL gets a human review before it touches the DB. A user project's collections live in `src/collections/` (see the `create-nexpress` scaffold); for this monorepo itself, collections for the reference app live in `apps/web/src/collections/`.
 
 The data pipeline (`packages/core/src/collections/pipeline.ts`) handles access control, hook invocation, validation via generated Zod schemas (`validation.ts`), revision tracking, media-ref tracking, and search-vector builds for every document write.
+
+Revision snapshots use the client-safe `@nexpress/core/revisions` contract.
+Normal saves and partial autosaves normalize bounded JSON, validate every
+present collection field, and explicitly serialize API timestamps. Autosave
+locks the document row for atomic dedup/version allocation; pruning never
+reuses version numbers. Detail and restore add live block-definition validation
+at the app boundary, doctor reports malformed/orphan rows, and document deletion
+removes revision history in the same transaction. Author guide:
+`docs/revisions.md`.
 
 ### Plugin model (v1)
 

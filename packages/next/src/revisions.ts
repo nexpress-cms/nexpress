@@ -1,18 +1,29 @@
 import {
   NpValidationError,
   type NpAuthUser,
-  type NpRevision,
   type NpRevisionListOptions,
-  type NpRevisionListResult,
   type NpSaveResult,
   listRevisions as coreListRevisions,
   getRevision as coreGetRevision,
   restoreRevision as coreRestoreRevision,
 } from "@nexpress/core";
+import {
+  npSerializeRevision,
+  npSerializeRevisionSummary,
+  type NpRevisionSnapshot,
+  type NpRevisionWire,
+  type NpRevisionWireList,
+} from "@nexpress/core/revisions";
 
 export interface RevisionHelpersOptions {
   /** Called before every revisions operation — wire DB/plugins here. */
   ensureReady(): void | Promise<void>;
+  /** App-owned validation for definition-aware block content. */
+  validateSnapshot?(
+    this: void,
+    collection: string,
+    snapshot: NpRevisionSnapshot,
+  ): void | Promise<void>;
 }
 
 export type RevisionHelpers = {
@@ -26,14 +37,14 @@ export type RevisionHelpers = {
     documentId: string,
     options: NpRevisionListOptions,
     user: NpAuthUser | null,
-  ) => Promise<NpRevisionListResult>;
+  ) => Promise<NpRevisionWireList>;
   readonly getDocumentRevision: (
     this: void,
     collection: string,
     documentId: string,
     revisionId: string,
     user: NpAuthUser | null,
-  ) => Promise<NpRevision>;
+  ) => Promise<NpRevisionWire>;
   readonly restoreDocumentRevision: (
     this: void,
     collection: string,
@@ -47,18 +58,19 @@ function parsePositiveInt(
   value: string | null,
   field: string,
   max?: number,
+  min = 0,
 ): number | undefined {
   if (value === null) return undefined;
 
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 0 || (max !== undefined && parsed > max)) {
+  if (!Number.isInteger(parsed) || parsed < min || (max !== undefined && parsed > max)) {
     throw new NpValidationError("Invalid query parameters", [
       {
         field,
         message:
           max === undefined
-            ? "Must be a non-negative integer"
-            : `Must be a non-negative integer no greater than ${max}`,
+            ? `Must be an integer no smaller than ${min}`
+            : `Must be an integer between ${min} and ${max}`,
       },
     ]);
   }
@@ -73,7 +85,7 @@ export function createRevisionHelpers(options: RevisionHelpersOptions): Revision
 
   const parseRevisionListOptions = (searchParams: URLSearchParams): NpRevisionListOptions => {
     return {
-      limit: parsePositiveInt(searchParams.get("limit"), "limit", 100),
+      limit: parsePositiveInt(searchParams.get("limit"), "limit", 100, 1),
       offset: parsePositiveInt(searchParams.get("offset"), "offset"),
     };
   };
@@ -83,9 +95,13 @@ export function createRevisionHelpers(options: RevisionHelpersOptions): Revision
     documentId: string,
     opts: NpRevisionListOptions,
     user: NpAuthUser | null,
-  ): Promise<NpRevisionListResult> => {
+  ): Promise<NpRevisionWireList> => {
     await ready();
-    return coreListRevisions(collection, documentId, opts, user);
+    const result = await coreListRevisions(collection, documentId, opts, user);
+    return {
+      revisions: result.revisions.map(npSerializeRevisionSummary),
+      total: result.total,
+    };
   };
 
   const getDocumentRevision = async (
@@ -93,9 +109,11 @@ export function createRevisionHelpers(options: RevisionHelpersOptions): Revision
     documentId: string,
     revisionId: string,
     user: NpAuthUser | null,
-  ): Promise<NpRevision> => {
+  ): Promise<NpRevisionWire> => {
     await ready();
-    return coreGetRevision(collection, documentId, revisionId, user);
+    const revision = await coreGetRevision(collection, documentId, revisionId, user);
+    await options.validateSnapshot?.(collection, revision.snapshot);
+    return npSerializeRevision(revision);
   };
 
   const restoreDocumentRevision = async (
@@ -105,7 +123,7 @@ export function createRevisionHelpers(options: RevisionHelpersOptions): Revision
     user: NpAuthUser,
   ): Promise<NpSaveResult> => {
     await ready();
-    return coreRestoreRevision(collection, documentId, revisionId, user);
+    return coreRestoreRevision(collection, documentId, revisionId, user, options.validateSnapshot);
   };
 
   return {

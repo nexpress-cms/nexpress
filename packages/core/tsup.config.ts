@@ -46,6 +46,8 @@ export default defineConfig({
     navigation: "src/navigation/index.ts",
     observability: "src/observability/index.ts",
     "rate-limit": "src/rate-limit/index.ts",
+    // Pure, client-safe revision snapshot and API wire contract.
+    revisions: "src/revisions/index.ts",
     routes: "src/routes/index.ts",
     seo: "src/seo/index.ts",
     // Pure, client-safe site identity and framework settings contracts.
