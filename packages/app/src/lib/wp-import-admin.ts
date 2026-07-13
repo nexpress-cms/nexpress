@@ -27,7 +27,10 @@ import {
   type NpImportRunResumeState,
   type NpImportRunStatus,
 } from "@nexpress/core";
-import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
+import {
+  npRequireJobsEnabledFlag,
+  type NpWordPressImportApplyJobData,
+} from "@nexpress/core/jobs-contract";
 import {
   applyBundle,
   emptyResumeState,
@@ -50,6 +53,8 @@ import {
   WpImportConfigError,
 } from "@nexpress/wp-import";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt } from "drizzle-orm";
+
+import { npGetReloadSafeHandler } from "./reload-safe-handler";
 
 const MAX_LIST_ITEMS = 250;
 const MAX_LOG_LINES = 200;
@@ -562,17 +567,19 @@ export async function sweepStaleWordPressImportRuns(
   };
 }
 
-let wordPressImportJobsRegistered = false;
-
 export function registerWordPressImportJobs(): void {
-  if (wordPressImportJobsRegistered) return;
-  registerJobHandler(WORDPRESS_IMPORT_APPLY_JOB_TYPE, async (data) => {
-    const run = await executeWordPressImportRun(data.runId);
-    if (run.status === "failed") {
-      throw new Error(run.error ?? `WordPress import run ${run.id} failed`);
-    }
-  });
-  wordPressImportJobsRegistered = true;
+  registerJobHandler(
+    WORDPRESS_IMPORT_APPLY_JOB_TYPE,
+    npGetReloadSafeHandler<NpWordPressImportApplyJobData>(
+      "np.app.jobs.import.wordpress-apply",
+      async (data) => {
+        const run = await executeWordPressImportRun(data.runId);
+        if (run.status === "failed") {
+          throw new Error(run.error ?? `WordPress import run ${run.id} failed`);
+        }
+      },
+    ),
+  );
 }
 
 export async function executeWordPressImportRun(runId: string): Promise<WpImportAdminRun> {
