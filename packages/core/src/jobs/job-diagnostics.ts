@@ -1,25 +1,15 @@
-import { countJobLogs, listJobLogs, type NpJobLogEntry } from "./job-log.js";
-import type { NpJobListOptions, NpJobQueue, NpJobState, NpJobSummary } from "./queue.js";
+import {
+  NP_JOB_FAILURE_STATES,
+  npRequireJobListWire,
+  npSerializeJobLogEntry,
+  type NpJobFailureState,
+  type NpJobLogEntry,
+  type NpRecentJobFailure,
+} from "../jobs-contract/index.js";
+import { countJobLogs, listJobLogs } from "./job-log.js";
+import type { NpJobListOptions, NpJobQueue, NpJobSummary } from "./queue.js";
 
-export type NpRecentJobFailureState = Extract<
-  NpJobState,
-  "failed" | "expired" | "retry" | "cancelled"
->;
-
-export interface NpRecentJobFailure {
-  id: string;
-  name: string;
-  state: NpRecentJobFailureState;
-  source?: "live" | "archive";
-  retryCount?: number;
-  output?: string | null;
-  createdOn: string;
-  startedOn?: string | null;
-  completedOn?: string | null;
-  logCount: number;
-  lastLog: NpJobLogEntry | null;
-  logError?: string;
-}
+export type NpRecentJobFailureState = NpJobFailureState;
 
 export interface NpRecentJobFailuresOptions {
   /** Default 5, max 20. */
@@ -42,13 +32,30 @@ export async function listRecentJobFailures(
   queue: NpJobQueue | null | undefined,
   options: NpRecentJobFailuresOptions = {},
 ): Promise<NpRecentJobFailuresResult> {
+  requireExactFailureOptions(options);
   if (!queue || typeof queue.listJobs !== "function") {
     return { supported: false, failures: [] };
   }
 
   const listJobs = (listOptions: NpJobListOptions) => queue.listJobs!(listOptions);
-  const limit = Math.min(Math.max(1, options.limit ?? 5), 20);
-  const states = options.states?.length ? options.states : DEFAULT_STATES;
+  const limit = options.limit ?? 5;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 20) {
+    throw new Error("job.failures.limit must be an integer between 1 and 20");
+  }
+  if (options.since !== undefined && !(options.since instanceof Date)) {
+    throw new Error("job.failures.since must be a valid Date");
+  }
+  if (options.since && Number.isNaN(options.since.getTime())) {
+    throw new Error("job.failures.since must be a valid Date");
+  }
+  if (options.source !== undefined && options.source !== "live" && options.source !== "archive") {
+    throw new Error("job.failures.source must be live or archive");
+  }
+  if (options.includeLogs !== undefined && typeof options.includeLogs !== "boolean") {
+    throw new Error("job.failures.includeLogs must be boolean");
+  }
+  const states =
+    options.states === undefined ? DEFAULT_STATES : requireFailureStates(options.states);
   const results = await Promise.all(
     states.map((state) =>
       listJobs({
@@ -60,9 +67,14 @@ export async function listRecentJobFailures(
     ),
   );
   const jobs = results
-    .flatMap((result) => result?.jobs ?? [])
-    .filter((job): job is NpJobSummary & { state: NpRecentJobFailureState } =>
-      states.includes(job.state as NpRecentJobFailureState),
+    .flatMap(
+      (result) =>
+        npRequireJobListWire({ supported: true, jobs: result.jobs, total: result.total }).jobs,
+    )
+    .filter(
+      (job): job is NpJobSummary & { state: NpRecentJobFailureState } =>
+        (NP_JOB_FAILURE_STATES as readonly string[]).includes(job.state) &&
+        states.includes(job.state as NpRecentJobFailureState),
     )
     .sort((a, b) => sortTime(b) - sortTime(a))
     .slice(0, limit);
@@ -81,7 +93,7 @@ export async function listRecentJobFailures(
         startedOn: job.startedOn,
         completedOn: job.completedOn,
         logCount: log?.count ?? 0,
-        lastLog: log?.entry ?? null,
+        lastLog: log?.entry ? npSerializeJobLogEntry(log.entry) : null,
         ...(log?.error ? { logError: log.error } : {}),
       };
     }),
@@ -90,9 +102,50 @@ export async function listRecentJobFailures(
   return { supported: true, failures };
 }
 
+export type { NpRecentJobFailure } from "../jobs-contract/index.js";
+
 function sortTime(job: NpJobSummary): number {
-  const time = Date.parse(job.completedOn ?? job.startedOn ?? job.createdOn);
-  return Number.isFinite(time) ? time : 0;
+  return Date.parse(job.completedOn ?? job.startedOn ?? job.createdOn);
+}
+
+function requireFailureStates(value: unknown): NpRecentJobFailureState[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error("job.failures.states must be a non-empty array");
+  }
+  const states = value.map((state) => {
+    if (
+      typeof state !== "string" ||
+      !(NP_JOB_FAILURE_STATES as readonly string[]).includes(state)
+    ) {
+      throw new Error("job.failures.states must contain only failure states");
+    }
+    return state as NpRecentJobFailureState;
+  });
+  if (new Set(states).size !== states.length) {
+    throw new Error("job.failures.states must not contain duplicates");
+  }
+  return states;
+}
+
+function requireExactFailureOptions(value: unknown): void {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("job.failures options must be a plain object");
+  }
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error("job.failures options must be a plain object");
+  }
+  const allowed = new Set(["limit", "states", "since", "source", "includeLogs"]);
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") {
+      throw new Error("job.failures options must not contain symbol properties");
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor?.enumerable || !("value" in descriptor)) {
+      throw new Error(`job.failures.${key} must be an enumerable plain data property`);
+    }
+    if (!allowed.has(key)) throw new Error(`job.failures.${key} is not supported`);
+  }
 }
 
 async function readLatestLog(

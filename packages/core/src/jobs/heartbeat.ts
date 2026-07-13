@@ -1,12 +1,20 @@
 import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
 
-import { desc, eq, gt, lt } from "drizzle-orm";
+import { and, desc, eq, gt, lt } from "drizzle-orm";
 
 import { getDb } from "../db/runtime.js";
-import { readEnvPositiveInt } from "../config/env.js";
 import { npWorkerHeartbeats } from "../db/schema/system.js";
+import {
+  npNormalizeJobData,
+  npRequireJobId,
+  npRequireWorkerHeartbeat,
+  npSerializeWorkerHealthEntry,
+  type NpJobData,
+  type NpWorkerHeartbeat,
+} from "../jobs-contract/index.js";
 import { getLogger } from "../observability/logger.js";
+import { npReadJobDurationMs, npRequireJobDurationMs } from "./runtime-config.js";
 
 /**
  * Phase 19 — worker liveness signal.
@@ -30,8 +38,11 @@ import { getLogger } from "../observability/logger.js";
  * `lastSeenAt` track wall-clock more closely; loosening cuts
  * write traffic on idle workers. `NP_WORKER_HEARTBEAT_SECONDS`.
  */
-export const WORKER_HEARTBEAT_INTERVAL_MS =
-  readEnvPositiveInt("NP_WORKER_HEARTBEAT_SECONDS", 30) * 1_000;
+export const WORKER_HEARTBEAT_INTERVAL_MS = npReadJobDurationMs(
+  "NP_WORKER_HEARTBEAT_SECONDS",
+  30,
+  1_000,
+);
 
 /**
  * After how long with no heartbeat a worker is treated as
@@ -39,16 +50,11 @@ export const WORKER_HEARTBEAT_INTERVAL_MS =
  * `3 × HEARTBEAT_INTERVAL` so a single missed beat doesn't trip
  * the alarm. `NP_WORKER_STALE_THRESHOLD_SECONDS`.
  */
-export const WORKER_STALE_THRESHOLD_MS =
-  readEnvPositiveInt("NP_WORKER_STALE_THRESHOLD_SECONDS", 90) * 1_000;
-
-export interface NpWorkerHeartbeat {
-  id: string;
-  status: string;
-  startedAt: Date;
-  lastSeenAt: Date;
-  meta: Record<string, unknown>;
-}
+export const WORKER_STALE_THRESHOLD_MS = npReadJobDurationMs(
+  "NP_WORKER_STALE_THRESHOLD_SECONDS",
+  90,
+  1_000,
+);
 
 export interface NpWorkerHealthSummary {
   workers: Array<NpWorkerHeartbeat & { alive: boolean; lastSeenAgoMs: number }>;
@@ -83,20 +89,27 @@ export async function recordHeartbeat(
   workerId: string,
   meta: Record<string, unknown> = {},
 ): Promise<void> {
-  const db = getDb();
   const now = new Date();
+  const heartbeat = npRequireWorkerHeartbeat({
+    id: workerId,
+    status: "running",
+    startedAt: now,
+    lastSeenAt: now,
+    meta: npNormalizeJobData(meta, "worker.meta"),
+  });
+  const db = getDb();
   await db
     .insert(npWorkerHeartbeats)
     .values({
-      id: workerId,
-      status: "running",
-      startedAt: now,
-      lastSeenAt: now,
-      meta,
+      id: heartbeat.id,
+      status: heartbeat.status,
+      startedAt: heartbeat.startedAt,
+      lastSeenAt: heartbeat.lastSeenAt,
+      meta: heartbeat.meta,
     })
     .onConflictDoUpdate({
       target: npWorkerHeartbeats.id,
-      set: { lastSeenAt: now, status: "running", meta },
+      set: { lastSeenAt: heartbeat.lastSeenAt, status: "running", meta: heartbeat.meta },
     });
 }
 
@@ -105,11 +118,12 @@ export async function recordHeartbeat(
  * shutdown rather than the row drifting into `unhealthy`.
  */
 export async function markWorkerStopped(workerId: string): Promise<void> {
+  const canonicalId = npRequireJobId(workerId, "worker.id");
   const db = getDb();
   await db
     .update(npWorkerHeartbeats)
     .set({ status: "stopped", lastSeenAt: new Date() })
-    .where(eq(npWorkerHeartbeats.id, workerId));
+    .where(eq(npWorkerHeartbeats.id, canonicalId));
 }
 
 /**
@@ -118,18 +132,27 @@ export async function markWorkerStopped(workerId: string): Promise<void> {
  * first so the admin's first row is the freshest worker.
  */
 export async function listWorkerHealth(now: Date = new Date()): Promise<NpWorkerHealthSummary> {
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
+    throw new Error("worker.now must be a valid Date");
+  }
   const db = getDb();
-  const rows = (await db
+  const rawRows = (await db
     .select()
     .from(npWorkerHeartbeats)
-    .orderBy(desc(npWorkerHeartbeats.lastSeenAt))) as NpWorkerHeartbeat[];
+    .orderBy(desc(npWorkerHeartbeats.lastSeenAt))) as Array<{
+    id: string;
+    status: string;
+    startedAt: Date;
+    lastSeenAt: Date;
+    meta: NpJobData;
+  }>;
+  const rows = rawRows.map((row) => npRequireWorkerHeartbeat(row));
 
   let aliveCount = 0;
   const decorated = rows.map((row) => {
-    const lastSeenAgoMs = Math.max(0, now.getTime() - row.lastSeenAt.getTime());
-    const alive = row.status === "running" && lastSeenAgoMs < WORKER_STALE_THRESHOLD_MS;
-    if (alive) aliveCount += 1;
-    return { ...row, alive, lastSeenAgoMs };
+    const health = npSerializeWorkerHealthEntry(row, now, WORKER_STALE_THRESHOLD_MS);
+    if (health.alive) aliveCount += 1;
+    return { ...row, alive: health.alive, lastSeenAgoMs: health.lastSeenAgoMs };
   });
 
   return {
@@ -155,12 +178,17 @@ export function startHeartbeatLoop(
   meta: Record<string, unknown> = {},
   intervalMs: number = WORKER_HEARTBEAT_INTERVAL_MS,
 ): HeartbeatLoopHandle {
+  const canonicalInterval = npRequireJobDurationMs(intervalMs, "worker.heartbeatIntervalMs");
+  const canonicalMeta = npNormalizeJobData(meta, "worker.meta");
   const workerId = generateWorkerId();
   const log = getLogger();
+  let stopped = false;
+  let inFlight: Promise<void> | null = null;
+  let stopPromise: Promise<void> | null = null;
 
   const beat = async (): Promise<void> => {
     try {
-      await recordHeartbeat(workerId, meta);
+      await recordHeartbeat(workerId, canonicalMeta);
     } catch (err) {
       log.warn("worker heartbeat failed", {
         workerId,
@@ -169,13 +197,21 @@ export function startHeartbeatLoop(
     }
   };
 
+  const requestBeat = (): void => {
+    if (stopped || inFlight) return;
+    const current = beat().finally(() => {
+      if (inFlight === current) inFlight = null;
+    });
+    inFlight = current;
+  };
+
   // Beat immediately so the row exists from t=0; subsequent
   // beats happen on the interval. `setInterval` returns a
   // Timeout we keep so we can clear it on stop.
-  void beat();
+  requestBeat();
   const timer = setInterval(() => {
-    void beat();
-  }, intervalMs);
+    requestBeat();
+  }, canonicalInterval);
   // Don't keep the event loop alive on the heartbeat alone —
   // the worker has its own keep-alive (pg-boss); the heartbeat
   // is bookkeeping.
@@ -184,15 +220,20 @@ export function startHeartbeatLoop(
   return {
     workerId,
     async stop() {
-      clearInterval(timer);
-      try {
-        await markWorkerStopped(workerId);
-      } catch (err) {
-        log.warn("worker heartbeat stop failed to mark row", {
-          workerId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+      stopPromise ??= (async () => {
+        stopped = true;
+        clearInterval(timer);
+        await inFlight;
+        try {
+          await markWorkerStopped(workerId);
+        } catch (err) {
+          log.warn("worker heartbeat stop failed to mark row", {
+            workerId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      })();
+      await stopPromise;
     },
   };
 }
@@ -205,6 +246,9 @@ export function startHeartbeatLoop(
 export async function purgeStaleWorkers(
   olderThan: Date = new Date(Date.now() - WORKER_STALE_THRESHOLD_MS * 10),
 ): Promise<number> {
+  if (!(olderThan instanceof Date) || Number.isNaN(olderThan.getTime())) {
+    throw new Error("worker.olderThan must be a valid Date");
+  }
   const db = getDb();
   const deleted = (await db
     .delete(npWorkerHeartbeats)
@@ -215,11 +259,18 @@ export async function purgeStaleWorkers(
 
 /** Return only the rows currently considered alive. Cheap probe for boot health. */
 export async function countAliveWorkers(now: Date = new Date()): Promise<number> {
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
+    throw new Error("worker.now must be a valid Date");
+  }
   const db = getDb();
   const cutoff = new Date(now.getTime() - WORKER_STALE_THRESHOLD_MS);
   const rows = (await db
     .select({ id: npWorkerHeartbeats.id })
     .from(npWorkerHeartbeats)
-    .where(gt(npWorkerHeartbeats.lastSeenAt, cutoff))) as Array<{ id: string }>;
+    .where(
+      and(eq(npWorkerHeartbeats.status, "running"), gt(npWorkerHeartbeats.lastSeenAt, cutoff)),
+    )) as Array<{ id: string }>;
   return rows.length;
 }
+
+export type { NpWorkerHeartbeat } from "../jobs-contract/index.js";

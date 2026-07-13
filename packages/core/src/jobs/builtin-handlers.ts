@@ -3,28 +3,25 @@ import {
   type NpCollectionConfig,
   type NpCollectionHook,
   type NpHookPrincipal,
-  type NpJobType,
 } from "../config/types.js";
 import { getEmailAdapter } from "../email/service.js";
 import { buildInviteEmail, buildMemberVerifyEmail, buildResetEmail } from "../email/templates.js";
+import {
+  type NpContentAfterDeleteJobData,
+  type NpContentAfterSaveJobData,
+  type NpJobData,
+  type NpJobType,
+  type NpMediaProcessImageJobData,
+  type NpMemberPasswordResetJobData,
+  type NpMemberVerifyEmailJobData,
+  type NpNotificationDigestJobData,
+  type NpPasswordResetJobData,
+  type NpPluginScheduledTaskJobData,
+} from "../jobs-contract/index.js";
 import { registerJobHandler } from "./handlers.js";
 
-interface ContentJobData {
-  collection: string;
-  documentId: string;
-  operation: "create" | "update";
-  userId: string;
-}
-
-interface ContentDeleteJobData {
-  collection: string;
-  documentId: string;
-  userId: string;
-}
-
-interface MediaProcessImageJobData {
-  mediaId: string;
-}
+type ContentJobData = NpContentAfterSaveJobData;
+type ContentDeleteJobData = NpContentAfterDeleteJobData;
 
 interface ResolvedHookContext {
   collectionConfig: NpCollectionConfig;
@@ -59,19 +56,51 @@ interface BuiltinJobContext {
   resolveContentAfterDeleteContext?: (
     data: ContentDeleteJobData,
   ) => Promise<ResolvedDeleteHookContext | null> | ResolvedDeleteHookContext | null;
-  processImage?: (data: unknown) => Promise<void> | void;
-  cleanupMedia?: (data: unknown) => Promise<void> | void;
-  runScheduledPluginTask?: (data: unknown) => Promise<void> | void;
+  processImage?: (data: NpMediaProcessImageJobData) => Promise<void> | void;
+  cleanupMedia?: (data: NpJobData) => Promise<void> | void;
+  runScheduledPluginTask?: (data: NpPluginScheduledTaskJobData) => Promise<void> | void;
   pruneRevisions?: () => Promise<void> | void;
   cleanupSessions?: () => Promise<void> | void;
-  sendPasswordReset?: (data: unknown) => Promise<void> | void;
-  sendMemberVerifyEmail?: (data: unknown) => Promise<void> | void;
-  sendMemberPasswordReset?: (data: unknown) => Promise<void> | void;
+  sendPasswordReset?: (data: NpPasswordResetJobData) => Promise<void> | void;
+  sendMemberVerifyEmail?: (data: NpMemberVerifyEmailJobData) => Promise<void> | void;
+  sendMemberPasswordReset?: (data: NpMemberPasswordResetJobData) => Promise<void> | void;
 }
 
 const builtinJobContext: BuiltinJobContext = {};
+const BUILTIN_JOB_CONTEXT_KEYS = new Set<keyof BuiltinJobContext>([
+  "resolveContentAfterSaveContext",
+  "resolveContentAfterDeleteContext",
+  "processImage",
+  "cleanupMedia",
+  "runScheduledPluginTask",
+  "pruneRevisions",
+  "cleanupSessions",
+  "sendPasswordReset",
+  "sendMemberVerifyEmail",
+  "sendMemberPasswordReset",
+]);
 
 export function configureBuiltinJobContext(context: Partial<BuiltinJobContext>): void {
+  if (typeof context !== "object" || context === null || Array.isArray(context)) {
+    throw new Error("Built-in job context must be a plain object.");
+  }
+  const prototype = Object.getPrototypeOf(context) as unknown;
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error("Built-in job context must be a plain object.");
+  }
+  for (const key of Reflect.ownKeys(context)) {
+    if (typeof key !== "string" || !BUILTIN_JOB_CONTEXT_KEYS.has(key as keyof BuiltinJobContext)) {
+      throw new Error(`Unsupported built-in job context key "${String(key)}".`);
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(context, key);
+    if (
+      !descriptor?.enumerable ||
+      !("value" in descriptor) ||
+      (descriptor.value !== undefined && typeof descriptor.value !== "function")
+    ) {
+      throw new Error(`Built-in job context "${key}" must be a function or undefined.`);
+    }
+  }
   Object.assign(builtinJobContext, context);
 }
 
@@ -91,7 +120,7 @@ export function registerBuiltinHandlers(): void {
   registerJobHandler("notifications:sendDigest", handleNotificationsSendDigest);
 }
 
-async function handleContentPublishScheduled(_: unknown): Promise<void> {
+async function handleContentPublishScheduled(_: NpJobData): Promise<void> {
   const { publishScheduledDocuments } = await import("../collections/scheduled.js");
   const result = await publishScheduledDocuments();
   if (result.published > 0) {
@@ -102,9 +131,7 @@ async function handleContentPublishScheduled(_: unknown): Promise<void> {
   }
 }
 
-async function handleContentAfterSave(data: unknown): Promise<void> {
-  const jobData = asContentJobData(data);
-
+async function handleContentAfterSave(jobData: NpContentAfterSaveJobData): Promise<void> {
   await revalidateCollectionTags(jobData.collection, jobData.documentId);
 
   const context = await builtinJobContext.resolveContentAfterSaveContext?.(jobData);
@@ -127,9 +154,7 @@ async function handleContentAfterSave(data: unknown): Promise<void> {
   });
 }
 
-async function handleContentAfterDelete(data: unknown): Promise<void> {
-  const jobData = asContentDeleteJobData(data);
-
+async function handleContentAfterDelete(jobData: NpContentAfterDeleteJobData): Promise<void> {
   await revalidateCollectionTags(jobData.collection, jobData.documentId);
 
   const context = await builtinJobContext.resolveContentAfterDeleteContext?.(jobData);
@@ -146,8 +171,7 @@ async function handleContentAfterDelete(data: unknown): Promise<void> {
   });
 }
 
-async function handleMediaProcessImage(data: unknown): Promise<void> {
-  const payload = asMediaProcessImageJobData(data);
+async function handleMediaProcessImage(payload: NpMediaProcessImageJobData): Promise<void> {
   if (builtinJobContext.processImage) {
     await builtinJobContext.processImage(payload);
     return;
@@ -156,38 +180,37 @@ async function handleMediaProcessImage(data: unknown): Promise<void> {
   await processMediaImage(payload.mediaId, {});
 }
 
-async function handleMediaCleanup(data: unknown): Promise<void> {
+async function handleMediaCleanup(data: NpJobData): Promise<void> {
   await builtinJobContext.cleanupMedia?.(data);
 }
 
-async function handlePluginScheduledTask(data: unknown): Promise<void> {
+async function handlePluginScheduledTask(data: NpPluginScheduledTaskJobData): Promise<void> {
   // Phase 19 — first prefer the inline handler registered via
   // `definePlugin({ scheduled })`. Falls back to the legacy
   // `builtinJobContext.runScheduledPluginTask` resolver for
   // sites that wired their own dispatcher pre-Phase-19.
-  if (isRecord(data) && typeof data.pluginId === "string" && typeof data.taskId === "string") {
-    try {
-      const { runPluginScheduledTask } = await import("../plugins/host.js");
-      await runPluginScheduledTask(data.pluginId, data.taskId);
-      return;
-    } catch (err) {
-      // No registered schedule with this id — fall through to
-      // the legacy resolver. If that's also absent we re-throw
-      // so the worker's retry policy surfaces the misconfig.
-      const message = err instanceof Error ? err.message : String(err);
-      if (!/no scheduled task/.test(message) && !/is not registered/.test(message)) {
-        throw err;
-      }
+  try {
+    const { runPluginScheduledTask } = await import("../plugins/host.js");
+    await runPluginScheduledTask(data.pluginId, data.taskId);
+    return;
+  } catch (err) {
+    // No registered schedule with this id — fall through to
+    // the legacy resolver. If that's also absent we re-throw
+    // so the worker's retry policy surfaces the misconfig.
+    const message = err instanceof Error ? err.message : String(err);
+    if (!/no scheduled task/.test(message) && !/is not registered/.test(message)) {
+      throw err;
     }
+    if (!builtinJobContext.runScheduledPluginTask) throw err;
   }
-  await builtinJobContext.runScheduledPluginTask?.(data);
+  await builtinJobContext.runScheduledPluginTask(data);
 }
 
-async function handleRevisionPrune(_: unknown): Promise<void> {
+async function handleRevisionPrune(_: NpJobData): Promise<void> {
   await builtinJobContext.pruneRevisions?.();
 }
 
-async function handleSessionCleanup(_: unknown): Promise<void> {
+async function handleSessionCleanup(_: NpJobData): Promise<void> {
   await builtinJobContext.cleanupSessions?.();
 }
 
@@ -198,23 +221,13 @@ async function handleSessionCleanup(_: unknown): Promise<void> {
  * daily (offset from `system:revisionPrune` at 03:00 so the two
  * cleanup jobs don't pile DB load on the same minute).
  */
-async function handleJobLogPrune(_: unknown): Promise<void> {
+async function handleJobLogPrune(_: NpJobData): Promise<void> {
   const { pruneJobLogsOlderThan, DEFAULT_JOB_LOG_RETENTION_MS } = await import("./job-log.js");
   const cutoff = new Date(Date.now() - DEFAULT_JOB_LOG_RETENTION_MS);
   const deleted = await pruneJobLogsOlderThan(cutoff);
   if (deleted > 0) {
     console.info(`[nexpress] system:jobLogPrune deleted ${deleted} log row(s)`);
   }
-}
-
-interface PasswordResetJobData {
-  email: string;
-  name: string;
-  token: string;
-  purpose: "invite" | "reset";
-  resetUrl: string;
-  /** Optional — producer may pass a site-display name for the template. */
-  siteName?: string;
 }
 
 /**
@@ -224,13 +237,11 @@ interface PasswordResetJobData {
  * (`setEmailAdapter(new SmtpEmailAdapter(...))`) or by providing a fully
  * custom handler via `configureBuiltinJobContext({ sendPasswordReset })`.
  */
-async function handleAuthSendPasswordReset(data: unknown): Promise<void> {
+async function handleAuthSendPasswordReset(payload: NpPasswordResetJobData): Promise<void> {
   if (builtinJobContext.sendPasswordReset) {
-    await builtinJobContext.sendPasswordReset(data);
+    await builtinJobContext.sendPasswordReset(payload);
     return;
   }
-
-  const payload = asPasswordResetJobData(data);
   const templateData = {
     siteName: payload.siteName ?? "your site",
     name: payload.name,
@@ -245,30 +256,6 @@ async function handleAuthSendPasswordReset(data: unknown): Promise<void> {
     text: template.text,
     html: template.html,
   });
-}
-
-function asPasswordResetJobData(data: unknown): PasswordResetJobData {
-  if (!isRecord(data)) {
-    throw new Error("Invalid auth:sendPasswordReset job payload.");
-  }
-
-  return {
-    email: asString(data.email, "email"),
-    name: asString(data.name, "name"),
-    token: asString(data.token, "token"),
-    siteName:
-      typeof data.siteName === "string" && data.siteName.length > 0 ? data.siteName : undefined,
-    purpose: asResetPurpose(data.purpose),
-    resetUrl: asString(data.resetUrl, "resetUrl"),
-  };
-}
-
-function asResetPurpose(value: unknown): "invite" | "reset" {
-  if (value === "invite" || value === "reset") {
-    return value;
-  }
-
-  throw new Error("Invalid password reset purpose.");
 }
 
 async function runCollectionHooks(
@@ -335,90 +322,15 @@ async function loadRevalidateTag(): Promise<((tag: string) => void) | null> {
   };
 }
 
-function asContentJobData(data: unknown): ContentJobData {
-  if (!isRecord(data)) {
-    throw new Error("Invalid content:afterSave job payload.");
-  }
-
-  return {
-    collection: asString(data.collection, "collection"),
-    documentId: asString(data.documentId, "documentId"),
-    operation: asContentOperation(data.operation),
-    userId: asString(data.userId, "userId"),
-  };
-}
-
-function asContentDeleteJobData(data: unknown): ContentDeleteJobData {
-  if (!isRecord(data)) {
-    throw new Error("Invalid content:afterDelete job payload.");
-  }
-
-  return {
-    collection: asString(data.collection, "collection"),
-    documentId: asString(data.documentId, "documentId"),
-    userId: asString(data.userId, "userId"),
-  };
-}
-
-function asMediaProcessImageJobData(data: unknown): MediaProcessImageJobData {
-  if (
-    !isRecord(data) ||
-    Object.keys(data).length !== 1 ||
-    typeof data.mediaId !== "string" ||
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(data.mediaId)
-  ) {
-    throw new Error("Invalid media:processImage job payload.");
-  }
-  return { mediaId: data.mediaId };
-}
-
-function asContentOperation(value: unknown): ContentJobData["operation"] {
-  if (value === "create" || value === "update") {
-    return value;
-  }
-
-  throw new Error("Invalid content operation.");
-}
-
-function asString(value: unknown, fieldName: string): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Invalid ${fieldName} field.`);
-  }
-
-  return value;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-interface MemberVerifyJobData {
-  email: string;
-  displayName: string;
-  verifyUrl: string;
-  siteName?: string;
-}
-
-interface MemberResetJobData {
-  email: string;
-  displayName: string;
-  resetUrl: string;
-  siteName?: string;
-}
-
-async function handleMemberSendVerifyEmail(data: unknown): Promise<void> {
+async function handleMemberSendVerifyEmail(payload: NpMemberVerifyEmailJobData): Promise<void> {
   if (builtinJobContext.sendMemberVerifyEmail) {
-    await builtinJobContext.sendMemberVerifyEmail(data);
+    await builtinJobContext.sendMemberVerifyEmail(payload);
     return;
   }
-  if (!isRecord(data)) throw new Error("Invalid members:sendVerifyEmail job payload.");
-  const payload: MemberVerifyJobData = {
-    email: asString(data.email, "email"),
-    displayName: asString(data.displayName, "displayName"),
-    verifyUrl: asString(data.verifyUrl, "verifyUrl"),
-    siteName:
-      typeof data.siteName === "string" && data.siteName.length > 0 ? data.siteName : undefined,
-  };
   const template = buildMemberVerifyEmail({
     siteName: payload.siteName ?? "your site",
     displayName: payload.displayName,
@@ -432,19 +344,11 @@ async function handleMemberSendVerifyEmail(data: unknown): Promise<void> {
   });
 }
 
-async function handleMemberSendPasswordReset(data: unknown): Promise<void> {
+async function handleMemberSendPasswordReset(payload: NpMemberPasswordResetJobData): Promise<void> {
   if (builtinJobContext.sendMemberPasswordReset) {
-    await builtinJobContext.sendMemberPasswordReset(data);
+    await builtinJobContext.sendMemberPasswordReset(payload);
     return;
   }
-  if (!isRecord(data)) throw new Error("Invalid members:sendPasswordReset job payload.");
-  const payload: MemberResetJobData = {
-    email: asString(data.email, "email"),
-    displayName: asString(data.displayName, "displayName"),
-    resetUrl: asString(data.resetUrl, "resetUrl"),
-    siteName:
-      typeof data.siteName === "string" && data.siteName.length > 0 ? data.siteName : undefined,
-  };
   // Reuse the staff `buildResetEmail` template — copy is identical from
   // the user's POV ("reset your <site> password"). When templating
   // diverges we'll fork the function, not the dispatcher.
@@ -461,12 +365,8 @@ async function handleMemberSendPasswordReset(data: unknown): Promise<void> {
   });
 }
 
-async function handleNotificationsSendDigest(data: unknown): Promise<void> {
-  const cadence =
-    isRecord(data) && (data.cadence === "daily" || data.cadence === "weekly")
-      ? data.cadence
-      : "daily";
-  const siteName = isRecord(data) && typeof data.siteName === "string" ? data.siteName : undefined;
+async function handleNotificationsSendDigest(data: NpNotificationDigestJobData): Promise<void> {
+  const { cadence, siteName } = data;
   const { runDigestSweep } = await import("../community/digest.js");
   const result = await runDigestSweep({ cadence, siteName });
 

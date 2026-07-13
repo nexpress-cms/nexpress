@@ -1,9 +1,15 @@
 import { can, NpForbiddenError, getOptionalJobQueue, setJobsPauseState } from "@nexpress/core";
+import { npRequirePauseJobsWire } from "@nexpress/core/jobs-contract";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
+import {
+  npParseEmptyJobQuery,
+  npParsePauseJobBody,
+  npRequireJobApiResponse,
+} from "../../../../lib/job-api-contract";
 import { readJsonBody } from "@nexpress/next";
 
 /**
@@ -12,11 +18,9 @@ import { readJsonBody } from "@nexpress/next";
  * restarts, and applies it to the local pg-boss adapter so
  * the in-process worker stops claiming jobs immediately.
  *
- * Multi-pod deployments: this PR only affects the pod that
- * receives the request. Other worker pods will see the
- * persisted flag on their next restart. A periodic poll to
- * sync running pods is a follow-up (tracked in jobs.md §12
- * "What's Not Built").
+ * Multi-pod deployments: the local adapter updates immediately;
+ * every other worker polls the persisted flag and converges within
+ * the configured pause-sync interval.
  *
  * Admin-only + CSRF, matching the rest of the jobs admin.
  */
@@ -28,14 +32,13 @@ export async function POST(request: NextRequest) {
       throw new NpForbiddenError("jobs", "pause");
     }
 
-    const body = (await readJsonBody(request).catch(() => ({}))) as {
-      reason?: string | null;
-    };
+    npParseEmptyJobQuery(request.nextUrl.searchParams);
+    const { reason } = npParsePauseJobBody(await readJsonBody(request));
 
     const state = await setJobsPauseState({
       paused: true,
       changedByUserId: user.id,
-      reason: typeof body?.reason === "string" ? body.reason : null,
+      reason,
     });
 
     const queue = getOptionalJobQueue();
@@ -43,16 +46,17 @@ export async function POST(request: NextRequest) {
       await queue.pauseProcessing();
     }
 
-    return npSuccessResponse({
-      paused: state.paused,
-      changedAt: state.changedAt,
-      reason: state.reason,
-      // `localApplied` tells the admin UI whether the in-process
-      // adapter was paused too (vs only the persisted flag flipped,
-      // which is what happens in the API process when the worker
-      // is in a separate container).
-      localApplied: Boolean(queue) && typeof queue?.pauseProcessing === "function",
-    });
+    return npSuccessResponse(
+      npRequireJobApiResponse(
+        {
+          paused: state.paused,
+          changedAt: state.changedAt,
+          reason: state.reason,
+          localApplied: Boolean(queue) && typeof queue?.pauseProcessing === "function",
+        },
+        npRequirePauseJobsWire,
+      ),
+    );
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

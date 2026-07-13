@@ -386,8 +386,10 @@ export type {
 
 export {
   registerJobHandler,
+  normalizeRegisteredJobPayload,
   getJobHandler,
   getAllJobHandlers,
+  getKnownJobTypes,
   setJobQueue,
   getJobQueue,
   getOptionalJobQueue,
@@ -419,6 +421,8 @@ export {
 } from "./jobs/index.js";
 export type {
   NpJobHandler,
+  NpJobHandlerOptions,
+  NpJobPayloadParser,
   NpJobQueue,
   NpJobState,
   NpJobSummary,

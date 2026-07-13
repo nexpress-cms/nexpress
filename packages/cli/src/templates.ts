@@ -898,8 +898,8 @@ only \`.env\` without running migrations).
 NP_ENABLE_JOBS=1 pnpm run worker
 \`\`\`
 
-Jobs are optional during local development. Leave them off until you need
-scheduled publishing, async hooks, pruning, or image post-processing.
+Jobs are optional locally, but names and JSON payloads are always validated.
+\`NP_ENABLE_JOBS\` accepts only \`1\`/\`true\` or \`0\`/\`false\`; use \`registerJobHandler(name, handler, { parsePayload })\` for application jobs.
 
 ## Deploy Bridge
 

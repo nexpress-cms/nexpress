@@ -2,7 +2,7 @@ import { registerBuiltinHandlers } from "./builtin-handlers.js";
 import { startHeartbeatLoop } from "./heartbeat.js";
 import { getJobsPauseState, startPauseSyncLoop, type PauseSyncLoopHandle } from "./pause-state.js";
 import { PgBossAdapter } from "./pg-boss-adapter.js";
-import { setJobQueue } from "./queue.js";
+import { getOptionalJobQueue, setJobQueue } from "./queue.js";
 import { getLogger } from "../observability/logger.js";
 
 let workerAdapter: PgBossAdapter | null = null;
@@ -11,6 +11,10 @@ let heartbeatHandle: { stop(): Promise<void> } | null = null;
 let pauseSyncHandle: PauseSyncLoopHandle | null = null;
 let signalHandlersInstalled = false;
 const installedSignalHandlers = new Map<NodeJS.Signals, () => void>();
+
+function clearQueueIfOwned(adapter: PgBossAdapter): void {
+  if (getOptionalJobQueue() === adapter) setJobQueue(null);
+}
 
 function installShutdownSignalHandlers(): void {
   if (signalHandlersInstalled) return;
@@ -71,7 +75,7 @@ export async function startWorker(
   registerBuiltinHandlers();
 
   workerAdapter = new PgBossAdapter(connectionString, {
-    schema: options?.schema ?? "public",
+    schema: options?.schema ?? "pgboss",
   });
 
   setJobQueue(workerAdapter);
@@ -150,13 +154,15 @@ export async function startWorker(
       }
       pauseSyncHandle = null;
     }
-    if (workerAdapter) {
+    const failedAdapter = workerAdapter;
+    if (failedAdapter) {
       try {
-        await workerAdapter.stop();
+        await failedAdapter.stop();
       } catch {
         /* swallow */
       }
-      workerAdapter = null;
+      if (workerAdapter === failedAdapter) workerAdapter = null;
+      clearQueueIfOwned(failedAdapter);
     }
     removeShutdownSignalHandlers();
     throw err;
@@ -177,25 +183,42 @@ export async function startProducer(
     return;
   }
 
-  producerAdapter = new PgBossAdapter(connectionString, {
-    schema: options?.schema ?? "public",
+  const adapter = new PgBossAdapter(connectionString, {
+    schema: options?.schema ?? "pgboss",
   });
+  producerAdapter = adapter;
 
-  setJobQueue(producerAdapter);
+  setJobQueue(adapter);
 
-  await producerAdapter.startProducer();
+  try {
+    await adapter.startProducer();
+  } catch (error) {
+    try {
+      await adapter.stop();
+    } catch {
+      // Preserve the startup error; stop is best-effort for partial starts.
+    }
+    if (producerAdapter === adapter) producerAdapter = null;
+    clearQueueIfOwned(adapter);
+    throw error;
+  }
 }
 
 export async function stopWorker(): Promise<void> {
-  if (!workerAdapter) {
-    return;
-  }
+  const adapter = workerAdapter;
+  if (!adapter) return;
+
+  let stopError: unknown;
 
   // Phase 19 — stop the heartbeat first so the row flips to
   // `stopped` while the DB is still reachable. The pg-boss
   // shutdown then clears the queue lock cleanly.
   if (heartbeatHandle) {
-    await heartbeatHandle.stop();
+    try {
+      await heartbeatHandle.stop();
+    } catch (error) {
+      stopError = error;
+    }
     heartbeatHandle = null;
   }
 
@@ -204,20 +227,37 @@ export async function stopWorker(): Promise<void> {
   // late-firing tick doesn't try to call pauseProcessing on a
   // half-shut-down adapter.
   if (pauseSyncHandle) {
-    pauseSyncHandle.stop();
+    try {
+      pauseSyncHandle.stop();
+    } catch (error) {
+      stopError ??= error;
+    }
     pauseSyncHandle = null;
   }
 
-  await workerAdapter.stop();
-  workerAdapter = null;
+  try {
+    await adapter.stop();
+  } catch (error) {
+    stopError ??= error;
+  }
+  if (workerAdapter === adapter) workerAdapter = null;
+  clearQueueIfOwned(adapter);
   removeShutdownSignalHandlers();
+  if (stopError) {
+    throw stopError instanceof Error
+      ? stopError
+      : new Error("Job worker shutdown failed with a non-Error value.", { cause: stopError });
+  }
 }
 
 export async function stopProducer(): Promise<void> {
-  if (!producerAdapter) {
-    return;
-  }
+  const adapter = producerAdapter;
+  if (!adapter) return;
 
-  await producerAdapter.stop();
-  producerAdapter = null;
+  try {
+    await adapter.stop();
+  } finally {
+    if (producerAdapter === adapter) producerAdapter = null;
+    clearQueueIfOwned(adapter);
+  }
 }

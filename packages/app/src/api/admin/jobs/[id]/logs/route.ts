@@ -1,15 +1,15 @@
-import {
-  NpForbiddenError,
-  NpValidationError,
-  countJobLogs,
-  listJobLogs,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, countJobLogs, listJobLogs, can } from "@nexpress/core";
+import { npRequireJobLogsWire, npSerializeJobLogEntry } from "@nexpress/core/jobs-contract";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
 import { requireAuth } from "../../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../../lib/init-core";
+import {
+  npParseJobId,
+  npParseJobLogsQuery,
+  npRequireJobApiResponse,
+} from "../../../../../lib/job-api-contract";
 
 /**
  * Phase 20.3b — read the captured log stream for one job. Backs the
@@ -31,38 +31,21 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("job-logs", "read");
     }
-    const { id } = await context.params;
-    if (!id) {
-      throw new NpValidationError("Invalid input", [
-        { field: "id", message: "Job id is required" },
-      ]);
-    }
+    const id = npParseJobId((await context.params).id);
+    const options = npParseJobLogsQuery(request.nextUrl.searchParams);
 
-    const params = request.nextUrl.searchParams;
-    const limitRaw = params.get("limit");
-    const offsetRaw = params.get("offset");
-    const limit = limitRaw ? parseInt(limitRaw, 10) : undefined;
-    const offset = offsetRaw ? parseInt(offsetRaw, 10) : undefined;
+    const [entries, total] = await Promise.all([listJobLogs(id, options), countJobLogs(id)]);
 
-    const [entries, total] = await Promise.all([
-      listJobLogs(id, {
-        ...(limit !== undefined && Number.isFinite(limit) ? { limit } : {}),
-        ...(offset !== undefined && Number.isFinite(offset) ? { offset } : {}),
-      }),
-      countJobLogs(id),
-    ]);
-
-    return npSuccessResponse({
-      jobId: id,
-      total,
-      entries: entries.map((e) => ({
-        id: e.id,
-        level: e.level,
-        message: e.message,
-        context: e.context,
-        createdAt: e.createdAt.toISOString(),
-      })),
-    });
+    return npSuccessResponse(
+      npRequireJobApiResponse(
+        {
+          jobId: id,
+          total,
+          entries: entries.map(npSerializeJobLogEntry),
+        },
+        npRequireJobLogsWire,
+      ),
+    );
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

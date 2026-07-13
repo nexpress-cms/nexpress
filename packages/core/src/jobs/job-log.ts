@@ -3,9 +3,15 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { and, asc, desc, eq, gte, lt } from "drizzle-orm";
 
 import { getDb } from "../db/runtime.js";
-import { readEnvPositiveInt } from "../config/env.js";
 import { npJobLogs } from "../db/schema/system.js";
+import {
+  npRequireJobId,
+  npRequireJobLogEntry,
+  npRequireJobLogInput,
+  type NpJobLogEntry,
+} from "../jobs-contract/index.js";
 import { type NpLogLevel, getLogger } from "../observability/logger.js";
+import { npReadJobDurationMs } from "./runtime-config.js";
 
 /**
  * Phase 20.3 — per-job log capture.
@@ -30,7 +36,7 @@ interface JobLogContext {
 const jobLogStorage = new AsyncLocalStorage<JobLogContext>();
 
 export function runInJobContext<T>(jobId: string, fn: () => Promise<T> | T): Promise<T> | T {
-  return jobLogStorage.run({ jobId }, fn);
+  return jobLogStorage.run({ jobId: npRequireJobId(jobId) }, fn);
 }
 
 export function getCurrentJobId(): string | null {
@@ -58,11 +64,16 @@ export async function recordJobLog(
 
   try {
     const db = getDb();
-    await db.insert(npJobLogs).values({
-      jobId,
+    const normalized = npRequireJobLogInput({
       level,
       message,
       context: context ?? null,
+    });
+    await db.insert(npJobLogs).values({
+      jobId,
+      level: normalized.level,
+      message: normalized.message,
+      context: normalized.context,
     });
   } catch (err) {
     // Don't throw from a logging path — just surface to whatever
@@ -74,15 +85,6 @@ export async function recordJobLog(
       error: err instanceof Error ? err.message : String(err),
     });
   }
-}
-
-export interface NpJobLogEntry {
-  id: string;
-  jobId: string;
-  level: NpLogLevel;
-  message: string;
-  context: Record<string, unknown> | null;
-  createdAt: Date;
 }
 
 export interface ListJobLogsOptions {
@@ -102,15 +104,20 @@ export async function listJobLogs(
   jobId: string,
   options: ListJobLogsOptions = {},
 ): Promise<NpJobLogEntry[]> {
-  const limit = Math.min(Math.max(1, options.limit ?? 200), 1000);
-  const offset = Math.max(0, options.offset ?? 0);
+  requireExactLogOptions(options);
+  const canonicalId = npRequireJobId(jobId);
+  const limit = requireBoundedInteger(options.limit, "job.logs.limit", 200, 1, 1_000);
+  const offset = requireBoundedInteger(options.offset, "job.logs.offset", 0, 0, 100_000);
+  if (options.order !== undefined && options.order !== "asc" && options.order !== "desc") {
+    throw new Error("job.logs.order must be asc or desc");
+  }
   const orderBy = options.order === "desc" ? desc(npJobLogs.createdAt) : asc(npJobLogs.createdAt);
   const db = getDb();
 
   const rows = (await db
     .select()
     .from(npJobLogs)
-    .where(eq(npJobLogs.jobId, jobId))
+    .where(eq(npJobLogs.jobId, canonicalId))
     .orderBy(orderBy)
     .limit(limit)
     .offset(offset)) as Array<{
@@ -122,23 +129,21 @@ export async function listJobLogs(
     createdAt: Date;
   }>;
 
-  return rows.map((row) => ({
-    id: row.id,
-    jobId: row.jobId,
-    level: row.level as NpLogLevel,
-    message: row.message,
-    context: row.context,
-    createdAt: row.createdAt,
-  }));
+  return rows.map((row) => npRequireJobLogEntry(row));
 }
+
+export type { NpJobLogEntry } from "../jobs-contract/index.js";
 
 /**
  * How long per-job log rows survive before the cleanup handler
  * deletes them. Compliance regimes (GDPR, SOX) frequently dictate
  * a specific window — override via `NP_JOB_LOG_RETENTION_DAYS`.
  */
-export const DEFAULT_JOB_LOG_RETENTION_MS =
-  readEnvPositiveInt("NP_JOB_LOG_RETENTION_DAYS", 14) * 24 * 60 * 60 * 1000;
+export const DEFAULT_JOB_LOG_RETENTION_MS = npReadJobDurationMs(
+  "NP_JOB_LOG_RETENTION_DAYS",
+  14,
+  24 * 60 * 60 * 1_000,
+);
 
 /**
  * Delete log rows older than the cutoff. Safe to call from a
@@ -149,6 +154,9 @@ export const DEFAULT_JOB_LOG_RETENTION_MS =
  * useful retention summary.
  */
 export async function pruneJobLogsOlderThan(cutoff: Date): Promise<number> {
+  if (!(cutoff instanceof Date) || Number.isNaN(cutoff.getTime())) {
+    throw new Error("job.logs.cutoff must be a valid Date");
+  }
   const db = getDb();
   const deleted = (await db
     .delete(npJobLogs)
@@ -162,12 +170,57 @@ export async function pruneJobLogsOlderThan(cutoff: Date): Promise<number> {
  * without paying for the page payload until the operator expands.
  */
 export async function countJobLogs(jobId: string, sinceCreatedAt?: Date): Promise<number> {
+  const canonicalId = npRequireJobId(jobId);
+  if (
+    sinceCreatedAt !== undefined &&
+    (!(sinceCreatedAt instanceof Date) || Number.isNaN(sinceCreatedAt.getTime()))
+  ) {
+    throw new Error("job.logs.sinceCreatedAt must be a valid Date");
+  }
   const db = getDb();
   const where = sinceCreatedAt
-    ? and(eq(npJobLogs.jobId, jobId), gte(npJobLogs.createdAt, sinceCreatedAt))
-    : eq(npJobLogs.jobId, jobId);
+    ? and(eq(npJobLogs.jobId, canonicalId), gte(npJobLogs.createdAt, sinceCreatedAt))
+    : eq(npJobLogs.jobId, canonicalId);
   const rows = (await db.select({ id: npJobLogs.id }).from(npJobLogs).where(where)) as Array<{
     id: string;
   }>;
   return rows.length;
+}
+
+function requireExactLogOptions(value: unknown): void {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("job.logs options must be a plain object");
+  }
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error("job.logs options must be a plain object");
+  }
+  const allowed = new Set(["limit", "offset", "order"]);
+  const keys: string[] = [];
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") {
+      throw new Error("job.logs options must not contain symbol properties");
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor?.enumerable || !("value" in descriptor)) {
+      throw new Error(`job.logs.${key} must be an enumerable plain data property`);
+    }
+    keys.push(key);
+  }
+  const unsupported = keys.find((key) => !allowed.has(key));
+  if (unsupported) throw new Error(`job.logs.${unsupported} is not supported`);
+}
+
+function requireBoundedInteger(
+  value: number | undefined,
+  path: string,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  if (value === undefined) return fallback;
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new Error(`${path} must be an integer between ${min.toString()} and ${max.toString()}`);
+  }
+  return value;
 }

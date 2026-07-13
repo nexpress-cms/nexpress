@@ -4,6 +4,7 @@ import {
   getDocumentById,
   startWorker,
 } from "@nexpress/core";
+import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
 
 /**
  * Worker entry — site code passes its own `ensureFor` so the
@@ -28,6 +29,9 @@ export interface RunWorkerOptions {
 }
 
 export async function runWorker({ ensureFor }: RunWorkerOptions): Promise<void> {
+  if (!npRequireJobsEnabledFlag(process.env.NP_ENABLE_JOBS)) {
+    throw new Error("NP_ENABLE_JOBS must be 1 or true when starting the worker");
+  }
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     console.error("DATABASE_URL is not set. Copy .env.example to .env first.");
@@ -37,15 +41,19 @@ export async function runWorker({ ensureFor }: RunWorkerOptions): Promise<void> 
   await ensureFor("plugins");
 
   configureBuiltinJobContext({
-    async resolveContentAfterSaveContext({ collection, documentId, userId }) {
+    async resolveContentAfterSaveContext({ collection, documentId, userId, memberId }) {
       const config = getCollectionConfig(collection);
       const doc = await getDocumentById(collection, documentId);
       if (!doc) return null;
-      // The worker doesn't know the originating actor with
-      // certainty — for a stub we treat the saved userId as a
-      // staff principal. Sites with member-authored writes
-      // should resolve the actor from the doc's `member_author_id`
-      // instead.
+      if (memberId) {
+        return {
+          collectionConfig: config,
+          data: doc,
+          user: null,
+          principal: { kind: "member", memberId },
+        };
+      }
+      if (!userId) return null;
       const user = {
         id: userId,
         email: "",
@@ -60,8 +68,17 @@ export async function runWorker({ ensureFor }: RunWorkerOptions): Promise<void> 
         principal: { kind: "staff", user },
       };
     },
-    resolveContentAfterDeleteContext({ collection, documentId, userId }) {
+    resolveContentAfterDeleteContext({ collection, documentId, userId, memberId }) {
       const config = getCollectionConfig(collection);
+      if (memberId) {
+        return Promise.resolve({
+          collectionConfig: config,
+          data: { id: documentId },
+          user: null,
+          principal: { kind: "member" as const, memberId },
+        });
+      }
+      if (!userId) return Promise.resolve(null);
       const user = {
         id: userId,
         email: "",

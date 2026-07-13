@@ -1,4 +1,12 @@
-import { type NpJobType } from "../config/types.js";
+import {
+  type NpJobPayload,
+  type NpJobState,
+  type NpJobStateCounts,
+  type NpJobSummary,
+  type NpJobType,
+  type NpScheduleSummary,
+} from "../jobs-contract/index.js";
+import { normalizeRegisteredJobPayload } from "./handlers.js";
 
 /**
  * Phase 13 — admin-side job introspection. pg-boss tracks jobs
@@ -7,40 +15,6 @@ import { type NpJobType } from "../config/types.js";
  * surfaces a unified shape so the admin UI doesn't have to
  * know the storage split.
  */
-export type NpJobState =
-  | "created" // queued, not yet started
-  | "active" // worker is processing
-  | "completed" // succeeded
-  | "failed" // hit max retries
-  | "retry" // failed once, scheduled to retry
-  | "cancelled" // explicitly cancelled
-  | "expired"; // exceeded keepUntil
-
-export interface NpJobSummary {
-  id: string;
-  /** pg-boss queue name (after `:` → `.` translation). */
-  name: string;
-  state: NpJobState;
-  data: unknown;
-  /** Number of retries pg-boss has attempted so far. */
-  retryCount?: number;
-  /** Last failure message, if any. */
-  output?: string | null;
-  createdOn: string;
-  startedOn?: string | null;
-  completedOn?: string | null;
-  /**
-   * Phase 20.4 — which pg-boss table the row was read from.
-   * `"live"` = pgboss.job (still pending / active / retry),
-   * `"archive"` = pgboss.archive (rolled out by pg-boss after
-   * `keepUntil`). The admin Jobs view uses this to split the
-   * Failed tab into "live failures" (still actionable via
-   * `/api/admin/jobs/{id}/retry`) vs "archived" (kept for
-   * forensics; retry would re-create the row in `job`).
-   */
-  source?: "live" | "archive";
-}
-
 export interface NpJobListOptions {
   /** Filter to one queue name (e.g. `"media.processImage"`). */
   name?: string;
@@ -60,9 +34,9 @@ export interface NpJobListOptions {
    * Phase 20.4 — partition the result by pg-boss table:
    *   - `"live"` — pending / active / retry rows still in
    *     `pgboss.job`. Retryable.
-   *   - `"archive"` — rolled rows in `pgboss.archive`. Read-only
-   *     (pg-boss won't pick them up; retry routes refuse to
-   *     touch archive rows).
+   *   - `"archive"` — rolled terminal rows in `pgboss.archive`.
+   *     Failed, cancelled, and expired rows may be re-enqueued as
+   *     fresh jobs by the retry API.
    * Default (undefined) keeps the historical UNION behavior.
    */
   source?: "live" | "archive";
@@ -84,16 +58,6 @@ export interface NpJobListResult {
  * caller can index without optional chaining and the UI can render
  * a stable row order.
  */
-export interface NpJobStateCounts {
-  created: number;
-  active: number;
-  completed: number;
-  failed: number;
-  retry: number;
-  cancelled: number;
-  expired: number;
-}
-
 export interface NpJobCountOptions {
   /**
    * Time-bounded query: include only jobs whose `created_on` is at
@@ -109,29 +73,8 @@ export interface NpJobCountOptions {
  * operators can confirm `system:revisionPrune` and friends
  * are actually registered, not just declared in code.
  */
-export interface NpScheduleSummary {
-  /** pg-boss queue name (after `:` → `.` translation). */
-  name: string;
-  /**
-   * Issue #217 — the second half of `pgboss.schedule`'s primary
-   * key. Empty string for single-cadence schedules; `"daily"` /
-   * `"weekly"` (etc.) for jobs that need multiple cadences under
-   * one queue name. The admin UI uses `(name, key)` as a stable
-   * React key so duplicate-name rows render cleanly.
-   */
-  key: string;
-  /** Cron expression as registered. */
-  cron: string;
-  /** Timezone the cron runs in (defaults to UTC in pg-boss). */
-  timezone: string | null;
-  /** Default payload used when the cron fires. */
-  data: unknown;
-  createdOn: string;
-  updatedOn?: string | null;
-}
-
 export interface NpJobQueue {
-  enqueue(type: NpJobType, data: unknown): Promise<string>;
+  enqueue<TType extends NpJobType>(type: TType, data: NpJobPayload<TType>): Promise<string>;
   start(): Promise<void>;
   stop(): Promise<void>;
   /**
@@ -141,9 +84,9 @@ export interface NpJobQueue {
    * doesn't support introspection.
    */
   listJobs?(options: NpJobListOptions): Promise<NpJobListResult>;
-  /** Re-enqueue a failed/cancelled job's payload as a new job. Returns the new job id. */
+  /** Re-enqueue a failed/cancelled/expired job's payload as a new job. Returns the new job id. */
   retryJob?(id: string): Promise<string>;
-  /** Cancel a pending job (no-op for already-running / completed jobs). */
+  /** Cancel a created/retry job; other states fail explicitly. */
   cancelJob?(id: string): Promise<void>;
   /**
    * Phase 13.2 — list every cron schedule registered with the
@@ -274,7 +217,20 @@ export function getOptionalJobQueue(): NpJobQueue | null {
  * (content pipeline, media processing) can run without pg-boss during MVP
  * blog-only workloads. Return value is an empty string in the no-op path.
  */
-export async function enqueueJob(type: NpJobType, data: unknown): Promise<string> {
+export async function enqueueJob<TType extends NpJobType>(
+  type: TType,
+  data: NpJobPayload<TType>,
+): Promise<string> {
+  const normalized = normalizeRegisteredJobPayload(type, data);
   if (!jobQueue) return "";
-  return jobQueue.enqueue(type, data);
+  return jobQueue.enqueue(type, normalized);
 }
+
+export type {
+  NpJobPayload,
+  NpJobState,
+  NpJobStateCounts,
+  NpJobSummary,
+  NpJobType,
+  NpScheduleSummary,
+} from "../jobs-contract/index.js";

@@ -7,7 +7,7 @@ vi.mock("./job-log.js", () => ({
   listJobLogs: vi.fn((jobId: string) =>
     Promise.resolve([
       {
-        id: `log-${jobId}`,
+        id: "c53030ad-14e3-4295-868f-37e4bd49e166",
         jobId,
         level: "error",
         message: `last log for ${jobId}`,
@@ -22,15 +22,15 @@ vi.mock("./job-log.js", () => ({
 function job(input: Partial<NpJobSummary> & Pick<NpJobSummary, "id" | "state">): NpJobSummary {
   return {
     id: input.id,
-    name: input.name ?? "media.processImage",
+    name: input.name ?? "test.probe",
     state: input.state,
     data: input.data ?? {},
-    retryCount: input.retryCount,
+    retryCount: input.retryCount ?? 0,
     output: input.output ?? null,
     createdOn: input.createdOn ?? "2026-07-01T00:00:00.000Z",
     startedOn: input.startedOn ?? null,
     completedOn: input.completedOn ?? null,
-    source: input.source,
+    source: input.source ?? "live",
   };
 }
 
@@ -45,7 +45,7 @@ describe("listRecentJobFailures", () => {
   it("sorts recent failed jobs and attaches their latest log", async () => {
     const listJobs = vi.fn(({ state }: NpJobListOptions) =>
       Promise.resolve({
-        total: 1,
+        total: state === "failed" ? 2 : 0,
         jobs:
           state === "failed"
             ? [
@@ -86,5 +86,26 @@ describe("listRecentJobFailures", () => {
       }),
     );
     expect(listJobs).toHaveBeenCalledWith({ state: "failed", limit: 1 });
+  });
+
+  it("rejects invalid diagnostic filters instead of clamping or defaulting them", async () => {
+    const queue = {
+      enqueue: vi.fn(),
+      start: vi.fn(),
+      stop: vi.fn(),
+      listJobs: vi.fn(),
+    } satisfies NpJobQueue;
+
+    await expect(listRecentJobFailures(queue, { limit: 21 })).rejects.toThrow("job.failures.limit");
+    await expect(listRecentJobFailures(queue, { states: [] })).rejects.toThrow(
+      "job.failures.states",
+    );
+    await expect(listRecentJobFailures(queue, { states: ["failed", "failed"] })).rejects.toThrow(
+      "must not contain duplicates",
+    );
+    await expect(listRecentJobFailures(null, { limit: 1, typo: true } as never)).rejects.toThrow(
+      "job.failures.typo",
+    );
+    expect(queue.listJobs).not.toHaveBeenCalled();
   });
 });

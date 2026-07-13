@@ -1,11 +1,9 @@
 # Background Jobs Guide
 
-> Phase 13 ships NexPress's job queue surface — pg-boss as the
-> backing store, a worker bootstrap, an admin UI for
-> introspection / retry / cancel / bulk retry / manual enqueue,
-> and registered cron schedules. This guide covers running the
-> queue in production, writing handlers, and using the admin
-> tooling.
+NexPress uses one fail-closed runtime contract for job names, payloads,
+persisted queue rows, schedules, worker heartbeats, logs, Admin API responses,
+and ops diagnostics. This guide covers running the queue, authoring custom
+handlers, and operating that contract.
 
 ---
 
@@ -22,7 +20,7 @@
 9. [Manual Enqueue](#9-manual-enqueue)
 10. [Bulk Retry](#10-bulk-retry)
 11. [Operations Playbook](#11-operations-playbook)
-12. [What's Not Built (Yet)](#12-whats-not-built-yet)
+12. [Operability Inventory](#12-operability-inventory)
 
 ---
 
@@ -55,14 +53,21 @@ Set the environment variable:
 NP_ENABLE_JOBS=1
 ```
 
-Without this, the producer and worker are no-ops. `enqueueJob()`
-silently returns an empty job id, no migration is run on
-`pgboss.*`, and the admin Jobs view shows the
-"Background jobs disabled" empty-state.
+`1` and `true` enable jobs; unset, empty, `0`, and `false` disable them. Any
+other value is a startup/doctor error instead of silently choosing a mode.
+When disabled, the producer stays unwired: `enqueueJob()` still validates the
+job name and payload, then returns an empty job id. The worker command refuses
+to start until jobs are enabled.
 
 The connection string is reused from `DATABASE_URL` — no
 separate queue DB. pg-boss's first start will create the
-`pgboss` schema + tables automatically.
+`pgboss` schema + tables automatically. NexPress intentionally fixes this
+schema name because Admin, doctor, and ops all inspect the same tables; passing
+a different pg-boss schema is rejected at adapter construction.
+
+`NP_WORKER_HEARTBEAT_SECONDS`, `NP_WORKER_STALE_THRESHOLD_SECONDS`, and
+`NP_JOB_LOG_RETENTION_DAYS` accept only positive base-10 integers. Malformed,
+zero, negative, and unsafe values fail during startup rather than falling back.
 
 ---
 
@@ -93,13 +98,11 @@ web container without dropping in-flight jobs.
 import { startWorker } from "@nexpress/core/jobs";
 
 await startWorker(process.env.DATABASE_URL!);
-
-process.on("SIGTERM", async () => {
-  const { stopWorker } = await import("@nexpress/core/jobs");
-  await stopWorker();
-  process.exit(0);
-});
 ```
+
+`startWorker()` installs and owns graceful `SIGINT` / `SIGTERM` shutdown by
+default. An embedded supervisor may pass `installSignalHandlers: false` and
+then call `stopWorker()` from its single shutdown path.
 
 Multi-node deployments scale the worker container
 horizontally — pg-boss's advisory locks keep concurrent
@@ -112,8 +115,7 @@ claims correct.
 The framework registers a handful of system handlers via
 `registerBuiltinHandlers()` (called by `startWorker()`):
 
-- `content:afterCreate` / `content:afterUpdate` /
-  `content:afterDelete` — post-write hooks (cache
+- `content:afterSave` / `content:afterDelete` — post-write hooks (cache
   invalidation, plugin `afterX` hooks, search reindex)
 - `media:processImage` — Sharp-driven resize pipeline
   (decoupled from the upload request)
@@ -132,28 +134,57 @@ The framework registers a handful of system handlers via
 - `plugin:scheduledTask` — fan-out for plugin-registered
   scheduled tasks
 
-The full registered list is visible at runtime in
-`/admin/jobs` → Scheduled tab → "Registered handlers" card.
+The full known inventory is visible at runtime in
+`/admin/jobs` → Scheduled tab → "Known handler contracts" card.
 
 ---
 
 ## 5. Writing a Handler
 
-Handlers live in plugins or in your app's bootstrap code. The
-contract is `(data: unknown) => Promise<void>` and the type
-key is a string (typically `"namespace:action"`).
+Handlers live in application bootstrap code. Job names use canonical
+`namespace:action` syntax. Built-in names keep literal autocomplete, while
+custom names remain extensible.
+
+Every payload must be a bounded plain JSON object. Unsupported values such as
+`undefined`, `NaN`, class instances, circular references, and oversized or
+excessively deep payloads are rejected before enqueue. The worker validates the
+payload again immediately before dispatch.
+
+Custom handlers should add a parser. The parser receives the framework-normalized
+JSON object and must either return the exact application payload or throw. It runs
+at enqueue and dispatch, so make it deterministic and idempotent.
 
 ```ts
-// In a plugin
+// In application bootstrap
 import { registerJobHandler } from "@nexpress/core/jobs";
 
-registerJobHandler("myplugin:cleanup", async (data) => {
-  const { sites } = data as { sites: string[] };
-  for (const siteId of sites) {
-    await cleanupSiteCache(siteId);
-  }
-});
+interface CleanupPayload {
+  siteIds: string[];
+}
+
+registerJobHandler(
+  "myplugin:cleanup",
+  async ({ siteIds }: CleanupPayload) => {
+    for (const siteId of siteIds) await cleanupSiteCache(siteId);
+  },
+  {
+    parsePayload(data): CleanupPayload {
+      if (
+        Object.keys(data).length !== 1 ||
+        !Array.isArray(data.siteIds) ||
+        !data.siteIds.every((siteId) => typeof siteId === "string" && siteId.length > 0)
+      ) {
+        throw new Error("siteIds must be a non-empty string array");
+      }
+      return { siteIds: data.siteIds };
+    },
+  },
+);
 ```
+
+Registering the same handler/parser pair again is idempotent. A different
+handler under an existing name is a startup error, and every handler must
+resolve to `undefined`; a non-void result fails the job so pg-boss can retry it.
 
 Handler errors:
 
@@ -178,18 +209,23 @@ the configured error reporter (`getErrorReporter()`) — see
 import { enqueueJob } from "@nexpress/core/jobs";
 
 const id = await enqueueJob("media:processImage", {
-  mediaId: "01HM...",
-  sizes: ["thumb", "small", "large"],
+  mediaId: "bd134b0f-b9ea-4ff4-81ef-606e42e27703",
 });
 ```
 
 - Without a queue wired (`NP_ENABLE_JOBS=0`), `enqueueJob`
-  returns an empty string and the call is a no-op. The web
+  validates first, returns an empty string, and performs no work. The web
   process won't crash — the work just doesn't happen.
 - Job names use `:` as a namespace separator
   (`media:processImage`). The pg-boss adapter translates
   this to `.` internally because pg-boss 12+ rejects `:` in
   queue names.
+- Built-in payloads are exact. Empty maintenance jobs accept only `{}`;
+  content jobs require exactly one actor (`userId` or `memberId`);
+  invalid digest cadences and unknown keys are errors.
+- Import pure client-safe types and parsers from
+  `@nexpress/core/jobs-contract`. Server queue and handler functions remain in
+  `@nexpress/core/jobs`.
 
 ---
 
@@ -207,13 +243,18 @@ async scheduleRecurring(): Promise<void> {
   await this.boss.schedule(toQueueName("system:revisionPrune"), "0 3 * * *", {});
   await this.boss.schedule(toQueueName("system:sessionCleanup"), "0 * * * *", {});
   await this.boss.schedule(toQueueName("system:jobLogPrune"), "30 3 * * *", {});
-  await this.boss.schedule(toQueueName("notifications:sendDigest"), "0 8 * * *", {
-    cadence: "daily",
-  });
+  const digestQueue = toQueueName("notifications:sendDigest");
+  await this.boss.schedule(digestQueue, "0 8 * * *", { cadence: "daily" }, { key: "daily" });
+  await this.boss.schedule(
+    digestQueue,
+    "0 8 * * 1",
+    { cadence: "weekly" },
+    { key: "weekly" },
+  );
 
   for (const schedule of getRegisteredPluginSchedules()) {
     await this.boss.schedule(
-      `plugin.scheduledTask.${schedule.pluginId}.${schedule.taskId}`,
+      npPluginScheduledTaskQueueName(schedule.pluginId, schedule.taskId),
       schedule.cron,
       { pluginId: schedule.pluginId, taskId: schedule.taskId },
     );
@@ -221,14 +262,21 @@ async scheduleRecurring(): Promise<void> {
 }
 ```
 
+The Core package resolves pg-boss 12, whose schedule identity is the
+`(name, key)` pair. The explicit digest keys preserve both cadences while both
+rows dispatch through the exact `notifications:sendDigest` payload and handler
+contract.
+
 Plugins add recurring work through
 `definePlugin({ scheduled: [{ id, cron, handler }] })`.
 `@nexpress/plugin-sdk` auto-adds the `hooks:scheduled`
 capability for that surface; hand-rolled plugin definitions must
 declare it explicitly or the host refuses the schedule at load
-time. Each plugin schedule becomes one `pgboss.schedule` row under
-`plugin.scheduledTask.<pluginId>.<taskId>` and dispatches through
-the shared `plugin:scheduledTask` handler. Cron expressions use five fields
+time. Each plugin schedule becomes one `pgboss.schedule` row under the
+`plugin.scheduledTask.<hex(pluginId)>.<hex(taskId)>` physical namespace and
+dispatches through the shared `plugin:scheduledTask` handler. The reversible
+identifier inventory remains in the exact payload; hex avoids pg-boss rejecting
+scoped ids containing `@`. Cron expressions use five fields
 and run in UTC. Definition, host, and plugin doctor share the validation
 contract; see [`plugin-scheduled-tasks.md`](plugin-scheduled-tasks.md).
 
@@ -245,7 +293,7 @@ labels framework, plugin, and custom schedule rows separately.
 
 ## 8. Admin UI
 
-`/admin/jobs` (admin-only) shows five tabs:
+`/admin/jobs` (admin-only) shows six tabs:
 
 - **Pending** — `created` + `retry` jobs waiting to run.
   Per-row Cancel button.
@@ -254,11 +302,13 @@ labels framework, plugin, and custom schedule rows separately.
 - **Failed** — `failed`, `cancelled`, `expired`. Each row
   shows the last error inline; per-row Retry button +
   bulk "Retry all failed" header button.
+- **Archive** — terminal rows rolled into `pgboss.archive`; retry creates a
+  fresh live row without mutating the archive.
 - **Scheduled** — registered cron schedules and the list
-  of registered handlers. The "Run a handler" form
+  of known handler contracts. The "Run a handler" form
   enqueues a one-off job (see §9).
 
-Top-right toggle switches the four state tabs between
+Top-right toggle switches the five state tabs between
 "All time" and "Last 24 h" (forwarded to the API as
 `?since=...`).
 
@@ -287,7 +337,7 @@ A worker-health card sits above the tabs (Phase 20.4 / 23.5):
 
   The widget reads from `/api/admin/jobs/health`, which calls
   `NpJobQueue.countByState()` under the hood for counts and includes
-  the `recentFailures` block from the same ops contract used by
+  the `recentFailures` block from the same shared runtime contract used by
   `nexpress ops jobs status --json`.
 
 Plugin authors building their own monitoring can call
@@ -301,8 +351,8 @@ failure summary joined with the latest `np_job_logs` entry.
 
 Scheduled tab → "Run a handler" card:
 
-1. Pick a handler from the dropdown (populated from the
-   registered handler list).
+1. Pick a handler from the dropdown (populated from the known built-in and
+   application handler contract inventory).
 2. Enter a JSON payload (defaults to `{}`).
 3. Click **Enqueue**.
 
@@ -363,13 +413,13 @@ the endpoint directly if needed.
 
 **Maintenance window — pause processing**
 
-- `POST /api/admin/jobs/pause` (admin + CSRF). Optional
-  `{ "reason": "DB migration #123" }` body for the audit
-  trail. The flag persists in `np_settings` so a worker
+- `POST /api/admin/jobs/pause` (admin + CSRF). Send an exact JSON body: `{}`
+  or `{ "reason": "DB migration #123" }` for the audit trail. The flag
+  persists in `np_settings` so a worker
   restart while paused stays paused.
 - In-flight jobs run to completion; producers keep
   enqueueing. The pg-boss queue accumulates pending jobs.
-- `POST /api/admin/jobs/resume` to start draining again.
+- `POST /api/admin/jobs/resume` with `{}` to start draining again.
 - Multi-pod deployments converge in ≤ 30 s — each worker
   pod polls the persisted flag on its heartbeat tick and
   applies any state change locally.
@@ -403,31 +453,45 @@ the endpoint directly if needed.
   the payload + the inline error message. Cross-reference
   the worker logs (filter on `jobId`).
 
+**Contract corruption or an unexpected API shape**
+
+- `pnpm run doctor` includes `jobs.contract`. It inspects persisted worker,
+  job-log, recent pg-boss job/archive, and schedule rows with the same parsers
+  used at runtime.
+- `pnpm --silent run ops:jobs -- status --json` sets `diagnosticError` and
+  reports `blocked` when persisted rows cannot satisfy the contract. It never
+  substitutes epoch timestamps, default states, or empty failure inventories.
+- Admin list, schedule, health, log, enqueue, retry, cancel, pause, and resume
+  responses are exact wire contracts. Unknown fields and missing required
+  fields are errors instead of partially rendered state.
+- Mutation endpoints also use exact inputs: retry/cancel/resume/retry-all take
+  `{}`, pause takes only optional `reason`, and enqueue takes exactly `type` and
+  `data`. Unsupported or repeated query parameters return 400 before queue work.
+
 ---
 
-## 12. What's Not Built (Yet)
+## 12. Operability Inventory
 
-The Phase 20 jobs operability sweep closed every original §12
-entry. Add new items here as they surface — keep the list
-honest about what's missing rather than letting it drift.
+The Phase 20 jobs operability sweep closed every original gap in this list.
+These shipped surfaces remain documented together so future changes update the
+whole operator workflow rather than one endpoint in isolation.
 
-### Recently closed
+### Shipped surfaces
 
 - **Per-job logs admin UI** — Phase 20.3b. Each job row in
   `/admin/jobs` now has a collapsible "Logs" section that
-  lazy-fetches `GET /api/admin/jobs/{id}/logs` (editor-only,
-  paged via `?limit=` / `?offset=`, default 500 / max 1000).
+  lazy-fetches `GET /api/admin/jobs/{id}/logs` (admin-only,
+  paged via `?limit=` / `?offset=`; the UI asks for 500, max 1000).
   Entries render as `[time] [level] message` with
   per-entry collapsible context payloads. Empty state shows
   "No log entries for this job."
 - **Per-job log capture** — Phase 20.3a. `np_job_logs` table
   - `recordJobLog(level, message, context?)` helper. The
     pg-boss adapter wraps every handler invocation in an
-    AsyncLocalStorage context so `getLogger()` calls inside
-    the handler are auto-tee'd into the job's log stream
-    (alongside the configured global logger). Handler errors
-    are recorded automatically. Retention defaults to 14
-    days, swept by `system:jobLogPrune` cron daily at
+    AsyncLocalStorage context so `getLogger()` and explicit `recordJobLog()`
+    calls are stamped with the current job id. Handler errors are recorded
+    automatically in both the job stream and configured global logger.
+    Retention defaults to 14 days, swept by `system:jobLogPrune` cron daily at
     03:30 UTC.
 
 - **Pause / resume queue** — Phase 20.2. `POST /api/admin/jobs/pause`
@@ -475,7 +539,3 @@ honest about what's missing rather than letting it drift.
   recent heartbeat age, and the global queue-paused pill.
   Refresh fires another `/api/admin/jobs/health` round trip
   on demand.
-
-These aren't blockers — every shipped feature works without
-them. They're the obvious next steps if a real production
-deployment hits them.

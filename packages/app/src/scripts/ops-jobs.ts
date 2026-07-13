@@ -37,7 +37,7 @@ Options:
   --reason <text>  Optional reason stored with pause/resume/drain changes.
   --state <state>  Retry-all state: failed, cancelled, or expired. Defaults to failed.
   --name <queue>   Narrow retry-all to one pg-boss queue name.
-  --limit <n>      Maximum retry-all rows to process. Defaults to 200, caps at 500.
+  --limit <n>      Maximum retry-all rows to process. Defaults to 200; must be 1..500.
   --execute        Apply retry-all/drain. Without this, those commands dry-run.
   --approve <id>   Required with --execute: retry-all or drain.
   --json       Print the stable machine-readable jobs report.
@@ -66,15 +66,20 @@ function readStringArg(name: string): string | null {
 
 function readRetryStateArg(): "failed" | "cancelled" | "expired" | undefined {
   const state = readStringArg("--state");
+  if (state === null) return undefined;
   if (state === "failed" || state === "cancelled" || state === "expired") return state;
-  return undefined;
+  throw new Error("--state must be failed, cancelled, or expired");
 }
 
 function readLimitArg(): number | undefined {
   const raw = readStringArg("--limit");
-  if (!raw) return undefined;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) ? parsed : undefined;
+  if (raw === null) return undefined;
+  if (!/^[1-9]\d*$/u.test(raw)) throw new Error("--limit must be an integer between 1 and 500");
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed > 500) {
+    throw new Error("--limit must be an integer between 1 and 500");
+  }
+  return parsed;
 }
 
 async function main(): Promise<void> {

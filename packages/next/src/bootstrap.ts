@@ -31,6 +31,7 @@ import {
   type NpResolvedPluginLike,
   type NpRegisteredTheme,
 } from "@nexpress/core";
+import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
 import {
   npAnalyzeBlockDefinitions,
   npAnalyzePatternDefinitions,
@@ -735,7 +736,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
    */
   async function ensureJobProducer(): Promise<void> {
     if (producerStarted) return;
-    if (process.env.NP_ENABLE_JOBS !== "1") {
+    if (!npRequireJobsEnabledFlag(process.env.NP_ENABLE_JOBS)) {
       producerStarted = true;
       return;
     }

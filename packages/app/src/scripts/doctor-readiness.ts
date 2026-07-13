@@ -1,3 +1,5 @@
+import { npAnalyzeJobsEnabledFlag, npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
+
 import { deployTargetTitle, type DeployTarget } from "./deploy-targets.js";
 import type { MigrationStatus } from "./migration-status.js";
 import {
@@ -5,7 +7,6 @@ import {
   checkTargetProductionStorage,
   type CheckResult,
 } from "../lib/production-readiness.js";
-
 export type { CheckResult } from "../lib/production-readiness.js";
 
 type DoctorEnv = Record<string, string | undefined>;
@@ -36,7 +37,8 @@ const OAUTH_ENV_PAIRS: OAuthEnvPair[] = [
 ];
 
 function jobsEnabled(env: DoctorEnv): boolean {
-  return env.NP_ENABLE_JOBS === "1" || env.NP_ENABLE_JOBS === "true";
+  const result = npAnalyzeJobsEnabledFlag(env.NP_ENABLE_JOBS);
+  return result.ok ? result.value : false;
 }
 
 export function checkOAuthEnvPairs(env: DoctorEnv): CheckResult[] {
@@ -83,8 +85,18 @@ export function checkSecretLengthProd(prodMode: boolean, env: DoctorEnv): CheckR
 }
 
 export function checkJobsEnabledProd(prodMode: boolean, env: DoctorEnv): CheckResult | null {
+  const contract = npAnalyzeJobsEnabledFlag(env.NP_ENABLE_JOBS);
+  if (!contract.ok) {
+    return {
+      id: "jobs.enabled_contract",
+      state: "error",
+      label: "NP_ENABLE_JOBS contract",
+      detail: contract.issues[0]?.message ?? "invalid value",
+      hint: "Set NP_ENABLE_JOBS to 1, 0, true, or false.",
+    };
+  }
   if (!prodMode) return null;
-  if (jobsEnabled(env)) {
+  if (npRequireJobsEnabledFlag(env.NP_ENABLE_JOBS)) {
     return { id: "prod.jobs_enabled", state: "ok", label: "Jobs worker enabled (NP_ENABLE_JOBS)" };
   }
   return {

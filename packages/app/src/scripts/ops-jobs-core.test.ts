@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { buildOpsJobsJson, renderBriefOpsJobsStatus, type OpsJobsCounts } from "./ops-jobs-core.js";
+import {
+  applyOpsJobsPauseMutation,
+  applyOpsJobsRetryAllMutation,
+  buildOpsJobsJson,
+  collectOpsJobsStatus,
+  jobsEnabled,
+  renderBriefOpsJobsStatus,
+  workerStaleThresholdMs,
+  type OpsJobsCounts,
+} from "./ops-jobs-core.js";
 
 const emptyCounts: OpsJobsCounts = {
   created: 0,
@@ -20,6 +29,61 @@ const pause = {
 };
 
 describe("ops jobs core", () => {
+  it("rejects ambiguous jobs environment flags", () => {
+    expect(() => jobsEnabled({ NP_ENABLE_JOBS: "yes" })).toThrow(/NP_ENABLE_JOBS.*must be 1/u);
+    expect(jobsEnabled({ NP_ENABLE_JOBS: "false" })).toBe(false);
+    expect(jobsEnabled({ NP_ENABLE_JOBS: "1" })).toBe(true);
+  });
+
+  it("rejects malformed and unsafe worker stale thresholds", () => {
+    expect(() =>
+      workerStaleThresholdMs({ NP_WORKER_STALE_THRESHOLD_SECONDS: "90seconds" }),
+    ).toThrow("must be a positive integer");
+    expect(() =>
+      workerStaleThresholdMs({
+        NP_WORKER_STALE_THRESHOLD_SECONDS: Number.MAX_SAFE_INTEGER.toString(),
+      }),
+    ).toThrow("exceeds the safe integer range");
+    expect(workerStaleThresholdMs({ NP_WORKER_STALE_THRESHOLD_SECONDS: "90" })).toBe(90_000);
+    expect(workerStaleThresholdMs({ NP_WORKER_STALE_THRESHOLD_SECONDS: "" })).toBe(90_000);
+  });
+
+  it("rejects invalid retry-all filters before attempting a database connection", async () => {
+    await expect(
+      applyOpsJobsRetryAllMutation({
+        name: "not a queue name",
+        env: { DATABASE_URL: "postgres://should-not-connect" },
+      }),
+    ).rejects.toThrow("jobs.retryAll.name");
+    await expect(
+      applyOpsJobsRetryAllMutation({
+        limit: 501,
+        env: { DATABASE_URL: "postgres://should-not-connect" },
+      }),
+    ).rejects.toThrow("limit must be an integer between 1 and 500");
+  });
+
+  it("blocks resume and retry mutations when diagnostics cannot trust runtime state", async () => {
+    const env = {
+      NP_ENABLE_JOBS: "yes",
+      DATABASE_URL: "postgres://should-not-connect",
+    };
+    await expect(applyOpsJobsPauseMutation({ action: "resume", env })).resolves.toEqual(
+      expect.objectContaining({
+        status: "blocked",
+        diagnosticError: expect.stringMatching(/NP_ENABLE_JOBS/u),
+        mutation: expect.objectContaining({ applied: false }),
+      }),
+    );
+    await expect(applyOpsJobsRetryAllMutation({ env })).resolves.toEqual(
+      expect.objectContaining({
+        status: "blocked",
+        diagnosticError: expect.stringMatching(/NP_ENABLE_JOBS/u),
+        mutation: expect.objectContaining({ applied: false }),
+      }),
+    );
+  });
+
   it("reports disabled jobs as a non-blocking status", () => {
     expect(buildOpsJobsJson({ enabled: false, pause, counts: emptyCounts, workers: [] })).toEqual(
       expect.objectContaining({
@@ -29,6 +93,49 @@ describe("ops jobs core", () => {
         nextCommand: null,
         projectNextCommand: null,
       }),
+    );
+  });
+
+  it("prioritizes diagnostic corruption over the disabled state", () => {
+    expect(
+      buildOpsJobsJson({
+        enabled: false,
+        pause,
+        counts: emptyCounts,
+        workers: [],
+        diagnosticError: "NP_ENABLE_JOBS is invalid",
+      }),
+    ).toEqual(expect.objectContaining({ ok: false, status: "blocked" }));
+  });
+
+  it("blocks enabled jobs when DATABASE_URL is missing", async () => {
+    await expect(collectOpsJobsStatus({ NP_ENABLE_JOBS: "1" })).resolves.toEqual(
+      expect.objectContaining({
+        ok: false,
+        status: "blocked",
+        diagnosticError: "DATABASE_URL is not set",
+      }),
+    );
+  });
+
+  it("blocks instead of substituting empty state after a diagnostic failure", () => {
+    const report = buildOpsJobsJson({
+      enabled: true,
+      pause,
+      counts: emptyCounts,
+      workers: [],
+      diagnosticError: "worker.status must be running or stopped",
+    });
+
+    expect(report).toEqual(
+      expect.objectContaining({
+        ok: false,
+        status: "blocked",
+        diagnosticError: "worker.status must be running or stopped",
+      }),
+    );
+    expect(renderBriefOpsJobsStatus(report, { color: false })).toContain(
+      "diagnostic error: worker.status must be running or stopped",
     );
   });
 
@@ -109,13 +216,14 @@ describe("ops jobs core", () => {
           name: "media.processImage",
           state: "failed",
           source: "archive",
+          retryCount: 1,
           output: "sharp failed",
           createdOn: "2026-07-01T00:00:00.000Z",
           startedOn: "2026-07-01T00:01:00.000Z",
           completedOn: "2026-07-01T00:02:00.000Z",
           logCount: 1,
           lastLog: {
-            id: "log-1",
+            id: "c53030ad-14e3-4295-868f-37e4bd49e166",
             level: "error",
             message: "variant generation failed",
             context: null,
@@ -129,6 +237,26 @@ describe("ops jobs core", () => {
     expect(renderBriefOpsJobsStatus(report, { color: false })).toContain(
       "- failed media.processImage job-1: variant generation failed",
     );
+  });
+
+  it("rejects duplicate or misordered aggregate rows", () => {
+    const worker = {
+      id: "worker-1",
+      status: "running" as const,
+      startedAt: "2026-07-01T00:00:00.000Z",
+      lastSeenAt: "2026-07-01T00:01:00.000Z",
+      lastSeenAgoMs: 1_000,
+      alive: true,
+      meta: {},
+    };
+    expect(() =>
+      buildOpsJobsJson({
+        enabled: true,
+        pause,
+        counts: emptyCounts,
+        workers: [worker, worker],
+      }),
+    ).toThrow(/duplicate worker ids/u);
   });
 
   it("points paused queues at resume instead of a passive status check", () => {

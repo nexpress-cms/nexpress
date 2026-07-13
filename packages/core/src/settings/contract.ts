@@ -11,6 +11,7 @@ import type {
 } from "./types.js";
 import { npAnalyzeThemeTokensOverlay } from "../theme/contract.js";
 import { npValidateBlockContent } from "../fields/block-content.js";
+import { npAnalyzeJobsPauseState } from "../jobs-contract/contract.js";
 
 export const npSettingsContractLimits = {
   siteIdLength: 63,
@@ -46,7 +47,6 @@ export const DEFAULT_SEO_SETTINGS: NpSeoSettings = {
 const siteIdPattern = new RegExp(npSiteIdPattern, "u");
 const ownerPattern = new RegExp(npDynamicSettingOwnerPattern, "u");
 const pluginOwnerPattern = new RegExp(npPluginIdPattern, "u");
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const hostnamePattern =
   /^(?:localhost|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*)$/u;
 const siteSettingsKeys = new Set(["siteUrl", "defaultLocale", "timezone"]);
@@ -598,27 +598,16 @@ function analyzeCommunity(value: unknown): NpSettingContractIssue[] {
 }
 
 function analyzeJobsPause(value: unknown): NpSettingContractIssue[] {
-  const path = "settings.jobs.paused";
-  if (!isPlainRecord(value))
-    return [issue("shape", path, "job pause state must be a plain object.")];
-  const issues: NpSettingContractIssue[] = [];
-  pushUnknown(value, new Set(["paused", "changedAt", "changedByUserId", "reason"]), path, issues);
-  if (typeof value.paused !== "boolean")
-    issues.push(issue("invalid-field", `${path}.paused`, "paused must be boolean."));
-  if (!isIsoDate(value.changedAt))
-    issues.push(issue("invalid-field", `${path}.changedAt`, "changedAt must be an ISO date."));
-  if (
-    value.changedByUserId !== null &&
-    (typeof value.changedByUserId !== "string" || !uuidPattern.test(value.changedByUserId))
-  ) {
-    issues.push(
-      issue("invalid-field", `${path}.changedByUserId`, "changedByUserId must be a UUID or null."),
-    );
-  }
-  if (value.reason !== null && !isBoundedText(value.reason, 1000, true)) {
-    issues.push(issue("invalid-field", `${path}.reason`, "reason must be bounded text or null."));
-  }
-  return issues;
+  const result = npAnalyzeJobsPauseState(value);
+  return result.ok
+    ? []
+    : result.issues.map((entry) =>
+        issue(
+          "invalid-field",
+          entry.path.replace(/^jobs\.pause/u, "settings.jobs.paused"),
+          entry.message,
+        ),
+      );
 }
 
 function analyzePatterns(value: unknown): NpSettingContractIssue[] {

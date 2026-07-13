@@ -1061,21 +1061,7 @@ export interface NpConfig {
   };
 }
 
-export type NpJobType =
-  | "content:afterSave"
-  | "content:afterDelete"
-  | "content:publishScheduled"
-  | "media:processImage"
-  | "media:cleanup"
-  | "plugin:scheduledTask"
-  | "system:revisionPrune"
-  | "system:sessionCleanup"
-  | "system:jobLogPrune"
-  | "auth:sendPasswordReset"
-  | "members:sendVerifyEmail"
-  | "members:sendPasswordReset"
-  | "notifications:sendDigest"
-  | "import:wordpressApply";
+export type { NpJobType } from "../jobs-contract/types.js";
 
 /**
  * System-level filters that aren't part of any collection's

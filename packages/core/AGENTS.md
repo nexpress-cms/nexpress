@@ -16,6 +16,7 @@ src/
 ├── media/        # Upload/process lifecycle, storage adapter singletons, sharp processing
 ├── storage/      # LocalStorageAdapter, S3StorageAdapter, createStorageAdapter factory
 ├── jobs/         # pg-boss queue abstraction, handler registry, worker lifecycle, builtin handlers
+├── jobs-contract/ # client-safe names, payloads, persisted rows, schedules, and Admin wire parsers
 ├── plugins/      # Plugin host: registry, runHook, route dispatch, capability enforcement
 ├── theme/        # Token types, defaults, sanitizeTokenValue
 ├── errors.ts     # NpError hierarchy (Forbidden/NotFound/Validation/Auth/Conflict)
@@ -45,7 +46,7 @@ src/
 | Change JWT/password logic   | `auth/token.ts`, `auth/password.ts`           | jose for JWT, @node-rs/argon2 for passwords                        |
 | Add session features        | `auth/session.ts`                             | `verifyTokenFull`, `invalidateAllSessions`, tokenVersion checks    |
 | Change media processing     | `media/processor.ts`                          | sharp-based, `DEFAULT_IMAGE_SIZES` for variants                    |
-| Add job handler             | `jobs/handlers.ts`                            | `registerJobHandler(name, fn)` — picked up by PgBossAdapter        |
+| Add job handler             | `jobs/handlers.ts`, `jobs-contract/`          | `registerJobHandler(name, fn, { parsePayload })`                   |
 | Add plugin capabilities     | `plugins/host.ts` + `plugin-sdk/src/types.ts` | Hook capability = `hooks:<namespace>` prefix matching              |
 | Add error type              | `errors.ts`                                   | Extend `NpError` with code + statusCode                            |
 
@@ -65,7 +66,7 @@ No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugi
 
 ## CONVENTIONS
 
-- Two build entries: `index.ts` (main) and `db/schema/index.ts` (exported as `@nexpress/core/db-schema`). Apps reference the db-schema entry in `drizzle.config.ts`.
+- Public build entries are declared in `tsup.config.ts`; client-safe contracts such as `jobs-contract` must not import server dependencies. Apps reference the `db-schema` entry in `drizzle.config.ts`.
 - `pipeline.ts` is the single largest file (1043 lines). Changes here affect every document write. Read the full flow before modifying.
 - Content helpers in `content/helpers.ts` are thin wrappers over `getDb()` + direct SQL queries — they bypass the pipeline (no hooks/validation). Use `saveDocument`/`findDocuments` from collections for pipeline-protected writes.
 
