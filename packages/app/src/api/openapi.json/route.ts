@@ -1,4 +1,9 @@
-import { getAllCollectionSlugs, getCollectionConfig, getPluginRoutes } from "@nexpress/core";
+import {
+  getAllCollectionSlugs,
+  getCollectionConfig,
+  getPluginRoutes,
+  type NpCollectionConfig,
+} from "@nexpress/core";
 import {
   npThemeTokenGroups,
   npThemeTokenKeys,
@@ -18,6 +23,11 @@ import {
   npMediaVariantNamePattern,
 } from "@nexpress/core/media-contract";
 import { npDynamicSettingOwnerPattern, npSettingsContractLimits } from "@nexpress/core/settings";
+import {
+  NP_REVISION_STATUSES,
+  npRevisionCanonicalDatePattern,
+  npRevisionContractLimits,
+} from "@nexpress/core/revisions";
 import { NextResponse } from "next/server";
 
 import { ensureFor } from "../../lib/init-core";
@@ -86,9 +96,12 @@ function fieldToSchema(field: NpFieldManifest): OpenApiSchema {
     case "text":
     case "textarea":
     case "email":
-    case "select":
     case "radio":
       return { type: "string", ...(field.options && { enum: field.options.map((o) => o.value) }) };
+    case "select": {
+      const item = { type: "string", enum: field.options?.map((option) => option.value) ?? [] };
+      return field.hasMany ? { type: "array", items: item } : item;
+    }
     case "number":
       return { type: field.integerOnly ? "integer" : "number" };
     case "checkbox":
@@ -137,7 +150,7 @@ function fieldToSchema(field: NpFieldManifest): OpenApiSchema {
         items: { $ref: "#/components/schemas/block_instance" },
       };
     case "json":
-      return { type: "object", additionalProperties: true };
+      return {};
     case "upload":
     case "relationship":
       return field.hasMany
@@ -148,15 +161,19 @@ function fieldToSchema(field: NpFieldManifest): OpenApiSchema {
         type: "array",
         items: {
           type: "object",
+          additionalProperties: false,
           properties: Object.fromEntries(
-            (field.fields ?? []).map((f) => [f.name, fieldToSchema(f)]),
+            flattenManifestFields(field.fields ?? []).map((f) => [f.name, fieldToSchema(f)]),
           ),
         },
       };
     case "group":
       return {
         type: "object",
-        properties: Object.fromEntries((field.fields ?? []).map((f) => [f.name, fieldToSchema(f)])),
+        additionalProperties: false,
+        properties: Object.fromEntries(
+          flattenManifestFields(field.fields ?? []).map((f) => [f.name, fieldToSchema(f)]),
+        ),
       };
     default:
       return { type: "object", additionalProperties: true };
@@ -211,6 +228,125 @@ function collectionSchema(manifest: ReturnType<typeof collectionToManifest>): Op
     type: "object",
     properties,
     required,
+  };
+}
+
+function flattenManifestFields(fields: NpFieldManifest[]): NpFieldManifest[] {
+  return fields.flatMap((field) =>
+    field.type === "row" || field.type === "collapsible"
+      ? flattenManifestFields(field.fields ?? [])
+      : [field],
+  );
+}
+
+function revisionFieldToSchema(field: NpFieldManifest): OpenApiSchema {
+  if (field.type === "date") {
+    return {
+      type: "string",
+      format: "date-time",
+      pattern: npRevisionCanonicalDatePattern,
+      maxLength: npRevisionContractLimits.stringLength,
+    };
+  }
+  if (field.type === "array") {
+    return {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: Object.fromEntries(
+          flattenManifestFields(field.fields ?? []).map((nested) => [
+            nested.name,
+            revisionFieldValueSchema(nested),
+          ]),
+        ),
+      },
+    };
+  }
+  if (field.type === "group") {
+    return {
+      type: "object",
+      additionalProperties: false,
+      properties: Object.fromEntries(
+        flattenManifestFields(field.fields ?? []).map((nested) => [
+          nested.name,
+          revisionFieldValueSchema(nested),
+        ]),
+      ),
+    };
+  }
+  const schema = fieldToSchema(field);
+  if (schema.type === "string") {
+    return { ...schema, maxLength: npRevisionContractLimits.stringLength };
+  }
+  return schema;
+}
+
+function revisionFieldValueSchema(field: NpFieldManifest): OpenApiSchema {
+  return {
+    anyOf: [revisionFieldToSchema(field), { type: "null" }, { type: "string", maxLength: 0 }],
+  };
+}
+
+function revisionSnapshotSchema(
+  manifest: ReturnType<typeof collectionToManifest>,
+  config: NpCollectionConfig,
+): OpenApiSchema {
+  const fields = flattenManifestFields(manifest.fields);
+  const properties = Object.fromEntries(
+    fields.map((field) => [
+      field.name,
+      {
+        ...revisionFieldValueSchema(field),
+        ...(field.description && { description: field.description }),
+      },
+    ]),
+  ) as Record<string, OpenApiSchema>;
+
+  properties.visibility = {
+    anyOf: [
+      { type: "string", enum: ["public", "private"] },
+      { type: "null" },
+      { type: "string", maxLength: 0 },
+    ],
+  };
+  if (manifest.slug_auto) {
+    properties.slug = {
+      anyOf: [{ type: "string" }, { type: "null" }],
+      description: "Auto-derived from the configured source field unless set explicitly.",
+    };
+  }
+  if (config.i18n) {
+    properties.locale = { anyOf: [{ type: "string" }, { type: "null" }] };
+    properties.translationGroupId = {
+      anyOf: [
+        { type: "string", format: "uuid" },
+        { type: "null" },
+        { type: "string", maxLength: 0 },
+      ],
+    };
+  }
+  if (manifest.versions.drafts && !fields.some((field) => field.name === "publishedAt")) {
+    properties.publishedAt = {
+      anyOf: [
+        {
+          type: "string",
+          format: "date-time",
+          pattern: npRevisionCanonicalDatePattern,
+        },
+        { type: "null" },
+        { type: "string", maxLength: 0 },
+      ],
+    };
+  }
+
+  return {
+    type: "object",
+    additionalProperties: false,
+    maxProperties: npRevisionContractLimits.topLevelFields,
+    properties,
+    description:
+      "Partial authoring snapshot. Required collection fields may be omitted while editing; every present field must follow its declared wire type.",
   };
 }
 
@@ -2187,7 +2323,8 @@ function buildSpec(): OpenApiSchema {
   };
 
   for (const slug of slugs) {
-    const manifest = collectionToManifest(getCollectionConfig(slug));
+    const config = getCollectionConfig(slug);
+    const manifest = collectionToManifest(config);
     const schemaName = `${slug}_document`;
     schemas[schemaName] = collectionSchema(manifest);
 
@@ -2332,55 +2469,65 @@ function buildSpec(): OpenApiSchema {
       },
     };
 
-    if (manifest.versions.drafts) {
-      paths[`/api/collections/${slug}/{id}/autosave`] = {
-        parameters: [
-          { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
-        ],
-        post: {
-          summary: `Autosave a ${manifest.labels.singular.toLowerCase()} draft`,
-          description:
-            "Persists the request body as a `status=autosave` revision without touching the main document row. Editor clients call this on a debounce so a crash mid-edit can be recovered from the revisions panel. Requires `versions.drafts.autosave === true` on the collection.",
-          requestBody: {
-            required: true,
-            content: {
-              "application/json": { schema: { type: "object", additionalProperties: true } },
-            },
-          },
-          responses: {
-            "200": {
-              description:
-                "Revision summary (or the existing one when the snapshot was a no-op duplicate).",
+    if (config.versions) {
+      const snapshotSchema = revisionSnapshotSchema(manifest, config);
+      const drafts = config.versions?.drafts;
+      if (typeof drafts === "object" && drafts.autosave === true) {
+        paths[`/api/collections/${slug}/{id}/autosave`] = {
+          parameters: [
+            { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+          ],
+          post: {
+            summary: `Autosave a ${manifest.labels.singular.toLowerCase()} draft`,
+            description:
+              "Persists the request body as a `status=autosave` revision without touching the main document row. Editor clients call this on a debounce so a crash mid-edit can be recovered from the revisions panel. Requires `versions.drafts.autosave === true` on the collection.",
+            requestBody: {
+              required: true,
               content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      id: { type: "string", format: "uuid" },
-                      version: { type: "integer" },
-                      status: { type: "string", enum: ["autosave"] },
-                      createdAt: { type: "string", format: "date-time" },
-                      reused: { type: "boolean" },
+                "application/json": { schema: snapshotSchema },
+              },
+            },
+            responses: {
+              "200": {
+                description:
+                  "Exact autosave result. saved=false identifies a deduplicated snapshot.",
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "object",
+                      additionalProperties: false,
+                      required: ["saved", "revisionId", "version"],
+                      properties: {
+                        saved: { type: "boolean" },
+                        revisionId: { type: "string", format: "uuid" },
+                        version: { type: "integer", minimum: 1 },
+                      },
                     },
                   },
                 },
               },
+              "400": { description: "Autosave not configured for this collection" },
+              "404": { description: "Document not found" },
             },
-            "400": { description: "Autosave not configured for this collection" },
-            "404": { description: "Document not found" },
           },
-        },
-      };
+        };
+      }
 
       const revisionSummary: OpenApiSchema = {
         type: "object",
+        additionalProperties: false,
+        required: ["id", "version", "status", "changedFields", "authorId", "createdAt"],
         properties: {
           id: { type: "string", format: "uuid" },
-          version: { type: "integer" },
-          status: { type: "string", enum: ["draft", "published", "autosave"] },
-          changedFields: { type: "array", items: { type: "string" } },
-          authorId: { type: "string", format: "uuid", nullable: true },
-          createdAt: { type: "string", format: "date-time" },
+          version: { type: "integer", minimum: 1 },
+          status: { type: "string", enum: [...NP_REVISION_STATUSES] },
+          changedFields: { type: "array", uniqueItems: true, items: { type: "string" } },
+          authorId: { type: ["string", "null"], format: "uuid" },
+          createdAt: {
+            type: "string",
+            format: "date-time",
+            pattern: npRevisionCanonicalDatePattern,
+          },
         },
       };
 
@@ -2401,9 +2548,11 @@ function buildSpec(): OpenApiSchema {
                 "application/json": {
                   schema: {
                     type: "object",
+                    additionalProperties: false,
+                    required: ["revisions", "total"],
                     properties: {
                       revisions: { type: "array", items: revisionSummary },
-                      total: { type: "integer" },
+                      total: { type: "integer", minimum: 0 },
                     },
                   },
                 },
@@ -2431,13 +2580,21 @@ function buildSpec(): OpenApiSchema {
               content: {
                 "application/json": {
                   schema: {
-                    allOf: [
-                      revisionSummary,
-                      {
-                        type: "object",
-                        properties: { snapshot: { type: "object", additionalProperties: true } },
-                      },
+                    type: "object",
+                    additionalProperties: false,
+                    required: [
+                      "id",
+                      "version",
+                      "status",
+                      "changedFields",
+                      "authorId",
+                      "createdAt",
+                      "snapshot",
                     ],
+                    properties: {
+                      ...(revisionSummary.properties as Record<string, OpenApiSchema>),
+                      snapshot: snapshotSchema,
+                    },
                   },
                 },
               },

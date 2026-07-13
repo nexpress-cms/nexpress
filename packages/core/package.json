@@ -93,6 +93,11 @@
       "import": "./dist/routes.js",
       "default": "./dist/routes.js"
     },
+    "./revisions": {
+      "types": "./dist/revisions.d.ts",
+      "import": "./dist/revisions.js",
+      "default": "./dist/revisions.js"
+    },
     "./seo": {
       "types": "./dist/seo.d.ts",
       "import": "./dist/seo.js",

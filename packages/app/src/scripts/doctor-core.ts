@@ -1,6 +1,7 @@
 import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { npAnalyzeSettingRecord, npAnalyzeSiteRecord } from "@nexpress/core/settings";
+import { npAnalyzeRevision } from "@nexpress/core/revisions";
 
 import { inferDeployTargetFromEnv, type DeployTarget } from "./deploy-targets.js";
 import { buildDoctorJson, type DoctorJsonOutput } from "./doctor-output.js";
@@ -102,6 +103,7 @@ export async function collectDoctorChecks(
   checks.push(await checkLocalStorage(env, cwd));
   checks.push(await checkDatabase(env));
   checks.push(await checkSettingsContracts(env));
+  checks.push(await checkRevisionContracts(env));
   checks.push(await checkMigrationsApplied({ prodMode, env, cwd }));
 
   for (const result of [
@@ -363,6 +365,134 @@ async function checkSettingsContracts(env: DoctorEnv): Promise<CheckResult> {
       state: "warn",
       label: "Framework settings contracts",
       detail: `could not inspect settings: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+async function checkRevisionContracts(env: DoctorEnv): Promise<CheckResult> {
+  const url = env.DATABASE_URL;
+  if (!url) {
+    return {
+      id: "revisions.contract",
+      state: "warn",
+      label: "Revision snapshot contracts",
+      detail: "skipped (no DATABASE_URL)",
+    };
+  }
+  let pg: PgModuleLike;
+  try {
+    pg = (await loadPg()) as PgModuleLike;
+  } catch {
+    return {
+      id: "revisions.contract",
+      state: "warn",
+      label: "Revision snapshot contracts",
+      detail: "skipped (no `pg`)",
+    };
+  }
+
+  const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
+  try {
+    await client.connect();
+    const revisionsTable = await client.query<{ exists: boolean }>(
+      `select exists(
+         select 1 from information_schema.tables
+         where table_schema = 'public' and table_name = 'np_revisions'
+       ) as exists`,
+    );
+    if (!revisionsTable.rows[0]?.exists) {
+      await client.end();
+      return {
+        id: "revisions.contract",
+        state: "warn",
+        label: "Revision snapshot contracts",
+        detail: "skipped (np_revisions has not been migrated)",
+      };
+    }
+
+    const revisions = await client.query<Record<string, unknown>>(
+      `select id, collection, document_id as "documentId", version, status, snapshot,
+              changed_fields as "changedFields", author_id as "authorId", created_at as "createdAt"
+         from np_revisions`,
+    );
+    const contractIssues = revisions.rows.flatMap((row) => {
+      const result = npAnalyzeRevision(row);
+      return result.ok ? [] : result.issues;
+    });
+    const validCollections = [
+      ...new Set(
+        revisions.rows.flatMap((row) => {
+          const result = npAnalyzeRevision(row);
+          return result.ok ? [result.value.collection] : [];
+        }),
+      ),
+    ];
+    const tableNames = validCollections.map((collection) => `np_c_${collection}`);
+    const presentTables =
+      tableNames.length === 0
+        ? new Set<string>()
+        : new Set(
+            (
+              await client.query<{ table_name: string }>(
+                `select table_name from information_schema.tables
+                   where table_schema = 'public' and table_name = any($1::text[])`,
+                [tableNames],
+              )
+            ).rows.map((row) => row.table_name),
+          );
+    const missingCollections = validCollections.filter(
+      (collection) => !presentTables.has(`np_c_${collection}`),
+    );
+    let orphanCount = 0;
+    for (const collection of validCollections) {
+      const tableName = `np_c_${collection}`;
+      if (!presentTables.has(tableName)) continue;
+      // collection passed the canonical slug contract above, so the derived
+      // identifier contains only lowercase letters, numbers, and hyphens.
+      const orphaned = await client.query<{ total: string }>(
+        `select count(*)::text as total
+           from np_revisions r
+           left join "${tableName}" d on d.id::text = r.document_id
+          where r.collection = $1 and d.id is null`,
+        [collection],
+      );
+      orphanCount += Number.parseInt(orphaned.rows[0]?.total ?? "0", 10) || 0;
+    }
+    await client.end();
+
+    const issueCount = contractIssues.length + missingCollections.length + orphanCount;
+    if (issueCount === 0) {
+      return {
+        id: "revisions.contract",
+        state: "ok",
+        label: "Revision snapshot contracts",
+        detail: `${revisions.rows.length.toString()} revision row(s)`,
+      };
+    }
+    const firstContractIssue = contractIssues[0];
+    const firstDetail = firstContractIssue
+      ? `${firstContractIssue.path} ${firstContractIssue.message}`
+      : missingCollections[0]
+        ? `missing collection table np_c_${missingCollections[0]}`
+        : `${orphanCount.toString()} orphan revision row(s)`;
+    return {
+      id: "revisions.contract",
+      state: "error",
+      label: "Revision snapshot contracts",
+      detail: `${issueCount.toString()} contract/orphan issue(s); first: ${firstDetail}`,
+      hint: "Repair or remove malformed revision snapshots and orphan rows before restoring content.",
+    };
+  } catch (error) {
+    try {
+      await client.end();
+    } catch {
+      /* swallow */
+    }
+    return {
+      id: "revisions.contract",
+      state: "warn",
+      label: "Revision snapshot contracts",
+      detail: `could not inspect revisions: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }

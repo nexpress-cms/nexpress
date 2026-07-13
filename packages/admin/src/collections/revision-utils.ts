@@ -1,26 +1,49 @@
 "use client";
 
 import { isNpRichTextContent } from "@nexpress/core/fields";
+import {
+  npAnalyzeAutosaveRevisionWireResult,
+  npAnalyzeRevisionWire,
+  npAnalyzeRevisionWireList,
+  type NpAutosaveRevisionWireResult,
+  type NpRevisionWire,
+  type NpRevisionWireList,
+  type NpRevisionWireSummary,
+} from "@nexpress/core/revisions";
 
-export interface RevisionSummary {
-  id: string;
-  version: number;
-  status: "draft" | "published" | "autosave";
-  changedFields: string[];
-  authorId: string | null;
-  createdAt: string;
+export type RevisionSummary = NpRevisionWireSummary;
+export type RevisionDetail = NpRevisionWire;
+
+function invalidResponse(issues: Array<{ path: string; message: string }>): Error {
+  const first = issues[0];
+  return new Error(
+    first
+      ? `Invalid revision API response at ${first.path}: ${first.message}`
+      : "Invalid revision API response",
+  );
 }
 
-export interface RevisionDetail extends RevisionSummary {
-  snapshot: Record<string, unknown>;
+export function parseRevisionListResponse(value: unknown): NpRevisionWireList {
+  const result = npAnalyzeRevisionWireList(value);
+  if (!result.ok) throw invalidResponse(result.issues);
+  return result.value;
+}
+
+export function parseRevisionDetailResponse(value: unknown): NpRevisionWire {
+  const result = npAnalyzeRevisionWire(value);
+  if (!result.ok) throw invalidResponse(result.issues);
+  return result.value;
+}
+
+export function parseAutosaveResponse(value: unknown): NpAutosaveRevisionWireResult {
+  const result = npAnalyzeAutosaveRevisionWireResult(value);
+  if (!result.ok) throw invalidResponse(result.issues);
+  return result.value;
 }
 
 export function formatRevisionDate(value: string): string {
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return value;
-  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
 }
 
 export function snapshotValueKey(value: unknown): string {

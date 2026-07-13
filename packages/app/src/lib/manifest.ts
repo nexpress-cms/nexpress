@@ -79,6 +79,9 @@ function fieldToManifest(field: NpFieldConfig): NpFieldManifest {
 
   switch (field.type) {
     case "select":
+      base.hasMany = field.hasMany;
+      base.options = field.options;
+      break;
     case "radio":
       base.options = field.options;
       break;

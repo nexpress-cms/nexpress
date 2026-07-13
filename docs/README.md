@@ -36,6 +36,7 @@ behavior they describe changes.
 | [plugin-reload.md](plugin-reload.md)                   | What `/admin/plugins` "Reload all" picks up (and what needs a restart) |
 | [plugin-render.md](plugin-render.md)                   | Plugin render hooks                                                    |
 | [releasing.md](releasing.md)                           | Changesets release and npm publish checklist                           |
+| [revisions.md](revisions.md)                           | Revision snapshots, autosave, restore, API, and doctor contracts       |
 | [rich-text.md](rich-text.md)                           | Versioned rich-text wire format, validation, and authoring helpers     |
 | [scheduled-publishing.md](scheduled-publishing.md)     | Scheduled publish flow                                                 |
 | [settings.md](settings.md)                             | Canonical site identity and closed persisted-settings registry         |

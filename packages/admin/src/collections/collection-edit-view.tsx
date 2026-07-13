@@ -53,8 +53,10 @@ import { RevisionsPanel } from "./revisions-panel.js";
 import {
   diffSnapshotFields,
   formatRevisionDate,
+  parseAutosaveResponse,
+  parseRevisionDetailResponse,
+  parseRevisionListResponse,
   summarizeSnapshotValue,
-  type RevisionDetail,
   type RevisionSummary,
 } from "./revision-utils.js";
 import { ScheduleDialog } from "./schedule-dialog.js";
@@ -770,12 +772,8 @@ function CollectionEditViewInner({
           throw new Error("Failed to check autosave recovery.");
         }
 
-        const payload = (await response.json()) as {
-          revisions?: RevisionSummary[];
-        };
-        const latestAutosave = (payload.revisions ?? []).find(
-          (revision) => revision.status === "autosave",
-        );
+        const payload = parseRevisionListResponse(await response.json());
+        const latestAutosave = payload.revisions.find((revision) => revision.status === "autosave");
         if (!latestAutosave || latestAutosave.id === readDismissedAutosaveRevisionId()) {
           if (!cancelled) setAutosaveRecovery({ kind: "none" });
           return;
@@ -800,7 +798,7 @@ function CollectionEditViewInner({
           throw new Error("Failed to load autosave recovery details.");
         }
 
-        const detail = (await detailResponse.json()) as RevisionDetail;
+        const detail = parseRevisionDetailResponse(await detailResponse.json());
         const recoveredValues = buildDefaultValues(effectiveFields, detail.snapshot);
         const diffFields = diffSnapshotFields(defaultValues, recoveredValues);
         if (diffFields.length === 0) {
@@ -865,6 +863,7 @@ function CollectionEditViewInner({
           } | null;
           throw new Error(body?.error?.message ?? `HTTP ${response.status}`);
         }
+        parseAutosaveResponse(await response.json());
         autosaveBaselineRef.current = payload.snapshotKey;
         latestAutosavePayloadRef.current = null;
         setAutosaveStatus({ kind: "saved", at: Date.now() });

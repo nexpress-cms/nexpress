@@ -106,6 +106,12 @@ registered `np_settings` value. Unknown keys, malformed exact objects, and
 invalid versioned envelopes must be repaired or removed before startup;
 runtime reads deliberately do not reset them to defaults.
 
+The adjacent `revisions.contract` check validates persisted revision row and
+snapshot shapes, detects missing collection tables, and reports orphan revision
+rows. Runtime revision reads add collection-aware field and live block-registry
+validation before detail delivery or restore. See
+[Revisions and autosave](./revisions.md).
+
 For bundled providers, set credentials from one source only:
 
 - Env: set both `NP_OAUTH_GITHUB_CLIENT_ID` and

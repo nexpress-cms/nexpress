@@ -14,8 +14,8 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { npMedia } from "./media.js";
-import { type NpNavItem, type NpRichTextContent } from "../../config/types.js";
-import type { NpBlockInstance } from "../../fields/block-content.js";
+import { type NpNavItem } from "../../config/types.js";
+import type { NpRevisionSnapshot } from "../../revisions/contract.js";
 import type { NpSiteRuntimeSettings } from "../../settings/types.js";
 
 export const npUserRoleEnum = pgEnum("np_user_role", [
@@ -37,11 +37,6 @@ export const npRevisionStatusEnum = pgEnum("np_revision_status", [
   "published",
   "autosave",
 ]);
-
-type NpRevisionSnapshot = Record<string, unknown> & {
-  blocks?: NpBlockInstance[];
-  content?: NpRichTextContent;
-};
 
 export const npPasswordResetPurposeEnum = pgEnum("np_password_reset_purpose", ["invite", "reset"]);
 
@@ -165,6 +160,7 @@ export const npRevisions = pgTable(
   },
   (table) => ({
     documentVersionUnique: unique("np_revisions_document_id_version_unique").on(
+      table.collection,
       table.documentId,
       table.version,
     ),
