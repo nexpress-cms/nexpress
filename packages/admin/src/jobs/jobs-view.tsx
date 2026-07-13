@@ -13,6 +13,22 @@ import {
   RefreshCw,
   XCircle,
 } from "lucide-react";
+import {
+  npRequireCancelJobWire,
+  npRequireEnqueueJobWire,
+  npRequireJobListWire,
+  npRequireJobLogsWire,
+  npRequireJobsHealthWire,
+  npRequireRetryAllJobsWire,
+  npRequireRetryJobWire,
+  npRequireScheduleListWire,
+  type NpJobLogWireEntry,
+  type NpJobState,
+  type NpJobSummary,
+  type NpJobsHealthWire,
+  type NpRecentJobFailure,
+  type NpScheduleSummary,
+} from "@nexpress/core/jobs-contract";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
@@ -38,109 +54,17 @@ import { PageHeader } from "../layout/page-header.js";
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 type WindowMode = "all" | "24h";
 
-interface ScheduleSummary {
-  name: string;
-  /**
-   * Issue #217 — second half of pgboss.schedule's primary key.
-   * Empty for single-cadence schedules; non-empty for cron rows
-   * that share a queue name (e.g. daily / weekly digest).
-   */
-  key: string;
-  cron: string;
-  timezone: string | null;
-  data: unknown;
-  createdOn: string;
-  updatedOn?: string | null;
-}
-
-interface ScheduleListResponse {
-  supported: boolean;
-  schedules?: ScheduleSummary[];
-  handlers?: string[];
-}
-
-interface JobSummary {
-  id: string;
-  name: string;
-  state: "created" | "active" | "completed" | "failed" | "retry" | "cancelled" | "expired";
-  data: unknown;
-  retryCount?: number;
-  output?: string | null;
-  createdOn: string;
-  startedOn?: string | null;
-  completedOn?: string | null;
-  /** Phase 20.4 — `live` (pgboss.job) or `archive` (pgboss.archive). */
-  source?: "live" | "archive";
-}
-
-/** Phase 20.4 + 23.5 — `/api/admin/jobs/health` payload. */
-interface JobStateCounts {
-  created: number;
-  active: number;
-  completed: number;
-  failed: number;
-  retry: number;
-  cancelled: number;
-  expired: number;
-}
-
-interface StuckJobsBlock {
-  counts: JobStateCounts;
-  thresholds: { failed: number; expired: number };
-}
-
-interface WorkerHealthResponse {
-  workers?: Array<{
-    id: string;
-    status: string;
-    lastSeenAt: string;
-    alive: boolean;
-    lastSeenAgoMs: number;
-  }>;
-  aliveCount?: number;
-  totalCount?: number;
-  newestHeartbeat?: string | null;
-  pause?: { paused: boolean; pausedAt?: string | null };
-  stuck?: StuckJobsBlock | null;
-  recentFailures?: RecentJobFailure[];
-}
-
-interface RecentJobFailure {
-  id: string;
-  name: string;
-  state: JobSummary["state"];
-  source: "live" | "archive";
-  output: string | null;
-  createdOn: string;
-  completedOn: string | null;
-  logCount: number;
-  lastLog: JobLogEntry | null;
-}
-
-interface JobListResponse {
-  supported: boolean;
-  jobs?: JobSummary[];
-  total?: number;
-}
-
-interface JobLogEntry {
-  id: string;
-  level: "debug" | "info" | "warn" | "error";
-  message: string;
-  context: Record<string, unknown> | null;
-  createdAt: string;
-}
-
-interface JobLogsResponse {
-  jobId: string;
-  total: number;
-  entries: JobLogEntry[];
-}
+type ScheduleSummary = NpScheduleSummary;
+type JobSummary = NpJobSummary;
+type StuckJobsBlock = NonNullable<NpJobsHealthWire["stuck"]>;
+type WorkerHealthResponse = NpJobsHealthWire;
+type RecentJobFailure = NpRecentJobFailure;
+type JobLogEntry = NpJobLogWireEntry;
 
 type StateTab = "pending" | "active" | "completed" | "failed" | "archive";
 type Tab = StateTab | "scheduled";
 
-const STATE_BUCKETS: Record<StateTab, JobSummary["state"][]> = {
+const STATE_BUCKETS: Record<StateTab, NpJobState[]> = {
   pending: ["created", "retry"],
   active: ["active"],
   completed: ["completed"],
@@ -200,12 +124,14 @@ export function JobsView() {
           const res = await npFetch(
             `/api/admin/jobs?state=${encodeURIComponent(state)}&limit=100${sinceParam}${sourceParam}`,
           );
-          return (await res.json().catch(() => null)) as JobListResponse | null;
+          const body = await readResponseJson(res);
+          if (!res.ok) throw new Error(readApiError(body, "Unable to load jobs."));
+          return npRequireJobListWire(body);
         }),
       );
-      const supportedFlags = results.map((r) => r?.supported ?? true);
+      const supportedFlags = results.map((result) => result.supported);
       setSupported(supportedFlags.every(Boolean));
-      const merged = results.flatMap((r) => r?.jobs ?? []);
+      const merged = results.flatMap((result) => result.jobs);
       // Sort newest first across the merged buckets.
       merged.sort((a, b) => new Date(b.createdOn).getTime() - new Date(a.createdOn).getTime());
       setJobs(merged);
@@ -221,10 +147,12 @@ export function JobsView() {
     setError(null);
     try {
       const res = await npFetch("/api/admin/jobs/schedules");
-      const body = (await res.json().catch(() => null)) as ScheduleListResponse | null;
-      setSchedulesSupported(body?.supported ?? false);
-      setSchedules(body?.schedules ?? []);
-      setHandlers(body?.handlers ?? []);
+      const body = await readResponseJson(res);
+      if (!res.ok) throw new Error(readApiError(body, "Unable to load schedules."));
+      const schedules = npRequireScheduleListWire(body);
+      setSchedulesSupported(schedules.supported);
+      setSchedules(schedules.schedules);
+      setHandlers(schedules.handlers);
     } catch {
       setError("Unable to load schedules.");
     } finally {
@@ -241,14 +169,12 @@ export function JobsView() {
         headers: { "Content-Type": "application/json" },
         body: "{}",
       });
-      const body = (await res.json().catch(() => null)) as {
-        id?: string;
-        error?: { message?: string };
-      } | null;
+      const body = await readResponseJson(res);
       if (!res.ok) {
-        setError(body?.error?.message ?? "Unable to retry job.");
+        setError(readApiError(body, "Unable to retry job."));
         return;
       }
+      npRequireRetryJobWire(body);
       if (isStateTab(tab)) await load(tab, windowMode);
     } catch {
       setError("Unable to retry job.");
@@ -266,11 +192,12 @@ export function JobsView() {
         headers: { "Content-Type": "application/json" },
         body: "{}",
       });
-      const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+      const body = await readResponseJson(res);
       if (!res.ok) {
-        setError(body?.error?.message ?? "Unable to cancel job.");
+        setError(readApiError(body, "Unable to cancel job."));
         return;
       }
+      npRequireCancelJobWire(body);
       if (isStateTab(tab)) await load(tab, windowMode);
     } catch {
       setError("Unable to cancel job.");
@@ -288,16 +215,12 @@ export function JobsView() {
         headers: { "Content-Type": "application/json" },
         body: "{}",
       });
-      const body = (await res.json().catch(() => null)) as {
-        retried?: number;
-        failed?: number;
-        remaining?: number;
-        error?: { message?: string };
-      } | null;
+      const body = await readResponseJson(res);
       if (!res.ok) {
-        setError(body?.error?.message ?? "Bulk retry failed.");
+        setError(readApiError(body, "Bulk retry failed."));
         return;
       }
+      npRequireRetryAllJobsWire(body);
       if (isStateTab(tab)) await load(tab, windowMode);
     } catch {
       setError("Bulk retry failed.");
@@ -459,6 +382,7 @@ function WorkerHealthCard() {
   const [data, setData] = useState<WorkerHealthResponse | null>(null);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [renderedAt, setRenderedAt] = useState<number>(() => Date.now());
 
   async function load() {
     setRefreshing(true);
@@ -471,10 +395,8 @@ function WorkerHealthCard() {
         setData(null);
         return;
       }
-      const body = (await res.json().catch(() => null)) as {
-        data?: WorkerHealthResponse;
-      } | null;
-      setData(body?.data ?? null);
+      setData(npRequireJobsHealthWire(await readResponseJson(res)));
+      setRenderedAt(Date.now());
     } catch {
       setError("Worker health unavailable.");
     } finally {
@@ -490,26 +412,20 @@ function WorkerHealthCard() {
     void load();
   }, []);
 
-  // The "first heartbeat age" is computed once per render — using
-  // `Date.now()` directly trips the impure-call rule, but the value
-  // is intentionally point-in-time (it ticks with the `refresh`
-  // button, which is what operators expect).
-  const [renderedAt] = useState<number>(() => Date.now());
-
   if (error || !data) {
     return null;
   }
-  const alive = data.aliveCount ?? 0;
-  const total = data.totalCount ?? 0;
+  const alive = data.aliveCount;
+  const total = data.totalCount;
   const newest = data.newestHeartbeat ? new Date(data.newestHeartbeat) : null;
   const ageMs = newest ? renderedAt - newest.getTime() : null;
-  const paused = data.pause?.paused === true;
+  const paused = data.pause.paused;
 
   const stuck = data.stuck ?? null;
-  const failedOverThreshold = stuck !== null && stuck.counts.failed >= stuck.thresholds.failed;
-  const expiredOverThreshold = stuck !== null && stuck.counts.expired >= stuck.thresholds.expired;
+  const failedOverThreshold = stuck !== null && stuck.counts.failed > stuck.thresholds.failed;
+  const expiredOverThreshold = stuck !== null && stuck.counts.expired > stuck.thresholds.expired;
   const showStuckWarning = failedOverThreshold || expiredOverThreshold;
-  const recentFailures = (data.recentFailures ?? []).slice(0, 3);
+  const recentFailures = data.recentFailures.slice(0, 3);
 
   return (
     <Card className="min-w-0">
@@ -714,11 +630,11 @@ function SchedulesPanel({
           <CardHeader className="border-b-0 pb-0">
             <CardTitle className="flex min-w-0 items-center gap-2 text-sm font-medium">
               <Code className="h-4 w-4 shrink-0" />{" "}
-              <span className="min-w-0 break-words">Registered handlers</span>
+              <span className="min-w-0 break-words">Known handler contracts</span>
             </CardTitle>
             <p className="break-words text-xs text-muted-foreground">
-              Job types that have a worker handler registered. Enqueues to other types will sit in
-              the queue with no consumer.
+              Built-in job types plus application handlers registered at bootstrap. Manual enqueues
+              accept only this inventory.
             </p>
           </CardHeader>
           <CardContent className="min-w-0 p-0">
@@ -750,10 +666,8 @@ function scheduleKind(schedule: ScheduleSummary): {
   detail: string | null;
 } {
   if (schedule.name.startsWith("plugin.scheduledTask.")) {
-    const data = schedule.data && typeof schedule.data === "object" ? schedule.data : {};
-    const record = data as Record<string, unknown>;
-    const pluginId = typeof record.pluginId === "string" ? record.pluginId : null;
-    const taskId = typeof record.taskId === "string" ? record.taskId : null;
+    const pluginId = typeof schedule.data.pluginId === "string" ? schedule.data.pluginId : null;
+    const taskId = typeof schedule.data.taskId === "string" ? schedule.data.taskId : null;
     return {
       label: "plugin",
       className: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
@@ -801,15 +715,13 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type, data }),
       });
-      const body = (await res.json().catch(() => null)) as {
-        id?: string;
-        error?: { message?: string };
-      } | null;
+      const body = await readResponseJson(res);
       if (!res.ok) {
-        setError(body?.error?.message ?? "Enqueue failed.");
+        setError(readApiError(body, "Enqueue failed."));
         return;
       }
-      setMessage(`Enqueued (job id ${body?.id ?? "unknown"}).`);
+      const result = npRequireEnqueueJobWire(body);
+      setMessage(`Enqueued (job id ${result.id}).`);
       onEnqueued();
     } catch {
       setError("Enqueue failed.");
@@ -1039,7 +951,7 @@ function JobLogsSection({ jobId }: { jobId: string }) {
           if (!res.ok) {
             throw new Error(`HTTP ${res.status}`);
           }
-          const data = (await res.json()) as JobLogsResponse;
+          const data = npRequireJobLogsWire(await readResponseJson(res));
           if (!cancelled) {
             setState({ kind: "loaded", total: data.total, entries: data.entries });
           }
@@ -1123,6 +1035,21 @@ function JobLogsSection({ jobId }: { jobId: string }) {
       </div>
     </details>
   );
+}
+
+async function readResponseJson(response: Response): Promise<unknown> {
+  try {
+    return (await response.json()) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function readApiError(value: unknown, fallback: string): string {
+  if (typeof value !== "object" || value === null || !("error" in value)) return fallback;
+  const error = value.error;
+  if (typeof error !== "object" || error === null || !("message" in error)) return fallback;
+  return typeof error.message === "string" && error.message.length > 0 ? error.message : fallback;
 }
 
 const LOG_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {

@@ -97,6 +97,19 @@ describe("createBootstrap", () => {
     expect(core.startProducer).toHaveBeenCalledTimes(2);
   });
 
+  it("uses the exact shared jobs-enabled environment contract", async () => {
+    vi.stubEnv("NP_ENABLE_JOBS", "true");
+    const enabled = createBootstrap({ config: buildConfig(), generatedSchema: {} });
+    await enabled.ensureJobProducer();
+    expect(core.startProducer).toHaveBeenCalledOnce();
+
+    vi.clearAllMocks();
+    vi.stubEnv("NP_ENABLE_JOBS", "yes");
+    const invalid = createBootstrap({ config: buildConfig(), generatedSchema: {} });
+    await expect(invalid.ensureJobProducer()).rejects.toThrow(/NP_ENABLE_JOBS/u);
+    expect(core.startProducer).not.toHaveBeenCalled();
+  });
+
   it("clears the shared block registry on plugin reload (#477)", async () => {
     // Issue #477 — `reloadPlugins()` must drop plugin-contributed
     // block definitions from the shared block registry, otherwise

@@ -4,8 +4,10 @@ import { getDb } from "../db/runtime.js";
 import { npSettings } from "../db/schema/system.js";
 import { getLogger } from "../observability/logger.js";
 import { reportError } from "../observability/error-reporter.js";
+import { npRequireJobsPauseState, type NpJobsPauseState } from "../jobs-contract/index.js";
 import { type NpJobQueue } from "./queue.js";
 import { npAssertSettingValue } from "../settings/contract.js";
+import { npRequireJobDurationMs } from "./runtime-config.js";
 
 /**
  * Phase 20.2 — global pause / resume for job processing.
@@ -19,16 +21,6 @@ import { npAssertSettingValue } from "../settings/contract.js";
  */
 const SYSTEM_SITE_ID = "_system";
 const JOBS_PAUSED_KEY = "jobs.paused";
-
-export interface NpJobsPauseState {
-  paused: boolean;
-  /** ISO timestamp captured the last time the flag flipped. */
-  changedAt: string;
-  /** User id (staff) who flipped the flag, when known. */
-  changedByUserId: string | null;
-  /** Optional note an operator can leave for the next person. */
-  reason: string | null;
-}
 
 const DEFAULT_STATE: NpJobsPauseState = {
   paused: false,
@@ -46,9 +38,9 @@ export async function getJobsPauseState(): Promise<NpJobsPauseState> {
     .limit(1);
 
   const row = rows[0];
-  if (!row) return DEFAULT_STATE;
+  if (!row) return npRequireJobsPauseState(DEFAULT_STATE);
   npAssertSettingValue(JOBS_PAUSED_KEY, row.value);
-  return row.value as NpJobsPauseState;
+  return npRequireJobsPauseState(row.value);
 }
 
 export interface SetJobsPauseStateInput {
@@ -58,14 +50,15 @@ export interface SetJobsPauseStateInput {
 }
 
 export async function setJobsPauseState(input: SetJobsPauseStateInput): Promise<NpJobsPauseState> {
-  const db = getDb();
-  const next: NpJobsPauseState = {
+  requireExactPauseInput(input);
+  const next = npRequireJobsPauseState({
     paused: input.paused,
     changedAt: new Date().toISOString(),
     changedByUserId: input.changedByUserId ?? null,
     reason: input.reason ?? null,
-  };
+  });
   npAssertSettingValue(JOBS_PAUSED_KEY, next);
+  const db = getDb();
 
   await db
     .insert(npSettings)
@@ -84,6 +77,31 @@ export async function setJobsPauseState(input: SetJobsPauseStateInput): Promise<
 
   return next;
 }
+
+function requireExactPauseInput(value: unknown): asserts value is SetJobsPauseStateInput {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("jobs.pause input must be a plain object");
+  }
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error("jobs.pause input must be a plain object");
+  }
+  const allowed = new Set(["paused", "changedByUserId", "reason"]);
+  const keys: string[] = [];
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") throw new Error("jobs.pause must not contain symbol properties");
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor?.enumerable || !("value" in descriptor)) {
+      throw new Error(`jobs.pause.${key} must be an enumerable plain data property`);
+    }
+    keys.push(key);
+  }
+  const unsupported = keys.find((key) => !allowed.has(key));
+  if (unsupported) throw new Error(`jobs.pause.${unsupported} is not supported`);
+  if (!keys.includes("paused")) throw new Error("jobs.pause.paused is required");
+}
+
+export type { NpJobsPauseState } from "../jobs-contract/index.js";
 
 export const PAUSE_SYNC_INTERVAL_MS = 30_000;
 
@@ -120,6 +138,7 @@ export function startPauseSyncLoop(
   queue: NpJobQueue,
   intervalMs: number = PAUSE_SYNC_INTERVAL_MS,
 ): PauseSyncLoopHandle {
+  const canonicalInterval = npRequireJobDurationMs(intervalMs, "jobs.pauseSyncIntervalMs");
   const log = getLogger();
   let consecutiveFailures = 0;
   let escalated = false;
@@ -182,7 +201,7 @@ export function startPauseSyncLoop(
   void tick();
   const timer = setInterval(() => {
     void tick();
-  }, intervalMs);
+  }, canonicalInterval);
   if (typeof timer.unref === "function") timer.unref();
 
   return {

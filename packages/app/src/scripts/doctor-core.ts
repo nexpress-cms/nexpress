@@ -1,7 +1,17 @@
 import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
+import { npValidatePluginCronExpression } from "@nexpress/core";
 import { npAnalyzeSettingRecord, npAnalyzeSiteRecord } from "@nexpress/core/settings";
 import { npAnalyzeRevision } from "@nexpress/core/revisions";
+import {
+  npAnalyzeJobLogEntry,
+  npAnalyzeJobPayload,
+  npAnalyzeJobSummary,
+  npAnalyzeWorkerHeartbeat,
+  npBuiltinJobTypeForQueueName,
+  npRequireScheduleSummary,
+  type NpJobContractIssue,
+} from "@nexpress/core/jobs-contract";
 
 import { inferDeployTargetFromEnv, type DeployTarget } from "./deploy-targets.js";
 import { buildDoctorJson, type DoctorJsonOutput } from "./doctor-output.js";
@@ -104,6 +114,7 @@ export async function collectDoctorChecks(
   checks.push(await checkDatabase(env));
   checks.push(await checkSettingsContracts(env));
   checks.push(await checkRevisionContracts(env));
+  checks.push(await checkJobContracts(env));
   checks.push(await checkMigrationsApplied({ prodMode, env, cwd }));
 
   for (const result of [
@@ -494,6 +505,244 @@ async function checkRevisionContracts(env: DoctorEnv): Promise<CheckResult> {
       label: "Revision snapshot contracts",
       detail: `could not inspect revisions: ${error instanceof Error ? error.message : String(error)}`,
     };
+  }
+}
+
+async function checkJobContracts(env: DoctorEnv): Promise<CheckResult> {
+  const url = env.DATABASE_URL;
+  if (!url) {
+    return {
+      id: "jobs.contract",
+      state: "warn",
+      label: "Background job runtime contracts",
+      detail: "skipped (no DATABASE_URL)",
+    };
+  }
+  let pg: PgModuleLike;
+  try {
+    pg = (await loadPg()) as PgModuleLike;
+  } catch {
+    return {
+      id: "jobs.contract",
+      state: "warn",
+      label: "Background job runtime contracts",
+      detail: "skipped (no `pg`)",
+    };
+  }
+
+  const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
+  try {
+    await client.connect();
+    const tables = await client.query<{ table_schema: string; table_name: string }>(
+      `select table_schema, table_name
+         from information_schema.tables
+        where (table_schema = 'public' and table_name in ('np_worker_heartbeats', 'np_job_logs'))
+           or (table_schema = 'pgboss' and table_name in ('job', 'archive', 'schedule'))`,
+    );
+    const present = new Set(tables.rows.map((row) => `${row.table_schema}.${row.table_name}`));
+    if (present.size === 0) {
+      await client.end();
+      return {
+        id: "jobs.contract",
+        state: "warn",
+        label: "Background job runtime contracts",
+        detail: "skipped (job runtime tables have not been migrated)",
+      };
+    }
+
+    const issues: NpJobContractIssue[] = [];
+    let checked = 0;
+    if (present.has("public.np_worker_heartbeats")) {
+      const workers = await client.query<{
+        id: string;
+        status: string;
+        startedAt: Date | string;
+        lastSeenAt: Date | string;
+        meta: unknown;
+      }>(
+        `select id, status, started_at as "startedAt", last_seen_at as "lastSeenAt", meta
+           from np_worker_heartbeats`,
+      );
+      checked += workers.rows.length;
+      for (const [index, row] of workers.rows.entries()) {
+        inspectJobContract(issues, `workers[${index.toString()}]`, () => {
+          const result = npAnalyzeWorkerHeartbeat({
+            ...row,
+            startedAt: doctorDate(row.startedAt, `workers[${index.toString()}].startedAt`),
+            lastSeenAt: doctorDate(row.lastSeenAt, `workers[${index.toString()}].lastSeenAt`),
+          });
+          if (!result.ok) issues.push(...result.issues);
+        });
+      }
+    }
+    if (present.has("public.np_job_logs")) {
+      const logs = await client.query<{
+        id: string;
+        jobId: string;
+        level: string;
+        message: string;
+        context: unknown;
+        createdAt: Date | string;
+      }>(
+        `select id::text as id, job_id as "jobId", level, message, context,
+                created_at as "createdAt"
+           from np_job_logs
+          order by created_at desc
+          limit 5000`,
+      );
+      checked += logs.rows.length;
+      for (const [index, row] of logs.rows.entries()) {
+        inspectJobContract(issues, `logs[${index.toString()}]`, () => {
+          const result = npAnalyzeJobLogEntry({
+            ...row,
+            createdAt: doctorDate(row.createdAt, `logs[${index.toString()}].createdAt`),
+          });
+          if (!result.ok) issues.push(...result.issues);
+        });
+      }
+    }
+    for (const source of ["live", "archive"] as const) {
+      const table = source === "live" ? "job" : "archive";
+      if (!present.has(`pgboss.${table}`)) continue;
+      const jobs = await client.query<{
+        id: string;
+        name: string;
+        state: string;
+        data: unknown;
+        retryCount: number;
+        output: string | null;
+        createdOn: Date | string;
+        startedOn: Date | string | null;
+        completedOn: Date | string | null;
+      }>(
+        `select id::text as id, name, state::text as state, data,
+                retry_count as "retryCount", output::text as output,
+                created_on as "createdOn", started_on as "startedOn",
+                completed_on as "completedOn"
+           from pgboss.${table}
+          order by created_on desc
+          limit 1000`,
+      );
+      checked += jobs.rows.length;
+      for (const [index, row] of jobs.rows.entries()) {
+        inspectJobContract(issues, `jobs.${source}[${index.toString()}]`, () => {
+          const result = npAnalyzeJobSummary({
+            ...row,
+            createdOn: doctorIso(row.createdOn, `jobs.${source}[${index.toString()}].createdOn`),
+            startedOn: doctorNullableIso(
+              row.startedOn,
+              `jobs.${source}[${index.toString()}].startedOn`,
+            ),
+            completedOn: doctorNullableIso(
+              row.completedOn,
+              `jobs.${source}[${index.toString()}].completedOn`,
+            ),
+            source,
+          });
+          if (!result.ok) issues.push(...result.issues);
+        });
+        const builtinType = npBuiltinJobTypeForQueueName(row.name);
+        if (builtinType) {
+          const payload = npAnalyzeJobPayload(builtinType, row.data);
+          if (!payload.ok) issues.push(...payload.issues);
+        }
+      }
+    }
+    if (present.has("pgboss.schedule")) {
+      const schedules = await client.query<{
+        name: string;
+        key: string | null;
+        cron: string;
+        timezone: string | null;
+        data: unknown;
+        createdOn: Date | string;
+        updatedOn: Date | string | null;
+      }>(
+        `select name, coalesce(key, '') as key, cron, timezone, data,
+                created_on as "createdOn", updated_on as "updatedOn"
+           from pgboss.schedule`,
+      );
+      checked += schedules.rows.length;
+      for (const [index, row] of schedules.rows.entries()) {
+        const cron = npValidatePluginCronExpression(row.cron);
+        if (!cron.ok) {
+          issues.push({
+            path: `jobs.schedules[${index.toString()}].cron`,
+            message: cron.message,
+          });
+        }
+        inspectJobContract(issues, `jobs.schedules[${index.toString()}]`, () => {
+          npRequireScheduleSummary({
+            ...row,
+            createdOn: doctorIso(row.createdOn, `jobs.schedules[${index.toString()}].createdOn`),
+            updatedOn: doctorNullableIso(
+              row.updatedOn,
+              `jobs.schedules[${index.toString()}].updatedOn`,
+            ),
+          });
+        });
+      }
+    }
+    await client.end();
+
+    return issues.length === 0
+      ? {
+          id: "jobs.contract",
+          state: "ok",
+          label: "Background job runtime contracts",
+          detail: `${checked.toString()} persisted row(s) checked`,
+        }
+      : {
+          id: "jobs.contract",
+          state: "error",
+          label: "Background job runtime contracts",
+          detail: `${issues.length.toString()} contract issue(s); first: ${issues[0]?.path ?? "jobs"} ${issues[0]?.message ?? "invalid"}`,
+          hint: "Repair or remove malformed job, schedule, heartbeat, and log rows before starting workers.",
+        };
+  } catch (error) {
+    try {
+      await client.end();
+    } catch {
+      /* swallow */
+    }
+    return {
+      id: "jobs.contract",
+      state: "warn",
+      label: "Background job runtime contracts",
+      detail: `could not inspect jobs: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+function doctorDate(value: Date | string, path: string): Date {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) throw new Error(`${path} must be a valid timestamp`);
+  return date;
+}
+
+function doctorIso(value: Date | string, path: string): string {
+  return doctorDate(value, path).toISOString();
+}
+
+function doctorNullableIso(value: Date | string | null, path: string): string | null {
+  return value === null ? null : doctorIso(value, path);
+}
+
+function hasContractIssues(error: unknown): error is { issues: NpJobContractIssue[] } {
+  return (
+    typeof error === "object" && error !== null && "issues" in error && Array.isArray(error.issues)
+  );
+}
+
+function inspectJobContract(issues: NpJobContractIssue[], path: string, inspect: () => void): void {
+  try {
+    inspect();
+  } catch (error) {
+    if (hasContractIssues(error)) {
+      issues.push(...error.issues);
+      return;
+    }
+    issues.push({ path, message: error instanceof Error ? error.message : String(error) });
   }
 }
 

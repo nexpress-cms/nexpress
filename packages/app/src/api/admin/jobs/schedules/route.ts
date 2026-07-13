@@ -1,23 +1,20 @@
-import {
-  NpForbiddenError,
-  getAllJobHandlers,
-  getOptionalJobQueue,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, getKnownJobTypes, getOptionalJobQueue, can } from "@nexpress/core";
+import { npRequireScheduleListWire } from "@nexpress/core/jobs-contract";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
+import { npParseEmptyJobQuery, npRequireJobApiResponse } from "../../../../lib/job-api-contract";
 
 /**
  * Phase 13.2 — admin introspection for the queue's recurring
  * surface. Returns:
  *   - `schedules` — every cron registered via `boss.schedule()`
  *     (read from `pgboss.schedule`)
- *   - `handlers` — every job type with a registered handler.
- *     Useful so operators can confirm e.g. `media:processImage`
- *     is wired up before pushing a feature that enqueues it.
+ *   - `handlers` — built-in job contracts plus application job
+ *     handlers registered in this process. Useful for checking the
+ *     exact inventory accepted by manual enqueue.
  *
  * Both lists are admin-only because they reveal the
  * deployment's job topology.
@@ -33,25 +30,23 @@ export async function GET(request: NextRequest) {
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("jobs/schedules", "list");
     }
+    npParseEmptyJobQuery(request.nextUrl.searchParams);
     const queue = getOptionalJobQueue();
-    const handlers = Array.from(getAllJobHandlers().keys()).sort();
+    const handlers = [...getKnownJobTypes()];
     if (!queue || typeof queue.listSchedules !== "function") {
-      return npSuccessResponse({
-        supported: false,
-        schedules: [],
-        handlers,
-      });
+      return npSuccessResponse(
+        npRequireJobApiResponse(
+          { supported: false, schedules: [], handlers },
+          npRequireScheduleListWire,
+        ),
+      );
     }
     const schedules = await queue.listSchedules();
-    return npSuccessResponse({
-      supported: true,
-      schedules,
-      handlers,
-    });
-  } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
+    return npSuccessResponse(
+      npRequireJobApiResponse({ supported: true, schedules, handlers }, npRequireScheduleListWire),
     );
+  } catch (error) {
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

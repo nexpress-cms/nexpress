@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { registerJobHandler } from "./handlers.js";
 import { enqueueJob, getJobQueue, getOptionalJobQueue, setJobQueue } from "./queue.js";
 
 describe("job queue", () => {
@@ -17,7 +18,15 @@ describe("job queue", () => {
     });
 
     it("enqueueJob no-ops and returns an empty id", async () => {
-      await expect(enqueueJob("content:afterSave", { foo: 1 })).resolves.toBe("");
+      await expect(
+        enqueueJob("content:afterSave", {
+          collection: "posts",
+          documentId: "d4cafb07-c120-4503-90fa-6d6fc4104ce3",
+          operation: "create",
+          userId: "8dbb88e6-eb42-4c5d-968d-0b253fd5012f",
+          memberId: null,
+        }),
+      ).resolves.toBe("");
     });
   });
 
@@ -30,10 +39,33 @@ describe("job queue", () => {
         stop: () => Promise.resolve(),
       });
 
-      const id = await enqueueJob("content:afterSave", { foo: 1 });
+      const data = {
+        collection: "posts",
+        documentId: "d4cafb07-c120-4503-90fa-6d6fc4104ce3",
+        operation: "update" as const,
+        userId: null,
+        memberId: "7d133e30-8079-47a7-b970-66cd478956de",
+      };
+      const id = await enqueueJob("content:afterSave", data);
 
       expect(id).toBe("job-42");
-      expect(enqueue).toHaveBeenCalledWith("content:afterSave", { foo: 1 });
+      expect(enqueue).toHaveBeenCalledWith("content:afterSave", data);
+    });
+
+    it("runs a custom payload parser exactly once before queue persistence", async () => {
+      const parsePayload = vi.fn((data: Record<string, unknown>) => ({ value: data.value }));
+      registerJobHandler("test:parseOnce", async () => {}, { parsePayload });
+      const enqueue = vi.fn().mockResolvedValue("job-43");
+      setJobQueue({
+        enqueue,
+        start: () => Promise.resolve(),
+        stop: () => Promise.resolve(),
+      });
+
+      await enqueueJob("test:parseOnce", { value: "canonical" });
+
+      expect(parsePayload).toHaveBeenCalledOnce();
+      expect(enqueue).toHaveBeenCalledWith("test:parseOnce", { value: "canonical" });
     });
   });
 

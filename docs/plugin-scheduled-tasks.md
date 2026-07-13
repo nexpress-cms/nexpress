@@ -51,7 +51,10 @@ Each task contains only these fields:
 
 Task ids must be unique within one plugin. They may repeat across plugins
 because the worker queue is namespaced as
-`plugin.scheduledTask.<pluginId>.<taskId>`.
+`plugin.scheduledTask.<hex(pluginId)>.<hex(taskId)>`. The physical identifiers
+are encoded because pg-boss queue names reject `@` in scoped plugin ids; the
+exact `pluginId` and `taskId` remain in the job payload and are validated
+against that queue name before dispatch.
 
 Cron schedules use pg-boss's default **UTC** timezone. NexPress validates the
 same `cron-parser` syntax used by pg-boss, including ranges, lists, steps, and

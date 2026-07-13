@@ -1,6 +1,8 @@
 import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import { npAnalyzeJobsEnabledFlag } from "@nexpress/core/jobs-contract";
+
 import { toProjectCommand } from "./ops-command-format.js";
 import { messageForConnectionError } from "./setup-server-errors.js";
 import type { CheckResult } from "./doctor-readiness.js";
@@ -248,8 +250,17 @@ function checkSiteUrl(env: OpsEnv): CheckResult {
 }
 
 function checkJobs(env: OpsEnv): CheckResult {
-  const enabled = env.NP_ENABLE_JOBS === "1" || env.NP_ENABLE_JOBS === "true";
-  if (enabled) {
+  const contract = npAnalyzeJobsEnabledFlag(env.NP_ENABLE_JOBS);
+  if (!contract.ok) {
+    return {
+      id: "jobs.enabled",
+      state: "error",
+      label: "Jobs enabled",
+      detail: contract.issues[0]?.message ?? "invalid NP_ENABLE_JOBS value",
+      hint: "Set NP_ENABLE_JOBS to 1, 0, true, or false.",
+    };
+  }
+  if (contract.value) {
     return { id: "jobs.enabled", state: "ok", label: "Jobs enabled", detail: "NP_ENABLE_JOBS=1" };
   }
   return {
@@ -262,8 +273,16 @@ function checkJobs(env: OpsEnv): CheckResult {
 }
 
 async function checkWorkerHeartbeat(env: OpsEnv): Promise<CheckResult> {
-  const enabled = env.NP_ENABLE_JOBS === "1" || env.NP_ENABLE_JOBS === "true";
-  if (!enabled) {
+  const contract = npAnalyzeJobsEnabledFlag(env.NP_ENABLE_JOBS);
+  if (!contract.ok) {
+    return {
+      id: "jobs.worker",
+      state: "error",
+      label: "Worker heartbeat",
+      detail: "skipped because NP_ENABLE_JOBS is invalid",
+    };
+  }
+  if (!contract.value) {
     return {
       id: "jobs.worker",
       state: "ok",

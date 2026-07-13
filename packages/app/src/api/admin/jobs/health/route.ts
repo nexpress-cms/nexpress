@@ -3,14 +3,20 @@ import {
   NpForbiddenError,
   getJobsPauseState,
   getOptionalJobQueue,
+  listRecentJobFailures,
   listWorkerHealth,
+  WORKER_STALE_THRESHOLD_MS,
 } from "@nexpress/core";
+import {
+  npRequireJobsHealthWire,
+  npSerializeWorkerHealthEntry,
+} from "@nexpress/core/jobs-contract";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { ensureFor, nexpressConfig } from "../../../../lib/init-core";
-import type * as OpsJobsCore from "../../../../scripts/ops-jobs-core";
+import { npParseEmptyJobQuery, npRequireJobApiResponse } from "../../../../lib/job-api-contract";
 
 /**
  * Phase 19 — worker liveness endpoint. Returns each registered
@@ -39,20 +45,22 @@ const DEFAULT_EXPIRED_THRESHOLD = 50;
 
 export async function GET(request: NextRequest) {
   try {
-    await ensureFor("read");
+    // Health includes queue state counts and recent failures, so the same
+    // producer adapter used by the jobs list must be initialized first.
+    await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("workers", "read");
     }
+    npParseEmptyJobQuery(request.nextUrl.searchParams);
 
     const queue = getOptionalJobQueue();
     const now = new Date();
-    const jobsCore = await loadJobsCore();
-    const [summary, pauseState, counts, opsReport] = await Promise.all([
-      listWorkerHealth(),
+    const [summary, pauseState, counts, recent] = await Promise.all([
+      listWorkerHealth(now),
       getJobsPauseState(),
       queue && typeof queue.countByState === "function" ? queue.countByState() : null,
-      jobsCore.collectOpsJobsStatus(process.env, now),
+      listRecentJobFailures(queue, { limit: 5 }),
     ]);
 
     const configured = nexpressConfig.jobs?.stuckThreshold;
@@ -62,19 +70,35 @@ export async function GET(request: NextRequest) {
     };
     const stuck = counts ? { counts, thresholds } : null;
 
-    return npSuccessResponse({
-      ...summary,
-      pause: pauseState,
-      stuck,
-      recentFailures: opsReport.recentFailures,
-    });
+    return npSuccessResponse(
+      npRequireJobApiResponse(
+        {
+          workers: summary.workers.map((worker) =>
+            npSerializeWorkerHealthEntry(
+              {
+                id: worker.id,
+                status: worker.status,
+                startedAt: worker.startedAt,
+                lastSeenAt: worker.lastSeenAt,
+                meta: worker.meta,
+              },
+              now,
+              WORKER_STALE_THRESHOLD_MS,
+            ),
+          ),
+          aliveCount: summary.aliveCount,
+          totalCount: summary.totalCount,
+          newestHeartbeat: summary.newestHeartbeat,
+          pause: pauseState,
+          stuck,
+          recentFailures: recent.failures,
+        },
+        npRequireJobsHealthWire,
+      ),
+    );
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
 export const dynamic = "force-dynamic";
-
-async function loadJobsCore(): Promise<typeof OpsJobsCore> {
-  return (await import("@nexpress/app/scripts/ops-jobs-core")) as unknown as typeof OpsJobsCore;
-}

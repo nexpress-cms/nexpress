@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-13 (revision and autosave snapshots now share one
+**Last refreshed:** 2026-07-13 (background jobs now share one extensible,
+fail-closed runtime contract across enqueue/dispatch, built-in payloads,
+pg-boss rows and schedules, worker/log persistence, Admin/API wire shapes,
+ops, scaffold guidance, and doctor diagnostics.)
+
+**Earlier:** 2026-07-13 (revision and autosave snapshots now share one
 closed collection-aware JSON contract across persistence, API/OpenAPI, Admin,
 restore, pruning, deletion, and doctor diagnostics.)
 
@@ -221,22 +226,23 @@ cli  (standalone scaffolder, no workspace deps)
 
 `@nexpress/core` exposes domain-bounded subpath entries (Phase 22.6). New code should reach in through the subpath that fits the call site rather than the catch-all root, so the v1 commitment surface is bounded by domain:
 
-| Subpath                         | Domain                                                                |
-| ------------------------------- | --------------------------------------------------------------------- |
-| `@nexpress/core/auth`           | capability checks, JWT/OAuth, password, sessions, principal           |
-| `@nexpress/core/community`      | comments, reactions, follows, reports, bans, audit, mentions, digests |
-| `@nexpress/core/db`             | connection factory, runtime accessors, schema codegen                 |
-| `@nexpress/core/fields`         | client-safe field helpers plus rich-text and block-content contracts  |
-| `@nexpress/core/i18n`           | locale registry, translations, formatting, per-site overrides         |
-| `@nexpress/core/jobs`           | pg-boss adapter, handlers, worker, heartbeat, pause state, job logs   |
-| `@nexpress/core/media`          | media service, processor, ref tracking                                |
-| `@nexpress/core/media-contract` | client-safe media records, variants, processing and API validators    |
-| `@nexpress/core/navigation`     | client-safe navigation wire/resolved types and validators             |
-| `@nexpress/core/observability`  | logger, error reporter, `verifyStartupSafety`                         |
-| `@nexpress/core/revisions`      | client-safe revision snapshot, persisted-row, and API wire contracts  |
-| `@nexpress/core/seo`            | sitemap, page metadata, Atom feeds, JSON-LD                           |
-| `@nexpress/core/settings`       | client-safe site identity, settings types, and validators             |
-| `@nexpress/core/theme`          | client-safe theme token inventory, validators, and merge helpers      |
+| Subpath                         | Domain                                                                  |
+| ------------------------------- | ----------------------------------------------------------------------- |
+| `@nexpress/core/auth`           | capability checks, JWT/OAuth, password, sessions, principal             |
+| `@nexpress/core/community`      | comments, reactions, follows, reports, bans, audit, mentions, digests   |
+| `@nexpress/core/db`             | connection factory, runtime accessors, schema codegen                   |
+| `@nexpress/core/fields`         | client-safe field helpers plus rich-text and block-content contracts    |
+| `@nexpress/core/i18n`           | locale registry, translations, formatting, per-site overrides           |
+| `@nexpress/core/jobs`           | pg-boss adapter, handlers, worker, heartbeat, pause state, job logs     |
+| `@nexpress/core/jobs-contract`  | client-safe job names, payloads, persisted-row and Admin wire contracts |
+| `@nexpress/core/media`          | media service, processor, ref tracking                                  |
+| `@nexpress/core/media-contract` | client-safe media records, variants, processing and API validators      |
+| `@nexpress/core/navigation`     | client-safe navigation wire/resolved types and validators               |
+| `@nexpress/core/observability`  | logger, error reporter, `verifyStartupSafety`                           |
+| `@nexpress/core/revisions`      | client-safe revision snapshot, persisted-row, and API wire contracts    |
+| `@nexpress/core/seo`            | sitemap, page metadata, Atom feeds, JSON-LD                             |
+| `@nexpress/core/settings`       | client-safe site identity, settings types, and validators               |
+| `@nexpress/core/theme`          | client-safe theme token inventory, validators, and merge helpers        |
 
 The root `@nexpress/core` keeps re-exporting everything for back-compat; existing call sites are not forced to migrate. Treat the root as the lowest-common-denominator surface and the subpaths as the canonical domain APIs.
 
@@ -378,7 +384,14 @@ Author and operator reference: `docs/media.md`.
 
 ### Jobs
 
-`pg-boss`-backed queue. Handlers register via `registerJobHandler(name, fn)`; built-in handlers (media cleanup, etc.) register via `registerBuiltinHandlers()`. The worker is started by the app (not by core) via `startWorker()`.
+`pg-boss`-backed queue. Handlers register via `registerJobHandler(name, fn, { parsePayload })`; custom names use canonical `namespace:action` syntax and their parser runs before enqueue and again before dispatch. Built-in names have exact payload contracts, while all jobs use bounded plain JSON data. The pure contract is exported from `@nexpress/core/jobs-contract`; server queue/handler APIs remain in `@nexpress/core/jobs`. The worker is started by the app (not by core) via `startWorker()`.
+
+Job summaries, schedules, worker heartbeats, logs, pause state, Admin responses,
+ops output, and doctor inspection share the same fail-closed parser inventory.
+Malformed persisted rows are errors; do not restore epoch/default/empty fallbacks.
+The queue schema is exactly `pgboss`; worker, producer, Admin, doctor, and ops
+must not point at different schema names. Jobs environment flags and duration
+settings reject malformed values instead of silently choosing defaults.
 
 `startWorker()` owns the full shutdown lifecycle (#318): it installs SIGINT/SIGTERM handlers, drains in-flight jobs, and tears down the pg-boss instance when the process exits. If any setup step throws partway through, it cleans up the partial state (already-armed signal handlers, half-connected pool) so the next call boots cleanly. App code should not install competing SIGINT/SIGTERM handlers that race with the worker's drain.
 
@@ -455,7 +468,7 @@ These are the public APIs we'll honor with semver and migration notes. Breaking 
 - **Bootstrap intent enum** — `ensureFor("read" | "plugins" | "write")`. Adding a new intent is non-breaking; semantics of the existing three are pinned.
 - **Error classes + codes** — `NpForbiddenError`, `NpNotFoundError`, `NpValidationError`, `NpAuthError`, `NpConflictError`, `NpRateLimitError`, `NpSiteContextMissingError`, and the `NpErrorCode` union. The string code per class is stable per [docs/api-error-codes.md](./docs/api-error-codes.md).
 - **Capability vocabulary** — `can(user, capability)` and the existing capability strings: `"admin.manage"`, `"content.publish"`, `"content.author"`, `"community.moderate"`. New capability strings will be added; existing ones won't be renamed or removed in 0.x.
-- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/fields`, `/i18n`, `/jobs`, `/media`, `/media-contract`, `/navigation`, `/observability`, `/seo`, `/theme`. Symbols inside each are stable per the rules above.
+- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/fields`, `/i18n`, `/jobs`, `/jobs-contract`, `/media`, `/media-contract`, `/navigation`, `/observability`, `/seo`, `/theme`. Symbols inside each are stable per the rules above.
 - **Adapters** — `NpStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NpJobQueue` (with `PgBossAdapter`), `NpLogger` + `setLogger`, `NpErrorReporter` + `setErrorReporter`, `NpEmailAdapter` + `setEmailAdapter`. Optional methods (e.g. `NpJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
 - **`NpPrincipal` union** — adding a variant is breaking (every `switch (principal.kind)` site needs updating, enforced by `_exhaustive: never`). The existing `"staff"` / `"member"` shape is committed.
 - **Block authoring and content** — `NpBlockDefinition` (`type`, `label`, `defaultProps`, `propsSchema`, `acceptsChildren?`, `render(props, children?)`) and the `NpBlockInstance` wire shape (`id`, `type`, `props`, optional `children: NpBlockInstance[]`). `NpBlockContent` is the stored array type. `@nexpress/core/fields`, `@nexpress/blocks`, and `@nexpress/blocks/contracts` share `npValidateBlockContent` and `isNpBlockContent`; collection writes, generated types, OpenAPI, patterns, Admin JSON/paste/preview, translation, and unknown-block operations use that contract. Instance ids are unique across the whole tree; unknown/inactive block types remain structurally valid so content survives plugin/theme removal. Adding optional fields to the definition or instance is non-breaking. `NpBlockMetadata` (= `NpBlockDefinition` minus `render`) is the serializable subset the admin uses for the picker / props form. The shared registry helpers `registerBlock`, `getRegisteredBlocks`, `getRegisteredBlockMetadata`, `getSharedRegistry` are stable. The lightweight `@nexpress/blocks/contracts` subpath also exports `npValidateBlockDefinition`, `npAnalyzeBlockDefinitions`, and `npBlockPropFieldTypes`. Author docs: `docs/block-content.md`.

@@ -1,62 +1,35 @@
 import { PgBossAdapter } from "@nexpress/core/jobs";
+import {
+  NP_JOB_STATES,
+  npRequireJobId,
+  npRequireJobStateCounts,
+  npRequireJobQueueName,
+  npRequireJobsHealthWire,
+  npRequireJobsEnabledFlag,
+  npRequireJobsPauseState,
+  npRequireRecentJobFailure,
+  npRequireWorkerHeartbeat,
+  npSerializeWorkerHealthEntry,
+  type NpJobStateCounts,
+  type NpJobsPauseState,
+  type NpRecentJobFailure,
+  type NpWorkerHealthWireEntry,
+} from "@nexpress/core/jobs-contract";
 import pg from "pg";
 
 import { toProjectCommand } from "./ops-command-format.js";
 
-export interface OpsJobsWorker {
-  id: string;
-  status: string;
-  startedAt: string;
-  lastSeenAt: string;
-  lastSeenAgoMs: number;
-  alive: boolean;
-  meta: Record<string, unknown>;
-}
-
-export interface OpsJobsCounts {
-  created: number;
-  active: number;
-  completed: number;
-  failed: number;
-  retry: number;
-  cancelled: number;
-  expired: number;
-}
-
-export interface OpsJobsPauseState {
-  paused: boolean;
-  changedAt: string;
-  changedByUserId: string | null;
-  reason: string | null;
-}
-
-export interface OpsJobsRecentFailureLog {
-  id: string;
-  level: "debug" | "info" | "warn" | "error";
-  message: string;
-  context: Record<string, unknown> | null;
-  createdAt: string;
-}
-
-export interface OpsJobsRecentFailure {
-  id: string;
-  name: string;
-  state: "failed" | "expired" | "retry" | "cancelled";
-  source: "live" | "archive";
-  retryCount?: number;
-  output: string | null;
-  createdOn: string;
-  startedOn: string | null;
-  completedOn: string | null;
-  logCount: number;
-  lastLog: OpsJobsRecentFailureLog | null;
-}
+export type OpsJobsWorker = NpWorkerHealthWireEntry;
+export type OpsJobsCounts = NpJobStateCounts;
+export type OpsJobsPauseState = NpJobsPauseState;
+export type OpsJobsRecentFailure = NpRecentJobFailure;
 
 export interface OpsJobsJson {
   schemaVersion: "np.ops-jobs.v1";
   ok: boolean;
   status: "ready" | "attention" | "blocked" | "disabled";
   enabled: boolean;
+  diagnosticError: string | null;
   mutation?: {
     action: "pause" | "resume" | "retry-all" | "drain";
     applied: boolean;
@@ -104,11 +77,11 @@ interface WorkerRow {
   status: string;
   started_at: Date | string;
   last_seen_at: Date | string;
-  meta: Record<string, unknown> | null;
+  meta: unknown;
 }
 
 interface PauseRow {
-  value: Partial<OpsJobsPauseState> | null;
+  value: unknown;
 }
 
 interface CountRow {
@@ -127,13 +100,13 @@ interface RecentFailureRow {
   name: string;
   state: string;
   source: string;
-  retry_count?: number | null;
-  output?: string | null;
-  created_on?: Date | string | null;
-  started_on?: Date | string | null;
-  completed_on?: Date | string | null;
-  log_count?: string | number | null;
-  last_log?: Partial<OpsJobsRecentFailureLog> | null;
+  retry_count: number | string;
+  output: string | null;
+  created_on: Date | string;
+  started_on: Date | string | null;
+  completed_on: Date | string | null;
+  log_count: string | number;
+  last_log: unknown;
 }
 
 interface RenderOptions {
@@ -156,6 +129,8 @@ const EMPTY_ANSI = {
   reset: "",
 };
 const START_WORKER_COMMAND = "NP_ENABLE_JOBS=1 pnpm run worker";
+const JOBS_STATUS_COMMAND = "nexpress ops jobs status --json";
+const JOBS_RETRY_ALL_COMMAND = "nexpress ops jobs retry-all --json";
 
 const DEFAULT_PAUSE: OpsJobsPauseState = {
   paused: false,
@@ -175,37 +150,49 @@ const EMPTY_COUNTS: OpsJobsCounts = {
 };
 
 export function jobsEnabled(env: OpsJobsEnv = process.env): boolean {
-  return env.NP_ENABLE_JOBS === "1" || env.NP_ENABLE_JOBS === "true";
+  return npRequireJobsEnabledFlag(env.NP_ENABLE_JOBS);
 }
 
 export function workerStaleThresholdMs(env: OpsJobsEnv = process.env): number {
-  const raw = Number.parseInt(env.NP_WORKER_STALE_THRESHOLD_SECONDS ?? "90", 10);
-  return (Number.isFinite(raw) && raw > 0 ? raw : 90) * 1_000;
+  const value = env.NP_WORKER_STALE_THRESHOLD_SECONDS;
+  if (value === undefined || value === "") return 90_000;
+  if (!/^[1-9]\d*$/u.test(value)) {
+    throw new Error("NP_WORKER_STALE_THRESHOLD_SECONDS must be a positive integer");
+  }
+  const seconds = Number(value);
+  const milliseconds = seconds * 1_000;
+  if (!Number.isSafeInteger(seconds) || !Number.isSafeInteger(milliseconds)) {
+    throw new Error("NP_WORKER_STALE_THRESHOLD_SECONDS exceeds the safe integer range");
+  }
+  return milliseconds;
 }
 
 function loadPg(): PgModuleLike {
   return { default: pg as unknown as PgModuleLike["default"] };
 }
 
-function toIso(value: Date | string): string {
-  if (value instanceof Date) return value.toISOString();
+function toDate(value: unknown, path: string): Date {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) throw new Error(`${path} must be a valid timestamp`);
+    return value;
+  }
+  if (typeof value !== "string") throw new Error(`${path} must be a valid timestamp`);
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
+  if (Number.isNaN(parsed.getTime())) throw new Error(`${path} must be a valid timestamp`);
+  return parsed;
 }
 
-function readCount(value: string | number): number {
-  const parsed = typeof value === "number" ? value : Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function normalizePause(value: Partial<OpsJobsPauseState> | null | undefined): OpsJobsPauseState {
-  if (!value || typeof value.paused !== "boolean") return DEFAULT_PAUSE;
-  return {
-    paused: value.paused,
-    changedAt: typeof value.changedAt === "string" ? value.changedAt : DEFAULT_PAUSE.changedAt,
-    changedByUserId: typeof value.changedByUserId === "string" ? value.changedByUserId : null,
-    reason: typeof value.reason === "string" ? value.reason : null,
-  };
+function readCount(value: string | number, path: string): number {
+  if (typeof value === "number") {
+    if (Number.isSafeInteger(value) && value >= 0) return value;
+    throw new Error(`${path} must be a non-negative safe integer`);
+  }
+  if (!/^(?:0|[1-9]\d*)$/u.test(value)) {
+    throw new Error(`${path} must be a non-negative safe integer`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) throw new Error(`${path} exceeds the safe integer range`);
+  return parsed;
 }
 
 export function buildOpsJobsJson(args: {
@@ -214,29 +201,43 @@ export function buildOpsJobsJson(args: {
   counts: OpsJobsCounts;
   workers: OpsJobsWorker[];
   recentFailures?: OpsJobsRecentFailure[];
+  diagnosticError?: string | null;
   mutation?: OpsJobsJson["mutation"];
 }): OpsJobsJson {
+  const pause = npRequireJobsPauseState(args.pause);
+  const counts = npRequireJobStateCounts(args.counts);
   const workersAlive = args.workers.filter((worker) => worker.alive).length;
-  const workersTotal = args.workers.length;
-  const hasFailed = args.counts.failed > 0;
-  const hasExpired = args.counts.expired > 0;
+  const health = npRequireJobsHealthWire({
+    workers: args.workers,
+    aliveCount: workersAlive,
+    totalCount: args.workers.length,
+    newestHeartbeat: args.workers[0]?.lastSeenAt ?? null,
+    pause,
+    stuck: null,
+    recentFailures: args.recentFailures ?? [],
+  });
+  const workersTotal = health.workers.length;
+  const hasFailed = counts.failed > 0;
+  const hasExpired = counts.expired > 0;
   const hasFailures = hasFailed || hasExpired;
-  const hasRetry = args.counts.retry > 0;
-  const hasBacklog = args.counts.created > 0 && workersAlive === 0;
-  const blocked = args.enabled && (args.pause.paused || hasBacklog);
+  const hasRetry = counts.retry > 0;
+  const hasBacklog = counts.created > 0 && workersAlive === 0;
+  const blocked = Boolean(args.diagnosticError) || (args.enabled && (pause.paused || hasBacklog));
   const attention = args.enabled && !blocked && (workersAlive === 0 || hasFailures || hasRetry);
-  const status: OpsJobsJson["status"] = !args.enabled
-    ? "disabled"
-    : blocked
-      ? "blocked"
+  const status: OpsJobsJson["status"] = blocked
+    ? "blocked"
+    : !args.enabled
+      ? "disabled"
       : attention
         ? "attention"
         : "ready";
   const nextCommand =
     status === "blocked"
-      ? args.pause.paused
-        ? "nexpress ops jobs resume --json"
-        : START_WORKER_COMMAND
+      ? args.diagnosticError
+        ? JOBS_STATUS_COMMAND
+        : pause.paused
+          ? "nexpress ops jobs resume --json"
+          : START_WORKER_COMMAND
       : status === "attention"
         ? hasFailures
           ? `nexpress ops jobs retry-all --state ${hasFailed ? "failed" : "expired"} --json`
@@ -244,7 +245,7 @@ export function buildOpsJobsJson(args: {
             ? START_WORKER_COMMAND
             : hasRetry
               ? "nexpress ops jobs drain --json"
-              : "nexpress ops jobs status --json"
+              : JOBS_STATUS_COMMAND
         : null;
 
   return {
@@ -252,21 +253,22 @@ export function buildOpsJobsJson(args: {
     ok: status === "ready" || status === "disabled" || status === "attention",
     status,
     enabled: args.enabled,
+    diagnosticError: args.diagnosticError ?? null,
     mutation: args.mutation ?? null,
     summary: {
       workersAlive,
       workersTotal,
-      failed: args.counts.failed + args.counts.expired,
-      retry: args.counts.retry,
-      created: args.counts.created,
-      active: args.counts.active,
+      failed: counts.failed + counts.expired,
+      retry: counts.retry,
+      created: counts.created,
+      active: counts.active,
     },
     nextCommand,
     projectNextCommand: nextCommand ? toProjectCommand(nextCommand) : null,
-    pause: args.pause,
-    counts: args.counts,
-    workers: args.workers,
-    recentFailures: args.recentFailures ?? [],
+    pause,
+    counts,
+    workers: health.workers,
+    recentFailures: health.recentFailures,
   };
 }
 
@@ -274,7 +276,18 @@ export async function collectOpsJobsStatus(
   env: OpsJobsEnv = process.env,
   now: Date = new Date(),
 ): Promise<OpsJobsJson> {
-  const enabled = jobsEnabled(env);
+  let enabled: boolean;
+  try {
+    enabled = jobsEnabled(env);
+  } catch (error) {
+    return buildOpsJobsJson({
+      enabled: false,
+      pause: DEFAULT_PAUSE,
+      counts: EMPTY_COUNTS,
+      workers: [],
+      diagnosticError: error instanceof Error ? error.message : String(error),
+    });
+  }
   const url = env.DATABASE_URL;
   if (!url) {
     return buildOpsJobsJson({
@@ -282,22 +295,35 @@ export async function collectOpsJobsStatus(
       pause: DEFAULT_PAUSE,
       counts: EMPTY_COUNTS,
       workers: [],
+      diagnosticError: enabled ? "DATABASE_URL is not set" : null,
     });
   }
 
   let pg: PgModuleLike;
   try {
     pg = loadPg();
-  } catch {
+  } catch (error) {
     return buildOpsJobsJson({
       enabled,
       pause: DEFAULT_PAUSE,
       counts: EMPTY_COUNTS,
       workers: [],
+      diagnosticError: error instanceof Error ? error.message : String(error),
     });
   }
 
-  const threshold = workerStaleThresholdMs(env);
+  let threshold: number;
+  try {
+    threshold = workerStaleThresholdMs(env);
+  } catch (error) {
+    return buildOpsJobsJson({
+      enabled,
+      pause: DEFAULT_PAUSE,
+      counts: EMPTY_COUNTS,
+      workers: [],
+      diagnosticError: error instanceof Error ? error.message : String(error),
+    });
+  }
   const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
   try {
     await client.connect();
@@ -324,36 +350,39 @@ export async function collectOpsJobsStatus(
     const recentFailures = await listRecentFailures(client);
     await client.end();
 
-    const workers = workerRows.rows.map((row) => {
-      const lastSeenAt = toIso(row.last_seen_at);
-      const lastSeenMs = new Date(lastSeenAt).getTime();
-      const lastSeenAgoMs = Number.isFinite(lastSeenMs)
-        ? Math.max(0, now.getTime() - lastSeenMs)
-        : Number.MAX_SAFE_INTEGER;
-      return {
-        id: row.id,
-        status: row.status,
-        startedAt: toIso(row.started_at),
-        lastSeenAt,
-        lastSeenAgoMs,
-        alive: row.status === "running" && lastSeenAgoMs < threshold,
-        meta: row.meta ?? {},
-      };
-    });
+    const workers = workerRows.rows.map((row, index) =>
+      npSerializeWorkerHealthEntry(
+        npRequireWorkerHeartbeat({
+          id: row.id,
+          status: row.status,
+          startedAt: toDate(row.started_at, `workers[${index.toString()}].startedAt`),
+          lastSeenAt: toDate(row.last_seen_at, `workers[${index.toString()}].lastSeenAt`),
+          meta: row.meta,
+        }),
+        now,
+        threshold,
+      ),
+    );
     const counts: OpsJobsCounts = { ...EMPTY_COUNTS };
     for (const row of countRows.rows) {
+      if (!(NP_JOB_STATES as readonly string[]).includes(row.state)) {
+        throw new Error(`jobs.counts contains unsupported state ${row.state}`);
+      }
       const key = row.state as keyof OpsJobsCounts;
-      if (key in counts) counts[key] = readCount(row.count);
+      counts[key] = readCount(row.count, `jobs.counts.${row.state}`);
     }
 
     return buildOpsJobsJson({
       enabled,
-      pause: normalizePause(pauseRows.rows[0]?.value),
+      pause:
+        pauseRows.rows.length === 0
+          ? DEFAULT_PAUSE
+          : npRequireJobsPauseState(pauseRows.rows[0]?.value),
       counts,
       workers,
       recentFailures,
     });
-  } catch {
+  } catch (error) {
     try {
       await client.end();
     } catch {
@@ -364,14 +393,14 @@ export async function collectOpsJobsStatus(
       pause: DEFAULT_PAUSE,
       counts: EMPTY_COUNTS,
       workers: [],
+      diagnosticError: error instanceof Error ? error.message : String(error),
     });
   }
 }
 
 async function listRecentFailures(client: PgClientLike): Promise<OpsJobsRecentFailure[]> {
-  try {
-    const rows = await client.query<RecentFailureRow>(
-      `select id, name, state::text as state, data, retry_count,
+  const rows = await client.query<RecentFailureRow>(
+    `select id, name, state::text as state, data, retry_count,
               output::text as output, created_on, started_on, completed_on, source,
               (
                 select count(*)::bigint
@@ -403,57 +432,40 @@ async function listRecentFailures(client: PgClientLike): Promise<OpsJobsRecentFa
         where state::text in ('failed', 'expired', 'retry')
         order by coalesce(completed_on, started_on, created_on) desc
         limit 5`,
-    );
-    return rows.rows.map(normalizeRecentFailure);
-  } catch {
-    return [];
-  }
+  );
+  return rows.rows.map(normalizeRecentFailure);
 }
 
 function normalizeRecentFailure(row: RecentFailureRow): OpsJobsRecentFailure {
-  return {
+  return npRequireRecentJobFailure({
     id: row.id,
     name: row.name,
-    state:
-      row.state === "expired" || row.state === "retry" || row.state === "cancelled"
-        ? row.state
-        : "failed",
-    source: row.source === "archive" ? "archive" : "live",
-    retryCount: typeof row.retry_count === "number" ? row.retry_count : undefined,
-    output: row.output ?? null,
-    createdOn: toIso(row.created_on ?? new Date(0)) ?? new Date(0).toISOString(),
-    startedOn: toNullableIso(row.started_on),
-    completedOn: toNullableIso(row.completed_on),
-    logCount: readCount(row.log_count ?? 0),
+    state: row.state,
+    source: row.source,
+    retryCount: readCount(row.retry_count, "job.failure.retryCount"),
+    output: row.output,
+    createdOn: toDate(row.created_on, "job.failure.createdOn").toISOString(),
+    startedOn: toNullableIso(row.started_on, "job.failure.startedOn"),
+    completedOn: toNullableIso(row.completed_on, "job.failure.completedOn"),
+    logCount: readCount(row.log_count, "job.failure.logCount"),
     lastLog: normalizeRecentFailureLog(row.last_log),
-  };
+  });
 }
 
-function normalizeRecentFailureLog(
-  value: Partial<OpsJobsRecentFailureLog> | null | undefined,
-): OpsJobsRecentFailureLog | null {
-  if (!value || typeof value.id !== "string" || typeof value.message !== "string") {
-    return null;
+function normalizeRecentFailureLog(value: unknown): unknown {
+  if (value === null) return null;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("job.failure.lastLog must be an object or null");
   }
-  const level =
-    value.level === "debug" ||
-    value.level === "info" ||
-    value.level === "warn" ||
-    value.level === "error"
-      ? value.level
-      : "info";
-  const createdAt = typeof value.createdAt === "string" ? toIso(value.createdAt) : null;
+  const log = value as Record<string, unknown>;
   return {
-    id: value.id,
-    level,
-    message: value.message,
-    context: value.context && typeof value.context === "object" ? value.context : null,
-    createdAt: createdAt ?? new Date(0).toISOString(),
+    ...log,
+    createdAt: toDate(log.createdAt, "job.failure.lastLog.createdAt").toISOString(),
   };
 }
 
-function toNullableIso(value: Date | string | null | undefined): string | null {
-  return value ? toIso(value) : null;
+function toNullableIso(value: Date | string | null, path: string): string | null {
+  return value === null ? null : toDate(value, path).toISOString();
 }
 
 async function writePauseState(
@@ -461,12 +473,12 @@ async function writePauseState(
   paused: boolean,
   reason: string | null,
 ): Promise<OpsJobsPauseState> {
-  const next: OpsJobsPauseState = {
+  const next = npRequireJobsPauseState({
     paused,
     changedAt: new Date().toISOString(),
     changedByUserId: null,
     reason,
-  };
+  });
   await client.query(
     `insert into np_settings (site_id, key, value, updated_at)
           values ('_system', 'jobs.paused', $1::jsonb, now())
@@ -478,8 +490,11 @@ async function writePauseState(
 }
 
 function parsePositiveInt(value: number | undefined, fallback: number, max: number): number {
-  if (!Number.isFinite(value) || !value || value <= 0) return fallback;
-  return Math.min(Math.floor(value), max);
+  if (value === undefined) return fallback;
+  if (!Number.isSafeInteger(value) || value <= 0 || value > max) {
+    throw new Error(`limit must be an integer between 1 and ${max.toString()}`);
+  }
+  return value;
 }
 
 async function listRetryableJobs(
@@ -516,9 +531,29 @@ async function listRetryableJobs(
       limit $${values.length.toString()}`,
     values,
   );
+  const totalRow = total.rows[0];
+  if (!totalRow) throw new Error("jobs.retryAll.total is missing");
+  const normalizedJobs = jobs.rows.map((row, index) => {
+    const state = row.state;
+    if (state !== args.state) {
+      throw new Error(`jobs.retryAll.jobs[${index.toString()}].state does not match the filter`);
+    }
+    return {
+      id: npRequireJobId(row.id, `jobs.retryAll.jobs[${index.toString()}].id`),
+      name: npRequireJobQueueName(row.name, `jobs.retryAll.jobs[${index.toString()}].name`),
+      state,
+    };
+  });
+  if (new Set(normalizedJobs.map((job) => job.id)).size !== normalizedJobs.length) {
+    throw new Error("jobs.retryAll.jobs must not contain duplicate ids");
+  }
+  const totalCount = readCount(totalRow.count, "jobs.retryAll.total");
+  if (totalCount < normalizedJobs.length) {
+    throw new Error("jobs.retryAll.total must cover every selected job");
+  }
   return {
-    jobs: jobs.rows,
-    total: readCount(total.rows[0]?.count ?? 0),
+    jobs: normalizedJobs,
+    total: totalCount,
   };
 }
 
@@ -528,20 +563,35 @@ export async function applyOpsJobsPauseMutation(args: {
   env?: OpsJobsEnv;
   now?: Date;
 }): Promise<OpsJobsJson> {
+  if (args.action !== "pause" && args.action !== "resume") {
+    throw new Error("action must be pause or resume");
+  }
+  const reason = requireOpsReason(args.reason, null);
   const env = args.env ?? process.env;
   const url = env.DATABASE_URL;
   const fallback = await collectOpsJobsStatus(env, args.now ?? new Date());
+  if (args.action === "resume" && fallback.diagnosticError) {
+    return {
+      ...fallback,
+      mutation: {
+        action: args.action,
+        applied: false,
+        reason,
+        error: fallback.diagnosticError,
+      },
+    };
+  }
   if (!url) {
     return {
       ...fallback,
       ok: false,
       status: "blocked",
-      nextCommand: "Set DATABASE_URL and rerun nexpress ops jobs status --json",
-      projectNextCommand: "Set DATABASE_URL and rerun nexpress ops jobs status --json",
+      nextCommand: JOBS_STATUS_COMMAND,
+      projectNextCommand: toProjectCommand(JOBS_STATUS_COMMAND),
       mutation: {
         action: args.action,
         applied: false,
-        reason: args.reason ?? null,
+        reason,
         error: "DATABASE_URL is not set",
       },
     };
@@ -555,12 +605,12 @@ export async function applyOpsJobsPauseMutation(args: {
       ...fallback,
       ok: false,
       status: "blocked",
-      nextCommand: "Install pg and rerun nexpress ops jobs status --json",
-      projectNextCommand: "Install pg and rerun nexpress ops jobs status --json",
+      nextCommand: JOBS_STATUS_COMMAND,
+      projectNextCommand: toProjectCommand(JOBS_STATUS_COMMAND),
       mutation: {
         action: args.action,
         applied: false,
-        reason: args.reason ?? null,
+        reason,
         error: error instanceof Error ? error.message : String(error),
       },
     };
@@ -569,7 +619,7 @@ export async function applyOpsJobsPauseMutation(args: {
   const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
   try {
     await client.connect();
-    await writePauseState(client, args.action === "pause", args.reason ?? null);
+    await writePauseState(client, args.action === "pause", reason);
     await client.end();
   } catch (error) {
     try {
@@ -581,12 +631,12 @@ export async function applyOpsJobsPauseMutation(args: {
       ...fallback,
       ok: false,
       status: "blocked",
-      nextCommand: "Check DATABASE_URL and rerun nexpress ops jobs status --json",
-      projectNextCommand: "Check DATABASE_URL and rerun nexpress ops jobs status --json",
+      nextCommand: JOBS_STATUS_COMMAND,
+      projectNextCommand: toProjectCommand(JOBS_STATUS_COMMAND),
       mutation: {
         action: args.action,
         applied: false,
-        reason: args.reason ?? null,
+        reason,
         error: error instanceof Error ? error.message : String(error),
       },
     };
@@ -598,7 +648,7 @@ export async function applyOpsJobsPauseMutation(args: {
     mutation: {
       action: args.action,
       applied: true,
-      reason: args.reason ?? null,
+      reason,
       error: null,
     },
   };
@@ -613,22 +663,49 @@ export async function applyOpsJobsRetryAllMutation(args: {
   env?: OpsJobsEnv;
   now?: Date;
 }): Promise<OpsJobsJson> {
+  if (args.execute !== undefined && typeof args.execute !== "boolean") {
+    throw new Error("execute must be boolean");
+  }
+  if (args.approve !== undefined && args.approve !== null && typeof args.approve !== "string") {
+    throw new Error("approve must be text or null");
+  }
   const env = args.env ?? process.env;
   const state = args.state ?? "failed";
+  if (state !== "failed" && state !== "cancelled" && state !== "expired") {
+    throw new Error("state must be failed, cancelled, or expired");
+  }
   const limit = parsePositiveInt(args.limit, 200, 500);
+  const name =
+    args.name === undefined || args.name === null
+      ? null
+      : npRequireJobQueueName(args.name, "jobs.retryAll.name");
   const mode = args.execute ? "execute" : "dry-run";
-  const reason = `state=${state}${args.name ? ` name=${args.name}` : ""}`;
+  const reason = `state=${state}${name ? ` name=${name}` : ""}`;
   const fallback = await collectOpsJobsStatus(env, args.now ?? new Date());
   const url = env.DATABASE_URL;
-  const target = { state, name: args.name ?? null, limit };
+  const target = { state, name, limit };
+
+  if (fallback.diagnosticError) {
+    return {
+      ...fallback,
+      mutation: {
+        action: "retry-all",
+        applied: false,
+        mode,
+        reason,
+        error: fallback.diagnosticError,
+        target,
+      },
+    };
+  }
 
   if (!url) {
     return {
       ...fallback,
       ok: false,
       status: "blocked",
-      nextCommand: "Set DATABASE_URL and rerun nexpress ops jobs retry-all --json",
-      projectNextCommand: "Set DATABASE_URL and rerun nexpress ops jobs retry-all --json",
+      nextCommand: JOBS_RETRY_ALL_COMMAND,
+      projectNextCommand: toProjectCommand(JOBS_RETRY_ALL_COMMAND),
       mutation: {
         action: "retry-all",
         applied: false,
@@ -648,8 +725,8 @@ export async function applyOpsJobsRetryAllMutation(args: {
       ...fallback,
       ok: false,
       status: "blocked",
-      nextCommand: "Install pg and rerun nexpress ops jobs retry-all --json",
-      projectNextCommand: "Install pg and rerun nexpress ops jobs retry-all --json",
+      nextCommand: JOBS_RETRY_ALL_COMMAND,
+      projectNextCommand: toProjectCommand(JOBS_RETRY_ALL_COMMAND),
       mutation: {
         action: "retry-all",
         applied: false,
@@ -664,7 +741,7 @@ export async function applyOpsJobsRetryAllMutation(args: {
   const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
   try {
     await client.connect();
-    const listed = await listRetryableJobs(client, { state, name: args.name, limit });
+    const listed = await listRetryableJobs(client, { state, name, limit });
     await client.end();
 
     if (!args.execute) {
@@ -713,7 +790,7 @@ export async function applyOpsJobsRetryAllMutation(args: {
       };
     }
 
-    const adapter = new PgBossAdapter(url, { schema: "public" });
+    const adapter = new PgBossAdapter(url, { schema: "pgboss" });
     let retried = 0;
     let failed = 0;
     try {
@@ -760,8 +837,8 @@ export async function applyOpsJobsRetryAllMutation(args: {
       ...fallback,
       ok: false,
       status: "blocked",
-      nextCommand: "Check DATABASE_URL and rerun nexpress ops jobs retry-all --json",
-      projectNextCommand: "Check DATABASE_URL and rerun nexpress ops jobs retry-all --json",
+      nextCommand: JOBS_RETRY_ALL_COMMAND,
+      projectNextCommand: toProjectCommand(JOBS_RETRY_ALL_COMMAND),
       mutation: {
         action: "retry-all",
         applied: false,
@@ -781,6 +858,13 @@ export async function applyOpsJobsDrainMutation(args: {
   env?: OpsJobsEnv;
   now?: Date;
 }): Promise<OpsJobsJson> {
+  if (args.execute !== undefined && typeof args.execute !== "boolean") {
+    throw new Error("execute must be boolean");
+  }
+  if (args.approve !== undefined && args.approve !== null && typeof args.approve !== "string") {
+    throw new Error("approve must be text or null");
+  }
+  const reason = requireOpsReason(args.reason, "drain");
   if (!args.execute) {
     const report = await collectOpsJobsStatus(args.env, args.now ?? new Date());
     return {
@@ -793,8 +877,8 @@ export async function applyOpsJobsDrainMutation(args: {
         action: "drain",
         applied: false,
         mode: "dry-run",
-        reason: args.reason ?? "drain",
-        error: null,
+        reason,
+        error: report.diagnosticError,
         result: {
           active: report.counts.active,
           created: report.counts.created,
@@ -819,7 +903,7 @@ export async function applyOpsJobsDrainMutation(args: {
         action: "drain",
         applied: false,
         mode: "execute",
-        reason: args.reason ?? "drain",
+        reason,
         error: "Missing --approve drain",
       },
     };
@@ -827,13 +911,13 @@ export async function applyOpsJobsDrainMutation(args: {
 
   const report = await applyOpsJobsPauseMutation({
     action: "pause",
-    reason: args.reason ?? "drain",
+    reason,
     env: args.env,
     now: args.now,
   });
   const nextCommand =
     report.counts.active > 0 || report.counts.created > 0 || report.counts.retry > 0
-      ? "nexpress ops jobs status --json"
+      ? JOBS_STATUS_COMMAND
       : report.nextCommand;
   return {
     ...report,
@@ -843,7 +927,7 @@ export async function applyOpsJobsDrainMutation(args: {
       action: "drain",
       applied: report.mutation?.applied ?? false,
       mode: "execute",
-      reason: args.reason ?? "drain",
+      reason,
       error: report.mutation?.error ?? null,
       result: {
         active: report.counts.active,
@@ -853,6 +937,16 @@ export async function applyOpsJobsDrainMutation(args: {
       },
     },
   };
+}
+
+function requireOpsReason(value: unknown, fallback: string | null): string | null {
+  const reason = value === undefined ? fallback : value;
+  return npRequireJobsPauseState({
+    paused: false,
+    changedAt: new Date(0).toISOString(),
+    changedByUserId: null,
+    reason,
+  }).reason;
 }
 
 export function renderBriefOpsJobsStatus(
@@ -874,6 +968,7 @@ export function renderBriefOpsJobsStatus(
     `workers: ${report.summary.workersAlive.toString()}/${report.summary.workersTotal.toString()} alive`,
     `jobs: ${report.summary.created.toString()} created, ${report.summary.active.toString()} active, ${report.summary.retry.toString()} retry, ${report.summary.failed.toString()} failed/expired`,
   ];
+  if (report.diagnosticError) lines.push(`diagnostic error: ${report.diagnosticError}`);
   if (report.pause.paused) lines.push(`paused: ${report.pause.reason ?? "yes"}`);
   if (report.mutation) {
     lines.push(

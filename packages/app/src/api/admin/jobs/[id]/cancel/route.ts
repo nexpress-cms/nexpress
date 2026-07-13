@@ -1,14 +1,17 @@
-import {
-  NpForbiddenError,
-  NpValidationError,
-  getOptionalJobQueue,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, getOptionalJobQueue, can } from "@nexpress/core";
+import { npRequireCancelJobWire } from "@nexpress/core/jobs-contract";
+import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
 import { requireAuth } from "../../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../../lib/init-core";
+import {
+  npParseEmptyJobBody,
+  npParseEmptyJobQuery,
+  npParseJobId,
+  npRequireJobApiResponse,
+} from "../../../../../lib/job-api-contract";
 
 /**
  * Phase 13 — cancel a still-pending job. Already-running
@@ -16,34 +19,24 @@ import { ensureFor } from "../../../../../lib/init-core";
  * preemption); already-terminal jobs return 404. Admin-only
  * + CSRF.
  */
-export async function POST(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("jobs", "cancel");
     }
-    const { id } = await context.params;
-    if (!id) {
-      throw new NpValidationError("Invalid input", [
-        { field: "id", message: "Job id is required" },
-      ]);
-    }
+    const id = npParseJobId((await context.params).id);
+    npParseEmptyJobQuery(request.nextUrl.searchParams);
+    npParseEmptyJobBody(await readJsonBody(request));
     const queue = getOptionalJobQueue();
     if (!queue || typeof queue.cancelJob !== "function") {
-      throw new Error(
-        "Job queue is not wired or its adapter does not support cancelJob",
-      );
+      throw new Error("Job queue is not wired or its adapter does not support cancelJob");
     }
     await queue.cancelJob(id);
-    return npSuccessResponse({ ok: true });
+    return npSuccessResponse(npRequireJobApiResponse({ ok: true }, npRequireCancelJobWire));
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

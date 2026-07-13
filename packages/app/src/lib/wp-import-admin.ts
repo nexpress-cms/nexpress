@@ -28,6 +28,10 @@ import {
   type NpImportRunStatus,
 } from "@nexpress/core";
 import {
+  npRequireJobsEnabledFlag,
+  type NpWordPressImportApplyJobData,
+} from "@nexpress/core/jobs-contract";
+import {
   applyBundle,
   emptyResumeState,
   parseConfig,
@@ -49,6 +53,8 @@ import {
   WpImportConfigError,
 } from "@nexpress/wp-import";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt } from "drizzle-orm";
+
+import { npGetReloadSafeHandler } from "./reload-safe-handler";
 
 const MAX_LIST_ITEMS = 250;
 const MAX_LOG_LINES = 200;
@@ -484,7 +490,7 @@ export async function getWordPressImportRun(id: string): Promise<WpImportAdminRu
 }
 
 export async function getWordPressImportBackgroundStatus(): Promise<WpImportAdminBackgroundStatus> {
-  const jobsEnabled = process.env.NP_ENABLE_JOBS === "1";
+  const jobsEnabled = npRequireJobsEnabledFlag(process.env.NP_ENABLE_JOBS);
   const [workers, pause] = await Promise.all([listWorkerHealth(), getJobsPauseState()]);
   const state: WpImportAdminBackgroundState = !jobsEnabled
     ? "disabled"
@@ -561,18 +567,19 @@ export async function sweepStaleWordPressImportRuns(
   };
 }
 
-let wordPressImportJobsRegistered = false;
-
 export function registerWordPressImportJobs(): void {
-  if (wordPressImportJobsRegistered) return;
-  registerJobHandler(WORDPRESS_IMPORT_APPLY_JOB_TYPE, async (data) => {
-    const runId = readRunId(data);
-    const run = await executeWordPressImportRun(runId);
-    if (run.status === "failed") {
-      throw new Error(run.error ?? `WordPress import run ${run.id} failed`);
-    }
-  });
-  wordPressImportJobsRegistered = true;
+  registerJobHandler(
+    WORDPRESS_IMPORT_APPLY_JOB_TYPE,
+    npGetReloadSafeHandler<NpWordPressImportApplyJobData>(
+      "np.app.jobs.import.wordpress-apply",
+      async (data) => {
+        const run = await executeWordPressImportRun(data.runId);
+        if (run.status === "failed") {
+          throw new Error(run.error ?? `WordPress import run ${run.id} failed`);
+        }
+      },
+    ),
+  );
 }
 
 export async function executeWordPressImportRun(runId: string): Promise<WpImportAdminRun> {
@@ -781,21 +788,6 @@ function formatDuration(seconds: number): string {
   if (seconds % 3_600 === 0) return `${(seconds / 3_600).toString()}h`;
   if (seconds % 60 === 0) return `${(seconds / 60).toString()}m`;
   return `${seconds.toString()}s`;
-}
-
-function readRunId(data: unknown): string {
-  if (
-    typeof data === "object" &&
-    data !== null &&
-    "runId" in data &&
-    typeof data.runId === "string" &&
-    data.runId.length > 0
-  ) {
-    return data.runId;
-  }
-  throw new NpValidationError("Invalid import job payload", [
-    { field: "runId", message: "runId is required" },
-  ]);
 }
 
 export function hashImportSource(xml: string): string {

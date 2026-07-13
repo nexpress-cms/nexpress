@@ -116,6 +116,7 @@ describe("ops status core", () => {
 
   it("collects a blocking DATABASE_URL check when the env is missing it", async () => {
     const collected = await collectOpsStatusChecks({
+      NP_ENABLE_JOBS: "yes",
       NP_SECRET: "abcdefghijklmnopqrstuvwxyz123456",
       SITE_URL: "http://localhost:3000",
       NP_STORAGE_ADAPTER: "s3",
@@ -132,6 +133,14 @@ describe("ops status core", () => {
         }),
         expect.objectContaining({
           id: "database.reachable",
+          state: "error",
+        }),
+        expect.objectContaining({
+          id: "jobs.enabled",
+          state: "error",
+        }),
+        expect.objectContaining({
+          id: "jobs.worker",
           state: "error",
         }),
       ]),

@@ -63,6 +63,11 @@
       "import": "./dist/jobs.js",
       "default": "./dist/jobs.js"
     },
+    "./jobs-contract": {
+      "types": "./dist/jobs-contract.d.ts",
+      "import": "./dist/jobs-contract.js",
+      "default": "./dist/jobs-contract.js"
+    },
     "./media": {
       "types": "./dist/media.d.ts",
       "import": "./dist/media.js",

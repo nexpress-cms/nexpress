@@ -1,18 +1,23 @@
 import {
   NpForbiddenError,
   NpValidationError,
-  enqueueJob,
-  getAllJobHandlers,
+  getKnownJobTypes,
   getOptionalJobQueue,
-  type NpJobType,
+  normalizeRegisteredJobPayload,
   can,
 } from "@nexpress/core";
+import { npRequireEnqueueJobWire } from "@nexpress/core/jobs-contract";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
+import {
+  npParseEmptyJobQuery,
+  npParseEnqueueJobBody,
+  npRequireJobApiResponse,
+} from "../../../../lib/job-api-contract";
 
 /**
  * Phase 13.3 — manual enqueue. Lets an admin trigger a
@@ -35,39 +40,40 @@ export async function POST(request: NextRequest) {
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("jobs", "enqueue");
     }
+    npParseEmptyJobQuery(request.nextUrl.searchParams);
+    const { type, data } = npParseEnqueueJobBody(await readJsonBody(request));
     const queue = getOptionalJobQueue();
     if (!queue) {
-      throw new Error(
-        "Job queue is not wired (NP_ENABLE_JOBS=0?). Cannot enqueue.",
-      );
+      throw new Error("Job queue is not wired (NP_ENABLE_JOBS=0?). Cannot enqueue.");
     }
 
-    const body = (await readJsonBody(request)) as Record<string, unknown>;
-    const typeRaw = body.type;
-    if (typeof typeRaw !== "string" || typeRaw.length === 0) {
-      throw new NpValidationError("Invalid input", [
-        { field: "type", message: "Job type is required (e.g. 'media:cleanup')" },
-      ]);
-    }
-
-    const handlers = getAllJobHandlers();
-    if (!handlers.has(typeRaw as NpJobType)) {
-      const available = Array.from(handlers.keys()).sort();
+    const handlers = getKnownJobTypes();
+    if (!handlers.includes(type)) {
+      const available = [...handlers];
       throw new NpValidationError("Invalid input", [
         {
           field: "type",
-          message: `No handler registered for "${typeRaw}". Registered: ${available.join(", ") || "(none)"}`,
+          message: `No handler registered for "${type}". Registered: ${available.join(", ") || "(none)"}`,
         },
       ]);
     }
 
-    const data =
-      typeof body.data === "object" && body.data !== null ? body.data : {};
-    const id = await enqueueJob(typeRaw as NpJobType, data);
-    return npSuccessResponse({ id, type: typeRaw, data });
-  } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
+    let normalized;
+    try {
+      normalized = normalizeRegisteredJobPayload(type, data);
+    } catch (error) {
+      throw new NpValidationError("Invalid input", [
+        {
+          field: "data",
+          message: error instanceof Error ? error.message : "Payload does not match the handler",
+        },
+      ]);
+    }
+    const id = await queue.enqueue(type, normalized);
+    return npSuccessResponse(
+      npRequireJobApiResponse({ id, type, data: normalized }, npRequireEnqueueJobWire),
     );
+  } catch (error) {
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

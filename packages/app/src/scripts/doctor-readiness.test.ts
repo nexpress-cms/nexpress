@@ -67,6 +67,15 @@ describe("doctor production target readiness", () => {
     ).toEqual([expect.objectContaining({ id: "oauth.github.credentials" })]);
   });
 
+  it("reports an invalid jobs-enabled value outside production too", () => {
+    expect(checkJobsEnabledProd(false, { NP_ENABLE_JOBS: "yes" })).toEqual(
+      expect.objectContaining({
+        id: "jobs.enabled_contract",
+        state: "error",
+      }),
+    );
+  });
+
   it("treats OAuth providers as optional unless an env credential source is started", () => {
     expect(checkOAuthEnvPairs({})).toEqual([]);
   });

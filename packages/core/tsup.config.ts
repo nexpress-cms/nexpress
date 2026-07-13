@@ -39,6 +39,8 @@ export default defineConfig({
     fields: "src/fields/index.ts",
     i18n: "src/i18n/index.ts",
     jobs: "src/jobs/index.ts",
+    // Pure, client-safe job payload, persisted row, and Admin wire contract.
+    "jobs-contract": "src/jobs-contract/index.ts",
     media: "src/media/index.ts",
     // Pure, client-safe persisted media metadata and API wire contract.
     "media-contract": "src/media-contract/index.ts",

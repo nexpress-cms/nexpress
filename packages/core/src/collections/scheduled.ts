@@ -97,6 +97,7 @@ export async function publishScheduledDocuments(
         documentId: docId,
         operation: "update",
         userId: "scheduler",
+        memberId: null,
       });
     }
   }

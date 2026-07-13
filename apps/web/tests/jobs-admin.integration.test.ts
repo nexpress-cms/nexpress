@@ -42,9 +42,7 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
       start: async () => {},
       stop: async () => {},
       listJobs: async ({ state }: { state?: string } = {}) => {
-        const filtered = state
-          ? jobs.filter((j) => j.state === state)
-          : jobs;
+        const filtered = state ? jobs.filter((j) => j.state === state) : jobs;
         return { jobs: filtered, total: filtered.length };
       },
       retryJob: async (id: string) => {
@@ -69,25 +67,43 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
         id: "j1",
         name: "media.processImage",
         state: "created",
-        data: { mediaId: "m1" },
+        data: { mediaId: "bd134b0f-b9ea-4ff4-81ef-606e42e27703" },
+        retryCount: 0,
+        output: null,
         createdOn: new Date().toISOString(),
+        startedOn: null,
+        completedOn: null,
+        source: "live",
       },
       {
         id: "j2",
         name: "content.afterSave",
         state: "completed",
-        data: { docId: "d1" },
+        data: {
+          collection: "posts",
+          documentId: "d4cafb07-c120-4503-90fa-6d6fc4104ce3",
+          operation: "update",
+          userId: "scheduler",
+          memberId: null,
+        },
+        retryCount: 0,
+        output: null,
         createdOn: new Date().toISOString(),
+        startedOn: null,
         completedOn: new Date().toISOString(),
+        source: "archive",
       },
       {
         id: "j3",
         name: "media.cleanup",
         state: "failed",
-        data: { mediaId: "m2" },
+        data: {},
         retryCount: 3,
         output: "ENOENT: file disappeared mid-cleanup",
         createdOn: new Date().toISOString(),
+        startedOn: null,
+        completedOn: new Date().toISOString(),
+        source: "archive",
       },
     ];
   }
@@ -143,6 +159,39 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
     expect(body.jobs?.[0]?.state).toBe("failed");
   });
 
+  it("GET rejects unknown filters instead of silently widening the query", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { setJobQueue } = await import("@nexpress/core");
+    setJobQueue(installStubQueue(makeJobs()));
+
+    const { GET } = await import("@/app/api/admin/jobs/route");
+    const req = buildRequest("/api/admin/jobs", {
+      session: admin,
+      query: { state: "unknown" },
+    });
+    expect((await GET(req)).status).toBe(400);
+  });
+
+  it("GET reports adapter response corruption as an internal contract error", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { setJobQueue } = await import("@nexpress/core");
+    const [job] = makeJobs();
+    if (!job) throw new Error("Expected a job fixture");
+    setJobQueue({
+      enqueue: async () => "stub",
+      start: async () => {},
+      stop: async () => {},
+      listJobs: async () => ({
+        jobs: [{ ...job, unexpected: true }],
+        total: 1,
+      }),
+    });
+
+    const { GET } = await import("@/app/api/admin/jobs/route");
+    const req = buildRequest("/api/admin/jobs", { session: admin });
+    expect((await GET(req)).status).toBe(500);
+  });
+
   it("GET forbids non-admin roles", async () => {
     const editor = await seedUser({ role: "editor" });
     const { setJobQueue } = await import("@nexpress/core");
@@ -153,6 +202,34 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
     const res = await GET(req);
     const { status } = await readJson(res);
     expect(status).toBe(403);
+  });
+
+  it("GET /api/admin/jobs/health initializes and reads queue diagnostics", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { setJobQueue } = await import("@nexpress/core");
+    setJobQueue({
+      ...installStubQueue(makeJobs()),
+      countByState: async () => ({
+        created: 1,
+        active: 0,
+        completed: 1,
+        failed: 1,
+        retry: 0,
+        cancelled: 0,
+        expired: 0,
+      }),
+    });
+
+    const { GET } = await import("@/app/api/admin/jobs/health/route");
+    const req = buildRequest("/api/admin/jobs/health", { session: admin });
+    const { status, body } = await readJson<{
+      stuck?: { counts: { failed: number } } | null;
+      recentFailures?: Array<{ id: string }>;
+    }>(await GET(req));
+
+    expect(status).toBe(200);
+    expect(body.stuck?.counts.failed).toBe(1);
+    expect(body.recentFailures?.map((failure) => failure.id)).toContain("j3");
   });
 
   it("POST /api/admin/jobs/[id]/retry re-enqueues a failed job", async () => {
@@ -249,9 +326,7 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("GET /api/admin/jobs/schedules surfaces registered handlers in the response", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { setJobQueue, registerJobHandler } = await import(
-      "@nexpress/core"
-    );
+    const { setJobQueue, registerJobHandler } = await import("@nexpress/core");
     setJobQueue(null);
     registerJobHandler("test:probe", async () => {});
 
@@ -272,17 +347,21 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
       listSchedules: async () => [
         {
           name: "system.revisionPrune",
+          key: "",
           cron: "0 3 * * *",
           timezone: "UTC",
           data: {},
           createdOn: new Date().toISOString(),
+          updatedOn: null,
         },
         {
           name: "system.sessionCleanup",
+          key: "",
           cron: "0 * * * *",
           timezone: null,
           data: {},
           createdOn: new Date().toISOString(),
+          updatedOn: null,
         },
       ],
     };
@@ -337,7 +416,7 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
     expect(receivedSince?.toISOString()).toBe(since);
   });
 
-  it("GET /api/admin/jobs ignores invalid `?since=...` (no 400, no filter)", async () => {
+  it("GET /api/admin/jobs rejects an invalid `?since=...` instead of dropping the filter", async () => {
     const admin = await seedUser({ role: "admin" });
     const { setJobQueue } = await import("@nexpress/core");
     let receivedSince: Date | undefined;
@@ -358,7 +437,7 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
       query: { since: "not-a-date" },
     });
     const res = await GET(req);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
     expect(receivedSince).toBeUndefined();
   });
 
@@ -375,19 +454,25 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
       id: "j4",
       name: "media.cleanup",
       state: "failed",
-      data: { mediaId: "m3" },
+      data: {},
       retryCount: 3,
       output: "ENOENT again",
       createdOn: new Date().toISOString(),
+      startedOn: null,
+      completedOn: new Date().toISOString(),
+      source: "archive",
     });
     jobs.push({
       id: "j5",
       name: "media.cleanup",
       state: "failed",
-      data: { mediaId: "m4" },
+      data: {},
       retryCount: 3,
       output: "ENOENT once more",
       createdOn: new Date().toISOString(),
+      startedOn: null,
+      completedOn: new Date().toISOString(),
+      source: "archive",
     });
     setJobQueue(installStubQueue(jobs));
 
@@ -431,6 +516,7 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
     const { setJobQueue, registerJobHandler } = await import("@nexpress/core");
     let capturedType: string | undefined;
     let capturedData: unknown;
+    let parseCount = 0;
     const queue = {
       enqueue: async (type: string, data: unknown) => {
         capturedType = type;
@@ -441,13 +527,21 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
       stop: async () => {},
     };
     setJobQueue(queue);
-    registerJobHandler("media:cleanup", async () => {});
+    registerJobHandler("test:manual", async () => {}, {
+      parsePayload(data) {
+        parseCount += 1;
+        if (Object.keys(data).length !== 1 || typeof data.probeId !== "string") {
+          throw new Error("probeId is required");
+        }
+        return { probeId: data.probeId };
+      },
+    });
 
     const { POST } = await import("@/app/api/admin/jobs/enqueue/route");
     const req = buildRequest("/api/admin/jobs/enqueue", {
       session: admin,
       method: "POST",
-      body: { type: "media:cleanup", data: { mediaId: "m1" } },
+      body: { type: "test:manual", data: { probeId: "probe-1" } },
     });
     const res = await POST(req);
     const { status, body } = await readJson<{
@@ -456,9 +550,10 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
     }>(res);
     expect(status).toBe(200);
     expect(body.id).toBe("enq-1");
-    expect(body.type).toBe("media:cleanup");
-    expect(capturedType).toBe("media:cleanup");
-    expect(capturedData).toEqual({ mediaId: "m1" });
+    expect(body.type).toBe("test:manual");
+    expect(capturedType).toBe("test:manual");
+    expect(capturedData).toEqual({ probeId: "probe-1" });
+    expect(parseCount).toBe(1);
   });
 
   it("POST /api/admin/jobs/enqueue rejects unknown handler types (defensive UX)", async () => {

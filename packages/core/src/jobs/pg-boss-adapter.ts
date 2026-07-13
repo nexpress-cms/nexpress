@@ -1,15 +1,29 @@
 import { PgBoss, type ConstructorOptions, type Job } from "pg-boss";
-import { type NpJobType } from "../config/types.js";
+import {
+  NP_JOB_STATES,
+  npNormalizeJobData,
+  npNormalizeJobPayload,
+  npBuiltinJobTypeForQueueName,
+  npPluginScheduledTaskQueueName,
+  npRequireJobId,
+  npRequireJobQueueName,
+  npRequireJobStateCounts,
+  npRequireJobSummary,
+  npRequireScheduleSummary,
+  type NpJobData,
+  type NpJobPayload,
+  type NpJobType,
+} from "../jobs-contract/index.js";
 import { getLogger } from "../observability/logger.js";
 import { reportError } from "../observability/error-reporter.js";
-import { getAllJobHandlers } from "./handlers.js";
+import { npValidatePluginCronExpression } from "../plugins/scheduled-task-contract.js";
+import { getAllJobHandlers, normalizeRegisteredJobPayload } from "./handlers.js";
 import { recordJobLog, runInJobContext } from "./job-log.js";
 import {
   type NpJobCountOptions,
   type NpJobListOptions,
   type NpJobListResult,
   type NpJobQueue,
-  type NpJobState,
   type NpJobStateCounts,
   type NpJobSummary,
   type NpPluginScheduleStats,
@@ -52,11 +66,19 @@ export class PgBossAdapter implements NpJobQueue {
   private workerStarted = false;
 
   constructor(connectionString: string, options?: ConstructorOptions) {
-    this.boss = new PgBoss({ connectionString, ...options });
+    const schema = options?.schema ?? "pgboss";
+    if (schema !== "pgboss") {
+      throw new Error('NexPress jobs require the canonical pg-boss schema "pgboss".');
+    }
+    this.boss = new PgBoss({ connectionString, ...options, schema });
   }
 
-  async enqueue(type: NpJobType, data: unknown): Promise<string> {
-    const jobId = await this.boss.send(toQueueName(type), asJobPayload(data));
+  async enqueue<TType extends NpJobType>(type: TType, data: NpJobPayload<TType>): Promise<string> {
+    // `enqueueJob()` owns application/parser validation. The adapter repeats
+    // only the framework JSON + built-in contract so a custom parser runs
+    // exactly once before persistence and once again before dispatch.
+    const normalized = npNormalizeJobPayload(type, data);
+    const jobId = await this.boss.send(toQueueName(type), normalized);
 
     if (!jobId) {
       throw new Error(`Failed to enqueue job: ${type}`);
@@ -81,8 +103,11 @@ export class PgBossAdapter implements NpJobQueue {
   async start(): Promise<void> {
     await this.boss.start();
 
-    for (const [type, handler] of getAllJobHandlers()) {
-      const queueName = toQueueName(type);
+    const registerHandlerQueue = async (
+      type: NpJobType,
+      queueName: string,
+      handler: (data: NpJobData) => Promise<void>,
+    ): Promise<void> => {
       await this.boss.createQueue(queueName);
       const register = async () => {
         await this.boss.work(queueName, async (jobs: Job<unknown>[]) => {
@@ -93,7 +118,7 @@ export class PgBossAdapter implements NpJobQueue {
             // plugin code) get stamped automatically.
             await runInJobContext(job.id, async () => {
               try {
-                await handler(job.data);
+                await handler(npNormalizeJobData(job.data));
               } catch (error) {
                 // Surface job failures to logs + the configured error reporter.
                 // Re-throw so pg-boss applies its retry/dead-letter policy.
@@ -109,7 +134,7 @@ export class PgBossAdapter implements NpJobQueue {
                 // the admin → sees the error message inline.
                 await recordJobLog("error", `Job handler threw: ${err.message}`, {
                   type,
-                  stack: err.stack,
+                  ...(err.stack ? { stack: err.stack } : {}),
                 });
                 void reportError(err, {
                   tags: { source: "worker", jobType: type },
@@ -123,6 +148,11 @@ export class PgBossAdapter implements NpJobQueue {
       };
       this.workRegistrations.push({ queueName, register });
       await register();
+    };
+
+    const handlers = getAllJobHandlers();
+    for (const [type, handler] of handlers) {
+      await registerHandlerQueue(type, toQueueName(type), handler);
     }
 
     // Phase 19 — register one queue + worker per plugin schedule.
@@ -133,13 +163,19 @@ export class PgBossAdapter implements NpJobQueue {
     const { getRegisteredPluginSchedules, runPluginScheduledTask } =
       await import("../plugins/host.js");
     for (const schedule of getRegisteredPluginSchedules()) {
-      const queueName = `${toQueueName("plugin:scheduledTask")}.${schedule.pluginId}.${schedule.taskId}`;
+      const queueName = npPluginScheduledTaskQueueName(schedule.pluginId, schedule.taskId);
       await this.boss.createQueue(queueName);
       const register = async () => {
         await this.boss.work(queueName, async (jobs: Job<unknown>[]) => {
           for (const job of jobs) {
             await runInJobContext(job.id, async () => {
               try {
+                const payload = normalizeRegisteredJobPayload("plugin:scheduledTask", job.data);
+                if (payload.pluginId !== schedule.pluginId || payload.taskId !== schedule.taskId) {
+                  throw new Error(
+                    `Plugin schedule payload does not match queue ${schedule.pluginId}:${schedule.taskId}.`,
+                  );
+                }
                 await runPluginScheduledTask(schedule.pluginId, schedule.taskId);
               } catch (error) {
                 const err = error instanceof Error ? error : new Error(String(error));
@@ -153,7 +189,7 @@ export class PgBossAdapter implements NpJobQueue {
                 await recordJobLog("error", `Plugin scheduled task threw: ${err.message}`, {
                   pluginId: schedule.pluginId,
                   taskId: schedule.taskId,
-                  stack: err.stack,
+                  ...(err.stack ? { stack: err.stack } : {}),
                 });
                 void reportError(err, {
                   tags: {
@@ -241,33 +277,23 @@ export class PgBossAdapter implements NpJobQueue {
     // 08:00 UTC. Members opt in via their notification prefs;
     // the handler short-circuits when nobody matches.
     //
-    // Issue #217 — pg-boss `pgboss.schedule` rows are uniquely
-    // keyed by `(name, key)`. Without an explicit `key`, both
-    // calls write to `(notifications:sendDigest, '')` and the
-    // weekly upsert silently overwrites the daily one. Pass
-    // `{ key }` so the two cadences live in distinct rows;
-    // both schedules still fire jobs into the same queue name
-    // (handler discriminates by `data.cadence`). The empty-key
-    // legacy row from earlier deploys is removed below so a
-    // re-deploy converges on the correct shape.
+    // pg-boss 12 keys schedules by `(name, key)`. The explicit keys let both
+    // cadences coexist while dispatching through the same logical handler.
     const digestQueue = toQueueName("notifications:sendDigest");
     await this.boss.unschedule(digestQueue).catch(() => {
-      // First-deploy systems have no row to remove. Older
-      // deploys may have one; clear it so the new
-      // `(name, key='daily')` and `(name, key='weekly')` rows
-      // don't coexist alongside an orphan empty-key row.
+      // Remove the empty-key row written by releases before keyed schedules.
     });
     await this.boss.schedule(digestQueue, "0 8 * * *", { cadence: "daily" }, { key: "daily" });
     await this.boss.schedule(digestQueue, "0 8 * * 1", { cadence: "weekly" }, { key: "weekly" });
     // Phase 19 — first-class plugin cron schedules. Each entry
     // declared via `definePlugin({ scheduled: [...] })` becomes
-    // one row in `pgboss.schedule`. We share the `plugin:scheduledTask`
-    // queue and dispatch by `(pluginId, taskId)` in the handler;
+    // one row in `pgboss.schedule`. Each schedule uses its own physical
+    // queue and dispatches by `(pluginId, taskId)` in the handler;
     // the schedule's pg-boss `name` is stable per task so a re-
     // boot doesn't accumulate duplicates.
     const { getRegisteredPluginSchedules } = await import("../plugins/host.js");
     for (const schedule of getRegisteredPluginSchedules()) {
-      const pgBossName = `${toQueueName("plugin:scheduledTask")}.${schedule.pluginId}.${schedule.taskId}`;
+      const pgBossName = npPluginScheduledTaskQueueName(schedule.pluginId, schedule.taskId);
       await this.boss.schedule(pgBossName, schedule.cron, {
         pluginId: schedule.pluginId,
         taskId: schedule.taskId,
@@ -291,8 +317,27 @@ export class PgBossAdapter implements NpJobQueue {
    * SELECT still gets the row data.
    */
   async listJobs(options: NpJobListOptions): Promise<NpJobListResult> {
-    const limit = Math.min(Math.max(1, options.limit ?? 50), 200);
-    const offset = Math.max(0, options.offset ?? 0);
+    requireExactOptions(options, "jobs", ["name", "state", "limit", "offset", "since", "source"]);
+    const limit = requireBoundedInteger(options.limit, "jobs.limit", 50, 1, 200);
+    const offset = requireBoundedInteger(options.offset, "jobs.offset", 0, 0, 100_000);
+    const name =
+      options.name === undefined ? undefined : npRequireJobQueueName(options.name, "jobs.name");
+    if (
+      options.state !== undefined &&
+      !(NP_JOB_STATES as readonly string[]).includes(options.state)
+    ) {
+      throw new Error(`Unsupported job state "${options.state}".`);
+    }
+    const source: unknown = options.source;
+    if (source !== undefined && source !== "live" && source !== "archive") {
+      throw new Error("Unsupported job source.");
+    }
+    if (
+      options.since !== undefined &&
+      (!(options.since instanceof Date) || Number.isNaN(options.since.getTime()))
+    ) {
+      throw new Error("jobs.since must be a valid Date.");
+    }
 
     const db = (
       this.boss as unknown as {
@@ -301,8 +346,8 @@ export class PgBossAdapter implements NpJobQueue {
     ).db;
     const params: unknown[] = [];
     const where: string[] = [];
-    if (options.name) {
-      params.push(options.name);
+    if (name) {
+      params.push(name);
       where.push(`name = $${params.length}`);
     }
     if (options.state) {
@@ -315,9 +360,8 @@ export class PgBossAdapter implements NpJobQueue {
     }
     const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
-    // Schema name defaults to `pgboss` but can be overridden
-    // via constructor options. We didn't pass `schema`, so the
-    // default is in effect.
+    // NexPress pins the canonical `pgboss` schema in the constructor so
+    // runtime writes and every Admin/ops diagnostic query share one store.
     //
     // Phase 20.4 — when `options.source` is set we narrow the
     // UNION to that single table; otherwise we keep the
@@ -371,18 +415,13 @@ export class PgBossAdapter implements NpJobQueue {
         rows: Array<{ total: string | number }>;
       }>,
     ]);
-    const rows = listResult.rows ?? [];
-    const totalRaw = countResult.rows?.[0]?.total;
-    const total =
-      typeof totalRaw === "number"
-        ? totalRaw
-        : typeof totalRaw === "string"
-          ? Number.parseInt(totalRaw, 10)
-          : 0;
+    const rows = listResult.rows;
+    const totalRaw = countResult.rows[0]?.total;
+    if (totalRaw === undefined) throw new Error("jobs.total is missing.");
 
     return {
       jobs: rows.map(rowToSummary),
-      total: Number.isFinite(total) ? total : 0,
+      total: requireCount(totalRaw, "jobs.total"),
     };
   }
 
@@ -405,7 +444,7 @@ export class PgBossAdapter implements NpJobQueue {
          FROM pgboss.schedule
         ORDER BY name ASC, key ASC`,
     );
-    return (result.rows ?? []).map(scheduleRowToSummary);
+    return result.rows.map(scheduleRowToSummary);
   }
 
   /**
@@ -423,7 +462,18 @@ export class PgBossAdapter implements NpJobQueue {
     pluginId: string,
     options?: { windowDays?: number },
   ): Promise<NpPluginScheduleStats[]> {
-    const windowDays = Math.max(1, Math.min(365, options?.windowDays ?? 7));
+    requireExactOptions(options, "pluginSchedule", ["windowDays"]);
+    const windowDays = requireBoundedInteger(
+      options?.windowDays,
+      "pluginSchedule.windowDays",
+      7,
+      1,
+      365,
+    );
+    const canonicalPluginId = npNormalizeJobPayload("plugin:scheduledTask", {
+      pluginId,
+      taskId: "contract-probe",
+    }).pluginId;
     const db = (
       this.boss as unknown as {
         db: {
@@ -448,7 +498,7 @@ export class PgBossAdapter implements NpJobQueue {
     //   - `plugin.scheduledTask`                       — `schedulePluginTask()` enqueues
     //     here for one-shot "Run now" invocations (handlePluginScheduledTask
     //     dispatches by `(pluginId, taskId)` from the payload).
-    //   - `plugin.scheduledTask.<pluginId>.<taskId>`   — cron schedules. Each entry
+    //   - `plugin.scheduledTask.<hex(pluginId)>.<hex(taskId)>` — cron schedules. Each entry
     //     declared via `definePlugin({ scheduled: [...] })` gets its own queue +
     //     row in `pgboss.schedule` (Phase 19).
     // Both share the `(pluginId, taskId)` payload shape, so we filter by name
@@ -478,20 +528,30 @@ export class PgBossAdapter implements NpJobQueue {
          FROM plugin_jobs
         WHERE data->>'taskId' IS NOT NULL
         GROUP BY data->>'taskId'`,
-      [pluginId, String(windowDays)],
+      [canonicalPluginId, String(windowDays)],
     );
 
-    return (result.rows ?? [])
-      .filter((row): row is typeof row & { task_id: string } => typeof row.task_id === "string")
-      .map((row) => ({
+    return result.rows.map((row, index) => {
+      const payload = npNormalizeJobPayload("plugin:scheduledTask", {
+        pluginId: canonicalPluginId,
         taskId: row.task_id,
-        lastRunAt: toIso(row.last_run),
-        lastSuccessAt: toIso(row.last_success),
-        lastFailureAt: toIso(row.last_failure),
-        completedCount: Number(row.completed_count) || 0,
-        failedCount: Number(row.failed_count) || 0,
+      });
+      return {
+        taskId: payload.taskId,
+        lastRunAt: nullableIso(row.last_run, "pluginSchedule.lastRunAt"),
+        lastSuccessAt: nullableIso(row.last_success, "pluginSchedule.lastSuccessAt"),
+        lastFailureAt: nullableIso(row.last_failure, "pluginSchedule.lastFailureAt"),
+        completedCount: requireCount(
+          row.completed_count,
+          `pluginSchedule[${index.toString()}].completedCount`,
+        ),
+        failedCount: requireCount(
+          row.failed_count,
+          `pluginSchedule[${index.toString()}].failedCount`,
+        ),
         windowDays,
-      }));
+      };
+    });
   }
 
   /**
@@ -512,12 +572,9 @@ export class PgBossAdapter implements NpJobQueue {
     // `start()` uses to dodge a core ↔ jobs cycle.
     const { getRegisteredPluginSchedules } = await import("../plugins/host.js");
     const wantedList = getRegisteredPluginSchedules();
-    const wantedByName = new Map<
-      string,
-      { pluginId: string; taskId: string; cron: string }
-    >();
+    const wantedByName = new Map<string, { pluginId: string; taskId: string; cron: string }>();
     for (const schedule of wantedList) {
-      const name = `${toQueueName("plugin:scheduledTask")}.${schedule.pluginId}.${schedule.taskId}`;
+      const name = npPluginScheduledTaskQueueName(schedule.pluginId, schedule.taskId);
       wantedByName.set(name, {
         pluginId: schedule.pluginId,
         taskId: schedule.taskId,
@@ -593,6 +650,7 @@ export class PgBossAdapter implements NpJobQueue {
    * predicate.
    */
   async countByState(options?: NpJobCountOptions): Promise<NpJobStateCounts> {
+    requireExactOptions(options, "jobs.counts", ["since"]);
     const db = (
       this.boss as unknown as {
         db: {
@@ -605,7 +663,10 @@ export class PgBossAdapter implements NpJobQueue {
     ).db;
     const params: unknown[] = [];
     let whereSql = "";
-    if (options?.since) {
+    if (options?.since !== undefined) {
+      if (!(options.since instanceof Date) || Number.isNaN(options.since.getTime())) {
+        throw new Error("jobs.counts.since must be a valid Date.");
+      }
       params.push(options.since.toISOString());
       whereSql = `WHERE created_on >= $${params.length}`;
     }
@@ -620,7 +681,7 @@ export class PgBossAdapter implements NpJobQueue {
         GROUP BY state`,
       params,
     );
-    const counts: NpJobStateCounts = {
+    const rawCounts: Record<string, number> = {
       created: 0,
       active: 0,
       completed: 0,
@@ -629,25 +690,26 @@ export class PgBossAdapter implements NpJobQueue {
       cancelled: 0,
       expired: 0,
     };
-    for (const row of result.rows ?? []) {
-      const key = row.state as keyof NpJobStateCounts;
-      if (key in counts) {
-        const value =
-          typeof row.count === "number" ? row.count : Number.parseInt(row.count, 10);
-        counts[key] = Number.isFinite(value) ? value : 0;
+    for (const row of result.rows) {
+      if (!(NP_JOB_STATES as readonly string[]).includes(row.state)) {
+        throw new Error(`Unsupported pg-boss job state "${row.state}".`);
       }
+      rawCounts[row.state] = requireCount(row.count, `job.counts.${row.state}`);
     }
-    return counts;
+    return npRequireJobStateCounts(rawCounts);
   }
 
   async retryJob(id: string): Promise<string> {
+    const canonicalId = npRequireJobId(id);
     // Look up the original payload + queue name first so we
     // can re-enqueue with the same shape. Could be in either
     // pgboss.job (still pending/active/retry) or pgboss.archive
     // (already terminal); UNION handles both.
     const db = (
       this.boss as unknown as {
-        db: { executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: PgBossRow[] }> };
+        db: {
+          executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: PgBossRetryRow[] }>;
+        };
       }
     ).db;
     const result = await db.executeSql(
@@ -659,36 +721,59 @@ export class PgBossAdapter implements NpJobQueue {
               output::text AS output, created_on, started_on, completed_on
        FROM pgboss.archive WHERE id = $1
        LIMIT 1`,
-      [id],
+      [canonicalId],
     );
     const row = result.rows?.[0];
     if (!row) {
       throw new Error(`Job ${id} not found`);
     }
-    const newId = await this.boss.send(row.name, row.data ?? {});
+    if (npRequireJobId(row.id, "job.retry.id") !== canonicalId) {
+      throw new Error("job.retry.id does not match the requested job");
+    }
+    const queueName = npRequireJobQueueName(row.name, "job.retry.name");
+    if (row.state !== "failed" && row.state !== "cancelled" && row.state !== "expired") {
+      throw new Error(`Job ${canonicalId} is not retryable from state "${row.state}".`);
+    }
+    const registeredType = findRegisteredTypeForQueueName(queueName);
+    if (!registeredType) {
+      throw new Error(`Job queue "${queueName}" has no registered handler contract.`);
+    }
+    const payload = normalizeRegisteredJobPayload(registeredType, row.data);
+    const newId = await this.boss.send(queueName, payload);
     if (!newId) {
-      throw new Error(`Failed to re-enqueue ${row.name}`);
+      throw new Error(`Failed to re-enqueue ${queueName}`);
     }
     return newId;
   }
 
   async cancelJob(id: string): Promise<void> {
+    const canonicalId = npRequireJobId(id);
     // pg-boss's cancel API requires the queue name; look it up
     // from pgboss.job. Already-archived (terminal) jobs can't
     // be cancelled, which matches user intuition.
     const db = (
       this.boss as unknown as {
         db: {
-          executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: { name: string }[] }>;
+          executeSql: (
+            sql: string,
+            params?: unknown[],
+          ) => Promise<{ rows: Array<{ name: string; state: string }> }>;
         };
       }
     ).db;
-    const result = await db.executeSql(`SELECT name FROM pgboss.job WHERE id = $1`, [id]);
+    const result = await db.executeSql(
+      `SELECT name, state::text AS state FROM pgboss.job WHERE id = $1`,
+      [canonicalId],
+    );
     const row = result.rows?.[0];
     if (!row) {
       throw new Error(`Job ${id} not found or already terminal`);
     }
-    await this.boss.cancel(row.name, id);
+    const queueName = npRequireJobQueueName(row.name, "job.cancel.name");
+    if (row.state !== "created" && row.state !== "retry") {
+      throw new Error(`Job ${canonicalId} cannot be cancelled from state "${row.state}".`);
+    }
+    await this.boss.cancel(queueName, canonicalId);
   }
 }
 
@@ -697,63 +782,136 @@ interface PgBossRow {
   name: string;
   state: string;
   data: unknown;
-  retry_count?: number;
-  output?: string | null;
-  created_on?: Date | string | null;
-  started_on?: Date | string | null;
-  completed_on?: Date | string | null;
+  retry_count: number;
+  output: string | null;
+  created_on: Date | string;
+  started_on: Date | string | null;
+  completed_on: Date | string | null;
   /** Phase 20.4 — `live` (pgboss.job) or `archive` (pgboss.archive). */
-  source?: string;
+  source: string;
+}
+
+interface PgBossRetryRow {
+  id: string;
+  name: string;
+  state: string;
+  data: unknown;
 }
 
 interface PgBossScheduleRow {
   name: string;
-  key?: string | null;
+  key: string;
   cron: string;
-  timezone?: string | null;
-  data?: unknown;
-  created_on?: Date | string | null;
-  updated_on?: Date | string | null;
+  timezone: string | null;
+  data: unknown;
+  created_on: Date | string;
+  updated_on: Date | string | null;
 }
 
 function scheduleRowToSummary(row: PgBossScheduleRow): NpScheduleSummary {
-  return {
+  const cron = npValidatePluginCronExpression(row.cron);
+  if (!cron.ok) throw new Error(cron.message);
+  return npRequireScheduleSummary({
     name: row.name,
-    key: row.key ?? "",
+    key: row.key,
     cron: row.cron,
     timezone: row.timezone ?? null,
-    data: row.data ?? null,
-    createdOn: toIso(row.created_on) ?? new Date(0).toISOString(),
-    updatedOn: toIso(row.updated_on),
-  };
+    data: row.data,
+    createdOn: requireIso(row.created_on, "schedule.createdOn"),
+    updatedOn: nullableIso(row.updated_on, "schedule.updatedOn"),
+  });
 }
 
 function rowToSummary(row: PgBossRow): NpJobSummary {
-  return {
+  const registeredType = findRegisteredTypeForQueueName(row.name);
+  return npRequireJobSummary({
     id: row.id,
     name: row.name,
-    state: row.state as NpJobState,
-    data: row.data,
-    retryCount: typeof row.retry_count === "number" ? row.retry_count : undefined,
-    output: row.output ?? null,
-    createdOn: toIso(row.created_on) ?? new Date(0).toISOString(),
-    startedOn: toIso(row.started_on),
-    completedOn: toIso(row.completed_on),
-    source: row.source === "archive" ? "archive" : row.source === "live" ? "live" : undefined,
-  };
+    state: row.state,
+    data: registeredType
+      ? normalizeRegisteredJobPayload(registeredType, row.data)
+      : npNormalizeJobData(row.data),
+    retryCount: row.retry_count,
+    output: row.output,
+    createdOn: requireIso(row.created_on, "job.createdOn"),
+    startedOn: nullableIso(row.started_on, "job.startedOn"),
+    completedOn: nullableIso(row.completed_on, "job.completedOn"),
+    source: row.source,
+  });
 }
 
-function toIso(value: Date | string | null | undefined): string | null {
-  if (!value) return null;
+function nullableIso(value: Date | string | null, path: string): string | null {
+  if (value === null) return null;
   if (value instanceof Date) return value.toISOString();
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  if (Number.isNaN(parsed.getTime())) throw new Error(`${path} is invalid.`);
+  return parsed.toISOString();
 }
 
-function asJobPayload(data: unknown): object {
-  if (!data || typeof data !== "object" || Array.isArray(data)) {
-    return { payload: data };
-  }
+function requireIso(value: Date | string, path: string): string {
+  const result = nullableIso(value, path);
+  if (!result) throw new Error(`${path} is missing or invalid.`);
+  return result;
+}
 
-  return data;
+function requireCount(value: string | number, path: string): number {
+  if (typeof value === "number") {
+    if (Number.isSafeInteger(value) && value >= 0) return value;
+    throw new Error(`${path} must be a non-negative safe integer.`);
+  }
+  if (!/^(?:0|[1-9]\d*)$/u.test(value)) {
+    throw new Error(`${path} must be a non-negative safe integer.`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) throw new Error(`${path} exceeds the safe integer range.`);
+  return parsed;
+}
+
+function requireBoundedInteger(
+  value: number | undefined,
+  path: string,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  if (value === undefined) return fallback;
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new Error(`${path} must be an integer between ${min.toString()} and ${max.toString()}.`);
+  }
+  return value;
+}
+
+function findRegisteredTypeForQueueName(queueName: string): NpJobType | null {
+  const builtin = npBuiltinJobTypeForQueueName(queueName);
+  if (builtin) return builtin;
+  for (const type of getAllJobHandlers().keys()) {
+    if (toQueueName(type) === queueName) return type;
+  }
+  if (queueName.startsWith(`${toQueueName("plugin:scheduledTask")}.`)) {
+    return "plugin:scheduledTask";
+  }
+  return null;
+}
+
+function requireExactOptions(value: unknown, path: string, allowedKeys: readonly string[]): void {
+  if (value === undefined) return;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${path} options must be a plain object.`);
+  }
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error(`${path} options must be a plain object.`);
+  }
+  const allowed = new Set(allowedKeys);
+  const keys: string[] = [];
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") throw new Error(`${path} options contain a symbol property.`);
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor?.enumerable || !("value" in descriptor)) {
+      throw new Error(`${path}.${key} must be an enumerable plain data property.`);
+    }
+    keys.push(key);
+  }
+  const unsupported = keys.find((key) => !allowed.has(key));
+  if (unsupported) throw new Error(`${path}.${unsupported} is not supported.`);
 }

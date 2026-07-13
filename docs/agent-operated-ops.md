@@ -440,7 +440,9 @@ Implementation status:
 - `nexpress ops jobs status --json` emits
   `schemaVersion: "np.ops-jobs.v1"` with worker heartbeat, pause state,
   pg-boss queue counts, and a bounded `recentFailures` list with the latest
-  captured job log for each failed / expired / retrying job.
+  captured job log for each failed / expired / retrying job. Malformed
+  persisted rows set `diagnosticError` and block the report instead of being
+  rewritten as empty/default state.
 - `nexpress ops storage status --json` emits
   `schemaVersion: "np.ops-storage.v1"` with adapter readiness, media row
   counts, canonical variant-metadata validation, and local missing/orphaned

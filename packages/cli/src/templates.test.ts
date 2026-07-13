@@ -500,6 +500,8 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("[docs/ops.md](docs/ops.md)");
     expect(readme).toContain("pnpm run ops:status -- --brief --no-color");
     expect(readme).toContain("pnpm run doctor");
+    expect(readme).toContain("registerJobHandler(name, handler, { parsePayload })");
+    expect(readme).toContain("NP_ENABLE_JOBS` accepts only");
     expect(readme).toContain("## Deploy Bridge");
     expect(readme).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
     expect(readme).toContain("target's first launch action");

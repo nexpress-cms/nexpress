@@ -118,6 +118,10 @@ function actorUserId(actor: SaveActor): string | null {
   return actor.kind === "staff" ? actor.user.id : null;
 }
 
+function actorMemberId(actor: SaveActor): string | null {
+  return actor.kind === "member" ? actor.memberId : null;
+}
+
 /**
  * Polymorphic actor reference passed to collection hooks and
  * surfaced to plugin hooks via the `principal` payload field.
@@ -1112,6 +1116,7 @@ async function firePostCommitHooks(
       documentId: savedDocId,
       operation: ctx.operation,
       userId: actorUserId(ctx.actor),
+      memberId: actorMemberId(ctx.actor),
     }),
   );
 
@@ -1711,6 +1716,7 @@ async function deleteDocumentImpl(
       collection,
       documentId: docId,
       userId: actorUserId(actor),
+      memberId: actorMemberId(actor),
     }),
   );
 

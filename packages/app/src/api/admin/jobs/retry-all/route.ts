@@ -1,14 +1,16 @@
-import {
-  NpForbiddenError,
-  getOptionalJobQueue,
-  type NpJobState,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, getOptionalJobQueue, can } from "@nexpress/core";
+import { npRequireJobListWire, npRequireRetryAllJobsWire } from "@nexpress/core/jobs-contract";
+import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
+import {
+  npParseEmptyJobBody,
+  npParseRetryAllQuery,
+  npRequireJobApiResponse,
+} from "../../../../lib/job-api-contract";
 
 /**
  * Phase 13.3 — bulk retry. Re-enqueues every job in the
@@ -25,12 +27,6 @@ import { ensureFor } from "../../../../lib/init-core";
  * Admin-only + CSRF; same gate as the per-job retry endpoint.
  */
 const BULK_LIMIT = 200;
-const RETRYABLE_STATES: ReadonlyArray<NpJobState> = [
-  "failed",
-  "cancelled",
-  "expired",
-];
-
 export async function POST(request: NextRequest) {
   try {
     await ensureFor("write");
@@ -38,31 +34,25 @@ export async function POST(request: NextRequest) {
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("jobs", "retry-all");
     }
+    const { state, name } = npParseRetryAllQuery(request.nextUrl.searchParams);
+    npParseEmptyJobBody(await readJsonBody(request));
     const queue = getOptionalJobQueue();
-    if (
-      !queue ||
-      typeof queue.listJobs !== "function" ||
-      typeof queue.retryJob !== "function"
-    ) {
-      throw new Error(
-        "Job queue is not wired or its adapter does not support listJobs/retryJob",
-      );
+    if (!queue || typeof queue.listJobs !== "function" || typeof queue.retryJob !== "function") {
+      throw new Error("Job queue is not wired or its adapter does not support listJobs/retryJob");
     }
 
-    const params = request.nextUrl.searchParams;
-    const stateRaw = params.get("state");
-    const state =
-      stateRaw && (RETRYABLE_STATES as readonly string[]).includes(stateRaw)
-        ? (stateRaw as NpJobState)
-        : "failed";
-    const name = params.get("name") ?? undefined;
-
-    const list = await queue.listJobs({
-      state,
-      ...(name ? { name } : {}),
-      limit: BULK_LIMIT,
-      offset: 0,
-    });
+    const list = npRequireJobApiResponse(
+      {
+        supported: true,
+        ...(await queue.listJobs({
+          state,
+          ...(name ? { name } : {}),
+          limit: BULK_LIMIT,
+          offset: 0,
+        })),
+      },
+      npRequireJobListWire,
+    );
 
     const results: { id: string; ok: boolean; error?: string }[] = [];
     for (const job of list.jobs) {
@@ -73,26 +63,29 @@ export async function POST(request: NextRequest) {
         results.push({
           id: job.id,
           ok: false,
-          error: error instanceof Error ? error.message : String(error),
+          error:
+            error instanceof Error
+              ? error.message || "Unknown retry failure"
+              : String(error) || "Unknown retry failure",
         });
       }
     }
     const retried = results.filter((r) => r.ok).length;
     const failed = results.length - retried;
 
-    return npSuccessResponse({
-      retried,
-      failed,
-      // Total is `list.total` not `list.jobs.length` — surfaces
-      // "you re-queued 200 of 542; click again to chip away
-      // at the rest" through the UI.
-      total: list.total,
-      remaining: Math.max(0, list.total - retried),
-      results,
-    });
-  } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
+    return npSuccessResponse(
+      npRequireJobApiResponse(
+        {
+          retried,
+          failed,
+          total: list.total,
+          remaining: Math.max(0, list.total - retried),
+          results,
+        },
+        npRequireRetryAllJobsWire,
+      ),
     );
+  } catch (error) {
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
