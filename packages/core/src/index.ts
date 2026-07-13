@@ -423,6 +423,7 @@ export type {
   NpJobHandler,
   NpJobHandlerOptions,
   NpJobPayloadParser,
+  NpJobSiteIdResolver,
   NpJobQueue,
   NpJobState,
   NpJobSummary,
