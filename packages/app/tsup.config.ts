@@ -95,7 +95,6 @@ const libEntries = {
   "lib/safe-next": "src/lib/safe-next.ts",
   "lib/search-highlight": "src/lib/search-highlight.tsx",
   "lib/seed-content": "src/lib/seed-content.ts",
-  "lib/site-authz": "src/lib/site-authz.ts",
   "lib/system-health": "src/lib/system-health.ts",
   "lib/token-ttl": "src/lib/token-ttl.ts",
 };

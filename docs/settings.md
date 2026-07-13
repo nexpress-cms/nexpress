@@ -66,6 +66,14 @@ Client-safe validators and types are exported from `@nexpress/core/settings`.
 New framework keys must be added to that registry and wired through their
 owning service, tests, OpenAPI, doctor, and this guide in one change.
 
+The same subpath owns the registry-level site contracts:
+`NpCreateSiteInput`, `NpUpdateSiteInput`, `NpSiteRecord` /
+`NpSiteWireRecord`, `NpSiteMembershipRecord` /
+`NpSiteMembershipWireRecord`, and `NpSiteUsage`. Their normalizers and
+analyzers reject unknown fields. `default` is a reserved permanent site id,
+and membership roles use named capabilities through `canOnSite()` rather than
+a numeric role hierarchy. See [Multi-Site / Multi-Tenancy](./multi-site.md).
+
 ## Admin and plugin APIs
 
 `GET /api/settings` returns exactly `{ site, seo }`. `PUT /api/settings`

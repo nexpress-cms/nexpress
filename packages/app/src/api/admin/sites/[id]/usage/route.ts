@@ -4,28 +4,24 @@ import {
   getSiteById,
   getSiteUsageSummary,
 } from "@nexpress/core";
+import { canOnSite } from "@nexpress/core/sites";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
 import { requireAuth } from "../../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../../lib/init-core";
-import { canManageSite } from "../../../../../lib/site-authz";
 
 /**
  * Phase 15.9 — per-site usage summary. Surfaces in the
- * admin delete-site dialog so operators see what they're
- * about to nuke (or leave behind as orphans, in the
- * non-cascade path).
+ * admin delete-site dialog so operators see what an explicit
+ * all-or-nothing cascade would remove.
  *
  * Returns the count of every site-scoped row attached to a
  * site: per-collection counts, settings, navigation,
  * memberships, string overrides. Admin-only because the
  * counts can hint at private content shape.
  */
-export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> },
-) {
+export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -34,7 +30,7 @@ export async function GET(
     // let a non-super global admin query any tenant's row counts
     // and learn private content shape. Use the same target-site
     // ladder as the sister site detail/update/delete routes.
-    if (!(await canManageSite(user, id))) {
+    if (!(await canOnSite(user, "admin.manage", id))) {
       throw new NpForbiddenError("sites/usage", "read");
     }
     const site = await getSiteById(id);
@@ -46,9 +42,7 @@ export async function GET(
     const usage = await getSiteUsageSummary(id);
     return npSuccessResponse({ site: { id: site.id, name: site.name }, usage });
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

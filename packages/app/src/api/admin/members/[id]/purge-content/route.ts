@@ -1,12 +1,8 @@
-import {
-  NpForbiddenError,
-  purgeMemberContent,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, purgeMemberContent, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
-import { requireAuth } from "../../../../../lib/auth-helpers";
+import { requireGlobalAuth } from "../../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../../lib/init-core";
 
 /**
@@ -21,13 +17,10 @@ import { ensureFor } from "../../../../../lib/init-core";
  * comments, Y discussions, Z media files" rather than a flat
  * total.
  */
-export async function POST(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("member.content", "purge");
     }

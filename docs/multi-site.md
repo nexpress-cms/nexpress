@@ -190,28 +190,56 @@ Three tiers, in priority order:
    Bypasses every per-site membership check.
 2. **Per-site membership** — explicit row in
    `np_site_memberships(site_id, user_id, role)`. The
-   resolver returns this role for any check on that site.
+   capability check uses this role for that site.
 3. **Global default role** — `npUsers.role`. Used as the
-   fallback when no membership exists. Single-tenant sites
-   (no memberships) operate entirely off this.
+   fallback only for the reserved `default` site. A global
+   admin, editor, moderator, author, or viewer has no implied
+   access to any non-default tenant.
 
 Helper APIs:
 
-- `resolveUserRoleOnSite(user, siteId)` — full chain.
-- `hasRoleOnSite(user, minRole, siteId?)` — site-scoped
-  role-rank check (super-admin → admin, explicit membership
-  → that role, otherwise global default). Defaults to the
-  current request site when `siteId` is omitted.
+- `canOnSite(user, capability, siteId?)` — the single
+  site-scoped authorization entry point. It reads the persisted
+  user and membership rows, confirms the site exists, and then
+  applies the same named capability table as `can()`. When
+  `siteId` is omitted it uses the current execution context and
+  then the reserved default site.
+- `resolveSiteAuthUser(user, siteId?)` — projects a verified staff
+  user onto that site's effective persisted role. The app auth
+  helpers apply this before route gates and collection access
+  functions run, so downstream code never authorizes against a
+  stale global role in a non-default tenant.
+
+Global operator surfaces (for example jobs, remote ops, staff identity
+management, and plugin enable/reload) deliberately use the persisted global
+role instead. A per-site `admin` membership never promotes its holder into a
+cross-tenant operator.
+
 - `isSuperAdmin(user)` — quick boolean check.
+
+Import server-side registry and authorization helpers from
+`@nexpress/core/sites`. The root export remains available as the broad
+compatibility surface.
 
 For non-site-scoped checks (e.g. `/api/auth/*` routes that
 don't care about tenant boundaries), use `can(user, capability)`
-from `@nexpress/core/auth` (`"admin.manage"`,
+from `@nexpress/core/auth` (`"site.access"`, `"admin.manage"`,
 `"content.publish"`, `"content.author"`,
 `"community.moderate"`). The legacy global `hasRole(user,
 minRole)` was retired in #273; capability strings replace it
 because they describe the _behavior_ a route gates on rather
 than a role-rank comparison.
+
+There is deliberately no numeric site-role hierarchy. `author`
+and `moderator` are parallel: both can satisfy `content.author`,
+but only moderator satisfies `community.moderate`; neither can
+publish. This prevents an apparently harmless rank comparison
+from granting the wrong domain permission.
+
+The client-safe `@nexpress/core/settings` subpath exposes the exact
+site create/update, persisted/wire record, membership, and usage
+contracts. Core registry calls and Admin API handlers use the same
+normalizers, while Admin clients validate every returned wire row.
 
 ---
 
@@ -226,11 +254,16 @@ what the proxy matches request `Host` headers against.
 they hold memberships on > 1 site). Selecting a site sets
 `np-admin-site=<id>` (HttpOnly, SameSite=Lax, Secure-in-prod,
 30-day TTL). The override is scoped to admin paths — public
-site rendering still uses `Host`.
+site rendering still uses `Host`. The picker list, switch, and
+clear endpoints authenticate outside the current site context and
+then authorize the requested target. This lets an operator recover
+when a saved site's membership has been revoked since the cookie
+was issued.
 
 **Manage memberships** — Settings → Sites → click "Members"
 on a card. Search users by email, pick a role, click Grant.
-Revoke flips back to the user's global default role.
+On the default site, revocation exposes the user's global role
+again. On every other site, revocation removes access entirely.
 
 **Promote a super-admin** — Use the CLI (`pnpm super-admin
 <email>`) for the first one (bootstrap chicken-and-egg).
@@ -299,12 +332,23 @@ keep the `SITE_URL` env fallback.
 
 **Deletion safety** (Phase 15.9): `deleteSite()` defaults to
 the safe path — refuses if any site-scoped data exists
-(collections, settings, navigation, memberships, string
-overrides). Pass `cascade: true` (or `?cascade=true` on the
-admin API) to delete the dependent rows alongside. The admin
-UI surfaces a usage summary with per-table counts before
-asking for cascade confirmation. The default site can never
-be deleted (framework invariant).
+(registered collections plus every site-scoped framework/community table,
+including slug history, in
+the usage contract). Pass `cascade: true` (or `?cascade=true` on
+the admin API) to delete the dependent rows alongside. The usage
+scan, dependent deletes, and registry delete run in one transaction;
+an unavailable collection table or any delete failure aborts and
+rolls back the whole operation. Collection-owned revision history and
+media-reference rows are also removed by collection/document id even
+though those global tables do not carry `site_id`. The admin UI validates
+and displays the same exact site-scoped count contract before asking for
+confirmation.
+
+`default` is a reserved, permanent id: its row must have
+`isDefault=true`, every other row must have `isDefault=false`, and
+there is no promotion/reassignment operation. `nexpress doctor` checks
+this invariant together with malformed and orphaned membership and
+settings rows.
 
 ---
 
@@ -356,10 +400,12 @@ deployments:
   hostname (e.g. local `localhost:3000`) resolve to default.
 - The site picker hides itself when only one site is
   accessible, removing the noise.
-- The role tree itself didn't change — Phase 15 only added the
-  per-site dimension on top. Global non-site-scoped checks now
-  go through `can(user, capability)` (the legacy `hasRole()` /
-  `isStaffMod()` helpers were retired in #273).
+- Global operator routes keep the persisted global role and use
+  `can(user, capability)`. Site-scoped request auth projects the
+  persisted effective site role before route and collection policy
+  checks; explicit target checks use `canOnSite(user, capability,
+siteId)`. Both use one named capability table rather than a numeric
+  role tree.
 
 Sites that don't need multi-tenancy can ignore Phase 15
 entirely — the framework treats them the same as before.

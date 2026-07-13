@@ -1,229 +1,221 @@
 import { and, eq } from "drizzle-orm";
 
-import { getDb } from "../db/runtime.js";
-import { npSiteMemberships, npUsers } from "../db/schema/system.js";
-import { NpValidationError } from "../errors.js";
+import { can, type NpCapability } from "../auth/capabilities.js";
 import type { NpAuthUser, NpUserRole } from "../config/types.js";
+import { getDb } from "../db/runtime.js";
+import { npSiteMemberships, npSites, npUsers } from "../db/schema/system.js";
+import { NpValidationError } from "../errors.js";
+import {
+  npAssertSiteMembershipRecord,
+  npIsCanonicalSiteId,
+  npIsCanonicalUserId,
+  npIsUserRole,
+} from "../settings/contract.js";
+import type { NpSiteMembershipRecord } from "../settings/types.js";
 
 import { getCurrentSiteId } from "./context.js";
-import { NP_DEFAULT_SITE_ID } from "./registry.js";
+import { NP_DEFAULT_SITE_ID } from "./id-contract.js";
 
-/**
- * Phase 15.5 — per-site role memberships.
- *
- * `npUsers.role` stays the "global default role" (used by
- * existing single-tenant code and as a fallback when no
- * explicit membership exists for a given site). New
- * multi-tenant deployments grant explicit memberships via
- * the helpers here; the `isSuperAdmin` flag (also new in
- * 15.5) bypasses membership checks entirely so a super-admin
- * can administer every site without having to be enrolled
- * on each one individually.
- *
- * The framework's existing `hasRole(user, minRole)` keeps
- * working as a global check. New site-scoped checks should
- * use `hasRoleOnSite(user, siteId, minRole)`.
- */
-
-export interface SiteMembership {
-  siteId: string;
-  userId: string;
-  role: NpUserRole;
-  createdAt: Date;
-  updatedAt: Date;
+function invalid(field: string, message: string): NpValidationError {
+  return new NpValidationError("Invalid input", [{ field, message }]);
 }
 
-export async function listSiteMemberships(
-  siteId: string,
-): Promise<SiteMembership[]> {
-  const db = getDb();
-  const rows = await db
-    .select()
-    .from(npSiteMemberships)
-    .where(eq(npSiteMemberships.siteId, siteId));
-  return rows.map((row) => ({
-    siteId: row.siteId,
-    userId: row.userId,
-    role: row.role,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  }));
+function assertSiteId(siteId: unknown): asserts siteId is string {
+  if (!npIsCanonicalSiteId(siteId)) {
+    throw invalid("siteId", "siteId must be a canonical lowercase site id");
+  }
 }
 
-export async function listMembershipsForUser(
-  userId: string,
-): Promise<SiteMembership[]> {
-  const db = getDb();
-  const rows = await db
-    .select()
-    .from(npSiteMemberships)
-    .where(eq(npSiteMemberships.userId, userId));
-  return rows.map((row) => ({
-    siteId: row.siteId,
-    userId: row.userId,
-    role: row.role,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  }));
+function assertUserId(userId: unknown): asserts userId is string {
+  if (!npIsCanonicalUserId(userId)) {
+    throw invalid("userId", "userId must be a canonical UUID");
+  }
 }
 
-export async function getMembership(
-  siteId: string,
-  userId: string,
-): Promise<SiteMembership | null> {
-  const db = getDb();
-  const [row] = await db
-    .select()
-    .from(npSiteMemberships)
-    .where(
-      and(
-        eq(npSiteMemberships.siteId, siteId),
-        eq(npSiteMemberships.userId, userId),
-      ),
-    )
-    .limit(1);
-  if (!row) return null;
-  return {
+function assertRole(role: unknown): asserts role is NpUserRole {
+  if (!npIsUserRole(role)) {
+    throw invalid("role", "role must be a registered NexPress user role");
+  }
+}
+
+function rowToMembership(row: typeof npSiteMemberships.$inferSelect): NpSiteMembershipRecord {
+  const membership = {
     siteId: row.siteId,
     userId: row.userId,
     role: row.role,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+  npAssertSiteMembershipRecord(membership);
+  return membership;
+}
+
+export async function listSiteMemberships(siteId: string): Promise<NpSiteMembershipRecord[]> {
+  assertSiteId(siteId);
+  const db = getDb();
+  const [site] = await db.select({ id: npSites.id }).from(npSites).where(eq(npSites.id, siteId));
+  if (!site) throw invalid("siteId", `Site "${siteId}" not found`);
+  const rows = await db
+    .select()
+    .from(npSiteMemberships)
+    .where(eq(npSiteMemberships.siteId, siteId));
+  return rows.map(rowToMembership);
+}
+
+export async function listMembershipsForUser(userId: string): Promise<NpSiteMembershipRecord[]> {
+  assertUserId(userId);
+  const db = getDb();
+  const [user] = await db.select({ id: npUsers.id }).from(npUsers).where(eq(npUsers.id, userId));
+  if (!user) throw invalid("userId", `User "${userId}" not found`);
+  const rows = await db
+    .select()
+    .from(npSiteMemberships)
+    .where(eq(npSiteMemberships.userId, userId));
+  return rows.map(rowToMembership);
+}
+
+export async function getMembership(
+  siteId: string,
+  userId: string,
+): Promise<NpSiteMembershipRecord | null> {
+  assertSiteId(siteId);
+  assertUserId(userId);
+  const db = getDb();
+  const [row] = await db
+    .select()
+    .from(npSiteMemberships)
+    .where(and(eq(npSiteMemberships.siteId, siteId), eq(npSiteMemberships.userId, userId)))
+    .limit(1);
+  return row ? rowToMembership(row) : null;
 }
 
 export async function grantSiteMembership(
   siteId: string,
   userId: string,
   role: NpUserRole,
-): Promise<SiteMembership> {
+): Promise<NpSiteMembershipRecord> {
+  assertSiteId(siteId);
+  assertUserId(userId);
+  assertRole(role);
   const db = getDb();
-  const now = new Date();
-  const [row] = await db
-    .insert(npSiteMemberships)
-    .values({ siteId, userId, role, createdAt: now, updatedAt: now })
-    .onConflictDoUpdate({
-      target: [npSiteMemberships.siteId, npSiteMemberships.userId],
-      set: { role, updatedAt: now },
-    })
-    .returning();
-  if (!row) throw new Error("Failed to grant membership");
-  return {
-    siteId: row.siteId,
-    userId: row.userId,
-    role: row.role,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
+  return db.transaction(async (transaction) => {
+    const tx = transaction as ReturnType<typeof getDb>;
+    const [[site], [user]] = await Promise.all([
+      tx.select({ id: npSites.id }).from(npSites).where(eq(npSites.id, siteId)).limit(1),
+      tx.select({ id: npUsers.id }).from(npUsers).where(eq(npUsers.id, userId)).limit(1),
+    ]);
+    if (!site) throw invalid("siteId", `Site "${siteId}" not found`);
+    if (!user) throw invalid("userId", `User "${userId}" not found`);
+
+    const now = new Date();
+    const [row] = await tx
+      .insert(npSiteMemberships)
+      .values({ siteId, userId, role, createdAt: now, updatedAt: now })
+      .onConflictDoUpdate({
+        target: [npSiteMemberships.siteId, npSiteMemberships.userId],
+        set: { role, updatedAt: now },
+      })
+      .returning();
+    if (!row) throw new Error("Failed to grant site membership");
+    return rowToMembership(row);
+  });
 }
 
-export async function revokeSiteMembership(
-  siteId: string,
-  userId: string,
-): Promise<void> {
+export async function revokeSiteMembership(siteId: string, userId: string): Promise<void> {
+  assertSiteId(siteId);
+  assertUserId(userId);
   const db = getDb();
   await db
     .delete(npSiteMemberships)
-    .where(
-      and(
-        eq(npSiteMemberships.siteId, siteId),
-        eq(npSiteMemberships.userId, userId),
-      ),
-    );
+    .where(and(eq(npSiteMemberships.siteId, siteId), eq(npSiteMemberships.userId, userId)));
 }
 
-/**
- * Promote / demote a user's super-admin status. Super-admins
- * bypass per-site membership checks; this is the framework's
- * "I can do anything" gate so it should be granted sparingly
- * (one or two operators per deployment, typically).
- */
-export async function setSuperAdmin(
-  userId: string,
-  isSuperAdmin: boolean,
-): Promise<void> {
+export async function setSuperAdmin(userId: string, isSuperAdmin: boolean): Promise<void> {
+  assertUserId(userId);
+  if (typeof isSuperAdmin !== "boolean") {
+    throw invalid("isSuperAdmin", "isSuperAdmin must be boolean");
+  }
   const db = getDb();
   const result = await db
     .update(npUsers)
     .set({ isSuperAdmin, updatedAt: new Date() })
     .where(eq(npUsers.id, userId))
     .returning({ id: npUsers.id });
-  if (result.length === 0) {
-    throw new NpValidationError("Invalid input", [
-      { field: "userId", message: `User "${userId}" not found` },
-    ]);
-  }
+  if (result.length === 0) throw invalid("userId", `User "${userId}" not found`);
 }
 
-const ROLE_RANK: Record<NpUserRole, number> = {
-  viewer: 0,
-  author: 1,
-  moderator: 2,
-  editor: 3,
-  admin: 4,
-};
-
 /**
- * Resolve a user's effective role on a specific site:
- *   1. Super-admins always get `admin`.
- *   2. Explicit site membership wins over the global role.
- *   3. Fallback: the user's global `npUsers.role` (preserves
- *      single-tenant behavior).
- *
- * Use this rather than `user.role` for any check that should
- * respect tenant boundaries.
+ * Project an authenticated user onto one registered site's persisted role.
+ * Super-admins project to admin on every site. An explicit membership supplies
+ * the role for that site. Only the reserved default site may fall back to the
+ * user's global role; every other site requires membership.
  */
-export async function resolveUserRoleOnSite(
+async function resolveSiteAuthorization(
   user: NpAuthUser,
-  siteId: string,
-): Promise<NpUserRole> {
-  // Super-admin shortcut — read from npUsers (the JWT may
-  // not carry the flag).
+  siteId?: string,
+): Promise<{ user: NpAuthUser; isSuperAdmin: boolean } | null> {
+  const targetSiteId = siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+  assertSiteId(targetSiteId);
+  assertUserId(user.id);
+
   const db = getDb();
-  const [row] = await db
-    .select({ isSuperAdmin: npUsers.isSuperAdmin, role: npUsers.role })
-    .from(npUsers)
-    .where(eq(npUsers.id, user.id))
-    .limit(1);
-  if (!row) return user.role;
-  if (row.isSuperAdmin) return "admin";
+  const [[persistedUser], [site], [membership]] = await Promise.all([
+    db
+      .select({
+        id: npUsers.id,
+        email: npUsers.email,
+        name: npUsers.name,
+        role: npUsers.role,
+        tokenVersion: npUsers.tokenVersion,
+        isSuperAdmin: npUsers.isSuperAdmin,
+      })
+      .from(npUsers)
+      .where(eq(npUsers.id, user.id))
+      .limit(1),
+    db.select({ id: npSites.id }).from(npSites).where(eq(npSites.id, targetSiteId)).limit(1),
+    db
+      .select({ role: npSiteMemberships.role })
+      .from(npSiteMemberships)
+      .where(and(eq(npSiteMemberships.siteId, targetSiteId), eq(npSiteMemberships.userId, user.id)))
+      .limit(1),
+  ]);
+  if (!persistedUser || !site) return null;
 
-  // Explicit membership for this site?
-  const membership = await getMembership(siteId, user.id);
-  if (membership) return membership.role;
-
-  // Fallback to global default role.
-  return row.role;
+  const effectiveRole =
+    (persistedUser.isSuperAdmin ? "admin" : membership?.role) ??
+    (targetSiteId === NP_DEFAULT_SITE_ID ? persistedUser.role : null);
+  if (!effectiveRole) return null;
+  return {
+    user: {
+      id: persistedUser.id,
+      email: persistedUser.email,
+      name: persistedUser.name,
+      role: effectiveRole,
+      tokenVersion: persistedUser.tokenVersion,
+    },
+    isSuperAdmin: persistedUser.isSuperAdmin,
+  };
 }
 
-/**
- * Site-scoped variant of `hasRole`. Resolves the user's
- * effective role on the site (super-admin → admin, explicit
- * membership → that role, otherwise global default) and
- * compares against `minRole` using the same rank order
- * `hasRole` uses.
- *
- * Defaults to the current request site (or the framework's
- * `default` site when no resolver is wired) so callers don't
- * have to thread siteId everywhere.
- */
-export async function hasRoleOnSite(
+export async function resolveSiteAuthUser(
   user: NpAuthUser,
-  minRole: NpUserRole,
+  siteId?: string,
+): Promise<NpAuthUser | null> {
+  return (await resolveSiteAuthorization(user, siteId))?.user ?? null;
+}
+
+/** Resolve one capability against the persisted site authorization state. */
+export async function canOnSite(
+  user: NpAuthUser,
+  capability: NpCapability,
   siteId?: string,
 ): Promise<boolean> {
-  const targetSite =
-    siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-  const role = await resolveUserRoleOnSite(user, targetSite);
-  return ROLE_RANK[role] >= ROLE_RANK[minRole];
+  const authorization = await resolveSiteAuthorization(user, siteId);
+  return authorization ? authorization.isSuperAdmin || can(authorization.user, capability) : false;
 }
 
-/**
- * Quick boolean check for super-admin status. Cheaper than
- * `resolveUserRoleOnSite` when the caller only needs to know
- * "can this user manage the framework as a whole?".
- */
 export async function isSuperAdmin(user: NpAuthUser): Promise<boolean> {
+  if (!npIsCanonicalUserId(user.id)) return false;
   const db = getDb();
   const [row] = await db
     .select({ isSuperAdmin: npUsers.isSuperAdmin })

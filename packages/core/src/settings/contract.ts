@@ -1,20 +1,38 @@
 import type {
   NpAdminSettingsSnapshot,
+  NpCreateSiteInput,
   NpSeoSettings,
   NpSettingContractIssue,
   NpSettingContractKind,
   NpSettingValidationResult,
   NpSiteGeneralSettings,
+  NpSiteMembershipGrantInput,
+  NpSiteMembershipRecord,
+  NpSiteMembershipWireRecord,
   NpSiteRecord,
   NpSiteRuntimeSettings,
+  NpSiteSummaryWireRecord,
+  NpSiteUsage,
   NpSiteWireRecord,
+  NpUpdateSiteInput,
 } from "./types.js";
+import type { NpUserRole } from "../config/types.js";
 import { npAnalyzeThemeTokensOverlay } from "../theme/contract.js";
 import { npValidateBlockContent } from "../fields/block-content.js";
 import { npAnalyzeJobsPauseState } from "../jobs-contract/contract.js";
-import { npIsCanonicalSiteId } from "../sites/id-contract.js";
+import { NP_DEFAULT_SITE_ID, npIsCanonicalSiteId } from "../sites/id-contract.js";
 
-export { npIsCanonicalSiteId, npSiteIdPattern } from "../sites/id-contract.js";
+export { NP_DEFAULT_SITE_ID, npIsCanonicalSiteId, npSiteIdPattern } from "../sites/id-contract.js";
+
+export const npUserRoles = [
+  "admin",
+  "editor",
+  "moderator",
+  "author",
+  "viewer",
+] as const satisfies readonly NpUserRole[];
+export const npUserIdPattern =
+  "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
 
 export const npSettingsContractLimits = {
   siteIdLength: 63,
@@ -61,9 +79,35 @@ const siteRecordKeys = new Set([
   "createdAt",
   "updatedAt",
 ]);
+const createSiteKeys = new Set(["id", "name", "hostname", "description", "settings"]);
+const updateSiteKeys = new Set(["name", "hostname", "description", "settings"]);
+const siteSummaryKeys = new Set(["id", "name", "hostname", "isDefault"]);
+const membershipKeys = new Set(["siteId", "userId", "role", "createdAt", "updatedAt"]);
+const membershipGrantKeys = new Set(["userId", "role"]);
+const siteUsageKeys = new Set([
+  "collections",
+  "settings",
+  "navigation",
+  "slugHistory",
+  "memberships",
+  "stringOverrides",
+  "pluginStorage",
+  "comments",
+  "reactions",
+  "follows",
+  "mutes",
+  "notifications",
+  "reports",
+  "auditEvents",
+  "bans",
+  "memberRoles",
+  "total",
+]);
 const generalKeys = new Set(["name", "url", "description", "defaultLocale", "timezone"]);
 const seoKeys = new Set(["defaultOgImage", "twitterHandle", "defaultLocale"]);
 const snapshotKeys = new Set(["site", "seo"]);
+const userIdPattern = new RegExp(npUserIdPattern, "u");
+const userRoles = new Set<string>(npUserRoles);
 
 function issue(
   code: NpSettingContractIssue["code"],
@@ -87,7 +131,7 @@ function pushUnknown(
 ): void {
   for (const key of Object.keys(value)) {
     if (!allowed.has(key)) {
-      issues.push(issue("unknown-field", `${path}.${key}`, `unsupported settings field "${key}".`));
+      issues.push(issue("unknown-field", `${path}.${key}`, `unsupported field "${key}".`));
     }
   }
 }
@@ -139,6 +183,57 @@ function canonicalTimezone(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+function normalizeHostname(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string") throw new Error("hostname must be host text or null.");
+  const candidate = value.trim().toLowerCase().replace(/\.$/u, "");
+  if (
+    candidate.length === 0 ||
+    candidate.length > npSettingsContractLimits.hostnameLength ||
+    !hostnamePattern.test(candidate)
+  ) {
+    throw new Error("hostname must be canonical DNS host text, localhost, or null.");
+  }
+  return candidate;
+}
+
+export function npNormalizeSiteHostname(value: unknown): string | null {
+  return normalizeHostname(value);
+}
+
+export function npNormalizeSiteHostHeader(value: unknown): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error("host header must be non-empty text.");
+  }
+  const candidate = value.trim();
+  if (
+    candidate.includes("://") ||
+    candidate.includes("/") ||
+    candidate.includes("?") ||
+    candidate.includes("#") ||
+    candidate.includes("@")
+  ) {
+    throw new Error("host header must contain only a hostname and optional port.");
+  }
+  let hostname: string;
+  try {
+    hostname = new URL(`http://${candidate}`).hostname;
+  } catch {
+    throw new Error("host header must contain a valid hostname and optional port.");
+  }
+  const normalized = normalizeHostname(hostname);
+  if (!normalized) throw new Error("host header must contain a hostname.");
+  return normalized;
+}
+
+export function npIsUserRole(value: unknown): value is NpUserRole {
+  return typeof value === "string" && userRoles.has(value);
+}
+
+export function npIsCanonicalUserId(value: unknown): value is string {
+  return typeof value === "string" && userIdPattern.test(value);
 }
 
 export function npNormalizeSiteRuntimeSettings(value: unknown): NpSiteRuntimeSettings {
@@ -274,6 +369,126 @@ export function npAnalyzeSiteGeneralSettings(value: unknown): NpSettingContractI
   }
 }
 
+export function npNormalizeCreateSiteInput(value: unknown): NpCreateSiteInput {
+  if (!isPlainRecord(value)) throw new Error("site input must be a plain object.");
+  const unknown = Object.keys(value).find((key) => !createSiteKeys.has(key));
+  if (unknown) throw new Error(`unsupported site field "${unknown}".`);
+  if (!npIsCanonicalSiteId(value.id)) {
+    throw new Error("id must be a canonical lowercase site id.");
+  }
+  if (value.id === NP_DEFAULT_SITE_ID) {
+    throw new Error(`id "${NP_DEFAULT_SITE_ID}" is reserved for the framework default site.`);
+  }
+  const settings = npNormalizeSiteRuntimeSettings(
+    "settings" in value ? value.settings : DEFAULT_SITE_RUNTIME_SETTINGS,
+  );
+  const general = npNormalizeSiteGeneralSettings({
+    name: value.name,
+    url: settings.siteUrl,
+    description: "description" in value ? value.description : null,
+    defaultLocale: settings.defaultLocale,
+    timezone: settings.timezone,
+  });
+  const hostname = normalizeHostname("hostname" in value ? value.hostname : null);
+  return {
+    id: value.id,
+    name: general.name,
+    hostname,
+    description: general.description,
+    settings,
+  };
+}
+
+export function npAnalyzeCreateSiteInput(value: unknown): NpSettingContractIssue[] {
+  try {
+    npNormalizeCreateSiteInput(value);
+    return [];
+  } catch (error) {
+    return [
+      issue(
+        isPlainRecord(value) ? "invalid-field" : "shape",
+        "site",
+        error instanceof Error ? error.message : "invalid site input.",
+      ),
+    ];
+  }
+}
+
+export function npNormalizeUpdateSiteInput(value: unknown): NpUpdateSiteInput {
+  if (!isPlainRecord(value)) throw new Error("site patch must be a plain object.");
+  const unknown = Object.keys(value).find((key) => !updateSiteKeys.has(key));
+  if (unknown) throw new Error(`unsupported site patch field "${unknown}".`);
+  if (Object.keys(value).length === 0)
+    throw new Error("site patch must change at least one field.");
+
+  const patch: NpUpdateSiteInput = {};
+  if ("name" in value) {
+    const general = npNormalizeSiteGeneralSettings({
+      name: value.name,
+      url: null,
+      description: null,
+      defaultLocale: null,
+      timezone: null,
+    });
+    patch.name = general.name;
+  }
+  if ("hostname" in value) patch.hostname = normalizeHostname(value.hostname);
+  if ("description" in value) {
+    if (
+      value.description !== null &&
+      !isBoundedText(value.description, npSettingsContractLimits.descriptionLength, true)
+    ) {
+      throw new Error("description must be bounded text or null.");
+    }
+    patch.description = value.description;
+  }
+  if ("settings" in value) patch.settings = npNormalizeSiteRuntimeSettings(value.settings);
+  return patch;
+}
+
+export function npAnalyzeUpdateSiteInput(value: unknown): NpSettingContractIssue[] {
+  try {
+    npNormalizeUpdateSiteInput(value);
+    return [];
+  } catch (error) {
+    return [
+      issue(
+        isPlainRecord(value) ? "invalid-field" : "shape",
+        "site",
+        error instanceof Error ? error.message : "invalid site patch.",
+      ),
+    ];
+  }
+}
+
+export function npNormalizeSiteMembershipGrantInput(value: unknown): NpSiteMembershipGrantInput {
+  if (!isPlainRecord(value)) throw new Error("membership input must be a plain object.");
+  const unknown = Object.keys(value).find((key) => !membershipGrantKeys.has(key));
+  if (unknown) throw new Error(`unsupported membership field "${unknown}".`);
+  if (!npIsCanonicalUserId(value.userId)) {
+    throw new Error("userId must be a canonical UUID.");
+  }
+  if (!npIsUserRole(value.role)) {
+    throw new Error(`role must be one of ${npUserRoles.join(", ")}.`);
+  }
+  return { userId: value.userId, role: value.role };
+}
+
+export function npAnalyzeSiteMembershipGrantInput(value: unknown): NpSettingContractIssue[] {
+  try {
+    npNormalizeSiteMembershipGrantInput(value);
+    return [];
+  } catch (error) {
+    return [
+      issue(
+        isPlainRecord(value) ? "invalid-field" : "shape",
+        "membership",
+        error instanceof Error ? error.message : "invalid membership input.",
+      ),
+    ];
+  }
+}
+
 export function npNormalizeSeoSettings(value: unknown): NpSeoSettings {
   if (!isPlainRecord(value)) throw new Error("SEO settings must be a plain object.");
   const unknown = Object.keys(value).find((key) => !seoKeys.has(key));
@@ -404,6 +619,14 @@ function analyzeSiteRecord(value: unknown, wire: boolean): NpSettingContractIssu
   }
   if (typeof value.isDefault !== "boolean") {
     issues.push(issue("invalid-field", "site.isDefault", "isDefault must be boolean."));
+  } else if (value.isDefault !== (value.id === NP_DEFAULT_SITE_ID)) {
+    issues.push(
+      issue(
+        "invalid-field",
+        "site.isDefault",
+        `isDefault must be true only for the reserved "${NP_DEFAULT_SITE_ID}" site.`,
+      ),
+    );
   }
   for (const key of ["createdAt", "updatedAt"] as const) {
     const valid = wire
@@ -445,6 +668,193 @@ export function npSerializeSiteRecord(value: NpSiteRecord): NpSiteWireRecord {
     createdAt: value.createdAt.toISOString(),
     updatedAt: value.updatedAt.toISOString(),
   };
+}
+
+export function npAnalyzeSiteSummaryWireRecord(value: unknown): NpSettingContractIssue[] {
+  if (!isPlainRecord(value)) {
+    return [issue("shape", "site", "site summaries must be plain objects.")];
+  }
+  const issues: NpSettingContractIssue[] = [];
+  pushUnknown(value, siteSummaryKeys, "site", issues);
+  if (!npIsCanonicalSiteId(value.id)) {
+    issues.push(issue("invalid-field", "site.id", "site id must be canonical."));
+  }
+  if (
+    typeof value.name !== "string" ||
+    value.name !== value.name.trim() ||
+    value.name.length === 0 ||
+    value.name.length > npSettingsContractLimits.siteNameLength ||
+    hasUnsafeControl(value.name)
+  ) {
+    issues.push(issue("invalid-field", "site.name", "site name must be bounded trimmed text."));
+  }
+  if (
+    value.hostname !== null &&
+    (typeof value.hostname !== "string" ||
+      value.hostname.length > npSettingsContractLimits.hostnameLength ||
+      value.hostname !== value.hostname.toLowerCase() ||
+      !hostnamePattern.test(value.hostname))
+  ) {
+    issues.push(issue("invalid-field", "site.hostname", "hostname must be canonical or null."));
+  }
+  if (
+    typeof value.isDefault !== "boolean" ||
+    value.isDefault !== (value.id === NP_DEFAULT_SITE_ID)
+  ) {
+    issues.push(
+      issue(
+        "invalid-field",
+        "site.isDefault",
+        `isDefault must be true only for the reserved "${NP_DEFAULT_SITE_ID}" site.`,
+      ),
+    );
+  }
+  return issues;
+}
+
+export function isNpSiteSummaryWireRecord(value: unknown): value is NpSiteSummaryWireRecord {
+  return npAnalyzeSiteSummaryWireRecord(value).length === 0;
+}
+
+export function npSerializeSiteSummary(value: NpSiteRecord): NpSiteSummaryWireRecord {
+  npAssertSiteRecord(value);
+  return {
+    id: value.id,
+    name: value.name,
+    hostname: value.hostname,
+    isDefault: value.isDefault,
+  };
+}
+
+function analyzeSiteMembership(value: unknown, wire: boolean): NpSettingContractIssue[] {
+  if (!isPlainRecord(value)) {
+    return [issue("shape", "membership", "membership records must be plain objects.")];
+  }
+  const issues: NpSettingContractIssue[] = [];
+  pushUnknown(value, membershipKeys, "membership", issues);
+  if (!npIsCanonicalSiteId(value.siteId)) {
+    issues.push(issue("invalid-field", "membership.siteId", "siteId must be canonical."));
+  }
+  if (!npIsCanonicalUserId(value.userId)) {
+    issues.push(issue("invalid-field", "membership.userId", "userId must be a canonical UUID."));
+  }
+  if (!npIsUserRole(value.role)) {
+    issues.push(
+      issue("invalid-field", "membership.role", `role must be one of ${npUserRoles.join(", ")}.`),
+    );
+  }
+  for (const key of ["createdAt", "updatedAt"] as const) {
+    const valid = wire
+      ? isIsoDate(value[key])
+      : value[key] instanceof Date && !Number.isNaN(value[key].valueOf());
+    if (!valid) {
+      issues.push(
+        issue(
+          "invalid-field",
+          `membership.${key}`,
+          `${key} must be a valid ${wire ? "ISO string" : "Date"}.`,
+        ),
+      );
+    }
+  }
+  return issues;
+}
+
+export function npAnalyzeSiteMembershipRecord(value: unknown): NpSettingContractIssue[] {
+  return analyzeSiteMembership(value, false);
+}
+
+export function npAnalyzeSiteMembershipWireRecord(value: unknown): NpSettingContractIssue[] {
+  return analyzeSiteMembership(value, true);
+}
+
+export function isNpSiteMembershipWireRecord(value: unknown): value is NpSiteMembershipWireRecord {
+  return npAnalyzeSiteMembershipWireRecord(value).length === 0;
+}
+
+export function npAssertSiteMembershipRecord(
+  value: unknown,
+): asserts value is NpSiteMembershipRecord {
+  const first = npAnalyzeSiteMembershipRecord(value)[0];
+  if (first) {
+    throw new Error(`Invalid persisted membership at ${first.path}: ${first.message}`);
+  }
+}
+
+export function npSerializeSiteMembership(
+  value: NpSiteMembershipRecord,
+): NpSiteMembershipWireRecord {
+  npAssertSiteMembershipRecord(value);
+  return {
+    ...value,
+    createdAt: value.createdAt.toISOString(),
+    updatedAt: value.updatedAt.toISOString(),
+  };
+}
+
+export function npAnalyzeSiteUsage(value: unknown): NpSettingContractIssue[] {
+  if (!isPlainRecord(value)) {
+    return [issue("shape", "siteUsage", "site usage must be a plain object.")];
+  }
+  const issues: NpSettingContractIssue[] = [];
+  pushUnknown(value, siteUsageKeys, "siteUsage", issues);
+  if (!isPlainRecord(value.collections)) {
+    issues.push(
+      issue("shape", "siteUsage.collections", "collections must be a plain count object."),
+    );
+  }
+  const collectionCounts = isPlainRecord(value.collections)
+    ? Object.entries(value.collections)
+    : [];
+  for (const [slug, count] of collectionCounts) {
+    if (slug.length === 0 || slug.length > 160 || hasUnsafeControl(slug)) {
+      issues.push(
+        issue("invalid-field", `siteUsage.collections.${slug}`, "collection slug is invalid."),
+      );
+    }
+    if (!Number.isSafeInteger(count) || (count as number) < 0) {
+      issues.push(
+        issue(
+          "invalid-field",
+          `siteUsage.collections.${slug}`,
+          "collection count must be a non-negative safe integer.",
+        ),
+      );
+    }
+  }
+  const countKeys = [...siteUsageKeys].filter((key) => key !== "collections" && key !== "total");
+  for (const key of [...countKeys, "total"]) {
+    const count = value[key];
+    if (!Number.isSafeInteger(count) || (count as number) < 0) {
+      issues.push(
+        issue("invalid-field", `siteUsage.${key}`, `${key} must be a non-negative safe integer.`),
+      );
+    }
+  }
+  if (issues.length === 0) {
+    const expected =
+      collectionCounts.reduce((sum, [, count]) => sum + (count as number), 0) +
+      countKeys.reduce((sum, key) => sum + (value[key] as number), 0);
+    if (value.total !== expected) {
+      issues.push(
+        issue(
+          "invalid-field",
+          "siteUsage.total",
+          `total must equal the exact count sum ${expected}.`,
+        ),
+      );
+    }
+  }
+  return issues;
+}
+
+export function isNpSiteUsage(value: unknown): value is NpSiteUsage {
+  return npAnalyzeSiteUsage(value).length === 0;
+}
+
+export function npAssertSiteUsage(value: unknown): asserts value is NpSiteUsage {
+  const first = npAnalyzeSiteUsage(value)[0];
+  if (first) throw new Error(`Invalid site usage at ${first.path}: ${first.message}`);
 }
 
 export function npAnalyzeAdminSettingsSnapshot(value: unknown): NpSettingContractIssue[] {

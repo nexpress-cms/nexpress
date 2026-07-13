@@ -1,14 +1,9 @@
-import {
-  NpForbiddenError,
-  NpValidationError,
-  isSuperAdmin,
-  setSuperAdmin,
-} from "@nexpress/core";
+import { NpForbiddenError, NpValidationError, isSuperAdmin, setSuperAdmin } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
-import { requireAuth } from "../../../../../lib/auth-helpers";
+import { requireGlobalAuth } from "../../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../../lib/init-core";
 
 /**
@@ -24,13 +19,10 @@ import { ensureFor } from "../../../../../lib/init-core";
  * change ownership promote a successor first, then have the
  * successor demote them.
  */
-export async function PATCH(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> },
-) {
+export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
 
     const callerIsSuper = await isSuperAdmin(user);
     if (!callerIsSuper) {
@@ -49,8 +41,7 @@ export async function PATCH(
       throw new NpValidationError("Invalid input", [
         {
           field: "isSuperAdmin",
-          message:
-            "Cannot demote yourself. Promote a successor first, then have them demote you.",
+          message: "Cannot demote yourself. Promote a successor first, then have them demote you.",
         },
       ]);
     }
@@ -58,9 +49,7 @@ export async function PATCH(
     await setSuperAdmin(id, body.isSuperAdmin);
     return npSuccessResponse({ id, isSuperAdmin: body.isSuperAdmin });
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

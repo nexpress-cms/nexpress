@@ -2,7 +2,13 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-13 (site execution now uses one canonical id and
+**Last refreshed:** 2026-07-13 (multi-site authorization now projects every
+request actor through one persisted capability contract; site/membership inputs
+and wire rows fail closed, the reserved default-site invariant is fixed, doctor
+reports orphan rows, and deletion atomically covers every site-scoped table plus
+collection-owned revision and media-reference rows.)
+
+**Earlier:** 2026-07-13 (site execution now uses one canonical id and
 async-local scope across concurrent/nested requests, scripts, scheduled
 publishing, and payload-derived background job dispatch.)
 
@@ -246,6 +252,7 @@ cli  (standalone scaffolder, no workspace deps)
 | `@nexpress/core/revisions`      | client-safe revision snapshot, persisted-row, and API wire contracts    |
 | `@nexpress/core/seo`            | sitemap, page metadata, Atom feeds, JSON-LD                             |
 | `@nexpress/core/settings`       | client-safe site identity, settings types, and validators               |
+| `@nexpress/core/sites`          | site registry, execution context, memberships, scoped authorization     |
 | `@nexpress/core/theme`          | client-safe theme token inventory, validators, and merge helpers        |
 
 The root `@nexpress/core` keeps re-exporting everything for back-compat; existing call sites are not forced to migrate. Treat the root as the lowest-common-denominator surface and the subpaths as the canonical domain APIs.

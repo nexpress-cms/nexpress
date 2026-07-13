@@ -35,12 +35,15 @@ import { can } from "@nexpress/core/auth";
 import { enqueueJob } from "@nexpress/core/jobs";
 import { getLogger } from "@nexpress/core/observability";
 import { buildSitemap } from "@nexpress/core/seo";
+import { canOnSite } from "@nexpress/core/sites";
 import { t } from "@nexpress/core/i18n";
 ```
 
-Available subpaths: `auth`, `community`, `db`, `i18n`, `jobs`, `media`,
-`observability`, `seo`. The root `@nexpress/core` keeps re-exporting
-everything for back-compat.
+Available server subpaths include `auth`, `community`, `db`, `i18n`, `jobs`,
+`media`, `observability`, `routes`, `seo`, and `sites`. Client-safe contract
+subpaths include `fields`, `jobs-contract`, `media-contract`, `navigation`,
+`revisions`, `settings`, and `theme`. The root `@nexpress/core` keeps
+re-exporting everything for back-compat but remains server-only.
 
 ## Quick example
 

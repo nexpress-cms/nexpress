@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { isNpSiteWireRecord, type NpSiteWireRecord } from "@nexpress/core/settings";
+import {
+  isNpSiteUsage,
+  isNpSiteWireRecord,
+  type NpSiteUsage,
+  type NpSiteWireRecord,
+} from "@nexpress/core/settings";
 import Link from "next/link";
 import { AlertTriangle, Globe2, Loader2, Plus, Star, Trash2, Users } from "lucide-react";
 
@@ -21,18 +26,9 @@ import { Label } from "../ui/label.js";
 import { Textarea } from "../ui/textarea.js";
 import { PageHeader } from "../layout/page-header.js";
 
-interface SiteUsage {
-  collections: Record<string, number>;
-  settings: number;
-  navigation: number;
-  memberships: number;
-  stringOverrides: number;
-  total: number;
-}
-
 interface DeleteDialogState {
   site: Site;
-  usage: SiteUsage | null;
+  usage: NpSiteUsage | null;
   loading: boolean;
   cascade: boolean;
   busy: boolean;
@@ -52,6 +48,26 @@ interface DeleteDialogState {
  * unmatched.
  */
 type Site = NpSiteWireRecord;
+
+const SITE_USAGE_TABLES: ReadonlyArray<
+  readonly [keyof Omit<NpSiteUsage, "collections" | "total">, string]
+> = [
+  ["settings", "np_settings"],
+  ["navigation", "np_navigation"],
+  ["slugHistory", "np_slug_history"],
+  ["memberships", "np_site_memberships"],
+  ["stringOverrides", "np_string_overrides"],
+  ["pluginStorage", "np_plugin_storage"],
+  ["comments", "np_comments"],
+  ["reactions", "np_reactions"],
+  ["follows", "np_follows"],
+  ["mutes", "np_member_mutes"],
+  ["notifications", "np_notifications"],
+  ["reports", "np_reports"],
+  ["auditEvents", "np_audit_events"],
+  ["bans", "np_bans"],
+  ["memberRoles", "np_member_roles"],
+];
 
 function readApiError(value: unknown): string | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -112,19 +128,15 @@ export function SitesView() {
     setError(null);
     try {
       const res = await npFetch(`/api/admin/sites/${encodeURIComponent(site.id)}/usage`);
-      const body = (await res.json().catch(() => null)) as {
-        usage?: SiteUsage;
-        error?: { message?: string };
-      } | null;
-      if (!res.ok || !body?.usage) {
-        setError(body?.error?.message ?? "Unable to load site usage.");
+      const body = (await res.json().catch(() => null)) as unknown;
+      const usage = body && typeof body === "object" && "usage" in body ? body.usage : undefined;
+      if (!res.ok || !isNpSiteUsage(usage)) {
+        setError(readApiError(body) ?? "Unable to load site usage.");
         setDeleteDialog(null);
         return;
       }
       setDeleteDialog((prev) =>
-        prev && prev.site.id === site.id
-          ? { ...prev, usage: body.usage ?? null, loading: false }
-          : prev,
+        prev && prev.site.id === site.id ? { ...prev, usage, loading: false } : prev,
       );
     } catch {
       setError("Unable to load site usage.");
@@ -311,8 +323,8 @@ function DeleteSiteDialog({
             Delete site{state ? ` "${state.site.name}"` : ""}?
           </DialogTitle>
           <DialogDescription className="break-words">
-            This action removes the site from the registry. Site-scoped data is left in place unless
-            you opt into cascade.
+            This action removes the site from the registry. Sites with attached rows require an
+            explicit all-or-nothing cascade.
           </DialogDescription>
         </DialogHeader>
 
@@ -328,8 +340,8 @@ function DeleteSiteDialog({
                 <p className="flex min-w-0 items-start gap-2 break-words font-medium">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   This site has {usage.total} attached row(s) across{" "}
-                  {Object.keys(usage.collections).length} collection(s) + system tables. Without
-                  cascade they become orphaned.
+                  {Object.keys(usage.collections).length} registered collection(s) and framework
+                  tables. Deletion is blocked until you confirm cascade.
                 </p>
               </div>
             ) : (
@@ -351,30 +363,15 @@ function DeleteSiteDialog({
                       <span className="tabular-nums">{count}</span>
                     </li>
                   ))}
-                {usage.settings > 0 ? (
-                  <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1">
-                    <code className="break-all font-mono">np_settings</code>
-                    <span className="tabular-nums">{usage.settings}</span>
+                {SITE_USAGE_TABLES.filter(([key]) => usage[key] > 0).map(([key, table]) => (
+                  <li
+                    key={key}
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1"
+                  >
+                    <code className="break-all font-mono">{table}</code>
+                    <span className="tabular-nums">{usage[key]}</span>
                   </li>
-                ) : null}
-                {usage.navigation > 0 ? (
-                  <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1">
-                    <code className="break-all font-mono">np_navigation</code>
-                    <span className="tabular-nums">{usage.navigation}</span>
-                  </li>
-                ) : null}
-                {usage.memberships > 0 ? (
-                  <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1">
-                    <code className="break-all font-mono">np_site_memberships</code>
-                    <span className="tabular-nums">{usage.memberships}</span>
-                  </li>
-                ) : null}
-                {usage.stringOverrides > 0 ? (
-                  <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1">
-                    <code className="break-all font-mono">np_string_overrides</code>
-                    <span className="tabular-nums">{usage.stringOverrides}</span>
-                  </li>
-                ) : null}
+                ))}
               </ul>
             ) : null}
 

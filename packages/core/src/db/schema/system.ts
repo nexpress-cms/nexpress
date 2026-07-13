@@ -21,12 +21,9 @@ import type { NpSiteRuntimeSettings } from "../../settings/types.js";
 export const npUserRoleEnum = pgEnum("np_user_role", [
   "admin",
   "editor",
-  // 9.5: community moderator. Sits OUTSIDE the linear content-edit
-  // hierarchy — a moderator handles community moderation (hide
-  // comments, resolve reports, issue bans) but cannot author or edit
-  // collection content. ROLE_HIERARCHY in config/types.ts intentionally
-  // does not list this role; community-moderation paths check the role
-  // explicitly via `principalCan()`.
+  // Community moderator sits outside a linear content-edit hierarchy.
+  // Authorization uses named capabilities, so moderator and author can
+  // remain parallel without an ambiguous numeric rank.
   "moderator",
   "author",
   "viewer",
@@ -77,12 +74,9 @@ export const npUsers = pgTable("np_users", {
  * the role enum reuses the existing `np_user_role` so the
  * concept stays consistent across the framework.
  *
- * `npUsers.role` becomes the "global default role" — used in
- * single-tenant contexts and as the fallback when a user has
- * no explicit membership on the current site. Most operators
- * will give cross-site users an explicit membership per
- * site they should access; the `is_super_admin` flag
- * separately bypasses the membership check entirely.
+ * `npUsers.role` is the fallback only on the reserved default
+ * site. Every non-default site requires an explicit row here;
+ * the `is_super_admin` flag separately bypasses membership.
  */
 export const npSiteMemberships = pgTable(
   "np_site_memberships",

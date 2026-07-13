@@ -7,7 +7,7 @@ import {
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { requireAuth } from "../../../../../../lib/auth-helpers";
+import { requireGlobalAuth } from "../../../../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../../../../lib/api-response";
 import { ensureFor } from "../../../../../../lib/init-core";
 
@@ -25,7 +25,7 @@ export async function POST(
   { params }: { params: Promise<{ pluginId: string; taskId: string }> },
 ) {
   try {
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("plugin-schedule", "run");
     }

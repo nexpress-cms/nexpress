@@ -1,3 +1,5 @@
+import type { NpUserRole } from "../config/types.js";
+
 export interface NpSiteRuntimeSettings {
   siteUrl: string | null;
   defaultLocale: string | null;
@@ -19,6 +21,63 @@ export type NpSiteWireRecord = Omit<NpSiteRecord, "createdAt" | "updatedAt"> & {
   createdAt: string;
   updatedAt: string;
 };
+
+export interface NpCreateSiteInput {
+  id: string;
+  name: string;
+  hostname?: string | null;
+  description?: string | null;
+  settings?: NpSiteRuntimeSettings;
+}
+
+export type NpUpdateSiteInput = Partial<
+  Pick<NpSiteRecord, "name" | "hostname" | "description" | "settings">
+>;
+
+export interface NpSiteSummaryWireRecord {
+  id: string;
+  name: string;
+  hostname: string | null;
+  isDefault: boolean;
+}
+
+export interface NpSiteMembershipRecord {
+  siteId: string;
+  userId: string;
+  role: NpUserRole;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type NpSiteMembershipWireRecord = Omit<NpSiteMembershipRecord, "createdAt" | "updatedAt"> & {
+  createdAt: string;
+  updatedAt: string;
+};
+
+export interface NpSiteMembershipGrantInput {
+  userId: string;
+  role: NpUserRole;
+}
+
+export interface NpSiteUsage {
+  collections: Record<string, number>;
+  settings: number;
+  navigation: number;
+  slugHistory: number;
+  memberships: number;
+  stringOverrides: number;
+  pluginStorage: number;
+  comments: number;
+  reactions: number;
+  follows: number;
+  mutes: number;
+  notifications: number;
+  reports: number;
+  auditEvents: number;
+  bans: number;
+  memberRoles: number;
+  total: number;
+}
 
 /** Editable site identity projected from the canonical `np_sites` row. */
 export interface NpSiteGeneralSettings {

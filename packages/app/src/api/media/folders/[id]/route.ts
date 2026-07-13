@@ -12,17 +12,14 @@ import { NextResponse } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { requireAuth } from "../../../../lib/auth-helpers";
+import { requireGlobalAuth } from "../../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { getDb } from "../../../../lib/db";
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
 
     if (!can(user, "content.publish")) {
       throw new NpForbiddenError("media-folders", "update");
@@ -60,7 +57,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
 
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("media-folders", "delete");

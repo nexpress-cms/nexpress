@@ -3,7 +3,7 @@ import { npRequirePauseJobsWire } from "@nexpress/core/jobs-contract";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
-import { requireAuth } from "../../../../lib/auth-helpers";
+import { requireGlobalAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
 import {
   npParseEmptyJobQuery,
@@ -27,7 +27,7 @@ import { readJsonBody } from "@nexpress/next";
 export async function POST(request: NextRequest) {
   try {
     await ensureFor("write");
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("jobs", "pause");
     }

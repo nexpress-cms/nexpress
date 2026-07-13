@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  isNpSiteMembershipWireRecord,
+  npUserRoles,
+  type NpSiteMembershipWireRecord,
+} from "@nexpress/core/settings";
 import Link from "next/link";
 import { ArrowLeft, Loader2, Plus, Trash2, Users } from "lucide-react";
 
@@ -35,15 +40,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
  * /admin/users.
  */
 
-interface Membership {
-  siteId: string;
-  userId: string;
-  role: string;
-  createdAt: string;
-  updatedAt: string;
-}
+type Membership = NpSiteMembershipWireRecord;
 
-const ROLES = ["admin", "editor", "moderator", "author", "viewer"] as const;
+const ROLES = npUserRoles;
 
 export function MembershipsView({ siteId }: { siteId: string }) {
   const [memberships, setMemberships] = useState<Membership[] | null>(null);
@@ -68,8 +67,17 @@ export function MembershipsView({ siteId }: { siteId: string }) {
         setMemberships([]);
         return;
       }
-      const body = (await res.json().catch(() => null)) as { docs?: Membership[] } | null;
-      setMemberships(body?.docs ?? []);
+      const body = (await res.json().catch(() => null)) as unknown;
+      if (
+        !body ||
+        typeof body !== "object" ||
+        !("docs" in body) ||
+        !Array.isArray(body.docs) ||
+        !body.docs.every(isNpSiteMembershipWireRecord)
+      ) {
+        throw new Error("Memberships API returned an invalid contract.");
+      }
+      setMemberships(body.docs);
     } catch {
       setError("Unable to load memberships.");
     }
@@ -78,7 +86,7 @@ export function MembershipsView({ siteId }: { siteId: string }) {
   async function handleRevoke(userId: string) {
     if (
       !confirm(
-        "Revoke this membership? The user will fall back to their global default role on this site.",
+        "Revoke this membership? On non-default sites the user will lose access; on the default site their global role applies.",
       )
     ) {
       return;
@@ -120,7 +128,8 @@ export function MembershipsView({ siteId }: { siteId: string }) {
             <code className="break-all rounded bg-neutral-100 px-1 py-0.5 font-mono text-[12px] text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
               {siteId}
             </code>{" "}
-            with explicit roles. Users not listed here fall back to their global default role.
+            with explicit roles. Non-default sites require a row here; only the reserved default
+            site falls back to the user&apos;s global role.
           </>
         }
         className="min-w-0"
@@ -320,8 +329,8 @@ function GrantDialog({
             Grant membership on <span className="break-all">{siteId}</span>
           </DialogTitle>
           <DialogDescription className="break-words">
-            Search by email or name. Granting on a site overrides the user&apos;s global default
-            role for queries scoped to this site.
+            Search by email or name. This role is authoritative for the selected site and is checked
+            through named capabilities, not a numeric role rank.
           </DialogDescription>
         </DialogHeader>
 

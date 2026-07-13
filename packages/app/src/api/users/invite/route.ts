@@ -14,20 +14,14 @@ import {
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { requireAuth } from "../../../lib/auth-helpers";
+import { requireGlobalAuth } from "../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import { parseBodyRecord } from "../../../lib/collection-helpers";
 import { getDb } from "../../../lib/db";
 import { ensureFor, nexpressConfig } from "../../../lib/init-core";
 import { inviteTtlMs } from "../../../lib/token-ttl";
 
-const VALID_ROLES: readonly NpUserRole[] = [
-  "admin",
-  "editor",
-  "moderator",
-  "author",
-  "viewer",
-];
+const VALID_ROLES: readonly NpUserRole[] = ["admin", "editor", "moderator", "author", "viewer"];
 
 // Invited users never log in with the placeholder password — they set their
 // own via the reset link before the hash is ever verified. Compute one
@@ -51,7 +45,7 @@ function buildResetUrl(request: NextRequest, token: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireAuth(request);
+    const user = await requireGlobalAuth(request);
 
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("users", "create");

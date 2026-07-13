@@ -6,14 +6,14 @@ import {
   isSuperAdmin,
   updateSite,
 } from "@nexpress/core";
+import { canOnSite } from "@nexpress/core/sites";
 import { invalidateCacheTargets, readJsonBody, siteCacheTag } from "@nexpress/next";
-import { npSerializeSiteRecord } from "@nexpress/core/settings";
+import { npNormalizeUpdateSiteInput, npSerializeSiteRecord } from "@nexpress/core/settings";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
-import { canManageSite } from "../../../../lib/site-authz";
 
 /**
  * Phase 15.3 — per-site admin endpoints.
@@ -23,7 +23,7 @@ import { canManageSite } from "../../../../lib/site-authz";
  *   DELETE /api/admin/sites/{id}    delete (default site is refused by
  *                                   the registry layer)
  *
- * Authorization ladder (`canManageSite` in `@/lib/site-authz`):
+ * Authorization ladder (`canOnSite(user, "admin.manage", id)`):
  *
  *   - Super-admin can read / update / delete any site.
  *   - A user with an explicit `np_site_memberships` row (with
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     await ensureFor("write");
     const user = await requireAuth(request);
     const { id } = await context.params;
-    if (!(await canManageSite(user, id))) {
+    if (!(await canOnSite(user, "admin.manage", id))) {
       throw new NpForbiddenError("sites", "read");
     }
     const site = await getSiteById(id);
@@ -60,52 +60,17 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     await ensureFor("write");
     const user = await requireAuth(request);
     const { id } = await context.params;
-    if (!(await canManageSite(user, id))) {
+    if (!(await canOnSite(user, "admin.manage", id))) {
       throw new NpForbiddenError("sites", "update");
     }
     const value = await readJsonBody(request);
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
+    let patch: ReturnType<typeof npNormalizeUpdateSiteInput>;
+    try {
+      patch = npNormalizeUpdateSiteInput(value);
+    } catch (error) {
       throw new NpValidationError("Invalid input", [
-        { field: "body", message: "Request body must be a plain object" },
+        { field: "site", message: error instanceof Error ? error.message : "Invalid site patch" },
       ]);
-    }
-    const body = value as Record<string, unknown>;
-    const unknown = Object.keys(body).find(
-      (key) => key !== "name" && key !== "hostname" && key !== "description",
-    );
-    if (unknown) {
-      throw new NpValidationError("Invalid input", [
-        { field: unknown, message: `Unsupported site patch field "${unknown}"` },
-      ]);
-    }
-    const patch: {
-      name?: string;
-      hostname?: string | null;
-      description?: string | null;
-    } = {};
-    if ("name" in body) {
-      if (typeof body.name !== "string") {
-        throw new NpValidationError("Invalid input", [
-          { field: "name", message: "name must be a string" },
-        ]);
-      }
-      patch.name = body.name;
-    }
-    if ("hostname" in body) {
-      if (typeof body.hostname !== "string" && body.hostname !== null) {
-        throw new NpValidationError("Invalid input", [
-          { field: "hostname", message: "hostname must be a string or null" },
-        ]);
-      }
-      patch.hostname = body.hostname;
-    }
-    if ("description" in body) {
-      if (typeof body.description !== "string" && body.description !== null) {
-        throw new NpValidationError("Invalid input", [
-          { field: "description", message: "description must be a string or null" },
-        ]);
-      }
-      patch.description = body.description;
     }
     const site = await updateSite(id, patch);
     // Site name + hostname flow through `getCachedSite()` (600s TTL)
@@ -142,7 +107,19 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
     // exists. Operators clicking "Delete site" through the
     // admin UI explicitly confirm cascade after seeing the
     // usage summary.
-    const cascade = request.nextUrl.searchParams.get("cascade") === "true";
+    const unknownQuery = [...request.nextUrl.searchParams.keys()].find((key) => key !== "cascade");
+    const rawCascade = request.nextUrl.searchParams.get("cascade");
+    if (unknownQuery || (rawCascade !== null && rawCascade !== "true" && rawCascade !== "false")) {
+      throw new NpValidationError("Invalid input", [
+        {
+          field: unknownQuery ?? "cascade",
+          message: unknownQuery
+            ? `Unsupported delete query field "${unknownQuery}"`
+            : "cascade must be true or false",
+        },
+      ]);
+    }
+    const cascade = rawCascade === "true";
     await deleteSite(id, { cascade });
     return npSuccessResponse({ id, deleted: true, cascade });
   } catch (error) {

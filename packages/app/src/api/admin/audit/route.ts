@@ -4,14 +4,13 @@ import {
   getCurrentSiteId,
   isSuperAdmin,
   listAuditEvents,
-  can,
 } from "@nexpress/core";
+import { canOnSite } from "@nexpress/core/sites";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import { requireAuth } from "../../../lib/auth-helpers";
 import { ensureFor } from "../../../lib/init-core";
-import { canModerateSite } from "../../../lib/site-authz";
 
 function parsePositiveInt(value: string | null, fallback: number, max: number): number {
   if (!value) return fallback;
@@ -60,14 +59,9 @@ export async function GET(request: NextRequest) {
     // below carries its own authorize call against the right
     // site.
     //
-    // Issue #379 — explicit `siteId=<id>` requests use
-    // `canModerateSite` (explicit membership lookup), not
-    // `hasRoleOnSite` whose `resolveUserRoleOnSite` falls back to
-    // the user's global role when no membership exists on the
-    // target site. The fallback let a global moderator/editor/admin
-    // enumerate any tenant's audit log via the siteId filter. The
-    // default-site path keeps the global-admin convenience for
-    // single-tenant installs.
+    // Issue #379 — explicit `siteId=<id>` requests use the canonical
+    // site capability contract. Non-default tenants require an explicit
+    // membership, while the reserved default site may use the global role.
     const rawSiteFilter = params.get("siteId")?.trim();
     let siteIdFilter: string | null | undefined;
     if (rawSiteFilter) {
@@ -77,19 +71,9 @@ export async function GET(request: NextRequest) {
           throw new NpForbiddenError("audit", "cross-site");
         }
         siteIdFilter = null;
-      } else if (superAdmin) {
-        siteIdFilter = rawSiteFilter;
-      } else if (
-        rawSiteFilter === NP_DEFAULT_SITE_ID &&
-        can(user, "admin.manage")
-      ) {
-        // Single-tenant compatibility: a global admin without
-        // any explicit memberships keeps audit access on the
-        // default site.
-        siteIdFilter = rawSiteFilter;
-      } else if (await canModerateSite(user, rawSiteFilter)) {
-        // Per-site mod-or-above (by explicit membership) can read
-        // their own site's audit.
+      } else if (await canOnSite(user, "community.moderate", rawSiteFilter)) {
+        // The canonical persisted-role chain covers super-admin,
+        // explicit membership, and the default-only global fallback.
         siteIdFilter = rawSiteFilter;
       } else {
         throw new NpForbiddenError("audit", "cross-site");
@@ -99,12 +83,12 @@ export async function GET(request: NextRequest) {
       // resolved request site, not via a global pre-check —
       // a per-site moderator with no global role still needs
       // to be able to read their own tenant's audit log.
-      // Issue #379 — `canModerateSite` requires explicit
-      // membership for non-default sites, so a global moderator
+      // Issue #379 — `canOnSite` requires explicit membership for
+      // non-default sites, so a global moderator
       // without a tenant membership can't read another tenant's
       // audit log when the proxy resolves a non-default site.
       const currentSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-      if (!(await canModerateSite(user, currentSiteId))) {
+      if (!(await canOnSite(user, "community.moderate", currentSiteId))) {
         throw new NpForbiddenError("audit", "read");
       }
     }

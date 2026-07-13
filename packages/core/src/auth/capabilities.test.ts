@@ -14,6 +14,11 @@ function userWithRole(role: NpUserRole): NpAuthUser {
 }
 
 describe("can()", () => {
+  it("allows every authenticated staff role to use an authorized site context", () => {
+    expect(can(userWithRole("viewer"), "site.access")).toBe(true);
+    expect(can(null, "site.access")).toBe(false);
+  });
+
   it("returns false for null / undefined principal regardless of capability", () => {
     expect(can(null, "content.publish")).toBe(false);
     expect(can(undefined, "community.moderate")).toBe(false);
