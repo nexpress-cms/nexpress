@@ -6,6 +6,10 @@ const adapterControl = vi.hoisted(() => ({
   instances: [] as unknown[],
 }));
 
+const pauseControl = vi.hoisted(() => ({
+  error: null as Error | null,
+}));
+
 vi.mock("./pg-boss-adapter.js", () => {
   class MockPgBossAdapter {
     constructor() {
@@ -18,6 +22,18 @@ vi.mock("./pg-boss-adapter.js", () => {
         : Promise.resolve();
     }
 
+    start(): Promise<void> {
+      return Promise.resolve();
+    }
+
+    scheduleRecurring(): Promise<void> {
+      return Promise.resolve();
+    }
+
+    pauseProcessing(): Promise<void> {
+      return Promise.resolve();
+    }
+
     stop(): Promise<void> {
       return adapterControl.stopError
         ? Promise.reject(adapterControl.stopError)
@@ -28,19 +44,34 @@ vi.mock("./pg-boss-adapter.js", () => {
   return { PgBossAdapter: MockPgBossAdapter };
 });
 
-import { getOptionalJobQueue, setJobQueue } from "./queue.js";
-import { startProducer, stopProducer } from "./worker.js";
+vi.mock("./pause-state.js", () => ({
+  getJobsPauseState: () =>
+    pauseControl.error
+      ? Promise.reject(pauseControl.error)
+      : Promise.resolve({
+          paused: false,
+          changedAt: new Date(0).toISOString(),
+          changedByUserId: null,
+          reason: null,
+        }),
+  startPauseSyncLoop: () => ({ stop: () => undefined }),
+}));
 
-describe("job producer lifecycle", () => {
+import { getOptionalJobQueue, setJobQueue } from "./queue.js";
+import { startProducer, startWorker, stopProducer, stopWorker } from "./worker.js";
+
+describe("job worker and producer lifecycle", () => {
   beforeEach(() => {
     adapterControl.startProducerError = null;
     adapterControl.stopError = null;
     adapterControl.instances.length = 0;
+    pauseControl.error = null;
     setJobQueue(null);
   });
 
   afterEach(async () => {
     adapterControl.stopError = null;
+    await stopWorker();
     await stopProducer();
     setJobQueue(null);
   });
@@ -68,5 +99,24 @@ describe("job producer lifecycle", () => {
     adapterControl.stopError = null;
     await startProducer("postgres://example.test/nexpress");
     expect(adapterControl.instances).toHaveLength(2);
+  });
+
+  it("fails closed and unwinds startup when persisted pause state cannot be read", async () => {
+    pauseControl.error = new Error("invalid persisted pause state");
+
+    await expect(
+      startWorker("postgres://example.test/nexpress", {
+        heartbeat: false,
+        installSignalHandlers: false,
+      }),
+    ).rejects.toThrow("invalid persisted pause state");
+    expect(getOptionalJobQueue()).toBeNull();
+
+    pauseControl.error = null;
+    await startWorker("postgres://example.test/nexpress", {
+      heartbeat: false,
+      installSignalHandlers: false,
+    });
+    expect(getOptionalJobQueue()).toBe(adapterControl.instances.at(-1));
   });
 });

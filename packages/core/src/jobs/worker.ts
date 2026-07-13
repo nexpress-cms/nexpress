@@ -93,21 +93,14 @@ export async function startWorker(
     // Phase 20.2 — if the operator paused processing while the
     // worker was offline, honor it on boot. The flag is global
     // (in `np_settings` siteId="_system") so it survives worker
-    // restarts. We swallow read errors because a pre-migrate DB
-    // would otherwise stop the worker from starting at all —
-    // safer to default to "running" than to refuse to boot.
-    try {
-      const pauseState = await getJobsPauseState();
-      if (pauseState.paused) {
-        await workerAdapter.pauseProcessing();
-        getLogger().info("Worker booted in paused state", {
-          changedAt: pauseState.changedAt,
-          reason: pauseState.reason,
-        });
-      }
-    } catch (err) {
-      getLogger().warn("Could not read jobs pause state on worker boot", {
-        error: err instanceof Error ? err.message : String(err),
+    // restarts. Read and contract failures abort startup: running
+    // jobs against an unknown persisted pause state is unsafe.
+    const pauseState = await getJobsPauseState();
+    if (pauseState.paused) {
+      await workerAdapter.pauseProcessing();
+      getLogger().info("Worker booted in paused state", {
+        changedAt: pauseState.changedAt,
+        reason: pauseState.reason,
       });
     }
 
