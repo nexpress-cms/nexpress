@@ -74,7 +74,17 @@ export async function GET(request: NextRequest) {
       npRequireJobApiResponse(
         {
           workers: summary.workers.map((worker) =>
-            npSerializeWorkerHealthEntry(worker, now, WORKER_STALE_THRESHOLD_MS),
+            npSerializeWorkerHealthEntry(
+              {
+                id: worker.id,
+                status: worker.status,
+                startedAt: worker.startedAt,
+                lastSeenAt: worker.lastSeenAt,
+                meta: worker.meta,
+              },
+              now,
+              WORKER_STALE_THRESHOLD_MS,
+            ),
           ),
           aliveCount: summary.aliveCount,
           totalCount: summary.totalCount,

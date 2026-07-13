@@ -109,12 +109,12 @@ describe.skipIf(skipIfNoTestDb())("Phase 19 — worker heartbeat", () => {
       headers,
     });
     const res = await healthGET(req);
-    expect(res.status).toBe(200);
     const body = (await res.json()) as {
       workers: Array<{ id: string; alive: boolean }>;
       aliveCount: number;
       totalCount: number;
     };
+    expect(res.status, JSON.stringify(body)).toBe(200);
     expect(body.totalCount).toBe(1);
     expect(body.aliveCount).toBe(1);
     expect(body.workers[0]?.id).toBe("worker-api");
