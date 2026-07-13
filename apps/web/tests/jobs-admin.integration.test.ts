@@ -83,6 +83,7 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
           collection: "posts",
           documentId: "d4cafb07-c120-4503-90fa-6d6fc4104ce3",
           operation: "update",
+          siteId: "default",
           userId: "scheduler",
           memberId: null,
         },
