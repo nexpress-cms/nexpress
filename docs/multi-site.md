@@ -403,8 +403,8 @@ deployments:
 - Global operator routes keep the persisted global role and use
   `can(user, capability)`. Site-scoped request auth projects the
   persisted effective site role before route and collection policy
-  checks; explicit target checks use `canOnSite(user, capability,
-siteId)`. Both use one named capability table rather than a numeric
+  checks; explicit target checks call the canonical `canOnSite()`
+  helper. Both use one named capability table rather than a numeric
   role tree.
 
 Sites that don't need multi-tenancy can ignore Phase 15
