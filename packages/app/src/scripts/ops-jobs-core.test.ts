@@ -114,6 +114,25 @@ describe("ops jobs core", () => {
         ok: false,
         status: "blocked",
         diagnosticError: "DATABASE_URL is not set",
+        nextCommand: "nexpress ops jobs status --json",
+        projectNextCommand: "pnpm --silent run ops:jobs -- status --json",
+      }),
+    );
+  });
+
+  it("keeps mutation remediation fields executable when configuration is missing", async () => {
+    await expect(
+      applyOpsJobsPauseMutation({ action: "pause", env: { NP_ENABLE_JOBS: "1" } }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        nextCommand: "nexpress ops jobs status --json",
+        projectNextCommand: "pnpm --silent run ops:jobs -- status --json",
+      }),
+    );
+    await expect(applyOpsJobsRetryAllMutation({ env: { NP_ENABLE_JOBS: "1" } })).resolves.toEqual(
+      expect.objectContaining({
+        nextCommand: "nexpress ops jobs status --json",
+        projectNextCommand: "pnpm --silent run ops:jobs -- status --json",
       }),
     );
   });
