@@ -1,5 +1,5 @@
 import { npCreateEmptyRichTextContent } from "../fields/rich-text.js";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq, asc } from "drizzle-orm";
 
 import { hashPassword } from "../auth/password.js";
@@ -11,7 +11,10 @@ import {
   getDocumentById,
   saveDocument,
 } from "../collections/pipeline.js";
+import { setJobQueue } from "../jobs/queue.js";
 import { resetPlugins } from "../plugins/host.js";
+import { withCurrentSite } from "../sites/context.js";
+import { createSite } from "../sites/registry.js";
 import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } from "./setup.js";
 import { postsTable, registerTestCollections } from "./fixtures.js";
 
@@ -26,6 +29,7 @@ describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () =
     // Plugin registry is shared in-process; clear between tests so stale
     // hooks from earlier suites don't fire against this one's docs.
     resetPlugins();
+    setJobQueue(null);
   });
 
   afterAll(async () => {
@@ -57,6 +61,41 @@ describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () =
     title: "Hello",
     content: npCreateEmptyRichTextContent(),
   };
+
+  it("persists the originating site in save and delete follow-up jobs", async () => {
+    const user = await seedUser();
+    await createSite({ id: "tenant-a", name: "Tenant A" });
+    const enqueue = vi.fn().mockResolvedValue("job-1");
+    setJobQueue({
+      enqueue,
+      start: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+    });
+
+    const created = await withCurrentSite("tenant-a", () =>
+      saveDocument("posts", null, baseDoc, user, { status: "draft" }),
+    );
+    expect(enqueue).toHaveBeenCalledWith("content:afterSave", {
+      siteId: "tenant-a",
+      collection: "posts",
+      documentId: created.doc.id,
+      operation: "create",
+      userId: user.id,
+      memberId: null,
+    });
+
+    enqueue.mockClear();
+    await withCurrentSite("tenant-a", () =>
+      deleteDocument("posts", created.doc.id as string, user),
+    );
+    expect(enqueue).toHaveBeenCalledWith("content:afterDelete", {
+      siteId: "tenant-a",
+      collection: "posts",
+      documentId: created.doc.id,
+      userId: user.id,
+      memberId: null,
+    });
+  });
 
   it("creates a document with a generated slug and writes a draft revision", async () => {
     const user = await seedUser();

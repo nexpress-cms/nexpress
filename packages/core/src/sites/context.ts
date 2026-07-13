@@ -1,67 +1,55 @@
-/**
- * Phase 15.1 — process-wide "current site" resolver hook.
- *
- * The pipeline doesn't know how to find the current request's
- * site on its own (the runtime layer does — it reads the
- * `x-np-site-id` header the middleware sets). This module
- * exposes a setter the runtime calls at boot:
- *
- *   setCurrentSiteResolver(async () => {
- *     const headerList = await headers();
- *     return headerList.get("x-np-site-id") ?? null;
- *   });
- *
- * Pipeline / hooks call `getCurrentSiteId()` to read the
- * resolved id (or `null` when no resolver is wired, e.g.
- * background workers, scripts).
- *
- * This is intentionally async — the canonical Next.js
- * resolver awaits `headers()`. Sync paths (CLI, tests) can
- * register a sync resolver by returning the value directly.
- */
+import { AsyncLocalStorage } from "node:async_hooks";
 
+import { npIsCanonicalSiteId } from "./id-contract.js";
+
+/**
+ * Process-level fallback used by runtime adapters such as Next.js. Request,
+ * worker, CLI, and test execution scopes should use `withCurrentSite()`;
+ * scoped values take precedence over this resolver.
+ */
 type Resolver = () => string | null | Promise<string | null>;
 
+const siteContext = new AsyncLocalStorage<string>();
 let resolver: Resolver | null = null;
 
+function requireCanonicalSiteId(value: unknown, source: string): string {
+  if (!npIsCanonicalSiteId(value)) {
+    throw new Error(`${source} must be a canonical lowercase site id beginning with a letter.`);
+  }
+  return value;
+}
+
 export function setCurrentSiteResolver(fn: Resolver | null): void {
+  if (fn !== null && typeof fn !== "function") {
+    throw new Error("Current site resolver must be a function or null.");
+  }
   resolver = fn;
 }
 
+/** Reset only the process-level fallback; active async scopes remain intact. */
 export function resetCurrentSiteResolver(): void {
   resolver = null;
 }
 
 export async function getCurrentSiteId(): Promise<string | null> {
+  const scopedSiteId = siteContext.getStore();
+  if (scopedSiteId !== undefined) return scopedSiteId;
   if (!resolver) return null;
-  return resolver();
+
+  const resolved = await resolver();
+  return resolved === null
+    ? null
+    : requireCanonicalSiteId(resolved, "Current site resolver result");
 }
 
 /**
- * Like `getCurrentSiteId()` but throws when no site context is set.
- *
- * Use this on write paths that must NEVER silently fall through to
- * the default site — community moderation, ban/mute writes, report
- * creation, notification fan-out. Reading from the default site
- * when context is missing is usually fine; *writing* to it is how
- * cross-site data leaks happen.
- *
- * Background jobs / CLI scripts: stamp the originating `siteId`
- * onto the job payload at enqueue time and wrap the handler in
- * `withCurrentSite(siteId, fn)` so this helper resolves correctly.
- *
- * Throws `NpSiteContextMissingError` (code `SITE_CONTEXT_MISSING`,
- * status 500). The 500 is deliberate — this is a server-side
- * wiring bug, not user input fault, and the API layer surfaces
- * it through the standard NpError envelope.
+ * Resolve the current site or fail when the caller omitted an execution
+ * scope. Writes use this instead of silently falling through to the default
+ * site because a missing scope is a server wiring error.
  */
 export async function requireSiteId(): Promise<string> {
   const id = await getCurrentSiteId();
   if (!id) {
-    // Defer the import to keep this module's load graph thin —
-    // `errors.js` doesn't currently reach back into sites/, but
-    // the dynamic specifier costs nothing on the happy path
-    // (resolver hit) and avoids a future cycle.
     const { NpSiteContextMissingError } = await import("../errors.js");
     throw new NpSiteContextMissingError(
       "site context required for this write but none is set — " +
@@ -72,53 +60,17 @@ export async function requireSiteId(): Promise<string> {
 }
 
 /**
- * Tests / scripts that want to pin the current site id for the
- * duration of a block use the `withCurrentSite` helper — it swaps
- * in a constant resolver, runs `fn`, and restores the previous
- * resolver on exit.
+ * Run work inside an async-local site scope.
  *
- * Contract — read this carefully (#320):
- *
- *   `withCurrentSite` covers ONLY work that completes (synchronously
- *   or via `await`) before `fn` returns. Any fire-and-forget async
- *   work spawned inside `fn` runs AFTER the `finally` block has
- *   already restored the previous resolver, so it sees the OUTER
- *   site context — typically `null` for a CLI / job, or the wrong
- *   site for a request that was acting on a different tenant.
- *
- *   Concretely:
- *     - `enqueueJob(...)` persists the row immediately but the
- *       handler runs later in the worker. The worker has no
- *       resolver wired, so `getCurrentSiteId()` returns `null`
- *       and `requireSiteId()` throws — even though the enqueuer
- *       was inside a `withCurrentSite` block.
- *     - `void someAsyncFn()` patterns inside `fn` are similarly
- *       exposed.
- *
- *   How to do it safely:
- *     - Stamp `siteId` explicitly onto every job payload at
- *       enqueue time. The handler reads it back from the payload
- *       and wraps its own work in `withCurrentSite(payload.siteId,
- *       handlerBody)`.
- *     - `await` everything that needs the site context inside
- *       `fn`. Don't return from `fn` while a site-dependent
- *       operation is still pending.
- *
- *   This is a fundamental limit of plain module-scoped state. A
- *   future refactor could switch the resolver to
- *   `AsyncLocalStorage` so the site follows the async boundary
- *   automatically — that's tracked under #320 but out of scope
- *   for this helper today.
+ * Nested and concurrent calls are isolated, and async resources created in
+ * the callback retain this site even when they settle after the callback has
+ * returned. Persisted background jobs still need to carry `siteId` because a
+ * later worker dispatch is a separate async execution graph.
  */
-export async function withCurrentSite<T>(
-  siteId: string,
-  fn: () => Promise<T>,
-): Promise<T> {
-  const previous = resolver;
-  resolver = () => siteId;
-  try {
-    return await fn();
-  } finally {
-    resolver = previous;
+export async function withCurrentSite<T>(siteId: string, fn: () => T | Promise<T>): Promise<T> {
+  const canonicalSiteId = requireCanonicalSiteId(siteId, "Site context id");
+  if (typeof fn !== "function") {
+    throw new Error("Site context callback must be a function.");
   }
+  return await siteContext.run(canonicalSiteId, fn);
 }

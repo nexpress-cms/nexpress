@@ -52,6 +52,7 @@ export type NpJobData = Record<string, NpJobJsonValue>;
 export type NpEmptyJobData = Record<string, never>;
 
 export interface NpContentAfterSaveJobData {
+  siteId: string;
   collection: string;
   documentId: string;
   operation: "create" | "update";
@@ -60,6 +61,7 @@ export interface NpContentAfterSaveJobData {
 }
 
 export interface NpContentAfterDeleteJobData {
+  siteId: string;
   collection: string;
   documentId: string;
   userId: string | null;

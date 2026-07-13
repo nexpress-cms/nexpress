@@ -80,6 +80,12 @@ const BUILTIN_JOB_CONTEXT_KEYS = new Set<keyof BuiltinJobContext>([
   "sendMemberPasswordReset",
 ]);
 
+function resolveContentJobSiteId(
+  data: NpContentAfterSaveJobData | NpContentAfterDeleteJobData,
+): string {
+  return data.siteId;
+}
+
 export function configureBuiltinJobContext(context: Partial<BuiltinJobContext>): void {
   if (typeof context !== "object" || context === null || Array.isArray(context)) {
     throw new Error("Built-in job context must be a plain object.");
@@ -105,8 +111,12 @@ export function configureBuiltinJobContext(context: Partial<BuiltinJobContext>):
 }
 
 export function registerBuiltinHandlers(): void {
-  registerJobHandler("content:afterSave", handleContentAfterSave);
-  registerJobHandler("content:afterDelete", handleContentAfterDelete);
+  registerJobHandler("content:afterSave", handleContentAfterSave, {
+    resolveSiteId: resolveContentJobSiteId,
+  });
+  registerJobHandler("content:afterDelete", handleContentAfterDelete, {
+    resolveSiteId: resolveContentJobSiteId,
+  });
   registerJobHandler("content:publishScheduled", handleContentPublishScheduled);
   registerJobHandler("media:processImage", handleMediaProcessImage);
   registerJobHandler("media:cleanup", handleMediaCleanup);

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { configureBuiltinJobContext, registerBuiltinHandlers } from "./builtin-handlers.js";
 import { getJobHandler } from "./handlers.js";
 import { resetPlugins } from "../plugins/index.js";
+import { getCurrentSiteId } from "../sites/context.js";
 
 describe("built-in media job contract", () => {
   it("rejects malformed built-in context registration", () => {
@@ -42,5 +43,26 @@ describe("built-in media job contract", () => {
     await expect(
       getJobHandler("plugin:scheduledTask")?.({ pluginId: "missing", taskId: "daily" }),
     ).rejects.toThrow('Plugin "missing" is not registered');
+  });
+
+  it("dispatches content jobs inside the exact payload site scope", async () => {
+    const resolveContentAfterSaveContext = vi.fn(async () => {
+      expect(await getCurrentSiteId()).toBe("tenant-a");
+      return null;
+    });
+    configureBuiltinJobContext({ resolveContentAfterSaveContext });
+    registerBuiltinHandlers();
+
+    await getJobHandler("content:afterSave")?.({
+      siteId: "tenant-a",
+      collection: "posts",
+      documentId: "bd134b0f-b9ea-4ff4-81ef-606e42e27703",
+      operation: "update",
+      userId: "8dbb88e6-eb42-4c5d-968d-0b253fd5012f",
+      memberId: null,
+    });
+
+    expect(resolveContentAfterSaveContext).toHaveBeenCalledOnce();
+    expect(await getCurrentSiteId()).toBeNull();
   });
 });

@@ -70,6 +70,7 @@ describe("job runtime contract", () => {
   it("enforces exact built-in payloads and one content actor", () => {
     expect(
       npAnalyzeJobPayload("content:afterSave", {
+        siteId: "default",
         collection: "posts",
         documentId: DOCUMENT_ID,
         operation: "update",
@@ -79,6 +80,7 @@ describe("job runtime contract", () => {
     ).toBe(true);
     expect(
       npAnalyzeJobPayload("content:afterSave", {
+        siteId: "tenant-a",
         collection: "posts",
         documentId: DOCUMENT_ID,
         operation: "update",
@@ -88,10 +90,38 @@ describe("job runtime contract", () => {
     ).toBe(true);
     expect(
       npAnalyzeJobPayload("content:afterSave", {
+        siteId: "default",
         collection: "posts",
         documentId: DOCUMENT_ID,
         operation: "update",
         userId: STAFF_ID,
+        memberId: MEMBER_ID,
+      }).ok,
+    ).toBe(false);
+    expect(
+      npAnalyzeJobPayload("content:afterSave", {
+        siteId: "Tenant A",
+        collection: "posts",
+        documentId: DOCUMENT_ID,
+        operation: "update",
+        userId: STAFF_ID,
+        memberId: null,
+      }).ok,
+    ).toBe(false);
+    expect(
+      npAnalyzeJobPayload("content:afterDelete", {
+        siteId: "tenant-a",
+        collection: "posts",
+        documentId: DOCUMENT_ID,
+        userId: null,
+        memberId: MEMBER_ID,
+      }).ok,
+    ).toBe(true);
+    expect(
+      npAnalyzeJobPayload("content:afterDelete", {
+        collection: "posts",
+        documentId: DOCUMENT_ID,
+        userId: null,
         memberId: MEMBER_ID,
       }).ok,
     ).toBe(false);

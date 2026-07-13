@@ -34,6 +34,7 @@ import {
   type NpWorkerHeartbeat,
   type NpWorkerHealthWireEntry,
 } from "./types.js";
+import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 
 export const npJobCanonicalDatePattern = "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$";
 export const npJobTypePattern = "^[A-Za-z0-9][A-Za-z0-9_-]*(?::[A-Za-z0-9][A-Za-z0-9_-]*)+$";
@@ -388,6 +389,7 @@ function parseBuiltinPayload(
   switch (type) {
     case "content:afterSave": {
       const input = exactRecord(value, path, [
+        "siteId",
         "collection",
         "documentId",
         "operation",
@@ -397,11 +399,15 @@ function parseBuiltinPayload(
       const collection = boundedString(input.collection, `${path}.collection`, 128);
       if (!COLLECTION_PATTERN.test(collection))
         fail(`${path}.collection`, "must be a collection slug");
+      if (!npIsCanonicalSiteId(input.siteId)) {
+        fail(`${path}.siteId`, "must be a canonical site id");
+      }
       const operation = input.operation;
       if (operation !== "create" && operation !== "update") {
         fail(`${path}.operation`, "must be create or update");
       }
       return {
+        siteId: input.siteId,
         collection,
         documentId: uuid(input.documentId, `${path}.documentId`),
         operation,
@@ -409,11 +415,21 @@ function parseBuiltinPayload(
       } satisfies NpBuiltinJobPayloadMap["content:afterSave"];
     }
     case "content:afterDelete": {
-      const input = exactRecord(value, path, ["collection", "documentId", "userId", "memberId"]);
+      const input = exactRecord(value, path, [
+        "siteId",
+        "collection",
+        "documentId",
+        "userId",
+        "memberId",
+      ]);
       const collection = boundedString(input.collection, `${path}.collection`, 128);
       if (!COLLECTION_PATTERN.test(collection))
         fail(`${path}.collection`, "must be a collection slug");
+      if (!npIsCanonicalSiteId(input.siteId)) {
+        fail(`${path}.siteId`, "must be a canonical site id");
+      }
       return {
+        siteId: input.siteId,
         collection,
         documentId: uuid(input.documentId, `${path}.documentId`),
         ...parseIdentity(input, path),
