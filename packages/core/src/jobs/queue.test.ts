@@ -20,6 +20,7 @@ describe("job queue", () => {
     it("enqueueJob no-ops and returns an empty id", async () => {
       await expect(
         enqueueJob("content:afterSave", {
+          siteId: "default",
           collection: "posts",
           documentId: "d4cafb07-c120-4503-90fa-6d6fc4104ce3",
           operation: "create",
@@ -40,6 +41,7 @@ describe("job queue", () => {
       });
 
       const data = {
+        siteId: "tenant-a",
         collection: "posts",
         documentId: "d4cafb07-c120-4503-90fa-6d6fc4104ce3",
         operation: "update" as const,

@@ -21,6 +21,7 @@ import { isNpRichTextContent } from "../fields/rich-text.js";
 import { applySlugField } from "./slug.js";
 import { getI18nConfig } from "../i18n/registry.js";
 import { getCurrentSiteId } from "../sites/context.js";
+import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 import { getCollectionZodSchema } from "./validation.js";
 import { getCollectionConfig, getCollectionTable, getCollectionRegistration } from "./registry.js";
@@ -120,6 +121,13 @@ function actorUserId(actor: SaveActor): string | null {
 
 function actorMemberId(actor: SaveActor): string | null {
   return actor.kind === "member" ? actor.memberId : null;
+}
+
+function requireDocumentSiteId(document: Record<string, unknown>, context: string): string {
+  if (!npIsCanonicalSiteId(document.siteId)) {
+    throw new Error(`${context} is missing a canonical siteId.`);
+  }
+  return document.siteId;
 }
 
 /**
@@ -895,8 +903,13 @@ async function prepareDocumentForWrite(c: SaveContext): Promise<void> {
     const resolved = await getCurrentSiteId();
     c.prepared.mainData.siteId = resolved ?? NP_DEFAULT_SITE_ID;
   } else {
-    const original = c.originalDoc as { siteId?: string } | null;
-    c.prepared.mainData.siteId = original?.siteId ?? NP_DEFAULT_SITE_ID;
+    if (!c.originalDoc) {
+      throw new Error(`Update context for ${c.collection} is missing its original document.`);
+    }
+    c.prepared.mainData.siteId = requireDocumentSiteId(
+      c.originalDoc,
+      `Persisted ${c.collection} document`,
+    );
   }
   // Stamp / strip member_author_id. The column is generated only
   // when `community.memberWrite.create` is on; staff-authored docs
@@ -1104,6 +1117,7 @@ async function firePostCommitHooks(
   savedDoc: Record<string, unknown>,
 ): Promise<void> {
   const savedDocId = getRecordId(savedDoc);
+  const siteId = requireDocumentSiteId(savedDoc, `Saved ${ctx.collection} document`);
   const postCommitCtx = {
     collection: ctx.collection,
     documentId: savedDocId,
@@ -1112,6 +1126,7 @@ async function firePostCommitHooks(
 
   await runPostCommit("enqueue:content:afterSave", postCommitCtx, () =>
     enqueueJob("content:afterSave", {
+      siteId,
       collection: ctx.collection,
       documentId: savedDocId,
       operation: ctx.operation,
@@ -1588,6 +1603,7 @@ async function deleteDocumentImpl(
   if (!originalDoc) {
     throw new NpNotFoundError(collection, docId);
   }
+  const siteId = requireDocumentSiteId(originalDoc, `Persisted ${collection} document`);
 
   if (actor.kind === "staff") {
     if (config.access?.delete) {
@@ -1713,6 +1729,7 @@ async function deleteDocumentImpl(
   const postCommitCtx = { collection, documentId: docId, operation: "delete" };
   await runPostCommit("enqueue:content:afterDelete", postCommitCtx, () =>
     enqueueJob("content:afterDelete", {
+      siteId,
       collection,
       documentId: docId,
       userId: actorUserId(actor),

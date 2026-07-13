@@ -12,6 +12,9 @@ import type {
 import { npAnalyzeThemeTokensOverlay } from "../theme/contract.js";
 import { npValidateBlockContent } from "../fields/block-content.js";
 import { npAnalyzeJobsPauseState } from "../jobs-contract/contract.js";
+import { npIsCanonicalSiteId } from "../sites/id-contract.js";
+
+export { npIsCanonicalSiteId, npSiteIdPattern } from "../sites/id-contract.js";
 
 export const npSettingsContractLimits = {
   siteIdLength: 63,
@@ -25,7 +28,6 @@ export const npSettingsContractLimits = {
   localeLength: 35,
 } as const;
 
-export const npSiteIdPattern = "^[a-z][a-z0-9-]{0,62}$";
 export const npDynamicSettingOwnerPattern = "^[a-z][a-z0-9-]{0,62}$";
 export const npPluginIdPattern = "^(?:@[A-Za-z0-9_-]+/)?[A-Za-z0-9_-]+$";
 export const npPluginIdMaxLength = 128;
@@ -44,7 +46,6 @@ export const DEFAULT_SEO_SETTINGS: NpSeoSettings = {
   defaultLocale: "en_US",
 };
 
-const siteIdPattern = new RegExp(npSiteIdPattern, "u");
 const ownerPattern = new RegExp(npDynamicSettingOwnerPattern, "u");
 const pluginOwnerPattern = new RegExp(npPluginIdPattern, "u");
 const hostnamePattern =
@@ -370,7 +371,7 @@ function analyzeSiteRecord(value: unknown, wire: boolean): NpSettingContractIssu
   const issues: NpSettingContractIssue[] = [];
   pushUnknown(value, siteRecordKeys, "site", issues);
   issues.push(...npAnalyzeSiteRuntimeSettings(value.settings));
-  if (typeof value.id !== "string" || !siteIdPattern.test(value.id)) {
+  if (!npIsCanonicalSiteId(value.id)) {
     issues.push(issue("invalid-field", "site.id", "site id must be a canonical lowercase id."));
   }
   try {
@@ -732,7 +733,7 @@ export function npAnalyzeSettingRecord(
         ),
       );
     }
-  } else if (typeof siteId !== "string" || !siteIdPattern.test(siteId)) {
+  } else if (!npIsCanonicalSiteId(siteId)) {
     issues.push(
       issue(
         "invalid-field",

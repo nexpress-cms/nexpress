@@ -4,6 +4,8 @@ import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import type { NpFieldConfig } from "../config/types.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { runHook } from "../plugins/host.js";
+import { withCurrentSite } from "../sites/context.js";
+import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 import { getAllCollectionSlugs, getCollectionConfig, getCollectionTable } from "./registry.js";
 import { getDb } from "../db/runtime.js";
 
@@ -70,34 +72,41 @@ export async function publishScheduledDocuments(
 
     for (const row of rows) {
       const docId = row.id as string;
+      if (!npIsCanonicalSiteId(row.siteId)) {
+        throw new Error(`Scheduled ${slug} document ${docId} is missing a canonical siteId.`);
+      }
+      const siteId = row.siteId;
       // Fire every hook a plugin would have seen if the user had clicked
       // Publish directly: afterUpdate (content changed), afterPublish
       // (status transitioned), and the afterSave job so revalidation +
       // collection-level afterUpdate hooks run too.
-      await runHook("content:afterUpdate", {
-        collection: slug,
-        documentId: docId,
-        document: row,
-        originalDocument: null,
-        operation: "update",
-        source: "scheduler",
-        principal: null,
-      });
-      await runHook("content:afterPublish", {
-        collection: slug,
-        documentId: docId,
-        document: row,
-        originalDocument: null,
-        operation: "update",
-        source: "scheduler",
-        principal: null,
-      });
-      await enqueueJob("content:afterSave", {
-        collection: slug,
-        documentId: docId,
-        operation: "update",
-        userId: "scheduler",
-        memberId: null,
+      await withCurrentSite(siteId, async () => {
+        await runHook("content:afterUpdate", {
+          collection: slug,
+          documentId: docId,
+          document: row,
+          originalDocument: null,
+          operation: "update",
+          source: "scheduler",
+          principal: null,
+        });
+        await runHook("content:afterPublish", {
+          collection: slug,
+          documentId: docId,
+          document: row,
+          originalDocument: null,
+          operation: "update",
+          source: "scheduler",
+          principal: null,
+        });
+        await enqueueJob("content:afterSave", {
+          siteId,
+          collection: slug,
+          documentId: docId,
+          operation: "update",
+          userId: "scheduler",
+          memberId: null,
+        });
       });
     }
   }

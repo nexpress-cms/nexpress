@@ -115,8 +115,8 @@ claims correct.
 The framework registers a handful of system handlers via
 `registerBuiltinHandlers()` (called by `startWorker()`):
 
-- `content:afterSave` / `content:afterDelete` — post-write hooks (cache
-  invalidation, plugin `afterX` hooks, search reindex)
+- `content:afterSave` / `content:afterDelete` — site-scoped post-write hooks
+  (cache invalidation, plugin `afterX` hooks, search reindex)
 - `media:processImage` — Sharp-driven resize pipeline
   (decoupled from the upload request)
 - `media:cleanup` — delete orphaned storage files
@@ -157,34 +157,40 @@ at enqueue and dispatch, so make it deterministic and idempotent.
 ```ts
 // In application bootstrap
 import { registerJobHandler } from "@nexpress/core/jobs";
+import { npIsCanonicalSiteId } from "@nexpress/core/settings";
 
 interface CleanupPayload {
-  siteIds: string[];
+  siteId: string;
 }
 
 registerJobHandler(
   "myplugin:cleanup",
-  async ({ siteIds }: CleanupPayload) => {
-    for (const siteId of siteIds) await cleanupSiteCache(siteId);
+  async ({ siteId }: CleanupPayload) => {
+    // getCurrentSiteId() also resolves to siteId throughout this dispatch.
+    await cleanupSiteCache(siteId);
   },
   {
     parsePayload(data): CleanupPayload {
-      if (
-        Object.keys(data).length !== 1 ||
-        !Array.isArray(data.siteIds) ||
-        !data.siteIds.every((siteId) => typeof siteId === "string" && siteId.length > 0)
-      ) {
-        throw new Error("siteIds must be a non-empty string array");
+      if (Object.keys(data).length !== 1 || !npIsCanonicalSiteId(data.siteId)) {
+        throw new Error("siteId must be a canonical site id");
       }
-      return { siteIds: data.siteIds };
+      return { siteId: data.siteId };
     },
+    resolveSiteId: (data) => data.siteId,
   },
 );
 ```
 
-Registering the same handler/parser pair again is idempotent. A different
-handler under an existing name is a startup error, and every handler must
-resolve to `undefined`; a non-void result fails the job so pg-boss can retry it.
+`resolveSiteId` runs after dispatch-time parsing. A canonical id wraps the
+complete handler in `withCurrentSite`; `null` deliberately retains the ambient
+or global context. Malformed ids fail before the handler is called. This scope
+isolates concurrent worker claims, but it cannot be inferred from the producer:
+the payload must persist the originating site explicitly.
+
+Registering the same handler/parser/site-resolver tuple again is idempotent. A
+different registration under an existing name is a startup error, and every
+handler must resolve to `undefined`; a non-void result fails the job so pg-boss
+can retry it.
 
 Handler errors:
 
@@ -221,7 +227,8 @@ const id = await enqueueJob("media:processImage", {
   this to `.` internally because pg-boss 12+ rejects `:` in
   queue names.
 - Built-in payloads are exact. Empty maintenance jobs accept only `{}`;
-  content jobs require exactly one actor (`userId` or `memberId`);
+  content jobs require a canonical `siteId` and exactly one actor (`userId` or
+  `memberId`);
   invalid digest cadences and unknown keys are errors.
 - Import pure client-safe types and parsers from
   `@nexpress/core/jobs-contract`. Server queue and handler functions remain in

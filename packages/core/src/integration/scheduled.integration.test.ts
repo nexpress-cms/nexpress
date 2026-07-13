@@ -7,7 +7,10 @@ import type { NpAuthUser } from "../config/types.js";
 import { npUsers } from "../db/schema/system.js";
 import { publishScheduledDocuments } from "../collections/scheduled.js";
 import { saveDocument } from "../collections/pipeline.js";
+import { setJobQueue } from "../jobs/queue.js";
 import { loadPlugins, resetPlugins } from "../plugins/host.js";
+import { getCurrentSiteId, withCurrentSite } from "../sites/context.js";
+import { createSite } from "../sites/registry.js";
 import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } from "./setup.js";
 import { categoriesTable, pagesTable, postsTable, registerTestCollections } from "./fixtures.js";
 
@@ -20,6 +23,7 @@ describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () 
   beforeEach(async () => {
     await truncateAll();
     resetPlugins();
+    setJobQueue(null);
   });
 
   afterAll(async () => {
@@ -197,9 +201,13 @@ describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () 
     expect(row.status).toBe("published");
   });
 
-  it("fires content:afterUpdate, afterPublish hooks with the full doc", async () => {
-    const afterUpdate = vi.fn();
-    const afterPublish = vi.fn();
+  it("fires hooks and enqueues follow-up work in the document's site scope", async () => {
+    const afterUpdate = vi.fn(async () => {
+      expect(await getCurrentSiteId()).toBe("tenant-a");
+    });
+    const afterPublish = vi.fn(async () => {
+      expect(await getCurrentSiteId()).toBe("tenant-a");
+    });
     await loadPlugins([
       {
         manifest: {
@@ -215,9 +223,18 @@ describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () 
     ]);
 
     const user = await seedUser();
+    await createSite({ id: "tenant-a", name: "Tenant A" });
     const past = new Date(Date.now() - 60 * 1000);
-    const due = await saveDocument("posts", null, { ...baseDoc, publishedAt: past }, user, {
-      status: "scheduled",
+    const due = await withCurrentSite("tenant-a", () =>
+      saveDocument("posts", null, { ...baseDoc, publishedAt: past }, user, {
+        status: "scheduled",
+      }),
+    );
+    const enqueue = vi.fn().mockResolvedValue("job-1");
+    setJobQueue({
+      enqueue,
+      start: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
     });
 
     await publishScheduledDocuments();
@@ -235,6 +252,15 @@ describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () 
     expect(afterPublishArgs.data.originalDocument).toBeNull();
     expect(afterPublishArgs.data.source).toBe("scheduler");
     expect(afterPublishArgs.data.principal).toBeNull();
+    expect(enqueue).toHaveBeenCalledWith("content:afterSave", {
+      siteId: "tenant-a",
+      collection: "posts",
+      documentId: due.doc.id,
+      operation: "update",
+      userId: "scheduler",
+      memberId: null,
+    });
+    expect(await getCurrentSiteId()).toBeNull();
   });
 
   it("is idempotent — second run finds nothing", async () => {

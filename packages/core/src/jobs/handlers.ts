@@ -6,10 +6,16 @@ import {
   type NpJobPayload,
   type NpJobType,
 } from "../jobs-contract/index.js";
+import { npIsCanonicalSiteId } from "../sites/id-contract.js";
+import { withCurrentSite } from "../sites/context.js";
 
 export type NpJobPayloadParser<TPayload extends object = NpJobData> = (data: NpJobData) => TPayload;
 
 export type NpJobHandler<TPayload extends object = NpJobData> = (data: TPayload) => Promise<void>;
+
+export type NpJobSiteIdResolver<TPayload extends object = NpJobData> = (
+  data: TPayload,
+) => string | null;
 
 export interface NpJobHandlerOptions<TPayload extends object = NpJobData> {
   /**
@@ -18,6 +24,12 @@ export interface NpJobHandlerOptions<TPayload extends object = NpJobData> {
    * job types always use the framework parser first.
    */
   parsePayload?: NpJobPayloadParser<TPayload>;
+  /**
+   * Optional projection that pins the complete handler dispatch to a site
+   * execution scope. The payload must carry a canonical site id; returning
+   * `null` deliberately leaves the handler in its ambient/global context.
+   */
+  resolveSiteId?: NpJobSiteIdResolver<TPayload>;
 }
 
 interface NpJobHandlerRegistration {
@@ -25,6 +37,7 @@ interface NpJobHandlerRegistration {
   parsePayload(data: unknown): NpJobData;
   sourceHandler: NpJobHandler<object>;
   sourceParser: NpJobPayloadParser<object> | undefined;
+  sourceSiteIdResolver: NpJobSiteIdResolver<object> | undefined;
 }
 
 const registrations = new Map<NpJobType, NpJobHandlerRegistration>();
@@ -35,7 +48,9 @@ export function registerJobHandler<
 >(type: TType, handler: NpJobHandler<TPayload>, options: NpJobHandlerOptions<TPayload> = {}): void {
   const canonicalType = npRequireJobType(type);
   if (!isExactHandlerOptions(options)) {
-    throw new Error(`Job handler options for "${canonicalType}" must contain only parsePayload.`);
+    throw new Error(
+      `Job handler options for "${canonicalType}" must contain only parsePayload and resolveSiteId.`,
+    );
   }
   if (typeof handler !== "function") {
     throw new Error(`Job handler for "${canonicalType}" must be a function.`);
@@ -43,9 +58,16 @@ export function registerJobHandler<
   if (options.parsePayload !== undefined && typeof options.parsePayload !== "function") {
     throw new Error(`Payload parser for "${canonicalType}" must be a function.`);
   }
+  if (options.resolveSiteId !== undefined && typeof options.resolveSiteId !== "function") {
+    throw new Error(`Site id resolver for "${canonicalType}" must be a function.`);
+  }
   const existing = registrations.get(canonicalType);
   if (existing) {
-    if (existing.sourceHandler === handler && existing.sourceParser === options.parsePayload)
+    if (
+      existing.sourceHandler === handler &&
+      existing.sourceParser === options.parsePayload &&
+      existing.sourceSiteIdResolver === options.resolveSiteId
+    )
       return;
     throw new Error(`Job handler "${canonicalType}" is already registered.`);
   }
@@ -57,16 +79,30 @@ export function registerJobHandler<
       : frameworkPayload;
   };
   const wrapped: NpJobHandler = async (data) => {
-    const result = await handler(parsePayload(data) as TPayload);
-    if (result !== undefined) {
-      throw new Error(`Job handler "${canonicalType}" must resolve to void.`);
+    const payload = parsePayload(data) as TPayload;
+    const dispatch = async (): Promise<void> => {
+      const result = await handler(payload);
+      if (result !== undefined) {
+        throw new Error(`Job handler "${canonicalType}" must resolve to void.`);
+      }
+    };
+    if (!options.resolveSiteId) return dispatch();
+
+    const siteId = options.resolveSiteId(payload);
+    if (siteId === null) return dispatch();
+    if (!npIsCanonicalSiteId(siteId)) {
+      throw new Error(
+        `Site id resolver for job handler "${canonicalType}" must return a canonical site id or null.`,
+      );
     }
+    return withCurrentSite(siteId, dispatch);
   };
   registrations.set(canonicalType, {
     handler: wrapped,
     parsePayload,
     sourceHandler: handler as NpJobHandler<object>,
     sourceParser: options.parsePayload,
+    sourceSiteIdResolver: options.resolveSiteId,
   });
 }
 
@@ -75,7 +111,7 @@ function isExactHandlerOptions(value: unknown): value is NpJobHandlerOptions<obj
   const prototype = Object.getPrototypeOf(value) as unknown;
   if (prototype !== Object.prototype && prototype !== null) return false;
   for (const key of Reflect.ownKeys(value)) {
-    if (key !== "parsePayload") return false;
+    if (key !== "parsePayload" && key !== "resolveSiteId") return false;
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (!descriptor?.enumerable || !("value" in descriptor)) return false;
   }

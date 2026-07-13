@@ -110,6 +110,37 @@ hostnames pointing at the same site are not supported in
 v15 (one row, one hostname); add a redirect at your CDN /
 reverse proxy if you need apex + www.
 
+### Execution context
+
+The Next adapter installs a process-level fallback resolver that reads the
+current request headers. Explicit application, CLI, test, and worker work uses
+`withCurrentSite(siteId, callback)`, which takes precedence over that fallback
+and stores the site in Node's `AsyncLocalStorage`.
+
+Async-local scopes are isolated across concurrent requests, restore the outer
+site after nested calls, and follow async resources created inside the
+callback. Resetting the fallback resolver does not erase active scopes. Site
+ids from either source must use the canonical lowercase
+`^[a-z][a-z0-9-]{0,62}$` contract; malformed values fail instead of selecting
+the default tenant.
+
+```ts
+import { withCurrentSite } from "@nexpress/core";
+
+await Promise.all([
+  withCurrentSite("tenant-a", () => rebuildSiteIndex()),
+  withCurrentSite("tenant-b", () => rebuildSiteIndex()),
+]);
+```
+
+An async-local scope cannot cross a durable queue boundary: a pg-boss worker
+claim is a new execution graph, potentially in another process. Site-aware
+jobs therefore persist `siteId` in their exact payload and register a
+`resolveSiteId` projection. The handler registry validates the payload again,
+then wraps the entire dispatch in the resolved site scope. NexPress does this
+for `content:afterSave` and `content:afterDelete`; scheduled publishing also
+runs each document's hooks and follow-up job in that document's site.
+
 ---
 
 ## 4. Collection Scoping
@@ -234,10 +265,10 @@ that's the bootstrap path for the first promotion.
 
 ## 9. Operational Notes
 
-**Site context cookie + load balancers**: the
-`np-admin-site` cookie is HttpOnly and tied to the request's
-session. It works correctly across load-balanced workers
-because the resolver reads it on every request — there's no
+**Site context cookie + load balancers**: the `np-admin-site` cookie is
+HttpOnly and tied to the request's session. It works correctly across
+load-balanced workers because the fallback resolver reads it on every request
+and async-local execution state is never shared between processes — there's no
 sticky-session requirement.
 
 **Logout cookie hygiene**: `/api/auth/logout` clears

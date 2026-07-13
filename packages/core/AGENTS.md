@@ -17,6 +17,7 @@ src/
 ├── storage/      # LocalStorageAdapter, S3StorageAdapter, createStorageAdapter factory
 ├── jobs/         # pg-boss queue abstraction, handler registry, worker lifecycle, builtin handlers
 ├── jobs-contract/ # client-safe names, payloads, persisted rows, schedules, and Admin wire parsers
+├── sites/        # canonical site ids, async-local execution context, registry, memberships
 ├── plugins/      # Plugin host: registry, runHook, route dispatch, capability enforcement
 ├── theme/        # Token types, defaults, sanitizeTokenValue
 ├── errors.ts     # NpError hierarchy (Forbidden/NotFound/Validation/Auth/Conflict)
@@ -46,7 +47,7 @@ src/
 | Change JWT/password logic   | `auth/token.ts`, `auth/password.ts`           | jose for JWT, @node-rs/argon2 for passwords                        |
 | Add session features        | `auth/session.ts`                             | `verifyTokenFull`, `invalidateAllSessions`, tokenVersion checks    |
 | Change media processing     | `media/processor.ts`                          | sharp-based, `DEFAULT_IMAGE_SIZES` for variants                    |
-| Add job handler             | `jobs/handlers.ts`, `jobs-contract/`          | `registerJobHandler(name, fn, { parsePayload })`                   |
+| Add job handler             | `jobs/handlers.ts`, `jobs-contract/`          | `{ parsePayload, resolveSiteId }`; site ids live in exact payloads |
 | Add plugin capabilities     | `plugins/host.ts` + `plugin-sdk/src/types.ts` | Hook capability = `hooks:<namespace>` prefix matching              |
 | Add error type              | `errors.ts`                                   | Extend `NpError` with code + statusCode                            |
 
@@ -60,6 +61,7 @@ media        ──→ imports storage, jobs/queue, db/schema
 content      ──→ imports collections (getDb, findDocuments), theme
 plugins/host ──→ dynamic import of jobs/queue (avoids static cycle)
 jobs/builtin ──→ uses configureBuiltinJobContext indirection (avoids importing collections)
+jobs/handlers ──→ sites/context (optional payload-derived async-local dispatch scope)
 ```
 
 No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugins/host`, `configureBuiltinJobContext` indirection in `jobs/builtin-handlers`, and per-subsystem singletons.
@@ -74,4 +76,5 @@ No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugi
 
 - **Never import index.ts from internal modules** — barrel is for external consumers only. Internal imports use relative paths (`../jobs/queue.js`).
 - **Never add static imports between jobs and collections/plugins** — use the existing indirection patterns (dynamic import, builtinJobContext).
+- **Never rely on ambient request state in a durable job** — persist `siteId`, validate it in the payload parser, and register `resolveSiteId`; async-local state cannot cross a queue/process boundary.
 - **Never call getDb()/getMediaDb()/getStorageAdapter() before the app has called the corresponding setter** — will throw at runtime.

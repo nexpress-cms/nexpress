@@ -30,9 +30,9 @@ import { NpValidationError } from "../errors.js";
 import {
   DEFAULT_SITE_RUNTIME_SETTINGS,
   npAssertSiteRecord,
+  npIsCanonicalSiteId,
   npNormalizeSiteGeneralSettings,
   npNormalizeSiteRuntimeSettings,
-  npSiteIdPattern,
 } from "../settings/contract.js";
 import type { NpSiteRecord, NpSiteRuntimeSettings } from "../settings/types.js";
 
@@ -165,7 +165,7 @@ export interface CreateSiteInput {
 }
 
 export async function createSite(input: CreateSiteInput): Promise<NpSite> {
-  if (!new RegExp(npSiteIdPattern, "u").test(input.id)) {
+  if (!npIsCanonicalSiteId(input.id)) {
     throw new NpValidationError("Invalid input", [
       {
         field: "id",

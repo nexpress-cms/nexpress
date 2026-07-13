@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-13 (background jobs now share one extensible,
+**Last refreshed:** 2026-07-13 (site execution now uses one canonical id and
+async-local scope across concurrent/nested requests, scripts, scheduled
+publishing, and payload-derived background job dispatch.)
+
+**Earlier:** 2026-07-13 (background jobs now share one extensible,
 fail-closed runtime contract across enqueue/dispatch, built-in payloads,
 pg-boss rows and schedules, worker/log persistence, Admin/API wire shapes,
 ops, scaffold guidance, and doctor diagnostics.)
@@ -384,7 +388,7 @@ Author and operator reference: `docs/media.md`.
 
 ### Jobs
 
-`pg-boss`-backed queue. Handlers register via `registerJobHandler(name, fn, { parsePayload })`; custom names use canonical `namespace:action` syntax and their parser runs before enqueue and again before dispatch. Built-in names have exact payload contracts, while all jobs use bounded plain JSON data. The pure contract is exported from `@nexpress/core/jobs-contract`; server queue/handler APIs remain in `@nexpress/core/jobs`. The worker is started by the app (not by core) via `startWorker()`.
+`pg-boss`-backed queue. Handlers register via `registerJobHandler(name, fn, { parsePayload, resolveSiteId })`; custom names use canonical `namespace:action` syntax and their parser runs before enqueue and again before dispatch. `resolveSiteId` is an additive payload projection that wraps the complete dispatch in the async-local site scope. Built-in names have exact payload contracts, while all jobs use bounded plain JSON data. The pure contract is exported from `@nexpress/core/jobs-contract`; server queue/handler APIs remain in `@nexpress/core/jobs`. The worker is started by the app (not by core) via `startWorker()`.
 
 Job summaries, schedules, worker heartbeats, logs, pause state, Admin responses,
 ops output, and doctor inspection share the same fail-closed parser inventory.
@@ -452,7 +456,7 @@ A separate package (not part of `@nexpress/core`) that ingests a WXR export end-
 - **Never suppress type errors** — no `as any`, `@ts-ignore`, `@ts-expect-error`. A few `as never` casts exist in admin field editors and plugin host — minimize, don't add more.
 - **Never create parallel DB connections** — call `ensureFor(...)` (or rely on the routes that do) and read from the `getDb()` singleton. One pool per process.
 - **Never run `pnpm db:generate` without reviewing output** — destructive schema changes are not auto-applied.
-- **Never assume `withCurrentSite` covers fire-and-forget async work** (#320) — it restores the previous resolver as soon as the callback returns, so any pending `void someAsyncFn()` or already-enqueued pg-boss handler runs with the OUTER site context (typically `null` in a worker). Stamp `siteId` onto job payloads at enqueue time and have the handler wrap its own work in `withCurrentSite(payload.siteId, ...)`.
+- **Never assume `withCurrentSite` crosses a durable queue/process boundary** — its `AsyncLocalStorage` scope safely follows concurrent, nested, awaited, and callback-created async resources in one execution graph. A later pg-boss claim is a different graph, so stamp `siteId` onto the exact payload and register `resolveSiteId` to scope the complete handler dispatch.
 
 ## STABILITY (v0.1)
 
