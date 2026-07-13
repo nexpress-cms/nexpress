@@ -7,7 +7,8 @@ import { getDb } from "@/lib/bootstrap";
 
 const auth = createAuthHelpers({ getDb });
 
-export const { getAuthRuntimeConfig, setAuthCookies, clearAuthCookies } = auth;
+export const { getAuthRuntimeConfig, revokeCurrentAuthSession, setAuthCookies, clearAuthCookies } =
+  auth;
 export const requireGlobalAuth = auth.requireAuth;
 
 /**

@@ -38,6 +38,11 @@
       "import": "./dist/auth.js",
       "default": "./dist/auth.js"
     },
+    "./auth-contract": {
+      "types": "./dist/auth-contract.d.ts",
+      "import": "./dist/auth-contract.js",
+      "default": "./dist/auth-contract.js"
+    },
     "./community": {
       "types": "./dist/community.d.ts",
       "import": "./dist/community.js",

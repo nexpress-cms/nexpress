@@ -1,9 +1,6 @@
-import {
-  type NpAuthUser,
-  type NpCollectionConfig,
-  type NpCollectionHook,
-  type NpHookPrincipal,
-} from "../config/types.js";
+import { type NpCollectionConfig, type NpCollectionHook } from "../config/types.js";
+import type { NpAuthUser } from "../auth-contract/types.js";
+import type { NpPrincipal as NpHookPrincipal } from "../auth/principal.js";
 import { getEmailAdapter } from "../email/service.js";
 import { buildInviteEmail, buildMemberVerifyEmail, buildResetEmail } from "../email/templates.js";
 import {

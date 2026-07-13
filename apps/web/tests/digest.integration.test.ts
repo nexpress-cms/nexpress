@@ -9,6 +9,7 @@ import {
   readJson,
   registerTestCollections,
   seedActiveMember as harnessSeedActiveMember,
+  seedUser,
   skipIfNoTestDb,
   truncateAll,
 } from "./harness.js";
@@ -27,9 +28,7 @@ function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = 
   return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
 }
 
-async function seedActiveMember(
-  handle: string,
-): Promise<{
+async function seedActiveMember(handle: string): Promise<{
   memberId: string;
   email: string;
   sessionCookie: string;
@@ -47,22 +46,13 @@ async function seedActiveMember(
 }
 
 async function seedStaffPostId(slug: string): Promise<string> {
-  const { hashPassword, npUsers, signToken } = await import("@nexpress/core");
-  const db = await getTestDb();
-  const password = await hashPassword("password12345");
-  const [user] = (await db
-    .insert(npUsers)
-    .values({ email: `staff-${slug}@example.com`, password, name: "Staff", role: "editor" })
-    .returning({
-      id: npUsers.id,
-      email: npUsers.email,
-      role: npUsers.role,
-      tokenVersion: npUsers.tokenVersion,
-    })) as Array<{ id: string; email: string; role: "editor"; tokenVersion: number }>;
-  const token = await signToken(
-    { id: user.id, role: user.role, tokenVersion: user.tokenVersion },
-    process.env.NP_SECRET!,
-  );
+  const user = await seedUser({
+    email: `staff-${slug}@example.com`,
+    password: "password12345",
+    name: "Staff",
+    role: "editor",
+  });
+  const token = user.accessToken;
   const csrf = "csrf-staff";
   const create = await collectionPOST(
     jsonRequest("/api/collections/posts", {
@@ -280,9 +270,8 @@ describe.skipIf(skipIfNoTestDb())("16.4 email digest (integration)", () => {
     // Two sites, two posts, one member opted-in receives unread
     // notifications on both. Expect two separate digest emails
     // (one per site), and `lastDigestAtBySite` carries both.
-    const { createSite, deleteSite, withCurrentSite, createNotification } = await import(
-      "@nexpress/core"
-    );
+    const { createSite, deleteSite, withCurrentSite, createNotification } =
+      await import("@nexpress/core");
     await createSite({ id: "site-218-a", name: "Alpha" });
     await createSite({ id: "site-218-b", name: "Bravo" });
 
@@ -290,7 +279,10 @@ describe.skipIf(skipIfNoTestDb())("16.4 email digest (integration)", () => {
     await prefsPUT(
       jsonRequest("/api/members/me/notification-prefs", {
         method: "PUT",
-        cookies: [`np-mb-session=${subscriber.sessionCookie}`, `np-mb-csrf=${subscriber.csrfCookie}`],
+        cookies: [
+          `np-mb-session=${subscriber.sessionCookie}`,
+          `np-mb-csrf=${subscriber.csrfCookie}`,
+        ],
         headers: { "x-csrf-token": subscriber.csrfCookie },
         body: JSON.stringify({ digest: "daily" }),
       }),

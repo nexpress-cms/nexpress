@@ -17,9 +17,9 @@
  * Profile returned from a successful `exchange()`. The framework uses
  * `providerUserId` as the durable identifier — `email` may change at the
  * provider but `providerUserId` should not. If the provider doesn't
- * surface `email`, the framework falls back to creating a synthetic
- * placeholder (`<providerUserId>@<provider>.oauth.local`) so the
- * `np_users.email NOT NULL UNIQUE` constraint is still satisfied.
+ * surface `email`, the framework falls back to a bounded hashed placeholder
+ * under `<provider>.oauth.local` so the `np_users.email NOT NULL UNIQUE`
+ * constraint is still satisfied without exposing the provider subject.
  */
 export interface OAuthProfile {
   /** Stable per-user id from the provider. Required. */

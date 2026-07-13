@@ -1,4 +1,4 @@
-import type { NpUserRole } from "../config/types.js";
+import type { NpUserRole } from "../auth-contract/types.js";
 
 export interface NpSiteRuntimeSettings {
   siteUrl: string | null;

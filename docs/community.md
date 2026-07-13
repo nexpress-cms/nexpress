@@ -70,7 +70,7 @@ Schema highlights (`np_members`):
 - `email` — unique, optionally `email_verified`
 - `password` — argon2 hashed, optional for SSO-only members
 - `display_name` / `avatar` / `bio`
-- `status` — `active`, `banned`, `deleted`
+- `status` — `active`, `pending`, `suspended`, `deleted`, `imported`
 - `reputation` — integer, mutated by `setReputationAdapter`
 
 Public profile renders at `/u/{handle}`. The site's
@@ -99,13 +99,16 @@ Tokens:
 
 - **Access JWT** (`np-mb-session`) — signed by `NP_SECRET`,
   short TTL.
-- **Refresh JWT** (`np-mb-refresh`) — long TTL, rotates per
-  refresh, persisted as `np_member_sessions` rows so logout
-  revokes immediately (Phase 9.7 closed #45 here — pure JWT
-  refresh would have left logout cosmetic).
+- **Refresh JWT** (`np-mb-refresh`) — long TTL. Access and refresh
+  hashes share one `np_member_sessions` row keyed by their common
+  session id. Refresh compare-and-swap rotates both hashes, and
+  logout deletes the pair using whichever live token remains available.
 - **CSRF** (`np-mb-csrf`) — separate from the staff
   `np-csrf` cookie so member tokens can't authorize admin
   writes and vice-versa.
+
+The exact claims, cookie paths, status gate, rotation behavior, and
+operator diagnostics are documented in [authentication.md](authentication.md).
 
 Public site UI (Phase 9.7g/h) covers register, login, verify,
 forgot-password, reset-password under `/members/...`. Sites

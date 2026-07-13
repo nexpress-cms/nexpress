@@ -345,7 +345,16 @@ export type {
   ResolveOAuthLoginResult,
   ResolvedOAuthUser,
 } from "./auth/oauth-resolve.js";
-export { sha256, verifyTokenFull, invalidateAllSessions } from "./auth/session.js";
+export {
+  createStaffSession,
+  sha256,
+  verifyTokenFull,
+  invalidateAllSessions,
+  replaceStaffPasswordAndInvalidateSessions,
+  revokeStaffSession,
+  rotateStaffSession,
+} from "./auth/session.js";
+export type { NpRotatedStaffSession, NpStaffSessionOptions } from "./auth/session.js";
 export {
   listUserIdentities,
   listMemberIdentities,
@@ -360,8 +369,19 @@ export {
 } from "./auth/reset-token.js";
 export { signMemberToken, verifyMemberToken } from "./auth/member-token.js";
 export type { NpMemberTokenPayload } from "./auth/member-token.js";
-export { getMemberFromTokenPayload, invalidateAllMemberSessions } from "./auth/member-session.js";
-export type { NpMemberAuthRow } from "./auth/member-session.js";
+export {
+  createMemberSession,
+  getMemberFromTokenPayload,
+  invalidateAllMemberSessions,
+  replaceMemberPasswordAndInvalidateSessions,
+  revokeMemberSession,
+  rotateMemberSession,
+} from "./auth/member-session.js";
+export type {
+  NpMemberAuthRow,
+  NpMemberSessionOptions,
+  NpRotatedMemberSession,
+} from "./auth/member-session.js";
 export {
   createMemberEmailVerifyToken,
   consumeMemberEmailVerifyToken,

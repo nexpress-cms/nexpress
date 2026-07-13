@@ -10,6 +10,7 @@ import { stdin, stdout } from "node:process";
 import { count, eq } from "drizzle-orm";
 
 import { createDbConnection, hashPassword, npUsers } from "@nexpress/core";
+import { npAuthContractLimits, npIsCanonicalAuthEmail } from "@nexpress/core/auth-contract";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -27,7 +28,10 @@ async function promptLine(question: string, options?: { mask?: boolean }): Promi
     stdout.write(question);
     stdin.resume();
     stdin.setEncoding("utf8");
-    if (typeof (stdin as NodeJS.ReadStream & { setRawMode?: (v: boolean) => void }).setRawMode === "function") {
+    if (
+      typeof (stdin as NodeJS.ReadStream & { setRawMode?: (v: boolean) => void }).setRawMode ===
+      "function"
+    ) {
       (stdin as NodeJS.ReadStream & { setRawMode: (v: boolean) => void }).setRawMode(true);
     }
 
@@ -36,7 +40,10 @@ async function promptLine(question: string, options?: { mask?: boolean }): Promi
       const onData = (chunk: string): void => {
         for (const ch of chunk) {
           if (ch === "\n" || ch === "\r" || ch === "\u0004") {
-            if (typeof (stdin as NodeJS.ReadStream & { setRawMode?: (v: boolean) => void }).setRawMode === "function") {
+            if (
+              typeof (stdin as NodeJS.ReadStream & { setRawMode?: (v: boolean) => void })
+                .setRawMode === "function"
+            ) {
               (stdin as NodeJS.ReadStream & { setRawMode: (v: boolean) => void }).setRawMode(false);
             }
             stdin.removeListener("data", onData);
@@ -69,10 +76,6 @@ async function promptLine(question: string, options?: { mask?: boolean }): Promi
   return answer;
 }
 
-function isValidEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
 async function main(): Promise<void> {
   // Only block when an admin already exists. Counting all users
   // misfires when the DB has non-admin rows (test fixtures, OAuth
@@ -95,10 +98,10 @@ async function main(): Promise<void> {
   const argPassword = process.argv[3] ?? process.env.NP_ADMIN_PASSWORD;
   const argName = process.argv[4] ?? process.env.NP_ADMIN_NAME ?? "Admin";
 
-  const email = argEmail ?? (await promptLine("Admin email: ")).trim();
+  const email = (argEmail ?? (await promptLine("Admin email: "))).trim().toLowerCase();
 
-  if (!isValidEmail(email)) {
-    console.error(`"${email}" is not a valid email address.`);
+  if (!npIsCanonicalAuthEmail(email)) {
+    console.error("Admin email is not a valid email address.");
     process.exit(1);
   }
 
@@ -108,12 +111,20 @@ async function main(): Promise<void> {
     password = (await promptLine("Admin password (min 12 chars): ", { mask: true })).trim();
   }
 
-  if (password.length < 12) {
-    console.error("Password must be at least 12 characters.");
+  if (password.length < 12 || password.length > npAuthContractLimits.passwordMaxLength) {
+    console.error(
+      `Password must contain 12 through ${npAuthContractLimits.passwordMaxLength.toString()} characters.`,
+    );
     process.exit(1);
   }
 
-  const name = argName;
+  const name = argName.trim() || "Admin";
+  if (name.length > npAuthContractLimits.nameLength) {
+    console.error(
+      `Admin name must not exceed ${npAuthContractLimits.nameLength.toString()} characters.`,
+    );
+    process.exit(1);
+  }
   const passwordHash = await hashPassword(password);
 
   const existingEmail = await db

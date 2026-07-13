@@ -16,7 +16,11 @@ import type {
   NpSiteWireRecord,
   NpUpdateSiteInput,
 } from "./types.js";
-import type { NpUserRole } from "../config/types.js";
+import {
+  npIsUserRole as npIsAuthUserRole,
+  npUserRoles,
+  type NpUserRole,
+} from "../auth-contract/index.js";
 import { npAnalyzeThemeTokensOverlay } from "../theme/contract.js";
 import { npValidateBlockContent } from "../fields/block-content.js";
 import { npAnalyzeJobsPauseState } from "../jobs-contract/contract.js";
@@ -24,13 +28,7 @@ import { NP_DEFAULT_SITE_ID, npIsCanonicalSiteId } from "../sites/id-contract.js
 
 export { NP_DEFAULT_SITE_ID, npIsCanonicalSiteId, npSiteIdPattern } from "../sites/id-contract.js";
 
-export const npUserRoles = [
-  "admin",
-  "editor",
-  "moderator",
-  "author",
-  "viewer",
-] as const satisfies readonly NpUserRole[];
+export { npUserRoles };
 export const npUserIdPattern =
   "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
 
@@ -107,7 +105,6 @@ const generalKeys = new Set(["name", "url", "description", "defaultLocale", "tim
 const seoKeys = new Set(["defaultOgImage", "twitterHandle", "defaultLocale"]);
 const snapshotKeys = new Set(["site", "seo"]);
 const userIdPattern = new RegExp(npUserIdPattern, "u");
-const userRoles = new Set<string>(npUserRoles);
 
 function issue(
   code: NpSettingContractIssue["code"],
@@ -229,7 +226,7 @@ export function npNormalizeSiteHostHeader(value: unknown): string {
 }
 
 export function npIsUserRole(value: unknown): value is NpUserRole {
-  return typeof value === "string" && userRoles.has(value);
+  return npIsAuthUserRole(value);
 }
 
 export function npIsCanonicalUserId(value: unknown): value is string {

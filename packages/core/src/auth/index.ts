@@ -29,8 +29,19 @@ export type {
   NpIssuedMemberToken,
   NpMemberResetRequestResult,
 } from "./member-credentials.js";
-export { getMemberFromTokenPayload, invalidateAllMemberSessions } from "./member-session.js";
-export type { NpMemberAuthRow } from "./member-session.js";
+export {
+  createMemberSession,
+  getMemberFromTokenPayload,
+  invalidateAllMemberSessions,
+  replaceMemberPasswordAndInvalidateSessions,
+  revokeMemberSession,
+  rotateMemberSession,
+} from "./member-session.js";
+export type {
+  NpMemberAuthRow,
+  NpMemberSessionOptions,
+  NpRotatedMemberSession,
+} from "./member-session.js";
 export { signMemberToken, verifyMemberToken } from "./member-token.js";
 export type { NpMemberTokenPayload } from "./member-token.js";
 export { fromArctic } from "./oauth-arctic.js";
@@ -79,8 +90,34 @@ export type {
   NpPasswordResetPurpose,
   NpResetRequestResult,
 } from "./reset-token.js";
-export { invalidateAllSessions, sha256, verifyTokenFull } from "./session.js";
+export {
+  createStaffSession,
+  invalidateAllSessions,
+  replaceStaffPasswordAndInvalidateSessions,
+  revokeStaffSession,
+  rotateStaffSession,
+  sha256,
+  verifyTokenFull,
+} from "./session.js";
+export type { NpRotatedStaffSession, NpStaffSessionOptions } from "./session.js";
 export { isTokenVerificationError, signToken, verifyToken } from "./token.js";
 export type { NpTokenPayload } from "./token.js";
 export { getUserById } from "./users.js";
 export type { NpUserBasic } from "./users.js";
+export type {
+  NpAuthSessionTokens,
+  NpAuthTokenAudience,
+  NpAuthTokenUse,
+  NpAuthUser,
+  NpMemberAuthUser,
+  NpMemberSelf,
+  NpMemberSessionRecord,
+  NpMemberSessionUser,
+  NpMemberStatus,
+  NpStaffSessionRecord,
+  NpStaffSessionUser,
+  NpStaffInviteResult,
+  NpStaffUserItem,
+  NpStaffUserList,
+  NpUserRole,
+} from "../auth-contract/index.js";

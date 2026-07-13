@@ -4,29 +4,46 @@ import {
   hashPassword,
   npUsers,
   runHook,
-  type NpUserRole,
   can,
 } from "@nexpress/core";
+import {
+  npAuthContractLimits,
+  npIsCanonicalAuthEmail,
+  npIsAuthNewPassword,
+  npIsUserRole,
+  npRequireStaffUserItem,
+  npRequireStaffUserList,
+  npUserRoles,
+} from "@nexpress/core/auth-contract";
 import { asc, count, ilike, or } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { requireAuth, requireGlobalAuth } from "../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
+import { parseBodyRecord } from "../../lib/collection-helpers";
 import { getDb } from "../../lib/db";
 import { ensureFor } from "../../lib/init-core";
 
-const VALID_ROLES: readonly NpUserRole[] = ["admin", "editor", "moderator", "author", "viewer"];
-
 function parsePositiveInt(value: string | null, fallback: number, max: number): number {
   if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return Math.min(parsed, max);
+  if (!/^[1-9]\d*$/u.test(value)) {
+    throw new NpValidationError("Invalid input", [
+      { field: "query", message: "Pagination values must be positive integers" },
+    ]);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed > max) {
+    throw new NpValidationError("Invalid input", [
+      { field: "query", message: `Pagination value must not exceed ${max.toString()}` },
+    ]);
+  }
+  return parsed;
 }
 
 export async function GET(request: NextRequest) {
   try {
+    await ensureFor("read");
     const user = await requireAuth(request);
 
     if (!can(user, "content.publish")) {
@@ -69,8 +86,12 @@ export async function GET(request: NextRequest) {
     const totalDocs = Number(totalResult[0]?.total ?? 0);
     const totalPages = totalDocs === 0 ? 0 : Math.ceil(totalDocs / limit);
 
-    return npSuccessResponse({
-      docs,
+    const result = npRequireStaffUserList({
+      docs: docs.map((row) => ({
+        ...row,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      })),
       totalDocs,
       totalPages,
       page,
@@ -78,6 +99,7 @@ export async function GET(request: NextRequest) {
       hasNextPage: page < totalPages,
       hasPrevPage: page > 1 && totalDocs > 0,
     });
+    return npSuccessResponse(result);
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
@@ -85,30 +107,43 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureFor("write");
     const user = await requireGlobalAuth(request);
 
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("users", "create");
     }
 
-    const body = (await readJsonBody(request)) as Record<string, unknown>;
+    const body = parseBodyRecord(await readJsonBody(request));
+    const unknownField = Object.keys(body).find(
+      (key) => !["email", "name", "password", "role"].includes(key),
+    );
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const password = typeof body.password === "string" ? body.password : "";
-    const role = typeof body.role === "string" ? (body.role as NpUserRole) : "author";
+    const role = body.role;
 
     const errors: Array<{ field: string; message: string }> = [];
-    if (!email || !email.includes("@")) {
+    if (unknownField) {
+      errors.push({ field: unknownField, message: "Unsupported user field" });
+    }
+    if (!npIsCanonicalAuthEmail(email)) {
       errors.push({ field: "email", message: "Valid email is required" });
     }
-    if (!name) {
-      errors.push({ field: "name", message: "Name is required" });
+    if (!name || name.length > npAuthContractLimits.nameLength) {
+      errors.push({
+        field: "name",
+        message: `Name must contain 1 through ${npAuthContractLimits.nameLength.toString()} characters`,
+      });
     }
-    if (password.length < 8) {
-      errors.push({ field: "password", message: "Password must be at least 8 characters" });
+    if (!npIsAuthNewPassword(password)) {
+      errors.push({
+        field: "password",
+        message: `Password must contain ${npAuthContractLimits.passwordMinLength.toString()} through ${npAuthContractLimits.passwordMaxLength.toString()} characters`,
+      });
     }
-    if (!VALID_ROLES.includes(role)) {
-      errors.push({ field: "role", message: `Role must be one of: ${VALID_ROLES.join(", ")}` });
+    if (!npIsUserRole(role)) {
+      errors.push({ field: "role", message: `Role must be one of: ${npUserRoles.join(", ")}` });
     }
     if (errors.length > 0) {
       throw new NpValidationError("Invalid input", errors);
@@ -123,19 +158,19 @@ export async function POST(request: NextRequest) {
         email,
         name,
         password: hashed,
-        role,
+        role: npIsUserRole(role) ? role : "author",
       })
       .returning({
         id: npUsers.id,
         email: npUsers.email,
         name: npUsers.name,
         role: npUsers.role,
+        avatar: npUsers.avatar,
         createdAt: npUsers.createdAt,
         updatedAt: npUsers.updatedAt,
       });
 
     if (created) {
-      await ensureFor("plugins");
       await runHook("auth:afterRegister", {
         user: {
           id: created.id,
@@ -146,7 +181,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return npSuccessResponse(created, { status: 201 });
+    if (!created) throw new Error("Failed to create user");
+    return npSuccessResponse(
+      npRequireStaffUserItem({
+        ...created,
+        createdAt: created.createdAt.toISOString(),
+        updatedAt: created.updatedAt.toISOString(),
+      }),
+      { status: 201 },
+    );
   } catch (error) {
     if (
       error instanceof Error &&

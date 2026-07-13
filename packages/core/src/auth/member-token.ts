@@ -1,6 +1,12 @@
-import { randomBytes } from "node:crypto";
-import { jwtVerify, SignJWT, type JWTPayload } from "jose";
+import { randomBytes, randomUUID } from "node:crypto";
+import { jwtVerify, SignJWT } from "jose";
 
+import {
+  npRequireMemberTokenPayload,
+  npRequireAuthSecret,
+  type NpAuthTokenUse,
+  type NpMemberTokenPayload,
+} from "../auth-contract/index.js";
 import { NpAuthError } from "../errors.js";
 
 /**
@@ -25,22 +31,8 @@ import { NpAuthError } from "../errors.js";
  * bearer access token because both kinds were stored as fungible
  * rows in `np_member_sessions` with no row-level kind column.
  */
-export type NpMemberTokenUse = "access" | "refresh";
-
-export interface NpMemberTokenPayload {
-  sub: string;
-  aud: "member";
-  ver: number;
-  /** Required. `verifyMemberToken` refuses tokens missing this claim
-   *  so legacy refresh JWTs from before #92 cannot be smuggled into
-   *  the session cookie path (#91 reopen). */
-  use: NpMemberTokenUse;
-  /** Optional only for the deploy window; new tokens always carry
-   *  one. */
-  jti?: string;
-  iat: number;
-  exp: number;
-}
+export type NpMemberTokenUse = NpAuthTokenUse;
+export type { NpMemberTokenPayload };
 
 const textEncoder = new TextEncoder();
 const MEMBER_AUDIENCE = "member";
@@ -50,14 +42,30 @@ export async function signMemberToken(
   secret: string,
   expirationSeconds: number = 7200,
   tokenUse: NpMemberTokenUse = "access",
+  sessionId: string = randomUUID(),
 ): Promise<string> {
-  const secretKey = textEncoder.encode(secret);
-  return new SignJWT({ sub: member.id, ver: member.tokenVersion, use: tokenUse })
+  if (!Number.isSafeInteger(expirationSeconds) || expirationSeconds <= 0) {
+    throw new Error("Member token expiration must be a positive integer number of seconds.");
+  }
+  const secretKey = textEncoder.encode(npRequireAuthSecret(secret));
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const payload = npRequireMemberTokenPayload({
+    sub: member.id,
+    aud: MEMBER_AUDIENCE,
+    ver: member.tokenVersion,
+    use: tokenUse,
+    sid: sessionId,
+    jti: randomBytes(16).toString("base64url"),
+    iat: issuedAt,
+    exp: issuedAt + expirationSeconds,
+  });
+  return new SignJWT({ ver: payload.ver, use: payload.use, sid: payload.sid })
     .setProtectedHeader({ alg: "HS256" })
-    .setAudience(MEMBER_AUDIENCE)
-    .setJti(randomBytes(16).toString("base64url"))
-    .setIssuedAt()
-    .setExpirationTime(Math.floor(Date.now() / 1000) + expirationSeconds)
+    .setSubject(payload.sub)
+    .setAudience(payload.aud)
+    .setJti(payload.jti)
+    .setIssuedAt(payload.iat)
+    .setExpirationTime(payload.exp)
     .sign(secretKey);
 }
 
@@ -68,42 +76,30 @@ export async function signMemberToken(
  * as a session cookie and how the refresh route rejects an access
  * token as a refresh trigger.
  *
- * Tokens minted before the `use` claim landed have NO `use` payload
- * field. We refuse those outright rather than treating them as
- * `access` — the prior fallback let still-live legacy refresh JWTs
- * (already persisted in `np_member_sessions` per #45's fix) be
- * smuggled into the session cookie and pass the access check (#91
- * reopen). The cost: members logged in before this deploy must log
- * in once. That's bounded by the access-token TTL (default 2h);
- * legacy session rows that don't match a new login age out via
- * `expiresAt` within 7 days regardless.
+ * Tokens minted before the exact auth contract have no `use`, `aud`,
+ * or `sid` claim. We refuse them outright rather than inferring claims;
+ * migration removes their legacy rows and requires one fresh login.
  */
 export async function verifyMemberToken(
   token: string,
   secret: string,
   expectedUse?: NpMemberTokenUse,
 ): Promise<NpMemberTokenPayload> {
-  const secretKey = textEncoder.encode(secret);
-  const { payload } = await jwtVerify(token, secretKey, { audience: MEMBER_AUDIENCE });
-  // jwtVerify already validated `aud === MEMBER_AUDIENCE`; cast through
-  // JWTPayload to lock in the fields we know land on member tokens.
-  const typed = payload as JWTPayload & {
-    sub: string;
-    ver: number;
-    iat: number;
-    exp: number;
-    use?: NpMemberTokenUse;
-  };
-  if (typed.use !== "access" && typed.use !== "refresh") {
-    throw new NpAuthError("Member token missing `use` claim");
+  const secretKey = textEncoder.encode(npRequireAuthSecret(secret));
+  const { payload } = await jwtVerify(token, secretKey, {
+    algorithms: ["HS256"],
+    audience: MEMBER_AUDIENCE,
+  });
+  let typed: NpMemberTokenPayload;
+  try {
+    typed = npRequireMemberTokenPayload(payload);
+  } catch (error) {
+    throw new NpAuthError(error instanceof Error ? error.message : "Invalid member token claims");
   }
-  const use: NpMemberTokenUse = typed.use;
-  if (expectedUse && use !== expectedUse) {
+  if (expectedUse && typed.use !== expectedUse) {
     // Throw `NpAuthError` so the response mapper emits 401 instead of
     // a plain 500 — this is an auth failure, not a server failure.
-    throw new NpAuthError(
-      `Member token use mismatch: expected ${expectedUse}, got ${use}`,
-    );
+    throw new NpAuthError(`Member token use mismatch: expected ${expectedUse}, got ${typed.use}`);
   }
-  return { ...typed, aud: MEMBER_AUDIENCE, use };
+  return typed;
 }

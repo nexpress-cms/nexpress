@@ -6,6 +6,7 @@
  */
 
 import { npNormalizeSiteGeneralSettings } from "@nexpress/core/settings";
+import { npAuthContractLimits, npIsCanonicalAuthEmail } from "@nexpress/core/auth-contract";
 
 export interface SetupBody {
   databaseUrl: string;
@@ -112,7 +113,8 @@ export function validateBody(raw: Partial<SetupBody>): { body: SetupBody } | { e
     }
   }
 
-  const adminEmail = raw.adminEmail?.trim() || undefined;
+  const adminEmail = raw.adminEmail?.trim().toLowerCase() || undefined;
+  const adminName = raw.adminName?.trim() || undefined;
   const adminPassword =
     typeof raw.adminPassword === "string" && raw.adminPassword.length > 0
       ? raw.adminPassword
@@ -121,16 +123,24 @@ export function validateBody(raw: Partial<SetupBody>): { body: SetupBody } | { e
     raw.requireFirstAdmin === true || Boolean(adminEmail) || Boolean(adminPassword);
 
   if (wantsFirstAdmin) {
-    if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+    if (!adminEmail || !npIsCanonicalAuthEmail(adminEmail)) {
       return {
         error:
           "Admin email is required when completing first-boot setup now. Leave the first-admin fields blank to continue in /admin/setup.",
       };
     }
-    if (!adminPassword || adminPassword.length < 12) {
+    if (
+      !adminPassword ||
+      adminPassword.length < 12 ||
+      adminPassword.length > npAuthContractLimits.passwordMaxLength
+    ) {
       return {
-        error:
-          "Admin password must be at least 12 characters when completing first-boot setup now.",
+        error: `Admin password must contain 12 through ${npAuthContractLimits.passwordMaxLength.toString()} characters when completing first-boot setup now.`,
+      };
+    }
+    if (adminName && adminName.length > npAuthContractLimits.nameLength) {
+      return {
+        error: `Admin name must not exceed ${npAuthContractLimits.nameLength.toString()} characters.`,
       };
     }
   }
@@ -148,7 +158,7 @@ export function validateBody(raw: Partial<SetupBody>): { body: SetupBody } | { e
       runMigrate: raw.runMigrate !== false,
       ...(adminEmail ? { adminEmail } : {}),
       ...(adminPassword ? { adminPassword } : {}),
-      ...(raw.adminName?.trim() ? { adminName: raw.adminName.trim() } : {}),
+      ...(adminName ? { adminName } : {}),
       ...(raw.adminThemeId?.trim() ? { adminThemeId: raw.adminThemeId.trim() } : {}),
       ...(raw.siteName?.trim() ? { siteName: canonicalSite.name } : {}),
       ...(canonicalSite.defaultLocale ? { defaultLocale: canonicalSite.defaultLocale } : {}),

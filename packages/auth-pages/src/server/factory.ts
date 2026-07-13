@@ -7,27 +7,36 @@ import {
   consumeMemberEmailVerifyToken,
   consumeMemberPasswordReset,
   createMemberEmailVerifyToken,
+  createMemberSession,
   enqueueJob,
   getCommunitySettings,
   getLogger,
-  getMemberFromTokenPayload,
   getOAuthProvider,
   hashPassword,
   invalidateAllMemberSessions,
   issueOAuthState,
   npMembers,
-  npMemberSessions,
   oauthProviderSupportsAudience,
   requestMemberPasswordReset,
+  replaceMemberPasswordAndInvalidateSessions,
   resolveMemberOAuthLogin,
-  sha256,
-  signMemberToken,
-  verifyMemberToken,
+  rotateMemberSession,
   verifyOAuthState,
   verifyPassword,
 } from "@nexpress/core";
+import {
+  npAuthContractLimits,
+  npIsAuthSingleUseToken,
+  npIsAuthNewPassword,
+  npIsAuthPasswordCandidate,
+  npIsCanonicalAuthEmail,
+  npIsCanonicalAuthId,
+  npIsCanonicalMemberHandle,
+  npRequireMemberSelf,
+  npRequireMemberSessionUser,
+} from "@nexpress/core/auth-contract";
 import { npErrorResponse, npSuccessResponse, readJsonBody } from "@nexpress/next";
-import { and, eq, gt, inArray, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -48,28 +57,28 @@ function asDb(handle: unknown): AnyDb {
   return handle as AnyDb;
 }
 
-const HANDLE_RE = /^[a-z0-9][a-z0-9_-]{2,29}$/;
 const STATE_COOKIE = "np-mb-oauth-state";
-const STATE_COOKIE_MAX_AGE = 600;
-
 const DEFAULTS = {
-  login: { maxAttempts: 5, lockoutDurationMs: 15 * 60_000 },
-  register: { minPasswordLength: 8 },
-  resetPassword: { minPasswordLength: 8 },
   emailVerify: { tokenTtlMs: 24 * 60 * 60_000 },
   forgotPassword: { tokenTtlMs: 60 * 60_000 },
   oauth: { successRedirect: "/", failureRedirect: "/members/login" },
 } as const;
 
 function resolved(o: MemberAuthRoutesOptions = {}) {
-  return {
-    login: { ...DEFAULTS.login, ...o.login },
-    register: { ...DEFAULTS.register, ...o.register },
-    resetPassword: { ...DEFAULTS.resetPassword, ...o.resetPassword },
+  const result = {
     emailVerify: { ...DEFAULTS.emailVerify, ...o.emailVerify },
     forgotPassword: { ...DEFAULTS.forgotPassword, ...o.forgotPassword },
     oauth: { ...DEFAULTS.oauth, ...o.oauth },
   };
+  requirePositiveDuration(result.emailVerify.tokenTtlMs, "options.emailVerify.tokenTtlMs");
+  requirePositiveDuration(result.forgotPassword.tokenTtlMs, "options.forgotPassword.tokenTtlMs");
+  return result;
+}
+
+function requirePositiveDuration(value: number, path: string): void {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > 365 * 24 * 60 * 60_000) {
+    throw new Error(`${path} must be a positive integer no longer than 365 days.`);
+  }
 }
 
 function siteUrl(config: MemberAuthRoutesConfig, request: NextRequest): URL {
@@ -99,6 +108,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
       await ensureFor("write");
       const { email, password } = validateLoginBody(await readJsonBody(request));
       const db = getDb() as never;
+      const runtime = authHelpers.getMemberAuthRuntimeConfig();
 
       const [member] = await asDb(db)
         .select({
@@ -126,7 +136,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
 
       const ok = await verifyPassword(member.password, password);
       if (!ok) {
-        const lockoutSql = sql`case when ${npMembers.loginAttempts} + 1 >= ${opts.login.maxAttempts} then now() + interval '${sql.raw(String(opts.login.lockoutDurationMs))} milliseconds' else ${npMembers.lockUntil} end`;
+        const lockoutSql = sql`case when ${npMembers.loginAttempts} + 1 >= ${runtime.maxLoginAttempts} then now() + ${runtime.lockoutDuration * 1000} * interval '1 millisecond' else ${npMembers.lockUntil} end`;
         await asDb(db)
           .update(npMembers)
           .set({
@@ -147,45 +157,42 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
         .set({ loginAttempts: 0, lockUntil: null, updatedAt: new Date() })
         .where(eq(npMembers.id, member.id));
 
-      const { secret, tokenExpiration, refreshTokenExpiration } =
-        authHelpers.getMemberAuthRuntimeConfig();
-      const access = await signMemberToken(member, secret, tokenExpiration, "access");
-      const refresh = await signMemberToken(member, secret, refreshTokenExpiration, "refresh");
+      const { secret, tokenExpiration, refreshTokenExpiration } = runtime;
+      const session = await createMemberSession(
+        {
+          id: member.id,
+          email: member.email,
+          handle: member.handle,
+          displayName: member.displayName,
+          status: member.status,
+          tokenVersion: member.tokenVersion,
+        },
+        secret,
+        db,
+        {
+          accessExpiration: tokenExpiration,
+          refreshExpiration: refreshTokenExpiration,
+          ...requestMetadata(request),
+        },
+      );
       const csrf = randomBytes(16).toString("hex");
-
-      const userAgent = request.headers.get("user-agent") ?? null;
-      const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
-      await asDb(db)
-        .insert(npMemberSessions)
-        .values([
-          {
-            memberId: member.id,
-            tokenHash: await sha256(access),
-            userAgent,
-            ip,
-            expiresAt: new Date(Date.now() + tokenExpiration * 1000),
-          },
-          {
-            memberId: member.id,
-            tokenHash: await sha256(refresh),
-            userAgent,
-            ip,
-            expiresAt: new Date(Date.now() + refreshTokenExpiration * 1000),
-          },
-        ]);
 
       const response = NextResponse.json(
         {
-          member: {
+          member: npRequireMemberSessionUser({
             id: member.id,
             handle: member.handle,
             email: member.email,
             displayName: member.displayName,
-          },
+          }),
         },
         { status: 200 },
       );
-      authHelpers.setMemberAuthCookies(response, { access, refresh, csrf });
+      authHelpers.setMemberAuthCookies(response, {
+        access: session.access,
+        refresh: session.refresh,
+        csrf,
+      });
       return response;
     } catch (error) {
       return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
@@ -210,10 +217,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
       // existence.
       siteUrlStrict(config);
 
-      const body = validateRegisterBody(
-        await readJsonBody(request),
-        opts.register.minPasswordLength,
-      );
+      const body = validateRegisterBody(await readJsonBody(request));
       const db = getDb() as never;
 
       const [existingByEmail] = await asDb(db)
@@ -276,23 +280,14 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
 
   // ─── logout ─────────────────────────────────────────────────
   const logout = async (request: NextRequest): Promise<NextResponse> => {
-    await ensureFor("read");
-    const sessionToken = request.cookies.get("np-mb-session")?.value;
-    const refreshToken = request.cookies.get("np-mb-refresh")?.value;
-
-    const hashes: string[] = [];
-    if (sessionToken) hashes.push(await sha256(sessionToken));
-    if (refreshToken) hashes.push(await sha256(refreshToken));
-    if (hashes.length > 0) {
-      try {
-        const db = getDb() as never;
-        await asDb(db).delete(npMemberSessions).where(inArray(npMemberSessions.tokenHash, hashes));
-      } catch {
-        // Best-effort — cookies still clear below.
-      }
+    let response: NextResponse;
+    try {
+      await ensureFor("write");
+      await authHelpers.revokeCurrentMemberSession(request);
+      response = NextResponse.json({ ok: true }, { status: 200 });
+    } catch (error) {
+      response = npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
     }
-
-    const response = NextResponse.json({ ok: true }, { status: 200 });
     authHelpers.clearMemberAuthCookies(response);
     return response;
   };
@@ -300,73 +295,36 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
   // ─── refresh ────────────────────────────────────────────────
   const refresh = async (request: NextRequest): Promise<NextResponse> => {
     try {
-      await ensureFor("read");
+      await ensureFor("write");
       const refreshToken = request.cookies.get("np-mb-refresh")?.value;
       if (!refreshToken) throw new NpAuthError();
 
       const { secret, tokenExpiration, refreshTokenExpiration } =
         authHelpers.getMemberAuthRuntimeConfig();
-      const payload = await verifyMemberToken(refreshToken, secret, "refresh");
-      const member = await getMemberFromTokenPayload(getDb() as never, payload);
-      if (!member || member.status !== "active") throw new NpAuthError();
-
-      const db = getDb() as never;
-      const refreshHash = await sha256(refreshToken);
-      const now = new Date();
-
-      const [sessionRow] = await asDb(db)
-        .select({ id: npMemberSessions.id })
-        .from(npMemberSessions)
-        .where(
-          and(
-            eq(npMemberSessions.memberId, member.id),
-            eq(npMemberSessions.tokenHash, refreshHash),
-            gt(npMemberSessions.expiresAt, now),
-          ),
-        )
-        .limit(1);
-      if (!sessionRow) throw new NpAuthError();
-
-      const access = await signMemberToken(member, secret, tokenExpiration, "access");
-      const refresh = await signMemberToken(member, secret, refreshTokenExpiration, "refresh");
-      const csrf = randomBytes(16).toString("hex");
-
-      const userAgent = request.headers.get("user-agent") ?? null;
-      const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
-      await asDb(db).transaction(async (tx) => {
-        await asDb(tx).delete(npMemberSessions).where(eq(npMemberSessions.id, sessionRow.id));
-        await asDb(tx)
-          .insert(npMemberSessions)
-          .values([
-            {
-              memberId: member.id,
-              tokenHash: await sha256(access),
-              userAgent,
-              ip,
-              expiresAt: new Date(Date.now() + tokenExpiration * 1000),
-            },
-            {
-              memberId: member.id,
-              tokenHash: await sha256(refresh),
-              userAgent,
-              ip,
-              expiresAt: new Date(Date.now() + refreshTokenExpiration * 1000),
-            },
-          ]);
+      const session = await rotateMemberSession(refreshToken, secret, getDb() as never, {
+        accessExpiration: tokenExpiration,
+        refreshExpiration: refreshTokenExpiration,
+        ...requestMetadata(request),
       });
+      if (!session || session.member.status !== "active") throw new NpAuthError();
+      const csrf = randomBytes(16).toString("hex");
 
       const response = NextResponse.json(
         {
-          member: {
-            id: member.id,
-            handle: member.handle,
-            email: member.email,
-            displayName: member.displayName,
-          },
+          member: npRequireMemberSessionUser({
+            id: session.member.id,
+            handle: session.member.handle,
+            email: session.member.email,
+            displayName: session.member.displayName,
+          }),
         },
         { status: 200 },
       );
-      authHelpers.setMemberAuthCookies(response, { access, refresh, csrf });
+      authHelpers.setMemberAuthCookies(response, {
+        access: session.access,
+        refresh: session.refresh,
+        csrf,
+      });
       return response;
     } catch (error) {
       return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
@@ -377,8 +335,8 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
   const verifyEmail = async (request: NextRequest): Promise<NextResponse> => {
     try {
       await ensureFor("write");
-      const body = (await readJsonBody(request)) as { token?: unknown } | null;
-      const token = typeof body?.token === "string" ? body.token : "";
+      const body = requireBodyRecord(await readJsonBody(request), ["token"]);
+      const token = npIsAuthSingleUseToken(body.token) ? body.token : "";
       const result = await consumeMemberEmailVerifyToken(getDb() as never, token);
       return npSuccessResponse({
         memberId: result.memberId,
@@ -394,9 +352,9 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
   const forgotPassword = async (request: NextRequest): Promise<NextResponse> => {
     try {
       await ensureFor("write");
-      const body = (await readJsonBody(request)) as { email?: unknown } | null;
-      const email = typeof body?.email === "string" ? body.email : "";
-      if (!email.includes("@")) {
+      const body = requireBodyRecord(await readJsonBody(request), ["email"]);
+      const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+      if (!npIsCanonicalAuthEmail(email)) {
         throw new NpValidationError("Invalid input", [
           { field: "email", message: "Valid email required" },
         ]);
@@ -432,14 +390,14 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
   const resetPassword = async (request: NextRequest): Promise<NextResponse> => {
     try {
       await ensureFor("write");
-      const body = (await readJsonBody(request)) as { token?: unknown; password?: unknown } | null;
-      const token = typeof body?.token === "string" ? body.token : "";
-      const password = typeof body?.password === "string" ? body.password : "";
-      if (password.length < opts.resetPassword.minPasswordLength) {
+      const body = requireBodyRecord(await readJsonBody(request), ["token", "password"]);
+      const token = npIsAuthSingleUseToken(body.token) ? body.token : "";
+      const password = typeof body.password === "string" ? body.password : "";
+      if (!npIsAuthNewPassword(password)) {
         throw new NpValidationError("Invalid input", [
           {
             field: "password",
-            message: `Password must be at least ${opts.resetPassword.minPasswordLength} characters`,
+            message: `Password must contain ${npAuthContractLimits.passwordMinLength} through ${npAuthContractLimits.passwordMaxLength} characters`,
           },
         ]);
       }
@@ -469,7 +427,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
     }
 
     const { secret, secureCookies } = authHelpers.getMemberAuthRuntimeConfig();
-    const { token, codeVerifier } = issueOAuthState(providerId, secret);
+    const { token, codeVerifier, expiresInSeconds } = issueOAuthState(providerId, secret);
     const redirectUri = buildPath(config, request, `/api/members/oauth/${providerId}/callback`);
     const authorizeUrl = await provider.authorize({
       state: token,
@@ -485,7 +443,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
       secure: secureCookies,
       sameSite: "lax",
       path: "/api/members/oauth",
-      maxAge: STATE_COOKIE_MAX_AGE,
+      maxAge: expiresInSeconds,
     });
     return response;
   };
@@ -510,7 +468,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
     request: NextRequest,
     ctx: { params: Promise<{ provider: string }> },
   ): Promise<NextResponse> => {
-    await ensureFor("plugins");
+    await ensureFor("write");
     const { provider: providerId } = await ctx.params;
     const provider = getOAuthProvider(providerId);
     if (!provider || !oauthProviderSupportsAudience(provider, "member")) {
@@ -586,31 +544,24 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
     }
 
     const member = resolved.member;
-    const access = await signMemberToken(member, secret, tokenExpiration, "access");
-    const refreshTok = await signMemberToken(member, secret, refreshTokenExpiration, "refresh");
+    const session = await createMemberSession(
+      {
+        id: member.id,
+        email: member.email,
+        handle: member.handle,
+        displayName: member.displayName,
+        status: member.status,
+        tokenVersion: member.tokenVersion,
+      },
+      secret,
+      getDb() as never,
+      {
+        accessExpiration: tokenExpiration,
+        refreshExpiration: refreshTokenExpiration,
+        ...requestMetadata(request),
+      },
+    );
     const csrf = randomBytes(16).toString("hex");
-
-    const db = getDb() as never;
-    const userAgent = request.headers.get("user-agent") ?? null;
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
-    await asDb(db)
-      .insert(npMemberSessions)
-      .values([
-        {
-          memberId: member.id,
-          tokenHash: await sha256(access),
-          userAgent,
-          ip,
-          expiresAt: new Date(Date.now() + tokenExpiration * 1000),
-        },
-        {
-          memberId: member.id,
-          tokenHash: await sha256(refreshTok),
-          userAgent,
-          ip,
-          expiresAt: new Date(Date.now() + refreshTokenExpiration * 1000),
-        },
-      ]);
 
     const target = new URL(opts.oauth.successRedirect, siteUrl(config, request));
     const response = NextResponse.redirect(target);
@@ -622,7 +573,11 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
       path: "/api/members/oauth",
       maxAge: 0,
     });
-    authHelpers.setMemberAuthCookies(response, { access, refresh: refreshTok, csrf });
+    authHelpers.setMemberAuthCookies(response, {
+      access: session.access,
+      refresh: session.refresh,
+      csrf,
+    });
     return response;
   };
 
@@ -651,7 +606,13 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
         .limit(1);
 
       if (!row) throw new Error("Member row vanished mid-request");
-      return npSuccessResponse({ member: row });
+      if (row.status !== "active") throw new NpAuthError();
+      return npSuccessResponse({
+        member: npRequireMemberSelf({
+          ...row,
+          createdAt: row.createdAt.toISOString(),
+        }),
+      });
     } catch (error) {
       return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
     }
@@ -661,18 +622,20 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
     try {
       await ensureFor("write");
       const member = await authHelpers.requireMember(request);
-      const patch = validatePatchBody(
-        await readJsonBody(request),
-        opts.resetPassword.minPasswordLength,
-      );
+      const patch = validatePatchBody(await readJsonBody(request));
       const db = getDb() as never;
 
-      const updates: Record<string, unknown> = { updatedAt: new Date() };
-      if (patch.displayName !== undefined) updates.displayName = patch.displayName;
-      if (patch.bio !== undefined) updates.bio = patch.bio;
-      if (patch.avatar !== undefined) updates.avatar = patch.avatar;
+      const profileUpdates: {
+        displayName?: string;
+        bio?: string | null;
+        avatar?: string | null;
+      } = {};
+      if (patch.displayName !== undefined) profileUpdates.displayName = patch.displayName;
+      if (patch.bio !== undefined) profileUpdates.bio = patch.bio;
+      if (patch.avatar !== undefined) profileUpdates.avatar = patch.avatar;
 
-      let mustReauth = false;
+      let newPasswordHash: string | null = null;
+      let expectedPasswordHash: string | null = null;
       if (patch.newPassword) {
         const [row] = await asDb(db)
           .select({ password: npMembers.password })
@@ -690,21 +653,30 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
             { field: "currentPassword", message: "Current password is incorrect" },
           ]);
         }
-        updates.password = await hashPassword(patch.newPassword);
-        mustReauth = true;
+        expectedPasswordHash = row.password;
+        newPasswordHash = await hashPassword(patch.newPassword);
       }
 
-      if (Object.keys(updates).length === 1) {
-        return npSuccessResponse({ ok: true });
-      }
-
-      await asDb(db).update(npMembers).set(updates).where(eq(npMembers.id, member.id));
-
-      if (mustReauth) {
-        await invalidateAllMemberSessions(db, member.id);
+      if (newPasswordHash) {
+        if (!expectedPasswordHash) throw new NpAuthError();
+        const replaced = await replaceMemberPasswordAndInvalidateSessions(
+          db,
+          member.id,
+          expectedPasswordHash,
+          newPasswordHash,
+          profileUpdates,
+        );
+        if (!replaced) throw new NpAuthError("Current password is incorrect");
         const response = NextResponse.json({ ok: true, mustReauth: true }, { status: 200 });
         authHelpers.clearMemberAuthCookies(response);
         return response;
+      }
+
+      if (Object.keys(profileUpdates).length > 0) {
+        await asDb(db)
+          .update(npMembers)
+          .set({ ...profileUpdates, updatedAt: new Date() })
+          .where(eq(npMembers.id, member.id));
       }
 
       return npSuccessResponse({ ok: true });
@@ -773,15 +745,10 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
 // ─── shared validators ───────────────────────────────────────
 
 function validateLoginBody(raw: unknown): { email: string; password: string } {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new NpValidationError("Invalid input", [
-      { field: "body", message: "Body must be a JSON object" },
-    ]);
-  }
-  const body = raw as Record<string, unknown>;
+  const body = requireBodyRecord(raw, ["email", "password"]);
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-  const password = typeof body.password === "string" ? body.password : "";
-  if (!email.includes("@") || password.length === 0) {
+  const password = npIsAuthPasswordCandidate(body.password) ? body.password : "";
+  if (!npIsCanonicalAuthEmail(email) || !password) {
     throw new NpValidationError("Invalid input", [
       { field: "credentials", message: "Email and password required" },
     ]);
@@ -789,31 +756,37 @@ function validateLoginBody(raw: unknown): { email: string; password: string } {
   return { email, password };
 }
 
-function validateRegisterBody(
-  raw: unknown,
-  minPasswordLength: number,
-): { email: string; password: string; handle: string; displayName: string } {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new NpValidationError("Invalid input", [
-      { field: "body", message: "Body must be a JSON object" },
-    ]);
-  }
-  const body = raw as Record<string, unknown>;
+function requestMetadata(request: NextRequest): { userAgent: string | null; ip: string | null } {
+  return {
+    userAgent: request.headers.get("user-agent"),
+    ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+  };
+}
+
+function validateRegisterBody(raw: unknown): {
+  email: string;
+  password: string;
+  handle: string;
+  displayName: string;
+} {
+  const body = requireBodyRecord(raw, ["email", "password", "handle", "displayName"]);
   const errors: Array<{ field: string; message: string }> = [];
 
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-  if (!email.includes("@")) errors.push({ field: "email", message: "Valid email required" });
+  if (!npIsCanonicalAuthEmail(email)) {
+    errors.push({ field: "email", message: "Valid email required" });
+  }
 
   const password = typeof body.password === "string" ? body.password : "";
-  if (password.length < minPasswordLength) {
+  if (!npIsAuthNewPassword(password)) {
     errors.push({
       field: "password",
-      message: `Password must be at least ${minPasswordLength} characters`,
+      message: `Password must contain ${npAuthContractLimits.passwordMinLength} through ${npAuthContractLimits.passwordMaxLength} characters`,
     });
   }
 
   const handle = typeof body.handle === "string" ? body.handle.trim().toLowerCase() : "";
-  if (!HANDLE_RE.test(handle)) {
+  if (!npIsCanonicalMemberHandle(handle)) {
     errors.push({
       field: "handle",
       message: "Handle must be 3–30 chars: lowercase letters, digits, underscore, dash",
@@ -821,8 +794,11 @@ function validateRegisterBody(
   }
 
   const displayName = typeof body.displayName === "string" ? body.displayName.trim() : "";
-  if (displayName.length === 0 || displayName.length > 80) {
-    errors.push({ field: "displayName", message: "Display name 1–80 characters" });
+  if (displayName.length === 0 || displayName.length > npAuthContractLimits.displayNameLength) {
+    errors.push({
+      field: "displayName",
+      message: `Display name 1–${npAuthContractLimits.displayNameLength.toString()} characters`,
+    });
   }
 
   if (errors.length > 0) throw new NpValidationError("Invalid input", errors);
@@ -837,47 +813,98 @@ interface PatchBody {
   currentPassword?: string;
 }
 
-function validatePatchBody(raw: unknown, minPasswordLength: number): PatchBody {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new NpValidationError("Invalid input", [
-      { field: "body", message: "Body must be a JSON object" },
-    ]);
-  }
-  const body = raw as Record<string, unknown>;
+function validatePatchBody(raw: unknown): PatchBody {
+  const body = requireBodyRecord(raw, [
+    "displayName",
+    "bio",
+    "avatar",
+    "newPassword",
+    "currentPassword",
+  ]);
   const out: PatchBody = {};
   if (body.displayName !== undefined) {
-    if (typeof body.displayName !== "string" || body.displayName.trim().length === 0) {
-      throw new NpValidationError("Invalid input", [
-        { field: "displayName", message: "Display name must be a non-empty string" },
-      ]);
-    }
-    out.displayName = body.displayName.trim().slice(0, 80);
-  }
-  if (body.bio !== undefined) {
-    out.bio =
-      body.bio === null ? null : typeof body.bio === "string" ? body.bio.slice(0, 500) : null;
-  }
-  if (body.avatar !== undefined) {
-    out.avatar = body.avatar === null ? null : typeof body.avatar === "string" ? body.avatar : null;
-  }
-  if (body.newPassword !== undefined) {
-    if (typeof body.newPassword !== "string" || body.newPassword.length < minPasswordLength) {
+    if (
+      typeof body.displayName !== "string" ||
+      body.displayName.trim().length === 0 ||
+      body.displayName.trim().length > npAuthContractLimits.displayNameLength
+    ) {
       throw new NpValidationError("Invalid input", [
         {
-          field: "newPassword",
-          message: `Password must be at least ${minPasswordLength} characters`,
+          field: "displayName",
+          message: `Display name must contain 1 through ${npAuthContractLimits.displayNameLength.toString()} characters`,
         },
       ]);
     }
-    if (typeof body.currentPassword !== "string" || body.currentPassword.length === 0) {
+    out.displayName = body.displayName.trim();
+  }
+  if (body.bio !== undefined) {
+    if (
+      body.bio !== null &&
+      (typeof body.bio !== "string" || body.bio.length > npAuthContractLimits.bioLength)
+    ) {
+      throw new NpValidationError("Invalid input", [
+        {
+          field: "bio",
+          message: `Bio must be null or at most ${npAuthContractLimits.bioLength.toString()} characters`,
+        },
+      ]);
+    }
+    out.bio = body.bio;
+  }
+  if (body.avatar !== undefined) {
+    if (body.avatar !== null && !npIsCanonicalAuthId(body.avatar)) {
+      throw new NpValidationError("Invalid input", [
+        { field: "avatar", message: "Avatar must be a UUID or null" },
+      ]);
+    }
+    out.avatar = body.avatar;
+  }
+  if (body.newPassword !== undefined) {
+    if (!npIsAuthNewPassword(body.newPassword)) {
+      throw new NpValidationError("Invalid input", [
+        {
+          field: "newPassword",
+          message: `Password must contain ${npAuthContractLimits.passwordMinLength} through ${npAuthContractLimits.passwordMaxLength} characters`,
+        },
+      ]);
+    }
+    if (!npIsAuthPasswordCandidate(body.currentPassword)) {
       throw new NpValidationError("Invalid input", [
         { field: "currentPassword", message: "Current password required to change password" },
       ]);
     }
     out.newPassword = body.newPassword;
     out.currentPassword = body.currentPassword;
+  } else if (body.currentPassword !== undefined) {
+    throw new NpValidationError("Invalid input", [
+      { field: "currentPassword", message: "currentPassword requires newPassword" },
+    ]);
+  }
+  if (Object.keys(out).length === 0) {
+    throw new NpValidationError("Invalid input", [
+      { field: "body", message: "At least one profile field is required" },
+    ]);
   }
   return out;
+}
+
+function requireBodyRecord(
+  value: unknown,
+  allowedKeys: readonly string[],
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new NpValidationError("Invalid input", [
+      { field: "body", message: "Body must be a JSON object" },
+    ]);
+  }
+  const record = value as Record<string, unknown>;
+  const unknownField = Object.keys(record).find((key) => !allowedKeys.includes(key));
+  if (unknownField) {
+    throw new NpValidationError("Invalid input", [
+      { field: unknownField, message: "Unsupported member authentication field" },
+    ]);
+  }
+  return record;
 }
 
 function buildVerifyUrl(

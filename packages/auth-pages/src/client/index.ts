@@ -20,18 +20,12 @@ export { useMemberVerifyEmail } from "./hooks/use-member-verify-email.js";
 export { useMemberForgotPassword } from "./hooks/use-member-forgot-password.js";
 export { useMemberResetPassword } from "./hooks/use-member-reset-password.js";
 
-export type {
-  UseMemberLoginOptions,
-  UseMemberLoginResult,
-} from "./hooks/use-member-login.js";
+export type { UseMemberLoginOptions, UseMemberLoginResult } from "./hooks/use-member-login.js";
 export type {
   UseMemberRegisterOptions,
   UseMemberRegisterResult,
 } from "./hooks/use-member-register.js";
-export type {
-  UseMemberLogoutOptions,
-  UseMemberLogoutResult,
-} from "./hooks/use-member-logout.js";
+export type { UseMemberLogoutOptions, UseMemberLogoutResult } from "./hooks/use-member-logout.js";
 export type {
   UseMemberVerifyEmailOptions,
   UseMemberVerifyEmailResult,
@@ -45,5 +39,5 @@ export type {
   UseMemberResetPasswordResult,
 } from "./hooks/use-member-reset-password.js";
 
-export type { NpAuthErrorCode, NpAuthMember } from "../shared/types.js";
+export type { NpAuthErrorCode, NpAuthMember, NpMemberSessionUser } from "../shared/types.js";
 export { DEFAULT_AUTH_MESSAGES } from "../shared/types.js";

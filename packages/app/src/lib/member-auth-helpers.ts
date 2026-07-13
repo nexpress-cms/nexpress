@@ -6,6 +6,7 @@ export const {
   getMemberAuthRuntimeConfig,
   requireMember,
   optionalMember,
+  revokeCurrentMemberSession,
   setMemberAuthCookies,
   clearMemberAuthCookies,
 } = createMemberAuthHelpers({ getDb });

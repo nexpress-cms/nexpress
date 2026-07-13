@@ -3,6 +3,12 @@ import { randomBytes } from "node:crypto";
 import { and, eq, gt, isNotNull, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
+import {
+  npAuthContractLimits,
+  npIsAuthNewPassword,
+  npIsAuthSingleUseToken,
+  npIsCanonicalAuthId,
+} from "../auth-contract/index.js";
 import { NpValidationError } from "../errors.js";
 import { npSessions, npUsers } from "../db/schema/system.js";
 import { hashPassword } from "./password.js";
@@ -24,11 +30,27 @@ export interface NpCreateResetTokenOptions {
   ttlMs: number;
 }
 
-const MIN_PASSWORD_LENGTH = 8;
-
 function generateRawToken(): string {
   // 32 bytes → 64 hex chars. Wide enough that brute force is hopeless.
   return randomBytes(32).toString("hex");
+}
+
+function requireTokenOptions(options: NpCreateResetTokenOptions): void {
+  if (!npIsCanonicalAuthId(options.userId)) throw new Error("userId must be a UUID.");
+  if (options.purpose !== "invite" && options.purpose !== "reset") {
+    throw new Error('purpose must be "invite" or "reset".');
+  }
+  requireTokenTtl(options.purpose, options.ttlMs);
+}
+
+function requireTokenTtl(purpose: NpPasswordResetPurpose, ttlMs: number): void {
+  const maximum =
+    purpose === "invite"
+      ? npAuthContractLimits.inviteTtlHours * 60 * 60_000
+      : npAuthContractLimits.resetTtlMinutes * 60_000;
+  if (!Number.isSafeInteger(ttlMs) || ttlMs <= 0 || ttlMs > maximum) {
+    throw new Error(`ttlMs must be a positive integer no longer than ${maximum.toString()}.`);
+  }
 }
 
 /**
@@ -42,11 +64,12 @@ export async function createPasswordResetToken(
   db: NodePgDatabase<Record<string, unknown>>,
   options: NpCreateResetTokenOptions,
 ): Promise<NpIssuedResetToken> {
+  requireTokenOptions(options);
   const token = generateRawToken();
   const tokenHash = await sha256(token);
   const expiresAt = new Date(Date.now() + options.ttlMs);
 
-  await db
+  const [updated] = await db
     .update(npUsers)
     .set({
       passwordResetTokenHash: tokenHash,
@@ -54,7 +77,9 @@ export async function createPasswordResetToken(
       passwordResetPurpose: options.purpose,
       updatedAt: new Date(),
     })
-    .where(eq(npUsers.id, options.userId));
+    .where(eq(npUsers.id, options.userId))
+    .returning({ id: npUsers.id });
+  if (!updated) throw new Error("Cannot issue a reset token for a missing staff user.");
 
   return { token, expiresAt, purpose: options.purpose };
 }
@@ -77,6 +102,7 @@ export async function requestPasswordReset(
   email: string,
   ttlMs: number,
 ): Promise<NpResetRequestResult> {
+  requireTokenTtl("reset", ttlMs);
   const normalizedEmail = email.trim().toLowerCase();
   const [user] = await db
     .select({
@@ -125,17 +151,17 @@ export async function consumePasswordResetToken(
   db: NodePgDatabase<Record<string, unknown>>,
   options: NpConsumeResetTokenOptions,
 ): Promise<NpConsumeResetTokenResult> {
-  if (!options.token || typeof options.token !== "string") {
+  if (!npIsAuthSingleUseToken(options.token)) {
     throw new NpValidationError("Invalid input", [
       { field: "token", message: "Reset token is required." },
     ]);
   }
 
-  if (!options.newPassword || options.newPassword.length < MIN_PASSWORD_LENGTH) {
+  if (!npIsAuthNewPassword(options.newPassword)) {
     throw new NpValidationError("Invalid input", [
       {
         field: "password",
-        message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
+        message: `Password must contain ${npAuthContractLimits.passwordMinLength} through ${npAuthContractLimits.passwordMaxLength} characters.`,
       },
     ]);
   }
@@ -173,7 +199,8 @@ export async function consumePasswordResetToken(
   // two transactions could leave the user with a new password but still-
   // valid old JWTs if the second call failed.
   await db.transaction(async (tx) => {
-    await tx
+    const consumedAt = new Date();
+    const [updated] = await tx
       .update(npUsers)
       .set({
         password: newPasswordHash,
@@ -185,7 +212,21 @@ export async function consumePasswordResetToken(
         tokenVersion: sql`${npUsers.tokenVersion} + 1`,
         updatedAt: new Date(),
       })
-      .where(eq(npUsers.id, user.id));
+      .where(
+        and(
+          eq(npUsers.id, user.id),
+          eq(npUsers.passwordResetTokenHash, tokenHash),
+          isNotNull(npUsers.passwordResetExpiresAt),
+          gt(npUsers.passwordResetExpiresAt, consumedAt),
+        ),
+      )
+      .returning({ id: npUsers.id });
+
+    if (!updated) {
+      throw new NpValidationError("Invalid input", [
+        { field: "token", message: "Reset link is invalid or has expired." },
+      ]);
+    }
 
     await tx.delete(npSessions).where(eq(npSessions.userId, user.id));
   });
@@ -193,6 +234,6 @@ export async function consumePasswordResetToken(
   return {
     userId: user.id,
     email: user.email,
-    purpose: (user.purpose ?? "reset"),
+    purpose: user.purpose ?? "reset",
   };
 }

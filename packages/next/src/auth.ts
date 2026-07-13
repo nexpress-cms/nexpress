@@ -2,16 +2,19 @@ import {
   NpAuthError,
   getLogger,
   isTokenVerificationError,
+  revokeStaffSession,
   verifyCsrf,
   verifyTokenFull,
   type NpAuthUser,
 } from "@nexpress/core";
+import {
+  npAuthContractLimits,
+  npAuthRuntimeDefaults,
+  npRequireAuthSecret,
+} from "@nexpress/core/auth-contract";
 import type { NextRequest, NextResponse } from "next/server";
 
-const DEFAULT_TOKEN_EXPIRATION = 60 * 60 * 2;
-const DEFAULT_REFRESH_TOKEN_EXPIRATION = 60 * 60 * 24 * 7;
-const DEFAULT_MAX_LOGIN_ATTEMPTS = 5;
-const DEFAULT_LOCKOUT_DURATION = 60 * 15;
+import { npAssertRefreshLifetime, npReadBoundedPositiveInteger } from "./auth-runtime.js";
 
 export interface AuthCookieTokens {
   access: string;
@@ -35,35 +38,43 @@ export interface CreateAuthHelpersOptions<DB> {
 }
 
 function defaultGetSecret(): string {
-  const secret =
-    process.env.NP_SECRET ?? process.env.NP_AUTH_SECRET ?? process.env.AUTH_SECRET;
+  const secret = process.env.NP_SECRET;
   if (!secret) {
     throw new Error("NP_SECRET must be set (see .env.example)");
   }
   return secret;
 }
 
-function readNumber(value: string | undefined, fallback: number): number {
-  if (!value) return fallback;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
 function getRuntimeConfig(secret: string): AuthRuntimeConfig {
+  const signingSecret = npRequireAuthSecret(secret);
+  const tokenExpiration = npReadBoundedPositiveInteger(
+    "NP_TOKEN_EXPIRATION",
+    process.env.NP_TOKEN_EXPIRATION,
+    npAuthRuntimeDefaults.accessTokenTtlSeconds,
+    npAuthContractLimits.accessTokenTtlSeconds,
+  );
+  const refreshTokenExpiration = npReadBoundedPositiveInteger(
+    "NP_REFRESH_TOKEN_EXPIRATION",
+    process.env.NP_REFRESH_TOKEN_EXPIRATION,
+    npAuthRuntimeDefaults.refreshTokenTtlSeconds,
+    npAuthContractLimits.refreshTokenTtlSeconds,
+  );
+  npAssertRefreshLifetime(tokenExpiration, refreshTokenExpiration);
   return {
-    secret,
-    tokenExpiration: readNumber(process.env.NP_TOKEN_EXPIRATION, DEFAULT_TOKEN_EXPIRATION),
-    refreshTokenExpiration: readNumber(
-      process.env.NP_REFRESH_TOKEN_EXPIRATION,
-      DEFAULT_REFRESH_TOKEN_EXPIRATION,
-    ),
-    maxLoginAttempts: readNumber(
+    secret: signingSecret,
+    tokenExpiration,
+    refreshTokenExpiration,
+    maxLoginAttempts: npReadBoundedPositiveInteger(
+      "NP_MAX_LOGIN_ATTEMPTS",
       process.env.NP_MAX_LOGIN_ATTEMPTS,
-      DEFAULT_MAX_LOGIN_ATTEMPTS,
+      npAuthRuntimeDefaults.maxLoginAttempts,
+      npAuthContractLimits.loginAttempts,
     ),
-    lockoutDuration: readNumber(
+    lockoutDuration: npReadBoundedPositiveInteger(
+      "NP_LOCKOUT_DURATION",
       process.env.NP_LOCKOUT_DURATION,
-      DEFAULT_LOCKOUT_DURATION,
+      npAuthRuntimeDefaults.lockoutTtlSeconds,
+      npAuthContractLimits.lockoutTtlSeconds,
     ),
     secureCookies: process.env.NODE_ENV === "production",
   };
@@ -73,6 +84,10 @@ export type AuthHelpers = {
   readonly getAuthRuntimeConfig: (this: void) => AuthRuntimeConfig;
   readonly requireAuth: (this: void, request: NextRequest) => Promise<NpAuthUser>;
   readonly optionalAuth: (this: void, request: NextRequest) => Promise<NpAuthUser | null>;
+  readonly revokeCurrentAuthSession: (
+    this: void,
+    request: NextRequest,
+  ) => Promise<NpAuthUser | null>;
   readonly requireCsrf: (this: void, request: NextRequest) => void;
   readonly setAuthCookies: (this: void, response: NextResponse, tokens: AuthCookieTokens) => void;
   readonly clearAuthCookies: (this: void, response: NextResponse) => void;
@@ -128,6 +143,29 @@ export function createAuthHelpers<DB>(options: CreateAuthHelpersOptions<DB>): Au
   const optionalAuth = (request: NextRequest): Promise<NpAuthUser | null> =>
     getSessionUser(request);
 
+  const revokeCurrentAuthSession = async (request: NextRequest): Promise<NpAuthUser | null> => {
+    const candidates = [
+      [request.cookies.get("np-session")?.value, "access"],
+      [request.cookies.get("np-refresh")?.value, "refresh"],
+    ] as const;
+    let revokedUser: NpAuthUser | null = null;
+    for (const [token, use] of candidates) {
+      if (!token) continue;
+      try {
+        const revoked = await revokeStaffSession(
+          token,
+          readSecret(),
+          options.getDb() as never,
+          use,
+        );
+        revokedUser ??= revoked;
+      } catch (error) {
+        if (!isTokenVerificationError(error)) throw error;
+      }
+    }
+    return revokedUser;
+  };
+
   const requireCsrf = (request: NextRequest): void => {
     const ok = verifyCsrf(
       request.method,
@@ -156,7 +194,7 @@ export function createAuthHelpers<DB>(options: CreateAuthHelpersOptions<DB>): Au
       httpOnly: true,
       secure: secureCookies,
       sameSite: "strict",
-      path: "/api/auth/refresh",
+      path: "/api/auth",
       maxAge: refreshTokenExpiration,
     });
 
@@ -172,11 +210,11 @@ export function createAuthHelpers<DB>(options: CreateAuthHelpersOptions<DB>): Au
   };
 
   const clearAuthCookies = (response: NextResponse): void => {
-    const { secureCookies } = getAuthRuntimeConfig();
+    const secureCookies = process.env.NODE_ENV === "production";
 
     for (const [name, path] of [
       ["np-session", "/"],
-      ["np-refresh", "/api/auth/refresh"],
+      ["np-refresh", "/api/auth"],
       ["np-csrf", "/"],
     ] as const) {
       response.cookies.set({
@@ -195,6 +233,7 @@ export function createAuthHelpers<DB>(options: CreateAuthHelpersOptions<DB>): Au
     getAuthRuntimeConfig,
     requireAuth,
     optionalAuth,
+    revokeCurrentAuthSession,
     requireCsrf,
     setAuthCookies,
     clearAuthCookies,

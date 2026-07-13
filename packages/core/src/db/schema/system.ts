@@ -14,20 +14,15 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { npMedia } from "./media.js";
+import { npUserRoles } from "../../auth-contract/types.js";
 import { type NpNavItem } from "../../config/types.js";
 import type { NpRevisionSnapshot } from "../../revisions/contract.js";
 import type { NpSiteRuntimeSettings } from "../../settings/types.js";
 
-export const npUserRoleEnum = pgEnum("np_user_role", [
-  "admin",
-  "editor",
-  // Community moderator sits outside a linear content-edit hierarchy.
-  // Authorization uses named capabilities, so moderator and author can
-  // remain parallel without an ambiguous numeric rank.
-  "moderator",
-  "author",
-  "viewer",
-]);
+// Community moderator sits outside a linear content-edit hierarchy.
+// Authorization uses named capabilities, so moderator and author remain
+// parallel without an ambiguous numeric rank.
+export const npUserRoleEnum = pgEnum("np_user_role", npUserRoles);
 
 export const npRevisionStatusEnum = pgEnum("np_revision_status", [
   "draft",
@@ -127,17 +122,30 @@ export const npUserOAuthIdentities = pgTable(
   }),
 );
 
-export const npSessions = pgTable("np_sessions", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => npUsers.id, { onDelete: "cascade" }),
-  tokenHash: text("token_hash").notNull(),
-  userAgent: text("user_agent"),
-  ip: text("ip"),
-  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
-});
+export const npSessions = pgTable(
+  "np_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => npUsers.id, { onDelete: "cascade" }),
+    accessTokenHash: text("access_token_hash").notNull().unique(),
+    refreshTokenHash: text("refresh_token_hash").notNull().unique(),
+    userAgent: text("user_agent"),
+    ip: text("ip"),
+    accessExpiresAt: timestamp("access_expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    refreshExpiresAt: timestamp("refresh_expires_at", {
+      withTimezone: true,
+      mode: "date",
+    }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("np_sessions_user_id_idx").on(table.userId),
+    index("np_sessions_refresh_expires_at_idx").on(table.refreshExpiresAt),
+  ],
+);
 
 export const npRevisions = pgTable(
   "np_revisions",

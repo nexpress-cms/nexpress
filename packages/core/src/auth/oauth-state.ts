@@ -1,6 +1,11 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
-import { readEnvPositiveInt } from "../config/env.js";
+import {
+  npAuthContractLimits,
+  npAuthRuntimeDefaults,
+  npReadAuthPositiveInteger,
+  npRequireAuthSecret,
+} from "../auth-contract/index.js";
 
 /**
  * HMAC-signed state tokens for the OAuth start ↔ callback handshake.
@@ -24,7 +29,6 @@ import { readEnvPositiveInt } from "../config/env.js";
  * `NP_OAUTH_STATE_TTL_SECONDS`.
  */
 
-const STATE_TTL_SECONDS = readEnvPositiveInt("NP_OAUTH_STATE_TTL_SECONDS", 600);
 const CODE_VERIFIER_BYTES = 32;
 
 export interface OAuthStatePayload {
@@ -40,6 +44,8 @@ export interface IssuedOAuthState {
   /** The PKCE verifier — also embedded in the token, surfaced here so
    *  the route can pass it to `provider.authorize()` without re-parsing. */
   codeVerifier: string;
+  /** Exact cookie lifetime matching the signed payload expiry. */
+  expiresInSeconds: number;
 }
 
 function b64url(input: string | Buffer): string {
@@ -51,13 +57,20 @@ function sign(payload: string, secret: string): string {
 }
 
 export function issueOAuthState(providerId: string, secret: string): IssuedOAuthState {
+  const signingSecret = npRequireAuthSecret(secret);
+  const expiresInSeconds = npReadAuthPositiveInteger(
+    "NP_OAUTH_STATE_TTL_SECONDS",
+    process.env.NP_OAUTH_STATE_TTL_SECONDS,
+    npAuthRuntimeDefaults.oauthStateTtlSeconds,
+    npAuthContractLimits.oauthStateTtlSeconds,
+  );
   const nonce = randomBytes(16).toString("base64url");
   const codeVerifier = randomBytes(CODE_VERIFIER_BYTES).toString("base64url");
-  const expSeconds = Math.floor(Date.now() / 1000) + STATE_TTL_SECONDS;
+  const expSeconds = Math.floor(Date.now() / 1000) + expiresInSeconds;
   const payload: OAuthStatePayload = { providerId, nonce, expSeconds, codeVerifier };
   const encoded = b64url(JSON.stringify(payload));
-  const sig = sign(encoded, secret);
-  return { token: `${encoded}.${sig}`, codeVerifier };
+  const sig = sign(encoded, signingSecret);
+  return { token: `${encoded}.${sig}`, codeVerifier, expiresInSeconds };
 }
 
 export interface VerifyOAuthStateResult {
@@ -79,45 +92,55 @@ export function verifyOAuthState(
   expectedProviderId: string,
   secret: string,
 ): VerifyOAuthStateResult {
-  if (typeof token !== "string" || !token.includes(".")) {
+  const signingSecret = npRequireAuthSecret(secret);
+  if (typeof token !== "string") {
     return { ok: false, reason: "format" };
   }
-  const [encoded, sig] = token.split(".") as [string, string];
-  if (!encoded || !sig) {
+  const segments = token.split(".");
+  if (segments.length !== 2) {
     return { ok: false, reason: "format" };
   }
-  const expectedSig = sign(encoded, secret);
+  const [encoded, sig] = segments as [string, string];
+  if (!/^[A-Za-z0-9_-]+$/u.test(encoded) || !/^[A-Za-z0-9_-]{43}$/u.test(sig)) {
+    return { ok: false, reason: "format" };
+  }
+  const expectedSig = sign(encoded, signingSecret);
   const sigBuf = Buffer.from(sig);
   const expectedBuf = Buffer.from(expectedSig);
   if (sigBuf.length !== expectedBuf.length || !timingSafeEqual(sigBuf, expectedBuf)) {
     return { ok: false, reason: "signature" };
   }
 
-  let payload: OAuthStatePayload;
+  let payload: unknown;
   try {
     payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
   } catch {
     return { ok: false, reason: "format" };
   }
 
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { ok: false, reason: "format" };
+  }
+  const record = payload as Record<string, unknown>;
   if (
-    !payload ||
-    typeof payload.providerId !== "string" ||
-    typeof payload.nonce !== "string" ||
-    typeof payload.expSeconds !== "number" ||
-    typeof payload.codeVerifier !== "string" ||
-    payload.codeVerifier.length === 0
+    Object.keys(record).length !== 4 ||
+    !["providerId", "nonce", "expSeconds", "codeVerifier"].every((key) => key in record) ||
+    typeof record.providerId !== "string" ||
+    !/^[A-Za-z0-9_-]{22}$/u.test(String(record.nonce)) ||
+    !Number.isSafeInteger(record.expSeconds) ||
+    !/^[A-Za-z0-9_-]{43}$/u.test(String(record.codeVerifier))
   ) {
     return { ok: false, reason: "format" };
   }
+  const typed = record as unknown as OAuthStatePayload;
 
-  if (payload.providerId !== expectedProviderId) {
+  if (typed.providerId !== expectedProviderId) {
     return { ok: false, reason: "signature" };
   }
 
-  if (payload.expSeconds <= Math.floor(Date.now() / 1000)) {
+  if (typed.expSeconds <= Math.floor(Date.now() / 1000)) {
     return { ok: false, reason: "expired" };
   }
 
-  return { ok: true, payload };
+  return { ok: true, payload: typed };
 }

@@ -8,6 +8,7 @@ import {
   readJson,
   registerTestCollections,
   seedActiveMember as harnessSeedActiveMember,
+  seedUser,
   skipIfNoTestDb,
   truncateAll,
 } from "./harness.js";
@@ -16,10 +17,7 @@ import {
   GET as commentsGET,
   POST as commentsPOST,
 } from "@/app/api/collections/[slug]/[id]/comments/route";
-import {
-  PATCH as commentPATCH,
-  DELETE as commentDELETE,
-} from "@/app/api/comments/[id]/route";
+import { PATCH as commentPATCH, DELETE as commentDELETE } from "@/app/api/comments/[id]/route";
 import { POST as commentHidePOST } from "@/app/api/comments/[id]/hide/route";
 import { POST as commentRestorePOST } from "@/app/api/comments/[id]/restore/route";
 import { POST as collectionPOST } from "@/app/api/collections/[slug]/route";
@@ -48,22 +46,13 @@ async function seedActiveMember(
 
 async function seedStaffPost(): Promise<string> {
   // Need a staff user to author the post via /api/collections/posts.
-  const { hashPassword, npUsers, signToken } = await import("@nexpress/core");
-  const db = await getTestDb();
-  const password = await hashPassword("password12345");
-  const [user] = (await db
-    .insert(npUsers)
-    .values({ email: "staff@example.com", password, name: "Staff", role: "editor" })
-    .returning({
-      id: npUsers.id,
-      email: npUsers.email,
-      role: npUsers.role,
-      tokenVersion: npUsers.tokenVersion,
-    })) as Array<{ id: string; email: string; role: "editor"; tokenVersion: number }>;
-  const token = await signToken(
-    { id: user.id, role: user.role, tokenVersion: user.tokenVersion },
-    process.env.NP_SECRET!,
-  );
+  const user = await seedUser({
+    email: "staff@example.com",
+    password: "password12345",
+    name: "Staff",
+    role: "editor",
+  });
+  const token = user.accessToken;
   const csrf = "csrf-staff";
 
   const create = await collectionPOST(
@@ -130,10 +119,9 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
     expect(createBody.body.bodyHtml).toContain("<strong>world</strong>");
     expect(createBody.body.status).toBe("visible");
 
-    const list = await commentsGET(
-      jsonRequest(`/api/collections/posts/${postId}/comments`),
-      { params: Promise.resolve({ slug: "posts", id: postId }) },
-    );
+    const list = await commentsGET(jsonRequest(`/api/collections/posts/${postId}/comments`), {
+      params: Promise.resolve({ slug: "posts", id: postId }),
+    });
     const listBody = await readJson<{ comments: Array<{ id: string }>; totalDocs: number }>(list);
     expect(listBody.body.totalDocs).toBe(1);
     expect(listBody.body.comments[0]?.id).toBe(createBody.body.id);
@@ -165,10 +153,9 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
 
   it("anonymous user can list but not create", async () => {
     const postId = await seedStaffPost();
-    const list = await commentsGET(
-      jsonRequest(`/api/collections/posts/${postId}/comments`),
-      { params: Promise.resolve({ slug: "posts", id: postId }) },
-    );
+    const list = await commentsGET(jsonRequest(`/api/collections/posts/${postId}/comments`), {
+      params: Promise.resolve({ slug: "posts", id: postId }),
+    });
     expect(list.status).toBe(200);
 
     const create = await commentsPOST(
@@ -249,10 +236,9 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
     expect(hide.status).toBe(200);
 
     // Default list filters to status=visible — hidden comment is gone.
-    const list = await commentsGET(
-      jsonRequest(`/api/collections/posts/${postId}/comments`),
-      { params: Promise.resolve({ slug: "posts", id: postId }) },
-    );
+    const list = await commentsGET(jsonRequest(`/api/collections/posts/${postId}/comments`), {
+      params: Promise.resolve({ slug: "posts", id: postId }),
+    });
     const listBody = await readJson<{ totalDocs: number }>(list);
     expect(listBody.body.totalDocs).toBe(0);
 
@@ -292,10 +278,9 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
     );
     expect(del.status).toBe(200);
 
-    const list = await commentsGET(
-      jsonRequest(`/api/collections/posts/${postId}/comments`),
-      { params: Promise.resolve({ slug: "posts", id: postId }) },
-    );
+    const list = await commentsGET(jsonRequest(`/api/collections/posts/${postId}/comments`), {
+      params: Promise.resolve({ slug: "posts", id: postId }),
+    });
     const listBody = await readJson<{ totalDocs: number }>(list);
     expect(listBody.body.totalDocs).toBe(0);
   });
@@ -353,18 +338,13 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [
-          `np-mb-session=${author.sessionCookie}`,
-          `np-mb-csrf=${author.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "parent" }),
       }),
       { params: Promise.resolve({ slug: "posts", id: postId }) },
     );
-    const { id: parentId } = await readJson<{ id: string }>(created).then(
-      (r) => r.body,
-    );
+    const { id: parentId } = await readJson<{ id: string }>(created).then((r) => r.body);
 
     // Hide the parent directly in the DB — mirrors the on-disk
     // state after a mod-hide flow without needing a staff session
@@ -372,10 +352,7 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
     const db = await getTestDb();
     const { npComments } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
-    await db
-      .update(npComments)
-      .set({ status: "hidden" })
-      .where(eq(npComments.id, parentId));
+    await db.update(npComments).set({ status: "hidden" }).where(eq(npComments.id, parentId));
 
     // Reply attempt — should be rejected with the parent-status
     // check.
@@ -387,10 +364,7 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
     const reply = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [
-          `np-mb-session=${replier.sessionCookie}`,
-          `np-mb-csrf=${replier.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${replier.sessionCookie}`, `np-mb-csrf=${replier.csrfCookie}`],
         headers: { "x-csrf-token": replier.csrfCookie },
         body: JSON.stringify({ bodyMd: "no", parentId }),
       }),
@@ -406,26 +380,17 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
 
   it("rejects replies under a deleted parent (#127)", async () => {
     const postId = await seedStaffPost();
-    const author = await seedActiveMember(
-      "parent-del",
-      "parent-del@example.com",
-      "password-12",
-    );
+    const author = await seedActiveMember("parent-del", "parent-del@example.com", "password-12");
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [
-          `np-mb-session=${author.sessionCookie}`,
-          `np-mb-csrf=${author.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "parent" }),
       }),
       { params: Promise.resolve({ slug: "posts", id: postId }) },
     );
-    const { id: parentId } = await readJson<{ id: string }>(created).then(
-      (r) => r.body,
-    );
+    const { id: parentId } = await readJson<{ id: string }>(created).then((r) => r.body);
 
     const { deleteComment } = await import("@nexpress/core");
     await deleteComment({ commentId: parentId, memberId: author.memberId });
@@ -438,10 +403,7 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
     const reply = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [
-          `np-mb-session=${replier.sessionCookie}`,
-          `np-mb-csrf=${replier.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${replier.sessionCookie}`, `np-mb-csrf=${replier.csrfCookie}`],
         headers: { "x-csrf-token": replier.csrfCookie },
         body: JSON.stringify({ bodyMd: "no", parentId }),
       }),
@@ -496,10 +458,7 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
     const reply = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [
-          `np-mb-session=${replier.sessionCookie}`,
-          `np-mb-csrf=${replier.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${replier.sessionCookie}`, `np-mb-csrf=${replier.csrfCookie}`],
         headers: { "x-csrf-token": replier.csrfCookie },
         body: JSON.stringify({ bodyMd: "no", parentId }),
       }),
@@ -523,11 +482,7 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
   it("listComments order=top sorts by reaction count desc", async () => {
     const core = await import("@nexpress/core");
     const post = await seedStaffPost();
-    const author = await seedActiveMember(
-      "sort-author",
-      "sort-author@example.com",
-      "password-12",
-    );
+    const author = await seedActiveMember("sort-author", "sort-author@example.com", "password-12");
     const reactor = await seedActiveMember(
       "sort-reactor",
       "sort-reactor@example.com",
@@ -576,10 +531,6 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
     expect(top.comments[0]?.id).toBe(b.id);
 
     const oldest = await core.listComments("posts", post, { order: "oldest" });
-    expect(oldest.comments.map((row) => row.bodyMd)).toEqual([
-      "first",
-      "second (top)",
-      "third",
-    ]);
+    expect(oldest.comments.map((row) => row.bodyMd)).toEqual(["first", "second (top)", "third"]);
   });
 });

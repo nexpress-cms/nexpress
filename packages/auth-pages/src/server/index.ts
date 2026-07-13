@@ -8,6 +8,7 @@ export type {
   GetDbFn,
   NpAuthErrorCode,
   NpAuthMember,
+  NpMemberSessionUser,
 } from "./types.js";
 
 export { createStaffAuthRoutes } from "./staff-factory.js";

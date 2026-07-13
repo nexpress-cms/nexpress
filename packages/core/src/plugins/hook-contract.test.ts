@@ -11,7 +11,7 @@ import {
 const staffPrincipal = {
   kind: "staff" as const,
   user: {
-    id: "user-1",
+    id: "11111111-1111-4111-8111-111111111111",
     email: "admin@example.com",
     name: "Admin",
     role: "admin" as const,
@@ -19,7 +19,10 @@ const staffPrincipal = {
   },
 };
 
-const memberPrincipal = { kind: "member" as const, memberId: "member-1" };
+const memberPrincipal = {
+  kind: "member" as const,
+  memberId: "22222222-2222-4222-8222-222222222222",
+};
 const document = { id: "doc-1", title: "Hello" };
 const originalDocument = { id: "doc-1", title: "Before" };
 
@@ -106,13 +109,25 @@ const validData = {
     principal: staffPrincipal,
   },
   "auth:afterLogin": {
-    user: { id: "user-1", email: "admin@example.com", role: "admin" },
+    user: {
+      id: "11111111-1111-4111-8111-111111111111",
+      email: "admin@example.com",
+      role: "admin",
+    },
   },
   "auth:beforeLogout": {
-    user: { id: "user-1", email: "admin@example.com", role: "admin" },
+    user: {
+      id: "11111111-1111-4111-8111-111111111111",
+      email: "admin@example.com",
+      role: "admin",
+    },
   },
   "auth:afterRegister": {
-    user: { id: "user-1", email: "admin@example.com", role: "admin" },
+    user: {
+      id: "11111111-1111-4111-8111-111111111111",
+      email: "admin@example.com",
+      role: "admin",
+    },
     origin: "invite",
   },
   "render:beforePage": {
@@ -123,7 +138,7 @@ const validData = {
   "media:beforeUpload": {
     principal: memberPrincipal,
     member: {
-      id: "member-1",
+      id: "22222222-2222-4222-8222-222222222222",
       email: "member@example.com",
       handle: "member",
       displayName: "Member",

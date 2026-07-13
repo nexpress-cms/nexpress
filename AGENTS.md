@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-13 (multi-site authorization now projects every
+**Last refreshed:** 2026-07-14 (staff and member authentication now share exact
+JWT, identity, API wire, runtime-config, and one-row browser-session contracts;
+refresh rotation is compare-and-swap, logout revokes by either token's shared session id,
+and doctor validates persisted auth/session rows.)
+
+**Earlier:** 2026-07-13 (multi-site authorization now projects every
 request actor through one persisted capability contract; site/membership inputs
 and wire rows fail closed, the reserved default-site invariant is fixed, doctor
 reports orphan rows, and deletion atomically covers every site-scoped table plus
@@ -356,7 +361,14 @@ Route groups:
 - `(admin)/admin` — admin UI (Radix + Tailwind v4 via `@nexpress/admin`). Split into `login/` and `(protected)/`.
 - `api/` — REST endpoints. Rate limiting + security headers applied in `src/proxy.ts` (in-memory per-IP buckets, per-path-pattern limits). The file is the Next 16 rename of the legacy `middleware.ts` convention; behavior is identical. **Rate limiting is per-process and intentional best-effort** — multi-node deployments need an upstream rate limiter (CDN / NGINX / Caddy). See `docs/deployment.md` "Multi-node notes" and issue #269.
 
-Auth is JWT + Argon2 (`packages/core/src/auth`); sessions have a `tokenVersion` that can be bumped to invalidate. CSRF is enforced on state-changing endpoints via `verifyCsrf`.
+Auth is JWT + Argon2 (`packages/core/src/auth`). Staff and member JWTs use
+exact audience/purpose/session-id claims, and each browser has one persisted
+session row containing both access and refresh hashes. Refresh compare-and-swap
+rotates the pair; logout deletes it through either live token's shared session id.
+`tokenVersion` still provides all-device invalidation. Canonical client-safe
+roles, statuses, wire shapes, and validators live at
+`@nexpress/core/auth-contract`; see `docs/authentication.md`. CSRF is enforced
+on state-changing endpoints via `verifyCsrf`.
 
 Role checks go through `can(user, capability)` from `@nexpress/core/auth` (#273). Naming the behavior (`"community.moderate"`, `"content.publish"`) instead of the role hierarchy lets reviewers spot wrong checks at a glance and decouples call sites from future role-table changes. The legacy `hasRole(user, minRole)` / `isStaffMod(user)` helpers were retired — they no longer exist on the public surface. Client UI components (e.g. `AdminShell`) MUST receive resolved capability flags as props from a server parent — calling `can()` from a client component drags `@nexpress/core` into the browser bundle (#343).
 

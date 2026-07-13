@@ -1,10 +1,7 @@
-import type {
-  MemberAuthHelpers,
-  MemberAuthRuntimeConfig,
-} from "@nexpress/next";
+import type { MemberAuthHelpers, MemberAuthRuntimeConfig } from "@nexpress/next";
 import type { NextRequest, NextResponse } from "next/server";
 
-export type { NpAuthErrorCode, NpAuthMember } from "../shared/types.js";
+export type { NpAuthErrorCode, NpAuthMember, NpMemberSessionUser } from "../shared/types.js";
 
 /**
  * The bootstrap intent the route should call before touching DB /
@@ -34,6 +31,7 @@ export interface MemberAuthHelpersForRoutes {
   clearMemberAuthCookies: MemberAuthHelpers["clearMemberAuthCookies"];
   getMemberAuthRuntimeConfig: () => MemberAuthRuntimeConfig;
   requireMember: MemberAuthHelpers["requireMember"];
+  revokeCurrentMemberSession: MemberAuthHelpers["revokeCurrentMemberSession"];
 }
 
 /**
@@ -64,23 +62,6 @@ export interface MemberAuthRoutesConfig {
 }
 
 export interface MemberAuthRoutesOptions {
-  login?: {
-    /**
-     * Failed-login attempts allowed before the account locks for
-     * `lockoutDurationMs`. Default 5.
-     */
-    maxAttempts?: number;
-    /** Default 15 minutes. */
-    lockoutDurationMs?: number;
-  };
-  register?: {
-    /** Default 8. */
-    minPasswordLength?: number;
-  };
-  resetPassword?: {
-    /** Default 8. */
-    minPasswordLength?: number;
-  };
   emailVerify?: {
     /** Default 24 hours. */
     tokenTtlMs?: number;

@@ -8,9 +8,16 @@ import {
   hashPassword,
   npUsers,
   runHook,
-  type NpUserRole,
   can,
 } from "@nexpress/core";
+import {
+  npAuthContractLimits,
+  npIsCanonicalAuthEmail,
+  npIsUserRole,
+  npRequireStaffInviteResult,
+  npUserRoles,
+  type NpUserRole,
+} from "@nexpress/core/auth-contract";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
@@ -20,8 +27,6 @@ import { parseBodyRecord } from "../../../lib/collection-helpers";
 import { getDb } from "../../../lib/db";
 import { ensureFor, nexpressConfig } from "../../../lib/init-core";
 import { inviteTtlMs } from "../../../lib/token-ttl";
-
-const VALID_ROLES: readonly NpUserRole[] = ["admin", "editor", "moderator", "author", "viewer"];
 
 // Invited users never log in with the placeholder password — they set their
 // own via the reset link before the hash is ever verified. Compute one
@@ -35,37 +40,53 @@ function getInvitePlaceholderHash(): Promise<string> {
   return invitePlaceholderHashPromise;
 }
 
-function buildResetUrl(request: NextRequest, token: string): string {
+function requireSiteUrl(): URL {
   const configured = process.env.SITE_URL;
-  const base = configured ? new URL(configured) : new URL(request.url);
-  const url = new URL("/admin/set-password", base);
+  if (!configured) {
+    throw new Error(
+      "SITE_URL is unset — refusing to build a staff invitation URL from the request Host header.",
+    );
+  }
+  return new URL(configured);
+}
+
+function buildResetUrl(siteUrl: URL, token: string): string {
+  const url = new URL("/admin/set-password", siteUrl);
   url.searchParams.set("token", token);
   return url.toString();
 }
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureFor("write");
     const user = await requireGlobalAuth(request);
 
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("users", "create");
     }
+    const siteUrl = requireSiteUrl();
 
-    await ensureFor("write");
     const body = parseBodyRecord(await readJsonBody(request));
+    const unknownField = Object.keys(body).find((key) => !["email", "name", "role"].includes(key));
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const name = typeof body.name === "string" ? body.name.trim() : "";
-    const role = typeof body.role === "string" ? (body.role as NpUserRole) : "author";
+    const role = body.role;
 
     const errors: Array<{ field: string; message: string }> = [];
-    if (!email || !email.includes("@")) {
+    if (unknownField) {
+      errors.push({ field: unknownField, message: "Unsupported user invitation field" });
+    }
+    if (!npIsCanonicalAuthEmail(email)) {
       errors.push({ field: "email", message: "Valid email is required" });
     }
-    if (!name) {
-      errors.push({ field: "name", message: "Name is required" });
+    if (!name || name.length > npAuthContractLimits.nameLength) {
+      errors.push({
+        field: "name",
+        message: `Name must contain 1 through ${npAuthContractLimits.nameLength.toString()} characters`,
+      });
     }
-    if (!VALID_ROLES.includes(role)) {
-      errors.push({ field: "role", message: `Role must be one of: ${VALID_ROLES.join(", ")}` });
+    if (!npIsUserRole(role)) {
+      errors.push({ field: "role", message: `Role must be one of: ${npUserRoles.join(", ")}` });
     }
     if (errors.length > 0) {
       throw new NpValidationError("Invalid input", errors);
@@ -82,7 +103,7 @@ export async function POST(request: NextRequest) {
           email,
           name,
           password: hashed,
-          role,
+          role: npIsUserRole(role) ? role : "author",
         })
         .returning({
           id: npUsers.id,
@@ -119,7 +140,7 @@ export async function POST(request: NextRequest) {
       name: created.name,
       token: issued.token,
       purpose: "invite",
-      resetUrl: buildResetUrl(request, issued.token),
+      resetUrl: buildResetUrl(siteUrl, issued.token),
       siteName: nexpressConfig.site.name,
     });
 
@@ -133,13 +154,13 @@ export async function POST(request: NextRequest) {
     });
 
     return npSuccessResponse(
-      {
+      npRequireStaffInviteResult({
         id: created.id,
         email: created.email,
         name: created.name,
         role: created.role,
-        inviteExpiresAt: issued.expiresAt,
-      },
+        inviteExpiresAt: issued.expiresAt.toISOString(),
+      }),
       { status: 201 },
     );
   } catch (error) {

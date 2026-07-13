@@ -1,13 +1,11 @@
-import {
-  createMemberAuthRoutes,
-  createStaffAuthRoutes,
-} from "@nexpress/auth-pages/server";
+import { createMemberAuthRoutes, createStaffAuthRoutes } from "@nexpress/auth-pages/server";
 
 import {
   clearAuthCookies,
   getAuthRuntimeConfig,
   optionalAuth,
   requireAuth,
+  revokeCurrentAuthSession,
   setAuthCookies,
 } from "./auth-helpers";
 import { getDb } from "@/lib/bootstrap";
@@ -16,6 +14,7 @@ import {
   clearMemberAuthCookies,
   getMemberAuthRuntimeConfig,
   requireMember,
+  revokeCurrentMemberSession,
   setMemberAuthCookies,
 } from "./member-auth-helpers";
 import { resetTtlMs, verifyTtlMs } from "./token-ttl";
@@ -39,6 +38,7 @@ export const memberAuthRoutes = createMemberAuthRoutes({
     clearMemberAuthCookies,
     getMemberAuthRuntimeConfig,
     requireMember,
+    revokeCurrentMemberSession,
   },
   site: {
     name: nexpressConfig.site.name,
@@ -66,6 +66,7 @@ export const staffAuthRoutes = createStaffAuthRoutes({
     getAuthRuntimeConfig,
     requireAuth,
     optionalAuth,
+    revokeCurrentAuthSession,
   },
   site: {
     name: nexpressConfig.site.name,

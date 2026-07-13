@@ -15,6 +15,7 @@ export interface StaffAuthHelpersForRoutes {
   getAuthRuntimeConfig: () => AuthRuntimeConfig;
   requireAuth: AuthHelpers["requireAuth"];
   optionalAuth: AuthHelpers["optionalAuth"];
+  revokeCurrentAuthSession: AuthHelpers["revokeCurrentAuthSession"];
 }
 
 /**
@@ -44,14 +45,6 @@ export interface StaffAuthRoutesConfig {
 }
 
 export interface StaffAuthRoutesOptions {
-  resetPassword?: {
-    /** Default 8. */
-    minPasswordLength?: number;
-  };
-  changePassword?: {
-    /** Default 8. */
-    minPasswordLength?: number;
-  };
   forgotPassword?: {
     /** Default 1 hour. */
     tokenTtlMs?: number;

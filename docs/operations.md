@@ -206,8 +206,8 @@ psql "$DATABASE_URL" -c "
   WHERE email = 'compromised@example.com';
 "
 
-# Optional cleanup — drop persisted refresh sessions for the same user.
-# Not strictly required (the bump invalidates them too) but good hygiene.
+# Optional cleanup — drop every browser-session pair for the same user.
+# Not strictly required after the bump, but good hygiene.
 psql "$DATABASE_URL" -c "
   DELETE FROM np_sessions WHERE user_id = 'a1b2c3d4-…';
 "
@@ -232,7 +232,7 @@ Plan for a forced re-login.
 1. Generate a new secret. Stage it in the new env config but do not
    deploy yet.
 2. Communicate the planned cutover window if your sessions are
-   long-lived (default 30 days).
+   long-lived (refresh default 7 days).
 3. Deploy with the new `NP_SECRET`. Every active user gets logged out
    on their next request.
 4. There's no overlap window in v1 — the singleton secret is the only

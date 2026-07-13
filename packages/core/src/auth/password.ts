@@ -1,5 +1,11 @@
 import { hash, verify, type Options } from "@node-rs/argon2";
 
+import {
+  npAuthContractLimits,
+  npIsAuthNewPassword,
+  npIsAuthPasswordCandidate,
+} from "../auth-contract/index.js";
+
 export const ARGON2_OPTIONS: Options = {
   memoryCost: 19456,
   timeCost: 2,
@@ -18,15 +24,18 @@ const TEST_ARGON2_OPTIONS: Options = {
 };
 
 export function hashPassword(password: string): Promise<string> {
+  if (!npIsAuthNewPassword(password)) {
+    throw new Error(
+      `Password must contain ${npAuthContractLimits.passwordMinLength.toString()} through ${npAuthContractLimits.passwordMaxLength.toString()} characters.`,
+    );
+  }
   return hash(
     password,
     process.env.NP_TEST_FAST_HASH === "1" ? TEST_ARGON2_OPTIONS : ARGON2_OPTIONS,
   );
 }
 
-export function verifyPassword(
-  passwordHash: string,
-  password: string,
-): Promise<boolean> {
+export function verifyPassword(passwordHash: string, password: string): Promise<boolean> {
+  if (!npIsAuthPasswordCandidate(password)) return Promise.resolve(false);
   return verify(passwordHash, password);
 }

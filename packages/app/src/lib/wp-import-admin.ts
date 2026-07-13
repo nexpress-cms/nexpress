@@ -28,6 +28,11 @@ import {
   type NpImportRunStatus,
 } from "@nexpress/core";
 import {
+  npAuthContractLimits,
+  npIsCanonicalAuthEmail,
+  npIsCanonicalMemberHandle,
+} from "@nexpress/core/auth-contract";
+import {
   npRequireJobsEnabledFlag,
   type NpWordPressImportApplyJobData,
 } from "@nexpress/core/jobs-contract";
@@ -1024,21 +1029,34 @@ function createCommentDeps() {
       displayName: string;
     }) => {
       const db = getDb();
+      const canonicalHandle = handle.trim().toLowerCase();
+      if (!npIsCanonicalMemberHandle(canonicalHandle)) {
+        throw new NpValidationError("Invalid imported member", [
+          { field: "handle", message: "Imported member handle violates the auth contract" },
+        ]);
+      }
       const [existing] = await db
         .select({ id: npMembers.id })
         .from(npMembers)
-        .where(eq(npMembers.handle, handle))
+        .where(eq(npMembers.handle, canonicalHandle))
         .limit(1);
       if (existing) return { id: existing.id };
 
+      const normalizedEmail = email?.trim().toLowerCase() ?? null;
       const safeEmail =
-        email && (await isMemberEmailFree(email)) ? email : `${handle}@imported.invalid`;
+        normalizedEmail &&
+        npIsCanonicalAuthEmail(normalizedEmail) &&
+        (await isMemberEmailFree(normalizedEmail))
+          ? normalizedEmail
+          : `${canonicalHandle}@imported.invalid`;
+      const normalizedDisplayName =
+        displayName.trim().slice(0, npAuthContractLimits.displayNameLength) || canonicalHandle;
       const [inserted] = await db
         .insert(npMembers)
         .values({
-          handle,
+          handle: canonicalHandle,
           email: safeEmail,
-          displayName,
+          displayName: normalizedDisplayName,
           status: "imported",
           emailVerified: false,
         })
@@ -1094,9 +1112,19 @@ function createAuthorDeps() {
       wpAuthor: { email?: string; displayName?: string } | undefined;
     }) => {
       const db = getDb();
-      const email = wpAuthor?.email
+      const local =
+        wpAuthorLogin
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9._+-]+/gu, "-")
+          .replace(/^-+|-+$/gu, "")
+          .slice(0, 64) || "wp-author";
+      const importedEmail = wpAuthor?.email
         ? flagImportedEmail(wpAuthor.email)
-        : `${wpAuthorLogin}@wp-import.invalid`;
+        : `${local}@wp-import.invalid`;
+      const email = npIsCanonicalAuthEmail(importedEmail)
+        ? importedEmail
+        : `${local}@wp-import.invalid`;
       const [existing] = await db
         .select({ id: npUsers.id })
         .from(npUsers)
@@ -1107,12 +1135,15 @@ function createAuthorDeps() {
       const password = await hashPassword(
         `wp-import-${wpAuthorLogin}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       );
+      const name =
+        (wpAuthor?.displayName || wpAuthorLogin).trim().slice(0, npAuthContractLimits.nameLength) ||
+        local;
       const [inserted] = await db
         .insert(npUsers)
         .values({
           email,
           password,
-          name: wpAuthor?.displayName || wpAuthorLogin,
+          name,
           role: "viewer",
         })
         .returning({ id: npUsers.id });
@@ -1311,10 +1342,11 @@ function countBy<T>(rows: T[], keyOf: (row: T) => string): Record<string, number
 }
 
 function flagImportedEmail(original: string): string {
-  const at = original.indexOf("@");
-  if (at < 0) return `${original}+wp-import@wp-import.invalid`;
-  const local = original.slice(0, at);
-  const domain = original.slice(at + 1);
+  const normalized = original.trim().toLowerCase();
+  const at = normalized.indexOf("@");
+  if (at < 0) return `${normalized}+wp-import@wp-import.invalid`;
+  const local = normalized.slice(0, at);
+  const domain = normalized.slice(at + 1);
   return `${local}+wp-import@${domain}`;
 }
 

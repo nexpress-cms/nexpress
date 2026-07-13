@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Input, Label } from "@nexpress/admin/client";
+import { npAuthContractLimits } from "@nexpress/core/auth-contract";
 
 type Status = "idle" | "submitting" | "done" | "error";
 
@@ -23,8 +24,10 @@ export function SetPasswordForm() {
     event.preventDefault();
     setError("");
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (password.length < npAuthContractLimits.passwordMinLength) {
+      setError(
+        `Password must be at least ${npAuthContractLimits.passwordMinLength.toString()} characters.`,
+      );
       return;
     }
 
@@ -68,7 +71,8 @@ export function SetPasswordForm() {
     return (
       <div className="flex flex-col gap-3">
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-          Missing reset token. Start from the forgot-password page or the invitation link in your email.
+          Missing reset token. Start from the forgot-password page or the invitation link in your
+          email.
         </div>
         <Link
           href="/admin/forgot-password"
@@ -116,7 +120,8 @@ export function SetPasswordForm() {
         <Input
           id="password"
           type="password"
-          minLength={8}
+          minLength={npAuthContractLimits.passwordMinLength}
+          maxLength={npAuthContractLimits.passwordMaxLength}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
@@ -130,7 +135,8 @@ export function SetPasswordForm() {
         <Input
           id="confirm"
           type="password"
-          minLength={8}
+          minLength={npAuthContractLimits.passwordMinLength}
+          maxLength={npAuthContractLimits.passwordMaxLength}
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           required

@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { NpUserRole } from "@nexpress/core";
+import {
+  npIsStaffUserList,
+  npIsUserRole,
+  npUserRoles,
+  type NpStaffUserItem,
+  type NpUserRole,
+} from "@nexpress/core/auth-contract";
 import { MailPlus, Plus } from "lucide-react";
 
 import { npFetch } from "../lib/api-client.js";
@@ -21,14 +27,9 @@ import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 
-type UserRow = {
-  id: string;
-  name: string;
-  email: string;
-  role: NpUserRole;
-};
+type UserRow = NpStaffUserItem;
 
-const ROLE_OPTIONS: NpUserRole[] = ["admin", "editor", "moderator", "author", "viewer"];
+const ROLE_OPTIONS = npUserRoles;
 
 export function UserManagement() {
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -71,8 +72,8 @@ export function UserManagement() {
         return;
       }
 
-      if (isRecord(payload) && Array.isArray(payload.docs)) {
-        setUsers(payload.docs.filter(isUserRow));
+      if (npIsStaffUserList(payload)) {
+        setUsers(payload.docs);
       } else {
         setUsers([]);
       }
@@ -314,9 +315,11 @@ export function UserManagement() {
               <Label>Role</Label>
               <Select
                 value={inviteForm.role}
-                onValueChange={(value) =>
-                  setInviteForm((current) => ({ ...current, role: value as NpUserRole }))
-                }
+                onValueChange={(value) => {
+                  if (npIsUserRole(value)) {
+                    setInviteForm((current) => ({ ...current, role: value }));
+                  }
+                }}
               >
                 <SelectTrigger className="min-w-0">
                   <SelectValue placeholder="Select role" />
@@ -396,9 +399,11 @@ export function UserManagement() {
               <Label>Role</Label>
               <Select
                 value={emailInviteForm.role}
-                onValueChange={(value) =>
-                  setEmailInviteForm((current) => ({ ...current, role: value as NpUserRole }))
-                }
+                onValueChange={(value) => {
+                  if (npIsUserRole(value)) {
+                    setEmailInviteForm((current) => ({ ...current, role: value }));
+                  }
+                }}
               >
                 <SelectTrigger className="min-w-0">
                   <SelectValue placeholder="Select role" />
@@ -439,17 +444,6 @@ export function UserManagement() {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isUserRow(value: unknown): value is UserRow {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.id === "string" &&
-    typeof value.name === "string" &&
-    typeof value.email === "string" &&
-    typeof value.role === "string" &&
-    (ROLE_OPTIONS as string[]).includes(value.role)
-  );
 }
 
 function getErrorMessage(payload: unknown, fallback: string): string {

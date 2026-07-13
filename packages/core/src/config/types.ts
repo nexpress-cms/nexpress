@@ -1,16 +1,8 @@
 import type { NpMediaImageSize } from "../media-contract/types.js";
+import type { NpAuthUser } from "../auth-contract/types.js";
+export type { NpAuthUser, NpUserRole } from "../auth-contract/types.js";
 export type { NpRichTextContent } from "../fields/rich-text.js";
 export type { NpNavItem } from "../navigation/types.js";
-
-export type NpUserRole = "admin" | "editor" | "moderator" | "author" | "viewer";
-
-export interface NpAuthUser {
-  id: string;
-  email: string;
-  name: string;
-  role: NpUserRole;
-  tokenVersion: number;
-}
 
 export type NpAccessFunction = (args: {
   user: NpAuthUser | null;

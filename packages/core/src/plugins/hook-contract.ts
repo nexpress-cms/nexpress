@@ -1,4 +1,13 @@
-import { type NpHookPrincipal } from "../config/types.js";
+import {
+  npAuthContractLimits,
+  npIsAuthUser,
+  npIsCanonicalAuthEmail,
+  npIsCanonicalAuthId,
+  npIsCanonicalMemberHandle,
+  npIsUserRole,
+  type NpUserRole,
+} from "../auth-contract/index.js";
+import type { NpPrincipal as NpHookPrincipal } from "../auth/principal.js";
 
 export const npPluginHookNames = [
   "content:beforeCreate",
@@ -24,7 +33,7 @@ export type NpPluginLifecycleHookName = Exclude<NpPluginHookName, "render:before
 export interface NpPluginUser {
   readonly id: string;
   readonly email: string;
-  readonly role: string;
+  readonly role: NpUserRole;
 }
 
 export interface NpPluginMember {
@@ -215,25 +224,35 @@ function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[])
 function isPluginUser(value: unknown): value is NpPluginUser {
   return (
     isRecord(value) &&
-    typeof value.id === "string" &&
-    typeof value.email === "string" &&
-    typeof value.role === "string"
+    npIsCanonicalAuthId(value.id) &&
+    npIsCanonicalAuthEmail(value.email) &&
+    npIsUserRole(value.role)
   );
 }
 
 function isPrincipal(value: unknown): value is NpHookPrincipal {
   if (!isRecord(value)) return false;
-  if (value.kind === "staff") return isPluginUser(value.user);
-  return value.kind === "member" && typeof value.memberId === "string";
+  if (value.kind === "staff") {
+    return hasOnlyKeys(value, ["kind", "user"]) && npIsAuthUser(value.user);
+  }
+  return (
+    value.kind === "member" &&
+    hasOnlyKeys(value, ["kind", "memberId"]) &&
+    npIsCanonicalAuthId(value.memberId)
+  );
 }
 
 function isMember(value: unknown): value is NpPluginMember {
   return (
     isRecord(value) &&
-    typeof value.id === "string" &&
-    typeof value.email === "string" &&
-    typeof value.handle === "string" &&
-    typeof value.displayName === "string"
+    hasOnlyKeys(value, ["id", "email", "handle", "displayName"]) &&
+    npIsCanonicalAuthId(value.id) &&
+    npIsCanonicalAuthEmail(value.email) &&
+    npIsCanonicalMemberHandle(value.handle) &&
+    typeof value.displayName === "string" &&
+    value.displayName.length > 0 &&
+    value.displayName === value.displayName.trim() &&
+    value.displayName.length <= npAuthContractLimits.displayNameLength
   );
 }
 
@@ -364,7 +383,12 @@ function validateAuthHookData(
   hookName: Extract<NpPluginHookName, `auth:${string}`>,
   value: unknown,
 ): NpPluginHookValidationResult {
-  if (!isRecord(value) || !isPluginUser(value.user)) {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.user) ||
+    !hasOnlyKeys(value.user, ["id", "email", "role"]) ||
+    !isPluginUser(value.user)
+  ) {
     return invalid(`${hookName} data.user must be a plugin user.`);
   }
   if (hookName === "auth:afterRegister") {

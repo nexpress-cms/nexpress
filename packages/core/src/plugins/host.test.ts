@@ -81,7 +81,7 @@ function afterCreateData(collection = "posts"): NpContentAfterCreateHookData {
     principal: {
       kind: "staff",
       user: {
-        id: "user-1",
+        id: "11111111-1111-4111-8111-111111111111",
         email: "admin@example.com",
         name: "Admin",
         role: "admin",
@@ -662,7 +662,11 @@ describe("plugin host", () => {
     it("is a no-op when the canonical hook has no handlers", async () => {
       await expect(
         runHook("auth:afterLogin", {
-          user: { id: "user-1", email: "admin@example.com", role: "admin" },
+          user: {
+            id: "11111111-1111-4111-8111-111111111111",
+            email: "admin@example.com",
+            role: "admin",
+          },
         }),
       ).resolves.toBeUndefined();
     });

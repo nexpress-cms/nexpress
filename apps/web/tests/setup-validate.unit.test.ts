@@ -203,13 +203,23 @@ describe("setup-server validateBody", () => {
         adminEmail: "founder@example.com",
         adminPassword: "short",
       }),
-    ).toMatch(/Admin password must be at least 12 characters/);
+    ).toMatch(/Admin password must contain 12 through 1024 characters/);
+  });
+
+  it("rejects an oversized first-admin password", () => {
+    expect(
+      err({
+        ...baseValid,
+        adminEmail: "admin@example.com",
+        adminPassword: "x".repeat(1025),
+      }),
+    ).toMatch(/Admin password must contain 12 through 1024 characters/);
   });
 
   it("accepts complete first-admin setup fields", () => {
     const out = ok({
       ...baseValid,
-      adminEmail: "founder@example.com",
+      adminEmail: " Founder@Example.com ",
       adminPassword: "correct horse battery",
       adminName: "Founder",
       adminThemeId: "docs",
@@ -219,5 +229,16 @@ describe("setup-server validateBody", () => {
     expect(out.adminEmail).toBe("founder@example.com");
     expect(out.adminPassword).toBe("correct horse battery");
     expect(out.sampleContent).toBe(true);
+  });
+
+  it("rejects a first-admin name outside the auth contract", () => {
+    expect(
+      err({
+        ...baseValid,
+        adminEmail: "founder@example.com",
+        adminPassword: "correct horse battery",
+        adminName: "x".repeat(201),
+      }),
+    ).toMatch(/Admin name must not exceed 200 characters/);
   });
 });

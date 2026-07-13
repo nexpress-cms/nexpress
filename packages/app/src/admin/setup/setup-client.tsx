@@ -2,14 +2,8 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  AuthCard,
-  AuthLayout,
-  Button,
-  Input,
-  Label,
-  Switch,
-} from "@nexpress/admin/client";
+import { AuthCard, AuthLayout, Button, Input, Label, Switch } from "@nexpress/admin/client";
+import { npAuthContractLimits } from "@nexpress/core/auth-contract";
 
 type Step = 1 | 2;
 
@@ -120,8 +114,11 @@ export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(account.email)) {
       return "Enter a valid email address.";
     }
-    if (account.password.length < PASSWORD_MIN) {
-      return `Password must be at least ${PASSWORD_MIN} characters.`;
+    if (
+      account.password.length < PASSWORD_MIN ||
+      account.password.length > npAuthContractLimits.passwordMaxLength
+    ) {
+      return `Password must contain ${PASSWORD_MIN} through ${npAuthContractLimits.passwordMaxLength.toString()} characters.`;
     }
     if (account.password !== account.passwordConfirm) {
       return "Passwords do not match.";
@@ -168,13 +165,11 @@ export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
         // `fields[]`; surfacing only the umbrella `message` ("Invalid
         // input") leaves operators staring at a screen that says
         // nothing about what's wrong with their input.
-        const fieldDetail = body.error?.fields
-          ?.map((f) => `${f.field}: ${f.message}`)
-          .join(" — ");
+        const fieldDetail = body.error?.fields?.map((f) => `${f.field}: ${f.message}`).join(" — ");
         setError(
           fieldDetail
             ? `${body.error?.message ?? "Setup failed"} (${fieldDetail})`
-            : body.error?.message ?? "Setup failed.",
+            : (body.error?.message ?? "Setup failed."),
         );
         return;
       }
@@ -193,7 +188,8 @@ export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
         title="Welcome to NexPress"
         description={
           <span>
-            Step <strong className="font-semibold text-neutral-700 dark:text-neutral-200">{step}</strong>{" "}
+            Step{" "}
+            <strong className="font-semibold text-neutral-700 dark:text-neutral-200">{step}</strong>{" "}
             of 2 — {step === 1 ? "create your admin" : "site basics"}
           </span>
         }
@@ -227,14 +223,11 @@ export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
                 placeholder="Site Admin"
               />
             </FieldRow>
-            <FieldRow
-              id="password"
-              label={`Password (min ${PASSWORD_MIN} characters)`}
-              required
-            >
+            <FieldRow id="password" label={`Password (min ${PASSWORD_MIN} characters)`} required>
               <Input
                 id="password"
                 type="password"
+                maxLength={npAuthContractLimits.passwordMaxLength}
                 value={account.password}
                 onChange={(e) => setAccount({ ...account, password: e.target.value })}
                 autoComplete="new-password"
@@ -245,10 +238,9 @@ export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
               <Input
                 id="password-confirm"
                 type="password"
+                maxLength={npAuthContractLimits.passwordMaxLength}
                 value={account.passwordConfirm}
-                onChange={(e) =>
-                  setAccount({ ...account, passwordConfirm: e.target.value })
-                }
+                onChange={(e) => setAccount({ ...account, passwordConfirm: e.target.value })}
                 autoComplete="new-password"
                 required
               />
@@ -277,11 +269,7 @@ export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
             {themes.length > 0 ? (
               <div className="flex flex-col gap-1.5">
                 <Label className="text-[12.5px]">Theme</Label>
-                <div
-                  role="radiogroup"
-                  aria-label="Theme"
-                  className="flex flex-col gap-1.5"
-                >
+                <div role="radiogroup" aria-label="Theme" className="flex flex-col gap-1.5">
                   {themes.map((theme, index) => {
                     const selected = site.themeId === theme.id;
                     return (
@@ -349,9 +337,9 @@ export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
                   })}
                 </div>
                 <p className="text-[11px] leading-[1.4] text-neutral-500 dark:text-neutral-500">
-                  You can switch themes anytime from Admin → Settings → Themes
-                  — no migration needed. Use "Switch & reseed" to replace this
-                  theme's demo content with the chosen theme's.
+                  You can switch themes anytime from Admin → Settings → Themes — no migration
+                  needed. Use "Switch & reseed" to replace this theme's demo content with the chosen
+                  theme's.
                 </p>
               </div>
             ) : null}
@@ -361,17 +349,14 @@ export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
                   Add demo content
                 </div>
                 <p className="mt-0.5 text-[11.5px] leading-[1.5] text-neutral-500 dark:text-neutral-400">
-                  Pages, posts, and navigation tuned to the theme you picked
-                  above — so the public site renders something matching the
-                  design out of the box. Each row is tagged so you can wipe
-                  and reseed when switching themes.
+                  Pages, posts, and navigation tuned to the theme you picked above — so the public
+                  site renders something matching the design out of the box. Each row is tagged so
+                  you can wipe and reseed when switching themes.
                 </p>
               </div>
               <Switch
                 checked={site.sampleContent}
-                onCheckedChange={(checked) =>
-                  setSite({ ...site, sampleContent: checked })
-                }
+                onCheckedChange={(checked) => setSite({ ...site, sampleContent: checked })}
                 aria-label="Add demo content"
               />
             </div>
@@ -384,11 +369,7 @@ export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
               >
                 Back
               </Button>
-              <Button
-                type="submit"
-                disabled={submitting}
-                className="flex-1 justify-center"
-              >
+              <Button type="submit" disabled={submitting} className="flex-1 justify-center">
                 {submitting ? "Setting up…" : "Finish"}
               </Button>
             </div>
@@ -411,7 +392,11 @@ function FieldRow({ id, label, required, children }: FieldRowProps) {
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id} className="text-[12.5px]">
         {label}
-        {required ? <span aria-hidden className="ml-0.5 text-red-500">*</span> : null}
+        {required ? (
+          <span aria-hidden className="ml-0.5 text-red-500">
+            *
+          </span>
+        ) : null}
       </Label>
       {children}
     </div>

@@ -18,6 +18,11 @@ import {
   uploadMedia,
 } from "@nexpress/core";
 import {
+  npAuthContractLimits,
+  npIsCanonicalAuthEmail,
+  npIsCanonicalMemberHandle,
+} from "@nexpress/core/auth-contract";
+import {
   applyBundle,
   loadResumeState,
   persistResumeState,
@@ -78,8 +83,7 @@ if (!databaseUrl) {
   process.exit(2);
 }
 
-await ensureFor("read");
-await ensureFor("plugins");
+await ensureFor("write");
 
 const code = await runCli(process.argv.slice(2), undefined, {
   applyBundle: async (bundle, ctx) => {
@@ -171,10 +175,14 @@ const code = await runCli(process.argv.slice(2), undefined, {
         comments: {
           ensureImportedMember: async ({ handle, email, displayName }) => {
             const db = getDb();
+            const canonicalHandle = handle.trim().toLowerCase();
+            if (!npIsCanonicalMemberHandle(canonicalHandle)) {
+              throw new Error("Imported member handle violates the auth contract");
+            }
             const [existing] = await db
               .select({ id: npMembers.id })
               .from(npMembers)
-              .where(eq(npMembers.handle, handle))
+              .where(eq(npMembers.handle, canonicalHandle))
               .limit(1);
             if (existing) return { id: existing.id };
             // No password, no verified email — `imported` status
@@ -183,14 +191,22 @@ const code = await runCli(process.argv.slice(2), undefined, {
             // owns the address; in that case fall through with a
             // synthetic placeholder so the unique index on
             // np_members.email doesn't reject the insert.
+            const normalizedEmail = email?.trim().toLowerCase() ?? null;
             const safeEmail =
-              email && (await isEmailFree(email)) ? email : `${handle}@imported.invalid`;
+              normalizedEmail &&
+              npIsCanonicalAuthEmail(normalizedEmail) &&
+              (await isEmailFree(normalizedEmail))
+                ? normalizedEmail
+                : `${canonicalHandle}@imported.invalid`;
+            const normalizedDisplayName =
+              displayName.trim().slice(0, npAuthContractLimits.displayNameLength) ||
+              canonicalHandle;
             const [inserted] = await db
               .insert(npMembers)
               .values({
-                handle,
+                handle: canonicalHandle,
                 email: safeEmail,
-                displayName,
+                displayName: normalizedDisplayName,
                 status: "imported",
                 emailVerified: false,
               })
@@ -242,9 +258,19 @@ const code = await runCli(process.argv.slice(2), undefined, {
           ? {
               resolveAuthor: async ({ wpAuthorLogin, wpAuthor }) => {
                 const db = getDb();
-                const email = wpAuthor?.email
+                const local =
+                  wpAuthorLogin
+                    .trim()
+                    .toLowerCase()
+                    .replace(/[^a-z0-9._+-]+/gu, "-")
+                    .replace(/^-+|-+$/gu, "")
+                    .slice(0, 64) || "wp-author";
+                const importedEmail = wpAuthor?.email
                   ? flagImportedEmail(wpAuthor.email)
-                  : `${wpAuthorLogin}@wp-import.invalid`;
+                  : `${local}@wp-import.invalid`;
+                const email = npIsCanonicalAuthEmail(importedEmail)
+                  ? importedEmail
+                  : `${local}@wp-import.invalid`;
                 const [existing] = await db
                   .select({ id: npUsers.id })
                   .from(npUsers)
@@ -254,12 +280,16 @@ const code = await runCli(process.argv.slice(2), undefined, {
                 const password = await hashPassword(
                   `wp-import-${wpAuthorLogin}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
                 );
+                const name =
+                  (wpAuthor?.displayName || wpAuthorLogin)
+                    .trim()
+                    .slice(0, npAuthContractLimits.nameLength) || local;
                 const [inserted] = await db
                   .insert(npUsers)
                   .values({
                     email,
                     password,
-                    name: wpAuthor?.displayName || wpAuthorLogin,
+                    name,
                     role: "viewer",
                   })
                   .returning({ id: npUsers.id });
@@ -343,10 +373,11 @@ function openReportFile(path: string): { deps: ReportHtmlDeps; close: () => void
  * filter / clean up later.
  */
 function flagImportedEmail(original: string): string {
-  const at = original.indexOf("@");
-  if (at < 0) return `${original}+wp-import@wp-import.invalid`;
-  const local = original.slice(0, at);
-  const domain = original.slice(at + 1);
+  const normalized = original.trim().toLowerCase();
+  const at = normalized.indexOf("@");
+  if (at < 0) return `${normalized}+wp-import@wp-import.invalid`;
+  const local = normalized.slice(0, at);
+  const domain = normalized.slice(at + 1);
   return `${local}+wp-import@${domain}`;
 }
 

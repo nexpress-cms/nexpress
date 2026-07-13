@@ -2,6 +2,17 @@ import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { npValidatePluginCronExpression } from "@nexpress/core";
 import {
+  npAnalyzeAuthUser,
+  npAnalyzeMemberAuthUser,
+  npAnalyzeMemberSessionRecord,
+  npAnalyzeStaffSessionRecord,
+  npAuthContractLimits,
+  npAuthRuntimeDefaults,
+  npReadAuthPositiveInteger,
+  npRequireAuthSecret,
+  type NpAuthContractIssue,
+} from "@nexpress/core/auth-contract";
+import {
   NP_DEFAULT_SITE_ID,
   npAnalyzeSettingRecord,
   npAnalyzeSiteMembershipRecord,
@@ -117,6 +128,7 @@ export async function collectDoctorChecks(
   checks.push(...checkOAuthEnvPairs(env));
   checks.push(await checkLocalStorage(env, cwd));
   checks.push(await checkDatabase(env));
+  checks.push(await checkAuthContracts(env));
   checks.push(await checkSettingsContracts(env));
   checks.push(await checkRevisionContracts(env));
   checks.push(await checkJobContracts(env));
@@ -302,6 +314,276 @@ async function checkDatabase(env: DoctorEnv): Promise<CheckResult> {
       label: "Postgres reachable",
       detail: messageForConnectionError(url, err, { suggestedPort }),
     };
+  }
+}
+
+async function checkAuthContracts(env: DoctorEnv): Promise<CheckResult> {
+  const runtimeError = inspectAuthRuntimeEnvironment(env);
+  if (runtimeError) {
+    return {
+      id: "auth.contract",
+      state: "error",
+      label: "Authentication and session contracts",
+      detail: runtimeError,
+      hint: "Use canonical positive integers within the bounds documented in .env.example.",
+    };
+  }
+  const url = env.DATABASE_URL;
+  if (!url) {
+    return {
+      id: "auth.contract",
+      state: "warn",
+      label: "Authentication and session contracts",
+      detail: "skipped (no DATABASE_URL)",
+    };
+  }
+  let pg: PgModuleLike;
+  try {
+    pg = (await loadPg()) as PgModuleLike;
+  } catch {
+    return {
+      id: "auth.contract",
+      state: "warn",
+      label: "Authentication and session contracts",
+      detail: "skipped (no `pg`)",
+    };
+  }
+
+  const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
+  try {
+    await client.connect();
+    const columns = await client.query<{ tableName: string; columnName: string }>(
+      `select table_name as "tableName", column_name as "columnName"
+         from information_schema.columns
+        where table_schema = 'public'
+          and table_name = any($1::text[])`,
+      [["np_users", "np_members", "np_sessions", "np_member_sessions"]],
+    );
+    const columnSets = new Map<string, Set<string>>();
+    for (const row of columns.rows) {
+      const set = columnSets.get(row.tableName) ?? new Set<string>();
+      set.add(row.columnName);
+      columnSets.set(row.tableName, set);
+    }
+    const requiredTables = ["np_users", "np_members", "np_sessions", "np_member_sessions"];
+    if (!columnSets.has("np_users") && !columnSets.has("np_members")) {
+      await client.end();
+      return {
+        id: "auth.contract",
+        state: "warn",
+        label: "Authentication and session contracts",
+        detail: "skipped (authentication tables have not been migrated)",
+      };
+    }
+    const missingTables = requiredTables.filter((table) => !columnSets.has(table));
+    if (missingTables.length > 0) {
+      await client.end();
+      return {
+        id: "auth.contract",
+        state: "warn",
+        label: "Authentication and session contracts",
+        detail: `authentication schema is incomplete; missing ${missingTables.join(", ")}`,
+        hint: "Run `pnpm db:migrate` before accepting authenticated requests.",
+      };
+    }
+
+    const users = columnSets.has("np_users")
+      ? await client.query<Record<string, unknown>>(
+          `select id, email, name, role, token_version as "tokenVersion" from np_users`,
+        )
+      : { rows: [] };
+    const members = columnSets.has("np_members")
+      ? await client.query<Record<string, unknown>>(
+          `select id, email, handle, display_name as "displayName", status,
+                  token_version as "tokenVersion"
+             from np_members`,
+        )
+      : { rows: [] };
+
+    const sessionColumns = [
+      "id",
+      "access_token_hash",
+      "refresh_token_hash",
+      "access_expires_at",
+      "refresh_expires_at",
+      "user_agent",
+      "ip",
+      "created_at",
+      "updated_at",
+    ];
+    const staffColumns = columnSets.get("np_sessions");
+    const memberColumns = columnSets.get("np_member_sessions");
+    const staffSessionsCurrent =
+      staffColumns?.has("user_id") === true &&
+      sessionColumns.every((column) => staffColumns.has(column));
+    const memberSessionsCurrent =
+      memberColumns?.has("member_id") === true &&
+      sessionColumns.every((column) => memberColumns.has(column));
+    const staffSessions = staffSessionsCurrent
+      ? await client.query<Record<string, unknown>>(
+          `select id, user_id as "userId", access_token_hash as "accessTokenHash",
+                  refresh_token_hash as "refreshTokenHash",
+                  access_expires_at as "accessExpiresAt",
+                  refresh_expires_at as "refreshExpiresAt", user_agent as "userAgent", ip,
+                  created_at as "createdAt", updated_at as "updatedAt"
+             from np_sessions`,
+        )
+      : { rows: [] };
+    const memberSessions = memberSessionsCurrent
+      ? await client.query<Record<string, unknown>>(
+          `select id, member_id as "memberId", access_token_hash as "accessTokenHash",
+                  refresh_token_hash as "refreshTokenHash",
+                  access_expires_at as "accessExpiresAt",
+                  refresh_expires_at as "refreshExpiresAt", user_agent as "userAgent", ip,
+                  created_at as "createdAt", updated_at as "updatedAt"
+             from np_member_sessions`,
+        )
+      : { rows: [] };
+    await client.end();
+
+    const issues: NpAuthContractIssue[] = [
+      ...users.rows.flatMap((row, index) => npAnalyzeAuthUser(row, `users[${index.toString()}]`)),
+      ...members.rows.flatMap((row, index) =>
+        npAnalyzeMemberAuthUser(row, `members[${index.toString()}]`),
+      ),
+      ...staffSessions.rows.flatMap((row, index) =>
+        npAnalyzeStaffSessionRecord(row, `staffSessions[${index.toString()}]`),
+      ),
+      ...memberSessions.rows.flatMap((row, index) =>
+        npAnalyzeMemberSessionRecord(row, `memberSessions[${index.toString()}]`),
+      ),
+    ];
+    const activeMemberIds = new Set(
+      members.rows.flatMap((member) =>
+        member.status === "active" && typeof member.id === "string" ? [member.id] : [],
+      ),
+    );
+    const validStaffIds = new Set(
+      users.rows.flatMap((user) =>
+        npAnalyzeAuthUser(user).length === 0 && typeof user.id === "string" ? [user.id] : [],
+      ),
+    );
+    staffSessions.rows.forEach((session, index) => {
+      if (typeof session.userId === "string" && !validStaffIds.has(session.userId)) {
+        issues.push({
+          code: "invariant",
+          path: `staffSessions[${index.toString()}].userId`,
+          message: "session belongs to a missing or malformed staff user.",
+        });
+      }
+    });
+    memberSessions.rows.forEach((session, index) => {
+      if (typeof session.memberId === "string" && !activeMemberIds.has(session.memberId)) {
+        issues.push({
+          code: "invariant",
+          path: `memberSessions[${index.toString()}].memberId`,
+          message: "session belongs to a non-active or malformed member.",
+        });
+      }
+    });
+
+    const currentSessionSchema =
+      (staffColumns === undefined || staffSessionsCurrent) &&
+      (memberColumns === undefined || memberSessionsCurrent);
+    const checked =
+      users.rows.length +
+      members.rows.length +
+      staffSessions.rows.length +
+      memberSessions.rows.length;
+    if (issues.length > 0) {
+      return {
+        id: "auth.contract",
+        state: "error",
+        label: "Authentication and session contracts",
+        detail: `${issues.length.toString()} contract issue(s); first: ${issues[0]?.path ?? "auth"} ${issues[0]?.message ?? "invalid"}`,
+        hint: "Repair malformed auth rows and revoke invalid session families before accepting requests.",
+      };
+    }
+    if (!currentSessionSchema) {
+      return {
+        id: "auth.contract",
+        state: "warn",
+        label: "Authentication and session contracts",
+        detail: "session tables still use the legacy unpaired-token schema",
+        hint: "Run `pnpm db:migrate`; the session-contract migration requires one fresh login.",
+      };
+    }
+    return {
+      id: "auth.contract",
+      state: "ok",
+      label: "Authentication and session contracts",
+      detail: `${checked.toString()} persisted auth/session row(s) checked`,
+    };
+  } catch (error) {
+    try {
+      await client.end();
+    } catch {
+      /* swallow */
+    }
+    return {
+      id: "auth.contract",
+      state: "warn",
+      label: "Authentication and session contracts",
+      detail: `could not inspect authentication rows: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+function inspectAuthRuntimeEnvironment(env: DoctorEnv): string | null {
+  try {
+    if (env.NP_SECRET) npRequireAuthSecret(env.NP_SECRET);
+    const access = npReadAuthPositiveInteger(
+      "NP_TOKEN_EXPIRATION",
+      env.NP_TOKEN_EXPIRATION,
+      npAuthRuntimeDefaults.accessTokenTtlSeconds,
+      npAuthContractLimits.accessTokenTtlSeconds,
+    );
+    const refresh = npReadAuthPositiveInteger(
+      "NP_REFRESH_TOKEN_EXPIRATION",
+      env.NP_REFRESH_TOKEN_EXPIRATION,
+      npAuthRuntimeDefaults.refreshTokenTtlSeconds,
+      npAuthContractLimits.refreshTokenTtlSeconds,
+    );
+    if (refresh < access) {
+      return "NP_REFRESH_TOKEN_EXPIRATION must not be shorter than NP_TOKEN_EXPIRATION.";
+    }
+    for (const [name, fallback, maximum] of [
+      [
+        "NP_MAX_LOGIN_ATTEMPTS",
+        npAuthRuntimeDefaults.maxLoginAttempts,
+        npAuthContractLimits.loginAttempts,
+      ],
+      [
+        "NP_LOCKOUT_DURATION",
+        npAuthRuntimeDefaults.lockoutTtlSeconds,
+        npAuthContractLimits.lockoutTtlSeconds,
+      ],
+      [
+        "NP_INVITE_TTL_HOURS",
+        npAuthRuntimeDefaults.inviteTtlHours,
+        npAuthContractLimits.inviteTtlHours,
+      ],
+      [
+        "NP_RESET_TTL_MINUTES",
+        npAuthRuntimeDefaults.resetTtlMinutes,
+        npAuthContractLimits.resetTtlMinutes,
+      ],
+      [
+        "NP_VERIFY_TTL_HOURS",
+        npAuthRuntimeDefaults.verifyTtlHours,
+        npAuthContractLimits.verifyTtlHours,
+      ],
+      [
+        "NP_OAUTH_STATE_TTL_SECONDS",
+        npAuthRuntimeDefaults.oauthStateTtlSeconds,
+        npAuthContractLimits.oauthStateTtlSeconds,
+      ],
+    ] as const) {
+      npReadAuthPositiveInteger(name, env[name], fallback, maximum);
+    }
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
   }
 }
 

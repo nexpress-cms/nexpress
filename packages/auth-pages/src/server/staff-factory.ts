@@ -3,22 +3,30 @@ import {
   NpError,
   NpValidationError,
   consumePasswordResetToken,
+  createStaffSession,
   enqueueJob,
   getLogger,
   getOAuthProvider,
   hashPassword,
-  invalidateAllSessions,
   issueOAuthState,
   oauthProviderSupportsAudience,
   requestPasswordReset,
+  replaceStaffPasswordAndInvalidateSessions,
   resolveOAuthLogin,
+  rotateStaffSession,
   runHook,
-  signToken,
   verifyOAuthState,
   verifyPassword,
-  verifyTokenFull,
   type NpUserRole,
 } from "@nexpress/core";
+import {
+  npAuthContractLimits,
+  npIsAuthSingleUseToken,
+  npIsAuthNewPassword,
+  npIsAuthPasswordCandidate,
+  npIsCanonicalAuthEmail,
+  npRequireStaffSessionUser,
+} from "@nexpress/core/auth-contract";
 import { npErrorResponse, npSuccessResponse, readJsonBody } from "@nexpress/next";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -30,24 +38,28 @@ import type {
 import { siteUrlLenient, siteUrlStrict } from "./site-url.js";
 
 const STATE_COOKIE = "np-oauth-state";
-const STATE_COOKIE_MAX_AGE = 600;
-
 const DEFAULTS = {
-  resetPassword: { minPasswordLength: 8 },
-  changePassword: { minPasswordLength: 8 },
   forgotPassword: { tokenTtlMs: 60 * 60_000 },
   oauth: { successRedirect: "/admin", failureRedirect: "/admin/login" },
   resetUrlPath: "/admin/set-password",
 } as const;
 
 function resolved(o: StaffAuthRoutesOptions = {}) {
-  return {
-    resetPassword: { ...DEFAULTS.resetPassword, ...o.resetPassword },
-    changePassword: { ...DEFAULTS.changePassword, ...o.changePassword },
+  const result = {
     forgotPassword: { ...DEFAULTS.forgotPassword, ...o.forgotPassword },
     oauth: { ...DEFAULTS.oauth, ...o.oauth },
     resetUrlPath: o.resetUrlPath ?? DEFAULTS.resetUrlPath,
   };
+  if (
+    !Number.isSafeInteger(result.forgotPassword.tokenTtlMs) ||
+    result.forgotPassword.tokenTtlMs <= 0 ||
+    result.forgotPassword.tokenTtlMs > 365 * 24 * 60 * 60_000
+  ) {
+    throw new Error(
+      "options.forgotPassword.tokenTtlMs must be a positive integer no longer than 365 days.",
+    );
+  }
+  return result;
 }
 
 function siteUrl(config: StaffAuthRoutesConfig, request: NextRequest): URL {
@@ -134,13 +146,18 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
 
       const valid = await verifyPassword(user.password, password);
       if (!valid) {
-        const nextAttempts = user.loginAttempts + 1;
-        const shouldLock = nextAttempts >= cfg.maxLoginAttempts;
         await db.$client.query(
-          "update np_users set login_attempts = $1, lock_until = $2, updated_at = $3 where id = $4",
+          `update np_users
+              set login_attempts = login_attempts + 1,
+                  lock_until = case
+                    when login_attempts + 1 >= $1 then $2
+                    else lock_until
+                  end,
+                  updated_at = $3
+            where id = $4`,
           [
-            nextAttempts,
-            shouldLock ? new Date(now.getTime() + cfg.lockoutDuration * 1000) : null,
+            cfg.maxLoginAttempts,
+            new Date(now.getTime() + cfg.lockoutDuration * 1000),
             now,
             user.id,
           ],
@@ -154,21 +171,39 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
         [now, user.id],
       );
 
-      const access = await signToken(user, cfg.secret, cfg.tokenExpiration, "access");
-      const refresh = await signToken(user, cfg.secret, cfg.refreshTokenExpiration, "refresh");
+      const session = await createStaffSession(
+        {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          tokenVersion: user.tokenVersion,
+        },
+        cfg.secret,
+        getDb() as never,
+        {
+          accessExpiration: cfg.tokenExpiration,
+          refreshExpiration: cfg.refreshTokenExpiration,
+          ...requestMetadata(request),
+        },
+      );
       const response = npSuccessResponse({
-        user: { id: user.id, email: user.email, name: user.name, role: user.role },
+        user: npRequireStaffSessionUser({
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        }),
       });
       authHelpers.setAuthCookies(response, {
-        access,
-        refresh,
+        access: session.access,
+        refresh: session.refresh,
         csrf: crypto.randomUUID(),
       });
 
-      // Plugin hook — async so a slow plugin can't stall the
-      // response. The member-auth flow has no equivalent (members
-      // don't trigger admin-side hooks). Plugins are already
-      // loaded by the top-of-handler `ensureFor("write")`.
+      // Plugin hook — the host owns its timeout policy. The member-auth flow
+      // has no equivalent (members don't trigger admin-side hooks). Plugins
+      // are already loaded by the top-of-handler `ensureFor("write")`.
       await runHook("auth:afterLogin", {
         user: { id: user.id, email: user.email, role: user.role },
       });
@@ -181,60 +216,59 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
 
   // ─── logout ─────────────────────────────────────────────────
   const logout = async (request: NextRequest): Promise<NextResponse> => {
+    let response: NextResponse;
     try {
-      // `optionalAuth` reads `np-session`, verifies the JWT, and
-      // checks `tokenVersion` against the DB row — the DB hit
-      // was implicit before. Make it explicit. Upgraded to
-      // `"plugins"` so the runHook path below has plugins
-      // loaded without a separate ensureFor.
-      await ensureFor("plugins");
-      const user = await authHelpers.optionalAuth(request);
+      // Load plugins before the hook and atomically revoke the browser session
+      // families selected by every live token's shared `sid`.
+      await ensureFor("write");
+      const user = await authHelpers.revokeCurrentAuthSession(request);
 
-      // Per-device logout only — clears local cookies, doesn't
-      // bump tokenVersion. Global logout (kill every session) is
-      // a separate explicit flow attached to password change /
-      // reset, not routine sign-out (#74).
+      // Per-device logout leaves other session families alive. Password change
+      // and reset remain the explicit global-revocation paths.
       if (user) {
         await runHook("auth:beforeLogout", {
           user: { id: user.id, email: user.email, role: user.role },
         });
       }
 
-      const response = npSuccessResponse({ success: true });
-      authHelpers.clearAuthCookies(response);
-      // Clear the multi-site picker cookie too — without this,
-      // the next user on the same device inherits the previous
-      // tenant context (#15.7).
-      response.cookies.delete("np-admin-site");
-      return response;
+      response = npSuccessResponse({ success: true });
     } catch (error) {
-      return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+      response = npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
     }
+    authHelpers.clearAuthCookies(response);
+    // Clear the multi-site picker cookie too — without this,
+    // the next user on the same device inherits the previous
+    // tenant context (#15.7).
+    response.cookies.delete("np-admin-site");
+    return response;
   };
 
   // ─── refresh ────────────────────────────────────────────────
   const refresh = async (request: NextRequest): Promise<NextResponse> => {
     try {
-      // `verifyTokenFull` does a DB lookup against `np_users`;
-      // make the init dependency explicit.
-      await ensureFor("read");
+      await ensureFor("write");
       const refreshToken = request.cookies.get("np-refresh")?.value;
       if (!refreshToken) throw new NpAuthError();
 
       const cfg = authHelpers.getAuthRuntimeConfig();
-      // Reject access JWTs presented as refresh triggers — without
-      // the `use: "refresh"` check a session cookie value would
-      // successfully drive rotation and extend its own life
-      // indefinitely.
-      const user = await verifyTokenFull(refreshToken, cfg.secret, getDb() as never, "refresh");
-      if (!user) throw new NpAuthError();
+      const session = await rotateStaffSession(refreshToken, cfg.secret, getDb() as never, {
+        accessExpiration: cfg.tokenExpiration,
+        refreshExpiration: cfg.refreshTokenExpiration,
+        ...requestMetadata(request),
+      });
+      if (!session) throw new NpAuthError();
 
       const response = npSuccessResponse({
-        user: { id: user.id, email: user.email, name: user.name, role: user.role },
+        user: npRequireStaffSessionUser({
+          id: session.user.id,
+          email: session.user.email,
+          name: session.user.name,
+          role: session.user.role,
+        }),
       });
       authHelpers.setAuthCookies(response, {
-        access: await signToken(user, cfg.secret, cfg.tokenExpiration, "access"),
-        refresh: await signToken(user, cfg.secret, cfg.refreshTokenExpiration, "refresh"),
+        access: session.access,
+        refresh: session.refresh,
         csrf: crypto.randomUUID(),
       });
       return response;
@@ -279,10 +313,7 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
   const resetPassword = async (request: NextRequest): Promise<NextResponse> => {
     try {
       await ensureFor("write");
-      const { token, password } = validateResetBody(
-        await readJsonBody(request),
-        opts.resetPassword.minPasswordLength,
-      );
+      const { token, password } = validateResetBody(await readJsonBody(request));
 
       const result = await consumePasswordResetToken(getDb() as never, {
         token,
@@ -302,14 +333,11 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
   // ─── change-password (authenticated) ────────────────────────
   const changePassword = async (request: NextRequest): Promise<NextResponse> => {
     try {
-      // Writes to `np_users.password` + bumps `tokenVersion` via
-      // `invalidateAllSessions`. `"write"` is the right intent.
+      // Writes the password, bumps tokenVersion, and deletes sessions in one
+      // transaction. `"write"` is the right bootstrap intent.
       await ensureFor("write");
       const user = await authHelpers.requireAuth(request);
-      const { currentPassword, newPassword } = validateChangeBody(
-        await readJsonBody(request),
-        opts.changePassword.minPasswordLength,
-      );
+      const { currentPassword, newPassword } = validateChangeBody(await readJsonBody(request));
       const db = asRawDb(getDb());
 
       const result = await db.$client.query<PasswordRow>(
@@ -322,15 +350,15 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
       const valid = await verifyPassword(stored.password, currentPassword);
       if (!valid) throw new NpAuthError("Current password is incorrect");
 
-      await db.$client.query("update np_users set password = $1, updated_at = $2 where id = $3", [
-        await hashPassword(newPassword),
-        new Date(),
-        user.id,
-      ]);
-
-      // Bump tokenVersion + revoke sessions across every device.
+      // Password, tokenVersion, and every session family change together.
       // Caller has to log in again on this device too.
-      await invalidateAllSessions(user.id, getDb() as never);
+      const replaced = await replaceStaffPasswordAndInvalidateSessions(
+        user.id,
+        stored.password,
+        await hashPassword(newPassword),
+        getDb() as never,
+      );
+      if (!replaced) throw new NpAuthError("Current password is incorrect");
 
       const response = npSuccessResponse({ success: true });
       authHelpers.clearAuthCookies(response);
@@ -359,7 +387,7 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
     }
 
     const { secret, secureCookies } = authHelpers.getAuthRuntimeConfig();
-    const { token, codeVerifier } = issueOAuthState(providerId, secret);
+    const { token, codeVerifier, expiresInSeconds } = issueOAuthState(providerId, secret);
     const redirectUri = new URL(
       `/api/auth/oauth/${providerId}/callback`,
       siteUrl(config, request),
@@ -378,7 +406,7 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
       secure: secureCookies,
       sameSite: "lax",
       path: "/api/auth/oauth",
-      maxAge: STATE_COOKIE_MAX_AGE,
+      maxAge: expiresInSeconds,
     });
     return response;
   };
@@ -403,7 +431,7 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
     request: NextRequest,
     ctx: { params: Promise<{ provider: string }> },
   ): Promise<NextResponse> => {
-    await ensureFor("plugins");
+    await ensureFor("write");
     const { provider: providerId } = await ctx.params;
     const provider = getOAuthProvider(providerId);
     if (!provider || !oauthProviderSupportsAudience(provider, "staff")) {
@@ -466,17 +494,30 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
       return oauthFail(request, "resolve_failed");
     }
 
-    const access = await signToken(resolved.user, cfg.secret, cfg.tokenExpiration, "access");
-    const refresh = await signToken(
-      resolved.user,
+    const session = await createStaffSession(
+      {
+        id: resolved.user.id,
+        email: resolved.user.email,
+        name: resolved.user.name,
+        role: resolved.user.role,
+        tokenVersion: resolved.user.tokenVersion,
+      },
       cfg.secret,
-      cfg.refreshTokenExpiration,
-      "refresh",
+      getDb() as never,
+      {
+        accessExpiration: cfg.tokenExpiration,
+        refreshExpiration: cfg.refreshTokenExpiration,
+        ...requestMetadata(request),
+      },
     );
 
     const target = new URL(opts.oauth.successRedirect, siteUrl(config, request));
     const response = NextResponse.redirect(target);
-    authHelpers.setAuthCookies(response, { access, refresh, csrf: crypto.randomUUID() });
+    authHelpers.setAuthCookies(response, {
+      access: session.access,
+      refresh: session.refresh,
+      csrf: crypto.randomUUID(),
+    });
     response.cookies.set({
       name: STATE_COOKIE,
       value: "",
@@ -495,7 +536,12 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
       await ensureFor("read");
       const user = await authHelpers.requireAuth(request);
       return npSuccessResponse({
-        user: { id: user.id, email: user.email, name: user.name, role: user.role },
+        user: npRequireStaffSessionUser({
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        }),
       });
     } catch (error) {
       return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
@@ -518,18 +564,15 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
 // ─── shared validators ───────────────────────────────────────
 
 function validateLoginBody(body: unknown): { email: string; password: string } {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new NpValidationError("Invalid input", [
-      { field: "body", message: "Request body must be an object" },
-    ]);
-  }
-  const { email, password } = body as { email?: unknown; password?: unknown };
-  if (typeof email !== "string" || !email.includes("@")) {
+  const record = requireBodyRecord(body, ["email", "password"]);
+  const email = typeof record.email === "string" ? record.email.trim().toLowerCase() : "";
+  const password = record.password;
+  if (!npIsCanonicalAuthEmail(email)) {
     throw new NpValidationError("Invalid input", [
       { field: "email", message: "Valid email is required" },
     ]);
   }
-  if (typeof password !== "string" || password.length === 0) {
+  if (!npIsAuthPasswordCandidate(password)) {
     throw new NpValidationError("Invalid input", [
       { field: "password", message: "Password is required" },
     ]);
@@ -537,14 +580,17 @@ function validateLoginBody(body: unknown): { email: string; password: string } {
   return { email, password };
 }
 
+function requestMetadata(request: NextRequest): { userAgent: string | null; ip: string | null } {
+  return {
+    userAgent: request.headers.get("user-agent"),
+    ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+  };
+}
+
 function validateForgotBody(body: unknown): { email: string } {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new NpValidationError("Invalid input", [
-      { field: "body", message: "Request body must be an object" },
-    ]);
-  }
-  const { email } = body as { email?: unknown };
-  if (typeof email !== "string" || !email.includes("@")) {
+  const record = requireBodyRecord(body, ["email"]);
+  const email = typeof record.email === "string" ? record.email.trim().toLowerCase() : "";
+  if (!npIsCanonicalAuthEmail(email)) {
     throw new NpValidationError("Invalid input", [
       { field: "email", message: "Valid email is required" },
     ]);
@@ -552,56 +598,62 @@ function validateForgotBody(body: unknown): { email: string } {
   return { email };
 }
 
-function validateResetBody(
-  body: unknown,
-  minPasswordLength: number,
-): { token: string; password: string } {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new NpValidationError("Invalid input", [
-      { field: "body", message: "Request body must be an object" },
-    ]);
-  }
-  const { token, password } = body as { token?: unknown; password?: unknown };
-  if (typeof token !== "string" || token.length === 0) {
+function validateResetBody(body: unknown): { token: string; password: string } {
+  const { token, password } = requireBodyRecord(body, ["token", "password"]);
+  if (!npIsAuthSingleUseToken(token)) {
     throw new NpValidationError("Invalid input", [
       { field: "token", message: "Reset token is required" },
     ]);
   }
-  if (typeof password !== "string" || password.length < minPasswordLength) {
+  if (!npIsAuthNewPassword(password)) {
     throw new NpValidationError("Invalid input", [
-      { field: "password", message: `Password must be at least ${minPasswordLength} characters` },
+      {
+        field: "password",
+        message: `Password must contain ${npAuthContractLimits.passwordMinLength} through ${npAuthContractLimits.passwordMaxLength} characters`,
+      },
     ]);
   }
   return { token, password };
 }
 
-function validateChangeBody(
-  body: unknown,
-  minPasswordLength: number,
-): { currentPassword: string; newPassword: string } {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new NpValidationError("Invalid input", [
-      { field: "body", message: "Request body must be an object" },
-    ]);
-  }
-  const { currentPassword, newPassword } = body as {
-    currentPassword?: unknown;
-    newPassword?: unknown;
-  };
-  if (typeof currentPassword !== "string" || currentPassword.length === 0) {
+function validateChangeBody(body: unknown): { currentPassword: string; newPassword: string } {
+  const { currentPassword, newPassword } = requireBodyRecord(body, [
+    "currentPassword",
+    "newPassword",
+  ]);
+  if (!npIsAuthPasswordCandidate(currentPassword)) {
     throw new NpValidationError("Invalid input", [
       { field: "currentPassword", message: "Current password is required" },
     ]);
   }
-  if (typeof newPassword !== "string" || newPassword.length < minPasswordLength) {
+  if (!npIsAuthNewPassword(newPassword)) {
     throw new NpValidationError("Invalid input", [
       {
         field: "newPassword",
-        message: `New password must be at least ${minPasswordLength} characters`,
+        message: `New password must contain ${npAuthContractLimits.passwordMinLength} through ${npAuthContractLimits.passwordMaxLength} characters`,
       },
     ]);
   }
   return { currentPassword, newPassword };
+}
+
+function requireBodyRecord(
+  value: unknown,
+  allowedKeys: readonly string[],
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new NpValidationError("Invalid input", [
+      { field: "body", message: "Request body must be an object" },
+    ]);
+  }
+  const record = value as Record<string, unknown>;
+  const unknownField = Object.keys(record).find((key) => !allowedKeys.includes(key));
+  if (unknownField) {
+    throw new NpValidationError("Invalid input", [
+      { field: unknownField, message: "Unsupported authentication field" },
+    ]);
+  }
+  return record;
 }
 
 function buildResetUrl(
