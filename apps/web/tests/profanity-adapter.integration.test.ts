@@ -8,6 +8,7 @@ import {
   readJson,
   registerTestCollections,
   seedActiveMember as harnessSeedActiveMember,
+  seedUser,
   skipIfNoTestDb,
   truncateAll,
 } from "./harness.js";
@@ -17,10 +18,7 @@ import { POST as commentsPOST } from "@/app/api/collections/[slug]/[id]/comments
 
 import { NextRequest } from "next/server";
 
-function jsonRequest(
-  path: string,
-  init: RequestInit & { cookies?: string[] } = {},
-): NextRequest {
+function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
   const headers = new Headers(init.headers);
   if (!headers.has("content-type") && init.body) headers.set("content-type", "application/json");
   if (init.cookies && init.cookies.length > 0) headers.set("cookie", init.cookies.join("; "));
@@ -39,32 +37,13 @@ async function seedActiveMember(
 }
 
 async function seedStaffPost(): Promise<string> {
-  const { hashPassword, npUsers, signToken } = await import("@nexpress/core");
-  const db = await getTestDb();
-  const password = await hashPassword("password12345");
-  const [user] = (await db
-    .insert(npUsers)
-    .values({
-      email: "prof-staff@example.com",
-      password,
-      name: "Staff",
-      role: "editor",
-    })
-    .returning({
-      id: npUsers.id,
-      email: npUsers.email,
-      role: npUsers.role,
-      tokenVersion: npUsers.tokenVersion,
-    })) as Array<{
-    id: string;
-    email: string;
-    role: "editor";
-    tokenVersion: number;
-  }>;
-  const token = await signToken(
-    { id: user.id, role: user.role, tokenVersion: user.tokenVersion },
-    process.env.NP_SECRET!,
-  );
+  const user = await seedUser({
+    email: "prof-staff@example.com",
+    password: "password12345",
+    name: "Staff",
+    role: "editor",
+  });
+  const token = user.accessToken;
   const csrf = "csrf-staff";
   const create = await collectionPOST(
     jsonRequest("/api/collections/posts", {
@@ -109,10 +88,7 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [
-          `np-mb-session=${author.sessionCookie}`,
-          `np-mb-csrf=${author.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "Clean comment" }),
       }),
@@ -139,10 +115,7 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [
-          `np-mb-session=${author.sessionCookie}`,
-          `np-mb-csrf=${author.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "edgy content" }),
       }),
@@ -188,10 +161,7 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
     const res = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [
-          `np-mb-session=${author.sessionCookie}`,
-          `np-mb-csrf=${author.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "anything" }),
       }),
@@ -224,10 +194,7 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
     await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [
-          `np-mb-session=${author.sessionCookie}`,
-          `np-mb-csrf=${author.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "irrelevant" }),
       }),
@@ -255,10 +222,7 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [
-          `np-mb-session=${author.sessionCookie}`,
-          `np-mb-csrf=${author.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "edgy but not spam" }),
       }),
@@ -288,10 +252,7 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [
-          `np-mb-session=${author.sessionCookie}`,
-          `np-mb-csrf=${author.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "questionable" }),
       }),
@@ -328,10 +289,7 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [
-          `np-mb-session=${author.sessionCookie}`,
-          `np-mb-csrf=${author.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "Genuine comment" }),
       }),

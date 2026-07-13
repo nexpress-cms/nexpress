@@ -1,9 +1,15 @@
+import { createHash } from "node:crypto";
+
 import { eq, and, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { npUserOAuthIdentities, npUsers } from "../db/schema/system.js";
-import type { NpUserRole } from "../config/types.js";
+import {
+  npAuthContractLimits,
+  npIsCanonicalAuthEmail,
+  type NpUserRole,
+} from "../auth-contract/index.js";
 
 import { hashPassword } from "./password.js";
 import type { OAuthProfile } from "./oauth-providers.js";
@@ -53,14 +59,30 @@ export interface ResolveOAuthLoginInput {
 const SYNTHETIC_EMAIL_SUFFIX = ".oauth.local";
 
 function syntheticEmail(provider: string, providerUserId: string): string {
-  // Stable, namespaced, doesn't collide with real provider domains.
-  return `${providerUserId}@${provider}${SYNTHETIC_EMAIL_SUFFIX}`;
+  // Stable, bounded, and valid even when a provider subject contains
+  // whitespace, separators, or a value too long for the email contract.
+  const subjectHash = createHash("sha256")
+    .update(`${provider}\0${providerUserId}`)
+    .digest("hex")
+    .slice(0, 32);
+  const providerLabel =
+    provider
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/gu, "-")
+      .replace(/^-+|-+$/gu, "")
+      .slice(0, 40) || "provider";
+  return `oauth-${subjectHash}@${providerLabel}${SYNTHETIC_EMAIL_SUFFIX}`;
 }
 
 function deriveName(profile: OAuthProfile, fallbackEmail: string): string {
-  if (profile.name && profile.name.trim().length > 0) return profile.name.trim();
+  if (profile.name && profile.name.trim().length > 0) {
+    return profile.name.trim().slice(0, npAuthContractLimits.nameLength);
+  }
   const localPart = fallbackEmail.split("@")[0];
-  return localPart && localPart.length > 0 ? localPart : "Member";
+  return localPart && localPart.length > 0
+    ? localPart.slice(0, npAuthContractLimits.nameLength)
+    : "Member";
 }
 
 export async function resolveOAuthLogin(
@@ -100,8 +122,8 @@ export async function resolveOAuthLogin(
 
   // Step 2: email match. Skipped when the provider doesn't surface an
   // email — we can't risk linking by guesswork.
-  if (profile.email) {
-    const normalizedEmail = profile.email.trim().toLowerCase();
+  const normalizedEmail = profile.email?.trim().toLowerCase() ?? null;
+  if (normalizedEmail !== null && npIsCanonicalAuthEmail(normalizedEmail)) {
     const [existingUser] = (await db
       .select({
         id: npUsers.id,
@@ -127,13 +149,11 @@ export async function resolveOAuthLogin(
 
   // Step 3: auto-provision.
   const email =
-    profile.email && profile.email.trim().length > 0
-      ? profile.email.trim().toLowerCase()
+    normalizedEmail !== null && npIsCanonicalAuthEmail(normalizedEmail)
+      ? normalizedEmail
       : syntheticEmail(provider, profile.providerUserId);
   const name = deriveName(profile, email);
-  const placeholderPassword = await hashPassword(
-    crypto.randomUUID() + crypto.randomUUID(),
-  );
+  const placeholderPassword = await hashPassword(crypto.randomUUID() + crypto.randomUUID());
 
   const [created] = (await db
     .insert(npUsers)

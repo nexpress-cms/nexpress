@@ -1,3 +1,6 @@
+import type { NpMemberSessionUser } from "@nexpress/core/auth-contract";
+export type { NpMemberSessionUser } from "@nexpress/core/auth-contract";
+
 /**
  * Shared types between the server route factories and the client
  * hooks. Lives in `src/shared/` so both bundles import from one
@@ -5,12 +8,7 @@
  * to user-facing strings stay in sync without a separate doc.
  */
 
-export interface NpAuthMember {
-  id: string;
-  handle: string;
-  email: string;
-  displayName: string;
-}
+export type NpAuthMember = NpMemberSessionUser;
 
 /**
  * Stable error codes the auth routes return. The hook maps these

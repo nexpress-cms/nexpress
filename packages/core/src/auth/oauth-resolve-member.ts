@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { and, eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
@@ -5,6 +7,11 @@ import { getDb } from "../db/runtime.js";
 import { getCommunitySettings } from "../community/settings.js";
 import { npMemberIdentities, npMembers } from "../db/schema/community.js";
 import { NpForbiddenError } from "../errors.js";
+import {
+  npAuthContractLimits,
+  npIsCanonicalAuthEmail,
+  type NpMemberStatus,
+} from "../auth-contract/index.js";
 
 import { hashPassword } from "./password.js";
 import type { OAuthProfile } from "./oauth-providers.js";
@@ -31,7 +38,7 @@ export interface ResolvedOAuthMember {
   email: string;
   handle: string;
   displayName: string;
-  status: "active" | "pending" | "suspended" | "deleted";
+  status: NpMemberStatus;
   tokenVersion: number;
 }
 
@@ -53,7 +60,18 @@ const HANDLE_FALLBACK = "user";
 const HANDLE_RANDOM_SUFFIX_BYTES = 4;
 
 function syntheticEmail(provider: string, providerUserId: string): string {
-  return `${providerUserId}@${provider}${SYNTHETIC_EMAIL_SUFFIX}`;
+  const subjectHash = createHash("sha256")
+    .update(`${provider}\0${providerUserId}`)
+    .digest("hex")
+    .slice(0, 32);
+  const providerLabel =
+    provider
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/gu, "-")
+      .replace(/^-+|-+$/gu, "")
+      .slice(0, 40) || "provider";
+  return `oauth-${subjectHash}@${providerLabel}${SYNTHETIC_EMAIL_SUFFIX}`;
 }
 
 /**
@@ -87,9 +105,13 @@ function generateHandle(profile: OAuthProfile, fallbackEmail: string): string {
 }
 
 function deriveDisplayName(profile: OAuthProfile, fallbackEmail: string): string {
-  if (profile.name && profile.name.trim().length > 0) return profile.name.trim();
+  if (profile.name && profile.name.trim().length > 0) {
+    return profile.name.trim().slice(0, npAuthContractLimits.displayNameLength);
+  }
   const localPart = fallbackEmail.split("@")[0];
-  return localPart && localPart.length > 0 ? localPart : "Member";
+  return localPart && localPart.length > 0
+    ? localPart.slice(0, npAuthContractLimits.displayNameLength)
+    : "Member";
 }
 
 function mergeMetadata(profile: OAuthProfile): Record<string, unknown> {
@@ -151,8 +173,8 @@ export async function resolveMemberOAuthLogin(
   }
 
   // Step 2: email match.
-  if (profile.email) {
-    const normalizedEmail = profile.email.trim().toLowerCase();
+  const normalizedEmail = profile.email?.trim().toLowerCase() ?? null;
+  if (normalizedEmail !== null && npIsCanonicalAuthEmail(normalizedEmail)) {
     const [existingMember] = (await db
       .select({
         id: npMembers.id,
@@ -212,14 +234,12 @@ export async function resolveMemberOAuthLogin(
   }
 
   const email =
-    profile.email && profile.email.trim().length > 0
-      ? profile.email.trim().toLowerCase()
+    normalizedEmail !== null && npIsCanonicalAuthEmail(normalizedEmail)
+      ? normalizedEmail
       : syntheticEmail(provider, profile.providerUserId);
   const displayName = deriveDisplayName(profile, email);
   const handle = generateHandle(profile, email);
-  const placeholderPassword = await hashPassword(
-    crypto.randomUUID() + crypto.randomUUID(),
-  );
+  const placeholderPassword = await hashPassword(crypto.randomUUID() + crypto.randomUUID());
 
   const [created] = (await db
     .insert(npMembers)

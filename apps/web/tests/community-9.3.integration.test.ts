@@ -8,6 +8,7 @@ import {
   readJson,
   registerTestCollections,
   seedActiveMember as harnessSeedActiveMember,
+  seedUser,
   skipIfNoTestDb,
   truncateAll,
 } from "./harness.js";
@@ -50,22 +51,13 @@ async function seedActiveMember(
 }
 
 async function seedStaffPostId(): Promise<string> {
-  const { hashPassword, npUsers, signToken } = await import("@nexpress/core");
-  const db = await getTestDb();
-  const password = await hashPassword("password12345");
-  const [user] = (await db
-    .insert(npUsers)
-    .values({ email: "staff@example.com", password, name: "Staff", role: "editor" })
-    .returning({
-      id: npUsers.id,
-      email: npUsers.email,
-      role: npUsers.role,
-      tokenVersion: npUsers.tokenVersion,
-    })) as Array<{ id: string; email: string; role: "editor"; tokenVersion: number }>;
-  const token = await signToken(
-    { id: user.id, role: user.role, tokenVersion: user.tokenVersion },
-    process.env.NP_SECRET!,
-  );
+  const user = await seedUser({
+    email: "staff@example.com",
+    password: "password12345",
+    name: "Staff",
+    role: "editor",
+  });
+  const token = user.accessToken;
   const csrf = "csrf-staff";
   const create = await collectionPOST(
     jsonRequest("/api/collections/posts", {
@@ -129,10 +121,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     const add = await reactionsPOST(
       jsonRequest("/api/reactions", {
         method: "POST",
-        cookies: [
-          `np-mb-session=${reactor.sessionCookie}`,
-          `np-mb-csrf=${reactor.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${reactor.sessionCookie}`, `np-mb-csrf=${reactor.csrfCookie}`],
         headers: { "x-csrf-token": reactor.csrfCookie },
         body: JSON.stringify({ targetType: "comment", targetId: commentId, kind: "like" }),
       }),
@@ -143,10 +132,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     const dup = await reactionsPOST(
       jsonRequest("/api/reactions", {
         method: "POST",
-        cookies: [
-          `np-mb-session=${reactor.sessionCookie}`,
-          `np-mb-csrf=${reactor.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${reactor.sessionCookie}`, `np-mb-csrf=${reactor.csrfCookie}`],
         headers: { "x-csrf-token": reactor.csrfCookie },
         body: JSON.stringify({ targetType: "comment", targetId: commentId, kind: "like" }),
       }),
@@ -154,26 +140,18 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     expect(dup.status).toBe(201);
 
     const summary = await reactionsGET(
-      jsonRequest(
-        `/api/reactions?targetType=comment&targetId=${commentId}`,
-      ),
+      jsonRequest(`/api/reactions?targetType=comment&targetId=${commentId}`),
     );
     const sumBody = await readJson<{ counts: Record<string, number>; mine: string[] }>(summary);
     expect(sumBody.body.counts.like).toBe(1);
     expect(sumBody.body.mine).toEqual([]); // reader is anonymous
 
     const remove = await reactionsDELETE(
-      jsonRequest(
-        `/api/reactions?targetType=comment&targetId=${commentId}&kind=like`,
-        {
-          method: "DELETE",
-          cookies: [
-            `np-mb-session=${reactor.sessionCookie}`,
-            `np-mb-csrf=${reactor.csrfCookie}`,
-          ],
-          headers: { "x-csrf-token": reactor.csrfCookie },
-        },
-      ),
+      jsonRequest(`/api/reactions?targetType=comment&targetId=${commentId}&kind=like`, {
+        method: "DELETE",
+        cookies: [`np-mb-session=${reactor.sessionCookie}`, `np-mb-csrf=${reactor.csrfCookie}`],
+        headers: { "x-csrf-token": reactor.csrfCookie },
+      }),
     );
     expect(remove.status).toBe(200);
 
@@ -194,10 +172,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     await reactionsPOST(
       jsonRequest("/api/reactions", {
         method: "POST",
-        cookies: [
-          `np-mb-session=${reactor.sessionCookie}`,
-          `np-mb-csrf=${reactor.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${reactor.sessionCookie}`, `np-mb-csrf=${reactor.csrfCookie}`],
         headers: { "x-csrf-token": reactor.csrfCookie },
         body: JSON.stringify({ targetType: "comment", targetId: commentId, kind: "like" }),
       }),
@@ -220,10 +195,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     await reactionsPOST(
       jsonRequest("/api/reactions", {
         method: "POST",
-        cookies: [
-          `np-mb-session=${author.sessionCookie}`,
-          `np-mb-csrf=${author.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ targetType: "comment", targetId: commentId, kind: "like" }),
       }),
@@ -312,10 +284,9 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
 
     // Initially not following.
     const before = await followsCheckGET(
-      jsonRequest(
-        `/api/follows/check?targetType=member&targetId=${target.memberId}`,
-        { cookies: [`np-mb-session=${viewer.sessionCookie}`] },
-      ),
+      jsonRequest(`/api/follows/check?targetType=member&targetId=${target.memberId}`, {
+        cookies: [`np-mb-session=${viewer.sessionCookie}`],
+      }),
     );
     const beforeBody = await readJson<{ following: boolean }>(before);
     expect(before.status).toBe(200);
@@ -331,10 +302,9 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     );
 
     const after = await followsCheckGET(
-      jsonRequest(
-        `/api/follows/check?targetType=member&targetId=${target.memberId}`,
-        { cookies: [`np-mb-session=${viewer.sessionCookie}`] },
-      ),
+      jsonRequest(`/api/follows/check?targetType=member&targetId=${target.memberId}`, {
+        cookies: [`np-mb-session=${viewer.sessionCookie}`],
+      }),
     );
     const afterBody = await readJson<{ following: boolean }>(after);
     expect(afterBody.body.following).toBe(true);
@@ -374,10 +344,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
       .select()
       .from(npFollows)
       .where(
-        and(
-          eq(npFollows.followerId, a.memberId),
-          eq(npFollows.targetId, b.memberId),
-        ),
+        and(eq(npFollows.followerId, a.memberId), eq(npFollows.targetId, b.memberId)),
       )) as Array<unknown>;
     expect(rows).toHaveLength(1);
 
@@ -417,10 +384,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
       await reactionsPOST(
         jsonRequest("/api/reactions", {
           method: "POST",
-          cookies: [
-            `np-mb-session=${reactor.sessionCookie}`,
-            `np-mb-csrf=${reactor.csrfCookie}`,
-          ],
+          cookies: [`np-mb-session=${reactor.sessionCookie}`, `np-mb-csrf=${reactor.csrfCookie}`],
           headers: { "x-csrf-token": reactor.csrfCookie },
           body: JSON.stringify({ targetType: "comment", targetId: id, kind: "like" }),
         }),
@@ -431,10 +395,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     const ack = await markReadPOST(
       jsonRequest("/api/notifications/mark-read", {
         method: "POST",
-        cookies: [
-          `np-mb-session=${author.sessionCookie}`,
-          `np-mb-csrf=${author.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ all: true }),
       }),

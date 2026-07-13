@@ -3,11 +3,19 @@ import {
   getLogger,
   getMemberFromTokenPayload,
   isTokenVerificationError,
+  revokeMemberSession,
   verifyCsrf,
   verifyMemberToken,
   type NpMemberAuthRow,
 } from "@nexpress/core";
+import {
+  npAuthContractLimits,
+  npAuthRuntimeDefaults,
+  npRequireAuthSecret,
+} from "@nexpress/core/auth-contract";
 import type { NextRequest, NextResponse } from "next/server";
+
+import { npAssertRefreshLifetime, npReadBoundedPositiveInteger } from "./auth-runtime.js";
 
 /**
  * Member-side counterpart to `createAuthHelpers`. Same shape, but reads
@@ -15,9 +23,6 @@ import type { NextRequest, NextResponse } from "next/server";
  * looks members up in `np_members`. Coexists with the staff helpers in
  * the same Next process.
  */
-
-const DEFAULT_TOKEN_EXPIRATION = 60 * 60 * 2;
-const DEFAULT_REFRESH_TOKEN_EXPIRATION = 60 * 60 * 24 * 7;
 
 export interface MemberAuthCookieTokens {
   access: string;
@@ -29,6 +34,8 @@ export interface MemberAuthRuntimeConfig {
   secret: string;
   tokenExpiration: number;
   refreshTokenExpiration: number;
+  maxLoginAttempts: number;
+  lockoutDuration: number;
   secureCookies: boolean;
 }
 
@@ -38,21 +45,19 @@ export interface CreateMemberAuthHelpersOptions<DB> {
 }
 
 function defaultGetSecret(): string {
-  const secret = process.env.NP_SECRET ?? process.env.NP_AUTH_SECRET ?? process.env.AUTH_SECRET;
+  const secret = process.env.NP_SECRET;
   if (!secret) throw new Error("NP_SECRET must be set (see .env.example)");
   return secret;
-}
-
-function readNumber(value: string | undefined, fallback: number): number {
-  if (!value) return fallback;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 export type MemberAuthHelpers = {
   readonly getMemberAuthRuntimeConfig: (this: void) => MemberAuthRuntimeConfig;
   readonly requireMember: (this: void, request: NextRequest) => Promise<NpMemberAuthRow>;
   readonly optionalMember: (this: void, request: NextRequest) => Promise<NpMemberAuthRow | null>;
+  readonly revokeCurrentMemberSession: (
+    this: void,
+    request: NextRequest,
+  ) => Promise<NpMemberAuthRow | null>;
   readonly requireMemberCsrf: (this: void, request: NextRequest) => void;
   readonly setMemberAuthCookies: (
     this: void,
@@ -79,15 +84,10 @@ export function createMemberAuthHelpers<DB>(
       // Pass the raw access token so the resolver can verify a live
       // row exists in np_member_sessions — that's what makes
       // `/api/members/logout` actually revoke the token. (#45)
-      const member = await getMemberFromTokenPayload(
-        options.getDb() as never,
-        payload,
-        token,
-      );
-      // Suspended / deleted members lose their session immediately —
-      // their JWT may still be cryptographically valid, but the row
-      // they reference is no longer allowed to act.
-      if (!member || member.status === "suspended" || member.status === "deleted") {
+      const member = await getMemberFromTokenPayload(options.getDb() as never, payload, token);
+      // Only active members may retain a session. This also fails closed for
+      // pending/imported records, not just explicitly suspended/deleted ones.
+      if (!member || member.status !== "active") {
         return null;
       }
       return member;
@@ -108,15 +108,39 @@ export function createMemberAuthHelpers<DB>(
     }
   }
 
-  const getMemberAuthRuntimeConfig = (): MemberAuthRuntimeConfig => ({
-    secret: readSecret(),
-    tokenExpiration: readNumber(process.env.NP_TOKEN_EXPIRATION, DEFAULT_TOKEN_EXPIRATION),
-    refreshTokenExpiration: readNumber(
+  const getMemberAuthRuntimeConfig = (): MemberAuthRuntimeConfig => {
+    const tokenExpiration = npReadBoundedPositiveInteger(
+      "NP_TOKEN_EXPIRATION",
+      process.env.NP_TOKEN_EXPIRATION,
+      npAuthRuntimeDefaults.accessTokenTtlSeconds,
+      npAuthContractLimits.accessTokenTtlSeconds,
+    );
+    const refreshTokenExpiration = npReadBoundedPositiveInteger(
+      "NP_REFRESH_TOKEN_EXPIRATION",
       process.env.NP_REFRESH_TOKEN_EXPIRATION,
-      DEFAULT_REFRESH_TOKEN_EXPIRATION,
-    ),
-    secureCookies: process.env.NODE_ENV === "production",
-  });
+      npAuthRuntimeDefaults.refreshTokenTtlSeconds,
+      npAuthContractLimits.refreshTokenTtlSeconds,
+    );
+    npAssertRefreshLifetime(tokenExpiration, refreshTokenExpiration);
+    return {
+      secret: npRequireAuthSecret(readSecret()),
+      tokenExpiration,
+      refreshTokenExpiration,
+      maxLoginAttempts: npReadBoundedPositiveInteger(
+        "NP_MAX_LOGIN_ATTEMPTS",
+        process.env.NP_MAX_LOGIN_ATTEMPTS,
+        npAuthRuntimeDefaults.maxLoginAttempts,
+        npAuthContractLimits.loginAttempts,
+      ),
+      lockoutDuration: npReadBoundedPositiveInteger(
+        "NP_LOCKOUT_DURATION",
+        process.env.NP_LOCKOUT_DURATION,
+        npAuthRuntimeDefaults.lockoutTtlSeconds,
+        npAuthContractLimits.lockoutTtlSeconds,
+      ),
+      secureCookies: process.env.NODE_ENV === "production",
+    };
+  };
 
   const requireMember = async (request: NextRequest): Promise<NpMemberAuthRow> => {
     const member = await getSessionMember(request);
@@ -127,6 +151,31 @@ export function createMemberAuthHelpers<DB>(
   const optionalMember = (request: NextRequest): Promise<NpMemberAuthRow | null> =>
     getSessionMember(request);
 
+  const revokeCurrentMemberSession = async (
+    request: NextRequest,
+  ): Promise<NpMemberAuthRow | null> => {
+    const candidates = [
+      [request.cookies.get("np-mb-session")?.value, "access"],
+      [request.cookies.get("np-mb-refresh")?.value, "refresh"],
+    ] as const;
+    let revokedMember: NpMemberAuthRow | null = null;
+    for (const [token, use] of candidates) {
+      if (!token) continue;
+      try {
+        const revoked = await revokeMemberSession(
+          token,
+          readSecret(),
+          options.getDb() as never,
+          use,
+        );
+        revokedMember ??= revoked;
+      } catch (error) {
+        if (!isTokenVerificationError(error)) throw error;
+      }
+    }
+    return revokedMember;
+  };
+
   const requireMemberCsrf = (request: NextRequest): void => {
     const ok = verifyCsrf(
       request.method,
@@ -136,12 +185,8 @@ export function createMemberAuthHelpers<DB>(
     if (!ok) throw new NpAuthError("Invalid CSRF token");
   };
 
-  const setMemberAuthCookies = (
-    response: NextResponse,
-    tokens: MemberAuthCookieTokens,
-  ): void => {
-    const { tokenExpiration, refreshTokenExpiration, secureCookies } =
-      getMemberAuthRuntimeConfig();
+  const setMemberAuthCookies = (response: NextResponse, tokens: MemberAuthCookieTokens): void => {
+    const { tokenExpiration, refreshTokenExpiration, secureCookies } = getMemberAuthRuntimeConfig();
 
     response.cookies.set({
       name: "np-mb-session",
@@ -159,7 +204,7 @@ export function createMemberAuthHelpers<DB>(
       httpOnly: true,
       secure: secureCookies,
       sameSite: "strict",
-      path: "/api/members/refresh",
+      path: "/api/members",
       maxAge: refreshTokenExpiration,
     });
 
@@ -175,10 +220,10 @@ export function createMemberAuthHelpers<DB>(
   };
 
   const clearMemberAuthCookies = (response: NextResponse): void => {
-    const { secureCookies } = getMemberAuthRuntimeConfig();
+    const secureCookies = process.env.NODE_ENV === "production";
     for (const [name, path] of [
       ["np-mb-session", "/"],
-      ["np-mb-refresh", "/api/members/refresh"],
+      ["np-mb-refresh", "/api/members"],
       ["np-mb-csrf", "/"],
     ] as const) {
       response.cookies.set({
@@ -197,6 +242,7 @@ export function createMemberAuthHelpers<DB>(
     getMemberAuthRuntimeConfig,
     requireMember,
     optionalMember,
+    revokeCurrentMemberSession,
     requireMemberCsrf,
     setMemberAuthCookies,
     clearMemberAuthCookies,

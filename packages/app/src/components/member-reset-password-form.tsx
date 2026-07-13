@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemberResetPassword } from "@nexpress/auth-pages/client";
+import { npAuthContractLimits } from "@nexpress/core/auth-contract";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -22,7 +23,9 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
     },
   });
 
-  const passwordValid = fields.password.value.length >= 8;
+  const passwordValid =
+    fields.password.value.length >= npAuthContractLimits.passwordMinLength &&
+    fields.password.value.length <= npAuthContractLimits.passwordMaxLength;
   const passwordsMatch = fields.password.value.length > 0 && fields.password.value === confirm;
 
   return (
@@ -51,16 +54,18 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         <input
           type="password"
           required
-          minLength={8}
+          minLength={npAuthContractLimits.passwordMinLength}
+          maxLength={npAuthContractLimits.passwordMaxLength}
           autoComplete="new-password"
           {...fields.password}
           disabled={isSubmitting}
           className="np-form-input"
         />
-        <small className="np-form-help">At least 8 characters.</small>
-        {errors.password ? (
-          <span className="np-form-error">{errors.password}</span>
-        ) : null}
+        <small className="np-form-help">
+          {npAuthContractLimits.passwordMinLength}–{npAuthContractLimits.passwordMaxLength}{" "}
+          characters.
+        </small>
+        {errors.password ? <span className="np-form-error">{errors.password}</span> : null}
       </label>
 
       <label className="np-form-field">
@@ -68,6 +73,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         <input
           type="password"
           required
+          maxLength={npAuthContractLimits.passwordMaxLength}
           autoComplete="new-password"
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}

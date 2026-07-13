@@ -1,3 +1,5 @@
+import { npAuthContractLimits } from "@nexpress/core/auth-contract";
+
 import type { WpComment, WpImportRecord } from "../parse/types.js";
 import type { ResumeDeps } from "./resume.js";
 
@@ -160,7 +162,7 @@ function slugify(input: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "")
-    .slice(0, 40);
+    .slice(0, npAuthContractLimits.handleLength - "-wpimp".length);
 }
 
 function parseWpDate(raw: string): Date {

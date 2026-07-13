@@ -74,8 +74,8 @@ disaster recovery:
 
 | Table family                      | Why it matters                                                                   |
 | --------------------------------- | -------------------------------------------------------------------------------- |
-| `np_users`, `np_sessions`         | Staff accounts. After restore, every user keeps their `tokenVersion`.            |
-| `np_members`, `np_member_*`       | Member accounts and identities.                                                  |
+| `np_users`, `np_sessions`         | Staff accounts and one access/refresh pair per browser session.                  |
+| `np_members`, `np_member_*`       | Member accounts, identities, and paired browser sessions.                        |
 | `np_c_*`                          | Collection content (posts, pages, taxonomies, discussions, …).                   |
 | `np_revisions`                    | Per-document version history.                                                    |
 | `np_media`, `np_media_refs`       | Media records and their content references — must match the file store.          |

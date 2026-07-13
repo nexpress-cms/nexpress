@@ -1,4 +1,4 @@
-import type { NpAuthUser } from "../config/types.js";
+import type { NpAuthUser } from "../auth-contract/types.js";
 
 /**
  * Canonical principal type — "who is the actor on this operation".
@@ -14,5 +14,4 @@ import type { NpAuthUser } from "../config/types.js";
  * union grows.
  */
 export type NpPrincipal =
-  | { kind: "staff"; user: NpAuthUser }
-  | { kind: "member"; memberId: string };
+  { kind: "staff"; user: NpAuthUser } | { kind: "member"; memberId: string };

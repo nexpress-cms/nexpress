@@ -8,6 +8,7 @@ import {
   readJson,
   registerTestCollections,
   seedActiveMember as harnessSeedActiveMember,
+  seedUser,
   skipIfNoTestDb,
   truncateAll,
 } from "./harness.js";
@@ -42,22 +43,13 @@ async function seedActiveMember(
 }
 
 async function seedStaffPost(): Promise<string> {
-  const { hashPassword, npUsers, signToken } = await import("@nexpress/core");
-  const db = await getTestDb();
-  const password = await hashPassword("password12345");
-  const [user] = (await db
-    .insert(npUsers)
-    .values({ email: "spam-staff@example.com", password, name: "Staff", role: "editor" })
-    .returning({
-      id: npUsers.id,
-      email: npUsers.email,
-      role: npUsers.role,
-      tokenVersion: npUsers.tokenVersion,
-    })) as Array<{ id: string; email: string; role: "editor"; tokenVersion: number }>;
-  const token = await signToken(
-    { id: user.id, role: user.role, tokenVersion: user.tokenVersion },
-    process.env.NP_SECRET!,
-  );
+  const user = await seedUser({
+    email: "spam-staff@example.com",
+    password: "password12345",
+    name: "Staff",
+    role: "editor",
+  });
+  const token = user.accessToken;
   const csrf = "csrf-staff";
 
   const create = await collectionPOST(
@@ -136,10 +128,9 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
     expect(body.body.status).toBe("pending");
 
     // Public list filters to status=visible — pending row hidden.
-    const list = await commentsGET(
-      jsonRequest(`/api/collections/posts/${postId}/comments`),
-      { params: Promise.resolve({ slug: "posts", id: postId }) },
-    );
+    const list = await commentsGET(jsonRequest(`/api/collections/posts/${postId}/comments`), {
+      params: Promise.resolve({ slug: "posts", id: postId }),
+    });
     const listBody = await readJson<{ totalDocs: number }>(list);
     expect(listBody.body.totalDocs).toBe(0);
 
@@ -185,9 +176,9 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
       { params: Promise.resolve({ slug: "posts", id: postId }) },
     );
     expect(res.status).toBe(400);
-    const body = await readJson<{ error?: { message?: string; details?: Array<{ message?: string }> } }>(
-      res,
-    );
+    const body = await readJson<{
+      error?: { message?: string; details?: Array<{ message?: string }> };
+    }>(res);
     const detailMessage = body.body.error?.details?.[0]?.message;
     expect(detailMessage).toContain("Akismet");
 
@@ -256,10 +247,7 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
     await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [
-          `np-mb-session=${replier.sessionCookie}`,
-          `np-mb-csrf=${replier.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${replier.sessionCookie}`, `np-mb-csrf=${replier.csrfCookie}`],
         headers: { "x-csrf-token": replier.csrfCookie },
         body: JSON.stringify({ bodyMd: "reply", parentId }),
       }),
@@ -291,10 +279,7 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [
-          `np-mb-session=${author.sessionCookie}`,
-          `np-mb-csrf=${author.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "Clean original" }),
       }),
@@ -335,10 +320,7 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
       .select()
       .from(npAuditEvents)
       .where(
-        and(
-          eq(npAuditEvents.action, "comment.flag"),
-          eq(npAuditEvents.targetId, commentId),
-        ),
+        and(eq(npAuditEvents.action, "comment.flag"), eq(npAuditEvents.targetId, commentId)),
       )) as Array<{ payload: Record<string, unknown> }>;
     expect(audits).toHaveLength(1);
     expect(audits[0].payload.event).toBe("update");
@@ -350,26 +332,17 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
     core.setSpamAdapter({ check: () => ({ kind: "pass" }) });
 
     const postId = await seedStaffPost();
-    const author = await seedActiveMember(
-      "edit-reject",
-      "edit-reject@example.com",
-      "password-12",
-    );
+    const author = await seedActiveMember("edit-reject", "edit-reject@example.com", "password-12");
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [
-          `np-mb-session=${author.sessionCookie}`,
-          `np-mb-csrf=${author.csrfCookie}`,
-        ],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "Clean" }),
       }),
       { params: Promise.resolve({ slug: "posts", id: postId }) },
     );
-    const { id: commentId } = await readJson<{ id: string }>(created).then(
-      (r) => r.body,
-    );
+    const { id: commentId } = await readJson<{ id: string }>(created).then((r) => r.body);
 
     core.setSpamAdapter({
       check: () => ({ kind: "reject", reason: "Detected as spam" }),

@@ -21,6 +21,7 @@ describe("doctor core", () => {
         "env.file",
         "env.database_url",
         "database.reachable",
+        "auth.contract",
         "settings.contract",
         "revisions.contract",
         "jobs.contract",
@@ -82,6 +83,22 @@ describe("doctor core", () => {
       expect.objectContaining({
         state: "error",
         detail: "partial env: missing NP_OAUTH_GITHUB_CLIENT_SECRET",
+      }),
+    );
+  });
+
+  it("fails closed on malformed authentication runtime settings without a database", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nexpress-doctor-core-"));
+    const checks = await collectDoctorChecks({
+      cwd,
+      nodeVersion: "24.11.1",
+      env: { NP_RESET_TTL_MINUTES: "60minutes" },
+    });
+
+    expect(checks.find((check) => check.id === "auth.contract")).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: "NP_RESET_TTL_MINUTES must be a positive integer.",
       }),
     );
   });

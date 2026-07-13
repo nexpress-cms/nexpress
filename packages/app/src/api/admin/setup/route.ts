@@ -2,16 +2,21 @@ import {
   NP_DEFAULT_SITE_ID,
   NpConflictError,
   NpValidationError,
+  createStaffSession,
   ensureDefaultSite,
   getActiveTheme,
   getThemeById,
   hashPassword,
   npUsers,
   setActiveThemeId,
-  signToken,
   updateSite,
   withCurrentSite,
 } from "@nexpress/core";
+import {
+  npAuthContractLimits,
+  npIsCanonicalAuthEmail,
+  npRequireStaffSessionUser,
+} from "@nexpress/core/auth-contract";
 import { count, eq } from "drizzle-orm";
 import { bustThemeCache, invalidateCacheTargets, readJsonBody, siteCacheTag } from "@nexpress/next";
 import type { NextRequest } from "next/server";
@@ -63,23 +68,38 @@ function validateBody(raw: unknown): SetupBody {
       { field: "body", message: "Request body must be an object" },
     ]);
   }
-  const { email, password, name, siteName, sampleContent, themeId } = raw as Record<
-    string,
-    unknown
-  >;
+  const record = raw as Record<string, unknown>;
+  const { email, password, name, siteName, sampleContent, themeId } = record;
+  const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+  const normalizedPassword = typeof password === "string" ? password : "";
   const errors: Array<{ field: string; message: string }> = [];
 
-  if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  const unknownField = Object.keys(record).find(
+    (key) => !["email", "password", "name", "siteName", "sampleContent", "themeId"].includes(key),
+  );
+  if (unknownField) {
+    errors.push({ field: unknownField, message: "Unsupported setup field" });
+  }
+  if (!npIsCanonicalAuthEmail(normalizedEmail)) {
     errors.push({ field: "email", message: "Valid email is required" });
   }
-  if (typeof password !== "string" || password.length < PASSWORD_MIN) {
+  if (
+    normalizedPassword.length < PASSWORD_MIN ||
+    normalizedPassword.length > npAuthContractLimits.passwordMaxLength
+  ) {
     errors.push({
       field: "password",
-      message: `Password must be at least ${PASSWORD_MIN} characters`,
+      message: `Password must contain ${PASSWORD_MIN} through ${npAuthContractLimits.passwordMaxLength.toString()} characters`,
     });
   }
-  if (name !== undefined && typeof name !== "string") {
-    errors.push({ field: "name", message: "Name must be a string" });
+  if (
+    name !== undefined &&
+    (typeof name !== "string" || name.trim().length > npAuthContractLimits.nameLength)
+  ) {
+    errors.push({
+      field: "name",
+      message: `Name must not exceed ${npAuthContractLimits.nameLength.toString()} characters`,
+    });
   }
   if (siteName !== undefined && typeof siteName !== "string") {
     errors.push({ field: "siteName", message: "Site name must be a string" });
@@ -98,8 +118,8 @@ function validateBody(raw: unknown): SetupBody {
   }
 
   return {
-    email: (email as string).trim(),
-    password: password as string,
+    email: normalizedEmail,
+    password: normalizedPassword,
     ...(typeof name === "string" && name.trim().length > 0 ? { name: name.trim() } : {}),
     ...(typeof siteName === "string" && siteName.trim().length > 0
       ? { siteName: siteName.trim() }
@@ -298,19 +318,31 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
 
     const config = getAuthRuntimeConfig();
-    const access = await signToken(created, config.secret, config.tokenExpiration, "access");
-    const refresh = await signToken(
-      created,
-      config.secret,
-      config.refreshTokenExpiration,
-      "refresh",
-    );
-    const response = npSuccessResponse({
-      user: {
+    const session = await createStaffSession(
+      {
         id: created.id,
         email: created.email,
         name: created.name,
         role: created.role,
+        tokenVersion: created.tokenVersion,
+      },
+      config.secret,
+      getDb(),
+      {
+        accessExpiration: config.tokenExpiration,
+        refreshExpiration: config.refreshTokenExpiration,
+        userAgent: request.headers.get("user-agent"),
+        ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+      },
+    );
+    const response = npSuccessResponse({
+      user: {
+        ...npRequireStaffSessionUser({
+          id: created.id,
+          email: created.email,
+          name: created.name,
+          role: created.role,
+        }),
       },
       seeded: seeded
         ? {
@@ -324,8 +356,8 @@ export async function POST(request: NextRequest): Promise<Response> {
       warnings: warnings.length > 0 ? warnings : undefined,
     });
     setAuthCookies(response, {
-      access,
-      refresh,
+      access: session.access,
+      refresh: session.refresh,
       csrf: crypto.randomUUID(),
     });
     return response;

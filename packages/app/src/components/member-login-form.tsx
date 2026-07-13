@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemberLogin } from "@nexpress/auth-pages/client";
+import { npAuthContractLimits } from "@nexpress/core/auth-contract";
 import { useRouter } from "next/navigation";
 
 interface LoginFormProps {
@@ -19,7 +20,12 @@ export function LoginForm({ next }: LoginFormProps) {
   });
 
   return (
-    <form onSubmit={(e) => { void submit(e); }} className="np-members-form">
+    <form
+      onSubmit={(e) => {
+        void submit(e);
+      }}
+      className="np-members-form"
+    >
       {errors._form ? (
         <div role="alert" className="np-form-error">
           {errors._form}
@@ -41,6 +47,7 @@ export function LoginForm({ next }: LoginFormProps) {
         <span className="np-form-label">Password</span>
         <input
           type="password"
+          maxLength={npAuthContractLimits.passwordMaxLength}
           required
           autoComplete="current-password"
           {...fields.password}

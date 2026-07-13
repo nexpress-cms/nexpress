@@ -137,6 +137,11 @@ describe("importPostComments", () => {
     const record = makeRecord([
       makeComment({ wpId: 1, authorName: "Alice", authorEmail: "alice@example.com" }),
       makeComment({ wpId: 2, authorName: "Anonymous", authorEmail: null }),
+      makeComment({
+        wpId: 3,
+        authorName: "Long address",
+        authorEmail: "a-very-long-wordpress-comment-author@example.com",
+      }),
     ]);
     const handlesSeen: string[] = [];
     const ensureImportedMember = vi.fn(({ handle }: { handle: string }) => {
@@ -154,6 +159,8 @@ describe("importPostComments", () => {
     });
     expect(handlesSeen[0]).toBe("alice-example-com-wpimp");
     expect(handlesSeen[1]).toBe("anonymous-wpimp");
+    expect(handlesSeen[2]).toHaveLength(30);
+    expect(handlesSeen[2]).toMatch(/^[a-z0-9][a-z0-9_-]{2,29}$/u);
   });
 
   it("renders comment markdown via the deps.renderBody hook", async () => {

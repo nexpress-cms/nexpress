@@ -157,7 +157,7 @@ async function resolveHeaderMember(): Promise<HeaderMember | null> {
   const token = cookieStore.get("np-mb-session")?.value;
   if (!token) return null;
 
-  const secret = process.env.NP_SECRET ?? process.env.NP_AUTH_SECRET ?? process.env.AUTH_SECRET;
+  const secret = process.env.NP_SECRET;
   if (!secret) return null;
 
   try {

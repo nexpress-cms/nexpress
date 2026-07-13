@@ -15,6 +15,7 @@ import {
 
 import { npMedia } from "./media.js";
 import { npUsers } from "./system.js";
+import { npMemberStatuses } from "../../auth-contract/types.js";
 
 /**
  * Member-side schema: public site visitors who can register, log in,
@@ -32,13 +33,7 @@ import { npUsers } from "./system.js";
  * member's handle with an `(imported)` suffix so visitors can tell
  * archived discussion apart from live activity.
  */
-export const npMemberStatusEnum = pgEnum("np_member_status", [
-  "active",
-  "pending",
-  "suspended",
-  "deleted",
-  "imported",
-]);
+export const npMemberStatusEnum = pgEnum("np_member_status", npMemberStatuses);
 
 export const npBanScopeEnum = pgEnum("np_ban_scope", ["site", "category", "collection"]);
 export const npBanKindEnum = pgEnum("np_ban_kind", ["temporary", "permanent"]);
@@ -116,17 +111,30 @@ export const npMembers = pgTable(
   (table) => [index("np_members_status_idx").on(table.status)],
 );
 
-export const npMemberSessions = pgTable("np_member_sessions", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  memberId: uuid("member_id")
-    .notNull()
-    .references(() => npMembers.id, { onDelete: "cascade" }),
-  tokenHash: text("token_hash").notNull(),
-  userAgent: text("user_agent"),
-  ip: text("ip"),
-  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
-});
+export const npMemberSessions = pgTable(
+  "np_member_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => npMembers.id, { onDelete: "cascade" }),
+    accessTokenHash: text("access_token_hash").notNull().unique(),
+    refreshTokenHash: text("refresh_token_hash").notNull().unique(),
+    userAgent: text("user_agent"),
+    ip: text("ip"),
+    accessExpiresAt: timestamp("access_expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    refreshExpiresAt: timestamp("refresh_expires_at", {
+      withTimezone: true,
+      mode: "date",
+    }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("np_member_sessions_member_id_idx").on(table.memberId),
+    index("np_member_sessions_refresh_expires_at_idx").on(table.refreshExpiresAt),
+  ],
+);
 
 /**
  * Per-member OAuth identity links. Mirrors `np_user_oauth_identities`

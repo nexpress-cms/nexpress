@@ -3,10 +3,15 @@ import { eq } from "drizzle-orm";
 
 import { hashPassword, verifyPassword } from "../auth/password.js";
 import {
+  consumeMemberPasswordReset,
+  requestMemberPasswordReset,
+} from "../auth/member-credentials.js";
+import {
   consumePasswordResetToken,
   createPasswordResetToken,
   requestPasswordReset,
 } from "../auth/reset-token.js";
+import { npMembers } from "../db/schema/community.js";
 import { npSessions, npUsers } from "../db/schema/system.js";
 import { NpValidationError } from "../errors.js";
 import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } from "./setup.js";
@@ -62,10 +67,15 @@ describe.skipIf(skipIfNoTestDb())("password reset token (integration)", () => {
     const user = await seedUser();
 
     // Seed a fake active session to prove it gets cleared.
+    const now = new Date();
     await db.insert(npSessions).values({
       userId: user.id,
-      tokenHash: "a".repeat(64),
-      expiresAt: new Date(Date.now() + 60_000),
+      accessTokenHash: "a".repeat(64),
+      refreshTokenHash: "b".repeat(64),
+      accessExpiresAt: new Date(now.valueOf() + 60_000),
+      refreshExpiresAt: new Date(now.valueOf() + 120_000),
+      createdAt: now,
+      updatedAt: now,
     });
 
     const issued = await createPasswordResetToken(db, {
@@ -100,8 +110,12 @@ describe.skipIf(skipIfNoTestDb())("password reset token (integration)", () => {
     const issued = await createPasswordResetToken(db, {
       userId: user.id,
       purpose: "reset",
-      ttlMs: -1_000,
+      ttlMs: 60_000,
     });
+    await db
+      .update(npUsers)
+      .set({ passwordResetExpiresAt: new Date(Date.now() - 1_000) })
+      .where(eq(npUsers.id, user.id));
 
     await expect(
       consumePasswordResetToken(db, { token: issued.token, newPassword: "brandnewpassword" }),
@@ -122,5 +136,58 @@ describe.skipIf(skipIfNoTestDb())("password reset token (integration)", () => {
     const [after] = await db.select().from(npUsers).where(eq(npUsers.id, user.id));
     expect(after.tokenVersion).toBe(user.tokenVersion);
     expect(after.password).toBe(user.password);
+  });
+
+  it("compare-and-swap consumes a staff reset token only once under concurrency", async () => {
+    const db = await getTestDb();
+    const user = await seedUser();
+    const issued = await createPasswordResetToken(db, {
+      userId: user.id,
+      purpose: "reset",
+      ttlMs: 60_000,
+    });
+
+    const results = await Promise.allSettled([
+      consumePasswordResetToken(db, {
+        token: issued.token,
+        newPassword: "firstconcurrentpassword",
+      }),
+      consumePasswordResetToken(db, {
+        token: issued.token,
+        newPassword: "secondconcurrentpassword",
+      }),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const [after] = await db.select().from(npUsers).where(eq(npUsers.id, user.id));
+    expect(after.tokenVersion).toBe(user.tokenVersion + 1);
+  });
+
+  it("compare-and-swap consumes a member reset token only once under concurrency", async () => {
+    const db = await getTestDb();
+    const password = await hashPassword("originalpassword");
+    const [member] = await db
+      .insert(npMembers)
+      .values({
+        email: "member@example.com",
+        password,
+        handle: "member_one",
+        displayName: "Member One",
+        status: "active",
+      })
+      .returning();
+    const requested = await requestMemberPasswordReset(db, member.email, 60_000);
+    if (!requested.issued) throw new Error("Expected member reset token");
+
+    const results = await Promise.allSettled([
+      consumeMemberPasswordReset(db, requested.issued.token, "firstconcurrentpassword"),
+      consumeMemberPasswordReset(db, requested.issued.token, "secondconcurrentpassword"),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const [after] = await db.select().from(npMembers).where(eq(npMembers.id, member.id));
+    expect(after.tokenVersion).toBe(member.tokenVersion + 1);
   });
 });

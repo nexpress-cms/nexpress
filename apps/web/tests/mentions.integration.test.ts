@@ -9,6 +9,7 @@ import {
   readJson,
   registerTestCollections,
   seedActiveMember as harnessSeedActiveMember,
+  seedUser,
   skipIfNoTestDb,
   truncateAll,
 } from "./harness.js";
@@ -59,22 +60,13 @@ async function seedActiveMember(
 }
 
 async function seedStaffPostId(slug: string): Promise<string> {
-  const { hashPassword, npUsers, signToken } = await import("@nexpress/core");
-  const db = await getTestDb();
-  const password = await hashPassword("password12345");
-  const [user] = (await db
-    .insert(npUsers)
-    .values({ email: `staff-${slug}@example.com`, password, name: "Staff", role: "editor" })
-    .returning({
-      id: npUsers.id,
-      email: npUsers.email,
-      role: npUsers.role,
-      tokenVersion: npUsers.tokenVersion,
-    })) as Array<{ id: string; email: string; role: "editor"; tokenVersion: number }>;
-  const token = await signToken(
-    { id: user.id, role: user.role, tokenVersion: user.tokenVersion },
-    process.env.NP_SECRET!,
-  );
+  const user = await seedUser({
+    email: `staff-${slug}@example.com`,
+    password: "password12345",
+    name: "Staff",
+    role: "editor",
+  });
+  const token = user.accessToken;
   const csrf = "csrf-staff";
   const create = await collectionPOST(
     jsonRequest("/api/collections/posts", {

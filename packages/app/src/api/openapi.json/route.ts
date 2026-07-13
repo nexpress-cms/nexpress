@@ -23,11 +23,18 @@ import {
   npMediaVariantNamePattern,
 } from "@nexpress/core/media-contract";
 import {
+  npAuthCanonicalDatePattern,
+  npAuthContractLimits,
+  npAuthSingleUseTokenPattern,
+  npAuthUuidPattern,
+  npMemberHandlePattern,
+  npUserRoles,
+} from "@nexpress/core/auth-contract";
+import {
   npDynamicSettingOwnerPattern,
   npSettingsContractLimits,
   npSiteIdPattern,
   npUserIdPattern,
-  npUserRoles,
 } from "@nexpress/core/settings";
 import {
   NP_REVISION_STATUSES,
@@ -833,13 +840,102 @@ function buildSpec(): OpenApiSchema {
     },
     user_item: {
       type: "object",
+      additionalProperties: false,
+      required: ["id", "email", "name", "role", "avatar", "createdAt", "updatedAt"],
       properties: {
-        id: { type: "string", format: "uuid" },
-        email: { type: "string", format: "email" },
-        name: { type: "string" },
-        role: { type: "string", enum: ["admin", "editor", "moderator", "author", "viewer"] },
-        createdAt: { type: "string", format: "date-time" },
-        updatedAt: { type: "string", format: "date-time" },
+        id: { type: "string", format: "uuid", pattern: npAuthUuidPattern },
+        email: {
+          type: "string",
+          format: "email",
+          maxLength: npAuthContractLimits.emailLength,
+        },
+        name: { type: "string", minLength: 1, maxLength: npAuthContractLimits.nameLength },
+        role: { type: "string", enum: [...npUserRoles] },
+        avatar: { type: ["string", "null"], format: "uuid" },
+        createdAt: {
+          type: "string",
+          format: "date-time",
+          pattern: npAuthCanonicalDatePattern,
+        },
+        updatedAt: {
+          type: "string",
+          format: "date-time",
+          pattern: npAuthCanonicalDatePattern,
+        },
+      },
+    },
+    staff_session_user: {
+      type: "object",
+      additionalProperties: false,
+      required: ["id", "email", "name", "role"],
+      properties: {
+        id: { type: "string", format: "uuid", pattern: npAuthUuidPattern },
+        email: {
+          type: "string",
+          format: "email",
+          maxLength: npAuthContractLimits.emailLength,
+        },
+        name: { type: "string", minLength: 1, maxLength: npAuthContractLimits.nameLength },
+        role: { type: "string", enum: [...npUserRoles] },
+      },
+    },
+    member_session_user: {
+      type: "object",
+      additionalProperties: false,
+      required: ["id", "handle", "email", "displayName"],
+      properties: {
+        id: { type: "string", format: "uuid", pattern: npAuthUuidPattern },
+        handle: { type: "string", pattern: npMemberHandlePattern },
+        email: {
+          type: "string",
+          format: "email",
+          maxLength: npAuthContractLimits.emailLength,
+        },
+        displayName: {
+          type: "string",
+          minLength: 1,
+          maxLength: npAuthContractLimits.displayNameLength,
+        },
+      },
+    },
+    member_self: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "id",
+        "handle",
+        "email",
+        "displayName",
+        "emailVerified",
+        "avatar",
+        "bio",
+        "status",
+        "reputation",
+        "createdAt",
+      ],
+      properties: {
+        id: { type: "string", format: "uuid", pattern: npAuthUuidPattern },
+        handle: { type: "string", pattern: npMemberHandlePattern },
+        email: {
+          type: "string",
+          format: "email",
+          maxLength: npAuthContractLimits.emailLength,
+        },
+        displayName: {
+          type: "string",
+          minLength: 1,
+          maxLength: npAuthContractLimits.displayNameLength,
+        },
+        emailVerified: { type: "boolean" },
+        avatar: { type: ["string", "null"], format: "uuid" },
+        bio: { type: ["string", "null"], maxLength: npAuthContractLimits.bioLength },
+        status: { type: "string", enum: ["active"] },
+        reputation: { type: "integer" },
+        createdAt: {
+          type: "string",
+          format: "date-time",
+          pattern: npAuthCanonicalDatePattern,
+        },
       },
     },
     media_item: {
@@ -1069,24 +1165,67 @@ function buildSpec(): OpenApiSchema {
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
                 required: ["email", "password"],
-                properties: { email: { type: "string" }, password: { type: "string" } },
+                properties: {
+                  email: {
+                    type: "string",
+                    format: "email",
+                    maxLength: npAuthContractLimits.emailLength,
+                  },
+                  password: {
+                    type: "string",
+                    minLength: 1,
+                    maxLength: npAuthContractLimits.passwordMaxLength,
+                  },
+                },
               },
             },
           },
         },
         responses: {
-          "200": { description: "Sets np-session/np-refresh/np-csrf cookies and returns the user" },
+          "200": {
+            description: "Creates one browser-session row, sets auth cookies, and returns the user",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["user"],
+                  properties: { user: { $ref: "#/components/schemas/staff_session_user" } },
+                },
+              },
+            },
+          },
         },
       },
     },
     "/api/auth/logout": {
-      post: { summary: "Clear auth cookies", responses: { "204": { description: "No content" } } },
+      post: {
+        summary: "Revoke the current browser session and clear auth cookies",
+        description:
+          "Deletes every browser-session row named by a valid access or refresh token and its shared `sid`, then clears every staff auth cookie.",
+        responses: { "200": { description: "Session revoked and cookies cleared" } },
+      },
     },
     "/api/auth/me": {
       get: {
         summary: "Current authenticated user",
-        responses: { "200": { description: "User object" } },
+        responses: {
+          "200": {
+            description: "Exact staff session user",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["user"],
+                  properties: { user: { $ref: "#/components/schemas/staff_session_user" } },
+                },
+              },
+            },
+          },
+        },
       },
     },
     "/api/auth/oauth/{provider}/start": {
@@ -1135,7 +1274,7 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Finish an OAuth login (member side)",
         description:
-          "Validates `np-mb-oauth-state`, calls `provider.exchange()`, resolves the matching `np_members` row in this order: (1) durable `(provider, subject)` link in `np_member_identities`, (2) email-match link, (3) auto-provision a new member with `status='active'` and `email_verified=true`. On success persists access + refresh hashes in `np_member_sessions`, sets `np-mb-session` / `np-mb-refresh` / `np-mb-csrf` cookies, and 302s to `/`. Suspended/deleted members 302 to `/members/login?oauth_error=member_inactive`. Other failures redirect with `oauth_error=<code>` — never echo provider error text.",
+          "Validates `np-mb-oauth-state`, calls `provider.exchange()`, resolves the matching `np_members` row in this order: (1) durable `(provider, subject)` link in `np_member_identities`, (2) email-match link, (3) auto-provision a new member with `status='active'` and `email_verified=true`. On success persists one browser-session row containing both access and refresh hashes, sets `np-mb-session` / `np-mb-refresh` / `np-mb-csrf` cookies, and 302s to `/`. Any non-active member redirects to `/members/login?oauth_error=member_inactive`. Other failures redirect with `oauth_error=<code>` — never echo provider error text.",
         parameters: [
           { in: "path", name: "provider", required: true, schema: { type: "string" } },
           { in: "query", name: "code", required: true, schema: { type: "string" } },
@@ -1152,9 +1291,21 @@ function buildSpec(): OpenApiSchema {
       post: {
         summary: "Exchange refresh token for a new session",
         description:
-          "Reads the `np-refresh` cookie and, on success, rotates `np-session` / `np-refresh` / `np-csrf`.",
+          "Reads `np-refresh` and compare-and-swap rotates both hashes on the same session id. A replayed refresh token is rejected.",
         responses: {
-          "200": { description: "Fresh session + CSRF cookie; body contains user + tokens" },
+          "200": {
+            description: "Fresh session + refresh + CSRF cookies; body contains the user",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["user"],
+                  properties: { user: { $ref: "#/components/schemas/staff_session_user" } },
+                },
+              },
+            },
+          },
           "401": { description: "Refresh cookie missing, expired, or revoked" },
         },
       },
@@ -1170,10 +1321,19 @@ function buildSpec(): OpenApiSchema {
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
                 required: ["currentPassword", "newPassword"],
                 properties: {
-                  currentPassword: { type: "string" },
-                  newPassword: { type: "string", minLength: 8 },
+                  currentPassword: {
+                    type: "string",
+                    minLength: 1,
+                    maxLength: npAuthContractLimits.passwordMaxLength,
+                  },
+                  newPassword: {
+                    type: "string",
+                    minLength: npAuthContractLimits.passwordMinLength,
+                    maxLength: npAuthContractLimits.passwordMaxLength,
+                  },
                 },
               },
             },
@@ -1197,8 +1357,15 @@ function buildSpec(): OpenApiSchema {
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
                 required: ["email"],
-                properties: { email: { type: "string", format: "email" } },
+                properties: {
+                  email: {
+                    type: "string",
+                    format: "email",
+                    maxLength: npAuthContractLimits.emailLength,
+                  },
+                },
               },
             },
           },
@@ -1219,10 +1386,20 @@ function buildSpec(): OpenApiSchema {
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
                 required: ["token", "password"],
                 properties: {
-                  token: { type: "string" },
-                  password: { type: "string", minLength: 8 },
+                  token: {
+                    type: "string",
+                    minLength: 64,
+                    maxLength: 64,
+                    pattern: npAuthSingleUseTokenPattern,
+                  },
+                  password: {
+                    type: "string",
+                    minLength: npAuthContractLimits.passwordMinLength,
+                    maxLength: npAuthContractLimits.passwordMaxLength,
+                  },
                 },
               },
             },
@@ -1243,14 +1420,20 @@ function buildSpec(): OpenApiSchema {
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
                 required: ["email", "name", "role"],
                 properties: {
-                  email: { type: "string", format: "email" },
-                  name: { type: "string" },
-                  role: {
+                  email: {
                     type: "string",
-                    enum: ["admin", "editor", "moderator", "author", "viewer"],
+                    format: "email",
+                    maxLength: npAuthContractLimits.emailLength,
                   },
+                  name: {
+                    type: "string",
+                    minLength: 1,
+                    maxLength: npAuthContractLimits.nameLength,
+                  },
+                  role: { type: "string", enum: [...npUserRoles] },
                 },
               },
             },
@@ -1263,12 +1446,18 @@ function buildSpec(): OpenApiSchema {
               "application/json": {
                 schema: {
                   type: "object",
+                  additionalProperties: false,
+                  required: ["id", "email", "name", "role", "inviteExpiresAt"],
                   properties: {
-                    id: { type: "string", format: "uuid" },
-                    email: { type: "string" },
-                    name: { type: "string" },
-                    role: { type: "string" },
-                    inviteExpiresAt: { type: "string", format: "date-time" },
+                    id: { type: "string", format: "uuid", pattern: npAuthUuidPattern },
+                    email: { type: "string", format: "email" },
+                    name: { type: "string", minLength: 1 },
+                    role: { type: "string", enum: [...npUserRoles] },
+                    inviteExpiresAt: {
+                      type: "string",
+                      format: "date-time",
+                      pattern: npAuthCanonicalDatePattern,
+                    },
                   },
                 },
               },
@@ -1290,17 +1479,30 @@ function buildSpec(): OpenApiSchema {
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
                 required: ["email", "password", "handle", "displayName"],
                 properties: {
-                  email: { type: "string", format: "email" },
-                  password: { type: "string", minLength: 8 },
+                  email: {
+                    type: "string",
+                    format: "email",
+                    maxLength: npAuthContractLimits.emailLength,
+                  },
+                  password: {
+                    type: "string",
+                    minLength: npAuthContractLimits.passwordMinLength,
+                    maxLength: npAuthContractLimits.passwordMaxLength,
+                  },
                   handle: {
                     type: "string",
                     minLength: 3,
-                    maxLength: 30,
-                    pattern: "^[a-z0-9][a-z0-9_-]+$",
+                    maxLength: npAuthContractLimits.handleLength,
+                    pattern: npMemberHandlePattern,
                   },
-                  displayName: { type: "string", minLength: 1, maxLength: 80 },
+                  displayName: {
+                    type: "string",
+                    minLength: 1,
+                    maxLength: npAuthContractLimits.displayNameLength,
+                  },
                 },
               },
             },
@@ -1322,8 +1524,16 @@ function buildSpec(): OpenApiSchema {
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
                 required: ["token"],
-                properties: { token: { type: "string" } },
+                properties: {
+                  token: {
+                    type: "string",
+                    minLength: 64,
+                    maxLength: 64,
+                    pattern: npAuthSingleUseTokenPattern,
+                  },
+                },
               },
             },
           },
@@ -1338,24 +1548,45 @@ function buildSpec(): OpenApiSchema {
       post: {
         summary: "Member login",
         description:
-          "Sets `np-mb-session` / `np-mb-refresh` / `np-mb-csrf` cookies. Refuses login for non-active members (pending / suspended / deleted) with the same generic 401 used for wrong passwords (anti-enumeration).",
+          "Creates one browser-session row and sets `np-mb-session` / `np-mb-refresh` / `np-mb-csrf` cookies. Refuses every non-active status with the same generic 401 used for wrong passwords (anti-enumeration).",
         requestBody: {
           required: true,
           content: {
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
                 required: ["email", "password"],
                 properties: {
-                  email: { type: "string", format: "email" },
-                  password: { type: "string" },
+                  email: {
+                    type: "string",
+                    format: "email",
+                    maxLength: npAuthContractLimits.emailLength,
+                  },
+                  password: {
+                    type: "string",
+                    minLength: 1,
+                    maxLength: npAuthContractLimits.passwordMaxLength,
+                  },
                 },
               },
             },
           },
         },
         responses: {
-          "200": { description: "Logged in. Member object in body, cookies set." },
+          "200": {
+            description: "Logged in; exact member session object in body and cookies set",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["member"],
+                  properties: { member: { $ref: "#/components/schemas/member_session_user" } },
+                },
+              },
+            },
+          },
           "401": { description: "Invalid credentials" },
         },
       },
@@ -1363,9 +1594,22 @@ function buildSpec(): OpenApiSchema {
     "/api/members/refresh": {
       post: {
         summary: "Rotate member session",
-        description: "Reads `np-mb-refresh`; on success rotates session + refresh + CSRF cookies.",
+        description:
+          "Reads `np-mb-refresh` and compare-and-swap rotates both token hashes on the same session id. Replays are rejected.",
         responses: {
-          "200": { description: "Fresh tokens" },
+          "200": {
+            description: "Fresh cookies and exact member session object",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["member"],
+                  properties: { member: { $ref: "#/components/schemas/member_session_user" } },
+                },
+              },
+            },
+          },
           "401": { description: "Refresh cookie missing or invalid" },
         },
       },
@@ -1373,7 +1617,8 @@ function buildSpec(): OpenApiSchema {
     "/api/members/logout": {
       post: {
         summary: "Member logout",
-        description: "Revokes the matching session row and clears `np-mb-*` cookies.",
+        description:
+          "Deletes every browser-session row named by a valid access or refresh token and its shared `sid`, then clears all `np-mb-*` cookies.",
         responses: { "200": { description: "Logged out" } },
       },
     },
@@ -1382,7 +1627,19 @@ function buildSpec(): OpenApiSchema {
         summary: "Authenticated member profile",
         description: "Returns the full self-profile, including email and verification state.",
         responses: {
-          "200": { description: "Member self-profile" },
+          "200": {
+            description: "Exact member self-profile",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["member"],
+                  properties: { member: { $ref: "#/components/schemas/member_self" } },
+                },
+              },
+            },
+          },
           "401": { description: "Not authenticated" },
         },
       },
@@ -1396,12 +1653,29 @@ function buildSpec(): OpenApiSchema {
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
+                minProperties: 1,
                 properties: {
-                  displayName: { type: "string", minLength: 1, maxLength: 80 },
-                  bio: { type: "string", nullable: true, maxLength: 500 },
-                  avatar: { type: "string", format: "uuid", nullable: true },
-                  newPassword: { type: "string", minLength: 8 },
-                  currentPassword: { type: "string" },
+                  displayName: {
+                    type: "string",
+                    minLength: 1,
+                    maxLength: npAuthContractLimits.displayNameLength,
+                  },
+                  bio: {
+                    type: ["string", "null"],
+                    maxLength: npAuthContractLimits.bioLength,
+                  },
+                  avatar: { type: ["string", "null"], format: "uuid" },
+                  newPassword: {
+                    type: "string",
+                    minLength: npAuthContractLimits.passwordMinLength,
+                    maxLength: npAuthContractLimits.passwordMaxLength,
+                  },
+                  currentPassword: {
+                    type: "string",
+                    minLength: 1,
+                    maxLength: npAuthContractLimits.passwordMaxLength,
+                  },
                 },
               },
             },
@@ -1433,8 +1707,15 @@ function buildSpec(): OpenApiSchema {
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
                 required: ["email"],
-                properties: { email: { type: "string", format: "email" } },
+                properties: {
+                  email: {
+                    type: "string",
+                    format: "email",
+                    maxLength: npAuthContractLimits.emailLength,
+                  },
+                },
               },
             },
           },
@@ -1454,10 +1735,20 @@ function buildSpec(): OpenApiSchema {
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
                 required: ["token", "password"],
                 properties: {
-                  token: { type: "string" },
-                  password: { type: "string", minLength: 8 },
+                  token: {
+                    type: "string",
+                    minLength: 64,
+                    maxLength: 64,
+                    pattern: npAuthSingleUseTokenPattern,
+                  },
+                  password: {
+                    type: "string",
+                    minLength: npAuthContractLimits.passwordMinLength,
+                    maxLength: npAuthContractLimits.passwordMaxLength,
+                  },
                 },
               },
             },
@@ -1485,7 +1776,11 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "List users (editor+)",
         parameters: [
-          { in: "query", name: "page", schema: { type: "integer", minimum: 1 } },
+          {
+            in: "query",
+            name: "page",
+            schema: { type: "integer", minimum: 1, maximum: 10_000 },
+          },
           { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100 } },
           {
             in: "query",
@@ -1501,6 +1796,16 @@ function buildSpec(): OpenApiSchema {
               "application/json": {
                 schema: {
                   type: "object",
+                  additionalProperties: false,
+                  required: [
+                    "docs",
+                    "totalDocs",
+                    "totalPages",
+                    "page",
+                    "limit",
+                    "hasNextPage",
+                    "hasPrevPage",
+                  ],
                   properties: {
                     docs: { type: "array", items: { $ref: "#/components/schemas/user_item" } },
                     totalDocs: { type: "integer" },
@@ -1527,15 +1832,25 @@ function buildSpec(): OpenApiSchema {
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
                 required: ["email", "name", "password", "role"],
                 properties: {
-                  email: { type: "string", format: "email" },
-                  name: { type: "string" },
-                  password: { type: "string", minLength: 8 },
-                  role: {
+                  email: {
                     type: "string",
-                    enum: ["admin", "editor", "moderator", "author", "viewer"],
+                    format: "email",
+                    maxLength: npAuthContractLimits.emailLength,
                   },
+                  name: {
+                    type: "string",
+                    minLength: 1,
+                    maxLength: npAuthContractLimits.nameLength,
+                  },
+                  password: {
+                    type: "string",
+                    minLength: npAuthContractLimits.passwordMinLength,
+                    maxLength: npAuthContractLimits.passwordMaxLength,
+                  },
+                  role: { type: "string", enum: [...npUserRoles] },
                 },
               },
             },

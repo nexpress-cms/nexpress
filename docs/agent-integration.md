@@ -59,7 +59,12 @@ collection's `access.read` allows it.
      automatically if cookies are enabled).
    - `X-CSRF-Token: <value of np-csrf cookie>` as a header.
 4. When the session expires (`401`), call `POST /api/auth/refresh` with
-   `Cookie: np-refresh=…` to rotate the session cookie.
+   `Cookie: np-refresh=…` to rotate both access and refresh cookies. Replace
+   both values atomically; replaying the old refresh token returns `401`.
+5. To sign out, call `POST /api/auth/logout` with the cookie jar. The refresh
+   cookie is scoped to `/api/auth`, so logout can revoke the session even after
+   the shorter-lived access cookie expires. The shared session id revokes the
+   whole pair.
 
 Example (Node/undici):
 

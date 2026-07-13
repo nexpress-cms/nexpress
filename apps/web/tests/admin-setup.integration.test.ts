@@ -36,7 +36,7 @@ describe.skipIf(skipIfNoTestDb())("first-boot Admin Setup wizard", () => {
     const req = buildRequest("/api/admin/setup", {
       method: "POST",
       body: {
-        email: "founder@example.com",
+        email: " Founder@Example.com ",
         password: "correct horse battery",
         name: "Founder",
         siteName: "Acme",

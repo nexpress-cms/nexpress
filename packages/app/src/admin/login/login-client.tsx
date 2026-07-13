@@ -12,6 +12,7 @@ import {
   Input,
   Label,
 } from "@nexpress/admin/client";
+import { npAuthContractLimits } from "@nexpress/core/auth-contract";
 
 interface LoginProvider {
   id: string;
@@ -175,6 +176,7 @@ export function LoginClient({ providers = [] }: LoginClientProps) {
             <Input
               id="password"
               type="password"
+              maxLength={npAuthContractLimits.passwordMaxLength}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required

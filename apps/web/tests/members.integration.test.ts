@@ -16,11 +16,7 @@ import { POST as logoutPOST } from "@/app/api/members/logout/route";
 import { POST as refreshPOST } from "@/app/api/members/refresh/route";
 import { POST as forgotPOST } from "@/app/api/members/forgot-password/route";
 import { POST as resetPOST } from "@/app/api/members/reset-password/route";
-import {
-  GET as meGET,
-  PATCH as mePATCH,
-  DELETE as meDELETE,
-} from "@/app/api/members/me/route";
+import { GET as meGET, PATCH as mePATCH, DELETE as meDELETE } from "@/app/api/members/me/route";
 import { GET as profileGET } from "@/app/api/members/[handle]/route";
 
 import { NextRequest } from "next/server";
@@ -87,14 +83,21 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     const rows = await db.execute(
       "select email_verify_token_hash from np_members where email = 'alice@example.com'" as never,
     );
-    expect((rows as unknown as { rows: Array<{ email_verify_token_hash: string | null }> }).rows[0]?.email_verify_token_hash).toBeTruthy();
+    expect(
+      (rows as unknown as { rows: Array<{ email_verify_token_hash: string | null }> }).rows[0]
+        ?.email_verify_token_hash,
+    ).toBeTruthy();
 
     // Reverse the hash isn't possible — instead, regenerate a token by
     // creating a fresh one through the core helper. Verify endpoint
     // requires the raw token, so we have to issue one ourselves to
     // exercise consume.
     const { createMemberEmailVerifyToken } = await import("@nexpress/core");
-    const issued = await createMemberEmailVerifyToken(db as never, await getMemberId("alice"), 60_000);
+    const issued = await createMemberEmailVerifyToken(
+      db as never,
+      await getMemberId("alice"),
+      60_000,
+    );
 
     const verify = await verifyPOST(
       jsonRequest("/api/members/verify", {
@@ -123,6 +126,44 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     expect(me.body.member.emailVerified).toBe(true);
   });
 
+  it("consumes one member verification token only once under concurrency", async () => {
+    await registerPOST(
+      jsonRequest("/api/members/register", {
+        method: "POST",
+        body: JSON.stringify({
+          email: "verify-race@example.com",
+          password: "correct horse battery",
+          handle: "verify_race",
+          displayName: "Verify Race",
+        }),
+      }),
+    );
+    const db = await getTestDb();
+    const { createMemberEmailVerifyToken } = await import("@nexpress/core");
+    const issued = await createMemberEmailVerifyToken(
+      db as never,
+      await getMemberId("verify_race"),
+      60_000,
+    );
+
+    const responses = await Promise.all([
+      verifyPOST(
+        jsonRequest("/api/members/verify", {
+          method: "POST",
+          body: JSON.stringify({ token: issued.token }),
+        }),
+      ),
+      verifyPOST(
+        jsonRequest("/api/members/verify", {
+          method: "POST",
+          body: JSON.stringify({ token: issued.token }),
+        }),
+      ),
+    ]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 400]);
+  });
+
   it("login fails for pending (unverified) members; succeeds after verify", async () => {
     await registerPOST(
       jsonRequest("/api/members/register", {
@@ -145,8 +186,17 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
 
     const db = await getTestDb();
     const { createMemberEmailVerifyToken } = await import("@nexpress/core");
-    const issued = await createMemberEmailVerifyToken(db as never, await getMemberId("bob"), 60_000);
-    await verifyPOST(jsonRequest("/api/members/verify", { method: "POST", body: JSON.stringify({ token: issued.token }) }));
+    const issued = await createMemberEmailVerifyToken(
+      db as never,
+      await getMemberId("bob"),
+      60_000,
+    );
+    await verifyPOST(
+      jsonRequest("/api/members/verify", {
+        method: "POST",
+        body: JSON.stringify({ token: issued.token }),
+      }),
+    );
 
     const after = await loginPOST(
       jsonRequest("/api/members/login", {
@@ -238,6 +288,79 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     expect(me401.status).toBe(401);
   });
 
+  it("PATCH me atomically changes the password and revokes every session", async () => {
+    const { sessionCookie, csrfCookie } = await registerAndVerify(
+      "passwordchange",
+      "passwordchange@example.com",
+      "old-password-123",
+    );
+    const rejected = await mePATCH(
+      jsonRequest("/api/members/me", {
+        method: "PATCH",
+        cookies: [`np-mb-session=${sessionCookie}`, `np-mb-csrf=${csrfCookie}`],
+        headers: { "x-csrf-token": csrfCookie ?? "" },
+        body: JSON.stringify({
+          displayName: "Must Not Persist",
+          currentPassword: "wrong-password",
+          newPassword: "new-password-123",
+        }),
+      }),
+    );
+    expect(rejected.status).toBe(400);
+    const unchanged = await meGET(
+      jsonRequest("/api/members/me", { cookies: [`np-mb-session=${sessionCookie}`] }),
+    );
+    const unchangedBody = await readJson<{ member: { displayName: string } }>(unchanged);
+    expect(unchangedBody.body.member.displayName).toBe("passwordchange");
+
+    const changed = await mePATCH(
+      jsonRequest("/api/members/me", {
+        method: "PATCH",
+        cookies: [`np-mb-session=${sessionCookie}`, `np-mb-csrf=${csrfCookie}`],
+        headers: { "x-csrf-token": csrfCookie ?? "" },
+        body: JSON.stringify({
+          displayName: "Changed Atomically",
+          currentPassword: "old-password-123",
+          newPassword: "new-password-123",
+        }),
+      }),
+    );
+    const changedBody = await readJson<{ ok: boolean; mustReauth: boolean }>(changed);
+    expect(changedBody).toEqual({ status: 200, body: { ok: true, mustReauth: true } });
+
+    const stale = await meGET(
+      jsonRequest("/api/members/me", { cookies: [`np-mb-session=${sessionCookie}`] }),
+    );
+    expect(stale.status).toBe(401);
+    const oldLogin = await loginPOST(
+      jsonRequest("/api/members/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email: "passwordchange@example.com",
+          password: "old-password-123",
+        }),
+      }),
+    );
+    expect(oldLogin.status).toBe(401);
+    const newLogin = await loginPOST(
+      jsonRequest("/api/members/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email: "passwordchange@example.com",
+          password: "new-password-123",
+        }),
+      }),
+    );
+    expect(newLogin.status).toBe(200);
+    const newSessionCookie = cookieValue(newLogin.headers.get("set-cookie"), "np-mb-session");
+    expect(newSessionCookie).toBeDefined();
+    const profile = await meGET(
+      jsonRequest("/api/members/me", { cookies: [`np-mb-session=${newSessionCookie}`] }),
+    );
+    const profileBody = await readJson<{ member: { displayName: string } }>(profile);
+    expect(profileBody.body.member.displayName).toBe("Changed Atomically");
+  });
+
   it("GET /api/members/{handle} returns active members; 404 for pending / unknown", async () => {
     // Pending — not visible.
     await registerPOST(
@@ -251,18 +374,16 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
         }),
       }),
     );
-    const pending = await profileGET(
-      jsonRequest("/api/members/erin"),
-      { params: Promise.resolve({ handle: "erin" }) },
-    );
+    const pending = await profileGET(jsonRequest("/api/members/erin"), {
+      params: Promise.resolve({ handle: "erin" }),
+    });
     expect(pending.status).toBe(404);
 
     // Active — visible.
     await registerAndVerify("frank", "frank@example.com", "password-12");
-    const active = await profileGET(
-      jsonRequest("/api/members/frank"),
-      { params: Promise.resolve({ handle: "frank" }) },
-    );
+    const active = await profileGET(jsonRequest("/api/members/frank"), {
+      params: Promise.resolve({ handle: "frank" }),
+    });
     expect(active.status).toBe(200);
     const body = await readJson<{ member: { handle: string; email?: string } }>(active);
     expect(body.body.member.handle).toBe("frank");
@@ -270,10 +391,9 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     expect(body.body.member.email).toBeUndefined();
 
     // Unknown handle.
-    const unknown = await profileGET(
-      jsonRequest("/api/members/ghost"),
-      { params: Promise.resolve({ handle: "ghost" }) },
-    );
+    const unknown = await profileGET(jsonRequest("/api/members/ghost"), {
+      params: Promise.resolve({ handle: "ghost" }),
+    });
     expect(unknown.status).toBe(404);
   });
 
@@ -289,6 +409,10 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     expect(logout.status).toBe(200);
     const cleared = cookieValue(logout.headers.get("set-cookie"), "np-mb-session");
     expect(cleared === "" || cleared === undefined).toBe(true);
+    const replay = await meGET(
+      jsonRequest("/api/members/me", { cookies: [`np-mb-session=${sessionCookie}`] }),
+    );
+    expect(replay.status).toBe(401);
   });
 
   // Regression for #45 (reopened): logout must invalidate the refresh
@@ -315,10 +439,12 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
       }),
     );
     expect(refreshOk.status).toBe(200);
+    const rotatedSession = cookieValue(refreshOk.headers.get("set-cookie"), "np-mb-session");
     const rotatedRefresh = cookieValue(refreshOk.headers.get("set-cookie"), "np-mb-refresh");
+    expect(rotatedSession).toBeDefined();
     expect(rotatedRefresh).toBeDefined();
     // After rotation, the original refresh token is no longer valid —
-    // its session row was deleted as part of the rotation.
+    // compare-and-swap replaced both hashes on the same session row.
     const replayOldRefresh = await refreshPOST(
       jsonRequest("/api/members/refresh", {
         method: "POST",
@@ -327,14 +453,12 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     );
     expect(replayOldRefresh.status).toBe(401);
 
-    // Logout invalidates the rotated refresh token too.
+    // The refresh cookie is scoped to `/api/members`, so logout can still
+    // revoke the browser session when the shorter-lived access cookie is gone.
     await logoutPOST(
       jsonRequest("/api/members/logout", {
         method: "POST",
-        cookies: [
-          `np-mb-session=${sessionCookie}`,
-          `np-mb-refresh=${rotatedRefresh}`,
-        ],
+        cookies: [`np-mb-refresh=${rotatedRefresh}`],
       }),
     );
     const refreshAfterLogout = await refreshPOST(
@@ -406,15 +530,11 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     const { createHmac } = await import("node:crypto");
     const secret = process.env.NP_SECRET as string;
     const now = Math.floor(Date.now() / 1000);
-    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString(
-      "base64url",
-    );
+    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
     const payload = Buffer.from(
       JSON.stringify({ sub: memberId, ver: 0, aud: "member", iat: now, exp: now + 3600 }),
     ).toString("base64url");
-    const sig = createHmac("sha256", secret)
-      .update(`${header}.${payload}`)
-      .digest("base64url");
+    const sig = createHmac("sha256", secret).update(`${header}.${payload}`).digest("base64url");
     const legacyToken = `${header}.${payload}.${sig}`;
 
     const res = await meGET(
@@ -430,7 +550,11 @@ async function getMemberId(handle: string): Promise<string> {
   const db = await getTestDb();
   const { npMembers } = await import("@nexpress/core");
   const { eq } = await import("drizzle-orm");
-  const rows = (await db.select({ id: npMembers.id }).from(npMembers).where(eq(npMembers.handle, handle)).limit(1)) as Array<{ id: string }>;
+  const rows = (await db
+    .select({ id: npMembers.id })
+    .from(npMembers)
+    .where(eq(npMembers.handle, handle))
+    .limit(1)) as Array<{ id: string }>;
   if (!rows[0]) throw new Error(`Member with handle "${handle}" not found in test DB`);
   return rows[0].id;
 }
@@ -453,9 +577,17 @@ async function registerAndVerify(
   const db = await getTestDb();
   const { createMemberEmailVerifyToken } = await import("@nexpress/core");
   const issued = await createMemberEmailVerifyToken(db as never, await getMemberId(handle), 60_000);
-  await verifyPOST(jsonRequest("/api/members/verify", { method: "POST", body: JSON.stringify({ token: issued.token }) }));
+  await verifyPOST(
+    jsonRequest("/api/members/verify", {
+      method: "POST",
+      body: JSON.stringify({ token: issued.token }),
+    }),
+  );
   const login = await loginPOST(
-    jsonRequest("/api/members/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+    jsonRequest("/api/members/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
   );
   const setCookies = login.headers.get("set-cookie");
   return {

@@ -30,11 +30,15 @@ import {
 } from "./harness.js";
 
 import {
+  createStaffSession,
   createDbConnection,
   invalidateAllSessions,
+  npSessions,
+  sha256,
   signToken,
   verifyTokenFull,
 } from "@nexpress/core";
+import { eq } from "drizzle-orm";
 
 describe.skipIf(skipIfNoTestDb())("token revocation across instances (integration)", () => {
   beforeAll(async () => {
@@ -85,11 +89,19 @@ describe.skipIf(skipIfNoTestDb())("token revocation across instances (integratio
     // signed against the new tokenVersion. Instance B must accept
     // it — otherwise the bump locks the user out permanently
     // instead of just invalidating outstanding tokens.
-    const newToken = await signToken(
-      { id: session.userId, role: session.role, tokenVersion: 1 },
+    const newSession = await createStaffSession(
+      {
+        id: session.userId,
+        email: session.email,
+        name: session.name,
+        role: session.role,
+        tokenVersion: 1,
+      },
       secret,
+      instanceA,
+      { accessExpiration: 7200, refreshExpiration: 604800 },
     );
-    const verified = await verifyTokenFull(newToken, secret, instanceB);
+    const verified = await verifyTokenFull(newSession.access, secret, instanceB);
     expect(verified).not.toBeNull();
     expect(verified?.id).toBe(session.userId);
   });
@@ -110,10 +122,29 @@ describe.skipIf(skipIfNoTestDb())("token revocation across instances (integratio
     // Attacker mints a JWT against the *old* tokenVersion (0). The
     // signature is valid; the server still rejects because the
     // current row says tokenVersion=1.
-    const replayedToken = await signToken(
-      { id: session.userId, role: session.role, tokenVersion: 0 },
+    const currentSession = await createStaffSession(
+      {
+        id: session.userId,
+        email: session.email,
+        name: session.name,
+        role: session.role,
+        tokenVersion: 1,
+      },
       secret,
+      db,
+      { accessExpiration: 7200, refreshExpiration: 604800 },
     );
+    const replayedToken = await signToken(
+      { id: session.userId, tokenVersion: 0 },
+      secret,
+      7200,
+      "access",
+      currentSession.sessionId,
+    );
+    await db
+      .update(npSessions)
+      .set({ accessTokenHash: await sha256(replayedToken) })
+      .where(eq(npSessions.id, currentSession.sessionId));
     const verified = await verifyTokenFull(replayedToken, secret, db);
     expect(verified).toBeNull();
   });

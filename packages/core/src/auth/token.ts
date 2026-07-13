@@ -1,7 +1,12 @@
-import { randomBytes } from "node:crypto";
-import { jwtVerify, SignJWT, errors as joseErrors, type JWTPayload } from "jose";
+import { randomBytes, randomUUID } from "node:crypto";
+import { jwtVerify, SignJWT, errors as joseErrors } from "jose";
 
-import type { NpUserRole } from "../config/types.js";
+import {
+  npRequireStaffTokenPayload,
+  npRequireAuthSecret,
+  type NpAuthTokenUse,
+  type NpStaffTokenPayload,
+} from "../auth-contract/index.js";
 import { NpAuthError } from "../errors.js";
 
 /**
@@ -14,48 +19,49 @@ import { NpAuthError } from "../errors.js";
  * payload through `verifyToken` (#94).
  *
  * The fix mirrors the member-side fix from #92/#93: the `use` claim
- * is required, no legacy fallback for tokens missing the claim. The
- * cost is one forced re-login for staff sessions issued before the
- * deploy; bounded by the 7-day refresh TTL.
+ * is required, with no legacy fallback for tokens missing the claim.
+ * The paired-session migration deliberately removes legacy rows, so
+ * the deployment requires one fresh login.
  */
-export type NpTokenUse = "access" | "refresh";
-
-export interface NpTokenPayload {
-  sub: string;
-  role: NpUserRole;
-  ver: number;
-  /** Required. `verifyToken` refuses tokens missing this claim so
-   *  legacy refresh JWTs cannot be smuggled into the session
-   *  cookie path. */
-  use: NpTokenUse;
-  /** Random per-token id — needed if rotation lands on the staff
-   *  side (mirrors the member-side `jti` for #45). Optional today
-   *  but populated on every newly-minted token. */
-  jti?: string;
-  iat: number;
-  exp: number;
-}
+export type NpTokenUse = NpAuthTokenUse;
+export type NpTokenPayload = NpStaffTokenPayload;
 
 const textEncoder = new TextEncoder();
 
 export async function signToken(
-  user: { id: string; role: NpUserRole; tokenVersion: number },
+  user: { id: string; tokenVersion: number },
   secret: string,
   expirationSeconds: number = 7200,
   tokenUse: NpTokenUse = "access",
+  sessionId: string = randomUUID(),
 ): Promise<string> {
-  const secretKey = textEncoder.encode(secret);
-
-  return new SignJWT({
+  if (!Number.isSafeInteger(expirationSeconds) || expirationSeconds <= 0) {
+    throw new Error("Staff token expiration must be a positive integer number of seconds.");
+  }
+  const secretKey = textEncoder.encode(npRequireAuthSecret(secret));
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const payload = npRequireStaffTokenPayload({
     sub: user.id,
-    role: user.role,
+    aud: "staff",
     ver: user.tokenVersion,
     use: tokenUse,
+    sid: sessionId,
+    jti: randomBytes(16).toString("base64url"),
+    iat: issuedAt,
+    exp: issuedAt + expirationSeconds,
+  });
+
+  return new SignJWT({
+    ver: payload.ver,
+    use: payload.use,
+    sid: payload.sid,
   })
     .setProtectedHeader({ alg: "HS256" })
-    .setJti(randomBytes(16).toString("base64url"))
-    .setIssuedAt()
-    .setExpirationTime(Math.floor(Date.now() / 1000) + expirationSeconds)
+    .setSubject(payload.sub)
+    .setAudience(payload.aud)
+    .setJti(payload.jti)
+    .setIssuedAt(payload.iat)
+    .setExpirationTime(payload.exp)
     .sign(secretKey);
 }
 
@@ -65,38 +71,30 @@ export async function signToken(
  * rejects a refresh token used as a session cookie and how the
  * refresh route rejects an access token as a refresh trigger.
  *
- * Tokens minted before the `use` claim landed have NO `use` payload
- * field. We refuse those outright rather than treating them as
- * `access` — the prior fallback would let still-live legacy refresh
- * JWTs be smuggled into the session cookie and pass the access
- * check. Cost: staff logged in before this deploy must log in once.
- * Bounded by the refresh-token TTL (default 7 days).
+ * Tokens minted before the exact auth contract have no `use`, `aud`,
+ * or `sid` claim. We refuse them outright rather than inferring claims;
+ * migration removes their legacy rows and requires one fresh login.
  */
 export async function verifyToken(
   token: string,
   secret: string,
   expectedUse?: NpTokenUse,
 ): Promise<NpTokenPayload> {
-  const secretKey = textEncoder.encode(secret);
-  const { payload } = await jwtVerify(token, secretKey);
-  const typed = payload as JWTPayload & {
-    sub: string;
-    role: NpUserRole;
-    ver: number;
-    iat: number;
-    exp: number;
-    use?: NpTokenUse;
-  };
-  if (typed.use !== "access" && typed.use !== "refresh") {
-    throw new NpAuthError("Staff token missing `use` claim");
+  const secretKey = textEncoder.encode(npRequireAuthSecret(secret));
+  const { payload } = await jwtVerify(token, secretKey, {
+    algorithms: ["HS256"],
+    audience: "staff",
+  });
+  let typed: NpStaffTokenPayload;
+  try {
+    typed = npRequireStaffTokenPayload(payload);
+  } catch (error) {
+    throw new NpAuthError(error instanceof Error ? error.message : "Invalid staff token claims");
   }
-  const use: NpTokenUse = typed.use;
-  if (expectedUse && use !== expectedUse) {
-    throw new NpAuthError(
-      `Staff token use mismatch: expected ${expectedUse}, got ${use}`,
-    );
+  if (expectedUse && typed.use !== expectedUse) {
+    throw new NpAuthError(`Staff token use mismatch: expected ${expectedUse}, got ${typed.use}`);
   }
-  return { ...typed, use };
+  return typed;
 }
 
 /**
