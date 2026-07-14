@@ -4,6 +4,7 @@ import { getJobsPauseState, startPauseSyncLoop, type PauseSyncLoopHandle } from 
 import { PgBossAdapter } from "./pg-boss-adapter.js";
 import { getOptionalJobQueue, setJobQueue } from "./queue.js";
 import { getLogger } from "../observability/logger.js";
+import { shutdownObservability } from "../observability/runtime.js";
 
 let workerAdapter: PgBossAdapter | null = null;
 let producerAdapter: PgBossAdapter | null = null;
@@ -36,6 +37,13 @@ function installShutdownSignalHandlers(): void {
             error: err instanceof Error ? err.message : String(err),
           });
         } finally {
+          try {
+            await shutdownObservability();
+          } catch (error) {
+            // The configured logger has already been detached; use the
+            // process console as the final non-recursive failure sink.
+            console.error("[nexpress] observability shutdown failed:", error);
+          }
           process.exit(0);
         }
       })();

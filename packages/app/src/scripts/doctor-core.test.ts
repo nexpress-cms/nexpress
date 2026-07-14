@@ -21,6 +21,7 @@ describe("doctor core", () => {
         "env.file",
         "env.database_url",
         "email.contract",
+        "observability.contract",
         "rate-limit.contract",
         "storage.contract",
         "database.reachable",
@@ -139,6 +140,22 @@ describe("doctor core", () => {
       expect.objectContaining({
         state: "error",
         detail: expect.stringContaining("NP_RATE_LIMIT_ADAPTER"),
+      }),
+    );
+  });
+
+  it("fails closed on malformed observability runtime intent without booting the app", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nexpress-doctor-core-"));
+    const checks = await collectDoctorChecks({
+      cwd,
+      nodeVersion: "24.11.1",
+      env: { NP_LOGGER_ADAPTER: "pino" },
+    });
+
+    expect(checks.find((check) => check.id === "observability.contract")).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: expect.stringContaining("NP_LOGGER_ADAPTER"),
       }),
     );
   });

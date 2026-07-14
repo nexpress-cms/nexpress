@@ -28,6 +28,11 @@ import {
   type NpStorageAdapter,
 } from "@nexpress/core";
 import { npReadRateLimitRuntimeConfig } from "@nexpress/core/rate-limit";
+import {
+  configureObservabilityFromEnv,
+  type NpErrorReporter,
+  type NpLoggerAdapter,
+} from "@nexpress/core/observability";
 import { canOnSite } from "@nexpress/core/sites";
 import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
 import {
@@ -122,6 +127,14 @@ export interface BootstrapOptions {
    * `storage: { adapter: "custom" }` / `NP_STORAGE_ADAPTER=custom`.
    */
   storageAdapter?: NpStorageAdapter;
+  /**
+   * Programmatic logger used only with `NP_LOGGER_ADAPTER=custom`.
+   * Built-in console intent rejects a custom adapter instead of silently
+   * running a different implementation than the environment declares.
+   */
+  logger?: NpLoggerAdapter;
+  /** Programmatic reporter used only with `NP_ERROR_REPORTER_ADAPTER=custom`. */
+  errorReporter?: NpErrorReporter;
 }
 
 /**
@@ -312,6 +325,15 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
 
   function ensureServices(instance: NpDb): void {
     if (servicesInitialized) return;
+
+    // Install telemetry first so every subsequent bootstrap warning and
+    // failure reaches the operator-selected adapters. The pair is validated
+    // and installed transactionally; malformed intent cannot leave a partial
+    // logger/reporter configuration behind.
+    configureObservabilityFromEnv(process.env, {
+      logger: options.logger,
+      errorReporter: options.errorReporter,
+    });
 
     setDb(instance);
     const storageConfig = config.storage ?? {

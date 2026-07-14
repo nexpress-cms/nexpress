@@ -388,13 +388,26 @@ function translationCliScriptTemplate(adapter: "gettext" | "xliff"): string {
   return (
     `import "./_load-env.js";\n\n` +
     `import type { NpAuthUser } from "@nexpress/core";\n` +
+    `import { shutdownObservability } from "@nexpress/core/observability";\n` +
     `import { runCli } from "${packageName}";\n` +
     `import { createBootstrap } from "@nexpress/next";\n\n` +
     `import nexpressConfig from "../src/nexpress.config.js";\n` +
     `import * as generatedSchema from "../src/db/generated/collections.js";\n\n` +
+    `import { observabilityAdapters } from "../src/lib/observability.js";\n\n` +
+    `async function shutdownAndExit(code: number): Promise<never> {\n` +
+    `  let exitCode = code;\n` +
+    `  try {\n` +
+    `    await shutdownObservability();\n` +
+    `  } catch (error) {\n` +
+    `    process.stderr.write(\`${adapter}: observability shutdown failed: \${String(error)}\\n\`);\n` +
+    `    exitCode = 1;\n` +
+    `  }\n` +
+    `  process.exit(exitCode);\n` +
+    `}\n\n` +
     `const { ensureCoreServices, ensurePluginsLoaded } = createBootstrap({\n` +
     `  config: nexpressConfig,\n` +
     `  generatedSchema: generatedSchema as unknown as Record<string, unknown>,\n` +
+    `  ...observabilityAdapters,\n` +
     `});\n\n` +
     `async function main(): Promise<void> {\n` +
     `  ensureCoreServices();\n` +
@@ -411,11 +424,11 @@ function translationCliScriptTemplate(adapter: "gettext" | "xliff"): string {
     `    err(message: string): void { process.stderr.write(message); },\n` +
     `  };\n` +
     `  const result = await runCli(io, process.argv.slice(2), { user });\n` +
-    `  process.exit(result.exitCode);\n` +
+    `  await shutdownAndExit(result.exitCode);\n` +
     `}\n\n` +
-    `main().catch((error) => {\n` +
+    `void main().catch(async (error) => {\n` +
     `  process.stderr.write(\`${adapter}: \${(error as Error).stack ?? String(error)}\\n\`);\n` +
-    `  process.exit(1);\n` +
+    `  await shutdownAndExit(1);\n` +
     `});\n`
   );
 }
@@ -437,12 +450,15 @@ function workerScriptTemplate(): string {
     `import "./_load-env.js";\n\n` +
     `import { runWorker } from "@nexpress/app/scripts/worker";\n` +
     `import { configureEmailRuntimeFromEnv } from "@nexpress/core/email";\n` +
+    `import { shutdownObservability } from "@nexpress/core/observability";\n` +
     `import { createBootstrap } from "@nexpress/next";\n\n` +
     `import nexpressConfig from "../src/nexpress.config.js";\n` +
     `import * as generatedSchema from "../src/db/generated/collections.js";\n\n` +
+    `import { observabilityAdapters } from "../src/lib/observability.js";\n\n` +
     `const { ensureCoreServices, ensurePluginsLoaded } = createBootstrap({\n` +
     `  config: nexpressConfig,\n` +
     `  generatedSchema: generatedSchema as unknown as Record<string, unknown>,\n` +
+    `  ...observabilityAdapters,\n` +
     `});\n\n` +
     `async function ensureFor(intent: "worker"): Promise<void> {\n` +
     `  ensureCoreServices();\n` +
@@ -450,7 +466,16 @@ function workerScriptTemplate(): string {
     `  configureEmailRuntimeFromEnv(process.env);\n` +
     `  void intent;\n` +
     `}\n\n` +
-    `await runWorker({ ensureFor });\n`
+    `try {\n` +
+    `  await runWorker({ ensureFor });\n` +
+    `} catch (error) {\n` +
+    `  try {\n` +
+    `    await shutdownObservability();\n` +
+    `  } catch (shutdownError) {\n` +
+    `    throw new AggregateError([error, shutdownError], "Worker startup and observability shutdown both failed.", { cause: shutdownError });\n` +
+    `  }\n` +
+    `  throw error;\n` +
+    `}\n`
   );
 }
 
@@ -481,18 +506,31 @@ function seedContentScriptTemplate(): string {
     `  withCurrentSite,\n` +
     `} from "@nexpress/core";\n` +
     `import type { NpAuthUser } from "@nexpress/core";\n` +
+    `import { shutdownObservability } from "@nexpress/core/observability";\n` +
     `import { createBootstrap } from "@nexpress/next";\n` +
     `import { seedAll } from "@nexpress/app/lib/seed-content";\n\n` +
     `import nexpressConfig from "../src/nexpress.config.js";\n` +
     `import * as generatedSchema from "../src/db/generated/collections.js";\n\n` +
+    `import { observabilityAdapters } from "../src/lib/observability.js";\n\n` +
     `const databaseUrl = process.env.DATABASE_URL;\n` +
     `if (!databaseUrl) {\n` +
     `  console.error("DATABASE_URL is not set. Copy .env.example to .env first.");\n` +
     `  process.exit(1);\n` +
     `}\n\n` +
+    `async function shutdownAndExit(code: number): Promise<never> {\n` +
+    `  let exitCode = code;\n` +
+    `  try {\n` +
+    `    await shutdownObservability();\n` +
+    `  } catch (error) {\n` +
+    `    console.error("Observability shutdown failed", error);\n` +
+    `    exitCode = 1;\n` +
+    `  }\n` +
+    `  process.exit(exitCode);\n` +
+    `}\n\n` +
     `const { ensureCoreServices, ensurePluginsLoaded } = createBootstrap({\n` +
     `  config: nexpressConfig,\n` +
     `  generatedSchema: generatedSchema as unknown as Record<string, unknown>,\n` +
+    `  ...observabilityAdapters,\n` +
     `});\n\n` +
     `async function findFirstAdmin(): Promise<NpAuthUser | null> {\n` +
     `  const db = createDbConnection({ connectionString: databaseUrl as string });\n` +
@@ -530,18 +568,18 @@ function seedContentScriptTemplate(): string {
     `    const target = await getSiteById(siteId);\n` +
     `    if (!target) {\n` +
     `      console.error(\`Site "\${siteId}" not found. Create it via /admin/sites or the API first.\`);\n` +
-    `      process.exit(1);\n` +
+    `      return shutdownAndExit(1);\n` +
     `    }\n` +
     `  }\n\n` +
     `  const actor = await findFirstAdmin();\n` +
     `  if (!actor) {\n` +
     `    console.error("No admin user found. Run \`pnpm seed:admin\` first.");\n` +
-    `    process.exit(1);\n` +
+    `    return shutdownAndExit(1);\n` +
     `  }\n` +
     `  const theme = await getActiveTheme();\n` +
     `  if (!theme) {\n` +
     `    console.error("No active theme — pick one in the admin or setup wizard before seeding content.");\n` +
-    `    process.exit(1);\n` +
+    `    return shutdownAndExit(1);\n` +
     `  }\n\n` +
     `  const { terms, pages, posts, navigation } = await withCurrentSite(\n` +
     `    siteId,\n` +
@@ -550,11 +588,11 @@ function seedContentScriptTemplate(): string {
     `  console.log(\n` +
     `    \`Done. Created \${pages.created} pages, \${posts.created} posts, \${terms.tagsCreated} tags, \${terms.categoriesCreated} categories, \${navigation.header + navigation.footer} nav items.\`,\n` +
     `  );\n` +
-    `  process.exit(0);\n` +
+    `  return shutdownAndExit(0);\n` +
     `}\n\n` +
-    `main().catch((error) => {\n` +
+    `void main().catch(async (error) => {\n` +
     `  console.error(error);\n` +
-    `  process.exit(1);\n` +
+    `  await shutdownAndExit(1);\n` +
     `});\n`
   );
 }
@@ -736,6 +774,12 @@ function envExampleTemplate(config: TemplateConfig): string {
     "# NP_RATE_LIMIT_ADAPTER=memory",
     "# NP_REDIS_URL=redis://localhost:6379",
     "",
+    "# Observability — exact logger modes are console or custom;",
+    "# reporter modes are noop or custom. Custom adapters belong in",
+    "# src/lib/observability.ts so every process entrypoint shares them.",
+    "# NP_LOGGER_ADAPTER=console",
+    "# NP_ERROR_REPORTER_ADAPTER=noop",
+    "",
     "# Email — exact modes are noop, smtp, or custom; this scaffold uses SMTP.",
     "# SMTP host/from are required; user/pass must be provided together.",
     "# Port is base-10 and secure must be exactly true or false.",
@@ -905,8 +949,8 @@ Non-interactive mode reads the existing \`.env\` first, then lets process
 environment override it. It needs \`DATABASE_URL\` and accepts optional
 \`NP_SECRET\` (generated if absent), \`SITE_URL\`, exact \`local\` / \`s3\`
 storage vars, and \`NP_SETUP_RUN_MIGRATIONS=false\` for an env-only write.
-The exact \`custom\` mode requires a programmatic adapter in
-\`src/lib/bootstrap.ts\`; the setup wizard cannot install code.
+The exact storage \`custom\` mode uses \`src/lib/bootstrap.ts\`; custom logger
+and reporter adapters use the shared \`src/lib/observability.ts\` file.
 
 ## Background Jobs
 
@@ -1138,8 +1182,8 @@ pnpm --silent run doctor:prod -- --target vercel --json --fix-plan
 \`doctor:prod\` include \`nextCommand\`, and \`doctor:prod --fix-plan\`
 includes \`blocksDeploy\` plus \`fixPlan[].nextCommand\`. The production
 doctor tightens defaults: \`NP_SECRET\` < 32 chars becomes an error,
-\`http://\` SITE_URL warns, missing \`NP_ENABLE_JOBS\` warns, and \`local\`
-storage on a multi-node platform errors.
+\`http://\` SITE_URL warns, missing \`NP_ENABLE_JOBS\` warns, a noop error
+reporter warns, and \`local\` storage on a multi-node platform errors.
 
 ## Vercel Checklist
 

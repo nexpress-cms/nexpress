@@ -77,6 +77,8 @@ describe("getProjectFiles", () => {
     expect(worker).toMatch(/ensureFor/);
     expect(worker).toMatch(/intent: "worker"/);
     expect(worker).toMatch(/configureEmailRuntimeFromEnv\(process\.env\)/);
+    expect(worker).toMatch(/observabilityAdapters/);
+    expect(worker).toMatch(/shutdownObservability/);
     expect(worker).toMatch(/runWorker\(\s*\{\s*ensureFor\s*\}\s*\)/);
     // Must NOT re-import from @/lib/init-core — the whole point of
     // the createBootstrap inline is to avoid that broken chain.
@@ -352,8 +354,21 @@ describe("getProjectFiles", () => {
     expect(env).toContain("Exact modes are local, s3, or custom");
     expect(env).toContain("# NP_STORAGE_DIR=./public/media");
     expect(env).toContain("# NP_STORAGE_URL=/media");
-    expect(readme).toContain("The exact `custom` mode requires");
+    expect(readme).toContain("The exact storage `custom` mode uses");
     expect(readme).toContain("src/lib/bootstrap.ts");
+  });
+
+  it("shares one exact observability adapter definition across process entrypoints", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const adapters = files["src/lib/observability.ts"];
+    const env = files[".env.example"];
+
+    expect(adapters).toContain("NpObservabilityAdapters");
+    expect(adapters).toContain("observabilityAdapters");
+    expect(files["src/lib/bootstrap.ts"]).toContain("...observabilityAdapters");
+    expect(env).toContain("NP_LOGGER_ADAPTER=console");
+    expect(env).toContain("NP_ERROR_REPORTER_ADAPTER=noop");
+    expect(files["README.md"]).toContain("src/lib/observability.ts");
   });
 
   it(".env writes the project-specific DB port to both NEXPRESS_DB_PORT and DATABASE_URL", () => {
@@ -434,6 +449,9 @@ describe("getProjectFiles", () => {
       expect(script).toMatch(new RegExp(`@nexpress/${adapter}`));
       expect(script).toMatch(/createBootstrap/);
       expect(script).toMatch(/ensurePluginsLoaded/);
+      expect(script).toMatch(/observabilityAdapters/);
+      expect(script).toMatch(/shutdownAndExit/);
+      expect(script).toMatch(/shutdownObservability/);
       expect(script).not.toMatch(/@\/lib\/init-core/);
     }
   });
@@ -651,5 +669,8 @@ describe("getProjectFiles", () => {
     };
     expect(pkg.scripts["seed:content"]).toBe("tsx scripts/seed-content.ts");
     expect(files["scripts/seed-content.ts"]).toMatch(/seedAll/);
+    expect(files["scripts/seed-content.ts"]).toMatch(/observabilityAdapters/);
+    expect(files["scripts/seed-content.ts"]).toMatch(/shutdownAndExit/);
+    expect(files["scripts/seed-content.ts"]).toMatch(/shutdownObservability/);
   });
 });

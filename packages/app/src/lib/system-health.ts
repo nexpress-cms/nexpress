@@ -9,6 +9,14 @@ import {
 } from "@nexpress/core";
 import { getEmailAdapter, npReadEmailRuntimeConfig } from "@nexpress/core/email";
 import {
+  getErrorReporter,
+  getLogger,
+  getObservabilityDiagnostics,
+  getObservabilityRuntimeConfig,
+  npObservabilityAdaptersMatchRuntimeConfig,
+  npReadObservabilityRuntimeConfig,
+} from "@nexpress/core/observability";
+import {
   getOptionalStorageRuntimeConfig,
   getStorageAdapter,
   npReadStorageRuntimeConfig,
@@ -406,6 +414,64 @@ export function checkEmailAdapter(): Check {
   }
 }
 
+/** Live logger/reporter intent, implementation, and recent dispatch health. */
+export function checkObservabilityAdapters(): Check {
+  try {
+    const config = getObservabilityRuntimeConfig() ?? npReadObservabilityRuntimeConfig(process.env);
+    const logger = getLogger();
+    const reporter = getErrorReporter();
+    const diagnostics = getObservabilityDiagnostics();
+    if (!npObservabilityAdaptersMatchRuntimeConfig(config, logger, reporter)) {
+      return {
+        id: "observability",
+        label: "Observability adapters",
+        state: "error",
+        detail: `${config.logger}/${config.errorReporter} requested, ${logger.kind}/${reporter.kind} registered`,
+        hint: "Align NP_LOGGER_ADAPTER and NP_ERROR_REPORTER_ADAPTER with the adapters passed to createBootstrap().",
+      };
+    }
+
+    const failures = diagnostics.loggerFailures + diagnostics.errorReporterFailures;
+    if (failures > 0) {
+      const last = diagnostics.lastFailure;
+      return {
+        id: "observability",
+        label: "Observability adapters",
+        state: "warn",
+        detail: `${logger.kind} logger · ${reporter.kind} reporter · ${failures.toString()} process failure${failures === 1 ? "" : "s"} contained`,
+        hint: last
+          ? `Last ${last.component} ${last.operation} failure from ${last.adapterKind} at ${last.occurredAt}: ${last.message}`
+          : "Inspect process stderr for the contained adapter failure.",
+      };
+    }
+
+    if (config.errorReporter === "noop") {
+      return {
+        id: "observability",
+        label: "Observability adapters",
+        state: "warn",
+        detail: `${logger.kind} logger · noop error reporter`,
+        hint: "Production exceptions are not exported. Set NP_ERROR_REPORTER_ADAPTER=custom and pass an adapter to createBootstrap().",
+      };
+    }
+
+    return {
+      id: "observability",
+      label: "Observability adapters",
+      state: "ok",
+      detail: `${logger.kind} logger · ${reporter.kind} reporter`,
+    };
+  } catch (error) {
+    return {
+      id: "observability",
+      label: "Observability adapters",
+      state: "error",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Fix the exact observability runtime contract before accepting production traffic.",
+    };
+  }
+}
+
 /**
  * NP_SECRET — runtime parallel of #597's boot-time check, plus
  * the entropy floor introduced in the setup wizard (#618). Most
@@ -464,6 +530,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
   checks.push(checkPlugins());
   checks.push(checkSiteUrl());
   checks.push(checkEmailAdapter());
+  checks.push(checkObservabilityAdapters());
   checks.push(checkSecret());
   return {
     generatedAt: new Date().toISOString(),

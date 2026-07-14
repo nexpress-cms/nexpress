@@ -1,8 +1,20 @@
 import { type NpAuthUser } from "@nexpress/core";
+import { shutdownObservability } from "@nexpress/core/observability";
 import { runCli } from "@nexpress/gettext";
 
 import "./_load-env.js";
 import { ensureFor } from "../src/lib/init-core.js";
+
+async function shutdownAndExit(code: number): Promise<never> {
+  let exitCode = code;
+  try {
+    await shutdownObservability();
+  } catch (error) {
+    process.stderr.write(`gettext: observability shutdown failed: ${String(error)}\n`);
+    exitCode = 1;
+  }
+  process.exit(exitCode);
+}
 
 /** Boots the app registries before delegating to the Gettext PO CLI. */
 async function main(): Promise<void> {
@@ -27,10 +39,10 @@ async function main(): Promise<void> {
   };
 
   const result = await runCli(io, process.argv.slice(2), { user: importerUser });
-  process.exit(result.exitCode);
+  await shutdownAndExit(result.exitCode);
 }
 
-main().catch((error) => {
+void main().catch(async (error) => {
   process.stderr.write(`gettext: ${(error as Error).stack ?? String(error)}\n`);
-  process.exit(1);
+  await shutdownAndExit(1);
 });

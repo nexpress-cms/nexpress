@@ -11,8 +11,13 @@ import { runPostCommit } from "./pipeline.js";
  */
 
 describe("runPostCommit (#277)", () => {
-  let captured: Array<{ level: string; message: string; data: Record<string, unknown> | undefined }> = [];
+  let captured: Array<{
+    level: string;
+    message: string;
+    data: Record<string, unknown> | undefined;
+  }> = [];
   const mockLogger: NpLogger = {
+    kind: "test",
     debug: () => {},
     info: () => {},
     warn: (message, data) => {

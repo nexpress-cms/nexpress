@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { npValidatePluginCronExpression } from "@nexpress/core";
 import { npReadEmailRuntimeConfig } from "@nexpress/core/email";
 import { npReadRateLimitRuntimeConfig } from "@nexpress/core/rate-limit";
+import { npReadObservabilityRuntimeConfig } from "@nexpress/core/observability";
 import { npReadStorageRuntimeConfig, type NpStorageRuntimeConfig } from "@nexpress/core/storage";
 import {
   npAnalyzeAuthUser,
@@ -37,6 +38,7 @@ import { buildDoctorJson, type DoctorJsonOutput } from "./doctor-output.js";
 import {
   checkJobsEnabledProd,
   checkMigrationStatusReadiness,
+  checkObservabilityProd,
   checkOAuthEnvPairs,
   checkSchedulerTokenProd,
   checkSecretLengthProd,
@@ -127,6 +129,7 @@ export async function collectDoctorChecks(
   for (const spec of REQUIRED_VARS) checks.push(checkRequiredVar(spec, prodMode, env));
   checks.push(checkEnvExampleSync(env));
   checks.push(checkEmailRuntimeContract(env));
+  checks.push(checkObservabilityRuntimeContract(env));
   checks.push(checkRateLimitRuntimeContract(env, prodMode));
   checks.push(checkStorageRuntimeContract(env));
   checks.push(...checkOAuthEnvPairs(env));
@@ -142,6 +145,7 @@ export async function collectDoctorChecks(
   for (const result of [
     checkSecretLengthProd(prodMode, env),
     checkJobsEnabledProd(prodMode, env),
+    checkObservabilityProd(prodMode, env),
     checkStorageProd(prodMode, target, env),
     ...checkTargetDatabaseProd(prodMode, target, env),
     ...checkTargetStorageProd(prodMode, target, env),
@@ -184,6 +188,35 @@ function checkEmailRuntimeContract(env: DoctorEnv): CheckResult {
       label: "Email delivery runtime contract",
       detail: error instanceof Error ? error.message : String(error),
       hint: "Fix NP_EMAIL_ADAPTER and NP_SMTP_* before accepting credential email requests.",
+    };
+  }
+}
+
+function checkObservabilityRuntimeContract(env: DoctorEnv): CheckResult {
+  try {
+    const config = npReadObservabilityRuntimeConfig(env);
+    if (config.errorReporter === "noop") {
+      return {
+        id: "observability.contract",
+        state: "warn",
+        label: "Observability runtime contract",
+        detail: `${config.logger} logger · noop error reporter`,
+        hint: "Set NP_ERROR_REPORTER_ADAPTER=custom and pass a reporter through src/lib/observability.ts for production error export.",
+      };
+    }
+    return {
+      id: "observability.contract",
+      state: "ok",
+      label: "Observability runtime contract",
+      detail: `${config.logger} logger · custom error reporter expected`,
+    };
+  } catch (error) {
+    return {
+      id: "observability.contract",
+      state: "error",
+      label: "Observability runtime contract",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Set NP_LOGGER_ADAPTER to exactly console or custom and NP_ERROR_REPORTER_ADAPTER to exactly noop or custom.",
     };
   }
 }

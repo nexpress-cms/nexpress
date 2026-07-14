@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkJobsEnabledProd,
   checkMigrationStatusReadiness,
+  checkObservabilityProd,
   checkOAuthEnvPairs,
   checkSchedulerTokenProd,
   checkSecretLengthProd,
@@ -47,6 +48,7 @@ describe("doctor production target readiness", () => {
       [],
     );
     expect(checkStorageProd(false, "docker", { NP_MULTI_NODE: "true" })).toBeNull();
+    expect(checkObservabilityProd(false, {})).toBeNull();
   });
 
   it("assigns stable ids to production checks", () => {
@@ -58,6 +60,9 @@ describe("doctor production target readiness", () => {
     );
     expect(checkStorageProd(true, "docker", s3Env)).toEqual(
       expect.objectContaining({ id: "prod.storage_adapter" }),
+    );
+    expect(checkObservabilityProd(true, {})).toEqual(
+      expect.objectContaining({ id: "prod.observability" }),
     );
     expect(checkSiteUrlProd(true, { SITE_URL: "https://example.com" })).toEqual(
       expect.objectContaining({ id: "prod.site_url_https" }),
@@ -78,6 +83,24 @@ describe("doctor production target readiness", () => {
       expect.objectContaining({
         id: "jobs.enabled_contract",
         state: "error",
+      }),
+    );
+  });
+
+  it("warns on noop production reporting and fails closed on malformed intent", () => {
+    expect(checkObservabilityProd(true, {})).toEqual(
+      expect.objectContaining({ state: "warn", detail: expect.stringContaining("noop") }),
+    );
+    expect(
+      checkObservabilityProd(true, {
+        NP_LOGGER_ADAPTER: "custom",
+        NP_ERROR_REPORTER_ADAPTER: "custom",
+      }),
+    ).toEqual(expect.objectContaining({ state: "ok", detail: expect.stringContaining("custom") }));
+    expect(checkObservabilityProd(true, { NP_ERROR_REPORTER_ADAPTER: "sentry" })).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: expect.stringContaining("NP_ERROR_REPORTER_ADAPTER"),
       }),
     );
   });

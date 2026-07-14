@@ -35,6 +35,7 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
   beforeEach(() => {
     warnings.length = 0;
     const noopChild = (): NpLogger => ({
+      kind: "test",
       debug: () => {},
       info: () => {},
       warn: (message, context) => {
@@ -44,6 +45,7 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
       child: noopChild,
     });
     const captureLogger: NpLogger = {
+      kind: "test",
       debug: () => {},
       info: () => {},
       warn: (message, context) => {

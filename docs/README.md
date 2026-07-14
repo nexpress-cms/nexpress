@@ -26,7 +26,7 @@ behavior they describe changes.
 | [media.md](media.md)                                   | Canonical media records, variants, URLs, API, and ops contract         |
 | [multi-site.md](multi-site.md)                         | Multi-tenant site model                                                |
 | [navigation.md](navigation.md)                         | Navigation wire/resolved types, validation, and enforcement boundaries |
-| [observability.md](observability.md)                   | Logging, heartbeats, job logs                                          |
+| [observability.md](observability.md)                   | Logger/reporter runtime contracts, lifecycle, diagnostics, worker logs |
 | [operations.md](operations.md)                         | Operations runbook — incident recipes, boot warnings, recovery         |
 | [plugin-admin.md](plugin-admin.md)                     | Plugin admin UI surface                                                |
 | [plugin-api-routes.md](plugin-api-routes.md)           | Typed plugin HTTP route and response contracts                         |
