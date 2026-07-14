@@ -35,10 +35,13 @@ describe("worker bootstrap", () => {
   it("uses the worker intent so email is installed without a producer", async () => {
     const ensureFor = vi.fn().mockResolvedValue(undefined);
 
-    await runWorker({ ensureFor });
+    const shutdown = vi.fn().mockResolvedValue(undefined);
+    await runWorker({ ensureFor, shutdown });
 
     expect(ensureFor).toHaveBeenCalledOnce();
     expect(ensureFor).toHaveBeenCalledWith("worker");
-    expect(mocks.startWorker).toHaveBeenCalledWith("postgres://localhost/nexpress");
+    expect(mocks.startWorker).toHaveBeenCalledWith("postgres://localhost/nexpress", {
+      onShutdown: shutdown,
+    });
   });
 });

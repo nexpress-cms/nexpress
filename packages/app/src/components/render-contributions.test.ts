@@ -7,7 +7,7 @@ const { runHookAndCollect } = vi.hoisted(() => ({ runHookAndCollect: vi.fn() }))
 vi.stubGlobal("React", { createElement, Fragment });
 afterAll(() => vi.unstubAllGlobals());
 
-vi.mock("@nexpress/core", () => ({ runHookAndCollect }));
+vi.mock("@nexpress/core/bootstrap", () => ({ runHookAndCollect }));
 
 import { npValidateRenderContribution } from "@nexpress/plugin-sdk";
 

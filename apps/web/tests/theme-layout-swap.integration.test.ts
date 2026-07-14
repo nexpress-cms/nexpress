@@ -19,7 +19,7 @@ describe.skipIf(skipIfNoTestDb())("theme layout swap (Phase 11.2)", () => {
   beforeEach(async () => {
     await truncateAll();
     // The framework registers `[defaultTheme, magazineTheme]` from
-    // nexpress.config.ts during ensureCoreServices. truncate
+    // nexpress.config.ts during the read bootstrap. truncate
     // clears np_settings but doesn't touch the in-memory
     // registry; we just need both themes available + no
     // activeTheme setting (so getActiveTheme falls back to

@@ -119,4 +119,31 @@ describe("job worker and producer lifecycle", () => {
     });
     expect(getOptionalJobQueue()).toBe(adapterControl.instances.at(-1));
   });
+
+  it("hands signal-driven cleanup back to the framework host after draining", async () => {
+    const handlers = new Map<string, () => void>();
+    const onShutdown = vi.fn().mockResolvedValue(undefined);
+    const onSpy = vi.spyOn(process, "on").mockImplementation(((
+      signal: string,
+      listener: () => void,
+    ) => {
+      handlers.set(signal, listener);
+      return process;
+    }) as typeof process.on);
+    const offSpy = vi.spyOn(process, "off").mockImplementation(() => process);
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+
+    await startWorker("postgres://example.test/nexpress", {
+      heartbeat: false,
+      onShutdown,
+    });
+    handlers.get("SIGTERM")?.();
+
+    await vi.waitFor(() => expect(onShutdown).toHaveBeenCalledOnce());
+    expect(exitSpy).toHaveBeenCalledWith(0);
+    expect(offSpy).toHaveBeenCalled();
+    onSpy.mockRestore();
+    offSpy.mockRestore();
+    exitSpy.mockRestore();
+  });
 });

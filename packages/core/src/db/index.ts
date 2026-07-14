@@ -9,7 +9,7 @@
  */
 
 export * from "./connection.js";
-export { getDb, setDb } from "./runtime.js";
+export { getDb } from "./runtime.js";
 export { generateDrizzleSchema } from "./generator.js";
 export { generateTypeScript } from "./type-generator.js";
 export * from "./schema/index.js";

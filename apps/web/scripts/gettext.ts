@@ -1,16 +1,16 @@
 import { type NpAuthUser } from "@nexpress/core";
-import { shutdownObservability } from "@nexpress/core/observability";
 import { runCli } from "@nexpress/gettext";
 
 import "./_load-env.js";
+import { shutdownBootstrap } from "../src/lib/bootstrap.js";
 import { ensureFor } from "../src/lib/init-core.js";
 
 async function shutdownAndExit(code: number): Promise<never> {
   let exitCode = code;
   try {
-    await shutdownObservability();
+    await shutdownBootstrap();
   } catch (error) {
-    process.stderr.write(`gettext: observability shutdown failed: ${String(error)}\n`);
+    process.stderr.write(`gettext: bootstrap shutdown failed: ${String(error)}\n`);
     exitCode = 1;
   }
   process.exit(exitCode);
@@ -18,7 +18,6 @@ async function shutdownAndExit(code: number): Promise<never> {
 
 /** Boots the app registries before delegating to the Gettext PO CLI. */
 async function main(): Promise<void> {
-  await ensureFor("read");
   await ensureFor("plugins");
 
   const importerUser: NpAuthUser = {

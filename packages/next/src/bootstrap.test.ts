@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("next/headers", () => ({
-  cookies: vi.fn(),
-  headers: vi.fn(),
-}));
+vi.mock("next/headers", () => ({ cookies: vi.fn(), headers: vi.fn() }));
 
 vi.mock("@nexpress/blocks", () => ({
   npAnalyzeBlockDefinitions: vi.fn(() => []),
@@ -15,43 +12,58 @@ vi.mock("@nexpress/blocks", () => ({
   resetSharedPatternRegistry: vi.fn(),
 }));
 
-vi.mock("@nexpress/core/observability", () => ({
-  configureObservabilityFromEnv: vi.fn(() => ({
-    logger: "console",
-    errorReporter: "noop",
-  })),
-}));
-
-vi.mock("@nexpress/core", () => ({
-  NP_DEFAULT_SITE_ID: "default",
-  can: vi.fn(() => false),
+vi.mock("@nexpress/core", () => ({ npAssertProjectConfig: vi.fn() }));
+vi.mock("@nexpress/core/auth", () => ({ verifyTokenFull: vi.fn() }));
+vi.mock("@nexpress/core/bootstrap", () => ({
   createDbConnection: vi.fn(() => ({ kind: "db" })),
   configureStorageRuntime: vi.fn(() => ({ kind: "local" })),
   getDb: vi.fn(() => ({ kind: "db" })),
   getOptionalJobQueue: vi.fn(() => null),
-  getOptionalRateLimiter: vi.fn(() => null),
-  isSuperAdmin: vi.fn(() => false),
-  listMembershipsForUser: vi.fn(() => Promise.resolve([])),
   listPluginStates: vi.fn(() => Promise.resolve([])),
   loadPlugins: vi.fn(() => Promise.resolve()),
-  npAnalyzeRegisteredThemeDefinition: vi.fn(() => []),
+  npCloseDbConnection: vi.fn(() => Promise.resolve()),
+  npShutdownStorageAdapter: vi.fn(() => Promise.resolve()),
   registerCollection: vi.fn(),
   registerThemes: vi.fn(),
+  resetCollections: vi.fn(),
+  resetCurrentSiteResolver: vi.fn(),
+  resetDb: vi.fn(),
+  resetI18nConfig: vi.fn(),
   resetPlugins: vi.fn(),
-  resolveSiteForHostname: vi.fn(),
+  resetThemes: vi.fn(),
   setCurrentSiteResolver: vi.fn(),
   setDb: vi.fn(),
   setI18nConfig: vi.fn(),
   startProducer: vi.fn(() => Promise.resolve()),
+  stopProducer: vi.fn(() => Promise.resolve()),
   syncPluginRegistrations: vi.fn(() => Promise.resolve()),
   teardownPlugins: vi.fn(() => Promise.resolve()),
-  verifyStartupSafety: vi.fn(),
-  verifyTokenFull: vi.fn(),
 }));
+vi.mock("@nexpress/core/email", () => ({
+  configureEmailRuntime: vi.fn(),
+  npReadEmailRuntimeConfig: vi.fn(() => ({ adapter: "noop" })),
+  resetEmailAdapter: vi.fn(),
+}));
+vi.mock("@nexpress/core/observability", () => ({
+  configureObservabilityFromEnv: vi.fn(() => ({ logger: "console", errorReporter: "noop" })),
+  shutdownObservability: vi.fn(() => Promise.resolve()),
+  verifyStartupSafety: vi.fn(),
+}));
+vi.mock("@nexpress/core/rate-limit", () => ({
+  npReadRateLimitRuntimeConfig: vi.fn(() => ({ adapter: "memory" })),
+}));
+vi.mock("@nexpress/core/sites", () => ({
+  canOnSite: vi.fn(() => false),
+  NP_DEFAULT_SITE_ID: "default",
+  resolveSiteForHostname: vi.fn(),
+}));
+vi.mock("@nexpress/theme", () => ({ npAssertThemeDefinition: vi.fn() }));
 
-const core = await import("@nexpress/core");
-const observability = await import("@nexpress/core/observability");
 const blocks = await import("@nexpress/blocks");
+const core = await import("@nexpress/core");
+const host = await import("@nexpress/core/bootstrap");
+const email = await import("@nexpress/core/email");
+const observability = await import("@nexpress/core/observability");
 const { createBootstrap } = await import("./bootstrap.js");
 
 function buildConfig() {
@@ -67,47 +79,34 @@ function buildConfig() {
 describe("createBootstrap", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(core.createDbConnection).mockReturnValue({ kind: "db" } as never);
-    vi.mocked(core.configureStorageRuntime).mockReturnValue({ kind: "local" } as never);
-    vi.mocked(core.getDb).mockReturnValue({ kind: "db" } as never);
-    vi.mocked(core.listPluginStates).mockResolvedValue([]);
-    vi.mocked(core.loadPlugins).mockResolvedValue(undefined);
-    vi.mocked(core.startProducer).mockResolvedValue(undefined);
-    vi.mocked(core.syncPluginRegistrations).mockResolvedValue(undefined);
+    vi.mocked(host.createDbConnection).mockReturnValue({ kind: "db" } as never);
+    vi.mocked(host.configureStorageRuntime).mockReturnValue({ kind: "local" } as never);
+    vi.mocked(host.getDb).mockReturnValue({ kind: "db" } as never);
+    vi.mocked(host.listPluginStates).mockResolvedValue([]);
+    vi.mocked(host.loadPlugins).mockResolvedValue(undefined);
+    vi.mocked(host.startProducer).mockResolvedValue(undefined);
+    vi.mocked(host.syncPluginRegistrations).mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  it("installs a programmatic adapter only for explicit custom storage intent", () => {
-    const customAdapter = {
-      kind: "cloudflare-r2",
-      upload: vi.fn(() => Promise.resolve()),
-      getStream: vi.fn(),
-      getUrl: vi.fn(),
-      delete: vi.fn(() => Promise.resolve()),
-      exists: vi.fn(),
-    } as never;
-    const config = Object.assign({}, buildConfig(), {
-      storage: { adapter: "custom" as const },
-    });
-    vi.mocked(core.configureStorageRuntime).mockReturnValue(customAdapter);
-    const bootstrap = createBootstrap({
-      config,
-      generatedSchema: {},
-      storageAdapter: customAdapter,
-    });
+  it("validates construction inputs and requires the read intent before getDb", async () => {
+    const config = buildConfig();
+    const bootstrap = createBootstrap({ config, generatedSchema: {} });
 
-    bootstrap.ensureCoreServices();
-
-    expect(core.configureStorageRuntime).toHaveBeenCalledWith({ adapter: "custom" }, customAdapter);
-    expect(core.verifyStartupSafety).toHaveBeenCalledWith(
-      expect.objectContaining({ storageAdapter: "cloudflare-r2" }),
+    expect(core.npAssertProjectConfig).toHaveBeenCalledWith(config);
+    expect(() => bootstrap.getDb()).toThrow('Await ensureFor("read")');
+    await expect(bootstrap.ensureFor("unknown" as never)).rejects.toThrow(
+      "Invalid bootstrap intent",
+    );
+    expect(() => createBootstrap({ config, generatedSchema: [] as never })).toThrow(
+      "generatedSchema",
     );
   });
 
-  it("configures observability before emitting startup safety warnings", () => {
+  it("initializes a raced read exactly once and installs observability first", async () => {
     const logger = { kind: "pino" } as never;
     const errorReporter = { kind: "sentry" } as never;
     const bootstrap = createBootstrap({
@@ -117,203 +116,265 @@ describe("createBootstrap", () => {
       errorReporter,
     });
 
-    bootstrap.ensureCoreServices();
+    await Promise.all([bootstrap.ensureFor("read"), bootstrap.ensureFor("read")]);
 
+    expect(host.createDbConnection).toHaveBeenCalledOnce();
     expect(observability.configureObservabilityFromEnv).toHaveBeenCalledWith(process.env, {
       logger,
       errorReporter,
     });
     expect(
       vi.mocked(observability.configureObservabilityFromEnv).mock.invocationCallOrder[0],
-    ).toBeLessThan(vi.mocked(core.verifyStartupSafety).mock.invocationCallOrder[0] ?? Infinity);
+    ).toBeLessThan(vi.mocked(observability.verifyStartupSafety).mock.invocationCallOrder[0]);
   });
 
-  it("retries plugin loading after a transient bootstrap failure", async () => {
+  it("installs an explicit custom storage adapter through the host boundary", async () => {
+    const customAdapter = { kind: "cloudflare-r2" } as never;
+    const config = Object.assign({}, buildConfig(), { storage: { adapter: "custom" as const } });
+    vi.mocked(host.configureStorageRuntime).mockReturnValue(customAdapter);
+    const bootstrap = createBootstrap({
+      config,
+      generatedSchema: {},
+      storageAdapter: customAdapter,
+    });
+
+    await bootstrap.ensureFor("read");
+
+    expect(host.configureStorageRuntime).toHaveBeenCalledWith({ adapter: "custom" }, customAdapter);
+    expect(observability.verifyStartupSafety).toHaveBeenCalledWith(
+      expect.objectContaining({ storageAdapter: "cloudflare-r2" }),
+    );
+  });
+
+  it("rolls back a failed read and retries from a clean state", async () => {
     const bootstrap = createBootstrap({ config: buildConfig(), generatedSchema: {} });
-    const transient = new Error("connection timeout");
-    vi.mocked(core.syncPluginRegistrations)
-      .mockRejectedValueOnce(transient)
+    vi.mocked(host.configureStorageRuntime)
+      .mockImplementationOnce(() => {
+        throw new Error("storage unavailable");
+      })
+      .mockReturnValueOnce({ kind: "local" } as never);
+
+    await expect(bootstrap.ensureFor("read")).rejects.toThrow("storage unavailable");
+    await expect(bootstrap.ensureFor("read")).resolves.toBeUndefined();
+
+    expect(host.createDbConnection).toHaveBeenCalledTimes(2);
+    expect(host.resetDb).toHaveBeenCalledOnce();
+    expect(host.npCloseDbConnection).toHaveBeenCalledOnce();
+    expect(observability.shutdownObservability).toHaveBeenCalledOnce();
+  });
+
+  it("preflights every generated table before opening process resources", async () => {
+    const config = Object.assign({}, buildConfig(), {
+      collections: [
+        { slug: "posts", fields: [] },
+        { slug: "pages", fields: [] },
+      ],
+    });
+    const bootstrap = createBootstrap({
+      config,
+      generatedSchema: { postsTable: { kind: "posts" } },
+    });
+
+    await expect(bootstrap.ensureFor("read")).rejects.toThrow("pagesTable");
+
+    expect(host.createDbConnection).not.toHaveBeenCalled();
+    expect(observability.configureObservabilityFromEnv).not.toHaveBeenCalled();
+    expect(host.registerCollection).not.toHaveBeenCalled();
+  });
+
+  it("retries plugin loading after rolling back partial plugin state", async () => {
+    const bootstrap = createBootstrap({ config: buildConfig(), generatedSchema: {} });
+    vi.mocked(host.syncPluginRegistrations)
+      .mockRejectedValueOnce(new Error("connection timeout"))
       .mockResolvedValueOnce(undefined);
 
-    await expect(bootstrap.ensurePluginsLoaded()).rejects.toThrow("connection timeout");
-    await expect(bootstrap.ensurePluginsLoaded()).resolves.toBeUndefined();
+    await expect(bootstrap.ensureFor("plugins")).rejects.toThrow("connection timeout");
+    await expect(bootstrap.ensureFor("plugins")).resolves.toBeUndefined();
 
-    expect(core.syncPluginRegistrations).toHaveBeenCalledTimes(2);
-    expect(core.loadPlugins).toHaveBeenCalledTimes(1);
+    expect(host.syncPluginRegistrations).toHaveBeenCalledTimes(2);
+    expect(host.resetPlugins).toHaveBeenCalledOnce();
+    expect(host.loadPlugins).toHaveBeenCalledOnce();
   });
 
-  it("retries job producer startup after a transient failure", async () => {
+  it("separates worker email setup from the write producer and retries producer startup", async () => {
     vi.stubEnv("NP_ENABLE_JOBS", "1");
-    const bootstrap = createBootstrap({ config: buildConfig(), generatedSchema: {} });
-    const transient = new Error("producer timeout");
-    vi.mocked(core.startProducer).mockRejectedValueOnce(transient).mockResolvedValueOnce(undefined);
+    const emailAdapter = { kind: "resend", send: vi.fn() } as never;
+    const bootstrap = createBootstrap({
+      config: buildConfig(),
+      generatedSchema: {},
+      emailAdapter,
+    });
+    vi.mocked(email.npReadEmailRuntimeConfig).mockReturnValueOnce({ adapter: "custom" });
+    vi.mocked(host.startProducer)
+      .mockRejectedValueOnce(new Error("producer timeout"))
+      .mockResolvedValueOnce(undefined);
 
-    await expect(bootstrap.ensureJobProducer()).rejects.toThrow("producer timeout");
-    await expect(bootstrap.ensureJobProducer()).resolves.toBeUndefined();
-    expect(core.startProducer).toHaveBeenCalledTimes(2);
+    await bootstrap.ensureFor("worker");
+    expect(email.configureEmailRuntime).toHaveBeenCalledWith({ adapter: "custom" }, emailAdapter);
+    expect(host.startProducer).not.toHaveBeenCalled();
+    await expect(bootstrap.ensureFor("write")).rejects.toThrow("producer timeout");
+    await expect(bootstrap.ensureFor("write")).resolves.toBeUndefined();
+    expect(host.startProducer).toHaveBeenCalledTimes(2);
+  });
+
+  it("pins the successful read connection contract for later runtime intents", async () => {
+    vi.stubEnv("DATABASE_URL", "postgres://first/runtime");
+    vi.stubEnv("NP_ENABLE_JOBS", "1");
+    const config = Object.assign({}, buildConfig(), { db: {} });
+    const bootstrap = createBootstrap({ config, generatedSchema: {} });
+
+    await bootstrap.ensureFor("read");
+    vi.stubEnv("DATABASE_URL", "postgres://second/runtime");
+    await bootstrap.ensureFor("write");
+
+    expect(host.createDbConnection).toHaveBeenCalledWith({
+      connectionString: "postgres://first/runtime",
+    });
+    expect(host.startProducer).toHaveBeenCalledWith("postgres://first/runtime");
   });
 
   it("uses the exact shared jobs-enabled environment contract", async () => {
-    vi.stubEnv("NP_ENABLE_JOBS", "true");
-    const enabled = createBootstrap({ config: buildConfig(), generatedSchema: {} });
-    await enabled.ensureJobProducer();
-    expect(core.startProducer).toHaveBeenCalledOnce();
-
-    vi.clearAllMocks();
     vi.stubEnv("NP_ENABLE_JOBS", "yes");
-    const invalid = createBootstrap({ config: buildConfig(), generatedSchema: {} });
-    await expect(invalid.ensureJobProducer()).rejects.toThrow(/NP_ENABLE_JOBS/u);
-    expect(core.startProducer).not.toHaveBeenCalled();
+    const bootstrap = createBootstrap({ config: buildConfig(), generatedSchema: {} });
+
+    await expect(bootstrap.ensureFor("write")).rejects.toThrow(/NP_ENABLE_JOBS/u);
+    expect(host.startProducer).not.toHaveBeenCalled();
   });
 
-  it("clears the shared block registry on plugin reload (#477)", async () => {
-    // Issue #477 — `reloadPlugins()` must drop plugin-contributed
-    // block definitions from the shared block registry, otherwise
-    // disabled plugins keep surfacing in the admin's Add-block
-    // popover and resolving server-side after a reload. The
-    // bootstrap re-registers every enabled plugin's blocks
-    // immediately after the reset, so the registry settles on
-    // `built-ins + currently-enabled plugins`.
+  it("reloads plugins only after boot and clears contributed registries", async () => {
     const bootstrap = createBootstrap({ config: buildConfig(), generatedSchema: {} });
-    await bootstrap.ensurePluginsLoaded();
-    vi.mocked(blocks.resetSharedBlockRegistry).mockClear();
-    vi.mocked(blocks.resetSharedPatternRegistry).mockClear();
-    vi.mocked(core.resetPlugins).mockClear();
 
     await bootstrap.reloadPlugins();
 
-    expect(core.resetPlugins).toHaveBeenCalledTimes(1);
-    expect(core.teardownPlugins).toHaveBeenCalledTimes(1);
-    expect(
-      vi.mocked(core.teardownPlugins).mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
-    ).toBeLessThan(
-      vi.mocked(core.resetPlugins).mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
-    );
-    expect(blocks.resetSharedBlockRegistry).toHaveBeenCalledTimes(1);
-    // Pattern registry follows the same invariant — disabled
-    // plugins must not leave their patterns behind.
-    expect(blocks.resetSharedPatternRegistry).toHaveBeenCalledTimes(1);
+    expect(host.loadPlugins).toHaveBeenCalledTimes(2);
+    expect(host.teardownPlugins).toHaveBeenCalledOnce();
+    expect(host.resetPlugins).toHaveBeenCalledOnce();
+    expect(blocks.resetSharedBlockRegistry).toHaveBeenCalledOnce();
+    expect(blocks.resetSharedPatternRegistry).toHaveBeenCalledOnce();
   });
 
-  it("rejects invalid plugin blocks before mutating the core plugin registry", async () => {
-    const config = Object.assign({}, buildConfig(), {
-      plugins: [
-        {
-          id: "broken-block",
-          blocks: [{ type: "broken" }],
-        },
-      ],
+  it("serializes the full reload and lets shutdown drain schedule reconciliation", async () => {
+    let finishReconcile: (() => void) | undefined;
+    const reconcile = vi.fn(async () => {
+      await new Promise<void>((resolve) => (finishReconcile = resolve));
+      return { added: 1, updated: 0, removed: 0, workerOwnsRegistrations: false };
     });
-    vi.mocked(blocks.npAnalyzeBlockDefinitions).mockReturnValueOnce([
+    vi.mocked(host.getOptionalJobQueue).mockReturnValue({
+      reconcilePluginSchedules: reconcile,
+    } as never);
+    const bootstrap = createBootstrap({ config: buildConfig(), generatedSchema: {} });
+
+    const firstReload = bootstrap.reloadPlugins();
+    const secondReload = bootstrap.reloadPlugins();
+    await vi.waitFor(() => expect(reconcile).toHaveBeenCalledOnce());
+    const closing = bootstrap.shutdown();
+
+    expect(host.npCloseDbConnection).not.toHaveBeenCalled();
+    finishReconcile?.();
+    await expect(Promise.all([firstReload, secondReload])).resolves.toEqual([
       {
-        code: "invalid-definition",
-        index: 0,
-        message: "invalid block at index 0: block.render must be a function.",
+        reloaded: true,
+        schedules: { added: 1, updated: 0, removed: 0, workerOwnsRegistrations: false },
+      },
+      {
+        reloaded: true,
+        schedules: { added: 1, updated: 0, removed: 0, workerOwnsRegistrations: false },
       },
     ]);
-    const bootstrap = createBootstrap({ config, generatedSchema: {} });
-
-    await expect(bootstrap.ensurePluginsLoaded()).rejects.toThrow(
-      "[plugin:broken-block] invalid block at index 0",
-    );
-    expect(core.loadPlugins).not.toHaveBeenCalled();
-    expect(blocks.registerBlock).not.toHaveBeenCalled();
+    await expect(closing).resolves.toBeUndefined();
+    expect(host.loadPlugins).toHaveBeenCalledTimes(2);
+    expect(reconcile).toHaveBeenCalledOnce();
+    expect(host.npCloseDbConnection).toHaveBeenCalledOnce();
   });
 
-  it("rejects invalid plugin patterns before mutating the core plugin registry", async () => {
-    const config = Object.assign({}, buildConfig(), {
-      plugins: [{ id: "broken-pattern", patterns: [{ id: "broken" }] }],
-    });
-    vi.mocked(blocks.npAnalyzePatternDefinitions).mockReturnValueOnce([
-      {
-        code: "invalid-definition",
-        index: 0,
-        message: "invalid pattern at index 0: pattern.label must be a non-empty string.",
-      },
-    ]);
-    const bootstrap = createBootstrap({ config, generatedSchema: {} });
-
-    await expect(bootstrap.ensurePluginsLoaded()).rejects.toThrow(
-      "[plugin:broken-pattern] invalid pattern at index 0",
-    );
-    expect(core.loadPlugins).not.toHaveBeenCalled();
-    expect(blocks.registerPattern).not.toHaveBeenCalled();
-  });
-
-  it("registers validated plugin patterns with a concrete source", async () => {
+  it("rejects malformed contributions before loading and stamps valid pattern sources", async () => {
     const pattern = {
       id: "reading-time.summary",
       label: "Reading time summary",
       blocks: [{ id: "template", type: "rich-text", props: {} }],
     };
-    const config = Object.assign({}, buildConfig(), {
+    const goodConfig = Object.assign({}, buildConfig(), {
       plugins: [{ id: "reading-time", patterns: [pattern] }],
     });
-    const bootstrap = createBootstrap({ config, generatedSchema: {} });
-
-    await bootstrap.ensurePluginsLoaded();
-
+    await createBootstrap({ config: goodConfig, generatedSchema: {} }).ensureFor("plugins");
     expect(blocks.registerPattern).toHaveBeenCalledWith({
       ...pattern,
       source: "plugin:reading-time",
     });
+
+    vi.clearAllMocks();
+    vi.mocked(blocks.npAnalyzeBlockDefinitions).mockReturnValueOnce([
+      { code: "invalid-definition", index: 0, message: "block.render must be a function." },
+    ] as never);
+    const badConfig = Object.assign({}, buildConfig(), {
+      plugins: [{ id: "broken", blocks: [{ type: "broken" }] }],
+    });
+    await expect(
+      createBootstrap({ config: badConfig, generatedSchema: {} }).ensureFor("plugins"),
+    ).rejects.toThrow("[plugin:broken]");
+    expect(host.loadPlugins).not.toHaveBeenCalled();
   });
 
-  it("rejects plugin patterns that reference unavailable block types", async () => {
-    const config = Object.assign({}, buildConfig(), {
-      plugins: [
-        {
-          id: "broken-reference",
-          patterns: [
-            {
-              id: "broken-reference.hero",
-              label: "Broken hero",
-              blocks: [{ id: "template", type: "missing.hero", props: {} }],
-            },
-          ],
-        },
-      ],
-    });
-    vi.mocked(blocks.npAnalyzePatternDefinitions)
-      .mockReturnValueOnce([])
-      .mockReturnValueOnce([
-        {
-          code: "unknown-block-type",
-          index: 0,
-          id: "broken-reference.hero",
-          blockType: "missing.hero",
-          message: 'pattern "broken-reference.hero" references unknown block type "missing.hero".',
-        },
-      ]);
-    const bootstrap = createBootstrap({ config, generatedSchema: {} });
+  it("shuts resources down in dependency order, aggregates cleanup, and stays terminal", async () => {
+    vi.stubEnv("NP_ENABLE_JOBS", "1");
+    const bootstrap = createBootstrap({ config: buildConfig(), generatedSchema: {} });
+    await bootstrap.ensureFor("write");
 
-    await expect(bootstrap.ensurePluginsLoaded()).rejects.toThrow(
-      '[plugin:broken-reference] pattern "broken-reference.hero" references unknown block type',
-    );
-    expect(core.loadPlugins).not.toHaveBeenCalled();
+    await Promise.all([bootstrap.shutdown(), bootstrap.shutdown()]);
+
+    expect(host.stopProducer).toHaveBeenCalledOnce();
+    expect(host.teardownPlugins).toHaveBeenCalledOnce();
+    expect(host.npShutdownStorageAdapter).toHaveBeenCalledOnce();
+    expect(host.npCloseDbConnection).toHaveBeenCalledOnce();
+    expect(observability.shutdownObservability).toHaveBeenCalledOnce();
+    const order = [
+      vi.mocked(host.stopProducer).mock.invocationCallOrder[0],
+      vi.mocked(host.teardownPlugins).mock.invocationCallOrder[0],
+      vi.mocked(host.npShutdownStorageAdapter).mock.invocationCallOrder[0],
+      vi.mocked(host.npCloseDbConnection).mock.invocationCallOrder[0],
+      vi.mocked(observability.shutdownObservability).mock.invocationCallOrder[0],
+    ];
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    await expect(bootstrap.ensureFor("read")).rejects.toThrow("terminal shutdown");
+    expect(() => bootstrap.getDb()).toThrow("terminal shutdown");
   });
 
-  it("rejects invalid theme patterns instead of silently dropping them", async () => {
-    const config = Object.assign({}, buildConfig(), {
-      themes: [
-        {
-          manifest: { id: "broken-theme", name: "Broken theme", version: "0.1.0" },
-          impl: { patterns: [{ id: "broken" }] },
-        },
-      ],
-    });
-    vi.mocked(blocks.npAnalyzePatternDefinitions).mockReturnValueOnce([
-      {
-        code: "invalid-definition",
-        index: 0,
-        message: "invalid pattern at index 0: pattern.label must be a non-empty string.",
-      },
-    ]);
-    const bootstrap = createBootstrap({ config, generatedSchema: {} });
-
-    await expect(bootstrap.ensurePluginsLoaded()).rejects.toThrow(
-      "Invalid theme definition at impl.patterns: invalid pattern at index 0",
+  it("waits for in-flight initialization before terminal cleanup", async () => {
+    let releasePluginSync: (() => void) | undefined;
+    vi.mocked(host.syncPluginRegistrations).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (releasePluginSync = resolve)),
     );
-    expect(core.loadPlugins).not.toHaveBeenCalled();
+    const bootstrap = createBootstrap({ config: buildConfig(), generatedSchema: {} });
+    const starting = bootstrap.ensureFor("plugins");
+    await vi.waitFor(() => expect(host.syncPluginRegistrations).toHaveBeenCalledOnce());
+
+    const closing = bootstrap.shutdown();
+    releasePluginSync?.();
+
+    await expect(starting).rejects.toThrow("terminal shutdown");
+    await expect(closing).resolves.toBeUndefined();
+    expect(host.teardownPlugins).toHaveBeenCalledOnce();
+    expect(host.npCloseDbConnection).toHaveBeenCalledOnce();
+  });
+
+  it("attempts every shutdown step when multiple adapters fail", async () => {
+    vi.stubEnv("NP_ENABLE_JOBS", "1");
+    const bootstrap = createBootstrap({ config: buildConfig(), generatedSchema: {} });
+    await bootstrap.ensureFor("write");
+    vi.mocked(host.stopProducer).mockRejectedValue(new Error("producer close"));
+    vi.mocked(host.teardownPlugins).mockRejectedValue(new Error("plugin close"));
+    vi.mocked(host.npShutdownStorageAdapter).mockRejectedValue(new Error("storage close"));
+    vi.mocked(host.npCloseDbConnection).mockRejectedValue(new Error("db close"));
+    vi.mocked(observability.shutdownObservability).mockRejectedValue(new Error("telemetry close"));
+
+    const failure = await bootstrap.shutdown().catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect((failure as AggregateError).errors).toHaveLength(5);
+    expect(host.stopProducer).toHaveBeenCalledOnce();
+    expect(host.teardownPlugins).toHaveBeenCalledOnce();
+    expect(host.npShutdownStorageAdapter).toHaveBeenCalledOnce();
+    expect(host.npCloseDbConnection).toHaveBeenCalledOnce();
+    expect(observability.shutdownObservability).toHaveBeenCalledOnce();
   });
 });

@@ -131,11 +131,14 @@ Call `resetObservabilityDiagnostics()` for an explicit diagnostic reset;
 
 ## Lifecycle
 
-Call `shutdownObservability()` from an embedded host or custom supervisor to
-detach both adapters, attempt both shutdown hooks, and surface an
-`AggregateError` if either flush fails. The dedicated NexPress worker calls it
-after pg-boss drain on `SIGINT`/`SIGTERM`. Reset happens before shutdown, so a
-failing flush cannot recursively route through the adapter being closed.
+Normal NexPress processes call `createBootstrap().shutdown()`, which closes
+observability last after producer, plugins, storage, and DB. An embedded host
+that deliberately owns only this subsystem may call `shutdownObservability()`
+to detach both adapters, attempt both shutdown hooks, and surface an
+`AggregateError` if either flush fails. The dedicated worker drains pg-boss,
+then invokes the full bootstrap shutdown on `SIGINT`/`SIGTERM`. Reset happens
+before shutdown, so a failing flush cannot recursively route through the
+adapter being closed.
 
 Tests can restore built-ins without running hooks via `resetObservability()`
 or the component helpers `resetLogger()` / `resetErrorReporter()`.

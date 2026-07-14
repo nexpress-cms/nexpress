@@ -882,8 +882,9 @@ async function completeFirstBoot(body: SetupBody): Promise<SetupStepResult> {
 
   try {
     const core = await import("@nexpress/core");
+    const coreDb = await import("@nexpress/core/db");
     const drizzle = await import("drizzle-orm");
-    const db = core.createDbConnection({ connectionString: body.databaseUrl });
+    const db = coreDb.createDbConnection({ connectionString: body.databaseUrl });
     const rows = await db
       .select({
         id: core.npUsers.id,

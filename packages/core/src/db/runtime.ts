@@ -27,3 +27,9 @@ export function getDb(): NodePgDatabase<Record<string, unknown>> {
 export function getOptionalDb(): NodePgDatabase<Record<string, unknown>> | null {
   return dbInstance;
 }
+
+/** Detach an expected bootstrap-owned handle without clearing a replacement. */
+export function resetDb(expected?: NodePgDatabase<Record<string, unknown>>): void {
+  if (expected !== undefined && dbInstance !== expected) return;
+  dbInstance = null;
+}

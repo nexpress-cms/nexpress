@@ -104,8 +104,9 @@ describe("generateDocumentsModule — hasMany filter wrapper", () => {
         { type: "relationship", name: "categories", relationTo: "categories", hasMany: true },
       ]),
     ]);
-    expect(without).not.toMatch(/getDb,/);
-    expect(withHM).toMatch(/getDb,/);
+    const dbImport = 'import { getDb } from "@nexpress/core/db";';
+    expect(without).not.toContain(dbImport);
+    expect(withHM).toContain(dbImport);
   });
 
   it("emits scheduled status and framework publishedAt for draft collections", () => {

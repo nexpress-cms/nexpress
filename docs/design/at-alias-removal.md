@@ -8,7 +8,9 @@
 
 `@nexpress/app`'s source files in `src/lib/{init-core,db,auth-helpers,auth-routes,member-auth-helpers}.ts` and `src/api/admin/plugins/reload/route.ts` reference the consumer's `@/lib/bootstrap` via tsconfig path alias. That import does two things at once:
 
-1. **Symbol resolution** — pulls `getDb`, `nexpressConfig`, `ensureCoreServices`, `ensurePluginsLoaded`, `ensureJobProducer`, `reloadPlugins` from the consumer's `src/lib/bootstrap.ts`.
+1. **Symbol resolution** — pulls `getDb`, `nexpressConfig`, `ensureFor`,
+   `reloadPlugins`, and `shutdownBootstrap` from the consumer's
+   `src/lib/bootstrap.ts`.
 2. **Side-effect timing** — the act of importing the consumer's bootstrap module runs its top-level `createBootstrap(...)` call, which wires DB / storage / plugin singletons before any downstream code reads them.
 
 Each consumer (apps/web, every scaffolded project) supplies its own `src/lib/bootstrap.ts` and a tsconfig with `paths: { "@/*": ["./src/*"] }`.

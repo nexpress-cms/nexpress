@@ -7,9 +7,9 @@ import {
   enqueueJob,
   hashPassword,
   npUsers,
-  runHook,
   can,
 } from "@nexpress/core";
+import { runHook } from "@nexpress/core/bootstrap";
 import {
   npAuthContractLimits,
   npIsCanonicalAuthEmail,

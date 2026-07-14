@@ -1,39 +1,57 @@
 import {
-  createDbConnection,
-  configureStorageRuntime,
-  getDb,
-  getOptionalJobQueue,
-  listPluginStates,
-  loadPlugins,
-  registerCollection,
-  registerThemes,
-  resetPlugins,
-  resolveSiteForHostname,
-  setCurrentSiteResolver,
-  setDb,
-  setI18nConfig,
-  startProducer,
-  syncPluginRegistrations,
-  teardownPlugins,
-  verifyStartupSafety,
-  verifyTokenFull,
-  NP_DEFAULT_SITE_ID,
+  npAssertProjectConfig,
   type NpAuthUser,
   type NpConfig,
   type NpFieldConfig,
   type NpPluginConfig,
-  type NpReconcileSchedulesResult,
   type NpResolvedPluginLike,
   type NpRegisteredTheme,
-  type NpStorageAdapter,
 } from "@nexpress/core";
+import { verifyTokenFull } from "@nexpress/core/auth";
+import {
+  createDbConnection,
+  configureStorageRuntime,
+  getDb as getCoreDb,
+  getOptionalJobQueue,
+  listPluginStates,
+  loadPlugins,
+  npCloseDbConnection,
+  npShutdownStorageAdapter,
+  registerCollection,
+  registerThemes,
+  resetCollections,
+  resetCurrentSiteResolver,
+  resetDb,
+  resetI18nConfig,
+  resetPlugins,
+  resetThemes,
+  setCurrentSiteResolver,
+  setDb,
+  setI18nConfig,
+  startProducer,
+  stopProducer,
+  syncPluginRegistrations,
+  teardownPlugins,
+  type NpDb,
+} from "@nexpress/core/bootstrap";
+import {
+  configureEmailRuntime,
+  npReadEmailRuntimeConfig,
+  resetEmailAdapter,
+  type NpEmailAdapter,
+  type NpEmailRuntimeConfig,
+} from "@nexpress/core/email";
+import { type NpReconcileSchedulesResult } from "@nexpress/core/jobs";
 import { npReadRateLimitRuntimeConfig } from "@nexpress/core/rate-limit";
 import {
   configureObservabilityFromEnv,
+  shutdownObservability,
+  verifyStartupSafety,
   type NpErrorReporter,
   type NpLoggerAdapter,
 } from "@nexpress/core/observability";
-import { canOnSite } from "@nexpress/core/sites";
+import { canOnSite, NP_DEFAULT_SITE_ID, resolveSiteForHostname } from "@nexpress/core/sites";
+import { type NpStorageAdapter } from "@nexpress/core/storage";
 import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
 import {
   npAnalyzeBlockDefinitions,
@@ -48,6 +66,8 @@ import {
 } from "@nexpress/blocks";
 import { npAssertThemeDefinition, type NpTheme } from "@nexpress/theme";
 import { cookies, headers } from "next/headers";
+
+export type { NpDb } from "@nexpress/core/bootstrap";
 
 // Plugin definitions can ship a `blocks` array (see plugin-sdk's
 // NpPluginDefinition). Core's `loadPlugins` keeps the shape loose
@@ -103,9 +123,21 @@ function assertKnownPatternBlockTypes(
   if (issue) throw new Error(`[${owner}] ${issue.message}`);
 }
 
-export type NpDb = ReturnType<typeof createDbConnection>;
+export const npBootstrapIntents = ["read", "plugins", "worker", "write"] as const;
+export type NpBootstrapIntent = (typeof npBootstrapIntents)[number];
 
-export interface BootstrapOptions {
+export function npIsBootstrapIntent(value: unknown): value is NpBootstrapIntent {
+  return typeof value === "string" && npBootstrapIntents.includes(value as NpBootstrapIntent);
+}
+
+export function npRequireBootstrapIntent(value: unknown): NpBootstrapIntent {
+  if (!npIsBootstrapIntent(value)) {
+    throw new TypeError(`Invalid bootstrap intent: expected ${npBootstrapIntents.join(" | ")}.`);
+  }
+  return value;
+}
+
+export interface NpBootstrapOptions {
   /**
    * The project's nexpress.config — typically the default export of
    * `src/nexpress.config.ts`.
@@ -135,6 +167,8 @@ export interface BootstrapOptions {
   logger?: NpLoggerAdapter;
   /** Programmatic reporter used only with `NP_ERROR_REPORTER_ADAPTER=custom`. */
   errorReporter?: NpErrorReporter;
+  /** Programmatic email adapter used only with `NP_EMAIL_ADAPTER=custom`. */
+  emailAdapter?: NpEmailAdapter;
 }
 
 /**
@@ -156,11 +190,9 @@ export interface NpReloadPluginsResult {
   schedules: NpReconcileSchedulesResult | null;
 }
 
-export type Bootstrap = {
+export type NpBootstrap = {
   readonly getDb: (this: void) => NpDb;
-  readonly ensureCoreServices: (this: void) => void;
-  readonly ensurePluginsLoaded: (this: void) => Promise<void>;
-  readonly ensureJobProducer: (this: void) => Promise<void>;
+  readonly ensureFor: (this: void, intent: NpBootstrapIntent) => Promise<void>;
   /**
    * Phase 5.1 — reset the registered plugin set + re-run the load
    * pipeline. Picks up DB-side state changes (enabled toggles, config
@@ -169,14 +201,15 @@ export type Bootstrap = {
    * module cache — code edits to a plugin still need a dev server
    * restart to take effect.
    *
-   * Block registry isn't cleared (it would orphan in-flight pages
-   * mid-render). Re-registration overwrites by `type`, so the next
-   * boot of each plugin fixes any stale block definitions naturally.
+   * Shared block/pattern registries reset to built-ins, then active plugin and
+   * theme contributions are re-registered before the reload resolves.
    *
-   * Idempotent on success: a fresh `ensurePluginsLoaded()` call after
+   * Idempotent on success: a fresh `ensureFor("plugins")` call after
    * `reloadPlugins()` is a no-op until the next reload.
    */
   readonly reloadPlugins: (this: void) => Promise<NpReloadPluginsResult>;
+  /** Terminal, idempotent cleanup of every resource owned by this bootstrap. */
+  readonly shutdown: (this: void) => Promise<void>;
 };
 
 function toCamelCase(slug: string): string {
@@ -290,25 +323,45 @@ function resolveRelatedTables(
 }
 
 /**
- * Builds a one-shot bootstrap for a Next.js nexpress project. The returned
- * `getDb()` is the single source of truth — it lazily creates the pg Pool,
- * wires the DB/storage singletons on `@nexpress/core`, and registers every
- * collection from the config using the generated schema for Drizzle tables.
- *
- * `ensurePluginsLoaded()` is idempotent and safe to race across requests.
+ * Builds one lazy process runtime for a Next.js NexPress project. Intent
+ * initialization is race-safe and retryable; `getDb()` requires a completed
+ * read intent, and terminal `shutdown()` reverses every owned resource.
  */
-export function createBootstrap(options: BootstrapOptions): Bootstrap {
+export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
+  npAssertProjectConfig(options.config);
+  if (
+    typeof options.generatedSchema !== "object" ||
+    options.generatedSchema === null ||
+    Array.isArray(options.generatedSchema)
+  ) {
+    throw new TypeError("Bootstrap generatedSchema must be a module-shaped object.");
+  }
   const { config, generatedSchema } = options;
 
+  let lifecycle: "active" | "shutting-down" | "closed" = "active";
   let db: NpDb | null = null;
-  let servicesInitialized = false;
-  let collectionsRegistered = false;
+  let runtimeConnectionString: string | null = null;
+  let observabilityConfigured = false;
+  let storageConfigured = false;
+  let readReady = false;
+  let readStartingPromise: Promise<void> | null = null;
+  let emailRuntimeConfig: NpEmailRuntimeConfig | null = null;
+  let emailConfigured = false;
   let pluginsLoaded = false;
   let pluginsLoadingPromise: Promise<void> | null = null;
-  let producerStarted = false;
+  let reloadPromise: Promise<NpReloadPluginsResult> | null = null;
+  let producerReady = false;
+  let producerActive = false;
   let producerStartingPromise: Promise<void> | null = null;
+  let shutdownPromise: Promise<void> | null = null;
 
-  function getConnectionString(): string {
+  function assertActive(): void {
+    if (lifecycle !== "active") {
+      throw new Error("Bootstrap has begun terminal shutdown and cannot be used again.");
+    }
+  }
+
+  function resolveConnectionString(): string {
     const connectionString =
       options.connectionString || config.db.connectionString || process.env.DATABASE_URL;
     if (!connectionString) {
@@ -323,24 +376,26 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     return connectionString;
   }
 
-  function ensureServices(instance: NpDb): void {
-    if (servicesInitialized) return;
+  function requireRuntimeConnectionString(): string {
+    if (!runtimeConnectionString) {
+      throw new Error('Bootstrap connection contract is not ready. Await ensureFor("read") first.');
+    }
+    return runtimeConnectionString;
+  }
 
-    // Install telemetry first so every subsequent bootstrap warning and
-    // failure reaches the operator-selected adapters. The pair is validated
-    // and installed transactionally; malformed intent cannot leave a partial
-    // logger/reporter configuration behind.
-    configureObservabilityFromEnv(process.env, {
-      logger: options.logger,
-      errorReporter: options.errorReporter,
-    });
-
+  function ensureServices(
+    instance: NpDb,
+    connectionString: string,
+    resolvedEmailRuntime: NpEmailRuntimeConfig,
+    rateLimiterCustom: boolean,
+  ): void {
     setDb(instance);
     const storageConfig = config.storage ?? {
       adapter: "local" as const,
       local: { directory: "./public/media", baseUrl: "/media" },
     };
     const storageAdapter = configureStorageRuntime(storageConfig, options.storageAdapter);
+    storageConfigured = true;
 
     // Phase 22.2 — surface known-unsafe configurations once per
     // process (multi-node + LocalStorageAdapter, weak prod secret,
@@ -374,54 +429,19 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       // intent path), so a live-adapter check would always see the
       // default noop. Reading the exact operator intent (`noop`, `smtp`,
       // or `custom`) is the right signal at this boot stage.
-      emailAdapterEnv: process.env.NP_EMAIL_ADAPTER ?? null,
-      databaseHost: extractDatabaseHost(
-        options.connectionString || config.db.connectionString || process.env.DATABASE_URL || null,
-      ),
+      emailAdapterEnv: resolvedEmailRuntime.adapter,
+      databaseHost: extractDatabaseHost(connectionString),
       siteUrl: process.env.SITE_URL ?? null,
       // The proxy is a separate execution entrypoint, so its live
       // registry is not a reliable bootstrap signal. Validate the
       // shared env intent instead: `custom` means the proxy wrapper
       // must inject or register an adapter before its first request.
-      rateLimiterCustom: npReadRateLimitRuntimeConfig(process.env).adapter === "custom",
+      rateLimiterCustom,
     });
-
-    servicesInitialized = true;
+    emailRuntimeConfig = resolvedEmailRuntime;
   }
 
-  function ensureCollections(): void {
-    if (collectionsRegistered) return;
-
-    for (const collection of config.collections) {
-      const relatedTables = resolveRelatedTables(
-        generatedSchema,
-        collection.slug,
-        collection.fields,
-      );
-      registerCollection(
-        collection.slug,
-        resolveTable(generatedSchema, collection.slug),
-        collection,
-        relatedTables,
-      );
-    }
-
-    // Phase 11.1 — register themes alongside collections so the
-    // theme registry is populated by the time any layout runs.
-    // Idempotent on the registry side; calling again on hot
-    // reload just overwrites entries by id.
-    if (config.themes && config.themes.length > 0) {
-      registerThemes(config.themes);
-    }
-
-    // Phase 12.1 — install the i18n config singleton so the
-    // pipeline's locale resolver can read it. Idempotent;
-    // re-calling on hot reload just overwrites the previous
-    // value. Sites without an i18n block leave the singleton
-    // null and the per-collection `i18n: true` opt-in is
-    // already rejected at `defineConfig` time.
-    setI18nConfig(config.i18n ?? null);
-
+  function ensureCollectionsResolver(): void {
     // Phase 15.1 — install the per-request site resolver.
     // The middleware sets `x-np-host` from the incoming
     // Host header; this resolver maps it to a site id via
@@ -455,8 +475,8 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       const secret = config.auth?.secret;
       if (!secret) return null;
       try {
-        const db = getDb();
-        const user = await verifyTokenFull(sessionToken, secret, db, "access");
+        const instance = requireDbInstance();
+        const user = await verifyTokenFull(sessionToken, secret, instance, "access");
         if (!user) return null;
         return (await canActorUseSite(user, siteId)) ? siteId : null;
       } catch {
@@ -490,16 +510,13 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
         return null;
       }
     });
-
-    collectionsRegistered = true;
   }
 
-  function getDbInstance(): NpDb {
-    if (!db) {
-      db = createDbConnection({ connectionString: getConnectionString() });
+  function requireDbInstance(): NpDb {
+    assertActive();
+    if (!readReady) {
+      throw new Error('Bootstrap database is not ready. Await ensureFor("read") first.');
     }
-    ensureServices(db);
-    ensureCollections();
     // Always read through the core singleton. Test harnesses call
     // `setDb(testPool)` to swap the singleton, and the bootstrap's
     // closure-cached `db` would otherwise diverge — verification
@@ -509,15 +526,107 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     // structural — `setDb()` accepts `NodePgDatabase<Record<string,
     // unknown>>`, but the actual instance handed in here is the
     // schema-typed `NpDb`, so the cast is a no-op at runtime.
-    return getDb() as NpDb;
+    return getCoreDb() as NpDb;
+  }
+
+  async function rollbackRead(startupError: unknown): Promise<never> {
+    const failures: unknown[] = [startupError];
+    resetCurrentSiteResolver();
+    resetI18nConfig();
+    resetThemes();
+    resetCollections();
+    if (storageConfigured) {
+      try {
+        await npShutdownStorageAdapter();
+      } catch (error) {
+        failures.push(error);
+      }
+      storageConfigured = false;
+    }
+    const ownedDb = db;
+    if (ownedDb) {
+      resetDb(ownedDb);
+      try {
+        await npCloseDbConnection(ownedDb);
+      } catch (error) {
+        failures.push(error);
+      }
+      db = null;
+    }
+    if (observabilityConfigured) {
+      try {
+        await shutdownObservability();
+      } catch (error) {
+        failures.push(error);
+      }
+      observabilityConfigured = false;
+    }
+    emailRuntimeConfig = null;
+    runtimeConnectionString = null;
+    if (failures.length > 1) {
+      throw new AggregateError(failures, "Bootstrap startup and rollback both failed.");
+    }
+    throw startupError;
+  }
+
+  async function ensureRead(): Promise<void> {
+    assertActive();
+    if (readReady) return;
+    if (readStartingPromise) return readStartingPromise;
+
+    readStartingPromise = (async () => {
+      // Validate every generated table and theme before installing process state.
+      const registrations = config.collections.map((collection) => ({
+        collection,
+        table: resolveTable(generatedSchema, collection.slug),
+        relatedTables: resolveRelatedTables(generatedSchema, collection.slug, collection.fields),
+      }));
+      for (const theme of config.themes ?? []) themeContributions(theme);
+      const resolvedEmailRuntime = npReadEmailRuntimeConfig(process.env);
+      const rateLimiterCustom = npReadRateLimitRuntimeConfig(process.env).adapter === "custom";
+      const connectionString = resolveConnectionString();
+
+      try {
+        configureObservabilityFromEnv(process.env, {
+          logger: options.logger,
+          errorReporter: options.errorReporter,
+        });
+        observabilityConfigured = true;
+
+        const instance = createDbConnection({ connectionString });
+        db = instance;
+        ensureServices(instance, connectionString, resolvedEmailRuntime, rateLimiterCustom);
+
+        // Static registrations are applied only after their full lookup pass succeeds.
+        for (const { collection, table, relatedTables } of registrations) {
+          registerCollection(collection.slug, table, collection, relatedTables);
+        }
+        if (config.themes && config.themes.length > 0) registerThemes(config.themes);
+        setI18nConfig(config.i18n ?? null);
+        // Install the request-aware resolver without repeating the registrations above.
+        ensureCollectionsResolver();
+        runtimeConnectionString = connectionString;
+        readReady = true;
+      } catch (error) {
+        await rollbackRead(error);
+      }
+    })();
+
+    try {
+      await readStartingPromise;
+    } finally {
+      readStartingPromise = null;
+    }
   }
 
   async function ensurePluginsLoaded(): Promise<void> {
+    await ensureRead();
+    assertActive();
     if (pluginsLoaded) return;
     if (pluginsLoadingPromise) return pluginsLoadingPromise;
 
     pluginsLoadingPromise = (async () => {
-      const instance = getDbInstance();
+      const instance = requireDbInstance();
       const configured = config.plugins ?? [];
       const configuredIds = configured.map(resolvePluginId);
 
@@ -601,13 +710,43 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
 
     try {
       await pluginsLoadingPromise;
-    } catch (error) {
+    } catch (startupError) {
+      const failures: unknown[] = [startupError];
+      try {
+        await teardownPlugins();
+      } catch (error) {
+        failures.push(error);
+      }
+      resetPlugins();
+      resetSharedBlockRegistry();
+      resetSharedPatternRegistry();
+      pluginsLoaded = false;
+      if (failures.length > 1) {
+        throw new AggregateError(failures, "Plugin startup and rollback both failed.", {
+          cause: startupError,
+        });
+      }
+      throw startupError;
+    } finally {
       pluginsLoadingPromise = null;
-      throw error;
     }
   }
 
   async function reloadPlugins(): Promise<NpReloadPluginsResult> {
+    assertActive();
+    if (reloadPromise) return reloadPromise;
+    const pendingReload = performPluginReload();
+    reloadPromise = pendingReload;
+    try {
+      return await pendingReload;
+    } finally {
+      if (reloadPromise === pendingReload) reloadPromise = null;
+    }
+  }
+
+  async function performPluginReload(): Promise<NpReloadPluginsResult> {
+    await ensurePluginsLoaded();
+    assertActive();
     // Drain any in-flight load before resetting so we don't race a
     // concurrent boot path mid-stream.
     if (pluginsLoadingPromise) {
@@ -644,7 +783,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       // patterns on reload so a disabled plugin's pattern doesn't
       // linger in the editor's command-menu picker.
       resetSharedPatternRegistry();
-      const instance = getDbInstance();
+      const instance = requireDbInstance();
       const configured = config.plugins ?? [];
       const configuredIds = configured.map(resolvePluginId);
 
@@ -716,6 +855,23 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     pluginsLoadingPromise = loading;
     try {
       await loading;
+    } catch (reloadError) {
+      const failures: unknown[] = [reloadError];
+      try {
+        await teardownPlugins();
+      } catch (error) {
+        failures.push(error);
+      }
+      resetPlugins();
+      resetSharedBlockRegistry();
+      resetSharedPatternRegistry();
+      pluginsLoaded = false;
+      if (failures.length > 1) {
+        throw new AggregateError(failures, "Plugin reload and rollback both failed.", {
+          cause: reloadError,
+        });
+      }
+      throw reloadError;
     } finally {
       pluginsLoadingPromise = null;
     }
@@ -740,43 +896,112 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     return { reloaded: true, schedules };
   }
 
-  const ensureCoreServices = (): void => {
-    getDbInstance();
-  };
+  function ensureEmailRuntime(): void {
+    if (emailConfigured) return;
+    if (!emailRuntimeConfig) {
+      throw new Error('Bootstrap email contract is not ready. Await ensureFor("read") first.');
+    }
+    configureEmailRuntime(emailRuntimeConfig, options.emailAdapter);
+    emailConfigured = true;
+  }
 
-  /**
-   * Wires pg-boss as the job queue for this process so `enqueueJob` calls
-   * actually send jobs. Opt-in via `NP_ENABLE_JOBS=1` — when it's off the
-   * producer stays unwired and `enqueueJob` remains a no-op.
-   *
-   * Idempotent + race-safe.
-   */
   async function ensureJobProducer(): Promise<void> {
-    if (producerStarted) return;
+    if (producerReady) return;
     if (!npRequireJobsEnabledFlag(process.env.NP_ENABLE_JOBS)) {
-      producerStarted = true;
+      producerReady = true;
       return;
     }
     if (producerStartingPromise) return producerStartingPromise;
 
     producerStartingPromise = (async () => {
-      await startProducer(getConnectionString());
-      producerStarted = true;
+      await startProducer(requireRuntimeConnectionString());
+      producerActive = true;
+      producerReady = true;
     })();
 
     try {
       await producerStartingPromise;
-    } catch (error) {
+    } finally {
       producerStartingPromise = null;
-      throw error;
     }
   }
 
+  async function ensureFor(intent: NpBootstrapIntent): Promise<void> {
+    assertActive();
+    const validatedIntent = npRequireBootstrapIntent(intent);
+    await ensureRead();
+    assertActive();
+    if (validatedIntent === "read") return;
+    await ensurePluginsLoaded();
+    assertActive();
+    if (validatedIntent === "plugins") return;
+    ensureEmailRuntime();
+    if (validatedIntent === "worker") return;
+    assertActive();
+    await ensureJobProducer();
+    assertActive();
+  }
+
+  async function shutdown(): Promise<void> {
+    if (shutdownPromise) return shutdownPromise;
+    lifecycle = "shutting-down";
+    shutdownPromise = (async () => {
+      const failures: unknown[] = [];
+      const pending: Promise<unknown>[] = [];
+      if (readStartingPromise) pending.push(readStartingPromise);
+      if (pluginsLoadingPromise) pending.push(pluginsLoadingPromise);
+      if (producerStartingPromise) pending.push(producerStartingPromise);
+      if (reloadPromise) pending.push(reloadPromise);
+      if (pending.length > 0) await Promise.allSettled(pending);
+
+      async function attempt(operation: () => void | Promise<void>): Promise<void> {
+        try {
+          await operation();
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+
+      if (producerActive) await attempt(stopProducer);
+      producerActive = false;
+      producerReady = false;
+      await attempt(teardownPlugins);
+      resetPlugins();
+      resetSharedBlockRegistry();
+      resetSharedPatternRegistry();
+      pluginsLoaded = false;
+      resetCurrentSiteResolver();
+      resetI18nConfig();
+      resetThemes();
+      resetCollections();
+      if (emailConfigured) resetEmailAdapter();
+      emailConfigured = false;
+      emailRuntimeConfig = null;
+      if (storageConfigured) await attempt(npShutdownStorageAdapter);
+      storageConfigured = false;
+      const ownedDb = db;
+      if (ownedDb) {
+        resetDb(ownedDb);
+        await attempt(() => npCloseDbConnection(ownedDb));
+      }
+      db = null;
+      runtimeConnectionString = null;
+      readReady = false;
+      if (observabilityConfigured) await attempt(shutdownObservability);
+      observabilityConfigured = false;
+      lifecycle = "closed";
+
+      if (failures.length > 0) {
+        throw new AggregateError(failures, "One or more bootstrap resources failed to shut down.");
+      }
+    })();
+    return shutdownPromise;
+  }
+
   return {
-    getDb: getDbInstance,
-    ensureCoreServices,
-    ensurePluginsLoaded,
-    ensureJobProducer,
+    getDb: requireDbInstance,
+    ensureFor,
     reloadPlugins,
+    shutdown,
   };
 }

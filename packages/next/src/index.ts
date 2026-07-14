@@ -79,9 +79,14 @@ export {
 export {
   canActorUseSite,
   createBootstrap,
-  type Bootstrap,
-  type BootstrapOptions,
+  npBootstrapIntents,
+  npIsBootstrapIntent,
+  npRequireBootstrapIntent,
+  type NpBootstrap,
+  type NpBootstrapIntent,
+  type NpBootstrapOptions,
   type NpDb,
+  type NpReloadPluginsResult,
 } from "./bootstrap.js";
 
 export { toClientCollectionConfig } from "./client-safe.js";

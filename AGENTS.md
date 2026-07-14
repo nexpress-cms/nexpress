@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-14 (observability now shares one exact logger,
+**Last refreshed:** 2026-07-14 (bootstrap now owns one intent-based,
+race-safe, retry-safe, terminal runtime lifecycle across Next, app, worker,
+standalone scripts, generated scaffolds, and framework-host wiring.)
+
+**Earlier:** 2026-07-14 (observability now shares one exact logger,
 reporter, event/context, async result, lifecycle, bootstrap, job-log tee,
 health, readiness, doctor, and scaffold contract; adapter failures are
 contained and operator-visible.)
@@ -261,6 +265,7 @@ cli  (standalone scaffolder, no workspace deps)
 | Subpath                         | Domain                                                                  |
 | ------------------------------- | ----------------------------------------------------------------------- |
 | `@nexpress/core/auth`           | capability checks, JWT/OAuth, password, sessions, principal             |
+| `@nexpress/core/bootstrap`      | experimental framework-host singleton/registry wiring                   |
 | `@nexpress/core/community`      | comments, reactions, follows, reports, bans, audit, mentions, digests   |
 | `@nexpress/core/db`             | connection factory, runtime accessors, schema codegen                   |
 | `@nexpress/core/email`          | email message/adapter contracts, SMTP, templates, runtime configuration |
@@ -280,7 +285,9 @@ cli  (standalone scaffolder, no workspace deps)
 | `@nexpress/core/storage`        | storage runtime/object contracts, adapters, registry, and lifecycle     |
 | `@nexpress/core/theme`          | client-safe theme token inventory, validators, and merge helpers        |
 
-The root `@nexpress/core` keeps re-exporting everything for back-compat; existing call sites are not forced to migrate. Treat the root as the lowest-common-denominator surface and the subpaths as the canonical domain APIs.
+The root `@nexpress/core` keeps broad domain conveniences, but intentionally
+omits raw bootstrap wiring. Treat the subpaths as the canonical APIs and
+`/bootstrap` as framework-host-only.
 
 ### Module system — `.js` extensions in TS imports
 
@@ -297,14 +304,17 @@ Dev watch reads `NP_DEV_FAST` from `.env` (default `1`); when set, each package'
 
 ### Core service singletons (critical)
 
-`@nexpress/core` exposes a module-scoped singleton pattern:
+`@nexpress/core` uses module-scoped singletons behind domain and host
+subpaths:
 
 - `setDb(db)` / `getDb()` — Drizzle connection (single source of truth shared by the pipeline, media service, and every other consumer)
 - `setStorageAdapter(adapter)` — validated local, S3, or custom adapter
 - `setJobQueue(queue)` / `startWorker()` — pg-boss
 - `loadPlugins(plugins)` — registers hooks/routes/actions
 
-The reference app wires these up in `apps/web/src/lib/init-core.ts`. New code should use the single intent-based entry point `ensureFor("read" | "plugins" | "worker" | "write")`:
+`@nexpress/next` wires these through `createBootstrap()`; the reference app
+adds app-local registrations in `apps/web/src/lib/init-core.ts`. New code uses
+the single intent-based entry point `ensureFor("read" | "plugins" | "worker" | "write")`:
 
 - `await ensureFor("read")` — DB + storage + collections (read-only RSC, GET routes).
 - `await ensureFor("plugins")` — read + plugin loading (render paths that need `runHook` to fire).
@@ -314,11 +324,15 @@ The reference app wires these up in `apps/web/src/lib/init-core.ts`. New code sh
 All app routes use `ensureFor` directly — the old route-level pattern of
 choosing among `ensureCoreServices` / `ensurePluginsLoaded` /
 `ensureJobProducer` / `ensureWriteReady` was retired in #266. The
-`createBootstrap()` result still exposes low-level compatibility helpers for
-the app adapter, but new route or server-component code should not call them
-directly. Any route or server component touching collections, media, or
+`createBootstrap()` result exposes only `getDb`, `ensureFor`, `reloadPlugins`,
+and terminal `shutdown`. Any route or server component touching collections, media, or
 plugins MUST initialize before reading the singletons; otherwise they're null.
 Don't create parallel DB connections from elsewhere.
+
+Raw setters, registry mutation, and plugin hook dispatch live under the
+experimental framework-host boundary `@nexpress/core/bootstrap`; they are not
+exported from the root barrel. Rate limiting stays separate because the proxy
+is a different execution entrypoint.
 
 ### Collections = codegen, not runtime
 
@@ -425,7 +439,8 @@ Each `./client` bundle is built by tsup with `"use client"` banner injection. Co
 `@nexpress/core/storage` owns the exact `local | s3 | custom` runtime contract.
 Local defaults to `./public/media` served at `/media`; S3 requires bucket and
 region with an optional endpoint. Custom mode requires a programmatic adapter
-through `createBootstrap({ storageAdapter })` or `setStorageAdapter()` and a
+through `createBootstrap({ storageAdapter })` (or the host-only
+`@nexpress/core/bootstrap` setter) and a
 non-reserved canonical `kind`. Safe relative keys, exact upload metadata,
 Web-stream/URL/boolean/void results, and optional `shutdown()` are validated at
 the shared operation boundary. Local paths remain confined to their root and
@@ -449,8 +464,8 @@ dispatch and requires adapters to resolve to void. `setEmailAdapter()` validates
 the adapter kind and handler at registration. Runtime modes are exactly `noop`,
 `smtp`, and `custom`; SMTP host/from, base-10 port, exact boolean, and paired
 credentials are parsed once at the first app bootstrap. Programmatic adapters
-must select `NP_EMAIL_ADAPTER=custom` and register before the worker or first
-write bootstrap. Auth jobs carry the credential's canonical `expiresAt` and URL, not
+must select `NP_EMAIL_ADAPTER=custom`; normal apps pass `emailAdapter` to
+`createBootstrap()`, while lower-level hosts may pre-register one. Auth jobs carry the credential's canonical `expiresAt` and URL, not
 a duplicate raw token, so templates render the actual UTC expiration. Author
 and operator reference: `docs/email.md`.
 
@@ -541,7 +556,7 @@ These are the public APIs we'll honor with semver and migration notes. Breaking 
 - **Bootstrap intent enum** — `ensureFor("read" | "plugins" | "worker" | "write")`. `worker` installs plugins and email delivery without an enqueue-only pg-boss producer; semantics of all four are pinned.
 - **Error classes + codes** — `NpForbiddenError`, `NpNotFoundError`, `NpValidationError`, `NpAuthError`, `NpConflictError`, `NpRateLimitError`, `NpSiteContextMissingError`, and the `NpErrorCode` union. The string code per class is stable per [docs/api-error-codes.md](./docs/api-error-codes.md).
 - **Capability vocabulary** — `can(user, capability)` and the existing capability strings: `"admin.manage"`, `"content.publish"`, `"content.author"`, `"community.moderate"`. New capability strings will be added; existing ones won't be renamed or removed in 0.x.
-- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/email`, `/fields`, `/i18n`, `/jobs`, `/jobs-contract`, `/media`, `/media-contract`, `/navigation`, `/observability`, `/rate-limit`, `/seo`, `/storage`, `/theme`. Symbols inside each are stable per the rules above.
+- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/email`, `/fields`, `/i18n`, `/jobs`, `/jobs-contract`, `/media`, `/media-contract`, `/navigation`, `/observability`, `/rate-limit`, `/seo`, `/storage`, `/theme`. Symbols inside each are stable per the rules above. `/bootstrap` is the experimental framework-host exception below.
 - **Adapters** — `NpStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NpJobQueue` (with `PgBossAdapter`), `NpLogger` + `setLogger`, `NpErrorReporter` + `setErrorReporter`, `NpEmailAdapter` + `setEmailAdapter` / `sendEmail`, and `NpRateLimiterAdapter` + `npCheckRateLimit` / `npShutdownRateLimiter`. Storage keys/metadata and adapter Web-stream/URL/boolean/void results are exact; storage adapter kinds are canonical lowercase identifiers and may expose void-returning `shutdown()`. Email messages are exact single-recipient objects; rate-limit requests and decisions are exact bounded objects. Adapter kinds are canonical lowercase identifiers, and successful send/shutdown hooks resolve to void. Optional methods (e.g. `NpJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
 - **`NpPrincipal` union** — adding a variant is breaking (every `switch (principal.kind)` site needs updating, enforced by `_exhaustive: never`). The existing `"staff"` / `"member"` shape is committed.
 - **Block authoring and content** — `NpBlockDefinition` (`type`, `label`, `defaultProps`, `propsSchema`, `acceptsChildren?`, `render(props, children?)`) and the `NpBlockInstance` wire shape (`id`, `type`, `props`, optional `children: NpBlockInstance[]`). `NpBlockContent` is the stored array type. `@nexpress/core/fields`, `@nexpress/blocks`, and `@nexpress/blocks/contracts` share `npValidateBlockContent` and `isNpBlockContent`; collection writes, generated types, OpenAPI, patterns, Admin JSON/paste/preview, translation, and unknown-block operations use that contract. Instance ids are unique across the whole tree; unknown/inactive block types remain structurally valid so content survives plugin/theme removal. Adding optional fields to the definition or instance is non-breaking. `NpBlockMetadata` (= `NpBlockDefinition` minus `render`) is the serializable subset the admin uses for the picker / props form. The shared registry helpers `registerBlock`, `getRegisteredBlocks`, `getRegisteredBlockMetadata`, `getSharedRegistry` are stable. The lightweight `@nexpress/blocks/contracts` subpath also exports `npValidateBlockDefinition`, `npAnalyzeBlockDefinitions`, and `npBlockPropFieldTypes`. Author docs: `docs/block-content.md`.
@@ -560,11 +575,12 @@ These exist on the published surface but are explicitly NOT covered by the rules
 - **Block prop field types** — the `propsSchema` field type set (`text` / `textarea` / `number` / `boolean` / `select` / `url` / `richtext` / `image` / `color` / `collection` / `array` / `media`) is what the admin renders today. Adding new types is non-breaking; existing ones won't be renamed in 0.x but the _editor renderer_ for a type may upgrade visually (e.g. phase 5 swapped the `richtext` JSON-textarea for a Lexical editor without changing the wire format).
 - **WordPress import internals** — the CLI surface (`packages/wp-import/src/cli/`) is stable; `parse/` / `convert/` / `media/` / `apply/` modules are not a public API. Importing from them will break.
 - **Generated schema output** — `apps/web/src/db/generated/collections.ts` and friends are codegen artifacts. Don't import from generated paths in user code outside the file Drizzle expects.
-- **Bootstrap singletons exposed at the root** — `setDb`, `getDb`, `setStorageAdapter`, `setJobQueue`, `loadPlugins`, `runHook`, `createDbConnection`. Required for `@nexpress/next`'s `createBootstrap()`; not intended for app-level use. May move to an `@internal` or `@nexpress/core/bootstrap` subpath in a later 0.x.
+- **Framework-host bootstrap wiring** — `@nexpress/core/bootstrap` exposes raw singleton setters, registry lifecycle, and hook dispatch for integration packages. Application code must use `@nexpress/next` or domain subpaths; individual host symbols may move while this boundary is experimental.
 - **Internal auth helpers** — `signToken`, `verifyToken`, `hashPassword`, `ARGON2_OPTIONS`. Keep using `verifyTokenFull` (which is part of the auth subpath); the lower-level helpers may be removed from the public surface.
 
-### Removed in 0.1
+### Removed during v0.x hardening
 
+- Raw bootstrap wiring from the `@nexpress/core` root and normal domain subpaths (`setDb`, `setStorageAdapter`, `configureStorageRuntime`, storage shutdown, `setJobQueue`, `loadPlugins`, `runHook`, `runHookAndCollect`, `teardownPlugins`, `resetPlugins`). Use `@nexpress/core/bootstrap` for framework hosts and `@nexpress/core/db` for DB factory/access.
 - `hasRole(user, minRole)` / `isStaffMod(user)` — replaced by `can(user, capability)` (#273).
 - `@nexpress/blocks/client` subpath — the page-builder editor moved into `@nexpress/admin` (#444). `@nexpress/blocks` is server-safe end-to-end now (types, registry, renderBlocks, block definitions). Sites importing `BlockPageEditor` from the old subpath should switch to letting `field-renderer` handle blocks fields automatically.
 - `NpBlockRegistration` (the legacy `component: string` shape exported from `@nexpress/plugin-sdk`) — replaced by the real `NpBlockDefinition` from `@nexpress/blocks` on `NpPluginDefinition.blocks` (#446). The old type stays exported as `@deprecated` for type compatibility but was never wired and has no consumers.

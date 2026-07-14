@@ -14,11 +14,11 @@ import {
   replaceStaffPasswordAndInvalidateSessions,
   resolveOAuthLogin,
   rotateStaffSession,
-  runHook,
   verifyOAuthState,
   verifyPassword,
   type NpUserRole,
 } from "@nexpress/core";
+import { runHook } from "@nexpress/core/bootstrap";
 import {
   npAuthContractLimits,
   npIsAuthSingleUseToken,

@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import type { NpMediaRecord } from "@nexpress/core/media-contract";
-import { setStorageAdapter, type NpStorageAdapter } from "@nexpress/core/storage";
+import { setStorageAdapter } from "@nexpress/core/bootstrap";
+import { type NpStorageAdapter } from "@nexpress/core/storage";
 
 import { toMediaApiItem } from "./media-response";
 

@@ -26,15 +26,14 @@ import { createBootstrap } from "@nexpress/next";
 import nexpressConfig from "@/nexpress.config";
 import * as generatedSchema from "@/db/generated/collections";
 
-export const { getDb, ensureCoreServices, ensurePluginsLoaded, ensureJobProducer } =
-  createBootstrap({
-    config: nexpressConfig,
-    generatedSchema: generatedSchema as unknown as Record<string, unknown>,
-  });
+export const { getDb, ensureFor, reloadPlugins, shutdown } = createBootstrap({
+  config: nexpressConfig,
+  generatedSchema: generatedSchema as unknown as Record<string, unknown>,
+});
 ```
 
-In your routes, prefer the intent-based wrapper (`apps/web/src/lib/init-core.ts`
-in the reference app):
+In routes, use the intent-based app wrapper (`apps/web/src/lib/init-core.ts` in
+the reference app):
 
 ```ts
 import { ensureFor } from "@/lib/init-core";
@@ -45,11 +44,16 @@ export async function GET() {
 }
 ```
 
-Three intents:
+Four intents:
 
 - `"read"` — read-only RSC pages, GET routes
 - `"plugins"` — render paths that need `runHook` to fire
+- `"worker"` — dedicated worker: plugins + email without a competing producer
 - `"write"` — mutating routes / server actions / imports (also wires email + jobs)
+
+`getDb()` requires a completed `read` intent. Standalone scripts must call the
+terminal, idempotent `shutdown()` method in their exit path. See
+[docs/bootstrap.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/bootstrap.md).
 
 ## Cache invalidation
 

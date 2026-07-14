@@ -1,35 +1,12 @@
 import { npUsers } from "@nexpress/core";
-import {
-  configureEmailRuntime,
-  npReadEmailRuntimeConfig,
-  type NpEmailRuntimeConfig,
-} from "@nexpress/core/email";
+import type { NpBootstrapIntent } from "@nexpress/next";
 import { count, eq } from "drizzle-orm";
 
-import {
-  ensureCoreServices as bootstrapEnsureCoreServices,
-  ensureJobProducer as bootstrapEnsureJobProducer,
-  ensurePluginsLoaded as bootstrapEnsurePluginsLoaded,
-  getDb,
-  nexpressConfig,
-} from "@/lib/bootstrap";
+import { ensureFor as bootstrapEnsureFor, getDb, nexpressConfig } from "@/lib/bootstrap";
 import { registerCustomRoutes } from "./custom-routes";
 import { registerWordPressImportJobs } from "./wp-import-admin";
 
 export { nexpressConfig };
-
-let emailRuntimeConfig: NpEmailRuntimeConfig | null = null;
-function resolveEmailRuntimeConfigOnce(): NpEmailRuntimeConfig {
-  emailRuntimeConfig ??= npReadEmailRuntimeConfig(process.env);
-  return emailRuntimeConfig;
-}
-
-let emailConfigured = false;
-function configureEmailOnce(): void {
-  if (emailConfigured) return;
-  configureEmailRuntime(resolveEmailRuntimeConfigOnce());
-  emailConfigured = true;
-}
 
 let customRoutesRegistered = false;
 function registerCustomRoutesOnce(): void {
@@ -123,22 +100,12 @@ function nudgeFirstRunOnce(): void {
  *                   through the pipeline or `uploadMedia` silently
  *                   drop their follow-up jobs and emails.
  */
-export type NpBootstrapIntent = "read" | "plugins" | "worker" | "write";
+export type { NpBootstrapIntent } from "@nexpress/next";
 
 export async function ensureFor(intent: NpBootstrapIntent): Promise<void> {
-  // Parse the environment contract on the first bootstrap intent, including
-  // reads. Adapter installation stays on worker/write paths, but malformed
-  // email configuration cannot hide until the first delivery attempt.
-  resolveEmailRuntimeConfigOnce();
-  bootstrapEnsureCoreServices();
+  await bootstrapEnsureFor("read");
   registerCustomRoutesOnce();
   nudgeFirstRunOnce();
   if (intent === "read") return;
-
-  await bootstrapEnsurePluginsLoaded();
-  if (intent === "plugins") return;
-
-  configureEmailOnce();
-  if (intent === "worker") return;
-  await bootstrapEnsureJobProducer();
+  await bootstrapEnsureFor(intent);
 }

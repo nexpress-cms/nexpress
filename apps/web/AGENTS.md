@@ -59,9 +59,10 @@ await ensureFor("worker"); // plugins + email, dedicated worker only
 await ensureFor("write"); // plugins + email + job producer
 ```
 
-The low-level exports in `src/lib/bootstrap.ts`
-(`ensureCoreServices`, `ensurePluginsLoaded`, `ensureJobProducer`) exist for
-the shared app adapter. New route/page code should use `ensureFor(...)`.
+`src/lib/bootstrap.ts` exposes the same `ensureFor` contract plus `getDb`,
+`reloadPlugins`, and terminal `shutdownBootstrap`. Route/page code should use
+the wrapper from `src/lib/init-core.ts`; standalone scripts must shut the
+bootstrap down before exiting.
 
 ## Auth And CSRF
 

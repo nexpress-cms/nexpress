@@ -90,7 +90,7 @@ interface DrizzleDatabaseLike {
   };
 }
 
-export { getStorageAdapter, setStorageAdapter } from "../storage/registry.js";
+export { getStorageAdapter } from "../storage/registry.js";
 
 /**
  * Polymorphic uploader: a row on `np_media` is owned by exactly

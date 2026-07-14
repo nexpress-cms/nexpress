@@ -9,7 +9,8 @@ import { stdin, stdout } from "node:process";
 
 import { count, eq } from "drizzle-orm";
 
-import { createDbConnection, hashPassword, npUsers } from "@nexpress/core";
+import { hashPassword, npUsers } from "@nexpress/core";
+import { createDbConnection } from "@nexpress/core/db";
 import { npAuthContractLimits, npIsCanonicalAuthEmail } from "@nexpress/core/auth-contract";
 
 const databaseUrl = process.env.DATABASE_URL;

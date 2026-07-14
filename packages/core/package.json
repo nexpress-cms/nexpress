@@ -48,6 +48,11 @@
       "import": "./dist/community.js",
       "default": "./dist/community.js"
     },
+    "./bootstrap": {
+      "types": "./dist/bootstrap.d.ts",
+      "import": "./dist/bootstrap.js",
+      "default": "./dist/bootstrap.js"
+    },
     "./db": {
       "types": "./dist/db.d.ts",
       "import": "./dist/db.js",

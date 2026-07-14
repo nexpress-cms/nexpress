@@ -8,6 +8,7 @@ Server-only CMS engine: config, DB, auth, collections pipeline, media, jobs, plu
 
 ```
 src/
+├── bootstrap/    # Framework-host-only singleton and registry wiring boundary
 ├── config/       # NpConfig types, defineConfig/defineCollection, validation schemas
 ├── db/           # createDbConnection, Drizzle schema (npUsers/npMedia/npRevisions/npSettings), generators
 ├── auth/         # JWT (jose), Argon2 password, CSRF, session helpers, access control
@@ -28,26 +29,30 @@ src/
 
 ## SINGLETONS (wiring order matters)
 
-| Singleton                              | Defined in                | Set by app via                          |
-| -------------------------------------- | ------------------------- | --------------------------------------- |
-| `setDb(db)` / `getDb()`                | `collections/pipeline.ts` | `createBootstrap` in `@nexpress/next`   |
-| `setMediaDb(db)` / `getMediaDb()`      | `media/service.ts`        | Same bootstrap (often same DB instance) |
-| `setStorageAdapter(adapter)`           | `storage/registry.ts`     | Bootstrap validates `config.storage`    |
-| logger / error reporter                | `observability/`          | Bootstrap validates env + adapters      |
-| `setJobQueue(queue)` / `getJobQueue()` | `jobs/queue.ts`           | App calls after DB init                 |
-| `pluginRegistry` / `globalHooks`       | `plugins/host.ts`         | `loadPlugins()` at startup              |
+| Singleton                              | Defined in            | Set by app via                        |
+| -------------------------------------- | --------------------- | ------------------------------------- |
+| `setDb(db)` / `getDb()`                | `db/runtime.ts`       | `createBootstrap` in `@nexpress/next` |
+| `setStorageAdapter(adapter)`           | `storage/registry.ts` | Bootstrap validates `config.storage`  |
+| logger / error reporter                | `observability/`      | Bootstrap validates env + adapters    |
+| `setJobQueue(queue)` / `getJobQueue()` | `jobs/queue.ts`       | Bootstrap producer or worker          |
+| `pluginRegistry` / `globalHooks`       | `plugins/host.ts`     | `loadPlugins()` at startup            |
 
-**Init order**: configureObservability → createDbConnection → setDb/setMediaDb → setStorageAdapter → registerCollections → configureBuiltinJobContext → loadPlugins → startWorker. Wrong order = runtime "not initialized" errors or missed boot diagnostics.
+**Init order**: configureObservability → createDbConnection/setDb → setStorageAdapter → registerCollections → loadPlugins → email/producer or worker. Shutdown reverses dependencies and closes observability last. Wrong order = runtime "not initialized" errors or missed boot diagnostics.
+
+Raw setters, registry mutation, and plugin dispatch live under the host-only
+`@nexpress/core/bootstrap` subpath and are absent from the root barrel. Normal
+application code uses `createBootstrap().ensureFor(...)` and domain subpaths.
 
 Rate limiting is initialized independently by the Next proxy entrypoint. Keep
 its contract pure under `@nexpress/core/rate-limit`; custom multi-node adapters
 must be injected from `src/proxy.ts`, not assumed to share app bootstrap state.
 
-Storage uses the same separation under `@nexpress/core/storage`. Built-in
-intent goes through `createStorageAdapter()`; custom intent goes through
-`configureStorageRuntime(config, adapter?)`. Framework call sites use the
-`np*StorageObject` operations so safe keys, metadata, and results are checked
-even for custom adapters. Do not bypass them with direct adapter calls.
+Storage uses the same separation under `@nexpress/core/storage`. That domain
+subpath exposes contracts, factories, reads, and object operations without
+singleton mutation. Built-in and custom intent are installed through the
+host-only `configureStorageRuntime(config, adapter?)`. Framework call sites
+use the `np*StorageObject` operations so safe keys, metadata, and results are
+checked even for custom adapters. Do not bypass them with direct adapter calls.
 
 Observability uses `@nexpress/core/observability`. Environment intent and both
 adapters are installed transactionally before startup warnings. Framework code

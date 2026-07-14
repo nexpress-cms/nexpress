@@ -6,7 +6,6 @@ import {
   NpValidationError,
   enqueueJob,
   findDocuments,
-  getDb,
   getJobsPauseState,
   getOptionalJobQueue,
   hashPassword,
@@ -27,6 +26,7 @@ import {
   type NpImportRunResumeState,
   type NpImportRunStatus,
 } from "@nexpress/core";
+import { getDb } from "@nexpress/core/db";
 import {
   npAuthContractLimits,
   npIsCanonicalAuthEmail,

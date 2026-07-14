@@ -1,7 +1,8 @@
 import { eq, getTableColumns } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 
-import { findDocuments, getCollectionRegistration, getDb } from "@nexpress/core";
+import { findDocuments, getCollectionRegistration } from "@nexpress/core";
+import { getDb } from "@nexpress/core/db";
 
 export interface DefaultThemeTagItem {
   id: string;

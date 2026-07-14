@@ -12,7 +12,8 @@
 
 import { eq } from "drizzle-orm";
 
-import { createDbConnection, hashPassword, npUsers } from "@nexpress/core";
+import { hashPassword, npUsers } from "@nexpress/core";
+import { createDbConnection } from "@nexpress/core/db";
 
 export const E2E_ADMIN = {
   email: "e2e-admin@example.com",

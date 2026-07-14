@@ -25,18 +25,19 @@ describe.skipIf(skipIfNoTestDb())("Phase 19 — plugin scheduled tasks", () => {
   });
   beforeEach(async () => {
     await truncateAll();
-    const { resetPlugins } = await import("@nexpress/core");
+    const { resetPlugins } = await import("@nexpress/core/bootstrap");
     resetPlugins();
   });
   afterAll(async () => {
-    const { resetPlugins } = await import("@nexpress/core");
+    const { resetPlugins } = await import("@nexpress/core/bootstrap");
     resetPlugins();
     await closeTestDb();
   });
 
   it("loadPlugins picks up scheduled[] entries and surfaces them via getRegisteredPluginSchedules", async () => {
     const { definePlugin } = await import("@nexpress/plugin-sdk");
-    const { loadPlugins, getRegisteredPluginSchedules } = await import("@nexpress/core");
+    const { getRegisteredPluginSchedules } = await import("@nexpress/core");
+    const { loadPlugins } = await import("@nexpress/core/bootstrap");
 
     let calls = 0;
     const plugin = definePlugin({
@@ -88,7 +89,8 @@ describe.skipIf(skipIfNoTestDb())("Phase 19 — plugin scheduled tasks", () => {
 
   it("runPluginScheduledTask dispatches to the registered handler with the plugin context", async () => {
     const { definePlugin } = await import("@nexpress/plugin-sdk");
-    const { loadPlugins, runPluginScheduledTask } = await import("@nexpress/core");
+    const { runPluginScheduledTask } = await import("@nexpress/core");
+    const { loadPlugins } = await import("@nexpress/core/bootstrap");
 
     let lastCtx: { pluginId?: string } | null = null;
     const plugin = definePlugin({

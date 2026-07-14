@@ -2,10 +2,10 @@ import {
   NpForbiddenError,
   NpValidationError,
   npMediaFolders,
-  runHook,
   uploadMedia,
   can,
 } from "@nexpress/core";
+import { runHook } from "@nexpress/core/bootstrap";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 

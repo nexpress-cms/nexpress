@@ -44,7 +44,8 @@ describe.skipIf(skipIfNoTestDb())("sites registry contracts", () => {
 
   it("fails closed when the reserved default-site flag is corrupted", async () => {
     const { eq } = await import("drizzle-orm");
-    const { getDb, getDefaultSite, npSites } = await import("@nexpress/core");
+    const { getDefaultSite, npSites } = await import("@nexpress/core");
+    const { getDb } = await import("@nexpress/core/db");
     const db = getDb();
     await db.update(npSites).set({ isDefault: false }).where(eq(npSites.id, "default"));
     try {
@@ -76,7 +77,8 @@ describe.skipIf(skipIfNoTestDb())("sites registry contracts", () => {
   it("doctor rejects a registry that is missing the reserved default site", async () => {
     await truncateAll();
     const { eq } = await import("drizzle-orm");
-    const { ensureDefaultSite, getDb, npSites } = await import("@nexpress/core");
+    const { ensureDefaultSite, npSites } = await import("@nexpress/core");
+    const { getDb } = await import("@nexpress/core/db");
     await getDb().delete(npSites).where(eq(npSites.id, "default"));
 
     try {
@@ -201,8 +203,9 @@ describe.skipIf(skipIfNoTestDb())("sites registry contracts", () => {
   });
 
   it("deleteSite cascades collection-owned revisions and media references", async () => {
-    const { createSite, deleteSite, getDb, npMedia, npMediaRefs, npRevisions } =
+    const { createSite, deleteSite, npMedia, npMediaRefs, npRevisions } =
       await import("@nexpress/core");
+    const { getDb } = await import("@nexpress/core/db");
     const { and, eq } = await import("drizzle-orm");
     const { postsTable } = await import("../../../packages/core/src/integration/fixtures.js");
     const db = getDb();
@@ -263,8 +266,9 @@ describe.skipIf(skipIfNoTestDb())("sites registry contracts", () => {
   });
 
   it("deleteSite rolls back every cascade step when one table delete fails", async () => {
-    const { createSite, deleteSite, getDb, getSiteById, getSiteUsageSummary, npSettings } =
+    const { createSite, deleteSite, getSiteById, getSiteUsageSummary, npSettings } =
       await import("@nexpress/core");
+    const { getDb } = await import("@nexpress/core/db");
     const { sql } = await import("drizzle-orm");
     const db = getDb();
     await createSite({ id: "rollback-site", name: "Rollback" });

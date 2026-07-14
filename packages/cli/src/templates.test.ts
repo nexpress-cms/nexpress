@@ -75,11 +75,9 @@ describe("getProjectFiles", () => {
     expect(worker).toMatch(/@nexpress\/app\/scripts\/worker/);
     expect(worker).toMatch(/createBootstrap/);
     expect(worker).toMatch(/ensureFor/);
-    expect(worker).toMatch(/intent: "worker"/);
-    expect(worker).toMatch(/configureEmailRuntimeFromEnv\(process\.env\)/);
     expect(worker).toMatch(/observabilityAdapters/);
-    expect(worker).toMatch(/shutdownObservability/);
-    expect(worker).toMatch(/runWorker\(\s*\{\s*ensureFor\s*\}\s*\)/);
+    expect(worker).toMatch(/shutdown/);
+    expect(worker).toMatch(/runWorker\(\s*\{\s*ensureFor,\s*shutdown\s*\}\s*\)/);
     // Must NOT re-import from @/lib/init-core — the whole point of
     // the createBootstrap inline is to avoid that broken chain.
     expect(worker).not.toMatch(/@\/lib\/init-core/);
@@ -448,10 +446,10 @@ describe("getProjectFiles", () => {
       const script = files[`scripts/${adapter}.ts`];
       expect(script).toMatch(new RegExp(`@nexpress/${adapter}`));
       expect(script).toMatch(/createBootstrap/);
-      expect(script).toMatch(/ensurePluginsLoaded/);
+      expect(script).toMatch(/ensureFor\("plugins"\)/);
       expect(script).toMatch(/observabilityAdapters/);
       expect(script).toMatch(/shutdownAndExit/);
-      expect(script).toMatch(/shutdownObservability/);
+      expect(script).toMatch(/await shutdown\(\)/);
       expect(script).not.toMatch(/@\/lib\/init-core/);
     }
   });
@@ -671,6 +669,6 @@ describe("getProjectFiles", () => {
     expect(files["scripts/seed-content.ts"]).toMatch(/seedAll/);
     expect(files["scripts/seed-content.ts"]).toMatch(/observabilityAdapters/);
     expect(files["scripts/seed-content.ts"]).toMatch(/shutdownAndExit/);
-    expect(files["scripts/seed-content.ts"]).toMatch(/shutdownObservability/);
+    expect(files["scripts/seed-content.ts"]).toMatch(/await shutdown\(\)/);
   });
 });

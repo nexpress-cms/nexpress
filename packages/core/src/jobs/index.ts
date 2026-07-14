@@ -1,6 +1,14 @@
 export * from "../jobs-contract/index.js";
 export * from "./handlers.js";
-export * from "./queue.js";
+export { enqueueJob, getJobQueue, getOptionalJobQueue } from "./queue.js";
+export type {
+  NpJobCountOptions,
+  NpJobListOptions,
+  NpJobListResult,
+  NpJobQueue,
+  NpPluginScheduleStats,
+  NpReconcileSchedulesResult,
+} from "./queue.js";
 export * from "./worker.js";
 export * from "./pg-boss-adapter.js";
 export { registerBuiltinHandlers } from "./builtin-handlers.js";

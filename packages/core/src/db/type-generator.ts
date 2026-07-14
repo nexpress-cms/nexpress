@@ -88,12 +88,12 @@ export function generateDocumentsModule(collections: NpCollectionConfig[]): stri
   const coreImports = [
     `import {`,
     `  findDocuments,`,
-    ...(anyHasMany ? [`  getDb,`] : []),
     `  getDocumentById,`,
     `  type NpAuthUser,`,
     `  type NpFindOptions,`,
     `  type NpFindResult,`,
     `} from "@nexpress/core";`,
+    ...(anyHasMany ? [`import { getDb } from "@nexpress/core/db";`] : []),
   ].join("\n");
   const fieldImports = renderFieldTypeImport(collections).trim();
 

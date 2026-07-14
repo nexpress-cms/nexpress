@@ -180,7 +180,7 @@ describe.skipIf(skipIfNoTestDb())("purge member content (Phase 9.7l)", () => {
     );
     const { ensureFor } = await import("@/lib/init-core");
     await ensureFor("read");
-    // Re-register after ensureCoreServices ran (it would have
+    // Re-register after the read bootstrap ran (it would have
     // overwritten the test fixture with the bootstrap default).
     registerCollection(
       "discussions",

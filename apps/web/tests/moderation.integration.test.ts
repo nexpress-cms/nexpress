@@ -516,7 +516,8 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
    * collection (forum plugin's default slug).
    */
   it("file report accepts a `reply` target by looking up the comment row", async () => {
-    const { fileReport, getDb, npComments } = await import("@nexpress/core");
+    const { fileReport, npComments } = await import("@nexpress/core");
+    const { getDb } = await import("@nexpress/core/db");
     const reporter = await seedActiveMember(
       "reply-reporter",
       "reply-r@example.com",

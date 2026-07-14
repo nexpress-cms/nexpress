@@ -33,6 +33,9 @@ export default defineConfig({
     // Pure, client-safe users, members, JWT claims, sessions, and API wire contracts.
     "auth-contract": "src/auth-contract/index.ts",
     community: "src/community/index.ts",
+    // Framework-host singleton wiring. Application code should use
+    // @nexpress/next createBootstrap rather than importing this directly.
+    bootstrap: "src/bootstrap/index.ts",
     db: "src/db/index.ts",
     // Server-side email message, template, adapter, and SMTP runtime contract.
     email: "src/email/index.ts",
@@ -59,7 +62,7 @@ export default defineConfig({
     // Server-side site registry, execution context, memberships, and authorization.
     sites: "src/sites/index.ts",
     // Server-side storage config, adapter, object I/O, registry, and lifecycle contract.
-    storage: "src/storage/index.ts",
+    storage: "src/storage/public.ts",
     // Pure, client-safe site identity and framework settings contracts.
     settings: "src/settings/index.ts",
     // Pure, client-safe theme token inventory and validation contract.
