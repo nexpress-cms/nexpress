@@ -301,8 +301,9 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
   // would ever mark it `error`). The fix wraps the upload call
   // in try/catch and hard-deletes the row on failure.
   it("storage failure rolls back the row so quota stays correct (#138)", async () => {
-    const core = await import("@nexpress/core");
-    const original = core.getStorageAdapter();
+    const storage = await import("@nexpress/core/storage");
+    const host = await import("@nexpress/core/bootstrap");
+    const original = storage.getStorageAdapter();
 
     // Wrap the real adapter so reads still work (the test infra
     // never reads back the bytes for these uploads), but uploads
@@ -315,7 +316,7 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
       delete: original.delete.bind(original),
       exists: original.exists.bind(original),
     };
-    core.setStorageAdapter(failingAdapter);
+    host.setStorageAdapter(failingAdapter);
 
     try {
       await setQuota({ perDay: null, total: 2 });
@@ -330,7 +331,7 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
       // Restore the working adapter and confirm the member can
       // still upload TWO times — i.e. the failed attempt did NOT
       // eat their quota allowance.
-      core.setStorageAdapter(original);
+      host.setStorageAdapter(original);
 
       const ok1 = await uploadPOST(uploadRequest(member));
       expect(ok1.status).toBe(202);
@@ -352,7 +353,7 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
         )) as Array<unknown>;
       expect(live).toHaveLength(2);
     } finally {
-      core.setStorageAdapter(original);
+      host.setStorageAdapter(original);
     }
   });
 });

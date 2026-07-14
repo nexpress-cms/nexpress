@@ -4,12 +4,12 @@
 
 import {
   findDocuments,
-  getDb,
   getDocumentById,
   type NpAuthUser,
   type NpFindOptions,
   type NpFindResult,
 } from "@nexpress/core";
+import { getDb } from "@nexpress/core/db";
 import type { NpBlockContent, NpRichTextContent } from "@nexpress/core/fields";
 import { inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

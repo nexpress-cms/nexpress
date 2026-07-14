@@ -388,7 +388,6 @@ function translationCliScriptTemplate(adapter: "gettext" | "xliff"): string {
   return (
     `import "./_load-env.js";\n\n` +
     `import type { NpAuthUser } from "@nexpress/core";\n` +
-    `import { shutdownObservability } from "@nexpress/core/observability";\n` +
     `import { runCli } from "${packageName}";\n` +
     `import { createBootstrap } from "@nexpress/next";\n\n` +
     `import nexpressConfig from "../src/nexpress.config.js";\n` +
@@ -397,21 +396,20 @@ function translationCliScriptTemplate(adapter: "gettext" | "xliff"): string {
     `async function shutdownAndExit(code: number): Promise<never> {\n` +
     `  let exitCode = code;\n` +
     `  try {\n` +
-    `    await shutdownObservability();\n` +
+    `    await shutdown();\n` +
     `  } catch (error) {\n` +
-    `    process.stderr.write(\`${adapter}: observability shutdown failed: \${String(error)}\\n\`);\n` +
+    `    process.stderr.write(\`${adapter}: bootstrap shutdown failed: \${String(error)}\\n\`);\n` +
     `    exitCode = 1;\n` +
     `  }\n` +
     `  process.exit(exitCode);\n` +
     `}\n\n` +
-    `const { ensureCoreServices, ensurePluginsLoaded } = createBootstrap({\n` +
+    `const { ensureFor, shutdown } = createBootstrap({\n` +
     `  config: nexpressConfig,\n` +
     `  generatedSchema: generatedSchema as unknown as Record<string, unknown>,\n` +
     `  ...observabilityAdapters,\n` +
     `});\n\n` +
     `async function main(): Promise<void> {\n` +
-    `  ensureCoreServices();\n` +
-    `  await ensurePluginsLoaded();\n\n` +
+    `  await ensureFor("plugins");\n\n` +
     `  const user: NpAuthUser = {\n` +
     `    id: "00000000-0000-0000-0000-000000000000",\n` +
     `    email: "${adapter}-import@local",\n` +
@@ -443,36 +441,28 @@ function workerScriptTemplate(): string {
   // tsconfig.paths to `.js` files inside `node_modules`. So
   // `tsx scripts/worker.ts` would hit `ERR_MODULE_NOT_FOUND:
   // Cannot find package '@/lib'` the moment the chunk is loaded.
-  // Direct `createBootstrap` sidesteps the chain — `ensureFor`
-  // here mirrors what `@nexpress/app/lib/init-core`'s `ensureFor`
-  // does for the dedicated "worker" intent.
+  // Direct `createBootstrap` sidesteps the chain while preserving
+  // the same core "worker" intent contract. App-local route and
+  // first-run registration are not needed in the dedicated worker.
   return (
     `import "./_load-env.js";\n\n` +
     `import { runWorker } from "@nexpress/app/scripts/worker";\n` +
-    `import { configureEmailRuntimeFromEnv } from "@nexpress/core/email";\n` +
-    `import { shutdownObservability } from "@nexpress/core/observability";\n` +
     `import { createBootstrap } from "@nexpress/next";\n\n` +
     `import nexpressConfig from "../src/nexpress.config.js";\n` +
     `import * as generatedSchema from "../src/db/generated/collections.js";\n\n` +
     `import { observabilityAdapters } from "../src/lib/observability.js";\n\n` +
-    `const { ensureCoreServices, ensurePluginsLoaded } = createBootstrap({\n` +
+    `const { ensureFor, shutdown } = createBootstrap({\n` +
     `  config: nexpressConfig,\n` +
     `  generatedSchema: generatedSchema as unknown as Record<string, unknown>,\n` +
     `  ...observabilityAdapters,\n` +
     `});\n\n` +
-    `async function ensureFor(intent: "worker"): Promise<void> {\n` +
-    `  ensureCoreServices();\n` +
-    `  await ensurePluginsLoaded();\n` +
-    `  configureEmailRuntimeFromEnv(process.env);\n` +
-    `  void intent;\n` +
-    `}\n\n` +
     `try {\n` +
-    `  await runWorker({ ensureFor });\n` +
+    `  await runWorker({ ensureFor, shutdown });\n` +
     `} catch (error) {\n` +
     `  try {\n` +
-    `    await shutdownObservability();\n` +
+    `    await shutdown();\n` +
     `  } catch (shutdownError) {\n` +
-    `    throw new AggregateError([error, shutdownError], "Worker startup and observability shutdown both failed.", { cause: shutdownError });\n` +
+    `    throw new AggregateError([error, shutdownError], "Worker startup and bootstrap shutdown both failed.", { cause: shutdownError });\n` +
     `  }\n` +
     `  throw error;\n` +
     `}\n`
@@ -499,14 +489,12 @@ function seedContentScriptTemplate(): string {
     `import "./_load-env.js";\n\n` +
     `import { eq } from "drizzle-orm";\n\n` +
     `import {\n` +
-    `  createDbConnection,\n` +
     `  getActiveTheme,\n` +
     `  getSiteById,\n` +
     `  npUsers,\n` +
     `  withCurrentSite,\n` +
     `} from "@nexpress/core";\n` +
     `import type { NpAuthUser } from "@nexpress/core";\n` +
-    `import { shutdownObservability } from "@nexpress/core/observability";\n` +
     `import { createBootstrap } from "@nexpress/next";\n` +
     `import { seedAll } from "@nexpress/app/lib/seed-content";\n\n` +
     `import nexpressConfig from "../src/nexpress.config.js";\n` +
@@ -520,20 +508,20 @@ function seedContentScriptTemplate(): string {
     `async function shutdownAndExit(code: number): Promise<never> {\n` +
     `  let exitCode = code;\n` +
     `  try {\n` +
-    `    await shutdownObservability();\n` +
+    `    await shutdown();\n` +
     `  } catch (error) {\n` +
-    `    console.error("Observability shutdown failed", error);\n` +
+    `    console.error("Bootstrap shutdown failed", error);\n` +
     `    exitCode = 1;\n` +
     `  }\n` +
     `  process.exit(exitCode);\n` +
     `}\n\n` +
-    `const { ensureCoreServices, ensurePluginsLoaded } = createBootstrap({\n` +
+    `const { getDb, ensureFor, shutdown } = createBootstrap({\n` +
     `  config: nexpressConfig,\n` +
     `  generatedSchema: generatedSchema as unknown as Record<string, unknown>,\n` +
     `  ...observabilityAdapters,\n` +
     `});\n\n` +
     `async function findFirstAdmin(): Promise<NpAuthUser | null> {\n` +
-    `  const db = createDbConnection({ connectionString: databaseUrl as string });\n` +
+    `  const db = getDb();\n` +
     `  const rows = await db\n` +
     `    .select({\n` +
     `      id: npUsers.id,\n` +
@@ -561,8 +549,7 @@ function seedContentScriptTemplate(): string {
     `  return arg.slice("--site=".length).trim() || "default";\n` +
     `}\n\n` +
     `async function main(): Promise<void> {\n` +
-    `  ensureCoreServices();\n` +
-    `  await ensurePluginsLoaded();\n\n` +
+    `  await ensureFor("plugins");\n\n` +
     `  const siteId = parseSiteFlag(process.argv);\n` +
     `  if (siteId !== "default") {\n` +
     `    const target = await getSiteById(siteId);\n` +

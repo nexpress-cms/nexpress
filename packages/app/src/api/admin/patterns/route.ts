@@ -4,10 +4,10 @@ import {
   NpValidationError,
   can,
   getCurrentSiteId,
-  getDb,
   getSetting,
   npAnalyzeSettingValue,
 } from "@nexpress/core";
+import { getDb } from "@nexpress/core/db";
 import { npSettings } from "@nexpress/core/db";
 import { npValidateBlockContent, type NpBlockContent } from "@nexpress/core/fields";
 import {

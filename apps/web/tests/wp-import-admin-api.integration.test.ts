@@ -24,12 +24,12 @@ import {
   npImportRuns,
   npUsers,
   recordHeartbeat,
-  setJobQueue,
   startWorker,
   stopWorker,
   type NpAuthUser,
   type NpJobType,
 } from "@nexpress/core";
+import { setJobQueue } from "@nexpress/core/bootstrap";
 import { eq } from "drizzle-orm";
 import { NextRequest } from "next/server";
 

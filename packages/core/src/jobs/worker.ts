@@ -17,7 +17,7 @@ function clearQueueIfOwned(adapter: PgBossAdapter): void {
   if (getOptionalJobQueue() === adapter) setJobQueue(null);
 }
 
-function installShutdownSignalHandlers(): void {
+function installShutdownSignalHandlers(onShutdown?: () => Promise<void>): void {
   if (signalHandlersInstalled) return;
   signalHandlersInstalled = true;
 
@@ -38,11 +38,12 @@ function installShutdownSignalHandlers(): void {
           });
         } finally {
           try {
-            await shutdownObservability();
+            if (onShutdown) await onShutdown();
+            else await shutdownObservability();
           } catch (error) {
             // The configured logger has already been detached; use the
             // process console as the final non-recursive failure sink.
-            console.error("[nexpress] observability shutdown failed:", error);
+            console.error("[nexpress] worker process shutdown failed:", error);
           }
           process.exit(0);
         }
@@ -74,6 +75,11 @@ export async function startWorker(
      * sequencing (custom supervisors, embedded test harnesses).
      */
     installSignalHandlers?: boolean;
+    /**
+     * Framework-host cleanup invoked after the worker drains. When omitted,
+     * the legacy observability-only cleanup remains in place.
+     */
+    onShutdown?: () => Promise<void>;
   },
 ): Promise<void> {
   if (workerAdapter) {
@@ -134,7 +140,7 @@ export async function startWorker(
     // the catch below has already unwound; we don't want to arm
     // shutdown handlers that would then fire against null state.
     if (options?.installSignalHandlers !== false) {
-      installShutdownSignalHandlers();
+      installShutdownSignalHandlers(options?.onShutdown);
     }
   } catch (err) {
     // Best-effort cleanup of whatever did succeed. Each step is

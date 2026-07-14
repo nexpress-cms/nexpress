@@ -1,18 +1,18 @@
 import "./_load-env.js";
 
 import { runWorker } from "@nexpress/app/scripts/worker";
-import { shutdownObservability } from "@nexpress/core/observability";
 import { ensureFor } from "../src/lib/init-core.js";
+import { shutdownBootstrap } from "../src/lib/bootstrap.js";
 
 try {
-  await runWorker({ ensureFor });
+  await runWorker({ ensureFor, shutdown: shutdownBootstrap });
 } catch (error) {
   try {
-    await shutdownObservability();
+    await shutdownBootstrap();
   } catch (shutdownError) {
     throw new AggregateError(
       [error, shutdownError],
-      "Worker startup and observability shutdown both failed.",
+      "Worker startup and bootstrap shutdown both failed.",
       { cause: shutdownError },
     );
   }

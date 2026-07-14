@@ -5,16 +5,10 @@ import "./_load-env.js";
 
 import { eq } from "drizzle-orm";
 
-import {
-  createDbConnection,
-  getActiveTheme,
-  getSiteById,
-  npUsers,
-  withCurrentSite,
-} from "@nexpress/core";
+import { getActiveTheme, getSiteById, npUsers, withCurrentSite } from "@nexpress/core";
 import type { NpAuthUser } from "@nexpress/core";
-import { shutdownObservability } from "@nexpress/core/observability";
 
+import { getDb, shutdownBootstrap } from "../src/lib/bootstrap.js";
 import { ensureFor } from "../src/lib/init-core.js";
 import { seedAll } from "../src/lib/seed-content.js";
 
@@ -46,16 +40,16 @@ if (!databaseUrl) {
 async function shutdownAndExit(code: number): Promise<never> {
   let exitCode = code;
   try {
-    await shutdownObservability();
+    await shutdownBootstrap();
   } catch (error) {
-    console.error("Observability shutdown failed", error);
+    console.error("Bootstrap shutdown failed", error);
     exitCode = 1;
   }
   process.exit(exitCode);
 }
 
 async function findFirstAdmin(): Promise<NpAuthUser | null> {
-  const db = createDbConnection({ connectionString: databaseUrl as string });
+  const db = getDb();
   const rows = await db
     .select({
       id: npUsers.id,
@@ -85,7 +79,6 @@ function parseSiteFlag(argv: string[]): string {
 }
 
 async function main(): Promise<void> {
-  await ensureFor("read");
   await ensureFor("plugins");
 
   const siteId = parseSiteFlag(process.argv);

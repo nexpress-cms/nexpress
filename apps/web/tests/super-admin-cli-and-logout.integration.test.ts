@@ -41,7 +41,8 @@ describe.skipIf(skipIfNoTestDb())(
       //   1. SELECT user by email
       //   2. If isSuperAdmin already matches target → no-op
       //   3. UPDATE is_super_admin = true
-      const { getDb, isSuperAdmin, npUsers } = await import("@nexpress/core");
+      const { isSuperAdmin, npUsers } = await import("@nexpress/core");
+      const { getDb } = await import("@nexpress/core/db");
       const { eq } = await import("drizzle-orm");
       const db = getDb();
       const [row] = await db
@@ -72,9 +73,8 @@ describe.skipIf(skipIfNoTestDb())(
 
     it("CLI-equivalent demote: flips is_super_admin back to false", async () => {
       const user = await seedUser({ role: "viewer" });
-      const { getDb, setSuperAdmin, isSuperAdmin, npUsers } = await import(
-        "@nexpress/core"
-      );
+      const { setSuperAdmin, isSuperAdmin, npUsers } = await import("@nexpress/core");
+      const { getDb } = await import("@nexpress/core/db");
       await setSuperAdmin(user.userId, true);
       // CLI demote path: UPDATE is_super_admin = false
       const { eq } = await import("drizzle-orm");

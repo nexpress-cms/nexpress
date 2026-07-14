@@ -1,11 +1,11 @@
 import {
-  getDb,
   getI18nConfig,
   getMemberFromTokenPayload,
   isTokenVerificationError,
   verifyMemberToken,
   type NpMemberAuthRow,
 } from "@nexpress/core";
+import { getDb } from "@nexpress/core/db";
 import type { NpResolvedNavItem } from "@nexpress/core/navigation";
 import { unreadNotificationCount } from "@nexpress/core/community";
 import { getCachedNavigation, getCachedSite, resolveAvailableLocales } from "@nexpress/next";

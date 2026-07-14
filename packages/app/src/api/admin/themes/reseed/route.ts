@@ -5,13 +5,13 @@ import {
   NpValidationError,
   can,
   getCurrentSiteId,
-  getDb,
   getThemeById,
   setActiveThemeId,
   withCurrentSite,
   withDeferredPostCommit,
   type NpTransaction,
 } from "@nexpress/core";
+import { getDb } from "@nexpress/core/db";
 import { bustThemeCache, readJsonBody } from "@nexpress/next";
 import { sql } from "drizzle-orm";
 import type { NextRequest } from "next/server";

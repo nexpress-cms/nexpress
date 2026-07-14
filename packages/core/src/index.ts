@@ -293,8 +293,6 @@ export {
 
 export { collectionConfigSchema, npConfigSchema } from "./config/validation.js";
 
-export { createDbConnection } from "./db/connection.js";
-export { setDb, getDb } from "./db/runtime.js";
 export * from "./db/schema/index.js";
 export { generateDrizzleSchema } from "./db/generator.js";
 export { generateTypeScript, generateDocumentsModule } from "./db/type-generator.js";
@@ -409,7 +407,6 @@ export {
   getJobHandler,
   getAllJobHandlers,
   getKnownJobTypes,
-  setJobQueue,
   getJobQueue,
   getOptionalJobQueue,
   enqueueJob,
@@ -465,7 +462,7 @@ export type {
   NpRecentJobFailuresResult,
 } from "./jobs/index.js";
 
-export * from "./storage/index.js";
+export * from "./storage/public.js";
 
 export type {
   NpEmailAdapter,
@@ -703,9 +700,6 @@ export type { NpStringOverrideRow } from "./i18n/string-overrides.js";
 export { configureBuiltinJobContext } from "./jobs/builtin-handlers.js";
 
 export {
-  loadPlugins,
-  runHook,
-  runHookAndCollect,
   getPluginRoutes,
   getPluginPageRoutes,
   getPluginRegistration,
@@ -723,8 +717,6 @@ export {
   schedulePluginTask,
   getRegisteredPluginSchedules,
   runPluginScheduledTask,
-  teardownPlugins,
-  resetPlugins,
   isPluginEnabled,
   invalidatePluginEnabled,
   listPluginStates,

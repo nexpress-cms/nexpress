@@ -243,9 +243,9 @@ promote before 1.0. Each promotion is a contract decision.
   types added since launch have stretched it. Reconcile or version.
 - Theme token names — pick a token system (Style Dictionary? open-ui?) and
   commit to its key shapes.
-- Bootstrap singletons (`setDb`, `getDb`, …) — move to
-  `@nexpress/core/bootstrap` subpath or mark `@internal`. They're public
-  today only because `@nexpress/next` needs them.
+- Bootstrap singleton mutation (`setDb`, `setStorageAdapter`, `setJobQueue`, …)
+  — moved to the experimental `@nexpress/core/bootstrap` host boundary on
+  2026-07-14. Normal domain subpaths retain reads and operations only.
 
 ### 8. Multi-tenant features (deferred — partial 1.0)
 

@@ -178,7 +178,8 @@ describe.skipIf(skipIfNoTestDb())("site memberships (Phase 15.5)", () => {
   it("memberships cascade-delete when the user is deleted", async () => {
     const user = await seedUser({ role: "viewer" });
     const { createSite, grantSiteMembership, getMembership } = await import("@nexpress/core");
-    const { getDb, npUsers } = await import("@nexpress/core");
+    const { npUsers } = await import("@nexpress/core");
+    const { getDb } = await import("@nexpress/core/db");
     await createSite({ id: "cascade", name: "Cascade" });
     await grantSiteMembership("cascade", user.userId, "editor");
     const { eq } = await import("drizzle-orm");
@@ -188,7 +189,8 @@ describe.skipIf(skipIfNoTestDb())("site memberships (Phase 15.5)", () => {
 
   it("doctor reports membership rows that reference a missing site", async () => {
     const user = await seedUser({ role: "viewer" });
-    const { getDb, npSiteMemberships } = await import("@nexpress/core");
+    const { npSiteMemberships } = await import("@nexpress/core");
+    const { getDb } = await import("@nexpress/core/db");
     await getDb().insert(npSiteMemberships).values({
       siteId: "orphan-site",
       userId: user.userId,

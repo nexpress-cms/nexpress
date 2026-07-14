@@ -71,8 +71,10 @@ createBootstrap({
 Set `NP_STORAGE_ADAPTER=custom` when `storageFromEnv()` supplies the project
 config. A built-in runtime intent rejects an injected adapter, and custom mode
 rejects the reserved `local` and `s3` kinds. `setStorageAdapter()` remains
-available for lower-level hosts; `configureStorageRuntime()` is the preferred
-bootstrap boundary.
+available only from the experimental `@nexpress/core/bootstrap` boundary for
+lower-level hosts. Normal applications inject the adapter through
+`createBootstrap()`; `@nexpress/core/storage` exposes contracts and operations,
+not singleton mutation.
 
 ## Object contract
 

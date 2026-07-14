@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Make sure core services + the queue are wired before we tear down
-    // the registry — the reload below ends with a fresh ensurePluginsLoaded()
+    // the registry — the reload below ends with a fresh plugin-intent runtime
     // that needs the DB + storage adapter ready. Use `"write"` so the job
     // queue producer is guaranteed up; the schedule reconcile inside
     // `reloadPlugins()` needs `getOptionalJobQueue()` to return a real

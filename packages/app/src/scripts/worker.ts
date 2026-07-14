@@ -15,8 +15,9 @@ import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
  *   import "@nexpress/app/scripts/_load-env";
  *   import { runWorker } from "@nexpress/app/scripts/worker";
  *   import { ensureFor } from "../src/lib/init-core";
+ *   import { shutdownBootstrap } from "../src/lib/bootstrap";
  *
- *   await runWorker({ ensureFor });
+ *   await runWorker({ ensureFor, shutdown: shutdownBootstrap });
  *
  * Resolves the DATABASE_URL from env (loaded by `_load-env`),
  * primes the built-in job context (so the worker can rehydrate
@@ -26,9 +27,10 @@ import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
  */
 export interface RunWorkerOptions {
   ensureFor: (intent: "worker") => Promise<void>;
+  shutdown: () => Promise<void>;
 }
 
-export async function runWorker({ ensureFor }: RunWorkerOptions): Promise<void> {
+export async function runWorker({ ensureFor, shutdown }: RunWorkerOptions): Promise<void> {
   if (!npRequireJobsEnabledFlag(process.env.NP_ENABLE_JOBS)) {
     throw new Error("NP_ENABLE_JOBS must be 1 or true when starting the worker");
   }
@@ -101,7 +103,7 @@ export async function runWorker({ ensureFor }: RunWorkerOptions): Promise<void> 
   // (Phase 20.4 — see #280) that flip the heartbeat row to
   // `stopped` and `process.exit(0)` synchronously, so the row
   // doesn't drift into `unhealthy` on graceful shutdown.
-  await startWorker(databaseUrl);
+  await startWorker(databaseUrl, { onShutdown: shutdown });
 
   console.log("[nexpress] worker started — press Ctrl+C to stop");
 }

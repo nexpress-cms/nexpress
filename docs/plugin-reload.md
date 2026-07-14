@@ -7,7 +7,7 @@ don't trust it for changes it can't actually pick up.
 ## The endpoint
 
 `POST /api/admin/plugins/reload` (admin.manage). Calls
-`Bootstrap.reloadPlugins()` exposed by `@nexpress/next`.
+`createBootstrap().reloadPlugins()` from `@nexpress/next`.
 
 The response shape:
 

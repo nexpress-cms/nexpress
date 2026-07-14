@@ -30,7 +30,7 @@ describe.skipIf(skipIfNoTestDb())("site SEO metadata + settings (Phase 10.3)", (
     registerTestCollections();
     // `getSiteSeoSettings` calls `getDb()`, which fails until
     // `setDb` runs. The other tests in the suite trigger that
-    // via `seedUser` → `ensureCoreServices`; tests below that
+    // via `seedUser` → the read bootstrap; tests below that
     // don't seed a user (the empty-defaults / canonical /
     // article cases) need an explicit kick.
     const { ensureFor } = await import("@/lib/init-core");
@@ -142,7 +142,8 @@ describe.skipIf(skipIfNoTestDb())("site SEO metadata + settings (Phase 10.3)", (
       },
     });
 
-    const { getDb, npSettings, npSites } = await import("@nexpress/core");
+    const { npSettings, npSites } = await import("@nexpress/core");
+    const { getDb } = await import("@nexpress/core/db");
     const db = getDb();
     const [site] = await db.select().from(npSites);
     expect(site).toMatchObject({
@@ -185,7 +186,8 @@ describe.skipIf(skipIfNoTestDb())("site SEO metadata + settings (Phase 10.3)", (
 
   it("fails closed when persisted SEO settings violate the registry", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { getDb, npSettings } = await import("@nexpress/core");
+    const { npSettings } = await import("@nexpress/core");
+    const { getDb } = await import("@nexpress/core/db");
     await getDb()
       .insert(npSettings)
       .values({
@@ -202,7 +204,8 @@ describe.skipIf(skipIfNoTestDb())("site SEO metadata + settings (Phase 10.3)", (
 
   it("does not silently canonicalize persisted SEO settings", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { getDb, npSettings } = await import("@nexpress/core");
+    const { npSettings } = await import("@nexpress/core");
+    const { getDb } = await import("@nexpress/core/db");
     await getDb()
       .insert(npSettings)
       .values({

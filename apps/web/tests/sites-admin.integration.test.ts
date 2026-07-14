@@ -248,7 +248,8 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
    */
   it("GET /api/admin/sites/[id]/usage returns row counts per site-scoped table", async () => {
     const admin = await seedSuperAdmin();
-    const { createSite, getDb, npSettings, npSlugHistory } = await import("@nexpress/core");
+    const { createSite, npSettings, npSlugHistory } = await import("@nexpress/core");
+    const { getDb } = await import("@nexpress/core/db");
     const created = await createSite({
       id: "usage-target",
       name: "Usage target",
@@ -300,7 +301,6 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     const admin = await seedSuperAdmin();
     const {
       createSite,
-      getDb,
       npSettings,
       npNotifications,
       npAuditEvents,
@@ -308,6 +308,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
       hashPassword,
       npMembers,
     } = await import("@nexpress/core");
+    const { getDb } = await import("@nexpress/core/db");
     const created = await createSite({
       id: "usage-220",
       name: "Usage 220",
@@ -381,7 +382,6 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     const admin = await seedSuperAdmin();
     const {
       createSite,
-      getDb,
       npSettings,
       npNotifications,
       npAuditEvents,
@@ -390,6 +390,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
       npMembers,
       getSiteById,
     } = await import("@nexpress/core");
+    const { getDb } = await import("@nexpress/core/db");
     const created = await createSite({
       id: "cascade-220",
       name: "Cascade 220",
@@ -467,7 +468,8 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
 
   it("DELETE refuses when site has attached rows and no cascade flag", async () => {
     const admin = await seedSuperAdmin();
-    const { createSite, getDb, npSettings } = await import("@nexpress/core");
+    const { createSite, npSettings } = await import("@nexpress/core");
+    const { getDb } = await import("@nexpress/core/db");
     const created = await createSite({
       id: "no-cascade",
       name: "No cascade",
@@ -510,8 +512,8 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
 
   it("DELETE ?cascade=true removes attached rows and the site", async () => {
     const admin = await seedSuperAdmin();
-    const { createSite, getDb, npSettings, npNavigation, getSiteById } =
-      await import("@nexpress/core");
+    const { createSite, npSettings, npNavigation, getSiteById } = await import("@nexpress/core");
+    const { getDb } = await import("@nexpress/core/db");
     const created = await createSite({
       id: "cascade-target",
       name: "Cascade target",

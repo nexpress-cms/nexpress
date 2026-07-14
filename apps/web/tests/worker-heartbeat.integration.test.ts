@@ -78,7 +78,7 @@ describe.skipIf(skipIfNoTestDb())("Phase 19 — worker heartbeat", () => {
     await recordHeartbeat("worker-fresh");
     await recordHeartbeat("worker-old");
     // Force `worker-old` to look ancient.
-    const db = (await import("@nexpress/core")).getDb();
+    const db = (await import("@nexpress/core/db")).getDb();
     const { npWorkerHeartbeats } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     await db

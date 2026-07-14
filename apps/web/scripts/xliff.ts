@@ -1,16 +1,16 @@
 import { type NpAuthUser } from "@nexpress/core";
-import { shutdownObservability } from "@nexpress/core/observability";
 import { runCli } from "@nexpress/xliff";
 
 import "./_load-env.js";
+import { shutdownBootstrap } from "../src/lib/bootstrap.js";
 import { ensureFor } from "../src/lib/init-core.js";
 
 async function shutdownAndExit(code: number): Promise<never> {
   let exitCode = code;
   try {
-    await shutdownObservability();
+    await shutdownBootstrap();
   } catch (error) {
-    process.stderr.write(`xliff: observability shutdown failed: ${String(error)}\n`);
+    process.stderr.write(`xliff: bootstrap shutdown failed: ${String(error)}\n`);
     exitCode = 1;
   }
   process.exit(exitCode);
@@ -30,7 +30,6 @@ async function shutdownAndExit(code: number): Promise<never> {
  * an interactive admin edit.
  */
 async function main(): Promise<void> {
-  await ensureFor("read");
   await ensureFor("plugins");
 
   const importerUser: NpAuthUser = {

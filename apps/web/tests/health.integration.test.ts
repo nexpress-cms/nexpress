@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { setJobQueue } from "@nexpress/core";
+import { setJobQueue } from "@nexpress/core/bootstrap";
 
 import { GET } from "@/app/api/health/route";
 import { GET as readyGET } from "@/app/api/health/ready/route";

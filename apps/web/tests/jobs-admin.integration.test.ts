@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { setJobQueue } from "@nexpress/core/bootstrap";
 
 import {
   buildRequest,
@@ -29,7 +30,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
     await truncateAll();
   });
   afterEach(async () => {
-    const { setJobQueue } = await import("@nexpress/core");
     setJobQueue(null);
   });
   afterAll(async () => {
@@ -125,7 +125,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("GET /api/admin/jobs lists jobs from the configured queue", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { setJobQueue } = await import("@nexpress/core");
     const stub = installStubQueue(makeJobs());
     setJobQueue(stub);
 
@@ -144,7 +143,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("GET ?state=failed filters to failed jobs", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { setJobQueue } = await import("@nexpress/core");
     setJobQueue(installStubQueue(makeJobs()));
 
     const { GET } = await import("@/app/api/admin/jobs/route");
@@ -162,7 +160,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("GET rejects unknown filters instead of silently widening the query", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { setJobQueue } = await import("@nexpress/core");
     setJobQueue(installStubQueue(makeJobs()));
 
     const { GET } = await import("@/app/api/admin/jobs/route");
@@ -175,7 +172,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("GET reports adapter response corruption as an internal contract error", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { setJobQueue } = await import("@nexpress/core");
     const [job] = makeJobs();
     if (!job) throw new Error("Expected a job fixture");
     setJobQueue({
@@ -195,7 +191,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("GET forbids non-admin roles", async () => {
     const editor = await seedUser({ role: "editor" });
-    const { setJobQueue } = await import("@nexpress/core");
     setJobQueue(installStubQueue(makeJobs()));
 
     const { GET } = await import("@/app/api/admin/jobs/route");
@@ -207,7 +202,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("GET /api/admin/jobs/health initializes and reads queue diagnostics", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { setJobQueue } = await import("@nexpress/core");
     setJobQueue({
       ...installStubQueue(makeJobs()),
       countByState: async () => ({
@@ -235,7 +229,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("POST /api/admin/jobs/[id]/retry re-enqueues a failed job", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { setJobQueue } = await import("@nexpress/core");
     setJobQueue(installStubQueue(makeJobs()));
 
     const { POST } = await import("@/app/api/admin/jobs/[id]/retry/route");
@@ -252,7 +245,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("POST retry forbids non-admins", async () => {
     const editor = await seedUser({ role: "editor" });
-    const { setJobQueue } = await import("@nexpress/core");
     setJobQueue(installStubQueue(makeJobs()));
 
     const { POST } = await import("@/app/api/admin/jobs/[id]/retry/route");
@@ -269,7 +261,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
   it("POST /api/admin/jobs/[id]/cancel cancels a pending job", async () => {
     const admin = await seedUser({ role: "admin" });
     const jobs = makeJobs();
-    const { setJobQueue } = await import("@nexpress/core");
     setJobQueue(installStubQueue(jobs));
 
     const { POST } = await import("@/app/api/admin/jobs/[id]/cancel/route");
@@ -286,7 +277,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("POST cancel surfaces a failure when the job is already terminal", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { setJobQueue } = await import("@nexpress/core");
     setJobQueue(installStubQueue(makeJobs()));
 
     const { POST } = await import("@/app/api/admin/jobs/[id]/cancel/route");
@@ -327,7 +317,7 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("GET /api/admin/jobs/schedules surfaces registered handlers in the response", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { setJobQueue, registerJobHandler } = await import("@nexpress/core");
+    const { registerJobHandler } = await import("@nexpress/core");
     setJobQueue(null);
     registerJobHandler("test:probe", async () => {});
 
@@ -340,7 +330,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("GET /api/admin/jobs/schedules lists schedules from the configured queue", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { setJobQueue } = await import("@nexpress/core");
     const queue = {
       enqueue: async () => "stub",
       start: async () => {},
@@ -393,7 +382,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("GET /api/admin/jobs forwards `?since=...` to the queue's listJobs", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { setJobQueue } = await import("@nexpress/core");
     let receivedSince: Date | undefined;
     const queue = {
       enqueue: async () => "stub",
@@ -419,7 +407,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("GET /api/admin/jobs rejects an invalid `?since=...` instead of dropping the filter", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { setJobQueue } = await import("@nexpress/core");
     let receivedSince: Date | undefined;
     const queue = {
       enqueue: async () => "stub",
@@ -447,7 +434,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
    */
   it("POST /api/admin/jobs/retry-all retries every failed job and reports counts", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { setJobQueue } = await import("@nexpress/core");
     const jobs = makeJobs();
     // Add a couple more failed rows so the bulk path covers
     // the loop, not just a single failure.
@@ -498,7 +484,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("POST /api/admin/jobs/retry-all forbids non-admin", async () => {
     const editor = await seedUser({ role: "editor" });
-    const { setJobQueue } = await import("@nexpress/core");
     setJobQueue(installStubQueue(makeJobs()));
 
     const { POST } = await import("@/app/api/admin/jobs/retry-all/route");
@@ -514,7 +499,7 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("POST /api/admin/jobs/enqueue runs a registered handler", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { setJobQueue, registerJobHandler } = await import("@nexpress/core");
+    const { registerJobHandler } = await import("@nexpress/core");
     let capturedType: string | undefined;
     let capturedData: unknown;
     let parseCount = 0;
@@ -559,7 +544,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("POST /api/admin/jobs/enqueue rejects unknown handler types (defensive UX)", async () => {
     const admin = await seedUser({ role: "admin" });
-    const { setJobQueue } = await import("@nexpress/core");
     setJobQueue({
       enqueue: async () => "ignored",
       start: async () => {},
@@ -579,7 +563,6 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
 
   it("POST /api/admin/jobs/enqueue forbids non-admin", async () => {
     const editor = await seedUser({ role: "editor" });
-    const { setJobQueue } = await import("@nexpress/core");
     setJobQueue({
       enqueue: async () => "ignored",
       start: async () => {},

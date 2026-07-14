@@ -4,7 +4,6 @@ import {
   deleteDocument,
   findDocuments,
   getCurrentSiteId,
-  getDb,
   getRegisteredThemes,
   NP_DEFAULT_SITE_ID,
   NpValidationError,
@@ -15,6 +14,7 @@ import {
   type NpRegisteredTheme,
   type NpTransaction,
 } from "@nexpress/core";
+import { getDb } from "@nexpress/core/db";
 import { npAnalyzeNavigationItems } from "@nexpress/core/navigation";
 import type {
   NpThemeSeedContent,

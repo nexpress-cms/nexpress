@@ -1,11 +1,5 @@
-import {
-  NpForbiddenError,
-  NpValidationError,
-  hashPassword,
-  npUsers,
-  runHook,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, NpValidationError, hashPassword, npUsers, can } from "@nexpress/core";
+import { runHook } from "@nexpress/core/bootstrap";
 import {
   npAuthContractLimits,
   npIsCanonicalAuthEmail,

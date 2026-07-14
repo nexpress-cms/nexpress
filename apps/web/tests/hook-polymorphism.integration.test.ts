@@ -136,7 +136,7 @@ describe.skipIf(skipIfNoTestDb())("hook polymorphism (Phase 9.7o)", () => {
     registerCollection("discussions", discussionsTable as never, hooked);
     const { ensureFor } = await import("@/lib/init-core");
     await ensureFor("read");
-    // Re-register after ensureCoreServices runs nexpressConfig.collections,
+    // Re-register after the read bootstrap runs nexpressConfig.collections,
     // otherwise the hooks would be overwritten. Same dance the cascade
     // tests do.
     registerCollection("discussions", discussionsTable as never, hooked);
@@ -246,7 +246,7 @@ describe.skipIf(skipIfNoTestDb())("hook polymorphism (Phase 9.7o)", () => {
       source: string;
       marker: unknown;
     }> = [];
-    const { loadPlugins } = await import("@nexpress/core");
+    const { loadPlugins } = await import("@nexpress/core/bootstrap");
     const { definePlugin } = await import("@nexpress/plugin-sdk");
     await loadPlugins([
       definePlugin({

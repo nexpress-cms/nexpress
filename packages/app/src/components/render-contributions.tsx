@@ -4,7 +4,7 @@ import {
   type NpHeadEntry,
   type NpRenderContribution,
 } from "@nexpress/plugin-sdk";
-import { runHookAndCollect } from "@nexpress/core";
+import { runHookAndCollect } from "@nexpress/core/bootstrap";
 
 /**
  * Fires the `render:beforePage` hook against every registered plugin and

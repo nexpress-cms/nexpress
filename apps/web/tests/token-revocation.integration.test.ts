@@ -31,13 +31,13 @@ import {
 
 import {
   createStaffSession,
-  createDbConnection,
   invalidateAllSessions,
   npSessions,
   sha256,
   signToken,
   verifyTokenFull,
 } from "@nexpress/core";
+import { createDbConnection } from "@nexpress/core/db";
 import { eq } from "drizzle-orm";
 
 describe.skipIf(skipIfNoTestDb())("token revocation across instances (integration)", () => {

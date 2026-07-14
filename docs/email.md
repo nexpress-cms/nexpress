@@ -16,8 +16,8 @@ accepts exactly three modes:
 - unset, empty, or `noop` — install the logging no-op adapter;
 - `smtp` — install the built-in SMTP adapter from the exact `NP_SMTP_*`
   contract below;
-- `custom` — preserve an adapter installed programmatically with
-  `setEmailAdapter()`.
+- `custom` — use the adapter injected through `createBootstrap({ emailAdapter })`
+  (or pre-installed by a lower-level host).
 
 Aliases such as `resend` are not adapter modes. Use `smtp` for a provider's
 SMTP endpoint or `custom` for its native SDK. NexPress parses this contract on
@@ -161,8 +161,8 @@ provider has a native HTTP SDK (Resend, SendGrid, Postmark) that you'd
 rather call directly than go through SMTP.
 
 ```ts
-// src/lib/install-email-adapter.ts — server-only
-import { setEmailAdapter, type NpEmailAdapter, type NpEmailMessage } from "@nexpress/core/email";
+// src/lib/email-adapter.ts — server-only
+import { type NpEmailAdapter, type NpEmailMessage } from "@nexpress/core/email";
 import { Resend } from "resend";
 
 class ResendAdapter implements NpEmailAdapter {
@@ -186,28 +186,35 @@ class ResendAdapter implements NpEmailAdapter {
   }
 }
 
-export function installEmailAdapter(): void {
+export function createEmailAdapter(): NpEmailAdapter {
   if (!process.env.RESEND_API_KEY) {
     throw new Error("RESEND_API_KEY is required for the custom email adapter");
   }
-  setEmailAdapter(new ResendAdapter(process.env.RESEND_API_KEY, "noreply@yourdomain.com"));
+  return new ResendAdapter(process.env.RESEND_API_KEY, "noreply@yourdomain.com");
 }
 ```
 
-Set `NP_EMAIL_ADAPTER=custom`, then call the installer from
-`src/nexpress.config.ts` before exporting `defineConfig(...)`:
+Set `NP_EMAIL_ADAPTER=custom`, then inject the adapter from the server-only
+`src/lib/bootstrap.ts` module:
 
 ```ts
-import { installEmailAdapter } from "./lib/install-email-adapter";
+import { createBootstrap } from "@nexpress/next";
 
-installEmailAdapter();
+import * as generatedSchema from "@/db/generated/collections";
+import nexpressConfig from "@/nexpress.config";
+import { createEmailAdapter } from "./email-adapter";
+
+export const { ensureFor, getDb, reloadPlugins, shutdown } = createBootstrap({
+  config: nexpressConfig,
+  generatedSchema,
+  emailAdapter: createEmailAdapter(),
+});
 ```
 
-The config module is part of every NexPress bootstrap, including packaged
-route handlers. The scaffolded `src/lib/init-core.ts` is only a thin re-export
-and is not a reliable custom-registration hook. Custom registration must exist
-before `ensureFor("worker")` or the first `ensureFor("write")`; otherwise
-bootstrap fails instead of silently retaining the no-op adapter.
+The adapter is installed only for `worker` or `write` intent, but its shape and
+the `custom` environment intent are validated fail-closed. Lower-level hosts
+may still call `setEmailAdapter()` before those intents; normal applications
+should prefer explicit bootstrap injection.
 
 ---
 

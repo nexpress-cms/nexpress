@@ -6,7 +6,8 @@ import { stdin, stdout } from "node:process";
 import { config as loadEnv } from "dotenv";
 import { eq } from "drizzle-orm";
 
-import { createDbConnection, npUsers } from "@nexpress/core";
+import { npUsers } from "@nexpress/core";
+import { createDbConnection } from "@nexpress/core/db";
 
 /**
  * Phase 15.7 — promote a user to super-admin by email.

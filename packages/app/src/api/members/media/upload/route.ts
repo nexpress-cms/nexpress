@@ -1,10 +1,5 @@
-import {
-  NpValidationError,
-  assertNotBanned,
-  getMediaUrl,
-  runHook,
-  uploadMedia,
-} from "@nexpress/core";
+import { NpValidationError, assertNotBanned, getMediaUrl, uploadMedia } from "@nexpress/core";
+import { runHook } from "@nexpress/core/bootstrap";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";

@@ -28,6 +28,16 @@ describe("email runtime installation", () => {
     setEmailAdapter(custom);
     configureEmailRuntime({ adapter: "custom" });
     expect(getEmailAdapter()).toBe(custom);
+
+    const injected = { kind: "postmark", send: () => Promise.resolve(undefined) };
+    configureEmailRuntime({ adapter: "custom" }, injected);
+    expect(getEmailAdapter()).toBe(injected);
+    expect(() => configureEmailRuntime({ adapter: "noop" }, injected)).toThrow(
+      /only be injected when adapter is custom/u,
+    );
+    expect(() => configureEmailRuntime({ adapter: "custom" }, { kind: "broken" } as never)).toThrow(
+      /email\.adapter\.send/u,
+    );
   });
 
   it("rejects widened runtime config objects", () => {

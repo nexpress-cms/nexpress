@@ -4,9 +4,7 @@ import { and, eq, isNull } from "drizzle-orm";
 
 import {
   type NpAuthUser,
-  createDbConnection,
   findDocuments,
-  getDb,
   hashPassword,
   npComments,
   npMedia,
@@ -17,6 +15,7 @@ import {
   saveDocument,
   uploadMedia,
 } from "@nexpress/core";
+import { getDb } from "@nexpress/core/db";
 import {
   npAuthContractLimits,
   npIsCanonicalAuthEmail,
@@ -31,6 +30,7 @@ import {
   runCli,
 } from "@nexpress/wp-import";
 
+import { shutdownBootstrap } from "../src/lib/bootstrap.js";
 import { ensureFor } from "../src/lib/init-core.js";
 
 /**
@@ -83,9 +83,9 @@ if (!databaseUrl) {
   process.exit(2);
 }
 
-await ensureFor("write");
+await withBootstrapCleanupOnFailure(ensureFor("write"));
 
-const code = await runCli(process.argv.slice(2), undefined, {
+const operation = runCli(process.argv.slice(2), undefined, {
   applyBundle: async (bundle, ctx) => {
     const reportHtml = ctx.reportHtmlPath ? openReportFile(ctx.reportHtmlPath) : null;
     const resume: ResumeDeps | undefined = ctx.resumeStatePath
@@ -311,7 +311,65 @@ const code = await runCli(process.argv.slice(2), undefined, {
     return actor;
   },
 });
+const code = await withBootstrapShutdown(operation);
 process.exit(code);
+
+async function withBootstrapShutdown<T>(operation: Promise<T>): Promise<T> {
+  let outcome: { ok: true; value: T } | { ok: false; error: Error };
+  try {
+    outcome = { ok: true, value: await operation };
+  } catch (error) {
+    outcome = { ok: false, error: toError(error, "WordPress import failed.") };
+  }
+
+  let shutdownError: Error | undefined;
+  try {
+    await shutdownBootstrap();
+  } catch (error) {
+    shutdownError = toError(error, "Bootstrap shutdown failed.");
+  }
+
+  if (!outcome.ok) {
+    if (shutdownError) {
+      throw new AggregateError(
+        [outcome.error, shutdownError],
+        "WordPress import and bootstrap shutdown both failed.",
+        { cause: outcome.error },
+      );
+    }
+    throw outcome.error;
+  }
+  if (shutdownError) throw shutdownError;
+  return outcome.value;
+}
+
+async function withBootstrapCleanupOnFailure<T>(operation: Promise<T>): Promise<T> {
+  let operationError: Error;
+  try {
+    return await operation;
+  } catch (error) {
+    operationError = toError(error, "WordPress import bootstrap failed.");
+  }
+
+  let shutdownError: Error | undefined;
+  try {
+    await shutdownBootstrap();
+  } catch (error) {
+    shutdownError = toError(error, "Bootstrap shutdown failed.");
+  }
+  if (shutdownError) {
+    throw new AggregateError(
+      [operationError, shutdownError],
+      "WordPress import bootstrap and shutdown both failed.",
+      { cause: operationError },
+    );
+  }
+  throw operationError;
+}
+
+function toError(value: unknown, message: string): Error {
+  return value instanceof Error ? value : new Error(message, { cause: value });
+}
 
 /**
  * Phase 21.12 — open a report file at `path` and return a
@@ -392,7 +450,7 @@ async function isEmailFree(email: string): Promise<boolean> {
 }
 
 async function findFirstAdmin(): Promise<NpAuthUser | null> {
-  const db = createDbConnection({ connectionString: databaseUrl! });
+  const db = getDb();
   const rows = await db
     .select({
       id: npUsers.id,

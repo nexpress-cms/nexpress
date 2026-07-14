@@ -1,4 +1,5 @@
-import { getCollectionTable, getDb } from "@nexpress/core";
+import { getCollectionTable } from "@nexpress/core";
+import { getDb } from "@nexpress/core/db";
 import { eq } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 

@@ -120,7 +120,7 @@ function parsePositiveInt(value: string | null, field: string, max?: number): nu
  * Factory for the collection-API helpers used by Next route handlers. The
  * `ensureReady` callback runs before every operation so the consumer can
  * wire up DB + plugins lazily (typically that's `getDb()` +
- * `ensurePluginsLoaded()`).
+ * `ensureFor("plugins")`).
  */
 export function createCollectionHelpers(
   helperOptions: CollectionHelpersOptions,

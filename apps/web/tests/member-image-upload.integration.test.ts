@@ -99,7 +99,7 @@ function staffUploadRequest(
 
 async function registerMediaHookCapture(pluginId: string): Promise<CapturedMediaHook[]> {
   const { ensureFor } = await import("@/lib/init-core");
-  const { loadPlugins } = await import("@nexpress/core");
+  const { loadPlugins } = await import("@nexpress/core/bootstrap");
   const { definePlugin } = await import("@nexpress/plugin-sdk");
   await ensureFor("plugins");
 

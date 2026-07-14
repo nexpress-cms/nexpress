@@ -12,9 +12,9 @@
  * helper swaps and restores the resolver, so the override lives only
  * inside the block.
  *
- * Eagerly run `ensureCoreServices()` so bootstrap's idempotent
- * `collectionsRegistered` flag flips to true *before* we install the
- * default-site resolver. Without this, the first route handler call
+ * Eagerly run `ensureFor("read")` so bootstrap reaches its idempotent
+ * read-ready state *before* we install the default-site resolver. Without
+ * this, the first route handler call
  * in each worker would race the bootstrap and stomp our resolver
  * with the production header-reading one.
  *

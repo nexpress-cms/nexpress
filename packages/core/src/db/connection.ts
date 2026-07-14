@@ -47,3 +47,16 @@ export function createDbConnection(config: CreateDbConnectionConfig) {
 
   return drizzle(pool, { schema });
 }
+
+export type NpDb = ReturnType<typeof createDbConnection>;
+
+/**
+ * Close the node-postgres pool owned by one Drizzle connection.
+ *
+ * `createBootstrap()` is the normal owner and calls this from its terminal
+ * shutdown path. Standalone scripts that deliberately create their own
+ * connection can use the same helper instead of reaching into `$client`.
+ */
+export async function npCloseDbConnection(db: NpDb): Promise<void> {
+  await db.$client.end();
+}

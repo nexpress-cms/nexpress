@@ -1,10 +1,10 @@
 import {
   buildDiscussionForumPostingJsonLd,
   findDocuments,
-  getDb,
   getSiteSeoSettings,
   npMembers,
 } from "@nexpress/core";
+import { getDb } from "@nexpress/core/db";
 import { renderRichText } from "@nexpress/editor/server";
 import type { NpRichTextContent } from "@nexpress/editor";
 import { isNpRichTextContent } from "@nexpress/core/fields";

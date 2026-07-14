@@ -1,9 +1,5 @@
-import {
-  getDb,
-  getMemberFromTokenPayload,
-  verifyMemberToken,
-  type NpMemberAuthRow,
-} from "@nexpress/core";
+import { getMemberFromTokenPayload, verifyMemberToken, type NpMemberAuthRow } from "@nexpress/core";
+import { getDb } from "@nexpress/core/db";
 import { cookies } from "next/headers";
 
 /**

@@ -47,3 +47,8 @@ export function getCollectionRegistration(slug: string): CollectionRegistration 
 export function getAllCollectionSlugs(): string[] {
   return [...registry.keys()];
 }
+
+/** Framework-host lifecycle cleanup. Application code should not call this. */
+export function resetCollections(): void {
+  registry.clear();
+}

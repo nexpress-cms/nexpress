@@ -17,6 +17,7 @@ behavior they describe changes.
 | [authentication.md](authentication.md)                 | Staff/member JWT, cookie, session-row, and invalidation contracts      |
 | [backup-restore.md](backup-restore.md)                 | Backup procedures, restore order, DR drill                             |
 | [block-content.md](block-content.md)                   | Stable block-content wire format and validation boundaries             |
+| [bootstrap.md](bootstrap.md)                           | Intent-based process runtime, host boundary, and shutdown lifecycle    |
 | [caching.md](caching.md)                               | Cache strategy and invalidation                                        |
 | [community.md](community.md)                           | Community / member features (live behavior)                            |
 | [deployment.md](deployment.md)                         | Production deployment notes                                            |
