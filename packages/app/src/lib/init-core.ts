@@ -1,5 +1,5 @@
 import { npUsers } from "@nexpress/core";
-import type { NpBootstrapIntent } from "@nexpress/next";
+import { npRequireBootstrapIntent, type NpBootstrapIntent } from "@nexpress/next";
 import { count, eq } from "drizzle-orm";
 
 import { ensureFor as bootstrapEnsureFor, getDb, nexpressConfig } from "@/lib/bootstrap";
@@ -103,9 +103,10 @@ function nudgeFirstRunOnce(): void {
 export type { NpBootstrapIntent } from "@nexpress/next";
 
 export async function ensureFor(intent: NpBootstrapIntent): Promise<void> {
+  const validatedIntent = npRequireBootstrapIntent(intent);
   await bootstrapEnsureFor("read");
   registerCustomRoutesOnce();
   nudgeFirstRunOnce();
-  if (intent === "read") return;
-  await bootstrapEnsureFor(intent);
+  if (validatedIntent === "read") return;
+  await bootstrapEnsureFor(validatedIntent);
 }
