@@ -1,4 +1,5 @@
 import { npReadStorageRuntimeConfig } from "@nexpress/core/storage";
+import { npReadObservabilityRuntimeConfig } from "@nexpress/core/observability";
 
 import { deployTargetTitle, type DeployTarget } from "../scripts/deploy-targets";
 
@@ -20,6 +21,39 @@ interface ProductionTopology {
   multiNodeDetail: string | null;
   singleNodeDetail: string | null;
   managedContainerHint: boolean;
+}
+
+export function checkProductionObservability(
+  prodMode: boolean,
+  env: ProductionReadinessEnv,
+): CheckResult | null {
+  if (!prodMode) return null;
+  try {
+    const config = npReadObservabilityRuntimeConfig(env);
+    if (config.errorReporter === "noop") {
+      return {
+        id: "prod.observability",
+        state: "warn",
+        label: "Error reporting (production)",
+        detail: `${config.logger} logger · noop error reporter`,
+        hint: "Set NP_ERROR_REPORTER_ADAPTER=custom and pass a reporter to createBootstrap() so production exceptions leave the process.",
+      };
+    }
+    return {
+      id: "prod.observability",
+      state: "ok",
+      label: "Observability adapters (production)",
+      detail: `${config.logger} logger · custom error reporter`,
+    };
+  } catch (error) {
+    return {
+      id: "prod.observability",
+      state: "error",
+      label: "Observability adapters (production)",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Set NP_LOGGER_ADAPTER to console or custom and NP_ERROR_REPORTER_ADAPTER to noop or custom.",
+    };
+  }
 }
 
 export function checkProductionStorage(

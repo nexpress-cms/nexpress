@@ -1,8 +1,20 @@
 import { type NpAuthUser } from "@nexpress/core";
+import { shutdownObservability } from "@nexpress/core/observability";
 import { runCli } from "@nexpress/xliff";
 
 import "./_load-env.js";
 import { ensureFor } from "../src/lib/init-core.js";
+
+async function shutdownAndExit(code: number): Promise<never> {
+  let exitCode = code;
+  try {
+    await shutdownObservability();
+  } catch (error) {
+    process.stderr.write(`xliff: observability shutdown failed: ${String(error)}\n`);
+    exitCode = 1;
+  }
+  process.exit(exitCode);
+}
 
 /**
  * Phase 12.12 — `pnpm xliff` shim. Boots core services + plugins
@@ -39,10 +51,10 @@ async function main(): Promise<void> {
   };
 
   const result = await runCli(io, process.argv.slice(2), { user: importerUser });
-  process.exit(result.exitCode);
+  await shutdownAndExit(result.exitCode);
 }
 
-main().catch((error) => {
+void main().catch(async (error) => {
   process.stderr.write(`xliff: ${(error as Error).stack ?? String(error)}\n`);
-  process.exit(1);
+  await shutdownAndExit(1);
 });

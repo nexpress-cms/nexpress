@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type * as NpStorageModule from "@nexpress/core/storage";
+import type * as NpObservabilityModule from "@nexpress/core/observability";
 
 const runtime = vi.hoisted(() => ({
   config: null as NpStorageModule.NpStorageRuntimeConfig | null,
   kind: "memory",
+  observabilityConfig: null as NpObservabilityModule.NpObservabilityRuntimeConfig | null,
+  loggerKind: "console",
+  reporterKind: "noop",
+  loggerFailures: 0,
+  reporterFailures: 0,
 }));
 
 vi.mock("@nexpress/core", () => ({
@@ -29,16 +35,107 @@ vi.mock("@nexpress/core/storage", async (importOriginal) => {
   };
 });
 
+vi.mock("@nexpress/core/observability", async (importOriginal) => {
+  const actual = await importOriginal<typeof NpObservabilityModule>();
+  const loggerMethods = {
+    debug: () => undefined,
+    info: () => undefined,
+    warn: () => undefined,
+    error: () => undefined,
+  };
+  return {
+    ...actual,
+    getObservabilityRuntimeConfig: () => runtime.observabilityConfig,
+    getLogger: () => ({ kind: runtime.loggerKind, ...loggerMethods }),
+    getErrorReporter: () => ({
+      kind: runtime.reporterKind,
+      captureException: () => undefined,
+    }),
+    getObservabilityDiagnostics: () => ({
+      loggerFailures: runtime.loggerFailures,
+      errorReporterFailures: runtime.reporterFailures,
+      lastFailure: null,
+    }),
+  };
+});
+
 vi.mock("@/lib/bootstrap", () => ({
   getDb: vi.fn(),
 }));
 
-const { checkStorageAdapter } = await import("./system-health.js");
+const { checkObservabilityAdapters, checkStorageAdapter } = await import("./system-health.js");
 
 afterEach(() => {
   vi.unstubAllEnvs();
   runtime.config = null;
   runtime.kind = "memory";
+  runtime.observabilityConfig = null;
+  runtime.loggerKind = "console";
+  runtime.reporterKind = "noop";
+  runtime.loggerFailures = 0;
+  runtime.reporterFailures = 0;
+});
+
+describe("live observability health", () => {
+  it("warns when error reporting intentionally remains noop", () => {
+    expect(checkObservabilityAdapters()).toEqual(
+      expect.objectContaining({
+        id: "observability",
+        state: "warn",
+        detail: "console logger · noop error reporter",
+      }),
+    );
+  });
+
+  it("reports exact custom adapter kinds", () => {
+    runtime.observabilityConfig = { logger: "custom", errorReporter: "custom" };
+    runtime.loggerKind = "pino";
+    runtime.reporterKind = "sentry";
+
+    expect(checkObservabilityAdapters()).toEqual(
+      expect.objectContaining({
+        state: "ok",
+        detail: "pino logger · sentry reporter",
+      }),
+    );
+  });
+
+  it("detects declared intent and live adapter mismatch", () => {
+    runtime.observabilityConfig = { logger: "custom", errorReporter: "custom" };
+
+    expect(checkObservabilityAdapters()).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: "custom/custom requested, console/noop registered",
+      }),
+    );
+  });
+
+  it("surfaces contained dispatch failures without crashing health", () => {
+    runtime.observabilityConfig = { logger: "custom", errorReporter: "custom" };
+    runtime.loggerKind = "pino";
+    runtime.reporterKind = "sentry";
+    runtime.loggerFailures = 2;
+    runtime.reporterFailures = 1;
+
+    expect(checkObservabilityAdapters()).toEqual(
+      expect.objectContaining({
+        state: "warn",
+        detail: expect.stringContaining("3 process failures contained"),
+      }),
+    );
+  });
+
+  it("fails closed on malformed environment intent", () => {
+    vi.stubEnv("NP_ERROR_REPORTER_ADAPTER", "sentry");
+
+    expect(checkObservabilityAdapters()).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: expect.stringContaining("NP_ERROR_REPORTER_ADAPTER"),
+      }),
+    );
+  });
 });
 
 describe("live storage health", () => {

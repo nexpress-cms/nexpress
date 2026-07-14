@@ -364,36 +364,35 @@ deployments. Production deployments that already run a log pipeline
 warnings — including the Phase 22.2 boot checks and the pg-boss handler
 errors — land in the same stream as application logs.
 
-Install once at app boot, before the first `ensureFor(...)` call. The
-framework implementation lives in `@nexpress/app/lib/init-core`; both
-the reference app (`apps/web/src/lib/init-core.ts`) and scaffolded
-sites (`src/lib/init-core.ts`) are thin wrappers around it. To swap a
-logger, unwrap that file and install your adapter next to the
-email-adapter setup before re-exporting:
+Declare the exact runtime intent and install adapters in
+`src/lib/observability.ts`. Every scaffolded process entrypoint imports this
+same object, and `createBootstrap()` validates it before emitting startup
+warnings:
+
+```dotenv
+NP_LOGGER_ADAPTER=custom
+NP_ERROR_REPORTER_ADAPTER=custom
+```
 
 ```ts
-import { setLogger } from "@nexpress/core/observability";
+import type { NpLoggerAdapter, NpObservabilityAdapters } from "@nexpress/core/observability";
 import pino from "pino";
 
 const root = pino({ level: process.env.LOG_LEVEL ?? "info" });
-setLogger({
-  debug: (msg, ctx) => root.debug(ctx ?? {}, msg),
-  info: (msg, ctx) => root.info(ctx ?? {}, msg),
-  warn: (msg, ctx) => root.warn(ctx ?? {}, msg),
-  error: (msg, ctx) => root.error(ctx ?? {}, msg),
-  // Optional but recommended — `getScopedLogger({...})` calls forward
-  // bindings here so plugin / boot / job logs carry their subsystem
-  // tag through your pipeline.
-  child: (bindings) => {
-    const c = root.child(bindings);
-    return {
-      debug: (msg, ctx) => c.debug(ctx ?? {}, msg),
-      info: (msg, ctx) => c.info(ctx ?? {}, msg),
-      warn: (msg, ctx) => c.warn(ctx ?? {}, msg),
-      error: (msg, ctx) => c.error(ctx ?? {}, msg),
-    };
-  },
+const wrap = (target: pino.Logger): NpLoggerAdapter => ({
+  kind: "pino",
+  debug: (msg, ctx) => target.debug(ctx ?? {}, msg),
+  info: (msg, ctx) => target.info(ctx ?? {}, msg),
+  warn: (msg, ctx) => target.warn(ctx ?? {}, msg),
+  error: (msg, ctx) => target.error(ctx ?? {}, msg),
+  child: (bindings) => wrap(target.child(bindings)),
+  shutdown: () => target.flush(),
 });
+
+export const observabilityAdapters = {
+  logger: wrap(root),
+  // Add an errorReporter with kind/captureException/shutdown here.
+} satisfies NpObservabilityAdapters;
 ```
 
 For a Sentry / pino / Datadog-specific recipe and the matching

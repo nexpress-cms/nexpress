@@ -38,10 +38,11 @@ its log context so log search rules can target them.
 | `missing_site_url`                  | `NODE_ENV=production` AND `SITE_URL` is unset. Sitemap, OAuth callbacks, email links all anchor on it.                                                                  | Set `SITE_URL` to your public origin (e.g. `https://example.com`). Note: with `SITE_URL` unset, password-reset / register / verify flows refuse to run (#598) — see [SITE_URL is required for email flows](#site_url-is-required-for-email-flows). |
 | `loopback_site_url`                 | `NODE_ENV=production` AND `SITE_URL` is `http://localhost:…` or similar loopback. Breaks share links, OAuth round-trips, outbound email.                                | Same fix.                                                                                                                                                                                                                                          |
 
-These are warnings, not crashes — the process boots. They show up in
-whatever logger has been installed via `setLogger()`; on a default
-deploy that's stdout via `consoleLogger`. Verify them at runtime via
-the `/admin/health` page (which mirrors the boot-time checks).
+These are warnings, not crashes — the process boots. They show up in the
+logger selected by `NP_LOGGER_ADAPTER` and installed through
+`createBootstrap()`; on a default deploy that's stdout via `consoleLogger`.
+Observability is configured before these checks, so a custom logger receives
+the complete boot sequence. Verify it at runtime via `/admin/health`.
 
 The email runtime parser is stricter than the production no-op warning:
 unknown adapter aliases, malformed SMTP values, missing host/from values, and
@@ -51,6 +52,13 @@ doctor` exposes this as `email.contract` without needing a database.
 The rate-limit parser behaves the same way: unknown runtime modes fail the
 first bootstrap/proxy check, while `pnpm run doctor` exposes the stable
 `rate-limit.contract` result and blocks production multi-node memory mode.
+
+The observability parser accepts only `console|custom` logger intent and
+`noop|custom` reporter intent. `doctor` exposes `observability.contract`;
+Admin Health additionally compares that intent with the live adapter kinds and
+surfaces contained dispatch/flush failures. Production readiness warns on a
+noop reporter. See [observability.md](./observability.md) for the shared
+`src/lib/observability.ts` wiring.
 
 ## Admin ops cockpit
 

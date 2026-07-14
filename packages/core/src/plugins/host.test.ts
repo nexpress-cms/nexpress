@@ -796,6 +796,7 @@ describe("plugin host", () => {
     beforeEach(() => {
       errors = [];
       const captureLogger: NpLogger = {
+        kind: "test",
         debug: () => undefined,
         info: () => undefined,
         warn: () => undefined,
@@ -896,6 +897,7 @@ describe("plugin host", () => {
     beforeEach(() => {
       errors = [];
       setLogger({
+        kind: "test",
         debug: () => undefined,
         info: () => undefined,
         warn: () => undefined,
@@ -1017,6 +1019,7 @@ describe("plugin host", () => {
     beforeEach(() => {
       warnings = [];
       const captureLogger: NpLogger = {
+        kind: "test",
         debug: () => undefined,
         info: () => undefined,
         warn: (message, context) => {
@@ -1286,6 +1289,7 @@ describe("plugin host", () => {
     it("treats a handler that exceeds timeoutMs as a failure and isolates it", async () => {
       const errors: Array<{ message: string; context?: Record<string, unknown> }> = [];
       setLogger({
+        kind: "test",
         debug: () => undefined,
         info: () => undefined,
         warn: () => undefined,

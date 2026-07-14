@@ -13,6 +13,7 @@ import {
   withCurrentSite,
 } from "@nexpress/core";
 import type { NpAuthUser } from "@nexpress/core";
+import { shutdownObservability } from "@nexpress/core/observability";
 
 import { ensureFor } from "../src/lib/init-core.js";
 import { seedAll } from "../src/lib/seed-content.js";
@@ -40,6 +41,17 @@ const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
   console.error("DATABASE_URL is not set. Copy .env.example to .env first.");
   process.exit(1);
+}
+
+async function shutdownAndExit(code: number): Promise<never> {
+  let exitCode = code;
+  try {
+    await shutdownObservability();
+  } catch (error) {
+    console.error("Observability shutdown failed", error);
+    exitCode = 1;
+  }
+  process.exit(exitCode);
 }
 
 async function findFirstAdmin(): Promise<NpAuthUser | null> {
@@ -81,21 +93,21 @@ async function main(): Promise<void> {
     const target = await getSiteById(siteId);
     if (!target) {
       console.error(`Site "${siteId}" not found. Create it via /admin/sites or the API first.`);
-      process.exit(1);
+      return shutdownAndExit(1);
     }
   }
 
   const actor = await findFirstAdmin();
   if (!actor) {
     console.error("No admin user found. Run `pnpm seed:admin` first.");
-    process.exit(1);
+    return shutdownAndExit(1);
   }
   const theme = await getActiveTheme();
   if (!theme) {
     console.error(
       "No active theme — pick one in the admin (or run the setup wizard) before seeding content.",
     );
-    process.exit(1);
+    return shutdownAndExit(1);
   }
   console.log(
     `Seeding "${theme.manifest.id}" theme content for site "${siteId}" as ${actor.email}…`,
@@ -126,10 +138,10 @@ async function main(): Promise<void> {
     } nav items.`,
   );
   console.log("Visit http://localhost:3000 to preview.");
-  process.exit(0);
+  return shutdownAndExit(0);
 }
 
-main().catch((error) => {
+void main().catch(async (error) => {
   console.error(error);
-  process.exit(1);
+  await shutdownAndExit(1);
 });

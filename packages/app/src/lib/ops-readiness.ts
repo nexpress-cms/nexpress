@@ -17,6 +17,7 @@ import type * as OpsStorageCore from "../scripts/ops-storage-core";
 import type { OpsStorageJson } from "../scripts/ops-storage-core";
 import { collectRuntimeOpsPluginsStatus } from "./ops-plugins-runtime";
 import {
+  checkProductionObservability,
   checkProductionStorage,
   checkTargetProductionStorage,
   type CheckResult,
@@ -94,6 +95,7 @@ export function buildDeployReadinessSection(
     envRequirementToCheck(check, "warn"),
   );
   const productionChecks = [
+    checkProductionObservability(true, env),
     checkProductionStorage(true, plan.target, env),
     ...checkTargetProductionStorage(true, plan.target, env),
   ].filter((check): check is CheckResult => check !== null);

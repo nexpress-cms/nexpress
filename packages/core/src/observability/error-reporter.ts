@@ -1,70 +1,102 @@
-/**
- * Pluggable error reporter. The default is a no-op so users who don't
- * need third-party tracking pay nothing; production deployments can
- * install a Sentry / Bugsnag / Honeybadger / Rollbar adapter via
- * `setErrorReporter()`.
- *
- * The framework reports errors at three boundaries:
- *  1. Unhandled exceptions in API route handlers (via `npErrorResponse`).
- *  2. Plugin hook handlers that throw (via the plugin host).
- *  3. pg-boss job handlers that throw (registered by the worker process).
- *
- * Reporters MUST NOT throw — exceptions inside `captureException` are
- * caught and logged, never propagated.
- */
-export interface NpErrorReportContext {
-  /**
-   * Free-form tags used by error trackers for filtering and grouping.
-   * E.g. `{ source: "api", route: "/api/collections/posts" }`.
-   */
-  tags?: Record<string, string>;
-  /** Optional user identity, populated when the error happened in a
-   *  request context. */
-  user?: { id?: string; email?: string; role?: string };
-  /** Arbitrary extra context — request body shape, plugin id, job name. */
-  extra?: Record<string, unknown>;
-}
+/** Fail-safe error reporter registry with validated installation and dispatch. */
+import {
+  npRequireErrorReporter,
+  npRequireErrorReportContext,
+  npRequireObservabilityVoidResult,
+  npRequireReportedError,
+} from "./contract.js";
+import { npRecordObservabilityFailure } from "./diagnostics.js";
+import type { NpErrorReportContext, NpErrorReporter } from "./types.js";
 
-export interface NpErrorReporter {
-  captureException(error: Error, context?: NpErrorReportContext): void | Promise<void>;
-}
-
-/** Default — does nothing. Replaceable via `setErrorReporter`. */
-export const noopErrorReporter: NpErrorReporter = {
-  captureException: () => {
-    /* no-op */
-  },
+const noopAdapter: NpErrorReporter = {
+  kind: "noop",
+  captureException: () => undefined,
 };
 
-let currentReporter: NpErrorReporter = noopErrorReporter;
-
-/** Replace the global error reporter. Call once at app boot. */
-export function setErrorReporter(reporter: NpErrorReporter): void {
-  currentReporter = reporter;
+function createSafeReporter(adapter: NpErrorReporter): NpErrorReporter {
+  const adapterKind = adapter.kind;
+  return {
+    kind: adapterKind,
+    async captureException(error, context) {
+      await dispatchError(adapter, adapterKind, error, context);
+    },
+  };
 }
 
-/** Returns the currently-installed reporter. Defaults to no-op. */
+let currentAdapter: NpErrorReporter = noopAdapter;
+export const noopErrorReporter: NpErrorReporter = createSafeReporter(noopAdapter);
+let currentReporter: NpErrorReporter = noopErrorReporter;
+
+export function setErrorReporter(reporter: NpErrorReporter): void {
+  const validated = npRequireErrorReporter(reporter);
+  const useNoop = validated === noopAdapter || validated === noopErrorReporter;
+  const nextAdapter = useNoop ? noopAdapter : validated;
+  const nextReporter = useNoop ? noopErrorReporter : createSafeReporter(validated);
+  currentAdapter = nextAdapter;
+  currentReporter = nextReporter;
+}
+
 export function getErrorReporter(): NpErrorReporter {
   return currentReporter;
 }
 
-/**
- * Safe wrapper that swallows reporter exceptions so error reporting can
- * never itself crash the host. Logs the underlying capture failure via
- * `console.error` — using `getLogger()` here would risk a loop if the
- * logger is also broken.
- */
-export async function reportError(error: Error, context?: NpErrorReportContext): Promise<void> {
+/** Internal raw-adapter access for transactional runtime configuration. */
+export function npGetErrorReporterAdapter(): NpErrorReporter {
+  return currentAdapter;
+}
+
+async function dispatchError(
+  adapter: NpErrorReporter,
+  adapterKind: string,
+  error: Error,
+  context?: NpErrorReportContext,
+): Promise<void> {
+  let validatedError: Error;
+  let validatedContext: NpErrorReportContext | undefined;
   try {
-    await currentReporter.captureException(error, context);
+    validatedError = npRequireReportedError(error);
+    validatedContext = context === undefined ? undefined : npRequireErrorReportContext(context);
   } catch (reporterError) {
-    // Last-resort: bypass the logger to avoid a circular failure path.
-     
-    console.error("[nexpress] error reporter itself threw:", reporterError);
+    npRecordObservabilityFailure("error-reporter", "contract", adapterKind, reporterError);
+    return;
+  }
+
+  try {
+    const result = await adapter.captureException(validatedError, validatedContext);
+    npRequireObservabilityVoidResult(result, "observability.errorReporter.captureException.result");
+  } catch (reporterError) {
+    npRecordObservabilityFailure("error-reporter", "dispatch", adapterKind, reporterError);
   }
 }
 
-/** Reset to the default no-op reporter. Tests use this to undo `setErrorReporter`. */
+export async function reportError(error: Error, context?: NpErrorReportContext): Promise<void> {
+  await dispatchError(currentAdapter, currentReporter.kind, error, context);
+}
+
 export function resetErrorReporter(): void {
+  currentAdapter = noopAdapter;
   currentReporter = noopErrorReporter;
 }
+
+export async function npCloseErrorReporterAdapter(
+  reporter: NpErrorReporter,
+  adapterKind = reporter.kind,
+): Promise<void> {
+  if (reporter.shutdown === undefined) return;
+  try {
+    const result = await reporter.shutdown();
+    npRequireObservabilityVoidResult(result, "observability.errorReporter.shutdown.result");
+  } catch (error) {
+    npRecordObservabilityFailure("error-reporter", "shutdown", adapterKind, error);
+    throw error;
+  }
+}
+
+export async function npShutdownErrorReporter(): Promise<void> {
+  const adapter = currentAdapter;
+  const adapterKind = currentReporter.kind;
+  resetErrorReporter();
+  await npCloseErrorReporterAdapter(adapter, adapterKind);
+}
+
+export type { NpErrorReporter, NpErrorReportContext } from "./types.js";

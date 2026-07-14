@@ -15,6 +15,13 @@ vi.mock("@nexpress/blocks", () => ({
   resetSharedPatternRegistry: vi.fn(),
 }));
 
+vi.mock("@nexpress/core/observability", () => ({
+  configureObservabilityFromEnv: vi.fn(() => ({
+    logger: "console",
+    errorReporter: "noop",
+  })),
+}));
+
 vi.mock("@nexpress/core", () => ({
   NP_DEFAULT_SITE_ID: "default",
   can: vi.fn(() => false),
@@ -43,6 +50,7 @@ vi.mock("@nexpress/core", () => ({
 }));
 
 const core = await import("@nexpress/core");
+const observability = await import("@nexpress/core/observability");
 const blocks = await import("@nexpress/blocks");
 const { createBootstrap } = await import("./bootstrap.js");
 
@@ -97,6 +105,27 @@ describe("createBootstrap", () => {
     expect(core.verifyStartupSafety).toHaveBeenCalledWith(
       expect.objectContaining({ storageAdapter: "cloudflare-r2" }),
     );
+  });
+
+  it("configures observability before emitting startup safety warnings", () => {
+    const logger = { kind: "pino" } as never;
+    const errorReporter = { kind: "sentry" } as never;
+    const bootstrap = createBootstrap({
+      config: buildConfig(),
+      generatedSchema: {},
+      logger,
+      errorReporter,
+    });
+
+    bootstrap.ensureCoreServices();
+
+    expect(observability.configureObservabilityFromEnv).toHaveBeenCalledWith(process.env, {
+      logger,
+      errorReporter,
+    });
+    expect(
+      vi.mocked(observability.configureObservabilityFromEnv).mock.invocationCallOrder[0],
+    ).toBeLessThan(vi.mocked(core.verifyStartupSafety).mock.invocationCallOrder[0] ?? Infinity);
   });
 
   it("retries plugin loading after a transient bootstrap failure", async () => {

@@ -3,6 +3,7 @@ import { npAnalyzeJobsEnabledFlag, npRequireJobsEnabledFlag } from "@nexpress/co
 import { deployTargetTitle, type DeployTarget } from "./deploy-targets.js";
 import type { MigrationStatus } from "./migration-status.js";
 import {
+  checkProductionObservability,
   checkProductionStorage,
   checkTargetProductionStorage,
   type CheckResult,
@@ -114,6 +115,10 @@ export function checkStorageProd(
   env: DoctorEnv,
 ): CheckResult | null {
   return checkProductionStorage(prodMode, target, env);
+}
+
+export function checkObservabilityProd(prodMode: boolean, env: DoctorEnv): CheckResult | null {
+  return checkProductionObservability(prodMode, env);
 }
 
 export function checkSiteUrlProd(prodMode: boolean, env: DoctorEnv): CheckResult | null {

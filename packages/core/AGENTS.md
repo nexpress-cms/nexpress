@@ -16,6 +16,7 @@ src/
 ├── media/        # Upload/process lifecycle, media DB singleton, sharp processing
 ├── storage/      # Exact runtime/object contract, adapters, registry, operations, lifecycle
 ├── rate-limit/   # Exact request/decision contract, adapters, registry, lifecycle
+├── observability/ # Exact logger/reporter contract, safe dispatch, diagnostics, lifecycle
 ├── jobs/         # pg-boss queue abstraction, handler registry, worker lifecycle, builtin handlers
 ├── jobs-contract/ # client-safe names, payloads, persisted rows, schedules, and Admin wire parsers
 ├── sites/        # canonical site ids, async-local execution context, registry, memberships
@@ -32,10 +33,11 @@ src/
 | `setDb(db)` / `getDb()`                | `collections/pipeline.ts` | `createBootstrap` in `@nexpress/next`   |
 | `setMediaDb(db)` / `getMediaDb()`      | `media/service.ts`        | Same bootstrap (often same DB instance) |
 | `setStorageAdapter(adapter)`           | `storage/registry.ts`     | Bootstrap validates `config.storage`    |
+| logger / error reporter                | `observability/`          | Bootstrap validates env + adapters      |
 | `setJobQueue(queue)` / `getJobQueue()` | `jobs/queue.ts`           | App calls after DB init                 |
 | `pluginRegistry` / `globalHooks`       | `plugins/host.ts`         | `loadPlugins()` at startup              |
 
-**Init order**: createDbConnection → setDb/setMediaDb → setStorageAdapter → registerCollections → configureBuiltinJobContext → loadPlugins → startWorker. Wrong order = runtime "not initialized" errors.
+**Init order**: configureObservability → createDbConnection → setDb/setMediaDb → setStorageAdapter → registerCollections → configureBuiltinJobContext → loadPlugins → startWorker. Wrong order = runtime "not initialized" errors or missed boot diagnostics.
 
 Rate limiting is initialized independently by the Next proxy entrypoint. Keep
 its contract pure under `@nexpress/core/rate-limit`; custom multi-node adapters
@@ -47,21 +49,27 @@ intent goes through `createStorageAdapter()`; custom intent goes through
 `np*StorageObject` operations so safe keys, metadata, and results are checked
 even for custom adapters. Do not bypass them with direct adapter calls.
 
+Observability uses `@nexpress/core/observability`. Environment intent and both
+adapters are installed transactionally before startup warnings. Framework code
+must log/report through the safe facade, never call a raw adapter; dispatch and
+async failures are deliberately contained and recorded for Admin Health.
+
 ## WHERE TO LOOK
 
-| Task                        | File(s)                                        | Notes                                                              |
-| --------------------------- | ---------------------------------------------- | ------------------------------------------------------------------ |
-| Change content write path   | `collections/pipeline.ts`                      | ACL → validate → hooks → persist → revisions → media refs → search |
-| Add/change system DB tables | `db/schema/system.ts`, `db/schema/media.ts`    | npUsers, npMedia, npRevisions, npSettings, npNavigation            |
-| Modify collection codegen   | `db/generator.ts` (496 lines)                  | Produces Drizzle table definitions from NpCollectionConfig         |
-| Modify TS type codegen      | `db/type-generator.ts`                         | Produces TypeScript interfaces from configs                        |
-| Change JWT/password logic   | `auth/token.ts`, `auth/password.ts`            | jose for JWT, @node-rs/argon2 for passwords                        |
-| Add session features        | `auth/session.ts`                              | `verifyTokenFull`, `invalidateAllSessions`, tokenVersion checks    |
-| Change media processing     | `media/processor.ts`                           | sharp-based, `DEFAULT_IMAGE_SIZES` for variants                    |
-| Change storage contracts    | `storage/contract.ts`, `storage/operations.ts` | Keep bootstrap, media, doctor, health, and ops on one boundary     |
-| Add job handler             | `jobs/handlers.ts`, `jobs-contract/`           | `{ parsePayload, resolveSiteId }`; site ids live in exact payloads |
-| Add plugin capabilities     | `plugins/host.ts` + `plugin-sdk/src/types.ts`  | Hook capability = `hooks:<namespace>` prefix matching              |
-| Add error type              | `errors.ts`                                    | Extend `NpError` with code + statusCode                            |
+| Task                        | File(s)                                                       | Notes                                                              |
+| --------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Change content write path   | `collections/pipeline.ts`                                     | ACL → validate → hooks → persist → revisions → media refs → search |
+| Add/change system DB tables | `db/schema/system.ts`, `db/schema/media.ts`                   | npUsers, npMedia, npRevisions, npSettings, npNavigation            |
+| Modify collection codegen   | `db/generator.ts` (496 lines)                                 | Produces Drizzle table definitions from NpCollectionConfig         |
+| Modify TS type codegen      | `db/type-generator.ts`                                        | Produces TypeScript interfaces from configs                        |
+| Change JWT/password logic   | `auth/token.ts`, `auth/password.ts`                           | jose for JWT, @node-rs/argon2 for passwords                        |
+| Add session features        | `auth/session.ts`                                             | `verifyTokenFull`, `invalidateAllSessions`, tokenVersion checks    |
+| Change media processing     | `media/processor.ts`                                          | sharp-based, `DEFAULT_IMAGE_SIZES` for variants                    |
+| Change storage contracts    | `storage/contract.ts`, `storage/operations.ts`                | Keep bootstrap, media, doctor, health, and ops on one boundary     |
+| Change observability        | `observability/contract.ts`, `logger.ts`, `error-reporter.ts` | Preserve failure isolation and direct-console fallback             |
+| Add job handler             | `jobs/handlers.ts`, `jobs-contract/`                          | `{ parsePayload, resolveSiteId }`; site ids live in exact payloads |
+| Add plugin capabilities     | `plugins/host.ts` + `plugin-sdk/src/types.ts`                 | Hook capability = `hooks:<namespace>` prefix matching              |
+| Add error type              | `errors.ts`                                                   | Extend `NpError` with code + statusCode                            |
 
 ## INTERNAL DEPENDENCY FLOW
 

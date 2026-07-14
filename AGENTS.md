@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-14 (storage now shares one exact runtime intent,
+**Last refreshed:** 2026-07-14 (observability now shares one exact logger,
+reporter, event/context, async result, lifecycle, bootstrap, job-log tee,
+health, readiness, doctor, and scaffold contract; adapter failures are
+contained and operator-visible.)
+
+**Earlier:** 2026-07-14 (storage now shares one exact runtime intent,
 adapter, safe-key, metadata, result, lifecycle, bootstrap, health, doctor, and
 ops contract; malformed values fail closed.)
 

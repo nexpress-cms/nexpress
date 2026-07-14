@@ -48,6 +48,7 @@ describe.skipIf(skipIfNoTestDb())("system-health diagnostics (#F)", () => {
       // are debugging "why did password reset stop working" etc.
       "site_url",
       "email",
+      "observability",
       "secret",
     ]);
   });

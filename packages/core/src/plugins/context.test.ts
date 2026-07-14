@@ -374,6 +374,7 @@ describe("ctx.errors.report", () => {
   beforeEach(() => {
     captured = [];
     setErrorReporter({
+      kind: "test",
       captureException: (error, context) => {
         captured.push({ error, context });
       },

@@ -46,6 +46,7 @@ describe("built-in themes — requires union", () => {
   beforeEach(() => {
     warnings.length = 0;
     const noopChild = (): NpLogger => ({
+      kind: "test",
       debug: () => {},
       info: () => {},
       warn: (message, context) => {
@@ -55,6 +56,7 @@ describe("built-in themes — requires union", () => {
       child: noopChild,
     });
     setLogger({
+      kind: "test",
       debug: () => {},
       info: () => {},
       warn: (message, context) => {

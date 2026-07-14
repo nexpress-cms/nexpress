@@ -14,6 +14,7 @@ function captureWarnings(): {
 } {
   const warnings: CapturedWarning[] = [];
   setLogger({
+    kind: "test",
     debug: () => {},
     info: () => {},
     warn: (message, context) => {
