@@ -1,19 +1,64 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { getRateLimiter, type NpRateLimiterAdapter } from "@nexpress/core/rate-limit";
+import {
+  getOptionalRateLimiter,
+  getRateLimiter,
+  NpRateLimitContractError,
+  npCheckRateLimit,
+  npReadRateLimitRuntimeConfig,
+  npRequireRateLimiterAdapter,
+  type NpRateLimitDecision,
+  type NpRateLimiterAdapter,
+} from "@nexpress/core/rate-limit";
 
 import { i18nConfig, isLocale } from "../i18n-config";
 
-// Resolved once at module load. The rate-limiter registry is a
-// process singleton — re-fetching per request adds an indirection
-// for nothing. A custom adapter registered later via
-// `setRateLimiter` won't be picked up by this binding, but the
-// proxy only swaps adapters at boot.
-let limiterRef: NpRateLimiterAdapter | null = null;
-function limiter(): NpRateLimiterAdapter {
-  if (!limiterRef) limiterRef = getRateLimiter();
-  return limiterRef;
+export interface NpProxyOptions {
+  /** Adapter used by this proxy entrypoint; lifecycle remains caller-owned. */
+  readonly rateLimiter: NpRateLimiterAdapter;
+}
+
+export type NpProxyHandler = (request: NextRequest) => Promise<NextResponse>;
+
+// Environment is immutable for the lifetime of a Next server process.
+// Parse once at module evaluation so malformed intent fails before the
+// first request reaches an adapter.
+const rateLimitRuntime = npReadRateLimitRuntimeConfig(process.env);
+
+function rateLimitConfigurationError(path: string, message: string): never {
+  throw new NpRateLimitContractError("Invalid proxy rate-limit configuration", [
+    { code: "invariant", path, message },
+  ]);
+}
+
+function resolveProxyRateLimiter(explicit?: NpRateLimiterAdapter): NpRateLimiterAdapter {
+  const registered = explicit ?? getOptionalRateLimiter();
+
+  if (rateLimitRuntime.adapter === "custom") {
+    if (!registered) {
+      rateLimitConfigurationError(
+        "proxy.rateLimiter",
+        "NP_RATE_LIMIT_ADAPTER=custom requires an adapter passed to npCreateProxy() or registered in this proxy runtime.",
+      );
+    }
+    const validated = npRequireRateLimiterAdapter(registered);
+    if (validated.kind === "memory") {
+      rateLimitConfigurationError(
+        "proxy.rateLimiter.kind",
+        'must not be "memory" when NP_RATE_LIMIT_ADAPTER=custom.',
+      );
+    }
+    return validated;
+  }
+
+  if (registered && registered.kind !== "memory") {
+    rateLimitConfigurationError(
+      "env.NP_RATE_LIMIT_ADAPTER",
+      `must be "custom" when proxy adapter kind is "${registered.kind}".`,
+    );
+  }
+  return registered ? npRequireRateLimiterAdapter(registered) : getRateLimiter();
 }
 
 function getSecurityHeaders(request: NextRequest): Record<string, string> {
@@ -112,7 +157,7 @@ const RATE_LIMITS: Array<{ pattern: RegExp; limit: number; windowMs: number }> =
   // tighter limits than the general /api/admin/ bucket. Each
   // retry-all call fires up to 200 retries; enqueue runs an
   // arbitrary registered handler. List these ABOVE the general
-  // rule below — first-match wins in checkRateLimit.
+  // rule below — first-match wins in checkRequestRateLimit.
   { pattern: /^\/api\/admin\/jobs\/retry-all/, limit: 5, windowMs: 60_000 },
   { pattern: /^\/api\/admin\/jobs\/enqueue/, limit: 10, windowMs: 60_000 },
   { pattern: /^\/api\/admin\/jobs\/[^/]+\/retry/, limit: 30, windowMs: 60_000 },
@@ -131,22 +176,22 @@ function getClientIp(request: NextRequest): string {
   );
 }
 
-async function checkRateLimit(
+async function checkRequestRateLimit(
   ip: string,
   path: string,
-): Promise<{ limited: boolean; retryAfter?: number }> {
+  rateLimiter?: NpRateLimiterAdapter,
+): Promise<NpRateLimitDecision | null> {
   const rule = RATE_LIMITS.find((r) => r.pattern.test(path));
-  if (!rule) return { limited: false };
+  if (!rule) return null;
 
-  // The pluggable adapter handles both the increment and the
-  // decision — in-memory by default, swappable to Redis (or any
-  // other implementation) via `setRateLimiter` at boot.
+  // Input, adapter, and result all cross the canonical core
+  // contract before the proxy trusts the decision or emits a
+  // Retry-After header.
   const key = `${ip}:${rule.pattern.source}`;
-  const decision = await limiter().check(key, rule.limit, rule.windowMs);
-  if (decision.limited) {
-    return { limited: true, retryAfter: decision.retryAfterSeconds };
-  }
-  return { limited: false };
+  return npCheckRateLimit(
+    { key, limit: rule.limit, windowMs: rule.windowMs },
+    resolveProxyRateLimiter(rateLimiter),
+  );
 }
 
 /**
@@ -181,22 +226,22 @@ function resolveSiteLocale(pathname: string): {
   return { locale: i18nConfig.defaultLocale, rewrite: null };
 }
 
-export async function proxy(request: NextRequest) {
+async function runProxy(request: NextRequest, rateLimiter?: NpRateLimiterAdapter) {
   const { pathname } = request.nextUrl;
   const securityHeaders = getSecurityHeaders(request);
 
   if (pathname.startsWith("/api/")) {
     const ip = getClientIp(request);
-    const { limited, retryAfter } = await checkRateLimit(ip, pathname);
+    const decision = await checkRequestRateLimit(ip, pathname, rateLimiter);
 
-    if (limited) {
+    if (decision?.limited) {
       return NextResponse.json(
         { error: { code: "RATE_LIMITED", message: "Too many requests" }, status: 429 },
         {
           status: 429,
           headers: {
             ...securityHeaders,
-            "Retry-After": String(retryAfter),
+            "Retry-After": decision.retryAfterSeconds.toString(),
           },
         },
       );
@@ -223,8 +268,8 @@ export async function proxy(request: NextRequest) {
       // would let cookieless requests pass.
       const ok = Boolean(
         headerToken &&
-          ((staffCookie && staffCookie === headerToken) ||
-            (memberCookie && memberCookie === headerToken)),
+        ((staffCookie && staffCookie === headerToken) ||
+          (memberCookie && memberCookie === headerToken)),
       );
       if (!ok) {
         return NextResponse.json(
@@ -310,6 +355,38 @@ export async function proxy(request: NextRequest) {
   }
 
   return response;
+}
+
+/** Default proxy using the current core registry or in-memory fallback. */
+export async function proxy(request: NextRequest): Promise<NextResponse> {
+  return runProxy(request);
+}
+
+/**
+ * Create a proxy whose adapter is installed in the proxy's own
+ * execution entrypoint. Set `NP_RATE_LIMIT_ADAPTER=custom` when
+ * using this path so doctor and startup safety see the same intent.
+ */
+export function npCreateProxy(options: NpProxyOptions): NpProxyHandler {
+  const prototype =
+    typeof options === "object" && options !== null ? Object.getPrototypeOf(options) : undefined;
+  const keys =
+    typeof options === "object" && options !== null && !Array.isArray(options)
+      ? Object.keys(options)
+      : [];
+  if (
+    typeof options !== "object" ||
+    options === null ||
+    Array.isArray(options) ||
+    (prototype !== Object.prototype && prototype !== null) ||
+    keys.length !== 1 ||
+    keys[0] !== "rateLimiter"
+  ) {
+    rateLimitConfigurationError("proxy.options", "must be an exact { rateLimiter } object.");
+  }
+  const rateLimiter = npRequireRateLimiterAdapter(options.rateLimiter);
+  resolveProxyRateLimiter(rateLimiter);
+  return (request) => runProxy(request, rateLimiter);
 }
 
 export default proxy;

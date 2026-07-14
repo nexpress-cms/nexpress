@@ -21,18 +21,29 @@
 
 export interface NpRateLimitDecision {
   /** True when the request should be rejected (count exceeded). */
-  limited: boolean;
+  readonly limited: boolean;
   /**
-   * Seconds until the bucket resets. Set even when `limited` is
-   * false so callers can surface a `RateLimit-Reset` header (some
-   * clients expect it on every response, not just 429s). Adapters
-   * unable to compute it can omit the field — callers must tolerate
-   * missing values.
+   * Positive whole seconds until the bucket resets. Required on
+   * every decision so a blocked request can always emit one valid
+   * `Retry-After` header. An adapter that cannot inspect its store's
+   * TTL should return `Math.ceil(windowMs / 1000)`.
    */
-  retryAfterSeconds?: number;
+  readonly retryAfterSeconds: number;
+}
+
+/** Exact input validated before an adapter is dispatched. */
+export interface NpRateLimitRequest {
+  /** Opaque, bounded bucket key. Adapters must not parse it. */
+  readonly key: string;
+  /** Maximum admitted checks in the current window. */
+  readonly limit: number;
+  /** Fixed-window duration in milliseconds. */
+  readonly windowMs: number;
 }
 
 export interface NpRateLimiterAdapter {
+  /** Canonical lowercase identifier used by diagnostics. */
+  readonly kind: string;
   /**
    * Increment the bucket identified by `key` and return whether
    * the resulting count exceeds `limit` within `windowMs`.
@@ -54,10 +65,14 @@ export interface NpRateLimiterAdapter {
   /**
    * Optional teardown hook for adapters that hold network
    * connections or background timers (Redis client, cleanup
-   * intervals). Called by the bootstrap layer at process
-   * shutdown so e.g. a Redis pool drains cleanly. The framework
-   * never invokes this on the in-memory adapter — the cleanup
-   * timer there lives on `globalThis` for HMR durability.
+   * intervals). Registry consumers call `npShutdownRateLimiter()`;
+   * directly injected proxy adapters retain caller-owned lifecycle.
+   * The in-memory adapter needs no hook because its cleanup timer
+   * lives on `globalThis` for HMR durability.
    */
   shutdown?(): Promise<void>;
 }
+
+/** Operator intent shared by proxy boot, startup safety, and doctor. */
+export type NpRateLimitRuntimeConfig =
+  { readonly adapter: "memory" } | { readonly adapter: "custom" };

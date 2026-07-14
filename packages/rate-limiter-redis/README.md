@@ -20,12 +20,22 @@ contract to satisfy.
 ## Usage
 
 ```ts
-// apps/web/src/lib/init-core.ts (or your app's bootstrap)
-import { setRateLimiter } from "@nexpress/core/rate-limit";
+// src/proxy.ts — the proxy is a separate runtime entrypoint.
+import { npCreateProxy } from "@nexpress/app/proxy";
 import { RedisRateLimiter } from "@nexpress/rate-limiter-redis";
 
-setRateLimiter(new RedisRateLimiter({ url: process.env.NP_REDIS_URL }));
+export const proxy = npCreateProxy({
+  rateLimiter: new RedisRateLimiter({ url: process.env.NP_REDIS_URL }),
+});
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+};
 ```
+
+Set `NP_RATE_LIMIT_ADAPTER=custom`. Installing the adapter only from the
+application bootstrap is not reliable because it may not execute in the proxy
+runtime.
 
 Three constructor shapes:
 
@@ -33,7 +43,7 @@ Three constructor shapes:
 // 1. Connection string (most common).
 new RedisRateLimiter({ url: "redis://localhost:6379" });
 
-// 2. ioredis options (host/port/password/cluster/etc.).
+// 2. ioredis options (host/port/password/TLS/etc.).
 new RedisRateLimiter({ host: "redis.internal", port: 6379, db: 1 });
 
 // 3. Reuse an existing ioredis client (e.g. shared with caching).
@@ -70,9 +80,10 @@ deploys.
 
 ## Shutdown
 
-Call `await limiter.shutdown()` from your process's SIGTERM
-handler if the adapter owns its client (cases 1 and 2 above). It's
-a no-op when you passed in a shared client.
+`await limiter.shutdown()` is idempotent and closes clients owned by cases 1
+and 2 above. It is a no-op for a shared client. Call it from an existing
+application shutdown coordinator or from tests; do not add a competing signal
+handler when the NexPress job worker already owns SIGINT/SIGTERM.
 
 ## Tests
 

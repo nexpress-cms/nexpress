@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-14 (email delivery now shares one exact message,
+**Last refreshed:** 2026-07-14 (rate limiting now shares one exact runtime
+intent, adapter, request, decision, proxy injection, Redis result, lifecycle,
+startup-safety, and doctor contract; malformed values fail closed.)
+
+**Earlier:** 2026-07-14 (email delivery now shares one exact message,
 adapter, SMTP environment, credential-expiry template, and auth-job contract;
 bootstrap, health, doctor, docs, and scaffolds fail closed on malformed values.)
 
@@ -259,6 +263,7 @@ cli  (standalone scaffolder, no workspace deps)
 | `@nexpress/core/media-contract` | client-safe media records, variants, processing and API validators      |
 | `@nexpress/core/navigation`     | client-safe navigation wire/resolved types and validators               |
 | `@nexpress/core/observability`  | logger, error reporter, `verifyStartupSafety`                           |
+| `@nexpress/core/rate-limit`     | rate-limit contracts, adapters, registry, dispatch, lifecycle           |
 | `@nexpress/core/revisions`      | client-safe revision snapshot, persisted-row, and API wire contracts    |
 | `@nexpress/core/seo`            | sitemap, page metadata, Atom feeds, JSON-LD                             |
 | `@nexpress/core/settings`       | client-safe site identity, settings types, and validators               |
@@ -365,7 +370,12 @@ Route groups:
 
 - `(site)` — public site. Catch-all `[[...slug]]` renders pages from the content service.
 - `(admin)/admin` — admin UI (Radix + Tailwind v4 via `@nexpress/admin`). Split into `login/` and `(protected)/`.
-- `api/` — REST endpoints. Rate limiting + security headers applied in `src/proxy.ts` (in-memory per-IP buckets, per-path-pattern limits). The file is the Next 16 rename of the legacy `middleware.ts` convention; behavior is identical. **Rate limiting is per-process and intentional best-effort** — multi-node deployments need an upstream rate limiter (CDN / NGINX / Caddy). See `docs/deployment.md` "Multi-node notes" and issue #269.
+- `api/` — REST endpoints. Rate limiting + security headers are applied in
+  `src/proxy.ts`. The default `InMemoryRateLimiter` is per-process; multi-node
+  deployments set `NP_RATE_LIMIT_ADAPTER=custom` and inject a shared adapter
+  with `npCreateProxy()` from that proxy entrypoint. Requests and exact
+  decisions are validated before dispatch / `Retry-After` emission. See
+  `docs/rate-limiting.md`.
 
 Auth is JWT + Argon2 (`packages/core/src/auth`). Staff and member JWTs use
 exact audience/purpose/session-id claims, and each browser has one persisted
@@ -458,7 +468,7 @@ A separate package (not part of `@nexpress/core`) that ingests a WXR export end-
 | Add public routes to a plugin                    | `packages/plugins/forum/src/routes/`                                                  | `pageRoutes` array on `definePlugin`. Server-component routes import client widgets via the package's own `./client` subpath (NOT relative paths — relative bypasses RSC banner). Forum is the reference impl. Docs: `docs/plugin-pages.md`. Dispatcher: `packages/next/src/route-dispatcher.ts` |
 | Change auth flow                                 | `packages/core/src/auth/` + `packages/next/src/auth.ts`                               | JWT sign/verify in core; cookie helpers in next                                                                                                                                                                                                                                                  |
 | Change transactional email                       | `packages/core/src/email/` + `packages/app/src/lib/init-core.ts`                      | Keep message, adapter, SMTP env, template expiry, bootstrap, health, doctor, and auth-job payload contracts aligned. Docs: `docs/email.md`                                                                                                                                                       |
-| Change middleware (rate limits, CSP)             | `apps/web/src/proxy.ts`                                                               | In-memory rate limiter, security headers (Next 16 renamed `middleware.ts` → `proxy.ts`)                                                                                                                                                                                                          |
+| Change proxy (rate limits, CSP)                  | `packages/app/src/proxy/index.ts`                                                     | Shared implementation; app/scaffold `src/proxy.ts` files are thin wrappers. Rate-limit contracts live in `packages/core/src/rate-limit/`                                                                                                                                                         |
 | Modify bootstrap / service wiring                | `packages/next/src/bootstrap.ts`                                                      | `createBootstrap()` — the singleton factory                                                                                                                                                                                                                                                      |
 | Change DB schema (system tables)                 | `packages/core/src/db/schema/`                                                        | npUsers, npMedia, npRevisions, npSettings                                                                                                                                                                                                                                                        |
 | Scaffold templates (create-nexpress)             | `packages/cli/templates/` (real .ts files) + `packages/cli/src/templates.ts` (loader) | 7-PR split (#268) moved templates to on-disk files with their own `tsconfig.templates.json`; loader is the 384-line orchestrator. Edit the file, not a string literal                                                                                                                            |
@@ -511,8 +521,8 @@ These are the public APIs we'll honor with semver and migration notes. Breaking 
 - **Bootstrap intent enum** — `ensureFor("read" | "plugins" | "worker" | "write")`. `worker` installs plugins and email delivery without an enqueue-only pg-boss producer; semantics of all four are pinned.
 - **Error classes + codes** — `NpForbiddenError`, `NpNotFoundError`, `NpValidationError`, `NpAuthError`, `NpConflictError`, `NpRateLimitError`, `NpSiteContextMissingError`, and the `NpErrorCode` union. The string code per class is stable per [docs/api-error-codes.md](./docs/api-error-codes.md).
 - **Capability vocabulary** — `can(user, capability)` and the existing capability strings: `"admin.manage"`, `"content.publish"`, `"content.author"`, `"community.moderate"`. New capability strings will be added; existing ones won't be renamed or removed in 0.x.
-- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/email`, `/fields`, `/i18n`, `/jobs`, `/jobs-contract`, `/media`, `/media-contract`, `/navigation`, `/observability`, `/seo`, `/theme`. Symbols inside each are stable per the rules above.
-- **Adapters** — `NpStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NpJobQueue` (with `PgBossAdapter`), `NpLogger` + `setLogger`, `NpErrorReporter` + `setErrorReporter`, `NpEmailAdapter` + `setEmailAdapter` / `sendEmail`. Email messages are exact single-recipient objects, adapter kinds are canonical lowercase identifiers, and successful sends resolve to void. Optional methods (e.g. `NpJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
+- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/email`, `/fields`, `/i18n`, `/jobs`, `/jobs-contract`, `/media`, `/media-contract`, `/navigation`, `/observability`, `/rate-limit`, `/seo`, `/theme`. Symbols inside each are stable per the rules above.
+- **Adapters** — `NpStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NpJobQueue` (with `PgBossAdapter`), `NpLogger` + `setLogger`, `NpErrorReporter` + `setErrorReporter`, `NpEmailAdapter` + `setEmailAdapter` / `sendEmail`, and `NpRateLimiterAdapter` + `npCheckRateLimit` / `npShutdownRateLimiter`. Email messages are exact single-recipient objects; rate-limit requests and decisions are exact bounded objects. Adapter kinds are canonical lowercase identifiers, and successful send/shutdown hooks resolve to void. Optional methods (e.g. `NpJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
 - **`NpPrincipal` union** — adding a variant is breaking (every `switch (principal.kind)` site needs updating, enforced by `_exhaustive: never`). The existing `"staff"` / `"member"` shape is committed.
 - **Block authoring and content** — `NpBlockDefinition` (`type`, `label`, `defaultProps`, `propsSchema`, `acceptsChildren?`, `render(props, children?)`) and the `NpBlockInstance` wire shape (`id`, `type`, `props`, optional `children: NpBlockInstance[]`). `NpBlockContent` is the stored array type. `@nexpress/core/fields`, `@nexpress/blocks`, and `@nexpress/blocks/contracts` share `npValidateBlockContent` and `isNpBlockContent`; collection writes, generated types, OpenAPI, patterns, Admin JSON/paste/preview, translation, and unknown-block operations use that contract. Instance ids are unique across the whole tree; unknown/inactive block types remain structurally valid so content survives plugin/theme removal. Adding optional fields to the definition or instance is non-breaking. `NpBlockMetadata` (= `NpBlockDefinition` minus `render`) is the serializable subset the admin uses for the picker / props form. The shared registry helpers `registerBlock`, `getRegisteredBlocks`, `getRegisteredBlockMetadata`, `getSharedRegistry` are stable. The lightweight `@nexpress/blocks/contracts` subpath also exports `npValidateBlockDefinition`, `npAnalyzeBlockDefinitions`, and `npBlockPropFieldTypes`. Author docs: `docs/block-content.md`.
 - **Plugin block contribution** — `definePlugin({ blocks: NpBlockDefinition[] })`. Definition, bootstrap, registry, and doctor validation reject malformed definitions/props schemas and same-plugin duplicate types before registration. The bootstrap (`@nexpress/next`) registers each enabled plugin block into the shared registry at boot. Same-source re-registration is idempotent for HMR/reload; cross-source type collisions remain last-loaded-wins with a warning. Author docs: `docs/plugin-blocks.md`.

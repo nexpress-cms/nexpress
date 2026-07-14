@@ -15,6 +15,7 @@ src/
 ├── content/      # Thin helpers: getTheme, getNavigation, getPageBySlug, findPosts
 ├── media/        # Upload/process lifecycle, storage adapter singletons, sharp processing
 ├── storage/      # LocalStorageAdapter, S3StorageAdapter, createStorageAdapter factory
+├── rate-limit/   # Exact request/decision contract, adapters, registry, lifecycle
 ├── jobs/         # pg-boss queue abstraction, handler registry, worker lifecycle, builtin handlers
 ├── jobs-contract/ # client-safe names, payloads, persisted rows, schedules, and Admin wire parsers
 ├── sites/        # canonical site ids, async-local execution context, registry, memberships
@@ -35,6 +36,10 @@ src/
 | `pluginRegistry` / `globalHooks`       | `plugins/host.ts`         | `loadPlugins()` at startup              |
 
 **Init order**: createDbConnection → setDb/setMediaDb → setStorageAdapter → registerCollections → configureBuiltinJobContext → loadPlugins → startWorker. Wrong order = runtime "not initialized" errors.
+
+Rate limiting is initialized independently by the Next proxy entrypoint. Keep
+its contract pure under `@nexpress/core/rate-limit`; custom multi-node adapters
+must be injected from `src/proxy.ts`, not assumed to share app bootstrap state.
 
 ## WHERE TO LOOK
 

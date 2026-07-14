@@ -61,12 +61,12 @@ export interface NpStartupSafetyInput {
    */
   siteUrl?: string | null;
   /**
-   * Whether the operator has opted into a custom rate-limiter
-   * adapter via `setRateLimiter(...)`. `false` means the default
-   * `InMemoryRateLimiter` will be lazily installed on first use —
-   * fine for single-node, but per-node buckets in multi-replica
-   * deploys make the limit ~Nx looser than configured. Optional
-   * for back-compat; `undefined` skips the check.
+   * Whether `NP_RATE_LIMIT_ADAPTER=custom` declares a proxy-local
+   * custom rate limiter. `false` means the default process-local
+   * `InMemoryRateLimiter` is active — fine for single-node, but
+   * per-node buckets in multi-replica deploys make the limit ~N×
+   * looser than configured. Optional for back-compat; `undefined`
+   * skips the check.
    */
   rateLimiterCustom?: boolean;
 }
@@ -152,8 +152,7 @@ export function verifyStartupSafety(input: NpStartupSafetyInput): readonly strin
   // configured "5 login attempts / minute" effectively becomes
   // "5 × N pods" — the gate is looser than the operator thinks.
   // Same likely-multi-node detection as storage. `rateLimiterCustom
-  // === false` means the operator hasn't called `setRateLimiter()`,
-  // so the default will be installed on first request. `undefined`
+  // === false` means the runtime mode is `memory`; `undefined`
   // (caller didn't supply) skips the check.
   if (likelyMultiNode && input.rateLimiterCustom === false) {
     const reason = multiNode
@@ -163,7 +162,7 @@ export function verifyStartupSafety(input: NpStartupSafetyInput): readonly strin
         : "container_hint";
     log.warn(
       "InMemoryRateLimiter is not multi-node safe — buckets are per-process, so a multi-replica deploy multiplies the effective limit by the replica count. " +
-        "Install a shared adapter via `setRateLimiter(new RedisRateLimiter(...))` (or your own backing store), or `NP_MULTI_NODE=false` / `NP_REPLICAS=1` to silence this on a single-node deploy.",
+        "Set NP_RATE_LIMIT_ADAPTER=custom and inject a shared adapter with `npCreateProxy(...)`, or set `NP_MULTI_NODE=false` / `NP_REPLICAS=1` on a deliberate single-node deploy.",
       { check: "multi_node_in_memory_rate_limiter", reason },
     );
     emitted.push("multi_node_in_memory_rate_limiter");
