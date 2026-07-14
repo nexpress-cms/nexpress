@@ -128,6 +128,11 @@
       "import": "./dist/sites.js",
       "default": "./dist/sites.js"
     },
+    "./storage": {
+      "types": "./dist/storage.d.ts",
+      "import": "./dist/storage.js",
+      "default": "./dist/storage.js"
+    },
     "./theme": {
       "types": "./dist/theme.d.ts",
       "import": "./dist/theme.js",

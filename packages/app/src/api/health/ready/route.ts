@@ -1,7 +1,9 @@
+import { getOptionalJobQueue } from "@nexpress/core";
 import {
-  getOptionalJobQueue,
+  getOptionalStorageRuntimeConfig,
   getStorageAdapter,
-} from "@nexpress/core";
+  npStorageAdapterMatchesRuntimeConfig,
+} from "@nexpress/core/storage";
 import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
@@ -65,12 +67,18 @@ async function probeDb(): Promise<ProbeResult> {
 function probeStorage(): ProbeResult {
   try {
     const adapter = getStorageAdapter();
-    // Adapter exists implies bootstrap wired the configured
-    // backend (`createStorageAdapter` validated the config
-    // shape at boot). Constructing it surfaces broken config
-    // (missing bucket, missing baseUrl) immediately; we
-    // don't network here.
-    return { ok: !!adapter };
+    const config = getOptionalStorageRuntimeConfig();
+    if (config && !npStorageAdapterMatchesRuntimeConfig(config, adapter)) {
+      return {
+        ok: false,
+        detail: `${config.adapter} requested, ${adapter.kind} registered`,
+      };
+    }
+    // Registration implies bootstrap validated the exact runtime
+    // intent and adapter shape. We intentionally avoid a network
+    // call here so a transient object-store hiccup does not evict
+    // an otherwise healthy pod from service.
+    return { ok: true, detail: adapter.kind };
   } catch (error) {
     return {
       ok: false,
@@ -109,7 +117,11 @@ async function probeQueue(): Promise<ProbeResult & { enabled: boolean }> {
 
 export async function GET() {
   await ensureFor("read");
-  const [db, storage, queue] = await Promise.all([probeDb(), Promise.resolve(probeStorage()), probeQueue()]);
+  const [db, storage, queue] = await Promise.all([
+    probeDb(),
+    Promise.resolve(probeStorage()),
+    probeQueue(),
+  ]);
 
   const allOk = db.ok && storage.ok && queue.ok;
   const body: ReadinessResponse = {

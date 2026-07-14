@@ -8,8 +8,8 @@ import { getScopedLogger } from "./logger.js";
  * accidentally reads `process.env` from a deeper code path.
  */
 export interface NpStartupSafetyInput {
-  /** Storage adapter id chosen by `createStorageAdapter` (`local` or `s3`). */
-  storageAdapter: "local" | "s3";
+  /** Canonical live storage adapter kind (`local`, `s3`, or a custom kind). */
+  storageAdapter: string;
   /** Resolved auth secret. `null` when unset. */
   secret: string | null;
   /** `process.env.NODE_ENV` at boot — typically `"production"` / `"development"` / undefined. */
@@ -80,7 +80,7 @@ const MIN_PROD_SECRET_LENGTH = 32;
  * called out in the deployment docs:
  *
  *   - `LocalStorageAdapter` + `NP_MULTI_NODE=true` or
- *     `NP_REPLICAS>1`. Different nodes see different `./uploads`
+ *     `NP_REPLICAS>1`. Different nodes see different local media
  *     directories; uploads disappear between requests.
  *     (`docs/deployment.md` — Multi-node notes.)
  *   - `LocalStorageAdapter` + `NODE_ENV=production` + a managed-
@@ -140,7 +140,7 @@ export function verifyStartupSafety(input: NpStartupSafetyInput): readonly strin
         ? `NP_REPLICAS=${replicaCount.toString()}`
         : "a managed-container env var was detected in production (KUBERNETES_SERVICE_HOST / FLY_REGION / RENDER_INSTANCE_ID / RAILWAY_ENVIRONMENT_NAME)";
     log.warn(
-      `LocalStorageAdapter is not multi-node safe — ${trigger} but ./uploads is per-process. ` +
+      `LocalStorageAdapter is not multi-node safe — ${trigger} but the local media directory is per-process. ` +
         "Set NP_STORAGE_ADAPTER=s3 (or NP_MULTI_NODE=false / NP_REPLICAS=1 to silence the hint on a single-node deploy).",
       { check: "multi_node_local_storage", reason },
     );

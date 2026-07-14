@@ -69,15 +69,14 @@ describe("project config contract", () => {
     ["credentials", "https://user@cdn.example.com/media"],
     ["a query", "https://cdn.example.com/media?version=1"],
     ["a fragment", "https://cdn.example.com/media#preview"],
+    ["whitespace", "/media folder"],
   ])("rejects a local storage base URL with %s", (_label, baseUrl) => {
     const config = validConfig();
     if (config.storage?.adapter !== "local") throw new Error("fixture drift");
     config.storage.local.baseUrl = baseUrl;
 
     expect(npAnalyzeProjectConfig(config)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ location: "storage.local.baseUrl" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ location: "storage.local.baseUrl" })]),
     );
   });
 

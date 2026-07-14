@@ -144,29 +144,6 @@ const fieldSchema: z.ZodType = z.lazy(() =>
   ]),
 );
 
-// Discriminated union ties `adapter` to its required backend block —
-// previously both `local` and `s3` were optional regardless of the
-// adapter choice, so a config with `{ adapter: "s3" }` and no `s3`
-// block passed validation and only blew up at runtime when the storage
-// factory tried to read the missing block. (#64)
-const storageSchema = z.discriminatedUnion("adapter", [
-  z.strictObject({
-    adapter: z.literal("local"),
-    local: z.strictObject({
-      directory: z.string().min(1),
-      baseUrl: z.string().min(1),
-    }),
-  }),
-  z.strictObject({
-    adapter: z.literal("s3"),
-    s3: z.strictObject({
-      bucket: z.string().min(1),
-      region: z.string().min(1),
-      endpoint: z.string().url().optional(),
-    }),
-  }),
-]);
-
 // Plugins are a mix of legacy NpPluginConfig (object with optional init fn)
 // and SDK-built NpResolvedPluginLike (object with manifest). Preserve each
 // definition here; the project contract validates identity/dependencies and
@@ -181,7 +158,9 @@ export const npConfigSchema = z.strictObject({
   db: z.strictObject({
     connectionString: z.string().min(1),
   }),
-  storage: storageSchema.optional(),
+  // The canonical storage runtime contract owns the discriminated union,
+  // exact nested fields, and semantic URL/bucket/path validation.
+  storage: z.unknown().optional(),
   collections: z.array(z.lazy((): z.ZodType => collectionConfigSchema)),
   auth: z
     .strictObject({

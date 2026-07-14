@@ -74,7 +74,7 @@ const LazyRichTextEditor = lazy(async () => {
  * check on the server side. The endpoint resolves the storage URL
  * via `getStorageAdapter().getUrl()` and returns it directly so the
  * editor can insert an `<img src>` that works under both local-disk
- * (`/uploads/...`) and S3 (CDN URL) storage adapters.
+ * (`/media/...` by default) and S3 (CDN URL) storage adapters.
  */
 async function uploadMemberImage(file: File): Promise<{ url: string }> {
   const csrf = readCookie("np-mb-csrf");

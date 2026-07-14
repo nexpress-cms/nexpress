@@ -9,7 +9,7 @@ export default defineConfig({
   db: { connectionString: "postgres://stub" },
   storage: {
     adapter: "local",
-    local: { directory: "./uploads", baseUrl: "/uploads" },
+    local: { directory: "./public/media", baseUrl: "/media" },
   },
   collections: [],
   auth: { secret: "stub-secret-32characters-min-aaaaaaaaaaaa" },

@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { npValidatePluginCronExpression } from "@nexpress/core";
 import { npReadEmailRuntimeConfig } from "@nexpress/core/email";
 import { npReadRateLimitRuntimeConfig } from "@nexpress/core/rate-limit";
+import { npReadStorageRuntimeConfig, type NpStorageRuntimeConfig } from "@nexpress/core/storage";
 import {
   npAnalyzeAuthUser,
   npAnalyzeMemberAuthUser,
@@ -127,10 +128,10 @@ export async function collectDoctorChecks(
   checks.push(checkEnvExampleSync(env));
   checks.push(checkEmailRuntimeContract(env));
   checks.push(checkRateLimitRuntimeContract(env, prodMode));
-  const s3 = checkS3Vars(env);
-  if (s3) checks.push(s3);
+  checks.push(checkStorageRuntimeContract(env));
   checks.push(...checkOAuthEnvPairs(env));
-  checks.push(await checkLocalStorage(env, cwd));
+  const localStorage = await checkLocalStorage(env, cwd);
+  if (localStorage) checks.push(localStorage);
   checks.push(await checkDatabase(env));
   checks.push(await checkAuthContracts(env));
   checks.push(await checkSettingsContracts(env));
@@ -232,6 +233,31 @@ function checkRateLimitRuntimeContract(env: DoctorEnv, prodMode: boolean): Check
   }
 }
 
+function checkStorageRuntimeContract(env: DoctorEnv): CheckResult {
+  try {
+    const config = npReadStorageRuntimeConfig(env);
+    return {
+      id: "storage.contract",
+      state: "ok",
+      label: "Storage runtime contract",
+      detail:
+        config.adapter === "local"
+          ? `local · ${config.local.directory}`
+          : config.adapter === "s3"
+            ? `s3 · ${config.s3.bucket} (${config.s3.region})`
+            : "custom (bootstrap adapter expected)",
+    };
+  } catch (error) {
+    return {
+      id: "storage.contract",
+      state: "error",
+      label: "Storage runtime contract",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Set NP_STORAGE_ADAPTER to exactly local, s3, or custom and satisfy its exact configuration.",
+    };
+  }
+}
+
 export async function collectDoctorReport(
   options: CollectDoctorOptions = {},
 ): Promise<DoctorJsonOutput> {
@@ -299,6 +325,10 @@ async function checkEnvFile(cwd: string): Promise<CheckResult> {
       hint: "Run `pnpm run setup` (browser env wizard) or copy .env.example to .env.",
     };
   }
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 function checkRequiredVar(spec: RequiredVarSpec, prodMode: boolean, env: DoctorEnv): CheckResult {
@@ -1149,17 +1179,15 @@ function inspectJobContract(issues: NpJobContractIssue[], path: string, inspect:
   }
 }
 
-async function checkLocalStorage(env: DoctorEnv, cwd: string): Promise<CheckResult> {
-  const adapter = (env.NP_STORAGE_ADAPTER ?? "local").toLowerCase();
-  if (adapter !== "local") {
-    return {
-      id: "storage.adapter",
-      state: "ok",
-      label: `Storage adapter: ${adapter}`,
-      detail: "S3-side checks not run",
-    };
+async function checkLocalStorage(env: DoctorEnv, cwd: string): Promise<CheckResult | null> {
+  let config: NpStorageRuntimeConfig;
+  try {
+    config = npReadStorageRuntimeConfig(env);
+  } catch {
+    return null;
   }
-  const dir = env.NP_STORAGE_DIR ?? "./public/media";
+  if (config.adapter !== "local") return null;
+  const dir = config.local.directory;
   const path = resolve(/* turbopackIgnore: true */ cwd, dir);
   try {
     const stats = await stat(/* turbopackIgnore: true */ path);
@@ -1178,7 +1206,16 @@ async function checkLocalStorage(env: DoctorEnv, cwd: string): Promise<CheckResu
       label: "Local storage directory",
       detail: dir,
     };
-  } catch {
+  } catch (error) {
+    if (!isMissingPathError(error)) {
+      return {
+        id: "storage.local_directory",
+        state: "error",
+        label: "Local storage directory",
+        detail: error instanceof Error ? error.message : String(error),
+        hint: "Ensure the process can inspect NP_STORAGE_DIR.",
+      };
+    }
     return {
       id: "storage.local_directory",
       state: "warn",
@@ -1187,23 +1224,6 @@ async function checkLocalStorage(env: DoctorEnv, cwd: string): Promise<CheckResu
       hint: "Will be created on first upload; create it manually if your env is read-only.",
     };
   }
-}
-
-function checkS3Vars(env: DoctorEnv): CheckResult | null {
-  if ((env.NP_STORAGE_ADAPTER ?? "").toLowerCase() !== "s3") return null;
-  const missing: string[] = [];
-  if (!env.NP_S3_BUCKET) missing.push("NP_S3_BUCKET");
-  if (!env.NP_S3_REGION) missing.push("NP_S3_REGION");
-  if (missing.length > 0) {
-    return {
-      id: "storage.s3_settings",
-      state: "error",
-      label: "S3 settings",
-      detail: `missing ${missing.join(", ")}`,
-      hint: "Re-run `pnpm run setup` and pick S3 to fill these in.",
-    };
-  }
-  return { id: "storage.s3_settings", state: "ok", label: "S3 settings" };
 }
 
 async function checkMigrationsApplied(args: {

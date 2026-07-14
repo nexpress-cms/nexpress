@@ -58,6 +58,8 @@ export default defineConfig({
     seo: "src/seo/index.ts",
     // Server-side site registry, execution context, memberships, and authorization.
     sites: "src/sites/index.ts",
+    // Server-side storage config, adapter, object I/O, registry, and lifecycle contract.
+    storage: "src/storage/index.ts",
     // Pure, client-safe site identity and framework settings contracts.
     settings: "src/settings/index.ts",
     // Pure, client-safe theme token inventory and validation contract.

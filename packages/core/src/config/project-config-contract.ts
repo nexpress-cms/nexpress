@@ -1,5 +1,6 @@
 import type { NpConfig } from "./types.js";
 import { npConfigSchema } from "./validation.js";
+import { npAnalyzeStorageRuntimeConfig } from "../storage/contract.js";
 
 export type NpProjectConfigIssueCode = "shape" | "reference";
 
@@ -30,21 +31,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function pathOf(parts: readonly PropertyKey[]): string {
   return parts.map(String).join(".");
-}
-
-function isHttpBaseUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return (
-      (url.protocol === "http:" || url.protocol === "https:") &&
-      url.username === "" &&
-      url.password === "" &&
-      url.search === "" &&
-      url.hash === ""
-    );
-  } catch {
-    return false;
-  }
 }
 
 function analyzeSite(config: NpConfig, issues: NpProjectConfigIssue[]): void {
@@ -87,42 +73,8 @@ function analyzeSite(config: NpConfig, issues: NpProjectConfigIssue[]): void {
 
 function analyzeStorage(config: NpConfig, issues: NpProjectConfigIssue[]): void {
   if (!config.storage) return;
-  if (config.storage.adapter === "local") {
-    const { directory, baseUrl } = config.storage.local;
-    if (directory.trim() !== directory || directory.trim() === "") {
-      issues.push(
-        issue("shape", "storage.local.directory", "directory must be a non-empty trimmed path."),
-      );
-    }
-    if (!(
-      (baseUrl.startsWith("/") && !baseUrl.startsWith("//") && !/[?#]/u.test(baseUrl)) ||
-      isHttpBaseUrl(baseUrl)
-    )) {
-      issues.push(
-        issue(
-          "shape",
-          "storage.local.baseUrl",
-          "baseUrl must be an absolute path or HTTP(S) base URL without credentials, a query, or fragment.",
-        ),
-      );
-    }
-    return;
-  }
-
-  if (config.storage.s3.bucket.trim() !== config.storage.s3.bucket) {
-    issues.push(issue("shape", "storage.s3.bucket", "bucket must be trimmed."));
-  }
-  if (config.storage.s3.region.trim() !== config.storage.s3.region) {
-    issues.push(issue("shape", "storage.s3.region", "region must be trimmed."));
-  }
-  if (config.storage.s3.endpoint && !isHttpBaseUrl(config.storage.s3.endpoint)) {
-    issues.push(
-      issue(
-        "shape",
-        "storage.s3.endpoint",
-        "endpoint must be an HTTP(S) base URL without credentials, a query, or fragment.",
-      ),
-    );
+  for (const entry of npAnalyzeStorageRuntimeConfig(config.storage, "storage")) {
+    issues.push(issue("shape", entry.path, entry.message));
   }
 }
 

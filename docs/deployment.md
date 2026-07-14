@@ -16,7 +16,10 @@ three concrete paths plus the env-var surface you need on all of them.
 
 Optional (defaults shown in `.env.example`):
 
-- `NP_STORAGE_ADAPTER` — `local` (default) or `s3`. S3 also needs `NP_S3_BUCKET`, `NP_S3_REGION`, optional `NP_S3_ENDPOINT` (MinIO / R2).
+- `NP_STORAGE_ADAPTER` — exact `local` (default), `s3`, or `custom`. Local
+  defaults to `./public/media` and `/media`. S3 requires `NP_S3_BUCKET` and
+  `NP_S3_REGION`, with optional `NP_S3_ENDPOINT` for MinIO/R2. Custom requires
+  programmatic bootstrap wiring; see [storage.md](./storage.md).
 - `NP_ENABLE_JOBS=1` — start the pg-boss worker. Without it, write-side
   follow-up jobs (revalidation, email send) silently drop. **Required in
   production.**
@@ -110,7 +113,7 @@ docker build -f docker/Dockerfile -t nexpress .
 docker run -d \
   --name nexpress \
   -p 3000:3000 \
-  -v nexpress-uploads:/app/uploads \
+  -v nexpress-media:/app/apps/web/public/media \
   -e DATABASE_URL=postgres://user:pass@host:5432/db \
   -e NP_SECRET="$(openssl rand -hex 32)" \
   -e SITE_URL=https://yourdomain.com \
@@ -128,7 +131,8 @@ docker run --rm \
   pnpm --filter @nexpress/web db:migrate
 ```
 
-> **Storage caveat:** the `LocalStorageAdapter` writes to `/app/uploads`.
+> **Storage caveat:** this image sets `NP_STORAGE_DIR` to
+> `/app/apps/web/public/media` so the standalone server can expose `/media`.
 > A volume mount keeps uploads across redeploys, but the local adapter is
 > **single-node only** — for multi-node deploys switch to `NP_STORAGE_ADAPTER=s3`.
 
@@ -406,7 +410,7 @@ For a Sentry / pino / Datadog-specific recipe and the matching
   actions live in the loaded plugin process. Restart all nodes after
   changing `nexpress.config.ts` plugin entries.
 - **`LocalStorageAdapter` is not multi-node safe.** Different nodes will
-  see different `./uploads` directories. Use S3 (or any object store) in
+  see different local media directories. Use S3 (or any object store) in
   HA topologies. Boot emits a `multi_node_local_storage` warning when
   `NP_MULTI_NODE=true` (or `=1`) is set, `NP_REPLICAS` is greater than
   `1`, or `NODE_ENV=production` _and_ a managed-container env var is

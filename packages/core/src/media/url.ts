@@ -1,4 +1,6 @@
-import { getMediaById, getStorageAdapter } from "./service.js";
+import { npGetStorageObjectUrl } from "../storage/operations.js";
+import { getStorageAdapter } from "../storage/registry.js";
+import { getMediaById } from "./service.js";
 import { npMediaVariantNamePattern } from "../media-contract/contract.js";
 import type { NpGetMediaUrlOptions } from "../media-contract/types.js";
 
@@ -36,14 +38,14 @@ export async function getMediaUrl(
   if (!row) return null;
 
   if (variant === "original") {
-    return getStorageAdapter().getUrl(row.storageKey);
+    return npGetStorageObjectUrl(getStorageAdapter(), row.storageKey);
   }
 
   const size = row.sizes?.[variant];
   if (size) {
-    return getStorageAdapter().getUrl(size.storageKey);
+    return npGetStorageObjectUrl(getStorageAdapter(), size.storageKey);
   }
 
   if (!fallback) return null;
-  return getStorageAdapter().getUrl(row.storageKey);
+  return npGetStorageObjectUrl(getStorageAdapter(), row.storageKey);
 }

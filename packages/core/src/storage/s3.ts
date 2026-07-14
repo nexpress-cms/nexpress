@@ -8,109 +8,111 @@ import type { S3Client } from "@aws-sdk/client-s3";
 // don't pay the import cost.
 import type * as awsS3 from "@aws-sdk/client-s3";
 
-import type { NpFileMetadata, NpStorageAdapter } from "./types.js";
+import {
+  npRequireFileMetadata,
+  npRequireS3StorageAdapterConfig,
+  npRequireStorageKey,
+  npRequireStorageStream,
+  npRequireStorageUploadData,
+  npRequireStorageUrl,
+} from "./contract.js";
+import type { NpFileMetadata, NpStorageAdapter, S3StorageAdapterConfig } from "./types.js";
 
-export interface S3StorageAdapterConfig {
-  bucket: string;
-  region: string;
-  endpoint?: string;
-  credentials?: {
-    accessKeyId: string;
-    secretAccessKey: string;
-  };
-}
+export type { S3StorageAdapterConfig } from "./types.js";
 
 type S3Module = typeof awsS3;
 
 let s3ModulePromise: Promise<S3Module> | null = null;
 
 export class S3StorageAdapter implements NpStorageAdapter {
+  readonly kind = "s3";
+  private readonly config: S3StorageAdapterConfig;
   private clientPromise: Promise<S3Client> | null = null;
+  private shutdownPromise: Promise<void> | null = null;
 
-  constructor(private readonly config: S3StorageAdapterConfig) {}
+  constructor(config: S3StorageAdapterConfig) {
+    this.config = npRequireS3StorageAdapterConfig(config);
+  }
 
   async upload(
     key: string,
     data: Buffer | ReadableStream,
     metadata: NpFileMetadata,
   ): Promise<void> {
-    const [{ PutObjectCommand }, client] = await Promise.all([
-      loadS3Module(),
-      this.getClient(),
-    ]);
+    const validatedKey = npRequireStorageKey(key);
+    const validatedMetadata = npRequireFileMetadata(metadata);
+    const validatedData = npRequireStorageUploadData(data, validatedMetadata);
+    const [{ PutObjectCommand }, client] = await Promise.all([loadS3Module(), this.getClient()]);
 
     await client.send(
       new PutObjectCommand({
         Bucket: this.config.bucket,
-        Key: key,
-        Body: Buffer.isBuffer(data) ? data : Readable.fromWeb(data),
-        ContentType: metadata.contentType,
-        ContentLength: metadata.contentLength,
+        Key: validatedKey,
+        Body: Buffer.isBuffer(validatedData) ? validatedData : Readable.fromWeb(validatedData),
+        ContentType: validatedMetadata.contentType,
+        ContentLength: validatedMetadata.contentLength,
         Metadata: {
-          originalFilename: metadata.originalFilename,
+          originalFilename: validatedMetadata.originalFilename,
         },
       }),
     );
   }
 
   async getStream(key: string): Promise<ReadableStream> {
-    const [{ GetObjectCommand }, client] = await Promise.all([
-      loadS3Module(),
-      this.getClient(),
-    ]);
+    const validatedKey = npRequireStorageKey(key);
+    const [{ GetObjectCommand }, client] = await Promise.all([loadS3Module(), this.getClient()]);
     const response = await client.send(
       new GetObjectCommand({
         Bucket: this.config.bucket,
-        Key: key,
+        Key: validatedKey,
       }),
     );
 
-    return toReadableStream(response.Body);
+    return npRequireStorageStream(toReadableStream(response.Body));
   }
 
   getUrl(key: string): Promise<string> {
+    const validatedKey = npRequireStorageKey(key);
     if (this.config.endpoint) {
       const endpoint = new URL(this.config.endpoint);
       const endpointPath = endpoint.pathname.replace(/\/+$/u, "");
       endpoint.pathname = `${endpointPath}/${this.config.bucket}/`;
       endpoint.search = "";
       endpoint.hash = "";
-      return Promise.resolve(new URL(key, endpoint).toString());
+      return Promise.resolve(npRequireStorageUrl(new URL(validatedKey, endpoint).toString()));
     }
 
     return Promise.resolve(
-      new URL(
-        key,
-        `https://${this.config.bucket}.s3.${this.config.region}.amazonaws.com/`,
-      ).toString(),
+      npRequireStorageUrl(
+        new URL(
+          validatedKey,
+          `https://${this.config.bucket}.s3.${this.config.region}.amazonaws.com/`,
+        ).toString(),
+      ),
     );
   }
 
   async delete(key: string): Promise<void> {
-    const [{ DeleteObjectCommand }, client] = await Promise.all([
-      loadS3Module(),
-      this.getClient(),
-    ]);
+    const validatedKey = npRequireStorageKey(key);
+    const [{ DeleteObjectCommand }, client] = await Promise.all([loadS3Module(), this.getClient()]);
 
     await client.send(
       new DeleteObjectCommand({
         Bucket: this.config.bucket,
-        Key: key,
+        Key: validatedKey,
       }),
     );
   }
 
   async exists(key: string): Promise<boolean> {
-    const [{ HeadObjectCommand }, client] = await Promise.all([
-      loadS3Module(),
-      this.getClient(),
-    ]);
+    const validatedKey = npRequireStorageKey(key);
+    const [{ HeadObjectCommand }, client] = await Promise.all([loadS3Module(), this.getClient()]);
 
     try {
       await client.send(
         new HeadObjectCommand({
           Bucket: this.config.bucket,
-          Key: key,
+          Key: validatedKey,
         }),
       );
       return true;
@@ -123,7 +125,20 @@ export class S3StorageAdapter implements NpStorageAdapter {
     }
   }
 
-  private getClient(): Promise<S3Client> {
+  shutdown(): Promise<void> {
+    if (this.shutdownPromise) return this.shutdownPromise;
+    const client = this.clientPromise;
+    this.clientPromise = null;
+    this.shutdownPromise = (async () => {
+      if (client) (await client).destroy();
+    })().finally(() => {
+      this.shutdownPromise = null;
+    });
+    return this.shutdownPromise;
+  }
+
+  private async getClient(): Promise<S3Client> {
+    if (this.shutdownPromise) await this.shutdownPromise;
     if (!this.clientPromise) {
       this.clientPromise = this.createClient();
     }
@@ -163,19 +178,23 @@ function toReadableStream(body: unknown): ReadableStream {
 function hasTransformToWebStream(
   value: unknown,
 ): value is { transformToWebStream(): ReadableStream } {
-  return typeof value === "object"
-    && value !== null
-    && "transformToWebStream" in value
-    && typeof value.transformToWebStream === "function";
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "transformToWebStream" in value &&
+    typeof value.transformToWebStream === "function"
+  );
 }
 
 function isNotFoundError(error: unknown): boolean {
-  return typeof error === "object"
-    && error !== null
-    && (("name" in error && error.name === "NotFound")
-      || ("$metadata" in error
-        && typeof error.$metadata === "object"
-        && error.$metadata !== null
-        && "httpStatusCode" in error.$metadata
-        && error.$metadata.httpStatusCode === 404));
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (("name" in error && error.name === "NotFound") ||
+      ("$metadata" in error &&
+        typeof error.$metadata === "object" &&
+        error.$metadata !== null &&
+        "httpStatusCode" in error.$metadata &&
+        error.$metadata.httpStatusCode === 404))
+  );
 }

@@ -1,4 +1,5 @@
 import type { NpConfig, NpRegisteredTheme } from "@nexpress/core";
+import { npReadStorageRuntimeConfig } from "@nexpress/core/storage";
 
 import { defaultTheme } from "@nexpress/theme-default";
 import { docsTheme } from "@nexpress/theme-docs";
@@ -131,21 +132,5 @@ export const defaultI18n: NonNullable<NpConfig["i18n"]> = {
  * file. `pnpm run setup` writes the right env block directly.
  */
 export function storageFromEnv(): NonNullable<NpConfig["storage"]> {
-  if (process.env.NP_STORAGE_ADAPTER === "s3") {
-    return {
-      adapter: "s3",
-      s3: {
-        bucket: process.env.NP_S3_BUCKET ?? "",
-        region: process.env.NP_S3_REGION ?? "us-east-1",
-        endpoint: process.env.NP_S3_ENDPOINT,
-      },
-    };
-  }
-  return {
-    adapter: "local",
-    local: {
-      directory: process.env.NP_STORAGE_DIR ?? "./public/media",
-      baseUrl: process.env.NP_STORAGE_URL ?? "/media",
-    },
-  };
+  return npReadStorageRuntimeConfig(process.env);
 }

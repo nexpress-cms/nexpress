@@ -22,6 +22,7 @@ describe("doctor core", () => {
         "env.database_url",
         "email.contract",
         "rate-limit.contract",
+        "storage.contract",
         "database.reachable",
         "auth.contract",
         "settings.contract",
@@ -138,6 +139,22 @@ describe("doctor core", () => {
       expect.objectContaining({
         state: "error",
         detail: expect.stringContaining("NP_RATE_LIMIT_ADAPTER"),
+      }),
+    );
+  });
+
+  it("fails closed on malformed storage runtime intent without booting the app", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nexpress-doctor-core-"));
+    const checks = await collectDoctorChecks({
+      cwd,
+      nodeVersion: "24.11.1",
+      env: { NP_STORAGE_ADAPTER: "s3", NP_S3_BUCKET: "site-media" },
+    });
+
+    expect(checks.find((check) => check.id === "storage.contract")).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: expect.stringContaining("storage.runtime.s3.region"),
       }),
     );
   });

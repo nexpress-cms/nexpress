@@ -169,10 +169,10 @@ English one.
 
 ## (c) Media binary serving
 
-LocalStorageAdapter writes to `./uploads` and exposes URLs
-under `/uploads/`. Production deployments should:
+LocalStorageAdapter writes to `./public/media` by default and exposes URLs
+under `/media/`. Production deployments should:
 
-1. Serve `./uploads/` via a CDN (Cloudflare, Fastly, S3 +
+1. Serve `./public/media/` via a CDN (Cloudflare, Fastly, S3 +
    CloudFront) rather than via the Next.js origin.
 2. Set long immutable cache headers (`Cache-Control: public,
 max-age=31536000, immutable`) on those responses (media URLs include

@@ -43,6 +43,7 @@ behavior they describe changes.
 | [scheduled-publishing.md](scheduled-publishing.md)     | Scheduled publish flow                                                 |
 | [settings.md](settings.md)                             | Canonical site identity and closed persisted-settings registry         |
 | [site-customization.md](site-customization.md)         | Track A — what to customise in a scaffolded site without forking       |
+| [storage.md](storage.md)                               | Runtime modes, object/adapter contract, lifecycle, and diagnostics     |
 | [testing.md](testing.md)                               | Unit + integration test setup                                          |
 | [theme-and-page-authors.md](theme-and-page-authors.md) | Cookbook — what to call from a custom page or theme                    |
 | [theme-authoring.md](theme-authoring.md)               | Authoring a theme                                                      |

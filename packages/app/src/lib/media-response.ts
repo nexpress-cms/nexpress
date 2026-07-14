@@ -1,4 +1,3 @@
-import { getStorageAdapter } from "@nexpress/core/media";
 import {
   npSerializeMediaRecord,
   npValidateMediaApiItem,
@@ -6,6 +5,7 @@ import {
   type NpMediaRecord,
   type NpMediaUploaderSummary,
 } from "@nexpress/core/media-contract";
+import { getStorageAdapter, npGetStorageObjectUrl } from "@nexpress/core/storage";
 
 export async function toMediaApiItem(
   record: NpMediaRecord,
@@ -14,8 +14,8 @@ export async function toMediaApiItem(
   const adapter = getStorageAdapter();
   const thumbnail = record.sizes?.thumbnail ?? null;
   const [originalUrl, thumbnailUrl] = await Promise.all([
-    adapter.getUrl(record.storageKey),
-    thumbnail ? adapter.getUrl(thumbnail.storageKey) : Promise.resolve(null),
+    npGetStorageObjectUrl(adapter, record.storageKey),
+    thumbnail ? npGetStorageObjectUrl(adapter, thumbnail.storageKey) : Promise.resolve(null),
   ]);
   const item: NpMediaApiItem = {
     ...npSerializeMediaRecord(record),

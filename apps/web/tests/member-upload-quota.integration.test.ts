@@ -308,6 +308,7 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
     // never reads back the bytes for these uploads), but uploads
     // throw the way an S3 5xx would.
     const failingAdapter: typeof original = {
+      kind: "failing",
       upload: () => Promise.reject(new Error("simulated storage outage")),
       getStream: original.getStream.bind(original),
       getUrl: original.getUrl.bind(original),

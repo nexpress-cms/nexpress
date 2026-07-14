@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-14 (rate limiting now shares one exact runtime
+**Last refreshed:** 2026-07-14 (storage now shares one exact runtime intent,
+adapter, safe-key, metadata, result, lifecycle, bootstrap, health, doctor, and
+ops contract; malformed values fail closed.)
+
+**Earlier:** 2026-07-14 (rate limiting now shares one exact runtime
 intent, adapter, request, decision, proxy injection, Redis result, lifecycle,
 startup-safety, and doctor contract; malformed values fail closed.)
 
@@ -268,6 +272,7 @@ cli  (standalone scaffolder, no workspace deps)
 | `@nexpress/core/seo`            | sitemap, page metadata, Atom feeds, JSON-LD                             |
 | `@nexpress/core/settings`       | client-safe site identity, settings types, and validators               |
 | `@nexpress/core/sites`          | site registry, execution context, memberships, scoped authorization     |
+| `@nexpress/core/storage`        | storage runtime/object contracts, adapters, registry, and lifecycle     |
 | `@nexpress/core/theme`          | client-safe theme token inventory, validators, and merge helpers        |
 
 The root `@nexpress/core` keeps re-exporting everything for back-compat; existing call sites are not forced to migrate. Treat the root as the lowest-common-denominator surface and the subpaths as the canonical domain APIs.
@@ -290,7 +295,7 @@ Dev watch reads `NP_DEV_FAST` from `.env` (default `1`); when set, each package'
 `@nexpress/core` exposes a module-scoped singleton pattern:
 
 - `setDb(db)` / `getDb()` — Drizzle connection (single source of truth shared by the pipeline, media service, and every other consumer)
-- `setStorageAdapter(adapter)` — local or S3
+- `setStorageAdapter(adapter)` — validated local, S3, or custom adapter
 - `setJobQueue(queue)` / `startWorker()` — pg-boss
 - `loadPlugins(plugins)` — registers hooks/routes/actions
 
@@ -412,7 +417,17 @@ Each `./client` bundle is built by tsup with `"use client"` banner injection. Co
 
 ### Storage
 
-`createStorageAdapter(config)` returns either `LocalStorageAdapter` (writes under `./uploads`, served at `/uploads`) or `S3StorageAdapter`. Selection is env-driven: `NP_STORAGE_ADAPTER=s3` + `NP_S3_BUCKET`/`NP_S3_REGION`/`NP_S3_ENDPOINT`, otherwise local with `NP_STORAGE_DIR` / `NP_STORAGE_URL`. A MinIO service is defined in `docker/docker-compose.yml` under the `s3` profile for local S3 development.
+`@nexpress/core/storage` owns the exact `local | s3 | custom` runtime contract.
+Local defaults to `./public/media` served at `/media`; S3 requires bucket and
+region with an optional endpoint. Custom mode requires a programmatic adapter
+through `createBootstrap({ storageAdapter })` or `setStorageAdapter()` and a
+non-reserved canonical `kind`. Safe relative keys, exact upload metadata,
+Web-stream/URL/boolean/void results, and optional `shutdown()` are validated at
+the shared operation boundary. Local paths remain confined to their root and
+S3 clients close through the lifecycle hook. Doctor, Admin health, readiness,
+setup, and standalone ops use the same environment parser. Author/operator
+reference: `docs/storage.md`. A MinIO service is defined in
+`docker/docker-compose.yml` under the `s3` profile for local S3 development.
 
 Media JSON uses the canonical client-safe contract from
 `@nexpress/core/media-contract`. `NpMediaRecord`, `NpMediaVariant`, focal
@@ -521,8 +536,8 @@ These are the public APIs we'll honor with semver and migration notes. Breaking 
 - **Bootstrap intent enum** — `ensureFor("read" | "plugins" | "worker" | "write")`. `worker` installs plugins and email delivery without an enqueue-only pg-boss producer; semantics of all four are pinned.
 - **Error classes + codes** — `NpForbiddenError`, `NpNotFoundError`, `NpValidationError`, `NpAuthError`, `NpConflictError`, `NpRateLimitError`, `NpSiteContextMissingError`, and the `NpErrorCode` union. The string code per class is stable per [docs/api-error-codes.md](./docs/api-error-codes.md).
 - **Capability vocabulary** — `can(user, capability)` and the existing capability strings: `"admin.manage"`, `"content.publish"`, `"content.author"`, `"community.moderate"`. New capability strings will be added; existing ones won't be renamed or removed in 0.x.
-- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/email`, `/fields`, `/i18n`, `/jobs`, `/jobs-contract`, `/media`, `/media-contract`, `/navigation`, `/observability`, `/rate-limit`, `/seo`, `/theme`. Symbols inside each are stable per the rules above.
-- **Adapters** — `NpStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NpJobQueue` (with `PgBossAdapter`), `NpLogger` + `setLogger`, `NpErrorReporter` + `setErrorReporter`, `NpEmailAdapter` + `setEmailAdapter` / `sendEmail`, and `NpRateLimiterAdapter` + `npCheckRateLimit` / `npShutdownRateLimiter`. Email messages are exact single-recipient objects; rate-limit requests and decisions are exact bounded objects. Adapter kinds are canonical lowercase identifiers, and successful send/shutdown hooks resolve to void. Optional methods (e.g. `NpJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
+- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/email`, `/fields`, `/i18n`, `/jobs`, `/jobs-contract`, `/media`, `/media-contract`, `/navigation`, `/observability`, `/rate-limit`, `/seo`, `/storage`, `/theme`. Symbols inside each are stable per the rules above.
+- **Adapters** — `NpStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NpJobQueue` (with `PgBossAdapter`), `NpLogger` + `setLogger`, `NpErrorReporter` + `setErrorReporter`, `NpEmailAdapter` + `setEmailAdapter` / `sendEmail`, and `NpRateLimiterAdapter` + `npCheckRateLimit` / `npShutdownRateLimiter`. Storage keys/metadata and adapter Web-stream/URL/boolean/void results are exact; storage adapter kinds are canonical lowercase identifiers and may expose void-returning `shutdown()`. Email messages are exact single-recipient objects; rate-limit requests and decisions are exact bounded objects. Adapter kinds are canonical lowercase identifiers, and successful send/shutdown hooks resolve to void. Optional methods (e.g. `NpJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
 - **`NpPrincipal` union** — adding a variant is breaking (every `switch (principal.kind)` site needs updating, enforced by `_exhaustive: never`). The existing `"staff"` / `"member"` shape is committed.
 - **Block authoring and content** — `NpBlockDefinition` (`type`, `label`, `defaultProps`, `propsSchema`, `acceptsChildren?`, `render(props, children?)`) and the `NpBlockInstance` wire shape (`id`, `type`, `props`, optional `children: NpBlockInstance[]`). `NpBlockContent` is the stored array type. `@nexpress/core/fields`, `@nexpress/blocks`, and `@nexpress/blocks/contracts` share `npValidateBlockContent` and `isNpBlockContent`; collection writes, generated types, OpenAPI, patterns, Admin JSON/paste/preview, translation, and unknown-block operations use that contract. Instance ids are unique across the whole tree; unknown/inactive block types remain structurally valid so content survives plugin/theme removal. Adding optional fields to the definition or instance is non-breaking. `NpBlockMetadata` (= `NpBlockDefinition` minus `render`) is the serializable subset the admin uses for the picker / props form. The shared registry helpers `registerBlock`, `getRegisteredBlocks`, `getRegisteredBlockMetadata`, `getSharedRegistry` are stable. The lightweight `@nexpress/blocks/contracts` subpath also exports `npValidateBlockDefinition`, `npAnalyzeBlockDefinitions`, and `npBlockPropFieldTypes`. Author docs: `docs/block-content.md`.
 - **Plugin block contribution** — `definePlugin({ blocks: NpBlockDefinition[] })`. Definition, bootstrap, registry, and doctor validation reject malformed definitions/props schemas and same-plugin duplicate types before registration. The bootstrap (`@nexpress/next`) registers each enabled plugin block into the shared registry at boot. Same-source re-registration is idempotent for HMR/reload; cross-source type collisions remain last-loaded-wins with a warning. Author docs: `docs/plugin-blocks.md`.

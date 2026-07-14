@@ -43,12 +43,15 @@ WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
-    HOSTNAME=0.0.0.0
+    HOSTNAME=0.0.0.0 \
+    NP_STORAGE_DIR=/app/apps/web/public/media \
+    NP_STORAGE_URL=/media
 
 # Run as a non-root user. Next's standalone server only needs read access
-# to /app and write access to /app/uploads (when using LocalStorageAdapter).
+# to /app and write access to the copied public media directory when using
+# LocalStorageAdapter.
 RUN addgroup -S nexpress && adduser -S nexpress -G nexpress \
-    && mkdir -p /app/uploads \
+    && mkdir -p /app/apps/web/public/media \
     && chown -R nexpress:nexpress /app
 
 COPY --from=builder --chown=nexpress:nexpress /app/apps/web/.next/standalone ./

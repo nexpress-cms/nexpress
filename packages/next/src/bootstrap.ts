@@ -1,6 +1,6 @@
 import {
   createDbConnection,
-  createStorageAdapter,
+  configureStorageRuntime,
   getDb,
   getOptionalJobQueue,
   listPluginStates,
@@ -12,7 +12,6 @@ import {
   setCurrentSiteResolver,
   setDb,
   setI18nConfig,
-  setStorageAdapter,
   startProducer,
   syncPluginRegistrations,
   teardownPlugins,
@@ -26,6 +25,7 @@ import {
   type NpReconcileSchedulesResult,
   type NpResolvedPluginLike,
   type NpRegisteredTheme,
+  type NpStorageAdapter,
 } from "@nexpress/core";
 import { npReadRateLimitRuntimeConfig } from "@nexpress/core/rate-limit";
 import { canOnSite } from "@nexpress/core/sites";
@@ -117,6 +117,11 @@ export interface BootstrapOptions {
    * `config.db.connectionString` and then `DATABASE_URL`.
    */
   connectionString?: string;
+  /**
+   * Programmatic storage implementation used only with
+   * `storage: { adapter: "custom" }` / `NP_STORAGE_ADAPTER=custom`.
+   */
+  storageAdapter?: NpStorageAdapter;
 }
 
 /**
@@ -311,16 +316,16 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     setDb(instance);
     const storageConfig = config.storage ?? {
       adapter: "local" as const,
-      local: { directory: "./uploads", baseUrl: "/uploads" },
+      local: { directory: "./public/media", baseUrl: "/media" },
     };
-    setStorageAdapter(createStorageAdapter(storageConfig));
+    const storageAdapter = configureStorageRuntime(storageConfig, options.storageAdapter);
 
     // Phase 22.2 — surface known-unsafe configurations once per
     // process (multi-node + LocalStorageAdapter, weak prod secret,
     // etc.). Pure function of its inputs so the bootstrap layer
     // stays the only place reading process.env for these flags.
     verifyStartupSafety({
-      storageAdapter: storageConfig.adapter,
+      storageAdapter: storageAdapter.kind,
       secret: config.auth?.secret ?? process.env.NP_SECRET ?? null,
       nodeEnv: process.env.NODE_ENV,
       multiNodeFlag: process.env.NP_MULTI_NODE,

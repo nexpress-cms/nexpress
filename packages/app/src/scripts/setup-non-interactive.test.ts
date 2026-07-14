@@ -120,4 +120,20 @@ describe("buildNonInteractiveSetupBody", () => {
         "Admin email is required when completing first-boot setup now. Leave the first-admin fields blank to continue in /admin/setup.",
     });
   });
+
+  it("fails closed on unknown or programmatic storage setup intent", () => {
+    expect(() =>
+      buildNonInteractiveSetupBody(
+        { DATABASE_URL: databaseUrl, NP_STORAGE_ADAPTER: "S3" },
+        () => strongSecret,
+      ),
+    ).toThrow(/NP_STORAGE_ADAPTER/u);
+
+    expect(() =>
+      buildNonInteractiveSetupBody(
+        { DATABASE_URL: databaseUrl, NP_STORAGE_ADAPTER: "custom" },
+        () => strongSecret,
+      ),
+    ).toThrow(/custom storage adapter/u);
+  });
 });

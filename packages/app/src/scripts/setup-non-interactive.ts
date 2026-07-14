@@ -1,3 +1,5 @@
+import { npReadStorageRuntimeConfig } from "@nexpress/core/storage";
+
 import type { SetupBody } from "./setup-server-validate.js";
 
 type SetupEnv = Record<string, string | undefined>;
@@ -6,7 +8,13 @@ export function buildNonInteractiveSetupBody(
   env: SetupEnv,
   generateSecret: () => string,
 ): SetupBody {
-  const storage = env.NP_STORAGE_ADAPTER === "s3" ? "s3" : "local";
+  const storageConfig = npReadStorageRuntimeConfig(env);
+  if (storageConfig.adapter === "custom") {
+    throw new Error(
+      "Non-interactive setup cannot install a custom storage adapter; configure it in createBootstrap().",
+    );
+  }
+  const storage = storageConfig.adapter;
   const runMigrate = (env.NP_SETUP_RUN_MIGRATIONS ?? "true").toLowerCase() !== "false";
   const body: SetupBody = {
     databaseUrl: env.DATABASE_URL ?? "",

@@ -19,7 +19,7 @@ import { requireMember } from "../../../../lib/member-auth-helpers";
  *
  * Differences from the staff endpoint:
  *   - raster-images-only (no SVG, PDFs, videos) — SVG is active
- *     content (XSS vector when served from /uploads), so member
+ *     content (XSS vector when served from local media storage), so member
  *     uploads are restricted to the four raster MIMEs we can
  *     reliably sniff via magic bytes
  *   - 5 MB cap (vs the staff 10 MB) — most member uploads are
@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
 
     // Look up the stored row to get its `storageKey` and resolve a
     // public URL through the storage adapter — local-disk returns a
-    // `/uploads/...` path; S3 returns the bucket's public URL. The
+    // `/media/...` path by default; S3 returns the bucket's public URL. The
     // editor inserts this URL as the `<img src>` so the same value
     // works in both deployment modes.
     const url = await getMediaUrl(result.id);

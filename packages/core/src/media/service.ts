@@ -42,6 +42,12 @@ import type {
   NpMediaVariants,
 } from "../media-contract/types.js";
 import { DEFAULT_IMAGE_SIZES, processImage, type NpProcessedImageResult } from "./processor.js";
+import {
+  npDeleteStorageObject,
+  npGetStorageObjectStream,
+  npUploadStorageObject,
+} from "../storage/operations.js";
+import { getStorageAdapter } from "../storage/registry.js";
 import type { NpStorageAdapter } from "../storage/types.js";
 
 /**
@@ -84,19 +90,7 @@ interface DrizzleDatabaseLike {
   };
 }
 
-let storageAdapter: NpStorageAdapter | null = null;
-
-export function setStorageAdapter(adapter: NpStorageAdapter): void {
-  storageAdapter = adapter;
-}
-
-export function getStorageAdapter(): NpStorageAdapter {
-  if (!storageAdapter) {
-    throw new Error("Storage adapter not initialized. Call setStorageAdapter() first.");
-  }
-
-  return storageAdapter;
-}
+export { getStorageAdapter, setStorageAdapter } from "../storage/registry.js";
 
 /**
  * Polymorphic uploader: a row on `np_media` is owned by exactly
@@ -192,7 +186,7 @@ export async function uploadMedia(
 
   const adapter = getStorageAdapter();
   try {
-    await adapter.upload(storageKey, file.buffer, {
+    await npUploadStorageObject(adapter, storageKey, file.buffer, {
       contentType: file.mimeType,
       contentLength: file.buffer.byteLength,
       originalFilename: file.originalFilename,
@@ -317,7 +311,7 @@ export async function processMediaImage(
   }
 
   try {
-    const originalStream = await adapter.getStream(media.storageKey);
+    const originalStream = await npGetStorageObjectStream(adapter, media.storageKey);
     const originalBuffer = await consumeBuffer(Readable.fromWeb(originalStream));
     const processed = await processImage(originalBuffer, config.sizes ?? DEFAULT_IMAGE_SIZES, {
       format: config.format,
@@ -565,7 +559,7 @@ export async function cleanupDeletedMedia(olderThanDays: number): Promise<number
 
     for (const key of keys) {
       try {
-        await adapter.delete(key);
+        await npDeleteStorageObject(adapter, key);
       } catch {
         continue;
       }
@@ -605,7 +599,7 @@ async function uploadImageVariants(
       const filename = `${variant.name}.${format}`;
       const storageKey = `media/${mediaId}/${filename}`;
 
-      await adapter.upload(storageKey, variant.buffer, {
+      await npUploadStorageObject(adapter, storageKey, variant.buffer, {
         contentType: mimeType,
         contentLength: variant.size,
         originalFilename: filename,
