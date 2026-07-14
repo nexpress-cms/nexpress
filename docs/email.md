@@ -8,6 +8,35 @@ for development, unusable for real deployments.
 
 ---
 
+## Runtime contract
+
+The public server API lives at `@nexpress/core/email`. `NP_EMAIL_ADAPTER`
+accepts exactly three modes:
+
+- unset, empty, or `noop` — install the logging no-op adapter;
+- `smtp` — install the built-in SMTP adapter from the exact `NP_SMTP_*`
+  contract below;
+- `custom` — preserve an adapter installed programmatically with
+  `setEmailAdapter()`.
+
+Aliases such as `resend` are not adapter modes. Use `smtp` for a provider's
+SMTP endpoint or `custom` for its native SDK. NexPress parses this contract on
+the first `ensureFor(...)` call, including read bootstraps, so an unknown mode,
+malformed port, malformed boolean, missing sender, or half-configured SMTP
+credential pair fails before the application begins serving requests. `pnpm
+run doctor` reports the same parser as `email.contract`; `/admin/health` also
+verifies that `custom` mode has a live adapter.
+
+Every delivery goes through `sendEmail()`. It accepts an exact, bounded
+`{ to, subject, text, html?, from? }` object for one recipient, rejects unknown
+fields and header injection, and requires the adapter's promise to resolve to
+`void`. `setEmailAdapter()` validates the adapter's canonical lowercase `kind`
+and `send` function at registration. Web writes and dedicated workers both
+install the same resolved config; `ensureFor("worker")` deliberately wires
+email without starting a competing enqueue-only pg-boss producer.
+
+---
+
 ## Built-in SMTP adapter (recommended)
 
 Works with any SMTP-speaking provider (Resend, SES, Mailgun, Postmark,
@@ -23,8 +52,12 @@ NP_SMTP_FROM="NexPress <noreply@yourdomain.com>"
 NP_SMTP_SECURE=false
 ```
 
-`NP_SMTP_SECURE=true` for implicit-TLS ports (465). Leave it `false` for
-STARTTLS ports (587 / 25). Apps using the adapter must include
+`NP_SMTP_HOST` and `NP_SMTP_FROM` are required. `NP_SMTP_PORT` defaults to
+`587` and must be a base-10 integer from 1 through 65535. `NP_SMTP_SECURE`
+defaults to `true` only for port 465; when present it must be exactly `true` or
+`false`. `NP_SMTP_USER` and `NP_SMTP_PASS` are optional but must appear
+together. Use secure mode for implicit TLS (normally 465) and false for
+STARTTLS ports (normally 587 / 25). Apps using the adapter must include
 `nodemailer` in their dependencies — it's an optional peer of
 `@nexpress/core`.
 
@@ -70,9 +103,8 @@ during dev. Trigger an email (register, forgot-password) and
 the message appears in the inbox at `http://localhost:8025` —
 including raw headers, HTML render, and plain-text version.
 
-Switching to a real provider for staging / production is just
-swapping the four `NP_SMTP_*` values; the application code path
-is identical.
+Switching to a real provider for staging / production is just replacing the
+`NP_SMTP_*` values; the application code path is identical.
 
 ### Provider examples
 
@@ -129,10 +161,8 @@ provider has a native HTTP SDK (Resend, SendGrid, Postmark) that you'd
 rather call directly than go through SMTP.
 
 ```ts
-// src/lib/init-core.ts (a thin wrapper in scaffolded sites — unwrap to
-// install). Implementation lives in @nexpress/app/lib/init-core; the
-// reference app re-exports from there at apps/web/src/lib/init-core.ts.
-import { setEmailAdapter, type NpEmailAdapter, type NpEmailMessage } from "@nexpress/core";
+// src/lib/install-email-adapter.ts — server-only
+import { setEmailAdapter, type NpEmailAdapter, type NpEmailMessage } from "@nexpress/core/email";
 import { Resend } from "resend";
 
 class ResendAdapter implements NpEmailAdapter {
@@ -156,31 +186,49 @@ class ResendAdapter implements NpEmailAdapter {
   }
 }
 
-if (process.env.RESEND_API_KEY) {
-  setEmailAdapter(
-    new ResendAdapter(process.env.RESEND_API_KEY, "noreply@yourdomain.com"),
-  );
+export function installEmailAdapter(): void {
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error("RESEND_API_KEY is required for the custom email adapter");
+  }
+  setEmailAdapter(new ResendAdapter(process.env.RESEND_API_KEY, "noreply@yourdomain.com"));
 }
 ```
 
-Call `setEmailAdapter` **before** the first password-reset / invite
-request — the framework wires it inside `ensureFor("write")` in
-`@nexpress/app/lib/init-core` (surfaced as `src/lib/init-core.ts` in
-both scaffolded sites and `apps/web`). Any module-scope init that
-runs on boot also works.
+Set `NP_EMAIL_ADAPTER=custom`, then call the installer from
+`src/nexpress.config.ts` before exporting `defineConfig(...)`:
+
+```ts
+import { installEmailAdapter } from "./lib/install-email-adapter";
+
+installEmailAdapter();
+```
+
+The config module is part of every NexPress bootstrap, including packaged
+route handlers. The scaffolded `src/lib/init-core.ts` is only a thin re-export
+and is not a reliable custom-registration hook. Custom registration must exist
+before `ensureFor("worker")` or the first `ensureFor("write")`; otherwise
+bootstrap fails instead of silently retaining the no-op adapter.
 
 ---
 
 ## Templates
 
-The handler calls `buildInviteEmail` / `buildResetEmail` from
-`@nexpress/core` to construct `{ subject, text, html }`. Both use an
-inline HTML shell that renders reliably in most webmail clients and
-takes three variables:
+The handlers call `buildInviteEmail`, `buildResetEmail`, and
+`buildMemberVerifyEmail` from `@nexpress/core/email` to construct exact
+`{ subject, text, html }` templates. They use an inline HTML shell that renders
+reliably in most webmail clients. Password templates take:
 
 - `siteName` — populated from `NpConfig.site.name`.
 - `name` — the recipient's display name.
 - `resetUrl` — the full URL including the one-time token.
+- `expiresAt` — the canonical UTC ISO timestamp from the issued credential.
+
+Member verification uses the equivalent `displayName`, `verifyUrl`, and
+`expiresAt` fields. The rendered copy shows the exact UTC expiration rather
+than a hard-coded duration, so changing `NP_INVITE_TTL_HOURS`,
+`NP_RESET_TTL_MINUTES`, or `NP_VERIFY_TTL_HOURS` cannot make the message
+disagree with the credential. Auth email jobs carry that timestamp and the
+credential URL; they do not queue a second redundant raw-token field.
 
 Override the copy by replacing the handler entirely:
 

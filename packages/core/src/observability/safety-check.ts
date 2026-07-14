@@ -42,9 +42,8 @@ export interface NpStartupSafetyInput {
    * adapter is configured later in the boot sequence (after the
    * core-services step that runs this safety check). Use `null` /
    * `"noop"` to mean "operator hasn't asked for a real adapter,
-   * warn in production." Custom adapters wired via
-   * `setEmailAdapter()` programmatically will surface a false
-   * positive here — the warning text calls that out.
+   * warn in production." Programmatic adapters must select the
+   * exact `"custom"` mode before calling `setEmailAdapter()`.
    */
   emailAdapterEnv?: string | null;
   /**
@@ -191,12 +190,9 @@ export function verifyStartupSafety(input: NpStartupSafetyInput): readonly strin
     // email verify, member digests) silently disappears. We check
     // the env var rather than the live adapter because adapters get
     // wired AFTER this safety check runs in the boot sequence — a
-    // live-adapter check would always see `noop`. False-positive:
-    // operators who skip the env var and call `setEmailAdapter()`
-    // programmatically with a custom adapter (Resend / SendGrid /
-    // etc.) will see this warning despite being correctly
-    // configured. The warning text below calls that out so they can
-    // ignore it.
+    // live-adapter check would always see `noop`. Programmatic
+    // adapters select the exact `custom` mode so this intent check
+    // can distinguish them from the default.
     if (
       input.emailAdapterEnv === undefined
         ? false // back-compat: caller didn't supply
@@ -204,7 +200,7 @@ export function verifyStartupSafety(input: NpStartupSafetyInput): readonly strin
     ) {
       log.warn(
         "NP_EMAIL_ADAPTER is unset (or `noop`) in production — transactional mail (password reset, email verify, member digests) is silently dropped. " +
-          "Set NP_EMAIL_ADAPTER=smtp + the NP_SMTP_* config, or install a custom adapter via setEmailAdapter() in your bootstrap code (in which case this warning is a false positive — safe to ignore).",
+          "Set NP_EMAIL_ADAPTER=smtp + the NP_SMTP_* config, or set NP_EMAIL_ADAPTER=custom and install an adapter via setEmailAdapter() before the first write bootstrap.",
         { check: "noop_email_in_prod" },
       );
       emitted.push("noop_email_in_prod");

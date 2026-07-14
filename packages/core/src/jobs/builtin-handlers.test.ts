@@ -1,9 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { configureBuiltinJobContext, registerBuiltinHandlers } from "./builtin-handlers.js";
 import { getJobHandler } from "./handlers.js";
 import { resetPlugins } from "../plugins/index.js";
 import { getCurrentSiteId } from "../sites/context.js";
+import { resetEmailAdapter, setEmailAdapter } from "../email/service.js";
+
+afterEach(() => {
+  resetEmailAdapter();
+});
 
 describe("built-in media job contract", () => {
   it("rejects malformed built-in context registration", () => {
@@ -64,5 +69,35 @@ describe("built-in media job contract", () => {
 
     expect(resolveContentAfterSaveContext).toHaveBeenCalledOnce();
     expect(await getCurrentSiteId()).toBeNull();
+  });
+
+  it("builds credential email copy from the exact job expiry", async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    setEmailAdapter({ kind: "capture", send });
+    registerBuiltinHandlers();
+
+    await getJobHandler("auth:sendPasswordReset")?.({
+      email: "admin@example.com",
+      name: "Admin",
+      purpose: "invite",
+      resetUrl: "https://example.com/admin/set-password?token=secret",
+      expiresAt: "2026-07-20T12:30:00.000Z",
+      siteName: "Example",
+    });
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "admin@example.com",
+        text: expect.stringContaining("2026-07-20 12:30:00.000 UTC"),
+      }),
+    );
+    await expect(
+      getJobHandler("auth:sendPasswordReset")?.({
+        email: "admin@example.com",
+        name: "Admin",
+        purpose: "invite",
+        resetUrl: "https://example.com/admin/set-password?token=secret",
+      }),
+    ).rejects.toThrow(/expiresAt/u);
   });
 });

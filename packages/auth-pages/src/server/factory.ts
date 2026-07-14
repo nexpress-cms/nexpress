@@ -269,6 +269,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
         email: body.email,
         displayName: body.displayName,
         verifyUrl: buildVerifyUrl(config, request, issued.token),
+        expiresAt: issued.expiresAt.toISOString(),
         siteName: config.site.name,
       });
 
@@ -377,6 +378,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
           email: result.email,
           displayName: result.displayName,
           resetUrl: buildResetUrl(config, request, result.issued.token),
+          expiresAt: result.issued.expiresAt.toISOString(),
           siteName: config.site.name,
         });
       }

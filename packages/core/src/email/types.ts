@@ -20,3 +20,25 @@ export interface NpEmailAdapter {
   readonly kind: string;
   send(message: NpEmailMessage): Promise<void>;
 }
+
+export interface SmtpEmailAdapterOptions {
+  host: string;
+  port: number;
+  user?: string;
+  pass?: string;
+  /** Default `From` header when a message doesn't override. */
+  from: string;
+  /** Implicit TLS. Defaults to `port === 465` when omitted. */
+  secure?: boolean;
+}
+
+export type NpEmailAdapterMode = "noop" | "smtp" | "custom";
+
+export type NpEmailRuntimeConfig =
+  | { adapter: "noop" }
+  | { adapter: "custom" }
+  | {
+      adapter: "smtp";
+      options: Required<Pick<SmtpEmailAdapterOptions, "host" | "port" | "from" | "secure">> &
+        Pick<SmtpEmailAdapterOptions, "user" | "pass">;
+    };

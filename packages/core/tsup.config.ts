@@ -34,6 +34,8 @@ export default defineConfig({
     "auth-contract": "src/auth-contract/index.ts",
     community: "src/community/index.ts",
     db: "src/db/index.ts",
+    // Server-side email message, template, adapter, and SMTP runtime contract.
+    email: "src/email/index.ts",
     // Client-safe pure helpers (admin.condition evaluator, hidden-
     // field walker, zod schema builder). Used by `@nexpress/admin`
     // from "use client" components — importing them from the root

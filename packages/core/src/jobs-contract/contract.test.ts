@@ -127,6 +127,34 @@ describe("job runtime contract", () => {
     ).toBe(false);
     expect(npAnalyzeJobPayload("media:cleanup", { unexpected: true }).ok).toBe(false);
     expect(npAnalyzeJobPayload("notifications:sendDigest", { cadence: "monthly" }).ok).toBe(false);
+    expect(
+      npAnalyzeJobPayload("auth:sendPasswordReset", {
+        email: "admin@example.com",
+        name: "Admin",
+        purpose: "reset",
+        resetUrl: "https://example.com/admin/set-password?token=secret",
+        expiresAt: "2026-07-20T12:30:00.000Z",
+        siteName: "Example",
+      }).ok,
+    ).toBe(true);
+    expect(
+      npAnalyzeJobPayload("auth:sendPasswordReset", {
+        email: "admin@example.com",
+        name: "Admin",
+        token: "duplicate-secret",
+        purpose: "reset",
+        resetUrl: "https://example.com/admin/set-password?token=secret",
+        expiresAt: "2026-07-20T12:30:00.000Z",
+      }).ok,
+    ).toBe(false);
+    expect(
+      npAnalyzeJobPayload("members:sendVerifyEmail", {
+        email: "member@example.com",
+        displayName: "Member",
+        verifyUrl: "https://example.com/members/verify?token=secret",
+        expiresAt: "tomorrow",
+      }).ok,
+    ).toBe(false);
   });
 
   it("rejects incomplete or widened job-list responses", () => {

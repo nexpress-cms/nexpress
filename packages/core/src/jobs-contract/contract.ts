@@ -456,7 +456,7 @@ function parseBuiltinPayload(
       const input = optionalRecord(
         value,
         path,
-        ["email", "name", "token", "purpose", "resetUrl"],
+        ["email", "name", "purpose", "resetUrl", "expiresAt"],
         ["siteName"],
       );
       if (input.purpose !== "invite" && input.purpose !== "reset") {
@@ -465,9 +465,9 @@ function parseBuiltinPayload(
       return {
         email: parseEmail(input.email, `${path}.email`),
         name: boundedString(input.name, `${path}.name`, 160),
-        token: boundedString(input.token, `${path}.token`, 8_192),
         purpose: input.purpose,
         resetUrl: absoluteHttpUrl(input.resetUrl, `${path}.resetUrl`),
+        expiresAt: canonicalIso(input.expiresAt, `${path}.expiresAt`),
         ...(input.siteName === undefined
           ? {}
           : { siteName: parseSiteName(input.siteName, `${path}.siteName`) }),
@@ -477,24 +477,31 @@ function parseBuiltinPayload(
       const input = optionalRecord(
         value,
         path,
-        ["email", "displayName", "verifyUrl"],
+        ["email", "displayName", "verifyUrl", "expiresAt"],
         ["siteName"],
       );
       return {
         email: parseEmail(input.email, `${path}.email`),
         displayName: boundedString(input.displayName, `${path}.displayName`, 160),
         verifyUrl: absoluteHttpUrl(input.verifyUrl, `${path}.verifyUrl`),
+        expiresAt: canonicalIso(input.expiresAt, `${path}.expiresAt`),
         ...(input.siteName === undefined
           ? {}
           : { siteName: parseSiteName(input.siteName, `${path}.siteName`) }),
       } satisfies NpBuiltinJobPayloadMap["members:sendVerifyEmail"];
     }
     case "members:sendPasswordReset": {
-      const input = optionalRecord(value, path, ["email", "displayName", "resetUrl"], ["siteName"]);
+      const input = optionalRecord(
+        value,
+        path,
+        ["email", "displayName", "resetUrl", "expiresAt"],
+        ["siteName"],
+      );
       return {
         email: parseEmail(input.email, `${path}.email`),
         displayName: boundedString(input.displayName, `${path}.displayName`, 160),
         resetUrl: absoluteHttpUrl(input.resetUrl, `${path}.resetUrl`),
+        expiresAt: canonicalIso(input.expiresAt, `${path}.expiresAt`),
         ...(input.siteName === undefined
           ? {}
           : { siteName: parseSiteName(input.siteName, `${path}.siteName`) }),

@@ -472,19 +472,41 @@ export { createStorageAdapter } from "./storage/index.js";
 
 export type {
   NpEmailAdapter,
+  NpEmailAdapterMode,
+  NpEmailContractIssue,
+  NpEmailContractIssueCode,
   NpEmailMessage,
+  NpEmailRuntimeConfig,
   NpEmailTemplate,
+  NpMemberVerifyTemplateData,
   NpPasswordResetTemplateData,
   SmtpEmailAdapterOptions,
 } from "./email/index.js";
 export {
+  NpEmailContractError,
   NoopEmailAdapter,
   SmtpEmailAdapter,
+  buildMemberVerifyEmail,
+  configureEmailRuntime,
+  configureEmailRuntimeFromEnv,
   getEmailAdapter,
-  setEmailAdapter,
-  resetEmailAdapter,
+  npAnalyzeEmailMessage,
+  npEmailContractLimits,
+  npIsCanonicalEmailDate,
+  npIsEmailAddress,
+  npReadEmailRuntimeConfig,
+  npRequireEmailAdapter,
+  npRequireEmailMessage,
+  npRequireEmailRuntimeConfig,
+  npRequireEmailTemplate,
+  npRequireMemberVerifyEmailTemplateData,
+  npRequirePasswordEmailTemplateData,
+  npRequireSmtpEmailAdapterOptions,
   buildInviteEmail,
   buildResetEmail,
+  resetEmailAdapter,
+  sendEmail,
+  setEmailAdapter,
 } from "./email/index.js";
 
 export {

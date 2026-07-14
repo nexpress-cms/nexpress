@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-14 (staff and member authentication now share exact
+**Last refreshed:** 2026-07-14 (email delivery now shares one exact message,
+adapter, SMTP environment, credential-expiry template, and auth-job contract;
+bootstrap, health, doctor, docs, and scaffolds fail closed on malformed values.)
+
+**Earlier:** 2026-07-14 (staff and member authentication now share exact
 JWT, identity, API wire, runtime-config, and one-row browser-session contracts;
 refresh rotation is compare-and-swap, logout revokes by either token's shared session id,
 and doctor validates persisted auth/session rows.)
@@ -246,6 +250,7 @@ cli  (standalone scaffolder, no workspace deps)
 | `@nexpress/core/auth`           | capability checks, JWT/OAuth, password, sessions, principal             |
 | `@nexpress/core/community`      | comments, reactions, follows, reports, bans, audit, mentions, digests   |
 | `@nexpress/core/db`             | connection factory, runtime accessors, schema codegen                   |
+| `@nexpress/core/email`          | email message/adapter contracts, SMTP, templates, runtime configuration |
 | `@nexpress/core/fields`         | client-safe field helpers plus rich-text and block-content contracts    |
 | `@nexpress/core/i18n`           | locale registry, translations, formatting, per-site overrides           |
 | `@nexpress/core/jobs`           | pg-boss adapter, handlers, worker, heartbeat, pause state, job logs     |
@@ -284,10 +289,11 @@ Dev watch reads `NP_DEV_FAST` from `.env` (default `1`); when set, each package'
 - `setJobQueue(queue)` / `startWorker()` — pg-boss
 - `loadPlugins(plugins)` — registers hooks/routes/actions
 
-The reference app wires these up in `apps/web/src/lib/init-core.ts`. New code should use the single intent-based entry point `ensureFor("read" | "plugins" | "write")`:
+The reference app wires these up in `apps/web/src/lib/init-core.ts`. New code should use the single intent-based entry point `ensureFor("read" | "plugins" | "worker" | "write")`:
 
 - `await ensureFor("read")` — DB + storage + collections (read-only RSC, GET routes).
 - `await ensureFor("plugins")` — read + plugin loading (render paths that need `runHook` to fire).
+- `await ensureFor("worker")` — plugins + email adapter, without starting a competing job producer; dedicated worker entrypoints only.
 - `await ensureFor("write")` — plugins + email + pg-boss producer (any mutating API route / server action / import).
 
 All app routes use `ensureFor` directly — the old route-level pattern of
@@ -405,6 +411,19 @@ unknown or malformed values. Variant rows persist storage metadata only — URLs
 are always resolved through the active adapter from the stored `storageKey`.
 Author and operator reference: `docs/media.md`.
 
+### Email
+
+Transactional delivery uses the canonical server API from
+`@nexpress/core/email`. `sendEmail()` validates one exact bounded message before
+dispatch and requires adapters to resolve to void. `setEmailAdapter()` validates
+the adapter kind and handler at registration. Runtime modes are exactly `noop`,
+`smtp`, and `custom`; SMTP host/from, base-10 port, exact boolean, and paired
+credentials are parsed once at the first app bootstrap. Programmatic adapters
+must select `NP_EMAIL_ADAPTER=custom` and register before the worker or first
+write bootstrap. Auth jobs carry the credential's canonical `expiresAt` and URL, not
+a duplicate raw token, so templates render the actual UTC expiration. Author
+and operator reference: `docs/email.md`.
+
 ### Jobs
 
 `pg-boss`-backed queue. Handlers register via `registerJobHandler(name, fn, { parsePayload, resolveSiteId })`; custom names use canonical `namespace:action` syntax and their parser runs before enqueue and again before dispatch. `resolveSiteId` is an additive payload projection that wraps the complete dispatch in the async-local site scope. Built-in names have exact payload contracts, while all jobs use bounded plain JSON data. The pure contract is exported from `@nexpress/core/jobs-contract`; server queue/handler APIs remain in `@nexpress/core/jobs`. The worker is started by the app (not by core) via `startWorker()`.
@@ -438,6 +457,7 @@ A separate package (not part of `@nexpress/core`) that ingests a WXR export end-
 | Write a plugin                                   | Copy `packages/plugins/reading-time/src/index.ts`                                     | Use `definePlugin()` from `@nexpress/plugin-sdk`. New plugin packages live under `packages/plugins/<name>/`; the SDK itself stays at `packages/plugin-sdk` (it's not a plugin).                                                                                                                  |
 | Add public routes to a plugin                    | `packages/plugins/forum/src/routes/`                                                  | `pageRoutes` array on `definePlugin`. Server-component routes import client widgets via the package's own `./client` subpath (NOT relative paths — relative bypasses RSC banner). Forum is the reference impl. Docs: `docs/plugin-pages.md`. Dispatcher: `packages/next/src/route-dispatcher.ts` |
 | Change auth flow                                 | `packages/core/src/auth/` + `packages/next/src/auth.ts`                               | JWT sign/verify in core; cookie helpers in next                                                                                                                                                                                                                                                  |
+| Change transactional email                       | `packages/core/src/email/` + `packages/app/src/lib/init-core.ts`                      | Keep message, adapter, SMTP env, template expiry, bootstrap, health, doctor, and auth-job payload contracts aligned. Docs: `docs/email.md`                                                                                                                                                       |
 | Change middleware (rate limits, CSP)             | `apps/web/src/proxy.ts`                                                               | In-memory rate limiter, security headers (Next 16 renamed `middleware.ts` → `proxy.ts`)                                                                                                                                                                                                          |
 | Modify bootstrap / service wiring                | `packages/next/src/bootstrap.ts`                                                      | `createBootstrap()` — the singleton factory                                                                                                                                                                                                                                                      |
 | Change DB schema (system tables)                 | `packages/core/src/db/schema/`                                                        | npUsers, npMedia, npRevisions, npSettings                                                                                                                                                                                                                                                        |
@@ -488,11 +508,11 @@ These are the public APIs we'll honor with semver and migration notes. Breaking 
 - **Collection authoring** — `defineCollection({ slug, fields, hooks, access, … })` and the field-config types (`NpTextField`, `NpRichTextField`, `NpRelationshipField`, `NpBlocksField`, `NpArrayField`, `NpGroupField`, `NpRowField`, `NpCollapsibleField`, …). Adding a new field type is non-breaking. Renaming or removing one is a minor with a migration note.
 - **Rich-text content** — `NpRichTextContent` is the NexPress-owned `{ version: 1, document }` wire format. `@nexpress/core/fields` exports the client-safe type, validator, type guard, version constant, and empty-document factory; `@nexpress/editor` re-exports the type. Raw Lexical `{ root }` payloads are rejected before collection writes. Future format changes use a new envelope version plus an explicit migration path. Author docs: `docs/rich-text.md`.
 - **Plugin authoring** — `definePlugin({ manifest, hooks, actions, routes, pageRoutes, scheduled, blocks })`. `actions` is a definition-level `Record<actionId, { kind, handler }>` with `action | metric | status | table` kinds; the compatible setup-time `ctx.actions.register*` methods remain supported. Content hooks use the operation-specific names `content:beforeCreate`, `content:afterCreate`, `content:beforeUpdate`, `content:afterUpdate`, `content:beforeDelete`, `content:afterDelete`, `content:beforePublish`, `content:afterPublish`, and `content:beforeUnpublish`; every phase receives its exact `document` / `documentId` / `originalDocument` / `operation` / `source` / `principal` payload. Auth and media hooks have the same per-name typed-data contract, and lifecycle handlers return void. The single render hook is `render:beforePage`; its typed `NpRenderContribution` return separates `head` from `bodyEnd`. `scheduled` ships typed five-field UTC cron tasks whose handlers return void. `blocks` ships an `NpBlockDefinition[]` registered into the shared block registry at boot.
-- **Bootstrap intent enum** — `ensureFor("read" | "plugins" | "write")`. Adding a new intent is non-breaking; semantics of the existing three are pinned.
+- **Bootstrap intent enum** — `ensureFor("read" | "plugins" | "worker" | "write")`. `worker` installs plugins and email delivery without an enqueue-only pg-boss producer; semantics of all four are pinned.
 - **Error classes + codes** — `NpForbiddenError`, `NpNotFoundError`, `NpValidationError`, `NpAuthError`, `NpConflictError`, `NpRateLimitError`, `NpSiteContextMissingError`, and the `NpErrorCode` union. The string code per class is stable per [docs/api-error-codes.md](./docs/api-error-codes.md).
 - **Capability vocabulary** — `can(user, capability)` and the existing capability strings: `"admin.manage"`, `"content.publish"`, `"content.author"`, `"community.moderate"`. New capability strings will be added; existing ones won't be renamed or removed in 0.x.
-- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/fields`, `/i18n`, `/jobs`, `/jobs-contract`, `/media`, `/media-contract`, `/navigation`, `/observability`, `/seo`, `/theme`. Symbols inside each are stable per the rules above.
-- **Adapters** — `NpStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NpJobQueue` (with `PgBossAdapter`), `NpLogger` + `setLogger`, `NpErrorReporter` + `setErrorReporter`, `NpEmailAdapter` + `setEmailAdapter`. Optional methods (e.g. `NpJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
+- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/email`, `/fields`, `/i18n`, `/jobs`, `/jobs-contract`, `/media`, `/media-contract`, `/navigation`, `/observability`, `/seo`, `/theme`. Symbols inside each are stable per the rules above.
+- **Adapters** — `NpStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NpJobQueue` (with `PgBossAdapter`), `NpLogger` + `setLogger`, `NpErrorReporter` + `setErrorReporter`, `NpEmailAdapter` + `setEmailAdapter` / `sendEmail`. Email messages are exact single-recipient objects, adapter kinds are canonical lowercase identifiers, and successful sends resolve to void. Optional methods (e.g. `NpJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
 - **`NpPrincipal` union** — adding a variant is breaking (every `switch (principal.kind)` site needs updating, enforced by `_exhaustive: never`). The existing `"staff"` / `"member"` shape is committed.
 - **Block authoring and content** — `NpBlockDefinition` (`type`, `label`, `defaultProps`, `propsSchema`, `acceptsChildren?`, `render(props, children?)`) and the `NpBlockInstance` wire shape (`id`, `type`, `props`, optional `children: NpBlockInstance[]`). `NpBlockContent` is the stored array type. `@nexpress/core/fields`, `@nexpress/blocks`, and `@nexpress/blocks/contracts` share `npValidateBlockContent` and `isNpBlockContent`; collection writes, generated types, OpenAPI, patterns, Admin JSON/paste/preview, translation, and unknown-block operations use that contract. Instance ids are unique across the whole tree; unknown/inactive block types remain structurally valid so content survives plugin/theme removal. Adding optional fields to the definition or instance is non-breaking. `NpBlockMetadata` (= `NpBlockDefinition` minus `render`) is the serializable subset the admin uses for the picker / props form. The shared registry helpers `registerBlock`, `getRegisteredBlocks`, `getRegisteredBlockMetadata`, `getSharedRegistry` are stable. The lightweight `@nexpress/blocks/contracts` subpath also exports `npValidateBlockDefinition`, `npAnalyzeBlockDefinitions`, and `npBlockPropFieldTypes`. Author docs: `docs/block-content.md`.
 - **Plugin block contribution** — `definePlugin({ blocks: NpBlockDefinition[] })`. Definition, bootstrap, registry, and doctor validation reject malformed definitions/props schemas and same-plugin duplicate types before registration. The bootstrap (`@nexpress/next`) registers each enabled plugin block into the shared registry at boot. Same-source re-registration is idempotent for HMR/reload; cross-source type collisions remain last-loaded-wins with a warning. Author docs: `docs/plugin-blocks.md`.

@@ -8,7 +8,7 @@ import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
 
 /**
  * Worker entry — site code passes its own `ensureFor` so the
- * bootstrap singletons (DB, plugins, jobs) match the running app.
+ * bootstrap singletons (DB, plugins, email, jobs) match the running app.
  *
  * The consumer wrapper:
  *
@@ -25,7 +25,7 @@ import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
  * SIGINT/SIGTERM and runs until killed.
  */
 export interface RunWorkerOptions {
-  ensureFor: (intent: "read" | "plugins" | "write") => Promise<void>;
+  ensureFor: (intent: "worker") => Promise<void>;
 }
 
 export async function runWorker({ ensureFor }: RunWorkerOptions): Promise<void> {
@@ -38,7 +38,9 @@ export async function runWorker({ ensureFor }: RunWorkerOptions): Promise<void> 
     process.exit(1);
   }
 
-  await ensureFor("plugins");
+  // Loads plugins and installs the exact email adapter without starting a
+  // competing enqueue-only pg-boss producer in this worker process.
+  await ensureFor("worker");
 
   configureBuiltinJobContext({
     async resolveContentAfterSaveContext({ collection, documentId, userId, memberId }) {

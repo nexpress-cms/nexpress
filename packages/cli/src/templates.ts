@@ -210,6 +210,11 @@ function packageJsonTemplate(config: TemplateConfig): string {
         // does `import pg from "pg"` and would otherwise fail with
         // ERR_MODULE_NOT_FOUND on a fresh scaffold.
         pg: "^8.13.1",
+        // The scaffold selects SMTP/Mailpit by default. `nodemailer` is an
+        // optional peer of @nexpress/core, so pnpm's strict dependency
+        // isolation requires the generated app to declare it directly or
+        // the first transactional send fails at runtime.
+        nodemailer: "^9.0.0",
         // Media processing runs through @nexpress/core, but production
         // platforms such as Vercel need sharp's optional native payload
         // present in the app install graph for standalone tracing. Keep
@@ -427,10 +432,11 @@ function workerScriptTemplate(): string {
   // Cannot find package '@/lib'` the moment the chunk is loaded.
   // Direct `createBootstrap` sidesteps the chain — `ensureFor`
   // here mirrors what `@nexpress/app/lib/init-core`'s `ensureFor`
-  // does for the "plugins" intent the worker actually needs.
+  // does for the dedicated "worker" intent.
   return (
     `import "./_load-env.js";\n\n` +
     `import { runWorker } from "@nexpress/app/scripts/worker";\n` +
+    `import { configureEmailRuntimeFromEnv } from "@nexpress/core/email";\n` +
     `import { createBootstrap } from "@nexpress/next";\n\n` +
     `import nexpressConfig from "../src/nexpress.config.js";\n` +
     `import * as generatedSchema from "../src/db/generated/collections.js";\n\n` +
@@ -438,12 +444,11 @@ function workerScriptTemplate(): string {
     `  config: nexpressConfig,\n` +
     `  generatedSchema: generatedSchema as unknown as Record<string, unknown>,\n` +
     `});\n\n` +
-    `async function ensureFor(intent: "read" | "plugins" | "write"): Promise<void> {\n` +
+    `async function ensureFor(intent: "worker"): Promise<void> {\n` +
     `  ensureCoreServices();\n` +
-    `  if (intent === "read") return;\n` +
     `  await ensurePluginsLoaded();\n` +
-    `  // "write" intent would also wire email + jobs producer, but\n` +
-    `  // the worker only invokes ensureFor("plugins") on first call.\n` +
+    `  configureEmailRuntimeFromEnv(process.env);\n` +
+    `  void intent;\n` +
     `}\n\n` +
     `await runWorker({ ensureFor });\n`
   );
@@ -722,9 +727,11 @@ function envExampleTemplate(config: TemplateConfig): string {
     "# NP_S3_REGION=us-east-1",
     "# NP_S3_ENDPOINT=  # leave unset for AWS S3; set for R2 / MinIO",
     "",
-    "# Email — defaults to the Mailpit container in docker-compose.yml.",
+    "# Email — exact modes are noop, smtp, or custom; this scaffold uses SMTP.",
+    "# SMTP host/from are required; user/pass must be provided together.",
+    "# Port is base-10 and secure must be exactly true or false.",
     "# `docker compose -f docker/docker-compose.yml up -d` boots Mailpit;",
-    "# inbox at http://localhost:8025. Swap the four SMTP_* values for",
+    "# inbox at http://localhost:8025. Replace the SMTP_* values for",
     "# your provider in staging / production (Resend, SES, etc.).",
     "NP_EMAIL_ADAPTER=smtp",
     "NP_SMTP_HOST=localhost",

@@ -413,7 +413,7 @@ async function saveEnv(body: SetupBody): Promise<void> {
   }
 
   // Email — defaults to the Mailpit container in
-  // `docker/docker-compose.yml`. Operators swap the four
+  // `docker/docker-compose.yml`. Operators replace the
   // `NP_SMTP_*` values when they wire a real provider for
   // staging / production. Same code path runs either way; the
   // `SmtpEmailAdapter` doesn't care whether it's pointed at
@@ -430,6 +430,7 @@ async function saveEnv(body: SetupBody): Promise<void> {
   lines.push(
     "",
     "# Email (Mailpit dev — `docker compose up -d` boots it; inbox http://localhost:8025)",
+    "# Exact adapter modes: noop, smtp, custom. SMTP user/pass are a pair.",
     "NP_EMAIL_ADAPTER=smtp",
     "NP_SMTP_HOST=localhost",
     "NP_SMTP_PORT=1025",

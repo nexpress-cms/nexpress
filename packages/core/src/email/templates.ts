@@ -1,15 +1,25 @@
+import {
+  npRequireEmailTemplate,
+  npRequireMemberVerifyEmailTemplateData,
+  npRequirePasswordEmailTemplateData,
+} from "./contract.js";
+
 export interface NpPasswordResetTemplateData {
   siteName: string;
   name: string;
   resetUrl: string;
-  /** When the link expires (ISO string), for display only. */
-  expiresAt?: string;
+  /** Canonical UTC ISO timestamp from the issued credential. */
+  expiresAt: string;
 }
 
 export interface NpEmailTemplate {
   subject: string;
   text: string;
   html: string;
+}
+
+function formatExpiry(expiresAt: string): string {
+  return `${expiresAt.slice(0, 10)} ${expiresAt.slice(11, 23)} UTC`;
 }
 
 function escapeHtml(value: string): string {
@@ -41,12 +51,14 @@ function wrap(siteName: string, contentHtml: string): string {
 }
 
 export function buildInviteEmail(data: NpPasswordResetTemplateData): NpEmailTemplate {
+  npRequirePasswordEmailTemplateData(data);
+  const expiry = formatExpiry(data.expiresAt);
   const subject = `You're invited to ${data.siteName}`;
   const text =
     `Hi ${data.name},\n\n` +
     `You've been invited to ${data.siteName}. Set your password to activate your account:\n\n` +
     `${data.resetUrl}\n\n` +
-    `This link expires in 7 days.`;
+    `This link expires at ${expiry}.`;
 
   const html = wrap(
     data.siteName,
@@ -56,17 +68,18 @@ export function buildInviteEmail(data: NpPasswordResetTemplateData): NpEmailTemp
     <p style="margin:0 0 24px;"><a href="${escapeHtml(data.resetUrl)}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:10px 20px;border-radius:8px;font-weight:500;">Set my password</a></p>
     <p style="margin:0 0 8px;font-size:13px;color:#555;">Or copy the link:</p>
     <p style="margin:0;font-size:13px;color:#555;word-break:break-all;">${escapeHtml(data.resetUrl)}</p>
-    <p style="margin-top:24px;font-size:13px;color:#555;">This link expires in 7 days.</p>
+    <p style="margin-top:24px;font-size:13px;color:#555;">This link expires at ${escapeHtml(expiry)}.</p>
     `,
   );
 
-  return { subject, text, html };
+  return npRequireEmailTemplate({ subject, text, html });
 }
 
 export interface NpMemberVerifyTemplateData {
   siteName: string;
   displayName: string;
   verifyUrl: string;
+  expiresAt: string;
 }
 
 /**
@@ -75,12 +88,14 @@ export interface NpMemberVerifyTemplateData {
  * but reuses the same wrapper styling.
  */
 export function buildMemberVerifyEmail(data: NpMemberVerifyTemplateData): NpEmailTemplate {
+  npRequireMemberVerifyEmailTemplateData(data);
+  const expiry = formatExpiry(data.expiresAt);
   const subject = `Confirm your ${data.siteName} account`;
   const text =
     `Hi ${data.displayName},\n\n` +
     `Welcome to ${data.siteName}. Confirm your email so we can activate your account:\n\n` +
     `${data.verifyUrl}\n\n` +
-    `This link expires in 24 hours. If you didn't sign up, you can ignore this email.`;
+    `This link expires at ${expiry}. If you didn't sign up, you can ignore this email.`;
 
   const html = wrap(
     data.siteName,
@@ -90,21 +105,23 @@ export function buildMemberVerifyEmail(data: NpMemberVerifyTemplateData): NpEmai
     <p style="margin:0 0 24px;"><a href="${escapeHtml(data.verifyUrl)}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:10px 20px;border-radius:8px;font-weight:500;">Confirm my email</a></p>
     <p style="margin:0 0 8px;font-size:13px;color:#555;">Or copy the link:</p>
     <p style="margin:0;font-size:13px;color:#555;word-break:break-all;">${escapeHtml(data.verifyUrl)}</p>
-    <p style="margin-top:24px;font-size:13px;color:#555;">This link expires in 24 hours. If you didn't sign up, you can ignore this email.</p>
+    <p style="margin-top:24px;font-size:13px;color:#555;">This link expires at ${escapeHtml(expiry)}. If you didn't sign up, you can ignore this email.</p>
     `,
   );
 
-  return { subject, text, html };
+  return npRequireEmailTemplate({ subject, text, html });
 }
 
 export function buildResetEmail(data: NpPasswordResetTemplateData): NpEmailTemplate {
+  npRequirePasswordEmailTemplateData(data);
+  const expiry = formatExpiry(data.expiresAt);
   const subject = `Reset your ${data.siteName} password`;
   const text =
     `Hi ${data.name},\n\n` +
     `Someone requested a password reset for your ${data.siteName} account. ` +
     `If that was you, use this link to set a new one:\n\n` +
     `${data.resetUrl}\n\n` +
-    `This link expires in 1 hour. If you didn't request it, you can ignore this email.`;
+    `This link expires at ${expiry}. If you didn't request it, you can ignore this email.`;
 
   const html = wrap(
     data.siteName,
@@ -114,9 +131,9 @@ export function buildResetEmail(data: NpPasswordResetTemplateData): NpEmailTempl
     <p style="margin:0 0 24px;"><a href="${escapeHtml(data.resetUrl)}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:10px 20px;border-radius:8px;font-weight:500;">Reset password</a></p>
     <p style="margin:0 0 8px;font-size:13px;color:#555;">Or copy the link:</p>
     <p style="margin:0;font-size:13px;color:#555;word-break:break-all;">${escapeHtml(data.resetUrl)}</p>
-    <p style="margin-top:24px;font-size:13px;color:#555;">This link expires in 1 hour. If you didn't request it you can ignore this email.</p>
+    <p style="margin-top:24px;font-size:13px;color:#555;">This link expires at ${escapeHtml(expiry)}. If you didn't request it you can ignore this email.</p>
     `,
   );
 
-  return { subject, text, html };
+  return npRequireEmailTemplate({ subject, text, html });
 }

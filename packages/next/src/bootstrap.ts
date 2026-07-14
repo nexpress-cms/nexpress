@@ -342,11 +342,11 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       // in prod, missing/loopback SITE_URL in prod.
       //
       // `emailAdapterEnv` is the env var rather than the live
-      // adapter — by design, `setEmailAdapter()` is called AFTER
-      // this safety check (the host's `init-core.ts` does it in the
-      // "write" intent path), so a live-adapter check would always
-      // see the default noop. Reading the operator's intent
-      // (`NP_EMAIL_ADAPTER`) is the right signal at this boot stage.
+      // adapter — by design, adapter installation happens AFTER this
+      // safety check (the host's `init-core.ts` does it in the "write"
+      // intent path), so a live-adapter check would always see the
+      // default noop. Reading the exact operator intent (`noop`, `smtp`,
+      // or `custom`) is the right signal at this boot stage.
       emailAdapterEnv: process.env.NP_EMAIL_ADAPTER ?? null,
       databaseHost: extractDatabaseHost(
         options.connectionString || config.db.connectionString || process.env.DATABASE_URL || null,

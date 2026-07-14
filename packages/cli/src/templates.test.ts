@@ -20,9 +20,12 @@ const CORE_PACKAGE_JSON = JSON.parse(
 ) as {
   version: string;
   dependencies: Record<string, string>;
+  peerDependencies: Record<string, string>;
 };
 const CORE_PACKAGE_VERSION: string = CORE_PACKAGE_JSON.version;
 const CORE_SHARP_RANGE: string = CORE_PACKAGE_JSON.dependencies.sharp;
+const CORE_NODEMAILER_RANGE: string =
+  CORE_PACKAGE_JSON.peerDependencies.nodemailer.split(" || ").at(-1) ?? "";
 
 const baseConfig = {
   projectName: "test-site",
@@ -72,6 +75,8 @@ describe("getProjectFiles", () => {
     expect(worker).toMatch(/@nexpress\/app\/scripts\/worker/);
     expect(worker).toMatch(/createBootstrap/);
     expect(worker).toMatch(/ensureFor/);
+    expect(worker).toMatch(/intent: "worker"/);
+    expect(worker).toMatch(/configureEmailRuntimeFromEnv\(process\.env\)/);
     expect(worker).toMatch(/runWorker\(\s*\{\s*ensureFor\s*\}\s*\)/);
     // Must NOT re-import from @/lib/init-core — the whole point of
     // the createBootstrap inline is to avoid that broken chain.
@@ -139,6 +144,15 @@ describe("getProjectFiles", () => {
     };
 
     expect(pkg.dependencies.sharp).toBe(CORE_SHARP_RANGE);
+  });
+
+  it("declares nodemailer directly for the default SMTP runtime", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const pkg = JSON.parse(files["package.json"]) as {
+      dependencies: Record<string, string>;
+    };
+
+    expect(pkg.dependencies.nodemailer).toBe(CORE_NODEMAILER_RANGE);
   });
 
   it("uses workspace:* deps when localMode, otherwise an exact @nexpress/core pin", () => {
@@ -323,6 +337,11 @@ describe("getProjectFiles", () => {
     expect(env).toMatch(/NP_EMAIL_ADAPTER=smtp/);
     expect(env).toMatch(/NP_SMTP_HOST=localhost/);
     expect(env).toMatch(/NP_SMTP_PORT=1025/);
+    expect(env).toMatch(/NP_SMTP_USER=dev/);
+    expect(env).toMatch(/NP_SMTP_PASS=dev/);
+    expect(env).toMatch(/NP_SMTP_FROM="NexPress dev <noreply@nexpress\.local>"/);
+    expect(env).toMatch(/NP_SMTP_SECURE=false/);
+    expect(env).toContain("exact modes are noop, smtp, or custom");
   });
 
   it(".env writes the project-specific DB port to both NEXPRESS_DB_PORT and DATABASE_URL", () => {

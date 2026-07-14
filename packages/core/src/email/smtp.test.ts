@@ -22,6 +22,26 @@ afterEach(async () => {
 });
 
 describe("SmtpEmailAdapter", () => {
+  it("rejects malformed constructor options before loading nodemailer", () => {
+    expect(
+      () =>
+        new SmtpEmailAdapter({
+          host: "smtp.example.com",
+          port: Number.NaN,
+          from: "noreply@example.test",
+        }),
+    ).toThrow(/email\.smtp\.port/u);
+    expect(
+      () =>
+        new SmtpEmailAdapter({
+          host: "smtp.example.com",
+          port: 587,
+          from: "noreply@example.test",
+          user: "partial-user",
+        }),
+    ).toThrow(/provided together/u);
+  });
+
   it("delivers a message through an SMTP-speaking relay", async () => {
     const relay = await startSmtpCaptureServer();
     activeServers.push(relay);

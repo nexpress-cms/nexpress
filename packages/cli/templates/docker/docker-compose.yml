@@ -15,7 +15,7 @@ services:
   # drop-in replacement for Resend / SendGrid / Postmark during
   # dev. Open the inbox at http://localhost:8025 to see every
   # email the app would have sent. Swap to a real provider for
-  # staging / production by changing the four NP_SMTP_* values
+  # staging / production by changing the NP_SMTP_* values
   # in your .env — no code changes.
   mailpit:
     image: axllent/mailpit:v1.21
