@@ -21,6 +21,7 @@ describe("doctor core", () => {
         "env.file",
         "env.database_url",
         "email.contract",
+        "rate-limit.contract",
         "database.reachable",
         "auth.contract",
         "settings.contract",
@@ -123,5 +124,52 @@ describe("doctor core", () => {
         detail: expect.stringContaining("NP_SMTP_PORT"),
       }),
     );
+  });
+
+  it("fails closed on malformed rate-limit runtime intent without booting the app", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nexpress-doctor-core-"));
+    const checks = await collectDoctorChecks({
+      cwd,
+      nodeVersion: "24.11.1",
+      env: { NP_RATE_LIMIT_ADAPTER: "redis" },
+    });
+
+    expect(checks.find((check) => check.id === "rate-limit.contract")).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: expect.stringContaining("NP_RATE_LIMIT_ADAPTER"),
+      }),
+    );
+  });
+
+  it("blocks a production multi-node runtime that keeps process-local buckets", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nexpress-doctor-core-"));
+    const checks = await collectDoctorChecks({
+      cwd,
+      prodMode: true,
+      target: "docker",
+      nodeVersion: "24.11.1",
+      env: { NP_RATE_LIMIT_ADAPTER: "memory", NP_REPLICAS: "2" },
+    });
+
+    expect(checks.find((check) => check.id === "rate-limit.contract")).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: "memory (per-process) in a multi-node runtime",
+      }),
+    );
+  });
+
+  it("shares startup safety's case-insensitive multi-node flag semantics", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nexpress-doctor-core-"));
+    const checks = await collectDoctorChecks({
+      cwd,
+      prodMode: true,
+      target: "docker",
+      nodeVersion: "24.11.1",
+      env: { NP_RATE_LIMIT_ADAPTER: "memory", NP_MULTI_NODE: "TRUE" },
+    });
+
+    expect(checks.find((check) => check.id === "rate-limit.contract")?.state).toBe("error");
   });
 });

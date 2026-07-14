@@ -405,6 +405,13 @@ async function saveEnv(body: SetupBody): Promise<void> {
     lines.push("# NP_STORAGE_ADAPTER=local (default)");
   }
 
+  lines.push(
+    "",
+    "# API rate limiting (exact modes: memory or custom)",
+    "# Multi-node deploys inject a shared adapter from src/proxy.ts.",
+    "NP_RATE_LIMIT_ADAPTER=memory",
+  );
+
   if (body.adminEmail || body.adminName || body.adminThemeId) {
     lines.push("", "# First-boot admin wizard prefill");
     if (body.adminEmail) lines.push(`NP_ADMIN_EMAIL=${body.adminEmail}`);

@@ -1,0 +1,116 @@
+import { NextRequest } from "next/server";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+function request(path = "/api/auth/login"): NextRequest {
+  return new NextRequest(`http://localhost${path}`, {
+    headers: { "x-forwarded-for": "203.0.113.8" },
+  });
+}
+
+async function loadModules() {
+  vi.resetModules();
+  const core = await import("@nexpress/core/rate-limit");
+  const proxyModule = await import("./index.js");
+  return { core, proxyModule };
+}
+
+describe("shared application proxy rate limiting", () => {
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    const core = await import("@nexpress/core/rate-limit");
+    core.setRateLimiter(null);
+    vi.resetModules();
+  });
+
+  it("uses a directly injected custom adapter and emits a numeric Retry-After", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "custom");
+    const { proxyModule } = await loadModules();
+    const check = vi.fn().mockResolvedValue({ limited: true, retryAfterSeconds: 17 });
+    const handler = proxyModule.npCreateProxy({ rateLimiter: { kind: "redis", check } });
+
+    const response = await handler(request());
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("17");
+    expect(check).toHaveBeenCalledWith(expect.any(String), 10, 60_000);
+  });
+
+  it("rejects a custom adapter when runtime intent still says memory", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "memory");
+    const { proxyModule } = await loadModules();
+    expect(() =>
+      proxyModule.npCreateProxy({
+        rateLimiter: {
+          kind: "redis",
+          check: vi.fn().mockResolvedValue({ limited: false, retryAfterSeconds: 60 }),
+        },
+      }),
+    ).toThrow(/NP_RATE_LIMIT_ADAPTER/u);
+  });
+
+  it("rejects a memory adapter that tries to satisfy custom runtime intent", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "custom");
+    const { proxyModule } = await loadModules();
+    expect(() =>
+      proxyModule.npCreateProxy({
+        rateLimiter: {
+          kind: "memory",
+          check: vi.fn().mockResolvedValue({ limited: false, retryAfterSeconds: 60 }),
+        },
+      }),
+    ).toThrow(/must not be "memory"/u);
+  });
+
+  it("requires one exact plain proxy options object", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "custom");
+    const { proxyModule } = await loadModules();
+    const rateLimiter = {
+      kind: "redis",
+      check: vi.fn().mockResolvedValue({ limited: false, retryAfterSeconds: 60 }),
+    };
+
+    expect(() => proxyModule.npCreateProxy({} as never)).toThrow(/exact \{ rateLimiter \}/u);
+    expect(() => proxyModule.npCreateProxy({ rateLimiter, extra: true } as never)).toThrow(
+      /exact \{ rateLimiter \}/u,
+    );
+    expect(() => proxyModule.npCreateProxy(Object.create({ rateLimiter }) as never)).toThrow(
+      /exact \{ rateLimiter \}/u,
+    );
+  });
+
+  it("fails closed when custom runtime intent has no proxy-local adapter", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "custom");
+    const { proxyModule } = await loadModules();
+    await expect(proxyModule.proxy(request())).rejects.toThrow(/npCreateProxy/u);
+  });
+
+  it("reads the current registered adapter instead of retaining the first one", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "custom");
+    const { core, proxyModule } = await loadModules();
+    const first = vi.fn().mockResolvedValue({ limited: false, retryAfterSeconds: 60 });
+    const second = vi.fn().mockResolvedValue({ limited: true, retryAfterSeconds: 9 });
+
+    core.setRateLimiter({ kind: "first", check: first });
+    expect((await proxyModule.proxy(request())).status).toBe(200);
+    core.setRateLimiter({ kind: "second", check: second });
+    const response = await proxyModule.proxy(request());
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("9");
+    expect(first).toHaveBeenCalledOnce();
+    expect(second).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a malformed decision instead of serializing an undefined header", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "custom");
+    const { proxyModule } = await loadModules();
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: {
+        kind: "bad-result",
+        check: vi.fn().mockResolvedValue({ limited: true }) as never,
+      },
+    });
+
+    await expect(handler(request())).rejects.toThrow(/retryAfterSeconds/u);
+  });
+});

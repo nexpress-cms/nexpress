@@ -1,4 +1,5 @@
-import type { NpRateLimitDecision, NpRateLimiterAdapter } from "./types.js";
+import type { NpRateLimitDecision, NpRateLimiterAdapter, NpRateLimitRequest } from "./types.js";
+import { npRequireRateLimitRequest } from "./contract.js";
 
 /**
  * Default rate-limiter adapter. Same fixed-window behaviour the
@@ -6,7 +7,7 @@ import type { NpRateLimitDecision, NpRateLimiterAdapter } from "./types.js";
  * request in the first ms and one in the last ms of a window
  * share the bucket. Single-node deploys keep this; multi-node
  * deploys swap in `@nexpress/rate-limiter-redis` (or another
- * adapter) at boot.
+ * adapter) from the proxy entrypoint.
  *
  * Why store + janitor on `globalThis`: HMR re-evaluates this
  * module on every save in dev, and a module-scoped Map would
@@ -46,7 +47,7 @@ function ensureJanitor(): void {
     if (!liveStore) return;
     const now = Date.now();
     for (const [key, bucket] of liveStore) {
-      if (now > bucket.resetAt) liveStore.delete(key);
+      if (now >= bucket.resetAt) liveStore.delete(key);
     }
   }, 60_000);
   // Don't keep a Node process alive just to prune empty buckets.
@@ -55,24 +56,32 @@ function ensureJanitor(): void {
 }
 
 export class InMemoryRateLimiter implements NpRateLimiterAdapter {
+  readonly kind = "memory";
+
   constructor() {
     ensureJanitor();
   }
 
   check(key: string, limit: number, windowMs: number): Promise<NpRateLimitDecision> {
+    let request: NpRateLimitRequest;
+    try {
+      request = npRequireRateLimitRequest({ key, limit, windowMs });
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+    }
     const store = getStore();
     const now = Date.now();
-    const bucket = store.get(key);
-    if (!bucket || now > bucket.resetAt) {
-      store.set(key, { count: 1, resetAt: now + windowMs });
+    const bucket = store.get(request.key);
+    if (!bucket || now >= bucket.resetAt) {
+      store.set(request.key, { count: 1, resetAt: now + request.windowMs });
       return Promise.resolve({
         limited: false,
-        retryAfterSeconds: Math.ceil(windowMs / 1000),
+        retryAfterSeconds: Math.ceil(request.windowMs / 1000),
       });
     }
     bucket.count += 1;
     const retryAfterSeconds = Math.ceil((bucket.resetAt - now) / 1000);
-    if (bucket.count > limit) {
+    if (bucket.count > request.limit) {
       return Promise.resolve({ limited: true, retryAfterSeconds });
     }
     return Promise.resolve({ limited: false, retryAfterSeconds });

@@ -10,15 +10,16 @@ have a natural home in any single subsystem doc.
 
 ## Specialist guides
 
-| Symptom                                              | Go to                                                                                        |
-| ---------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Worker silent, queue not draining, scheduled cron    | [jobs.md § 11 Operations Playbook](./jobs.md#11-operations-playbook)                         |
-| RSC pages serving stale data after a write           | [caching.md](./caching.md)                                                                   |
-| Need to wire pino/Sentry/Datadog                     | [observability.md](./observability.md)                                                       |
-| Multi-node rate-limiting, sticky sessions, S3 prereq | [deployment.md § Multi-node notes](./deployment.md#multi-node-notes)                         |
-| `INTERNAL_ERROR` with no handler context             | [observability.md § Where errors get reported](./observability.md#where-errors-get-reported) |
-| Email never arrives                                  | [email.md](./email.md)                                                                       |
-| Importer stuck, partial run, resume                  | [wordpress-import-guide.md](./wordpress-import-guide.md)                                     |
+| Symptom                                           | Go to                                                                                        |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Worker silent, queue not draining, scheduled cron | [jobs.md § 11 Operations Playbook](./jobs.md#11-operations-playbook)                         |
+| RSC pages serving stale data after a write        | [caching.md](./caching.md)                                                                   |
+| Need to wire pino/Sentry/Datadog                  | [observability.md](./observability.md)                                                       |
+| Rate-limit contract or multi-node buckets         | [rate-limiting.md](./rate-limiting.md)                                                       |
+| Multi-node sticky sessions and S3 prerequisite    | [deployment.md § Multi-node notes](./deployment.md#multi-node-notes)                         |
+| `INTERNAL_ERROR` with no handler context          | [observability.md § Where errors get reported](./observability.md#where-errors-get-reported) |
+| Email never arrives                               | [email.md](./email.md)                                                                       |
+| Importer stuck, partial run, resume               | [wordpress-import-guide.md](./wordpress-import-guide.md)                                     |
 
 ## Boot warnings
 
@@ -26,15 +27,16 @@ have a natural home in any single subsystem doc.
 configurations (Phase 22.2). Each warning ships a stable `check` id in
 its log context so log search rules can target them.
 
-| `check` id                  | Meaning                                                                                                                                                                 | Fix                                                                                                                                                                                                                                                |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `multi_node_local_storage`  | `NP_STORAGE_ADAPTER=local` plus `NP_MULTI_NODE=true` / `=1`, `NP_REPLICAS>1`, or a production managed-container hint. Each node has its own `./uploads` dir.            | Switch to S3 (`NP_STORAGE_ADAPTER=s3` + bucket env). For migration of existing files, see [Switching storage adapters](#switching-storage-adapters) below. Use `NP_MULTI_NODE=false` / `NP_REPLICAS=1` only for deliberate single-node deploys.    |
-| `missing_prod_secret`       | `NODE_ENV=production` AND `NP_SECRET` unset. JWT sessions are forgeable.                                                                                                | Generate a secret (`openssl rand -base64 48`) and set `NP_SECRET`. Existing sessions will be invalidated; users re-login.                                                                                                                          |
-| `weak_prod_secret`          | `NP_SECRET` is shorter than 32 characters in production.                                                                                                                | Same fix as above.                                                                                                                                                                                                                                 |
-| `noop_email_in_prod`        | `NODE_ENV=production` AND `NP_EMAIL_ADAPTER` is unset / `noop`. Transactional mail (password-reset, email-verify, member digests) is silently dropped.                  | Set `NP_EMAIL_ADAPTER=smtp` with the exact `NP_SMTP_*` contract, or set `NP_EMAIL_ADAPTER=custom` and install an adapter before bootstrap — see [email.md](./email.md).                                                                            |
-| `loopback_database_in_prod` | `NODE_ENV=production` AND `DATABASE_URL` host is `localhost` / `127.0.0.1` / `::1` / `0.0.0.0`. Almost always a stale dev connection string that slipped through CI/CD. | Point `DATABASE_URL` at the production Postgres instance.                                                                                                                                                                                          |
-| `missing_site_url`          | `NODE_ENV=production` AND `SITE_URL` is unset. Sitemap, OAuth callbacks, email links all anchor on it.                                                                  | Set `SITE_URL` to your public origin (e.g. `https://example.com`). Note: with `SITE_URL` unset, password-reset / register / verify flows refuse to run (#598) — see [SITE_URL is required for email flows](#site_url-is-required-for-email-flows). |
-| `loopback_site_url`         | `NODE_ENV=production` AND `SITE_URL` is `http://localhost:…` or similar loopback. Breaks share links, OAuth round-trips, outbound email.                                | Same fix.                                                                                                                                                                                                                                          |
+| `check` id                          | Meaning                                                                                                                                                                 | Fix                                                                                                                                                                                                                                                |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `multi_node_local_storage`          | `NP_STORAGE_ADAPTER=local` plus `NP_MULTI_NODE=true` / `=1`, `NP_REPLICAS>1`, or a production managed-container hint. Each node has its own `./uploads` dir.            | Switch to S3 (`NP_STORAGE_ADAPTER=s3` + bucket env). For migration of existing files, see [Switching storage adapters](#switching-storage-adapters) below. Use `NP_MULTI_NODE=false` / `NP_REPLICAS=1` only for deliberate single-node deploys.    |
+| `multi_node_in_memory_rate_limiter` | `NP_RATE_LIMIT_ADAPTER=memory` plus the same multi-node signals. Each process owns independent API buckets.                                                             | Set `NP_RATE_LIMIT_ADAPTER=custom` and inject a shared adapter with `npCreateProxy()`; see [rate-limiting.md](./rate-limiting.md). Use the single-node flags only for a deliberate one-process deploy.                                             |
+| `missing_prod_secret`               | `NODE_ENV=production` AND `NP_SECRET` unset. JWT sessions are forgeable.                                                                                                | Generate a secret (`openssl rand -base64 48`) and set `NP_SECRET`. Existing sessions will be invalidated; users re-login.                                                                                                                          |
+| `weak_prod_secret`                  | `NP_SECRET` is shorter than 32 characters in production.                                                                                                                | Same fix as above.                                                                                                                                                                                                                                 |
+| `noop_email_in_prod`                | `NODE_ENV=production` AND `NP_EMAIL_ADAPTER` is unset / `noop`. Transactional mail (password-reset, email-verify, member digests) is silently dropped.                  | Set `NP_EMAIL_ADAPTER=smtp` with the exact `NP_SMTP_*` contract, or set `NP_EMAIL_ADAPTER=custom` and install an adapter before bootstrap — see [email.md](./email.md).                                                                            |
+| `loopback_database_in_prod`         | `NODE_ENV=production` AND `DATABASE_URL` host is `localhost` / `127.0.0.1` / `::1` / `0.0.0.0`. Almost always a stale dev connection string that slipped through CI/CD. | Point `DATABASE_URL` at the production Postgres instance.                                                                                                                                                                                          |
+| `missing_site_url`                  | `NODE_ENV=production` AND `SITE_URL` is unset. Sitemap, OAuth callbacks, email links all anchor on it.                                                                  | Set `SITE_URL` to your public origin (e.g. `https://example.com`). Note: with `SITE_URL` unset, password-reset / register / verify flows refuse to run (#598) — see [SITE_URL is required for email flows](#site_url-is-required-for-email-flows). |
+| `loopback_site_url`                 | `NODE_ENV=production` AND `SITE_URL` is `http://localhost:…` or similar loopback. Breaks share links, OAuth round-trips, outbound email.                                | Same fix.                                                                                                                                                                                                                                          |
 
 These are warnings, not crashes — the process boots. They show up in
 whatever logger has been installed via `setLogger()`; on a default
@@ -45,6 +47,10 @@ The email runtime parser is stricter than the production no-op warning:
 unknown adapter aliases, malformed SMTP values, missing host/from values, and
 partial username/password pairs abort the first app bootstrap. `pnpm run
 doctor` exposes this as `email.contract` without needing a database.
+
+The rate-limit parser behaves the same way: unknown runtime modes fail the
+first bootstrap/proxy check, while `pnpm run doctor` exposes the stable
+`rate-limit.contract` result and blocks production multi-node memory mode.
 
 ## Admin ops cockpit
 

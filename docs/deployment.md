@@ -418,21 +418,27 @@ For a Sentry / pino / Datadog-specific recipe and the matching
 - **pg-boss leader election** — the worker uses Postgres advisory locks,
   so multiple nodes can run `NP_ENABLE_JOBS=1` simultaneously. Only one
   picks up each job.
-- **Rate limiting is pluggable.** As of Phase 23.7, `apps/web/src/proxy.ts`
-  reads its limiter from the `NpRateLimiterAdapter` registered via
-  `setRateLimiter` at boot. The default adapter is `InMemoryRateLimiter`
-  from `@nexpress/core/rate-limit` — same fixed-window behavior as
-  before, identical for single-node deploys. Multi-node deploys swap
-  the adapter at boot:
+- **Rate limiting is pluggable.** `src/proxy.ts` uses the process-local
+  `InMemoryRateLimiter` by default. Because the Next proxy is a separate
+  runtime entrypoint from application bootstrap, multi-node deployments
+  declare custom intent and inject their adapter directly from that file:
 
   ```ts
-  // src/lib/init-core.ts wrapper (unwrap to install) — implementation
-  // lives in @nexpress/app/lib/init-core
-  import { setRateLimiter } from "@nexpress/core/rate-limit";
+  import { npCreateProxy } from "@nexpress/app/proxy";
   import { RedisRateLimiter } from "@nexpress/rate-limiter-redis";
 
-  setRateLimiter(new RedisRateLimiter({ url: process.env.NP_REDIS_URL }));
+  export const proxy = npCreateProxy({
+    rateLimiter: new RedisRateLimiter({ url: process.env.NP_REDIS_URL }),
+  });
+
+  export const config = {
+    matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  };
   ```
+
+  Set `NP_RATE_LIMIT_ADAPTER=custom` with that code. The exact environment,
+  adapter, request, decision, and lifecycle rules are in
+  [rate-limiting.md](./rate-limiting.md).
 
   With the in-memory default and N instances behind a load balancer
   the effective limit is `N × configured` — a 10/min cap on
@@ -449,14 +455,8 @@ For a Sentry / pino / Datadog-specific recipe and the matching
     pnpm add @nexpress/rate-limiter-redis
     ```
 
-    ```ts
-    // src/lib/init-core.ts wrapper (unwrap to install) — implementation
-    // lives in @nexpress/app/lib/init-core
-    import { setRateLimiter } from "@nexpress/core/rate-limit";
-    import { RedisRateLimiter } from "@nexpress/rate-limiter-redis";
-
-    setRateLimiter(new RedisRateLimiter({ url: process.env.NP_REDIS_URL }));
-    ```
+    Use the `src/proxy.ts` injection above; installing only from
+    `src/lib/init-core.ts` does not guarantee that the proxy runtime sees it.
 
     Recommended when you already have Redis for caching / sessions
     (one client, one connection pool). See the package

@@ -2,6 +2,7 @@ import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { npValidatePluginCronExpression } from "@nexpress/core";
 import { npReadEmailRuntimeConfig } from "@nexpress/core/email";
+import { npReadRateLimitRuntimeConfig } from "@nexpress/core/rate-limit";
 import {
   npAnalyzeAuthUser,
   npAnalyzeMemberAuthUser,
@@ -125,6 +126,7 @@ export async function collectDoctorChecks(
   for (const spec of REQUIRED_VARS) checks.push(checkRequiredVar(spec, prodMode, env));
   checks.push(checkEnvExampleSync(env));
   checks.push(checkEmailRuntimeContract(env));
+  checks.push(checkRateLimitRuntimeContract(env, prodMode));
   const s3 = checkS3Vars(env);
   if (s3) checks.push(s3);
   checks.push(...checkOAuthEnvPairs(env));
@@ -181,6 +183,51 @@ function checkEmailRuntimeContract(env: DoctorEnv): CheckResult {
       label: "Email delivery runtime contract",
       detail: error instanceof Error ? error.message : String(error),
       hint: "Fix NP_EMAIL_ADAPTER and NP_SMTP_* before accepting credential email requests.",
+    };
+  }
+}
+
+function checkRateLimitRuntimeContract(env: DoctorEnv, prodMode: boolean): CheckResult {
+  try {
+    const config = npReadRateLimitRuntimeConfig(env);
+    const replicas = /^\d+$/u.test(env.NP_REPLICAS ?? "") ? Number(env.NP_REPLICAS) : 0;
+    const multiNodeFlag = env.NP_MULTI_NODE?.toLowerCase();
+    const explicitMultiNode = multiNodeFlag === "true" || multiNodeFlag === "1";
+    const explicitSingleNode = replicas === 1 || multiNodeFlag === "false" || multiNodeFlag === "0";
+    const managedContainer = Boolean(
+      env.KUBERNETES_SERVICE_HOST ||
+      env.FLY_REGION ||
+      env.RENDER_INSTANCE_ID ||
+      env.RAILWAY_ENVIRONMENT_NAME,
+    );
+    const likelyMultiNode =
+      explicitMultiNode || replicas > 1 || (prodMode && managedContainer && !explicitSingleNode);
+
+    if (config.adapter === "memory" && likelyMultiNode) {
+      return {
+        id: "rate-limit.contract",
+        state: prodMode ? "error" : "warn",
+        label: "Rate-limit runtime contract",
+        detail: "memory (per-process) in a multi-node runtime",
+        hint: "Set NP_RATE_LIMIT_ADAPTER=custom and inject a shared adapter with npCreateProxy(), or declare NP_MULTI_NODE=false / NP_REPLICAS=1 for a deliberate single-node deploy.",
+      };
+    }
+    return {
+      id: "rate-limit.contract",
+      state: "ok",
+      label: "Rate-limit runtime contract",
+      detail:
+        config.adapter === "custom"
+          ? "custom (proxy-local adapter expected)"
+          : "memory (per-process)",
+    };
+  } catch (error) {
+    return {
+      id: "rate-limit.contract",
+      state: "error",
+      label: "Rate-limit runtime contract",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Set NP_RATE_LIMIT_ADAPTER to exactly memory or custom before serving API requests.",
     };
   }
 }

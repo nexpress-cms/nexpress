@@ -26,6 +26,7 @@ describe("RedisRateLimiter", () => {
     const decision = await limiter.check("ip-1:/api/auth", 10, 60_000);
     expect(decision.limited).toBe(false);
     expect(decision.retryAfterSeconds).toBe(60);
+    expect(limiter.kind).toBe("redis");
     expect(evalStub).toHaveBeenCalledTimes(1);
   });
 
@@ -91,5 +92,70 @@ describe("RedisRateLimiter", () => {
     const limiter = new RedisRateLimiter({ client: client as Redis });
     await limiter.shutdown();
     expect(quitStub).not.toHaveBeenCalled();
+  });
+
+  it("validates direct request arguments before calling Redis", async () => {
+    const evalStub = vi.fn().mockResolvedValue([1, 60_000]);
+    const limiter = new RedisRateLimiter({ client: fakeClient(evalStub) });
+    await expect(limiter.check("", 0, -1)).rejects.toThrow(/rateLimit\.request\.key/u);
+    expect(evalStub).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed script tuples instead of deriving NaN decisions", async () => {
+    for (const result of [
+      null,
+      [1],
+      [1, 60_000, "extra"],
+      [0, 60_000],
+      ["1x", "60000"],
+      ["01", "60000"],
+    ]) {
+      const limiter = new RedisRateLimiter({
+        client: fakeClient(vi.fn().mockResolvedValue(result)),
+      });
+      await expect(limiter.check("ip:/api", 5, 60_000)).rejects.toThrow(
+        /rateLimit\.redis\.result/u,
+      );
+    }
+  });
+
+  it("fails early on malformed constructor options", () => {
+    expect(() => new RedisRateLimiter(null as never)).toThrow(/plain options object/u);
+    expect(() => new RedisRateLimiter({ client: {} as Redis })).toThrow(
+      /rateLimit\.redis\.client/u,
+    );
+    expect(
+      () =>
+        new RedisRateLimiter({
+          client: fakeClient(vi.fn()),
+          host: "redis.internal",
+        }),
+    ).toThrow(/rateLimit\.redis\.host/u);
+    expect(() => new RedisRateLimiter({ url: "https://example.com" })).toThrow(
+      /rateLimit\.redis\.url/u,
+    );
+    expect(() => new RedisRateLimiter({ url: undefined })).toThrow(/rateLimit\.redis\.url/u);
+    expect(() => new RedisRateLimiter({ url: "redis://redis\n.internal" })).toThrow(
+      /rateLimit\.redis\.url/u,
+    );
+    expect(() => new RedisRateLimiter({ host: " " })).toThrow(/rateLimit\.redis\.host/u);
+    expect(() => new RedisRateLimiter({ host: "redis internal" })).toThrow(
+      /rateLimit\.redis\.host/u,
+    );
+    expect(() => new RedisRateLimiter({ port: 70_000 })).toThrow(/rateLimit\.redis\.port/u);
+  });
+
+  it("closes an owned client once across concurrent shutdown calls", async () => {
+    const quitStub = vi.fn().mockResolvedValue("OK");
+    const client: Partial<Redis> = {
+      eval: vi.fn(),
+      quit: quitStub,
+    };
+    const limiter = new RedisRateLimiter({ client: client as Redis });
+    Object.assign(limiter, { ownsClient: true });
+
+    await Promise.all([limiter.shutdown(), limiter.shutdown()]);
+
+    expect(quitStub).toHaveBeenCalledOnce();
   });
 });

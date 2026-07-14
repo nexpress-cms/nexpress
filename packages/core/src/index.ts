@@ -873,11 +873,28 @@ export type {
 // callers that already pull through the catch-all.
 export {
   InMemoryRateLimiter,
-  setRateLimiter,
-  getRateLimiter,
   getOptionalRateLimiter,
+  getRateLimiter,
+  NpRateLimitContractError,
+  npAnalyzeRateLimitDecision,
+  npAnalyzeRateLimitRequest,
+  npCheckRateLimit,
+  npRateLimitContractLimits,
+  npReadRateLimitRuntimeConfig,
+  npRequireRateLimitDecision,
+  npRequireRateLimiterAdapter,
+  npRequireRateLimitRequest,
+  npShutdownRateLimiter,
+  setRateLimiter,
 } from "./rate-limit/index.js";
-export type { NpRateLimitDecision, NpRateLimiterAdapter } from "./rate-limit/index.js";
+export type {
+  NpRateLimitContractIssue,
+  NpRateLimitContractIssueCode,
+  NpRateLimitDecision,
+  NpRateLimiterAdapter,
+  NpRateLimitRequest,
+  NpRateLimitRuntimeConfig,
+} from "./rate-limit/index.js";
 
 export {
   getCommunityRole,

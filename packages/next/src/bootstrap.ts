@@ -9,7 +9,6 @@ import {
   registerThemes,
   resetPlugins,
   resolveSiteForHostname,
-  getOptionalRateLimiter,
   setCurrentSiteResolver,
   setDb,
   setI18nConfig,
@@ -28,6 +27,7 @@ import {
   type NpResolvedPluginLike,
   type NpRegisteredTheme,
 } from "@nexpress/core";
+import { npReadRateLimitRuntimeConfig } from "@nexpress/core/rate-limit";
 import { canOnSite } from "@nexpress/core/sites";
 import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
 import {
@@ -352,13 +352,11 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
         options.connectionString || config.db.connectionString || process.env.DATABASE_URL || null,
       ),
       siteUrl: process.env.SITE_URL ?? null,
-      // #621 — `getOptionalRateLimiter()` returns the adapter the
-      // operator opted into via `setRateLimiter(...)`, or null
-      // when the in-memory default will be lazy-installed at first
-      // request. `null` → `rateLimiterCustom: false` (the warn
-      // condition); any non-null adapter → `true` (operator
-      // chose, presumably with multi-node in mind).
-      rateLimiterCustom: getOptionalRateLimiter() !== null,
+      // The proxy is a separate execution entrypoint, so its live
+      // registry is not a reliable bootstrap signal. Validate the
+      // shared env intent instead: `custom` means the proxy wrapper
+      // must inject or register an adapter before its first request.
+      rateLimiterCustom: npReadRateLimitRuntimeConfig(process.env).adapter === "custom",
     });
 
     servicesInitialized = true;
