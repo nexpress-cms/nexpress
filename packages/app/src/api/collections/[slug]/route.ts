@@ -71,7 +71,7 @@ export async function POST(
       const data = parseBodyRecord(await readJsonBody(request));
       const saveOptions = extractSaveOptions(data);
       const result = await saveCollectionDocument(slug, null, data, staffUser, saveOptions);
-      revalidateCollection(slug, result.doc);
+      await revalidateCollection(slug, result.doc);
       return npSuccessResponse(result.doc, { status: 201 });
     }
 
@@ -91,7 +91,7 @@ export async function POST(
     const saveOptions = extractSaveOptions(data);
     validateDocumentBlockContent(slug, data);
     const result = await createMemberDocument(slug, data, member.id, saveOptions);
-    revalidateCollection(slug, result.doc);
+    await revalidateCollection(slug, result.doc);
     return npSuccessResponse(result.doc, { status: 201 });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));

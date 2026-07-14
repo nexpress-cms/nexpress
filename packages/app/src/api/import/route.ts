@@ -708,7 +708,7 @@ export async function POST(request: NextRequest) {
         });
 
         for (const { location } of resolveNavEntries(payload.navigation)) {
-          invalidateCacheTargets({
+          await invalidateCacheTargets({
             source: "navigation",
             siteId,
             navigationLocation: location,
@@ -718,7 +718,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (payload.site || payload.settings?.seo) {
-          invalidateCacheTargets({
+          await invalidateCacheTargets({
             source: "site",
             siteId,
             tags: [siteCacheTag(siteId), `nx:sitemap:${siteId}`, `nx:feed:${siteId}`],
@@ -793,7 +793,7 @@ export async function POST(request: NextRequest) {
         if (plugin.config !== undefined) {
           if (!dryRun) {
             await setPluginConfig(plugin.id, plugin.config, user.id);
-            invalidateCacheTargets({
+            await invalidateCacheTargets({
               source: "plugin-config",
               siteId,
               pluginId: plugin.id,

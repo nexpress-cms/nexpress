@@ -19,6 +19,7 @@ import {
   npShutdownStorageAdapter,
   registerCollection,
   registerThemes,
+  resetCacheInvalidationAdapter,
   resetCollections,
   resetCurrentSiteResolver,
   resetDb,
@@ -26,6 +27,7 @@ import {
   resetPlugins,
   resetThemes,
   setCurrentSiteResolver,
+  setCacheInvalidationAdapter,
   setDb,
   setI18nConfig,
   startProducer,
@@ -52,6 +54,7 @@ import {
 } from "@nexpress/core/observability";
 import { canOnSite, NP_DEFAULT_SITE_ID, resolveSiteForHostname } from "@nexpress/core/sites";
 import { type NpStorageAdapter } from "@nexpress/core/storage";
+import { npRequireCdnPurgeAdapter, type NpCdnPurgeAdapter } from "@nexpress/core/cache";
 import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
 import {
   npAnalyzeBlockDefinitions,
@@ -66,6 +69,12 @@ import {
 } from "@nexpress/blocks";
 import { npAssertThemeDefinition, type NpTheme } from "@nexpress/theme";
 import { cookies, headers } from "next/headers";
+import {
+  npNextCacheInvalidationAdapter,
+  resetCdnPurgeAdapter,
+  setCdnPurgeAdapter,
+  shutdownCdnPurgeAdapter,
+} from "./cdn-purge.js";
 
 export type { NpDb } from "@nexpress/core/bootstrap";
 
@@ -169,6 +178,8 @@ export interface NpBootstrapOptions {
   errorReporter?: NpErrorReporter;
   /** Programmatic email adapter used only with `NP_EMAIL_ADAPTER=custom`. */
   emailAdapter?: NpEmailAdapter;
+  /** Optional downstream CDN purge adapter, owned and closed by this bootstrap. */
+  cdnPurgeAdapter?: NpCdnPurgeAdapter;
 }
 
 /**
@@ -337,12 +348,18 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
     throw new TypeError("Bootstrap generatedSchema must be a module-shaped object.");
   }
   const { config, generatedSchema } = options;
+  const cdnPurgeAdapter =
+    options.cdnPurgeAdapter === undefined
+      ? undefined
+      : npRequireCdnPurgeAdapter(options.cdnPurgeAdapter);
 
   let lifecycle: "active" | "shutting-down" | "closed" = "active";
   let db: NpDb | null = null;
   let runtimeConnectionString: string | null = null;
   let observabilityConfigured = false;
   let storageConfigured = false;
+  let cacheConfigured = false;
+  let cdnPurgeConfigured = false;
   let readReady = false;
   let readStartingPromise: Promise<void> | null = null;
   let emailRuntimeConfig: NpEmailRuntimeConfig | null = null;
@@ -390,6 +407,12 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
     rateLimiterCustom: boolean,
   ): void {
     setDb(instance);
+    setCacheInvalidationAdapter(npNextCacheInvalidationAdapter);
+    cacheConfigured = true;
+    if (cdnPurgeAdapter) {
+      setCdnPurgeAdapter(cdnPurgeAdapter);
+      cdnPurgeConfigured = true;
+    }
     const storageConfig = config.storage ?? {
       adapter: "local" as const,
       local: { directory: "./public/media", baseUrl: "/media" },
@@ -535,6 +558,14 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
     resetI18nConfig();
     resetThemes();
     resetCollections();
+    if (cacheConfigured) {
+      resetCacheInvalidationAdapter(npNextCacheInvalidationAdapter);
+      cacheConfigured = false;
+    }
+    if (cdnPurgeConfigured && cdnPurgeAdapter) {
+      resetCdnPurgeAdapter(cdnPurgeAdapter);
+      cdnPurgeConfigured = false;
+    }
     if (storageConfigured) {
       try {
         await npShutdownStorageAdapter();
@@ -974,6 +1005,11 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
       resetI18nConfig();
       resetThemes();
       resetCollections();
+      if (cacheConfigured) resetCacheInvalidationAdapter(npNextCacheInvalidationAdapter);
+      cacheConfigured = false;
+      if (cdnPurgeConfigured && cdnPurgeAdapter) resetCdnPurgeAdapter(cdnPurgeAdapter);
+      cdnPurgeConfigured = false;
+      if (cdnPurgeAdapter) await attempt(() => shutdownCdnPurgeAdapter(cdnPurgeAdapter));
       if (emailConfigured) resetEmailAdapter();
       emailConfigured = false;
       emailRuntimeConfig = null;

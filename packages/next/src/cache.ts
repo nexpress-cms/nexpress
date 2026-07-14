@@ -12,7 +12,17 @@ import {
   pluginConfigCacheTag,
 } from "@nexpress/core";
 import type { NpRegisteredTheme, NpSite, NpThemeTokens } from "@nexpress/core";
+import {
+  npCacheContractLimits,
+  npRequireCacheKeyParts,
+  npRequireCacheTags,
+  npRequireCacheTtl,
+  type NpCacheInvalidationResult,
+} from "@nexpress/core/cache";
 import type { NpResolvedNavItem } from "@nexpress/core/navigation";
+import { isNpNavigationLocation } from "@nexpress/core/navigation";
+import { npIsCanonicalSiteId } from "@nexpress/core/sites";
+import { npPluginIdMaxLength, npPluginIdPattern } from "@nexpress/core/settings";
 import { unstable_cache } from "next/cache";
 import { invalidateCacheTargets } from "./cdn-purge.js";
 
@@ -49,16 +59,35 @@ function isMissingIncrementalCache(error: unknown): boolean {
   return error instanceof Error && /incrementalCache/i.test(error.message);
 }
 
+function requirePluginId(pluginId: string): string {
+  if (
+    typeof pluginId !== "string" ||
+    pluginId.length > npPluginIdMaxLength ||
+    !new RegExp(npPluginIdPattern, "u").test(pluginId)
+  ) {
+    throw new TypeError("Cache helpers require a canonical plugin id.");
+  }
+  return pluginId;
+}
+
 async function resolveSiteId(): Promise<string> {
   return (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 }
 
 export function themeCacheTag(siteId: string): string {
-  return `nx:theme:${siteId}`;
+  if (!npIsCanonicalSiteId(siteId))
+    throw new TypeError("Theme cache tag requires a canonical site id.");
+  return npRequireCacheTags([`nx:theme:${siteId}`], "cache.themeTag")[0];
 }
 
 export function navCacheTag(siteId: string, location: string): string {
-  return `nx:nav:${siteId}:${location}`;
+  if (!npIsCanonicalSiteId(siteId)) {
+    throw new TypeError("Navigation cache tag requires a canonical site id.");
+  }
+  if (!isNpNavigationLocation(location)) {
+    throw new TypeError("Navigation cache tag requires a canonical location.");
+  }
+  return npRequireCacheTags([`nx:nav:${siteId}:${location}`], "cache.navigationTag")[0];
 }
 
 /**
@@ -72,8 +101,8 @@ export function navCacheTag(siteId: string, location: string): string {
  * failure as a 500 would be a worse experience than letting the
  * tag expire naturally.
  */
-export function bustThemeCache(siteId: string): Promise<void> {
-  invalidateCacheTargets({
+export function bustThemeCache(siteId: string): Promise<NpCacheInvalidationResult> {
+  return invalidateCacheTargets({
     source: "theme",
     siteId,
     // F.7 — bust SEO tags unconditionally on theme change. Gating
@@ -83,7 +112,6 @@ export function bustThemeCache(siteId: string): Promise<void> {
     tags: [themeCacheTag(siteId), `nx:sitemap:${siteId}`, `nx:feed:${siteId}`],
     paths: [{ path: "/", type: "layout" }],
   });
-  return Promise.resolve();
 }
 
 /**
@@ -93,7 +121,9 @@ export function bustThemeCache(siteId: string): Promise<void> {
  * the next request.
  */
 export function siteCacheTag(siteId: string): string {
-  return `np:site:${siteId}`;
+  if (!npIsCanonicalSiteId(siteId))
+    throw new TypeError("Site cache tag requires a canonical site id.");
+  return npRequireCacheTags([`np:site:${siteId}`], "cache.siteTag")[0];
 }
 
 /**
@@ -186,16 +216,17 @@ export async function getCachedThemeSettings(themeId?: string): Promise<unknown>
  * cache entries shouldn't cross.
  */
 export async function getCachedPluginConfig(pluginId: string): Promise<unknown> {
+  const validatedPluginId = requirePluginId(pluginId);
   const siteId = await resolveSiteId();
   const cached = unstable_cache(
-    () => getPluginConfig(pluginId),
-    ["np:plugin:config", siteId, pluginId],
-    { tags: [pluginConfigCacheTag(pluginId)], revalidate: REVALIDATE_SECONDS },
+    () => getPluginConfig(validatedPluginId),
+    ["np:plugin:config", siteId, validatedPluginId],
+    { tags: [pluginConfigCacheTag(validatedPluginId)], revalidate: REVALIDATE_SECONDS },
   );
   try {
     return await cached();
   } catch (error) {
-    if (isMissingIncrementalCache(error)) return getPluginConfig(pluginId);
+    if (isMissingIncrementalCache(error)) return getPluginConfig(validatedPluginId);
     throw error;
   }
 }
@@ -214,6 +245,44 @@ export interface NpCachedThemeFetchOptions {
    *  `nx:collection:posts` so a content edit busts the relevant
    *  cached archive too. */
   extraTags?: string[];
+}
+
+function requireCachedFetchOptions(
+  value: NpCachedThemeFetchOptions | NpCachedPluginFetchOptions | undefined,
+  path: string,
+): { revalidate: number; extraTags: string[] } {
+  if (value === undefined) return { revalidate: 60, extraTags: [] };
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new TypeError(`${path} must be a plain object.`);
+  }
+  let prototype: unknown;
+  let descriptors: PropertyDescriptorMap;
+  try {
+    prototype = Object.getPrototypeOf(value) as unknown;
+    descriptors = Object.getOwnPropertyDescriptors(value);
+  } catch {
+    throw new TypeError(`${path} must be a plain object.`);
+  }
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError(`${path} must be a plain object.`);
+  }
+  for (const key of Reflect.ownKeys(descriptors)) {
+    if (typeof key !== "string" || (key !== "revalidate" && key !== "extraTags")) {
+      throw new TypeError(`Unsupported ${path} field "${String(key)}".`);
+    }
+    const descriptor = descriptors[key];
+    if (!descriptor?.enumerable || !("value" in descriptor)) {
+      throw new TypeError(`${path}.${key} must be an enumerable data property.`);
+    }
+  }
+  const extraTags = npRequireCacheTags(descriptors.extraTags?.value ?? [], `${path}.extraTags`);
+  if (extraTags.length >= npCacheContractLimits.tagCount) {
+    throw new TypeError(`${path}.extraTags must leave room for the framework-owned cache tag.`);
+  }
+  return {
+    revalidate: npRequireCacheTtl(descriptors.revalidate?.value ?? 60, `${path}.revalidate`),
+    extraTags,
+  };
 }
 
 /**
@@ -279,11 +348,18 @@ export async function cachedThemeFetch<T>(
   fetcher: () => Promise<T>,
   options?: NpCachedThemeFetchOptions,
 ): Promise<T> {
+  if (typeof fetcher !== "function")
+    throw new TypeError("cachedThemeFetch fetcher must be a function.");
+  const validatedKeyParts = npRequireCacheKeyParts(keyParts, "cachedThemeFetch.keyParts");
+  const validatedOptions = requireCachedFetchOptions(options, "cachedThemeFetch.options");
   const siteId = await resolveSiteId();
-  const tags = [themeCacheTag(siteId), ...(options?.extraTags ?? [])];
-  const cached = unstable_cache(fetcher, ["nx:theme-fetch", siteId, ...keyParts], {
+  const tags = npRequireCacheTags(
+    [themeCacheTag(siteId), ...validatedOptions.extraTags],
+    "cachedThemeFetch.tags",
+  );
+  const cached = unstable_cache(fetcher, ["nx:theme-fetch", siteId, ...validatedKeyParts], {
     tags,
-    revalidate: options?.revalidate ?? 60,
+    revalidate: validatedOptions.revalidate,
   });
   try {
     return await cached();
@@ -365,12 +441,25 @@ export async function cachedPluginFetch<T>(
   fetcher: () => Promise<T>,
   options?: NpCachedPluginFetchOptions,
 ): Promise<T> {
+  const validatedPluginId = requirePluginId(pluginId);
+  if (typeof fetcher !== "function") {
+    throw new TypeError("cachedPluginFetch fetcher must be a function.");
+  }
+  const validatedKeyParts = npRequireCacheKeyParts(keyParts, "cachedPluginFetch.keyParts");
+  const validatedOptions = requireCachedFetchOptions(options, "cachedPluginFetch.options");
   const siteId = await resolveSiteId();
-  const tags = [pluginConfigCacheTag(pluginId), ...(options?.extraTags ?? [])];
-  const cached = unstable_cache(fetcher, ["np:plugin-fetch", siteId, pluginId, ...keyParts], {
-    tags,
-    revalidate: options?.revalidate ?? 60,
-  });
+  const tags = npRequireCacheTags(
+    [pluginConfigCacheTag(validatedPluginId), ...validatedOptions.extraTags],
+    "cachedPluginFetch.tags",
+  );
+  const cached = unstable_cache(
+    fetcher,
+    ["np:plugin-fetch", siteId, validatedPluginId, ...validatedKeyParts],
+    {
+      tags,
+      revalidate: validatedOptions.revalidate,
+    },
+  );
   try {
     return await cached();
   } catch (error) {

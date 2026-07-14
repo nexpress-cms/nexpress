@@ -78,7 +78,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     // this bust an admin rename surfaces on the public site after a
     // 10-minute stall.
     if (patch.name !== undefined || patch.hostname !== undefined) {
-      invalidateCacheTargets({
+      await invalidateCacheTargets({
         source: "site",
         siteId: id,
         tags: [siteCacheTag(id)],

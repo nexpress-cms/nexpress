@@ -936,8 +936,8 @@ Non-interactive mode reads the existing \`.env\` first, then lets process
 environment override it. It needs \`DATABASE_URL\` and accepts optional
 \`NP_SECRET\` (generated if absent), \`SITE_URL\`, exact \`local\` / \`s3\`
 storage vars, and \`NP_SETUP_RUN_MIGRATIONS=false\` for an env-only write.
-The exact storage \`custom\` mode uses \`src/lib/bootstrap.ts\`; custom logger
-and reporter adapters use the shared \`src/lib/observability.ts\` file.
+The exact storage \`custom\` mode uses \`src/lib/bootstrap.ts\`; pass a bootstrap-owned \`cdnPurgeAdapter\` there too.
+Custom logger/reporter adapters use \`src/lib/observability.ts\`.
 
 ## Background Jobs
 

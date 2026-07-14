@@ -7,6 +7,10 @@ import {
   getOptionalJobQueue,
   listWorkerHealth,
 } from "@nexpress/core";
+import {
+  getCacheInvalidationDiagnostics,
+  getOptionalCacheInvalidationAdapter,
+} from "@nexpress/core/cache";
 import { getEmailAdapter, npReadEmailRuntimeConfig } from "@nexpress/core/email";
 import {
   getErrorReporter,
@@ -472,6 +476,39 @@ export function checkObservabilityAdapters(): Check {
   }
 }
 
+/** Live invalidation host and contained dispatch/CDN failures. */
+export function checkCacheInvalidation(): Check {
+  const adapter = getOptionalCacheInvalidationAdapter();
+  const diagnostics = getCacheInvalidationDiagnostics();
+  if (!adapter) {
+    return {
+      id: "cache-invalidation",
+      label: "Cache invalidation",
+      state: "error",
+      detail: "no host adapter registered",
+      hint: "Initialize requests through createBootstrap().ensureFor() before serving traffic.",
+    };
+  }
+  if (diagnostics.partial > 0 || diagnostics.unavailable > 0) {
+    const last = diagnostics.lastFailure;
+    return {
+      id: "cache-invalidation",
+      label: "Cache invalidation",
+      state: "warn",
+      detail: `${adapter.kind} · ${diagnostics.partial.toString()} partial · ${diagnostics.unavailable.toString()} unavailable`,
+      hint: last
+        ? `Last ${last.operation} failure from ${last.adapterKind} at ${last.occurredAt}: ${last.message}`
+        : "Inspect process logs and the configured CDN purge provider.",
+    };
+  }
+  return {
+    id: "cache-invalidation",
+    label: "Cache invalidation",
+    state: "ok",
+    detail: `${adapter.kind} · ${diagnostics.applied.toString()}/${diagnostics.attempts.toString()} attempts applied`,
+  };
+}
+
 /**
  * NP_SECRET — runtime parallel of #597's boot-time check, plus
  * the entropy floor introduced in the setup wizard (#618). Most
@@ -531,6 +568,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
   checks.push(checkSiteUrl());
   checks.push(checkEmailAdapter());
   checks.push(checkObservabilityAdapters());
+  checks.push(checkCacheInvalidation());
   checks.push(checkSecret());
   return {
     generatedAt: new Date().toISOString(),

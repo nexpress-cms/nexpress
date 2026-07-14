@@ -43,6 +43,11 @@ describe("cache tag helpers", () => {
     expect(navCacheTag("default", "header")).toBe("nx:nav:default:header");
     expect(navCacheTag("blog-jp", "footer")).toBe("nx:nav:blog-jp:footer");
   });
+
+  it("rejects malformed site and navigation identities", () => {
+    expect(() => themeCacheTag("BAD")).toThrow("canonical site id");
+    expect(() => navCacheTag("default", "BAD location")).toThrow("canonical location");
+  });
 });
 
 describe("bustThemeCache", () => {
@@ -245,6 +250,31 @@ describe("cachedThemeFetch", () => {
 });
 
 describe("cachedPluginFetch", () => {
+  it("rejects malformed plugin ids and fetch options before site resolution", async () => {
+    await expect(
+      cachedPluginFetch("BAD plugin", ["k"], () => Promise.resolve("x")),
+    ).rejects.toThrow("canonical plugin id");
+    await expect(
+      cachedPluginFetch(123 as never, ["k"], () => Promise.resolve("x")),
+    ).rejects.toThrow("canonical plugin id");
+    await expect(
+      cachedPluginFetch("forum", [], () => Promise.resolve("x"), { revalidate: 0 }),
+    ).rejects.toThrow();
+    await expect(
+      cachedPluginFetch("forum", ["k"], () => Promise.resolve("x"), {
+        extraTags: Array.from({ length: 128 }, (_, index) => `tag:${index.toString()}`),
+      }),
+    ).rejects.toThrow("leave room");
+    const revalidate = vi.fn(() => 60);
+    const accessorOptions = Object.defineProperty({}, "revalidate", {
+      enumerable: true,
+      get: revalidate,
+    });
+    await expect(
+      cachedPluginFetch("forum", ["k"], () => Promise.resolve("x"), accessorOptions as never),
+    ).rejects.toThrow("enumerable data property");
+    expect(revalidate).not.toHaveBeenCalled();
+  });
   it("registers a per-site, per-plugin cache key with caller-supplied parts", async () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("blog-jp");
     vi.mocked(unstable_cache).mockReturnValueOnce((() => Promise.resolve("x")) as never);

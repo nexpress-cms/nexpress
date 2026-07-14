@@ -25,6 +25,7 @@ vi.mock("@nexpress/core/bootstrap", () => ({
   npShutdownStorageAdapter: vi.fn(() => Promise.resolve()),
   registerCollection: vi.fn(),
   registerThemes: vi.fn(),
+  resetCacheInvalidationAdapter: vi.fn(),
   resetCollections: vi.fn(),
   resetCurrentSiteResolver: vi.fn(),
   resetDb: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock("@nexpress/core/bootstrap", () => ({
   resetPlugins: vi.fn(),
   resetThemes: vi.fn(),
   setCurrentSiteResolver: vi.fn(),
+  setCacheInvalidationAdapter: vi.fn(),
   setDb: vi.fn(),
   setI18nConfig: vi.fn(),
   startProducer: vi.fn(() => Promise.resolve()),
@@ -64,6 +66,7 @@ const core = await import("@nexpress/core");
 const host = await import("@nexpress/core/bootstrap");
 const email = await import("@nexpress/core/email");
 const observability = await import("@nexpress/core/observability");
+const cdn = await import("./cdn-purge.js");
 const { createBootstrap } = await import("./bootstrap.js");
 
 function buildConfig() {
@@ -89,7 +92,65 @@ describe("createBootstrap", () => {
   });
 
   afterEach(() => {
+    cdn.resetCdnPurgeAdapter();
     vi.unstubAllEnvs();
+  });
+
+  it("installs the cache host and owns an injected CDN adapter", async () => {
+    const shutdown = vi.fn().mockResolvedValue(undefined);
+    const cdnPurgeAdapter = { kind: "cloudflare", purge: vi.fn(), shutdown };
+    const bootstrap = createBootstrap({
+      config: buildConfig(),
+      generatedSchema: {},
+      cdnPurgeAdapter,
+    });
+
+    await bootstrap.ensureFor("read");
+    expect(host.setCacheInvalidationAdapter).toHaveBeenCalledOnce();
+    expect(cdn.getCdnPurgeAdapter()).toBe(cdnPurgeAdapter);
+
+    await bootstrap.shutdown();
+    expect(host.resetCacheInvalidationAdapter).toHaveBeenCalledOnce();
+    expect(shutdown).toHaveBeenCalledOnce();
+    expect(cdn.getCdnPurgeAdapter()).toBeNull();
+  });
+
+  it("detaches but preserves an owned CDN adapter across retryable read rollback", async () => {
+    const shutdown = vi.fn().mockResolvedValue(undefined);
+    const cdnPurgeAdapter = { kind: "cloudflare", purge: vi.fn(), shutdown };
+    const bootstrap = createBootstrap({
+      config: buildConfig(),
+      generatedSchema: {},
+      cdnPurgeAdapter,
+    });
+    vi.mocked(host.configureStorageRuntime)
+      .mockImplementationOnce(() => {
+        throw new Error("storage unavailable");
+      })
+      .mockReturnValueOnce({ kind: "local" } as never);
+
+    await expect(bootstrap.ensureFor("read")).rejects.toThrow("storage unavailable");
+    expect(cdn.getCdnPurgeAdapter()).toBeNull();
+    expect(shutdown).not.toHaveBeenCalled();
+
+    await expect(bootstrap.ensureFor("read")).resolves.toBeUndefined();
+    expect(cdn.getCdnPurgeAdapter()).toBe(cdnPurgeAdapter);
+    await bootstrap.shutdown();
+    expect(shutdown).toHaveBeenCalledOnce();
+  });
+
+  it("closes an owned CDN adapter when shutdown happens before startup", async () => {
+    const shutdown = vi.fn().mockResolvedValue(undefined);
+    const bootstrap = createBootstrap({
+      config: buildConfig(),
+      generatedSchema: {},
+      cdnPurgeAdapter: { kind: "cloudflare", purge: vi.fn(), shutdown },
+    });
+
+    await bootstrap.shutdown();
+
+    expect(shutdown).toHaveBeenCalledOnce();
+    expect(host.createDbConnection).not.toHaveBeenCalled();
   });
 
   it("validates construction inputs and requires the read intent before getDb", async () => {
@@ -104,6 +165,13 @@ describe("createBootstrap", () => {
     expect(() => createBootstrap({ config, generatedSchema: [] as never })).toThrow(
       "generatedSchema",
     );
+    expect(() =>
+      createBootstrap({
+        config,
+        generatedSchema: {},
+        cdnPurgeAdapter: { kind: "BAD", purge: vi.fn() },
+      }),
+    ).toThrow("Invalid CDN purge adapter");
   });
 
   it("initializes a raced read exactly once and installs observability first", async () => {
@@ -159,6 +227,7 @@ describe("createBootstrap", () => {
 
     expect(host.createDbConnection).toHaveBeenCalledTimes(2);
     expect(host.resetDb).toHaveBeenCalledOnce();
+    expect(host.resetCacheInvalidationAdapter).toHaveBeenCalledOnce();
     expect(host.npCloseDbConnection).toHaveBeenCalledOnce();
     expect(observability.shutdownObservability).toHaveBeenCalledOnce();
   });

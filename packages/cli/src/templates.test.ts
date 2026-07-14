@@ -354,6 +354,7 @@ describe("getProjectFiles", () => {
     expect(env).toContain("# NP_STORAGE_URL=/media");
     expect(readme).toContain("The exact storage `custom` mode uses");
     expect(readme).toContain("src/lib/bootstrap.ts");
+    expect(readme).toContain("cdnPurgeAdapter");
   });
 
   it("shares one exact observability adapter definition across process entrypoints", () => {

@@ -53,6 +53,11 @@
       "import": "./dist/bootstrap.js",
       "default": "./dist/bootstrap.js"
     },
+    "./cache": {
+      "types": "./dist/cache.d.ts",
+      "import": "./dist/cache.js",
+      "default": "./dist/cache.js"
+    },
     "./db": {
       "types": "./dist/db.d.ts",
       "import": "./dist/db.js",

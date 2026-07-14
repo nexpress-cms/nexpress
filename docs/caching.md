@@ -50,10 +50,12 @@ walk. Tagged so writes can invalidate selectively.
 
 **Invalidation**
 
-The pipeline's `revalidateCollection` (`@nexpress/next`)
-always emits the generic `nx:collection:<slug>` tag, then
-expands tags from the per-collection `RevalidationMap` rule and
-calls `revalidateTag` on each. Default rules:
+The pipeline's async `revalidateCollection` (`@nexpress/next`)
+always emits the generic `nx:collection:<slug>` tag, then expands
+and validates the per-collection `RevalidationMap` rule. It awaits
+site resolution, every Next path/tag call, and the optional CDN
+bridge before returning an exact `applied`, `partial`, or
+`unavailable` result. Default rules:
 
 ```ts
 posts: {
@@ -85,7 +87,7 @@ or `cachedPluginFetch()` should use `nx:collection:<slug>` in
 for all collection writes, even when the app has not declared a
 collection-specific route rule.
 
-Write routes already call `revalidateCollection` after
+Write routes already await `revalidateCollection` after
 successful saves / deletes. Scheduled publish triggers also
 call it for every row promoted from `scheduled` to `published`
 so sitemap/feed/search/theme-route caches do not wait for their
@@ -100,21 +102,60 @@ navigation saves, setup-time site/theme busts, and plugin
 config saves:
 
 ```ts
-import { setCdnPurgeAdapter } from "@nexpress/next";
+import { createBootstrap } from "@nexpress/next";
 
-setCdnPurgeAdapter({
+const cdnPurgeAdapter = {
+  kind: "cloudflare",
   async purge({ paths, tags }) {
     // Call your CDN provider here. Providers differ: some purge
     // by tag/surrogate key, some by URL/path, some support both.
   },
+  async shutdown() {
+    // Optional: close the provider client.
+  },
+};
+
+export const bootstrap = createBootstrap({
+  config,
+  generatedSchema,
+  cdnPurgeAdapter,
 });
 ```
 
-The adapter runs fire-and-forget after each invalidation pass.
-Failures are logged and swallowed so a temporary CDN provider
-outage does not turn a successful write into a 500. Providers
-that need full URLs should derive them from the deployment's
-canonical site URL plus the received path hints.
+`setCdnPurgeAdapter()` remains available for hosts that manage the
+adapter lifecycle themselves. Bootstrap injection is preferred:
+the adapter is validated at startup and its optional `shutdown()`
+is awaited during terminal cleanup.
+
+Purge completion is awaited. Provider and Next runtime failures are
+contained so a temporary outage does not turn an already-persisted
+write into a 500, but they are no longer silent: the returned result,
+process logs, and Admin Health show partial/unavailable attempts.
+Providers that need full URLs should derive them from the deployment's
+canonical site URL plus the received path hints. `purge()` and
+`shutdown()` must resolve to `void`.
+
+### Runtime contract
+
+`@nexpress/core/cache` owns the host-neutral contract used by app
+writes, workers, and `ctx.next.revalidatePath/Tag()`:
+
+- requests are exact plain objects; unknown fields fail closed;
+- `siteId` is null or canonical, paths are concrete root-relative
+  values, and unresolved `{slug}` / `{siteId}` placeholders are rejected;
+- collection rule `{slug}` values are URL-encoded when expanded into paths;
+- a request contains at most 128 paths and 128 tags; paths are at most
+  1,024 characters and tags at most 256 characters;
+- duplicate path/type and tag targets are normalized before dispatch;
+- adapters return exact per-target counts plus CDN status, producing
+  `applied`, `partial`, or `unavailable`;
+- `cachedThemeFetch()` and `cachedPluginFetch()` validate exact options,
+  1–32 bounded key parts, up to 127 extra tags (one slot is reserved for the
+  framework-owned tag), and a 1-second to 365-day integer TTL.
+
+Plugins keep the existing single-argument API, but invalid paths/tags now
+reject before reaching Next. Worker content jobs use the same injected
+host instead of importing `next/cache` from core.
 
 **Test fallback**
 
@@ -212,8 +253,8 @@ serving with no CDN; that's fine for development.
   `nx:search`). Multi-tenant writes hit the site-scoped tags
   for precision, while the global tags remain as a compatibility
   hammer for older plugins and external purgers.
-- **CDN cache invalidation providers** — NexPress exposes a
-  stable `setCdnPurgeAdapter()` hook and forwards framework
+- **CDN cache invalidation providers** — NexPress exposes a stable
+  bootstrap/`setCdnPurgeAdapter()` hook and forwards validated framework
   invalidation hints to it, but does not ship provider-specific
   Cloudflare / Fastly adapters yet. Keep provider credentials,
   retry policy, batching, and URL expansion in application code

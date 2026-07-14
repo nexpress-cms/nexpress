@@ -2,6 +2,7 @@ import { type NpCollectionConfig, type NpCollectionHook } from "../config/types.
 import type { NpAuthUser } from "../auth-contract/types.js";
 import type { NpPrincipal as NpHookPrincipal } from "../auth/principal.js";
 import { sendEmail } from "../email/service.js";
+import { npInvalidateCache } from "../cache/runtime.js";
 import { buildInviteEmail, buildMemberVerifyEmail, buildResetEmail } from "../email/templates.js";
 import {
   type NpContentAfterDeleteJobData,
@@ -58,6 +59,11 @@ interface BuiltinJobContext {
   runScheduledPluginTask?: (data: NpPluginScheduledTaskJobData) => Promise<void> | void;
   pruneRevisions?: () => Promise<void> | void;
   cleanupSessions?: () => Promise<void> | void;
+  revalidateCollection?: (
+    collection: string,
+    document?: Record<string, unknown> | null,
+  ) => Promise<void> | void;
+  revalidatePublishedDocuments?: (byCollection: Record<string, string[]>) => Promise<void> | void;
   sendPasswordReset?: (data: NpPasswordResetJobData) => Promise<void> | void;
   sendMemberVerifyEmail?: (data: NpMemberVerifyEmailJobData) => Promise<void> | void;
   sendMemberPasswordReset?: (data: NpMemberPasswordResetJobData) => Promise<void> | void;
@@ -72,6 +78,8 @@ const BUILTIN_JOB_CONTEXT_KEYS = new Set<keyof BuiltinJobContext>([
   "runScheduledPluginTask",
   "pruneRevisions",
   "cleanupSessions",
+  "revalidateCollection",
+  "revalidatePublishedDocuments",
   "sendPasswordReset",
   "sendMemberVerifyEmail",
   "sendMemberPasswordReset",
@@ -130,6 +138,7 @@ export function registerBuiltinHandlers(): void {
 async function handleContentPublishScheduled(_: NpJobData): Promise<void> {
   const { publishScheduledDocuments } = await import("../collections/scheduled.js");
   const result = await publishScheduledDocuments();
+  await builtinJobContext.revalidatePublishedDocuments?.(result.byCollection);
   if (result.published > 0) {
     console.info(
       `[nexpress] content:publishScheduled flipped ${result.published} document(s)`,
@@ -139,9 +148,14 @@ async function handleContentPublishScheduled(_: NpJobData): Promise<void> {
 }
 
 async function handleContentAfterSave(jobData: NpContentAfterSaveJobData): Promise<void> {
-  await revalidateCollectionTags(jobData.collection, jobData.documentId);
-
-  const context = await builtinJobContext.resolveContentAfterSaveContext?.(jobData);
+  let context: ResolvedHookContext | null | undefined;
+  try {
+    context = await builtinJobContext.resolveContentAfterSaveContext?.(jobData);
+  } catch (error) {
+    await revalidateContentJob(jobData);
+    throw error;
+  }
+  await revalidateContentJob(jobData, context?.data);
 
   if (!context) {
     return;
@@ -162,9 +176,14 @@ async function handleContentAfterSave(jobData: NpContentAfterSaveJobData): Promi
 }
 
 async function handleContentAfterDelete(jobData: NpContentAfterDeleteJobData): Promise<void> {
-  await revalidateCollectionTags(jobData.collection, jobData.documentId);
-
-  const context = await builtinJobContext.resolveContentAfterDeleteContext?.(jobData);
+  let context: ResolvedDeleteHookContext | null | undefined;
+  try {
+    context = await builtinJobContext.resolveContentAfterDeleteContext?.(jobData);
+  } catch (error) {
+    await revalidateContentJob(jobData);
+    throw error;
+  }
+  await revalidateContentJob(jobData, context?.data);
 
   if (!context) {
     return;
@@ -279,59 +298,24 @@ async function runCollectionHooks(
   }
 }
 
-async function revalidateCollectionTags(collection: string, documentId: string): Promise<void> {
-  try {
-    const revalidateTag = await loadRevalidateTag();
-
-    if (!revalidateTag) {
-      return;
-    }
-
-    revalidateTag(`nx:${collection}`);
-    revalidateTag(`nx:${collection}:${documentId}`);
-  } catch {
+async function revalidateContentJob(
+  data: NpContentAfterSaveJobData | NpContentAfterDeleteJobData,
+  document?: Record<string, unknown> | null,
+): Promise<void> {
+  if (builtinJobContext.revalidateCollection) {
+    await builtinJobContext.revalidateCollection(data.collection, document);
     return;
   }
-}
-
-async function loadRevalidateTag(): Promise<((tag: string) => void) | null> {
-  // Indirect specifier so TypeScript doesn't try to resolve
-  // `next/cache` at compile time — `@nexpress/core` doesn't
-  // depend on Next.js, the cache helpers are only available
-  // when this code runs inside a Next runtime.
-  const moduleId: string = "next/cache";
-  let importedModule: unknown;
-  try {
-    importedModule = await import(moduleId);
-  } catch {
-    return null;
-  }
-
-  if (!isRecord(importedModule)) {
-    return null;
-  }
-
-  const revalidateTag = importedModule.revalidateTag as
-    ((tag: string) => void) | ((tag: string, profile: string) => void);
-
-  if (typeof revalidateTag !== "function") {
-    return null;
-  }
-
-  // Next 16 widened the signature to `(tag, profile)`. Detect
-  // the runtime arity so this helper works against both 15.x
-  // and 16.x without a hard pin: pre-16 ignores extra args.
-  return (tag: string) => {
-    if (revalidateTag.length >= 2) {
-      revalidateTag(tag, "default");
-    } else {
-      (revalidateTag as (tag: string) => void)(tag);
-    }
-  };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  await npInvalidateCache({
+    source: "collection",
+    collection: data.collection,
+    siteId: data.siteId,
+    tags: [
+      `nx:${data.collection}`,
+      `nx:${data.collection}:${data.documentId}`,
+      `nx:collection:${data.collection}`,
+    ],
+  });
 }
 
 async function handleMemberSendVerifyEmail(payload: NpMemberVerifyEmailJobData): Promise<void> {

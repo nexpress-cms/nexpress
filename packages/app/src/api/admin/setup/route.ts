@@ -242,7 +242,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         // every theme's masthead + footer. Without this bust the
         // wizard rename takes up to 10 min to surface on the public
         // site — the most visible first-boot moment.
-        invalidateCacheTargets({
+        await invalidateCacheTargets({
           source: "setup",
           siteId: NP_DEFAULT_SITE_ID,
           tags: [siteCacheTag(NP_DEFAULT_SITE_ID)],

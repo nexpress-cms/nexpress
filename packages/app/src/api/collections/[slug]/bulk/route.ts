@@ -104,7 +104,7 @@ export async function POST(
     // One revalidate per collection regardless of N, since paths like /blog
     // are slug-independent. Per-doc paths will pick up at the next read.
     if (succeeded.length > 0) {
-      revalidateCollection(slug);
+      await revalidateCollection(slug);
     }
 
     return npSuccessResponse({ action, succeeded, failed });

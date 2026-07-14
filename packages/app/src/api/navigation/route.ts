@@ -33,8 +33,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-function bustNavCache(siteId: string, location: string): void {
-  invalidateCacheTargets({
+function bustNavCache(siteId: string, location: string) {
+  return invalidateCacheTargets({
     source: "navigation",
     siteId,
     navigationLocation: location,
@@ -186,7 +186,7 @@ export async function PUT(request: NextRequest) {
     // Phase 14.3 — bust the per-(site, location) cache key set
     // up by `getCachedNavigation` so theme headers/footers
     // pick up the edit on the next render.
-    bustNavCache(siteId, location);
+    await bustNavCache(siteId, location);
 
     return npSuccessResponse({
       location: result.location,
@@ -229,7 +229,7 @@ export async function DELETE(request: NextRequest) {
       throw new NpNotFoundError("navigation", location);
     }
 
-    bustNavCache(siteId, location);
+    await bustNavCache(siteId, location);
 
     return npSuccessResponse({ location });
   } catch (error) {
@@ -305,8 +305,8 @@ export async function PATCH(request: NextRequest) {
       throw new NpNotFoundError("navigation", oldLocation);
     }
 
-    bustNavCache(siteId, oldLocation);
-    bustNavCache(siteId, newLocation);
+    await bustNavCache(siteId, oldLocation);
+    await bustNavCache(siteId, newLocation);
 
     return npSuccessResponse({
       location: renamed.location,

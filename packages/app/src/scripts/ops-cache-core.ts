@@ -1,5 +1,11 @@
 import { NP_DEFAULT_SITE_ID } from "@nexpress/core";
 import {
+  npNormalizeCacheInvalidationRequest,
+  type NpCacheInvalidationResult,
+} from "@nexpress/core/cache";
+import { npIsCanonicalSiteId } from "@nexpress/core/sites";
+import {
+  collectionCacheTag,
   defaultRevalidationRules,
   invalidateCacheTargets,
   navCacheTag,
@@ -12,10 +18,6 @@ import type { NpCdnPurgeSource } from "@nexpress/next";
 const APPROVAL_TOKEN = "cache-revalidate";
 
 export type OpsCacheRevalidateTarget = "public" | "collection" | "theme" | "navigation" | "site";
-
-function collectionCacheTag(slug: string): string {
-  return `nx:collection:${slug}`;
-}
 
 export interface OpsCacheRevalidateArgs {
   target?: OpsCacheRevalidateTarget | null;
@@ -56,6 +58,7 @@ export interface OpsCacheRevalidateResult {
   navigationLocation: string | null;
   paths: PlannedPath[];
   tags: string[];
+  invalidation: NpCacheInvalidationResult | null;
   nextCommand: string | null;
   error?: string;
 }
@@ -63,6 +66,9 @@ export interface OpsCacheRevalidateResult {
 export function buildOpsCacheRevalidatePlan(args: OpsCacheRevalidateArgs): CachePlan {
   const target = args.target ?? "public";
   const siteId = args.siteId ?? NP_DEFAULT_SITE_ID;
+  if (!npIsCanonicalSiteId(siteId)) {
+    throw new Error("cache.revalidate siteId must be a canonical site identifier.");
+  }
   const collection = normalizeOptional(args.collection);
   const documentSlug = normalizeOptional(args.documentSlug);
   const navigationLocation = normalizeOptional(args.navigationLocation) ?? "header";
@@ -96,9 +102,9 @@ export function buildOpsCacheRevalidatePlan(args: OpsCacheRevalidateArgs): Cache
         documentSlug,
         navigationLocation: null,
         siteId,
-        pathInputs: substituteAll(rule?.paths ?? [], { siteId, documentSlug }),
+        pathInputs: substituteAll(rule?.paths ?? [], { siteId, documentSlug }, true),
         tags: [
-          ...substituteAll(rule?.tags ?? [], { siteId, documentSlug }),
+          ...substituteAll(rule?.tags ?? [], { siteId, documentSlug }, false),
           collectionCacheTag(collection),
         ],
       });
@@ -136,7 +142,9 @@ export function buildOpsCacheRevalidatePlan(args: OpsCacheRevalidateArgs): Cache
   }
 }
 
-export function runOpsCacheRevalidate(args: OpsCacheRevalidateArgs): OpsCacheRevalidateResult {
+export async function runOpsCacheRevalidate(
+  args: OpsCacheRevalidateArgs,
+): Promise<OpsCacheRevalidateResult> {
   const plan = buildOpsCacheRevalidatePlan(args);
   const execute = Boolean(args.execute);
   const approve = args.approve ?? null;
@@ -145,7 +153,13 @@ export function runOpsCacheRevalidate(args: OpsCacheRevalidateArgs): OpsCacheRev
     : buildNextCommand(plan, " --execute --approve cache-revalidate");
 
   if (!execute) {
-    return toResult(plan, { execute, approve, applied: false, nextCommand });
+    return toResult(plan, {
+      execute,
+      approve,
+      applied: false,
+      nextCommand,
+      invalidation: null,
+    });
   }
 
   if (approve !== APPROVAL_TOKEN) {
@@ -154,11 +168,12 @@ export function runOpsCacheRevalidate(args: OpsCacheRevalidateArgs): OpsCacheRev
       approve,
       applied: false,
       nextCommand: buildNextCommand(plan, " --execute --approve cache-revalidate"),
+      invalidation: null,
       error: "Missing --approve cache-revalidate",
     });
   }
 
-  invalidateCacheTargets({
+  const invalidation = await invalidateCacheTargets({
     source: cacheTargetSource(plan.target),
     collection: plan.collection ?? undefined,
     documentSlug: plan.documentSlug ?? undefined,
@@ -168,7 +183,13 @@ export function runOpsCacheRevalidate(args: OpsCacheRevalidateArgs): OpsCacheRev
     tags: plan.tags,
   });
 
-  return toResult(plan, { execute, approve, applied: true, nextCommand: null });
+  return toResult(plan, {
+    execute,
+    approve,
+    applied: invalidation.status !== "unavailable",
+    nextCommand: null,
+    invalidation,
+  });
 }
 
 function cacheTargetSource(target: OpsCacheRevalidateTarget): NpCdnPurgeSource {
@@ -192,6 +213,7 @@ function toResult(
     approve: string | null;
     applied: boolean;
     nextCommand: string | null;
+    invalidation: NpCacheInvalidationResult | null;
     error?: string;
   },
 ): OpsCacheRevalidateResult {
@@ -208,6 +230,7 @@ function toResult(
     navigationLocation: plan.navigationLocation,
     paths: plan.paths,
     tags: plan.tags,
+    invalidation: state.invalidation,
     nextCommand: state.nextCommand,
     ...(state.error ? { error: state.error } : {}),
   };
@@ -215,11 +238,20 @@ function toResult(
 
 function normalizePlan(args: Omit<CachePlan, "paths"> & { tags: string[] }): CachePlan {
   const paths = uniquePaths(args.pathInputs.map(normalizePathInput));
+  const normalized = npNormalizeCacheInvalidationRequest({
+    source: cacheTargetSource(args.target),
+    siteId: args.siteId,
+    ...(args.collection === null ? {} : { collection: args.collection }),
+    ...(args.documentSlug === null ? {} : { documentSlug: args.documentSlug }),
+    ...(args.navigationLocation === null ? {} : { navigationLocation: args.navigationLocation }),
+    paths,
+    tags: args.tags,
+  });
   return {
     ...args,
-    pathInputs: paths,
-    paths,
-    tags: unique(args.tags),
+    pathInputs: [...normalized.paths],
+    paths: [...normalized.paths],
+    tags: [...normalized.tags],
   };
 }
 
@@ -230,16 +262,25 @@ function normalizePathInput(input: NpCacheInvalidationPathInput): PlannedPath {
 function substituteAll(
   templates: readonly string[],
   ctx: { siteId: string; documentSlug: string | null },
+  encodeSlug: boolean,
 ): string[] {
   const values: string[] = [];
   for (const template of templates) {
     let value = template;
     if (value.includes("{siteId}")) {
-      value = value.replace("{siteId}", ctx.siteId);
+      value = value.replaceAll("{siteId}", ctx.siteId);
     }
     if (value.includes("{slug}")) {
       if (!ctx.documentSlug) continue;
-      value = value.replace("{slug}", ctx.documentSlug);
+      let slug = ctx.documentSlug;
+      if (encodeSlug) {
+        try {
+          slug = encodeURIComponent(slug);
+        } catch {
+          continue;
+        }
+      }
+      value = value.replaceAll("{slug}", slug);
     }
     values.push(value);
   }
@@ -249,10 +290,6 @@ function substituteAll(
 function normalizeOptional(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
-}
-
-function unique(values: readonly string[]): string[] {
-  return [...new Set(values)];
 }
 
 function uniquePaths(values: readonly PlannedPath[]): PlannedPath[] {

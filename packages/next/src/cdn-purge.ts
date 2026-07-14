@@ -1,150 +1,156 @@
-import { getLogger } from "@nexpress/core";
+import {
+  npCdnPurgeAdapterKind,
+  npRequireCdnPurgeAdapter,
+  npRunCacheInvalidation,
+  type NpCacheInvalidationAdapter,
+  type NpCacheInvalidationCdnResult,
+  type NpCacheInvalidationRequest,
+  type NpCacheInvalidationResult,
+  type NpCacheInvalidationSource,
+  type NpCdnPurgeAdapter,
+  type NpCdnPurgeRequest,
+  type NpNormalizedCacheInvalidationRequest,
+} from "@nexpress/core/cache";
+import { getLogger } from "@nexpress/core/observability";
 import { revalidatePath, revalidateTag } from "next/cache";
 
-export type NpCdnPurgeSource =
-  | "collection"
-  | "navigation"
-  | "plugin-config"
-  | "setup"
-  | "site"
-  | "theme"
-  | "theme-settings";
+export type {
+  NpCacheInvalidationPath,
+  NpCacheInvalidationPathInput,
+  NpCacheInvalidationPathType,
+  NpCacheInvalidationRequest,
+  NpCacheInvalidationResult,
+  NpCdnPurgeAdapter,
+  NpCdnPurgeRequest,
+} from "@nexpress/core/cache";
 
-export interface NpCdnPurgeRequest {
-  readonly source: NpCdnPurgeSource;
-  readonly collection?: string;
-  readonly documentSlug?: string;
-  readonly navigationLocation?: string;
-  readonly pluginId?: string;
-  readonly siteId: string | null;
-  readonly themeId?: string;
-  readonly paths: readonly string[];
-  readonly tags: readonly string[];
-}
-
-export type NpCacheInvalidationPathType = "layout" | "page";
-
-export interface NpCacheInvalidationPath {
-  readonly path: string;
-  readonly type?: NpCacheInvalidationPathType;
-}
-
-export type NpCacheInvalidationPathInput = string | NpCacheInvalidationPath;
-
-export interface NpCacheInvalidationRequest extends Omit<NpCdnPurgeRequest, "paths" | "tags"> {
-  readonly paths?: readonly NpCacheInvalidationPathInput[];
-  readonly tags?: readonly string[];
-}
-
-export interface NpCdnPurgeAdapter {
-  /**
-   * Purge downstream CDN entries after NexPress has emitted the matching
-   * Next.js `revalidatePath` / `revalidateTag` calls.
-   *
-   * Implementations should treat `paths` and `tags` as hints: providers
-   * differ in whether they support tag purges, URL purges, or both.
-   */
-  purge(request: NpCdnPurgeRequest): void | Promise<void>;
-}
+/** Compatibility alias retained for existing `@nexpress/next` consumers. */
+export type NpCdnPurgeSource = NpCacheInvalidationSource;
 
 let adapter: NpCdnPurgeAdapter | null = null;
 
 export function setCdnPurgeAdapter(next: NpCdnPurgeAdapter | null): void {
-  if (next !== null && typeof next.purge !== "function") {
-    throw new Error("setCdnPurgeAdapter: adapter must implement purge()");
-  }
-  adapter = next;
+  adapter = next === null ? null : npRequireCdnPurgeAdapter(next);
 }
 
 export function getCdnPurgeAdapter(): NpCdnPurgeAdapter | null {
   return adapter;
 }
 
-export function resetCdnPurgeAdapter(): void {
-  adapter = null;
+export function resetCdnPurgeAdapter(expected?: NpCdnPurgeAdapter): void {
+  if (expected === undefined || adapter === expected) adapter = null;
 }
 
-export function invalidateCacheTargets(request: NpCacheInvalidationRequest): void {
-  const pathTargets = uniquePathTargets(request.paths ?? []);
-  const tags = unique(request.tags ?? []);
+/** Detach before awaiting so a failed provider shutdown cannot leave a closed adapter installed. */
+export async function shutdownCdnPurgeAdapter(expected?: NpCdnPurgeAdapter): Promise<void> {
+  const current = adapter;
+  const owned = expected ?? current;
+  if (current === owned) adapter = null;
+  if (!owned?.shutdown) return;
+  const result: unknown = await owned.shutdown();
+  if (result !== undefined) {
+    throw new Error("CDN purge adapter shutdown() must resolve to void.");
+  }
+}
 
-  for (const tag of tags) {
+function targetResult(requested: number, failed: number) {
+  return { requested, succeeded: requested - failed, failed };
+}
+
+function resolveStatus(
+  pathFailures: number,
+  tagFailures: number,
+  totalTargets: number,
+  cdn: NpCacheInvalidationCdnResult,
+): NpCacheInvalidationResult["status"] {
+  const nextFailures = pathFailures + tagFailures;
+  if (nextFailures === 0 && cdn.status !== "failed") return "applied";
+  const nextSuccesses = totalTargets - nextFailures;
+  if (nextSuccesses > 0 || cdn.status === "applied") return "partial";
+  return "unavailable";
+}
+
+async function executeNextInvalidation(
+  request: NpNormalizedCacheInvalidationRequest,
+): Promise<NpCacheInvalidationResult> {
+  let tagFailures = 0;
+  let pathFailures = 0;
+
+  for (const tag of request.tags) {
     try {
       revalidateTag(tag, "default");
     } catch (error) {
+      tagFailures += 1;
       logNextInvalidationFailure("tag", tag, error, request);
     }
   }
 
-  for (const target of pathTargets) {
+  for (const target of request.paths) {
     try {
-      if (target.type) {
-        revalidatePath(target.path, target.type);
-      } else {
-        revalidatePath(target.path);
-      }
+      if (target.type) revalidatePath(target.path, target.type);
+      else revalidatePath(target.path);
     } catch (error) {
+      pathFailures += 1;
       logNextInvalidationFailure("path", target.path, error, request);
     }
   }
 
-  purgeCdnCache({
+  const cdn = await purgeCdnCache({
     ...request,
-    paths: pathTargets.map((target) => target.path),
-    tags,
+    paths: [...new Set(request.paths.map((target) => target.path))],
   });
-}
-
-export function purgeCdnCache(request: NpCdnPurgeRequest): void {
-  const current = adapter;
-  if (!current) return;
-
-  const normalized = normalizeRequest(request);
-  if (normalized.paths.length === 0 && normalized.tags.length === 0) return;
-
-  try {
-    void Promise.resolve(current.purge(normalized)).catch((error: unknown) => {
-      logPurgeFailure(error, normalized);
-    });
-  } catch (error) {
-    logPurgeFailure(error, normalized);
-  }
-}
-
-function normalizeRequest(request: NpCdnPurgeRequest): NpCdnPurgeRequest {
   return {
-    ...request,
-    paths: unique(request.paths),
-    tags: unique(request.tags),
+    status: resolveStatus(
+      pathFailures,
+      tagFailures,
+      request.paths.length + request.tags.length,
+      cdn,
+    ),
+    paths: targetResult(request.paths.length, pathFailures),
+    tags: targetResult(request.tags.length, tagFailures),
+    cdn,
   };
 }
 
-function unique(values: readonly string[]): string[] {
-  return [...new Set(values)];
+export const npNextCacheInvalidationAdapter: NpCacheInvalidationAdapter = {
+  kind: "next",
+  invalidate: executeNextInvalidation,
+};
+
+/** Validate, normalize, execute, await CDN completion, and return an exact outcome. */
+export function invalidateCacheTargets(
+  request: NpCacheInvalidationRequest,
+): Promise<NpCacheInvalidationResult> {
+  return npRunCacheInvalidation(npNextCacheInvalidationAdapter, request);
 }
 
-function uniquePathTargets(
-  values: readonly NpCacheInvalidationPathInput[],
-): NpCacheInvalidationPath[] {
-  const seen = new Set<string>();
-  const targets: NpCacheInvalidationPath[] = [];
-
-  for (const value of values) {
-    const target = typeof value === "string" ? { path: value } : value;
-    const key = `${target.path}\0${target.type ?? ""}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    targets.push(target);
+export async function purgeCdnCache(
+  request: NpCdnPurgeRequest,
+): Promise<NpCacheInvalidationCdnResult> {
+  const current = adapter;
+  if (!current) return { status: "not-configured", adapterKind: null };
+  if (request.paths.length === 0 && request.tags.length === 0) {
+    return { status: "skipped", adapterKind: null };
   }
 
-  return targets;
+  const adapterKind = npCdnPurgeAdapterKind(current);
+  try {
+    const result: unknown = await current.purge(request);
+    if (result !== undefined) {
+      throw new Error("CDN purge adapter purge() must resolve to void.");
+    }
+    return { status: "applied", adapterKind };
+  } catch (error) {
+    logPurgeFailure(error, request);
+    return { status: "failed", adapterKind };
+  }
 }
 
 function logNextInvalidationFailure(
   kind: "path" | "tag",
   target: string,
   error: unknown,
-  request: NpCacheInvalidationRequest,
+  request: NpNormalizedCacheInvalidationRequest,
 ): void {
   if (process.env.NODE_ENV === "test") return;
   getLogger().warn("cache invalidation skipped", {
@@ -157,7 +163,7 @@ function logNextInvalidationFailure(
     pluginId: request.pluginId,
     siteId: request.siteId,
     themeId: request.themeId,
-    error: error instanceof Error ? error.message : String(error),
+    error: describeError(error),
   });
 }
 
@@ -173,6 +179,14 @@ function logPurgeFailure(error: unknown, request: NpCdnPurgeRequest): void {
     themeId: request.themeId,
     paths: request.paths,
     tags: request.tags,
-    error: error instanceof Error ? error.message : String(error),
+    error: describeError(error),
   });
+}
+
+function describeError(error: unknown): string {
+  try {
+    return error instanceof Error ? error.message : String(error);
+  } catch {
+    return "Unprintable cache invalidation failure.";
+  }
 }

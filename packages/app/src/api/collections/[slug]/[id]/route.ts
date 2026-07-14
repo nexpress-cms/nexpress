@@ -76,9 +76,9 @@ export async function PATCH(
       const previous = await getCollectionDocument(slug, id, staffUser);
       const result = await saveCollectionDocument(slug, id, data, staffUser, saveOptions);
 
-      revalidateCollection(slug, result.doc);
+      await revalidateCollection(slug, result.doc);
       if (previous && previous.slug !== result.doc.slug) {
-        revalidateCollection(slug, previous);
+        await revalidateCollection(slug, previous);
       }
       return npSuccessResponse(result.doc);
     }
@@ -99,9 +99,9 @@ export async function PATCH(
     const previous = await getCollectionDocument(slug, id, null);
     const result = await updateMemberDocument(slug, id, data, member.id, saveOptions);
 
-    revalidateCollection(slug, result.doc);
+    await revalidateCollection(slug, result.doc);
     if (previous && previous.slug !== result.doc.slug) {
-      revalidateCollection(slug, previous);
+      await revalidateCollection(slug, previous);
     }
     return npSuccessResponse(result.doc);
   } catch (error) {
@@ -120,7 +120,7 @@ export async function DELETE(
     if (staffUser) {
       const previous = await getCollectionDocument(slug, id, staffUser);
       await deleteCollectionDocument(slug, id, staffUser);
-      revalidateCollection(slug, previous);
+      await revalidateCollection(slug, previous);
       return new NextResponse(null, { status: 204 });
     }
 
@@ -136,7 +136,7 @@ export async function DELETE(
     await ensureFor("write");
     const previous = await getCollectionDocument(slug, id, null);
     await deleteMemberDocument(slug, id, member.id);
-    revalidateCollection(slug, previous);
+    await revalidateCollection(slug, previous);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));

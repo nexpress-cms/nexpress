@@ -36,6 +36,8 @@ export default defineConfig({
     // Framework-host singleton wiring. Application code should use
     // @nexpress/next createBootstrap rather than importing this directly.
     bootstrap: "src/bootstrap/index.ts",
+    // Server-side cache invalidation requests, adapters, results, and diagnostics.
+    cache: "src/cache/index.ts",
     db: "src/db/index.ts",
     // Server-side email message, template, adapter, and SMTP runtime contract.
     email: "src/email/index.ts",

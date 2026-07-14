@@ -21,6 +21,7 @@ import { npGetStorageObjectUrl } from "../storage/operations.js";
 import { getStorageAdapter } from "../storage/registry.js";
 import { getMediaUrl as coreGetMediaUrl } from "../media/url.js";
 import type { NpGetMediaUrlOptions, NpMediaRecord } from "../media-contract/types.js";
+import { npInvalidateCache } from "../cache/runtime.js";
 import { getSiteGeneralSettings } from "../settings/service.js";
 import { getDb } from "../db/runtime.js";
 import { NP_GLOBAL_PLUGIN_SITE_ID, npPluginStorage, npSettings } from "../db/schema/system.js";
@@ -141,38 +142,6 @@ function assertCap(pluginId: string, capabilities: readonly string[], required: 
       `plugin:${pluginId}`,
       `capability "${required}" not declared in manifest`,
     );
-  }
-}
-
-async function loadOptionalNextCache(): Promise<{
-  revalidatePath?: (path: string) => void;
-  revalidateTag?: (tag: string) => void;
-} | null> {
-  try {
-    // Indirect specifier so TypeScript doesn't try to resolve
-    // `next/cache` at compile time — `@nexpress/core` doesn't
-    // depend on Next.js. Only the Next-runtime path needs
-    // the cache helpers; worker / CLI / standalone Node
-    // consumers see this fall through to null cleanly.
-    const moduleId: string = "next/cache";
-    const mod = (await import(moduleId)) as {
-      revalidatePath?: (path: string) => void;
-      revalidateTag?: (tag: string) => void;
-    };
-    return mod;
-  } catch {
-    return null;
-  }
-}
-
-async function revalidateOptionalTag(tag: string): Promise<void> {
-  const cache = await loadOptionalNextCache();
-  const revalidateTag = cache?.revalidateTag;
-  if (typeof revalidateTag !== "function") return;
-  if (revalidateTag.length >= 2) {
-    (revalidateTag as (cacheTag: string, profile: string) => void)(tag, "default");
-  } else {
-    revalidateTag(tag);
   }
 }
 
@@ -545,7 +514,12 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         // an unregistered owner can no longer mint arbitrary settings keys.
         const { pluginConfigCacheTag, setPluginConfig } = await import("./config.js");
         await setPluginConfig(pluginId, data, null);
-        await revalidateOptionalTag(pluginConfigCacheTag(pluginId));
+        await npInvalidateCache({
+          source: "plugin-config",
+          pluginId,
+          siteId: await getCurrentSiteId(),
+          tags: [pluginConfigCacheTag(pluginId)],
+        });
       },
     },
 
@@ -577,7 +551,12 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
             set: { value: merged, updatedAt },
           });
 
-        await revalidateOptionalTag(`nx:theme:${siteId}`);
+        await npInvalidateCache({
+          source: "plugin",
+          pluginId,
+          siteId,
+          tags: [`nx:theme:${siteId}`],
+        });
       },
     },
 
@@ -705,21 +684,20 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
 
     next: {
       async revalidatePath(path: string): Promise<void> {
-        const mod = await loadOptionalNextCache();
-        mod?.revalidatePath?.(path);
+        await npInvalidateCache({
+          source: "plugin",
+          pluginId,
+          siteId: await getCurrentSiteId(),
+          paths: [path],
+        });
       },
       async revalidateTag(tag: string): Promise<void> {
-        const mod = await loadOptionalNextCache();
-        const fn = mod?.revalidateTag;
-        if (typeof fn !== "function") return;
-        // Next 16 widened the signature to `(tag, profile)`.
-        // Forward `"default"` when the runtime accepts the
-        // extra arg so plugins keep their single-arg ergonomics.
-        if (fn.length >= 2) {
-          (fn as (tag: string, profile: string) => void)(tag, "default");
-        } else {
-          fn(tag);
-        }
+        await npInvalidateCache({
+          source: "plugin",
+          pluginId,
+          siteId: await getCurrentSiteId(),
+          tags: [tag],
+        });
       },
     },
 

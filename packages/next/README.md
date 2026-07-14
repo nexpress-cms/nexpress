@@ -62,7 +62,8 @@ Use `revalidateCollection()` instead of importing `next/cache` directly:
 ```ts
 import { defaultRevalidationRules, revalidateCollection } from "@nexpress/next";
 
-revalidateCollection(defaultRevalidationRules, "posts");
+const result = await revalidateCollection(defaultRevalidationRules, "posts");
+// result.status: "applied" | "partial" | "unavailable"
 ```
 
 Sites behind a CDN can also bridge framework invalidation hints to their
@@ -72,11 +73,17 @@ provider:
 import { setCdnPurgeAdapter } from "@nexpress/next";
 
 setCdnPurgeAdapter({
+  kind: "cloudflare",
   async purge({ paths, tags }) {
     // Call Cloudflare, Fastly, or another CDN provider here.
   },
 });
 ```
+
+For bootstrap-owned lifecycle, pass the same adapter as
+`createBootstrap({ ..., cdnPurgeAdapter })`; optional `shutdown()` is awaited.
+Requests, adapter results, cache key parts, tags, and TTLs share the exact
+host-neutral contract exported from `@nexpress/core/cache`.
 
 ## What's also exported
 

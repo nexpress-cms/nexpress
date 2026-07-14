@@ -7,6 +7,7 @@ import {
   setErrorReporter,
   type NpErrorReportContext,
 } from "../observability/error-reporter.js";
+import { resetCacheInvalidationAdapter, setCacheInvalidationAdapter } from "../cache/runtime.js";
 
 // The context module pulls in `getDb`, media, and storage adapter singletons
 // transitively. The tests below only exercise surfaces that DON'T touch
@@ -64,6 +65,10 @@ function buildCtx(overrides?: {
         context?: { extra?: Record<string, unknown>; tags?: Record<string, string> },
       ): Promise<void>;
     };
+    next: {
+      revalidatePath(path: string): Promise<void>;
+      revalidateTag(tag: string): Promise<void>;
+    };
     actions: {
       register(
         actionName: string,
@@ -80,6 +85,59 @@ function buildCtx(overrides?: {
     };
   };
 }
+
+describe("ctx.next cache invalidation", () => {
+  afterEach(() => resetCacheInvalidationAdapter());
+
+  it("routes the stable plugin API through the validated host contract", async () => {
+    const invalidate = vi.fn(
+      (request: { paths: readonly unknown[]; tags: readonly unknown[] }) => ({
+        status: "applied" as const,
+        paths: {
+          requested: request.paths.length,
+          succeeded: request.paths.length,
+          failed: 0,
+        },
+        tags: {
+          requested: request.tags.length,
+          succeeded: request.tags.length,
+          failed: 0,
+        },
+        cdn: { status: "not-configured" as const, adapterKind: null },
+      }),
+    );
+    setCacheInvalidationAdapter({ kind: "test", invalidate });
+    const ctx = buildCtx();
+
+    await ctx.next.revalidatePath("/forum");
+    await ctx.next.revalidateTag("np:plugin:test-plugin");
+
+    expect(invalidate).toHaveBeenNthCalledWith(1, {
+      source: "plugin",
+      pluginId: "test-plugin",
+      siteId: null,
+      paths: [{ path: "/forum" }],
+      tags: [],
+    });
+    expect(invalidate).toHaveBeenNthCalledWith(2, {
+      source: "plugin",
+      pluginId: "test-plugin",
+      siteId: null,
+      paths: [],
+      tags: ["np:plugin:test-plugin"],
+    });
+  });
+
+  it("rejects malformed targets before the host is called", async () => {
+    const invalidate = vi.fn();
+    setCacheInvalidationAdapter({ kind: "test", invalidate });
+    const ctx = buildCtx();
+    await expect(ctx.next.revalidatePath("https://example.com")).rejects.toThrow(
+      "Invalid cache invalidation request",
+    );
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+});
 
 describe("ctx.config / capabilities / pluginId", () => {
   it("exposes the values provided at build time", () => {

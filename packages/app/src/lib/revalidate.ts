@@ -3,9 +3,6 @@ import {
   revalidateCollection as coreRevalidateCollection,
 } from "@nexpress/next";
 
-export function revalidateCollection(
-  slug: string,
-  doc?: Record<string, unknown> | null,
-): void {
-  coreRevalidateCollection(defaultRevalidationRules, slug, doc);
+export function revalidateCollection(slug: string, doc?: Record<string, unknown> | null) {
+  return coreRevalidateCollection(defaultRevalidationRules, slug, doc);
 }
