@@ -1,19 +1,24 @@
 import { npUsers } from "@nexpress/core";
+import { npRegisterCustomRoutes, type NpCustomRouteDefinition } from "@nexpress/core/routes";
 import { npRequireBootstrapIntent, type NpBootstrapIntent } from "@nexpress/next";
 import { count, eq } from "drizzle-orm";
 
 import { ensureFor as bootstrapEnsureFor, getDb, nexpressConfig } from "@/lib/bootstrap";
-import { registerCustomRoutes } from "./custom-routes";
+import { npCustomRoutes } from "@/lib/custom-routes";
 import { registerWordPressImportJobs } from "./wp-import-admin";
 
 export { nexpressConfig };
 
-let customRoutesRegistered = false;
-function registerCustomRoutesOnce(): void {
-  if (customRoutesRegistered) return;
-  registerCustomRoutes();
+let registeredCustomRoutes: readonly NpCustomRouteDefinition[] | null = null;
+let wordpressImportJobsRegistered = false;
+function registerAppRuntimeContributions(): void {
+  if (registeredCustomRoutes !== npCustomRoutes) {
+    npRegisterCustomRoutes("app:site", npCustomRoutes);
+    registeredCustomRoutes = npCustomRoutes;
+  }
+  if (wordpressImportJobsRegistered) return;
   registerWordPressImportJobs();
-  customRoutesRegistered = true;
+  wordpressImportJobsRegistered = true;
 }
 
 /**
@@ -105,7 +110,7 @@ export type { NpBootstrapIntent } from "@nexpress/next";
 export async function ensureFor(intent: NpBootstrapIntent): Promise<void> {
   const validatedIntent = npRequireBootstrapIntent(intent);
   await bootstrapEnsureFor("read");
-  registerCustomRoutesOnce();
+  registerAppRuntimeContributions();
   nudgeFirstRunOnce();
   if (validatedIntent === "read") return;
   await bootstrapEnsureFor(validatedIntent);

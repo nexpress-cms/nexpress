@@ -340,35 +340,35 @@ union, bounds, URL policy, and validation API.
 
 The navigation editor's **link** type can autocomplete from the
 custom-routes registry — make sure your hand-coded routes are
-registered (see [§4.1](#4-1-register-your-hand-coded-routes)) so
+declared (see [§4.1](#4-1-declare-your-hand-coded-routes)) so
 operators can pick them from a dropdown.
 
-### 4.1 Register your hand-coded routes
+### 4.1 Declare your hand-coded routes
 
 ```ts
-// src/lib/custom-routes.ts (a new file you author inside your site —
-// not a framework wrapper).
-import { registerCustomRoute } from "@nexpress/core/routes";
+// src/lib/custom-routes.ts
+import { npDefaultCustomRoutes } from "@nexpress/app/lib/custom-routes";
+import { npDefineCustomRoutes } from "@nexpress/core/routes";
 
-export function registerCustomRoutes(): void {
-  registerCustomRoute({
-    path: "/blog",
-    label: "Blog",
-    description: "Blog index page",
-    icon: "newspaper",
+export const npCustomRoutes = npDefineCustomRoutes([
+  ...npDefaultCustomRoutes,
+  {
+    path: "/events",
+    label: "Events",
+    description: "Upcoming events page",
+    icon: "calendar-days",
     group: "content",
-  });
-  // Add one entry per navigable static route. Skip dynamic ones
-  // (`/u/[handle]`) — they don't appear as nav-link targets.
-}
+  },
+  // Dynamic paths are valid inventory but do not become literal nav targets.
+  { path: "/events/[slug]", label: "Event detail", group: "content" },
+]);
 ```
 
-Call `registerCustomRoutes()` once at boot — unwrap your site's
-`src/lib/init-core.ts` (a thin re-export of
-`@nexpress/app/lib/init-core` by default) and call it inside
-`ensureFor("read")` before re-exporting.
-The routes show up in **Settings → Routes** for operators and as
-autocomplete in the navigation editor's link picker.
+The generated bootstrap consumes this exact export automatically. Static routes
+show up in **Settings → Routes** and the navigation editor's autocomplete;
+dynamic `[name]`, `[...name]`, and `[[...name]]` paths remain inventory-only.
+See [`custom-routes.md`](custom-routes.md) for path grammar, bounds, HMR
+replacement semantics, API wire validation, and doctor diagnostics.
 
 ---
 

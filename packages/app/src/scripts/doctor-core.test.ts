@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -24,6 +24,7 @@ describe("doctor core", () => {
         "observability.contract",
         "rate-limit.contract",
         "storage.contract",
+        "routes.contract",
         "database.reachable",
         "auth.contract",
         "settings.contract",
@@ -42,6 +43,50 @@ describe("doctor core", () => {
       expect.objectContaining({
         state: "error",
         detail: "DATABASE_URL not set",
+      }),
+    );
+  });
+
+  it("reports exact custom route catalog diagnostics without booting the app", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nexpress-doctor-core-"));
+    const valid = await collectDoctorChecks({
+      cwd,
+      nodeVersion: "24.11.1",
+      customRoutes: [
+        { path: "/search", label: "Search" },
+        { path: "/u/[handle]", label: "Member" },
+      ],
+    });
+    expect(valid.find((check) => check.id === "routes.contract")).toEqual(
+      expect.objectContaining({
+        state: "ok",
+        detail: "2 routes · 1 static · 1 dynamic",
+      }),
+    );
+
+    const invalid = await collectDoctorChecks({
+      cwd,
+      nodeVersion: "24.11.1",
+      customRoutes: [{ path: "search", label: "Search" }],
+    });
+    expect(invalid.find((check) => check.id === "routes.contract")).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: expect.stringContaining("customRoutes.0.path"),
+      }),
+    );
+
+    await mkdir(join(cwd, "src/lib"), { recursive: true });
+    await writeFile(
+      join(cwd, "src/lib/custom-routes.ts"),
+      'export const npCustomRoutes = [{ path: "/loaded/[id]", label: "Loaded" }];\n',
+      "utf8",
+    );
+    const loaded = await collectDoctorChecks({ cwd, nodeVersion: "24.11.1" });
+    expect(loaded.find((check) => check.id === "routes.contract")).toEqual(
+      expect.objectContaining({
+        state: "ok",
+        detail: "1 routes · 0 static · 1 dynamic",
       }),
     );
   });

@@ -59,6 +59,7 @@ export default defineConfig({
     "rate-limit": "src/rate-limit/index.ts",
     // Pure, client-safe revision snapshot and API wire contract.
     revisions: "src/revisions/index.ts",
+    // Client-safe code-owned route definition, registry, and Admin wire contract.
     routes: "src/routes/index.ts",
     seo: "src/seo/index.ts",
     // Server-side site registry, execution context, memberships, and authorization.

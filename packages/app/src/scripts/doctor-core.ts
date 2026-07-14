@@ -1,10 +1,16 @@
 import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { npValidatePluginCronExpression } from "@nexpress/core";
 import { npReadEmailRuntimeConfig } from "@nexpress/core/email";
 import { npReadRateLimitRuntimeConfig } from "@nexpress/core/rate-limit";
 import { npReadObservabilityRuntimeConfig } from "@nexpress/core/observability";
 import { npReadStorageRuntimeConfig, type NpStorageRuntimeConfig } from "@nexpress/core/storage";
+import {
+  npAnalyzeCustomRouteDefinitions,
+  npGetCustomRouteKind,
+  npRequireCustomRouteDefinitions,
+} from "@nexpress/core/routes";
 import {
   npAnalyzeAuthUser,
   npAnalyzeMemberAuthUser,
@@ -82,6 +88,8 @@ export interface CollectDoctorOptions {
   env?: DoctorEnv;
   cwd?: string;
   nodeVersion?: string;
+  /** Explicit catalog for embedders/tests; the CLI loads src/lib/custom-routes.ts. */
+  customRoutes?: unknown;
 }
 
 interface RequiredVarSpec {
@@ -132,6 +140,7 @@ export async function collectDoctorChecks(
   checks.push(checkObservabilityRuntimeContract(env));
   checks.push(checkRateLimitRuntimeContract(env, prodMode));
   checks.push(checkStorageRuntimeContract(env));
+  checks.push(await checkCustomRoutesContract(options, cwd));
   checks.push(...checkOAuthEnvPairs(env));
   const localStorage = await checkLocalStorage(env, cwd);
   if (localStorage) checks.push(localStorage);
@@ -158,6 +167,59 @@ export async function collectDoctorChecks(
   }
 
   return checks;
+}
+
+async function checkCustomRoutesContract(
+  options: CollectDoctorOptions,
+  cwd: string,
+): Promise<CheckResult> {
+  try {
+    const candidate = Object.hasOwn(options, "customRoutes")
+      ? options.customRoutes
+      : await loadProjectCustomRoutes(cwd);
+    const issues = npAnalyzeCustomRouteDefinitions(candidate);
+    const first = issues[0];
+    if (first) {
+      return {
+        id: "routes.contract",
+        state: "error",
+        label: "Custom route catalog",
+        detail: `${first.path}: ${first.message}`,
+        hint: "Fix src/lib/custom-routes.ts so npCustomRoutes satisfies the exact @nexpress/core/routes contract.",
+      };
+    }
+    const routes = npRequireCustomRouteDefinitions(candidate);
+    const dynamic = routes.filter((route) => npGetCustomRouteKind(route.path) === "dynamic").length;
+    return {
+      id: "routes.contract",
+      state: "ok",
+      label: "Custom route catalog",
+      detail: `${routes.length.toString()} routes · ${(routes.length - dynamic).toString()} static · ${dynamic.toString()} dynamic`,
+    };
+  } catch (error) {
+    return {
+      id: "routes.contract",
+      state: "error",
+      label: "Custom route catalog",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Export npCustomRoutes from src/lib/custom-routes.ts without importing the app runtime or nexpress.config.ts.",
+    };
+  }
+}
+
+async function loadProjectCustomRoutes(cwd: string): Promise<unknown> {
+  const modulePath = resolve(cwd, "src/lib/custom-routes.ts");
+  try {
+    await access(modulePath);
+  } catch {
+    throw new Error("src/lib/custom-routes.ts is missing.");
+  }
+  const moduleUrl = pathToFileURL(modulePath).href;
+  const loaded = (await import(moduleUrl)) as Record<string, unknown>;
+  if (!Object.hasOwn(loaded, "npCustomRoutes")) {
+    throw new Error("src/lib/custom-routes.ts must export npCustomRoutes.");
+  }
+  return loaded.npCustomRoutes;
 }
 
 function checkEmailRuntimeContract(env: DoctorEnv): CheckResult {

@@ -241,6 +241,9 @@ describe("getProjectFiles", () => {
     // resolves `@/lib/*` to these at consumer compile time.
     expect(files["src/lib/init-core.ts"]).toBeDefined();
     expect(files["src/lib/auth-helpers.ts"]).toBeDefined();
+    expect(files["src/lib/custom-routes.ts"]).toMatch(/npDefaultCustomRoutes/);
+    expect(files["src/lib/custom-routes.ts"]).toMatch(/npDefineCustomRoutes/);
+    expect(files["src/lib/custom-routes.ts"]).not.toMatch(/registerCustomRoute\(/);
     // i18n.config.ts is what the root layout reads for default locale.
     expect(files["src/i18n.config.ts"]).toBeDefined();
     // Proxy (rate limits, CSRF) lives at src/proxy.ts in Next 16.

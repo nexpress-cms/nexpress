@@ -1,6 +1,3 @@
-export {
-  registerCustomRoute,
-  getCustomRoutes,
-  clearCustomRoutes,
-} from "./registry.js";
-export type { NpCustomRoute } from "./registry.js";
+export * from "./types.js";
+export * from "./contract.js";
+export { npGetCustomRoutes, npRegisterCustomRoutes, npUnregisterCustomRoutes } from "./registry.js";

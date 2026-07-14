@@ -23,6 +23,7 @@ src/
 ├── jobs-contract/ # client-safe names, payloads, persisted rows, schedules, and Admin wire parsers
 ├── sites/        # canonical site ids, async-local execution context, registry, memberships
 ├── plugins/      # Plugin host: registry, runHook, route dispatch, capability enforcement
+├── routes/       # Client-safe custom route definition/wire contract + source registry
 ├── theme/        # Token types, defaults, sanitizeTokenValue
 ├── errors.ts     # NpError hierarchy (Forbidden/NotFound/Validation/Auth/Conflict)
 └── index.ts      # Barrel — 161 lines re-exporting the full public API
@@ -80,6 +81,7 @@ are contained as partial/unavailable results and recorded for Admin Health.
 | Change storage contracts    | `storage/contract.ts`, `storage/operations.ts`                | Keep bootstrap, media, doctor, health, and ops on one boundary     |
 | Change observability        | `observability/contract.ts`, `logger.ts`, `error-reporter.ts` | Preserve failure isolation and direct-console fallback             |
 | Change cache invalidation   | `cache/contract.ts`, `cache/runtime.ts`                       | Keep Next, plugins, jobs, CDN, health, and ops on one boundary     |
+| Change custom routes        | `routes/contract.ts`, `routes/registry.ts`                    | Keep app declarations, Admin/API, scaffold, and doctor aligned     |
 | Add job handler             | `jobs/handlers.ts`, `jobs-contract/`                          | `{ parsePayload, resolveSiteId }`; site ids live in exact payloads |
 | Add plugin capabilities     | `plugins/host.ts` + `plugin-sdk/src/types.ts`                 | Hook capability = `hooks:<namespace>` prefix matching              |
 | Add error type              | `errors.ts`                                                   | Extend `NpError` with code + statusCode                            |
