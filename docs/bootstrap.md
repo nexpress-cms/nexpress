@@ -29,12 +29,12 @@ completed; it never creates a second pool implicitly.
 
 ## Intents
 
-| Intent    | Runtime guaranteed on return                                      |
-| --------- | ----------------------------------------------------------------- |
-| `read`    | observability, DB, storage, collections, themes, i18n, site scope |
-| `plugins` | `read` plus enabled plugins, blocks, and patterns                 |
-| `worker`  | `plugins` plus the email adapter; no enqueue-only producer        |
-| `write`   | `worker` plus the pg-boss producer when jobs are enabled          |
+| Intent    | Runtime guaranteed on return                                                  |
+| --------- | ----------------------------------------------------------------------------- |
+| `read`    | observability, DB, storage, cache host, collections, themes, i18n, site scope |
+| `plugins` | `read` plus enabled plugins, blocks, and patterns                             |
+| `worker`  | `plugins` plus the email adapter; no enqueue-only producer                    |
+| `write`   | `worker` plus the pg-boss producer when jobs are enabled                      |
 
 Routes and server components should import the app's `ensureFor()` wrapper.
 Standalone scripts may create a bootstrap directly, but must use the same
@@ -52,16 +52,17 @@ try {
 }
 ```
 
-Custom storage, observability, and email adapters are injected through the
+Custom storage, observability, email, and CDN purge adapters are injected through the
 factory options and require the matching `custom` environment/config intent.
 Built-in intent rejects an injected adapter instead of silently selecting a
-different implementation.
+different implementation. CDN purge has no environment mode; pass
+`cdnPurgeAdapter` to make bootstrap own its optional `shutdown()` lifecycle.
 
 ## Shutdown
 
 `shutdown()` is terminal and idempotent. It waits for in-flight startup, then
 attempts every cleanup in dependency order: producer, plugins, static
-registries and email, storage, DB, and observability. Multiple cleanup failures
+registries and email, cache/CDN, storage, DB, and observability. Multiple cleanup failures
 are returned as one `AggregateError`. A stopped bootstrap cannot be restarted;
 create a new process/bootstrap instead.
 

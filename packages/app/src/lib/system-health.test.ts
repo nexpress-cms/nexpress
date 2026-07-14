@@ -1,15 +1,34 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type * as NpStorageModule from "@nexpress/core/storage";
 import type * as NpObservabilityModule from "@nexpress/core/observability";
+import type * as NpCacheModule from "@nexpress/core/cache";
 
-const runtime = vi.hoisted(() => ({
-  config: null as NpStorageModule.NpStorageRuntimeConfig | null,
+interface HealthTestRuntime {
+  config: NpStorageModule.NpStorageRuntimeConfig | null;
+  kind: string;
+  observabilityConfig: NpObservabilityModule.NpObservabilityRuntimeConfig | null;
+  loggerKind: string;
+  reporterKind: string;
+  loggerFailures: number;
+  reporterFailures: number;
+  cacheAdapterKind: string | null;
+  cacheAttempts: number;
+  cachePartial: number;
+  cacheUnavailable: number;
+}
+
+const runtime = vi.hoisted<HealthTestRuntime>(() => ({
+  config: null,
   kind: "memory",
-  observabilityConfig: null as NpObservabilityModule.NpObservabilityRuntimeConfig | null,
+  observabilityConfig: null,
   loggerKind: "console",
   reporterKind: "noop",
   loggerFailures: 0,
   reporterFailures: 0,
+  cacheAdapterKind: "next",
+  cacheAttempts: 0,
+  cachePartial: 0,
+  cacheUnavailable: 0,
 }));
 
 vi.mock("@nexpress/core", () => ({
@@ -59,11 +78,31 @@ vi.mock("@nexpress/core/observability", async (importOriginal) => {
   };
 });
 
+vi.mock("@nexpress/core/cache", async (importOriginal) => {
+  const actual = await importOriginal<typeof NpCacheModule>();
+  return {
+    ...actual,
+    getOptionalCacheInvalidationAdapter: () =>
+      runtime.cacheAdapterKind ? { kind: runtime.cacheAdapterKind, invalidate: vi.fn() } : null,
+    getCacheInvalidationDiagnostics: () => ({
+      attempts: runtime.cacheAttempts,
+      applied: runtime.cacheAttempts - runtime.cachePartial - runtime.cacheUnavailable,
+      partial: runtime.cachePartial,
+      unavailable: runtime.cacheUnavailable,
+      dispatchFailures: 0,
+      resultContractFailures: 0,
+      shutdownFailures: 0,
+      lastFailure: null,
+    }),
+  };
+});
+
 vi.mock("@/lib/bootstrap", () => ({
   getDb: vi.fn(),
 }));
 
-const { checkObservabilityAdapters, checkStorageAdapter } = await import("./system-health.js");
+const { checkCacheInvalidation, checkObservabilityAdapters, checkStorageAdapter } =
+  await import("./system-health.js");
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -74,6 +113,35 @@ afterEach(() => {
   runtime.reporterKind = "noop";
   runtime.loggerFailures = 0;
   runtime.reporterFailures = 0;
+  runtime.cacheAdapterKind = "next";
+  runtime.cacheAttempts = 0;
+  runtime.cachePartial = 0;
+  runtime.cacheUnavailable = 0;
+});
+
+describe("live cache invalidation health", () => {
+  it("reports the installed host and successful attempts", () => {
+    runtime.cacheAttempts = 3;
+    expect(checkCacheInvalidation()).toEqual(
+      expect.objectContaining({ state: "ok", detail: "next · 3/3 attempts applied" }),
+    );
+  });
+
+  it("warns on contained partial or unavailable outcomes", () => {
+    runtime.cacheAttempts = 3;
+    runtime.cachePartial = 1;
+    runtime.cacheUnavailable = 1;
+    expect(checkCacheInvalidation()).toEqual(
+      expect.objectContaining({ state: "warn", detail: "next · 1 partial · 1 unavailable" }),
+    );
+  });
+
+  it("fails closed when bootstrap did not install a host", () => {
+    runtime.cacheAdapterKind = null;
+    expect(checkCacheInvalidation()).toEqual(
+      expect.objectContaining({ state: "error", detail: "no host adapter registered" }),
+    );
+  });
 });
 
 describe("live observability health", () => {

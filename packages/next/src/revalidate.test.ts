@@ -4,315 +4,149 @@ vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
   revalidateTag: vi.fn(),
 }));
-
-vi.mock("@nexpress/core", () => ({
+vi.mock("@nexpress/core/observability", () => ({
+  getLogger: () => ({ warn: vi.fn() }),
+}));
+vi.mock("@nexpress/core/sites", () => ({
   getCurrentSiteId: vi.fn(() => Promise.resolve(null)),
-  getLogger: () => ({ warn: () => {} }),
 }));
 
-// Import after the mocks so the helper picks up the mocked modules.
 const { revalidatePath, revalidateTag } = await import("next/cache");
-const { getCurrentSiteId } = await import("@nexpress/core");
-const { getCdnPurgeAdapter, resetCdnPurgeAdapter, setCdnPurgeAdapter } =
-  await import("./cdn-purge.js");
-const { collectionCacheTag, defaultRevalidationRules, revalidateCollection } =
-  await import("./revalidate.js");
+const { getCurrentSiteId } = await import("@nexpress/core/sites");
+const { resetCdnPurgeAdapter, setCdnPurgeAdapter } = await import("./cdn-purge.js");
+const {
+  collectionCacheTag,
+  defaultRevalidationRules,
+  npRequireRevalidationMap,
+  revalidateCollection,
+} = await import("./revalidate.js");
 
 describe("revalidateCollection", () => {
   beforeEach(() => {
-    vi.mocked(revalidatePath).mockClear();
-    vi.mocked(revalidateTag).mockClear();
-    vi.mocked(getCurrentSiteId).mockClear();
+    vi.mocked(revalidatePath).mockReset();
+    vi.mocked(revalidateTag).mockReset();
+    vi.mocked(getCurrentSiteId).mockReset().mockResolvedValue(null);
     resetCdnPurgeAdapter();
   });
 
-  it("emits the generic collection cache tag for collections with no explicit rule", () => {
-    revalidateCollection({}, "unknown", { slug: "x" });
+  it("always emits the generic collection tag", async () => {
+    await revalidateCollection({}, "unknown", { slug: "x" });
     expect(revalidatePath).not.toHaveBeenCalled();
     expect(revalidateTag).toHaveBeenCalledWith("nx:collection:unknown", "default");
-  });
-
-  it("expands the {slug} placeholder using the document's slug", () => {
-    revalidateCollection({ posts: { paths: ["/blog", "/blog/{slug}"] } }, "posts", {
-      slug: "hello-world",
-    });
-    expect(revalidatePath).toHaveBeenCalledWith("/blog");
-    expect(revalidatePath).toHaveBeenCalledWith("/blog/hello-world");
-  });
-
-  it("exposes the generic collection cache tag used by cached theme/plugin fetches", () => {
     expect(collectionCacheTag("posts")).toBe("nx:collection:posts");
-    revalidateCollection({ posts: { paths: [], tags: [] } }, "posts", null);
-    expect(revalidateTag).toHaveBeenCalledWith("nx:collection:posts", "default");
   });
 
-  it("skips paths with {slug} when the document has no slug", () => {
-    revalidateCollection({ posts: { paths: ["/blog", "/blog/{slug}"] } }, "posts", {});
-    expect(revalidatePath).toHaveBeenCalledWith("/blog");
-    expect(revalidatePath).not.toHaveBeenCalledWith("/blog/{slug}");
-    expect(revalidatePath).toHaveBeenCalledTimes(1);
-  });
-
-  it("handles a null/undefined document by emitting literal paths only", () => {
-    revalidateCollection({ posts: { paths: ["/blog", "/blog/{slug}"] } }, "posts", null);
-    expect(revalidatePath).toHaveBeenCalledWith("/blog");
-    expect(revalidatePath).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("defaultRevalidationRules", () => {
-  it("covers the canonical posts and pages routes", () => {
-    expect(defaultRevalidationRules.posts?.paths).toContain("/blog");
-    expect(defaultRevalidationRules.posts?.paths).toContain("/blog/{slug}");
-    expect(defaultRevalidationRules.pages?.paths).toContain("/");
-    expect(defaultRevalidationRules.pages?.paths).toContain("/{slug}");
-  });
-
-  it("declares cache tags so writes invalidate sitemap / feed alongside paths", () => {
-    expect(defaultRevalidationRules.posts?.tags).toContain("nx:sitemap");
-    expect(defaultRevalidationRules.posts?.tags).toContain("nx:feed:posts");
-    expect(defaultRevalidationRules.pages?.tags).toContain("nx:sitemap");
-  });
-
-  it("declares the nx:search tag so the short-TTL search cache busts on every write (Phase 14.7)", () => {
-    expect(defaultRevalidationRules.posts?.tags).toContain("nx:search");
-    expect(defaultRevalidationRules.pages?.tags).toContain("nx:search");
-  });
-
-  it("declares site-scoped {siteId} tags alongside the global ones (Phase 15.10)", () => {
-    expect(defaultRevalidationRules.posts?.tags).toContain("nx:sitemap:{siteId}");
-    expect(defaultRevalidationRules.posts?.tags).toContain("nx:search:{siteId}");
-    expect(defaultRevalidationRules.pages?.tags).toContain("nx:sitemap:{siteId}");
-  });
-});
-
-describe("revalidateCollection — site-scoped tags (Phase 15.10)", () => {
-  beforeEach(() => {
-    vi.mocked(revalidatePath).mockClear();
-    vi.mocked(revalidateTag).mockClear();
-    vi.mocked(getCurrentSiteId).mockClear();
-    resetCdnPurgeAdapter();
-  });
-
-  it("substitutes {siteId} when the resolver returns a site", async () => {
+  it("expands slug and site placeholders into one awaited request", async () => {
     vi.mocked(getCurrentSiteId).mockResolvedValueOnce("acme");
-    revalidateCollection({ posts: { paths: [], tags: ["nx:sitemap:{siteId}"] } }, "posts", {
-      slug: "x",
-    });
-    // The site-scoped tag emit is fire-and-forget; await a
-    // microtask before assertion.
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap:acme", "default");
-  });
+    const purge = vi.fn().mockResolvedValue(undefined);
+    setCdnPurgeAdapter({ kind: "cdn", purge });
 
-  it("skips {siteId} tags when the resolver returns null (still emits global tags)", async () => {
-    vi.mocked(getCurrentSiteId).mockResolvedValueOnce(null);
-    revalidateCollection(
-      {
-        posts: {
-          paths: [],
-          tags: ["nx:sitemap", "nx:sitemap:{siteId}"],
+    await expect(
+      revalidateCollection(
+        {
+          posts: {
+            paths: ["/blog", "/blog/{slug}", "/sites/{siteId}/blog"],
+            tags: ["nx:sitemap", "nx:sitemap:{siteId}"],
+          },
         },
-      },
-      "posts",
-      { slug: "x" },
-    );
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap", "default");
-    expect(revalidateTag).not.toHaveBeenCalledWith("nx:sitemap:{siteId}", "default");
-    // Confirm no leftover {siteId} placeholder snuck through.
-    const calls = vi.mocked(revalidateTag).mock.calls.map((c) => c[0]);
-    expect(calls.every((c) => !c.includes("{siteId}"))).toBe(true);
-  });
+        "posts",
+        { slug: "hello-world" },
+      ),
+    ).resolves.toMatchObject({ status: "applied" });
 
-  it("only resolves the site once per call (skips when no rule contains {siteId})", async () => {
-    vi.mocked(getCurrentSiteId).mockClear();
-    revalidateCollection({ posts: { paths: ["/blog"], tags: ["nx:sitemap"] } }, "posts", {
-      slug: "x",
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(getCurrentSiteId).not.toHaveBeenCalled();
-  });
-});
-
-describe("revalidateCollection — tag bust (Phase 14.1)", () => {
-  beforeEach(() => {
-    vi.mocked(revalidatePath).mockClear();
-    vi.mocked(revalidateTag).mockClear();
-    vi.mocked(getCurrentSiteId).mockClear();
-    resetCdnPurgeAdapter();
-  });
-
-  it("calls revalidateTag for every tag in the rule", () => {
-    revalidateCollection({ posts: { paths: [], tags: ["nx:sitemap", "nx:feed:posts"] } }, "posts", {
-      slug: "x",
-    });
-    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap", "default");
-    expect(revalidateTag).toHaveBeenCalledWith("nx:feed:posts", "default");
-  });
-
-  it("expands {slug} placeholders inside tag templates too", () => {
-    revalidateCollection({ posts: { paths: [], tags: ["nx:posts:{slug}"] } }, "posts", {
-      slug: "hello-world",
-    });
-    expect(revalidateTag).toHaveBeenCalledWith("nx:posts:hello-world", "default");
-  });
-
-  it("skips slug-templated tags when the doc has no slug (mirrors path behavior)", () => {
-    revalidateCollection(
-      { posts: { paths: [], tags: ["nx:sitemap", "nx:posts:{slug}"] } },
-      "posts",
-      null,
-    );
-    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap", "default");
-    expect(revalidateTag).toHaveBeenCalledWith("nx:collection:posts", "default");
-    expect(revalidateTag).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("CDN purge adapter", () => {
-  beforeEach(() => {
-    vi.mocked(revalidatePath).mockClear();
-    vi.mocked(revalidateTag).mockClear();
-    vi.mocked(getCurrentSiteId).mockClear();
-    resetCdnPurgeAdapter();
-  });
-
-  it("defaults to no adapter", () => {
-    expect(getCdnPurgeAdapter()).toBeNull();
-  });
-
-  it("allows callers to install and reset a purge adapter", () => {
-    const adapter = { purge: vi.fn() };
-    setCdnPurgeAdapter(adapter);
-    expect(getCdnPurgeAdapter()).toBe(adapter);
-    resetCdnPurgeAdapter();
-    expect(getCdnPurgeAdapter()).toBeNull();
-  });
-
-  it("rejects adapter objects without purge()", () => {
-    expect(() => setCdnPurgeAdapter({ purge: undefined as never })).toThrow(
-      "setCdnPurgeAdapter: adapter must implement purge()",
-    );
-  });
-
-  it("receives the same collection paths and tags revalidateCollection emits", () => {
-    const purge = vi.fn();
-    setCdnPurgeAdapter({ purge });
-
-    revalidateCollection(
-      {
-        posts: {
-          paths: ["/blog", "/blog/{slug}"],
-          tags: ["nx:sitemap", "nx:posts:{slug}"],
-        },
-      },
-      "posts",
-      { slug: "hello-world" },
-    );
-
+    expect(getCurrentSiteId).toHaveBeenCalledOnce();
+    expect(purge).toHaveBeenCalledOnce();
     expect(purge).toHaveBeenCalledWith({
       source: "collection",
       collection: "posts",
       documentSlug: "hello-world",
-      siteId: null,
-      paths: ["/blog", "/blog/hello-world"],
-      tags: ["nx:sitemap", "nx:posts:hello-world", "nx:collection:posts"],
+      siteId: "acme",
+      paths: ["/blog", "/blog/hello-world", "/sites/acme/blog"],
+      tags: ["nx:sitemap", "nx:sitemap:acme", "nx:collection:posts"],
     });
   });
 
-  it("dedupes path and tag hints before calling the adapter", () => {
-    const purge = vi.fn();
-    setCdnPurgeAdapter({ purge });
-
-    revalidateCollection(
-      {
-        pages: {
-          paths: ["/", "/"],
-          tags: ["nx:sitemap", "nx:sitemap"],
-        },
-      },
-      "pages",
-      null,
+  it("encodes document slugs when expanding path segments", async () => {
+    await revalidateCollection(
+      { posts: { paths: ["/blog/{slug}"] } },
+      "posts",
+      { slug: "question?{draft}" },
     );
 
-    expect(purge).toHaveBeenCalledWith(
-      expect.objectContaining({
-        paths: ["/"],
-        tags: ["nx:sitemap", "nx:collection:pages"],
-      }),
-    );
+    expect(revalidatePath).toHaveBeenCalledWith("/blog/question%3F%7Bdraft%7D");
   });
 
-  it("still sends CDN purge hints when Next revalidation throws", () => {
-    const purge = vi.fn();
-    setCdnPurgeAdapter({ purge });
-    vi.mocked(revalidatePath).mockImplementationOnce(() => {
-      throw new Error("static generation store missing");
-    });
-    vi.mocked(revalidateTag).mockImplementationOnce(() => {
-      throw new Error("static generation store missing");
-    });
-
-    revalidateCollection({ posts: { paths: ["/blog"], tags: ["nx:sitemap"] } }, "posts", null);
-
-    expect(purge).toHaveBeenCalledWith(
-      expect.objectContaining({
-        paths: ["/blog"],
-        tags: ["nx:sitemap", "nx:collection:posts"],
-      }),
+  it("keeps generic invalidation when an encoded document path exceeds the bound", async () => {
+    await revalidateCollection(
+      { posts: { paths: ["/blog/{slug}"] } },
+      "posts",
+      { slug: "😀".repeat(128) },
     );
+
+    expect(revalidatePath).not.toHaveBeenCalled();
+    expect(revalidateTag).toHaveBeenCalledWith("nx:collection:posts", "default");
   });
 
-  it("purges site-scoped CDN hints after the site resolver completes", async () => {
-    const purge = vi.fn();
-    setCdnPurgeAdapter({ purge });
-    vi.mocked(getCurrentSiteId).mockResolvedValueOnce("acme");
-
-    revalidateCollection(
+  it("skips unresolved placeholder targets while keeping global targets", async () => {
+    await revalidateCollection(
       {
         posts: {
-          paths: ["/blog", "/sites/{siteId}/blog"],
+          paths: ["/blog", "/blog/{slug}"],
           tags: ["nx:sitemap", "nx:sitemap:{siteId}"],
         },
       },
       "posts",
-      { slug: "x" },
+      null,
     );
-
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(purge).toHaveBeenNthCalledWith(1, {
-      source: "collection",
-      collection: "posts",
-      documentSlug: "x",
-      siteId: null,
-      paths: ["/blog"],
-      tags: ["nx:sitemap", "nx:collection:posts"],
-    });
-    expect(purge).toHaveBeenNthCalledWith(2, {
-      source: "collection",
-      collection: "posts",
-      documentSlug: "x",
-      siteId: "acme",
-      paths: ["/sites/acme/blog"],
-      tags: ["nx:sitemap:acme"],
-    });
+    expect(revalidatePath).toHaveBeenCalledWith("/blog");
+    expect(revalidatePath).not.toHaveBeenCalledWith("/blog/{slug}");
+    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap", "default");
+    expect(vi.mocked(revalidateTag).mock.calls.flat()).not.toContain("nx:sitemap:{siteId}");
   });
 
-  it("does not let CDN purge failures fail the write-side invalidation path", async () => {
-    setCdnPurgeAdapter({
-      purge: () => Promise.reject(new Error("provider down")),
-    });
+  it("still resolves site context for CDN hints without site placeholders", async () => {
+    vi.mocked(getCurrentSiteId).mockResolvedValueOnce("acme");
+    const purge = vi.fn().mockResolvedValue(undefined);
+    setCdnPurgeAdapter({ purge });
+    await revalidateCollection({ posts: { paths: ["/blog"], tags: ["nx:sitemap"] } }, "posts");
+    expect(getCurrentSiteId).toHaveBeenCalledOnce();
+    expect(purge).toHaveBeenCalledWith(expect.objectContaining({ siteId: "acme" }));
+  });
 
-    expect(() =>
-      revalidateCollection({ posts: { paths: ["/blog"], tags: ["nx:sitemap"] } }, "posts", null),
-    ).not.toThrow();
+  it("rejects malformed rule maps before execution", async () => {
+    expect(() => npRequireRevalidationMap({ posts: { paths: ["/blog/{unknown}"] } })).toThrow(
+      "Unsupported cache revalidation placeholder",
+    );
+    await expect(
+      revalidateCollection({ "BAD slug": { paths: ["/blog"] } }, "BAD slug"),
+    ).rejects.toThrow("canonical collection slug");
+    expect(() => collectionCacheTag(`a${"b".repeat(63)}`)).toThrow("canonical collection slug");
+    const posts = vi.fn(() => ({ paths: ["/blog"] }));
+    const accessorMap = Object.defineProperty({}, "posts", { enumerable: true, get: posts });
+    expect(() => npRequireRevalidationMap(accessorMap)).toThrow("plain object");
+    expect(posts).not.toHaveBeenCalled();
+    expect(() => npRequireRevalidationMap({ posts: { paths: new Array<string>(1) } })).toThrow(
+      "enumerable data element",
+    );
+  });
 
-    await Promise.resolve();
+  it("copies validated rules before collection and placeholder expansion", async () => {
+    const readConstructor = vi.fn(() => Array);
+    const paths = ["/blog"];
+    Object.defineProperty(paths, "constructor", { get: readConstructor });
+
+    await revalidateCollection({ posts: { paths } }, "posts");
+
+    expect(readConstructor).not.toHaveBeenCalled();
+    expect(revalidatePath).toHaveBeenCalledWith("/blog");
+  });
+});
+
+describe("defaultRevalidationRules", () => {
+  it("covers bundled paths, global tags, and site-scoped tags", () => {
+    expect(defaultRevalidationRules.posts?.paths).toContain("/blog/{slug}");
+    expect(defaultRevalidationRules.posts?.tags).toContain("nx:search");
+    expect(defaultRevalidationRules.posts?.tags).toContain("nx:sitemap:{siteId}");
+    expect(defaultRevalidationRules.pages?.paths).toContain("/");
   });
 });

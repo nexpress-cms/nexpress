@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
       case "cache.revalidate": {
         const cacheCore = await loadCacheCore();
         return npSuccessResponse(
-          cacheCore.runOpsCacheRevalidate({
+          await cacheCore.runOpsCacheRevalidate({
             target: readCacheTarget(body.target),
             collection: readOptionalString(body.collection),
             documentSlug: readOptionalString(body.documentSlug),

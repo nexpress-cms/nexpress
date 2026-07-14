@@ -101,7 +101,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
     if (await activeThemeContributesSeo()) {
       tags.push(`nx:sitemap:${siteId}`, `nx:feed:${siteId}`);
     }
-    invalidateCacheTargets({
+    await invalidateCacheTargets({
       source: "theme-settings",
       siteId,
       themeId: id,

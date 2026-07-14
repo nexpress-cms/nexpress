@@ -1,6 +1,6 @@
 # packages/core — AGENTS.md
 
-Server-only CMS engine: config, DB, auth, collections pipeline, media, jobs, plugins, storage, theme.
+Server-only CMS engine: config, DB, auth, collections pipeline, media, jobs, plugins, storage, cache, theme.
 
 **Refreshed:** 2026-07-14
 
@@ -9,6 +9,7 @@ Server-only CMS engine: config, DB, auth, collections pipeline, media, jobs, plu
 ```
 src/
 ├── bootstrap/    # Framework-host-only singleton and registry wiring boundary
+├── cache/        # Exact invalidation request/result, host adapter, diagnostics, lifecycle
 ├── config/       # NpConfig types, defineConfig/defineCollection, validation schemas
 ├── db/           # createDbConnection, Drizzle schema (npUsers/npMedia/npRevisions/npSettings), generators
 ├── auth/         # JWT (jose), Argon2 password, CSRF, session helpers, access control
@@ -33,11 +34,12 @@ src/
 | -------------------------------------- | --------------------- | ------------------------------------- |
 | `setDb(db)` / `getDb()`                | `db/runtime.ts`       | `createBootstrap` in `@nexpress/next` |
 | `setStorageAdapter(adapter)`           | `storage/registry.ts` | Bootstrap validates `config.storage`  |
+| cache invalidation adapter             | `cache/runtime.ts`    | Bootstrap installs the Next host      |
 | logger / error reporter                | `observability/`      | Bootstrap validates env + adapters    |
 | `setJobQueue(queue)` / `getJobQueue()` | `jobs/queue.ts`       | Bootstrap producer or worker          |
 | `pluginRegistry` / `globalHooks`       | `plugins/host.ts`     | `loadPlugins()` at startup            |
 
-**Init order**: configureObservability → createDbConnection/setDb → setStorageAdapter → registerCollections → loadPlugins → email/producer or worker. Shutdown reverses dependencies and closes observability last. Wrong order = runtime "not initialized" errors or missed boot diagnostics.
+**Init order**: configureObservability → createDbConnection/setDb → cache host → setStorageAdapter → registerCollections → loadPlugins → email/producer or worker. Shutdown reverses dependencies and closes observability last. Wrong order = runtime "not initialized" errors or missed boot diagnostics.
 
 Raw setters, registry mutation, and plugin dispatch live under the host-only
 `@nexpress/core/bootstrap` subpath and are absent from the root barrel. Normal
@@ -59,6 +61,11 @@ adapters are installed transactionally before startup warnings. Framework code
 must log/report through the safe facade, never call a raw adapter; dispatch and
 async failures are deliberately contained and recorded for Admin Health.
 
+Cache invalidation uses `@nexpress/core/cache`. Core never imports `next/cache`;
+bootstrap injects the Next host, and plugins/jobs call `npInvalidateCache()`.
+Concrete requests and adapter results are exact and bounded. Runtime failures
+are contained as partial/unavailable results and recorded for Admin Health.
+
 ## WHERE TO LOOK
 
 | Task                        | File(s)                                                       | Notes                                                              |
@@ -72,6 +79,7 @@ async failures are deliberately contained and recorded for Admin Health.
 | Change media processing     | `media/processor.ts`                                          | sharp-based, `DEFAULT_IMAGE_SIZES` for variants                    |
 | Change storage contracts    | `storage/contract.ts`, `storage/operations.ts`                | Keep bootstrap, media, doctor, health, and ops on one boundary     |
 | Change observability        | `observability/contract.ts`, `logger.ts`, `error-reporter.ts` | Preserve failure isolation and direct-console fallback             |
+| Change cache invalidation   | `cache/contract.ts`, `cache/runtime.ts`                       | Keep Next, plugins, jobs, CDN, health, and ops on one boundary     |
 | Add job handler             | `jobs/handlers.ts`, `jobs-contract/`                          | `{ parsePayload, resolveSiteId }`; site ids live in exact payloads |
 | Add plugin capabilities     | `plugins/host.ts` + `plugin-sdk/src/types.ts`                 | Hook capability = `hooks:<namespace>` prefix matching              |
 | Add error type              | `errors.ts`                                                   | Extend `NpError` with code + statusCode                            |

@@ -12,6 +12,13 @@ export { getDb, getOptionalDb, resetDb, setDb } from "../db/runtime.js";
 export { registerCollection, resetCollections } from "../collections/registry.js";
 
 export {
+  npShutdownCacheInvalidationAdapter,
+  resetCacheInvalidationAdapter,
+  setCacheInvalidationAdapter,
+} from "../cache/runtime.js";
+export type { NpCacheInvalidationAdapter } from "../cache/types.js";
+
+export {
   configureStorageRuntime,
   getOptionalStorageAdapter,
   npShutdownStorageAdapter,

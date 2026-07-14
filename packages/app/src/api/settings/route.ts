@@ -72,7 +72,7 @@ export async function PUT(request: NextRequest) {
         ? await setSiteGeneralSettings(update.value, siteId)
         : await setSeoSettings(update.value, user.id, siteId);
 
-    invalidateCacheTargets({
+    await invalidateCacheTargets({
       source: "site",
       siteId,
       tags: [siteCacheTag(siteId), `nx:sitemap:${siteId}`, `nx:feed:${siteId}`],

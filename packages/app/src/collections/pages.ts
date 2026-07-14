@@ -48,8 +48,10 @@ export const pagesCollection = defineCollection({
         const nextSlug = typeof data.slug === "string" ? data.slug : null;
         if (previousSlug === nextSlug) return data;
         const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-        invalidateCacheTargets({
-          source: "navigation",
+        await invalidateCacheTargets({
+          source: "collection",
+          collection: "pages",
+          ...(nextSlug === null ? {} : { documentSlug: nextSlug }),
           siteId,
           tags: NAV_LOCATIONS.map((location) => navCacheTag(siteId, location)),
         });

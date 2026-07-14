@@ -30,7 +30,7 @@ export async function POST(
     }
     const { slug, id } = await context.params;
     const result = await promoteMemberDocument(slug, id, user.id);
-    revalidateCollection(slug, result.doc);
+    await revalidateCollection(slug, result.doc);
     return npSuccessResponse(result.doc);
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));

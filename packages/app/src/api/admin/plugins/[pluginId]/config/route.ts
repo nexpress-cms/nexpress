@@ -96,7 +96,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
     const persisted = await setPluginConfig(pluginId, value, user.id);
 
     const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-    invalidateCacheTargets({
+    await invalidateCacheTargets({
       source: "plugin-config",
       siteId,
       pluginId,

@@ -16,7 +16,7 @@ export async function POST(
 
     const result = await restoreDocumentRevision(slug, id, revisionId, user);
 
-    revalidateCollection(slug, result.doc);
+    await revalidateCollection(slug, result.doc);
 
     return npSuccessResponse(result.doc);
   } catch (error) {

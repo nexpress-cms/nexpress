@@ -51,11 +51,12 @@ describe("built-in media job contract", () => {
   });
 
   it("dispatches content jobs inside the exact payload site scope", async () => {
+    const revalidateCollection = vi.fn().mockResolvedValue(undefined);
     const resolveContentAfterSaveContext = vi.fn(async () => {
       expect(await getCurrentSiteId()).toBe("tenant-a");
       return null;
     });
-    configureBuiltinJobContext({ resolveContentAfterSaveContext });
+    configureBuiltinJobContext({ resolveContentAfterSaveContext, revalidateCollection });
     registerBuiltinHandlers();
 
     await getJobHandler("content:afterSave")?.({
@@ -68,7 +69,35 @@ describe("built-in media job contract", () => {
     });
 
     expect(resolveContentAfterSaveContext).toHaveBeenCalledOnce();
+    expect(revalidateCollection).toHaveBeenCalledWith("posts", undefined);
     expect(await getCurrentSiteId()).toBeNull();
+    configureBuiltinJobContext({ revalidateCollection: undefined });
+  });
+
+  it("still invalidates content when hook context hydration fails", async () => {
+    const hydrationError = new Error("document lookup failed");
+    const revalidateCollection = vi.fn().mockResolvedValue(undefined);
+    configureBuiltinJobContext({
+      resolveContentAfterSaveContext: () => Promise.reject(hydrationError),
+      revalidateCollection,
+    });
+    registerBuiltinHandlers();
+
+    await expect(
+      getJobHandler("content:afterSave")?.({
+        siteId: "tenant-a",
+        collection: "posts",
+        documentId: "bd134b0f-b9ea-4ff4-81ef-606e42e27703",
+        operation: "update",
+        userId: "8dbb88e6-eb42-4c5d-968d-0b253fd5012f",
+        memberId: null,
+      }),
+    ).rejects.toBe(hydrationError);
+    expect(revalidateCollection).toHaveBeenCalledWith("posts", undefined);
+    configureBuiltinJobContext({
+      resolveContentAfterSaveContext: undefined,
+      revalidateCollection: undefined,
+    });
   });
 
   it("builds credential email copy from the exact job expiry", async () => {

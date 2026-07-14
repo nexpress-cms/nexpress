@@ -45,6 +45,15 @@ export async function runWorker({ ensureFor, shutdown }: RunWorkerOptions): Prom
   await ensureFor("worker");
 
   configureBuiltinJobContext({
+    async revalidateCollection(collection, document) {
+      const { revalidateCollection } = await import("../lib/revalidate.js");
+      await revalidateCollection(collection, document);
+    },
+    async revalidatePublishedDocuments(byCollection) {
+      const { revalidatePublishedDocuments } =
+        await import("../lib/scheduled-publish-revalidate.js");
+      await revalidatePublishedDocuments(byCollection);
+    },
     async resolveContentAfterSaveContext({ collection, documentId, userId, memberId }) {
       const config = getCollectionConfig(collection);
       const doc = await getDocumentById(collection, documentId);

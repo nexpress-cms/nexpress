@@ -50,17 +50,29 @@ describe("ops-cache-core", () => {
     ]);
   });
 
-  it("returns a dry-run result by default", () => {
-    const result = runOpsCacheRevalidate({ target: "theme", siteId: "site-a" });
+  it("encodes unsafe document slug characters while planning concrete paths", () => {
+    expect(
+      buildOpsCacheRevalidatePlan({
+        target: "collection",
+        collection: "posts",
+        documentSlug: "bad?slug",
+        siteId: "site-a",
+      }).paths,
+    ).toContainEqual({ path: "/blog/bad%3Fslug" });
+  });
+
+  it("returns a dry-run result by default", async () => {
+    const result = await runOpsCacheRevalidate({ target: "theme", siteId: "site-a" });
 
     expect(result.applied).toBe(false);
     expect(result.nextCommand).toContain("--execute --approve cache-revalidate");
+    expect(result.invalidation).toBeNull();
     expect(revalidatePath).not.toHaveBeenCalled();
     expect(revalidateTag).not.toHaveBeenCalled();
   });
 
-  it("requires the cache-revalidate approval token before executing", () => {
-    const result = runOpsCacheRevalidate({
+  it("requires the cache-revalidate approval token before executing", async () => {
+    const result = await runOpsCacheRevalidate({
       target: "site",
       siteId: "site-a",
       execute: true,
@@ -73,8 +85,8 @@ describe("ops-cache-core", () => {
     expect(revalidateTag).not.toHaveBeenCalled();
   });
 
-  it("executes approved invalidation through Next cache helpers", () => {
-    const result = runOpsCacheRevalidate({
+  it("executes approved invalidation through Next cache helpers", async () => {
+    const result = await runOpsCacheRevalidate({
       target: "theme",
       siteId: "site-a",
       execute: true,
@@ -82,6 +94,7 @@ describe("ops-cache-core", () => {
     });
 
     expect(result.applied).toBe(true);
+    expect(result.invalidation?.status).toBe("applied");
     expect(revalidatePath).toHaveBeenCalledWith("/", "layout");
     expect(revalidateTag).toHaveBeenCalledWith("nx:theme:site-a", "default");
     expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap:site-a", "default");
