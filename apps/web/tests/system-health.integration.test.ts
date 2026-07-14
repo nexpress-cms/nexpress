@@ -49,6 +49,7 @@ describe.skipIf(skipIfNoTestDb())("system-health diagnostics (#F)", () => {
       "site_url",
       "email",
       "observability",
+      "cache-invalidation",
       "secret",
     ]);
   });
