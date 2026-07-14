@@ -20,6 +20,7 @@ describe("doctor core", () => {
         "node.version",
         "env.file",
         "env.database_url",
+        "email.contract",
         "database.reachable",
         "auth.contract",
         "settings.contract",
@@ -99,6 +100,27 @@ describe("doctor core", () => {
       expect.objectContaining({
         state: "error",
         detail: "NP_RESET_TTL_MINUTES must be a positive integer.",
+      }),
+    );
+  });
+
+  it("fails closed on malformed email runtime settings without booting the app", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nexpress-doctor-core-"));
+    const checks = await collectDoctorChecks({
+      cwd,
+      nodeVersion: "24.11.1",
+      env: {
+        NP_EMAIL_ADAPTER: "smtp",
+        NP_SMTP_HOST: "smtp.example.com",
+        NP_SMTP_PORT: "NaN",
+        NP_SMTP_FROM: "noreply@example.com",
+      },
+    });
+
+    expect(checks.find((check) => check.id === "email.contract")).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: expect.stringContaining("NP_SMTP_PORT"),
       }),
     );
   });

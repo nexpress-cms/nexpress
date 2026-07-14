@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NoopEmailAdapter } from "./noop.js";
-import { getEmailAdapter, resetEmailAdapter, setEmailAdapter } from "./service.js";
+import { getEmailAdapter, resetEmailAdapter, sendEmail, setEmailAdapter } from "./service.js";
 
 describe("NoopEmailAdapter", () => {
   let warnSpy: ReturnType<typeof vi.spyOn>;
@@ -50,6 +50,19 @@ describe("email adapter singleton", () => {
     };
     setEmailAdapter(custom);
     expect(getEmailAdapter()).toBe(custom);
+  });
+
+  it("validates messages and requires adapters to resolve to void", async () => {
+    setEmailAdapter({
+      kind: "bad-result",
+      send: vi.fn().mockResolvedValue({ providerId: "leaked-result" }) as never,
+    });
+    await expect(
+      sendEmail({ to: "alice@example.com", subject: "Hi", text: "body" }),
+    ).rejects.toThrow(/resolve to void/u);
+    await expect(
+      sendEmail({ to: "alice@example.com\r\nBcc: bad@example.com", subject: "Hi", text: "body" }),
+    ).rejects.toThrow(/email\.message\.to/u);
   });
 
   it("resetEmailAdapter restores the noop default", () => {

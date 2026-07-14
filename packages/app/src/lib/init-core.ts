@@ -1,4 +1,9 @@
-import { SmtpEmailAdapter, getScopedLogger, npUsers, setEmailAdapter } from "@nexpress/core";
+import { npUsers } from "@nexpress/core";
+import {
+  configureEmailRuntime,
+  npReadEmailRuntimeConfig,
+  type NpEmailRuntimeConfig,
+} from "@nexpress/core/email";
 import { count, eq } from "drizzle-orm";
 
 import {
@@ -13,51 +18,16 @@ import { registerWordPressImportJobs } from "./wp-import-admin";
 
 export { nexpressConfig };
 
-/**
- * Install the SMTP email adapter when `NP_EMAIL_ADAPTER=smtp`. Any other
- * value (unset, "noop", "custom") leaves the default `NoopEmailAdapter` in
- * place — apps that want Resend/SendGrid/etc. SDKs can call
- * `setEmailAdapter(customAdapter)` themselves after this runs.
- */
-function configureEmailAdapter(): void {
-  if (process.env.NP_EMAIL_ADAPTER !== "smtp") return;
-
-  const host = process.env.NP_SMTP_HOST;
-  const port = Number(process.env.NP_SMTP_PORT ?? "587");
-  const from = process.env.NP_SMTP_FROM;
-
-  if (!host || !from) {
-    getScopedLogger({ subsystem: "boot" }).warn(
-      "NP_EMAIL_ADAPTER=smtp but NP_SMTP_HOST / NP_SMTP_FROM are unset — email adapter not installed.",
-      { check: "smtp_misconfigured", missing: { host: !host, from: !from } },
-    );
-    return;
-  }
-
-  // Only forward `secure` when the operator explicitly set it. Passing
-  // `false` for an unset env var disabled the adapter's `port === 465
-  // → secure` default, so SMTPS configurations failed in the field
-  // (#63). With `undefined` the SMTP adapter applies its documented
-  // default.
-  const secureRaw = process.env.NP_SMTP_SECURE;
-  const secure = secureRaw === undefined ? undefined : secureRaw === "true";
-
-  setEmailAdapter(
-    new SmtpEmailAdapter({
-      host,
-      port,
-      user: process.env.NP_SMTP_USER,
-      pass: process.env.NP_SMTP_PASS,
-      from,
-      ...(secure !== undefined ? { secure } : {}),
-    }),
-  );
+let emailRuntimeConfig: NpEmailRuntimeConfig | null = null;
+function resolveEmailRuntimeConfigOnce(): NpEmailRuntimeConfig {
+  emailRuntimeConfig ??= npReadEmailRuntimeConfig(process.env);
+  return emailRuntimeConfig;
 }
 
 let emailConfigured = false;
 function configureEmailOnce(): void {
   if (emailConfigured) return;
-  configureEmailAdapter();
+  configureEmailRuntime(resolveEmailRuntimeConfigOnce());
   emailConfigured = true;
 }
 
@@ -134,7 +104,7 @@ function nudgeFirstRunOnce(): void {
 
 /**
  * Single typed entry point for bootstrap initialization (#266). One
- * function with three explicit intents replaced the four ad-hoc
+ * function with four explicit intents replaced the four ad-hoc
  * `ensure*` functions whose required combination each route had to
  * memorize.
  *
@@ -145,15 +115,21 @@ function nudgeFirstRunOnce(): void {
  *                   response generation needs `runHook` to fire (e.g.
  *                   block/site pages with plugin-augmented rendering,
  *                   OAuth callbacks).
+ *   - `"worker"`  — plugins + email adapter, without a competing producer.
+ *                   Used by the dedicated pg-boss worker process.
  *   - `"write"`   — plugins + email adapter + pg-boss producer. Use
  *                   for any mutating API route, server action, or
  *                   import script. Without this, writes that go
  *                   through the pipeline or `uploadMedia` silently
  *                   drop their follow-up jobs and emails.
  */
-export type NpBootstrapIntent = "read" | "plugins" | "write";
+export type NpBootstrapIntent = "read" | "plugins" | "worker" | "write";
 
 export async function ensureFor(intent: NpBootstrapIntent): Promise<void> {
+  // Parse the environment contract on the first bootstrap intent, including
+  // reads. Adapter installation stays on worker/write paths, but malformed
+  // email configuration cannot hide until the first delivery attempt.
+  resolveEmailRuntimeConfigOnce();
   bootstrapEnsureCoreServices();
   registerCustomRoutesOnce();
   nudgeFirstRunOnce();
@@ -163,5 +139,6 @@ export async function ensureFor(intent: NpBootstrapIntent): Promise<void> {
   if (intent === "plugins") return;
 
   configureEmailOnce();
+  if (intent === "worker") return;
   await bootstrapEnsureJobProducer();
 }

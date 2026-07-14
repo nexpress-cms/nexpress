@@ -322,14 +322,14 @@ describe("verifyStartupSafety", () => {
     expect(warnings).toEqual([]);
   });
 
-  it("does NOT warn when smtp / custom email adapter is installed", () => {
+  it.each(["smtp", "custom"])("does NOT warn when exact %s email mode is selected", (mode) => {
     const { warnings } = captureWarnings();
     verifyStartupSafety({
       storageAdapter: "s3",
       secret: "x".repeat(64),
       nodeEnv: "production",
       multiNodeFlag: undefined,
-      emailAdapterEnv: "smtp",
+      emailAdapterEnv: mode,
       siteUrl: "https://example.com",
     });
     expect(warnings.some((w) => w.message.includes("Email adapter"))).toBe(false);

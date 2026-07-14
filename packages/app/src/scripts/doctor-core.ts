@@ -1,6 +1,7 @@
 import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { npValidatePluginCronExpression } from "@nexpress/core";
+import { npReadEmailRuntimeConfig } from "@nexpress/core/email";
 import {
   npAnalyzeAuthUser,
   npAnalyzeMemberAuthUser,
@@ -123,6 +124,7 @@ export async function collectDoctorChecks(
 
   for (const spec of REQUIRED_VARS) checks.push(checkRequiredVar(spec, prodMode, env));
   checks.push(checkEnvExampleSync(env));
+  checks.push(checkEmailRuntimeContract(env));
   const s3 = checkS3Vars(env);
   if (s3) checks.push(s3);
   checks.push(...checkOAuthEnvPairs(env));
@@ -149,6 +151,38 @@ export async function collectDoctorChecks(
   }
 
   return checks;
+}
+
+function checkEmailRuntimeContract(env: DoctorEnv): CheckResult {
+  try {
+    const config = npReadEmailRuntimeConfig(env);
+    if (config.adapter === "noop") {
+      return {
+        id: "email.contract",
+        state: "warn",
+        label: "Email delivery runtime contract",
+        detail: "noop (transactional messages are not delivered)",
+        hint: "Set NP_EMAIL_ADAPTER=smtp with the exact NP_SMTP_* contract for delivery.",
+      };
+    }
+    return {
+      id: "email.contract",
+      state: "ok",
+      label: "Email delivery runtime contract",
+      detail:
+        config.adapter === "custom"
+          ? "custom (programmatic adapter expected)"
+          : `smtp · ${config.options.host}:${config.options.port.toString()} · ${config.options.secure ? "TLS" : "STARTTLS"}`,
+    };
+  } catch (error) {
+    return {
+      id: "email.contract",
+      state: "error",
+      label: "Email delivery runtime contract",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Fix NP_EMAIL_ADAPTER and NP_SMTP_* before accepting credential email requests.",
+    };
+  }
 }
 
 export async function collectDoctorReport(

@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { buildInviteEmail, buildResetEmail } from "./templates.js";
+import { buildInviteEmail, buildMemberVerifyEmail, buildResetEmail } from "./templates.js";
 
 const baseData = {
   siteName: "Acme",
   name: "Alice",
   resetUrl: "https://acme.example.com/admin/set-password?token=abc123",
+  expiresAt: "2026-07-20T12:30:00.000Z",
 };
 
 describe("buildInviteEmail", () => {
@@ -22,10 +23,10 @@ describe("buildInviteEmail", () => {
     expect(out.html).toContain("Alice");
   });
 
-  it("mentions the 7-day expiry", () => {
+  it("renders the exact issued expiry instead of a hard-coded duration", () => {
     const out = buildInviteEmail(baseData);
-    expect(out.text).toMatch(/7 days/);
-    expect(out.html).toMatch(/7 days/);
+    expect(out.text).toContain("2026-07-20 12:30:00.000 UTC");
+    expect(out.html).toContain("2026-07-20 12:30:00.000 UTC");
   });
 });
 
@@ -37,10 +38,29 @@ describe("buildResetEmail", () => {
     expect(reset.subject).toMatch(/reset/i);
   });
 
-  it("mentions the 1-hour expiry", () => {
+  it("renders the exact issued expiry", () => {
     const out = buildResetEmail(baseData);
-    expect(out.text).toMatch(/1 hour/);
-    expect(out.html).toMatch(/1 hour/);
+    expect(out.text).toContain("2026-07-20 12:30:00.000 UTC");
+    expect(out.html).toContain("2026-07-20 12:30:00.000 UTC");
+  });
+
+  it("rejects a non-canonical credential expiry", () => {
+    expect(() => buildResetEmail({ ...baseData, expiresAt: "2026-07-20T12:30:00Z" })).toThrow(
+      /expiresAt/u,
+    );
+  });
+});
+
+describe("buildMemberVerifyEmail", () => {
+  it("renders the exact verification expiry", () => {
+    const out = buildMemberVerifyEmail({
+      siteName: "Acme",
+      displayName: "Alice",
+      verifyUrl: "https://acme.example.com/members/verify?token=abc123",
+      expiresAt: "2026-07-15T09:45:00.000Z",
+    });
+    expect(out.text).toContain("2026-07-15 09:45:00.000 UTC");
+    expect(out.html).toContain("2026-07-15 09:45:00.000 UTC");
   });
 });
 
@@ -50,6 +70,7 @@ describe("escaping", () => {
       siteName: "<script>alert(1)</script>",
       name: "Ev & Bob",
       resetUrl: "https://example.com/x",
+      expiresAt: baseData.expiresAt,
     });
     expect(out.html).not.toContain("<script>alert(1)</script>");
     expect(out.html).toContain("&lt;script&gt;");

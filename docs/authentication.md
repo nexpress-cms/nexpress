@@ -110,7 +110,9 @@ Malformed, fractional, signed, whitespace-padded, scientific-notation, or
 out-of-range values abort the auth path instead of silently falling back.
 Password-reset, verification, and staff-invitation links additionally require
 an explicit `SITE_URL`; credential-bearing email URLs are never derived from a
-request `Host` header.
+request `Host` header. Email jobs receive the issued credential's canonical
+`expiresAt` timestamp, and the template renders that exact UTC time rather
+than restating a default duration. See [email.md](./email.md).
 
 ## Migration and diagnosis
 

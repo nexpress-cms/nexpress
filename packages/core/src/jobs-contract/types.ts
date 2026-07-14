@@ -80,9 +80,9 @@ export interface NpPluginScheduledTaskJobData {
 export interface NpPasswordResetJobData {
   email: string;
   name: string;
-  token: string;
   purpose: "invite" | "reset";
   resetUrl: string;
+  expiresAt: string;
   siteName?: string;
 }
 
@@ -94,10 +94,12 @@ export interface NpMemberEmailJobData {
 
 export interface NpMemberVerifyEmailJobData extends NpMemberEmailJobData {
   verifyUrl: string;
+  expiresAt: string;
 }
 
 export interface NpMemberPasswordResetJobData extends NpMemberEmailJobData {
   resetUrl: string;
+  expiresAt: string;
 }
 
 export interface NpNotificationDigestJobData {

@@ -187,7 +187,9 @@ excludes `src/integration/` so the cross-directory import doesn't trip
 
 - **SMTP adapter against a real relay** — covered by
   `packages/core/src/email/smtp.test.ts`, which starts an in-process
-  SMTP-speaking relay and sends through `SmtpEmailAdapter`.
+  SMTP-speaking relay and sends through `SmtpEmailAdapter`. The adjacent
+  contract tests cover exact messages, adapter registration/results, SMTP env
+  parsing, and credential-template expirations.
 - **Search vector ranking** — covered by
   `apps/web/tests/search-quality.integration.test.ts`, including field
   weighting, cross-collection relevance ranking, and reindex behaviour.

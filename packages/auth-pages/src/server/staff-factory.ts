@@ -296,9 +296,9 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
         await enqueueJob("auth:sendPasswordReset", {
           email: result.email,
           name: result.name,
-          token: result.issued.token,
           purpose: result.issued.purpose,
           resetUrl: buildResetUrl(config, request, result.issued.token, opts.resetUrlPath),
+          expiresAt: result.issued.expiresAt.toISOString(),
           siteName: config.site.name,
         });
       }

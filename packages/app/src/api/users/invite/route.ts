@@ -138,9 +138,9 @@ export async function POST(request: NextRequest) {
     await enqueueJob("auth:sendPasswordReset", {
       email: created.email,
       name: created.name,
-      token: issued.token,
       purpose: "invite",
       resetUrl: buildResetUrl(siteUrl, issued.token),
+      expiresAt: issued.expiresAt.toISOString(),
       siteName: nexpressConfig.site.name,
     });
 

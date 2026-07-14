@@ -3,7 +3,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { npMembers, npNotifications } from "../db/schema/community.js";
-import { getEmailAdapter } from "../email/service.js";
+import { sendEmail } from "../email/service.js";
 import { getLogger } from "../observability/logger.js";
 import { listSites, NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
@@ -215,7 +215,6 @@ export interface RunDigestSweepResult {
 export async function runDigestSweep(input: RunDigestSweepInput): Promise<RunDigestSweepResult> {
   const now = input.now ?? new Date();
   const db = getDb();
-  const adapter = getEmailAdapter();
   const log = getLogger();
 
   // Issue #218 — fan-out per site. The previous implementation
@@ -263,7 +262,7 @@ export async function runDigestSweep(input: RunDigestSweepInput): Promise<RunDig
       });
 
       try {
-        await adapter.send({
+        await sendEmail({
           to: member.email,
           subject: email.subject,
           text: email.text,
@@ -302,10 +301,9 @@ function lastDigestSinceFor(
   cadence: NpDigestCadence,
   now: Date,
 ): Date {
-  const prefs = (member.prefs ?? {});
+  const prefs = member.prefs ?? {};
   const bySite = prefs.lastDigestAtBySite as
-    | Record<string, Partial<Record<string, string>>>
-    | undefined;
+    Record<string, Partial<Record<string, string>>> | undefined;
   const perSite = bySite?.[siteId]?.[cadence];
   if (typeof perSite === "string") {
     const parsed = new Date(perSite);

@@ -8,6 +8,7 @@ import {
   getStorageAdapter,
   listWorkerHealth,
 } from "@nexpress/core";
+import { getEmailAdapter, npReadEmailRuntimeConfig } from "@nexpress/core/email";
 
 import { getDb } from "./db";
 
@@ -42,19 +43,14 @@ export interface HealthSummary {
   warnCount: number;
 }
 
-const FRAMEWORK_TABLES = [
-  "np_users",
-  "np_settings",
-  "np_navigation",
-  "np_sites",
-] as const;
+const FRAMEWORK_TABLES = ["np_users", "np_settings", "np_navigation", "np_sites"] as const;
 
 async function checkDatabase(): Promise<Check> {
   try {
     const db = getDb();
-    const result = (await db.$client.query<{ version: string }>(
-      "select version()",
-    )) as { rows: Array<{ version: string }> };
+    const result = (await db.$client.query<{ version: string }>("select version()")) as {
+      rows: Array<{ version: string }>;
+    };
     const version = result.rows[0]?.version?.split(" ").slice(0, 2).join(" ") ?? "Postgres";
     return {
       id: "db",
@@ -287,8 +283,7 @@ function checkPlugins(): Check {
       id: "plugins",
       label: "Plugins loaded",
       state: "ok",
-      detail:
-        ids.length === 0 ? "0 plugins" : `${ids.length.toString()} · ${ids.join(", ")}`,
+      detail: ids.length === 0 ? "0 plugins" : `${ids.length.toString()} · ${ids.join(", ")}`,
     };
   } catch (err) {
     return {
@@ -348,60 +343,67 @@ export function checkSiteUrl(): Check {
       label: "SITE_URL",
       state: "error",
       detail: err instanceof Error ? err.message : "unparseable",
-      hint:
-        "SITE_URL must be a parseable absolute URL (e.g. https://example.com).",
+      hint: "SITE_URL must be a parseable absolute URL (e.g. https://example.com).",
     };
   }
 }
 
 /**
  * Email adapter — runtime parallel of the boot-time check in
- * #597. Reads the env var (operator's intent) rather than the
- * live adapter because programmatic `setEmailAdapter()` callers
- * skip the env path. Catches the operator who deployed without
- * SMTP and is wondering why password-reset emails never arrive.
+ * #597. Parses the exact environment contract, then checks the live
+ * adapter when the operator selected programmatic `custom` mode.
+ * Catches both malformed SMTP settings and a custom mode with no
+ * registered delivery implementation.
  */
 export function checkEmailAdapter(): Check {
-  const raw = (process.env.NP_EMAIL_ADAPTER ?? "").toLowerCase();
-  if (!raw || raw === "noop") {
-    return {
-      id: "email",
-      label: "Email adapter",
-      state: "warn",
-      detail: raw ? "noop" : "unset (defaults to noop)",
-      hint:
-        "Transactional mail (password reset, email verify, member " +
-        "digests) is silently dropped. Set NP_EMAIL_ADAPTER=smtp + the " +
-        "NP_SMTP_* vars, or install a custom adapter via " +
-        "setEmailAdapter() in your bootstrap.",
-    };
-  }
-  if (raw === "smtp") {
-    const missing: string[] = [];
-    if (!process.env.NP_SMTP_HOST) missing.push("NP_SMTP_HOST");
-    if (!process.env.NP_SMTP_FROM) missing.push("NP_SMTP_FROM");
-    if (missing.length > 0) {
+  try {
+    const config = npReadEmailRuntimeConfig(process.env);
+    if (config.adapter === "noop") {
+      const explicit = process.env.NP_EMAIL_ADAPTER === "noop";
       return {
         id: "email",
         label: "Email adapter",
-        state: "error",
-        detail: `smtp · missing ${missing.join(", ")}`,
-        hint: "Re-run `pnpm run setup` to fill in the SMTP fields.",
+        state: "warn",
+        detail: explicit ? "noop" : "unset (defaults to noop)",
+        hint:
+          "Transactional mail (password reset, email verify, member " +
+          "digests) is intentionally dropped. Set NP_EMAIL_ADAPTER=smtp + " +
+          "the exact NP_SMTP_* contract, or use custom with setEmailAdapter().",
+      };
+    }
+    if (config.adapter === "custom") {
+      const liveKind = getEmailAdapter().kind;
+      if (liveKind === "noop") {
+        return {
+          id: "email",
+          label: "Email adapter",
+          state: "error",
+          detail: "custom requested but no adapter is registered",
+          hint: "Call setEmailAdapter() before the worker or first write bootstrap.",
+        };
+      }
+      return {
+        id: "email",
+        label: "Email adapter",
+        state: "ok",
+        detail: `custom (${liveKind})`,
       };
     }
     return {
       id: "email",
       label: "Email adapter",
       state: "ok",
-      detail: `smtp · ${process.env.NP_SMTP_HOST ?? ""}`,
+      detail: `smtp · ${config.options.host}:${config.options.port.toString()} · ${config.options.secure ? "TLS" : "STARTTLS"}`,
+    };
+  } catch (error) {
+    return {
+      id: "email",
+      label: "Email adapter",
+      state: "error",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Fix NP_EMAIL_ADAPTER and NP_SMTP_* before sending transactional mail.",
     };
   }
-  return {
-    id: "email",
-    label: "Email adapter",
-    state: "ok",
-    detail: `custom (${raw})`,
-  };
 }
 
 /**
@@ -445,7 +447,12 @@ export function checkSecret(): Check {
         "wizard's `generate` button.",
     };
   }
-  return { id: "secret", label: "NP_SECRET", state: "ok", detail: `${secret.length.toString()} chars` };
+  return {
+    id: "secret",
+    label: "NP_SECRET",
+    state: "ok",
+    detail: `${secret.length.toString()} chars`,
+  };
 }
 
 export async function gatherSystemHealth(): Promise<HealthSummary> {

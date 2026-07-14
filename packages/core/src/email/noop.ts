@@ -1,4 +1,5 @@
 import type { NpEmailAdapter, NpEmailMessage } from "./types.js";
+import { npRequireEmailMessage } from "./contract.js";
 
 /**
  * Default adapter used when no mailer is wired. Logs the message shape so a
@@ -12,11 +13,12 @@ export class NoopEmailAdapter implements NpEmailAdapter {
   readonly kind = "noop";
 
   send(message: NpEmailMessage): Promise<void> {
+    const validated = npRequireEmailMessage(message);
     console.warn(
       `[nexpress] email (noop adapter) — not actually delivered.\n` +
-        `  to:      ${message.to}\n` +
-        `  subject: ${message.subject}\n` +
-        `  text:\n${message.text.replace(/^/gm, "    ")}`,
+        `  to:      ${validated.to}\n` +
+        `  subject: ${validated.subject}\n` +
+        `  text:\n${validated.text.replace(/^/gm, "    ")}`,
     );
     return Promise.resolve();
   }

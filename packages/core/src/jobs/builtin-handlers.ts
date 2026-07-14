@@ -1,7 +1,7 @@
 import { type NpCollectionConfig, type NpCollectionHook } from "../config/types.js";
 import type { NpAuthUser } from "../auth-contract/types.js";
 import type { NpPrincipal as NpHookPrincipal } from "../auth/principal.js";
-import { getEmailAdapter } from "../email/service.js";
+import { sendEmail } from "../email/service.js";
 import { buildInviteEmail, buildMemberVerifyEmail, buildResetEmail } from "../email/templates.js";
 import {
   type NpContentAfterDeleteJobData,
@@ -253,11 +253,12 @@ async function handleAuthSendPasswordReset(payload: NpPasswordResetJobData): Pro
     siteName: payload.siteName ?? "your site",
     name: payload.name,
     resetUrl: payload.resetUrl,
+    expiresAt: payload.expiresAt,
   };
   const template =
     payload.purpose === "invite" ? buildInviteEmail(templateData) : buildResetEmail(templateData);
 
-  await getEmailAdapter().send({
+  await sendEmail({
     to: payload.email,
     subject: template.subject,
     text: template.text,
@@ -342,8 +343,9 @@ async function handleMemberSendVerifyEmail(payload: NpMemberVerifyEmailJobData):
     siteName: payload.siteName ?? "your site",
     displayName: payload.displayName,
     verifyUrl: payload.verifyUrl,
+    expiresAt: payload.expiresAt,
   });
-  await getEmailAdapter().send({
+  await sendEmail({
     to: payload.email,
     subject: template.subject,
     text: template.text,
@@ -363,8 +365,9 @@ async function handleMemberSendPasswordReset(payload: NpMemberPasswordResetJobDa
     siteName: payload.siteName ?? "your site",
     name: payload.displayName,
     resetUrl: payload.resetUrl,
+    expiresAt: payload.expiresAt,
   });
-  await getEmailAdapter().send({
+  await sendEmail({
     to: payload.email,
     subject: template.subject,
     text: template.text,

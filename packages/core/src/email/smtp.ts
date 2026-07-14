@@ -1,19 +1,6 @@
 import { NpError } from "../errors.js";
-import type { NpEmailAdapter, NpEmailMessage } from "./types.js";
-
-export interface SmtpEmailAdapterOptions {
-  host: string;
-  port: number;
-  user?: string;
-  pass?: string;
-  /** Default `From` header when a message doesn't override. */
-  from: string;
-  /**
-   * Use implicit TLS (port 465) when `true`. When `false`, STARTTLS is
-   * negotiated (port 587 / 25). Defaults to `port === 465`.
-   */
-  secure?: boolean;
-}
+import { npRequireEmailMessage, npRequireSmtpEmailAdapterOptions } from "./contract.js";
+import type { NpEmailAdapter, NpEmailMessage, SmtpEmailAdapterOptions } from "./types.js";
 
 // Narrow structural type for the nodemailer transporter we use. Declared
 // locally so core doesn't import @types/nodemailer just for one method.
@@ -41,7 +28,7 @@ export class SmtpEmailAdapter implements NpEmailAdapter {
   private transporter: NodemailerTransporterLike | null = null;
 
   constructor(options: SmtpEmailAdapterOptions) {
-    this.options = options;
+    this.options = npRequireSmtpEmailAdapterOptions(options);
   }
 
   private async ensureTransporter(): Promise<NodemailerTransporterLike> {
@@ -79,22 +66,19 @@ export class SmtpEmailAdapter implements NpEmailAdapter {
   }
 
   async send(message: NpEmailMessage): Promise<void> {
+    const validated = npRequireEmailMessage(message);
     const transporter = await this.ensureTransporter();
     try {
       await transporter.sendMail({
-        from: message.from ?? this.options.from,
-        to: message.to,
-        subject: message.subject,
-        text: message.text,
-        html: message.html,
+        from: validated.from ?? this.options.from,
+        to: validated.to,
+        subject: validated.subject,
+        text: validated.text,
+        html: validated.html,
       });
     } catch (error) {
       const cause = error instanceof Error ? error.message : String(error);
-      throw new NpError(
-        `Failed to deliver email via SMTP: ${cause}`,
-        "EMAIL_DELIVERY_FAILED",
-        502,
-      );
+      throw new NpError(`Failed to deliver email via SMTP: ${cause}`, "EMAIL_DELIVERY_FAILED", 502);
     }
   }
 }

@@ -53,6 +53,11 @@
       "import": "./dist/db.js",
       "default": "./dist/db.js"
     },
+    "./email": {
+      "types": "./dist/email.d.ts",
+      "import": "./dist/email.js",
+      "default": "./dist/email.js"
+    },
     "./fields": {
       "types": "./dist/fields.d.ts",
       "import": "./dist/fields.js",

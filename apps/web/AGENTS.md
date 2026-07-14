@@ -55,6 +55,7 @@ import { ensureFor } from "@/lib/init-core";
 
 await ensureFor("read"); // DB + storage + collections
 await ensureFor("plugins"); // read + plugin loading
+await ensureFor("worker"); // plugins + email, dedicated worker only
 await ensureFor("write"); // plugins + email + job producer
 ```
 

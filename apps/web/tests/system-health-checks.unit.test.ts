@@ -1,10 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { resetEmailAdapter, setEmailAdapter } from "@nexpress/core/email";
 
-import {
-  checkEmailAdapter,
-  checkSecret,
-  checkSiteUrl,
-} from "@/lib/system-health";
+import { checkEmailAdapter, checkSecret, checkSiteUrl } from "@/lib/system-health";
 
 /**
  * Unit tests for the runtime safety checks added in #619 — each
@@ -85,11 +82,16 @@ describe("checkEmailAdapter", () => {
     snap = snapshotEnv([
       "NP_EMAIL_ADAPTER",
       "NP_SMTP_HOST",
+      "NP_SMTP_PORT",
+      "NP_SMTP_USER",
+      "NP_SMTP_PASS",
       "NP_SMTP_FROM",
+      "NP_SMTP_SECURE",
     ]);
   });
   afterEach(() => {
     restoreEnv(snap);
+    resetEmailAdapter();
   });
 
   it("warn when NP_EMAIL_ADAPTER is unset", () => {
@@ -112,7 +114,7 @@ describe("checkEmailAdapter", () => {
     delete process.env.NP_SMTP_FROM;
     const c = checkEmailAdapter();
     expect(c.state).toBe("error");
-    expect(c.detail).toMatch(/missing/);
+    expect(c.detail).toMatch(/NP_SMTP_HOST.*required/u);
   });
 
   it("ok when NP_EMAIL_ADAPTER='smtp' with required vars", () => {
@@ -124,11 +126,43 @@ describe("checkEmailAdapter", () => {
     expect(c.detail).toMatch(/smtp.example.com/);
   });
 
-  it("ok when NP_EMAIL_ADAPTER is a custom value (non-smtp, non-noop)", () => {
-    process.env.NP_EMAIL_ADAPTER = "resend";
+  it("ok when NP_EMAIL_ADAPTER explicitly selects programmatic custom registration", () => {
+    process.env.NP_EMAIL_ADAPTER = "custom";
+    setEmailAdapter({ kind: "resend", send: async () => undefined });
     const c = checkEmailAdapter();
     expect(c.state).toBe("ok");
-    expect(c.detail).toMatch(/custom \(resend\)/);
+    expect(c.detail).toBe("custom (resend)");
+  });
+
+  it("errors when custom mode has no programmatic adapter", () => {
+    process.env.NP_EMAIL_ADAPTER = "custom";
+    const c = checkEmailAdapter();
+    expect(c.state).toBe("error");
+    expect(c.detail).toMatch(/no adapter/u);
+  });
+
+  it("fails closed on unknown adapter aliases", () => {
+    process.env.NP_EMAIL_ADAPTER = "resend";
+    const c = checkEmailAdapter();
+    expect(c.state).toBe("error");
+    expect(c.detail).toMatch(/NP_EMAIL_ADAPTER/);
+  });
+
+  it("fails closed on malformed SMTP port, secure flag, and partial auth", () => {
+    process.env.NP_EMAIL_ADAPTER = "smtp";
+    process.env.NP_SMTP_HOST = "smtp.example.com";
+    process.env.NP_SMTP_FROM = "noreply@example.com";
+    process.env.NP_SMTP_PORT = "587.5";
+    expect(checkEmailAdapter()).toEqual(expect.objectContaining({ state: "error" }));
+
+    process.env.NP_SMTP_PORT = "587";
+    process.env.NP_SMTP_SECURE = "yes";
+    expect(checkEmailAdapter()).toEqual(expect.objectContaining({ state: "error" }));
+
+    process.env.NP_SMTP_SECURE = "false";
+    process.env.NP_SMTP_USER = "partial";
+    delete process.env.NP_SMTP_PASS;
+    expect(checkEmailAdapter()).toEqual(expect.objectContaining({ state: "error" }));
   });
 });
 
