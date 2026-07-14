@@ -721,6 +721,10 @@ function envExampleTemplate(config: TemplateConfig): string {
     "SITE_URL=http://localhost:3000",
     "",
     "# Storage (default: local filesystem under ./public/media).",
+    "# Exact modes are local, s3, or custom; custom needs createBootstrap wiring.",
+    "# NP_STORAGE_ADAPTER=local",
+    "# NP_STORAGE_DIR=./public/media",
+    "# NP_STORAGE_URL=/media",
     "# Uncomment and fill in to use S3 / R2 / MinIO instead:",
     "# NP_STORAGE_ADAPTER=s3",
     "# NP_S3_BUCKET=",
@@ -898,11 +902,11 @@ pnpm run setup -- --non-interactive  # read existing .env, then env overrides
 \`\`\`
 
 Non-interactive mode reads the existing \`.env\` first, then lets process
-environment variables override those values. It needs \`DATABASE_URL\`
-from one of those sources, and accepts optional \`NP_SECRET\`
-(auto-generated if absent), \`SITE_URL\`, \`NP_STORAGE_ADAPTER\`,
-\`NP_S3_*\`, and \`NP_SETUP_RUN_MIGRATIONS\` (set to \`false\` to write
-only \`.env\` without running migrations).
+environment override it. It needs \`DATABASE_URL\` and accepts optional
+\`NP_SECRET\` (generated if absent), \`SITE_URL\`, exact \`local\` / \`s3\`
+storage vars, and \`NP_SETUP_RUN_MIGRATIONS=false\` for an env-only write.
+The exact \`custom\` mode requires a programmatic adapter in
+\`src/lib/bootstrap.ts\`; the setup wizard cannot install code.
 
 ## Background Jobs
 

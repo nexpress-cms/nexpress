@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { setStorageAdapter } from "@nexpress/core/media";
-import type { NpStorageAdapter } from "@nexpress/core";
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import type { NpMediaRecord } from "@nexpress/core/media-contract";
+import { setStorageAdapter, type NpStorageAdapter } from "@nexpress/core/storage";
 
 import { toMediaApiItem } from "./media-response";
 
 const adapter: NpStorageAdapter = {
+  kind: "capture",
   upload: () => Promise.resolve(),
   getStream: () => Promise.reject(new Error("not used")),
   getUrl: (key) => Promise.resolve(`/assets/${key}`),

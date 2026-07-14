@@ -29,7 +29,7 @@ its log context so log search rules can target them.
 
 | `check` id                          | Meaning                                                                                                                                                                 | Fix                                                                                                                                                                                                                                                |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `multi_node_local_storage`          | `NP_STORAGE_ADAPTER=local` plus `NP_MULTI_NODE=true` / `=1`, `NP_REPLICAS>1`, or a production managed-container hint. Each node has its own `./uploads` dir.            | Switch to S3 (`NP_STORAGE_ADAPTER=s3` + bucket env). For migration of existing files, see [Switching storage adapters](#switching-storage-adapters) below. Use `NP_MULTI_NODE=false` / `NP_REPLICAS=1` only for deliberate single-node deploys.    |
+| `multi_node_local_storage`          | `NP_STORAGE_ADAPTER=local` plus `NP_MULTI_NODE=true` / `=1`, `NP_REPLICAS>1`, or a production managed-container hint. Each node has its own local media directory.      | Switch to S3 or a shared custom adapter. For local→S3 migration, see [Switching storage adapters](#switching-storage-adapters) below. Use `NP_MULTI_NODE=false` / `NP_REPLICAS=1` only for deliberate single-node deploys.                         |
 | `multi_node_in_memory_rate_limiter` | `NP_RATE_LIMIT_ADAPTER=memory` plus the same multi-node signals. Each process owns independent API buckets.                                                             | Set `NP_RATE_LIMIT_ADAPTER=custom` and inject a shared adapter with `npCreateProxy()`; see [rate-limiting.md](./rate-limiting.md). Use the single-node flags only for a deliberate one-process deploy.                                             |
 | `missing_prod_secret`               | `NODE_ENV=production` AND `NP_SECRET` unset. JWT sessions are forgeable.                                                                                                | Generate a secret (`openssl rand -base64 48`) and set `NP_SECRET`. Existing sessions will be invalidated; users re-login.                                                                                                                          |
 | `weak_prod_secret`                  | `NP_SECRET` is shorter than 32 characters in production.                                                                                                                | Same fix as above.                                                                                                                                                                                                                                 |
@@ -176,13 +176,13 @@ Going from `local` → `s3` (or vice versa) does **not** automatically
 move existing files. The DB stores the storage key, not the URL —
 `createStorageAdapter` resolves URLs at read time. Steps:
 
-1. Sync the `./uploads` tree to the bucket:
-   `aws s3 sync ./uploads s3://my-bucket/`.
+1. Sync the configured local tree (default `./public/media`) to the bucket:
+   `aws s3 sync ./public/media s3://my-bucket/`.
 2. Set `NP_STORAGE_ADAPTER=s3` + `NP_S3_BUCKET` + `NP_S3_REGION` and
    restart.
 3. Spot-check a handful of media items via the admin Media surface —
    the URLs should resolve through your CDN/bucket origin now.
-4. Once verified, the local `./uploads` directory can be archived.
+4. Once verified, the local `./public/media` directory can be archived.
    Keep it for one rollback window before deleting.
 
 The boot warning `multi_node_local_storage` will silence itself once
@@ -282,7 +282,7 @@ on its own; nothing on the NexPress side needs to change.
 
 ## Backup and restore
 
-NexPress's source of truth is Postgres; `./uploads` (or the configured
+NexPress's source of truth is Postgres; `./public/media` (or the configured
 S3 bucket) is the secondary store. They must be backed up together
 and restored in order, otherwise the system is left referencing data
 that isn't there. `np_revisions` is edit history, not a backup — a

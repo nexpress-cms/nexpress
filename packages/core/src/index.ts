@@ -465,10 +465,7 @@ export type {
   NpRecentJobFailuresResult,
 } from "./jobs/index.js";
 
-export type { NpStorageAdapter, NpFileMetadata } from "./storage/types.js";
-export { LocalStorageAdapter } from "./storage/local.js";
-export { S3StorageAdapter } from "./storage/s3.js";
-export { createStorageAdapter } from "./storage/index.js";
+export * from "./storage/index.js";
 
 export type {
   NpEmailAdapter,
@@ -510,8 +507,6 @@ export {
 } from "./email/index.js";
 
 export {
-  setStorageAdapter,
-  getStorageAdapter,
   uploadMedia,
   processMediaImage,
   getMediaById,

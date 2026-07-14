@@ -2,7 +2,7 @@
 
 Server-only CMS engine: config, DB, auth, collections pipeline, media, jobs, plugins, storage, theme.
 
-**Generated:** 2026-04-22 | **Commit:** 2e07135
+**Refreshed:** 2026-07-14
 
 ## STRUCTURE
 
@@ -13,8 +13,8 @@ src/
 ├── auth/         # JWT (jose), Argon2 password, CSRF, session helpers, access control
 ├── collections/  # Registry, content pipeline (1043 lines), Zod validation, search vectors
 ├── content/      # Thin helpers: getTheme, getNavigation, getPageBySlug, findPosts
-├── media/        # Upload/process lifecycle, storage adapter singletons, sharp processing
-├── storage/      # LocalStorageAdapter, S3StorageAdapter, createStorageAdapter factory
+├── media/        # Upload/process lifecycle, media DB singleton, sharp processing
+├── storage/      # Exact runtime/object contract, adapters, registry, operations, lifecycle
 ├── rate-limit/   # Exact request/decision contract, adapters, registry, lifecycle
 ├── jobs/         # pg-boss queue abstraction, handler registry, worker lifecycle, builtin handlers
 ├── jobs-contract/ # client-safe names, payloads, persisted rows, schedules, and Admin wire parsers
@@ -31,7 +31,7 @@ src/
 | -------------------------------------- | ------------------------- | --------------------------------------- |
 | `setDb(db)` / `getDb()`                | `collections/pipeline.ts` | `createBootstrap` in `@nexpress/next`   |
 | `setMediaDb(db)` / `getMediaDb()`      | `media/service.ts`        | Same bootstrap (often same DB instance) |
-| `setStorageAdapter(adapter)`           | `media/service.ts`        | Bootstrap reads `config.storage`        |
+| `setStorageAdapter(adapter)`           | `storage/registry.ts`     | Bootstrap validates `config.storage`    |
 | `setJobQueue(queue)` / `getJobQueue()` | `jobs/queue.ts`           | App calls after DB init                 |
 | `pluginRegistry` / `globalHooks`       | `plugins/host.ts`         | `loadPlugins()` at startup              |
 
@@ -41,20 +41,27 @@ Rate limiting is initialized independently by the Next proxy entrypoint. Keep
 its contract pure under `@nexpress/core/rate-limit`; custom multi-node adapters
 must be injected from `src/proxy.ts`, not assumed to share app bootstrap state.
 
+Storage uses the same separation under `@nexpress/core/storage`. Built-in
+intent goes through `createStorageAdapter()`; custom intent goes through
+`configureStorageRuntime(config, adapter?)`. Framework call sites use the
+`np*StorageObject` operations so safe keys, metadata, and results are checked
+even for custom adapters. Do not bypass them with direct adapter calls.
+
 ## WHERE TO LOOK
 
-| Task                        | File(s)                                       | Notes                                                              |
-| --------------------------- | --------------------------------------------- | ------------------------------------------------------------------ |
-| Change content write path   | `collections/pipeline.ts`                     | ACL → validate → hooks → persist → revisions → media refs → search |
-| Add/change system DB tables | `db/schema/system.ts`, `db/schema/media.ts`   | npUsers, npMedia, npRevisions, npSettings, npNavigation            |
-| Modify collection codegen   | `db/generator.ts` (496 lines)                 | Produces Drizzle table definitions from NpCollectionConfig         |
-| Modify TS type codegen      | `db/type-generator.ts`                        | Produces TypeScript interfaces from configs                        |
-| Change JWT/password logic   | `auth/token.ts`, `auth/password.ts`           | jose for JWT, @node-rs/argon2 for passwords                        |
-| Add session features        | `auth/session.ts`                             | `verifyTokenFull`, `invalidateAllSessions`, tokenVersion checks    |
-| Change media processing     | `media/processor.ts`                          | sharp-based, `DEFAULT_IMAGE_SIZES` for variants                    |
-| Add job handler             | `jobs/handlers.ts`, `jobs-contract/`          | `{ parsePayload, resolveSiteId }`; site ids live in exact payloads |
-| Add plugin capabilities     | `plugins/host.ts` + `plugin-sdk/src/types.ts` | Hook capability = `hooks:<namespace>` prefix matching              |
-| Add error type              | `errors.ts`                                   | Extend `NpError` with code + statusCode                            |
+| Task                        | File(s)                                        | Notes                                                              |
+| --------------------------- | ---------------------------------------------- | ------------------------------------------------------------------ |
+| Change content write path   | `collections/pipeline.ts`                      | ACL → validate → hooks → persist → revisions → media refs → search |
+| Add/change system DB tables | `db/schema/system.ts`, `db/schema/media.ts`    | npUsers, npMedia, npRevisions, npSettings, npNavigation            |
+| Modify collection codegen   | `db/generator.ts` (496 lines)                  | Produces Drizzle table definitions from NpCollectionConfig         |
+| Modify TS type codegen      | `db/type-generator.ts`                         | Produces TypeScript interfaces from configs                        |
+| Change JWT/password logic   | `auth/token.ts`, `auth/password.ts`            | jose for JWT, @node-rs/argon2 for passwords                        |
+| Add session features        | `auth/session.ts`                              | `verifyTokenFull`, `invalidateAllSessions`, tokenVersion checks    |
+| Change media processing     | `media/processor.ts`                           | sharp-based, `DEFAULT_IMAGE_SIZES` for variants                    |
+| Change storage contracts    | `storage/contract.ts`, `storage/operations.ts` | Keep bootstrap, media, doctor, health, and ops on one boundary     |
+| Add job handler             | `jobs/handlers.ts`, `jobs-contract/`           | `{ parsePayload, resolveSiteId }`; site ids live in exact payloads |
+| Add plugin capabilities     | `plugins/host.ts` + `plugin-sdk/src/types.ts`  | Hook capability = `hooks:<namespace>` prefix matching              |
+| Add error type              | `errors.ts`                                    | Extend `NpError` with code + statusCode                            |
 
 ## INTERNAL DEPENDENCY FLOW
 

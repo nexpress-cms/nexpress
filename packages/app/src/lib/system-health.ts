@@ -1,14 +1,19 @@
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
+import { resolve } from "node:path";
 
 import {
   getAllPluginIds,
   getJobsPauseState,
   getOptionalJobQueue,
-  getStorageAdapter,
   listWorkerHealth,
 } from "@nexpress/core";
 import { getEmailAdapter, npReadEmailRuntimeConfig } from "@nexpress/core/email";
+import {
+  getOptionalStorageRuntimeConfig,
+  getStorageAdapter,
+  npReadStorageRuntimeConfig,
+  npStorageAdapterMatchesRuntimeConfig,
+} from "@nexpress/core/storage";
 
 import { getDb } from "./db";
 
@@ -134,35 +139,25 @@ async function checkMigrations(): Promise<Check> {
   }
 }
 
-async function checkStorage(): Promise<Check> {
+export async function checkStorageAdapter(): Promise<Check> {
   try {
     const adapter = getStorageAdapter();
-    if (!adapter) {
+    const config = getOptionalStorageRuntimeConfig() ?? npReadStorageRuntimeConfig(process.env);
+    if (!npStorageAdapterMatchesRuntimeConfig(config, adapter)) {
       return {
         id: "storage",
         label: "Storage adapter",
-        state: "warn",
-        detail: "no adapter wired (uploads will fail)",
-        hint: "Call `setStorageAdapter()` from your bootstrap.",
+        state: "error",
+        detail: `${config.adapter} requested, ${adapter.kind} registered`,
+        hint: "Align the configured storage intent with the adapter installed by createBootstrap().",
       };
     }
-    // The adapter interface doesn't expose its kind, so we infer
-    // from env: that's the same source `init-core` uses to pick
-    // local vs s3, so the answers stay aligned.
-    const kind = (process.env.NP_STORAGE_ADAPTER ?? "local").toLowerCase();
-    if (kind === "local") {
-      const dir = process.env.NP_STORAGE_DIR ?? "./public/media";
-      if (dir !== "./public/media" && dir !== "public/media") {
-        return {
-          id: "storage",
-          label: "Storage adapter",
-          state: "ok",
-          detail: `local · ${dir} (custom path)`,
-        };
-      }
-      const path = join(process.cwd(), "public", "media");
+    if (config.adapter === "local") {
+      const dir = config.local.directory;
+      const suffix = dir !== "./public/media" && dir !== "public/media" ? " (custom path)" : "";
+      const path = resolve(/* turbopackIgnore: true */ process.cwd(), dir);
       try {
-        const s = await stat(path);
+        const s = await stat(/* turbopackIgnore: true */ path);
         if (!s.isDirectory()) {
           return {
             id: "storage",
@@ -172,8 +167,22 @@ async function checkStorage(): Promise<Check> {
             hint: "Move the file aside or pick a different NP_STORAGE_DIR.",
           };
         }
-        return { id: "storage", label: "Storage adapter", state: "ok", detail: `local · ${dir}` };
-      } catch {
+        return {
+          id: "storage",
+          label: "Storage adapter",
+          state: "ok",
+          detail: `local · ${dir}${suffix}`,
+        };
+      } catch (error) {
+        if (!isMissingPathError(error)) {
+          return {
+            id: "storage",
+            label: "Storage adapter",
+            state: "error",
+            detail: error instanceof Error ? error.message : String(error),
+            hint: "Ensure the process can inspect NP_STORAGE_DIR.",
+          };
+        }
         return {
           id: "storage",
           label: "Storage adapter",
@@ -182,42 +191,33 @@ async function checkStorage(): Promise<Check> {
         };
       }
     }
-    if (kind === "s3") {
-      // We don't HEAD the bucket here — that would hit AWS on every
-      // /admin/health load. Just assert the env vars are set.
-      const missing: string[] = [];
-      if (!process.env.NP_S3_BUCKET) missing.push("NP_S3_BUCKET");
-      if (!process.env.NP_S3_REGION) missing.push("NP_S3_REGION");
-      if (missing.length > 0) {
-        return {
-          id: "storage",
-          label: "Storage adapter",
-          state: "error",
-          detail: `s3 · missing ${missing.join(", ")}`,
-          hint: "Re-run `pnpm run setup` and pick S3 to fill these in.",
-        };
-      }
+    if (config.adapter === "s3") {
       return {
         id: "storage",
         label: "Storage adapter",
         state: "ok",
-        detail: `s3 · ${process.env.NP_S3_BUCKET ?? ""} (${process.env.NP_S3_REGION ?? ""})`,
+        detail: `s3 · ${config.s3.bucket} (${config.s3.region})`,
       };
     }
     return {
       id: "storage",
       label: "Storage adapter",
-      state: "warn",
-      detail: `unknown adapter kind \`${kind}\``,
+      state: "ok",
+      detail: `custom (${adapter.kind})`,
     };
   } catch (err) {
     return {
       id: "storage",
       label: "Storage adapter",
-      state: "warn",
+      state: "error",
       detail: err instanceof Error ? err.message : String(err),
+      hint: "Fix the storage runtime contract before accepting media traffic.",
     };
   }
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 async function checkQueue(): Promise<Check> {
@@ -459,7 +459,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
   const checks: Check[] = [];
   checks.push(await checkDatabase());
   checks.push(await checkMigrations());
-  checks.push(await checkStorage());
+  checks.push(await checkStorageAdapter());
   checks.push(await checkQueue());
   checks.push(checkPlugins());
   checks.push(checkSiteUrl());

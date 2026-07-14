@@ -999,6 +999,9 @@ export interface NpConfig {
     | {
         adapter: "s3";
         s3: { bucket: string; region: string; endpoint?: string };
+      }
+    | {
+        adapter: "custom";
       };
   collections: NpCollectionConfig[];
   /**

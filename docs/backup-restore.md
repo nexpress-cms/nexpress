@@ -125,14 +125,14 @@ to Glacier to cap cost.
 ### Local storage
 
 `LocalStorageAdapter` writes to the directory configured by
-`NP_STORAGE_DIR` (default `./uploads`). Back it up alongside the
+`NP_STORAGE_DIR` (default `./public/media`). Back it up alongside the
 Postgres dump on the same schedule.
 
 ```bash
 # Snapshot — preserves mtimes for incremental sync next time
 rsync -a --delete \
-  ./uploads/ \
-  /backups/uploads-$(date +%Y%m%d)/
+  ./public/media/ \
+  /backups/media-$(date +%Y%m%d)/
 ```
 
 `LocalStorageAdapter` is documented as not multi-node safe (see
@@ -187,7 +187,7 @@ backup window.
 # (use a tool like `s3-pit-restore` or aws s3 sync from a backup bucket)
 
 # Local — atomic rsync
-rsync -a --delete /backups/uploads-20260502/ ./uploads/
+rsync -a --delete /backups/media-20260502/ ./public/media/
 ```
 
 ### 3. Workers and app

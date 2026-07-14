@@ -49,8 +49,10 @@ on purpose (see "Unwrap a wrapper" below).
 - `site.name`, `site.url`
 - `auth.secret` (NP_SECRET)
 - `db.connectionString` (DATABASE_URL)
-- Storage adapter — `NP_STORAGE_ADAPTER=local` (default) or `s3` with
-  `NP_S3_BUCKET` / `NP_S3_REGION` / `NP_S3_ENDPOINT`
+- Storage adapter — exact `local` (default), `s3` with
+  `NP_S3_BUCKET` / `NP_S3_REGION` / optional `NP_S3_ENDPOINT`, or `custom`
+  with a programmatic `createBootstrap({ storageAdapter })` implementation.
+  See [storage.md](./storage.md).
 
 The `pnpm run setup` wizard writes the `.env`; manual edits work too.
 
@@ -71,6 +73,10 @@ Storage base URLs are path prefixes: absolute local paths such as `/media` or
 `/`, and HTTP(S) bases such as `https://cdn.example.com/media`, are accepted.
 Credentials, query strings, and fragments are rejected because appending an
 object key would discard or reinterpret those components.
+
+The default local directory and URL are `./public/media` and `/media`.
+Storage keys, upload metadata, adapter results, and the live adapter `kind`
+cross the same fail-closed contract used by doctor and Admin health.
 
 ### Plugins
 

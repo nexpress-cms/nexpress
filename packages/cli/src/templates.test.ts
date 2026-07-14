@@ -344,6 +344,18 @@ describe("getProjectFiles", () => {
     expect(env).toContain("exact modes are noop, smtp, or custom");
   });
 
+  it(".env.example documents the exact storage runtime contract", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const env = files[".env.example"];
+    const readme = files["README.md"];
+
+    expect(env).toContain("Exact modes are local, s3, or custom");
+    expect(env).toContain("# NP_STORAGE_DIR=./public/media");
+    expect(env).toContain("# NP_STORAGE_URL=/media");
+    expect(readme).toContain("The exact `custom` mode requires");
+    expect(readme).toContain("src/lib/bootstrap.ts");
+  });
+
   it(".env writes the project-specific DB port to both NEXPRESS_DB_PORT and DATABASE_URL", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     for (const path of [".env", ".env.example"]) {

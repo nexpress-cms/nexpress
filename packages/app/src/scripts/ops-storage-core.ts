@@ -1,8 +1,17 @@
 import { access, readFile, readdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
-import { createStorageAdapter } from "@nexpress/core";
 import { npValidateMediaVariants, type NpMediaVariants } from "@nexpress/core/media-contract";
+import {
+  createStorageAdapter,
+  npCloseStorageAdapter,
+  npDeleteStorageObject,
+  npReadStorageRuntimeConfig,
+  npRequireStorageRuntimeConfig,
+  npRequireStorageKey,
+  npStorageObjectExists,
+  npUploadStorageObject,
+} from "@nexpress/core/storage";
 import pg from "pg";
 
 import { toProjectCommand } from "./ops-command-format.js";
@@ -57,7 +66,7 @@ export interface OpsStorageDriftListJson {
   schemaVersion: "np.ops-storage-list.v1";
   ok: boolean;
   status: "ready" | "attention" | "blocked";
-  adapter: "local" | "s3" | "unknown";
+  adapter: "local" | "s3" | "custom" | "unknown";
   operation: "missing-files" | "orphaned-files";
   summary: OpsStorageSummary & {
     total: number;
@@ -126,7 +135,7 @@ export interface OpsStorageJson {
   schemaVersion: "np.ops-storage.v1";
   ok: boolean;
   status: "ready" | "attention" | "blocked";
-  adapter: "local" | "s3" | "unknown";
+  adapter: "local" | "s3" | "custom" | "unknown";
   operation: "status" | "verify" | "test";
   mutation?: {
     action: "test";
@@ -185,9 +194,11 @@ function loadPg(): PgModuleLike {
 }
 
 function parseAdapter(env: OpsStorageEnv): OpsStorageJson["adapter"] {
-  const adapter = (env.NP_STORAGE_ADAPTER ?? "local").toLowerCase();
-  if (adapter === "local" || adapter === "s3") return adapter;
-  return "unknown";
+  try {
+    return npReadStorageRuntimeConfig(env).adapter;
+  } catch {
+    return "unknown";
+  }
 }
 
 function countChecks(checks: CheckResult[]): { errors: number; warnings: number } {
@@ -303,9 +314,15 @@ async function existsAt(path: string): Promise<boolean> {
 }
 
 function resolveStorageKey(root: string, key: string): string | null {
-  const full = resolve(/* turbopackIgnore: true */ root, key);
+  let validated: string;
+  try {
+    validated = npRequireStorageKey(key);
+  } catch {
+    return null;
+  }
+  const full = resolve(/* turbopackIgnore: true */ root, validated);
   const rel = relative(root, full);
-  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return null;
+  if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
   return full;
 }
 
@@ -349,7 +366,12 @@ async function collectLocalStorageInventory(
       id: "storage.local_source",
       state: "error",
       label: "Local storage source",
-      detail: adapter === "s3" ? "active adapter is s3" : "unknown adapter",
+      detail:
+        adapter === "s3"
+          ? "active adapter is s3"
+          : adapter === "custom"
+            ? "active adapter is custom"
+            : "invalid adapter configuration",
       hint: "Set NP_STORAGE_ADAPTER=local when inspecting local media drift.",
     });
     return {
@@ -386,12 +408,16 @@ async function collectLocalStorageInventory(
         detail: `${root} is not a directory`,
       });
     }
-  } catch {
+  } catch (error) {
     checks.push({
       id: "storage.local_directory",
-      state: "warn",
+      state: isMissingPathError(error) ? "warn" : "error",
       label: "Local storage directory",
-      detail: `${root} does not exist yet`,
+      detail: isMissingPathError(error)
+        ? `${root} does not exist yet`
+        : error instanceof Error
+          ? error.message
+          : String(error),
     });
   }
 
@@ -472,8 +498,8 @@ async function collectLocalStorageInventory(
       id: "storage.local_keys",
       state: "warn",
       label: "Local media keys",
-      detail: `${invalidStorageKeys.toString()} indexed keys resolve outside the storage directory`,
-      hint: "Review np_media.storage_key values before trusting local media drift counts.",
+      detail: `${invalidStorageKeys.toString()} indexed keys violate the canonical storage-key contract`,
+      hint: "Repair np_media.storage_key values before trusting local media drift counts.",
     });
   }
   const drift = summary.missingFiles + summary.orphanedFiles;
@@ -550,12 +576,29 @@ export async function collectOpsStorageStatus(
   const summary = emptySummary();
 
   if (adapter === "unknown") {
+    let detail = env.NP_STORAGE_ADAPTER ?? "unknown";
+    try {
+      npReadStorageRuntimeConfig(env);
+    } catch (error) {
+      detail = error instanceof Error ? error.message : String(error);
+    }
+    checks.push({
+      id: "storage.contract",
+      state: "error",
+      label: "Storage runtime contract",
+      detail,
+      hint: "Use exact local, s3, or custom storage intent and satisfy its settings.",
+    });
+    return buildOpsStorageJson({ adapter, summary, checks, operation });
+  }
+
+  if (adapter === "custom") {
     checks.push({
       id: "storage.adapter",
       state: "error",
       label: "Storage adapter",
-      detail: env.NP_STORAGE_ADAPTER ?? "unknown",
-      hint: "Use NP_STORAGE_ADAPTER=local or NP_STORAGE_ADAPTER=s3.",
+      detail: "custom adapters are installed by the app runtime, not the standalone ops process",
+      hint: "Run provider-native checks or expose the adapter to a project-owned ops command.",
     });
     return buildOpsStorageJson({ adapter, summary, checks, operation });
   }
@@ -563,18 +606,7 @@ export async function collectOpsStorageStatus(
   checks.push({ id: "storage.adapter", state: "ok", label: "Storage adapter", detail: adapter });
 
   if (adapter === "s3") {
-    const missing = ["NP_S3_BUCKET", "NP_S3_REGION"].filter((name) => !env[name]);
-    checks.push(
-      missing.length === 0
-        ? { id: "storage.s3_config", state: "ok", label: "S3 storage config" }
-        : {
-            id: "storage.s3_config",
-            state: "error",
-            label: "S3 storage config",
-            detail: `missing ${missing.join(", ")}`,
-            hint: "Set NP_S3_BUCKET and NP_S3_REGION before deploying with S3 storage.",
-          },
-    );
+    checks.push({ id: "storage.s3_config", state: "ok", label: "S3 storage config" });
   }
 
   const root = resolve(
@@ -601,12 +633,16 @@ export async function collectOpsStorageStatus(
           detail: `${root} is not a directory`,
         });
       }
-    } catch {
+    } catch (error) {
       checks.push({
         id: "storage.local_directory",
-        state: "warn",
+        state: isMissingPathError(error) ? "warn" : "error",
         label: "Local storage directory",
-        detail: `${root} does not exist yet`,
+        detail: isMissingPathError(error)
+          ? `${root} does not exist yet`
+          : error instanceof Error
+            ? error.message
+            : String(error),
       });
     }
   }
@@ -686,6 +722,10 @@ export async function collectOpsStorageStatus(
   return buildOpsStorageJson({ adapter, summary, checks, operation });
 }
 
+function isMissingPathError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
+
 export async function collectOpsStorageDriftList(args: {
   operation: "missing-files" | "orphaned-files";
   limit?: number;
@@ -742,18 +782,18 @@ export async function buildOpsStorageMigrationPlan(args: {
       hint: "Only --target s3 is supported by the read-only migration plan.",
     });
   } else {
-    const missing = ["NP_S3_BUCKET", "NP_S3_REGION"].filter((name) => !env[name]);
-    checks.push(
-      missing.length === 0
-        ? { id: "storage.s3_config", state: "ok", label: "S3 storage config" }
-        : {
-            id: "storage.s3_config",
-            state: "error",
-            label: "S3 storage config",
-            detail: `missing ${missing.join(", ")}`,
-            hint: "Set NP_S3_BUCKET and NP_S3_REGION before planning local-to-S3 migration.",
-          },
-    );
+    try {
+      npRequireStorageRuntimeConfig(buildStorageConfig(env, "s3"));
+      checks.push({ id: "storage.s3_config", state: "ok", label: "S3 storage config" });
+    } catch (error) {
+      checks.push({
+        id: "storage.s3_config",
+        state: "error",
+        label: "S3 storage config",
+        detail: error instanceof Error ? error.message : String(error),
+        hint: "Fix the exact S3 bucket, region, and optional endpoint before planning migration.",
+      });
+    }
   }
   if (inventory.summary.missingFiles > 0) {
     checks.push({
@@ -974,7 +1014,7 @@ export async function runOpsStorageMigrationApply(args: {
         key,
         status: "failed",
         bytes: null,
-        error: "Key resolves outside storage root",
+        error: "Key violates the canonical storage-key or local-root contract",
       });
       continue;
     }
@@ -984,12 +1024,12 @@ export async function runOpsStorageMigrationApply(args: {
         stat(/* turbopackIgnore: true */ full),
       ]);
       const metadata = inventory.metadata.get(key);
-      await targetStorage.upload(key, buffer, {
+      await npUploadStorageObject(targetStorage, key, buffer, {
         contentType: metadata?.contentType ?? "application/octet-stream",
-        contentLength: metadata?.contentLength ?? fileStat.size,
+        contentLength: fileStat.size,
         originalFilename: metadata?.originalFilename ?? key.split("/").pop() ?? key,
       });
-      const exists = await targetStorage.exists(key);
+      const exists = await npStorageObjectExists(targetStorage, key);
       items.push({
         key,
         status: exists ? "copied" : "failed",
@@ -1004,6 +1044,18 @@ export async function runOpsStorageMigrationApply(args: {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+  let shutdownError: string | null = null;
+  try {
+    await npCloseStorageAdapter(targetStorage);
+  } catch (error) {
+    shutdownError = error instanceof Error ? error.message : String(error);
+    checks.push({
+      id: "storage.migration_apply.shutdown",
+      state: "error",
+      label: "Storage adapter shutdown",
+      detail: shutdownError,
+    });
   }
 
   const failures = items.filter((item) => item.status === "failed");
@@ -1033,7 +1085,12 @@ export async function runOpsStorageMigrationApply(args: {
     artifactPath,
     execute: true,
     approve: args.approve,
-    error: failures.length > 0 ? "One or more objects failed to copy" : null,
+    error:
+      failures.length > 0
+        ? "One or more objects failed to copy"
+        : shutdownError
+          ? `Storage adapter shutdown failed: ${shutdownError}`
+          : null,
     nextCommand:
       failures.length > 0
         ? "nexpress ops storage migrate apply --target s3 --execute --approve storage-migrate --json"
@@ -1124,7 +1181,7 @@ function buildStorageConfig(env: OpsStorageEnv, adapter: "local" | "s3") {
     adapter,
     s3: {
       bucket: env.NP_S3_BUCKET ?? "",
-      region: env.NP_S3_REGION ?? "us-east-1",
+      region: env.NP_S3_REGION ?? "",
       endpoint: env.NP_S3_ENDPOINT,
     },
   } as const;
@@ -1139,7 +1196,7 @@ export async function runOpsStorageTest(args: {
   const base = await collectOpsStorageStatus(env, "test");
   const adapter = base.adapter;
   const mode = args.execute ? "execute" : "dry-run";
-  if (adapter === "unknown") {
+  if (adapter === "unknown" || adapter === "custom") {
     return {
       ...base,
       operation: "test",
@@ -1147,7 +1204,10 @@ export async function runOpsStorageTest(args: {
         action: "test",
         applied: false,
         mode,
-        error: "Storage adapter is unknown",
+        error:
+          adapter === "custom"
+            ? "Custom storage adapters must be tested through the running application"
+            : "Storage adapter is unknown",
       },
     };
   }
@@ -1191,17 +1251,18 @@ export async function runOpsStorageTest(args: {
 
   const key = `.nexpress-ops/probe-${Date.now().toString(36)}.txt`;
   const storage = createStorageAdapter(buildStorageConfig(env, adapter));
+  let report: OpsStorageJson;
   try {
-    await storage.upload(key, Buffer.from("nexpress storage probe\n", "utf8"), {
+    await npUploadStorageObject(storage, key, Buffer.from("nexpress storage probe\n", "utf8"), {
       contentType: "text/plain; charset=utf-8",
       contentLength: Buffer.byteLength("nexpress storage probe\n"),
       originalFilename: "probe.txt",
     });
-    const exists = await storage.exists(key);
-    await storage.delete(key);
-    const report = await collectOpsStorageStatus(env, "verify");
-    return {
-      ...report,
+    const exists = await npStorageObjectExists(storage, key);
+    await npDeleteStorageObject(storage, key);
+    const verified = await collectOpsStorageStatus(env, "verify");
+    report = {
+      ...verified,
       operation: "test",
       mutation: {
         action: "test",
@@ -1212,7 +1273,7 @@ export async function runOpsStorageTest(args: {
       },
     };
   } catch (error) {
-    return {
+    report = {
       ...base,
       ok: false,
       status: "blocked",
@@ -1228,6 +1289,37 @@ export async function runOpsStorageTest(args: {
       },
     };
   }
+
+  try {
+    await npCloseStorageAdapter(storage);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const existingError = report.mutation?.error;
+    report = {
+      ...report,
+      ok: false,
+      status: "blocked",
+      nextCommand: "Check storage credentials and rerun nexpress ops storage test --json",
+      projectNextCommand: "Check storage credentials and rerun nexpress ops storage test --json",
+      mutation: report.mutation
+        ? {
+            ...report.mutation,
+            applied: false,
+            error: `${existingError ? `${existingError}; ` : ""}adapter shutdown failed: ${detail}`,
+          }
+        : null,
+      checks: [
+        ...report.checks,
+        {
+          id: "storage.test.shutdown",
+          state: "error",
+          label: "Storage adapter shutdown",
+          detail,
+        },
+      ],
+    };
+  }
+  return report;
 }
 
 function formatBriefState(state: CheckResult["state"], color: boolean): string {

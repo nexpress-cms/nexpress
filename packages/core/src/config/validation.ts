@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { npAnalyzeStorageRuntimeConfig } from "../storage/contract.js";
+import type { NpConfig } from "./types.js";
+
 const functionSchema = z.custom<(...args: unknown[]) => unknown>(
   (value) => typeof value === "function",
 );
@@ -144,36 +147,25 @@ const fieldSchema: z.ZodType = z.lazy(() =>
   ]),
 );
 
-// Discriminated union ties `adapter` to its required backend block —
-// previously both `local` and `s3` were optional regardless of the
-// adapter choice, so a config with `{ adapter: "s3" }` and no `s3`
-// block passed validation and only blew up at runtime when the storage
-// factory tried to read the missing block. (#64)
-const storageSchema = z.discriminatedUnion("adapter", [
-  z.strictObject({
-    adapter: z.literal("local"),
-    local: z.strictObject({
-      directory: z.string().min(1),
-      baseUrl: z.string().min(1),
-    }),
-  }),
-  z.strictObject({
-    adapter: z.literal("s3"),
-    s3: z.strictObject({
-      bucket: z.string().min(1),
-      region: z.string().min(1),
-      endpoint: z.string().url().optional(),
-    }),
-  }),
-]);
-
 // Plugins are a mix of legacy NpPluginConfig (object with optional init fn)
 // and SDK-built NpResolvedPluginLike (object with manifest). Preserve each
 // definition here; the project contract validates identity/dependencies and
 // the plugin host validates contribution registries before registration.
 const pluginEntrySchema = z.unknown();
 
-export const npConfigSchema = z.strictObject({
+const storageRuntimeSchema = z
+  .custom<NonNullable<NpConfig["storage"]>>()
+  .superRefine((value, context) => {
+    for (const entry of npAnalyzeStorageRuntimeConfig(value, "storage")) {
+      context.addIssue({
+        code: "custom",
+        path: entry.path.split(".").slice(1),
+        message: entry.message,
+      });
+    }
+  });
+
+export const npConfigShapeSchema = z.strictObject({
   site: z.strictObject({
     name: z.string().min(1),
     url: z.string().url(),
@@ -181,7 +173,9 @@ export const npConfigSchema = z.strictObject({
   db: z.strictObject({
     connectionString: z.string().min(1),
   }),
-  storage: storageSchema.optional(),
+  // Structural parsing keeps storage opaque so project diagnostics can
+  // aggregate its canonical issues with semantic errors from other fields.
+  storage: z.unknown().optional(),
   collections: z.array(z.lazy((): z.ZodType => collectionConfigSchema)),
   auth: z
     .strictObject({
@@ -210,6 +204,11 @@ export const npConfigSchema = z.strictObject({
         .optional(),
     })
     .optional(),
+});
+
+export const npConfigSchema = npConfigShapeSchema.extend({
+  // Public direct consumers still get the exact discriminated runtime shape.
+  storage: storageRuntimeSchema.optional(),
 });
 
 const adminGroupMetaSchema = z.strictObject({

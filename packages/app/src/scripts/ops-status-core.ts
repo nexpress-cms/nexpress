@@ -2,6 +2,7 @@ import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { npAnalyzeJobsEnabledFlag } from "@nexpress/core/jobs-contract";
+import { npReadStorageRuntimeConfig, type NpStorageRuntimeConfig } from "@nexpress/core/storage";
 
 import { toProjectCommand } from "./ops-command-format.js";
 import { messageForConnectionError } from "./setup-server-errors.js";
@@ -180,6 +181,10 @@ async function checkEnvFile(): Promise<CheckResult> {
       hint: "Run `pnpm run setup` or copy .env.example to .env.",
     };
   }
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 function checkRequiredEnv(
@@ -364,22 +369,36 @@ async function loadJobsCore(): Promise<typeof OpsJobsCore> {
 }
 
 async function checkStorage(env: OpsEnv): Promise<CheckResult> {
-  const adapter = (env.NP_STORAGE_ADAPTER ?? "local").toLowerCase();
-  if (adapter === "s3") {
-    const missing = ["NP_S3_BUCKET", "NP_S3_REGION"].filter((name) => !env[name]);
-    if (missing.length > 0) {
-      return {
-        id: "storage.adapter",
-        state: "error",
-        label: "Storage adapter",
-        detail: `s3 missing ${missing.join(", ")}`,
-        hint: "Set NP_S3_BUCKET and NP_S3_REGION, plus NP_S3_ENDPOINT for R2/MinIO.",
-      };
-    }
-    return { id: "storage.adapter", state: "ok", label: "Storage adapter", detail: "s3" };
+  let config: NpStorageRuntimeConfig;
+  try {
+    config = npReadStorageRuntimeConfig(env);
+  } catch (error) {
+    return {
+      id: "storage.adapter",
+      state: "error",
+      label: "Storage adapter",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Fix NP_STORAGE_ADAPTER and its exact backend settings.",
+    };
+  }
+  if (config.adapter === "s3") {
+    return {
+      id: "storage.adapter",
+      state: "ok",
+      label: "Storage adapter",
+      detail: `s3 ${config.s3.bucket} (${config.s3.region})`,
+    };
+  }
+  if (config.adapter === "custom") {
+    return {
+      id: "storage.adapter",
+      state: "ok",
+      label: "Storage adapter",
+      detail: "custom (runtime registration expected)",
+    };
   }
 
-  const dir = env.NP_STORAGE_DIR ?? "./public/media";
+  const dir = config.local.directory;
   try {
     const stats = await stat(
       /* turbopackIgnore: true */ resolve(/* turbopackIgnore: true */ process.cwd(), dir),
@@ -394,7 +413,16 @@ async function checkStorage(env: OpsEnv): Promise<CheckResult> {
       };
     }
     return { id: "storage.adapter", state: "ok", label: "Storage adapter", detail: `local ${dir}` };
-  } catch {
+  } catch (error) {
+    if (!isMissingPathError(error)) {
+      return {
+        id: "storage.adapter",
+        state: "error",
+        label: "Storage adapter",
+        detail: error instanceof Error ? error.message : String(error),
+        hint: "Ensure the process can inspect NP_STORAGE_DIR.",
+      };
+    }
     return {
       id: "storage.adapter",
       state: "warn",

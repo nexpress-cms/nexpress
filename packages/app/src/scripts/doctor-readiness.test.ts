@@ -30,6 +30,12 @@ const migrated: MigrationStatus = {
   unknownApplied: [],
 };
 
+const s3Env = {
+  NP_STORAGE_ADAPTER: "s3",
+  NP_S3_BUCKET: "site-media",
+  NP_S3_REGION: "us-east-1",
+} as const;
+
 describe("doctor production target readiness", () => {
   it("keeps target checks out of the default dev doctor path", () => {
     expect(checkTargetStorageProd(false, "vercel", { NP_STORAGE_ADAPTER: "local" })).toEqual([]);
@@ -50,7 +56,7 @@ describe("doctor production target readiness", () => {
     expect(checkJobsEnabledProd(true, { NP_ENABLE_JOBS: "1" })).toEqual(
       expect.objectContaining({ id: "prod.jobs_enabled" }),
     );
-    expect(checkStorageProd(true, "docker", { NP_STORAGE_ADAPTER: "s3" })).toEqual(
+    expect(checkStorageProd(true, "docker", s3Env)).toEqual(
       expect.objectContaining({ id: "prod.storage_adapter" }),
     );
     expect(checkSiteUrlProd(true, { SITE_URL: "https://example.com" })).toEqual(
@@ -144,7 +150,7 @@ describe("doctor production target readiness", () => {
       }),
     ]);
 
-    expect(checkTargetStorageProd(true, "vercel", { NP_STORAGE_ADAPTER: "s3" })).toEqual([
+    expect(checkTargetStorageProd(true, "vercel", s3Env)).toEqual([
       expect.objectContaining({
         id: "target.vercel.storage",
         state: "ok",
@@ -307,7 +313,7 @@ describe("doctor production target readiness", () => {
         }),
       ]);
 
-      expect(checkTargetStorageProd(true, target, { NP_STORAGE_ADAPTER: "s3" })).toEqual([
+      expect(checkTargetStorageProd(true, target, s3Env)).toEqual([
         expect.objectContaining({
           id: `target.${target}.storage`,
           state: "ok",
@@ -315,6 +321,28 @@ describe("doctor production target readiness", () => {
         }),
       ]);
     }
+  });
+
+  it("fails closed on malformed and incomplete storage intent", () => {
+    expect(checkStorageProd(true, "docker", { NP_STORAGE_ADAPTER: "S3" })).toEqual(
+      expect.objectContaining({
+        id: "prod.storage_adapter",
+        state: "error",
+        detail: expect.stringContaining("NP_STORAGE_ADAPTER"),
+      }),
+    );
+    expect(
+      checkTargetStorageProd(true, "vercel", {
+        NP_STORAGE_ADAPTER: "s3",
+        NP_S3_BUCKET: "site-media",
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        id: "target.vercel.storage",
+        state: "error",
+        detail: expect.stringContaining("storage.runtime.s3.region"),
+      }),
+    ]);
   });
 
   it("keeps Docker generic multi-node storage checks active", () => {

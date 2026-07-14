@@ -7,9 +7,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildOpsStorageMigrationPlan,
   buildOpsStorageJson,
+  collectOpsStorageStatus,
   collectOpsStorageDriftList,
   renderBriefOpsStorageStatus,
   runOpsStorageMigrationApply,
+  runOpsStorageTest,
 } from "./ops-storage-core.js";
 
 describe("ops storage core", () => {
@@ -149,7 +151,11 @@ describe("ops storage core", () => {
   it("blocks local drift lists when the active adapter is not local", async () => {
     const report = await collectOpsStorageDriftList({
       operation: "missing-files",
-      env: { NP_STORAGE_ADAPTER: "s3" },
+      env: {
+        NP_STORAGE_ADAPTER: "s3",
+        NP_S3_BUCKET: "site-media",
+        NP_S3_REGION: "us-east-1",
+      },
     });
 
     expect(report).toEqual(
@@ -160,6 +166,32 @@ describe("ops storage core", () => {
         adapter: "s3",
         operation: "missing-files",
         items: [],
+      }),
+    );
+  });
+
+  it("reports malformed and programmatic storage intent without constructing an adapter", async () => {
+    await expect(collectOpsStorageStatus({ NP_STORAGE_ADAPTER: "S3" })).resolves.toEqual(
+      expect.objectContaining({
+        adapter: "unknown",
+        ok: false,
+        checks: expect.arrayContaining([
+          expect.objectContaining({
+            id: "storage.contract",
+            state: "error",
+            detail: expect.stringContaining("NP_STORAGE_ADAPTER"),
+          }),
+        ]),
+      }),
+    );
+
+    await expect(runOpsStorageTest({ env: { NP_STORAGE_ADAPTER: "custom" } })).resolves.toEqual(
+      expect.objectContaining({
+        adapter: "custom",
+        mutation: expect.objectContaining({
+          applied: false,
+          error: expect.stringContaining("running application"),
+        }),
       }),
     );
   });
@@ -189,6 +221,27 @@ describe("ops storage core", () => {
           projectCommand:
             "pnpm run ops:storage -- migrate apply --target s3 --execute --approve storage-migrate",
           requiresApproval: true,
+        }),
+      ]),
+    );
+  });
+
+  it("blocks a migration plan with malformed target S3 intent", async () => {
+    const report = await buildOpsStorageMigrationPlan({
+      env: {
+        NP_STORAGE_ADAPTER: "local",
+        NP_S3_BUCKET: "127.0.0.1",
+        NP_S3_REGION: "us-east-1",
+      },
+    });
+
+    expect(report).toEqual(expect.objectContaining({ ok: false, status: "blocked" }));
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "storage.s3_config",
+          state: "error",
+          detail: expect.stringContaining("storage.runtime.s3.bucket"),
         }),
       ]),
     );

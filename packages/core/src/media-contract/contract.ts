@@ -12,13 +12,18 @@ import {
   type NpMediaVariants,
   type NpMediaWireRecord,
 } from "./types.js";
+import {
+  npIsStorageKey,
+  npStorageKeyLength,
+  npStorageKeyPattern,
+} from "../storage/key-contract.js";
 
 export const npMediaContractLimits = {
   maxVariants: 64,
   variantNameLength: 63,
   filenameLength: 255,
   mimeTypeLength: 127,
-  storageKeyLength: 2048,
+  storageKeyLength: npStorageKeyLength,
   textLength: 4096,
   maxDimension: 16_384,
   maxStoredDimension: 100_000,
@@ -26,7 +31,7 @@ export const npMediaContractLimits = {
 } as const;
 
 export const npMediaVariantNamePattern = "^(?!original$)[a-z0-9][a-z0-9_-]{0,62}$";
-export const npMediaStorageKeyPattern = "^[A-Za-z0-9][A-Za-z0-9._/-]{0,2047}$";
+export const npMediaStorageKeyPattern = npStorageKeyPattern;
 
 export type NpMediaContractIssueCode =
   "shape" | "unknown-field" | "invalid-field" | "duplicate-variant" | "invariant";
@@ -41,7 +46,6 @@ export type NpMediaValidationResult =
   { readonly ok: true } | { readonly ok: false; readonly issue: NpMediaContractIssue };
 
 const variantNamePattern = new RegExp(npMediaVariantNamePattern, "u");
-const storageKeyPattern = new RegExp(npMediaStorageKeyPattern, "u");
 const mimeTypePattern = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/u;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const hashPattern = /^[0-9a-f]{64}$/u;
@@ -133,9 +137,7 @@ function isFileSize(value: unknown): value is number {
 }
 
 function isStorageKey(value: unknown): value is string {
-  if (!isTrimmedString(value, npMediaContractLimits.storageKeyLength)) return false;
-  if (!storageKeyPattern.test(value)) return false;
-  return value.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..");
+  return npIsStorageKey(value);
 }
 
 function isUuidOrNull(value: unknown): value is string | null {

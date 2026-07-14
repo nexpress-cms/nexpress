@@ -365,7 +365,7 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
   // under the requested type. Both the SVG-as-svg and the
   // PNG-claim-with-non-PNG-bytes variants must now be rejected
   // before storage so an attacker can't sneak an XSS payload into
-  // a publicly-served `/uploads/...` URL.
+  // a publicly-served `/media/...` URL by default.
   it("SVG upload is rejected even when declared as image/svg+xml (#125)", async () => {
     const member = await seedActiveMember("upload-svg");
     const svg = new TextEncoder().encode(

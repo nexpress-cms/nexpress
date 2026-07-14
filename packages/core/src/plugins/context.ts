@@ -16,8 +16,9 @@ import {
   getMediaById as coreGetMediaById,
   deleteMedia as coreDeleteMedia,
   uploadMedia as coreUploadMedia,
-  getStorageAdapter,
 } from "../media/service.js";
+import { npGetStorageObjectUrl } from "../storage/operations.js";
+import { getStorageAdapter } from "../storage/registry.js";
 import { getMediaUrl as coreGetMediaUrl } from "../media/url.js";
 import type { NpGetMediaUrlOptions, NpMediaRecord } from "../media-contract/types.js";
 import { getSiteGeneralSettings } from "../settings/service.js";
@@ -113,7 +114,7 @@ async function toPluginMediaItem(record: NpMediaRecord): Promise<Record<string, 
     filename: record.filename,
     mimeType: record.mimeType,
     size: record.filesize,
-    url: await getStorageAdapter().getUrl(record.storageKey),
+    url: await npGetStorageObjectUrl(getStorageAdapter(), record.storageKey),
     ...(record.alt !== null ? { alt: record.alt } : {}),
     ...(record.width !== null ? { width: record.width } : {}),
     ...(record.height !== null ? { height: record.height } : {}),

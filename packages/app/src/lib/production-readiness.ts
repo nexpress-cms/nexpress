@@ -1,3 +1,5 @@
+import { npReadStorageRuntimeConfig } from "@nexpress/core/storage";
+
 import { deployTargetTitle, type DeployTarget } from "../scripts/deploy-targets";
 
 export interface CheckResult {
@@ -26,7 +28,18 @@ export function checkProductionStorage(
   env: ProductionReadinessEnv,
 ): CheckResult | null {
   if (!prodMode) return null;
-  const adapter = (env.NP_STORAGE_ADAPTER ?? "local").toLowerCase();
+  let adapter: "local" | "s3" | "custom";
+  try {
+    adapter = npReadStorageRuntimeConfig(env).adapter;
+  } catch (error) {
+    return {
+      id: "prod.storage_adapter",
+      state: "error",
+      label: "Storage adapter (production)",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Fix the exact storage runtime contract before deployment.",
+    };
+  }
   const topology = detectProductionTopology(env);
   const containerHint = !topology.explicitSingleNode && topology.managedContainerHint;
   const genericMultiNodeCheck = !target || target === "docker";
@@ -39,7 +52,7 @@ export function checkProductionStorage(
       state: "error",
       label: "Storage adapter (production)",
       detail: `local + ${topology.multiNodeDetail ?? "managed-container env detected"}`,
-      hint: "LocalStorageAdapter is per-process. Set NP_STORAGE_ADAPTER=s3 + NP_S3_BUCKET / NP_S3_REGION, or NP_MULTI_NODE=false / NP_REPLICAS=1 on a single-node deploy.",
+      hint: "LocalStorageAdapter is per-process. Use S3, install a shared custom adapter, or set NP_MULTI_NODE=false / NP_REPLICAS=1 on a deliberate single-node deploy.",
     };
   }
   return {
@@ -55,25 +68,38 @@ export function checkTargetProductionStorage(
   env: ProductionReadinessEnv,
 ): CheckResult[] {
   if (!prodMode || !target) return [];
-  const adapter = (env.NP_STORAGE_ADAPTER ?? "local").toLowerCase();
+  let adapter: "local" | "s3" | "custom";
+  try {
+    adapter = npReadStorageRuntimeConfig(env).adapter;
+  } catch (error) {
+    return [
+      {
+        id: `target.${target}.storage`,
+        state: "error",
+        label: `${deployTargetTitle(target)} storage`,
+        detail: error instanceof Error ? error.message : String(error),
+        hint: "Fix the exact storage runtime contract before deployment.",
+      },
+    ];
+  }
   const topology = detectProductionTopology(env);
   const targetTitle = deployTargetTitle(target);
 
   if (target === "vercel") {
     return [
-      adapter === "s3"
+      adapter === "s3" || adapter === "custom"
         ? {
             id: "target.vercel.storage",
             state: "ok",
             label: "Vercel storage",
-            detail: "S3-compatible",
+            detail: adapter === "s3" ? "S3-compatible" : "custom adapter",
           }
         : {
             id: "target.vercel.storage",
             state: "error",
             label: "Vercel storage",
             detail: `NP_STORAGE_ADAPTER=${adapter}`,
-            hint: "Vercel's filesystem is ephemeral. Set NP_STORAGE_ADAPTER=s3 plus NP_S3_BUCKET / NP_S3_REGION before deploy; add NP_S3_ENDPOINT for R2, MinIO, or another non-AWS S3 provider.",
+            hint: "Vercel's filesystem is ephemeral. Use exact S3 configuration or install a shared custom adapter before deploy.",
           },
     ];
   }
@@ -89,7 +115,7 @@ export function checkTargetProductionStorage(
           : `local${topology.multiNodeDetail ? ` + ${topology.multiNodeDetail}` : " storage"}`,
         hint: topology.explicitSingleNode
           ? "Confirm the service has a persistent disk/volume and regular backups."
-          : "Managed container filesystems are not durable across nodes/redeploys. Set NP_STORAGE_ADAPTER=s3, or set NP_MULTI_NODE=false / NP_REPLICAS=1 only for a deliberate single-node persistent-volume deploy.",
+          : "Managed container filesystems are not durable across nodes/redeploys. Use S3 or a shared custom adapter, or set NP_MULTI_NODE=false / NP_REPLICAS=1 only for a deliberate single-node persistent-volume deploy.",
       },
     ];
   }

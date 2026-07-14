@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { NpConfig } from "./types.js";
 import { npAnalyzeProjectConfig, npValidateProjectConfig } from "./project-config-contract.js";
+import { npConfigSchema } from "./validation.js";
 
 function validConfig(): NpConfig {
   return {
@@ -48,6 +49,29 @@ describe("project config contract", () => {
     );
   });
 
+  it("keeps the exported schema aligned with the canonical storage contract", () => {
+    const config = validConfig() as NpConfig & {
+      storage: {
+        adapter: "local";
+        local: { directory: string; baseUrl: string; typo: boolean };
+      };
+    };
+    config.storage.local.typo = true;
+
+    const result = npConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+    if (result.success) throw new Error("expected malformed storage config to fail");
+    expect(result.error.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "custom",
+          path: ["storage", "local", "typo"],
+          message: expect.stringMatching(/unsupported storage field/u),
+        }),
+      ]),
+    );
+  });
+
   it("requires an HTTP origin and usable storage URLs", () => {
     const config = validConfig();
     config.site.url = "https://user@example.com/path?preview=1";
@@ -69,15 +93,14 @@ describe("project config contract", () => {
     ["credentials", "https://user@cdn.example.com/media"],
     ["a query", "https://cdn.example.com/media?version=1"],
     ["a fragment", "https://cdn.example.com/media#preview"],
+    ["whitespace", "/media folder"],
   ])("rejects a local storage base URL with %s", (_label, baseUrl) => {
     const config = validConfig();
     if (config.storage?.adapter !== "local") throw new Error("fixture drift");
     config.storage.local.baseUrl = baseUrl;
 
     expect(npAnalyzeProjectConfig(config)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ location: "storage.local.baseUrl" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ location: "storage.local.baseUrl" })]),
     );
   });
 

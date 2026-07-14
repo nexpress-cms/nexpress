@@ -19,7 +19,7 @@ vi.mock("@nexpress/core", () => ({
   NP_DEFAULT_SITE_ID: "default",
   can: vi.fn(() => false),
   createDbConnection: vi.fn(() => ({ kind: "db" })),
-  createStorageAdapter: vi.fn(() => ({ kind: "storage" })),
+  configureStorageRuntime: vi.fn(() => ({ kind: "local" })),
   getDb: vi.fn(() => ({ kind: "db" })),
   getOptionalJobQueue: vi.fn(() => null),
   getOptionalRateLimiter: vi.fn(() => null),
@@ -35,7 +35,6 @@ vi.mock("@nexpress/core", () => ({
   setCurrentSiteResolver: vi.fn(),
   setDb: vi.fn(),
   setI18nConfig: vi.fn(),
-  setStorageAdapter: vi.fn(),
   startProducer: vi.fn(() => Promise.resolve()),
   syncPluginRegistrations: vi.fn(() => Promise.resolve()),
   teardownPlugins: vi.fn(() => Promise.resolve()),
@@ -61,6 +60,7 @@ describe("createBootstrap", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(core.createDbConnection).mockReturnValue({ kind: "db" } as never);
+    vi.mocked(core.configureStorageRuntime).mockReturnValue({ kind: "local" } as never);
     vi.mocked(core.getDb).mockReturnValue({ kind: "db" } as never);
     vi.mocked(core.listPluginStates).mockResolvedValue([]);
     vi.mocked(core.loadPlugins).mockResolvedValue(undefined);
@@ -70,6 +70,33 @@ describe("createBootstrap", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it("installs a programmatic adapter only for explicit custom storage intent", () => {
+    const customAdapter = {
+      kind: "cloudflare-r2",
+      upload: vi.fn(() => Promise.resolve()),
+      getStream: vi.fn(),
+      getUrl: vi.fn(),
+      delete: vi.fn(() => Promise.resolve()),
+      exists: vi.fn(),
+    } as never;
+    const config = Object.assign({}, buildConfig(), {
+      storage: { adapter: "custom" as const },
+    });
+    vi.mocked(core.configureStorageRuntime).mockReturnValue(customAdapter);
+    const bootstrap = createBootstrap({
+      config,
+      generatedSchema: {},
+      storageAdapter: customAdapter,
+    });
+
+    bootstrap.ensureCoreServices();
+
+    expect(core.configureStorageRuntime).toHaveBeenCalledWith({ adapter: "custom" }, customAdapter);
+    expect(core.verifyStartupSafety).toHaveBeenCalledWith(
+      expect.objectContaining({ storageAdapter: "cloudflare-r2" }),
+    );
   });
 
   it("retries plugin loading after a transient bootstrap failure", async () => {
