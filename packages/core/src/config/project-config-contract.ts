@@ -1,5 +1,5 @@
 import type { NpConfig } from "./types.js";
-import { npConfigSchema } from "./validation.js";
+import { npConfigShapeSchema } from "./validation.js";
 import { npAnalyzeStorageRuntimeConfig } from "../storage/contract.js";
 
 export type NpProjectConfigIssueCode = "shape" | "reference";
@@ -308,7 +308,7 @@ function analyzePlugins(config: NpConfig, issues: NpProjectConfigIssue[]): void 
 }
 
 export function npAnalyzeProjectConfig(value: unknown): NpProjectConfigIssue[] {
-  const parsed = npConfigSchema.safeParse(value);
+  const parsed = npConfigShapeSchema.safeParse(value);
   if (!parsed.success) {
     return parsed.error.issues.map((entry) => issue("shape", pathOf(entry.path), entry.message));
   }

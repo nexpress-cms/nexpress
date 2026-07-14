@@ -52,7 +52,7 @@ export function checkProductionStorage(
       state: "error",
       label: "Storage adapter (production)",
       detail: `local + ${topology.multiNodeDetail ?? "managed-container env detected"}`,
-      hint: "LocalStorageAdapter is per-process. Set NP_STORAGE_ADAPTER=s3 + NP_S3_BUCKET / NP_S3_REGION, or NP_MULTI_NODE=false / NP_REPLICAS=1 on a single-node deploy.",
+      hint: "LocalStorageAdapter is per-process. Use S3, install a shared custom adapter, or set NP_MULTI_NODE=false / NP_REPLICAS=1 on a deliberate single-node deploy.",
     };
   }
   return {
@@ -99,7 +99,7 @@ export function checkTargetProductionStorage(
             state: "error",
             label: "Vercel storage",
             detail: `NP_STORAGE_ADAPTER=${adapter}`,
-            hint: "Vercel's filesystem is ephemeral. Set NP_STORAGE_ADAPTER=s3 plus NP_S3_BUCKET / NP_S3_REGION before deploy; add NP_S3_ENDPOINT for R2, MinIO, or another non-AWS S3 provider.",
+            hint: "Vercel's filesystem is ephemeral. Use exact S3 configuration or install a shared custom adapter before deploy.",
           },
     ];
   }
@@ -115,7 +115,7 @@ export function checkTargetProductionStorage(
           : `local${topology.multiNodeDetail ? ` + ${topology.multiNodeDetail}` : " storage"}`,
         hint: topology.explicitSingleNode
           ? "Confirm the service has a persistent disk/volume and regular backups."
-          : "Managed container filesystems are not durable across nodes/redeploys. Set NP_STORAGE_ADAPTER=s3, or set NP_MULTI_NODE=false / NP_REPLICAS=1 only for a deliberate single-node persistent-volume deploy.",
+          : "Managed container filesystems are not durable across nodes/redeploys. Use S3 or a shared custom adapter, or set NP_MULTI_NODE=false / NP_REPLICAS=1 only for a deliberate single-node persistent-volume deploy.",
       },
     ];
   }

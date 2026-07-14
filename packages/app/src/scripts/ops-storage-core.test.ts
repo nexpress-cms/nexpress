@@ -226,6 +226,27 @@ describe("ops storage core", () => {
     );
   });
 
+  it("blocks a migration plan with malformed target S3 intent", async () => {
+    const report = await buildOpsStorageMigrationPlan({
+      env: {
+        NP_STORAGE_ADAPTER: "local",
+        NP_S3_BUCKET: "127.0.0.1",
+        NP_S3_REGION: "us-east-1",
+      },
+    });
+
+    expect(report).toEqual(expect.objectContaining({ ok: false, status: "blocked" }));
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "storage.s3_config",
+          state: "error",
+          detail: expect.stringContaining("storage.runtime.s3.bucket"),
+        }),
+      ]),
+    );
+  });
+
   it("blocks unsupported storage migration targets", async () => {
     const report = await buildOpsStorageMigrationPlan({
       target: "ftp",

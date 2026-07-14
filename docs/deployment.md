@@ -210,9 +210,9 @@ One-time setup:
    unavoidable, token-gate it, execute it once, and remove it before the final
    production deploy.
 
-> **Storage:** Vercel filesystem is ephemeral — you must use S3 or an
-> equivalent. Set `NP_STORAGE_ADAPTER=s3` and the matching `NP_S3_*` vars
-> before media upload or image processing matters in production.
+> **Storage:** Vercel filesystem is ephemeral — use exact S3 configuration or
+> `NP_STORAGE_ADAPTER=custom` with a shared programmatic adapter before media
+> upload or image processing matters in production.
 
 ---
 
@@ -267,7 +267,7 @@ on a `*/2 * * * *` schedule. Set the same `NP_SCHEDULER_TOKEN` value
 on the web service.
 
 > **Storage:** Render disks are per-instance and not shared across
-> replicas. For >1 instance set `NP_STORAGE_ADAPTER=s3` (Render emits
+> replicas. For >1 instance use S3 or a shared custom adapter (Render emits
 > `RENDER_INSTANCE_ID` so the boot-time `multi_node_local_storage`
 > warning fires automatically; see [operations.md](./operations.md#boot-warnings)).
 
@@ -315,9 +315,9 @@ runs `curl -fsS -H "Authorization: Bearer $NP_SCHEDULER_TOKEN" $SITE_URL/api/int
 schedule `*/2 * * * *`, share `NP_SCHEDULER_TOKEN` and `SITE_URL` via
 [shared variables](https://docs.railway.com/guides/variables#shared-variables).
 
-> **Storage:** Railway's filesystem is ephemeral across deploys.
-> `NP_STORAGE_ADAPTER=s3` is required for any media uploads to survive
-> a redeploy. Railway emits `RAILWAY_ENVIRONMENT_NAME` so the boot-time
+> **Storage:** Railway's filesystem is ephemeral across deploys. Use S3 or a
+> shared custom adapter for media uploads to survive a redeploy. Railway emits
+> `RAILWAY_ENVIRONMENT_NAME` so the boot-time
 > `multi_node_local_storage` warning fires automatically when
 > `NP_STORAGE_ADAPTER=local` is left in production.
 
@@ -415,8 +415,8 @@ For a Sentry / pino / Datadog-specific recipe and the matching
   `NP_MULTI_NODE=true` (or `=1`) is set, `NP_REPLICAS` is greater than
   `1`, or `NODE_ENV=production` _and_ a managed-container env var is
   detected (`KUBERNETES_SERVICE_HOST`, `FLY_REGION`,
-  `RENDER_INSTANCE_ID`, `RAILWAY_ENVIRONMENT_NAME`). Set
-  `NP_STORAGE_ADAPTER=s3` to silence the warning, or
+  `RENDER_INSTANCE_ID`, `RAILWAY_ENVIRONMENT_NAME`). Switch to S3 or a shared
+  custom adapter to silence the warning, or
   `NP_MULTI_NODE=false` / `NP_REPLICAS=1` if you really are running
   single-node on a managed platform.
 - **pg-boss leader election** — the worker uses Postgres advisory locks,

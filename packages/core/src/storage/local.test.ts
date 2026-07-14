@@ -49,6 +49,27 @@ describe("LocalStorageAdapter", () => {
     await expect(npStorageObjectExists(adapter, "nested/object.txt")).resolves.toBe(false);
   });
 
+  it("allows concurrent uploads to create the same nested parent", async () => {
+    const adapter = new LocalStorageAdapter({ directory, baseUrl: "/media" });
+    const uploads = Array.from({ length: 20 }, (_, index) => {
+      const data = Buffer.from(`object ${index.toString()}`, "utf8");
+      return adapter.upload(`shared/nested/object-${index.toString()}.txt`, data, {
+        contentType: "text/plain; charset=utf-8",
+        contentLength: data.byteLength,
+        originalFilename: `object-${index.toString()}.txt`,
+      });
+    });
+
+    await expect(Promise.all(uploads)).resolves.toHaveLength(20);
+    await expect(
+      Promise.all(
+        Array.from({ length: 20 }, (_, index) =>
+          adapter.exists(`shared/nested/object-${index.toString()}.txt`),
+        ),
+      ),
+    ).resolves.toEqual(Array.from({ length: 20 }, () => true));
+  });
+
   it("confines file operations to the configured root", async () => {
     const adapter = new LocalStorageAdapter({ directory, baseUrl: "/media" });
 

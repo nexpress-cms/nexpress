@@ -9,6 +9,7 @@ import {
   npReadStorageRuntimeConfig,
   npRequireStorageAdapter,
 } from "./contract.js";
+import { npStorageKeyPattern } from "./key-contract.js";
 import {
   npCloseStorageAdapter,
   npDeleteStorageObject,
@@ -113,25 +114,32 @@ describe("storage runtime configuration contract", () => {
 });
 
 describe("storage object contract", () => {
+  const documentedStorageKeyPattern = new RegExp(npStorageKeyPattern, "u");
+
   it.each(["media/image.jpg", "..hidden/file.txt", "folder/name.with-dots_1-2"])(
     "accepts a canonical relative object key: %s",
     (key) => {
       expect(npAnalyzeStorageKey(key)).toEqual([]);
+      expect(documentedStorageKeyPattern.test(key)).toBe(true);
     },
   );
 
   it.each([
     "",
     "/absolute",
+    ".",
     "../escape",
+    "folder/.",
     "folder/../escape",
     "folder//file",
+    "folder/",
     "folder/file name",
     "folder\\file",
   ])("rejects an unsafe object key: %s", (key) => {
     expect(npAnalyzeStorageKey(key)).toEqual([
       expect.objectContaining({ code: "invalid-field", path: "storage.key" }),
     ]);
+    expect(documentedStorageKeyPattern.test(key)).toBe(false);
   });
 
   it("requires exact metadata and matching Buffer lengths", async () => {

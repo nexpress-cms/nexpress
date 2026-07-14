@@ -7,6 +7,7 @@ import {
   npCloseStorageAdapter,
   npDeleteStorageObject,
   npReadStorageRuntimeConfig,
+  npRequireStorageRuntimeConfig,
   npRequireStorageKey,
   npStorageObjectExists,
   npUploadStorageObject,
@@ -497,8 +498,8 @@ async function collectLocalStorageInventory(
       id: "storage.local_keys",
       state: "warn",
       label: "Local media keys",
-      detail: `${invalidStorageKeys.toString()} indexed keys resolve outside the storage directory`,
-      hint: "Review np_media.storage_key values before trusting local media drift counts.",
+      detail: `${invalidStorageKeys.toString()} indexed keys violate the canonical storage-key contract`,
+      hint: "Repair np_media.storage_key values before trusting local media drift counts.",
     });
   }
   const drift = summary.missingFiles + summary.orphanedFiles;
@@ -781,18 +782,18 @@ export async function buildOpsStorageMigrationPlan(args: {
       hint: "Only --target s3 is supported by the read-only migration plan.",
     });
   } else {
-    const missing = ["NP_S3_BUCKET", "NP_S3_REGION"].filter((name) => !env[name]);
-    checks.push(
-      missing.length === 0
-        ? { id: "storage.s3_config", state: "ok", label: "S3 storage config" }
-        : {
-            id: "storage.s3_config",
-            state: "error",
-            label: "S3 storage config",
-            detail: `missing ${missing.join(", ")}`,
-            hint: "Set NP_S3_BUCKET and NP_S3_REGION before planning local-to-S3 migration.",
-          },
-    );
+    try {
+      npRequireStorageRuntimeConfig(buildStorageConfig(env, "s3"));
+      checks.push({ id: "storage.s3_config", state: "ok", label: "S3 storage config" });
+    } catch (error) {
+      checks.push({
+        id: "storage.s3_config",
+        state: "error",
+        label: "S3 storage config",
+        detail: error instanceof Error ? error.message : String(error),
+        hint: "Fix the exact S3 bucket, region, and optional endpoint before planning migration.",
+      });
+    }
   }
   if (inventory.summary.missingFiles > 0) {
     checks.push({
@@ -1013,7 +1014,7 @@ export async function runOpsStorageMigrationApply(args: {
         key,
         status: "failed",
         bytes: null,
-        error: "Key resolves outside storage root",
+        error: "Key violates the canonical storage-key or local-root contract",
       });
       continue;
     }
@@ -1044,14 +1045,16 @@ export async function runOpsStorageMigrationApply(args: {
       });
     }
   }
+  let shutdownError: string | null = null;
   try {
     await npCloseStorageAdapter(targetStorage);
   } catch (error) {
+    shutdownError = error instanceof Error ? error.message : String(error);
     checks.push({
       id: "storage.migration_apply.shutdown",
       state: "error",
       label: "Storage adapter shutdown",
-      detail: error instanceof Error ? error.message : String(error),
+      detail: shutdownError,
     });
   }
 
@@ -1082,7 +1085,12 @@ export async function runOpsStorageMigrationApply(args: {
     artifactPath,
     execute: true,
     approve: args.approve,
-    error: failures.length > 0 ? "One or more objects failed to copy" : null,
+    error:
+      failures.length > 0
+        ? "One or more objects failed to copy"
+        : shutdownError
+          ? `Storage adapter shutdown failed: ${shutdownError}`
+          : null,
     nextCommand:
       failures.length > 0
         ? "nexpress ops storage migrate apply --target s3 --execute --approve storage-migrate --json"

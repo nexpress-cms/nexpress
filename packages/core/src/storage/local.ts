@@ -139,7 +139,18 @@ export class LocalStorageAdapter implements NpStorageAdapter {
       } catch (error) {
         if (!isMissingFileError(error)) throw error;
         if (!createParents) break;
-        await mkdir(current);
+        try {
+          await mkdir(current);
+        } catch (mkdirError) {
+          if (!isAlreadyExistsError(mkdirError)) throw mkdirError;
+        }
+        const currentStat = await lstat(current);
+        if (currentStat.isSymbolicLink()) throw symbolicLinkError(current);
+        if (!currentStat.isDirectory()) {
+          throw new Error(`Storage key parent is not a directory: ${current}`, {
+            cause: error,
+          });
+        }
       }
     }
     return target;
@@ -156,5 +167,14 @@ function isMissingFileError(error: unknown): boolean {
     error !== null &&
     "code" in error &&
     (error as { code?: unknown }).code === "ENOENT"
+  );
+}
+
+function isAlreadyExistsError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "EEXIST"
   );
 }

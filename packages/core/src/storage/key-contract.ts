@@ -1,5 +1,6 @@
 export const npStorageKeyLength = 2_048;
-export const npStorageKeyPattern = "^[A-Za-z0-9._-][A-Za-z0-9._/-]{0,2047}$";
+export const npStorageKeyPattern =
+  "^(?!\\.{1,2}(?:/|$))(?!.*(?:/\\.{1,2})(?:/|$))(?!.*//)(?!.*\\/$)[A-Za-z0-9._-][A-Za-z0-9._/-]{0,2047}$";
 
 const storageKeyPattern = new RegExp(npStorageKeyPattern, "u");
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { NpConfig } from "./types.js";
 import { npAnalyzeProjectConfig, npValidateProjectConfig } from "./project-config-contract.js";
+import { npConfigSchema } from "./validation.js";
 
 function validConfig(): NpConfig {
   return {
@@ -45,6 +46,29 @@ describe("project config contract", () => {
     nested.jobs = { typo: true };
     expect(npAnalyzeProjectConfig(nested)[0]).toEqual(
       expect.objectContaining({ code: "shape", message: expect.stringMatching(/typo/) }),
+    );
+  });
+
+  it("keeps the exported schema aligned with the canonical storage contract", () => {
+    const config = validConfig() as NpConfig & {
+      storage: {
+        adapter: "local";
+        local: { directory: string; baseUrl: string; typo: boolean };
+      };
+    };
+    config.storage.local.typo = true;
+
+    const result = npConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+    if (result.success) throw new Error("expected malformed storage config to fail");
+    expect(result.error.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "custom",
+          path: ["storage", "local", "typo"],
+          message: expect.stringMatching(/unsupported storage field/u),
+        }),
+      ]),
     );
   });
 

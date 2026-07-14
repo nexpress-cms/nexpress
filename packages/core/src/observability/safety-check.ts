@@ -141,7 +141,7 @@ export function verifyStartupSafety(input: NpStartupSafetyInput): readonly strin
         : "a managed-container env var was detected in production (KUBERNETES_SERVICE_HOST / FLY_REGION / RENDER_INSTANCE_ID / RAILWAY_ENVIRONMENT_NAME)";
     log.warn(
       `LocalStorageAdapter is not multi-node safe — ${trigger} but the local media directory is per-process. ` +
-        "Set NP_STORAGE_ADAPTER=s3 (or NP_MULTI_NODE=false / NP_REPLICAS=1 to silence the hint on a single-node deploy).",
+        "Set NP_STORAGE_ADAPTER=s3, install a shared custom adapter, or use NP_MULTI_NODE=false / NP_REPLICAS=1 on a deliberate single-node deploy.",
       { check: "multi_node_local_storage", reason },
     );
     emitted.push("multi_node_local_storage");
