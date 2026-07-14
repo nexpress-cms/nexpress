@@ -15,7 +15,7 @@ import {
 import { i18nConfig, isLocale } from "../i18n-config";
 
 export interface NpProxyOptions {
-  /** Adapter owned by this proxy execution entrypoint. */
+  /** Adapter used by this proxy entrypoint; lifecycle remains caller-owned. */
   readonly rateLimiter: NpRateLimiterAdapter;
 }
 
