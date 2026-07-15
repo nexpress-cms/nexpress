@@ -13,10 +13,7 @@ import {
   truncateAll,
 } from "./harness.js";
 
-import {
-  GET as collectionGET,
-  POST as collectionPOST,
-} from "@/app/api/collections/[slug]/route";
+import { GET as collectionGET, POST as collectionPOST } from "@/app/api/collections/[slug]/route";
 import { PATCH as collectionPATCH } from "@/app/api/collections/[slug]/[id]/route";
 
 import { NextRequest } from "next/server";
@@ -114,11 +111,12 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
         defaultStatus,
       },
     };
-    registerCollection(
-      "discussions",
-      discussionsTable as never,
-      { ...config, community, access: undefined, hooks: undefined },
-    );
+    registerCollection("discussions", discussionsTable as never, {
+      ...config,
+      community,
+      access: undefined,
+      hooks: undefined,
+    });
   }
 
   describe("defaultStatus", () => {
@@ -140,10 +138,9 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
       expect(body.body.status).toBe("pending");
 
       // Anonymous public list filters to status=published — pending row hidden.
-      const list = await collectionGET(
-        jsonRequest("/api/collections/discussions"),
-        { params: Promise.resolve({ slug: "discussions" }) },
-      );
+      const list = await collectionGET(jsonRequest("/api/collections/discussions"), {
+        params: Promise.resolve({ slug: "discussions" }),
+      });
       const listBody = await readJson<{ totalDocs: number }>(list);
       expect(listBody.body.totalDocs).toBe(0);
     });
@@ -226,8 +223,7 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
       // carry the same shape). The adapter's metadata lives under
       // `spamVerdict.metadata`.
       const verdict = audits[0].payload.spamVerdict as
-        | { reason: string | null; metadata: Record<string, unknown> | null }
-        | undefined;
+        { reason: string | null; metadata: Record<string, unknown> | null } | undefined;
       expect(verdict).toBeDefined();
       expect(verdict?.metadata).toEqual({ score: 0.7 });
       expect(audits[0].payload.sources).toEqual(["spam"]);
@@ -254,7 +250,7 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
       expect(rows).toHaveLength(0);
     });
 
-    it("adapter that throws is treated as pass (fail-open)", async () => {
+    it("adapter that throws isolates the document as pending", async () => {
       const core = await import("@nexpress/core");
       core.setSpamAdapter({
         check: () => {
@@ -266,9 +262,7 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
       const res = await memberCreate(member, { title: "Genuine", slug: "spam-fo-1" });
       const body = await readJson<{ status: string }>(res);
       expect(body.status).toBe(201);
-      // Fail-open lands the doc at the configured default
-      // (`published` here), same policy as comments.
-      expect(body.body.status).toBe("published");
+      expect(body.body.status).toBe("pending");
     });
 
     it("`flag` overrides `defaultStatus=published` (per-row flag wins)", async () => {
@@ -378,9 +372,7 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
       core.setProfanityAdapter({
         check: (text) => {
           seen.push(text);
-          return text.includes("badword")
-            ? { kind: "flag", reason: "lexicon" }
-            : { kind: "pass" };
+          return text.includes("badword") ? { kind: "flag", reason: "lexicon" } : { kind: "pass" };
         },
       });
 
@@ -449,10 +441,7 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
         .select()
         .from(npAuditEvents)
         .where(
-          and(
-            eq(npAuditEvents.action, "document.flag"),
-            eq(npAuditEvents.targetId, docId),
-          ),
+          and(eq(npAuditEvents.action, "document.flag"), eq(npAuditEvents.targetId, docId)),
         )) as Array<{ payload: Record<string, unknown> }>;
       expect(audits).toHaveLength(1);
       expect(audits[0].payload.event).toBe("update");
@@ -504,8 +493,7 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
       // text through to the original status.
       const core = await import("@nexpress/core");
       core.setSpamAdapter({
-        check: (text) =>
-          text.includes("badword") ? { kind: "flag" } : { kind: "pass" },
+        check: (text) => (text.includes("badword") ? { kind: "flag" } : { kind: "pass" }),
       });
 
       const member = await seedActiveMember("edit-clean");

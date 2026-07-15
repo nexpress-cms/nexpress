@@ -1,4 +1,5 @@
-import { unmuteMember } from "@nexpress/core";
+import { unmuteMember } from "@nexpress/core/community";
+import { npRequireRemovedWire } from "@nexpress/core/community-contract";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
@@ -20,7 +21,7 @@ export async function DELETE(
     const member = await requireMember(request);
     const { targetId } = await context.params;
     const removed = await unmuteMember({ memberId: member.id, targetId });
-    return npSuccessResponse({ ok: true, removed });
+    return npSuccessResponse(npRequireRemovedWire({ ok: true, removed }));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

@@ -180,3 +180,6 @@ export type {
   RunDigestSweepInput,
   RunDigestSweepResult,
 } from "./digest.js";
+
+export { getCommunityRuntimeDiagnostics, resetCommunityRuntimeDiagnostics } from "./diagnostics.js";
+export * from "../community-contract/index.js";

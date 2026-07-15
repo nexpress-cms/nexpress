@@ -1,15 +1,15 @@
-import { can, NpForbiddenError, staffHideComment } from "@nexpress/core";
+import { can, NpForbiddenError } from "@nexpress/core";
+import { staffHideComment } from "@nexpress/core/community";
+import { npRequireCommentHideRequest, npRequireOkWire } from "@nexpress/core/community-contract";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../../../lib/api-response";
 import { requireAuth } from "../../../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../../../lib/init-core";
+import { npRequireCommunityRequest } from "../../../../../../lib/community-contract";
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -18,10 +18,12 @@ export async function POST(
     }
 
     const { id } = await params;
-    const body = (await readJsonBody(request).catch(() => null)) as { reason?: unknown } | null;
-    const reason = typeof body?.reason === "string" ? body.reason : null;
+    const { reason } = npRequireCommunityRequest(
+      npRequireCommentHideRequest,
+      await readJsonBody(request).catch(() => ({})),
+    );
     await staffHideComment(id, user.id, reason);
-    return npSuccessResponse({ ok: true });
+    return npSuccessResponse(npRequireOkWire({ ok: true }));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

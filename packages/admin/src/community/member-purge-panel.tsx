@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  npRequireMemberPurgeResult,
+  type NpMemberPurgeResult,
+} from "@nexpress/core/community-contract";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -15,11 +19,7 @@ import {
   DialogTitle,
 } from "../ui/dialog.js";
 
-export interface MemberPurgeResult {
-  comments: number;
-  documents: Record<string, number>;
-  media: { deleted: number; skipped: number };
-}
+export type MemberPurgeResult = NpMemberPurgeResult;
 
 interface MemberPurgePanelProps {
   memberId: string;
@@ -54,8 +54,7 @@ export function MemberPurgePanel({ memberId, memberHandle }: MemberPurgePanelPro
         setError(message);
         return;
       }
-      const data = (raw.data ?? raw) as MemberPurgeResult;
-      setResult(data);
+      setResult(npRequireMemberPurgeResult(raw));
       setConfirming(false);
       // Refresh server components — the linked identities panel
       // doesn't change, but if any list views are upstream they'll

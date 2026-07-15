@@ -2,11 +2,23 @@ import { and, asc, count, desc, eq, notInArray, sql, type SQL } from "drizzle-or
 
 import { getCollectionConfig } from "../collections/registry.js";
 import { getDocumentById } from "../collections/pipeline.js";
+import { npRequireCommentRow } from "../community-contract/contract.js";
+import type {
+  CommentStatus,
+  NpCommentCreateInput,
+  NpCommentDeleteInput,
+  NpCommentHideInput,
+  NpCommentListOptions,
+  NpCommentListResult,
+  NpCommentRestoreInput,
+  NpCommentRow,
+  NpCommentSort,
+  NpCommentUpdateInput,
+  NpCommunityJsonObject,
+} from "../community-contract/types.js";
 import { getDb } from "../db/runtime.js";
 import { npComments, npMembers, npReactions } from "../db/schema/community.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
-
-import { getLogger } from "../observability/logger.js";
 
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
@@ -14,6 +26,7 @@ import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { recordAuditEvent } from "./audit.js";
 import { memberCan, withMemberWrite } from "./can.js";
 import { renderCommentMarkdown } from "./markdown.js";
+import { runProfanityCheck, runSpamCheck } from "./moderation.js";
 import { extractMentionHandles, fanOutMentionNotifications } from "./mentions.js";
 import { getMutedTargetIds } from "./mutes.js";
 import { createNotification } from "./notifications.js";
@@ -33,40 +46,18 @@ import { getSpamAdapter } from "./spam-adapter.js";
 
 const MAX_BODY_LENGTH = 5000;
 
-export type CommentStatus = "visible" | "pending" | "hidden" | "deleted";
-
-export interface NpCommentRow {
-  id: string;
-  targetType: string;
-  targetId: string;
-  parentId: string | null;
-  memberId: string;
-  bodyMd: string;
-  bodyHtml: string;
-  status: CommentStatus;
-  hiddenReason: string | null;
-  editedAt: Date | null;
-  /** Tenant the comment belongs to. Phase 18 added the column; the type was incomplete until #364. */
-  siteId: string;
-  createdAt: Date;
-  /**
-   * Phase 21.11 — author's `np_members.status` at read time.
-   * `listComments` joins against `np_members` so callers can render
-   * a `(imported)` badge without a second round trip. Older callers
-   * that don't read this field stay unaffected — the column is
-   * nullable on the type because the underlying join is `LEFT JOIN`
-   * and `createComment` returns the row before the join is wired.
-   */
-  authorStatus?: string | null;
-}
-
-export interface NpCommentCreateInput {
-  targetType: string;
-  targetId: string;
-  parentId?: string | null;
-  memberId: string;
-  bodyMd: string;
-}
+export type {
+  CommentStatus,
+  NpCommentCreateInput,
+  NpCommentDeleteInput,
+  NpCommentHideInput,
+  NpCommentListOptions,
+  NpCommentListResult,
+  NpCommentRestoreInput,
+  NpCommentRow,
+  NpCommentSort,
+  NpCommentUpdateInput,
+};
 
 function assertCollectionAcceptsComments(slug: string): void {
   const config = getCollectionConfig(slug);
@@ -111,10 +102,8 @@ export async function createComment(input: NpCommentCreateInput): Promise<NpComm
   // block writes to that collection (#53 — without the gate,
   // banned members kept commenting because createComment never
   // went through memberCan).
-  return withMemberWrite(
-    input.memberId,
-    [{ type: "collection", id: input.targetType }],
-    async () => doCreateComment(input),
+  return withMemberWrite(input.memberId, [{ type: "collection", id: input.targetType }], async () =>
+    doCreateComment(input),
   );
 }
 
@@ -137,11 +126,7 @@ async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRo
   // early before the locked / parent / spam / profanity passes
   // run so we don't log adapter calls on rejected requests.
   const requestSiteId = await getCurrentSiteId();
-  if (
-    requestSiteId &&
-    typeof targetDoc.siteId === "string" &&
-    targetDoc.siteId !== requestSiteId
-  ) {
+  if (requestSiteId && typeof targetDoc.siteId === "string" && targetDoc.siteId !== requestSiteId) {
     throw new NpForbiddenError("comment", "cross-site");
   }
 
@@ -215,26 +200,16 @@ async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRo
   // wins rule: any reject → reject, any flag → pending, both pass
   // → visible.
   //
-  // Fail-open on adapter throw (network blip, 5xx, timeout) — sites
-  // that want fail-closed wrap their own adapter and return
-  // `reject` on errors. Mirrors the doc-create policy.
+  // Adapter failures and malformed verdicts are isolated as `flag`:
+  // the write remains available but cannot become public without
+  // an operator seeing the runtime diagnostic.
   const ctx = {
     memberId: input.memberId,
     targetType: input.targetType,
     targetId: input.targetId,
     parentId: input.parentId ?? null,
   };
-  let profanityVerdict;
-  try {
-    profanityVerdict = await getProfanityAdapter().check(input.bodyMd, ctx);
-  } catch (err) {
-    getLogger().warn("profanity adapter threw — treating as pass", {
-      error: err instanceof Error ? err.message : String(err),
-      targetType: input.targetType,
-      targetId: input.targetId,
-    });
-    profanityVerdict = { kind: "pass" as const };
-  }
+  const profanityVerdict = await runProfanityCheck(getProfanityAdapter(), input.bodyMd, ctx);
   if (profanityVerdict.kind === "reject") {
     throw new NpValidationError("Invalid input", [
       {
@@ -243,17 +218,7 @@ async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRo
       },
     ]);
   }
-  let spamVerdict;
-  try {
-    spamVerdict = await getSpamAdapter().check(input.bodyMd, ctx);
-  } catch (err) {
-    getLogger().warn("spam adapter threw — treating as pass", {
-      error: err instanceof Error ? err.message : String(err),
-      targetType: input.targetType,
-      targetId: input.targetId,
-    });
-    spamVerdict = { kind: "pass" as const };
-  }
+  const spamVerdict = await runSpamCheck(getSpamAdapter(), input.bodyMd, ctx);
   if (spamVerdict.kind === "reject") {
     throw new NpValidationError("Invalid input", [
       {
@@ -292,6 +257,7 @@ async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRo
     })
     .returning()) as Array<NpCommentRow>;
   if (!row) throw new Error("Comment insert returned no row");
+  const checkedRow = npRequireCommentRow(row);
 
   if (flaggedBy.length > 0) {
     // Surface flagged content in the audit log so mods can triage.
@@ -304,7 +270,7 @@ async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRo
       actor: { kind: "member", memberId: input.memberId },
       action: "comment.flag",
       targetType: "comment",
-      targetId: row.id,
+      targetId: checkedRow.id,
       payload: {
         sources: flaggedBy,
         profanity:
@@ -331,7 +297,7 @@ async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRo
   if (initialStatus === "visible") {
     await applyReputation(input.memberId, {
       kind: "comment.created",
-      commentId: row.id,
+      commentId: checkedRow.id,
       memberId: input.memberId,
       targetType: input.targetType,
       targetId: input.targetId,
@@ -350,7 +316,7 @@ async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRo
       kind: "comment.reply",
       actorMemberId: input.memberId,
       payload: {
-        commentId: row.id,
+        commentId: checkedRow.id,
         replyAuthorId: input.memberId,
         targetType: input.targetType,
         targetId: input.targetId,
@@ -372,14 +338,14 @@ async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRo
       source: input.bodyMd,
       exclude,
       payload: {
-        commentId: row.id,
+        commentId: checkedRow.id,
         targetType: input.targetType,
         targetId: input.targetId,
       },
     });
   }
 
-  return row;
+  return checkedRow;
 }
 
 /**
@@ -393,31 +359,6 @@ async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRo
  *     "best" comment should bubble up regardless of when
  *     it was posted.
  */
-export type NpCommentSort = "newest" | "oldest" | "top";
-
-export interface NpCommentListOptions {
-  /** Default 50, max 200. */
-  limit?: number;
-  /** Default 0. */
-  offset?: number;
-  /** Newest first by default. */
-  order?: NpCommentSort;
-  /** Override visibility — staff/mods may want to see hidden rows. */
-  includeHidden?: boolean;
-  /**
-   * Phase 16.1 — when set, the viewer's mute list is applied
-   * so authors they've muted disappear from the result. The
-   * filter only kicks in for the logged-in viewer; anonymous
-   * viewers see every visible comment.
-   */
-  viewerMemberId?: string;
-}
-
-export interface NpCommentListResult {
-  comments: NpCommentRow[];
-  totalDocs: number;
-}
-
 export async function listComments(
   targetType: string,
   targetId: string,
@@ -477,22 +418,15 @@ export async function listComments(
     comment: NpCommentRow;
     authorStatus: string | null;
   }>;
-  const rows: NpCommentRow[] = joinedRows.map(({ comment, authorStatus }) => ({
-    ...comment,
-    authorStatus,
-  }));
+  const rows = joinedRows.map(({ comment, authorStatus }) =>
+    npRequireCommentRow({ ...comment, authorStatus }),
+  );
 
   const [totalRow] = (await db.select({ total: count() }).from(npComments).where(where)) as Array<{
     total: number | string;
   }>;
 
   return { comments: rows, totalDocs: Number(totalRow?.total ?? 0) };
-}
-
-export interface NpCommentUpdateInput {
-  commentId: string;
-  memberId: string;
-  bodyMd: string;
 }
 
 export async function updateComment(input: NpCommentUpdateInput): Promise<NpCommentRow> {
@@ -504,6 +438,7 @@ export async function updateComment(input: NpCommentUpdateInput): Promise<NpComm
     .where(eq(npComments.id, input.commentId))
     .limit(1)) as NpCommentRow[];
   if (!existing) throw new NpNotFoundError("comment", input.commentId);
+  npRequireCommentRow(existing);
 
   // Reject edits to soft-deleted comments. `deleteComment` clears
   // `bodyMd`/`bodyHtml` to honor erasure expectations; allowing the
@@ -550,54 +485,38 @@ export async function updateComment(input: NpCommentUpdateInput): Promise<NpComm
     targetId: existing.targetId,
     parentId: existing.parentId,
   };
-  let profanityFlag: { reason: string | null; metadata: Record<string, unknown> | null } | null =
+  let profanityFlag: { reason: string | null; metadata: NpCommunityJsonObject | null } | null =
     null;
-  try {
-    const verdict = await getProfanityAdapter().check(input.bodyMd, ctx);
-    if (verdict.kind === "reject") {
-      throw new NpValidationError("Invalid input", [
-        {
-          field: "bodyMd",
-          message: verdict.reason ?? "Comment contains prohibited language",
-        },
-      ]);
-    }
-    if (verdict.kind === "flag") {
-      profanityFlag = {
-        reason: verdict.reason ?? null,
-        metadata: verdict.metadata ?? null,
-      };
-    }
-  } catch (err) {
-    if (err instanceof NpValidationError) throw err;
-    getLogger().warn("profanity adapter threw on comment edit — treating as pass", {
-      error: err instanceof Error ? err.message : String(err),
-      commentId: input.commentId,
-    });
+  const profanityVerdict = await runProfanityCheck(getProfanityAdapter(), input.bodyMd, ctx);
+  if (profanityVerdict.kind === "reject") {
+    throw new NpValidationError("Invalid input", [
+      {
+        field: "bodyMd",
+        message: profanityVerdict.reason ?? "Comment contains prohibited language",
+      },
+    ]);
   }
-  let spamFlag: { reason: string | null; metadata: Record<string, unknown> | null } | null = null;
-  try {
-    const verdict = await getSpamAdapter().check(input.bodyMd, ctx);
-    if (verdict.kind === "reject") {
-      throw new NpValidationError("Invalid input", [
-        {
-          field: "bodyMd",
-          message: verdict.reason ?? "Comment was rejected by the site's spam filter",
-        },
-      ]);
-    }
-    if (verdict.kind === "flag") {
-      spamFlag = {
-        reason: verdict.reason ?? null,
-        metadata: verdict.metadata ?? null,
-      };
-    }
-  } catch (err) {
-    if (err instanceof NpValidationError) throw err;
-    getLogger().warn("spam adapter threw on comment edit — treating as pass", {
-      error: err instanceof Error ? err.message : String(err),
-      commentId: input.commentId,
-    });
+  if (profanityVerdict.kind === "flag") {
+    profanityFlag = {
+      reason: profanityVerdict.reason ?? null,
+      metadata: profanityVerdict.metadata ?? null,
+    };
+  }
+  let spamFlag: { reason: string | null; metadata: NpCommunityJsonObject | null } | null = null;
+  const spamVerdict = await runSpamCheck(getSpamAdapter(), input.bodyMd, ctx);
+  if (spamVerdict.kind === "reject") {
+    throw new NpValidationError("Invalid input", [
+      {
+        field: "bodyMd",
+        message: spamVerdict.reason ?? "Comment was rejected by the site's spam filter",
+      },
+    ]);
+  }
+  if (spamVerdict.kind === "flag") {
+    spamFlag = {
+      reason: spamVerdict.reason ?? null,
+      metadata: spamVerdict.metadata ?? null,
+    };
   }
   const editFlaggedBy: Array<"profanity" | "spam"> = [];
   if (profanityFlag) editFlaggedBy.push("profanity");
@@ -618,13 +537,14 @@ export async function updateComment(input: NpCommentUpdateInput): Promise<NpComm
     .where(eq(npComments.id, input.commentId))
     .returning()) as NpCommentRow[];
   if (!updated) throw new Error("Comment update returned no row");
+  const checkedUpdated = npRequireCommentRow(updated);
 
   if (editFlaggedBy.length > 0) {
     await recordAuditEvent({
       actor: { kind: "member", memberId: input.memberId },
       action: "comment.flag",
       targetType: "comment",
-      targetId: updated.id,
+      targetId: checkedUpdated.id,
       payload: {
         event: "update",
         sources: editFlaggedBy,
@@ -640,7 +560,7 @@ export async function updateComment(input: NpCommentUpdateInput): Promise<NpComm
   // on edits that flipped the row to `pending` (spam/profanity gate
   // matches the create-time policy: don't notify on content the
   // public can't see yet).
-  if (updated.status === "visible") {
+  if (checkedUpdated.status === "visible") {
     const previousHandles = new Set(extractMentionHandles(existing.bodyMd));
     await fanOutMentionNotifications({
       actorMemberId: input.memberId,
@@ -648,18 +568,13 @@ export async function updateComment(input: NpCommentUpdateInput): Promise<NpComm
       source: input.bodyMd,
       previousHandles,
       payload: {
-        commentId: updated.id,
+        commentId: checkedUpdated.id,
         targetType: existing.targetType,
         targetId: existing.targetId,
       },
     });
   }
-  return updated;
-}
-
-export interface NpCommentDeleteInput {
-  commentId: string;
-  memberId: string;
+  return checkedUpdated;
 }
 
 export async function deleteComment(input: NpCommentDeleteInput): Promise<void> {
@@ -670,6 +585,7 @@ export async function deleteComment(input: NpCommentDeleteInput): Promise<void> 
     .where(eq(npComments.id, input.commentId))
     .limit(1)) as NpCommentRow[];
   if (!existing) throw new NpNotFoundError("comment", input.commentId);
+  npRequireCommentRow(existing);
 
   const ownerCan = await memberCan(input.memberId, "delete-own", {
     type: "comment",
@@ -698,12 +614,6 @@ export async function deleteComment(input: NpCommentDeleteInput): Promise<void> 
     .where(eq(npComments.id, input.commentId));
 }
 
-export interface NpCommentHideInput {
-  commentId: string;
-  memberId: string;
-  reason?: string | null;
-}
-
 export async function hideComment(input: NpCommentHideInput): Promise<void> {
   const db = getDb();
   const [existing] = (await db
@@ -712,6 +622,7 @@ export async function hideComment(input: NpCommentHideInput): Promise<void> {
     .where(eq(npComments.id, input.commentId))
     .limit(1)) as NpCommentRow[];
   if (!existing) throw new NpNotFoundError("comment", input.commentId);
+  npRequireCommentRow(existing);
 
   const ok = await memberCan(input.memberId, "hide-comment", {
     type: "comment",
@@ -739,11 +650,6 @@ export async function hideComment(input: NpCommentHideInput): Promise<void> {
   });
 }
 
-export interface NpCommentRestoreInput {
-  commentId: string;
-  memberId: string;
-}
-
 export async function restoreComment(input: NpCommentRestoreInput): Promise<void> {
   const db = getDb();
   const [existing] = (await db
@@ -752,6 +658,7 @@ export async function restoreComment(input: NpCommentRestoreInput): Promise<void
     .where(eq(npComments.id, input.commentId))
     .limit(1)) as NpCommentRow[];
   if (!existing) throw new NpNotFoundError("comment", input.commentId);
+  npRequireCommentRow(existing);
   if (existing.status !== "hidden") {
     throw new NpValidationError("Invalid state", [
       { field: "status", message: `Comment is "${existing.status}", not "hidden"` },
@@ -811,11 +718,12 @@ async function loadCommentForStaffOp(commentId: string): Promise<{
     .where(eq(npComments.id, commentId))
     .limit(1)) as NpCommentRow[];
   if (!existing) throw new NpNotFoundError("comment", commentId);
+  const checkedExisting = npRequireCommentRow(existing);
   const requestSiteId = await requireSiteId();
-  if (existing.siteId !== requestSiteId) {
+  if (checkedExisting.siteId !== requestSiteId) {
     throw new NpForbiddenError("comment", "cross-site");
   }
-  return { row: existing, siteId: requestSiteId };
+  return { row: checkedExisting, siteId: requestSiteId };
 }
 
 export async function staffHideComment(

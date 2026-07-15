@@ -1,5 +1,15 @@
 import { and, count, desc, eq, gte, lt } from "drizzle-orm";
 
+import {
+  npRequireAuditEventRow,
+  npRequireRecordAuditEventInput,
+} from "../community-contract/contract.js";
+import type {
+  AuditActor,
+  AuditActorKind,
+  AuditEventRow,
+  RecordAuditEventInput,
+} from "../community-contract/types.js";
 import { getDb } from "../db/runtime.js";
 import { npAuditEvents } from "../db/schema/community.js";
 import { getLogger } from "../observability/logger.js";
@@ -15,62 +25,26 @@ import { getCurrentSiteId } from "../sites/context.js";
  * hooks instead). Reads are paginated and indexed by target.
  */
 
-export type AuditActorKind = "staff" | "member" | "system";
-
-export interface AuditActor {
-  kind: AuditActorKind;
-  /** Set only for `kind: "staff"`. */
-  userId?: string;
-  /** Set only for `kind: "member"`. */
-  memberId?: string;
-}
-
-export interface RecordAuditEventInput {
-  actor: AuditActor;
-  action: string;
-  targetType?: string;
-  targetId?: string;
-  payload?: Record<string, unknown>;
-  /**
-   * Phase 17 — site this event belongs to. When omitted the
-   * writer reads `getCurrentSiteId()` so request-driven calls
-   * automatically scope to the resolving tenant. Pass `null`
-   * explicitly to record an unscoped event (super-admin
-   * cross-site action, background job).
-   */
-  siteId?: string | null;
-}
-
-export interface AuditEventRow {
-  id: string;
-  actorKind: AuditActorKind;
-  actorUserId: string | null;
-  actorMemberId: string | null;
-  action: string;
-  targetType: string | null;
-  targetId: string | null;
-  payload: Record<string, unknown>;
-  siteId: string | null;
-  createdAt: Date;
-}
+export type { AuditActor, AuditActorKind, AuditEventRow, RecordAuditEventInput };
 
 export async function recordAuditEvent(input: RecordAuditEventInput): Promise<void> {
   const db = getDb();
   try {
+    const checked = npRequireRecordAuditEventInput(input);
     // Phase 17 — fill `site_id` from the request resolver when
     // the caller doesn't pin it explicitly. Resolver returns
     // null in non-request contexts (jobs, scripts), which we
     // record as a NULL site so super-admin queries can find
     // them via "no site filter."
-    const siteId = input.siteId === undefined ? await getCurrentSiteId() : input.siteId;
+    const siteId = checked.siteId === undefined ? await getCurrentSiteId() : checked.siteId;
     await db.insert(npAuditEvents).values({
-      actorKind: input.actor.kind,
-      actorUserId: input.actor.userId ?? null,
-      actorMemberId: input.actor.memberId ?? null,
-      action: input.action,
-      targetType: input.targetType ?? null,
-      targetId: input.targetId ?? null,
-      payload: input.payload ?? {},
+      actorKind: checked.actor.kind,
+      actorUserId: checked.actor.kind === "staff" ? checked.actor.userId : null,
+      actorMemberId: checked.actor.kind === "member" ? checked.actor.memberId : null,
+      action: checked.action,
+      targetType: checked.targetType ?? null,
+      targetId: checked.targetId ?? null,
+      payload: checked.payload ?? {},
       siteId,
     });
   } catch (err) {
@@ -157,5 +131,5 @@ export async function listAuditEvents(
     .from(npAuditEvents)
     .where(where)) as Array<{ total: number }>;
   const totalDocs = Number(totalRow?.total ?? 0);
-  return { events: rows, totalDocs };
+  return { events: rows.map(npRequireAuditEventRow), totalDocs };
 }

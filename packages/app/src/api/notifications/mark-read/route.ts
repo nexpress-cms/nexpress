@@ -1,13 +1,14 @@
+import { markAllNotificationsRead, markNotificationsRead } from "@nexpress/core/community";
 import {
-  NpValidationError,
-  markAllNotificationsRead,
-  markNotificationsRead,
-} from "@nexpress/core";
+  npRequireMarkNotificationsReadRequest,
+  npRequireMarkNotificationsReadWire,
+} from "@nexpress/core/community-contract";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import { ensureFor } from "../../../lib/init-core";
+import { npRequireCommunityRequest } from "../../../lib/community-contract";
 import { requireMember } from "../../../lib/member-auth-helpers";
 
 /**
@@ -21,23 +22,17 @@ export async function POST(request: NextRequest) {
   try {
     await ensureFor("write");
     const member = await requireMember(request);
-    const body = (await readJsonBody(request).catch(() => null)) as
-      | { all?: unknown; ids?: unknown }
-      | null;
+    const body = npRequireCommunityRequest(
+      npRequireMarkNotificationsReadRequest,
+      await readJsonBody(request).catch(() => null),
+    );
 
-    if (body?.all === true) {
+    if ("all" in body) {
       const count = await markAllNotificationsRead(member.id);
-      return npSuccessResponse({ marked: count, all: true });
+      return npSuccessResponse(npRequireMarkNotificationsReadWire({ marked: count, all: true }));
     }
-
-    const idsRaw = body?.ids;
-    if (!Array.isArray(idsRaw) || !idsRaw.every((id) => typeof id === "string")) {
-      throw new NpValidationError("Invalid input", [
-        { field: "ids", message: "ids must be a string[] (or pass `all: true`)" },
-      ]);
-    }
-    const count = await markNotificationsRead({ memberId: member.id, notificationIds: idsRaw });
-    return npSuccessResponse({ marked: count });
+    const count = await markNotificationsRead({ memberId: member.id, notificationIds: body.ids });
+    return npSuccessResponse(npRequireMarkNotificationsReadWire({ marked: count }));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

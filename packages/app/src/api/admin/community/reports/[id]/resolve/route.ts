@@ -1,19 +1,18 @@
-import { can, NpForbiddenError, resolveReport } from "@nexpress/core";
+import { can, NpForbiddenError } from "@nexpress/core";
+import { resolveReport } from "@nexpress/core/community";
+import {
+  npRequireResolveReportRequest,
+  npToReportWireRow,
+} from "@nexpress/core/community-contract";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../../../lib/api-response";
 import { requireAuth } from "../../../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../../../lib/init-core";
+import { npRequireCommunityRequest } from "../../../../../../lib/community-contract";
 
-interface ResolveBody {
-  resolution?: unknown;
-}
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
@@ -22,8 +21,10 @@ export async function POST(
     }
 
     const { id } = await params;
-    const body = (await readJsonBody(request).catch(() => null)) as ResolveBody | null;
-    const resolution = typeof body?.resolution === "string" ? body.resolution : "";
+    const { resolution } = npRequireCommunityRequest(
+      npRequireResolveReportRequest,
+      await readJsonBody(request).catch(() => null),
+    );
 
     const row = await resolveReport({
       reportId: id,
@@ -31,7 +32,7 @@ export async function POST(
       actor: { kind: "staff", user },
     });
 
-    return npSuccessResponse(row);
+    return npSuccessResponse(npToReportWireRow(row));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

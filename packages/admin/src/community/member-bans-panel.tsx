@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  npRequireBanListWire,
+  type BanScope,
+  type NpBanWireRow,
+} from "@nexpress/core/community-contract";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -26,20 +31,7 @@ const SCOPE_OPTIONS = [
   { value: "collection", label: "Collection" },
 ] as const;
 
-type BanScope = (typeof SCOPE_OPTIONS)[number]["value"];
-
-export interface BanRow {
-  id: string;
-  memberId: string;
-  scopeType: BanScope;
-  scopeId: string | null;
-  kind: "temporary" | "permanent";
-  expiresAt: string | null;
-  reason: string | null;
-  byUserId: string | null;
-  byMemberId: string | null;
-  createdAt: string;
-}
+export type BanRow = NpBanWireRow;
 
 interface MemberBansPanelProps {
   memberId: string;
@@ -110,8 +102,7 @@ export function MemberBansPanel({ memberId, memberHandle, canModify }: MemberBan
         setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
         return;
       }
-      const data = (raw.data ?? raw) as { docs?: BanRow[] };
-      setBans(Array.isArray(data.docs) ? data.docs : []);
+      setBans(npRequireBanListWire(raw).docs);
     } catch {
       setError("Unable to load bans.");
     } finally {

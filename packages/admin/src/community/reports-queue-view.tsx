@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  npRequireReportPageWire,
+  type NpReportStatus,
+  type NpReportWireRow,
+} from "@nexpress/core/community-contract";
 import { useCallback, useEffect, useState } from "react";
 
 import { npFetch } from "../lib/api-client.js";
@@ -20,20 +25,8 @@ import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 
-export interface ReportRow {
-  id: string;
-  reporterId: string;
-  targetType: string;
-  targetId: string;
-  reason: string;
-  resolvedAt: string | null;
-  resolvedByUserId: string | null;
-  resolvedByMemberId: string | null;
-  resolution: string | null;
-  createdAt: string;
-}
-
-type StatusFilter = "unresolved" | "resolved" | "all";
+export type ReportRow = NpReportWireRow;
+type StatusFilter = NpReportStatus;
 
 const STATUS_LABELS: Record<StatusFilter, string> = {
   unresolved: "Unresolved",
@@ -66,9 +59,9 @@ export function ReportsQueueView() {
         const message = extractErrorMessage(raw) ?? `HTTP ${res.status}`;
         throw new Error(message);
       }
-      const docs = Array.isArray(raw.docs) ? (raw.docs as ReportRow[]) : [];
-      setReports(docs);
-      setTotalDocs(typeof raw.totalDocs === "number" ? raw.totalDocs : docs.length);
+      const pageResult = npRequireReportPageWire(raw);
+      setReports(pageResult.docs);
+      setTotalDocs(pageResult.totalDocs);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load reports");
     } finally {

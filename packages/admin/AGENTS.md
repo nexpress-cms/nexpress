@@ -48,13 +48,13 @@ src/
 
 ## CONVENTIONS
 
-- **`@nexpress/core` is types-only here** — admin imports `type { NpCollectionConfig, NpFieldConfig, ... }` from core. Never import runtime/server exports from core. All data access goes through HTTP API calls to `/api/*`.
+- **`@nexpress/core` is types-only here** — admin imports `type { NpCollectionConfig, NpFieldConfig, ... }` from core. Pure browser-safe runtime validators may be imported only from explicit `@nexpress/core/*-contract` subpaths. All data access goes through HTTP API calls to `/api/*`.
 - **`next-shim.d.ts`** exists because this package uses `next/link` and `next/navigation` but is built outside a Next app. Do not remove it — tsc will fail.
 - **`.js` extensions** in all relative imports (NodeNext resolution).
 - **`as never` casts** exist in `field-renderer.tsx` and `fields/array-field-editor.tsx` for complex generic intersections. Minimize but don't add more.
 
 ## ANTI-PATTERNS
 
-- **Never import runtime exports from `@nexpress/core`** — only type imports. This package runs in the browser.
+- **Never import server runtime exports from `@nexpress/core`** — only type imports from the server root/domain subpaths and pure runtime validators from explicit `*-contract` subpaths. This package runs in the browser.
 - **Never mark UI primitives with `"use client"`** — keep them boundary-neutral.
 - **Never import `@nexpress/editor/client` statically** — always use `React.lazy` dynamic imports to avoid client bundle bloat. The block page editor (`src/blocks/`) follows the same rule via `React.lazy(() => import("../blocks/block-page-editor.js"))` in field-renderer.

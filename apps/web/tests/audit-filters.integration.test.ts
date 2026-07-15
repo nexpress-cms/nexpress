@@ -115,7 +115,7 @@ describe.skipIf(skipIfNoTestDb())("audit list filters", () => {
     expect(body.totalDocs).toBe(0);
   });
 
-  it("ignores invalid `since` / `until` (drops the filter, doesn't 400)", async () => {
+  it("rejects invalid `since` / `until` instead of dropping the filters", async () => {
     const { staff } = await seedEvents();
     const { GET } = await import("@/app/api/admin/audit/route");
     const req = buildRequest("/api/admin/audit", {
@@ -123,9 +123,9 @@ describe.skipIf(skipIfNoTestDb())("audit list filters", () => {
       query: { since: "not-a-date", until: "also-not-a-date" },
     });
     const res = await GET(req);
-    const { status, body } = await readJson<{ totalDocs?: number }>(res);
-    expect(status).toBe(200);
-    expect(body.totalDocs).toBe(3);
+    const { status, body } = await readJson<{ error?: { code?: string } }>(res);
+    expect(status).toBe(400);
+    expect(body.error?.code).toBe("VALIDATION_ERROR");
   });
 
   it("combines action + since + targetType filters", async () => {

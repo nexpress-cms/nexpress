@@ -1,4 +1,6 @@
-import { NpForbiddenError, purgeMemberContent, can } from "@nexpress/core";
+import { NpForbiddenError, can } from "@nexpress/core";
+import { purgeMemberContent } from "@nexpress/core/community";
+import { npRequireMemberPurgeResult } from "@nexpress/core/community-contract";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
@@ -26,7 +28,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
     const { id } = await context.params;
     const result = await purgeMemberContent(id, user);
-    return npSuccessResponse(result);
+    return npSuccessResponse(npRequireMemberPurgeResult(result));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

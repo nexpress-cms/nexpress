@@ -14,6 +14,8 @@ src/
 ├── db/           # createDbConnection, Drizzle schema (npUsers/npMedia/npRevisions/npSettings), generators
 ├── auth/         # JWT (jose), Argon2 password, CSRF, session helpers, access control
 ├── collections/  # Registry, content pipeline (1043 lines), Zod validation, search vectors
+├── community/    # Server services, adapter registries, moderation dispatch, diagnostics
+├── community-contract/ # Client-safe exact requests, rows, settings, adapters, and wire parsers
 ├── content/      # Thin helpers: getTheme, getNavigation, getPageBySlug, findPosts
 ├── media/        # Upload/process lifecycle, media DB singleton, sharp processing
 ├── storage/      # Exact runtime/object contract, adapters, registry, operations, lifecycle
@@ -83,6 +85,7 @@ are contained as partial/unavailable results and recorded for Admin Health.
 | Change observability        | `observability/contract.ts`, `logger.ts`, `error-reporter.ts`    | Preserve failure isolation and direct-console fallback             |
 | Change cache invalidation   | `cache/contract.ts`, `cache/runtime.ts`                          | Keep Next, plugins, jobs, CDN, health, and ops on one boundary     |
 | Change custom routes        | `routes/contract.ts`, `routes/registry.ts`                       | Keep app declarations, Admin/API, scaffold, and doctor aligned     |
+| Change community contracts  | `community-contract/`, `community/`                              | Keep services, API/Admin, doctor, and health on one exact boundary |
 | Change SEO output contracts | `seo/contract.ts`, `seo/{sitemap,feed,page-metadata,json-ld}.ts` | Keep Core, Theme hooks, App routes, and crawler caches aligned     |
 | Add job handler             | `jobs/handlers.ts`, `jobs-contract/`                             | `{ parsePayload, resolveSiteId }`; site ids live in exact payloads |
 | Add plugin capabilities     | `plugins/host.ts` + `plugin-sdk/src/types.ts`                    | Hook capability = `hooks:<namespace>` prefix matching              |
@@ -105,7 +108,7 @@ No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugi
 
 ## CONVENTIONS
 
-- Public build entries are declared in `tsup.config.ts`; client-safe contracts such as `jobs-contract` must not import server dependencies. Apps reference the `db-schema` entry in `drizzle.config.ts`.
+- Public build entries are declared in `tsup.config.ts`; client-safe contracts such as `jobs-contract` and `community-contract` must not import server dependencies. Apps reference the `db-schema` entry in `drizzle.config.ts`.
 - `pipeline.ts` is the single largest file (1043 lines). Changes here affect every document write. Read the full flow before modifying.
 - Content helpers in `content/helpers.ts` are thin wrappers over `getDb()` + direct SQL queries — they bypass the pipeline (no hooks/validation). Use `saveDocument`/`findDocuments` from collections for pipeline-protected writes.
 

@@ -1,20 +1,23 @@
 import {
-  NpValidationError,
   addReaction,
   assertReactableExists,
   countReactions,
   listMemberReactions,
   removeReaction,
-} from "@nexpress/core";
+} from "@nexpress/core/community";
+import {
+  npRequireOkWire,
+  npRequireReactionSummaryWire,
+  npRequireReactionTarget,
+  npToReactionWireRow,
+} from "@nexpress/core/community-contract";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
 import { ensureFor } from "../../lib/init-core";
-import {
-  optionalMember,
-  requireMember,
-} from "../../lib/member-auth-helpers";
+import { npRequireCommunityRequest } from "../../lib/community-contract";
+import { optionalMember, requireMember } from "../../lib/member-auth-helpers";
 
 /**
  * Polymorphic reactions over the community surface. v1 supports
@@ -23,41 +26,13 @@ import {
  * remove without hard-coupling the wire shape to a per-row id.
  */
 
-interface ReactionTarget {
-  targetType: string;
-  targetId: string;
-  kind: string;
-}
-
-function readTargetFromBody(raw: unknown): ReactionTarget {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new NpValidationError("Invalid input", [
-      { field: "body", message: "Body must be a JSON object" },
-    ]);
-  }
-  const body = raw as Record<string, unknown>;
-  const targetType = typeof body.targetType === "string" ? body.targetType : "";
-  const targetId = typeof body.targetId === "string" ? body.targetId : "";
-  const kind = typeof body.kind === "string" ? body.kind : "like";
-  if (!targetType || !targetId) {
-    throw new NpValidationError("Invalid input", [
-      { field: "target", message: "targetType and targetId required" },
-    ]);
-  }
-  return { targetType, targetId, kind };
-}
-
-function readTargetFromQuery(request: NextRequest): ReactionTarget {
+function readTargetFromQuery(request: NextRequest) {
   const url = request.nextUrl;
-  const targetType = url.searchParams.get("targetType") ?? "";
-  const targetId = url.searchParams.get("targetId") ?? "";
-  const kind = url.searchParams.get("kind") ?? "like";
-  if (!targetType || !targetId) {
-    throw new NpValidationError("Invalid input", [
-      { field: "target", message: "targetType and targetId query params required" },
-    ]);
-  }
-  return { targetType, targetId, kind };
+  return npRequireCommunityRequest(npRequireReactionTarget, {
+    targetType: url.searchParams.get("targetType"),
+    targetId: url.searchParams.get("targetId"),
+    ...(url.searchParams.has("kind") ? { kind: url.searchParams.get("kind") } : {}),
+  });
 }
 
 /**
@@ -74,7 +49,7 @@ export async function GET(request: NextRequest) {
     const mine = member
       ? await listMemberReactions(target.targetType, target.targetId, member.id)
       : [];
-    return npSuccessResponse({ counts, mine });
+    return npSuccessResponse(npRequireReactionSummaryWire({ counts, mine }));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
@@ -84,7 +59,7 @@ export async function POST(request: NextRequest) {
   try {
     await ensureFor("write");
     const member = await requireMember(request);
-    const target = readTargetFromBody(await readJsonBody(request));
+    const target = npRequireCommunityRequest(npRequireReactionTarget, await readJsonBody(request));
     await assertReactableExists(target.targetType, target.targetId);
     const row = await addReaction({
       targetType: target.targetType,
@@ -92,7 +67,7 @@ export async function POST(request: NextRequest) {
       memberId: member.id,
       kind: target.kind,
     });
-    return npSuccessResponse(row, { status: 201 });
+    return npSuccessResponse(npToReactionWireRow(row), { status: 201 });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
@@ -109,7 +84,7 @@ export async function DELETE(request: NextRequest) {
       memberId: member.id,
       kind: target.kind,
     });
-    return npSuccessResponse({ ok: true });
+    return npSuccessResponse(npRequireOkWire({ ok: true }));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

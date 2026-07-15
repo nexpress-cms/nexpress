@@ -1,15 +1,16 @@
+import { NpForbiddenError, can } from "@nexpress/core";
+import { getCommunitySettings, updateCommunitySettings } from "@nexpress/core/community";
 import {
-  NpForbiddenError,
-  getCommunitySettings,
-  updateCommunitySettings,
-  can,
-} from "@nexpress/core";
+  npRequireCommunitySettings,
+  npRequireCommunitySettingsPatch,
+} from "@nexpress/core/community-contract";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
+import { npRequireCommunityRequest } from "../../../../lib/community-contract";
 
 /**
  * Read community settings — site-wide knobs that gate registration
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
       throw new NpForbiddenError("community.settings", "read");
     }
     const settings = await getCommunitySettings();
-    return npSuccessResponse(settings);
+    return npSuccessResponse(npRequireCommunitySettings(settings));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
@@ -41,8 +42,9 @@ export async function PUT(request: NextRequest) {
       throw new NpForbiddenError("community.settings", "update");
     }
     const body = await readJsonBody(request);
+    npRequireCommunityRequest(npRequireCommunitySettingsPatch, body);
     const updated = await updateCommunitySettings(body, user.id);
-    return npSuccessResponse(updated);
+    return npSuccessResponse(npRequireCommunitySettings(updated));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

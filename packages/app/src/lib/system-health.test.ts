@@ -4,6 +4,7 @@ import type * as NpObservabilityModule from "@nexpress/core/observability";
 import type * as NpCacheModule from "@nexpress/core/cache";
 import type * as NpSearchModule from "@nexpress/core/search";
 import type * as NpI18nModule from "@nexpress/core/i18n";
+import type * as NpCommunityModule from "@nexpress/core/community";
 
 interface HealthTestRuntime {
   config: {
@@ -31,6 +32,7 @@ interface HealthTestRuntime {
   i18nLocales: number;
   i18nCompileFailures: number;
   i18nFormatFailures: number;
+  communityFailures: number;
 }
 
 const runtime = vi.hoisted<HealthTestRuntime>(() => ({
@@ -53,6 +55,7 @@ const runtime = vi.hoisted<HealthTestRuntime>(() => ({
   i18nLocales: 2,
   i18nCompileFailures: 0,
   i18nFormatFailures: 0,
+  communityFailures: 0,
 }));
 
 vi.mock("@nexpress/core", () => ({
@@ -178,6 +181,19 @@ vi.mock("@nexpress/core/i18n", async (importOriginal) => {
   };
 });
 
+vi.mock("@nexpress/core/community", async (importOriginal) => {
+  const actual = await importOriginal<typeof NpCommunityModule>();
+  return {
+    ...actual,
+    getCommunityRuntimeDiagnostics: () =>
+      Array.from({ length: runtime.communityFailures }, () => ({
+        source: "spam" as const,
+        message: "simulated adapter failure",
+        occurredAt: "2026-07-15T00:00:00.000Z",
+      })),
+  };
+});
+
 vi.mock("@/lib/bootstrap", () => ({
   getDb: vi.fn(),
 }));
@@ -186,6 +202,7 @@ const {
   checkCacheInvalidation,
   checkObservabilityAdapters,
   checkI18nRuntime,
+  checkCommunityRuntime,
   checkSearchAdapter,
   checkStorageAdapter,
 } = await import("./system-health.js");
@@ -211,6 +228,7 @@ afterEach(() => {
   runtime.i18nLocales = 2;
   runtime.i18nCompileFailures = 0;
   runtime.i18nFormatFailures = 0;
+  runtime.communityFailures = 0;
 });
 
 describe("live i18n health", () => {
@@ -232,6 +250,25 @@ describe("live i18n health", () => {
     runtime.i18nLocales = 0;
     expect(checkI18nRuntime()).toEqual(
       expect.objectContaining({ state: "ok", detail: "disabled (monolingual)" }),
+    );
+  });
+});
+
+describe("live community health", () => {
+  it("reports a healthy validated runtime", () => {
+    expect(checkCommunityRuntime()).toEqual(
+      expect.objectContaining({ state: "ok", detail: "registries and adapters valid" }),
+    );
+  });
+
+  it("surfaces contained adapter contract failures", () => {
+    runtime.communityFailures = 2;
+    expect(checkCommunityRuntime()).toEqual(
+      expect.objectContaining({
+        state: "warn",
+        detail: "2 contained runtime contract failures",
+        hint: expect.stringContaining("spam"),
+      }),
     );
   });
 });

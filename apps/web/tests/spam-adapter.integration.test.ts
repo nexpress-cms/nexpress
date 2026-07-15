@@ -191,10 +191,9 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
     expect(listBody.body.totalDocs).toBe(0);
   });
 
-  // Fail-open: an adapter that throws (Akismet 5xx, OpenAI timeout,
-  // etc.) must not block legitimate comment writes. Sites that want
-  // fail-closed wrap their adapter in try/catch and return `reject`.
-  it("adapter that throws is treated as pass (fail-open)", async () => {
+  // Adapter outages do not block the write, but unchecked content is
+  // isolated in the pending queue instead of publishing fail-open.
+  it("adapter that throws isolates the comment as pending", async () => {
     const core = await import("@nexpress/core");
     core.setSpamAdapter({
       check: () => {
@@ -216,7 +215,7 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
     );
     const body = await readJson<{ id: string; status: string }>(created);
     expect(body.status).toBe(201);
-    expect(body.body.status).toBe("visible");
+    expect(body.body.status).toBe("pending");
   });
 
   it("`flag` verdict skips parent reply notification (avoids leaking pending content)", async () => {

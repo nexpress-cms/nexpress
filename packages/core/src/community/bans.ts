@@ -1,5 +1,7 @@
 import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
 
+import { npRequireBanRow } from "../community-contract/contract.js";
+import type { BanKind, BanScope, NpBanRow } from "../community-contract/types.js";
 import { getDb } from "../db/runtime.js";
 import { npBans } from "../db/schema/community.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
@@ -22,23 +24,7 @@ import type { Principal } from "./principal.js";
  *    log records the issuer either way for forensic review.
  */
 
-export type BanScope = "site" | "category" | "collection";
-export type BanKind = "temporary" | "permanent";
-
-export interface NpBanRow {
-  id: string;
-  memberId: string;
-  scopeType: BanScope;
-  scopeId: string | null;
-  kind: BanKind;
-  expiresAt: Date | null;
-  reason: string | null;
-  byUserId: string | null;
-  byMemberId: string | null;
-  /** Tenant the ban belongs to. Phase 18 added the column; the type was incomplete until #364. */
-  siteId: string;
-  createdAt: Date;
-}
+export type { BanKind, BanScope, NpBanRow };
 
 export interface IssueBanInput {
   memberId: string;
@@ -52,14 +38,37 @@ export interface IssueBanInput {
 }
 
 export async function issueBan(input: IssueBanInput): Promise<NpBanRow> {
-  if (input.kind === "temporary" && !(input.expiresAt instanceof Date)) {
+  if (
+    input.kind === "temporary" &&
+    (!(input.expiresAt instanceof Date) || Number.isNaN(input.expiresAt.valueOf()))
+  ) {
     throw new NpValidationError("Invalid input", [
       { field: "expiresAt", message: "Temporary bans require an expiresAt timestamp" },
+    ]);
+  }
+  if (input.kind === "permanent" && input.expiresAt != null) {
+    throw new NpValidationError("Invalid input", [
+      { field: "expiresAt", message: "Permanent bans must not expire" },
     ]);
   }
   if (input.scopeType !== "site" && !input.scopeId) {
     throw new NpValidationError("Invalid input", [
       { field: "scopeId", message: "Scoped bans require a scopeId" },
+    ]);
+  }
+  if (input.scopeType === "site" && input.scopeId != null) {
+    throw new NpValidationError("Invalid input", [
+      { field: "scopeId", message: "Site bans must not include scopeId" },
+    ]);
+  }
+  if (input.scopeId != null && input.scopeId.trim() !== input.scopeId) {
+    throw new NpValidationError("Invalid input", [
+      { field: "scopeId", message: "scopeId must not contain surrounding whitespace" },
+    ]);
+  }
+  if (input.reason != null && input.reason.length > 1_000) {
+    throw new NpValidationError("Invalid input", [
+      { field: "reason", message: "Ban reason must be ≤ 1000 characters" },
     ]);
   }
 
@@ -90,6 +99,7 @@ export async function issueBan(input: IssueBanInput): Promise<NpBanRow> {
     })
     .returning()) as NpBanRow[];
   if (!row) throw new Error("Ban insert returned no row");
+  const checkedRow = npRequireBanRow(row);
 
   await recordAuditEvent({
     actor:
@@ -100,16 +110,16 @@ export async function issueBan(input: IssueBanInput): Promise<NpBanRow> {
     targetType: "member",
     targetId: input.memberId,
     payload: {
-      banId: row.id,
-      scopeType: row.scopeType,
-      scopeId: row.scopeId,
-      kind: row.kind,
-      expiresAt: row.expiresAt?.toISOString() ?? null,
-      reason: row.reason,
+      banId: checkedRow.id,
+      scopeType: checkedRow.scopeType,
+      scopeId: checkedRow.scopeId,
+      kind: checkedRow.kind,
+      expiresAt: checkedRow.expiresAt?.toISOString() ?? null,
+      reason: checkedRow.reason,
     },
   });
 
-  return row;
+  return checkedRow;
 }
 
 export async function listBansForMember(memberId: string): Promise<NpBanRow[]> {
@@ -127,7 +137,7 @@ export async function listBansForMember(memberId: string): Promise<NpBanRow[]> {
   // than crash.
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const now = new Date();
-  return (await db
+  const rows = (await db
     .select()
     .from(npBans)
     .where(
@@ -137,7 +147,8 @@ export async function listBansForMember(memberId: string): Promise<NpBanRow[]> {
         or(isNull(npBans.expiresAt), gt(npBans.expiresAt, now)),
       ),
     )
-    .orderBy(desc(npBans.createdAt)));
+    .orderBy(desc(npBans.createdAt))) as NpBanRow[];
+  return rows.map(npRequireBanRow);
 }
 
 export interface RevokeBanInput {
@@ -163,13 +174,12 @@ export async function revokeBan(input: RevokeBanInput): Promise<void> {
     .where(eq(npBans.id, input.banId))
     .limit(1)) as NpBanRow[];
   if (!existing) throw new NpNotFoundError("ban", input.banId);
-  if (existing.siteId !== requestSiteId) {
+  const checkedExisting = npRequireBanRow(existing);
+  if (checkedExisting.siteId !== requestSiteId) {
     throw new NpForbiddenError("ban", "cross-site");
   }
 
-  await db
-    .delete(npBans)
-    .where(and(eq(npBans.id, input.banId), eq(npBans.siteId, requestSiteId)));
+  await db.delete(npBans).where(and(eq(npBans.id, input.banId), eq(npBans.siteId, requestSiteId)));
 
   await recordAuditEvent({
     actor:
@@ -178,7 +188,11 @@ export async function revokeBan(input: RevokeBanInput): Promise<void> {
         : { kind: "member", memberId: input.actor.memberId },
     action: "member.unban",
     targetType: "member",
-    targetId: existing.memberId,
-    payload: { banId: existing.id, scopeType: existing.scopeType, scopeId: existing.scopeId },
+    targetId: checkedExisting.memberId,
+    payload: {
+      banId: checkedExisting.id,
+      scopeType: checkedExisting.scopeType,
+      scopeId: checkedExisting.scopeId,
+    },
   });
 }
