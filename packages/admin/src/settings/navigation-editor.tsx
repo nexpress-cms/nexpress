@@ -15,6 +15,7 @@ import {
   npValidateNavigationLocation,
   type NpNavItem,
 } from "@nexpress/core/navigation";
+import { npRequireCustomRoutesResponse, type NpCustomRoute } from "@nexpress/core/routes";
 import { CornerDownRight, GripVertical, Loader2, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import {
   DndContext,
@@ -78,10 +79,7 @@ interface CollectionOption {
   label: string;
 }
 
-interface CustomRouteOption {
-  path: string;
-  label: string;
-}
+type CustomRouteOption = Pick<NpCustomRoute, "path" | "label">;
 
 interface LocationOption {
   value: string;
@@ -149,7 +147,7 @@ export function NavigationEditor() {
   const [collections, setCollections] = useState<CollectionOption[]>([]);
   const [collectionsLoading, setCollectionsLoading] = useState(false);
   const [collectionsError, setCollectionsError] = useState<string | null>(null);
-  // Hand-coded routes registered via `registerCustomRoute(...)`.
+  // Hand-coded routes declared in the app's `npCustomRoutes` catalog.
   // Used as a `<datalist>` source for the link URL input so
   // operators can pick `/blog`, `/search`, etc. without typing.
   // Soft-fails — empty list just disables the autocomplete.
@@ -207,17 +205,10 @@ export function NavigationEditor() {
       const response = await fetch("/api/admin/custom-routes");
       if (!response.ok) return;
       const payload = (await response.json().catch(() => null)) as unknown;
-      if (!isRecord(payload) || !Array.isArray(payload.routes)) return;
-      const next: CustomRouteOption[] = [];
-      for (const item of payload.routes) {
-        if (!isRecord(item)) continue;
-        if (typeof item.path !== "string" || typeof item.label !== "string") continue;
-        // Skip dynamic routes (`/u/[handle]`, `/blog/[slug]`) — a
-        // raw href can't be derived without input, so suggesting
-        // them in the URL field would just produce 404s.
-        if (item.path.includes("[")) continue;
-        next.push({ path: item.path, label: item.label });
-      }
+      const contract = npRequireCustomRoutesResponse(payload);
+      const next: CustomRouteOption[] = contract.routes
+        .filter((route) => route.kind === "static")
+        .map((route) => ({ path: route.path, label: route.label }));
       next.sort((a, b) => a.path.localeCompare(b.path));
       setCustomRoutes(next);
     } catch {

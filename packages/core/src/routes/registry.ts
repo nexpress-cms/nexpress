@@ -1,60 +1,88 @@
+import {
+  NpCustomRouteContractError,
+  npGetCustomRouteKind,
+  npRequireCustomRouteDefinitions,
+  npRequireCustomRouteSource,
+} from "./contract.js";
+import type {
+  NpCustomRoute,
+  NpCustomRouteContractIssue,
+  NpCustomRouteDefinition,
+} from "./types.js";
+
+const routesBySource = new Map<string, readonly NpCustomRoute[]>();
+
 /**
- * Developer-declared custom-route registry. Hand-coded Next.js routes
- * under `apps/web/src/app/(site)/*` are invisible to the framework
- * (the catch-all `[[...slug]]` only knows about CMS pages, plugins
- * declare their own routes via `definePlugin({ routes })`). Operators
- * still need to discover and link to those hand-coded surfaces from
- * the admin — the navigation editor in particular.
+ * Atomically replaces every route owned by `source`.
  *
- * App code declares each navigable hand-coded route with
- * `registerCustomRoute(...)` at boot. The admin reads the registry
- * via `getCustomRoutes()` to populate a Settings tab and the nav
- * editor's URL autocomplete.
- *
- * Re-registering the same `path` overwrites silently — same HMR-safe
- * convention as the block registry. The registry is process-scoped;
- * sites in a multi-tenant deployment share the same set because all
- * sites share the same code bundle.
+ * Re-running this function is HMR-safe: routes removed from the new catalog
+ * disappear instead of surviving as stale process-global entries. A path may
+ * have only one source; collisions fail without changing the previous catalog.
  */
-export interface NpCustomRoute {
-  /**
-   * The route's URL path. Must start with `/`. May include dynamic
-   * segments for documentation purposes (e.g. `/u/[username]`), but
-   * such routes won't appear as nav-link targets — the autocomplete
-   * filters them out because a literal href can't be derived.
-   */
-  path: string;
-  /** Short human label for the admin UI. */
-  label: string;
-  /** Optional one-line description. */
-  description?: string;
-  /**
-   * Optional Lucide icon name (lowercase kebab-case, matching the
-   * shared `BlockIcon` resolver). Defaults to `route` if unset.
-   */
-  icon?: string;
-  /** Optional grouping key for the admin list (e.g. "content", "community"). */
-  group?: string;
-}
-
-const registry = new Map<string, NpCustomRoute>();
-
-export function registerCustomRoute(route: NpCustomRoute): void {
-  if (typeof route.path !== "string" || !route.path.startsWith("/")) {
-    throw new TypeError(
-      `registerCustomRoute: 'path' must start with '/', got ${JSON.stringify(route.path)}`,
+export function npRegisterCustomRoutes(
+  sourceValue: unknown,
+  definitionsValue: unknown,
+): readonly NpCustomRoute[] {
+  const source = npRequireCustomRouteSource(sourceValue);
+  const definitions = npRequireCustomRouteDefinitions(definitionsValue);
+  const collisions: NpCustomRouteContractIssue[] = [];
+  const otherOwners = new Map<string, string>();
+  for (const [registeredSource, routes] of routesBySource) {
+    if (registeredSource === source) continue;
+    for (const route of routes) otherOwners.set(route.path, registeredSource);
+  }
+  for (const [index, definition] of definitions.entries()) {
+    const owner = otherOwners.get(definition.path);
+    if (owner) {
+      collisions.push({
+        code: "source-collision",
+        path: `customRoutes.${index.toString()}.path`,
+        message: `custom route path "${definition.path}" is already owned by source "${owner}".`,
+      });
+    }
+  }
+  if (collisions.length > 0) {
+    const first = collisions[0];
+    throw new NpCustomRouteContractError(
+      `Custom route source collision: ${first?.path ?? "customRoutes"}: ${first?.message ?? "duplicate path"}`,
+      collisions,
     );
   }
-  if (typeof route.label !== "string" || route.label.trim().length === 0) {
-    throw new TypeError("registerCustomRoute: 'label' must be a non-empty string");
-  }
-  registry.set(route.path, { ...route });
+
+  const routes = Object.freeze(
+    definitions.map((definition: NpCustomRouteDefinition) =>
+      Object.freeze({
+        ...definition,
+        kind: npGetCustomRouteKind(definition.path),
+        source,
+      }),
+    ),
+  );
+  routesBySource.set(source, routes);
+  return routes;
 }
 
-export function getCustomRoutes(): NpCustomRoute[] {
-  return Array.from(registry.values());
+/** Deterministic, immutable snapshot for Admin/API consumers. */
+export function npGetCustomRoutes(): readonly NpCustomRoute[] {
+  const routes = [...routesBySource.values()].flat();
+  routes.sort(
+    (left, right) =>
+      compareCanonicalText(left.path, right.path) ||
+      compareCanonicalText(left.source, right.source),
+  );
+  return Object.freeze(routes);
 }
 
-export function clearCustomRoutes(): void {
-  registry.clear();
+function compareCanonicalText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/** Removes one source's complete catalog. Unknown sources are an idempotent no-op. */
+export function npUnregisterCustomRoutes(sourceValue: unknown): void {
+  routesBySource.delete(npRequireCustomRouteSource(sourceValue));
+}
+
+/** Internal test isolation helper; intentionally not exported from the public subpath. */
+export function resetCustomRoutesForTests(): void {
+  routesBySource.clear();
 }

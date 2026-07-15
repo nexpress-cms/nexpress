@@ -1118,5 +1118,32 @@ export type {
   NpMemberProfile,
 } from "./community/index.js";
 
-export { registerCustomRoute, getCustomRoutes, clearCustomRoutes } from "./routes/index.js";
-export type { NpCustomRoute } from "./routes/index.js";
+export {
+  NpCustomRouteContractError,
+  isNpCustomRoutesResponse,
+  npAnalyzeCustomRouteDefinitions,
+  npAnalyzeCustomRoutesResponse,
+  npCreateCustomRoutesResponse,
+  npCustomRouteContractLimits,
+  npCustomRouteKinds,
+  npCustomRouteMetadataKeyPattern,
+  npCustomRouteSourcePattern,
+  npDefineCustomRoutes,
+  npGetCustomRouteKind,
+  npGetCustomRoutes,
+  npRegisterCustomRoutes,
+  npRequireCustomRouteDefinitions,
+  npRequireCustomRouteSource,
+  npRequireCustomRoutesResponse,
+  npUnregisterCustomRoutes,
+  npValidateCustomRouteDefinitions,
+} from "./routes/index.js";
+export type {
+  NpCustomRoute,
+  NpCustomRouteContractIssue,
+  NpCustomRouteContractIssueCode,
+  NpCustomRouteDefinition,
+  NpCustomRouteKind,
+  NpCustomRoutesResponse,
+  NpCustomRouteValidationResult,
+} from "./routes/index.js";

@@ -1,51 +1,75 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { NpCustomRouteContractError } from "./contract.js";
 import {
-  clearCustomRoutes,
-  getCustomRoutes,
-  registerCustomRoute,
+  npGetCustomRoutes,
+  npRegisterCustomRoutes,
+  npUnregisterCustomRoutes,
+  resetCustomRoutesForTests,
 } from "./registry.js";
 
 afterEach(() => {
-  clearCustomRoutes();
+  resetCustomRoutesForTests();
 });
 
-describe("custom routes registry", () => {
-  it("registers and lists routes", () => {
-    registerCustomRoute({ path: "/blog", label: "Blog" });
-    registerCustomRoute({
-      path: "/search",
-      label: "Search",
-      description: "Site search",
-      icon: "search",
-      group: "content",
-    });
-    const routes = getCustomRoutes();
-    expect(routes).toHaveLength(2);
-    expect(routes.map((r) => r.path).sort()).toEqual(["/blog", "/search"]);
+describe("custom route registry", () => {
+  it("derives wire metadata and returns deterministic immutable snapshots", () => {
+    npRegisterCustomRoutes("app:site", [
+      { path: "/search", label: "Search" },
+      { path: "/blog/[slug]", label: "Post" },
+    ]);
+
+    const routes = npGetCustomRoutes();
+    expect(routes).toEqual([
+      { path: "/blog/[slug]", label: "Post", kind: "dynamic", source: "app:site" },
+      { path: "/search", label: "Search", kind: "static", source: "app:site" },
+    ]);
+    expect(Object.isFrozen(routes)).toBe(true);
+    expect(routes.every((route) => Object.isFrozen(route))).toBe(true);
   });
 
-  it("overwrites silently on re-registration of the same path (HMR-safe)", () => {
-    registerCustomRoute({ path: "/blog", label: "Blog" });
-    registerCustomRoute({ path: "/blog", label: "Blog v2" });
-    const routes = getCustomRoutes();
-    expect(routes).toHaveLength(1);
-    expect(routes[0]?.label).toBe("Blog v2");
+  it("atomically replaces one source so removed HMR entries do not survive", () => {
+    npRegisterCustomRoutes("app:site", [
+      { path: "/old", label: "Old" },
+      { path: "/keep", label: "Keep" },
+    ]);
+    npRegisterCustomRoutes("app:site", [{ path: "/keep", label: "Keep v2" }]);
+
+    expect(npGetCustomRoutes()).toEqual([
+      { path: "/keep", label: "Keep v2", kind: "static", source: "app:site" },
+    ]);
   });
 
-  it("rejects paths that don't start with /", () => {
-    expect(() => registerCustomRoute({ path: "blog", label: "Blog" })).toThrow(/start with/);
+  it("rejects cross-source path collisions without mutating either catalog", () => {
+    npRegisterCustomRoutes("app:framework", [{ path: "/search", label: "Search" }]);
+    npRegisterCustomRoutes("app:site", [{ path: "/about", label: "About" }]);
+
+    expect(() =>
+      npRegisterCustomRoutes("app:site", [{ path: "/search", label: "Override" }]),
+    ).toThrow(NpCustomRouteContractError);
+    expect(npGetCustomRoutes()).toEqual([
+      { path: "/about", label: "About", kind: "static", source: "app:site" },
+      { path: "/search", label: "Search", kind: "static", source: "app:framework" },
+    ]);
   });
 
-  it("rejects empty labels", () => {
-    expect(() => registerCustomRoute({ path: "/blog", label: "" })).toThrow(/non-empty/);
-    expect(() => registerCustomRoute({ path: "/blog", label: "   " })).toThrow(/non-empty/);
+  it("unregisters one source without disturbing other owners", () => {
+    npRegisterCustomRoutes("app:framework", [{ path: "/search", label: "Search" }]);
+    npRegisterCustomRoutes("app:site", [{ path: "/about", label: "About" }]);
+
+    npUnregisterCustomRoutes("app:site");
+    npUnregisterCustomRoutes("app:site");
+
+    expect(npGetCustomRoutes()).toEqual([
+      { path: "/search", label: "Search", kind: "static", source: "app:framework" },
+    ]);
   });
 
-  it("returns a snapshot — mutating the result doesn't affect the registry", () => {
-    registerCustomRoute({ path: "/blog", label: "Blog" });
-    const snap = getCustomRoutes();
-    snap.length = 0;
-    expect(getCustomRoutes()).toHaveLength(1);
+  it("fails before mutation on malformed sources or definitions", () => {
+    expect(() => npRegisterCustomRoutes("App Site", [])).toThrow(/custom route source/u);
+    expect(() => npRegisterCustomRoutes("app:site", [{ path: "search", label: "Search" }])).toThrow(
+      /custom route paths/u,
+    );
+    expect(npGetCustomRoutes()).toEqual([]);
   });
 });

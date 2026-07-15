@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { npRequireCustomRoutesResponse, type NpCustomRoute } from "@nexpress/core/routes";
 import {
   CircleUser,
   ExternalLink,
@@ -18,14 +19,6 @@ import {
 import { Badge } from "../ui/badge.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 
-interface CustomRoute {
-  path: string;
-  label: string;
-  description?: string;
-  icon?: string;
-  group?: string;
-}
-
 const ICON_MAP: Record<string, LucideIcon> = {
   newspaper: Newspaper,
   search: Search,
@@ -41,25 +34,20 @@ function resolveIcon(name?: string): LucideIcon {
   return ICON_MAP[name] ?? Route;
 }
 
-function isDynamic(path: string): boolean {
-  return path.includes("[");
-}
-
 /**
  * Settings → Routes tab. Read-only list of every developer-declared
- * custom route registered via `registerCustomRoute(...)` in app boot
- * code. Mirrors what the navigation editor's URL autocomplete pulls
+ * custom route declared in `src/lib/custom-routes.ts`. Mirrors what
+ * the navigation editor's URL autocomplete pulls
  * from — operators get one place to see every hand-coded surface
  * the framework knows about.
  *
  * No write operations: routes are code-owned by definition. To add
- * one, the developer ships a `registerCustomRoute` call in the app's
- * bootstrap file and redeploys.
+ * one, the developer updates `npCustomRoutes` and redeploys.
  */
 export function CustomRoutesList() {
   const [state, setState] = useState<
     | { kind: "loading" }
-    | { kind: "ready"; routes: CustomRoute[] }
+    | { kind: "ready"; routes: readonly NpCustomRoute[] }
     | { kind: "error"; message: string }
   >({ kind: "loading" });
 
@@ -77,8 +65,8 @@ export function CustomRoutesList() {
           });
           return;
         }
-        const routes = parseRoutes(payload);
-        setState({ kind: "ready", routes });
+        const responseBody = npRequireCustomRoutesResponse(payload);
+        setState({ kind: "ready", routes: responseBody.routes });
       } catch {
         if (!cancelled) {
           setState({ kind: "error", message: "Unable to load custom routes." });
@@ -91,8 +79,8 @@ export function CustomRoutesList() {
   }, []);
 
   const grouped = useMemo(() => {
-    if (state.kind !== "ready") return [] as Array<{ group: string; routes: CustomRoute[] }>;
-    const buckets = new Map<string, CustomRoute[]>();
+    if (state.kind !== "ready") return [] as Array<{ group: string; routes: NpCustomRoute[] }>;
+    const buckets = new Map<string, NpCustomRoute[]>();
     for (const route of state.routes) {
       const key = route.group?.trim() || "general";
       const list = buckets.get(key) ?? [];
@@ -112,12 +100,9 @@ export function CustomRoutesList() {
       <CardHeader className="space-y-2">
         <CardTitle className="break-words">Custom routes</CardTitle>
         <p className="break-words text-sm text-muted-foreground">
-          Hand-coded Next.js routes registered by the app at boot. To add or remove one, edit the
-          app&apos;s{" "}
-          <code className="break-all rounded bg-muted px-1.5 py-0.5 text-xs">
-            registerCustomRoute
-          </code>{" "}
-          calls and redeploy. The navigation editor autocompletes URLs from this list.
+          Hand-coded Next.js routes registered by the app at boot. To add or remove one, edit the{" "}
+          <code className="break-all rounded bg-muted px-1.5 py-0.5 text-xs">npCustomRoutes</code>{" "}
+          catalog and redeploy. The navigation editor autocompletes URLs from this list.
         </p>
       </CardHeader>
       <CardContent className="min-w-0 space-y-6">
@@ -136,11 +121,13 @@ export function CustomRoutesList() {
 
         {state.kind === "ready" && state.routes.length === 0 ? (
           <div className="break-words rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-            No custom routes registered yet. Call{" "}
+            No custom routes registered yet. Add definitions to{" "}
+            <code className="break-all rounded bg-muted px-1.5 py-0.5 text-xs">npCustomRoutes</code>{" "}
+            in{" "}
             <code className="break-all rounded bg-muted px-1.5 py-0.5 text-xs">
-              registerCustomRoute
-            </code>{" "}
-            from the app&apos;s bootstrap to surface routes here.
+              src/lib/custom-routes.ts
+            </code>
+            .
           </div>
         ) : null}
 
@@ -154,7 +141,7 @@ export function CustomRoutesList() {
                 <ul className="min-w-0 divide-y rounded-xl border">
                   {routes.map((route) => {
                     const Icon = resolveIcon(route.icon);
-                    const dyn = isDynamic(route.path);
+                    const dyn = route.kind === "dynamic";
                     return (
                       <li
                         key={route.path}
@@ -174,6 +161,9 @@ export function CustomRoutesList() {
                                 dynamic
                               </Badge>
                             ) : null}
+                            <Badge variant="outline" className="max-w-full break-all text-[10px]">
+                              {route.source}
+                            </Badge>
                           </div>
                           {route.description ? (
                             <p className="break-words text-sm text-muted-foreground">
@@ -203,23 +193,6 @@ export function CustomRoutesList() {
       </CardContent>
     </Card>
   );
-}
-
-function parseRoutes(payload: unknown): CustomRoute[] {
-  if (!isRecord(payload) || !Array.isArray(payload.routes)) return [];
-  const result: CustomRoute[] = [];
-  for (const item of payload.routes) {
-    if (!isRecord(item)) continue;
-    if (typeof item.path !== "string" || typeof item.label !== "string") continue;
-    result.push({
-      path: item.path,
-      label: item.label,
-      description: typeof item.description === "string" ? item.description : undefined,
-      icon: typeof item.icon === "string" ? item.icon : undefined,
-      group: typeof item.group === "string" ? item.group : undefined,
-    });
-  }
-  return result;
 }
 
 function getErrorMessage(payload: unknown, fallback: string): string {

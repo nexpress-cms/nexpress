@@ -1,5 +1,5 @@
 import { NpForbiddenError, can } from "@nexpress/core";
-import { getCustomRoutes } from "@nexpress/core/routes";
+import { npCreateCustomRoutesResponse, npGetCustomRoutes } from "@nexpress/core/routes";
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "../../../lib/auth-helpers";
@@ -8,7 +8,7 @@ import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 
 /**
  * Lists every developer-declared custom route registered via
- * `registerCustomRoute(...)`. Powers the Settings → Routes tab and
+ * `npCustomRoutes`. Powers the Settings → Routes tab and
  * the navigation editor's URL autocomplete.
  *
  * Capability-gated on `admin.manage` because the list reveals app-
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
       throw new NpForbiddenError("custom-routes", "list");
     }
 
-    return npSuccessResponse({ routes: getCustomRoutes() });
+    return npSuccessResponse(npCreateCustomRoutesResponse(npGetCustomRoutes()));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
