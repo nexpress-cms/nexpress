@@ -43,6 +43,7 @@ behavior they describe changes.
 | [revisions.md](revisions.md)                           | Revision snapshots, autosave, restore, API, and doctor contracts       |
 | [rich-text.md](rich-text.md)                           | Versioned rich-text wire format, validation, and authoring helpers     |
 | [scheduled-publishing.md](scheduled-publishing.md)     | Scheduled publish flow                                                 |
+| [seo.md](seo.md)                                       | Page metadata, JSON-LD, sitemap/feed, and theme contribution contracts |
 | [settings.md](settings.md)                             | Canonical site identity and closed persisted-settings registry         |
 | [site-customization.md](site-customization.md)         | Track A — what to customise in a scaffolded site without forking       |
 | [storage.md](storage.md)                               | Runtime modes, object/adapter contract, lifecycle, and diagnostics     |

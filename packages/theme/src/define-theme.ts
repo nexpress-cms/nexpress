@@ -7,35 +7,9 @@ import type {
   NpBlockRenderContext,
   NpPatternDefinition,
 } from "@nexpress/blocks";
-
-/**
- * Local mirrors of `NpSitemapEntry` / `NpFeedEntry` from
- * `@nexpress/core`. tsup's DTS bundler intermittently
- * fails to resolve named types across the `@nexpress/core`
- * boundary even when the symbols are present in the consumed
- * `dist/index.d.ts`. The structural mirror keeps theme authors
- * able to author hooks against the same shape; the runtime
- * passes values through unchanged so the structural identity
- * is enough.
- */
-type LocalNpSitemapEntry = {
-  loc: string;
-  lastmod?: string;
-  changefreq?: "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";
-  priority?: number;
-};
-
-type LocalNpFeedEntry = {
-  id: string;
-  title: string;
-  summary: string | null;
-  link: string;
-  author: string | null;
-  updated: string;
-  published: string | null;
-};
 import type { NpRegisteredTheme, NpThemeManifest } from "@nexpress/core";
 import type { NpNavItem as CoreNpNavItem } from "@nexpress/core/navigation";
+import type { NpFeedEntry, NpSitemapEntry } from "@nexpress/core/seo";
 import type { NpThemeTokensOverlay as CoreNpThemeTokensOverlay } from "@nexpress/core/theme";
 import { npAssertThemeDefinition } from "./theme-contract.js";
 
@@ -647,10 +621,10 @@ export interface NpThemeSeoHooks {
   /** Extra sitemap entries beyond the framework's collection
    *  walk. Returned entries are deduplicated by `loc` against
    *  the framework output (framework wins on collision). */
-  sitemapEntries?: () => Promise<LocalNpSitemapEntry[]> | LocalNpSitemapEntry[];
+  sitemapEntries?: () => Promise<readonly NpSitemapEntry[]> | readonly NpSitemapEntry[];
   /** Extra feed entries beyond the framework's collection feed.
    *  Same dedup behavior. */
-  feedEntries?: () => Promise<LocalNpFeedEntry[]> | LocalNpFeedEntry[];
+  feedEntries?: () => Promise<readonly NpFeedEntry[]> | readonly NpFeedEntry[];
   /** Replace the framework's default `robots.txt` body. Returns
    *  the full body string. Omitting falls back to the framework
    *  default. */

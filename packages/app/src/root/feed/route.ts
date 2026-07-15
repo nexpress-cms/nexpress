@@ -2,8 +2,11 @@ import {
   NP_DEFAULT_SITE_ID,
   getActiveThemeSeoHooks,
   getCurrentSiteId,
-  renderAtomFeed,
 } from "@nexpress/core";
+import {
+  npRequireAtomFeedOptions,
+  renderAtomFeed,
+} from "@nexpress/core/seo";
 import { unstable_cache } from "next/cache";
 import type { NextRequest } from "next/server";
 
@@ -55,8 +58,19 @@ async function renderAtomFeedDirect(
 }
 
 export async function GET(request: NextRequest): Promise<Response> {
+  const rawCollection = request.nextUrl.searchParams.get("collection") ?? undefined;
+  let collection: string | undefined;
+  try {
+    collection = npRequireAtomFeedOptions(
+      rawCollection === undefined ? {} : { collection: rawCollection },
+    ).collection;
+  } catch {
+    return new Response("Invalid feed collection.", {
+      status: 400,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
   await ensureFor("read");
-  const collection = request.nextUrl.searchParams.get("collection") ?? undefined;
   const localeParam = request.nextUrl.searchParams.get("locale")?.trim();
   const locale =
     localeParam && isLocale(localeParam) ? localeParam : undefined;

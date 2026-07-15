@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-15 (code-owned custom routes now share one exact,
+**Last refreshed:** 2026-07-15 (page metadata, JSON-LD, sitemap/feed entries,
+theme SEO callback results, and robots bodies now share one exact, bounded
+runtime contract before rendering or caching.)
+
+**Earlier:** 2026-07-15 (code-owned custom routes now share one exact,
 bounded author/runtime/Admin wire contract; source-owned registration replaces
 stale HMR catalogs, and scaffold bootstrap plus doctor consume the same definition.)
 
@@ -443,6 +447,16 @@ Packages that contain React UI split exports to keep client-only code out of RSC
 Each `./client` bundle is built by tsup with `"use client"` banner injection. Consumers import `@nexpress/editor/client` for interactive components; server code imports the root or `./server`. Admin lazy-loads heavy editors via `React.lazy(() => import("@nexpress/editor/client"))`.
 
 - `@nexpress/theme` — CSS-custom-property generation from design tokens. `NpThemeStyle` component emits `<style>` tag.
+
+### SEO
+
+`@nexpress/core/seo` owns the canonical runtime types and validators for page
+metadata, JSON-LD inputs, sitemap/index entries, Atom entries, URL/path/date
+values, and robots bodies. Core builders and renderers validate their inputs;
+theme `impl.seo` functions are validated at definition time and their resolved
+results are validated again immediately after dispatch. Malformed values fail
+before XML, JSON-LD, `Response`, or cache construction. `@nexpress/theme` uses
+the same Core types rather than structural mirrors. Author guide: `docs/seo.md`.
 
 ### Storage
 

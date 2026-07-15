@@ -44,6 +44,7 @@ src/
 | Change staff auth cookies/helpers                            | `src/lib/auth-helpers.ts`, `packages/app/src/lib/auth-helpers.ts`, `packages/next/src/auth.ts`                      | CSRF enforcement is centralized in proxy for API mutations.                              |
 | Change member auth helpers                                   | `src/lib/member-auth-helpers.ts`, `packages/app/src/lib/member-auth-helpers.ts`, `packages/next/src/member-auth.ts` | Member cookies use the `np-mb-*` namespace.                                              |
 | Change site rendering                                        | `packages/app/src/site/**`, theme packages                                                                          | Public catch-all dispatches page slug, slug redirects, theme routes, then plugin routes. |
+| Change sitemap/feed/robots or metadata contracts             | `packages/core/src/seo/**`, `packages/app/src/root/**`, `packages/theme/src/define-theme.ts`                        | `@nexpress/core/seo` validates every contribution before rendering/cache.                |
 | Change admin surfaces                                        | `packages/app/src/admin/**`, `packages/admin/src/**`                                                                | Client components come from `@nexpress/admin/client`.                                    |
 
 ## Bootstrap Convention

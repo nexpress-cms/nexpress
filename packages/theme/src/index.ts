@@ -32,6 +32,7 @@ export type {
   NpThemeTokensOverlay,
   NpThemeTypography,
 } from "@nexpress/core/theme";
+export type { NpFeedEntry, NpSitemapAlternate, NpSitemapEntry } from "@nexpress/core/seo";
 
 export { defineTheme } from "./define-theme.js";
 export {

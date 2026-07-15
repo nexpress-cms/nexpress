@@ -4,6 +4,7 @@ import {
   getCurrentSiteId,
   getSiteById,
 } from "@nexpress/core";
+import { npRequireRobotsTxt, npRequireSeoOrigin } from "@nexpress/core/seo";
 
 import { ensureFor } from "../../lib/init-core";
 
@@ -42,7 +43,7 @@ async function resolveSiteOrigin(): Promise<string> {
 
 export async function GET(): Promise<Response> {
   await ensureFor("read");
-  const origin = await resolveSiteOrigin();
+  const origin = npRequireSeoOrigin(await resolveSiteOrigin());
 
   // Phase F.7 — when the active theme contributes a `robotsTxt`
   // hook, that hook OWNS the response body completely. Sites
@@ -63,20 +64,22 @@ export async function GET(): Promise<Response> {
     });
   }
 
-  const body = [
-    "User-agent: *",
-    "Allow: /",
-    "Disallow: /admin",
-    "Disallow: /api",
-    "Disallow: /members/login",
-    "Disallow: /members/register",
-    "Disallow: /members/forgot-password",
-    "Disallow: /members/reset-password",
-    "Disallow: /members/verify",
-    "",
-    `Sitemap: ${origin}/sitemap.xml`,
-    "",
-  ].join("\n");
+  const body = npRequireRobotsTxt(
+    [
+      "User-agent: *",
+      "Allow: /",
+      "Disallow: /admin",
+      "Disallow: /api",
+      "Disallow: /members/login",
+      "Disallow: /members/register",
+      "Disallow: /members/forgot-password",
+      "Disallow: /members/reset-password",
+      "Disallow: /members/verify",
+      "",
+      `Sitemap: ${origin}/sitemap.xml`,
+      "",
+    ].join("\n"),
+  );
   return new Response(body, {
     status: 200,
     headers: {

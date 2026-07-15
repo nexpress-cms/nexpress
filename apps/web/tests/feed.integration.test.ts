@@ -106,6 +106,14 @@ describe.skipIf(skipIfNoTestDb())("Atom feed (Phase 10.4)", () => {
     expect(res.status).toBe(404);
   });
 
+  it("rejects malformed collection query values before feed dispatch", async () => {
+    const res = await feedGET(
+      new NextRequest("http://localhost:3000/feed.xml?collection=Posts%2F..%2Fusers"),
+    );
+    expect(res.status).toBe(400);
+    await expect(res.text()).resolves.toBe("Invalid feed collection.");
+  });
+
   it("XML body escapes special characters in titles", async () => {
     const staff = await seedUser({ role: "editor" });
     await collectionPOST(
