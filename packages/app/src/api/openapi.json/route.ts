@@ -41,6 +41,7 @@ import {
   npRevisionCanonicalDatePattern,
   npRevisionContractLimits,
 } from "@nexpress/core/revisions";
+import { npSearchCollectionSlugPattern, npSearchContractLimits } from "@nexpress/core/search";
 import { NextResponse } from "next/server";
 
 import { ensureFor } from "../../lib/init-core";
@@ -2705,24 +2706,66 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Full-text search across published documents in every collection",
         description:
-          'Public endpoint. Uses each collection\'s search_vector column; results are filtered to status="published" automatically and ranked by a shared relevance score.',
+          'Public, current-site endpoint. Unknown or duplicate query parameters and ambiguous page/offset pairs are rejected. Uses the installed exact search adapter or the built-in Postgres search_vector path; every result is revalidated as status="published" and visibility="public" before it is returned.',
         parameters: [
-          { in: "query", name: "q", required: true, schema: { type: "string" } },
+          {
+            in: "query",
+            name: "q",
+            required: true,
+            schema: { type: "string", maxLength: npSearchContractLimits.queryLength },
+            description: "NFKC-normalized query. May be empty, but must be present exactly once.",
+          },
           {
             in: "query",
             name: "collections",
-            schema: { type: "string" },
-            description:
-              "Comma-separated collection slugs. Omit to search every collection with a search_vector column.",
+            schema: {
+              type: "string",
+              maxLength: npSearchContractLimits.collectionsQueryLength,
+              pattern: `${npSearchCollectionSlugPattern.slice(0, -1)}(?:,${npSearchCollectionSlugPattern.slice(1, -1)})*$`,
+            },
+            description: `Canonical comma-separated collection slugs without padding, empties, or duplicates; at most ${npSearchContractLimits.collectionCount.toString()}. Omit to search every registered collection with a search_vector column.`,
           },
-          { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 50 } },
+          {
+            in: "query",
+            name: "limit",
+            schema: {
+              type: "integer",
+              minimum: 1,
+              maximum: npSearchContractLimits.limit,
+              default: 10,
+            },
+          },
           {
             in: "query",
             name: "page",
-            schema: { type: "integer", minimum: 1 },
-            description: "1-based page number. Ignored when offset is provided.",
+            schema: {
+              type: "integer",
+              minimum: 1,
+              maximum: npSearchContractLimits.offset + 1,
+            },
+            description:
+              "1-based page number. Mutually exclusive with offset; the selected limit must keep the computed offset at or below the documented offset maximum.",
           },
-          { in: "query", name: "offset", schema: { type: "integer", minimum: 0 } },
+          {
+            in: "query",
+            name: "offset",
+            schema: {
+              type: "integer",
+              minimum: 0,
+              maximum: npSearchContractLimits.offset,
+              default: 0,
+            },
+          },
+          {
+            in: "query",
+            name: "locale",
+            schema: {
+              type: "string",
+              minLength: 2,
+              maxLength: npSearchContractLimits.localeLength,
+            },
+            description: "Canonical configured BCP 47 locale.",
+          },
         ],
         responses: {
           "200": {
@@ -2731,43 +2774,97 @@ function buildSpec(): OpenApiSchema {
               "application/json": {
                 schema: {
                   type: "object",
+                  additionalProperties: false,
+                  required: [
+                    "results",
+                    "total",
+                    "perCollection",
+                    "facets",
+                    "limit",
+                    "offset",
+                    "hasNextPage",
+                  ],
                   properties: {
                     results: {
                       type: "array",
+                      maxItems: npSearchContractLimits.limit,
                       items: {
                         type: "object",
+                        additionalProperties: false,
+                        required: ["collection", "doc"],
                         properties: {
-                          collection: { type: "string" },
-                          doc: { type: "object", additionalProperties: true },
+                          collection: {
+                            type: "string",
+                            pattern: npSearchCollectionSlugPattern,
+                            maxLength: npSearchContractLimits.collectionSlugLength,
+                          },
+                          doc: {
+                            type: "object",
+                            required: ["id", "siteId", "status", "visibility"],
+                            properties: {
+                              id: {
+                                type: "string",
+                                minLength: 1,
+                                maxLength: npSearchContractLimits.resultDocumentIdLength,
+                              },
+                              siteId: { type: "string", pattern: npSiteIdPattern },
+                              status: { const: "published" },
+                              visibility: { const: "public" },
+                            },
+                            additionalProperties: true,
+                          },
                           score: {
                             type: "number",
                             description:
-                              "Relative relevance score when using the built-in Postgres search path. Higher ranks first; scale is not stable.",
+                              "Adapter-defined relative relevance score. Ordering is authoritative; the scale is not stable.",
                           },
                         },
                       },
                     },
-                    total: { type: "integer" },
-                    perCollection: { type: "object", additionalProperties: { type: "integer" } },
+                    total: { type: "integer", minimum: 0 },
+                    perCollection: {
+                      type: "object",
+                      propertyNames: { pattern: npSearchCollectionSlugPattern },
+                      additionalProperties: { type: "integer", minimum: 0 },
+                    },
                     facets: {
                       type: "array",
+                      maxItems: npSearchContractLimits.collectionCount,
                       items: {
                         type: "object",
+                        additionalProperties: false,
+                        required: ["collection", "label", "count", "selected"],
                         properties: {
-                          collection: { type: "string" },
-                          label: { type: "string" },
-                          count: { type: "integer" },
-                          selected: { type: "boolean" },
+                          collection: { type: "string", pattern: npSearchCollectionSlugPattern },
+                          label: {
+                            type: "string",
+                            minLength: 1,
+                            maxLength: npSearchContractLimits.facetLabelLength,
+                          },
+                          count: { type: "integer", minimum: 0 },
+                          selected: { const: true },
                         },
                       },
                     },
-                    limit: { type: "integer" },
-                    offset: { type: "integer" },
+                    limit: {
+                      type: "integer",
+                      minimum: 1,
+                      maximum: npSearchContractLimits.limit,
+                    },
+                    offset: {
+                      type: "integer",
+                      minimum: 0,
+                      maximum: npSearchContractLimits.offset,
+                    },
                     hasNextPage: { type: "boolean" },
                   },
                 },
               },
             },
+          },
+          "400": {
+            description:
+              "Missing, duplicate, unknown, non-canonical, unconfigured, or over-budget search query.",
           },
         },
       },

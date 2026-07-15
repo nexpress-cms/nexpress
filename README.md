@@ -150,6 +150,7 @@ apps/web            private reference app
 - [Testing](./docs/testing.md)
 - [Releasing](./docs/releasing.md)
 - [Operations](./docs/operations.md)
+- [Search](./docs/search.md)
 - [Troubleshooting](./docs/troubleshooting.md)
 - [All docs](./docs/README.md)
 

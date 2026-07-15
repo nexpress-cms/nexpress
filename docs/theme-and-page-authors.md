@@ -101,7 +101,9 @@ page renders blocks that plugins extend.
 > `Record<string, unknown>` — fields require casts at the read
 > site. For typed reads, see [§2.1](#21-typed-reads-recommended).
 
-All from `@nexpress/core`.
+Most are available from `@nexpress/core`. New search code should import
+`searchCollections` and its exact request/result types from
+`@nexpress/core/search`; see [search.md](./search.md).
 
 ### 2.1 Typed reads (recommended)
 

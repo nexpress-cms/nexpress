@@ -31,11 +31,14 @@ vi.mock("@nexpress/core/bootstrap", () => ({
   resetDb: vi.fn(),
   resetI18nConfig: vi.fn(),
   resetPlugins: vi.fn(),
+  resetSearchAdapter: vi.fn(),
   resetThemes: vi.fn(),
   setCurrentSiteResolver: vi.fn(),
   setCacheInvalidationAdapter: vi.fn(),
   setDb: vi.fn(),
   setI18nConfig: vi.fn(),
+  setSearchAdapter: vi.fn((adapter) => adapter),
+  shutdownSearchAdapter: vi.fn(() => Promise.resolve()),
   startProducer: vi.fn(() => Promise.resolve()),
   stopProducer: vi.fn(() => Promise.resolve()),
   syncPluginRegistrations: vi.fn(() => Promise.resolve()),
@@ -113,6 +116,40 @@ describe("createBootstrap", () => {
     expect(host.resetCacheInvalidationAdapter).toHaveBeenCalledOnce();
     expect(shutdown).toHaveBeenCalledOnce();
     expect(cdn.getCdnPurgeAdapter()).toBeNull();
+  });
+
+  it("installs and closes an injected search adapter with read lifecycle ownership", async () => {
+    const searchAdapter = {
+      kind: "meilisearch",
+      search: vi.fn(() => null),
+      shutdown: vi.fn(() => Promise.resolve()),
+    };
+    const bootstrap = createBootstrap({
+      config: buildConfig(),
+      generatedSchema: {},
+      searchAdapter,
+    });
+
+    await bootstrap.ensureFor("read");
+    expect(host.setSearchAdapter).toHaveBeenCalledWith(expect.objectContaining(searchAdapter));
+
+    await bootstrap.shutdown();
+    expect(host.shutdownSearchAdapter).toHaveBeenCalledWith(expect.objectContaining(searchAdapter));
+  });
+
+  it("detaches an injected search adapter during retryable read rollback", async () => {
+    const searchAdapter = { kind: "meilisearch", search: vi.fn(() => null) };
+    const bootstrap = createBootstrap({
+      config: buildConfig(),
+      generatedSchema: {},
+      searchAdapter,
+    });
+    vi.mocked(host.configureStorageRuntime).mockImplementationOnce(() => {
+      throw new Error("storage unavailable");
+    });
+
+    await expect(bootstrap.ensureFor("read")).rejects.toThrow("storage unavailable");
+    expect(host.resetSearchAdapter).toHaveBeenCalledWith(expect.objectContaining(searchAdapter));
   });
 
   it("detaches but preserves an owned CDN adapter across retryable read rollback", async () => {

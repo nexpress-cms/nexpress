@@ -60,6 +60,12 @@ surfaces contained dispatch/flush failures. Production readiness warns on a
 noop reporter. See [observability.md](./observability.md) for the shared
 `src/lib/observability.ts` wiring.
 
+Admin Health also reports the active search path: built-in Postgres tsvector or
+the exact external adapter kind. External dispatch/result-contract failures and
+terminal shutdown failures are contained, counted, and shown as warnings while
+search traffic falls back to Postgres when dispatch cannot be trusted.
+See [search.md](./search.md).
+
 ## Admin ops cockpit
 
 Logged-in admins with `admin.manage` can start from `/admin/ops` when they

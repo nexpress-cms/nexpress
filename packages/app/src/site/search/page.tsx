@@ -1,12 +1,15 @@
+import { getAllCollectionSlugs, getCollectionConfig, getI18nConfig } from "@nexpress/core";
 import {
-  getAllCollectionSlugs,
-  getCollectionConfig,
-  getI18nConfig,
+  NpSearchContractError,
+  npParseSearchApiQuery,
+  npSearchContractLimits,
   searchCollections,
-  type SearchCollectionFacet,
-  type SearchResult,
-  type SearchResultItem,
-} from "@nexpress/core";
+  type NpSearchCollectionFacet,
+  type NpSearchDocument,
+  type NpSearchRequest,
+  type NpSearchResult,
+  type NpSearchResultItem,
+} from "@nexpress/core/search";
 import Link from "next/link";
 
 import { ShellWrap } from "../../components/shell-wrap";
@@ -14,7 +17,7 @@ import { ensureFor } from "../../lib/init-core";
 import { highlightMatches, toPlainSearchText } from "../../lib/search-highlight";
 
 interface SearchPageProps {
-  searchParams: Promise<{ q?: string; page?: string; collections?: string; collection?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 const PAGE_SIZE = 20;
@@ -40,29 +43,40 @@ export const metadata = {
  */
 export default async function SearchPage({ searchParams }: SearchPageProps) {
   await ensureFor("read");
-  const { q: qRaw, page: pageRaw, collections: collectionsRaw, collection } = await searchParams;
-  const q = (qRaw ?? "").trim();
-  const page = parsePage(pageRaw);
-  const offset = (page - 1) * PAGE_SIZE;
+  const rawSearchParams = await searchParams;
   const publicCollections = getPublicSearchCollections();
-  const requestedCollections = parseCollections(collectionsRaw ?? collection);
-  const selectedCollections = filterKnownCollections(requestedCollections, publicCollections);
+  let request: NpSearchRequest | null = null;
+  let validationError: string | null = null;
+  try {
+    request = parseSiteSearchRequest(rawSearchParams, publicCollections);
+  } catch (error) {
+    validationError =
+      error instanceof NpSearchContractError
+        ? (error.issues[0]?.message ?? error.message)
+        : "The search URL is invalid.";
+  }
+  const q = request?.q ?? "";
+  const page = request ? Math.floor(request.offset / PAGE_SIZE) + 1 : 1;
+  const selectedCollections = resolveSelectedCollections(request?.collections, publicCollections);
   const locale = await resolveSearchLocale();
   const activeCollections =
     selectedCollections.length > 0
       ? selectedCollections.map((item) => item.collection)
       : publicCollections.map((item) => item.collection);
 
-  const result =
-    q.length > 0
-      ? await searchCollections({
-          q,
-          limit: PAGE_SIZE,
-          offset,
-          collections: activeCollections.length > 0 ? activeCollections : undefined,
-          ...(locale ? { locale } : {}),
-        })
-      : null;
+  let result: NpSearchResult | null = null;
+  if (request && q.length > 0) {
+    try {
+      result = await searchCollections({
+        ...request,
+        collections: activeCollections.length > 0 ? activeCollections : undefined,
+        ...(locale ? { locale } : {}),
+      });
+    } catch (error) {
+      if (!(error instanceof NpSearchContractError)) throw error;
+      validationError = error.issues[0]?.message ?? error.message;
+    }
+  }
 
   return (
     <ShellWrap surface="site">
@@ -73,15 +87,19 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           <SearchForm initialQ={q} selectedCollections={selectedCollections} />
         </header>
 
-        <SearchFilters
-          q={q}
-          options={publicCollections}
-          selectedCollections={selectedCollections}
-          facets={result?.facets}
-          total={result?.total ?? 0}
-        />
+        {validationError ? null : (
+          <SearchFilters
+            q={q}
+            options={publicCollections}
+            selectedCollections={selectedCollections}
+            facets={result?.facets}
+            total={result?.total ?? 0}
+          />
+        )}
 
-        {result ? (
+        {validationError ? (
+          <InvalidSearchRequest detail={validationError} />
+        ) : result ? (
           <SearchResults
             q={q}
             result={result}
@@ -94,23 +112,6 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       </section>
     </ShellWrap>
   );
-}
-
-function parsePage(raw: string | undefined): number {
-  if (!raw) return 1;
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isFinite(n) || n < 1) return 1;
-  return Math.min(n, 500);
-}
-
-function parseCollections(raw: string | undefined): string[] {
-  if (!raw) return [];
-  const seen = new Set<string>();
-  for (const item of raw.split(",")) {
-    const slug = item.trim();
-    if (slug) seen.add(slug);
-  }
-  return [...seen];
 }
 
 interface SearchCollectionOption {
@@ -132,18 +133,51 @@ function getPublicSearchCollections(): SearchCollectionOption[] {
   return options;
 }
 
-function filterKnownCollections(
-  requested: string[],
+function parseSiteSearchRequest(
+  raw: Record<string, string | string[] | undefined>,
+  options: SearchCollectionOption[],
+): NpSearchRequest {
+  const allowed = new Set(["q", "page", "collections"]);
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(raw)) {
+    if (value === undefined) continue;
+    if (!allowed.has(key)) {
+      throw new NpSearchContractError("Invalid site search request", [
+        {
+          code: "unknown-field",
+          path: `search.page.query.${key}`,
+          message: `unsupported search parameter "${key}".`,
+        },
+      ]);
+    }
+    for (const entry of Array.isArray(value) ? value : [value]) params.append(key, entry);
+  }
+  if (!params.has("q")) params.set("q", "");
+  params.set("limit", PAGE_SIZE.toString());
+  const parsed = npParseSearchApiQuery(params);
+  if (parsed.collections) {
+    const publicSlugs = new Set(options.map((option) => option.collection));
+    const unknown = parsed.collections.find((collection) => !publicSlugs.has(collection));
+    if (unknown) {
+      throw new NpSearchContractError("Invalid site search request", [
+        {
+          code: "invalid-field",
+          path: "search.page.query.collections",
+          message: `collection "${unknown}" is not available on public search.`,
+        },
+      ]);
+    }
+  }
+  return parsed;
+}
+
+function resolveSelectedCollections(
+  requested: readonly string[] | undefined,
   options: SearchCollectionOption[],
 ): SearchCollectionOption[] {
-  if (requested.length === 0) return [];
+  if (!requested) return [];
   const bySlug = new Map(options.map((option) => [option.collection, option]));
-  const selected: SearchCollectionOption[] = [];
-  for (const slug of requested) {
-    const option = bySlug.get(slug);
-    if (option) selected.push(option);
-  }
-  return selected;
+  return requested.map((slug) => bySlug.get(slug)).filter((option) => option !== undefined);
 }
 
 async function resolveSearchLocale(): Promise<string | undefined> {
@@ -178,6 +212,7 @@ function SearchForm({
           defaultValue={initialQ}
           placeholder="Search posts, pages, discussions…"
           autoComplete="off"
+          maxLength={npSearchContractLimits.queryLength}
           aria-label="Search query"
           className="np-form-input"
         />
@@ -208,11 +243,20 @@ function EmptySearchPrompt({ hasFilters }: { hasFilters: boolean }) {
   );
 }
 
+function InvalidSearchRequest({ detail }: { detail: string }) {
+  return (
+    <div className="np-search-empty" role="alert">
+      <p className="np-search-empty-title">This search URL is invalid.</p>
+      <p>{detail} Edit the query above and try again.</p>
+    </div>
+  );
+}
+
 interface SearchFiltersProps {
   q: string;
   options: SearchCollectionOption[];
   selectedCollections: SearchCollectionOption[];
-  facets: SearchCollectionFacet[] | undefined;
+  facets: readonly NpSearchCollectionFacet[] | undefined;
   total: number;
 }
 
@@ -255,7 +299,7 @@ function SearchFilters({ q, options, selectedCollections, facets, total }: Searc
 
 interface SearchResultsProps {
   q: string;
-  result: SearchResult;
+  result: NpSearchResult;
   page: number;
   selectedCollections: SearchCollectionOption[];
 }
@@ -270,7 +314,10 @@ function SearchResults({ q, result, page, selectedCollections }: SearchResultsPr
     );
   }
 
-  const lastPage = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
+  const lastPage = Math.min(
+    Math.floor(npSearchContractLimits.offset / PAGE_SIZE) + 1,
+    Math.max(1, Math.ceil(result.total / PAGE_SIZE)),
+  );
   const scopeLabel =
     selectedCollections.length > 0
       ? selectedCollections.map((item) => item.label).join(", ")
@@ -301,7 +348,7 @@ function SearchResults({ q, result, page, selectedCollections }: SearchResultsPr
   );
 }
 
-function SearchResultRow({ item, query }: { item: SearchResultItem; query: string }) {
+function SearchResultRow({ item, query }: { item: NpSearchResultItem; query: string }) {
   const href = collectionUrlPath(item.collection, item.doc);
   const title = pickTitle(item.doc);
   const excerpt = pickExcerpt(item.doc);
@@ -397,7 +444,7 @@ function buildHref({
  * case the search row renders without a link rather than a
  * dead one.
  */
-function collectionUrlPath(collection: string, doc: Record<string, unknown>): string | null {
+function collectionUrlPath(collection: string, doc: NpSearchDocument): string | null {
   try {
     const config = getCollectionConfig(collection);
     const path = config.seo?.urlPath?.(doc);
@@ -407,7 +454,7 @@ function collectionUrlPath(collection: string, doc: Record<string, unknown>): st
   }
 }
 
-function pickTitle(doc: Record<string, unknown>): string {
+function pickTitle(doc: NpSearchDocument): string {
   if (typeof doc.title === "string" && doc.title.length > 0) {
     const title = toPlainSearchText(doc.title);
     if (title) return title;
@@ -421,7 +468,7 @@ function pickTitle(doc: Record<string, unknown>): string {
   return "Untitled";
 }
 
-function pickExcerpt(doc: Record<string, unknown>): string | null {
+function pickExcerpt(doc: NpSearchDocument): string | null {
   const candidates = [
     doc.excerpt,
     doc.summary,
@@ -448,7 +495,7 @@ function collectionLabel(collection: string): string {
   }
 }
 
-function docId(doc: Record<string, unknown>): string {
+function docId(doc: NpSearchDocument): string {
   if (typeof doc.id === "string") return doc.id;
   if (typeof doc.id === "number") return String(doc.id);
   const title = typeof doc.title === "string" ? doc.title : "untitled";

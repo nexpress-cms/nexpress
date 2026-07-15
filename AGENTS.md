@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-15 (page metadata, JSON-LD, sitemap/feed entries,
+**Last refreshed:** 2026-07-15 (search now shares one exact bounded request,
+adapter candidate, public result, site/visibility, cache, reindex, bootstrap
+lifecycle, OpenAPI, theme, and live-health contract; malformed external results
+are contained and fall back to Postgres.)
+
+**Earlier:** 2026-07-15 (page metadata, JSON-LD, sitemap/feed entries,
 theme SEO callback results, and robots bodies now share one exact, bounded
 runtime contract before rendering or caching.)
 
@@ -293,6 +298,7 @@ cli  (standalone scaffolder, no workspace deps)
 | `@nexpress/core/rate-limit`     | rate-limit contracts, adapters, registry, dispatch, lifecycle           |
 | `@nexpress/core/routes`         | client-safe custom route definitions, registry, and Admin wire contract |
 | `@nexpress/core/revisions`      | client-safe revision snapshot, persisted-row, and API wire contracts    |
+| `@nexpress/core/search`         | search request/result, adapter, cache, reindex, and diagnostics         |
 | `@nexpress/core/seo`            | sitemap, page metadata, Atom feeds, JSON-LD                             |
 | `@nexpress/core/settings`       | client-safe site identity, settings types, and validators               |
 | `@nexpress/core/sites`          | site registry, execution context, memberships, scoped authorization     |
@@ -457,6 +463,19 @@ theme `impl.seo` functions are validated at definition time and their resolved
 results are validated again immediately after dispatch. Malformed values fail
 before XML, JSON-LD, `Response`, or cache construction. `@nexpress/theme` uses
 the same Core types rather than structural mirrors. Author guide: `docs/seo.md`.
+
+### Search
+
+`@nexpress/core/search` owns the exact bounded search request, normalized
+adapter context, candidate result, public result, and reindex contracts. Public
+search is always current-site, published, and public; trusted Core callers may
+explicitly request `visibility: "all"` or the cross-site `"*"` sentinel, but
+neither scope may enter the public Next cache. External adapters return
+only candidates; Core validates document JSON/site/status/visibility/count
+invariants and derives facets/pagination. Throws and malformed results are
+diagnosed and fall back to Postgres. Pass `searchAdapter` to `createBootstrap()`
+for owned read lifecycle wiring and optional terminal `shutdown()`. Author/ops
+guide: `docs/search.md`.
 
 ### Storage
 

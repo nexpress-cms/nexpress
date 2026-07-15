@@ -121,6 +121,7 @@ export async function DefaultHeader() {
               id="np-site-search-input"
               type="search"
               name="q"
+              maxLength={256}
               placeholder="Search writing"
               autoComplete="off"
               className="np-site-search-input"

@@ -1,4 +1,12 @@
-import { NpAuthError, type ReindexResult, getAllCollectionSlugs, reindexCollection } from "@nexpress/core";
+import { NpAuthError, NpValidationError, getAllCollectionSlugs } from "@nexpress/core";
+import {
+  NpSearchContractError,
+  npParseSearchReindexQuery,
+  npRequireSearchReindexResponse,
+  npSearchContractLimits,
+  reindexCollection,
+  type NpSearchReindexResult,
+} from "@nexpress/core/search";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
@@ -37,18 +45,37 @@ export async function POST(request: NextRequest) {
       throw new NpAuthError("Unauthorized");
     }
 
+    const requested = npParseSearchReindexQuery(request.nextUrl.searchParams);
     await ensureFor("write");
-
-    const requested = request.nextUrl.searchParams.get("collection")?.trim();
     const slugs = requested ? [requested] : getAllCollectionSlugs();
-    const results: ReindexResult[] = [];
+    if (slugs.length > npSearchContractLimits.collectionCount) {
+      throw new NpSearchContractError("Invalid search reindex request", [
+        {
+          code: "max-items",
+          path: "search.reindex.collections",
+          message: `at most ${npSearchContractLimits.collectionCount.toString()} collections may be reindexed in one request.`,
+        },
+      ]);
+    }
+    const results: NpSearchReindexResult[] = [];
     for (const slug of slugs) {
       results.push(await reindexCollection(slug));
     }
 
-    const total = results.reduce((sum, r) => sum + r.processed, 0);
-    return npSuccessResponse({ total, collections: results });
+    const response = npRequireSearchReindexResponse({
+      total: results.reduce((sum, result) => sum + result.processed, 0),
+      collections: results,
+    });
+    return npSuccessResponse(response);
   } catch (error) {
+    if (error instanceof NpSearchContractError) {
+      return npErrorResponse(
+        new NpValidationError(
+          "Invalid search reindex request",
+          error.issues.map((entry) => ({ field: entry.path, message: entry.message })),
+        ),
+      );
+    }
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

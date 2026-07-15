@@ -42,6 +42,7 @@ behavior they describe changes.
 | [releasing.md](releasing.md)                           | Changesets release and npm publish checklist                           |
 | [revisions.md](revisions.md)                           | Revision snapshots, autosave, restore, API, and doctor contracts       |
 | [rich-text.md](rich-text.md)                           | Versioned rich-text wire format, validation, and authoring helpers     |
+| [search.md](search.md)                                 | Search request/result, adapter, cache, reindex, and health contracts   |
 | [scheduled-publishing.md](scheduled-publishing.md)     | Scheduled publish flow                                                 |
 | [seo.md](seo.md)                                       | Page metadata, JSON-LD, sitemap/feed, and theme contribution contracts |
 | [settings.md](settings.md)                             | Canonical site identity and closed persisted-settings registry         |

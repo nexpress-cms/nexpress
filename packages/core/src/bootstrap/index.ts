@@ -19,6 +19,13 @@ export {
 export type { NpCacheInvalidationAdapter } from "../cache/types.js";
 
 export {
+  resetSearchAdapter,
+  setSearchAdapter,
+  shutdownSearchAdapter,
+} from "../collections/search-adapter.js";
+export type { NpSearchAdapter } from "../search/types.js";
+
+export {
   configureStorageRuntime,
   getOptionalStorageAdapter,
   npShutdownStorageAdapter,

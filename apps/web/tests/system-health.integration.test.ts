@@ -50,6 +50,7 @@ describe.skipIf(skipIfNoTestDb())("system-health diagnostics (#F)", () => {
       "email",
       "observability",
       "cache-invalidation",
+      "search",
       "secret",
     ]);
   });
@@ -57,11 +58,7 @@ describe.skipIf(skipIfNoTestDb())("system-health diagnostics (#F)", () => {
   it("aggregates errorCount / warnCount honestly", async () => {
     const { gatherSystemHealth } = await import("@/lib/system-health");
     const summary = await gatherSystemHealth();
-    expect(summary.errorCount).toBe(
-      summary.checks.filter((c) => c.state === "error").length,
-    );
-    expect(summary.warnCount).toBe(
-      summary.checks.filter((c) => c.state === "warn").length,
-    );
+    expect(summary.errorCount).toBe(summary.checks.filter((c) => c.state === "error").length);
+    expect(summary.warnCount).toBe(summary.checks.filter((c) => c.state === "warn").length);
   });
 });

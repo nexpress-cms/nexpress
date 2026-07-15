@@ -12,6 +12,7 @@ import {
 import type { TestUserSession } from "./harness.js";
 
 import { GET as searchAPIGET } from "@/app/api/search/route";
+import { GET as openApiGET } from "@/app/api/openapi.json/route";
 import { POST as collectionPOST } from "@/app/api/collections/[slug]/route";
 
 import { NextRequest } from "next/server";
@@ -292,6 +293,47 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
     expect(body.facets).toEqual([
       { collection: "pages", label: "Pages", count: 2, selected: true },
     ]);
+  });
+
+  it("/api/search rejects ambiguous or non-canonical query strings before dispatch", async () => {
+    const invalidUrls = [
+      "http://localhost:3000/api/search",
+      "http://localhost:3000/api/search?q=x&q=y",
+      "http://localhost:3000/api/search?q=x&debug=1",
+      "http://localhost:3000/api/search?q=x&page=2&offset=10",
+      "http://localhost:3000/api/search?q=x&collections=posts,%20pages",
+      "http://localhost:3000/api/search?q=&collections=missing",
+    ];
+
+    for (const url of invalidUrls) {
+      const response = await searchAPIGET(new NextRequest(url));
+      expect(response.status, url).toBe(400);
+    }
+  });
+
+  it("publishes the exact bounded search envelope in OpenAPI", async () => {
+    const response = await openApiGET();
+    const spec = (await response.json()) as {
+      paths: Record<string, { get?: Record<string, unknown> }>;
+    };
+    const operation = spec.paths["/api/search"]?.get as {
+      parameters?: Array<{ name?: string; schema?: Record<string, unknown> }>;
+      responses?: Record<
+        string,
+        { content?: { "application/json"?: { schema?: Record<string, unknown> } } }
+      >;
+    };
+    const q = operation.parameters?.find((parameter) => parameter.name === "q");
+    const resultSchema = operation.responses?.["200"]?.content?.["application/json"]?.schema;
+
+    expect(q?.schema).toEqual(expect.objectContaining({ type: "string", maxLength: 256 }));
+    expect(resultSchema).toEqual(
+      expect.objectContaining({
+        additionalProperties: false,
+        required: ["results", "total", "perCollection", "facets", "limit", "offset", "hasNextPage"],
+      }),
+    );
+    expect(operation.responses?.["400"]).toBeDefined();
   });
 
   it("stem-divergent surface form matches stored content (Phase 10.7 regression)", async () => {

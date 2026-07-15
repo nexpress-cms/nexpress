@@ -25,10 +25,7 @@ const FALLBACK_SITE_NAME = "NexPress";
  * independently.
  */
 export async function DocsHeader(): Promise<React.ReactElement> {
-  const [settings, site] = await Promise.all([
-    resolveDocsSettings(),
-    getCachedSite(),
-  ]);
+  const [settings, site] = await Promise.all([resolveDocsSettings(), getCachedSite()]);
   const siteName = site?.name?.trim() || FALLBACK_SITE_NAME;
   return (
     <header className="np-docs-header">
@@ -38,12 +35,7 @@ export async function DocsHeader(): Promise<React.ReactElement> {
           <span>{siteName}</span>
           <span className="np-docs-brand-version">{settings.version}</span>
         </a>
-        <form
-          action="/docs/search"
-          method="get"
-          className="np-docs-search-form"
-          role="search"
-        >
+        <form action="/docs/search" method="get" className="np-docs-search-form" role="search">
           <svg
             width="14"
             height="14"
@@ -63,6 +55,7 @@ export async function DocsHeader(): Promise<React.ReactElement> {
             id="np-docs-search-input"
             type="search"
             name="q"
+            maxLength={256}
             placeholder={settings.searchPlaceholder}
             className="np-docs-search-input"
           />

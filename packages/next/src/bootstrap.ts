@@ -25,16 +25,20 @@ import {
   resetDb,
   resetI18nConfig,
   resetPlugins,
+  resetSearchAdapter,
   resetThemes,
   setCurrentSiteResolver,
   setCacheInvalidationAdapter,
   setDb,
   setI18nConfig,
+  setSearchAdapter,
+  shutdownSearchAdapter,
   startProducer,
   stopProducer,
   syncPluginRegistrations,
   teardownPlugins,
   type NpDb,
+  type NpSearchAdapter,
 } from "@nexpress/core/bootstrap";
 import {
   configureEmailRuntime,
@@ -56,6 +60,7 @@ import { canOnSite, NP_DEFAULT_SITE_ID, resolveSiteForHostname } from "@nexpress
 import { type NpStorageAdapter } from "@nexpress/core/storage";
 import { npRequireCdnPurgeAdapter, type NpCdnPurgeAdapter } from "@nexpress/core/cache";
 import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
+import { npRequireSearchAdapter } from "@nexpress/core/search";
 import {
   npAnalyzeBlockDefinitions,
   npAnalyzePatternDefinitions,
@@ -180,6 +185,8 @@ export interface NpBootstrapOptions {
   emailAdapter?: NpEmailAdapter;
   /** Optional downstream CDN purge adapter, owned and closed by this bootstrap. */
   cdnPurgeAdapter?: NpCdnPurgeAdapter;
+  /** Optional external search adapter, installed for reads and closed on terminal shutdown. */
+  searchAdapter?: NpSearchAdapter;
 }
 
 /**
@@ -352,6 +359,8 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
     options.cdnPurgeAdapter === undefined
       ? undefined
       : npRequireCdnPurgeAdapter(options.cdnPurgeAdapter);
+  const searchAdapter =
+    options.searchAdapter === undefined ? undefined : npRequireSearchAdapter(options.searchAdapter);
 
   let lifecycle: "active" | "shutting-down" | "closed" = "active";
   let db: NpDb | null = null;
@@ -360,6 +369,7 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
   let storageConfigured = false;
   let cacheConfigured = false;
   let cdnPurgeConfigured = false;
+  let ownedSearchAdapter: NpSearchAdapter | null = null;
   let readReady = false;
   let readStartingPromise: Promise<void> | null = null;
   let emailRuntimeConfig: NpEmailRuntimeConfig | null = null;
@@ -413,6 +423,7 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
       setCdnPurgeAdapter(cdnPurgeAdapter);
       cdnPurgeConfigured = true;
     }
+    if (searchAdapter) ownedSearchAdapter = setSearchAdapter(searchAdapter);
     const storageConfig = config.storage ?? {
       adapter: "local" as const,
       local: { directory: "./public/media", baseUrl: "/media" },
@@ -565,6 +576,10 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
     if (cdnPurgeConfigured && cdnPurgeAdapter) {
       resetCdnPurgeAdapter(cdnPurgeAdapter);
       cdnPurgeConfigured = false;
+    }
+    if (ownedSearchAdapter) {
+      resetSearchAdapter(ownedSearchAdapter);
+      ownedSearchAdapter = null;
     }
     if (storageConfigured) {
       try {
@@ -1009,6 +1024,11 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
       cacheConfigured = false;
       if (cdnPurgeConfigured && cdnPurgeAdapter) resetCdnPurgeAdapter(cdnPurgeAdapter);
       cdnPurgeConfigured = false;
+      const searchAdapterToClose = ownedSearchAdapter;
+      ownedSearchAdapter = null;
+      if (searchAdapterToClose) {
+        await attempt(() => shutdownSearchAdapter(searchAdapterToClose));
+      }
       if (cdnPurgeAdapter) await attempt(() => shutdownCdnPurgeAdapter(cdnPurgeAdapter));
       if (emailConfigured) resetEmailAdapter();
       emailConfigured = false;

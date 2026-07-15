@@ -1,62 +1,91 @@
-import type { SearchCollectionsOptions, SearchResult } from "@nexpress/core";
 import { unstable_cache } from "next/cache";
+
+import {
+  NpSearchContractError,
+  getSearchCollectionLabels,
+  npRequireSearchAdapterContext,
+  npRequireSearchResult,
+  type NpSearchAdapterContext,
+  type NpSearchRequestInput,
+  type NpSearchResult,
+} from "@nexpress/core/search";
 
 export const SEARCH_CACHE_REVALIDATE_SECONDS = 60;
 
-interface SearchCacheArgs {
-  siteId: string;
-  q: string;
-  collections: string[] | undefined;
-  limit: number;
-  offset: number;
-  locale: string | undefined;
+interface CachedSearchArgs {
+  request: NpSearchAdapterContext;
+  search: (options: NpSearchRequestInput) => Promise<NpSearchResult>;
 }
 
-interface CachedSearchArgs extends SearchCacheArgs {
-  search: (options: SearchCollectionsOptions) => Promise<SearchResult>;
-}
-
-export function buildSearchCacheKeyParts(args: SearchCacheArgs): string[] {
+export function buildSearchCacheKeyParts(input: NpSearchAdapterContext): string[] {
+  const request = npRequireSearchAdapterContext(input);
+  if (request.siteId === "*") {
+    throw new NpSearchContractError("Invalid cached search request", [
+      {
+        code: "invalid-field",
+        path: "search.cache.siteId",
+        message: 'the cross-site "*" scope must not enter the public Next data cache.',
+      },
+    ]);
+  }
+  if (request.visibility !== "public") {
+    throw new NpSearchContractError("Invalid cached search request", [
+      {
+        code: "invalid-field",
+        path: "search.cache.visibility",
+        message: 'trusted visibility "all" must not enter the public Next data cache.',
+      },
+    ]);
+  }
   return [
     "nx:search",
-    args.siteId,
-    args.q,
-    args.collections ? args.collections.slice().sort().join(",") : "",
-    String(args.limit),
-    String(args.offset),
-    args.locale ?? "",
+    request.siteId,
+    request.q,
+    request.collections ? request.collections.join(",") : "",
+    request.limit.toString(),
+    request.offset.toString(),
+    request.locale ?? "",
+    request.visibility,
   ];
 }
 
 export function buildSearchCacheTags(siteId: string): string[] {
-  return [`nx:search:${siteId}`, "nx:search"];
+  const request = npRequireSearchAdapterContext({
+    q: "",
+    limit: 1,
+    offset: 0,
+    siteId,
+    visibility: "public",
+  });
+  if (request.siteId === "*") {
+    throw new NpSearchContractError("Invalid cached search site", [
+      {
+        code: "invalid-field",
+        path: "search.cache.siteId",
+        message: 'the cross-site "*" scope has no public cache tag.',
+      },
+    ]);
+  }
+  return [`nx:search:${request.siteId}`, "nx:search"];
 }
 
-function buildSearchOptions(args: SearchCacheArgs): SearchCollectionsOptions {
-  return {
-    q: args.q,
-    collections: args.collections,
-    limit: args.limit,
-    offset: args.offset,
-    ...(args.locale ? { locale: args.locale } : {}),
-  };
-}
-
-export async function searchWithShortTtlCache(args: CachedSearchArgs): Promise<SearchResult> {
-  const searchOptions = buildSearchOptions(args);
-  const cached = unstable_cache(() => args.search(searchOptions), buildSearchCacheKeyParts(args), {
-    tags: buildSearchCacheTags(args.siteId),
+export async function searchWithShortTtlCache(args: CachedSearchArgs): Promise<NpSearchResult> {
+  const request = npRequireSearchAdapterContext(args.request);
+  const collectionLabels = getSearchCollectionLabels(request.collections);
+  const cached = unstable_cache(() => args.search(request), buildSearchCacheKeyParts(request), {
+    tags: buildSearchCacheTags(request.siteId),
     revalidate: SEARCH_CACHE_REVALIDATE_SECONDS,
   });
 
   try {
-    return await cached();
+    const result = await cached();
+    return npRequireSearchResult(result, request, collectionLabels, "search.cache.result");
   } catch (error) {
-    // `unstable_cache` requires Next's incremental cache store.
-    // Tests that invoke route handlers directly miss it; fall
-    // through to the uncached path so behavior remains testable.
+    // `unstable_cache` requires Next's incremental cache store. Tests that
+    // invoke handlers directly use the same contract on the uncached path.
     if (error instanceof Error && /incrementalCache/i.test(error.message)) {
-      return args.search(searchOptions);
+      const result = await args.search(request);
+      return npRequireSearchResult(result, request, collectionLabels, "search.cache.result");
     }
     throw error;
   }
