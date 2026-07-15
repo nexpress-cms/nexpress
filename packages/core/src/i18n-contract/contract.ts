@@ -195,7 +195,13 @@ function inspectArray(
   }
   for (const ownKey of ownKeys) {
     if (ownKey === "length") continue;
-    if (typeof ownKey !== "string" || !/^(?:0|[1-9][0-9]*)$/u.test(ownKey)) {
+    const index = typeof ownKey === "string" ? Number(ownKey) : Number.NaN;
+    if (
+      typeof ownKey !== "string" ||
+      !/^(?:0|[1-9][0-9]*)$/u.test(ownKey) ||
+      !Number.isSafeInteger(index) ||
+      index >= length
+    ) {
       issues.push(issue("unknown-field", path, "must not contain custom properties."));
       return null;
     }

@@ -80,6 +80,10 @@ describe("i18n config contract", () => {
     });
     expect(npAnalyzeI18nConfig({ locales, defaultLocale: "en" }).ok).toBe(false);
     expect(invoked).toBe(false);
+
+    const customLocales = ["en"] as string[] & Record<string, string>;
+    customLocales["4294967295"] = "ko";
+    expect(npAnalyzeI18nConfig({ locales: customLocales, defaultLocale: "en" }).ok).toBe(false);
   });
 });
 
