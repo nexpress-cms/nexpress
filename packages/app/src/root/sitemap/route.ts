@@ -1,13 +1,16 @@
 import {
   NP_DEFAULT_SITE_ID,
-  buildSitemap,
   getActiveThemeSeoHooks,
   getCurrentSiteId,
   getI18nConfig,
   getSiteById,
+} from "@nexpress/core";
+import {
+  buildSitemap,
+  npDefineSitemapEntries,
   renderSitemapIndexXml,
   renderSitemapXml,
-} from "@nexpress/core";
+} from "@nexpress/core/seo";
 import { unstable_cache } from "next/cache";
 
 import { ensureFor } from "../../lib/init-core";
@@ -25,12 +28,12 @@ import { ensureFor } from "../../lib/init-core";
  * dev (and the sitemap.org spec doesn't require a public URL
  * during local development).
  */
-const STATIC_ROUTES: Array<{ loc: string; priority?: number; changefreq?: "daily" | "weekly" }> = [
+const STATIC_ROUTES = npDefineSitemapEntries([
   { loc: "/", priority: 1.0, changefreq: "daily" },
   { loc: "/blog", priority: 0.9, changefreq: "daily" },
   { loc: "/discussions", priority: 0.9, changefreq: "daily" },
   { loc: "/search", priority: 0.5, changefreq: "weekly" },
-];
+]);
 
 function fallbackOrigin(): string {
   const configured = process.env.SITE_URL;

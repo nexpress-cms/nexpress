@@ -1,4 +1,18 @@
+import {
+  npRequireArticleJsonLdInput,
+  npRequireJsonLdContext,
+  npRequirePersonJsonLdInput,
+} from "./contract.js";
 import { getSiteSeoSettings } from "./page-metadata.js";
+import type {
+  ArticleJsonLd,
+  ArticleJsonLdInput,
+  BuildJsonLdContext,
+  DiscussionForumPostingJsonLd,
+  PersonJsonLd,
+  PersonJsonLdInput,
+  WebSiteJsonLd,
+} from "./types.js";
 
 /**
  * Phase 10.5 — JSON-LD structured data builders. Schema.org
@@ -17,18 +31,7 @@ import { getSiteSeoSettings } from "./page-metadata.js";
  * splicing schema attributes into the page markup.
  */
 
-const SCHEMA = "https://schema.org";
-
-export interface BuildJsonLdContext {
-  /** Origin without trailing slash. Falls back to settings if omitted. */
-  origin?: string;
-}
-
-async function resolveOrigin(ctx: BuildJsonLdContext = {}): Promise<string> {
-  if (ctx.origin) return ctx.origin.replace(/\/+$/, "");
-  const settings = await getSiteSeoSettings();
-  return settings.siteUrl.replace(/\/+$/, "");
-}
+const SCHEMA = "https://schema.org" as const;
 
 function absoluteUrl(origin: string, path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
@@ -42,23 +45,10 @@ function absoluteUrl(origin: string, path: string): string {
  * into it, the engine routes them straight to /search?q=… on
  * the site instead of returning more SERP results.
  */
-export interface WebSiteJsonLd {
-  "@context": typeof SCHEMA;
-  "@type": "WebSite";
-  name: string;
-  url: string;
-  potentialAction?: {
-    "@type": "SearchAction";
-    target: { "@type": "EntryPoint"; urlTemplate: string };
-    "query-input": string;
-  };
-}
-
-export async function buildWebSiteJsonLd(
-  ctx: BuildJsonLdContext = {},
-): Promise<WebSiteJsonLd> {
+export async function buildWebSiteJsonLd(ctx: BuildJsonLdContext = {}): Promise<WebSiteJsonLd> {
+  const parsedContext = npRequireJsonLdContext(ctx);
   const settings = await getSiteSeoSettings();
-  const origin = await resolveOrigin(ctx);
+  const origin = parsedContext.origin ?? settings.siteUrl;
   return {
     "@context": SCHEMA,
     "@type": "WebSite",
@@ -81,64 +71,34 @@ export async function buildWebSiteJsonLd(
  * dates, author, image, description — without trying to encode
  * the body content.
  */
-export interface ArticleJsonLdInput {
-  /** Canonical URL of the article. */
-  url: string;
-  headline: string;
-  description?: string | null;
-  /** Absolute URL or `/`-rooted path. Resolved against `origin`. */
-  image?: string | null;
-  datePublished?: Date | string | null;
-  dateModified?: Date | string | null;
-  authorName?: string | null;
-  /** Schema.org type. Defaults to `BlogPosting`; forum threads use
-   *  `DiscussionForumPosting` via `buildDiscussionForumPostingJsonLd`. */
-  type?: "BlogPosting" | "Article";
-}
-
-export interface ArticleJsonLd {
-  "@context": typeof SCHEMA;
-  "@type": "BlogPosting" | "Article";
-  headline: string;
-  url: string;
-  description?: string;
-  image?: string;
-  datePublished?: string;
-  dateModified?: string;
-  author?: { "@type": "Person"; name: string };
-  publisher: {
-    "@type": "Organization";
-    name: string;
-    url: string;
-  };
-}
-
 export async function buildArticleJsonLd(
   input: ArticleJsonLdInput,
   ctx: BuildJsonLdContext = {},
 ): Promise<ArticleJsonLd> {
+  const parsedInput = npRequireArticleJsonLdInput(input);
+  const parsedContext = npRequireJsonLdContext(ctx);
   const settings = await getSiteSeoSettings();
-  const origin = await resolveOrigin(ctx);
+  const origin = parsedContext.origin ?? settings.siteUrl;
 
   const out: ArticleJsonLd = {
     "@context": SCHEMA,
-    "@type": input.type ?? "BlogPosting",
-    headline: input.headline,
-    url: input.url,
+    "@type": parsedInput.type ?? "BlogPosting",
+    headline: parsedInput.headline,
+    url: parsedInput.url,
     publisher: {
       "@type": "Organization",
       name: settings.siteName,
       url: `${origin}/`,
     },
   };
-  if (input.description) out.description = input.description;
-  if (input.image) out.image = absoluteUrl(origin, input.image);
-  const published = toIso(input.datePublished);
+  if (parsedInput.description) out.description = parsedInput.description;
+  if (parsedInput.image) out.image = absoluteUrl(origin, parsedInput.image);
+  const published = toIso(parsedInput.datePublished);
   if (published) out.datePublished = published;
-  const modified = toIso(input.dateModified);
+  const modified = toIso(parsedInput.dateModified);
   if (modified) out.dateModified = modified;
-  if (input.authorName) {
-    out.author = { "@type": "Person", name: input.authorName };
+  if (parsedInput.authorName) {
+    out.author = { "@type": "Person", name: parsedInput.authorName };
   }
   return out;
 }
@@ -149,11 +109,6 @@ export async function buildArticleJsonLd(
  * (and surfaces like Google's "Forums" filter) that this is
  * community discussion, not editorial content.
  */
-export interface DiscussionForumPostingJsonLd
-  extends Omit<ArticleJsonLd, "@type"> {
-  "@type": "DiscussionForumPosting";
-}
-
 export async function buildDiscussionForumPostingJsonLd(
   input: ArticleJsonLdInput,
   ctx: BuildJsonLdContext = {},
@@ -167,38 +122,22 @@ export async function buildDiscussionForumPostingJsonLd(
  * fields a search engine could legitimately surface — handle,
  * display name, profile URL, avatar.
  */
-export interface PersonJsonLdInput {
-  url: string;
-  name: string;
-  alternateName?: string | null;
-  image?: string | null;
-  description?: string | null;
-}
-
-export interface PersonJsonLd {
-  "@context": typeof SCHEMA;
-  "@type": "Person";
-  name: string;
-  url: string;
-  alternateName?: string;
-  image?: string;
-  description?: string;
-}
-
 export async function buildPersonJsonLd(
   input: PersonJsonLdInput,
   ctx: BuildJsonLdContext = {},
 ): Promise<PersonJsonLd> {
-  const origin = await resolveOrigin(ctx);
+  const parsedInput = npRequirePersonJsonLdInput(input);
+  const parsedContext = npRequireJsonLdContext(ctx);
+  const origin = parsedContext.origin ?? (await getSiteSeoSettings()).siteUrl;
   const out: PersonJsonLd = {
     "@context": SCHEMA,
     "@type": "Person",
-    name: input.name,
-    url: input.url,
+    name: parsedInput.name,
+    url: parsedInput.url,
   };
-  if (input.alternateName) out.alternateName = input.alternateName;
-  if (input.image) out.image = absoluteUrl(origin, input.image);
-  if (input.description) out.description = input.description;
+  if (parsedInput.alternateName) out.alternateName = parsedInput.alternateName;
+  if (parsedInput.image) out.image = absoluteUrl(origin, parsedInput.image);
+  if (parsedInput.description) out.description = parsedInput.description;
   return out;
 }
 

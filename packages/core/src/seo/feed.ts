@@ -1,7 +1,9 @@
 import { findDocuments } from "../collections/pipeline.js";
 import { getCollectionConfig } from "../collections/registry.js";
 
+import { npRequireAtomFeedOptions, npRequireFeedEntries, npRequireSeoPath } from "./contract.js";
 import { getSiteSeoSettings } from "./page-metadata.js";
+import type { BuildAtomFeedOptions, NpAtomFeedResult, NpFeedEntry } from "./types.js";
 
 /**
  * Phase 10.4 — Atom feed builder. Atom (RFC 4287) over RSS 2.0
@@ -16,45 +18,6 @@ import { getSiteSeoSettings } from "./page-metadata.js";
  * rows never leak — same trust model as `/sitemap.xml`.
  */
 
-export interface NpFeedEntry {
-  /** Stable id (we use the absolute canonical URL). */
-  id: string;
-  title: string;
-  /** Short summary; HTML escaped on the way out. */
-  summary: string | null;
-  link: string;
-  /** Author display name; null when unavailable (e.g. anonymous post). */
-  author: string | null;
-  /** ISO 8601. The Atom `<updated>` element. */
-  updated: string;
-  /** ISO 8601. Optional — emitted as `<published>`. */
-  published: string | null;
-}
-
-export interface BuildAtomFeedOptions {
-  collection?: string;
-  /** Cap entries per feed. Default 50 — most readers ignore beyond that. */
-  limit?: number;
-  /**
-   * Phase 12.4 — restrict an i18n collection's feed to one
-   * locale. Ignored on non-i18n collections. The Atom feed's
-   * top-level `<title>` / `<subtitle>` aren't translated by
-   * the framework — sites that want fully translated feeds
-   * pass their own language-specific siteName / description
-   * via custom site settings hooks.
-   */
-  locale?: string;
-  /**
-   * Phase F.7 — extra entries to merge into the feed alongside
-   * the collection walk. Supplied by the active theme's
-   * `impl.seo.feedEntries` hook through the route handler.
-   * Deduplicated against the collection-walk output by `id`
-   * (collection-walk wins on collision); the final list is
-   * sorted by `updated` desc and capped by `limit`.
-   */
-  extraEntries?: NpFeedEntry[];
-}
-
 const DEFAULT_FEED_LIMIT = 50;
 const DEFAULT_FEED_COLLECTION = "posts";
 
@@ -67,9 +30,10 @@ const DEFAULT_FEED_COLLECTION = "posts";
  */
 export async function buildAtomFeed(
   options: BuildAtomFeedOptions = {},
-): Promise<{ entries: NpFeedEntry[]; collection: string } | null> {
-  const collection = options.collection ?? DEFAULT_FEED_COLLECTION;
-  const limit = options.limit ?? DEFAULT_FEED_LIMIT;
+): Promise<NpAtomFeedResult | null> {
+  const parsedOptions = npRequireAtomFeedOptions(options);
+  const collection = parsedOptions.collection ?? DEFAULT_FEED_COLLECTION;
+  const limit = parsedOptions.limit ?? DEFAULT_FEED_LIMIT;
 
   let config;
   try {
@@ -98,7 +62,7 @@ export async function buildAtomFeed(
         // non-i18n collections so passing it unconditionally
         // is safe; we still gate on config.i18n to keep the
         // intent obvious to readers.
-        ...(options.locale && config.i18n ? { locale: options.locale } : {}),
+        ...(parsedOptions.locale && config.i18n ? { locale: parsedOptions.locale } : {}),
       },
       undefined,
     );
@@ -108,12 +72,12 @@ export async function buildAtomFeed(
 
   const entries: NpFeedEntry[] = [];
   for (const doc of result.docs) {
-    const path = urlPath(doc);
-    if (!path) continue;
+    const rawPath = urlPath(doc);
+    if (rawPath === null) continue;
+    const path = npRequireSeoPath(rawPath);
     const link = `${origin}${path}`;
     const updated = pickIso(
-      (doc as { updatedAt?: unknown }).updatedAt ??
-        (doc as { createdAt?: unknown }).createdAt,
+      (doc as { updatedAt?: unknown }).updatedAt ?? (doc as { createdAt?: unknown }).createdAt,
     );
     if (!updated) continue;
     entries.push({
@@ -133,7 +97,7 @@ export async function buildAtomFeed(
   // Phase F.7 — merge in theme-supplied extra entries, dedup by
   // id (collection-walk wins on collision), sort newest-first,
   // cap at the same limit.
-  const extras = options.extraEntries ?? [];
+  const extras = parsedOptions.extraEntries ?? [];
   if (extras.length > 0) {
     const seenIds = new Set(entries.map((e) => e.id));
     for (const extra of extras) {
@@ -141,11 +105,14 @@ export async function buildAtomFeed(
       seenIds.add(extra.id);
       entries.push(extra);
     }
-    entries.sort((a, b) => (a.updated < b.updated ? 1 : -1));
+    entries.sort((a, b) => {
+      if (a.updated !== b.updated) return a.updated < b.updated ? 1 : -1;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
     if (entries.length > limit) entries.length = limit;
   }
 
-  return { entries, collection };
+  return Object.freeze({ entries: npRequireFeedEntries(entries), collection });
 }
 
 function pickTitle(doc: Record<string, unknown>): string {
@@ -196,10 +163,9 @@ function pickIso(value: unknown): string | null {
  * runtime so it's safe to call from a route handler, a static
  * builder, or a CLI exporter.
  */
-export async function renderAtomFeed(
-  options: BuildAtomFeedOptions = {},
-): Promise<string | null> {
-  const result = await buildAtomFeed(options);
+export async function renderAtomFeed(options: BuildAtomFeedOptions = {}): Promise<string | null> {
+  const parsedOptions = npRequireAtomFeedOptions(options);
+  const result = await buildAtomFeed(parsedOptions);
   if (!result) return null;
   const settings = await getSiteSeoSettings();
   const origin = settings.siteUrl.replace(/\/+$/, "");
@@ -207,16 +173,16 @@ export async function renderAtomFeed(
   if (result.collection !== DEFAULT_FEED_COLLECTION) {
     queryParts.push(`collection=${encodeURIComponent(result.collection)}`);
   }
-  if (options.locale) {
-    queryParts.push(`locale=${encodeURIComponent(options.locale)}`);
+  if (parsedOptions.locale) {
+    queryParts.push(`locale=${encodeURIComponent(parsedOptions.locale)}`);
   }
   const feedSelfUrl = `${origin}/feed.xml${queryParts.length ? `?${queryParts.join("&")}` : ""}`;
   const updated = result.entries[0]?.updated ?? new Date().toISOString();
 
   const lines: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    options.locale
-      ? `<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="${escapeXml(options.locale)}">`
+    parsedOptions.locale
+      ? `<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="${escapeXml(parsedOptions.locale)}">`
       : '<feed xmlns="http://www.w3.org/2005/Atom">',
     `  <title>${escapeXml(settings.siteName)}</title>`,
     settings.defaultDescription
@@ -231,9 +197,7 @@ export async function renderAtomFeed(
     lines.push("  <entry>");
     lines.push(`    <id>${escapeXml(entry.id)}</id>`);
     lines.push(`    <title>${escapeXml(entry.title)}</title>`);
-    lines.push(
-      `    <link rel="alternate" type="text/html" href="${escapeXml(entry.link)}"/>`,
-    );
+    lines.push(`    <link rel="alternate" type="text/html" href="${escapeXml(entry.link)}"/>`);
     lines.push(`    <updated>${entry.updated}</updated>`);
     if (entry.published) {
       lines.push(`    <published>${entry.published}</published>`);
@@ -244,9 +208,7 @@ export async function renderAtomFeed(
       lines.push("    </author>");
     }
     if (entry.summary) {
-      lines.push(
-        `    <summary type="text">${escapeXml(entry.summary)}</summary>`,
-      );
+      lines.push(`    <summary type="text">${escapeXml(entry.summary)}</summary>`);
     }
     lines.push("  </entry>");
   }

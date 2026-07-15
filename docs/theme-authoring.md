@@ -837,6 +837,37 @@ implementation reference.
 | `impl.routes` / `impl.archives` | Declared dynamic routes (`/category/:slug`, `/search`, `/lookbook`). Catch-all dispatches with precedence: app-explicit > page-slug > theme route.                                                                                                                                                                                                                                 |
 | `impl.notFound` / `impl.seo`    | 404 page + sitemap/feed/robots contributions. Theme switch + settings save bust SEO cache tags appropriately.                                                                                                                                                                                                                                                                      |
 
+### SEO contribution results
+
+`defineTheme()` verifies that `impl.seo.sitemapEntries`, `feedEntries`, and
+`robotsTxt` are functions while the theme module evaluates. The framework then
+validates each callback's actual result immediately after it resolves, before
+the result can be merged, rendered, or cached.
+
+```ts
+import { defineTheme } from "@nexpress/theme";
+import type { NpSitemapEntry } from "@nexpress/core/seo";
+
+const theme = defineTheme({
+  manifest: {/* ... */},
+  impl: {
+    seo: {
+      sitemapEntries: async (): Promise<readonly NpSitemapEntry[]> => [
+        { loc: "/archive", changefreq: "daily", priority: 0.6 },
+      ],
+      robotsTxt: () => "User-agent: *\nDisallow: /preview\n",
+    },
+  },
+});
+```
+
+The theme package uses Core's canonical `NpSitemapEntry`,
+`NpSitemapAlternate`, and `NpFeedEntry` types directly; do not keep a local
+structural copy. Invalid paths, URLs, timestamps, duplicate ids/locations,
+unknown fields, sparse arrays, or oversized results throw
+`NpSeoContractError`. Full limits and failure behavior are documented in
+[`seo.md`](seo.md).
+
 ### Member surface (M.*) cheat-sheet
 
 For full design rationale see [`docs/design/member-surface-skinning.md`](./design/member-surface-skinning.md). The magazine reference (`packages/themes/magazine`) is the live implementation reference for every M.* surface listed below.

@@ -222,26 +222,7 @@ export {
   buildWeightedSearchVectorSql,
 } from "./collections/search.js";
 export type { NpSearchVectorParts } from "./collections/search.js";
-export { buildSitemap, renderSitemapXml, renderSitemapIndexXml } from "./seo/sitemap.js";
-export type { NpSitemapEntry, NpSitemapIndexEntry, BuildSitemapOptions } from "./seo/sitemap.js";
-export {
-  DEFAULT_SITE_SEO_SETTINGS,
-  buildPageMetadata,
-  getSiteSeoSettings,
-} from "./seo/page-metadata.js";
-export type {
-  NpSiteSeoSettings,
-  NpPageMetadata,
-  NpPageMetadataInput,
-} from "./seo/page-metadata.js";
-export { buildAtomFeed, renderAtomFeed } from "./seo/feed.js";
-export type { NpFeedEntry, BuildAtomFeedOptions } from "./seo/feed.js";
-export {
-  buildArticleJsonLd,
-  buildDiscussionForumPostingJsonLd,
-  buildPersonJsonLd,
-  buildWebSiteJsonLd,
-} from "./seo/json-ld.js";
+export * from "./seo/index.js";
 export * from "./settings/index.js";
 export {
   getAdminSettingsSnapshot,
@@ -250,15 +231,6 @@ export {
   setSeoSettings,
   setSiteGeneralSettings,
 } from "./settings/service.js";
-export type {
-  ArticleJsonLd,
-  ArticleJsonLdInput,
-  BuildJsonLdContext,
-  DiscussionForumPostingJsonLd,
-  PersonJsonLd,
-  PersonJsonLdInput,
-  WebSiteJsonLd,
-} from "./seo/json-ld.js";
 export {
   registerCollection,
   getCollectionConfig,

@@ -1,7 +1,7 @@
 import {
   buildPageMetadata as buildCorePageMetadata,
   type NpPageMetadataInput,
-} from "@nexpress/core";
+} from "@nexpress/core/seo";
 import type { Metadata } from "next";
 
 /**

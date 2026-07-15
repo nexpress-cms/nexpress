@@ -2,7 +2,7 @@
 
 Server-only CMS engine: config, DB, auth, collections pipeline, media, jobs, plugins, storage, cache, theme.
 
-**Refreshed:** 2026-07-14
+**Refreshed:** 2026-07-15
 
 ## STRUCTURE
 
@@ -24,6 +24,7 @@ src/
 ├── sites/        # canonical site ids, async-local execution context, registry, memberships
 ├── plugins/      # Plugin host: registry, runHook, route dispatch, capability enforcement
 ├── routes/       # Client-safe custom route definition/wire contract + source registry
+├── seo/          # Exact metadata, JSON-LD, sitemap/feed, robots contribution contracts
 ├── theme/        # Token types, defaults, sanitizeTokenValue
 ├── errors.ts     # NpError hierarchy (Forbidden/NotFound/Validation/Auth/Conflict)
 └── index.ts      # Barrel — 161 lines re-exporting the full public API
@@ -69,22 +70,23 @@ are contained as partial/unavailable results and recorded for Admin Health.
 
 ## WHERE TO LOOK
 
-| Task                        | File(s)                                                       | Notes                                                              |
-| --------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Change content write path   | `collections/pipeline.ts`                                     | ACL → validate → hooks → persist → revisions → media refs → search |
-| Add/change system DB tables | `db/schema/system.ts`, `db/schema/media.ts`                   | npUsers, npMedia, npRevisions, npSettings, npNavigation            |
-| Modify collection codegen   | `db/generator.ts` (496 lines)                                 | Produces Drizzle table definitions from NpCollectionConfig         |
-| Modify TS type codegen      | `db/type-generator.ts`                                        | Produces TypeScript interfaces from configs                        |
-| Change JWT/password logic   | `auth/token.ts`, `auth/password.ts`                           | jose for JWT, @node-rs/argon2 for passwords                        |
-| Add session features        | `auth/session.ts`                                             | `verifyTokenFull`, `invalidateAllSessions`, tokenVersion checks    |
-| Change media processing     | `media/processor.ts`                                          | sharp-based, `DEFAULT_IMAGE_SIZES` for variants                    |
-| Change storage contracts    | `storage/contract.ts`, `storage/operations.ts`                | Keep bootstrap, media, doctor, health, and ops on one boundary     |
-| Change observability        | `observability/contract.ts`, `logger.ts`, `error-reporter.ts` | Preserve failure isolation and direct-console fallback             |
-| Change cache invalidation   | `cache/contract.ts`, `cache/runtime.ts`                       | Keep Next, plugins, jobs, CDN, health, and ops on one boundary     |
-| Change custom routes        | `routes/contract.ts`, `routes/registry.ts`                    | Keep app declarations, Admin/API, scaffold, and doctor aligned     |
-| Add job handler             | `jobs/handlers.ts`, `jobs-contract/`                          | `{ parsePayload, resolveSiteId }`; site ids live in exact payloads |
-| Add plugin capabilities     | `plugins/host.ts` + `plugin-sdk/src/types.ts`                 | Hook capability = `hooks:<namespace>` prefix matching              |
-| Add error type              | `errors.ts`                                                   | Extend `NpError` with code + statusCode                            |
+| Task                        | File(s)                                                          | Notes                                                              |
+| --------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Change content write path   | `collections/pipeline.ts`                                        | ACL → validate → hooks → persist → revisions → media refs → search |
+| Add/change system DB tables | `db/schema/system.ts`, `db/schema/media.ts`                      | npUsers, npMedia, npRevisions, npSettings, npNavigation            |
+| Modify collection codegen   | `db/generator.ts` (496 lines)                                    | Produces Drizzle table definitions from NpCollectionConfig         |
+| Modify TS type codegen      | `db/type-generator.ts`                                           | Produces TypeScript interfaces from configs                        |
+| Change JWT/password logic   | `auth/token.ts`, `auth/password.ts`                              | jose for JWT, @node-rs/argon2 for passwords                        |
+| Add session features        | `auth/session.ts`                                                | `verifyTokenFull`, `invalidateAllSessions`, tokenVersion checks    |
+| Change media processing     | `media/processor.ts`                                             | sharp-based, `DEFAULT_IMAGE_SIZES` for variants                    |
+| Change storage contracts    | `storage/contract.ts`, `storage/operations.ts`                   | Keep bootstrap, media, doctor, health, and ops on one boundary     |
+| Change observability        | `observability/contract.ts`, `logger.ts`, `error-reporter.ts`    | Preserve failure isolation and direct-console fallback             |
+| Change cache invalidation   | `cache/contract.ts`, `cache/runtime.ts`                          | Keep Next, plugins, jobs, CDN, health, and ops on one boundary     |
+| Change custom routes        | `routes/contract.ts`, `routes/registry.ts`                       | Keep app declarations, Admin/API, scaffold, and doctor aligned     |
+| Change SEO output contracts | `seo/contract.ts`, `seo/{sitemap,feed,page-metadata,json-ld}.ts` | Keep Core, Theme hooks, App routes, and crawler caches aligned     |
+| Add job handler             | `jobs/handlers.ts`, `jobs-contract/`                             | `{ parsePayload, resolveSiteId }`; site ids live in exact payloads |
+| Add plugin capabilities     | `plugins/host.ts` + `plugin-sdk/src/types.ts`                    | Hook capability = `hooks:<namespace>` prefix matching              |
+| Add error type              | `errors.ts`                                                      | Extend `NpError` with code + statusCode                            |
 
 ## INTERNAL DEPENDENCY FLOW
 

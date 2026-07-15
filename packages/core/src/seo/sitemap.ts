@@ -1,73 +1,16 @@
 import { getAllCollectionSlugs, getCollectionConfig } from "../collections/registry.js";
 import { findDocuments } from "../collections/pipeline.js";
 import { getI18nConfig } from "../i18n/registry.js";
-
-/**
- * Phase 10.1 — sitemap entry shape. Mirrors the sitemap.org spec
- * fields the framework cares about. Apps format these into XML
- * (the reference app does that in `apps/web/src/app/sitemap.xml/
- * route.ts`); the core helper stays format-agnostic so a future
- * news-sitemap or video-sitemap variant can reuse the same
- * collection walk.
- */
-export interface NpSitemapEntry {
-  /** Path-only — host is prepended by the consumer. Always starts with `/`. */
-  loc: string;
-  /** ISO timestamp for `<lastmod>`. Falls back to `updatedAt` then `createdAt`. */
-  lastmod?: string;
-  changefreq?:
-    | "always"
-    | "hourly"
-    | "daily"
-    | "weekly"
-    | "monthly"
-    | "yearly"
-    | "never";
-  priority?: number;
-  /**
-   * Phase 12.2 — hreflang alternates for translated content.
-   * The renderer emits an `<xhtml:link rel="alternate" hreflang="..." href="..."/>`
-   * entry per alternate, and the urlset gets the xhtml namespace
-   * declaration when any entry uses alternates.
-   */
-  alternates?: Array<{ hreflang: string; href: string }>;
-}
-
-export interface BuildSitemapOptions {
-  /**
-   * Cap per-collection at this many rows so a 100K-document blog
-   * doesn't bring the sitemap.xml endpoint to its knees. Default
-   * 5000 is the sitemaps.org recommended max per file. Sites with
-   * more rows than that per locale should pair this with the
-   * sitemap-index split (see `locale` below) so each child file
-   * stays under the cap.
-   */
-  perCollectionLimit?: number;
-  /** Restrict to specific collection slugs (default: all). */
-  collections?: string[];
-  /**
-   * Restrict to a single locale. When set:
-   *   - i18n collections filter rows to `locale = $locale` (so
-   *     each per-locale sitemap only enumerates its own URLs).
-   *   - non-i18n collections are emitted only for the configured
-   *     `defaultLocale`; other locales' sitemaps skip them so
-   *     a row never appears in two sibling sitemaps.
-   * Leaving this `undefined` keeps the unfiltered single-file
-   * behavior used when i18n is not configured.
-   */
-  locale?: string;
-}
-
-/**
- * Sitemap-index entry — a pointer to a child `<urlset>` document
- * (typically a per-locale sitemap). The `loc` is path-only; the
- * renderer prepends the absolute origin.
- */
-export interface NpSitemapIndexEntry {
-  loc: string;
-  /** Optional ISO timestamp for `<lastmod>` on the child sitemap. */
-  lastmod?: string;
-}
+import {
+  NpSeoContractError,
+  npRequireSeoOrigin,
+  npRequireSeoPath,
+  npRequireSitemapEntries,
+  npRequireSitemapIndexEntries,
+  npRequireSitemapOptions,
+  npSeoContractLimits,
+} from "./contract.js";
+import type { BuildSitemapOptions, NpSitemapEntry, NpSitemapIndexEntry } from "./types.js";
 
 const DEFAULT_LIMIT_PER_COLLECTION = 5_000;
 
@@ -87,12 +30,13 @@ const DEFAULT_LIMIT_PER_COLLECTION = 5_000;
  */
 export async function buildSitemap(
   options: BuildSitemapOptions = {},
-): Promise<NpSitemapEntry[]> {
-  const limit = options.perCollectionLimit ?? DEFAULT_LIMIT_PER_COLLECTION;
-  const slugs = options.collections ?? getAllCollectionSlugs();
+): Promise<readonly NpSitemapEntry[]> {
+  const parsedOptions = npRequireSitemapOptions(options);
+  const limit = parsedOptions.perCollectionLimit ?? DEFAULT_LIMIT_PER_COLLECTION;
+  const slugs = parsedOptions.collections ?? getAllCollectionSlugs();
   const entries: NpSitemapEntry[] = [];
   const i18n = getI18nConfig();
-  const localeFilter = options.locale;
+  const localeFilter = parsedOptions.locale;
 
   for (const slug of slugs) {
     let config;
@@ -149,10 +93,7 @@ export async function buildSitemap(
       const groups = new Map<string, Array<Record<string, unknown>>>();
       const orphans: Array<Record<string, unknown>> = [];
       for (const doc of docs) {
-        const groupId =
-          typeof doc.translationGroupId === "string"
-            ? doc.translationGroupId
-            : null;
+        const groupId = typeof doc.translationGroupId === "string" ? doc.translationGroupId : null;
         if (!groupId) {
           orphans.push(doc);
           continue;
@@ -165,10 +106,9 @@ export async function buildSitemap(
         const alternates: Array<{ hreflang: string; href: string }> = [];
         for (const sibling of siblings) {
           const siblingPath = seo.urlPath(sibling);
-          const locale =
-            typeof sibling.locale === "string" ? sibling.locale : null;
-          if (siblingPath && locale) {
-            alternates.push({ hreflang: locale, href: siblingPath });
+          const locale = typeof sibling.locale === "string" ? sibling.locale : null;
+          if (siblingPath !== null && locale) {
+            alternates.push({ hreflang: locale, href: npRequireSeoPath(siblingPath) });
           }
         }
         for (const sibling of siblings) {
@@ -178,18 +118,19 @@ export async function buildSitemap(
           // (built above) so crawlers discover the others through
           // hreflang.
           if (localeFilter) {
-            const siblingLocale =
-              typeof sibling.locale === "string" ? sibling.locale : null;
+            const siblingLocale = typeof sibling.locale === "string" ? sibling.locale : null;
             if (siblingLocale !== localeFilter) continue;
           }
-          const path = seo.urlPath(sibling);
-          if (!path || !path.startsWith("/")) continue;
+          const rawPath = seo.urlPath(sibling);
+          if (rawPath === null) continue;
+          const path = npRequireSeoPath(rawPath);
+          const lastmod = pickLastmod(sibling);
           entries.push({
             loc: path,
-            lastmod: pickLastmod(sibling),
-            changefreq: seo.changefreq,
-            priority: seo.priority,
-            alternates: alternates.length > 1 ? alternates : undefined,
+            ...(lastmod ? { lastmod } : {}),
+            ...(seo.changefreq ? { changefreq: seo.changefreq } : {}),
+            ...(typeof seo.priority === "number" ? { priority: seo.priority } : {}),
+            ...(alternates.length > 1 ? { alternates } : {}),
           });
         }
       }
@@ -198,32 +139,35 @@ export async function buildSitemap(
           const docLocale = typeof doc.locale === "string" ? doc.locale : null;
           if (docLocale !== localeFilter) continue;
         }
-        const path = seo.urlPath(doc);
-        if (!path || !path.startsWith("/")) continue;
+        const rawPath = seo.urlPath(doc);
+        if (rawPath === null) continue;
+        const path = npRequireSeoPath(rawPath);
+        const lastmod = pickLastmod(doc);
         entries.push({
           loc: path,
-          lastmod: pickLastmod(doc),
-          changefreq: seo.changefreq,
-          priority: seo.priority,
+          ...(lastmod ? { lastmod } : {}),
+          ...(seo.changefreq ? { changefreq: seo.changefreq } : {}),
+          ...(typeof seo.priority === "number" ? { priority: seo.priority } : {}),
         });
       }
       continue;
     }
 
     for (const doc of docs) {
-      const path = seo.urlPath(doc);
-      if (!path) continue;
-      if (!path.startsWith("/")) continue;
+      const rawPath = seo.urlPath(doc);
+      if (rawPath === null) continue;
+      const path = npRequireSeoPath(rawPath);
+      const lastmod = pickLastmod(doc);
       entries.push({
         loc: path,
-        lastmod: pickLastmod(doc),
-        changefreq: seo.changefreq,
-        priority: seo.priority,
+        ...(lastmod ? { lastmod } : {}),
+        ...(seo.changefreq ? { changefreq: seo.changefreq } : {}),
+        ...(typeof seo.priority === "number" ? { priority: seo.priority } : {}),
       });
     }
   }
 
-  return entries;
+  return npRequireSitemapEntries(entries);
 }
 
 function pickLastmod(doc: Record<string, unknown>): string | undefined {
@@ -243,43 +187,37 @@ function pickLastmod(doc: Record<string, unknown>): string | undefined {
  * the host should NOT have a trailing slash. The output is
  * sitemap.org 0.9 compliant.
  */
-export function renderSitemapXml(
-  origin: string,
-  entries: NpSitemapEntry[],
-): string {
-  const trimmed = origin.replace(/\/+$/, "");
-  const usesAlternates = entries.some(
-    (e) => e.alternates && e.alternates.length > 0,
-  );
-  const lines: string[] = [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    usesAlternates
+export function renderSitemapXml(origin: string, entries: readonly NpSitemapEntry[]): string {
+  const parsedOrigin = npRequireSeoOrigin(origin);
+  const parsedEntries = npRequireSitemapEntries(entries);
+  const usesAlternates = parsedEntries.some((e) => e.alternates && e.alternates.length > 0);
+  function* xmlLines(): Generator<string> {
+    yield '<?xml version="1.0" encoding="UTF-8"?>';
+    yield usesAlternates
       ? '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">'
-      : '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-  ];
-  for (const entry of entries) {
-    lines.push("  <url>");
-    lines.push(`    <loc>${escapeXml(`${trimmed}${entry.loc}`)}</loc>`);
-    if (entry.lastmod) {
-      lines.push(`    <lastmod>${entry.lastmod}</lastmod>`);
-    }
-    if (entry.changefreq) {
-      lines.push(`    <changefreq>${entry.changefreq}</changefreq>`);
-    }
-    if (typeof entry.priority === "number") {
-      lines.push(`    <priority>${entry.priority.toFixed(1)}</priority>`);
-    }
-    if (entry.alternates) {
-      for (const alt of entry.alternates) {
-        lines.push(
-          `    <xhtml:link rel="alternate" hreflang="${escapeXml(alt.hreflang)}" href="${escapeXml(`${trimmed}${alt.href}`)}"/>`,
-        );
+      : '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">';
+    for (const entry of parsedEntries) {
+      yield "  <url>";
+      yield `    <loc>${escapeXml(`${parsedOrigin}${entry.loc}`)}</loc>`;
+      if (entry.lastmod) {
+        yield `    <lastmod>${entry.lastmod}</lastmod>`;
       }
+      if (entry.changefreq) {
+        yield `    <changefreq>${entry.changefreq}</changefreq>`;
+      }
+      if (typeof entry.priority === "number") {
+        yield `    <priority>${entry.priority.toFixed(1)}</priority>`;
+      }
+      if (entry.alternates) {
+        for (const alt of entry.alternates) {
+          yield `    <xhtml:link rel="alternate" hreflang="${escapeXml(alt.hreflang)}" href="${escapeXml(`${parsedOrigin}${alt.href}`)}"/>`;
+        }
+      }
+      yield "  </url>";
     }
-    lines.push("  </url>");
+    yield "</urlset>";
   }
-  lines.push("</urlset>");
-  return lines.join("\n");
+  return npJoinSitemapXmlLines(xmlLines());
 }
 
 /**
@@ -295,23 +233,51 @@ export function renderSitemapXml(
  */
 export function renderSitemapIndexXml(
   origin: string,
-  entries: NpSitemapIndexEntry[],
+  entries: readonly NpSitemapIndexEntry[],
 ): string {
-  const trimmed = origin.replace(/\/+$/, "");
-  const lines: string[] = [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-  ];
-  for (const entry of entries) {
-    lines.push("  <sitemap>");
-    lines.push(`    <loc>${escapeXml(`${trimmed}${entry.loc}`)}</loc>`);
-    if (entry.lastmod) {
-      lines.push(`    <lastmod>${entry.lastmod}</lastmod>`);
+  const parsedOrigin = npRequireSeoOrigin(origin);
+  const parsedEntries = npRequireSitemapIndexEntries(entries);
+  function* xmlLines(): Generator<string> {
+    yield '<?xml version="1.0" encoding="UTF-8"?>';
+    yield '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">';
+    for (const entry of parsedEntries) {
+      yield "  <sitemap>";
+      yield `    <loc>${escapeXml(`${parsedOrigin}${entry.loc}`)}</loc>`;
+      if (entry.lastmod) {
+        yield `    <lastmod>${entry.lastmod}</lastmod>`;
+      }
+      yield "  </sitemap>";
     }
-    lines.push("  </sitemap>");
+    yield "</sitemapindex>";
   }
-  lines.push("</sitemapindex>");
-  return lines.join("\n");
+  return npJoinSitemapXmlLines(xmlLines());
+}
+
+/** Internal line joiner shared by both sitemap renderers. */
+export function npJoinSitemapXmlLines(
+  lines: Iterable<string>,
+  maximumBytes: number = npSeoContractLimits.maxSitemapXmlBytes,
+): string {
+  if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1) {
+    throw new RangeError("maximumBytes must be a positive safe integer.");
+  }
+  const output: string[] = [];
+  let bytes = 0;
+  for (const line of lines) {
+    bytes += Buffer.byteLength(line, "utf8") + (output.length === 0 ? 0 : 1);
+    if (bytes > maximumBytes) {
+      const message = `rendered sitemap XML may contain at most ${maximumBytes.toString()} UTF-8 bytes.`;
+      throw new NpSeoContractError(`Invalid sitemap XML: sitemapXml: ${message}`, [
+        {
+          code: "max-bytes",
+          path: "sitemapXml",
+          message,
+        },
+      ]);
+    }
+    output.push(line);
+  }
+  return output.join("\n");
 }
 
 function escapeXml(value: string): string {

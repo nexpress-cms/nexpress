@@ -49,9 +49,7 @@ describe("extractMembersNotFoundComponent", () => {
 
   it("falls back to `impl.notFound` when `impl.members.notFound` is omitted", () => {
     const TopNotFound = () => null;
-    expect(
-      extractMembersNotFoundComponent({ notFound: TopNotFound }),
-    ).toBe(TopNotFound);
+    expect(extractMembersNotFoundComponent({ notFound: TopNotFound })).toBe(TopNotFound);
   });
 
   it("falls back to `impl.notFound` when `impl.members.notFound` is non-function", () => {
@@ -72,16 +70,43 @@ describe("extractSeoHooks", () => {
     expect(extractSeoHooks({ seo: "wrong" })).toEqual({});
   });
 
-  it("picks up declared hooks individually", () => {
-    const sitemapEntries = () => Promise.resolve([]);
-    const feedEntries = () => Promise.resolve([]);
+  it("validates declared hook results at dispatch", async () => {
+    const sitemapEntries = () => Promise.resolve([{ loc: "/archive" }]);
+    const feedEntries = () =>
+      Promise.resolve([
+        {
+          id: "https://example.com/archive",
+          title: "Archive",
+          summary: null,
+          link: "https://example.com/archive",
+          author: null,
+          updated: "2026-07-15T00:00:00.000Z",
+          published: null,
+        },
+      ]);
     const robotsTxt = () => "User-agent: *\n";
     const out = extractSeoHooks({
       seo: { sitemapEntries, feedEntries, robotsTxt },
     });
-    expect(out.sitemapEntries).toBe(sitemapEntries);
-    expect(out.feedEntries).toBe(feedEntries);
-    expect(out.robotsTxt).toBe(robotsTxt);
+    await expect(out.sitemapEntries?.()).resolves.toEqual([{ loc: "/archive" }]);
+    await expect(out.feedEntries?.()).resolves.toEqual([
+      expect.objectContaining({ id: "https://example.com/archive" }),
+    ]);
+    await expect(out.robotsTxt?.()).resolves.toBe("User-agent: *\n");
+  });
+
+  it("rejects malformed hook results before a route renders or caches them", async () => {
+    const out = extractSeoHooks({
+      seo: {
+        sitemapEntries: () => [{ loc: "https://evil.example/archive" }],
+        feedEntries: () => [{ id: "not-a-url" }],
+        robotsTxt: () => ({ body: "User-agent: *" }),
+      },
+    });
+
+    await expect(out.sitemapEntries?.()).rejects.toThrow(/sitemapEntries\.0\.loc/u);
+    await expect(out.feedEntries?.()).rejects.toThrow(/feedEntries\.0/u);
+    await expect(out.robotsTxt?.()).rejects.toThrow(/robotsTxt/u);
   });
 
   it("ignores non-function members (malformed manifest)", () => {
@@ -95,11 +120,22 @@ describe("extractSeoHooks", () => {
     expect(out).toEqual({});
   });
 
-  it("partial declaration — only some hooks set", () => {
+  it("partial declaration — only some hooks set", async () => {
     const sitemapEntries = () => Promise.resolve([]);
     const out = extractSeoHooks({ seo: { sitemapEntries } });
-    expect(out.sitemapEntries).toBe(sitemapEntries);
+    await expect(out.sitemapEntries?.()).resolves.toEqual([]);
     expect(out.feedEntries).toBeUndefined();
     expect(out.robotsTxt).toBeUndefined();
+  });
+
+  it("preserves the theme seo receiver while validating results", async () => {
+    const seo = {
+      suffix: "archive",
+      sitemapEntries(this: { suffix: string }) {
+        return [{ loc: `/${this.suffix}` }];
+      },
+    };
+    const out = extractSeoHooks({ seo });
+    await expect(out.sitemapEntries?.()).resolves.toEqual([{ loc: "/archive" }]);
   });
 });

@@ -1,4 +1,9 @@
-import type { NpFeedEntry, NpSitemapEntry } from "../seo/index.js";
+import {
+  npRequireFeedEntries,
+  npRequireRobotsTxt,
+  npRequireSitemapEntries,
+} from "../seo/contract.js";
+import type { NpFeedEntry, NpSitemapEntry } from "../seo/types.js";
 import { getActiveTheme } from "./registry.js";
 
 /**
@@ -16,8 +21,8 @@ import { getActiveTheme } from "./registry.js";
  */
 
 export interface NpThemeSeoHooksExtracted {
-  sitemapEntries?: () => Promise<NpSitemapEntry[]> | NpSitemapEntry[];
-  feedEntries?: () => Promise<NpFeedEntry[]> | NpFeedEntry[];
+  sitemapEntries?: () => Promise<readonly NpSitemapEntry[]>;
+  feedEntries?: () => Promise<readonly NpFeedEntry[]>;
   robotsTxt?: () => string | Promise<string>;
 }
 
@@ -63,13 +68,16 @@ export function extractSeoHooks(impl: unknown): NpThemeSeoHooksExtracted {
   if (!seo || typeof seo !== "object") return {};
   const out: NpThemeSeoHooksExtracted = {};
   if (typeof seo.sitemapEntries === "function") {
-    out.sitemapEntries = seo.sitemapEntries;
+    const sitemapEntries = seo.sitemapEntries;
+    out.sitemapEntries = async () => npRequireSitemapEntries(await sitemapEntries.call(seo));
   }
   if (typeof seo.feedEntries === "function") {
-    out.feedEntries = seo.feedEntries;
+    const feedEntries = seo.feedEntries;
+    out.feedEntries = async () => npRequireFeedEntries(await feedEntries.call(seo));
   }
   if (typeof seo.robotsTxt === "function") {
-    out.robotsTxt = seo.robotsTxt;
+    const robotsTxt = seo.robotsTxt;
+    out.robotsTxt = async () => npRequireRobotsTxt(await robotsTxt.call(seo));
   }
   return out;
 }

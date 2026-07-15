@@ -950,7 +950,13 @@ For sitemap and Atom feed entry points, every scaffold already
 exposes `/sitemap.xml` and `/feed.xml` — the implementations live
 in `@nexpress/app/root/{sitemap,feed}/route` and are re-exported
 from `src/app/{sitemap,feed}.xml/route.ts` thin wrappers (same
-shape in `apps/web`).
+shape in `apps/web`). Every public SEO helper validates its exact,
+bounded runtime input before settings, rendering, or caching. Theme
+callbacks are validated after they resolve, so a malformed sitemap,
+feed, or robots contribution fails explicitly instead of producing a
+partial crawler response. Use `npDefineSitemapEntries()` /
+`npDefineFeedEntries()` for static author-owned catalogs and see
+[`seo.md`](seo.md) for URL, timestamp, locale, and size rules.
 
 ---
 
