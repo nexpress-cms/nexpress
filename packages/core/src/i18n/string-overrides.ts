@@ -2,198 +2,200 @@ import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/runtime.js";
 import { npStringOverrides } from "../db/schema/system.js";
+import {
+  npCreateStringOverrideCatalog,
+  npRequireLocale,
+  npRequireStringOverrideDeleteQuery,
+  npRequireStringOverrideMutation,
+  npRequireStringOverrideRow,
+  npRequireTranslationKey,
+} from "../i18n-contract/contract.js";
+import type { NpStringOverrideCatalog, NpStringOverrideRow } from "../i18n-contract/types.js";
 import { getCurrentSiteId } from "../sites/context.js";
-import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { NP_DEFAULT_SITE_ID, npIsCanonicalSiteId } from "../sites/id-contract.js";
+import { getI18nConfig } from "./registry.js";
 
 /**
- * Phase D — admin-overridable UI string layer on top of the
- * Phase 12.5 plugin/theme bundle registry.
- *
- * Plugins and themes ship base translations via
- * `addStrings()`; admins layer overrides on top via the
- * `np_string_overrides` table without editing plugin/theme
- * code. Per-site composite key (siteId, locale, key) so each
- * tenant can override the same plugin's string differently.
- *
- * The override map is held in-memory per process, keyed by
- * site, populated lazily by `loadStringOverridesForSite()`
- * and busted by `clearStringOverrideCacheForSite()` after
- * admin writes. Multi-process deployments live with eventual
- * consistency — workers reload from DB on their own
- * cache-miss path; that's acceptable because override edits
- * are infrequent. Sites that need strict consistency add a
- * pubsub channel later.
+ * Per-site UI string overrides. Persisted rows and public cache snapshots pass
+ * the same exact i18n contract; no mutable Map or DB-owned Date escapes.
  */
+const OVERRIDE_CACHE_TTL_MS = 30_000;
+const OVERRIDE_SITE_CACHE_LIMIT = 1_000;
+const cacheBySite = new Map<
+  string,
+  { readonly catalog: NpStringOverrideCatalog; readonly expiresAt: number }
+>();
+const loadBySite = new Map<string, Promise<NpStringOverrideCatalog>>();
+const generationBySite = new Map<string, number>();
 
-type OverrideMap = Map<string, Record<string, string | null>>; // locale → key → value (null = explicitly cleared)
+function requireSiteId(value: unknown): string {
+  if (!npIsCanonicalSiteId(value)) throw new TypeError("String override siteId is invalid.");
+  return value;
+}
 
-const cacheBySite = new Map<string, OverrideMap>();
+function generation(siteId: string): number {
+  return generationBySite.get(siteId) ?? 0;
+}
 
-/**
- * Read every override row for a site and rebuild that site's
- * cache entry from the DB. Idempotent; safe to call
- * concurrently (the writers are admin actions, not hot
- * paths).
- */
-export async function loadStringOverridesForSite(
-  siteId: string,
-): Promise<OverrideMap> {
+function cachedCatalog(siteId: string): NpStringOverrideCatalog | undefined {
+  const entry = cacheBySite.get(siteId);
+  if (!entry) return undefined;
+  if (entry.expiresAt <= Date.now()) {
+    cacheBySite.delete(siteId);
+    return undefined;
+  }
+  return entry.catalog;
+}
+
+function cacheCatalog(siteId: string, catalog: NpStringOverrideCatalog): void {
+  for (const [cachedSiteId, entry] of cacheBySite) {
+    if (entry.expiresAt <= Date.now()) cacheBySite.delete(cachedSiteId);
+  }
+  cacheBySite.delete(siteId);
+  cacheBySite.set(siteId, {
+    catalog,
+    expiresAt: Date.now() + OVERRIDE_CACHE_TTL_MS,
+  });
+  while (cacheBySite.size > OVERRIDE_SITE_CACHE_LIMIT) {
+    const oldest = cacheBySite.keys().next().value;
+    if (oldest === undefined) break;
+    cacheBySite.delete(oldest);
+  }
+}
+
+async function queryStringOverrides(siteId: string): Promise<NpStringOverrideRow[]> {
   const db = getDb();
   const rows = (await db
-    .select({
-      locale: npStringOverrides.locale,
-      key: npStringOverrides.key,
-      value: npStringOverrides.value,
-    })
+    .select()
     .from(npStringOverrides)
-    .where(eq(npStringOverrides.siteId, siteId))) as Array<{
-    locale: string;
-    key: string;
-    value: string | null;
-  }>;
+    .where(eq(npStringOverrides.siteId, siteId))) as unknown[];
+  const config = getI18nConfig() ?? { locales: ["en"], defaultLocale: "en" };
+  return rows.map((row) => npRequireStringOverrideRow(row, { config }));
+}
 
-  const map: OverrideMap = new Map();
-  for (const row of rows) {
-    const bundle = map.get(row.locale) ?? {};
-    bundle[row.key] = row.value;
-    map.set(row.locale, bundle);
+/** Force a fresh validated read. An invalidation racing this query wins. */
+export async function loadStringOverridesForSite(
+  siteIdValue: string,
+): Promise<NpStringOverrideCatalog> {
+  const siteId = requireSiteId(siteIdValue);
+  const startedAtGeneration = generation(siteId);
+  const pending = (async (): Promise<NpStringOverrideCatalog> => {
+    const rows = await queryStringOverrides(siteId);
+    const catalog = npCreateStringOverrideCatalog(rows);
+    if (generation(siteId) !== startedAtGeneration) {
+      return loadStringOverridesForSite(siteId);
+    }
+    cacheCatalog(siteId, catalog);
+    return catalog;
+  })();
+  loadBySite.set(siteId, pending);
+  try {
+    return await pending;
+  } finally {
+    if (loadBySite.get(siteId) === pending) {
+      loadBySite.delete(siteId);
+      generationBySite.delete(siteId);
+    }
   }
-  cacheBySite.set(siteId, map);
-  return map;
 }
 
-/**
- * Get the cached override map for a site, loading it on a
- * cache miss. Async because the cache miss has to round-trip
- * to the DB.
- */
+/** Get an immutable snapshot, de-duplicating concurrent cold-cache reads. */
 export async function getStringOverridesForSite(
-  siteId: string,
-): Promise<OverrideMap> {
-  const cached = cacheBySite.get(siteId);
+  siteIdValue: string,
+): Promise<NpStringOverrideCatalog> {
+  const siteId = requireSiteId(siteIdValue);
+  const cached = cachedCatalog(siteId);
   if (cached) return cached;
-  return loadStringOverridesForSite(siteId);
+  const pending = loadBySite.get(siteId) ?? loadStringOverridesForSite(siteId);
+  const result = await pending;
+  return cachedCatalog(siteId) ?? result;
 }
 
-export function clearStringOverrideCacheForSite(siteId: string): void {
+export function clearStringOverrideCacheForSite(siteIdValue: string): void {
+  const siteId = requireSiteId(siteIdValue);
+  if (loadBySite.has(siteId)) generationBySite.set(siteId, generation(siteId) + 1);
+  else generationBySite.delete(siteId);
   cacheBySite.delete(siteId);
 }
 
 /** Tests use this between cases. Production never wipes globally. */
 export function resetStringOverrideCache(): void {
   cacheBySite.clear();
+  loadBySite.clear();
+  generationBySite.clear();
 }
 
-/**
- * Resolve an override for a single (locale, key) on the
- * current site, or null if no override is set. Synchronous
- * after the cache is warm; the async wrapper used by `t()`
- * ensures the cache is loaded before this is called.
- */
 export function getStringOverride(
-  siteId: string,
-  locale: string,
-  key: string,
+  siteIdValue: string,
+  localeValue: string,
+  keyValue: string,
 ): string | null {
-  const cached = cacheBySite.get(siteId);
-  if (!cached) return null;
-  const bundle = cached.get(locale);
-  if (!bundle) return null;
-  // null in the bundle means "explicitly cleared, fall back
-  // to the registry"; undefined means "no override at all"
-  // — both behave the same for resolution but the column
-  // distinguishes them for audit-trail UIs.
-  const value = bundle[key];
-  return value ?? null;
+  const siteId = requireSiteId(siteIdValue);
+  const locale = npRequireLocale(localeValue);
+  const key = npRequireTranslationKey(keyValue);
+  return cachedCatalog(siteId)?.[locale]?.[key] ?? null;
 }
 
-/**
- * Persist an override row. Pass `null` for `value` to mark
- * the key as explicitly reverted (the resolution result is
- * the same as if no row existed; the row itself stays as a
- * marker for audit trails).
- */
 export async function setStringOverride(
-  locale: string,
-  key: string,
+  localeValue: string,
+  keyValue: string,
   value: string | null,
-  options?: { siteId?: string; updatedBy?: string | null },
+  options?: { readonly siteId?: string; readonly updatedBy?: string | null },
 ): Promise<void> {
-  const db = getDb();
-  const siteId =
-    options?.siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+  const mutation = npRequireStringOverrideMutation({
+    locale: localeValue,
+    key: keyValue,
+    value,
+  });
+  const siteId = requireSiteId(options?.siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID);
   const now = new Date();
-  await db
-    .insert(npStringOverrides)
-    .values({
+  const row = npRequireStringOverrideRow(
+    {
       siteId,
-      locale,
-      key,
-      value,
+      ...mutation,
       updatedAt: now,
       updatedBy: options?.updatedBy ?? null,
-    })
+    },
+    { config: getI18nConfig() ?? { locales: ["en"], defaultLocale: "en" } },
+  );
+  const db = getDb();
+  await db
+    .insert(npStringOverrides)
+    .values(row)
     .onConflictDoUpdate({
-      target: [
-        npStringOverrides.siteId,
-        npStringOverrides.locale,
-        npStringOverrides.key,
-      ],
+      target: [npStringOverrides.siteId, npStringOverrides.locale, npStringOverrides.key],
       set: {
-        value,
-        updatedAt: now,
-        updatedBy: options?.updatedBy ?? null,
+        value: row.value,
+        updatedAt: row.updatedAt,
+        updatedBy: row.updatedBy,
       },
     });
   clearStringOverrideCacheForSite(siteId);
 }
 
-/**
- * Delete an override row (vs. setting value=null which
- * preserves the audit trail). Useful when an admin
- * explicitly wants to "stop tracking" an override.
- */
 export async function deleteStringOverride(
-  locale: string,
-  key: string,
-  options?: { siteId?: string },
+  localeValue: string,
+  keyValue: string,
+  options?: { readonly siteId?: string },
 ): Promise<void> {
+  const query = npRequireStringOverrideDeleteQuery({ locale: localeValue, key: keyValue });
+  const siteId = requireSiteId(options?.siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID);
   const db = getDb();
-  const siteId =
-    options?.siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   await db
     .delete(npStringOverrides)
     .where(
       and(
         eq(npStringOverrides.siteId, siteId),
-        eq(npStringOverrides.locale, locale),
-        eq(npStringOverrides.key, key),
+        eq(npStringOverrides.locale, query.locale),
+        eq(npStringOverrides.key, query.key),
       ),
     );
   clearStringOverrideCacheForSite(siteId);
 }
 
-/**
- * List every override row for a site (used by the admin UI
- * and by exporters). Returns the raw rows including null-
- * valued markers so the UI can show "this WAS overridden".
- */
-export interface NpStringOverrideRow {
-  siteId: string;
-  locale: string;
-  key: string;
-  value: string | null;
-  updatedAt: Date;
-  updatedBy: string | null;
-}
-
 export async function listStringOverridesForSite(
-  siteId: string,
-): Promise<NpStringOverrideRow[]> {
-  const db = getDb();
-  const rows = (await db
-    .select()
-    .from(npStringOverrides)
-    .where(eq(npStringOverrides.siteId, siteId))) as NpStringOverrideRow[];
-  return rows;
+  siteIdValue: string,
+): Promise<readonly NpStringOverrideRow[]> {
+  const rows = await queryStringOverrides(requireSiteId(siteIdValue));
+  return Object.freeze(rows);
 }

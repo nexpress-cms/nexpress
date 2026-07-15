@@ -4,7 +4,9 @@ import { resetI18nConfig, setI18nConfig } from "./registry.js";
 import {
   addStrings,
   getAllStrings,
+  getI18nRuntimeDiagnostics,
   getRegisteredPluginStrings,
+  getStrings,
   registerPluginStrings,
   resetStrings,
   resetTranslationCache,
@@ -41,6 +43,14 @@ describe("UI string registry (Phase 12.5 + D bundle behavior)", () => {
     expect(tSync("hello", "ko")).toBe("안녕");
   });
 
+  it("preserves prototype-shaped translation keys without changing object prototypes", () => {
+    addStrings("en", { ["__proto__"]: "Prototype label", constructor: "Constructor label" });
+    const bundle = getStrings("en");
+    expect(Object.getPrototypeOf(bundle)).toBeNull();
+    expect(bundle.__proto__).toBe("Prototype label");
+    expect(bundle.constructor).toBe("Constructor label");
+  });
+
   it("tSync() falls back to the default locale when the requested key is missing", () => {
     setI18nConfig({ locales: ["en", "ko"], defaultLocale: "en" });
     addStrings("en", { byKeyOnly: "English fallback" });
@@ -50,6 +60,14 @@ describe("UI string registry (Phase 12.5 + D bundle behavior)", () => {
   it("tSync() falls back to the key itself when no bundle has it (operator-visible miss)", () => {
     setI18nConfig({ locales: ["en", "ko"], defaultLocale: "en" });
     expect(tSync("totallyMissingKey", "ko")).toBe("totallyMissingKey");
+    expect(tSync("missing.{name}", "ko", { name: "Bae" })).toBe("missing.{name}");
+  });
+
+  it("bounds empty effective-bundle snapshots requested for arbitrary canonical locales", () => {
+    for (let index = 0; index < 300; index += 1) {
+      getStrings(`en-x-${index.toString().padStart(4, "0")}`);
+    }
+    expect(getI18nRuntimeDiagnostics().effectiveBundleCacheEntries).toBe(256);
   });
 
   it("tSync() interpolates ICU {name} placeholders from params", () => {
@@ -76,9 +94,11 @@ describe("UI string registry (Phase 12.5 + D bundle behavior)", () => {
     const all = getAllStrings();
     expect(all.en?.hello).toBe("Hello");
     expect(all.ko?.hello).toBe("안녕");
-    // The returned object is a copy — mutating it doesn't
-    // affect the registry.
-    if (all.en) all.en.hello = "Mutated";
+    expect(Object.isFrozen(all)).toBe(true);
+    expect(Object.isFrozen(all.en)).toBe(true);
+    expect(() => {
+      (all.en as Record<string, string>).hello = "Mutated";
+    }).toThrow();
     expect(tSync("hello", "en")).toBe("Hello");
   });
 
@@ -162,13 +182,9 @@ describe("ICU MessageFormat (Phase 12.7)", () => {
     expect(tSync("plain", "en")).toBe("It's a plain string");
   });
 
-  it("malformed ICU template falls back to the raw template instead of throwing", () => {
+  it("rejects malformed ICU templates at registration time", () => {
     setI18nConfig({ locales: ["en"], defaultLocale: "en" });
-    // `{count, plural,` with no branches is invalid ICU.
-    addStrings("en", { broken: "{count, plural," });
-    // Should not throw — the warn log surfaces the bug to the
-    // operator and the user sees the raw template.
-    expect(() => tSync("broken", "en", { count: 1 })).not.toThrow();
+    expect(() => addStrings("en", { broken: "{count, plural," })).toThrow(/valid ICU/u);
   });
 
   it("missing param falls back to the raw template instead of crashing", () => {

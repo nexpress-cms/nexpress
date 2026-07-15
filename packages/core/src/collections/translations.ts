@@ -3,13 +3,21 @@ import type { PgTable } from "drizzle-orm/pg-core";
 
 import { NpNotFoundError, NpValidationError } from "../errors.js";
 import { getI18nConfig } from "../i18n/registry.js";
+import { npRequireTranslationProgressResponse } from "../i18n-contract/contract.js";
+import type {
+  NpCollectionTranslationProgress,
+  NpTranslationProgress,
+  NpTranslationProgressLocaleStats,
+} from "../i18n-contract/types.js";
 import type { NpAuthUser } from "../config/types.js";
 
-import {
-  getAllCollectionSlugs,
-  getCollectionConfig,
-  getCollectionTable,
-} from "./registry.js";
+export type {
+  NpCollectionTranslationProgress,
+  NpTranslationProgress,
+  NpTranslationProgressLocaleStats,
+} from "../i18n-contract/types.js";
+
+import { getAllCollectionSlugs, getCollectionConfig, getCollectionTable } from "./registry.js";
 import { getDocumentById, saveDocument } from "./pipeline.js";
 import { getDb } from "../db/runtime.js";
 
@@ -60,17 +68,15 @@ export async function findTranslations(
   if (!source) throw new NpNotFoundError(collection, docId);
   const groupId = (source as { translationGroupId?: string }).translationGroupId;
   if (!groupId) {
-    throw new Error(
-      `Doc ${docId} in collection "${collection}" has no translationGroupId`,
-    );
+    throw new Error(`Doc ${docId} in collection "${collection}" has no translationGroupId`);
   }
 
   const rows = (await db
     .select()
     .from(table)
-    .where(
-      eq(getTableColumn(table, "translationGroupId") as never, groupId),
-    )) as Array<Record<string, unknown>>;
+    .where(eq(getTableColumn(table, "translationGroupId") as never, groupId))) as Array<
+    Record<string, unknown>
+  >;
 
   const ordering = getI18nConfig()?.locales ?? [];
   const rank = (locale: string): number => {
@@ -79,17 +85,15 @@ export async function findTranslations(
   };
 
   return rows
-    .map(
-      (r): TranslationRow => ({
-        id: String(r.id),
-        locale: String(r.locale),
-        slug: String(r.slug),
-        status: String(r.status),
-        title: r.title,
-        updatedAt: r.updatedAt as Date | string | null,
-        translationGroupId: String(r.translationGroupId),
-      }),
-    )
+    .map((r): TranslationRow => ({
+      id: String(r.id),
+      locale: String(r.locale),
+      slug: String(r.slug),
+      status: String(r.status),
+      title: r.title,
+      updatedAt: r.updatedAt as Date | string | null,
+      translationGroupId: String(r.translationGroupId),
+    }))
     .sort((a, b) => rank(a.locale) - rank(b.locale));
 }
 
@@ -169,21 +173,38 @@ export async function createTranslation(
 
   const groupId = (source as { translationGroupId?: string }).translationGroupId;
   if (!groupId) {
-    throw new Error(
-      `Doc ${sourceDocId} in collection "${collection}" has no translationGroupId`,
-    );
+    throw new Error(`Doc ${sourceDocId} in collection "${collection}" has no translationGroupId`);
   }
 
   // Strip framework-managed columns; saveDocument re-derives
   // them. Preserves user-authored fields (title / body / blocks
   // / etc.) so the translator has a starting point rather than
   // a blank form.
-  const { id, slug, locale, status, _status, createdAt, updatedAt,
-    createdBy, updatedBy, searchVector, translationGroupId, ...content } =
-    source;
-  void id; void slug; void locale; void status; void _status;
-  void createdAt; void updatedAt; void createdBy; void updatedBy;
-  void searchVector; void translationGroupId;
+  const {
+    id,
+    slug,
+    locale,
+    status,
+    _status,
+    createdAt,
+    updatedAt,
+    createdBy,
+    updatedBy,
+    searchVector,
+    translationGroupId,
+    ...content
+  } = source;
+  void id;
+  void slug;
+  void locale;
+  void status;
+  void _status;
+  void createdAt;
+  void updatedAt;
+  void createdBy;
+  void updatedBy;
+  void searchVector;
+  void translationGroupId;
 
   const result = await saveDocument(
     collection,
@@ -221,23 +242,6 @@ export async function createTranslation(
  * single query). For 1–2 i18n collections this is well under
  * the cost of the existing dashboard widgets.
  */
-export interface NpTranslationProgressLocaleStats {
-  count: number;
-  missing: number;
-}
-
-export interface NpCollectionTranslationProgress {
-  collection: string;
-  totalGroups: number;
-  perLocale: Record<string, NpTranslationProgressLocaleStats>;
-}
-
-export interface NpTranslationProgress {
-  defaultLocale: string;
-  locales: string[];
-  collections: NpCollectionTranslationProgress[];
-}
-
 export async function getTranslationProgress(): Promise<NpTranslationProgress | null> {
   const i18n = getI18nConfig();
   if (!i18n) return null;
@@ -276,9 +280,7 @@ export async function getTranslationProgress(): Promise<NpTranslationProgress | 
 
     const totalGroups = totalRows[0]?.groups ?? 0;
 
-    const counts: Record<string, number> = Object.fromEntries(
-      i18n.locales.map((loc) => [loc, 0]),
-    );
+    const counts: Record<string, number> = Object.fromEntries(i18n.locales.map((loc) => [loc, 0]));
     for (const row of localeRows) {
       if (row.locale in counts) {
         counts[row.locale] = row.count;
@@ -301,9 +303,9 @@ export async function getTranslationProgress(): Promise<NpTranslationProgress | 
     });
   }
 
-  return {
+  return npRequireTranslationProgressResponse({
     defaultLocale: i18n.defaultLocale,
     locales: i18n.locales,
     collections: out,
-  };
+  });
 }

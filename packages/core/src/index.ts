@@ -56,6 +56,55 @@ export type {
 export type { NpBlockContent, NpBlockInstance } from "./fields/block-content.js";
 export { isNpBlockContent, npValidateBlockContent } from "./fields/block-content.js";
 export {
+  NpI18nContractError,
+  npAnalyzeI18nConfig,
+  npAnalyzeI18nConfigResponse,
+  npAnalyzeI18nStringsResponse,
+  npAnalyzeResolveLocaleInput,
+  npAnalyzeStringOverrideDeleteQuery,
+  npAnalyzeStringOverrideMutation,
+  npAnalyzeStringOverrideRow,
+  npAnalyzeTranslationBundle,
+  npAnalyzeTranslationCatalog,
+  npAnalyzeTranslationProgressResponse,
+  npCreateStringOverrideCatalog,
+  npI18nContractLimits,
+  npRequireI18nConfig,
+  npRequireI18nConfigResponse,
+  npRequireI18nStringsResponse,
+  npRequireLocale,
+  npRequireResolveLocaleInput,
+  npRequireStringOverrideDeleteQuery,
+  npRequireStringOverrideMutation,
+  npRequireStringOverrideRow,
+  npRequireTranslationBundle,
+  npRequireTranslationCatalog,
+  npRequireTranslationKey,
+  npRequireTranslationParams,
+  npRequireTranslationProgressResponse,
+} from "./i18n-contract/index.js";
+export type {
+  NpI18nConfigResponse,
+  NpI18nContractIssue,
+  NpI18nContractIssueCode,
+  NpI18nContractResult,
+  NpI18nStringCell,
+  NpI18nStringRow,
+  NpI18nStringsResponse,
+  NpI18nRuntimeDiagnostics,
+  NpStringOverrideCatalog,
+  NpStringOverrideDeleteQuery,
+  NpStringOverrideMutation,
+  NpStringOverrideRow,
+  NpTranslationBundle,
+  NpTranslationCatalog,
+  NpTranslationParamValue,
+  NpTranslationParams,
+  NpTranslationProgressResponse,
+  NpResolveLocaleInput,
+  NpResolveLocaleResult,
+} from "./i18n-contract/index.js";
+export {
   getCacheInvalidationDiagnostics,
   getOptionalCacheInvalidationAdapter,
   NpCacheContractError,
@@ -718,23 +767,23 @@ export {
 
 export { setI18nConfig, getI18nConfig, resetI18nConfig } from "./i18n/registry.js";
 export { resolveLocale, getCurrentLocale } from "./i18n/locale-resolver.js";
-export type { NpResolveLocaleInput, NpResolveLocaleResult } from "./i18n/locale-resolver.js";
 export {
   addStrings,
   setStrings,
   resetStrings,
   registerPluginStrings,
+  registerTranslationCatalog,
   unregisterPluginStrings,
+  unregisterTranslationCatalog,
   resetPluginStrings,
   getRegisteredPluginStrings,
   resetTranslationCache,
   getStrings,
   getAllStrings,
+  getI18nRuntimeDiagnostics,
   t,
   tSync,
-  type NpTranslationParams,
 } from "./i18n/strings.js";
-export type { NpTranslationBundle } from "./i18n/strings.js";
 export type { NpRegisteredPluginTranslation } from "./i18n/strings.js";
 export { getLocaleDirection, type NpLocaleDirection } from "./i18n/direction.js";
 export {
@@ -753,7 +802,6 @@ export {
   deleteStringOverride,
   listStringOverridesForSite,
 } from "./i18n/string-overrides.js";
-export type { NpStringOverrideRow } from "./i18n/string-overrides.js";
 
 export { configureBuiltinJobContext } from "./jobs/builtin-handlers.js";
 

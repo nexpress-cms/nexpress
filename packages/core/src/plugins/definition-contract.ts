@@ -1,6 +1,5 @@
-import IntlMessageFormat from "intl-messageformat";
-
 import { npPluginIdMaxLength, npPluginIdPattern } from "../settings/contract.js";
+import { npAnalyzeTranslationCatalog } from "../i18n-contract/contract.js";
 
 export interface NpPluginDefinitionContractInput {
   manifest?: unknown;
@@ -145,61 +144,8 @@ function analyzeLifecycle(
 }
 
 export function npAnalyzePluginI18nBundles(value: unknown): NpPluginDefinitionContractIssue[] {
-  if (!isRecord(value)) {
-    return [issue("i18n", "i18n", "i18n must be a plain object keyed by locale.")];
-  }
-  const issues: NpPluginDefinitionContractIssue[] = [];
-  for (const [locale, rawBundle] of Object.entries(value)) {
-    let canonicalLocale: string | undefined;
-    try {
-      canonicalLocale = Intl.getCanonicalLocales(locale)[0];
-    } catch {
-      // Reported below.
-    }
-    if (!canonicalLocale || canonicalLocale !== locale) {
-      issues.push(
-        issue("i18n", `i18n.${locale}`, `locale "${locale}" must be a canonical BCP 47 tag.`),
-      );
-      continue;
-    }
-    if (!isRecord(rawBundle) || Object.keys(rawBundle).length === 0) {
-      issues.push(
-        issue("i18n", `i18n.${locale}`, `locale "${locale}" must contain at least one string.`),
-      );
-      continue;
-    }
-    for (const [key, message] of Object.entries(rawBundle)) {
-      const location = `i18n.${locale}.${key}`;
-      if (key.trim().length === 0 || key !== key.trim() || key.length > 256) {
-        issues.push(
-          issue(
-            "i18n",
-            location,
-            "translation keys must be trimmed, non-empty, and 256 characters or fewer.",
-          ),
-        );
-        continue;
-      }
-      if (typeof message !== "string") {
-        issues.push(issue("i18n", location, `translation "${locale}:${key}" must be a string.`));
-        continue;
-      }
-      try {
-        new IntlMessageFormat(message, locale);
-      } catch (error) {
-        issues.push(
-          issue(
-            "i18n",
-            location,
-            `translation "${locale}:${key}" is invalid ICU MessageFormat: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          ),
-        );
-      }
-    }
-  }
-  return issues;
+  const result = npAnalyzeTranslationCatalog(value, { path: "i18n" });
+  return result.ok ? [] : result.issues.map((entry) => issue("i18n", entry.path, entry.message));
 }
 
 export function npAnalyzePluginDefinitionContract(

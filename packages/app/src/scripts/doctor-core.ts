@@ -30,6 +30,11 @@ import {
 } from "@nexpress/core/settings";
 import { npAnalyzeRevision } from "@nexpress/core/revisions";
 import {
+  npAnalyzeI18nConfig,
+  npAnalyzeStringOverrideRow,
+  type NpI18nConfig,
+} from "@nexpress/core/i18n-contract";
+import {
   npAnalyzeJobLogEntry,
   npAnalyzeJobPayload,
   npAnalyzeJobSummary,
@@ -90,6 +95,8 @@ export interface CollectDoctorOptions {
   nodeVersion?: string;
   /** Explicit catalog for embedders/tests; the CLI loads src/lib/custom-routes.ts. */
   customRoutes?: unknown;
+  /** Explicit locale config for embedders/tests; the CLI loads src/i18n.config.ts. */
+  i18nConfig?: unknown;
 }
 
 interface RequiredVarSpec {
@@ -141,12 +148,14 @@ export async function collectDoctorChecks(
   checks.push(checkRateLimitRuntimeContract(env, prodMode));
   checks.push(checkStorageRuntimeContract(env));
   checks.push(await checkCustomRoutesContract(options, cwd));
+  checks.push(await checkI18nContract(options, cwd));
+  const projectI18nConfig = await loadValidatedProjectI18nConfig(options, cwd);
   checks.push(...checkOAuthEnvPairs(env));
   const localStorage = await checkLocalStorage(env, cwd);
   if (localStorage) checks.push(localStorage);
   checks.push(await checkDatabase(env));
   checks.push(await checkAuthContracts(env));
-  checks.push(await checkSettingsContracts(env));
+  checks.push(await checkSettingsContracts(env, projectI18nConfig));
   checks.push(await checkRevisionContracts(env));
   checks.push(await checkJobContracts(env));
   checks.push(await checkMigrationsApplied({ prodMode, env, cwd }));
@@ -167,6 +176,77 @@ export async function collectDoctorChecks(
   }
 
   return checks;
+}
+
+async function checkI18nContract(options: CollectDoctorOptions, cwd: string): Promise<CheckResult> {
+  try {
+    const candidate = Object.hasOwn(options, "i18nConfig")
+      ? options.i18nConfig
+      : await loadProjectI18nConfig(cwd);
+    if (candidate === null || candidate === undefined) {
+      return {
+        id: "i18n.contract",
+        state: "ok",
+        label: "Internationalization contract",
+        detail: "disabled (monolingual)",
+      };
+    }
+    const result = npAnalyzeI18nConfig(candidate);
+    if (!result.ok) {
+      const first = result.issues[0];
+      return {
+        id: "i18n.contract",
+        state: "error",
+        label: "Internationalization contract",
+        detail: `${first?.path ?? "i18n"}: ${first?.message ?? "invalid"}`,
+        hint: "Fix src/i18n.config.ts so middleware and bootstrap share the exact @nexpress/core/i18n-contract config.",
+      };
+    }
+    return {
+      id: "i18n.contract",
+      state: "ok",
+      label: "Internationalization contract",
+      detail: `${result.value.locales.length.toString()} locale(s) · default ${result.value.defaultLocale}`,
+    };
+  } catch (error) {
+    return {
+      id: "i18n.contract",
+      state: "error",
+      label: "Internationalization contract",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Export an inspectable i18nConfig from src/i18n.config.ts without importing the app runtime.",
+    };
+  }
+}
+
+async function loadProjectI18nConfig(cwd: string): Promise<unknown> {
+  const modulePath = resolve(cwd, "src/i18n.config.ts");
+  try {
+    await access(modulePath);
+  } catch {
+    return null;
+  }
+  const loaded = (await import(pathToFileURL(modulePath).href)) as Record<string, unknown>;
+  if (!Object.hasOwn(loaded, "i18nConfig")) {
+    throw new Error("src/i18n.config.ts must export i18nConfig.");
+  }
+  return loaded.i18nConfig;
+}
+
+async function loadValidatedProjectI18nConfig(
+  options: CollectDoctorOptions,
+  cwd: string,
+): Promise<NpI18nConfig | null> {
+  try {
+    const candidate = Object.hasOwn(options, "i18nConfig")
+      ? options.i18nConfig
+      : await loadProjectI18nConfig(cwd);
+    if (candidate === null || candidate === undefined) return null;
+    const result = npAnalyzeI18nConfig(candidate);
+    return result.ok ? result.value : null;
+  } catch {
+    return null;
+  }
 }
 
 async function checkCustomRoutesContract(
@@ -793,7 +873,10 @@ function inspectAuthRuntimeEnvironment(env: DoctorEnv): string | null {
   }
 }
 
-async function checkSettingsContracts(env: DoctorEnv): Promise<CheckResult> {
+async function checkSettingsContracts(
+  env: DoctorEnv,
+  i18nConfig: NpI18nConfig | null,
+): Promise<CheckResult> {
   const url = env.DATABASE_URL;
   if (!url) {
     return {
@@ -829,6 +912,11 @@ async function checkSettingsContracts(env: DoctorEnv): Promise<CheckResult> {
       `select site_id as "siteId", user_id as "userId", role,
                 created_at as "createdAt", updated_at as "updatedAt"
            from np_site_memberships`,
+    );
+    const stringOverrides = await client.query<Record<string, unknown>>(
+      `select site_id as "siteId", locale, key, value,
+              updated_at as "updatedAt", updated_by as "updatedBy"
+         from np_string_overrides`,
     );
     const users = await client.query<{ id: string }>(`select id from np_users`);
     await client.end();
@@ -878,20 +966,51 @@ async function checkSettingsContracts(env: DoctorEnv): Promise<CheckResult> {
             ]
           : []),
       ]),
+      ...stringOverrides.rows.flatMap((row) => {
+        const result = npAnalyzeStringOverrideRow(row, {
+          config: i18nConfig ?? { locales: ["en"], defaultLocale: "en" },
+        });
+        const rowIssues = result.ok ? [] : result.issues;
+        const siteIdLabel = typeof row.siteId === "string" ? row.siteId : typeof row.siteId;
+        const updatedByLabel =
+          typeof row.updatedBy === "string" ? row.updatedBy : typeof row.updatedBy;
+        return [
+          ...rowIssues,
+          ...(!(typeof row.siteId === "string" && siteIds.has(row.siteId))
+            ? [
+                {
+                  code: "invalid-field" as const,
+                  path: "overrideRow.siteId",
+                  message: `string override references missing site '${siteIdLabel}'.`,
+                },
+              ]
+            : []),
+          ...(row.updatedBy !== null &&
+          !(typeof row.updatedBy === "string" && userIds.has(row.updatedBy))
+            ? [
+                {
+                  code: "invalid-field" as const,
+                  path: "overrideRow.updatedBy",
+                  message: `string override references missing user '${updatedByLabel}'.`,
+                },
+              ]
+            : []),
+        ];
+      }),
     ];
     return issues.length === 0
       ? {
           id: "settings.contract",
           state: "ok",
           label: "Site registry and settings contracts",
-          detail: `${sites.rows.length.toString()} site(s), ${memberships.rows.length.toString()} membership(s), ${settings.rows.length.toString()} setting row(s)`,
+          detail: `${sites.rows.length.toString()} site(s), ${memberships.rows.length.toString()} membership(s), ${settings.rows.length.toString()} setting row(s), ${stringOverrides.rows.length.toString()} string override(s)`,
         }
       : {
           id: "settings.contract",
           state: "error",
           label: "Site registry and settings contracts",
           detail: `${issues.length.toString()} contract issue(s); first: ${issues[0]?.path ?? "settings"} ${issues[0]?.message ?? "invalid"}`,
-          hint: "Repair malformed site, membership, or setting rows and remove orphan references before starting the app.",
+          hint: "Repair malformed site, membership, setting, or string override rows and remove orphan references before starting the app.",
         };
   } catch (error) {
     try {

@@ -3,6 +3,7 @@ import type * as NpStorageModule from "@nexpress/core/storage";
 import type * as NpObservabilityModule from "@nexpress/core/observability";
 import type * as NpCacheModule from "@nexpress/core/cache";
 import type * as NpSearchModule from "@nexpress/core/search";
+import type * as NpI18nModule from "@nexpress/core/i18n";
 
 interface HealthTestRuntime {
   config: {
@@ -26,6 +27,10 @@ interface HealthTestRuntime {
   searchDispatchFailures: number;
   searchResultFailures: number;
   searchShutdownFailures: number;
+  i18nConfigured: boolean;
+  i18nLocales: number;
+  i18nCompileFailures: number;
+  i18nFormatFailures: number;
 }
 
 const runtime = vi.hoisted<HealthTestRuntime>(() => ({
@@ -44,6 +49,10 @@ const runtime = vi.hoisted<HealthTestRuntime>(() => ({
   searchDispatchFailures: 0,
   searchResultFailures: 0,
   searchShutdownFailures: 0,
+  i18nConfigured: true,
+  i18nLocales: 2,
+  i18nCompileFailures: 0,
+  i18nFormatFailures: 0,
 }));
 
 vi.mock("@nexpress/core", () => ({
@@ -142,6 +151,33 @@ vi.mock("@nexpress/core/search", async (importOriginal) => {
   };
 });
 
+vi.mock("@nexpress/core/i18n", async (importOriginal) => {
+  const actual = await importOriginal<typeof NpI18nModule>();
+  return {
+    ...actual,
+    getI18nRuntimeDiagnostics: () => ({
+      configured: runtime.i18nConfigured,
+      locales: runtime.i18nLocales,
+      baseStrings: 4,
+      pluginStrings: 3,
+      effectiveBundleCacheEntries: 0,
+      compiledMessageCacheEntries: 0,
+      compileFailures: runtime.i18nCompileFailures,
+      formatFailures: runtime.i18nFormatFailures,
+      lastFailure:
+        runtime.i18nCompileFailures + runtime.i18nFormatFailures > 0
+          ? {
+              operation: runtime.i18nCompileFailures > 0 ? "compile" : "format",
+              locale: "en",
+              key: "demo.title",
+              message: "simulated i18n failure",
+              occurredAt: "2026-07-15T00:00:00.000Z",
+            }
+          : null,
+    }),
+  };
+});
+
 vi.mock("@/lib/bootstrap", () => ({
   getDb: vi.fn(),
 }));
@@ -149,6 +185,7 @@ vi.mock("@/lib/bootstrap", () => ({
 const {
   checkCacheInvalidation,
   checkObservabilityAdapters,
+  checkI18nRuntime,
   checkSearchAdapter,
   checkStorageAdapter,
 } = await import("./system-health.js");
@@ -170,6 +207,33 @@ afterEach(() => {
   runtime.searchDispatchFailures = 0;
   runtime.searchResultFailures = 0;
   runtime.searchShutdownFailures = 0;
+  runtime.i18nConfigured = true;
+  runtime.i18nLocales = 2;
+  runtime.i18nCompileFailures = 0;
+  runtime.i18nFormatFailures = 0;
+});
+
+describe("live i18n health", () => {
+  it("reports the validated registry inventory", () => {
+    expect(checkI18nRuntime()).toEqual(
+      expect.objectContaining({ state: "ok", detail: "2 locale(s) · 7 registered string(s)" }),
+    );
+  });
+
+  it("surfaces contained ICU failures", () => {
+    runtime.i18nFormatFailures = 1;
+    expect(checkI18nRuntime()).toEqual(
+      expect.objectContaining({ state: "warn", hint: expect.stringContaining("demo.title") }),
+    );
+  });
+
+  it("keeps an intentional monolingual runtime healthy", () => {
+    runtime.i18nConfigured = false;
+    runtime.i18nLocales = 0;
+    expect(checkI18nRuntime()).toEqual(
+      expect.objectContaining({ state: "ok", detail: "disabled (monolingual)" }),
+    );
+  });
 });
 
 describe("live search health", () => {

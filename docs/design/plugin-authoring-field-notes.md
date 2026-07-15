@@ -79,6 +79,10 @@ These notes come from building two bundled example plugins in May 2026:
   validation, derived catalog inventories, source-aware reload behavior, and
   static/runtime doctor diagnostics. Template ownership restores the previous
   contributor when an override unloads; ICU syntax fails before first render.
+- The translation validator is now the framework-wide i18n contract rather
+  than a plugin-only helper. Project/proxy config, app/theme/plugin catalogs,
+  runtime lookup input, Admin wire requests, persisted overrides, bounded
+  caches, doctor, and live health share the same fail-closed rules.
 - Plugin config and lifecycle callbacks now have one remaining-definition
   contract. Invalid schema/version/migrator combinations fail early, setup and
   teardown must resolve to void, teardown runs in reverse load order before

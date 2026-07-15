@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, RotateCcw, Save, Search } from "lucide-react";
+import {
+  npI18nContractLimits,
+  npRequireI18nStringsResponse,
+  type NpI18nStringsResponse,
+} from "@nexpress/core/i18n-contract";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
@@ -17,20 +22,8 @@ import { Input } from "../ui/input.js";
  * before falling through to the plugin/theme bundle.
  */
 
-interface KeyRow {
-  key: string;
-  values: Record<string, { base: string | null; override: string | null }>;
-}
-
-interface StringsPayload {
-  locales: string[];
-  defaultLocale: string | null;
-  keys: KeyRow[];
-  siteId: string;
-}
-
 export function StringsTab() {
-  const [data, setData] = useState<StringsPayload | null>(null);
+  const [data, setData] = useState<NpI18nStringsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
@@ -46,17 +39,15 @@ export function StringsTab() {
     setError(null);
     try {
       const res = await npFetch("/api/admin/i18n/strings");
-      const body = (await res.json().catch(() => null)) as
-        | StringsPayload
-        | { error?: { message?: string } }
-        | null;
+      const body = (await res.json().catch(() => null)) as unknown;
       if (!res.ok) {
         setError(
-          (body as { error?: { message?: string } })?.error?.message ?? "Unable to load strings.",
+          (body as { error?: { message?: string } } | null)?.error?.message ??
+            "Unable to load strings.",
         );
         return;
       }
-      setData(body as StringsPayload);
+      setData(npRequireI18nStringsResponse(body));
       setDrafts({});
     } catch {
       setError("Unable to load strings.");
@@ -194,6 +185,7 @@ export function StringsTab() {
                           </div>
                           <Input
                             value={draftValue}
+                            maxLength={npI18nContractLimits.messageLength}
                             placeholder={cell.base ?? "(no base translation)"}
                             onChange={(e) =>
                               setDrafts((d) => ({

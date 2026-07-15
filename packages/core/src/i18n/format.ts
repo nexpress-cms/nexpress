@@ -1,3 +1,4 @@
+import { npRequireLocale } from "../i18n-contract/contract.js";
 import { getI18nConfig } from "./registry.js";
 
 /**
@@ -20,13 +21,24 @@ import { getI18nConfig } from "./registry.js";
  */
 
 function resolveLocale(explicit: string | undefined): string {
-  if (explicit && explicit.length > 0) return explicit;
+  if (explicit !== undefined) return npRequireLocale(explicit);
   return getI18nConfig()?.defaultLocale ?? "en";
 }
 
 const numberFormatCache = new Map<string, Intl.NumberFormat>();
 const dateFormatCache = new Map<string, Intl.DateTimeFormat>();
 const relativeTimeFormatCache = new Map<string, Intl.RelativeTimeFormat>();
+const FORMATTER_CACHE_LIMIT = 256;
+
+function setBounded<K, V>(cache: Map<K, V>, key: K, value: V): V {
+  cache.set(key, value);
+  while (cache.size > FORMATTER_CACHE_LIMIT) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+  return value;
+}
 
 function getNumberFormatter(
   locale: string,
@@ -36,7 +48,7 @@ function getNumberFormatter(
   let cached = numberFormatCache.get(key);
   if (!cached) {
     cached = new Intl.NumberFormat(locale, options);
-    numberFormatCache.set(key, cached);
+    setBounded(numberFormatCache, key, cached);
   }
   return cached;
 }
@@ -49,7 +61,7 @@ function getDateFormatter(
   let cached = dateFormatCache.get(key);
   if (!cached) {
     cached = new Intl.DateTimeFormat(locale, options);
-    dateFormatCache.set(key, cached);
+    setBounded(dateFormatCache, key, cached);
   }
   return cached;
 }
@@ -62,7 +74,7 @@ function getRelativeTimeFormatter(
   let cached = relativeTimeFormatCache.get(key);
   if (!cached) {
     cached = new Intl.RelativeTimeFormat(locale, options);
-    relativeTimeFormatCache.set(key, cached);
+    setBounded(relativeTimeFormatCache, key, cached);
   }
   return cached;
 }
@@ -113,10 +125,7 @@ export function formatRelativeTime(
   options?: Intl.RelativeTimeFormatOptions,
 ): string {
   if (!Number.isFinite(value)) return String(value);
-  return getRelativeTimeFormatter(resolveLocale(locale), options).format(
-    value,
-    unit,
-  );
+  return getRelativeTimeFormatter(resolveLocale(locale), options).format(value, unit);
 }
 
 function toDate(value: Date | string | number): Date | null {

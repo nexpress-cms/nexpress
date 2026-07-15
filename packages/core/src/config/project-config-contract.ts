@@ -1,6 +1,7 @@
 import type { NpConfig } from "./types.js";
 import { npConfigShapeSchema } from "./validation.js";
 import { npAnalyzeStorageRuntimeConfig } from "../storage/contract.js";
+import { npAnalyzeI18nConfig } from "../i18n-contract/contract.js";
 
 export type NpProjectConfigIssueCode = "shape" | "reference";
 
@@ -80,34 +81,12 @@ function analyzeStorage(config: NpConfig, issues: NpProjectConfigIssue[]): void 
 
 function analyzeI18n(config: NpConfig, issues: NpProjectConfigIssue[]): void {
   if (!config.i18n) return;
-  const seen = new Map<string, number>();
-  for (const [index, locale] of config.i18n.locales.entries()) {
-    let canonical: string | undefined;
-    try {
-      canonical = Intl.getCanonicalLocales(locale)[0];
-    } catch {
-      canonical = undefined;
-    }
-    if (!canonical || canonical !== locale) {
+  const result = npAnalyzeI18nConfig(config.i18n);
+  if (!result.ok) {
+    for (const entry of result.issues) {
       issues.push(
-        issue(
-          "shape",
-          `i18n.locales.${index.toString()}`,
-          `locale "${locale}" must be a canonical BCP 47 tag.`,
-        ),
+        issue(entry.code === "duplicate" ? "reference" : "shape", entry.path, entry.message),
       );
-    }
-    const previous = seen.get(locale);
-    if (previous !== undefined) {
-      issues.push(
-        issue(
-          "reference",
-          `i18n.locales.${index.toString()}`,
-          `duplicate locale "${locale}"; first declared at i18n.locales.${previous.toString()}.`,
-        ),
-      );
-    } else {
-      seen.set(locale, index);
     }
   }
 }

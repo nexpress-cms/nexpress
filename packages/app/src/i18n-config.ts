@@ -16,15 +16,21 @@
  * app and every scaffolded site reach the same locale list
  * without duplicating it across the snapshot mirror.
  */
-export const i18nConfig = {
-  locales: ["en", "ko"] as const,
+import { npRequireI18nConfig } from "@nexpress/core/i18n-contract";
+
+const configuredLocales = Object.freeze(["en", "ko"] as const);
+
+export const i18nConfig = Object.freeze({
+  locales: configuredLocales,
   defaultLocale: "en" as const,
-};
+});
+
+// The same exact contract guards project config/bootstrap. Keeping the proxy's
+// build-time catalog on it prevents middleware and server runtime drift.
+npRequireI18nConfig(i18nConfig);
 
 export type SiteLocale = (typeof i18nConfig.locales)[number];
 
 export function isLocale(value: unknown): value is SiteLocale {
-  return (
-    typeof value === "string" && (i18nConfig.locales as readonly string[]).includes(value)
-  );
+  return typeof value === "string" && (i18nConfig.locales as readonly string[]).includes(value);
 }

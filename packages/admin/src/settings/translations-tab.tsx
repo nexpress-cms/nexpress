@@ -10,6 +10,11 @@ import {
   Languages,
   Loader2,
 } from "lucide-react";
+import {
+  npRequireI18nConfigResponse,
+  npRequireTranslationProgressResponse,
+  type NpI18nConfigResponse,
+} from "@nexpress/core/i18n-contract";
 
 import { npFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
@@ -29,16 +34,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 
 type InterchangeFormat = "gettext" | "xliff";
 type ImportMode = "preview" | "apply";
-
-interface I18nConfig {
-  enabled: boolean;
-  locales?: string[];
-  defaultLocale?: string;
-}
-
-interface TranslationProgress {
-  collections: Array<{ collection: string }>;
-}
 
 interface ImportApplied {
   collection: string;
@@ -76,7 +71,7 @@ interface InterchangeResponse {
 const ADMIN_LIMIT_COPY = "Admin handles up to 4 MiB, 100 documents, and 2,500 units per file.";
 
 export function TranslationsTab() {
-  const [config, setConfig] = useState<I18nConfig | null>(null);
+  const [config, setConfig] = useState<NpI18nConfigResponse | null>(null);
   const [collections, setCollections] = useState<string[]>([]);
   const [collection, setCollection] = useState("");
   const [sourceLocale, setSourceLocale] = useState("");
@@ -99,16 +94,18 @@ export function TranslationsTab() {
           npFetch("/api/admin/i18n"),
           npFetch("/api/admin/i18n/progress"),
         ]);
-        const configBody = (await configResponse.json().catch(() => null)) as I18nConfig | null;
-        const progressBody = (await progressResponse
-          .json()
-          .catch(() => null)) as TranslationProgress | null;
-        if (!configResponse.ok || !configBody) {
+        const rawConfig = (await configResponse.json().catch(() => null)) as unknown;
+        const rawProgress = (await progressResponse.json().catch(() => null)) as unknown;
+        if (!configResponse.ok) {
           throw new Error("Unable to load i18n configuration.");
         }
+        const configBody = npRequireI18nConfigResponse(rawConfig);
+        const progressBody = progressResponse.ok
+          ? npRequireTranslationProgressResponse(rawProgress)
+          : null;
         if (cancelled) return;
-        const locales = configBody.locales ?? [];
-        const source = configBody.defaultLocale ?? locales[0] ?? "";
+        const locales = configBody.enabled ? configBody.locales : [];
+        const source = configBody.enabled ? configBody.defaultLocale : "";
         const target = locales.find((locale) => locale !== source) ?? "";
         const collectionNames = progressResponse.ok
           ? (progressBody?.collections.map((entry) => entry.collection) ?? [])
@@ -131,14 +128,16 @@ export function TranslationsTab() {
   }, []);
 
   const targetLocales = useMemo(
-    () => (config?.locales ?? []).filter((locale) => locale !== sourceLocale),
-    [config?.locales, sourceLocale],
+    () => (config?.enabled ? config.locales : []).filter((locale) => locale !== sourceLocale),
+    [config, sourceLocale],
   );
 
   function changeSourceLocale(value: string): void {
     setSourceLocale(value);
     if (value === targetLocale) {
-      setTargetLocale((config?.locales ?? []).find((locale) => locale !== value) ?? "");
+      setTargetLocale(
+        (config?.enabled ? config.locales : []).find((locale) => locale !== value) ?? "",
+      );
     }
   }
 
@@ -279,7 +278,7 @@ export function TranslationsTab() {
                 id="translation-source-locale"
                 label="Source locale"
                 value={sourceLocale}
-                locales={config.locales ?? []}
+                locales={config.locales}
                 onChange={changeSourceLocale}
               />
               <LocaleSelect
@@ -409,7 +408,7 @@ function LocaleSelect(props: {
   id: string;
   label: string;
   value: string;
-  locales: string[];
+  locales: readonly string[];
   onChange: (value: string) => void;
 }) {
   return (

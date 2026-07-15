@@ -2,6 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { CheckCircle2, Globe, Star } from "lucide-react";
+import {
+  npRequireI18nConfigResponse,
+  npRequireTranslationProgressResponse,
+  type NpI18nConfigResponse,
+  type NpTranslationProgress,
+} from "@nexpress/core/i18n-contract";
 
 import { npFetch } from "../lib/api-client.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -23,27 +29,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
  * how to enable i18n.
  */
 
-interface I18nConfig {
-  enabled: boolean;
-  locales?: string[];
-  defaultLocale?: string;
-}
-
-interface TranslationProgressCollection {
-  collection: string;
-  totalGroups: number;
-  perLocale: Record<string, { count: number; missing: number }>;
-}
-
-interface TranslationProgress {
-  defaultLocale: string;
-  locales: string[];
-  collections: TranslationProgressCollection[];
-}
-
 export function LocalesTab() {
-  const [config, setConfig] = useState<I18nConfig | null>(null);
-  const [progress, setProgress] = useState<TranslationProgress | null>(null);
+  const [config, setConfig] = useState<NpI18nConfigResponse | null>(null);
+  const [progress, setProgress] = useState<NpTranslationProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
@@ -52,21 +40,17 @@ export function LocalesTab() {
         npFetch("/api/admin/i18n"),
         npFetch("/api/admin/i18n/progress"),
       ]);
-      const body = (await configRes.json().catch(() => null)) as I18nConfig | null;
-      if (!configRes.ok || !body) {
+      const body = (await configRes.json().catch(() => null)) as unknown;
+      if (!configRes.ok) {
         setError("Unable to load i18n config.");
         return;
       }
-      setConfig(body);
+      setConfig(npRequireI18nConfigResponse(body));
       // Progress is optional — failures don't block the
       // configured-locale list from rendering.
       if (progressRes.ok) {
-        const progressBody = (await progressRes
-          .json()
-          .catch(() => null)) as TranslationProgress | null;
-        if (progressBody && Array.isArray(progressBody.collections)) {
-          setProgress(progressBody);
-        }
+        const progressBody = (await progressRes.json().catch(() => null)) as unknown;
+        setProgress(npRequireTranslationProgressResponse(progressBody));
       }
     } catch {
       setError("Unable to load i18n config.");
@@ -141,7 +125,7 @@ export function LocalesTab() {
         </CardHeader>
         <CardContent className="min-w-0">
           <ul className="min-w-0 divide-y divide-border/60">
-            {(config.locales ?? []).map((locale) => {
+            {config.locales.map((locale) => {
               const isDefault = locale === config.defaultLocale;
               return (
                 <li
@@ -175,7 +159,7 @@ export function LocalesTab() {
   );
 }
 
-function TranslationProgressCard({ progress }: { progress: TranslationProgress }) {
+function TranslationProgressCard({ progress }: { progress: NpTranslationProgress }) {
   if (progress.collections.length === 0) {
     return (
       <Card className="min-w-0">
