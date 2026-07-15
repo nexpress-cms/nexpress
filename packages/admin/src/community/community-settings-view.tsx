@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  npRequireCommunitySettings,
+  type NpCommunitySettings,
+} from "@nexpress/core/community-contract";
 import { useEffect, useState } from "react";
 
 import { npFetch } from "../lib/api-client.js";
@@ -11,11 +15,7 @@ import { Label } from "../ui/label.js";
 import { Switch } from "../ui/switch.js";
 import { PageHeader } from "../layout/page-header.js";
 
-export interface CommunitySettings {
-  reactionKinds: string[];
-  registrationEnabled: boolean;
-  memberUploadQuota: { perDay: number | null; total: number | null };
-}
+export type CommunitySettings = NpCommunitySettings;
 
 const DEFAULT_SETTINGS: CommunitySettings = {
   reactionKinds: ["like"],
@@ -54,23 +54,7 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
           setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
           return;
         }
-        const data = (raw.data ?? raw) as Partial<CommunitySettings>;
-        const quotaRaw = (data.memberUploadQuota ?? {}) as Partial<
-          CommunitySettings["memberUploadQuota"]
-        >;
-        setSettings({
-          reactionKinds: Array.isArray(data.reactionKinds)
-            ? data.reactionKinds.filter((k): k is string => typeof k === "string")
-            : DEFAULT_SETTINGS.reactionKinds,
-          registrationEnabled:
-            typeof data.registrationEnabled === "boolean"
-              ? data.registrationEnabled
-              : DEFAULT_SETTINGS.registrationEnabled,
-          memberUploadQuota: {
-            perDay: typeof quotaRaw.perDay === "number" ? quotaRaw.perDay : null,
-            total: typeof quotaRaw.total === "number" ? quotaRaw.total : null,
-          },
-        });
+        setSettings(npRequireCommunitySettings(raw));
       } catch {
         setError("Unable to load community settings.");
       } finally {
@@ -95,8 +79,7 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
         setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
         return;
       }
-      const data = (raw.data ?? raw) as CommunitySettings;
-      setSettings(data);
+      setSettings(npRequireCommunitySettings(raw));
       setMessage("Community settings saved.");
     } catch {
       setError("Unable to save community settings.");

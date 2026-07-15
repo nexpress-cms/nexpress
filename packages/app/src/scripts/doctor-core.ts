@@ -43,6 +43,19 @@ import {
   npRequireScheduleSummary,
   type NpJobContractIssue,
 } from "@nexpress/core/jobs-contract";
+import {
+  NpCommunityContractError,
+  npRequireAuditEventRow,
+  npRequireBanRow,
+  npRequireCommentRow,
+  npRequireFollowRow,
+  npRequireMemberMuteRow,
+  npRequireMemberRoleGrantRow,
+  npRequireNotificationPrefs,
+  npRequireNotificationRow,
+  npRequireReactionRow,
+  npRequireReportRow,
+} from "@nexpress/core/community-contract";
 
 import { inferDeployTargetFromEnv, type DeployTarget } from "./deploy-targets.js";
 import { buildDoctorJson, type DoctorJsonOutput } from "./doctor-output.js";
@@ -156,6 +169,7 @@ export async function collectDoctorChecks(
   checks.push(await checkDatabase(env));
   checks.push(await checkAuthContracts(env));
   checks.push(await checkSettingsContracts(env, projectI18nConfig));
+  checks.push(await checkCommunityContracts(env));
   checks.push(await checkRevisionContracts(env));
   checks.push(await checkJobContracts(env));
   checks.push(await checkMigrationsApplied({ prodMode, env, cwd }));
@@ -1023,6 +1037,204 @@ async function checkSettingsContracts(
       state: "warn",
       label: "Site registry and settings contracts",
       detail: `could not inspect settings: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
+  const url = env.DATABASE_URL;
+  if (!url) {
+    return {
+      id: "community.contract",
+      state: "warn",
+      label: "Community persistence contracts",
+      detail: "skipped (no DATABASE_URL)",
+    };
+  }
+  let pg: PgModuleLike;
+  try {
+    pg = (await loadPg()) as PgModuleLike;
+  } catch {
+    return {
+      id: "community.contract",
+      state: "warn",
+      label: "Community persistence contracts",
+      detail: "skipped (no `pg`)",
+    };
+  }
+
+  const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
+  try {
+    await client.connect();
+    const expectedTables = [
+      "np_members",
+      "np_comments",
+      "np_reactions",
+      "np_follows",
+      "np_notifications",
+      "np_reports",
+      "np_bans",
+      "np_member_roles",
+      "np_member_mutes",
+      "np_audit_events",
+    ];
+    const tables = await client.query<{ table_name: string }>(
+      `select table_name from information_schema.tables
+        where table_schema = 'public' and table_name = any($1::text[])`,
+      [expectedTables],
+    );
+    const present = new Set(tables.rows.map((row) => row.table_name));
+    const missing = expectedTables.filter((table) => !present.has(table));
+    if (missing.length > 0) {
+      await client.end();
+      return {
+        id: "community.contract",
+        state: "warn",
+        label: "Community persistence contracts",
+        detail: `skipped (${missing.join(", ")} not migrated)`,
+        hint: "Run `pnpm db:migrate` before accepting community traffic.",
+      };
+    }
+
+    // A `pg` Client executes one query at a time. Keep this scan serial so the
+    // doctor remains compatible with pg 9, which rejects concurrent queries
+    // on a single client instead of queueing them.
+    const members = await client.query<{ id: string; notificationPrefs: unknown }>(
+      `select id, notification_prefs as "notificationPrefs" from np_members`,
+    );
+    const comments = await client.query<Record<string, unknown>>(
+      `select id, target_type as "targetType", target_id as "targetId",
+                  parent_id as "parentId", member_id as "memberId", body_md as "bodyMd",
+                  body_html as "bodyHtml", status, hidden_by_user_id as "hiddenByUserId",
+                  hidden_by_member_id as "hiddenByMemberId", hidden_reason as "hiddenReason",
+                  edited_at as "editedAt", site_id as "siteId", created_at as "createdAt"
+             from np_comments`,
+    );
+    const reactions = await client.query<Record<string, unknown>>(
+      `select id, target_type as "targetType", target_id as "targetId",
+                  member_id as "memberId", kind, site_id as "siteId", created_at as "createdAt"
+             from np_reactions`,
+    );
+    const follows = await client.query<Record<string, unknown>>(
+      `select id, follower_id as "followerId", target_type as "targetType",
+                  target_id as "targetId", site_id as "siteId", created_at as "createdAt"
+             from np_follows`,
+    );
+    const notifications = await client.query<Record<string, unknown>>(
+      `select id, member_id as "memberId", kind, payload, read_at as "readAt",
+                  site_id as "siteId", created_at as "createdAt"
+             from np_notifications`,
+    );
+    const reports = await client.query<Record<string, unknown>>(
+      `select id, reporter_id as "reporterId", target_type as "targetType",
+                  target_id as "targetId", reason, resolved_at as "resolvedAt",
+                  resolved_by_user_id as "resolvedByUserId",
+                  resolved_by_member_id as "resolvedByMemberId", resolution,
+                  site_id as "siteId", created_at as "createdAt"
+             from np_reports`,
+    );
+    const bans = await client.query<Record<string, unknown>>(
+      `select id, member_id as "memberId", scope_type as "scopeType",
+                  scope_id as "scopeId", kind, expires_at as "expiresAt", reason,
+                  by_user_id as "byUserId", by_member_id as "byMemberId",
+                  site_id as "siteId", created_at as "createdAt"
+             from np_bans`,
+    );
+    const grants = await client.query<Record<string, unknown>>(
+      `select id, member_id as "memberId", role, scope_type as "scopeType",
+                  scope_id as "scopeId", granted_by as "grantedBy",
+                  granted_at as "grantedAt", expires_at as "expiresAt", site_id as "siteId"
+             from np_member_roles`,
+    );
+    const mutes = await client.query<Record<string, unknown>>(
+      `select member_id as "memberId", target_id as "targetId",
+                  site_id as "siteId", created_at as "createdAt"
+             from np_member_mutes`,
+    );
+    const audit = await client.query<Record<string, unknown>>(
+      `select id, actor_kind as "actorKind", actor_user_id as "actorUserId",
+                  actor_member_id as "actorMemberId", action, target_type as "targetType",
+                  target_id as "targetId", payload, site_id as "siteId", created_at as "createdAt"
+             from np_audit_events`,
+    );
+    await client.end();
+
+    const issues: Array<{ path: string; message: string }> = [];
+    const inspect = (
+      path: string,
+      value: unknown,
+      parser: (candidate: unknown) => unknown,
+    ): void => {
+      try {
+        parser(value);
+      } catch (error) {
+        if (error instanceof NpCommunityContractError) {
+          issues.push(
+            ...error.contractIssues.map((issue) => ({
+              path: `${path}.${issue.path}`,
+              message: issue.message,
+            })),
+          );
+        } else {
+          issues.push({ path, message: error instanceof Error ? error.message : String(error) });
+        }
+      }
+    };
+    members.rows.forEach((row, index) =>
+      inspect(`members[${index.toString()}].notificationPrefs`, row.notificationPrefs, (value) =>
+        npRequireNotificationPrefs(value),
+      ),
+    );
+    for (const [name, rows, parser] of [
+      ["comments", comments.rows, npRequireCommentRow],
+      ["reactions", reactions.rows, npRequireReactionRow],
+      ["follows", follows.rows, npRequireFollowRow],
+      ["notifications", notifications.rows, npRequireNotificationRow],
+      ["reports", reports.rows, npRequireReportRow],
+      ["bans", bans.rows, npRequireBanRow],
+      ["grants", grants.rows, npRequireMemberRoleGrantRow],
+      ["mutes", mutes.rows, npRequireMemberMuteRow],
+      ["audit", audit.rows, npRequireAuditEventRow],
+    ] as const) {
+      rows.forEach((row, index) => inspect(`${name}[${index.toString()}]`, row, parser));
+    }
+
+    const checked =
+      members.rows.length +
+      comments.rows.length +
+      reactions.rows.length +
+      follows.rows.length +
+      notifications.rows.length +
+      reports.rows.length +
+      bans.rows.length +
+      grants.rows.length +
+      mutes.rows.length +
+      audit.rows.length;
+    return issues.length === 0
+      ? {
+          id: "community.contract",
+          state: "ok",
+          label: "Community persistence contracts",
+          detail: `${checked.toString()} persisted row(s) checked`,
+        }
+      : {
+          id: "community.contract",
+          state: "error",
+          label: "Community persistence contracts",
+          detail: `${issues.length.toString()} contract issue(s); first: ${issues[0]?.path ?? "community"} ${issues[0]?.message ?? "invalid"}`,
+          hint: "Repair malformed community rows and notification preferences before accepting member traffic.",
+        };
+  } catch (error) {
+    try {
+      await client.end();
+    } catch {
+      /* swallow */
+    }
+    return {
+      id: "community.contract",
+      state: "warn",
+      label: "Community persistence contracts",
+      detail: `could not inspect community rows: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }

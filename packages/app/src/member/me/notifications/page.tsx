@@ -2,7 +2,8 @@ import {
   getMemberNotificationPrefs,
   listNotificationKinds,
   listNotifications,
-} from "@nexpress/core";
+} from "@nexpress/core/community";
+import { npToNotificationWireRow } from "@nexpress/core/community-contract";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 
@@ -79,18 +80,8 @@ export default async function NotificationsPage() {
   );
 }
 
-function toClientNotification(row: {
-  id: string;
-  kind: string;
-  payload: Record<string, unknown>;
-  readAt: Date | null;
-  createdAt: Date;
-}): NotificationInboxItem {
-  return {
-    id: row.id,
-    kind: row.kind,
-    payload: row.payload,
-    readAt: row.readAt ? row.readAt.toISOString() : null,
-    createdAt: row.createdAt.toISOString(),
-  };
+function toClientNotification(
+  row: Parameters<typeof npToNotificationWireRow>[0],
+): NotificationInboxItem {
+  return npToNotificationWireRow(row);
 }

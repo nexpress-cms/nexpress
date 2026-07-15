@@ -80,6 +80,7 @@ const libEntries = {
   "lib/cached-theme": "src/lib/cached-theme.ts",
   "lib/collection-helpers": "src/lib/collection-helpers.ts",
   "lib/collection-preview": "src/lib/collection-preview.ts",
+  "lib/community-contract": "src/lib/community-contract.ts",
   "lib/custom-routes": "src/lib/custom-routes.ts",
   "lib/dashboard-stats": "src/lib/dashboard-stats.ts",
   "lib/db": "src/lib/db.ts",

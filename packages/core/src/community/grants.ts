@@ -1,5 +1,7 @@
 import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
 
+import { npRequireMemberRoleGrantRow } from "../community-contract/contract.js";
+import type { NpMemberRoleGrantRow } from "../community-contract/types.js";
 import { getDb } from "../db/runtime.js";
 import { npMemberRoles } from "../db/schema/community.js";
 import { NpConflictError, NpNotFoundError, NpValidationError } from "../errors.js";
@@ -26,18 +28,7 @@ import type { CommunityScope } from "./roles.js";
  * can grant on behalf of any actor.
  */
 
-export interface NpMemberRoleGrantRow {
-  id: string;
-  memberId: string;
-  role: string;
-  scopeType: CommunityScope;
-  scopeId: string | null;
-  grantedBy: string | null;
-  grantedAt: Date;
-  expiresAt: Date | null;
-  /** Tenant the grant belongs to. Phase 18 added the column; the type was incomplete until #364. */
-  siteId: string;
-}
+export type { NpMemberRoleGrantRow };
 
 export interface GrantMemberRoleInput {
   memberId: string;
@@ -130,7 +121,7 @@ export async function grantMemberRole(input: GrantMemberRoleInput): Promise<NpMe
       })
       .returning()) as NpMemberRoleGrantRow[];
     if (!inserted) throw new Error("Grant insert returned no row");
-    row = inserted;
+    row = npRequireMemberRoleGrantRow(inserted);
   } catch (err) {
     // pg-node surfaces the unique-violation as a `DatabaseError`
     // with `code: "23505"`. Drizzle re-throws it untouched, so we
@@ -176,7 +167,7 @@ export async function listMemberRoleGrants(memberId: string): Promise<NpMemberRo
   // load on each.
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const now = new Date();
-  return (await db
+  const rows = (await db
     .select()
     .from(npMemberRoles)
     .where(
@@ -186,7 +177,8 @@ export async function listMemberRoleGrants(memberId: string): Promise<NpMemberRo
         or(isNull(npMemberRoles.expiresAt), gt(npMemberRoles.expiresAt, now)),
       ),
     )
-    .orderBy(desc(npMemberRoles.grantedAt)));
+    .orderBy(desc(npMemberRoles.grantedAt))) as NpMemberRoleGrantRow[];
+  return rows.map(npRequireMemberRoleGrantRow);
 }
 
 export interface RevokeMemberRoleInput {
@@ -220,16 +212,17 @@ export async function revokeMemberRole(input: RevokeMemberRoleInput): Promise<vo
     throw new NpNotFoundError("memberRoleGrant", input.grantId);
   }
   const [existing] = deleted;
+  const checkedExisting = npRequireMemberRoleGrantRow(existing);
   await recordAuditEvent({
     actor: { kind: "staff", userId: input.revokedByUserId },
     action: "member.role.revoke",
     targetType: "member",
-    targetId: existing.memberId,
+    targetId: checkedExisting.memberId,
     payload: {
-      grantId: existing.id,
-      role: existing.role,
-      scopeType: existing.scopeType,
-      scopeId: existing.scopeId,
+      grantId: checkedExisting.id,
+      role: checkedExisting.role,
+      scopeType: checkedExisting.scopeType,
+      scopeId: checkedExisting.scopeId,
     },
   });
 }

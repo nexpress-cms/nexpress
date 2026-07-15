@@ -275,7 +275,7 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
     expect(audits[0].payload.spam).not.toBeNull();
   });
 
-  it("adapter that throws is treated as pass (fail-open)", async () => {
+  it("adapter that throws isolates the comment as pending", async () => {
     const core = await import("@nexpress/core");
     core.setProfanityAdapter({
       check: () => {
@@ -297,6 +297,6 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
     );
     const body = await readJson<{ status: string }>(created);
     expect(body.status).toBe(201);
-    expect(body.body.status).toBe("visible");
+    expect(body.body.status).toBe("pending");
   });
 });

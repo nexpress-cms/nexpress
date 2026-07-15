@@ -11,49 +11,19 @@
  * requested action.
  */
 
-export type CommunityScope = "site" | "category" | "collection" | "thread";
+import {
+  npRequireCommunityRoleCatalog,
+  npRequireCommunityRoleDefinition,
+} from "../community-contract/contract.js";
+import type {
+  CommunityCapability,
+  CommunityRoleDefinition,
+  CommunityScope,
+} from "../community-contract/types.js";
 
-/**
- * Action vocabulary. Adding new actions later is fine, but rename with
- * care — built-in role definitions reference these literals and a
- * silent typo widens permissions instead of narrowing them.
- */
-export type CommunityCapability =
-  | "hide-comment"
-  | "restore-comment"
-  | "edit-any-comment"
-  | "delete-any-comment"
-  | "hide-thread"
-  | "restore-thread"
-  | "lock-thread"
-  | "unlock-thread"
-  | "pin-thread"
-  | "unpin-thread"
-  | "edit-any-thread"
-  | "delete-any-thread"
-  | "edit-own-thread"
-  | "lock-own-thread"
-  | "ban-member"
-  | "unban-member"
-  | "resolve-report"
-  | "manage-category"
-  | "view-staff-tools";
+import { npRecordCommunityRuntimeDiagnostic } from "./diagnostics.js";
 
-export interface CommunityRoleDefinition {
-  /** e.g. `"category-mod"`. Plugins can ship custom roles like `"tag-mod"`. */
-  role: string;
-  /** What kind of scope a grant of this role applies to. */
-  scopeType: CommunityScope;
-  /** Capabilities a grant of this role unlocks within its scope. */
-  capabilities: readonly CommunityCapability[];
-  /**
-   * Human-readable label for admin UIs that surface a role picker. Falls
-   * back to `role` when omitted.
-   */
-  label?: string;
-  /** Optional plugin id that registered this role; null for built-ins. */
-  source?: string;
-}
+export type { CommunityCapability, CommunityRoleDefinition, CommunityScope };
 
 const ALL_MOD_CAPS: readonly CommunityCapability[] = [
   "hide-comment",
@@ -128,16 +98,28 @@ function key(role: string, scopeType: CommunityScope): string {
  * silently widen permissions and is almost always a mistake.
  */
 export function registerCommunityRole(definition: CommunityRoleDefinition): void {
-  const composite = key(definition.role, definition.scopeType);
+  let checked: CommunityRoleDefinition;
+  try {
+    checked = npRequireCommunityRoleDefinition(definition);
+  } catch (error) {
+    npRecordCommunityRuntimeDiagnostic(
+      "roles",
+      error instanceof Error ? error.message : String(error),
+    );
+    throw error;
+  }
+  const composite = key(checked.role, checked.scopeType);
   if (
     builtInRoles.some((b) => key(b.role, b.scopeType) === composite) ||
     customRoles.some((c) => key(c.role, c.scopeType) === composite)
   ) {
-    throw new Error(
+    const error = new Error(
       `[community] role "${definition.role}" already registered for scope "${definition.scopeType}".`,
     );
+    npRecordCommunityRuntimeDiagnostic("roles", error.message);
+    throw error;
   }
-  customRoles.push({ ...definition });
+  customRoles.push({ ...checked, capabilities: [...checked.capabilities] });
 }
 
 /** Look up a role by `(role, scopeType)`. Returns undefined when unknown. */
@@ -146,10 +128,10 @@ export function getCommunityRole(
   scopeType: CommunityScope,
 ): CommunityRoleDefinition | undefined {
   const composite = key(role, scopeType);
-  return (
+  const found =
     builtInRoles.find((b) => key(b.role, b.scopeType) === composite) ??
-    customRoles.find((c) => key(c.role, c.scopeType) === composite)
-  );
+    customRoles.find((c) => key(c.role, c.scopeType) === composite);
+  return found ? { ...found, capabilities: [...found.capabilities] } : undefined;
 }
 
 /**
@@ -159,7 +141,11 @@ export function getCommunityRole(
  */
 export function listCommunityRoles(scopeType?: CommunityScope): CommunityRoleDefinition[] {
   const all = [...builtInRoles, ...customRoles];
-  return scopeType ? all.filter((r) => r.scopeType === scopeType) : all;
+  const selected = scopeType ? all.filter((r) => r.scopeType === scopeType) : all;
+  return npRequireCommunityRoleCatalog(selected).map((role) => ({
+    ...role,
+    capabilities: [...role.capabilities],
+  }));
 }
 
 /** Tests reset state between cases; production callers should never need this. */

@@ -220,17 +220,17 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
         if (!(err instanceof NpValidationError)) throw err;
         const detail = err.errors.find((e) => e.field === field);
         expect(detail).toBeDefined();
-        expect(detail?.message).toMatch(/non-negative integer/);
+        expect(detail?.message).toMatch(/non-negative safe integer/);
       }
     };
 
     expectFieldError(
       { memberUploadQuota: { perDay: -1 } },
-      "memberUploadQuota.perDay",
+      "community.settingsPatch.memberUploadQuota.perDay",
     );
     expectFieldError(
       { memberUploadQuota: { total: 1.5 } },
-      "memberUploadQuota.total",
+      "community.settingsPatch.memberUploadQuota.total",
     );
 
     // Null is fine — it means "unlimited".

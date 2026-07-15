@@ -1,14 +1,19 @@
 import {
-  NpValidationError,
   getMemberNotificationPrefs,
   listNotificationKinds,
   setMemberNotificationPrefs,
-} from "@nexpress/core";
+} from "@nexpress/core/community";
+import {
+  npRequireNotificationPrefsPatch,
+  npRequireNotificationPrefsUpdateWire,
+  npRequireNotificationPrefsWire,
+} from "@nexpress/core/community-contract";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { ensureFor } from "../../../../lib/init-core";
+import { npRequireCommunityRequest } from "../../../../lib/community-contract";
 import { requireMember } from "../../../../lib/member-auth-helpers";
 
 /**
@@ -27,7 +32,7 @@ export async function GET(request: NextRequest) {
     const member = await requireMember(request);
     const prefs = await getMemberNotificationPrefs(member.id);
     const kinds = listNotificationKinds();
-    return npSuccessResponse({ prefs, kinds });
+    return npSuccessResponse(npRequireNotificationPrefsWire({ prefs, kinds }));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
@@ -37,32 +42,14 @@ export async function PUT(request: NextRequest) {
   try {
     await ensureFor("write");
     const member = await requireMember(request);
-    const body = (await readJsonBody(request)) as Record<string, unknown> | null;
-    const disabledRaw = body?.disabled;
-    const digestRaw = body?.digest;
-
-    const patch: Parameters<typeof setMemberNotificationPrefs>[0] = {
-      memberId: member.id,
-    };
-    if (disabledRaw !== undefined) {
-      if (!Array.isArray(disabledRaw)) {
-        throw new NpValidationError("Invalid input", [
-          { field: "disabled", message: "disabled must be an array of strings" },
-        ]);
-      }
-      patch.disabled = disabledRaw as string[];
-    }
-    if (digestRaw !== undefined) {
-      if (digestRaw !== "off" && digestRaw !== "daily" && digestRaw !== "weekly") {
-        throw new NpValidationError("Invalid input", [
-          { field: "digest", message: "digest must be one of: off, daily, weekly" },
-        ]);
-      }
-      patch.digest = digestRaw;
-    }
-
-    const prefs = await setMemberNotificationPrefs(patch);
-    return npSuccessResponse({ prefs });
+    const kinds = listNotificationKinds();
+    const knownKinds = new Set(kinds.map((kind) => kind.kind));
+    const patch = npRequireCommunityRequest(
+      (value) => npRequireNotificationPrefsPatch(value, knownKinds),
+      await readJsonBody(request),
+    );
+    const prefs = await setMemberNotificationPrefs({ memberId: member.id, ...patch });
+    return npSuccessResponse(npRequireNotificationPrefsUpdateWire({ prefs }, knownKinds));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

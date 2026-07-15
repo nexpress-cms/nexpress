@@ -1,5 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 
+import { npRequireMuteSummary } from "../community-contract/contract.js";
+import type { NpMemberMuteRow, NpMemberMuteSummary } from "../community-contract/types.js";
 import { getDb } from "../db/runtime.js";
 import { npMemberMutes, npMembers } from "../db/schema/community.js";
 import { NpNotFoundError, NpValidationError } from "../errors.js";
@@ -16,11 +18,7 @@ import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
  * for their own mute list, never for someone else's.
  */
 
-export interface NpMemberMuteRow {
-  memberId: string;
-  targetId: string;
-  createdAt: Date;
-}
+export type { NpMemberMuteRow, NpMemberMuteSummary };
 
 export interface MuteMemberInput {
   /** The muter — the current member taking the action. */
@@ -132,13 +130,6 @@ export async function getMutedTargetIds(memberId: string): Promise<Set<string>> 
   return new Set(rows.map((r) => r.targetId));
 }
 
-export interface NpMemberMuteSummary {
-  targetId: string;
-  handle: string;
-  displayName: string;
-  createdAt: string;
-}
-
 export interface ListMutesOptions {
   /** Default 50, max 200. */
   limit?: number;
@@ -175,10 +166,12 @@ export async function listMutes(
     displayName: string;
     createdAt: Date;
   }>;
-  return rows.map((r) => ({
-    targetId: r.targetId,
-    handle: r.handle,
-    displayName: r.displayName,
-    createdAt: r.createdAt.toISOString(),
-  }));
+  return rows.map((r) =>
+    npRequireMuteSummary({
+      targetId: r.targetId,
+      handle: r.handle,
+      displayName: r.displayName,
+      createdAt: r.createdAt.toISOString(),
+    }),
+  );
 }

@@ -1,10 +1,16 @@
-import { NpValidationError, listMutes, muteMember } from "@nexpress/core";
+import { listMutes, muteMember } from "@nexpress/core/community";
+import {
+  npRequireMuteListWire,
+  npRequireMuteRequest,
+  npRequireOkWire,
+} from "@nexpress/core/community-contract";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { requireMember } from "../../../../lib/member-auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
+import { npRequireCommunityRequest } from "../../../../lib/community-contract";
 
 /**
  * Phase 16.1 — self-service mute list.
@@ -23,7 +29,7 @@ export async function GET(request: NextRequest) {
     await ensureFor("read");
     const member = await requireMember(request);
     const mutes = await listMutes(member.id);
-    return npSuccessResponse({ mutes });
+    return npSuccessResponse(npRequireMuteListWire({ mutes }));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
@@ -33,15 +39,12 @@ export async function POST(request: NextRequest) {
   try {
     await ensureFor("write");
     const member = await requireMember(request);
-    const body = (await readJsonBody(request)) as Record<string, unknown>;
-    const targetId = body.targetId;
-    if (typeof targetId !== "string" || targetId.length === 0) {
-      throw new NpValidationError("Invalid input", [
-        { field: "targetId", message: "targetId is required" },
-      ]);
-    }
+    const { targetId } = npRequireCommunityRequest(
+      npRequireMuteRequest,
+      await readJsonBody(request),
+    );
     await muteMember({ memberId: member.id, targetId });
-    return npSuccessResponse({ ok: true });
+    return npSuccessResponse(npRequireOkWire({ ok: true }));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

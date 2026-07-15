@@ -19,51 +19,21 @@
  * before. Sites that want profanity protection install one
  * explicitly, typically from a plugin's `setup()`.
  */
-export type NpProfanityVerdictKind = "pass" | "flag" | "reject";
+import type {
+  NpProfanityAdapter,
+  NpProfanityCheckContext,
+  NpProfanityVerdict,
+  NpProfanityVerdictKind,
+} from "../community-contract/types.js";
 
-export interface NpProfanityVerdict {
-  kind: NpProfanityVerdictKind;
-  /**
-   * Optional human-readable reason. Used as the
-   * `NpValidationError` message on `reject`, surfaced to the
-   * audit log on `flag`. Don't include the matched word verbatim
-   * if you don't want it echoed to the end user on reject.
-   */
-  reason?: string;
-  /**
-   * Free-form metadata the adapter wants to log alongside the
-   * verdict (matched categories, severity, locale, etc.). Surfaced
-   * to the audit log; never echoed to the end user.
-   */
-  metadata?: Record<string, unknown>;
-}
+import { npRecordCommunityRuntimeDiagnostic } from "./diagnostics.js";
 
-export interface NpProfanityCheckContext {
-  /** Member id of the author. Adapters may use this to weight
-   *  by reputation or recent infraction history. */
-  memberId: string;
-  /**
-   * Surface the content lives on. For comments this is the
-   * collection slug of the parent doc (`"posts"`, `"discussions"`,
-   * etc.); for member-authored docs, this is the same collection
-   * slug. Mirrors `NpSpamCheckContext.targetType`.
-   */
-  targetType: string;
-  /** Document id the content belongs to. Empty string for a
-   *  pre-insert doc create — adapters that key off the id should
-   *  treat empty as "new doc". */
-  targetId: string;
-  /** Parent comment id when this is a reply, otherwise null /
-   *  undefined (for doc creates). */
-  parentId?: string | null;
-}
-
-export interface NpProfanityAdapter {
-  check(
-    text: string,
-    ctx: NpProfanityCheckContext,
-  ): NpProfanityVerdict | Promise<NpProfanityVerdict>;
-}
+export type {
+  NpProfanityAdapter,
+  NpProfanityCheckContext,
+  NpProfanityVerdict,
+  NpProfanityVerdictKind,
+};
 
 const PASS_ADAPTER: NpProfanityAdapter = {
   check: () => ({ kind: "pass" }),
@@ -80,6 +50,7 @@ let currentAdapter: NpProfanityAdapter = PASS_ADAPTER;
  */
 export function setProfanityAdapter(adapter: NpProfanityAdapter): void {
   if (typeof adapter?.check !== "function") {
+    npRecordCommunityRuntimeDiagnostic("profanity", "adapter must implement check()");
     throw new Error("setProfanityAdapter: adapter must implement check()");
   }
   currentAdapter = adapter;

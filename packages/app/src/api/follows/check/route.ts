@@ -1,12 +1,11 @@
-import { NpValidationError, isFollowing } from "@nexpress/core";
+import { isFollowing } from "@nexpress/core/community";
+import { npRequireFollowingWire, npRequireFollowTarget } from "@nexpress/core/community-contract";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import { ensureFor } from "../../../lib/init-core";
+import { npRequireCommunityRequest } from "../../../lib/community-contract";
 import { requireMember } from "../../../lib/member-auth-helpers";
-
-const SUPPORTED = ["member", "thread", "tag"] as const;
-type FollowTarget = (typeof SUPPORTED)[number];
 
 /**
  * Single-target probe used by site UI follow buttons. The bulk
@@ -19,22 +18,16 @@ export async function GET(request: NextRequest) {
     await ensureFor("write");
     const member = await requireMember(request);
     const url = request.nextUrl;
-    const targetType = url.searchParams.get("targetType") ?? "";
-    const targetId = url.searchParams.get("targetId") ?? "";
-    if (!(SUPPORTED as readonly string[]).includes(targetType) || !targetId) {
-      throw new NpValidationError("Invalid input", [
-        {
-          field: "target",
-          message: `targetType (${SUPPORTED.join("|")}) and targetId required`,
-        },
-      ]);
-    }
+    const { targetType, targetId } = npRequireCommunityRequest(npRequireFollowTarget, {
+      targetType: url.searchParams.get("targetType"),
+      targetId: url.searchParams.get("targetId"),
+    });
     const following = await isFollowing({
       followerId: member.id,
-      targetType: targetType as FollowTarget,
+      targetType,
       targetId,
     });
-    return npSuccessResponse({ following });
+    return npSuccessResponse(npRequireFollowingWire({ following }));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

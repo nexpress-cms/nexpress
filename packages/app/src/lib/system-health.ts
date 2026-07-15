@@ -22,6 +22,7 @@ import {
 } from "@nexpress/core/observability";
 import { getSearchAdapterDiagnostics } from "@nexpress/core/search";
 import { getI18nRuntimeDiagnostics } from "@nexpress/core/i18n";
+import { getCommunityRuntimeDiagnostics } from "@nexpress/core/community";
 import {
   getOptionalStorageRuntimeConfig,
   getStorageAdapter,
@@ -585,6 +586,37 @@ export function checkI18nRuntime(): Check {
   }
 }
 
+/** Validated community registries and recently contained adapter contract failures. */
+export function checkCommunityRuntime(): Check {
+  try {
+    const diagnostics = getCommunityRuntimeDiagnostics();
+    const last = diagnostics.at(-1);
+    if (last) {
+      return {
+        id: "community",
+        label: "Community contracts",
+        state: "warn",
+        detail: `${diagnostics.length.toString()} contained runtime contract failure${diagnostics.length === 1 ? "" : "s"}`,
+        hint: `Last ${last.source} failure at ${last.occurredAt}: ${last.message}`,
+      };
+    }
+    return {
+      id: "community",
+      label: "Community contracts",
+      state: "ok",
+      detail: "registries and adapters valid",
+    };
+  } catch (error) {
+    return {
+      id: "community",
+      label: "Community contracts",
+      state: "error",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Fix community registry or adapter contracts before accepting member writes.",
+    };
+  }
+}
+
 /**
  * NP_SECRET — runtime parallel of #597's boot-time check, plus
  * the entropy floor introduced in the setup wizard (#618). Most
@@ -647,6 +679,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
   checks.push(checkCacheInvalidation());
   checks.push(checkSearchAdapter());
   checks.push(checkI18nRuntime());
+  checks.push(checkCommunityRuntime());
   checks.push(checkSecret());
   return {
     generatedAt: new Date().toISOString(),

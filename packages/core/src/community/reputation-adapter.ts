@@ -18,93 +18,18 @@
  * community write (fail-soft via observability hook, same pattern
  * as the spam adapter).
  */
-export type NpReputationEvent =
-  /** A new visible comment was inserted. Flagged / hidden / deleted
-   *  comments do NOT emit this event. */
-  | {
-      kind: "comment.created";
-      commentId: string;
-      memberId: string;
-      targetType: string;
-      targetId: string;
-    }
-  /** Mod (or member with the right grant) hid a comment. Adapters
-   *  typically penalize the author. */
-  | {
-      kind: "comment.hidden";
-      commentId: string;
-      memberId: string;
-      byStaff: boolean;
-      reason?: string | null;
-    }
-  /** Mod-side hard delete (`staffDeleteComment`). The body is wiped;
-   *  this is harsher than `hidden` and adapters usually penalize
-   *  more. */
-  | {
-      kind: "comment.deleted";
-      commentId: string;
-      memberId: string;
-      byStaff: boolean;
-    }
-  /** Someone reacted to the recipient's content (comment / thread /
-   *  reply). `recipientId` is the content author; `reactorId` is the
-   *  member who clicked the reaction. Self-reactions are filtered
-   *  before the event fires. */
-  | {
-      kind: "reaction.received";
-      reactionKind: string;
-      recipientId: string;
-      reactorId: string;
-      targetType: string;
-      targetId: string;
-    }
-  /** Reactor undid their reaction. Symmetric to `reaction.received`;
-   *  adapters typically return the negative of the corresponding
-   *  positive delta. */
-  | {
-      kind: "reaction.removed";
-      reactionKind: string;
-      recipientId: string;
-      reactorId: string;
-      targetType: string;
-      targetId: string;
-    }
-  /** A member created a top-level document in a collection that
-   *  opted into `community.memberWrite.create` (Phase 9.7a). Fires
-   *  after the row + revision are persisted; adapters can credit
-   *  reputation for thread / post creation just like comments. */
-  | {
-      kind: "document.created";
-      collectionSlug: string;
-      documentId: string;
-      memberId: string;
-    }
-  /** Author deleted their own document (`memberWrite.delete`,
-   *  Phase 9.7b). Symmetric to `document.created`; adapters
-   *  typically debit the original credit so a member can't farm
-   *  reputation by churn-creating and deleting threads. Mod-side
-   *  deletes are NOT covered here — those go through the staff
-   *  path which doesn't emit this event. */
-  | {
-      kind: "document.deleted";
-      collectionSlug: string;
-      documentId: string;
-      memberId: string;
-    };
+import type { NpReputationAdapter, NpReputationEvent } from "../community-contract/types.js";
 
-export interface NpReputationAdapter {
-  /** Returns the integer delta to apply to the affected member's
-   *  reputation. Sign matters: positive credits, negative debits.
-   *  Non-integer values are truncated; non-finite (NaN/Infinity)
-   *  values are skipped. Returning 0 is the no-op path. */
-  apply(event: NpReputationEvent): number | Promise<number>;
-}
+import { npRecordCommunityRuntimeDiagnostic } from "./diagnostics.js";
+
+export type { NpReputationAdapter, NpReputationEvent };
 
 const NOOP_ADAPTER: NpReputationAdapter = { apply: () => 0 };
 let currentAdapter: NpReputationAdapter = NOOP_ADAPTER;
 
 export function setReputationAdapter(adapter: NpReputationAdapter): void {
   if (typeof adapter?.apply !== "function") {
+    npRecordCommunityRuntimeDiagnostic("reputation", "adapter must implement apply()");
     throw new Error("setReputationAdapter: adapter must implement apply()");
   }
   currentAdapter = adapter;

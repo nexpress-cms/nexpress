@@ -1,5 +1,7 @@
 import { and, eq } from "drizzle-orm";
 
+import { npRequireFollowRow } from "../community-contract/contract.js";
+import type { NpFollowInput, NpFollowRow, NpFollowTarget } from "../community-contract/types.js";
 import { getDb } from "../db/runtime.js";
 import { npFollows, npMembers } from "../db/schema/community.js";
 import { NpNotFoundError, NpValidationError } from "../errors.js";
@@ -17,21 +19,9 @@ import { createNotification } from "./notifications.js";
  */
 
 const SUPPORTED_TARGETS = ["member", "thread", "tag"] as const;
-type FollowTarget = (typeof SUPPORTED_TARGETS)[number];
+type FollowTarget = NpFollowTarget;
 
-export interface NpFollowRow {
-  id: string;
-  followerId: string;
-  targetType: string;
-  targetId: string;
-  createdAt: Date;
-}
-
-export interface NpFollowInput {
-  followerId: string;
-  targetType: FollowTarget;
-  targetId: string;
-}
+export type { NpFollowInput, NpFollowRow };
 
 function assertSupportedTarget(targetType: string): asserts targetType is FollowTarget {
   if (!SUPPORTED_TARGETS.includes(targetType as FollowTarget)) {
@@ -62,7 +52,6 @@ export async function follow(input: NpFollowInput): Promise<NpFollowRow> {
 }
 
 async function doFollow(input: NpFollowInput): Promise<NpFollowRow> {
-
   const db = getDb();
 
   // Validate the target exists so a typo doesn't quietly insert a
@@ -116,6 +105,7 @@ async function doFollow(input: NpFollowInput): Promise<NpFollowRow> {
     .returning()) as NpFollowRow[];
 
   if (inserted) {
+    const checkedInserted = npRequireFollowRow(inserted);
     // Fresh insert — notify the followed member.
     if (input.targetType === "member") {
       await createNotification({
@@ -125,7 +115,7 @@ async function doFollow(input: NpFollowInput): Promise<NpFollowRow> {
         payload: { followerId: input.followerId },
       });
     }
-    return inserted;
+    return checkedInserted;
   }
 
   // Conflict path: the row already existed (or a concurrent caller
@@ -149,7 +139,7 @@ async function doFollow(input: NpFollowInput): Promise<NpFollowRow> {
     // delete; surface a generic error rather than fabricate a row.
     throw new Error("Follow insert hit conflict but re-select returned no row");
   }
-  return existing;
+  return npRequireFollowRow(existing);
 }
 
 export async function unfollow(input: NpFollowInput): Promise<void> {
@@ -216,5 +206,5 @@ export async function listFollowing(
     .where(where)
     .limit(limit)
     .offset(offset)) as NpFollowRow[];
-  return rows;
+  return rows.map(npRequireFollowRow);
 }

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import { asc, count, desc, eq, inArray, max, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
+import type { NpCommunityJsonObject } from "../community-contract/types.js";
 
 import {
   type NpCollectionConfig,
@@ -508,8 +509,8 @@ export async function createMemberDocument(
 
 interface MemberDocModerationResult {
   flaggedBy: Array<"profanity" | "spam">;
-  profanityVerdict: { reason: string | null; metadata: Record<string, unknown> | null } | null;
-  spamVerdict: { reason: string | null; metadata: Record<string, unknown> | null } | null;
+  profanityVerdict: { reason: string | null; metadata: NpCommunityJsonObject | null } | null;
+  spamVerdict: { reason: string | null; metadata: NpCommunityJsonObject | null } | null;
 }
 
 interface RunMemberDocModerationInput {
@@ -539,9 +540,9 @@ interface RunMemberDocModerationInput {
  *   - flag    → returned with the source recorded in `flaggedBy`
  *   - pass    → returned with empty `flaggedBy`
  *
- * Adapter throws are fail-open (logged as warnings, treated as
- * pass) — same policy as comments and the original create-only
- * gate.
+ * Adapter failures and malformed verdicts are isolated as `flag`,
+ * keeping the write path available without publishing unchecked
+ * content.
  */
 async function runMemberDocModeration(
   input: RunMemberDocModerationInput,
@@ -550,7 +551,7 @@ async function runMemberDocModeration(
   const config = getCollectionConfig(collection);
   const { getSpamAdapter } = await import("../community/spam-adapter.js");
   const { getProfanityAdapter } = await import("../community/profanity-adapter.js");
-  const { getLogger } = await import("../observability/logger.js");
+  const { runProfanityCheck, runSpamCheck } = await import("../community/moderation.js");
 
   // Walk every text / textarea / richText field in the patch.
   // Empty string when none of the moderated fields are touched
@@ -565,55 +566,37 @@ async function runMemberDocModeration(
   };
 
   let profanityVerdict: MemberDocModerationResult["profanityVerdict"] = null;
-  try {
-    const verdict = await getProfanityAdapter().check(moderationText, ctx);
-    if (verdict.kind === "reject") {
-      throw new NpValidationError("Invalid input", [
-        {
-          field: "body",
-          message: verdict.reason ?? "Submission contains prohibited language",
-        },
-      ]);
-    }
-    if (verdict.kind === "flag") {
-      profanityVerdict = {
-        reason: verdict.reason ?? null,
-        metadata: verdict.metadata ?? null,
-      };
-    }
-  } catch (err) {
-    if (err instanceof NpValidationError) throw err;
-    getLogger().warn("profanity adapter threw on doc write — treating as pass", {
-      error: err instanceof Error ? err.message : String(err),
-      collection,
-      memberId,
-    });
+  const checkedProfanity = await runProfanityCheck(getProfanityAdapter(), moderationText, ctx);
+  if (checkedProfanity.kind === "reject") {
+    throw new NpValidationError("Invalid input", [
+      {
+        field: "body",
+        message: checkedProfanity.reason ?? "Submission contains prohibited language",
+      },
+    ]);
+  }
+  if (checkedProfanity.kind === "flag") {
+    profanityVerdict = {
+      reason: checkedProfanity.reason ?? null,
+      metadata: checkedProfanity.metadata ?? null,
+    };
   }
 
   let spamVerdict: MemberDocModerationResult["spamVerdict"] = null;
-  try {
-    const verdict = await getSpamAdapter().check(moderationText, ctx);
-    if (verdict.kind === "reject") {
-      throw new NpValidationError("Invalid input", [
-        {
-          field: "body",
-          message: verdict.reason ?? "Submission rejected",
-        },
-      ]);
-    }
-    if (verdict.kind === "flag") {
-      spamVerdict = {
-        reason: verdict.reason ?? null,
-        metadata: verdict.metadata ?? null,
-      };
-    }
-  } catch (err) {
-    if (err instanceof NpValidationError) throw err;
-    getLogger().warn("spam adapter threw on doc write — treating as pass", {
-      error: err instanceof Error ? err.message : String(err),
-      collection,
-      memberId,
-    });
+  const checkedSpam = await runSpamCheck(getSpamAdapter(), moderationText, ctx);
+  if (checkedSpam.kind === "reject") {
+    throw new NpValidationError("Invalid input", [
+      {
+        field: "body",
+        message: checkedSpam.reason ?? "Submission rejected",
+      },
+    ]);
+  }
+  if (checkedSpam.kind === "flag") {
+    spamVerdict = {
+      reason: checkedSpam.reason ?? null,
+      metadata: checkedSpam.metadata ?? null,
+    };
   }
 
   const flaggedBy: Array<"profanity" | "spam"> = [];

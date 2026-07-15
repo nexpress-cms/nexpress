@@ -1,5 +1,18 @@
 import { and, count, desc, eq, isNull, inArray } from "drizzle-orm";
 
+import {
+  npRequireCommunityId,
+  npRequireCommunityJsonObject,
+  npRequireNotificationKind,
+  npRequireNotificationRow,
+} from "../community-contract/contract.js";
+import type {
+  CreateNotificationInput,
+  ListNotificationsOptions,
+  MarkReadInput,
+  NpNotificationListResult,
+  NpNotificationRow,
+} from "../community-contract/types.js";
 import { getDb } from "../db/runtime.js";
 import { npNotifications } from "../db/schema/community.js";
 import { NpForbiddenError, NpValidationError } from "../errors.js";
@@ -22,57 +35,47 @@ import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
  * to whichever rendering it knows.
  */
 
-export interface NpNotificationRow {
-  id: string;
-  memberId: string;
-  kind: string;
-  payload: Record<string, unknown>;
-  readAt: Date | null;
-  createdAt: Date;
-}
-
-export interface CreateNotificationInput {
-  /** The recipient — whose inbox this lands in. */
-  memberId: string;
-  kind: string;
-  payload?: Record<string, unknown>;
-  /**
-   * Phase 16.1 — the member whose action triggered the
-   * notification (e.g. the comment author, the reactor, the
-   * follower). When set, the recipient's mute list is
-   * consulted: if the recipient has muted the actor, the
-   * notification is silently dropped. Returns `null` from
-   * the call site.
-   *
-   * Optional because some kinds are actor-less (system
-   * notices, scheduled reminders).
-   */
-  actorMemberId?: string | null;
-}
+export type {
+  CreateNotificationInput,
+  ListNotificationsOptions,
+  MarkReadInput,
+  NpNotificationListResult,
+  NpNotificationRow,
+};
 
 export async function createNotification(
   input: CreateNotificationInput,
 ): Promise<NpNotificationRow | null> {
+  const memberId = npRequireCommunityId(input.memberId, "community.notification.memberId");
+  const actorMemberId =
+    input.actorMemberId == null
+      ? null
+      : npRequireCommunityId(input.actorMemberId, "community.notification.actorMemberId");
+  const kind = npRequireNotificationKind(input.kind, "community.notification.kind");
+  const payload = npRequireCommunityJsonObject(
+    input.payload ?? {},
+    "community.notification.payload",
+  );
+
   // Mute check — defer the import to avoid a notifications →
   // mutes circular at module load. Mutes module imports
   // nothing back from here, but TypeScript sometimes flags
   // the cycle anyway depending on resolver order.
-  if (input.actorMemberId && input.actorMemberId !== input.memberId) {
+  if (actorMemberId && actorMemberId !== memberId) {
     const { isMuted } = await import("./mutes.js");
     const muted = await isMuted({
-      memberId: input.memberId,
-      targetId: input.actorMemberId,
+      memberId,
+      targetId: actorMemberId,
     });
     if (muted) return null;
   }
 
-  // Phase 16.3 — recipient-controlled kind toggle. Fails open
-  // on read error (transient DB blip shouldn't silently swallow
-  // notifications). Deferred import for the same reason as
-  // mutes.
+  // Phase 16.3 — recipient-controlled kind toggle. Malformed stored
+  // preferences drop this side effect and emit a diagnostic; transient
+  // read failures fail open. Deferred import for the same reason as mutes.
   {
     const { isNotificationKindEnabled } = await import("./notification-prefs.js");
-    const enabled = await isNotificationKindEnabled(input.memberId, input.kind);
+    const enabled = await isNotificationKindEnabled(memberId, kind);
     if (!enabled) return null;
   }
 
@@ -88,29 +91,14 @@ export async function createNotification(
   const [row] = (await db
     .insert(npNotifications)
     .values({
-      memberId: input.memberId,
-      kind: input.kind,
-      payload: input.payload ?? {},
+      memberId,
+      kind,
+      payload,
       siteId,
     })
     .returning()) as NpNotificationRow[];
   if (!row) throw new Error("Notification insert returned no row");
-  return row;
-}
-
-export interface ListNotificationsOptions {
-  /** Default 50, max 200. */
-  limit?: number;
-  /** Default 0. */
-  offset?: number;
-  /** When true, returns only unread. */
-  unreadOnly?: boolean;
-}
-
-export interface NpNotificationListResult {
-  notifications: NpNotificationRow[];
-  totalDocs: number;
-  unread: number;
+  return npRequireNotificationRow(row);
 }
 
 export async function listNotifications(
@@ -148,7 +136,7 @@ export async function listNotifications(
   }>;
 
   return {
-    notifications: rows,
+    notifications: rows.map(npRequireNotificationRow),
     totalDocs: Number(totalRow?.total ?? 0),
     unread: Number(unreadRow?.total ?? 0),
   };
@@ -169,11 +157,6 @@ export async function unreadNotificationCount(memberId: string): Promise<number>
       ),
     )) as Array<{ total: number | string }>;
   return Number(row?.total ?? 0);
-}
-
-export interface MarkReadInput {
-  memberId: string;
-  notificationIds: string[];
 }
 
 export async function markNotificationsRead(input: MarkReadInput): Promise<number> {

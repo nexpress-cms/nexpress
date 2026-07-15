@@ -1,28 +1,18 @@
+import { NpForbiddenError, NpValidationError, can } from "@nexpress/core";
+import { issueBan, listBansForMember } from "@nexpress/core/community";
 import {
-  NpForbiddenError,
-  NpValidationError,
-  issueBan,
-  listBansForMember,
-  can,
-} from "@nexpress/core";
+  npRequireBanListWire,
+  npRequireBanRequest,
+  npRequireCommunityId,
+  npToBanWireRow,
+} from "@nexpress/core/community-contract";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../lib/init-core";
-
-const VALID_SCOPES = ["site", "category", "collection"] as const;
-type BanScope = (typeof VALID_SCOPES)[number];
-
-interface BanBody {
-  memberId?: unknown;
-  scopeType?: unknown;
-  scopeId?: unknown;
-  kind?: unknown;
-  expiresAt?: unknown;
-  reason?: unknown;
-}
+import { npRequireCommunityRequest } from "../../../../lib/community-contract";
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,14 +23,13 @@ export async function GET(request: NextRequest) {
     }
 
     const memberId = request.nextUrl.searchParams.get("memberId");
-    if (!memberId) {
-      throw new NpValidationError("Invalid input", [
-        { field: "memberId", message: "memberId query param required" },
-      ]);
-    }
+    const checkedMemberId = npRequireCommunityRequest(
+      (value) => npRequireCommunityId(value, "community.memberId"),
+      memberId,
+    );
 
-    const rows = await listBansForMember(memberId);
-    return npSuccessResponse({ docs: rows });
+    const rows = await listBansForMember(checkedMemberId);
+    return npSuccessResponse(npRequireBanListWire({ docs: rows.map(npToBanWireRow) }));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
@@ -54,54 +43,25 @@ export async function POST(request: NextRequest) {
       throw new NpForbiddenError("bans", "create");
     }
 
-    const body = (await readJsonBody(request)) as BanBody | null;
-    const memberId = typeof body?.memberId === "string" ? body.memberId : "";
-    const scopeTypeRaw = typeof body?.scopeType === "string" ? body.scopeType : "";
-    const scopeId = typeof body?.scopeId === "string" ? body.scopeId : null;
-    const kind = body?.kind === "permanent" ? "permanent" : "temporary";
-    const reason = typeof body?.reason === "string" ? body.reason : null;
-    const expiresAtRaw = typeof body?.expiresAt === "string" ? body.expiresAt : null;
-
-    const errors: Array<{ field: string; message: string }> = [];
-    if (!memberId) errors.push({ field: "memberId", message: "memberId required" });
-    if (!(VALID_SCOPES as readonly string[]).includes(scopeTypeRaw)) {
-      errors.push({
-        field: "scopeType",
-        message: `scopeType must be one of: ${VALID_SCOPES.join(", ")}`,
-      });
-    }
-    let expiresAt: Date | null = null;
-    if (kind === "temporary") {
-      if (!expiresAtRaw) {
-        errors.push({ field: "expiresAt", message: "expiresAt required for temporary bans" });
-      } else {
-        const parsed = new Date(expiresAtRaw);
-        if (Number.isNaN(parsed.getTime())) {
-          errors.push({ field: "expiresAt", message: "expiresAt must be a valid ISO timestamp" });
-        } else if (parsed.getTime() <= Date.now()) {
-          // Reads filter by `expires_at > now`, so a past timestamp would
-          // create a ban that is invisible the moment it lands.
-          errors.push({ field: "expiresAt", message: "expiresAt must be in the future" });
-        } else {
-          expiresAt = parsed;
-        }
-      }
-    }
-    if (errors.length > 0) {
-      throw new NpValidationError("Invalid input", errors);
+    const checked = npRequireCommunityRequest(npRequireBanRequest, await readJsonBody(request));
+    const expiresAt = checked.expiresAt === null ? null : new Date(checked.expiresAt);
+    if (expiresAt && expiresAt.getTime() <= Date.now()) {
+      throw new NpValidationError("Invalid input", [
+        { field: "expiresAt", message: "expiresAt must be in the future" },
+      ]);
     }
 
     const row = await issueBan({
-      memberId,
-      scopeType: scopeTypeRaw as BanScope,
-      scopeId,
-      kind,
+      memberId: checked.memberId,
+      scopeType: checked.scopeType,
+      scopeId: checked.scopeId,
+      kind: checked.kind,
       expiresAt,
-      reason,
+      reason: checked.reason,
       actor: { kind: "staff", user },
     });
 
-    return npSuccessResponse(row, { status: 201 });
+    return npSuccessResponse(npToBanWireRow(row), { status: 201 });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

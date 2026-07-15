@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  npRequireAuditPageWire,
+  type NpAuditEventWireRow,
+} from "@nexpress/core/community-contract";
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { ChevronDown, SlidersHorizontal } from "lucide-react";
 
@@ -11,17 +15,7 @@ import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { PageHeader } from "../layout/page-header.js";
 
-export interface AuditEventRow {
-  id: string;
-  actorKind: "staff" | "member" | "system";
-  actorUserId: string | null;
-  actorMemberId: string | null;
-  action: string;
-  targetType: string | null;
-  targetId: string | null;
-  payload: Record<string, unknown>;
-  createdAt: string;
-}
+export type AuditEventRow = NpAuditEventWireRow;
 
 const ACTOR_BADGE: Record<AuditEventRow["actorKind"], string> = {
   staff: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200",
@@ -98,9 +92,9 @@ export function AuditLogView() {
             : null;
         throw new Error(typeof err === "string" ? err : `HTTP ${res.status}`);
       }
-      const docs = Array.isArray(raw.docs) ? (raw.docs as AuditEventRow[]) : [];
-      setEvents(docs);
-      setTotalDocs(typeof raw.totalDocs === "number" ? raw.totalDocs : docs.length);
+      const pageResult = npRequireAuditPageWire(raw);
+      setEvents(pageResult.docs);
+      setTotalDocs(pageResult.totalDocs);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load audit log");
     } finally {

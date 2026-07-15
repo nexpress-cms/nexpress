@@ -1,4 +1,6 @@
-import { can, NpForbiddenError, listCommunityRoles } from "@nexpress/core";
+import { can, NpForbiddenError } from "@nexpress/core";
+import { listCommunityRoles } from "@nexpress/core/community";
+import { npRequireRoleCatalogWire } from "@nexpress/core/community-contract";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
@@ -21,7 +23,7 @@ export async function GET(request: NextRequest) {
       throw new NpForbiddenError("communityRoles", "list");
     }
     const docs = listCommunityRoles();
-    return npSuccessResponse({ docs });
+    return npSuccessResponse(npRequireRoleCatalogWire({ docs }));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

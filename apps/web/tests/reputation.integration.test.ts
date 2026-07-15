@@ -16,10 +16,7 @@ import {
 
 import { POST as collectionPOST } from "@/app/api/collections/[slug]/route";
 import { POST as commentsPOST } from "@/app/api/collections/[slug]/[id]/comments/route";
-import {
-  DELETE as reactionDELETE,
-  POST as reactionPOST,
-} from "@/app/api/reactions/route";
+import { DELETE as reactionDELETE, POST as reactionPOST } from "@/app/api/reactions/route";
 import { POST as staffHidePOST } from "@/app/api/admin/community/comments/[id]/hide/route";
 import { DELETE as staffDeleteDELETE } from "@/app/api/admin/community/comments/[id]/route";
 
@@ -34,11 +31,7 @@ function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = 
   return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
 }
 
-function staffRequest(
-  path: string,
-  user: TestUserSession,
-  init: RequestInit = {},
-): NextRequest {
+function staffRequest(path: string, user: TestUserSession, init: RequestInit = {}): NextRequest {
   return jsonRequest(path, {
     ...init,
     cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
@@ -355,11 +348,9 @@ describe.skipIf(skipIfNoTestDb())("reputation adapter (integration)", () => {
     expect(await readReputation(author.memberId)).toBe(baseRep + 1);
 
     const undo = await reactionDELETE(
-      memberRequest(
-        `/api/reactions?targetType=comment&targetId=${commentId}&kind=like`,
-        reactor,
-        { method: "DELETE" },
-      ),
+      memberRequest(`/api/reactions?targetType=comment&targetId=${commentId}&kind=like`, reactor, {
+        method: "DELETE",
+      }),
     );
     expect(undo.status).toBe(200);
 
@@ -400,11 +391,9 @@ describe.skipIf(skipIfNoTestDb())("reputation adapter (integration)", () => {
 
     // sneak has never reacted — DELETE is a no-op.
     const undo = await reactionDELETE(
-      memberRequest(
-        `/api/reactions?targetType=comment&targetId=${commentId}&kind=like`,
-        sneak,
-        { method: "DELETE" },
-      ),
+      memberRequest(`/api/reactions?targetType=comment&targetId=${commentId}&kind=like`, sneak, {
+        method: "DELETE",
+      }),
     );
     expect(undo.status).toBe(200);
 
@@ -457,7 +446,7 @@ describe.skipIf(skipIfNoTestDb())("reputation adapter (integration)", () => {
     expect(await readReputation(author.memberId)).toBe(0);
   });
 
-  it("non-integer delta is truncated toward zero", async () => {
+  it("non-integer delta is rejected by the adapter boundary", async () => {
     const core = await import("@nexpress/core");
     core.setReputationAdapter({ apply: () => 4.9 });
 
@@ -472,6 +461,6 @@ describe.skipIf(skipIfNoTestDb())("reputation adapter (integration)", () => {
       }),
       { params: Promise.resolve({ slug: "posts", id: postId }) },
     );
-    expect(await readReputation(author.memberId)).toBe(4);
+    expect(await readReputation(author.memberId)).toBe(0);
   });
 });

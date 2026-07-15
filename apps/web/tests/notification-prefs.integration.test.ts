@@ -1,4 +1,8 @@
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
+import {
+  getCommunityRuntimeDiagnostics,
+  resetCommunityRuntimeDiagnostics,
+} from "@nexpress/core/community";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 
@@ -110,6 +114,7 @@ describe.skipIf(skipIfNoTestDb())("16.3 notification preferences (integration)",
   });
   beforeEach(async () => {
     await truncateAll();
+    resetCommunityRuntimeDiagnostics();
   });
   afterAll(async () => {
     await closeTestDb();
@@ -222,7 +227,7 @@ describe.skipIf(skipIfNoTestDb())("16.3 notification preferences (integration)",
   // handler-level unit test no longer covers the missing-CSRF
   // case since direct handler invocation bypasses the proxy.
 
-  it("PUT preserves unrelated keys in notification_prefs JSONB (forward compat for digest in 16.4)", async () => {
+  it("PUT fails closed when persisted notification preferences contain unknown keys", async () => {
     const m = await seedActiveMember("prefsmerge");
     // Seed an unrelated key directly in DB.
     const db = await getTestDb();
@@ -233,8 +238,7 @@ describe.skipIf(skipIfNoTestDb())("16.3 notification preferences (integration)",
       .set({ notificationPrefs: { digest: "weekly", custom: { foo: "bar" } } })
       .where(eq(npMembers.id, m.memberId));
 
-    // PUT updates only `disabled`; other keys must survive.
-    await prefsPUT(
+    const response = await prefsPUT(
       jsonRequest("/api/members/me/notification-prefs", {
         method: "PUT",
         cookies: [`np-mb-session=${m.sessionCookie}`, `np-mb-csrf=${m.csrfCookie}`],
@@ -243,12 +247,40 @@ describe.skipIf(skipIfNoTestDb())("16.3 notification preferences (integration)",
       }),
     );
 
+    expect(response.status).toBe(500);
     const [row] = (await db
       .select({ prefs: npMembers.notificationPrefs })
       .from(npMembers)
       .where(eq(npMembers.id, m.memberId))) as Array<{ prefs: Record<string, unknown> }>;
     expect(row.prefs.digest).toBe("weekly");
     expect((row.prefs.custom as Record<string, unknown>).foo).toBe("bar");
-    expect(row.prefs.disabled).toEqual(["follow.received"]);
+    expect(row.prefs.disabled).toBeUndefined();
+  });
+
+  it("drops only the notification side effect when persisted preferences are malformed", async () => {
+    const recipient = await seedActiveMember("prefsmalformedrecipient");
+    const follower = await seedActiveMember("prefsmalformedfollower");
+    const db = await getTestDb();
+    const { npMembers } = await import("@nexpress/core");
+    const { eq } = await import("drizzle-orm");
+    await db
+      .update(npMembers)
+      .set({ notificationPrefs: { unknown: true } })
+      .where(eq(npMembers.id, recipient.memberId));
+
+    const response = await followsPOST(
+      jsonRequest("/api/follows", {
+        method: "POST",
+        cookies: [`np-mb-session=${follower.sessionCookie}`, `np-mb-csrf=${follower.csrfCookie}`],
+        headers: { "x-csrf-token": follower.csrfCookie },
+        body: JSON.stringify({ targetType: "member", targetId: recipient.memberId }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(await inboxOf(recipient)).toMatchObject({ unread: 0, notifications: [] });
+    expect(getCommunityRuntimeDiagnostics()).toEqual([
+      expect.objectContaining({ source: "notification-prefs" }),
+    ]);
   });
 });

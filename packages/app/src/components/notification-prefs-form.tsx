@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 
-import type { NpDigestCadence, NpNotificationKindMeta, NpNotificationPrefs } from "@nexpress/core";
+import {
+  npRequireNotificationPrefsUpdateWire,
+  type NpDigestCadence,
+  type NpNotificationKindMeta,
+  type NpNotificationPrefs,
+} from "@nexpress/core/community-contract";
 
 interface NotificationPrefsFormProps {
   initialPrefs: NpNotificationPrefs;
@@ -53,6 +58,11 @@ export function NotificationPrefsForm({ initialPrefs, kinds }: NotificationPrefs
         } | null;
         throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
       }
+      const body = await res.json();
+      const knownKinds = new Set(kinds.map((kind) => kind.kind));
+      const { prefs } = npRequireNotificationPrefsUpdateWire(body, knownKinds);
+      setDisabled(new Set(prefs.disabled));
+      setDigest(prefs.digest);
       setSavedAt(Date.now());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save preferences");

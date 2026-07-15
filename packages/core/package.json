@@ -48,6 +48,11 @@
       "import": "./dist/community.js",
       "default": "./dist/community.js"
     },
+    "./community-contract": {
+      "types": "./dist/community-contract.d.ts",
+      "import": "./dist/community-contract.js",
+      "default": "./dist/community-contract.js"
+    },
     "./bootstrap": {
       "types": "./dist/bootstrap.d.ts",
       "import": "./dist/bootstrap.js",

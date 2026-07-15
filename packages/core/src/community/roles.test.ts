@@ -6,10 +6,12 @@ import {
   registerCommunityRole,
   resetCommunityRoles,
 } from "./roles.js";
+import { getCommunityRuntimeDiagnostics, resetCommunityRuntimeDiagnostics } from "./diagnostics.js";
 
 describe("community role registry", () => {
   afterEach(() => {
     resetCommunityRoles();
+    resetCommunityRuntimeDiagnostics();
   });
 
   it("ships the four built-in roles", () => {
@@ -76,6 +78,16 @@ describe("community role registry", () => {
         capabilities: ["lock-thread"],
       }),
     ).toThrow(/already registered/);
+    expect(getCommunityRuntimeDiagnostics()).toEqual([
+      expect.objectContaining({
+        source: "roles",
+        message: expect.stringContaining("already registered"),
+      }),
+      expect.objectContaining({
+        source: "roles",
+        message: expect.stringContaining("already registered"),
+      }),
+    ]);
   });
 
   it("the same role name on a different scope IS allowed", () => {
@@ -106,5 +118,20 @@ describe("community role registry", () => {
 
     const siteRoles = listCommunityRoles("site");
     expect(siteRoles.map((r) => r.role)).toEqual(["community-mod"]);
+  });
+
+  it("validates definitions and returns detached capability arrays", () => {
+    expect(() =>
+      registerCommunityRole({
+        role: "Bad Role",
+        scopeType: "site",
+        capabilities: ["hide-comment"],
+      }),
+    ).toThrow(/canonical role id/);
+
+    const first = getCommunityRole("community-mod", "site");
+    if (!first) throw new Error("missing built-in role");
+    (first.capabilities as string[]).push("edit-own-thread");
+    expect(getCommunityRole("community-mod", "site")?.capabilities).not.toEqual(first.capabilities);
   });
 });

@@ -1,5 +1,6 @@
 import { findDocuments, saveDocument } from "@nexpress/core";
 import type { NpAuthUser } from "@nexpress/core";
+import type { NpCommunityJsonObject } from "@nexpress/core/community-contract";
 
 import {
   htmlToLexical,
@@ -197,13 +198,22 @@ export interface ReportHtmlDeps {
   }) => void;
 }
 
+export type NpWpImportAuditEvent = {
+  action: string;
+  payload?: NpCommunityJsonObject;
+} & (
+  | {
+      targetType: string;
+      targetId: string;
+    }
+  | {
+      targetType?: never;
+      targetId?: never;
+    }
+);
+
 export interface AuditDeps {
-  record: (event: {
-    action: string;
-    targetType?: string;
-    targetId?: string;
-    payload?: Record<string, unknown>;
-  }) => Promise<void>;
+  record: (event: NpWpImportAuditEvent) => Promise<void>;
 }
 
 export interface CollectionMapping {
@@ -376,11 +386,18 @@ export async function applyBundle(
             options.actor,
           );
       const existingId =
-        exists.docs.length > 0 && typeof exists.docs[0]?.id === "string"
+        exists.docs.length > 0 &&
+        typeof exists.docs[0]?.id === "string" &&
+        exists.docs[0].id.trim().length > 0
           ? exists.docs[0]?.id
           : undefined;
       const updateMode = options.update === true && existingId !== undefined;
       if (exists.docs.length > 0 && !updateMode) {
+        if (!existingId) {
+          throw new Error(
+            `Existing ${collection}/${record.slug} document did not expose a non-empty string id`,
+          );
+        }
         skipped.push({
           wpId: record.wpId,
           wpType: record.wpType,
@@ -486,7 +503,15 @@ export async function applyBundle(
           status: mappedStatus.status,
         },
       );
-      const savedId = typeof saved.doc.id === "string" ? saved.doc.id : undefined;
+      const savedId =
+        typeof saved.doc.id === "string" && saved.doc.id.trim().length > 0
+          ? saved.doc.id
+          : undefined;
+      if (!savedId) {
+        throw new Error(
+          `Saved ${collection}/${record.slug} document did not expose a non-empty string id`,
+        );
+      }
       applied.push({
         wpId: record.wpId,
         wpType: record.wpType,
@@ -518,10 +543,10 @@ export async function applyBundle(
           wpType: record.wpType,
           slug: record.slug,
           title: record.title,
-          coverImageId,
           categoryIds: termIds.categoryIds,
           tagIds: termIds.tagIds,
-          authorId,
+          ...(coverImageId ? { coverImageId } : {}),
+          ...(authorId ? { authorId } : {}),
         },
       });
       // Phase 21.14 — persist the marker after every successful
@@ -558,8 +583,8 @@ export async function applyBundle(
       log(`error ${collection}/${record.slug}: ${message}`);
       await emitAudit(options.audit, {
         action: "import.wp.error",
-        targetType: collection,
         payload: {
+          collection,
           wpId: record.wpId,
           wpType: record.wpType,
           slug: record.slug,
@@ -863,15 +888,7 @@ function noop(): void {
  * is preferable to aborting an import mid-run with hundreds of
  * already-written rows.
  */
-async function emitAudit(
-  deps: AuditDeps | undefined,
-  event: {
-    action: string;
-    targetType?: string;
-    targetId?: string;
-    payload?: Record<string, unknown>;
-  },
-): Promise<void> {
+async function emitAudit(deps: AuditDeps | undefined, event: NpWpImportAuditEvent): Promise<void> {
   if (!deps) return;
   try {
     await deps.record(event);

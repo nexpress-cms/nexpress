@@ -26,7 +26,8 @@
 12. [Roles and Capabilities](#12-roles-and-capabilities)
 13. [Community Settings](#13-community-settings)
 14. [Audit Log](#14-audit-log)
-15. [What's Not Built (Yet)](#15-whats-not-built-yet)
+15. [Runtime Contract and Diagnostics](#15-runtime-contract-and-diagnostics)
+16. [What's Not Built (Yet)](#16-whats-not-built-yet)
 
 ---
 
@@ -184,7 +185,7 @@ Linked identities surface in:
 
 ## 5. Comments
 
-`createComment({ targetType, targetId, body, memberId })`.
+`createComment({ targetType, targetId, bodyMd, memberId })`.
 Polymorphic — `targetType` can be any collection slug, plus
 `thread` / `reply` (forum) and any future surface that opts
 in. Comments support:
@@ -196,7 +197,7 @@ in. Comments support:
   with `status = 'hidden'`; restore flips back to `'visible'`.
 - Soft delete on member request (Phase 9.7l mass-delete-by-
   member action available to staff).
-- Edit window (per `community.editWindowMinutes` setting).
+- Owner/moderator edits; soft-deleted comments cannot be edited back.
 - Markdown rendering (`renderCommentMarkdown` — XSS-safe
   subset).
 
@@ -214,11 +215,11 @@ values is gated by the admin's `community.reactionKinds`
 allow-list — defaults to `["like"]`, sites add
 `["like", "love", "celebrate", ...]`.
 
-`follow({ memberId, targetType, targetId })` for users
+`follow({ followerId, targetType, targetId })` for members
 following members or threads. Generates `notification:follow`
 fan-out events.
 
-Counts via `countReactions({ targetType, targetId })`. Live
+Counts via `countReactions(targetType, targetId)`. Live
 on the comment / doc detail page; updates pessimistically on
 the next render (no realtime push).
 
@@ -249,6 +250,11 @@ cadence at `/members/me/notifications`. The
 notifications into daily or weekly email summaries for members who
 opt in. With `NoopEmailAdapter` (default), rows stay in DB and the
 in-app inbox still works, but digest mail is not delivered.
+
+Notification preferences are an exact JSONB contract. `{}` is the compact
+default and expands to `disabled: []`, `digest: "off"`, and empty digest
+timestamps. Present fields must be valid and unknown keys fail closed; the
+runtime never drops malformed entries or silently rewrites them as defaults.
 
 ---
 
@@ -297,7 +303,7 @@ Per-member actions on `/admin/members/[id]`:
 - **Bans panel** (Phase 9.5a) — issue / revoke; site /
   category / collection scope; permanent or expiring.
 - **Roles panel** (Phase 9.5b) — grant `category-mod` /
-  `member-mod` etc. with optional scopeId + expiresAt.
+  `collection-mod` / `community-mod` with optional scopeId + expiresAt.
 - **Linked identities panel** (Phase 9.6i) — list + revoke
   OAuth connections.
 - **Purge content panel** (Phase 9.7l, admin-only) — mass
@@ -318,7 +324,7 @@ Three optional adapters; default to no-op:
 import { setSpamAdapter, setProfanityAdapter, setReputationAdapter } from "@nexpress/core/community";
 
 setSpamAdapter({
-  check: async ({ text, member }) => {
+  check: async (text, context) => {
     // Return one of:
     //   { kind: "pass" }
     //   { kind: "flag", reason, metadata }
@@ -327,26 +333,31 @@ setSpamAdapter({
 });
 
 setProfanityAdapter({
-  check: async ({ text }) => /* same shape */,
+  check: async (text, context) => /* same shape */,
 });
 
 setReputationAdapter({
-  apply: async ({ event, memberId }) => {
-    // Mutate `np_members.reputation` atomically.
-  },
+  apply: async (event) => 5,
 });
 ```
 
-Adapters fail-open: a thrown error logs + treats as `pass`.
+Spam and profanity results are checked at dispatch. A thrown adapter or a
+malformed result does not block the write, but it is converted to `flag`, the
+content lands in `pending`, and Admin Health records the contained failure.
 Verdicts:
 
 - `pass` — write goes through with default status.
-- `flag` — write goes through but lands as `pending` (member
-  doc) or `hidden` (comment); audit row records the verdict.
+- `flag` — write goes through but lands as `pending`; the audit row
+  records the verdict.
 - `reject` — 400 with the verdict's reason.
 
 Profanity runs **before** spam (language-level check before
 intent-level). Either side's `reject` short-circuits.
+
+Reputation adapters are fail-soft: their failure never rolls back the
+community write. Events are exact tagged unions and deltas must be finite safe
+integers. Invalid or fractional deltas are skipped and diagnosed rather than
+truncated.
 
 Reputation events the framework emits:
 
@@ -388,7 +399,7 @@ roles:
 
 - `category-mod` — moderate one forum category
 - `collection-mod` — moderate comments on one collection
-- `member-mod` — moderate any member's writes site-wide
+- `community-mod` — moderate community content site-wide
 
 `memberCan(memberId, action, target)` resolves grants in
 priority order: site-wide member roles → scoped grants →
@@ -408,8 +419,6 @@ the `memberCan` helper rather than hardcoding role names.
 - **`registrationEnabled`** — toggle self-register endpoint
 - **`reactionKinds`** — allow-list (`like`, `love`, etc.)
 - **`memberUploadQuota.perDay` / `.total`** — `null` = unlimited
-- **`editWindowMinutes`** — how long after creating a comment
-  the author can still edit
 
 Stored in `np_settings` under `community` key, per-site
 (Phase 15.4 — multi-site siteId scope).
@@ -444,7 +453,34 @@ request scope) leave `site_id` null.
 
 ---
 
-## 15. What's Not Built (Yet)
+## 15. Runtime Contract and Diagnostics
+
+`@nexpress/core/community-contract` is the client-safe boundary shared by
+Core, API routes, Admin/member views, plugin-facing registries, plugin doctor,
+and live health. It exports the exact request, persisted-row, wire-row,
+settings, notification-preference, moderation, reputation, and role-catalog
+validators without importing the server-only Core runtime.
+
+Community inputs are exact and bounded: unknown keys, malformed dates and ids,
+invalid tagged unions, sparse arrays, accessors, non-JSON payloads, and broken
+cross-field invariants fail closed. Database rows are validated before they
+leave community services, and `Date` values are serialized into the matching
+wire contract before an API response reaches a browser client. Audit actor and
+target pairs are validated before the best-effort insert, and reputation events
+must name the same recipient whose score would be updated.
+
+`plugin doctor` reports malformed community settings and persisted rows as
+`community.contract`. Adapter and registry failures are contained in a bounded
+runtime diagnostic buffer and surface as the `community` row in Admin Health;
+they are not silently converted into successful moderation or reputation
+results. Malformed persisted notification preferences also emit a runtime
+diagnostic and fail closed for the notification side effect without rolling
+back the community write that triggered it; unrelated transient preference
+read failures remain fail-open.
+
+---
+
+## 16. What's Not Built (Yet)
 
 In rough order of likely impact:
 

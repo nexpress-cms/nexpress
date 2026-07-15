@@ -1,5 +1,7 @@
 import { and, count, eq } from "drizzle-orm";
 
+import { npRequireReactionRow } from "../community-contract/contract.js";
+import type { NpReactionRow, NpReactToInput } from "../community-contract/types.js";
 import { getDb } from "../db/runtime.js";
 import { npComments, npReactions } from "../db/schema/community.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
@@ -27,21 +29,7 @@ import { getCommunitySettings } from "./settings.js";
 export const DEFAULT_REACTION_KINDS = ["like"] as const;
 const KIND_RE = /^[a-z][a-z0-9_-]{0,29}$/;
 
-export interface NpReactionRow {
-  id: string;
-  targetType: string;
-  targetId: string;
-  memberId: string;
-  kind: string;
-  createdAt: Date;
-}
-
-export interface NpReactToInput {
-  targetType: string;
-  targetId: string;
-  memberId: string;
-  kind: string;
-}
+export type { NpReactionRow, NpReactToInput };
 
 function validateKind(kind: string): void {
   if (!KIND_RE.test(kind)) {
@@ -157,7 +145,7 @@ async function doAddReaction(input: NpReactToInput): Promise<NpReactionRow> {
 
   let row: NpReactionRow;
   if (inserted.length > 0) {
-    row = inserted[0]!;
+    row = npRequireReactionRow(inserted[0]);
   } else {
     const [existing] = (await db
       .select()
@@ -172,7 +160,7 @@ async function doAddReaction(input: NpReactToInput): Promise<NpReactionRow> {
       )
       .limit(1)) as NpReactionRow[];
     if (!existing) throw new Error("Reaction conflict but row not found");
-    return existing;
+    return npRequireReactionRow(existing);
   }
 
   // Fan out a notification + apply reputation delta to the recipient.

@@ -1,5 +1,12 @@
 "use client";
 
+import {
+  npRequireRoleCatalogWire,
+  npRequireRoleGrantListWire,
+  type CommunityRoleDefinition,
+  type CommunityScope,
+  type NpMemberRoleGrantWireRow,
+} from "@nexpress/core/community-contract";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -19,26 +26,8 @@ import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 
-type CommunityScope = "site" | "category" | "collection" | "thread";
-
-export interface MemberRoleGrantRow {
-  id: string;
-  memberId: string;
-  role: string;
-  scopeType: CommunityScope;
-  scopeId: string | null;
-  grantedBy: string | null;
-  grantedAt: string;
-  expiresAt: string | null;
-}
-
-interface RoleDefinition {
-  role: string;
-  scopeType: CommunityScope;
-  capabilities: readonly string[];
-  label?: string;
-  source?: string | null;
-}
+export type MemberRoleGrantRow = NpMemberRoleGrantWireRow;
+type RoleDefinition = CommunityRoleDefinition;
 
 interface MemberRolesPanelProps {
   memberId: string;
@@ -133,10 +122,8 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
         setError(extractErrorMessage(rolesRaw) ?? `HTTP ${rolesRes.status}`);
         return;
       }
-      const grantsData = (grantsRaw.data ?? grantsRaw) as { docs?: MemberRoleGrantRow[] };
-      const rolesData = (rolesRaw.data ?? rolesRaw) as { docs?: RoleDefinition[] };
-      setGrants(Array.isArray(grantsData.docs) ? grantsData.docs : []);
-      setDefinitions(Array.isArray(rolesData.docs) ? rolesData.docs : []);
+      setGrants(npRequireRoleGrantListWire(grantsRaw).docs);
+      setDefinitions(npRequireRoleCatalogWire(rolesRaw).docs);
     } catch {
       setError("Unable to load role grants.");
     } finally {

@@ -33,6 +33,8 @@ export default defineConfig({
     // Pure, client-safe users, members, JWT claims, sessions, and API wire contracts.
     "auth-contract": "src/auth-contract/index.ts",
     community: "src/community/index.ts",
+    // Pure, client-safe community rows, API wires, settings, registries, and adapter contracts.
+    "community-contract": "src/community-contract/index.ts",
     // Framework-host singleton wiring. Application code should use
     // @nexpress/next createBootstrap rather than importing this directly.
     bootstrap: "src/bootstrap/index.ts",

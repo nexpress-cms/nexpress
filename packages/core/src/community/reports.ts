@@ -2,6 +2,14 @@ import { and, count, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 
 import { getCollectionRegistration, getCollectionTable } from "../collections/registry.js";
+import { npRequireReportRow } from "../community-contract/contract.js";
+import type {
+  FileReportInput,
+  ListReportsOptions,
+  ListReportsResult,
+  NpReportRow,
+  NpReportTarget,
+} from "../community-contract/types.js";
 import { getDb } from "../db/runtime.js";
 import { npComments, npMembers, npReports } from "../db/schema/community.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
@@ -14,30 +22,9 @@ import type { Principal } from "./principal.js";
 
 const MAX_REASON_LENGTH = 1000;
 const SUPPORTED_TARGETS = ["comment", "thread", "reply", "member"] as const;
-type ReportTarget = (typeof SUPPORTED_TARGETS)[number];
+export type { FileReportInput, ListReportsOptions, ListReportsResult, NpReportRow };
 
-export interface NpReportRow {
-  id: string;
-  reporterId: string;
-  targetType: string;
-  targetId: string;
-  reason: string;
-  resolvedAt: Date | null;
-  resolvedByUserId: string | null;
-  resolvedByMemberId: string | null;
-  resolution: string | null;
-  siteId: string;
-  createdAt: Date;
-}
-
-export interface FileReportInput {
-  reporterId: string;
-  targetType: ReportTarget;
-  targetId: string;
-  reason: string;
-}
-
-function validateTargetType(value: string): asserts value is ReportTarget {
+function validateTargetType(value: string): asserts value is NpReportTarget {
   if (!(SUPPORTED_TARGETS as readonly string[]).includes(value)) {
     throw new NpValidationError("Invalid input", [
       {
@@ -118,37 +105,17 @@ async function doFileReport(
     })
     .returning()) as NpReportRow[];
   if (!row) throw new Error("Report insert returned no row");
+  const checkedRow = npRequireReportRow(row);
 
   await recordAuditEvent({
     actor: { kind: "member", memberId: input.reporterId },
     action: "report.filed",
     targetType: input.targetType,
     targetId,
-    payload: { reportId: row.id, reason },
+    payload: { reportId: checkedRow.id, reason },
   });
 
-  return row;
-}
-
-export interface ListReportsOptions {
-  /** Default: only unresolved. Pass `"all"` to include resolved. */
-  status?: "unresolved" | "resolved" | "all";
-  /** Filter to a specific target type. */
-  targetType?: string;
-  /**
-   * Phase 18 — site scope. `undefined` (default) → use the
-   * request resolver's site. Pass an explicit string to view
-   * another tenant's queue (super-admin) or `null` to skip
-   * the filter entirely.
-   */
-  siteId?: string | null;
-  limit?: number;
-  offset?: number;
-}
-
-export interface ListReportsResult {
-  reports: NpReportRow[];
-  totalDocs: number;
+  return checkedRow;
 }
 
 export async function listReports(options: ListReportsOptions = {}): Promise<ListReportsResult> {
@@ -188,7 +155,7 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
     total: number;
   }>;
 
-  return { reports, totalDocs: Number(totalRow?.total ?? 0) };
+  return { reports: reports.map(npRequireReportRow), totalDocs: Number(totalRow?.total ?? 0) };
 }
 
 export interface ResolveReportInput {
@@ -210,6 +177,11 @@ export async function resolveReport(input: ResolveReportInput): Promise<NpReport
       { field: "resolution", message: "Resolution label required" },
     ]);
   }
+  if (resolution.length > MAX_REASON_LENGTH) {
+    throw new NpValidationError("Invalid input", [
+      { field: "resolution", message: `Resolution must be ≤ ${MAX_REASON_LENGTH} characters` },
+    ]);
+  }
 
   const db = getDb();
   // Issue #363 — `listReports` was already site-scoped, but
@@ -227,10 +199,11 @@ export async function resolveReport(input: ResolveReportInput): Promise<NpReport
     .where(eq(npReports.id, input.reportId))
     .limit(1)) as NpReportRow[];
   if (!existing) throw new NpNotFoundError("report", input.reportId);
-  if (existing.siteId !== requestSiteId) {
+  const checkedExisting = npRequireReportRow(existing);
+  if (checkedExisting.siteId !== requestSiteId) {
     throw new NpForbiddenError("report", "cross-site");
   }
-  if (existing.resolvedAt) {
+  if (checkedExisting.resolvedAt) {
     throw new NpValidationError("Invalid state", [
       { field: "report", message: "Report already resolved" },
     ]);
@@ -250,6 +223,7 @@ export async function resolveReport(input: ResolveReportInput): Promise<NpReport
     .where(and(eq(npReports.id, input.reportId), eq(npReports.siteId, requestSiteId)))
     .returning()) as NpReportRow[];
   if (!updated) throw new Error("Report update returned no row");
+  const checkedUpdated = npRequireReportRow(updated);
 
   await recordAuditEvent({
     actor:
@@ -257,12 +231,12 @@ export async function resolveReport(input: ResolveReportInput): Promise<NpReport
         ? { kind: "staff", userId: input.actor.user.id }
         : { kind: "member", memberId: input.actor.memberId },
     action: "report.resolved",
-    targetType: existing.targetType,
-    targetId: existing.targetId,
-    payload: { reportId: existing.id, resolution },
+    targetType: checkedExisting.targetType,
+    targetId: checkedExisting.targetId,
+    payload: { reportId: checkedExisting.id, resolution },
   });
 
-  return updated;
+  return checkedUpdated;
 }
 
 /**

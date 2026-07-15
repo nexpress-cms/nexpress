@@ -1,9 +1,20 @@
-import { createComment, listComments, memberCan } from "@nexpress/core";
+import { NpValidationError } from "@nexpress/core";
+import { createComment, listComments, memberCan } from "@nexpress/core/community";
+import {
+  npIsCommentSort,
+  npRequireCommentCreateRequest,
+  npRequireCommentListWire,
+  npToCommentWireRow,
+} from "@nexpress/core/community-contract";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
 import { ensureFor } from "../../../../../lib/init-core";
+import {
+  npReadCommunityWindow,
+  npRequireCommunityRequest,
+} from "../../../../../lib/community-contract";
 import { optionalMember, requireMember } from "../../../../../lib/member-auth-helpers";
 
 /**
@@ -22,10 +33,14 @@ export async function GET(
     const member = await optionalMember(request);
 
     const url = request.nextUrl;
-    const limit = parseInt(url.searchParams.get("limit") ?? "50", 10);
-    const offset = parseInt(url.searchParams.get("offset") ?? "0", 10);
+    const { limit, offset } = npReadCommunityWindow(url.searchParams);
     const orderParam = url.searchParams.get("order");
-    const order = orderParam === "oldest" || orderParam === "top" ? orderParam : "newest";
+    if (orderParam !== null && !npIsCommentSort(orderParam)) {
+      throw new NpValidationError("Invalid input", [
+        { field: "order", message: "Must be newest, oldest, or top" },
+      ]);
+    }
+    const order = orderParam ?? "newest";
 
     // Hidden rows are mod-only. The original guard only checked
     // "is any member logged in?", which leaked hidden/deleted/pending
@@ -42,8 +57,8 @@ export async function GET(
     }
 
     const result = await listComments(slug, id, {
-      limit: Number.isFinite(limit) ? limit : undefined,
-      offset: Number.isFinite(offset) ? offset : undefined,
+      limit,
+      offset,
       order,
       includeHidden,
       // Phase 16.1 — apply viewer's mute list. Anonymous
@@ -52,7 +67,12 @@ export async function GET(
       // need to see everything.
       ...(member && !includeHidden ? { viewerMemberId: member.id } : {}),
     });
-    return npSuccessResponse(result);
+    return npSuccessResponse(
+      npRequireCommentListWire({
+        comments: result.comments.map(npToCommentWireRow),
+        totalDocs: result.totalDocs,
+      }),
+    );
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
@@ -67,10 +87,10 @@ export async function POST(
     const member = await requireMember(request);
 
     const { slug, id } = await params;
-    const body = (await readJsonBody(request)) as { bodyMd?: unknown; parentId?: unknown } | null;
-    const bodyMd = typeof body?.bodyMd === "string" ? body.bodyMd : "";
-    const parentId =
-      typeof body?.parentId === "string" && body.parentId.length > 0 ? body.parentId : null;
+    const { bodyMd, parentId } = npRequireCommunityRequest(
+      npRequireCommentCreateRequest,
+      await readJsonBody(request),
+    );
 
     const created = await createComment({
       targetType: slug,
@@ -79,7 +99,7 @@ export async function POST(
       parentId,
       bodyMd,
     });
-    return npSuccessResponse(created, { status: 201 });
+    return npSuccessResponse(npToCommentWireRow(created), { status: 201 });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

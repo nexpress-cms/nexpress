@@ -1,14 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import {
+  npRequireMarkNotificationsReadWire,
+  type NpNotificationWireRow,
+} from "@nexpress/core/community-contract";
 
-export interface NotificationInboxItem {
-  id: string;
-  kind: string;
-  payload: Record<string, unknown>;
-  readAt: string | null;
-  createdAt: string;
-}
+export type NotificationInboxItem = NpNotificationWireRow;
 
 interface NotificationsInboxProps {
   initialNotifications: NotificationInboxItem[];
@@ -239,8 +237,8 @@ async function markRead(input: { ids: string[] } | { all: true }): Promise<numbe
     } | null;
     throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
   }
-  const body = (await res.json().catch(() => null)) as { marked?: unknown } | null;
-  return typeof body?.marked === "number" ? body.marked : 0;
+  const body = await res.json();
+  return npRequireMarkNotificationsReadWire(body).marked;
 }
 
 function labelFor(kind: string): string {
