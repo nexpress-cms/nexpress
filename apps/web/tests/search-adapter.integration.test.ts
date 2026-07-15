@@ -102,7 +102,7 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
       },
     });
 
-    const result = await searchCollections({ q: "pumpkin" });
+    const result = await searchCollections({ q: "pumpkin", collections: ["posts"] });
     expect(adapterCalls).toBe(1);
     expect(result.total).toBe(1);
     expect(result.results[0]?.doc.title).toBe("Adapter-only result");
