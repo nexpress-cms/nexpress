@@ -52,17 +52,20 @@ try {
 }
 ```
 
-Custom storage, observability, email, and CDN purge adapters are injected through the
-factory options and require the matching `custom` environment/config intent.
+Custom storage, observability, email, search, and CDN purge adapters are injected through the
+factory options. Storage, observability, and email require the matching `custom` environment/config intent.
 Built-in intent rejects an injected adapter instead of silently selecting a
 different implementation. CDN purge has no environment mode; pass
 `cdnPurgeAdapter` to make bootstrap own its optional `shutdown()` lifecycle.
+Search also has no environment mode; pass an exact `searchAdapter` to install it
+for read traffic, detach only that owned instance on retry rollback, and run its
+optional void `shutdown()` during terminal cleanup. See [search.md](./search.md).
 
 ## Shutdown
 
 `shutdown()` is terminal and idempotent. It waits for in-flight startup, then
 attempts every cleanup in dependency order: producer, plugins, static
-registries and email, cache/CDN, storage, DB, and observability. Multiple cleanup failures
+registries, cache/search/CDN, email, storage, DB, and observability. Multiple cleanup failures
 are returned as one `AggregateError`. A stopped bootstrap cannot be restarted;
 create a new process/bootstrap instead.
 

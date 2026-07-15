@@ -74,10 +74,9 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
     );
 
     let adapterCalls = 0;
-    const { searchCollections, setSearchAdapter } = await import(
-      "@nexpress/core"
-    );
+    const { searchCollections, setSearchAdapter } = await import("@nexpress/core");
     setSearchAdapter({
+      kind: "test-adapter",
       search: () => {
         adapterCalls += 1;
         // Return a wholly synthesized result that doesn't include
@@ -87,7 +86,14 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
           results: [
             {
               collection: "posts",
-              doc: { id: "fake", title: "Adapter-only result", slug: "adapter-only" },
+              doc: {
+                id: "fake",
+                siteId: "default",
+                status: "published",
+                visibility: "public",
+                title: "Adapter-only result",
+                slug: "adapter-only",
+              },
             },
           ],
           total: 1,
@@ -117,10 +123,9 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
       { params: Promise.resolve({ slug: "posts" }) },
     );
 
-    const { searchCollections, setSearchAdapter } = await import(
-      "@nexpress/core"
-    );
+    const { searchCollections, setSearchAdapter } = await import("@nexpress/core");
     setSearchAdapter({
+      kind: "test-adapter",
       // Defer to pg by returning null — useful for adapters
       // that only handle certain collections or short queries.
       search: () => null,
@@ -145,10 +150,9 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
       { params: Promise.resolve({ slug: "posts" }) },
     );
 
-    const { searchCollections, setSearchAdapter } = await import(
-      "@nexpress/core"
-    );
+    const { searchCollections, setSearchAdapter } = await import("@nexpress/core");
     setSearchAdapter({
+      kind: "test-adapter",
       search: () => {
         throw new Error("simulated upstream outage");
       },
@@ -160,15 +164,73 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
     expect(result.total).toBeGreaterThanOrEqual(1);
   });
 
+  it("invalid adapter results are contained and fall through to Postgres", async () => {
+    const staff = await seedUser({ role: "editor" });
+    await collectionPOST(
+      staffPostsRequest(staff, {
+        title: "Fallback chestnut",
+        slug: "fallback-chestnut",
+        content: npCreateEmptyRichTextContent(),
+        _status: "published",
+      }),
+      { params: Promise.resolve({ slug: "posts" }) },
+    );
+
+    const { getSearchAdapterDiagnostics, searchCollections, setSearchAdapter } =
+      await import("@nexpress/core");
+    setSearchAdapter({
+      kind: "false-index",
+      search: () => false as never,
+    });
+
+    const falseResult = await searchCollections({ q: "chestnut" });
+    expect(falseResult.results.some((item) => item.doc.slug === "fallback-chestnut")).toBe(true);
+    expect(getSearchAdapterDiagnostics()).toEqual(
+      expect.objectContaining({
+        adapterKind: "false-index",
+        resultContractFailures: 1,
+        dispatchFailures: 0,
+      }),
+    );
+
+    setSearchAdapter({
+      kind: "broken-index",
+      search: () => ({
+        results: [
+          {
+            collection: "posts",
+            doc: {
+              id: "cross-site",
+              siteId: "other-site",
+              status: "published",
+              visibility: "public",
+            },
+          },
+        ],
+        total: 1,
+        perCollection: { posts: 1 },
+      }),
+    });
+
+    const result = await searchCollections({ q: "chestnut" });
+    expect(result.results.some((item) => item.doc.slug === "fallback-chestnut")).toBe(true);
+    expect(getSearchAdapterDiagnostics()).toEqual(
+      expect.objectContaining({
+        adapterKind: "broken-index",
+        resultContractFailures: 1,
+        dispatchFailures: 0,
+      }),
+    );
+  });
+
   it("adapter receives the normalized context (q, limit, offset)", async () => {
     let captured: unknown = null;
-    const { searchCollections, setSearchAdapter } = await import(
-      "@nexpress/core"
-    );
+    const { searchCollections, setSearchAdapter } = await import("@nexpress/core");
     setSearchAdapter({
+      kind: "capture",
       search: (ctx) => {
         captured = ctx;
-        return { results: [], total: 0, perCollection: {} };
+        return { results: [], total: 0, perCollection: { posts: 0 } };
       },
     });
 
@@ -184,27 +246,29 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
       collections: string[];
       limit: number;
       offset: number;
+      siteId: string;
+      visibility: string;
     };
     expect(ctx.q).toBe("trimmed");
     expect(ctx.collections).toEqual(["posts"]);
     expect(ctx.limit).toBe(7);
     expect(ctx.offset).toBe(14);
+    expect(ctx.siteId).toBe("default");
+    expect(ctx.visibility).toBe("public");
   });
 
   it("setSearchAdapter rejects an object missing `search()`", async () => {
     const { setSearchAdapter } = await import("@nexpress/core");
-    expect(() =>
-      setSearchAdapter({ search: undefined as never }),
-    ).toThrow(/must implement search/);
+    expect(() => setSearchAdapter({ kind: "invalid", search: undefined as never })).toThrow(
+      /must be a function/u,
+    );
   });
 
   it("resetSearchAdapter restores the default (no adapter)", async () => {
-    const {
-      getSearchAdapter,
-      setSearchAdapter,
-      resetSearchAdapter,
-    } = await import("@nexpress/core");
+    const { getSearchAdapter, setSearchAdapter, resetSearchAdapter } =
+      await import("@nexpress/core");
     setSearchAdapter({
+      kind: "test-adapter",
       search: () => ({ results: [], total: 0, perCollection: {} }),
     });
     expect(getSearchAdapter()).not.toBeNull();

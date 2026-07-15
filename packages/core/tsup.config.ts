@@ -61,6 +61,8 @@ export default defineConfig({
     revisions: "src/revisions/index.ts",
     // Client-safe code-owned route definition, registry, and Admin wire contract.
     routes: "src/routes/index.ts",
+    // Server-side search request/result contracts, adapter runtime, and DB dispatch.
+    search: "src/search/index.ts",
     seo: "src/seo/index.ts",
     // Server-side site registry, execution context, memberships, and authorization.
     sites: "src/sites/index.ts",

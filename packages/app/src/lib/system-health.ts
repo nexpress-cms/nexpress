@@ -20,6 +20,7 @@ import {
   npObservabilityAdaptersMatchRuntimeConfig,
   npReadObservabilityRuntimeConfig,
 } from "@nexpress/core/observability";
+import { getSearchAdapterDiagnostics } from "@nexpress/core/search";
 import {
   getOptionalStorageRuntimeConfig,
   getStorageAdapter,
@@ -509,6 +510,44 @@ export function checkCacheInvalidation(): Check {
   };
 }
 
+/** Built-in/external search dispatch posture and recently contained failures. */
+export function checkSearchAdapter(): Check {
+  try {
+    const diagnostics = getSearchAdapterDiagnostics();
+    const failures =
+      diagnostics.dispatchFailures +
+      diagnostics.resultContractFailures +
+      diagnostics.shutdownFailures;
+    const kind = diagnostics.adapterKind ?? "postgres-tsvector";
+    if (failures > 0) {
+      const last = diagnostics.lastFailure;
+      return {
+        id: "search",
+        label: "Search adapter",
+        state: "warn",
+        detail: `${kind} · ${failures.toString()} failure${failures === 1 ? "" : "s"} contained`,
+        hint: last
+          ? `Last ${last.operation} failure from ${last.adapterKind} at ${last.occurredAt}: ${last.message}`
+          : "Inspect process logs and the external search service.",
+      };
+    }
+    return {
+      id: "search",
+      label: "Search adapter",
+      state: "ok",
+      detail: diagnostics.adapterKind ? `external (${kind})` : "built-in Postgres tsvector",
+    };
+  } catch (error) {
+    return {
+      id: "search",
+      label: "Search adapter",
+      state: "error",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Fix the search adapter registration contract before serving search traffic.",
+    };
+  }
+}
+
 /**
  * NP_SECRET — runtime parallel of #597's boot-time check, plus
  * the entropy floor introduced in the setup wizard (#618). Most
@@ -569,6 +608,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
   checks.push(checkEmailAdapter());
   checks.push(checkObservabilityAdapters());
   checks.push(checkCacheInvalidation());
+  checks.push(checkSearchAdapter());
   checks.push(checkSecret());
   return {
     generatedAt: new Date().toISOString(),

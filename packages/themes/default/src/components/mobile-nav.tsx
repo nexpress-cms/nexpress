@@ -114,6 +114,7 @@ export function MobileNav({ items, member, notificationUnread, label = "Menu" }:
             id="np-mobile-nav-search-input"
             type="search"
             name="q"
+            maxLength={256}
             placeholder="Search writing"
             autoComplete="off"
           />

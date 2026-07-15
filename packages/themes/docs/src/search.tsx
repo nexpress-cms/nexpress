@@ -1,20 +1,21 @@
 import * as React from "react";
 import type { NpRouteRenderProps } from "@nexpress/theme";
-import { getCollectionConfig, searchCollections } from "@nexpress/core";
+import { getCollectionConfig } from "@nexpress/core";
+import {
+  NpSearchContractError,
+  npRequireSearchRequest,
+  searchCollections,
+  type NpSearchDocument,
+} from "@nexpress/core/search";
 
 /**
  * Resolves a search-result URL via the collection's
  * `seo.urlPath` config when available, falling back to
  * `/<collection>/<slug>` convention. Without this, posts (which
  * typically live under `/blog/`) would 404 from search hits.
- * Wrapped in try/catch because `getCollectionConfig` throws for
- * unknown collections — a search adapter that returns rows from
- * a no-longer-registered collection shouldn't crash the page.
+ * Wrapped in try/catch as a defensive guard around collection metadata reloads.
  */
-function resolveResultUrl(
-  collection: string,
-  doc: Record<string, unknown>,
-): string {
+function resolveResultUrl(collection: string, doc: NpSearchDocument): string {
   try {
     const config = getCollectionConfig(collection);
     const urlPath = config.seo?.urlPath;
@@ -43,7 +44,37 @@ export async function DocsSearch({
   searchParams,
 }: NpRouteRenderProps): Promise<React.ReactElement> {
   const raw = searchParams.q;
-  const query = typeof raw === "string" ? raw.trim() : "";
+  let query: string;
+  try {
+    const unknown = Object.keys(searchParams).find((key) => key !== "q");
+    if (unknown) {
+      throw new NpSearchContractError("Invalid docs search request", [
+        {
+          code: "unknown-field",
+          path: `search.docs.query.${unknown}`,
+          message: `unsupported search parameter "${unknown}".`,
+        },
+      ]);
+    }
+    if (raw !== undefined && typeof raw !== "string") {
+      throw new NpSearchContractError("Invalid docs search request", [
+        {
+          code: "duplicate",
+          path: "search.docs.query.q",
+          message: "the search query may appear only once.",
+        },
+      ]);
+    }
+    query = npRequireSearchRequest({ q: raw ?? "", limit: 20 }).q;
+  } catch {
+    return (
+      <div className="np-docs-search" role="alert">
+        <p className="np-docs-search-heading">Search</p>
+        <h1>Invalid search query</h1>
+        <p className="np-docs-search-empty">Enter one query of at most 256 characters.</p>
+      </div>
+    );
+  }
 
   if (query.length === 0) {
     return (
@@ -66,17 +97,13 @@ export async function DocsSearch({
         <p className="np-docs-search-empty">No matches.</p>
       ) : (
         <ul className="np-docs-search-results">
-          {result.results.map((item, i) => {
+          {result.results.map((item) => {
             const doc = item.doc;
             const slug = typeof doc.slug === "string" ? doc.slug : null;
-            const title =
-              typeof doc.title === "string" ? doc.title : (slug ?? "Untitled");
+            const title = typeof doc.title === "string" ? doc.title : (slug ?? "Untitled");
             const url = resolveResultUrl(item.collection, doc);
             return (
-              <li
-                key={`${item.collection}:${(doc.id as string | undefined) ?? i}`}
-                className="np-docs-search-result"
-              >
+              <li key={`${item.collection}:${doc.id}`} className="np-docs-search-result">
                 <p className="np-docs-search-result-eyebrow">{item.collection}</p>
                 <h2>
                   <a href={url}>{title}</a>

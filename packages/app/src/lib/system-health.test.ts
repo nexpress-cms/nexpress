@@ -2,11 +2,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type * as NpStorageModule from "@nexpress/core/storage";
 import type * as NpObservabilityModule from "@nexpress/core/observability";
 import type * as NpCacheModule from "@nexpress/core/cache";
+import type * as NpSearchModule from "@nexpress/core/search";
 
 interface HealthTestRuntime {
-  config: NpStorageModule.NpStorageRuntimeConfig | null;
+  config: {
+    adapter: "s3";
+    s3: { bucket: string; region: string };
+  } | null;
   kind: string;
-  observabilityConfig: NpObservabilityModule.NpObservabilityRuntimeConfig | null;
+  observabilityConfig: {
+    logger: "custom";
+    errorReporter: "custom";
+  } | null;
   loggerKind: string;
   reporterKind: string;
   loggerFailures: number;
@@ -15,6 +22,10 @@ interface HealthTestRuntime {
   cacheAttempts: number;
   cachePartial: number;
   cacheUnavailable: number;
+  searchAdapterKind: string | null;
+  searchDispatchFailures: number;
+  searchResultFailures: number;
+  searchShutdownFailures: number;
 }
 
 const runtime = vi.hoisted<HealthTestRuntime>(() => ({
@@ -29,6 +40,10 @@ const runtime = vi.hoisted<HealthTestRuntime>(() => ({
   cacheAttempts: 0,
   cachePartial: 0,
   cacheUnavailable: 0,
+  searchAdapterKind: null,
+  searchDispatchFailures: 0,
+  searchResultFailures: 0,
+  searchShutdownFailures: 0,
 }));
 
 vi.mock("@nexpress/core", () => ({
@@ -97,12 +112,46 @@ vi.mock("@nexpress/core/cache", async (importOriginal) => {
   };
 });
 
+vi.mock("@nexpress/core/search", async (importOriginal) => {
+  const actual = await importOriginal<typeof NpSearchModule>();
+  return {
+    ...actual,
+    getSearchAdapterDiagnostics: () => ({
+      adapterKind: runtime.searchAdapterKind,
+      dispatchFailures: runtime.searchDispatchFailures,
+      resultContractFailures: runtime.searchResultFailures,
+      shutdownFailures: runtime.searchShutdownFailures,
+      lastFailure:
+        runtime.searchDispatchFailures +
+          runtime.searchResultFailures +
+          runtime.searchShutdownFailures >
+        0
+          ? {
+              adapterKind: runtime.searchAdapterKind ?? "unknown",
+              operation:
+                runtime.searchShutdownFailures > 0
+                  ? "shutdown"
+                  : runtime.searchResultFailures > 0
+                    ? "result-contract"
+                    : "dispatch",
+              message: "simulated search failure",
+              occurredAt: "2026-07-15T00:00:00.000Z",
+            }
+          : null,
+    }),
+  };
+});
+
 vi.mock("@/lib/bootstrap", () => ({
   getDb: vi.fn(),
 }));
 
-const { checkCacheInvalidation, checkObservabilityAdapters, checkStorageAdapter } =
-  await import("./system-health.js");
+const {
+  checkCacheInvalidation,
+  checkObservabilityAdapters,
+  checkSearchAdapter,
+  checkStorageAdapter,
+} = await import("./system-health.js");
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -117,6 +166,49 @@ afterEach(() => {
   runtime.cacheAttempts = 0;
   runtime.cachePartial = 0;
   runtime.cacheUnavailable = 0;
+  runtime.searchAdapterKind = null;
+  runtime.searchDispatchFailures = 0;
+  runtime.searchResultFailures = 0;
+  runtime.searchShutdownFailures = 0;
+});
+
+describe("live search health", () => {
+  it("reports the built-in Postgres path when no external adapter is installed", () => {
+    expect(checkSearchAdapter()).toEqual(
+      expect.objectContaining({ state: "ok", detail: "built-in Postgres tsvector" }),
+    );
+  });
+
+  it("reports an exact healthy external adapter kind", () => {
+    runtime.searchAdapterKind = "meilisearch";
+    expect(checkSearchAdapter()).toEqual(
+      expect.objectContaining({ state: "ok", detail: "external (meilisearch)" }),
+    );
+  });
+
+  it("surfaces contained adapter result failures", () => {
+    runtime.searchAdapterKind = "meilisearch";
+    runtime.searchResultFailures = 2;
+    expect(checkSearchAdapter()).toEqual(
+      expect.objectContaining({
+        state: "warn",
+        detail: "meilisearch · 2 failures contained",
+        hint: expect.stringContaining("result-contract"),
+      }),
+    );
+  });
+
+  it("surfaces terminal cleanup failures in the same diagnostic row", () => {
+    runtime.searchAdapterKind = "meilisearch";
+    runtime.searchShutdownFailures = 1;
+    expect(checkSearchAdapter()).toEqual(
+      expect.objectContaining({
+        state: "warn",
+        detail: "meilisearch · 1 failure contained",
+        hint: expect.stringContaining("shutdown"),
+      }),
+    );
+  });
 });
 
 describe("live cache invalidation health", () => {

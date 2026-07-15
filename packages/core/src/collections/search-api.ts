@@ -3,61 +3,30 @@ import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import { findDocuments } from "./pipeline.js";
 import { getDb } from "../db/runtime.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/id-contract.js";
+import { getCurrentSiteId } from "../sites/context.js";
+import { getI18nConfig } from "../i18n/registry.js";
 import { getAllCollectionSlugs, getCollectionConfig, getCollectionTable } from "./registry.js";
 import { buildSearchVectorParts, buildWeightedSearchVectorSql } from "./search.js";
-import { getSearchAdapter } from "./search-adapter.js";
-import type { NpCollectionConfig } from "../config/types.js";
-
-export interface SearchCollectionsOptions {
-  q: string;
-  collections?: string[];
-  limit?: number;
-  offset?: number;
-  /**
-   * Extra where-filter applied on top of the default `{ status: "published" }`
-   * for each collection. Pass `{}` to disable the status filter (caller should
-   * only do this for authenticated admin contexts).
-   */
-  where?: Record<string, unknown>;
-  /**
-   * Phase 12.4 — restrict i18n collections to one locale. Non-
-   * i18n collections ignore this (no `locale` column to match).
-   * Public site search reads this from the URL's locale prefix
-   * so visitors browsing in `/ko/` only see Korean hits.
-   */
-  locale?: string;
-}
-
-export interface SearchResultItem {
-  collection: string;
-  doc: Record<string, unknown>;
-  /**
-   * Relative relevance score for the default Postgres search path.
-   * Higher values rank first. The scale is intentionally not stable API:
-   * adapters may omit it or use their own scoring semantics.
-   */
-  score?: number;
-}
-
-export interface SearchCollectionFacet {
-  collection: string;
-  label: string;
-  count: number;
-  selected: boolean;
-}
-
-export interface SearchResult {
-  results: SearchResultItem[];
-  total: number;
-  perCollection: Record<string, number>;
-  facets?: SearchCollectionFacet[];
-  limit?: number;
-  offset?: number;
-  hasNextPage?: boolean;
-}
-
-const DEFAULT_LIMIT = 10;
-const MAX_LIMIT = 50;
+import { getSearchAdapter, npRecordSearchAdapterFailure } from "./search-adapter.js";
+import type { NpCollectionConfig, NpFindWhere } from "../config/types.js";
+import {
+  NpSearchContractError,
+  npCreateEmptySearchResult,
+  npCreateSearchResult,
+  npRequireSearchAdapterContext,
+  npRequireSearchCollectionSlug,
+  npRequireSearchReindexResult,
+  npRequireSearchRequest,
+  npSearchContractLimits,
+} from "../search/contract.js";
+import type {
+  NpSearchAdapterResult,
+  NpSearchReindexResult,
+  NpSearchRequestInput,
+  NpSearchResult,
+  NpSearchResultItem,
+} from "../search/types.js";
 const SCORE_PRECISION = 6;
 const MIN_TOKEN_LENGTH = 2;
 const TOKEN_MATCH_WEIGHT = {
@@ -69,16 +38,6 @@ const TOKEN_MATCH_WEIGHT = {
 const TITLE_EXACT_BOOST = 180;
 const TITLE_PREFIX_BOOST = 100;
 const TITLE_PHRASE_BOOST = 60;
-
-function normalizeLimit(limit: number | undefined): number {
-  if (!limit || limit < 1) return DEFAULT_LIMIT;
-  return Math.min(Math.floor(limit), MAX_LIMIT);
-}
-
-function normalizeOffset(offset: number | undefined): number {
-  if (!offset || offset < 0) return 0;
-  return Math.floor(offset);
-}
 
 function hasSearchVectorColumn(table: PgTable): boolean {
   return (table as unknown as Record<string, unknown>).searchVector !== undefined;
@@ -177,50 +136,60 @@ function scoreSearchResult(
  * score across the candidate set so title/name hits can outrank weaker body
  * hits even when they come from another collection.
  */
-export async function searchCollections(opts: SearchCollectionsOptions): Promise<SearchResult> {
-  const query = opts.q.trim();
-  if (query.length === 0) {
-    return { results: [], total: 0, perCollection: {} };
+export async function searchCollections(opts: NpSearchRequestInput): Promise<NpSearchResult> {
+  const request = npRequireSearchRequest(opts);
+  const siteId = request.siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+  const context = npRequireSearchAdapterContext({ ...request, siteId });
+  const { slugs, labels } = resolveSearchCatalog(context.collections);
+  assertConfiguredSearchLocale(context.locale);
+  if (
+    (context.offset + context.limit) * Math.max(1, slugs.length) >
+    npSearchContractLimits.candidateRows
+  ) {
+    throw new NpSearchContractError("Invalid search request", [
+      {
+        code: "max-items",
+        path: "search.request.offset",
+        message: `the selected collections and page depth may inspect at most ${npSearchContractLimits.candidateRows.toString()} candidate rows.`,
+      },
+    ]);
   }
+  if (context.q.length === 0) return npCreateEmptySearchResult(context, labels);
 
-  const slugs = opts.collections ?? getAllCollectionSlugs();
-  const selected = opts.collections ? new Set(opts.collections) : null;
-  const limit = normalizeLimit(opts.limit);
-  const offset = normalizeOffset(opts.offset);
+  const query = context.q;
+  const limit = context.limit;
+  const offset = context.offset;
   const perCollectionLimit = offset + limit;
-  const baseWhere = opts.where ?? { status: "published" };
+  const baseWhere: NpFindWhere =
+    context.visibility === "public"
+      ? { status: "published", visibility: "public", siteId: context.siteId }
+      : { visibility: "*", siteId: context.siteId };
 
-  // Phase 10.6 — pluggable adapter. When a site has installed an
-  // external search engine (Algolia / Meilisearch / OpenSearch),
-  // delegate to that. The adapter can return `null` to fall
-  // through to the pg path (e.g. for collections it doesn't
-  // index). Throws are fail-open: log + treat as null. The
-  // adapter is responsible for keeping its index fresh — the
-  // pipeline already fires `content:afterCreate / :afterUpdate /
-  // :afterDelete` hooks (9.7o made them Principal-aware), so a
-  // plugin subscribes to those for indexing without needing any
-  // new framework plumbing.
+  // External engines own only the normalized candidate page. Core validates
+  // its complete result/site/visibility/count contract before returning it;
+  // malformed or throwing adapters are diagnosed and fall back to Postgres.
+  // The adapter can deliberately return null when its index is unavailable.
   const adapter = getSearchAdapter();
   if (adapter) {
     try {
-      const adapterResult = await adapter.search({
-        q: query,
-        collections: opts.collections,
-        limit,
-        offset,
-        locale: opts.locale,
-      });
-      if (adapterResult) return adapterResult;
+      const adapterResult = await adapter.search(context);
+      if (adapterResult !== null && adapterResult !== undefined) {
+        try {
+          return npCreateSearchResult(adapterResult, context, labels);
+        } catch (error) {
+          const message = npRecordSearchAdapterFailure(adapter.kind, "result-contract", error);
+          await reportSearchAdapterFailure(adapter.kind, "result-contract", message).catch(
+            () => undefined,
+          );
+        }
+      }
     } catch (err) {
-      const { getLogger } = await import("../observability/logger.js");
-      getLogger().warn("search adapter threw — falling back to pg tsvector", {
-        error: err instanceof Error ? err.message : String(err),
-      });
+      const message = npRecordSearchAdapterFailure(adapter.kind, "dispatch", err);
+      await reportSearchAdapterFailure(adapter.kind, "dispatch", message).catch(() => undefined);
     }
   }
 
   const candidates: SearchCandidate[] = [];
-  const facets: SearchCollectionFacet[] = [];
   const perCollection: Record<string, number> = {};
   let total = 0;
 
@@ -239,7 +208,7 @@ export async function searchCollections(opts: SearchCollectionsOptions): Promise
     // doesn't exist), so we forward it unconditionally without
     // a config check here.
     const config = getCollectionConfig(slug);
-    const collectionLocale = config.i18n && opts.locale ? opts.locale : undefined;
+    const collectionLocale = config.i18n && context.locale ? context.locale : undefined;
 
     const page = await findDocuments(slug, {
       search: query,
@@ -250,12 +219,6 @@ export async function searchCollections(opts: SearchCollectionsOptions): Promise
     });
 
     perCollection[slug] = page.totalDocs;
-    facets.push({
-      collection: slug,
-      label: config.labels.plural,
-      count: page.totalDocs,
-      selected: selected ? selected.has(slug) : true,
-    });
     total += page.totalDocs;
     for (const [rankWithinCollection, doc] of page.docs.entries()) {
       candidates.push({
@@ -273,27 +236,106 @@ export async function searchCollections(opts: SearchCollectionsOptions): Promise
     if (a.collectionOrder !== b.collectionOrder) return a.collectionOrder - b.collectionOrder;
     return a.rankWithinCollection - b.rankWithinCollection;
   });
-  const pagedResults = rankedResults.slice(offset, offset + limit).map(
-    ({ collection, doc, score }): SearchResultItem => ({
+  const pagedResults = rankedResults
+    .slice(offset, offset + limit)
+    .map(({ collection, doc, score }): NpSearchResultItem => ({
       collection,
-      doc,
+      doc: doc as NpSearchResultItem["doc"],
       score,
-    }),
-  );
-  return {
+    }));
+  const candidate: NpSearchAdapterResult = {
     results: pagedResults,
     total,
     perCollection,
-    facets,
-    limit,
-    offset,
-    hasNextPage: offset + pagedResults.length < total,
   };
+  return npCreateSearchResult(candidate, context, labels);
 }
 
-export interface ReindexResult {
-  collection: string;
-  processed: number;
+function resolveSearchCatalog(collections: readonly string[] | undefined): {
+  readonly slugs: readonly string[];
+  readonly labels: Readonly<Record<string, string>>;
+} {
+  const requested = collections ?? getAllCollectionSlugs();
+  const slugs: string[] = [];
+  const labels: Record<string, string> = Object.create(null) as Record<string, string>;
+  for (const slug of requested) {
+    let table: PgTable;
+    let config: NpCollectionConfig;
+    try {
+      table = getCollectionTable(slug) as PgTable;
+      config = getCollectionConfig(slug);
+    } catch {
+      if (!collections) continue;
+      throw new NpSearchContractError("Invalid search request", [
+        {
+          code: "invalid-field",
+          path: "search.request.collections",
+          message: `collection "${slug}" is not registered.`,
+        },
+      ]);
+    }
+    if (!hasSearchVectorColumn(table)) {
+      if (!collections) continue;
+      throw new NpSearchContractError("Invalid search request", [
+        {
+          code: "invalid-field",
+          path: "search.request.collections",
+          message: `collection "${slug}" does not expose a search vector.`,
+        },
+      ]);
+    }
+    slugs.push(slug);
+    labels[slug] = config.labels.plural;
+  }
+  if (slugs.length > npSearchContractLimits.collectionCount) {
+    throw new NpSearchContractError("Invalid search request", [
+      {
+        code: "max-items",
+        path: "search.request.collections",
+        message: `at most ${npSearchContractLimits.collectionCount.toString()} searchable collections may participate in one request.`,
+      },
+    ]);
+  }
+  return { slugs: Object.freeze(slugs), labels: Object.freeze(labels) };
+}
+
+/** Exact registered labels used to revalidate cached/public result facets. */
+export function getSearchCollectionLabels(
+  collections?: readonly string[],
+): Readonly<Record<string, string>> {
+  return resolveSearchCatalog(collections).labels;
+}
+
+function assertConfiguredSearchLocale(locale: string | undefined): void {
+  if (!locale) return;
+  const config = getI18nConfig();
+  if (!config || !config.locales.includes(locale)) {
+    throw new NpSearchContractError("Invalid search request", [
+      {
+        code: "invalid-field",
+        path: "search.request.locale",
+        message: `locale "${locale}" is not configured for this project.`,
+      },
+    ]);
+  }
+}
+
+async function reportSearchAdapterFailure(
+  adapterKind: string,
+  operation: "dispatch" | "result-contract",
+  message: string,
+): Promise<void> {
+  const normalized = new Error(message);
+  const { getLogger } = await import("../observability/logger.js");
+  getLogger().warn("search adapter failed — falling back to pg tsvector", {
+    adapterKind,
+    operation,
+    error: normalized.message,
+  });
+  const { reportError } = await import("../observability/error-reporter.js");
+  await reportError(normalized, {
+    tags: { component: "search-adapter", adapterKind, operation },
+  });
 }
 
 function getTableColumn(table: PgTable, key: string): AnyPgColumn {
@@ -309,11 +351,30 @@ function getTableColumn(table: PgTable, key: string): AnyPgColumn {
  * after bulk imports or for recovering from corrupted vectors. Idempotent —
  * safe to run against a live collection while writes continue.
  */
-export async function reindexCollection(slug: string): Promise<ReindexResult> {
-  const config = getCollectionConfig(slug);
-  const table = getCollectionTable(slug) as PgTable;
+export async function reindexCollection(slug: string): Promise<NpSearchReindexResult> {
+  const collection = npRequireSearchCollectionSlug(slug, "search.reindex.collection");
+  let config: NpCollectionConfig;
+  let table: PgTable;
+  try {
+    config = getCollectionConfig(collection);
+    table = getCollectionTable(collection) as PgTable;
+  } catch {
+    throw new NpSearchContractError("Invalid search reindex request", [
+      {
+        code: "invalid-field",
+        path: "search.reindex.collection",
+        message: `collection "${collection}" is not registered.`,
+      },
+    ]);
+  }
   if (!hasSearchVectorColumn(table)) {
-    return { collection: slug, processed: 0 };
+    throw new NpSearchContractError("Invalid search reindex request", [
+      {
+        code: "invalid-field",
+        path: "search.reindex.collection",
+        message: `collection "${collection}" does not expose a search vector.`,
+      },
+    ]);
   }
 
   const db = getDb();
@@ -340,5 +401,5 @@ export async function reindexCollection(slug: string): Promise<ReindexResult> {
     processed += 1;
   }
 
-  return { collection: slug, processed };
+  return npRequireSearchReindexResult({ collection, processed });
 }

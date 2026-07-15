@@ -1,89 +1,98 @@
-import type { SearchResult } from "./search-api.js";
-
-/**
- * Phase 10.6 — pluggable search adapter. Same shape as the
- * spam / profanity / reputation adapters from Phase 9.6+:
- * a single global slot, opt-in via `setSearchAdapter`, default
- * is "no adapter" which keeps the existing pg `tsvector` path
- * authoritative.
- *
- * Plugins implement this interface to delegate search to an
- * external engine — Algolia, Meilisearch, OpenSearch, etc.
- * The plugin is responsible for KEEPING the engine's index
- * fresh; that's done by subscribing to the `content:afterCreate` /
- * `:afterUpdate` / `:afterDelete` hooks the framework already
- * fires (9.7o made those Principal-aware) — no new plumbing
- * in the pipeline. The adapter ONLY handles the read path.
- *
- * Returning `null` / `undefined` from `search()` means "I don't
- * know how to handle this query; fall through to the pg
- * default." Useful when an adapter only indexes certain
- * collections, or wants to defer to pg under specific
- * conditions (e.g. very short queries).
- *
- * Adapter results may include `SearchResultItem.score`, but the
- * framework treats adapter ordering as authoritative and does not
- * reinterpret scores from an external engine.
- *
- * Errors thrown by the adapter are fail-open: the framework
- * logs a warning and falls back to pg. Sites that want
- * fail-closed wrap their adapter in try/catch and return
- * `null` on error.
- */
-export interface NpSearchAdapterContext {
-  /** Trimmed query string (already non-empty by the time this runs). */
-  q: string;
-  /** Subset of collection slugs the caller asked to search. */
-  collections?: string[];
-  /** Page size cap, already normalized. */
-  limit: number;
-  /** Skip count, already normalized. */
-  offset: number;
-  /**
-   * Phase 12.4 — locale to scope results to. When set, the
-   * framework expects only docs in this locale (for i18n
-   * collections) plus all docs from non-i18n collections. The
-   * default pg path applies a `locale = $1` filter on i18n
-   * collections; external adapters typically rebuild the index
-   * with one document per (sourceId, locale) and filter on the
-   * locale field. Adapters that don't support per-locale
-   * filtering can return `null` to fall through to pg.
-   */
-  locale?: string;
-}
-
-export interface NpSearchAdapter {
-  /**
-   * Implementation hook. Return a `SearchResult` to override the
-   * default pg tsvector path, or `null` / `undefined` to fall
-   * through. Throws are fail-open (logged + treated as null).
-   */
-  search(
-    ctx: NpSearchAdapterContext,
-  ): Promise<SearchResult | null | undefined> | SearchResult | null | undefined;
-}
+import { npRequireSearchAdapter } from "../search/contract.js";
+import type {
+  NpSearchAdapter,
+  NpSearchAdapterDiagnostics,
+  NpSearchAdapterFailure,
+} from "../search/types.js";
 
 let currentAdapter: NpSearchAdapter | null = null;
+let dispatchFailures = 0;
+let resultContractFailures = 0;
+let shutdownFailures = 0;
+let lastFailure: NpSearchAdapterFailure | null = null;
 
-/**
- * Replace the global search adapter. Call once at app boot,
- * typically from a plugin's `setup()`. The framework holds at
- * most one adapter; sites that want to layer multiple engines
- * (e.g. blog → Algolia, products → Meilisearch) compose them
- * inside a single adapter and dispatch on `ctx.collections`.
- */
-export function setSearchAdapter(adapter: NpSearchAdapter): void {
-  if (typeof adapter?.search !== "function") {
-    throw new Error("setSearchAdapter: adapter must implement search()");
+function resetDiagnostics(): void {
+  dispatchFailures = 0;
+  resultContractFailures = 0;
+  shutdownFailures = 0;
+  lastFailure = null;
+}
+
+function failureMessage(error: unknown): string {
+  let message = "Unknown search adapter failure.";
+  try {
+    const candidate = error instanceof Error ? error.message : String(error);
+    if (candidate.length > 0) message = candidate;
+  } catch {
+    // A thrown value can itself be a hostile Proxy or reject string coercion.
   }
-  currentAdapter = adapter;
+  let sanitized = "";
+  for (const character of message) {
+    const code = character.codePointAt(0) ?? 0;
+    sanitized += code < 0x20 || code === 0x7f ? " " : character;
+    if (sanitized.length >= 1_024) break;
+  }
+  return sanitized.slice(0, 1_024);
+}
+
+/** Install one exact adapter descriptor. The built-in Postgres path remains the null default. */
+export function setSearchAdapter(adapter: NpSearchAdapter): NpSearchAdapter {
+  currentAdapter = npRequireSearchAdapter(adapter);
+  resetDiagnostics();
+  return currentAdapter;
 }
 
 export function getSearchAdapter(): NpSearchAdapter | null {
   return currentAdapter;
 }
 
-/** Reset to no adapter. Tests use this between cases. */
-export function resetSearchAdapter(): void {
+/** Reset one owned adapter and its process-local diagnostics. */
+export function resetSearchAdapter(expected?: NpSearchAdapter): void {
+  if (expected !== undefined && currentAdapter !== expected) return;
   currentAdapter = null;
+  resetDiagnostics();
+}
+
+export function getSearchAdapterDiagnostics(): NpSearchAdapterDiagnostics {
+  return Object.freeze({
+    adapterKind: currentAdapter?.kind ?? null,
+    dispatchFailures,
+    resultContractFailures,
+    shutdownFailures,
+    lastFailure,
+  });
+}
+
+export function npRecordSearchAdapterFailure(
+  adapterKind: string,
+  operation: NpSearchAdapterFailure["operation"],
+  error: unknown,
+): string {
+  if (operation === "dispatch") dispatchFailures += 1;
+  else if (operation === "result-contract") resultContractFailures += 1;
+  else shutdownFailures += 1;
+  const message = failureMessage(error);
+  lastFailure = Object.freeze({
+    adapterKind,
+    operation,
+    message,
+    occurredAt: new Date().toISOString(),
+  });
+  return message;
+}
+
+/** Detach one owned adapter before awaiting its optional terminal cleanup. */
+export async function shutdownSearchAdapter(expected?: NpSearchAdapter): Promise<void> {
+  const owned = expected ?? currentAdapter;
+  if (owned && (expected === undefined || currentAdapter === expected)) currentAdapter = null;
+  if (!owned?.shutdown) return;
+  try {
+    const result: unknown = await owned.shutdown();
+    if (result !== undefined) {
+      throw new TypeError("Search adapter shutdown() must resolve to void.");
+    }
+  } catch (error) {
+    npRecordSearchAdapterFailure(owned.kind, "shutdown", error);
+    throw error;
+  }
 }

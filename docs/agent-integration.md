@@ -113,12 +113,12 @@ Match the agent's role to its scope (e.g. a content-importer agent =
 - `GET /api/collections/{slug}?search=query` — uses Postgres full-text
   search over the `search_vector` column. Returned in ts_rank order.
 - `GET /api/search?q=query&collections=posts,pages&page=1&limit=10` —
-  cross-collection search; filters to `status=published` automatically for
-  public use. Built-in Postgres search returns globally relevance-ranked
-  hits with an optional per-result `score` (`score` scale is not stable API).
-  The JSON body includes `results`, `total`, `perCollection`, optional `facets`, `limit`, `offset`, and
-  `hasNextPage`. `offset=` is still accepted for API callers that
-  prefer skip-based pagination.
+  exact current-site cross-collection search; filters to published/public
+  documents automatically. Unknown/duplicate parameters, unknown collections,
+  unconfigured locales, and a combined `page` + `offset` are 400 errors.
+  The JSON body always includes `results`, `total`, `perCollection`, `facets`,
+  `limit`, `offset`, and `hasNextPage`; per-result `score` is optional and its
+  scale is not stable. See [search.md](./search.md).
 - `GET /api/collections/{slug}?where=<json>` — JSON-encoded filter
   object. Only equality supported today.
 
