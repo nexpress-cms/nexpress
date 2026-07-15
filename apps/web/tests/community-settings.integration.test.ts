@@ -193,7 +193,7 @@ describe.skipIf(skipIfNoTestDb())("community settings (integration)", () => {
         error?: { details?: Array<{ field?: string; message?: string }> };
       }>(res);
       expect(body.status).toBe(400);
-      expect(body.body.error?.details?.[0]?.field).toBe("reactionKinds[1]");
+      expect(body.body.error?.details?.[0]?.field).toBe("community.settingsPatch.reactionKinds[1]");
     });
 
     it("rejects duplicate reaction kinds", async () => {

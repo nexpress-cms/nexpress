@@ -35,6 +35,7 @@ export {
   type AppliedRow,
   type AuditDeps,
   type CollectionMapping,
+  type NpWpImportAuditEvent,
   type ReportHtmlDeps,
   type SkippedRow,
 } from "./apply/index.js";
