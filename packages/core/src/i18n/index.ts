@@ -7,28 +7,29 @@
  * to import the `intl-messageformat` runtime to use unrelated APIs.
  */
 
+export * from "../i18n-contract/index.js";
+
 export { setI18nConfig, getI18nConfig, resetI18nConfig } from "./registry.js";
 export { resolveLocale, getCurrentLocale } from "./locale-resolver.js";
-export type { NpResolveLocaleInput, NpResolveLocaleResult } from "./locale-resolver.js";
+export type { NpResolveLocaleInput, NpResolveLocaleResult } from "../i18n-contract/types.js";
 export {
   addStrings,
   setStrings,
   resetStrings,
   registerPluginStrings,
+  registerTranslationCatalog,
   unregisterPluginStrings,
+  unregisterTranslationCatalog,
   resetPluginStrings,
   getRegisteredPluginStrings,
   resetTranslationCache,
   getStrings,
   getAllStrings,
+  getI18nRuntimeDiagnostics,
   t,
   tSync,
 } from "./strings.js";
-export type {
-  NpTranslationBundle,
-  NpTranslationParams,
-  NpRegisteredPluginTranslation,
-} from "./strings.js";
+export type { NpRegisteredPluginTranslation } from "./strings.js";
 export { getLocaleDirection } from "./direction.js";
 export type { NpLocaleDirection } from "./direction.js";
 export { formatNumber, formatDate, formatRelativeTime, resetIntlFormatterCache } from "./format.js";
@@ -42,4 +43,3 @@ export {
   deleteStringOverride,
   listStringOverridesForSite,
 } from "./string-overrides.js";
-export type { NpStringOverrideRow } from "./string-overrides.js";

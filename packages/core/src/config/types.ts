@@ -1,6 +1,8 @@
 import type { NpMediaImageSize } from "../media-contract/types.js";
 import type { NpAuthUser } from "../auth-contract/types.js";
+import type { NpI18nConfig } from "../i18n-contract/types.js";
 export type { NpAuthUser, NpUserRole } from "../auth-contract/types.js";
+export type { NpI18nConfig } from "../i18n-contract/types.js";
 export type { NpRichTextContent } from "../fields/rich-text.js";
 export type { NpNavItem } from "../navigation/types.js";
 
@@ -964,23 +966,6 @@ export interface NpRegisteredTheme {
    * the React peer dependency stays out of this package.
    */
   impl: unknown;
-}
-
-export interface NpI18nConfig {
-  /**
-   * Locales this site supports. Order matters only insofar as
-   * the first locale becomes the default when `defaultLocale`
-   * isn't explicitly set. Locale strings are passed through to
-   * BCP-47 consumers (HTML `lang` attribute, hreflang) so
-   * conventional codes are recommended (`en`, `en-US`, `ko`,
-   * `pt-BR`).
-   */
-  locales: string[];
-  /**
-   * Locale used when the caller doesn't specify one — drives
-   * default writes and fallback reads. Must appear in `locales`.
-   */
-  defaultLocale: string;
 }
 
 export interface NpConfig {

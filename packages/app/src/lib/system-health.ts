@@ -21,6 +21,7 @@ import {
   npReadObservabilityRuntimeConfig,
 } from "@nexpress/core/observability";
 import { getSearchAdapterDiagnostics } from "@nexpress/core/search";
+import { getI18nRuntimeDiagnostics } from "@nexpress/core/i18n";
 import {
   getOptionalStorageRuntimeConfig,
   getStorageAdapter,
@@ -548,6 +549,42 @@ export function checkSearchAdapter(): Check {
   }
 }
 
+/** Validated locale/catalog posture and contained ICU execution failures. */
+export function checkI18nRuntime(): Check {
+  try {
+    const diagnostics = getI18nRuntimeDiagnostics();
+    const failures = diagnostics.compileFailures + diagnostics.formatFailures;
+    if (failures > 0) {
+      const last = diagnostics.lastFailure;
+      return {
+        id: "i18n",
+        label: "Internationalization",
+        state: "warn",
+        detail: `${diagnostics.locales.toString()} locale(s) · ${failures.toString()} ICU failure${failures === 1 ? "" : "s"} contained`,
+        hint: last
+          ? `Last ${last.operation} failure for ${last.locale}:${last.key} at ${last.occurredAt}: ${last.message}`
+          : "Inspect translation parameters and registered catalogs.",
+      };
+    }
+    return {
+      id: "i18n",
+      label: "Internationalization",
+      state: "ok",
+      detail: diagnostics.configured
+        ? `${diagnostics.locales.toString()} locale(s) · ${(diagnostics.baseStrings + diagnostics.pluginStrings).toString()} registered string(s)`
+        : "disabled (monolingual)",
+    };
+  } catch (error) {
+    return {
+      id: "i18n",
+      label: "Internationalization",
+      state: "error",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Fix the exact i18n config and translation registry contracts before rendering localized traffic.",
+    };
+  }
+}
+
 /**
  * NP_SECRET — runtime parallel of #597's boot-time check, plus
  * the entropy floor introduced in the setup wizard (#618). Most
@@ -609,6 +646,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
   checks.push(checkObservabilityAdapters());
   checks.push(checkCacheInvalidation());
   checks.push(checkSearchAdapter());
+  checks.push(checkI18nRuntime());
   checks.push(checkSecret());
   return {
     generatedAt: new Date().toISOString(),

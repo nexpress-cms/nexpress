@@ -10,6 +10,12 @@ import {
   setStringOverride,
   can,
 } from "@nexpress/core";
+import {
+  NpI18nContractError,
+  npRequireI18nStringsResponse,
+  npRequireStringOverrideDeleteQuery,
+  npRequireStringOverrideMutation,
+} from "@nexpress/core/i18n-contract";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
@@ -60,8 +66,8 @@ export async function GET(request: NextRequest) {
     }
 
     const i18n = getI18nConfig();
-    const locales = i18n?.locales ?? [];
-    const defaultLocale = i18n?.defaultLocale ?? null;
+    const locales = i18n?.locales ?? ["en"];
+    const defaultLocale = i18n?.defaultLocale ?? "en";
     const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 
     const allStrings = getAllStrings();
@@ -77,7 +83,7 @@ export async function GET(request: NextRequest) {
     // Collect every key across every locale into a union; the
     // UI shows them as a single list with per-locale columns.
     const keySet = new Set<string>();
-    for (const locale of locales.length > 0 ? locales : Object.keys(allStrings)) {
+    for (const locale of locales) {
       const bundle = allStrings[locale] ?? {};
       for (const k of Object.keys(bundle)) keySet.add(k);
     }
@@ -85,12 +91,9 @@ export async function GET(request: NextRequest) {
     // (so an admin can revert them).
     for (const row of overrides) keySet.add(row.key);
 
-    const localeList = locales.length > 0 ? [...locales] : Object.keys(allStrings);
+    const localeList = [...locales];
     const keys = [...keySet].sort().map((key) => {
-      const values: Record<
-        string,
-        { base: string | null; override: string | null }
-      > = {};
+      const values: Record<string, { base: string | null; override: string | null }> = {};
       for (const locale of localeList) {
         const base = allStrings[locale]?.[key] ?? null;
         const overrideKey = `${locale}::${key}`;
@@ -102,16 +105,16 @@ export async function GET(request: NextRequest) {
       return { key, values };
     });
 
-    return npSuccessResponse({
-      locales: localeList,
-      defaultLocale,
-      keys,
-      siteId,
-    });
-  } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
+    return npSuccessResponse(
+      npRequireI18nStringsResponse({
+        locales: localeList,
+        defaultLocale,
+        keys,
+        siteId,
+      }),
     );
+  } catch (error) {
+    return npErrorResponse(normalizeI18nError(error));
   }
 }
 
@@ -148,37 +151,19 @@ export async function PUT(request: NextRequest) {
       throw new NpForbiddenError("i18n/strings", "update");
     }
 
-    const body = (await readJsonBody(request)) as {
-      locale?: unknown;
-      key?: unknown;
-      value?: unknown;
-    };
-    const locale = typeof body.locale === "string" ? body.locale : null;
-    const key = typeof body.key === "string" ? body.key : null;
-    if (!locale || !key) {
-      throw new NpValidationError("Invalid input", [
-        { field: "body", message: "locale + key are required" },
-      ]);
-    }
+    const { locale, key, value } = npRequireStringOverrideMutation(await readJsonBody(request));
     assertConfiguredLocale(locale);
-    const value =
-      typeof body.value === "string"
-        ? body.value
-        : body.value === null
-          ? null
-          : undefined;
-    if (value === undefined) {
+    const registered = getAllStrings();
+    if (!Object.values(registered).some((bundle) => Object.hasOwn(bundle, key))) {
       throw new NpValidationError("Invalid input", [
-        { field: "value", message: "value must be string or null" },
+        { field: "key", message: `Translation key "${key}" is not registered.` },
       ]);
     }
 
     await setStringOverride(locale, key, value, { updatedBy: user.id });
     return npSuccessResponse({ locale, key, value });
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(normalizeI18nError(error));
   }
 }
 
@@ -191,21 +176,39 @@ export async function DELETE(request: NextRequest) {
     }
 
     const params = request.nextUrl.searchParams;
-    const locale = params.get("locale");
-    const key = params.get("key");
-    if (!locale || !key) {
+    const allowed = new Set(["locale", "key"]);
+    for (const key of new Set(params.keys())) {
+      if (!allowed.has(key) || params.getAll(key).length !== 1) {
+        throw new NpValidationError("Invalid input", [
+          { field: `query.${key}`, message: "Unsupported or duplicate query parameter." },
+        ]);
+      }
+    }
+    const query = npRequireStringOverrideDeleteQuery({
+      locale: params.get("locale"),
+      key: params.get("key"),
+    });
+    if (params.size !== 2) {
       throw new NpValidationError("Invalid input", [
         { field: "query", message: "locale + key query params are required" },
       ]);
     }
-    assertConfiguredLocale(locale);
-    await deleteStringOverride(locale, key);
+    assertConfiguredLocale(query.locale);
+    await deleteStringOverride(query.locale, query.key);
     return npSuccessResponse({ ok: true });
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(normalizeI18nError(error));
   }
 }
 
 export const dynamic = "force-dynamic";
+
+function normalizeI18nError(error: unknown): Error {
+  if (error instanceof NpI18nContractError) {
+    return new NpValidationError(
+      "Invalid i18n input",
+      error.issues.map((entry) => ({ field: entry.path, message: entry.message })),
+    );
+  }
+  return error instanceof Error ? error : new Error("Unknown error");
+}

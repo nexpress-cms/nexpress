@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Globe, Loader2, Plus, Check } from "lucide-react";
+import {
+  npRequireI18nConfigResponse,
+  type NpI18nConfigResponse,
+} from "@nexpress/core/i18n-contract";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
@@ -32,12 +36,6 @@ interface TranslationRow {
   title?: unknown;
 }
 
-interface I18nConfig {
-  enabled: boolean;
-  locales?: string[];
-  defaultLocale?: string;
-}
-
 export function TranslationTabs({
   collectionSlug,
   documentId,
@@ -46,7 +44,7 @@ export function TranslationTabs({
   documentId: string;
 }) {
   const router = useRouter();
-  const [config, setConfig] = useState<I18nConfig | null>(null);
+  const [config, setConfig] = useState<NpI18nConfigResponse | null>(null);
   const [translations, setTranslations] = useState<TranslationRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creatingFor, setCreatingFor] = useState<string | null>(null);
@@ -60,17 +58,18 @@ export function TranslationTabs({
           `/api/admin/collections/${encodeURIComponent(collectionSlug)}/${encodeURIComponent(documentId)}/translations`,
         ),
       ]);
-      const configBody = (await configRes.json().catch(() => null)) as I18nConfig | null;
+      const rawConfig = (await configRes.json().catch(() => null)) as unknown;
       const translationsBody = (await translationsRes.json().catch(() => null)) as {
         docs?: TranslationRow[];
         error?: { message?: string };
       } | null;
-      if (configBody?.enabled === false) {
-        setConfig({ enabled: false });
+      if (!configRes.ok) {
+        setError("Unable to load i18n config.");
         return;
       }
-      if (!configRes.ok || !configBody?.enabled) {
-        setError("Unable to load i18n config.");
+      const configBody = npRequireI18nConfigResponse(rawConfig);
+      if (configBody?.enabled === false) {
+        setConfig(configBody);
         return;
       }
       if (!translationsRes.ok) {
@@ -147,7 +146,7 @@ export function TranslationTabs({
         <span>Translations</span>
       </div>
       <div className="flex flex-wrap gap-2">
-        {(config.locales ?? []).map((locale) => {
+        {config.locales.map((locale) => {
           const sibling = translations.find((t) => t.locale === locale);
           const isCurrent = locale === currentLocale;
           if (sibling) {

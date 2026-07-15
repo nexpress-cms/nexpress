@@ -1,8 +1,5 @@
-import {
-  NpForbiddenError,
-  getI18nConfig,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, getI18nConfig, can } from "@nexpress/core";
+import { npRequireI18nConfigResponse } from "@nexpress/core/i18n-contract";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
@@ -33,17 +30,17 @@ export async function GET(request: NextRequest) {
     }
     const config = getI18nConfig();
     if (!config) {
-      return npSuccessResponse({ enabled: false });
+      return npSuccessResponse(npRequireI18nConfigResponse({ enabled: false }));
     }
-    return npSuccessResponse({
-      enabled: true,
-      locales: config.locales,
-      defaultLocale: config.defaultLocale,
-    });
-  } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
+    return npSuccessResponse(
+      npRequireI18nConfigResponse({
+        enabled: true,
+        locales: config.locales,
+        defaultLocale: config.defaultLocale,
+      }),
     );
+  } catch (error) {
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

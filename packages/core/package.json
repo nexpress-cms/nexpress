@@ -78,6 +78,11 @@
       "import": "./dist/i18n.js",
       "default": "./dist/i18n.js"
     },
+    "./i18n-contract": {
+      "types": "./dist/i18n-contract.d.ts",
+      "import": "./dist/i18n-contract.js",
+      "default": "./dist/i18n-contract.js"
+    },
     "./jobs": {
       "types": "./dist/jobs.d.ts",
       "import": "./dist/jobs.js",

@@ -25,6 +25,7 @@ describe("doctor core", () => {
         "rate-limit.contract",
         "storage.contract",
         "routes.contract",
+        "i18n.contract",
         "database.reachable",
         "auth.contract",
         "settings.contract",
@@ -43,6 +44,30 @@ describe("doctor core", () => {
       expect.objectContaining({
         state: "error",
         detail: "DATABASE_URL not set",
+      }),
+    );
+  });
+
+  it("validates the shared i18n config without booting the app", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nexpress-doctor-core-"));
+    const valid = await collectDoctorChecks({
+      cwd,
+      nodeVersion: "24.11.1",
+      i18nConfig: { locales: ["en", "ko"], defaultLocale: "en" },
+    });
+    expect(valid.find((check) => check.id === "i18n.contract")).toEqual(
+      expect.objectContaining({ state: "ok", detail: "2 locale(s) · default en" }),
+    );
+
+    const invalid = await collectDoctorChecks({
+      cwd,
+      nodeVersion: "24.11.1",
+      i18nConfig: { locales: ["en-us"], defaultLocale: "en-us" },
+    });
+    expect(invalid.find((check) => check.id === "i18n.contract")).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: expect.stringContaining("canonical BCP 47"),
       }),
     );
   });

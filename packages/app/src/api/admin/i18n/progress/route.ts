@@ -1,8 +1,5 @@
-import {
-  NpForbiddenError,
-  getTranslationProgress,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, getTranslationProgress, can } from "@nexpress/core";
+import { npRequireTranslationProgressResponse } from "@nexpress/core/i18n-contract";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
@@ -27,12 +24,10 @@ export async function GET(request: NextRequest) {
     if (!can(user, "content.publish")) {
       throw new NpForbiddenError("i18n/progress", "read");
     }
-    const progress = await getTranslationProgress();
+    const progress = npRequireTranslationProgressResponse(await getTranslationProgress());
     return npSuccessResponse(progress);
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

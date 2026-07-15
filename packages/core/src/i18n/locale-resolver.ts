@@ -1,44 +1,6 @@
+import { npRequireResolveLocaleInput } from "../i18n-contract/contract.js";
+import type { NpResolveLocaleInput, NpResolveLocaleResult } from "../i18n-contract/types.js";
 import { getI18nConfig } from "./registry.js";
-
-export interface NpResolveLocaleInput {
-  /**
-   * Request pathname (e.g. `/en/blog/post-1` or `/blog/post-1`).
-   * The first segment is checked against the configured locale
-   * list — if it matches, that locale wins. This is the
-   * primary signal: themes / page authors building under
-   * `app/(site)/*` always have a pathname.
-   */
-  pathname?: string;
-  /**
-   * `Accept-Language` header value. Used as a fallback when the
-   * pathname doesn't carry a locale prefix. The first
-   * comma-separated tag whose primary subtag matches a configured
-   * locale wins. Quality factors are honored.
-   */
-  acceptLanguage?: string;
-}
-
-export interface NpResolveLocaleResult {
-  /**
-   * The resolved locale code (e.g. `"en"`, `"ko"`). Always one
-   * of the configured locales; never an arbitrary user-supplied
-   * string.
-   */
-  locale: string;
-  /**
-   * Where the locale came from. Useful when the page wants to
-   * decide whether to issue a 301 (redirect bare `/blog` to
-   * `/{defaultLocale}/blog` for SEO) or render in place.
-   */
-  source: "path" | "header" | "default";
-  /**
-   * The pathname with the locale prefix stripped, when the
-   * locale came from the path. Same as the input pathname
-   * otherwise. Useful for downstream slug lookups that store
-   * paths without the locale segment.
-   */
-  pathnameWithoutLocale: string | undefined;
-}
 
 /**
  * Resolve the current request's locale using the same conventions
@@ -56,12 +18,13 @@ export interface NpResolveLocaleResult {
  * that as "monolingual site" and ignore locale entirely.
  */
 export function resolveLocale(input: NpResolveLocaleInput = {}): NpResolveLocaleResult | null {
+  const normalized = npRequireResolveLocaleInput(input);
   const config = getI18nConfig();
   if (!config) return null;
   const configured = new Set(config.locales);
 
-  if (input.pathname) {
-    const segments = input.pathname.split("/").filter(Boolean);
+  if (normalized.pathname) {
+    const segments = normalized.pathname.split("/").filter(Boolean);
     const first = segments[0];
     if (first && configured.has(first)) {
       const remaining = segments.slice(1).join("/");
@@ -70,15 +33,19 @@ export function resolveLocale(input: NpResolveLocaleInput = {}): NpResolveLocale
     }
   }
 
-  const fromHeader = matchAcceptLanguage(input.acceptLanguage, configured);
+  const fromHeader = matchAcceptLanguage(normalized.acceptLanguage, configured);
   if (fromHeader) {
-    return { locale: fromHeader, source: "header", pathnameWithoutLocale: input.pathname };
+    return {
+      locale: fromHeader,
+      source: "header",
+      pathnameWithoutLocale: normalized.pathname,
+    };
   }
 
   return {
     locale: config.defaultLocale,
     source: "default",
-    pathnameWithoutLocale: input.pathname,
+    pathnameWithoutLocale: normalized.pathname,
   };
 }
 
@@ -104,30 +71,46 @@ interface ParsedLanguageTag {
 }
 
 function parseAcceptLanguage(header: string): ParsedLanguageTag[] {
-  return header
-    .split(",")
-    .map((entry) => {
-      const [tagRaw, ...params] = entry.trim().split(";");
-      if (!tagRaw) return null;
-      const tag = tagRaw.trim().toLowerCase();
-      let quality = 1;
-      for (const param of params) {
-        const match = /^\s*q\s*=\s*([0-9.]+)\s*$/i.exec(param);
-        if (match) {
-          const parsed = Number(match[1]);
-          if (Number.isFinite(parsed)) quality = parsed;
-        }
+  if (header.trim() === "") return [];
+  const parsed: ParsedLanguageTag[] = [];
+  for (const [index, rawEntry] of header.split(",").entries()) {
+    const parts = rawEntry.trim().split(";");
+    const rawTag = parts.shift()?.trim() ?? "";
+    if (!rawTag) {
+      throw new TypeError(`Invalid Accept-Language range at index ${index.toString()}.`);
+    }
+    let tag: string;
+    if (rawTag === "*") tag = "*";
+    else {
+      try {
+        tag = Intl.getCanonicalLocales(rawTag)[0]?.toLowerCase() ?? "";
+      } catch {
+        tag = "";
       }
-      return { tag, quality };
-    })
-    .filter((entry): entry is ParsedLanguageTag => entry !== null && entry.quality > 0)
-    .sort((a, b) => b.quality - a.quality);
+      if (!tag) {
+        throw new TypeError(
+          `Invalid Accept-Language tag "${rawTag}" at index ${index.toString()}.`,
+        );
+      }
+    }
+    let quality = 1;
+    if (parts.length > 1) {
+      throw new TypeError(`Invalid Accept-Language parameters at index ${index.toString()}.`);
+    }
+    const qualityParameter = parts[0]?.trim();
+    if (qualityParameter !== undefined) {
+      const match = /^q=(0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/iu.exec(qualityParameter);
+      if (!match) {
+        throw new TypeError(`Invalid Accept-Language quality at index ${index.toString()}.`);
+      }
+      quality = Number(match[1]);
+    }
+    if (quality > 0) parsed.push({ tag, quality });
+  }
+  return parsed.sort((a, b) => b.quality - a.quality);
 }
 
-function matchAcceptLanguage(
-  header: string | undefined,
-  configured: Set<string>,
-): string | null {
+function matchAcceptLanguage(header: string | undefined, configured: Set<string>): string | null {
   if (!header) return null;
   const parsed = parseAcceptLanguage(header);
   // Pre-compute lowercase configured locales so case-insensitive

@@ -3,7 +3,9 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
 import { npSettings } from "../db/schema/system.js";
 import { NpValidationError } from "../errors.js";
-import { addStrings } from "../i18n/strings.js";
+import { registerTranslationCatalog, unregisterTranslationCatalog } from "../i18n/strings.js";
+import { npRequireTranslationCatalog } from "../i18n-contract/contract.js";
+import type { NpTranslationCatalog } from "../i18n-contract/types.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID as DEFAULT_SITE } from "../sites/registry.js";
 import { npAssertSettingValue } from "../settings/contract.js";
@@ -33,6 +35,7 @@ const registry = new Map<string, NpRegisteredTheme>();
  */
 export function registerThemes(themes: NpRegisteredTheme[]): void {
   const incomingIds = new Set<string>();
+  const catalogs = new Map<string, NpTranslationCatalog | null>();
   for (const theme of themes) {
     const validation = npValidateRegisteredThemeDefinition(theme);
     if (!validation.ok) {
@@ -44,24 +47,34 @@ export function registerThemes(themes: NpRegisteredTheme[]): void {
       throw new Error(`Invalid theme registry: duplicate theme id "${theme.manifest.id}".`);
     }
     incomingIds.add(theme.manifest.id);
+    const i18n = (theme.impl as { i18n?: unknown }).i18n;
+    catalogs.set(
+      theme.manifest.id,
+      i18n === undefined
+        ? null
+        : npRequireTranslationCatalog(i18n, {
+            path: `themes.${theme.manifest.id}.i18n`,
+          }),
+    );
+  }
+
+  for (const existingId of registry.keys()) {
+    if (!incomingIds.has(existingId)) {
+      registry.delete(existingId);
+      unregisterTranslationCatalog(`theme:${existingId}`);
+    }
   }
 
   for (const theme of themes) {
     registry.set(theme.manifest.id, theme);
 
     // Phase 12.5 — themes can ship UI-string bundles via
-    // `impl.i18n: { locale: { key: value } }`. Merging happens
-    // here (alongside theme registration) rather than in the
-    // bootstrap so live theme swaps in dev pick up updated
-    // strings without a restart.
-    const impl = theme.impl as { i18n?: Record<string, Record<string, string>> };
-    if (impl?.i18n && typeof impl.i18n === "object") {
-      for (const [locale, bundle] of Object.entries(impl.i18n)) {
-        if (bundle && typeof bundle === "object") {
-          addStrings(locale, bundle);
-        }
-      }
-    }
+    // `impl.i18n: { locale: { key: value } }`. The source-owned catalog is
+    // replaced here (alongside theme registration) so removed HMR keys cannot
+    // survive a theme reload.
+    const catalog = catalogs.get(theme.manifest.id) ?? null;
+    if (catalog === null) unregisterTranslationCatalog(`theme:${theme.manifest.id}`);
+    else registerTranslationCatalog(`theme:${theme.manifest.id}`, catalog);
   }
 }
 
@@ -75,6 +88,7 @@ export function getThemeById(id: string): NpRegisteredTheme | undefined {
 
 /** Tests use this between cases; production callers should never need it. */
 export function resetThemes(): void {
+  for (const themeId of registry.keys()) unregisterTranslationCatalog(`theme:${themeId}`);
   registry.clear();
 }
 

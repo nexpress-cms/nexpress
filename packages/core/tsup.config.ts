@@ -46,6 +46,8 @@ export default defineConfig({
     // from "use client" components — importing them from the root
     // dragged argon2/pg into the browser bundle (#774 audit gap).
     fields: "src/fields/index.ts",
+    // Pure, client-safe locale, translation catalog, override, and Admin wire contract.
+    "i18n-contract": "src/i18n-contract/index.ts",
     i18n: "src/i18n/index.ts",
     jobs: "src/jobs/index.ts",
     // Pure, client-safe job payload, persisted row, and Admin wire contract.

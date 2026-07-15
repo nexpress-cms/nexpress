@@ -242,8 +242,8 @@ export const npNavigation = pgTable(
 );
 
 /**
- * Phase D — UI string admin overrides. Plugins and themes
- * register translation bundles via `addStrings()` (Phase 12.5);
+ * Phase D — UI string admin overrides. App code registers base strings via
+ * `addStrings()` while plugins and themes install source-owned catalogs;
  * admins layer overrides on top via this table without
  * touching plugin/theme code. Composite PK on
  * (site_id, locale, key) makes per-tenant overrides natural —

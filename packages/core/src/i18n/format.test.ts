@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  formatDate,
-  formatNumber,
-  formatRelativeTime,
-  resetIntlFormatterCache,
-} from "./format.js";
+import { formatDate, formatNumber, formatRelativeTime, resetIntlFormatterCache } from "./format.js";
 import { resetI18nConfig, setI18nConfig } from "./registry.js";
 
 beforeEach(() => {
@@ -33,12 +28,8 @@ describe("formatNumber", () => {
   });
 
   it("forwards Intl.NumberFormat options (currency, percent, etc.)", () => {
-    expect(
-      formatNumber(99.5, "en-US", { style: "currency", currency: "USD" }),
-    ).toBe("$99.50");
-    expect(
-      formatNumber(0.05, "en-US", { style: "percent" }),
-    ).toBe("5%");
+    expect(formatNumber(99.5, "en-US", { style: "currency", currency: "USD" })).toBe("$99.50");
+    expect(formatNumber(0.05, "en-US", { style: "percent" })).toBe("5%");
   });
 
   it("returns the literal NaN/Infinity rather than a localized version (debuggability)", () => {
@@ -98,9 +89,7 @@ describe("formatRelativeTime", () => {
   });
 
   it("respects numeric/style options", () => {
-    expect(
-      formatRelativeTime(-1, "day", "en-US", { numeric: "auto" }),
-    ).toBe("yesterday");
+    expect(formatRelativeTime(-1, "day", "en-US", { numeric: "auto" })).toBe("yesterday");
   });
 
   it("returns the literal NaN rather than a formatted Intl error string", () => {

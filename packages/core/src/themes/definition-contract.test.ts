@@ -5,6 +5,7 @@ import {
   npAnalyzeRegisteredThemeDefinition,
   npValidateRegisteredThemeDefinition,
 } from "./definition-contract.js";
+import { getAllStrings } from "../i18n/strings.js";
 import { getRegisteredThemes, registerThemes, resetThemes } from "./registry.js";
 
 function validTheme(): Record<string, unknown> {
@@ -234,5 +235,25 @@ describe("registered theme definition contract", () => {
     const theme = validTheme();
     expect(() => registerThemes([theme, theme] as never)).toThrow(/duplicate theme id/);
     expect(getRegisteredThemes()).toEqual([]);
+  });
+
+  it("replaces a theme's source-owned catalog without retaining stale keys", () => {
+    resetThemes();
+    const first = validTheme();
+    first.impl = {
+      ...(first.impl as object),
+      i18n: { en: { stale: "old", current: "v1" } },
+    };
+    registerThemes([first as never]);
+
+    const replacement = validTheme();
+    replacement.impl = {
+      ...(replacement.impl as object),
+      i18n: { en: { current: "v2" } },
+    };
+    registerThemes([replacement as never]);
+
+    expect(getAllStrings().en).toEqual({ current: "v2" });
+    resetThemes();
   });
 });

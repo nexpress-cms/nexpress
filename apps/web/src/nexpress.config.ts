@@ -1,13 +1,6 @@
 import { defineConfig } from "@nexpress/core";
-import {
-  defaultCollections,
-  defaultThemes,
-  storageFromEnv,
-} from "@nexpress/app/config-defaults";
-import {
-  defineDiscussionsCollection,
-  forumPlugin,
-} from "@nexpress/plugin-forum";
+import { defaultCollections, defaultThemes, storageFromEnv } from "@nexpress/app/config-defaults";
+import { defineDiscussionsCollection, forumPlugin } from "@nexpress/plugin-forum";
 // @nexpress:plugins-imports-start
 import { calloutPlugin } from "@nexpress/plugin-block-callout";
 import { embedPlugin } from "@nexpress/plugin-block-embed";
@@ -54,13 +47,9 @@ export default defineConfig({
   // create language variants of the same logical page in one
   // place.
   //
-  // Sourced from `./i18n.config` so the middleware (which can't
-  // load core) can read the same locale list at request-parse
-  // time without duplicating the array.
-  i18n: {
-    locales: [...i18nConfig.locales],
-    defaultLocale: i18nConfig.defaultLocale,
-  },
+  // Sourced from `./i18n.config` so the client-safe proxy and server bootstrap
+  // consume the same validated, frozen catalog without duplicating the array.
+  i18n: i18nConfig,
   themes: [
     ...defaultThemes,
     // @nexpress:themes-list-start

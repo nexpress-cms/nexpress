@@ -13,9 +13,11 @@ definePlugin({
 ```
 
 Locale keys must be canonical BCP 47 tags such as `en`, `ko`, or `pt-BR`.
-Each locale contains at least one trimmed key and every value is a string.
-Messages use ICU MessageFormat; invalid plural/select/interpolation syntax is
-rejected while the plugin module loads rather than failing on the first render.
+Each locale contains at least one trimmed key and every value is a bounded safe
+string. Messages use ICU MessageFormat; invalid plural/select/interpolation
+syntax is rejected while the plugin module loads rather than failing on the
+first render. Plugin, theme, app, Admin override, and persisted-row paths all
+delegate to the client-safe `@nexpress/core/i18n-contract` validator.
 
 `definePlugin()` derives entries such as `en:my-plugin.greeting` into
 `manifest.provides.translations`. The core host repeats validation for
@@ -27,6 +29,11 @@ Plugin bundles are source-aware. Later plugins override earlier plugins for the
 same locale/key, but reload or disable removes only that plugin's strings and
 restores the previous value. App/theme base strings remain intact. Namespace
 keys with the plugin id unless a load-order override is deliberate.
+
+`pnpm run doctor` validates the shared project locale catalog and persisted
+override rows. Plugin doctor continues to report invalid plugin catalogs and
+cross-plugin locale/key conflicts; Admin Health also exposes contained runtime
+ICU formatting failures.
 
 Use `t()` for async render paths that include site-scoped operator overrides,
 or `tSync()` only where an async lookup is impossible. The generated

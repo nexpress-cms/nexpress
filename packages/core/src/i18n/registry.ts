@@ -1,4 +1,5 @@
 import type { NpI18nConfig } from "../config/types.js";
+import { npRequireI18nConfig } from "../i18n-contract/contract.js";
 
 /**
  * Phase 12.1 — process-wide i18n config singleton.
@@ -18,7 +19,7 @@ import type { NpI18nConfig } from "../config/types.js";
 let i18nConfig: NpI18nConfig | null = null;
 
 export function setI18nConfig(config: NpI18nConfig | null): void {
-  i18nConfig = config ?? null;
+  i18nConfig = config === null ? null : npRequireI18nConfig(config);
 }
 
 export function getI18nConfig(): NpI18nConfig | null {

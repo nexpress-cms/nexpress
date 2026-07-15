@@ -74,13 +74,9 @@ describe("resolveLocale", () => {
 
   it("ignores unconfigured locales in Accept-Language", () => {
     configure(["en", "ko"], "en");
-    expect(
-      resolveLocale({ acceptLanguage: "fr-FR,de;q=0.7" })?.locale,
-    ).toBe("en");
+    expect(resolveLocale({ acceptLanguage: "fr-FR,de;q=0.7" })?.locale).toBe("en");
     // Falls back to default, marked as such.
-    expect(
-      resolveLocale({ acceptLanguage: "fr-FR,de;q=0.7" })?.source,
-    ).toBe("default");
+    expect(resolveLocale({ acceptLanguage: "fr-FR,de;q=0.7" })?.source).toBe("default");
   });
 
   it("falls back to the default locale when nothing matches", () => {
@@ -105,6 +101,15 @@ describe("resolveLocale", () => {
   it("ignores wildcard `*` in Accept-Language", () => {
     configure(["en", "ko"], "en");
     expect(resolveLocale({ acceptLanguage: "*" })?.source).toBe("default");
+  });
+
+  it("rejects malformed or oversized request signals", () => {
+    configure(["en", "ko"], "en");
+    expect(() => resolveLocale({ acceptLanguage: "ko;q=1.5" })).toThrow(/Accept-Language quality/u);
+    expect(() => resolveLocale({ pathname: "relative" })).toThrow(/absolute safe pathname/u);
+    expect(() => resolveLocale({ pathname: "/", extra: true } as never)).toThrow(
+      /unsupported field/u,
+    );
   });
 });
 

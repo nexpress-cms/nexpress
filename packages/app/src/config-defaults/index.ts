@@ -22,6 +22,7 @@ import { categoriesCollection } from "../collections/categories";
 import { pagesCollection } from "../collections/pages";
 import { postsCollection } from "../collections/posts";
 import { tagsCollection } from "../collections/tags";
+import { i18nConfig } from "../i18n-config";
 
 /**
  * The built-in NexPress collections. A scaffolded site spreads
@@ -109,21 +110,17 @@ export const defaultThemes: NpRegisteredTheme[] = [
 ];
 
 /**
- * Minimal i18n config — `en` only. The default `pagesCollection`
- * declares `i18n: true` (translation tabs in the admin), which
- * requires a top-level i18n block; without one, the pipeline
- * refuses to boot. Single-locale sites get the same admin UX
- * without configuring anything.
+ * Exact locale catalog shared with the proxy-facing i18n config. The default
+ * `pagesCollection` declares `i18n: true`, so bootstrap needs this block; using
+ * the same frozen object prevents generated projects from routing a locale the
+ * server refuses to read or write.
  *
  * Sites that need real multi-locale support should override this
  * in their `nexpress.config.ts`:
  *
  *   i18n: { locales: ["en", "fr"], defaultLocale: "en" }
  */
-export const defaultI18n: NonNullable<NpConfig["i18n"]> = {
-  locales: ["en"],
-  defaultLocale: "en",
-};
+export const defaultI18n: NonNullable<NpConfig["i18n"]> = i18nConfig;
 
 /**
  * Env-driven storage selector. Both apps/web and the scaffold's

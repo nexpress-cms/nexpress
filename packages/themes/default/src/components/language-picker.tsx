@@ -24,7 +24,7 @@ import { usePathname } from "next/navigation";
  * where the URL space exists in every locale via the catch-all.
  */
 export interface LanguagePickerProps {
-  locales: string[];
+  locales: readonly string[];
   /**
    * Optional subset of `locales` that actually has a published
    * translation of the current page. Locales outside this set
