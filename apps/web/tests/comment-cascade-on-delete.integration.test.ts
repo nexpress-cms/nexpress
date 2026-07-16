@@ -16,20 +16,14 @@ import {
 
 import { POST as collectionPOST } from "@/app/api/collections/[slug]/route";
 import { DELETE as collectionDELETE } from "@/app/api/collections/[slug]/[id]/route";
-import {
-  POST as commentsPOST,
-} from "@/app/api/collections/[slug]/[id]/comments/route";
+import { POST as commentsPOST } from "@/app/api/collections/[slug]/[id]/comments/route";
 import { POST as reactionsPOST } from "@/app/api/reactions/route";
 
 import { NextRequest } from "next/server";
 
 function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
   const headers = new Headers(init.headers);
-  if (
-    !headers.has("content-type") &&
-    init.body &&
-    typeof init.body === "string"
-  ) {
+  if (!headers.has("content-type") && init.body && typeof init.body === "string") {
     headers.set("content-type", "application/json");
   }
   if (init.cookies && init.cookies.length > 0) {
@@ -38,11 +32,7 @@ function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = 
   return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
 }
 
-function staffRequest(
-  path: string,
-  user: TestUserSession,
-  init: RequestInit = {},
-): NextRequest {
+function staffRequest(path: string, user: TestUserSession, init: RequestInit = {}): NextRequest {
   return jsonRequest(path, {
     ...init,
     cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
@@ -137,22 +127,21 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
   beforeAll(async () => {
     await ensureMigrated();
     registerTestCollections();
-    const { defineDiscussionsCollection } = await import("@nexpress/plugin-forum");
+    const { discussionsCollection: config } = await import("@/collections/discussions");
     const { registerCollection } = await import("@nexpress/core");
     const { discussionsTable } = await import("@/db/generated/collections");
-    const config = defineDiscussionsCollection();
-    registerCollection(
-      "discussions",
-      discussionsTable as never,
-      { ...config, access: undefined, hooks: undefined },
-    );
+    registerCollection("discussions", discussionsTable as never, {
+      ...config,
+      access: undefined,
+      hooks: undefined,
+    });
     const { ensureFor } = await import("@/lib/init-core");
     await ensureFor("read");
-    registerCollection(
-      "discussions",
-      discussionsTable as never,
-      { ...config, access: undefined, hooks: undefined },
-    );
+    registerCollection("discussions", discussionsTable as never, {
+      ...config,
+      access: undefined,
+      hooks: undefined,
+    });
   });
   beforeEach(async () => {
     await truncateAll();
@@ -366,18 +355,8 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
 
     const docToKill = await seedStaffPost(editor);
     const docToKeep = await seedStaffPost(editor);
-    const targetCommentId = await postComment(
-      author,
-      "posts",
-      docToKill,
-      "reportable",
-    );
-    const survivingCommentId = await postComment(
-      author,
-      "posts",
-      docToKeep,
-      "innocent",
-    );
+    const targetCommentId = await postComment(author, "posts", docToKill, "reportable");
+    const survivingCommentId = await postComment(author, "posts", docToKeep, "innocent");
 
     // File two reports — one against each comment. Only the report
     // pointing at the about-to-cascade comment should disappear.

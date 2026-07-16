@@ -30,9 +30,30 @@ describe("slugify", () => {
     expect(slugify("!!!")).toBe("");
   });
 
+  it("preserves the reserved root-page slug", () => {
+    expect(slugify("/")).toBe("/");
+  });
+
+  it("normalizes each nested page-path segment without flattening the path", () => {
+    expect(slugify("Docs / Reference / Define Plugin")).toBe("docs/reference/define-plugin");
+    expect(slugify("/About//Team/")).toBe("about/team");
+  });
+
   it("caps output length at 96 characters", () => {
     const long = "a".repeat(200);
     expect(slugify(long).length).toBe(96);
+  });
+
+  it("keeps truncation canonical at separator and supplementary-code-point boundaries", () => {
+    expect(slugify(`${"a".repeat(95)} x`)).toBe("a".repeat(95));
+    const deseretCapital = "\u{10400}";
+    const result = slugify(deseretCapital.repeat(100));
+    expect(Array.from(result)).toHaveLength(96);
+    expect(result).toBe("\u{10428}".repeat(96));
+  });
+
+  it("lowercases letters revealed by compatibility normalization", () => {
+    expect(slugify("\ud835\udd04")).toBe("a");
   });
 
   it("keeps Korean characters intact (no jamo decomposition)", () => {
@@ -94,11 +115,13 @@ describe("applySlugField", () => {
     expect(() => applySlugField(collection(), data, null)).toThrow(/Slug generation failed/);
   });
 
-  it("falls back to slugify of the raw slug when slugify returns empty", () => {
-    // e.g. a slug that's already non-ascii/unusual — we keep the caller intent
-    // rather than refusing to save.
+  it("rejects an explicit slug with no letters or numbers", () => {
     const data: Record<string, unknown> = { slug: "%%%", title: "Hello" };
-    applySlugField(collection(), data, null);
-    expect(data.slug).toBe("%%%");
+    expect(() => applySlugField(collection(), data, null)).toThrow(/Slug generation failed/u);
+  });
+
+  it("does not treat an explicit blank slug as omitted", () => {
+    const data: Record<string, unknown> = { slug: "   ", title: "Hello" };
+    expect(() => applySlugField(collection(), data, null)).toThrow(/Slug generation failed/u);
   });
 });

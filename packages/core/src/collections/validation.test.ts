@@ -124,6 +124,7 @@ describe("collectHiddenFieldNames", () => {
 
 describe("getCollectionZodSchema — condition-aware required", () => {
   const config = baseCollection([
+    field({ type: "text", name: "kind", required: true }),
     field({ type: "text", name: "title", required: true }),
     field({
       type: "text",
@@ -216,6 +217,24 @@ describe("buildZodSchema — block content v1 contract", () => {
     if (!result.success) {
       expect(result.error.issues[0]?.message).toContain("children must be an array");
     }
+  });
+});
+
+describe("buildZodSchema — JSON field contract", () => {
+  it("rejects circular and undefined-bearing values at the write boundary", () => {
+    const schema = buildZodSchema([field({ type: "json", name: "metadata", required: true })]);
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+
+    expect(schema.safeParse({ metadata: circular }).success).toBe(false);
+    expect(schema.safeParse({ metadata: { missing: undefined } }).success).toBe(false);
+    expect(schema.safeParse({ metadata: null }).success).toBe(false);
+    expect(schema.safeParse({ metadata: { nested: [true, 2, "safe", null] } }).success).toBe(true);
+  });
+
+  it("keeps null available for optional JSON fields", () => {
+    const schema = buildZodSchema([field({ type: "json", name: "metadata" })]);
+    expect(schema.safeParse({ metadata: null }).success).toBe(true);
   });
 });
 

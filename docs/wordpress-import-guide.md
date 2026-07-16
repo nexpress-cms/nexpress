@@ -134,7 +134,7 @@ written.
 3. **Authors.** Resolves each unique `<dc:creator>` login once. Default behavior creates a `role: "viewer"` staff user with a flagged email (`<original>+wp-import@<domain>`). The `--no-create-authors` flag swaps in a resolver that returns null.
 4. **Per-record.** For each post / page / mapped CPT:
    - Skip if the slug already exists (idempotent re-run).
-   - Convert `content:encoded` HTML to Lexical, rewrite image refs to NexPress media ids, set `coverImage` from `_thumbnail_id`.
+   - Convert `content:encoded` HTML to Lexical and rewrite image refs to NexPress media ids. Posts store it in `content`; pages wrap it in one built-in `rich-text` block under `blocks`. Featured media maps to the post `coverImage` field.
    - Apply category/tag/author ids to the relationship fields.
    - Apply mapped postmeta values to the configured field overrides.
    - Save via `saveDocument` (so hooks fire and revisions land).
@@ -167,8 +167,8 @@ Skips and errors emit `import.wp.skipped` / `import.wp.error` audit events along
 ```
 
 - `wpType` — the value in `<wp:post_type>` on the source record.
-- `collection` — the NexPress collection slug to route into. The collection must exist in your `nexpress.config.ts` and have a matching schema (run `pnpm db:generate && pnpm db:migrate`).
-- `fieldOverrides` — optional. Maps WP `<wp:postmeta>` keys to NexPress collection field names. Empty values are dropped. Protected fields (`title`, `slug`, `content`, `excerpt`, `publishedAt`, `coverImage`, `categories`, `tags`, `author`) can never be overridden — a misconfigured override is a no-op, not a corrupt post.
+- `collection` — the NexPress collection slug to route into. The collection must exist in your `nexpress.config.ts` and declare every base field the importer supplies; the exact write contract rejects undeclared fields. Run `pnpm db:generate && pnpm db:migrate` after changing it.
+- `fieldOverrides` — optional. Maps WP `<wp:postmeta>` keys to declared NexPress collection fields. Empty values are dropped. Protected fields (`title`, `slug`, `content`, `blocks`, `excerpt`, `publishedAt`, `coverImage`, `categories`, `tags`, `author`) can never be overridden — a misconfigured override is a no-op, not a corrupt post.
 
 Snake-case keys (`wp_type`, `field_overrides`) are also accepted so the design doc's TOML example translates directly.
 

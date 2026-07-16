@@ -58,12 +58,12 @@ describe.skipIf(skipIfNoTestDb())("Atom feed (Phase 10.4)", () => {
     expect(res.headers.get("content-type")).toMatch(/atom\+xml/);
     const xml = await res.text();
     expect(xml.startsWith('<?xml version="1.0"')).toBe(true);
-    expect(xml).toContain("<feed xmlns=\"http://www.w3.org/2005/Atom\">");
+    expect(xml).toContain('<feed xmlns="http://www.w3.org/2005/Atom">');
     expect(xml).toContain("<title>Feed entry alpha</title>");
     expect(xml).toContain(
-      "<link rel=\"alternate\" type=\"text/html\" href=\"http://localhost:3000/blog/feed-entry-alpha\"/>",
+      '<link rel="alternate" type="text/html" href="http://localhost:3000/blog/feed-alpha"/>',
     );
-    expect(xml).toContain("<summary type=\"text\">Short summary alpha.</summary>");
+    expect(xml).toContain('<summary type="text">Short summary alpha.</summary>');
   });
 
   it("draft posts are excluded (anonymous read filter)", async () => {
@@ -92,7 +92,7 @@ describe.skipIf(skipIfNoTestDb())("Atom feed (Phase 10.4)", () => {
     expect(xml).toContain("<feed xmlns=");
     // self link encodes the collection query param.
     expect(xml).toContain(
-      "<link rel=\"self\" href=\"http://localhost:3000/feed.xml?collection=discussions\"/>",
+      '<link rel="self" href="http://localhost:3000/feed.xml?collection=discussions"/>',
     );
   });
 
@@ -100,9 +100,7 @@ describe.skipIf(skipIfNoTestDb())("Atom feed (Phase 10.4)", () => {
     // `users` is admin-internal; its collection config doesn't
     // declare seo.urlPath, so the feed has nothing to publish
     // and returns 404 instead of an empty feed.
-    const res = await feedGET(
-      new NextRequest("http://localhost:3000/feed.xml?collection=users"),
-    );
+    const res = await feedGET(new NextRequest("http://localhost:3000/feed.xml?collection=users"));
     expect(res.status).toBe(404);
   });
 

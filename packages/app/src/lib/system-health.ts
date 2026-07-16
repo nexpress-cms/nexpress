@@ -23,6 +23,7 @@ import {
 import { getSearchAdapterDiagnostics } from "@nexpress/core/search";
 import { getI18nRuntimeDiagnostics } from "@nexpress/core/i18n";
 import { getCommunityRuntimeDiagnostics } from "@nexpress/core/community";
+import { getCollectionRuntimeDiagnostics } from "@nexpress/core/collections";
 import {
   getOptionalStorageRuntimeConfig,
   getStorageAdapter,
@@ -617,6 +618,37 @@ export function checkCommunityRuntime(): Check {
   }
 }
 
+/** Fail-closed collection hydration, hook-result, and API serialization boundaries. */
+export function checkCollectionRuntime(): Check {
+  try {
+    const diagnostics = getCollectionRuntimeDiagnostics();
+    const last = diagnostics.at(-1);
+    if (last) {
+      return {
+        id: "collections",
+        label: "Collection document contracts",
+        state: "error",
+        detail: `${diagnostics.length.toString()} runtime contract failure${diagnostics.length === 1 ? "" : "s"}`,
+        hint: `Last ${last.operation} failure for ${last.collection} at ${last.occurredAt}: ${last.message}`,
+      };
+    }
+    return {
+      id: "collections",
+      label: "Collection document contracts",
+      state: "ok",
+      detail: "storage, runtime, and wire boundaries valid",
+    };
+  } catch (error) {
+    return {
+      id: "collections",
+      label: "Collection document contracts",
+      state: "error",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Fix collection registration and persisted document contracts before serving collection traffic.",
+    };
+  }
+}
+
 /**
  * NP_SECRET — runtime parallel of #597's boot-time check, plus
  * the entropy floor introduced in the setup wizard (#618). Most
@@ -680,6 +712,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
   checks.push(checkSearchAdapter());
   checks.push(checkI18nRuntime());
   checks.push(checkCommunityRuntime());
+  checks.push(checkCollectionRuntime());
   checks.push(checkSecret());
   return {
     generatedAt: new Date().toISOString(),

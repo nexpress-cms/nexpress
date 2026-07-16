@@ -41,6 +41,13 @@ import {
   npRevisionCanonicalDatePattern,
   npRevisionContractLimits,
 } from "@nexpress/core/revisions";
+import {
+  npCollectionContractLimits,
+  npCollectionDocumentCanonicalDatePattern,
+  npCollectionDocumentSlugPattern,
+  npCollectionDocumentStatuses,
+  npCollectionDocumentVisibilities,
+} from "@nexpress/core/collection-contract";
 import { npSearchCollectionSlugPattern, npSearchContractLimits } from "@nexpress/core/search";
 import { NextResponse } from "next/server";
 
@@ -105,7 +112,7 @@ const themeTokensOverlaySchema: OpenApiSchema = {
   ),
 };
 
-function fieldToSchema(field: NpFieldManifest): OpenApiSchema {
+function fieldToSchema(field: NpFieldManifest, exactDocument = false): OpenApiSchema {
   switch (field.type) {
     case "text":
     case "textarea":
@@ -121,7 +128,11 @@ function fieldToSchema(field: NpFieldManifest): OpenApiSchema {
     case "checkbox":
       return { type: "boolean" };
     case "date":
-      return { type: "string", format: "date-time" };
+      return {
+        type: "string",
+        format: "date-time",
+        ...(exactDocument && { pattern: npCollectionDocumentCanonicalDatePattern }),
+      };
     case "richText":
       return {
         type: "object",
@@ -170,78 +181,197 @@ function fieldToSchema(field: NpFieldManifest): OpenApiSchema {
       return field.hasMany
         ? { type: "array", items: { type: "string", format: "uuid" } }
         : { type: "string", format: "uuid" };
-    case "array":
+    case "array": {
+      const nested = flattenManifestFields(field.fields ?? []);
       return {
         type: "array",
         items: {
           type: "object",
           additionalProperties: false,
           properties: Object.fromEntries(
-            flattenManifestFields(field.fields ?? []).map((f) => [f.name, fieldToSchema(f)]),
+            nested.map((nestedField) => [
+              nestedField.name,
+              nullableCollectionFieldSchema(nestedField, exactDocument),
+            ]),
           ),
+          required: nested
+            .filter((nestedField) => exactDocument || isRequiredCollectionWriteField(nestedField))
+            .map((nestedField) => nestedField.name),
         },
       };
-    case "group":
+    }
+    case "group": {
+      const nested = flattenManifestFields(field.fields ?? []);
       return {
         type: "object",
         additionalProperties: false,
         properties: Object.fromEntries(
-          flattenManifestFields(field.fields ?? []).map((f) => [f.name, fieldToSchema(f)]),
+          nested.map((nestedField) => [
+            nestedField.name,
+            nullableCollectionFieldSchema(nestedField, exactDocument),
+          ]),
         ),
+        required: nested
+          .filter((nestedField) => exactDocument || isRequiredCollectionWriteField(nestedField))
+          .map((nestedField) => nestedField.name),
       };
+    }
     default:
       return { type: "object", additionalProperties: true };
   }
 }
 
-function collectionSchema(manifest: ReturnType<typeof collectionToManifest>): OpenApiSchema {
-  const properties: Record<string, OpenApiSchema> = {
-    id: { type: "string", format: "uuid", readOnly: true },
-    status: { type: "string", enum: ["draft", "scheduled", "published", "archived", "pending"] },
-    _status: {
-      type: "string",
-      enum: ["draft", "scheduled", "published", "archived", "pending"],
-      writeOnly: true,
-      description:
-        "Request-only status transition sentinel. Use `scheduled` with a future `publishedAt`, or `published` with a future `publishedAt` for backwards-compatible scheduling.",
-    },
-    createdAt: { type: "string", format: "date-time", readOnly: true },
-    updatedAt: { type: "string", format: "date-time", readOnly: true },
-  };
+function nullableCollectionFieldSchema(
+  field: NpFieldManifest,
+  exactDocument = false,
+): OpenApiSchema {
+  const schema = fieldToSchema(field, exactDocument);
+  if (
+    field.required ||
+    field.type === "array" ||
+    (field.type === "relationship" && field.hasMany)
+  ) {
+    return schema;
+  }
+  return { anyOf: [schema, { type: "null" }] };
+}
 
-  for (const field of manifest.fields) {
-    if (field.type === "row" || field.type === "collapsible") continue;
-    properties[field.name] = {
-      ...fieldToSchema(field),
-      ...(field.description && { description: field.description }),
+function isRequiredCollectionWriteField(field: NpFieldManifest): boolean {
+  return field.required === true && field.defaultValue === undefined;
+}
+
+function collectionFieldProperties(
+  manifest: ReturnType<typeof collectionToManifest>,
+  exactDocument = false,
+): Record<string, OpenApiSchema> {
+  return Object.fromEntries(
+    flattenManifestFields(manifest.fields).map((field) => [
+      field.name,
+      {
+        ...nullableCollectionFieldSchema(field, exactDocument),
+        ...(field.description && { description: field.description }),
+      },
+    ]),
+  );
+}
+
+function hasManifestField(
+  manifest: ReturnType<typeof collectionToManifest>,
+  name: string,
+): boolean {
+  return flattenManifestFields(manifest.fields).some((field) => field.name === name);
+}
+
+function collectionDocumentSchema(
+  manifest: ReturnType<typeof collectionToManifest>,
+  config: NpCollectionConfig,
+): OpenApiSchema {
+  const properties: Record<string, OpenApiSchema> = {
+    id: { type: "string", format: "uuid" },
+    status: { type: "string", enum: [...npCollectionDocumentStatuses] },
+    createdBy: { type: ["string", "null"], format: "uuid" },
+    updatedBy: { type: ["string", "null"], format: "uuid" },
+    visibility: { type: "string", enum: [...npCollectionDocumentVisibilities] },
+    siteId: { type: "string", pattern: npSiteIdPattern },
+    ...collectionFieldProperties(manifest, true),
+  };
+  if (config.timestamps !== false) {
+    properties.createdAt = {
+      type: "string",
+      format: "date-time",
+      pattern: npCollectionDocumentCanonicalDatePattern,
+    };
+    properties.updatedAt = {
+      type: "string",
+      format: "date-time",
+      pattern: npCollectionDocumentCanonicalDatePattern,
     };
   }
-
+  if (config.community?.memberWrite?.create) {
+    properties.memberAuthorId = { type: ["string", "null"], format: "uuid" };
+  }
   if (manifest.slug_auto) {
     properties.slug = {
       type: "string",
-      description: "Auto-derived from title unless set explicitly.",
+      minLength: 1,
+      maxLength: npCollectionContractLimits.slugLength,
+      pattern: npCollectionDocumentSlugPattern,
     };
   }
-
-  if (manifest.versions.drafts && !manifest.fields.some((field) => field.name === "publishedAt")) {
-    properties.publishedAt = {
+  if (config.i18n) {
+    properties.locale = {
       type: "string",
-      format: "date-time",
-      nullable: true,
-      description:
-        "Framework-managed publish timestamp for draft-enabled collections that do not declare their own publishedAt field.",
+      minLength: 1,
+      maxLength: npCollectionContractLimits.localeLength,
+    };
+    properties.translationGroupId = { type: "string", format: "uuid" };
+  }
+  if (manifest.versions.drafts && !hasManifestField(manifest, "publishedAt")) {
+    properties.publishedAt = {
+      anyOf: [
+        {
+          type: "string",
+          format: "date-time",
+          pattern: npCollectionDocumentCanonicalDatePattern,
+        },
+        { type: "null" },
+      ],
     };
   }
-
-  const required = manifest.fields
-    .filter((f) => f.required && f.type !== "row" && f.type !== "collapsible")
-    .map((f) => f.name);
-
   return {
     type: "object",
+    additionalProperties: false,
     properties,
-    required,
+    required: Object.keys(properties),
+  };
+}
+
+function collectionWriteSchema(
+  manifest: ReturnType<typeof collectionToManifest>,
+  config: NpCollectionConfig,
+  patch: boolean,
+): OpenApiSchema {
+  const properties: Record<string, OpenApiSchema> = collectionFieldProperties(manifest);
+  properties.visibility = {
+    type: "string",
+    enum: [...npCollectionDocumentVisibilities],
+  };
+  properties._status = {
+    type: "string",
+    enum: [...npCollectionDocumentStatuses],
+    description:
+      "Request-only status transition. The canonical response field is `status`; `_status` is never stored or returned.",
+  };
+  if (manifest.slug_auto) {
+    properties.slug = {
+      type: "string",
+      minLength: 1,
+      maxLength: 2048,
+      description: "Optional explicit slug; otherwise derived from the configured source field.",
+    };
+  }
+  if (config.i18n) {
+    properties.locale = {
+      type: "string",
+      minLength: 1,
+      maxLength: npCollectionContractLimits.localeLength,
+    };
+    properties.translationGroupId = { type: "string", format: "uuid" };
+  }
+  if (manifest.versions.drafts && !hasManifestField(manifest, "publishedAt")) {
+    properties.publishedAt = {
+      anyOf: [{ type: "string", format: "date-time" }, { type: "null" }],
+    };
+  }
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties,
+    ...(!patch && {
+      required: flattenManifestFields(manifest.fields)
+        .filter(isRequiredCollectionWriteField)
+        .map((field) => field.name),
+    }),
   };
 }
 
@@ -2941,7 +3071,11 @@ function buildSpec(): OpenApiSchema {
     const config = getCollectionConfig(slug);
     const manifest = collectionToManifest(config);
     const schemaName = `${slug}_document`;
-    schemas[schemaName] = collectionSchema(manifest);
+    const createSchemaName = `${slug}_create_input`;
+    const patchSchemaName = `${slug}_patch_input`;
+    schemas[schemaName] = collectionDocumentSchema(manifest, config);
+    schemas[createSchemaName] = collectionWriteSchema(manifest, config, false);
+    schemas[patchSchemaName] = collectionWriteSchema(manifest, config, true);
 
     paths[`/api/collections/${slug}`] = {
       get: {
@@ -2956,6 +3090,18 @@ function buildSpec(): OpenApiSchema {
             name: "where",
             schema: { type: "string", description: "JSON-encoded filter object" },
           },
+          ...(config.i18n
+            ? [
+                {
+                  in: "query",
+                  name: "locale",
+                  schema: {
+                    type: "string",
+                    maxLength: npCollectionContractLimits.localeLength,
+                  },
+                },
+              ]
+            : []),
         ],
         responses: {
           "200": {
@@ -2964,12 +3110,24 @@ function buildSpec(): OpenApiSchema {
               "application/json": {
                 schema: {
                   type: "object",
+                  additionalProperties: false,
+                  required: [
+                    "docs",
+                    "totalDocs",
+                    "totalPages",
+                    "page",
+                    "limit",
+                    "hasNextPage",
+                    "hasPrevPage",
+                  ],
                   properties: {
                     docs: { type: "array", items: { $ref: `#/components/schemas/${schemaName}` } },
-                    totalDocs: { type: "integer" },
-                    totalPages: { type: "integer" },
-                    page: { type: "integer" },
-                    limit: { type: "integer" },
+                    totalDocs: { type: "integer", minimum: 0 },
+                    totalPages: { type: "integer", minimum: 0 },
+                    page: { type: "integer", minimum: 1 },
+                    limit: { type: "integer", minimum: 1, maximum: 100 },
+                    hasNextPage: { type: "boolean" },
+                    hasPrevPage: { type: "boolean" },
                   },
                 },
               },
@@ -2982,7 +3140,7 @@ function buildSpec(): OpenApiSchema {
         requestBody: {
           required: true,
           content: {
-            "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } },
+            "application/json": { schema: { $ref: `#/components/schemas/${createSchemaName}` } },
           },
         },
         responses: {
@@ -3016,10 +3174,17 @@ function buildSpec(): OpenApiSchema {
         requestBody: {
           required: true,
           content: {
-            "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } },
+            "application/json": { schema: { $ref: `#/components/schemas/${patchSchemaName}` } },
           },
         },
-        responses: { "200": { description: "Updated document" } },
+        responses: {
+          "200": {
+            description: "Updated document",
+            content: {
+              "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } },
+            },
+          },
+        },
       },
       delete: {
         summary: `Delete a ${manifest.labels.singular.toLowerCase()}`,

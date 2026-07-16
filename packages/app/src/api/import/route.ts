@@ -7,6 +7,7 @@ import {
   npNavigation,
   NP_DEFAULT_SITE_ID,
   getAllCollectionSlugs,
+  getCollectionConfig,
   getCurrentSiteId,
   getPluginRegistration,
   getThemeById,
@@ -16,7 +17,12 @@ import {
   setSiteGeneralSettings,
   updatePluginState,
   can,
+  type NpDocumentStatus,
 } from "@nexpress/core";
+import {
+  npCollectionDocumentToWriteInput,
+  npParseCollectionDocumentWire,
+} from "@nexpress/core/collection-contract";
 import {
   npAnalyzeSettingValue,
   npNormalizeSiteGeneralSettings,
@@ -38,7 +44,7 @@ import {
 import { and, eq, isNull } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
-const SUPPORTED_EXPORT_VERSION = "2";
+const SUPPORTED_EXPORT_VERSION = "3";
 
 import { requireAuth } from "../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
@@ -757,9 +763,14 @@ export async function POST(request: NextRequest) {
 
         for (const doc of docs) {
           const transformed = replaceMediaRefs(doc, mediaMap) as Record<string, unknown>;
+          const config = getCollectionConfig(slug);
+          let runtimeDocument: Record<string, unknown>;
+          let writable: Record<string, unknown>;
 
           try {
-            validateDocumentBlockContent(slug, transformed);
+            runtimeDocument = npParseCollectionDocumentWire(transformed, config);
+            writable = npCollectionDocumentToWriteInput(runtimeDocument, config);
+            validateDocumentBlockContent(slug, writable);
           } catch (error) {
             warnings.push(
               `Failed to import doc in '${slug}': ${error instanceof Error ? error.message : "unknown"}`,
@@ -776,7 +787,9 @@ export async function POST(request: NextRequest) {
           }
 
           try {
-            await saveDocument(slug, null, transformed, user);
+            await saveDocument(slug, null, writable, user, {
+              status: runtimeDocument.status as NpDocumentStatus,
+            });
             imported.pages++;
           } catch (err) {
             warnings.push(

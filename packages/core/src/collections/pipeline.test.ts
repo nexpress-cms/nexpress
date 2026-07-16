@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setLogger, resetLogger, type NpLogger } from "../observability/logger.js";
-import { runPostCommit } from "./pipeline.js";
+import type { NpCollectionConfig } from "../config/types.js";
+import {
+  getCollectionRuntimeDiagnostics,
+  resetCollectionRuntimeDiagnostics,
+} from "./diagnostics.js";
+import { npRunCollectionDocumentResultHooks, runPostCommit } from "./pipeline.js";
 
 /**
  * Covers the swallow + log contract for `runPostCommit` (the
@@ -107,5 +112,62 @@ describe("runPostCommit (#277)", () => {
       () => Promise.resolve(undefined),
     );
     expect(captured).toHaveLength(0);
+  });
+});
+
+describe("collection lifecycle result boundary", () => {
+  const config: NpCollectionConfig = {
+    slug: "flags",
+    labels: { singular: "Flag", plural: "Flags" },
+    timestamps: false,
+    fields: [{ type: "checkbox", name: "enabled", required: true }],
+  };
+  const document = {
+    id: "11111111-1111-4111-8111-111111111111",
+    status: "published",
+    createdBy: null,
+    updatedBy: null,
+    visibility: "public",
+    siteId: "default",
+    enabled: true,
+  };
+
+  afterEach(() => resetCollectionRuntimeDiagnostics());
+
+  it("runs an after-hook once and returns its exact document", async () => {
+    const hook = vi.fn(() => Promise.resolve(document));
+    await expect(
+      npRunCollectionDocumentResultHooks(
+        config,
+        [hook],
+        {
+          data: document,
+          user: null,
+          principal: null,
+          collection: "flags",
+        },
+        "write-result",
+      ),
+    ).resolves.toEqual(document);
+    expect(hook).toHaveBeenCalledOnce();
+  });
+
+  it("rejects and diagnoses a malformed hook result", async () => {
+    await expect(
+      npRunCollectionDocumentResultHooks(
+        config,
+        [() => Promise.resolve({ ...document, extra: true })],
+        {
+          data: document,
+          user: null,
+          principal: null,
+          collection: "flags",
+        },
+        "write-result",
+      ),
+    ).rejects.toThrow("Invalid collection document");
+    expect(getCollectionRuntimeDiagnostics()).toEqual([
+      expect.objectContaining({ collection: "flags", operation: "hook-result" }),
+    ]);
   });
 });

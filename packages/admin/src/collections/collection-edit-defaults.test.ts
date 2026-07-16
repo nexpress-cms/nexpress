@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { getCollectionFieldDefaultValue } from "./collection-edit-defaults.js";
+import {
+  getCollectionFieldDefaultValue,
+  normalizeCollectionEditorRequestValues,
+} from "./collection-edit-defaults.js";
 
 describe("collection editor defaults", () => {
   it("starts block fields with canonical empty block content", () => {
@@ -16,5 +19,18 @@ describe("collection editor defaults", () => {
 
   it("keeps JSON fields distinct from block content", () => {
     expect(getCollectionFieldDefaultValue({ type: "json", name: "metadata" }, {})).toEqual({});
+  });
+
+  it("omits a blank generated slug so the server can derive it", () => {
+    expect(normalizeCollectionEditorRequestValues({ title: "Hello", slug: "  " }, true)).toEqual({
+      title: "Hello",
+    });
+  });
+
+  it("preserves explicit slugs and fields without slug generation", () => {
+    expect(normalizeCollectionEditorRequestValues({ slug: "custom-path" }, true)).toEqual({
+      slug: "custom-path",
+    });
+    expect(normalizeCollectionEditorRequestValues({ slug: "" }, false)).toEqual({ slug: "" });
   });
 });

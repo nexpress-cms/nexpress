@@ -31,11 +31,7 @@ function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = 
   return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
 }
 
-function staffRequest(
-  path: string,
-  user: TestUserSession,
-  init: RequestInit = {},
-): NextRequest {
+function staffRequest(path: string, user: TestUserSession, init: RequestInit = {}): NextRequest {
   return jsonRequest(path, {
     ...init,
     cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
@@ -90,15 +86,14 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
   beforeAll(async () => {
     await ensureMigrated();
     registerTestCollections();
-    const { defineDiscussionsCollection } = await import("@nexpress/plugin-forum");
+    const { discussionsCollection: config } = await import("@/collections/discussions");
     const { registerCollection } = await import("@nexpress/core");
     const { discussionsTable } = await import("@/db/generated/collections");
-    const config = defineDiscussionsCollection();
-    registerCollection(
-      "discussions",
-      discussionsTable as never,
-      { ...config, access: undefined, hooks: undefined },
-    );
+    registerCollection("discussions", discussionsTable as never, {
+      ...config,
+      access: undefined,
+      hooks: undefined,
+    });
   });
   beforeEach(async () => {
     await truncateAll();
@@ -257,10 +252,7 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
         .select()
         .from(npAuditEvents)
         .where(
-          and(
-            eq(npAuditEvents.action, "document.update"),
-            eq(npAuditEvents.targetId, docId),
-          ),
+          and(eq(npAuditEvents.action, "document.update"), eq(npAuditEvents.targetId, docId)),
         )) as Array<{ actorMemberId: string | null; targetType: string | null }>;
       expect(audits).toHaveLength(1);
       expect(audits[0].actorMemberId).toBe(member.memberId);
@@ -296,11 +288,9 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
       expect(update.status).toBe(403);
     });
 
-    // Defense in depth: a body-injected `memberAuthorId` must NOT
-    // reassign authorship. Even if zod's strip behavior changes or
-    // `prepareDocumentData` ever emits the column, the explicit
-    // delete in `saveDocumentImpl` on the update branch catches it.
-    it("body-injected `memberAuthorId` is ignored on member update", async () => {
+    // Framework-managed fields fail at the exact write boundary instead of
+    // being silently stripped; authorship must still remain unchanged.
+    it("rejects body-injected `memberAuthorId` on member update", async () => {
       const owner = await seedActiveMember("hijack-owner");
       const intruder = await seedActiveMember("hijack-target");
       const docId = await seedMemberDiscussion(owner, "Mine", "hijack-1");
@@ -316,7 +306,11 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
         }),
         { params: Promise.resolve({ slug: "discussions", id: docId }) },
       );
-      expect(update.status).toBe(200);
+      expect(update.status).toBe(400);
+      expect(await readJson(update).then((result) => result.body)).toMatchObject({
+        error: { code: "VALIDATION_ERROR", message: "Invalid input" },
+        status: 400,
+      });
 
       const db = await getTestDb();
       const { discussionsTable } = await import("@/db/generated/collections");
@@ -508,10 +502,7 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
         .select()
         .from(npAuditEvents)
         .where(
-          and(
-            eq(npAuditEvents.action, "document.delete"),
-            eq(npAuditEvents.targetId, docId),
-          ),
+          and(eq(npAuditEvents.action, "document.delete"), eq(npAuditEvents.targetId, docId)),
         )) as Array<{ actorMemberId: string | null }>;
       expect(audits).toHaveLength(1);
       expect(audits[0].actorMemberId).toBe(member.memberId);
@@ -596,7 +587,10 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
         memberId: member.memberId,
         scopeType: "site",
         kind: "permanent",
-        actor: { kind: "staff", user: { id: admin.userId, role: admin.role, tokenVersion: 0 } as never },
+        actor: {
+          kind: "staff",
+          user: { id: admin.userId, role: admin.role, tokenVersion: 0 } as never,
+        },
       });
 
       const res = await collectionPOST(
@@ -644,7 +638,10 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
         memberId: member.memberId,
         scopeType: "site",
         kind: "permanent",
-        actor: { kind: "staff", user: { id: admin.userId, role: admin.role, tokenVersion: 0 } as never },
+        actor: {
+          kind: "staff",
+          user: { id: admin.userId, role: admin.role, tokenVersion: 0 } as never,
+        },
       });
 
       probeCount = 0;

@@ -7,12 +7,13 @@ import type { NpAuthUser } from "../config/types.js";
 import { npUsers } from "../db/schema/system.js";
 import { publishScheduledDocuments } from "../collections/scheduled.js";
 import { saveDocument } from "../collections/pipeline.js";
+import { getCollectionConfig } from "../collections/registry.js";
 import { setJobQueue } from "../jobs/queue.js";
 import { loadPlugins, resetPlugins } from "../plugins/host.js";
 import { getCurrentSiteId, withCurrentSite } from "../sites/context.js";
 import { createSite } from "../sites/registry.js";
 import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } from "./setup.js";
-import { categoriesTable, pagesTable, postsTable, registerTestCollections } from "./fixtures.js";
+import { pagesTable, postsTable, registerTestCollections } from "./fixtures.js";
 
 describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () => {
   beforeAll(async () => {
@@ -121,25 +122,14 @@ describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () 
     expect(row.status).toBe("scheduled");
   });
 
-  it("does not treat publishedAt as framework-managed without draft versions", async () => {
+  it("rejects undeclared publishedAt fields without draft versions", async () => {
     const user = await seedUser();
     const futureIso = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    const result = await saveDocument(
-      "categories",
-      null,
-      { name: "Scheduling", publishedAt: futureIso },
-      user,
-      { status: "published" },
-    );
-    expect(result.doc.status).toBe("published");
-
-    const db = await getTestDb();
-    const [row] = await db
-      .select()
-      .from(categoriesTable)
-      .where(eq(categoriesTable.id, result.doc.id as string));
-    expect(row.name).toBe("Scheduling");
-    expect(row.status).toBe("published");
+    await expect(
+      saveDocument("categories", null, { name: "Scheduling", publishedAt: futureIso }, user, {
+        status: "published",
+      }),
+    ).rejects.toThrow(/publishedAt/u);
   });
 
   it("publishScheduledDocuments flips only rows whose publishedAt has passed", async () => {
@@ -261,6 +251,37 @@ describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () 
       memberId: null,
     });
     expect(await getCurrentSiteId()).toBeNull();
+  });
+
+  it("contains collection afterUpdate failures after the scheduled publish commits", async () => {
+    const config = getCollectionConfig("posts");
+    const previousHooks = config.hooks;
+    config.hooks = {
+      ...previousHooks,
+      afterUpdate: [() => Promise.reject(new Error("scheduled afterUpdate failed"))],
+    };
+    const enqueue = vi.fn().mockResolvedValue("job-1");
+    setJobQueue({
+      enqueue,
+      start: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+    });
+
+    try {
+      const user = await seedUser();
+      const past = new Date(Date.now() - 60 * 1000);
+      const due = await saveDocument("posts", null, { ...baseDoc, publishedAt: past }, user, {
+        status: "scheduled",
+      });
+
+      await expect(publishScheduledDocuments()).resolves.toMatchObject({ published: 1 });
+      expect(enqueue).toHaveBeenCalledWith(
+        "content:afterSave",
+        expect.objectContaining({ documentId: due.doc.id }),
+      );
+    } finally {
+      config.hooks = previousHooks;
+    }
   });
 
   it("is idempotent — second run finds nothing", async () => {

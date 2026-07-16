@@ -5,41 +5,50 @@
 // the fields the framework pages actually read, so the package
 // typechecks against the "default scaffold" shape.
 import type { NpAuthUser, NpFindOptions, NpFindResult } from "@nexpress/core";
+import type { NpCollectionDocumentWire } from "@nexpress/core/collection-contract";
 
-export interface PostsDocument {
+interface CollectionDocumentBase {
   id: string;
-  status: "draft" | "published" | "archived" | "pending";
+  status: "draft" | "scheduled" | "published" | "archived" | "pending";
   createdAt: Date;
   updatedAt: Date;
+  createdBy: string | null;
+  updatedBy: string | null;
+  visibility: "public" | "private";
+  siteId: string;
+}
+
+export interface PostsDocument extends CollectionDocumentBase {
   slug: string;
   title: string;
-  excerpt?: string | null;
-  content?: unknown;
-  coverImage?: string | null;
-  publishedAt?: Date | null;
-  template?: string | null;
-  seo?: { title?: string; description?: string } | null;
+  excerpt: string | null;
+  content: unknown;
+  coverImage: string | null;
+  publishedAt: Date | null;
+  template: string | null;
+  seo: { title: string | null; description: string | null } | null;
 }
+export type PostsDocumentWire = NpCollectionDocumentWire<PostsDocument>;
 
 export interface PagesDocument extends PostsDocument {
-  blocks?: unknown;
-  seoDescription?: string | null;
+  blocks: unknown;
+  seoDescription: string | null;
 }
+export type PagesDocumentWire = NpCollectionDocumentWire<PagesDocument>;
 
-export interface CategoriesDocument {
-  id: string;
-  status: "draft" | "published" | "archived" | "pending";
-  createdAt: Date;
-  updatedAt: Date;
+export interface CategoriesDocument extends CollectionDocumentBase {
   slug: string;
   name: string;
-  description?: string | null;
+  description: string | null;
 }
+export type CategoriesDocumentWire = NpCollectionDocumentWire<CategoriesDocument>;
 
 export interface TagsDocument extends CategoriesDocument {}
+export type TagsDocumentWire = NpCollectionDocumentWire<TagsDocument>;
 export interface DiscussionsDocument extends PostsDocument {}
+export type DiscussionsDocumentWire = NpCollectionDocumentWire<DiscussionsDocument>;
 
-const emptyResult = <T,>(): NpFindResult<T> => ({
+const emptyResult = <T>(): NpFindResult<T> => ({
   docs: [],
   totalDocs: 0,
   totalPages: 0,

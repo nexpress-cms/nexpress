@@ -17,7 +17,10 @@ import { POST as collectionPOST } from "@/app/api/collections/[slug]/route";
 
 import { NextRequest } from "next/server";
 
-function staffPostsRequest(staff: { accessToken: string; csrfToken: string }, body: object): NextRequest {
+function staffPostsRequest(
+  staff: { accessToken: string; csrfToken: string },
+  body: object,
+): NextRequest {
   return new NextRequest("http://localhost:3000/api/collections/posts", {
     method: "POST",
     headers: {
@@ -82,9 +85,7 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
 
     const res = await sitemapGET(sitemapRequest("en"));
     const xml = await res.text();
-    expect(xml).toContain(
-      "<loc>http://localhost:3000/blog/sitemap-regression</loc>",
-    );
+    expect(xml).toContain("<loc>http://localhost:3000/blog/sitemap-regression</loc>");
     // Each collection-row entry carries the changefreq + priority
     // declared on the collection's seo config.
     expect(xml).toContain("<changefreq>weekly</changefreq>");
@@ -202,9 +203,7 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
     // contract — verify it's wired by passing an entry through
     // the helper directly.
     const { renderSitemapXml } = await import("@nexpress/core");
-    const xml = renderSitemapXml("http://example.com", [
-      { loc: "/path?a=1&b=2" },
-    ]);
+    const xml = renderSitemapXml("http://example.com", [{ loc: "/path?a=1&b=2" }]);
     expect(xml).toContain("a=1&amp;b=2");
     expect(xml.startsWith('<?xml version="1.0"')).toBe(true);
     expect(xml.endsWith("</urlset>")).toBe(true);
@@ -223,12 +222,8 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
     expect(res.headers.get("content-type")).toMatch(/application\/xml/);
     const xml = await res.text();
     expect(xml).toContain("<sitemapindex");
-    expect(xml).toContain(
-      "<loc>http://localhost:3000/sitemap.xml?locale=en</loc>",
-    );
-    expect(xml).toContain(
-      "<loc>http://localhost:3000/sitemap.xml?locale=ko</loc>",
-    );
+    expect(xml).toContain("<loc>http://localhost:3000/sitemap.xml?locale=en</loc>");
+    expect(xml).toContain("<loc>http://localhost:3000/sitemap.xml?locale=ko</loc>");
     // The index never carries `<url>` entries; child sitemaps own those.
     expect(xml).not.toContain("<url>");
     expect(xml).not.toContain("<urlset");
@@ -262,13 +257,9 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
     const en = await (await sitemapGET(sitemapRequest("en"))).text();
     const ko = await (await sitemapGET(sitemapRequest("ko"))).text();
     // posts is non-i18n, so its rows go to the default (en) sitemap
-    // only — ko's sitemap stays free of the entry. The pipeline
-    // derives slug from `title` so the URL ends in
-    // `english-only-post` rather than the body's `english-only`.
-    expect(en).toContain(
-      "<loc>http://localhost:3000/blog/english-only-post</loc>",
-    );
-    expect(ko).not.toContain("english-only-post");
+    // only — ko's sitemap stays free of the explicitly supplied slug.
+    expect(en).toContain("<loc>http://localhost:3000/blog/english-only</loc>");
+    expect(ko).not.toContain("english-only");
   });
 
   it("unknown ?locale value 404s rather than falling back silently", async () => {
@@ -321,26 +312,14 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
     const koXml = await (await sitemapGET(sitemapRequest("ko"))).text();
 
     expect(enXml).toContain("<loc>http://localhost:3000/en/greeting</loc>");
-    expect(enXml).not.toContain(
-      "<loc>http://localhost:3000/ko/greeting</loc>",
-    );
-    expect(enXml).toContain(
-      'hreflang="en" href="http://localhost:3000/en/greeting"',
-    );
-    expect(enXml).toContain(
-      'hreflang="ko" href="http://localhost:3000/ko/greeting"',
-    );
+    expect(enXml).not.toContain("<loc>http://localhost:3000/ko/greeting</loc>");
+    expect(enXml).toContain('hreflang="en" href="http://localhost:3000/en/greeting"');
+    expect(enXml).toContain('hreflang="ko" href="http://localhost:3000/ko/greeting"');
 
     expect(koXml).toContain("<loc>http://localhost:3000/ko/greeting</loc>");
-    expect(koXml).not.toContain(
-      "<loc>http://localhost:3000/en/greeting</loc>",
-    );
-    expect(koXml).toContain(
-      'hreflang="en" href="http://localhost:3000/en/greeting"',
-    );
-    expect(koXml).toContain(
-      'hreflang="ko" href="http://localhost:3000/ko/greeting"',
-    );
+    expect(koXml).not.toContain("<loc>http://localhost:3000/en/greeting</loc>");
+    expect(koXml).toContain('hreflang="en" href="http://localhost:3000/en/greeting"');
+    expect(koXml).toContain('hreflang="ko" href="http://localhost:3000/ko/greeting"');
   });
 
   it("ignores ?locale= when i18n is not configured (flat-mode regression)", async () => {
@@ -375,13 +354,9 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
       { loc: "/sitemap.xml?locale=ko" },
     ]);
     expect(xml).toContain("<sitemapindex");
-    expect(xml).toContain(
-      "<loc>https://example.com/sitemap.xml?locale=en</loc>",
-    );
+    expect(xml).toContain("<loc>https://example.com/sitemap.xml?locale=en</loc>");
     expect(xml).toContain("<lastmod>2026-04-29T00:00:00.000Z</lastmod>");
-    expect(xml).toContain(
-      "<loc>https://example.com/sitemap.xml?locale=ko</loc>",
-    );
+    expect(xml).toContain("<loc>https://example.com/sitemap.xml?locale=ko</loc>");
     expect(xml.startsWith('<?xml version="1.0"')).toBe(true);
     expect(xml.endsWith("</sitemapindex>")).toBe(true);
   });

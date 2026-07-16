@@ -1,14 +1,14 @@
 import { NpValidationError } from "../errors.js";
 import type { NpCollectionConfig } from "../config/types.js";
+import { npNormalizeCollectionDocumentSlug } from "../collection-contract/contract.js";
 
 /**
  * Stable URL-slug derivation. Lowercases, strips Latin diacritics
  * (Cr\u00e8me \u2192 creme), keeps any Unicode letter or number including
- * Korean/Japanese/Chinese/Cyrillic/Greek/etc., replaces runs of
- * separators (anything that isn't a letter or number) with a
- * single hyphen, trims edge hyphens, and caps at 96 chars so the
- * result fits standard DB slug columns without needing a larger
- * index.
+ * Korean/Japanese/Chinese/Cyrillic/Greek/etc., preserves slash-separated
+ * nested page paths, replaces other separator runs with a single hyphen,
+ * trims empty path segments / edge hyphens, and caps at 96 chars so the result
+ * fits standard DB slug columns without needing a larger index.
  *
  * The two-step `NFKD \u2192 strip combining marks \u2192 NFC` dance does
  * the diacritic strip without permanently decomposing scripts
@@ -16,14 +16,7 @@ import type { NpCollectionConfig } from "../config/types.js";
  * Hangul, which NFKD turns into jamo and NFC then reassembles).
  */
 export function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .normalize("NFC")
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 96);
+  return npNormalizeCollectionDocumentSlug(value);
 }
 
 /**
@@ -43,10 +36,17 @@ export function applySlugField(
 ): void {
   if (!config.slugField) return;
 
-  const existingSlug = typeof data.slug === "string" ? data.slug.trim() : "";
-
-  if (existingSlug.length > 0) {
-    data.slug = slugify(existingSlug) || existingSlug;
+  if (typeof data.slug === "string") {
+    const normalized = slugify(data.slug);
+    if (normalized.length === 0) {
+      throw new NpValidationError("Slug generation failed", [
+        {
+          field: "slug",
+          message: "Explicit slug must contain at least one letter or number.",
+        },
+      ]);
+    }
+    data.slug = normalized;
     return;
   }
 

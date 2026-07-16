@@ -1,6 +1,6 @@
 import { defineConfig } from "@nexpress/core";
 import { defaultCollections, defaultThemes, storageFromEnv } from "@nexpress/app/config-defaults";
-import { defineDiscussionsCollection, forumPlugin } from "@nexpress/plugin-forum";
+import { forumPlugin } from "@nexpress/plugin-forum";
 // @nexpress:plugins-imports-start
 import { calloutPlugin } from "@nexpress/plugin-block-callout";
 import { embedPlugin } from "@nexpress/plugin-block-embed";
@@ -17,15 +17,7 @@ import { seoAuditPlugin } from "@nexpress/plugin-seo-audit";
 // @nexpress:themes-imports-end
 
 import { i18nConfig } from "./i18n.config";
-
-const discussionsCollection = defineDiscussionsCollection({
-  categories: [
-    { label: "General", value: "general" },
-    { label: "Announcements", value: "announcements" },
-    { label: "Q&A", value: "qa" },
-    { label: "Show & Tell", value: "show-and-tell" },
-  ],
-});
+import { discussionsCollection } from "./collections/discussions";
 
 export default defineConfig({
   site: {

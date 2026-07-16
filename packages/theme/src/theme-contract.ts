@@ -1,4 +1,5 @@
 import { npAnalyzeRegisteredThemeDefinition } from "@nexpress/core";
+import { npIsCanonicalCollectionDocumentSlug } from "@nexpress/core/collection-contract";
 import { npValidateRichTextContent } from "@nexpress/core/fields";
 import { npAnalyzeNavigationItems } from "@nexpress/core/navigation";
 import {
@@ -195,6 +196,15 @@ function validateSeedPages(
     if (titleIssue) issues.push(titleIssue);
     const slugIssue = validateString(raw.slug, `${location}.slug`, false);
     if (slugIssue) issues.push(slugIssue);
+    if (raw.slug !== undefined && !slugIssue && !npIsCanonicalCollectionDocumentSlug(raw.slug)) {
+      issues.push(
+        issue(
+          "seed-content",
+          `${location}.slug`,
+          'seed page slug must be "/" or a canonical relative document path.',
+        ),
+      );
+    }
     const seoIssue = validateString(raw.seoDescription, `${location}.seoDescription`, false);
     if (seoIssue) issues.push(seoIssue);
     if (raw.data !== undefined && !isRecord(raw.data)) {
@@ -272,6 +282,21 @@ function validateSeedPosts(value: unknown): NpThemeContractIssue[] {
     for (const key of ["slug", "kind", "parentSlug"] as const) {
       const stringIssue = validateString(raw[key], `${location}.${key}`, false);
       if (stringIssue) issues.push(stringIssue);
+    }
+    for (const key of ["slug", "parentSlug"] as const) {
+      if (
+        raw[key] !== undefined &&
+        validateString(raw[key], `${location}.${key}`, false) === null &&
+        !npIsCanonicalCollectionDocumentSlug(raw[key])
+      ) {
+        issues.push(
+          issue(
+            "seed-content",
+            `${location}.${key}`,
+            `seed post ${key} must be a canonical relative document path.`,
+          ),
+        );
+      }
     }
     if (
       typeof raw.publishedAt !== "string" ||

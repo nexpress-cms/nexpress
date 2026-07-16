@@ -5,8 +5,23 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { collectDoctorChecks, collectDoctorReport } from "./doctor-core.js";
+import {
+  npIsCanonicalCollectionMainTableName,
+  npIsCollectionMainTableName,
+} from "./doctor-collection-contract.js";
 
 describe("doctor core", () => {
+  it("classifies collection main tables without relying on required columns", () => {
+    expect(npIsCollectionMainTableName("np_c_posts")).toBe(true);
+    expect(npIsCollectionMainTableName("np_c_blog-post")).toBe(true);
+    expect(npIsCollectionMainTableName("np_c_posts__categories")).toBe(false);
+    expect(npIsCollectionMainTableName("np_users")).toBe(false);
+
+    expect(npIsCanonicalCollectionMainTableName("np_c_posts")).toBe(true);
+    expect(npIsCanonicalCollectionMainTableName("np_c_blog-post")).toBe(true);
+    expect(npIsCanonicalCollectionMainTableName("np_c_Broken")).toBe(false);
+  });
+
   it("collects reusable doctor checks without requiring a bootable app", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "nexpress-doctor-core-"));
     const checks = await collectDoctorChecks({
@@ -29,6 +44,7 @@ describe("doctor core", () => {
         "database.reachable",
         "auth.contract",
         "settings.contract",
+        "collections.contract",
         "community.contract",
         "revisions.contract",
         "jobs.contract",

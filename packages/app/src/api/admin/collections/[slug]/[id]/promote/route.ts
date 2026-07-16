@@ -1,14 +1,11 @@
-import {
-  NpForbiddenError,
-  promoteMemberDocument,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, promoteMemberDocument, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../../../lib/api-response";
 import { requireAuth } from "../../../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../../../lib/init-core";
 import { revalidateCollection } from "../../../../../../lib/revalidate";
+import { npSerializeCollectionDocumentForApi } from "../../../../../../lib/collection-helpers";
 
 /**
  * Promote a member-authored `pending` document to `published`. The
@@ -31,7 +28,7 @@ export async function POST(
     const { slug, id } = await context.params;
     const result = await promoteMemberDocument(slug, id, user.id);
     await revalidateCollection(slug, result.doc);
-    return npSuccessResponse(result.doc);
+    return npSuccessResponse(npSerializeCollectionDocumentForApi(slug, result.doc));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

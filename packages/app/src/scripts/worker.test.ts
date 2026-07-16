@@ -2,12 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   configureBuiltinJobContext: vi.fn(),
-  getCollectionConfig: vi.fn(),
-  getDocumentById: vi.fn(),
+  npGetPersistedCollectionDocumentById: vi.fn(),
   startWorker: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@nexpress/core", () => mocks);
+vi.mock("@nexpress/core", () => ({
+  configureBuiltinJobContext: mocks.configureBuiltinJobContext,
+  startWorker: mocks.startWorker,
+}));
+vi.mock("@nexpress/core/collections", () => ({
+  npGetPersistedCollectionDocumentById: mocks.npGetPersistedCollectionDocumentById,
+}));
 
 import { runWorker } from "./worker.js";
 
@@ -43,5 +48,34 @@ describe("worker bootstrap", () => {
     expect(mocks.startWorker).toHaveBeenCalledWith("postgres://localhost/nexpress", {
       onShutdown: shutdown,
     });
+  });
+
+  it("hydrates revalidation data without dispatching collection read hooks", async () => {
+    const document = { id: "doc-1", slug: "hello" };
+    mocks.npGetPersistedCollectionDocumentById.mockResolvedValue(document);
+    await runWorker({
+      ensureFor: vi.fn().mockResolvedValue(undefined),
+      shutdown: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const context = mocks.configureBuiltinJobContext.mock.calls[0]?.[0] as {
+      resolveContentAfterSaveContext(args: {
+        siteId: string;
+        collection: string;
+        documentId: string;
+      }): Promise<{ data: Record<string, unknown> } | null>;
+    };
+    await expect(
+      context.resolveContentAfterSaveContext({
+        siteId: "tenant-a",
+        collection: "posts",
+        documentId: "doc-1",
+      }),
+    ).resolves.toEqual({ data: document });
+    expect(mocks.npGetPersistedCollectionDocumentById).toHaveBeenCalledWith(
+      "posts",
+      "doc-1",
+      "tenant-a",
+    );
   });
 });

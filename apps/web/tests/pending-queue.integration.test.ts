@@ -27,11 +27,7 @@ function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = 
   return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
 }
 
-function staffRequest(
-  path: string,
-  user: TestUserSession,
-  init: RequestInit = {},
-): NextRequest {
+function staffRequest(path: string, user: TestUserSession, init: RequestInit = {}): NextRequest {
   return jsonRequest(path, {
     ...init,
     cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
@@ -63,10 +59,9 @@ async function seedActiveMember(
 }
 
 async function registerDiscussionsWithPendingDefault(): Promise<void> {
-  const { defineDiscussionsCollection } = await import("@nexpress/plugin-forum");
+  const { discussionsCollection: config } = await import("@/collections/discussions");
   const { registerCollection } = await import("@nexpress/core");
   const { discussionsTable } = await import("@/db/generated/collections");
-  const config = defineDiscussionsCollection();
   const community = {
     ...(config.community ?? {}),
     memberWrite: {
@@ -74,17 +69,22 @@ async function registerDiscussionsWithPendingDefault(): Promise<void> {
       defaultStatus: "pending" as const,
     },
   };
-  registerCollection(
-    "discussions",
-    discussionsTable as never,
-    { ...config, community, access: undefined, hooks: undefined },
-  );
+  registerCollection("discussions", discussionsTable as never, {
+    ...config,
+    community,
+    access: undefined,
+    hooks: undefined,
+  });
 }
 
-async function seedPendingDoc(member: {
-  sessionCookie: string;
-  csrfCookie: string;
-}, slug: string, title: string): Promise<{ id: string }> {
+async function seedPendingDoc(
+  member: {
+    sessionCookie: string;
+    csrfCookie: string;
+  },
+  slug: string,
+  title: string,
+): Promise<{ id: string }> {
   // Note: avoid `:` in title — search_vector is tsvector and `:` is
   // a position separator that breaks the parser.
   const create = await collectionPOST(
@@ -138,9 +138,7 @@ describe.skipIf(skipIfNoTestDb())("admin pending queue (Phase 9.7e)", () => {
     await seedPendingDoc(a, "queue-1", "First pending");
     await seedPendingDoc(b, "queue-2", "Second pending");
 
-    const res = await pendingGET(
-      staffRequest("/api/admin/collections/pending", mod),
-    );
+    const res = await pendingGET(staffRequest("/api/admin/collections/pending", mod));
     const body = await readJson<{
       docs: Array<{
         id: string;
@@ -191,9 +189,8 @@ describe.skipIf(skipIfNoTestDb())("admin pending queue (Phase 9.7e)", () => {
     // Promote one of them so it leaves pending. (Use the staff promote
     // endpoint via the existing helper to ensure parity with how the
     // queue is drained in production.)
-    const { POST: promotePOST } = await import(
-      "@/app/api/admin/collections/[slug]/[id]/promote/route"
-    );
+    const { POST: promotePOST } =
+      await import("@/app/api/admin/collections/[slug]/[id]/promote/route");
     await promotePOST(
       staffRequest(`/api/admin/collections/discussions/${pendingDocId}/promote`, mod, {
         method: "POST",
@@ -255,9 +252,7 @@ describe.skipIf(skipIfNoTestDb())("admin pending queue (Phase 9.7e)", () => {
     expect(b1.body.totalDocs).toBe(1);
 
     // posts slug — posts isn't memberWrite-enabled, so 0
-    const r2 = await pendingGET(
-      staffRequest("/api/admin/collections/pending?slug=posts", mod),
-    );
+    const r2 = await pendingGET(staffRequest("/api/admin/collections/pending?slug=posts", mod));
     const b2 = await readJson<{ totalDocs: number }>(r2);
     expect(b2.body.totalDocs).toBe(0);
   });
@@ -271,17 +266,13 @@ describe.skipIf(skipIfNoTestDb())("admin pending queue (Phase 9.7e)", () => {
     await seedPendingDoc(a, "p2", "bravo");
     await seedPendingDoc(a, "p3", "charlie");
 
-    const r1 = await pendingGET(
-      staffRequest("/api/admin/collections/pending?limit=2&page=1", mod),
-    );
+    const r1 = await pendingGET(staffRequest("/api/admin/collections/pending?limit=2&page=1", mod));
     const b1 = await readJson<{ docs: Array<unknown>; totalDocs: number; totalPages: number }>(r1);
     expect(b1.body.docs).toHaveLength(2);
     expect(b1.body.totalDocs).toBe(3);
     expect(b1.body.totalPages).toBe(2);
 
-    const r2 = await pendingGET(
-      staffRequest("/api/admin/collections/pending?limit=2&page=2", mod),
-    );
+    const r2 = await pendingGET(staffRequest("/api/admin/collections/pending?limit=2&page=2", mod));
     const b2 = await readJson<{ docs: Array<unknown> }>(r2);
     expect(b2.body.docs).toHaveLength(1);
   });
@@ -301,9 +292,7 @@ describe.skipIf(skipIfNoTestDb())("admin pending queue (Phase 9.7e)", () => {
       await seedPendingDoc(member, `large-${i}`, `large doc ${i}`);
     }
 
-    const res = await pendingGET(
-      staffRequest("/api/admin/collections/pending?limit=5", mod),
-    );
+    const res = await pendingGET(staffRequest("/api/admin/collections/pending?limit=5", mod));
     const body = await readJson<{ docs: unknown[]; totalDocs: number }>(res);
     expect(body.status).toBe(200);
     expect(body.body.docs).toHaveLength(5);

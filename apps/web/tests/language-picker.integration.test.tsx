@@ -20,6 +20,11 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+// This suite runs with `isolate: false`; themes may already have imported the
+// component with Next's real navigation module in the same worker. Reload the
+// module graph after installing these focused mocks.
+vi.resetModules();
+
 const { usePathname } = await import("next/navigation");
 const { LanguagePicker } =
   await import("../../../packages/themes/default/src/components/language-picker.js");

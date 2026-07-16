@@ -1,4 +1,10 @@
-import { NpValidationError, type NpDocumentStatus, type NpSaveOptions } from "@nexpress/core";
+import {
+  NpValidationError,
+  getCollectionConfig,
+  type NpDocumentStatus,
+  type NpSaveOptions,
+} from "@nexpress/core";
+import { npSerializeCollectionDocumentWithDiagnostics } from "@nexpress/core/collections";
 import { createCollectionHelpers } from "@nexpress/next";
 
 import { ensureFor } from "./init-core";
@@ -43,4 +49,14 @@ export function extractSaveOptions(data: Record<string, unknown>): NpSaveOptions
     ]);
   }
   return { status: raw as NpDocumentStatus };
+}
+
+export function npSerializeCollectionDocumentForApi(
+  slug: string,
+  document: unknown,
+): Record<string, unknown> {
+  return npSerializeCollectionDocumentWithDiagnostics<Record<string, unknown>>(
+    document,
+    getCollectionConfig(slug),
+  );
 }

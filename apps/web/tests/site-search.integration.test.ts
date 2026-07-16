@@ -166,20 +166,18 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
       { params: Promise.resolve({ slug: "posts" }) },
     );
 
-    // posts.slugField = { useField: "title", unique: true } so the
-    // pipeline derives the slug from the title regardless of what
-    // we send. The seeded title becomes slug "url-resolver-pumpkin".
+    // The collection's canonical explicit slug remains stable through
+    // indexing and URL resolution.
     const { searchCollections, getCollectionConfig } = await import("@nexpress/core");
     const result = await searchCollections({ q: "pumpkin" });
     const hit = result.results.find(
-      (r) =>
-        r.collection === "posts" && (r.doc as { slug: string }).slug === "url-resolver-pumpkin",
+      (r) => r.collection === "posts" && (r.doc as { slug: string }).slug === "url-resolver",
     );
     expect(hit).toBeDefined();
     const urlPath = getCollectionConfig("posts").seo?.urlPath;
     expect(urlPath).toBeDefined();
     const path = urlPath!(hit!.doc as Record<string, unknown>);
-    expect(path).toBe("/blog/url-resolver-pumpkin");
+    expect(path).toBe("/blog/url-resolver");
   });
 
   it("/api/search route returns JSON shape the page consumes", async () => {

@@ -5,6 +5,7 @@ import {
   type NpDocumentStatus,
 } from "@nexpress/core";
 import { CollectionListView } from "@nexpress/admin/client";
+import { npSerializeCollectionDocumentWithDiagnostics } from "@nexpress/core/collections";
 import { toClientCollectionConfig } from "@nexpress/next";
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
@@ -88,7 +89,9 @@ export default async function CollectionListPage({ params, searchParams }: Props
   return (
     <CollectionListView
       config={toClientCollectionConfig(config)}
-      docs={result.docs}
+      docs={result.docs.map((document) =>
+        npSerializeCollectionDocumentWithDiagnostics<Record<string, unknown>>(document, config),
+      )}
       totalDocs={result.totalDocs}
       totalPages={result.totalPages}
       currentPage={result.page}

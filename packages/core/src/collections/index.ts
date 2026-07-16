@@ -1,5 +1,10 @@
 export { buildSearchVector } from "./search.js";
 export {
+  getCollectionRuntimeDiagnostics,
+  npSerializeCollectionDocumentWithDiagnostics,
+  resetCollectionRuntimeDiagnostics,
+} from "./diagnostics.js";
+export {
   registerCollection,
   getCollectionConfig,
   getCollectionTable,
@@ -17,6 +22,7 @@ export {
   deleteMemberDocument,
   findDocuments,
   getDocumentById,
+  npGetPersistedCollectionDocumentById,
 } from "./pipeline.js";
 export type { NpTransaction } from "./pipeline.js";
 export { withDeferredPostCommit } from "./pipeline.js";

@@ -8,6 +8,10 @@ import {
 } from "../config/types.js";
 import { npValidateRichTextContent } from "../fields/rich-text.js";
 import { npValidateBlockContent } from "../fields/block-content.js";
+import {
+  npAnalyzeCollectionJsonValue,
+  npCollectionContractLimits,
+} from "../collection-contract/contract.js";
 
 /**
  * Evaluate a field condition — handles both the legacy function
@@ -94,7 +98,7 @@ export function buildZodSchema(
     );
   }
 
-  return z.object(shape);
+  return z.object(shape).strict();
 }
 
 /**
@@ -195,13 +199,19 @@ export function getCollectionZodSchema(
   forData?: Record<string, unknown>,
 ): z.ZodSchema {
   const hidden = forData ? collectHiddenFieldNames(config.fields, forData) : new Set<string>();
-  const base = buildZodSchema(config.fields, hidden).extend({
+  let base = buildZodSchema(config.fields, hidden).extend({
     // Phase 21.17 — per-doc visibility flag. Optional on writes;
     // the pipeline lets the column default to "public" when the
     // caller doesn't specify. Allowed values are the same
     // codegen enum from `getBaseColumns`.
     visibility: z.enum(["public", "private"]).optional(),
   });
+  if (config.slugField) {
+    base = base.extend({ slug: z.string().min(1).max(2048).optional() });
+  }
+  if (config.versions?.drafts && !hasTopLevelField(config.fields, "publishedAt")) {
+    base = base.extend({ publishedAt: z.coerce.date().nullable().optional() });
+  }
   // Phase 12.1 — i18n collections accept `locale` and an
   // optional `translationGroupId` on writes. zod's default
   // strip behavior would otherwise drop them before the
@@ -217,24 +227,33 @@ export function getCollectionZodSchema(
   return base;
 }
 
+function hasTopLevelField(fields: NpFieldConfig[], name: string): boolean {
+  return fields.some((field) => {
+    if (field.type === "row" || field.type === "collapsible") {
+      return hasTopLevelField(field.fields, name);
+    }
+    return field.name === name;
+  });
+}
+
 function buildFieldSchema(
   field: Exclude<NpFieldConfig, { type: "row" | "collapsible" | "group" }>,
 ): z.ZodTypeAny {
   switch (field.type) {
     case "text": {
-      let schema = z.string();
+      let schema = z.string().max(npCollectionContractLimits.stringLength);
       if (field.minLength !== undefined) schema = schema.min(field.minLength);
       if (field.maxLength !== undefined) schema = schema.max(field.maxLength);
       return schema;
     }
     case "textarea": {
-      let schema = z.string();
+      let schema = z.string().max(npCollectionContractLimits.stringLength);
       if (field.minLength !== undefined) schema = schema.min(field.minLength);
       if (field.maxLength !== undefined) schema = schema.max(field.maxLength);
       return schema;
     }
     case "email":
-      return z.string().email();
+      return z.string().max(320).email();
     case "number": {
       let schema = z.number();
       if (field.integerOnly) schema = schema.int();
@@ -249,7 +268,9 @@ function buildFieldSchema(
     case "radio":
       return createEnumSchema(field.options.map((option) => option.value));
     case "relationship":
-      return field.hasMany ? z.array(z.string().uuid()) : z.string().uuid();
+      return field.hasMany
+        ? z.array(z.string().uuid()).max(npCollectionContractLimits.arrayRows)
+        : z.string().uuid();
     case "upload":
       return z.string().uuid();
     case "date":
@@ -269,9 +290,23 @@ function buildFieldSchema(
         }
       });
     case "json":
-      return z.unknown();
+      return z.unknown().superRefine((value, ctx) => {
+        if (value === null) {
+          ctx.addIssue({ code: "custom", message: "Required JSON fields must not be null." });
+          return;
+        }
+        const parsed = npAnalyzeCollectionJsonValue(value);
+        if (!parsed.ok) {
+          for (const contractIssue of parsed.issues) {
+            ctx.addIssue({
+              code: "custom",
+              message: `${contractIssue.path}: ${contractIssue.message}`,
+            });
+          }
+        }
+      });
     case "array": {
-      let schema = z.array(buildZodSchema(field.fields));
+      let schema = z.array(buildZodSchema(field.fields)).max(npCollectionContractLimits.arrayRows);
       if (field.minRows !== undefined) schema = schema.min(field.minRows);
       if (field.maxRows !== undefined) schema = schema.max(field.maxRows);
       return schema;

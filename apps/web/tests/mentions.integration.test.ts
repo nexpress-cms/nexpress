@@ -124,10 +124,9 @@ describe.skipIf(skipIfNoTestDb())("16.2 @mention notifications (integration)", (
   beforeAll(async () => {
     await ensureMigrated();
     registerTestCollections();
-    const { defineDiscussionsCollection } = await import("@nexpress/plugin-forum");
+    const { discussionsCollection: config } = await import("@/collections/discussions");
     const { registerCollection } = await import("@nexpress/core");
     const { discussionsTable } = await import("@/db/generated/collections");
-    const config = defineDiscussionsCollection();
     registerCollection("discussions", discussionsTable as never, {
       ...config,
       access: undefined,

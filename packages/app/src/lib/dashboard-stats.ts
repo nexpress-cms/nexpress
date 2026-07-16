@@ -74,7 +74,7 @@ export async function loadDashboardStats(): Promise<DashboardStats> {
       count: Number(totalRows[0]?.total ?? 0),
     });
 
-    const statusCol = getColumn(table, "_status");
+    const statusCol = getColumn(table, "status");
     if (statusCol) {
       const draftRows = (await db
         .select({ total: count() })
@@ -111,15 +111,11 @@ export async function loadDashboardStats(): Promise<DashboardStats> {
 
       const titleValue = row.title;
       const title =
-        typeof titleValue === "string" && titleValue.trim().length > 0
-          ? titleValue
-          : rowId;
+        typeof titleValue === "string" && titleValue.trim().length > 0 ? titleValue : rowId;
 
       const statusValue = row.status;
       const action =
-        typeof statusValue === "string" && statusValue.length > 0
-          ? statusValue
-          : "updated";
+        typeof statusValue === "string" && statusValue.length > 0 ? statusValue : "updated";
 
       const updatedAtValue = row.updatedAt;
       let timestamp: Date;
@@ -178,9 +174,7 @@ async function loadOnboardingState(): Promise<DashboardStats["onboarding"]> {
   let siteNameSet = false;
   try {
     const site = await getSiteById(NP_DEFAULT_SITE_ID);
-    siteNameSet = Boolean(
-      site && site.name && site.name !== "Default site",
-    );
+    siteNameSet = Boolean(site && site.name && site.name !== "Default site");
   } catch {
     /* swallow — checklist falls back to "pending" */
   }
@@ -192,7 +186,7 @@ async function loadOnboardingState(): Promise<DashboardStats["onboarding"]> {
   try {
     const db = getDb();
     const postsTable = getCollectionTable("posts") as PgTable;
-    const statusCol = getColumn(postsTable, "_status");
+    const statusCol = getColumn(postsTable, "status");
     const rows = statusCol
       ? ((await db
           .select({ total: count() })
@@ -226,8 +220,7 @@ async function loadOnboardingState(): Promise<DashboardStats["onboarding"]> {
   // means the operator hasn't pointed at a real domain yet.
   const siteUrl = process.env.SITE_URL ?? "";
   const productionDomainSet =
-    siteUrl.trim() !== "" &&
-    !/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(siteUrl);
+    siteUrl.trim() !== "" && !/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(siteUrl);
 
   return {
     siteNameSet,

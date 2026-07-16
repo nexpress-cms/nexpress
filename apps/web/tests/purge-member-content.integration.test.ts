@@ -16,9 +16,7 @@ import {
 } from "./harness.js";
 
 import { POST as collectionPOST } from "@/app/api/collections/[slug]/route";
-import {
-  POST as commentsPOST,
-} from "@/app/api/collections/[slug]/[id]/comments/route";
+import { POST as commentsPOST } from "@/app/api/collections/[slug]/[id]/comments/route";
 import { POST as memberUploadPOST } from "@/app/api/members/media/upload/route";
 import { POST as purgePOST } from "@/app/api/admin/members/[id]/purge-content/route";
 
@@ -26,11 +24,7 @@ import { NextRequest } from "next/server";
 
 function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
   const headers = new Headers(init.headers);
-  if (
-    !headers.has("content-type") &&
-    init.body &&
-    typeof init.body === "string"
-  ) {
+  if (!headers.has("content-type") && init.body && typeof init.body === "string") {
     headers.set("content-type", "application/json");
   }
   if (init.cookies && init.cookies.length > 0) {
@@ -39,11 +33,7 @@ function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = 
   return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
 }
 
-function staffRequest(
-  path: string,
-  user: TestUserSession,
-  init: RequestInit = {},
-): NextRequest {
+function staffRequest(path: string, user: TestUserSession, init: RequestInit = {}): NextRequest {
   return jsonRequest(path, {
     ...init,
     cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
@@ -133,9 +123,10 @@ async function memberComment(
   return body.body.id;
 }
 
-async function memberUploadImage(
-  member: { sessionCookie: string; csrfCookie: string },
-): Promise<string> {
+async function memberUploadImage(member: {
+  sessionCookie: string;
+  csrfCookie: string;
+}): Promise<string> {
   const formData = new FormData();
   const png = new Uint8Array([
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
@@ -146,10 +137,7 @@ async function memberUploadImage(
   ]);
   formData.append("file", new Blob([png], { type: "image/png" }), "img.png");
   const headers = new Headers();
-  headers.set(
-    "cookie",
-    `np-mb-session=${member.sessionCookie}; np-mb-csrf=${member.csrfCookie}`,
-  );
+  headers.set("cookie", `np-mb-session=${member.sessionCookie}; np-mb-csrf=${member.csrfCookie}`);
   headers.set("x-csrf-token", member.csrfCookie);
   const req = new NextRequest("http://localhost:3000/api/members/media/upload", {
     method: "POST",
@@ -169,24 +157,23 @@ describe.skipIf(skipIfNoTestDb())("purge member content (Phase 9.7l)", () => {
     // Register discussions with memberWrite enabled, AND prime the
     // bootstrap so the registration sticks across the first API
     // call (same pattern as 9.7d/9.7e tests).
-    const { defineDiscussionsCollection } = await import("@nexpress/plugin-forum");
+    const { discussionsCollection: config } = await import("@/collections/discussions");
     const { registerCollection } = await import("@nexpress/core");
     const { discussionsTable } = await import("@/db/generated/collections");
-    const config = defineDiscussionsCollection();
-    registerCollection(
-      "discussions",
-      discussionsTable as never,
-      { ...config, access: undefined, hooks: undefined },
-    );
+    registerCollection("discussions", discussionsTable as never, {
+      ...config,
+      access: undefined,
+      hooks: undefined,
+    });
     const { ensureFor } = await import("@/lib/init-core");
     await ensureFor("read");
     // Re-register after the read bootstrap ran (it would have
     // overwritten the test fixture with the bootstrap default).
-    registerCollection(
-      "discussions",
-      discussionsTable as never,
-      { ...config, access: undefined, hooks: undefined },
-    );
+    registerCollection("discussions", discussionsTable as never, {
+      ...config,
+      access: undefined,
+      hooks: undefined,
+    });
   });
   beforeEach(async () => {
     await truncateAll();
@@ -242,10 +229,7 @@ describe.skipIf(skipIfNoTestDb())("purge member content (Phase 9.7l)", () => {
       .select({ id: npComments.id })
       .from(npComments)
       .where(
-        and(
-          eq(npComments.memberId, target.memberId),
-          ne(npComments.status, "deleted"),
-        ),
+        and(eq(npComments.memberId, target.memberId), ne(npComments.status, "deleted")),
       )) as Array<unknown>;
     expect(targetLiveComments).toHaveLength(0);
 
@@ -261,10 +245,7 @@ describe.skipIf(skipIfNoTestDb())("purge member content (Phase 9.7l)", () => {
       .select()
       .from(npMedia)
       .where(
-        and(
-          eq(npMedia.uploadedByMemberId, target.memberId),
-          isNull(npMedia.deletedAt),
-        ),
+        and(eq(npMedia.uploadedByMemberId, target.memberId), isNull(npMedia.deletedAt)),
       )) as Array<unknown>;
     expect(targetLiveMedia).toHaveLength(0);
 
@@ -273,10 +254,7 @@ describe.skipIf(skipIfNoTestDb())("purge member content (Phase 9.7l)", () => {
       .select({ id: npComments.id })
       .from(npComments)
       .where(
-        and(
-          eq(npComments.memberId, bystander.memberId),
-          ne(npComments.status, "deleted"),
-        ),
+        and(eq(npComments.memberId, bystander.memberId), ne(npComments.status, "deleted")),
       )) as Array<unknown>;
     expect(bystanderLiveComments).toHaveLength(1);
 
@@ -290,10 +268,7 @@ describe.skipIf(skipIfNoTestDb())("purge member content (Phase 9.7l)", () => {
       .select()
       .from(npMedia)
       .where(
-        and(
-          eq(npMedia.uploadedByMemberId, bystander.memberId),
-          isNull(npMedia.deletedAt),
-        ),
+        and(eq(npMedia.uploadedByMemberId, bystander.memberId), isNull(npMedia.deletedAt)),
       )) as Array<unknown>;
     expect(bystanderLiveMedia).toHaveLength(1);
   });
@@ -395,15 +370,13 @@ describe.skipIf(skipIfNoTestDb())("purge member content (Phase 9.7l)", () => {
   // re-register discussions WITH the access tree intact for this
   // case.
   it("admin purge respects collection access functions (passes full staff user)", async () => {
-    const { defineDiscussionsCollection } = await import("@nexpress/plugin-forum");
+    const { discussionsCollection: realConfig } = await import("@/collections/discussions");
     const { registerCollection } = await import("@nexpress/core");
     const { discussionsTable } = await import("@/db/generated/collections");
-    const realConfig = defineDiscussionsCollection();
-    registerCollection(
-      "discussions",
-      discussionsTable as never,
-      { ...realConfig, hooks: undefined },
-    );
+    registerCollection("discussions", discussionsTable as never, {
+      ...realConfig,
+      hooks: undefined,
+    });
 
     const admin = await seedUser({ role: "admin" });
     const target = await seedActiveMember("real-acl");
@@ -424,11 +397,11 @@ describe.skipIf(skipIfNoTestDb())("purge member content (Phase 9.7l)", () => {
 
     // Restore the test fixture (no access) for the rest of the
     // suite. truncateAll doesn't reset registrations.
-    registerCollection(
-      "discussions",
-      discussionsTable as never,
-      { ...realConfig, access: undefined, hooks: undefined },
-    );
+    registerCollection("discussions", discussionsTable as never, {
+      ...realConfig,
+      access: undefined,
+      hooks: undefined,
+    });
   });
 
   it("records `member.content.purge` audit event with the count payload", async () => {

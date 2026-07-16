@@ -16,6 +16,7 @@ import {
   deleteCollectionDocument,
   extractSaveOptions,
   getCollectionDocument,
+  npSerializeCollectionDocumentForApi,
   parseBodyRecord,
   saveCollectionDocument,
 } from "../../../../lib/collection-helpers";
@@ -103,7 +104,7 @@ export async function PATCH(
     if (previous && previous.slug !== result.doc.slug) {
       await revalidateCollection(slug, previous);
     }
-    return npSuccessResponse(result.doc);
+    return npSuccessResponse(npSerializeCollectionDocumentForApi(slug, result.doc));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

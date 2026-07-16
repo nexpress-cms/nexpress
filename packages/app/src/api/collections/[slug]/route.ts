@@ -15,6 +15,7 @@ import {
   findCollectionDocuments,
   parseBodyRecord,
   parseFindOptions,
+  npSerializeCollectionDocumentForApi,
   saveCollectionDocument,
 } from "../../../lib/collection-helpers";
 import { ensureFor } from "../../../lib/init-core";
@@ -92,7 +93,9 @@ export async function POST(
     validateDocumentBlockContent(slug, data);
     const result = await createMemberDocument(slug, data, member.id, saveOptions);
     await revalidateCollection(slug, result.doc);
-    return npSuccessResponse(result.doc, { status: 201 });
+    return npSuccessResponse(npSerializeCollectionDocumentForApi(slug, result.doc), {
+      status: 201,
+    });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

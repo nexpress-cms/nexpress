@@ -51,9 +51,10 @@ describe.skipIf(skipIfNoTestDb())("theme seed + reseed pipeline", () => {
     await truncateAll();
     const { resetThemes, registerThemes } = await import("@nexpress/core");
     const { defaultTheme } = await import("@nexpress/theme-default");
+    const { docsTheme } = await import("@nexpress/theme-docs");
     const { magazineTheme } = await import("@nexpress/theme-magazine");
     resetThemes();
-    registerThemes([defaultTheme, magazineTheme]);
+    registerThemes([defaultTheme, docsTheme, magazineTheme]);
   });
 
   afterAll(async () => {
@@ -138,13 +139,9 @@ describe.skipIf(skipIfNoTestDb())("theme seed + reseed pipeline", () => {
       // eslint-disable-next-line import-x/no-relative-packages
       "../../../packages/core/src/integration/fixtures.js"
     );
-    const totalPages = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(pagesTable);
+    const totalPages = await db.select({ count: sql<number>`count(*)::int` }).from(pagesTable);
     expect(totalPages[0]?.count ?? 0).toBe(first.pages.created);
-    const totalPosts = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(postsTable);
+    const totalPosts = await db.select({ count: sql<number>`count(*)::int` }).from(postsTable);
     expect(totalPosts[0]?.count ?? 0).toBe(first.posts.created);
   });
 
@@ -195,6 +192,31 @@ describe.skipIf(skipIfNoTestDb())("theme seed + reseed pipeline", () => {
     expect(magazinePosts[0]?.count).toBe(magResult.posts.created);
   });
 
+  it("hydrates and wipes docs theme pages with canonical nested slugs", async () => {
+    const actor = await asActor();
+    const { docsTheme } = await import("@nexpress/theme-docs");
+    const { magazineTheme } = await import("@nexpress/theme-magazine");
+    const { findDocuments } = await import("@nexpress/core");
+    const { seedAll, wipeSeededContent } = await import("@/lib/seed-content");
+
+    await seedAll(actor, docsTheme);
+    const docsPages = await findDocuments(
+      "pages",
+      { where: { seedSource: "theme:docs" }, limit: 100 },
+      actor,
+    );
+    expect(docsPages.docs).toEqual(
+      expect.arrayContaining([expect.objectContaining({ slug: "docs/reference/define-plugin" })]),
+    );
+
+    await expect(wipeSeededContent(actor)).resolves.toMatchObject({
+      pagesDeleted: docsTheme.impl.seedContent?.pages?.length,
+    });
+    await expect(seedAll(actor, magazineTheme)).resolves.toMatchObject({
+      pages: { skipped: false },
+    });
+  });
+
   it("wipeSeededContent removes seed-marked rows but leaves operator content intact", async () => {
     const actor = await asActor();
     const { defaultTheme } = await import("@nexpress/theme-default");
@@ -214,9 +236,9 @@ describe.skipIf(skipIfNoTestDb())("theme seed + reseed pipeline", () => {
       {
         title: "Operator's manual page",
         slug: "operator-page",
-        // The pages collection ships with a `body` blocks field that
+        // The pages collection ships with a `blocks` field that
         // accepts an empty array.
-        body: [],
+        blocks: [],
       },
       actor,
       { status: "published" },

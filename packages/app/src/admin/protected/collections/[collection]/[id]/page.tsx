@@ -6,6 +6,7 @@ import {
 } from "@nexpress/core";
 import { CollectionEditView } from "@nexpress/admin/client";
 import type { CollectionTabDescriptor } from "@nexpress/admin";
+import { npSerializeCollectionDocumentWithDiagnostics } from "@nexpress/core/collections";
 import { toClientCollectionConfig } from "@nexpress/next";
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
@@ -64,7 +65,7 @@ export default async function EditPage({ params }: Props) {
   return (
     <CollectionEditView
       config={toClientCollectionConfig(config, activeThemeId)}
-      doc={doc}
+      doc={npSerializeCollectionDocumentWithDiagnostics<Record<string, unknown>>(doc, config)}
       collectionSlug={collection}
       collectionTabs={tabs}
       canPreview={Boolean(config.seo?.urlPath)}

@@ -4,6 +4,7 @@ import { requireAuth } from "../../../../../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../../../../../lib/api-response";
 import { restoreDocumentRevision } from "../../../../../../../lib/revision-helpers";
 import { revalidateCollection } from "../../../../../../../lib/revalidate";
+import { npSerializeCollectionDocumentForApi } from "../../../../../../../lib/collection-helpers";
 
 export async function POST(
   request: NextRequest,
@@ -13,12 +14,11 @@ export async function POST(
     const { slug, id, revisionId } = await params;
     const user = await requireAuth(request);
 
-
     const result = await restoreDocumentRevision(slug, id, revisionId, user);
 
     await revalidateCollection(slug, result.doc);
 
-    return npSuccessResponse(result.doc);
+    return npSuccessResponse(npSerializeCollectionDocumentForApi(slug, result.doc));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

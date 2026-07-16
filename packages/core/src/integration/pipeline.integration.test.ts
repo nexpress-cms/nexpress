@@ -9,6 +9,7 @@ import {
   deleteDocument,
   findDocuments,
   getDocumentById,
+  npGetPersistedCollectionDocumentById,
   saveDocument,
 } from "../collections/pipeline.js";
 import { setJobQueue } from "../jobs/queue.js";
@@ -162,6 +163,21 @@ describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () =
     const found = await findDocuments("posts", { limit: 10 });
     expect(found.totalDocs).toBe(1);
     expect(found.docs[0].id).toBe(created.doc.id);
+  });
+
+  it("scopes framework-host persisted document hydration to the explicit site", async () => {
+    const user = await seedUser();
+    await createSite({ id: "tenant-a", name: "Tenant A" });
+    const created = await withCurrentSite("tenant-a", () =>
+      saveDocument("posts", null, baseDoc, user, { status: "draft" }),
+    );
+
+    await expect(
+      npGetPersistedCollectionDocumentById("posts", created.doc.id as string, "tenant-a"),
+    ).resolves.toMatchObject({ id: created.doc.id, siteId: "tenant-a" });
+    await expect(
+      npGetPersistedCollectionDocumentById("posts", created.doc.id as string, "default"),
+    ).rejects.toThrow(/cross-site/u);
   });
 
   it("deleteDocument removes both the row and its revision history", async () => {

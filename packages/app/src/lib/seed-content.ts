@@ -197,12 +197,6 @@ export async function seedPages(
     }
   }
 
-  // Use the outer tx for the slug-override raw UPDATE so it
-  // joins the same atomic scope as the saveDocument writes.
-  // Without an outer tx, fall back to the singleton db handle.
-  const writeHandle = (options.tx ?? getDb()) as {
-    execute(query: ReturnType<typeof sql>): Promise<unknown>;
-  };
   for (const sample of pages) {
     const { slug, data: extraData, ...rest } = sample;
     // `extraData` (the `data` escape hatch) first, then `rest`
@@ -215,17 +209,12 @@ export async function seedPages(
       ...rest,
     };
     if (seedSource) payload.seedSource = seedSource;
+    if (slug) payload.slug = slug;
     validateDocumentBlockContent("pages", payload);
-    const result = await saveDocument("pages", null, payload, actor, {
+    await saveDocument("pages", null, payload, actor, {
       status: "published",
       tx: options.tx,
     });
-    if (slug) {
-      const id = result.doc.id as string;
-      // The pipeline's slugField derives from title, so we override
-      // the home page's slug with a direct DB write after save.
-      await writeHandle.execute(sql`update np_c_pages set slug = ${slug} where id = ${id}`);
-    }
   }
   return { created: pages.length, skipped: false };
 }
@@ -306,6 +295,7 @@ export async function seedPosts(
     if (kind) payload.kind = kind;
     if (typeof order === "number") payload.order = order;
     if (seedSource) payload.seedSource = seedSource;
+    if (slug) payload.slug = slug;
     validateDocumentBlockContent("posts", payload);
     const saved = await saveDocument("posts", null, payload, actor, {
       status: status ?? "published",
@@ -313,10 +303,7 @@ export async function seedPosts(
     });
     const savedSlug = typeof saved.doc.slug === "string" ? saved.doc.slug : null;
     const savedId = typeof saved.doc.id === "string" ? saved.doc.id : null;
-    if (slug && savedId) {
-      await writeHandle.execute(sql`update np_c_posts set slug = ${slug} where id = ${savedId}`);
-    }
-    const finalSlug = slug ?? savedSlug;
+    const finalSlug = savedSlug;
     if (finalSlug && savedId) slugToId.set(finalSlug, savedId);
     if (parentSlug && savedId) {
       pendingParents.push({ childId: savedId, parentSlug });

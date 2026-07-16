@@ -115,8 +115,9 @@ claims correct.
 The framework registers a handful of system handlers via
 `registerBuiltinHandlers()` (called by `startWorker()`):
 
-- `content:afterSave` / `content:afterDelete` — site-scoped post-write hooks
-  (cache invalidation, plugin `afterX` hooks, search reindex)
+- `content:afterSave` / `content:afterDelete` — site-scoped cache invalidation
+  and search reindex after collection/plugin lifecycle hooks have run once
+  at the exact write boundary
 - `media:processImage` — Sharp-driven resize pipeline
   (decoupled from the upload request)
 - `media:cleanup` — delete orphaned storage files

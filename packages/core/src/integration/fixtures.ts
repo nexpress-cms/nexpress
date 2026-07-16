@@ -1,8 +1,10 @@
 /**
- * Integration-test fixtures. Reuses apps/web's `posts` collection and the
- * generated `np_c_posts` table so tests exercise the same pipeline path the
- * reference app does, without each test having to re-author schema +
- * config.
+ * Integration-test fixtures. Reuses apps/web's generated collection tables
+ * and the app package's source collection definitions so tests exercise the
+ * same pipeline path the reference app does, without each test having to
+ * re-author schema + config. Theme requirements are merged before
+ * registration because the generated tables come from that resolved config,
+ * not from the unmerged source definitions.
  *
  * Cross-package (core → apps/web) import is fine here because integration
  * tests are local-only — they never build or ship — and are guaranteed to
@@ -11,6 +13,7 @@
 // eslint-disable-next-line import-x/no-relative-packages
 import {
   categoriesTable,
+  discussionsTable,
   pagesTable,
   postsCategoriesTable,
   postsTable,
@@ -25,11 +28,33 @@ import { pagesCollection } from "../../../../apps/web/src/collections/pages.js";
 import { categoriesCollection } from "../../../../apps/web/src/collections/categories.js";
 // eslint-disable-next-line import-x/no-relative-packages
 import { tagsCollection } from "../../../../apps/web/src/collections/tags.js";
+// eslint-disable-next-line import-x/no-relative-packages
+import { discussionsCollection } from "../../../../apps/web/src/collections/discussions.js";
+// eslint-disable-next-line import-x/no-relative-packages
+import { defaultTheme } from "../../../themes/default/src/index.js";
+// eslint-disable-next-line import-x/no-relative-packages
+import { docsTheme } from "../../../themes/docs/src/index.js";
+// eslint-disable-next-line import-x/no-relative-packages
+import { magazineTheme } from "../../../themes/magazine/src/index.js";
+// eslint-disable-next-line import-x/no-relative-packages
+import { portfolioTheme } from "../../../themes/portfolio/src/index.js";
 import { registerCollection } from "../collections/registry.js";
 import { setI18nConfig } from "../i18n/registry.js";
 import type { NpCollectionConfig } from "../config/types.js";
+import { mergeThemeRequirements } from "../themes/merge-requirements.js";
 
-let registered = false;
+const resolvedCollectionConfigs = mergeThemeRequirements(
+  [postsCollection, pagesCollection, categoriesCollection, tagsCollection],
+  [defaultTheme, magazineTheme, portfolioTheme, docsTheme],
+);
+
+function getResolvedCollectionConfig(slug: string): NpCollectionConfig {
+  const config = resolvedCollectionConfigs.find((collection) => collection.slug === slug);
+  if (!config) {
+    throw new Error(`Missing resolved integration collection config: ${slug}`);
+  }
+  return config;
+}
 
 /**
  * Idempotently registers the reference app's `posts`, `pages`, `categories`,
@@ -47,10 +72,8 @@ let registered = false;
  * locale list from.
  */
 export function registerTestCollections(): void {
-  if (registered) return;
-
   const postsConfig: NpCollectionConfig = {
-    ...postsCollection,
+    ...getResolvedCollectionConfig("posts"),
     access: undefined,
     hooks: undefined,
   };
@@ -62,7 +85,7 @@ export function registerTestCollections(): void {
   });
 
   const pagesConfig: NpCollectionConfig = {
-    ...pagesCollection,
+    ...getResolvedCollectionConfig("pages"),
     access: undefined,
     hooks: undefined,
   };
@@ -71,22 +94,34 @@ export function registerTestCollections(): void {
   // Posts reference categories and tags via relationship fields, so
   // saving a post with terms requires both registrations.
   const categoriesConfig: NpCollectionConfig = {
-    ...categoriesCollection,
+    ...getResolvedCollectionConfig("categories"),
     access: undefined,
     hooks: undefined,
   };
   registerCollection("categories", categoriesTable, categoriesConfig);
 
   const tagsConfig: NpCollectionConfig = {
-    ...tagsCollection,
+    ...getResolvedCollectionConfig("tags"),
     access: undefined,
     hooks: undefined,
   };
   registerCollection("tags", tagsTable, tagsConfig);
 
-  setI18nConfig({ locales: ["en", "ko"], defaultLocale: "en" });
+  registerCollection("discussions", discussionsTable, {
+    ...discussionsCollection,
+    access: undefined,
+    hooks: undefined,
+  });
 
-  registered = true;
+  setI18nConfig({ locales: ["en", "ko"], defaultLocale: "en" });
 }
 
-export { categoriesTable, pagesTable, postsCategoriesTable, postsTable, postsTagsTable, tagsTable };
+export {
+  categoriesTable,
+  discussionsTable,
+  pagesTable,
+  postsCategoriesTable,
+  postsTable,
+  postsTagsTable,
+  tagsTable,
+};

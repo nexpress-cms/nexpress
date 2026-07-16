@@ -52,3 +52,18 @@ export const getCollectionFieldDefaultValue = (
       return "";
   }
 };
+
+export const normalizeCollectionEditorRequestValues = (
+  values: Record<string, unknown>,
+  hasGeneratedSlug: boolean,
+): Record<string, unknown> => {
+  const normalized = { ...values };
+  if (
+    hasGeneratedSlug &&
+    typeof normalized.slug === "string" &&
+    normalized.slug.trim().length === 0
+  ) {
+    delete normalized.slug;
+  }
+  return normalized;
+};

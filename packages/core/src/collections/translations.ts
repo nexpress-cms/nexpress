@@ -20,6 +20,7 @@ export type {
 import { getAllCollectionSlugs, getCollectionConfig, getCollectionTable } from "./registry.js";
 import { getDocumentById, saveDocument } from "./pipeline.js";
 import { getDb } from "../db/runtime.js";
+import { npCollectionDocumentToWriteInput } from "../collection-contract/contract.js";
 
 interface TranslationRow {
   id: string;
@@ -180,31 +181,8 @@ export async function createTranslation(
   // them. Preserves user-authored fields (title / body / blocks
   // / etc.) so the translator has a starting point rather than
   // a blank form.
-  const {
-    id,
-    slug,
-    locale,
-    status,
-    _status,
-    createdAt,
-    updatedAt,
-    createdBy,
-    updatedBy,
-    searchVector,
-    translationGroupId,
-    ...content
-  } = source;
-  void id;
-  void slug;
-  void locale;
-  void status;
-  void _status;
-  void createdAt;
-  void updatedAt;
-  void createdBy;
-  void updatedBy;
-  void searchVector;
-  void translationGroupId;
+  const content = npCollectionDocumentToWriteInput(source, config);
+  delete content.slug;
 
   const result = await saveDocument(
     collection,

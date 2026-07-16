@@ -131,11 +131,10 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
       search: () => null,
     });
 
-    // posts.slugField derives the slug from title — the pipeline
-    // ignores the value we pass.
+    // An explicit canonical slug is preserved by the write contract.
     const result = await searchCollections({ q: "brown" });
     expect(result.total).toBeGreaterThanOrEqual(1);
-    expect(result.results[0]?.doc.slug).toBe("native-brown-fox");
+    expect(result.results[0]?.doc.slug).toBe("native-brown");
   });
 
   it("adapter throw is fail-open: pg path runs", async () => {

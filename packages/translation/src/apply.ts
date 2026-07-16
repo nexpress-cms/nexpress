@@ -3,6 +3,7 @@ import {
   getCollectionConfig,
   getDocumentById,
   getI18nConfig,
+  npCollectionDocumentToWriteInput,
   saveDocument,
   type NpAuthUser,
 } from "@nexpress/core";
@@ -389,7 +390,7 @@ export async function applyTranslationCatalog(
       const merged = { ...targetSibling, ...overrides };
       // Strip framework-managed columns; the pipeline re-derives
       // them on save.
-      const cleaned = stripFrameworkFields(merged);
+      const cleaned = npCollectionDocumentToWriteInput(merged, getCollectionConfig(collection));
       const result = await saveDocument(
         collection,
         (targetSibling as { id: string }).id,
@@ -417,7 +418,10 @@ export async function applyTranslationCatalog(
       // `originalDoc.slug` fallback (the row from step 1), so
       // the non-ASCII translated title doesn't need to derive a
       // slug at all.
-      const baseline = stripFrameworkFields({ ...sourceSibling });
+      const baseline = npCollectionDocumentToWriteInput(
+        sourceSibling,
+        getCollectionConfig(collection),
+      );
       baseline.locale = document.targetLocale;
       baseline.translationGroupId = groupId;
       const created = await saveDocument(collection, null, baseline, options.user, {
@@ -494,26 +498,6 @@ async function findSibling(
   if (!id) return null;
   const full = await getDocumentById(collection, id, user);
   return full ?? null;
-}
-
-const FRAMEWORK_FIELDS = new Set([
-  "id",
-  "status",
-  "_status",
-  "createdAt",
-  "updatedAt",
-  "createdBy",
-  "updatedBy",
-  "searchVector",
-]);
-
-function stripFrameworkFields(doc: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(doc)) {
-    if (FRAMEWORK_FIELDS.has(key)) continue;
-    out[key] = value;
-  }
-  return out;
 }
 
 function countValues(values: string[]): Map<string, number> {

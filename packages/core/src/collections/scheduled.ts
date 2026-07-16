@@ -7,6 +7,11 @@ import { runHook } from "../plugins/host.js";
 import { withCurrentSite } from "../sites/context.js";
 import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 import { getAllCollectionSlugs, getCollectionConfig, getCollectionTable } from "./registry.js";
+import {
+  npGetPersistedCollectionDocumentById,
+  npRunCollectionDocumentResultHooks,
+  runPostCommit,
+} from "./pipeline.js";
 import { getDb } from "../db/runtime.js";
 
 function hasPublishedAtField(fields: NpFieldConfig[]): boolean {
@@ -76,37 +81,61 @@ export async function publishScheduledDocuments(
         throw new Error(`Scheduled ${slug} document ${docId} is missing a canonical siteId.`);
       }
       const siteId = row.siteId;
-      // Fire every hook a plugin would have seen if the user had clicked
-      // Publish directly: afterUpdate (content changed), afterPublish
-      // (status transitioned), and the afterSave job so revalidation +
-      // collection-level afterUpdate hooks run too.
+      // Fire every lifecycle boundary a direct publish would have seen:
+      // the exact collection afterUpdate result contract, plugin afterUpdate
+      // and afterPublish hooks, then the afterSave revalidation job.
       await withCurrentSite(siteId, async () => {
-        await runHook("content:afterUpdate", {
-          collection: slug,
-          documentId: docId,
-          document: row,
-          originalDocument: null,
-          operation: "update",
-          source: "scheduler",
-          principal: null,
-        });
-        await runHook("content:afterPublish", {
-          collection: slug,
-          documentId: docId,
-          document: row,
-          originalDocument: null,
-          operation: "update",
-          source: "scheduler",
-          principal: null,
-        });
-        await enqueueJob("content:afterSave", {
-          siteId,
-          collection: slug,
-          documentId: docId,
-          operation: "update",
-          userId: "scheduler",
-          memberId: null,
-        });
+        const document = await npGetPersistedCollectionDocumentById(slug, docId, siteId);
+        if (!document) {
+          throw new Error(`Published ${slug} document ${docId} could not be hydrated.`);
+        }
+        const postCommitContext = { collection: slug, documentId: docId, operation: "update" };
+        await runPostCommit("collection:afterUpdate", postCommitContext, () =>
+          npRunCollectionDocumentResultHooks(
+            config,
+            config.hooks?.afterUpdate,
+            {
+              data: document,
+              user: null,
+              principal: null,
+              collection: slug,
+              originalDoc: null,
+            },
+            "write-result",
+          ),
+        );
+        await runPostCommit("hook:content:afterUpdate", postCommitContext, () =>
+          runHook("content:afterUpdate", {
+            collection: slug,
+            documentId: docId,
+            document,
+            originalDocument: null,
+            operation: "update",
+            source: "scheduler",
+            principal: null,
+          }),
+        );
+        await runPostCommit("hook:content:afterPublish", postCommitContext, () =>
+          runHook("content:afterPublish", {
+            collection: slug,
+            documentId: docId,
+            document,
+            originalDocument: null,
+            operation: "update",
+            source: "scheduler",
+            principal: null,
+          }),
+        );
+        await runPostCommit("enqueue:content:afterSave", postCommitContext, () =>
+          enqueueJob("content:afterSave", {
+            siteId,
+            collection: slug,
+            documentId: docId,
+            operation: "update",
+            userId: "scheduler",
+            memberId: null,
+          }),
+        );
       });
     }
   }

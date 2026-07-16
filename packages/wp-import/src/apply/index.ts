@@ -476,7 +476,7 @@ export async function applyBundle(
       const originalAuthorName = originalAuthorField
         ? resolveOriginalAuthorName(record, bundle)
         : undefined;
-      const data = buildDocData(
+      const { data, lexical } = buildDocData(
         record,
         resolution,
         collection,
@@ -532,7 +532,7 @@ export async function applyBundle(
         slug: record.slug,
         title: record.title,
         rawContent: record.rawContent,
-        lexical: data.content as LexicalRoot,
+        lexical,
       });
       await emitAudit(options.audit, {
         action: updateMode ? "import.wp.updated" : "import.wp.applied",
@@ -725,14 +725,24 @@ function buildDocData(
   fieldOverrides: Record<string, string> | undefined,
   originalAuthor: { field: string; value: string } | undefined,
   onConversionWarning?: (warning: LexicalConversionWarning) => void,
-): Record<string, unknown> {
+): { data: Record<string, unknown>; lexical: LexicalRoot } {
   const rewritten = buildLexicalContent(record, resolution, onConversionWarning);
   const data: Record<string, unknown> = {
     title: record.title || "(untitled)",
     slug: record.slug,
-    content: rewritten,
   };
-  if (record.excerpt) {
+  if (collection === "pages") {
+    data.blocks = [
+      {
+        id: `wp-${record.wpId.toString()}-content`,
+        type: "rich-text",
+        props: { content: rewritten },
+      },
+    ];
+  } else {
+    data.content = rewritten;
+  }
+  if (collection === "posts" && record.excerpt) {
     data.excerpt = record.excerpt;
   }
   if (collection === "posts" && coverImageId) {
@@ -746,13 +756,14 @@ function buildDocData(
   // Phase 21.9 — copy mapped post-meta values onto the document.
   // Only keys with a non-empty WP value land; the override never
   // shadows a field we already populated above (title / slug /
-  // content stay protected so a misconfigured override can't
-  // overwrite the post body).
+  // content / blocks stay protected so a misconfigured override
+  // can't overwrite the imported body).
   if (fieldOverrides) {
     const protectedFields = new Set([
       "title",
       "slug",
       "content",
+      "blocks",
       "excerpt",
       "publishedAt",
       "coverImage",
@@ -778,8 +789,8 @@ function buildDocData(
   // <wp:post_date_gmt> arrives as "YYYY-MM-DD HH:mm:ss" without a
   // timezone marker. Treat as UTC (the GMT in the tag name is
   // explicit). publishedAt is required for the posts collection's
-  // sort-by-date archive pages; pages don't render it but the
-  // field is harmless to set.
+  // sort-by-date archive pages. Versioned pages use the framework
+  // publishedAt control even though their renderer does not show it.
   if (record.publishedAt) {
     const iso = record.publishedAt.replace(" ", "T") + "Z";
     const date = new Date(iso);
@@ -787,7 +798,7 @@ function buildDocData(
       data.publishedAt = date.toISOString();
     }
   }
-  return data;
+  return { data, lexical: rewritten };
 }
 
 function buildLexicalContent(

@@ -72,27 +72,9 @@ describe.skipIf(skipIfNoTestDb())("built-in theme public route smoke", () => {
 
   async function activateThemeForSeed(id: BuiltinThemeId): Promise<ThemeFixture> {
     const fixture = await loadTheme(id);
-    const { mergeThemeRequirements, registerCollection, registerThemes, resetThemes } =
-      await import("@nexpress/core");
+    const { registerThemes, resetThemes } = await import("@nexpress/core");
     const { defaultTheme } = await import("@nexpress/theme-default");
-    const { postsCollection } = await import("@nexpress/app/collections/posts");
-    const { postsTable } = await import(
-      // eslint-disable-next-line import-x/no-relative-packages
-      "../../../packages/core/src/integration/fixtures.js"
-    );
-
     const themes = id === "default" ? [defaultTheme] : [defaultTheme, fixture.theme];
-    const merged = mergeThemeRequirements([postsCollection], themes);
-    const mergedPosts = merged.find((collection) => collection.slug === "posts");
-    if (!mergedPosts) {
-      throw new Error("mergeThemeRequirements dropped the posts collection");
-    }
-
-    registerCollection("posts", postsTable, {
-      ...mergedPosts,
-      access: undefined,
-      hooks: undefined,
-    });
 
     resetThemes();
     registerThemes(themes);

@@ -98,10 +98,9 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
   });
 
   async function registerDiscussionsWith(defaultStatus: "published" | "pending"): Promise<void> {
-    const { defineDiscussionsCollection } = await import("@nexpress/plugin-forum");
+    const { discussionsCollection: config } = await import("@/collections/discussions");
     const { registerCollection } = await import("@nexpress/core");
     const { discussionsTable } = await import("@/db/generated/collections");
-    const config = defineDiscussionsCollection();
     // Override defaultStatus on top of the forum-plugin defaults
     // (which omit it → "published").
     const community = {
