@@ -10,6 +10,7 @@ import { getAllCollectionSlugs, getCollectionConfig, getCollectionTable } from "
 import {
   npGetPersistedCollectionDocumentById,
   npRunCollectionDocumentResultHooks,
+  runPostCommit,
 } from "./pipeline.js";
 import { getDb } from "../db/runtime.js";
 
@@ -84,48 +85,57 @@ export async function publishScheduledDocuments(
       // the exact collection afterUpdate result contract, plugin afterUpdate
       // and afterPublish hooks, then the afterSave revalidation job.
       await withCurrentSite(siteId, async () => {
-        const document = await npGetPersistedCollectionDocumentById(slug, docId);
+        const document = await npGetPersistedCollectionDocumentById(slug, docId, siteId);
         if (!document) {
           throw new Error(`Published ${slug} document ${docId} could not be hydrated.`);
         }
-        await npRunCollectionDocumentResultHooks(
-          config,
-          config.hooks?.afterUpdate,
-          {
-            data: document,
-            user: null,
-            principal: null,
-            collection: slug,
-            originalDoc: null,
-          },
-          "write-result",
+        const postCommitContext = { collection: slug, documentId: docId, operation: "update" };
+        await runPostCommit("collection:afterUpdate", postCommitContext, () =>
+          npRunCollectionDocumentResultHooks(
+            config,
+            config.hooks?.afterUpdate,
+            {
+              data: document,
+              user: null,
+              principal: null,
+              collection: slug,
+              originalDoc: null,
+            },
+            "write-result",
+          ),
         );
-        await runHook("content:afterUpdate", {
-          collection: slug,
-          documentId: docId,
-          document,
-          originalDocument: null,
-          operation: "update",
-          source: "scheduler",
-          principal: null,
-        });
-        await runHook("content:afterPublish", {
-          collection: slug,
-          documentId: docId,
-          document,
-          originalDocument: null,
-          operation: "update",
-          source: "scheduler",
-          principal: null,
-        });
-        await enqueueJob("content:afterSave", {
-          siteId,
-          collection: slug,
-          documentId: docId,
-          operation: "update",
-          userId: "scheduler",
-          memberId: null,
-        });
+        await runPostCommit("hook:content:afterUpdate", postCommitContext, () =>
+          runHook("content:afterUpdate", {
+            collection: slug,
+            documentId: docId,
+            document,
+            originalDocument: null,
+            operation: "update",
+            source: "scheduler",
+            principal: null,
+          }),
+        );
+        await runPostCommit("hook:content:afterPublish", postCommitContext, () =>
+          runHook("content:afterPublish", {
+            collection: slug,
+            documentId: docId,
+            document,
+            originalDocument: null,
+            operation: "update",
+            source: "scheduler",
+            principal: null,
+          }),
+        );
+        await runPostCommit("enqueue:content:afterSave", postCommitContext, () =>
+          enqueueJob("content:afterSave", {
+            siteId,
+            collection: slug,
+            documentId: docId,
+            operation: "update",
+            userId: "scheduler",
+            memberId: null,
+          }),
+        );
       });
     }
   }

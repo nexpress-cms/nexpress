@@ -46,6 +46,9 @@ export {
   createCollectionHelpers,
   type CollectionHelpers,
   type CollectionHelpersOptions,
+  type NpCollectionApiDocument,
+  type NpCollectionApiFindResult,
+  type NpCollectionApiSaveResult,
 } from "./collections.js";
 
 export {

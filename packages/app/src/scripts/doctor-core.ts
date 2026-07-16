@@ -61,6 +61,10 @@ import {
 import { inferDeployTargetFromEnv, type DeployTarget } from "./deploy-targets.js";
 import { buildDoctorJson, type DoctorJsonOutput } from "./doctor-output.js";
 import {
+  npIsCanonicalCollectionMainTableName,
+  npIsCollectionMainTableName,
+} from "./doctor-collection-contract.js";
+import {
   checkJobsEnabledProd,
   checkMigrationStatusReadiness,
   checkObservabilityProd,
@@ -656,17 +660,19 @@ async function checkCollectionContracts(env: DoctorEnv): Promise<CheckResult> {
       columns.add(columnName);
       columnsByTable.set(tableName, columns);
     }
-    const mainTables = [...columnsByTable.entries()].filter(
-      ([, columns]) =>
-        columns.has("id") &&
-        columns.has("site_id") &&
-        (columns.has("status") || columns.has("_status")),
+    // Generated child and hasMany join tables use a double-underscore
+    // suffix. Everything else in the np_c_ namespace is intended to be
+    // a main collection table and must be diagnosed even when a required
+    // system column is missing; filtering by those columns would hide the
+    // very schema drift this check exists to report.
+    const mainTables = [...columnsByTable.entries()].filter(([tableName]) =>
+      npIsCollectionMainTableName(tableName),
     );
     const issues: Array<{ path: string; message: string }> = [];
     let rowCount = 0;
     const requiredColumns = ["id", "status", "created_by", "updated_by", "visibility", "site_id"];
     for (const [tableName, columns] of mainTables) {
-      if (!/^np_c_[a-z0-9_]+$/u.test(tableName)) {
+      if (!npIsCanonicalCollectionMainTableName(tableName)) {
         issues.push({ path: tableName, message: "has a non-canonical collection table name." });
         continue;
       }

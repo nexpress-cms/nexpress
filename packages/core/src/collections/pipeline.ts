@@ -1970,14 +1970,24 @@ export async function getDocumentById<T extends object = Record<string, unknown>
   return (await runReadHooks(config, doc, user ?? null)) as unknown as T;
 }
 
-/** Internal scheduler/worker boundary: hydrate an exact stored document without read hooks. */
+/** Framework-host scheduler/worker boundary: hydrate an exact stored document without read hooks. */
 export async function npGetPersistedCollectionDocumentById(
   collection: string,
   id: string,
+  siteId: string,
 ): Promise<Record<string, unknown> | null> {
+  if (!npIsCanonicalSiteId(siteId)) {
+    throw new NpValidationError("Invalid collection document site", [
+      { field: "siteId", message: "Must be a canonical site id" },
+    ]);
+  }
   const registration = getCollectionRegistration(collection);
   const db = getDb() as unknown as DrizzleDatabaseLike;
-  return getDocumentByIdOptional(db, registration, id, "write-result");
+  const document = await getDocumentByIdOptional(db, registration, id, "write-result");
+  if (document && document.siteId !== siteId) {
+    throw new NpForbiddenError(collection, "cross-site");
+  }
+  return document;
 }
 
 async function assertWriteAccess(
@@ -2362,7 +2372,12 @@ async function resolveHasManyWhere(
       .from(table)
       .where(inArray(getTableColumn(table, "targetId"), targets))) as Array<{ id: unknown }>;
     const ids = [...new Set(rows.flatMap((row) => (typeof row.id === "string" ? [row.id] : [])))];
-    matchingIds = matchingIds === null ? ids : matchingIds.filter((id) => new Set(ids).has(id));
+    if (matchingIds === null) {
+      matchingIds = ids;
+    } else {
+      const allowed = new Set(ids);
+      matchingIds = matchingIds.filter((id) => allowed.has(id));
+    }
   }
   if (matchingIds !== null) {
     const existing = resolved.id;

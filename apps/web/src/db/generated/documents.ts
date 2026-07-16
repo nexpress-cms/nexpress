@@ -9,12 +9,8 @@ import {
   type NpFindOptions,
   type NpFindResult,
 } from "@nexpress/core";
-import { getDb } from "@nexpress/core/db";
 import type { NpCollectionDocumentWire } from "@nexpress/core/collection-contract";
 import type { NpBlockContent, NpRichTextContent } from "@nexpress/core/fields";
-import { inArray } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { postsCategoriesTable, postsTagsTable } from "./collections";
 
 export interface PostsDocument {
   id: string;
@@ -130,94 +126,12 @@ export interface DiscussionsDocument {
 }
 export type DiscussionsDocumentWire = NpCollectionDocumentWire<DiscussionsDocument>;
 
-/**
- * Typed listing query for the `posts` collection.
- *
- * Pre-resolves hasMany relationship filters in the where
- * clause (`categories`, `tags`) by
- * subquerying the join table for matching parent ids. Each
- * field accepts a single target id (most common) or an array
- * of target ids (OR semantics). Multiple hasMany filters
- * intersect — `where: { categories: catId, tags: tagId }`
- * matches rows that have BOTH.
- */
-export async function findPosts(
+/** Typed listing query for the `posts` collection. */
+export function findPosts(
   options: NpFindOptions<PostsDocument> = {},
   user?: NpAuthUser,
 ): Promise<NpFindResult<PostsDocument>> {
-  const where = options.where ? { ...options.where } : {};
-  const hasManyDescriptors = [
-    { field: "categories", table: postsCategoriesTable, parent: postsCategoriesTable.postsId },
-    { field: "tags", table: postsTagsTable, parent: postsTagsTable.postsId },
-  ];
-
-  const matched: string[][] = [];
-  let touchedHasMany = false;
-  for (const { field, table, parent } of hasManyDescriptors) {
-    const value = (where as Record<string, unknown>)[field];
-    if (value === undefined) continue;
-    touchedHasMany = true;
-    delete (where as Record<string, unknown>)[field];
-    const targets = (Array.isArray(value) ? value : [value]).filter(
-      (v): v is string => typeof v === "string" && v.length > 0,
-    );
-    if (targets.length === 0) {
-      // Empty array short-circuits to no rows — match the
-      // pipeline's array-where semantics.
-      matched.push([]);
-      continue;
-    }
-    // Cast getDb() to NodePgDatabase so the drizzle builder
-    // chain (.select.from.where) carries proper return types.
-    // The empty-schema generic narrows the return shape away
-    // from any specific tables; the explicit `{ id: string }[]`
-    // cast at the end matches the projection.
-    const db = getDb() as unknown as NodePgDatabase<Record<string, never>>;
-    const rows = (await db
-      .select({ id: parent })
-      .from(table)
-      .where(inArray(table.targetId, targets))) as Array<{ id: string }>;
-    matched.push(rows.map((r) => r.id));
-  }
-
-  if (touchedHasMany) {
-    // Intersect across all hasMany filters. Empty intersection
-    // → return immediately; findDocuments would short-circuit
-    // on the empty-array where clause anyway, but the early
-    // exit saves a round-trip.
-    let ids = matched[0] ?? [];
-    for (let i = 1; i < matched.length; i++) {
-      const set = new Set(matched[i]);
-      ids = ids.filter((id) => set.has(id));
-    }
-
-    // Honor any pre-existing user id constraint. Without this,
-    // `where: { id: someId, categories: catId }` would silently
-    // drop the user's id filter and return every post in that
-    // category — a real foot-gun. Intersect instead.
-    const existingId = (where as Record<string, unknown>).id;
-    if (typeof existingId === "string") {
-      ids = ids.includes(existingId) ? [existingId] : [];
-    } else if (Array.isArray(existingId)) {
-      const allowed = new Set(existingId.filter((v): v is string => typeof v === "string"));
-      ids = ids.filter((id) => allowed.has(id));
-    }
-
-    if (ids.length === 0) {
-      return {
-        docs: [],
-        totalDocs: 0,
-        totalPages: 0,
-        page: options.page ?? 1,
-        limit: options.limit ?? 20,
-        hasNextPage: false,
-        hasPrevPage: false,
-      };
-    }
-    (where as Record<string, unknown>).id = ids;
-  }
-
-  return findDocuments<PostsDocument>("posts", { ...options, where }, user);
+  return findDocuments<PostsDocument>("posts", options, user);
 }
 
 /** Typed by-id fetch for the `posts` collection. */

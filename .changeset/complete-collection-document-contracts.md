@@ -1,6 +1,6 @@
 ---
-"@nexpress/core": patch
-"@nexpress/next": patch
+"@nexpress/core": minor
+"@nexpress/next": minor
 "@nexpress/app": patch
 "@nexpress/admin": patch
 "@nexpress/translation": patch

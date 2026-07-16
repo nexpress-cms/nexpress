@@ -1,4 +1,5 @@
-import { configureBuiltinJobContext, getDocumentById, startWorker } from "@nexpress/core";
+import { configureBuiltinJobContext, startWorker } from "@nexpress/core";
+import { npGetPersistedCollectionDocumentById } from "@nexpress/core/collections";
 import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
 
 /**
@@ -48,8 +49,8 @@ export async function runWorker({ ensureFor, shutdown }: RunWorkerOptions): Prom
         await import("../lib/scheduled-publish-revalidate.js");
       await revalidatePublishedDocuments(byCollection);
     },
-    async resolveContentAfterSaveContext({ collection, documentId }) {
-      const doc = await getDocumentById(collection, documentId);
+    async resolveContentAfterSaveContext({ siteId, collection, documentId }) {
+      const doc = await npGetPersistedCollectionDocumentById(collection, documentId, siteId);
       if (!doc) return null;
       return { data: doc };
     },
