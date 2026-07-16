@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
 import {
-  NpError,
   NpNotFoundError,
+  NpServiceUnavailableError,
   NpValidationError,
   enqueueJob,
   findDocuments,
@@ -376,10 +376,8 @@ export async function createAndEnqueueWordPressImportRun(args: {
 }): Promise<WpImportAdminRun> {
   const queue = getOptionalJobQueue();
   if (!queue) {
-    throw new NpError(
+    throw new NpServiceUnavailableError(
       "WordPress background apply requires jobs. Set NP_ENABLE_JOBS=1 on the web runtime and start a worker with `NP_ENABLE_JOBS=1 pnpm run worker`.",
-      "INTERNAL_ERROR",
-      503,
     );
   }
 
@@ -459,10 +457,8 @@ export async function createAndEnqueueWordPressImportRun(args: {
       .returning();
 
     const run = serializeImportRun(failed ?? created);
-    throw new NpError(
+    throw new NpServiceUnavailableError(
       `WordPress import run ${run.id} could not be queued: ${message}`,
-      "INTERNAL_ERROR",
-      503,
     );
   }
 }

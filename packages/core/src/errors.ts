@@ -1,3 +1,7 @@
+import type { NpApiErrorDetailValue, NpErrorCodeInput } from "./api-contract/types.js";
+
+export type { NpErrorCode, NpErrorCodeInput } from "./api-contract/types.js";
+
 /**
  * Public error-code contract (#290).
  *
@@ -7,52 +11,22 @@
  * part of the public contract — adding a typo'd code or
  * renaming an existing one breaks every integration.
  *
- * `NpErrorCode` is the union of every code the framework
- * currently emits. Adding a new code requires extending this
- * union deliberately — no more "casual" string adoption that
- * accumulates over a year of PRs.
+ * `NpErrorCode` and its fixed status map live in the client-safe
+ * `api-contract` subpath. Adding a framework code requires extending
+ * both deliberately — no more casual string/status drift.
  *
- * The `NpError` constructor still accepts plain `string` so
- * out-of-tree plugins that throw their own codes keep working;
- * internal code paths use the union to get IntelliSense and
- * catch typos at compile time. The `(string & {})` trick on
- * the public type keeps editor completion narrow without
- * locking the runtime contract.
+ * The `NpError` constructor still accepts extension strings so plugins can
+ * own documented codes. `npErrorResponse()` validates their uppercase grammar,
+ * status, message, and details before anything reaches a client.
  *
- * **Stability**: codes follow semver. Renames or removals are
- * major-bump only. New codes may land in minor versions. See
- * `docs/api-error-codes.md` for the catalogue an operator /
- * client team should rely on.
+ * See `docs/api-error-codes.md` for stability and authoring rules.
  */
-export type NpErrorCode =
-  | "FORBIDDEN"
-  | "NOT_FOUND"
-  | "VALIDATION_ERROR"
-  | "UNAUTHORIZED"
-  | "CONFLICT"
-  | "RATE_LIMITED"
-  | "TOO_MANY_REQUESTS"
-  | "INVALID_URL"
-  | "EMAIL_ADAPTER_MISSING_DEPENDENCY"
-  | "EMAIL_DELIVERY_FAILED"
-  | "SITE_CONTEXT_MISSING"
-  | "INTERNAL_ERROR";
-
-/**
- * The constructor signature accepts the union *or* an arbitrary
- * string. Inside the codebase, passing a literal that isn't in
- * the union triggers a TypeScript error in strict editors
- * (autocompletion narrows to `NpErrorCode`). External plugins
- * authoring their own codes keep working — they just won't get
- * the autocomplete win.
- */
-export type NpErrorCodeInput = NpErrorCode | (string & Record<never, never>);
-
 export class NpError extends Error {
   constructor(
     message: string,
     public readonly code: NpErrorCodeInput,
     public readonly statusCode: number = 500,
+    public readonly details?: NpApiErrorDetailValue,
   ) {
     super(message);
     this.name = "NpError";
@@ -61,22 +35,14 @@ export class NpError extends Error {
 
 export class NpForbiddenError extends NpError {
   constructor(collection: string, operation: string) {
-    super(
-      `Access denied: ${operation} on ${collection}`,
-      "FORBIDDEN",
-      403,
-    );
+    super(`Access denied: ${operation} on ${collection}`, "FORBIDDEN", 403);
     this.name = "NpForbiddenError";
   }
 }
 
 export class NpNotFoundError extends NpError {
   constructor(collection: string, id: string) {
-    super(
-      `Document not found: ${collection}/${id}`,
-      "NOT_FOUND",
-      404,
-    );
+    super(`Document not found: ${collection}/${id}`, "NOT_FOUND", 404);
     this.name = "NpNotFoundError";
   }
 }
@@ -86,7 +52,7 @@ export class NpValidationError extends NpError {
     message: string,
     public readonly errors: Array<{ field: string; message: string }>,
   ) {
-    super(message, "VALIDATION_ERROR", 400);
+    super(message, "VALIDATION_ERROR", 400, errors);
     this.name = "NpValidationError";
   }
 }
@@ -99,9 +65,23 @@ export class NpAuthError extends NpError {
 }
 
 export class NpConflictError extends NpError {
-  constructor(message: string) {
-    super(message, "CONFLICT", 409);
+  constructor(message: string, details?: NpApiErrorDetailValue) {
+    super(message, "CONFLICT", 409, details);
     this.name = "NpConflictError";
+  }
+}
+
+export class NpMethodNotAllowedError extends NpError {
+  constructor(message: string = "Method not allowed") {
+    super(message, "METHOD_NOT_ALLOWED", 405);
+    this.name = "NpMethodNotAllowedError";
+  }
+}
+
+export class NpServiceUnavailableError extends NpError {
+  constructor(message: string = "Service unavailable") {
+    super(message, "SERVICE_UNAVAILABLE", 503);
+    this.name = "NpServiceUnavailableError";
   }
 }
 

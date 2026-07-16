@@ -168,6 +168,11 @@ losing its void wrapper.
 | `import-export.integration.test.ts` (7)                 | export full / partial / unknown-slug / non-admin; import dry-run / partial filter / unknown-slug                  |
 | `translation-interchange-admin.integration.test.ts` (4) | Admin XLIFF/PO export, preview/apply, capability errors, and bounded upload rejection                             |
 
+The unit suites in `@nexpress/core`, `@nexpress/next`, and `@nexpress/app`
+also verify the exact bounded API error envelope, known code/status mapping,
+Zod detail normalization, fail-closed malformed-error behavior, and reusable
+OpenAPI error components without requiring Postgres.
+
 Run the API suite with the same `TEST_DATABASE_URL` via
 `pnpm --filter @nexpress/web test:integration` or the root
 `pnpm test:integration` fan-out. The root `pnpm test` command runs unit

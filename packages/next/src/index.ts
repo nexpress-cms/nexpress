@@ -14,7 +14,12 @@ export {
   type CreateMemberAuthHelpersOptions,
 } from "./member-auth.js";
 
-export { npSuccessResponse, npErrorResponse, type NpApiError } from "./response.js";
+export {
+  npSuccessResponse,
+  npErrorResponse,
+  type NpApiError,
+  type NpErrorResponseInit,
+} from "./response.js";
 export { readJsonBody } from "./safe-json.js";
 
 export {

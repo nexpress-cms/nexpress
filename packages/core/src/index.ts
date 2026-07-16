@@ -295,13 +295,35 @@ export type {
 export { authenticated, isAdmin, isEditorOrAbove, isOwnerOrAdmin } from "./config/access.js";
 
 export {
+  NpApiContractError,
+  npAnalyzeApiError,
+  npApiErrorCodePattern,
+  npApiErrorContractLimits,
+  npCreateApiError,
+  npErrorCodes,
+  npErrorStatusByCode,
+  npIsApiError,
+  npRequireApiError,
+} from "./api-contract/index.js";
+export type {
+  NpApiContractIssue,
+  NpApiContractIssueCode,
+  NpApiError,
+  NpApiErrorDetailPrimitive,
+  NpApiErrorDetailValue,
+  NpApiValidationIssue,
+} from "./api-contract/index.js";
+
+export {
   NpError,
   NpForbiddenError,
   NpNotFoundError,
   NpValidationError,
   NpAuthError,
   NpConflictError,
+  NpMethodNotAllowedError,
   NpRateLimitError,
+  NpServiceUnavailableError,
   NpSiteContextMissingError,
   type NpErrorCode,
   type NpErrorCodeInput,

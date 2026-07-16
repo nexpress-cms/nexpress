@@ -1,5 +1,4 @@
-import { NpAuthError, publishScheduledDocuments } from "@nexpress/core";
-import { NextResponse } from "next/server";
+import { NpAuthError, NpServiceUnavailableError, publishScheduledDocuments } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
@@ -23,15 +22,8 @@ export async function POST(request: NextRequest) {
     if (!expected) {
       // Misconfiguration on the operator side — distinguish from server
       // failure (500) so monitors can alert correctly.
-      return NextResponse.json(
-        {
-          error: {
-            code: "SERVICE_UNAVAILABLE",
-            message: "Scheduler token not configured (set NP_SCHEDULER_TOKEN).",
-          },
-          status: 503,
-        },
-        { status: 503 },
+      throw new NpServiceUnavailableError(
+        "Scheduler token not configured (set NP_SCHEDULER_TOKEN).",
       );
     }
 

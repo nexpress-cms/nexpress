@@ -53,6 +53,11 @@ import { NextResponse } from "next/server";
 
 import { ensureFor } from "../../lib/init-core";
 import { collectionToManifest, type NpFieldManifest } from "../../lib/manifest";
+import {
+  npApiErrorOpenApiResponses,
+  npApplyApiErrorOpenApiResponses,
+  npCreateApiErrorOpenApiSchemas,
+} from "../../lib/openapi-api-errors";
 
 type OpenApiSchema = Record<string, unknown>;
 
@@ -1271,20 +1276,7 @@ function buildSpec(): OpenApiSchema {
         createdAt: { type: "string", format: "date-time" },
       },
     },
-    error_response: {
-      type: "object",
-      properties: {
-        error: {
-          type: "object",
-          properties: {
-            code: { type: "string" },
-            message: { type: "string" },
-            details: { type: "object", additionalProperties: true },
-          },
-        },
-        status: { type: "integer" },
-      },
-    },
+    ...npCreateApiErrorOpenApiSchemas(),
   };
   const paths: Record<string, OpenApiSchema> = {
     "/api/auth/login": {
@@ -2508,47 +2500,6 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Disable draft mode and redirect to /",
         responses: { "307": { description: "Redirect" } },
-      },
-    },
-    "/api/internal/publish-scheduled": {
-      post: {
-        summary: "Run the scheduled-publishing sweep",
-        description:
-          "Bearer-token-protected internal trigger. Set `NP_SCHEDULER_TOKEN` and call from cron. Publishes due rows with `status=scheduled` and `publishedAt <= now`.",
-        parameters: [
-          {
-            in: "header",
-            name: "Authorization",
-            required: true,
-            schema: { type: "string" },
-            description: "Bearer token in the form `Bearer <NP_SCHEDULER_TOKEN>`.",
-          },
-        ],
-        responses: {
-          "200": {
-            description: "Sweep result",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    published: { type: "integer" },
-                    byCollection: {
-                      type: "object",
-                      additionalProperties: {
-                        type: "array",
-                        items: { type: "string", format: "uuid" },
-                      },
-                    },
-                    at: { type: "string", format: "date-time" },
-                  },
-                },
-              },
-            },
-          },
-          "401": { description: "Missing or invalid bearer token" },
-          "503": { description: "`NP_SCHEDULER_TOKEN` is not configured" },
-        },
       },
     },
     "/api/plugins/{pluginId}/actions/{actionId}": {
@@ -4291,13 +4242,14 @@ function buildSpec(): OpenApiSchema {
     servers: [{ url: process.env.SITE_URL ?? "http://localhost:3000" }],
     components: {
       schemas,
+      responses: npApiErrorOpenApiResponses,
       securitySchemes: {
         sessionCookie: { type: "apiKey", in: "cookie", name: "np-session" },
         csrfHeader: { type: "apiKey", in: "header", name: "X-CSRF-Token" },
       },
     },
     security: [{ sessionCookie: [], csrfHeader: [] }],
-    paths,
+    paths: npApplyApiErrorOpenApiResponses(paths),
   };
 }
 

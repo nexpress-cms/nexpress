@@ -236,15 +236,26 @@ When exceeded the response is `429` with a `Retry-After` header.
 
 ## 6. Error shape
 
-Every error response is:
+Every framework-generated JSON error response is:
 
 ```json
-{ "error": { "code": "…", "message": "…", "details": {} }, "status": 400 }
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid input",
+    "details": [{ "field": "email", "message": "must be an email" }]
+  },
+  "status": 400
+}
 ```
 
-Codes include `VALIDATION_ERROR`, `FORBIDDEN`, `NOT_FOUND`, `AUTH_ERROR`,
-`CONFLICT`, `RATE_LIMITED`, `INVALID_URL`, `NOT_IMPLEMENTED`. `details`
-may carry an array of per-field errors for validation failures.
+Known codes and their fixed statuses are published by
+`@nexpress/core/api-contract` and documented in
+[API error contract](./api-error-codes.md). Agents should branch on `code`,
+handle unknown safe extension codes, and treat `message` as display text.
+`VALIDATION_ERROR.details` is always an exact `{ field, message }[]`; other
+codes may carry bounded JSON details. The OpenAPI document references this
+same envelope for declared and fallback errors on every operation.
 
 ---
 

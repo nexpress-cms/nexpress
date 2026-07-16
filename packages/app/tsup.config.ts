@@ -87,6 +87,7 @@ const libEntries = {
   "lib/init-core": "src/lib/init-core.ts",
   "lib/kind-preset": "src/lib/kind-preset.ts",
   "lib/manifest": "src/lib/manifest.ts",
+  "lib/openapi-api-errors": "src/lib/openapi-api-errors.ts",
   "lib/member-auth-helpers": "src/lib/member-auth-helpers.ts",
   "lib/revalidate": "src/lib/revalidate.ts",
   "lib/revision-helpers": "src/lib/revision-helpers.ts",
