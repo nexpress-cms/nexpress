@@ -423,4 +423,13 @@ describe("collection find contracts", () => {
       ]),
     });
   });
+
+  it("rejects null where values instead of silently dropping the filter", () => {
+    expect(npAnalyzeCollectionFindOptions({ where: { summary: null } }, config)).toMatchObject({
+      ok: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({ path: "find.where.summary", code: "invalid-field" }),
+      ]),
+    });
+  });
 });

@@ -1238,6 +1238,13 @@ function normalizeQueryScalar(
   allowSystemWildcards: boolean,
   issues: NpCollectionContractIssue[],
 ): unknown {
+  // `NpFindWhere` intentionally unwraps optional document fields and does not
+  // expose null matching. Reject null instead of confusing it with the
+  // parser's failure sentinel and silently broadening the query.
+  if (value === null) {
+    issues.push(issue("invalid-field", path, "must not be null."));
+    return null;
+  }
   if (descriptor.kind === "system") {
     if ((descriptor.name === "siteId" || descriptor.name === "visibility") && value === "*") {
       if (!allowSystemWildcards) {
