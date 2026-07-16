@@ -61,10 +61,21 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
       }),
       slugParams("posts"),
     );
-    const created = await readJson<{ id: string; title: string; status: string }>(createRes);
+    const created = await readJson<
+      Record<string, unknown> & { id: string; title: string; status: string }
+    >(createRes);
     expect(created.status).toBe(201);
     expect(created.body.title).toBe("Hello world");
     expect(created.body.status).toBe("published");
+    expect(created.body).not.toHaveProperty("_status");
+    expect(created.body).toMatchObject({
+      siteId: "default",
+      visibility: "public",
+      categories: [],
+      tags: [],
+      createdAt: expect.stringMatching(/Z$/u),
+      updatedAt: expect.stringMatching(/Z$/u),
+    });
 
     const listRes = await listGET(buildRequest("/api/collections/posts"), slugParams("posts"));
     const listed = await readJson<{ docs: Array<{ id: string }>; totalDocs: number }>(listRes);
@@ -97,16 +108,15 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
         session,
         body: {
           title: "Updated",
-          slug: "original",
-          content: npCreateEmptyRichTextContent(),
-          _status: "draft",
         },
       }),
       idParams("posts", id),
     );
-    const patched = await readJson<{ title: string }>(patchRes);
+    const patched = await readJson<{ title: string; slug: string; content: unknown }>(patchRes);
     expect(patched.status).toBe(200);
     expect(patched.body.title).toBe("Updated");
+    expect(patched.body.slug).toBe("original");
+    expect(patched.body.content).toEqual(npCreateEmptyRichTextContent());
 
     const deleteRes = await idDELETE(
       buildRequest(`/api/collections/posts/${id}`, { method: "DELETE", session }),
@@ -119,6 +129,68 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
       idParams("posts", id),
     );
     expect(getAfterDelete.status).toBe(404);
+  });
+
+  it("hydrates ordered hasMany relationships on write, list, and by-id reads", async () => {
+    const session = await seedUser({ role: "editor" });
+    const createRelation = async (slug: "categories" | "tags", name: string) => {
+      const response = await listPOST(
+        buildRequest(`/api/collections/${slug}`, {
+          method: "POST",
+          session,
+          body: { name, slug: name.toLowerCase(), _status: "published" },
+        }),
+        slugParams(slug),
+      );
+      const result = await readJson<{ id: string }>(response);
+      expect(result.status).toBe(201);
+      return result.body.id;
+    };
+    const categoryId = await createRelation("categories", "News");
+    const tagId = await createRelation("tags", "Contract");
+
+    const createResponse = await listPOST(
+      buildRequest("/api/collections/posts", {
+        method: "POST",
+        session,
+        body: {
+          title: "Related",
+          content: npCreateEmptyRichTextContent(),
+          categories: [categoryId],
+          tags: [tagId],
+          _status: "published",
+        },
+      }),
+      slugParams("posts"),
+    );
+    const created = await readJson<{ id: string; categories: string[]; tags: string[] }>(
+      createResponse,
+    );
+    expect(created.body).toMatchObject({ categories: [categoryId], tags: [tagId] });
+
+    const listResponse = await listGET(
+      buildRequest("/api/collections/posts", {
+        query: { where: JSON.stringify({ categories: categoryId }) },
+      }),
+      slugParams("posts"),
+    );
+    const listed = await readJson<{
+      docs: Array<{ id: string; categories: string[]; tags: string[] }>;
+    }>(listResponse);
+    expect(listed.body.docs).toEqual([
+      expect.objectContaining({
+        id: created.body.id,
+        categories: [categoryId],
+        tags: [tagId],
+      }),
+    ]);
+
+    const byIdResponse = await idGET(
+      buildRequest(`/api/collections/posts/${created.body.id}`),
+      idParams("posts", created.body.id),
+    );
+    const byId = await readJson<{ categories: string[]; tags: string[] }>(byIdResponse);
+    expect(byId.body).toMatchObject({ categories: [categoryId], tags: [tagId] });
   });
 
   it("POST without auth returns 401", async () => {
@@ -518,6 +590,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
   it("revisions: publishes the closed collection-derived snapshot contract in OpenAPI", async () => {
     const response = await openApiGET();
     const { body } = await readJson<{
+      components: { schemas: Record<string, Record<string, unknown>> };
       paths: Record<
         string,
         {
@@ -549,6 +622,32 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
       }),
     );
     expect(body.paths["/api/collections/pages/{id}/autosave"]).toBeUndefined();
+
+    expect(body.components.schemas.posts_document).toEqual(
+      expect.objectContaining({
+        additionalProperties: false,
+        required: expect.arrayContaining([
+          "id",
+          "status",
+          "siteId",
+          "visibility",
+          "createdAt",
+          "updatedAt",
+          "categories",
+          "tags",
+        ]),
+        properties: expect.not.objectContaining({ _status: expect.anything() }),
+      }),
+    );
+    expect(body.components.schemas.posts_create_input).toEqual(
+      expect.objectContaining({
+        additionalProperties: false,
+        properties: expect.objectContaining({ _status: expect.any(Object) }),
+      }),
+    );
+    expect(body.components.schemas.posts_create_input?.required).not.toContain("kind");
+    expect(body.components.schemas.posts_create_input?.properties).not.toHaveProperty("status");
+    expect(body.components.schemas.posts_patch_input).not.toHaveProperty("required");
   });
 
   it("cancel schedule: PATCH _status=draft + publishedAt=null returns to draft", async () => {

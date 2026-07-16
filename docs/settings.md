@@ -87,8 +87,10 @@ site and calling loaded plugin id; plugins cannot create arbitrary keys.
 
 ## Import, export, and diagnosis
 
-Site-config exports use format version `2`. A full export includes top-level
-`site`, registered settings, navigation, theme tokens, and plugin configs.
+Site-config exports use format version `3`. Collection entries are exact
+collection wire documents and are revalidated during dry-run and before
+writes. A full export includes top-level `site`, registered settings,
+navigation, theme tokens, and plugin configs.
 Exports and imports are current-site scoped. Plugin config appears only in the
 top-level `plugins` array so its loaded plugin schema can validate it. A dry
 run applies the same validation without writes.

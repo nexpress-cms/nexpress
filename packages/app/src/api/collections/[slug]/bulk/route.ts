@@ -1,4 +1,11 @@
-import { NpValidationError, deleteDocument, getDocumentById, saveDocument } from "@nexpress/core";
+import {
+  NpValidationError,
+  deleteDocument,
+  getCollectionConfig,
+  getDocumentById,
+  saveDocument,
+} from "@nexpress/core";
+import { npCollectionDocumentToWriteInput } from "@nexpress/core/collection-contract";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
@@ -79,17 +86,9 @@ export async function POST(
           failed.push({ id, error: "Not found" });
           continue;
         }
-        const {
-          id: _id,
-          status: _status,
-          createdAt: _createdAt,
-          updatedAt: _updatedAt,
-          createdBy: _createdBy,
-          updatedBy: _updatedBy,
-          ...rest
-        } = existing;
-        validateDocumentBlockContent(slug, rest);
-        await saveDocument(slug, id, rest, user, {
+        const writable = npCollectionDocumentToWriteInput(existing, getCollectionConfig(slug));
+        validateDocumentBlockContent(slug, writable);
+        await saveDocument(slug, id, writable, user, {
           status: action === "publish" ? "published" : "draft",
         });
         succeeded.push(id);

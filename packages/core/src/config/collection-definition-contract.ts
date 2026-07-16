@@ -375,7 +375,6 @@ function semanticIssues(config: NpCollectionConfig): NpCollectionDefinitionIssue
   if (config.community?.memberWrite?.create) systemFields.add("memberAuthorId");
   if (config.versions?.drafts) {
     systemFields.add("publishedAt");
-    systemFields.add("_status");
   }
 
   if (config.slugField) {

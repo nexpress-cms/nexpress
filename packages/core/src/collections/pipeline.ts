@@ -4,6 +4,15 @@ import { randomUUID } from "node:crypto";
 import { asc, count, desc, eq, inArray, max, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import type { NpCommunityJsonObject } from "../community-contract/types.js";
+import {
+  NpCollectionContractError,
+  npCollectionDocumentToWriteInput,
+  npHydrateCollectionDocument,
+  npRequireCollectionDocument,
+  npRequireCollectionFindOptions,
+  npRequireCollectionFindResult,
+  npRequireCollectionStorageRow,
+} from "../collection-contract/contract.js";
 
 import {
   type NpCollectionConfig,
@@ -26,6 +35,7 @@ import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 import { getCollectionZodSchema } from "./validation.js";
 import { getCollectionConfig, getCollectionTable, getCollectionRegistration } from "./registry.js";
+import { npRecordCollectionRuntimeDiagnostic } from "./diagnostics.js";
 import { buildSearchVector, buildWeightedSearchVectorSql } from "./search.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { runHook } from "../plugins/host.js";
@@ -326,9 +336,9 @@ export async function updateMemberDocument(
   if (!config.community?.memberWrite?.update) {
     throw new NpForbiddenError(collection, "update");
   }
-  const table = getCollectionTable(collection) as PgTable;
+  const registration = getCollectionRegistration(collection);
   const dbForGate = getDb() as unknown as DrizzleDatabaseLike;
-  const originalDoc = await getDocumentByIdInternal(dbForGate, table, collection, docId);
+  const originalDoc = await getDocumentByIdInternal(dbForGate, registration, collection, docId);
   if (!originalDoc) {
     throw new NpNotFoundError(collection, docId);
   }
@@ -671,18 +681,6 @@ async function initSaveContext(
   // matches DrizzleTransactionLike at runtime — see the docstring
   // on the option for the boundary contract.
   const outerTx = options?.tx as DrizzleTransactionLike | undefined;
-  // Pass `data` so the schema evaluates `admin.condition` and
-  // drops `required` for hidden fields. Mirrors the admin
-  // client's condition-aware resolver introduced in #759 — a
-  // hidden field can't be filled by the operator, so requiring
-  // it on save would block writes the operator can't fix.
-  const validatedData = toRecord(getCollectionZodSchema(config, data).parse(data));
-  if (hasFrameworkPublishedAt(config)) {
-    const publishedAt = normalizeFrameworkPublishedAt(data.publishedAt);
-    if (publishedAt !== undefined) {
-      validatedData.publishedAt = publishedAt;
-    }
-  }
   const operation: "create" | "update" = docId ? "update" : "create";
   // Read the original doc through the outer tx when one is
   // provided so the read sees the tx's own pending writes
@@ -690,8 +688,23 @@ async function initSaveContext(
   // a later one needs to look the earlier one up).
   const readHandle: DrizzleTransactionLike = outerTx ?? db;
   const originalDoc = docId
-    ? await getDocumentByIdInternal(readHandle, table, collection, docId)
+    ? await getDocumentByIdInternal(readHandle, registration, collection, docId)
     : null;
+  // PATCH and programmatic updates are true partial updates. Rebuild the
+  // complete writable shape from the validated persisted document, overlay
+  // the caller's patch, then run the exact strict schema. This prevents an
+  // omitted field from being nulled while still rejecting framework-managed
+  // and unknown keys at the earliest write boundary.
+  const candidate = originalDoc
+    ? { ...npCollectionDocumentToWriteInput(originalDoc, config), ...data }
+    : data;
+  // Pass the complete candidate so `admin.condition` and required/default
+  // semantics are evaluated against the same value that will be persisted.
+  const validatedData = toRecord(getCollectionZodSchema(config, candidate).parse(candidate));
+  if (hasFrameworkPublishedAt(config)) {
+    const publishedAt = normalizeFrameworkPublishedAt(candidate.publishedAt);
+    if (publishedAt !== undefined) validatedData.publishedAt = publishedAt;
+  }
   return {
     collection,
     docId,
@@ -813,6 +826,21 @@ async function prepareDocumentForWrite(c: SaveContext): Promise<void> {
   }
 
   applySlugField(c.config, c.hookData, c.originalDoc);
+
+  // Collection and plugin hooks are untrusted result boundaries. Re-parse
+  // after every hook chain and slug derivation so a hook cannot persist an
+  // undeclared key, malformed field, or invalid nested value that the
+  // request-side validation never saw.
+  try {
+    c.hookData = toRecord(getCollectionZodSchema(c.config, c.hookData).parse(c.hookData));
+  } catch (error) {
+    npRecordCollectionRuntimeDiagnostic(
+      c.collection,
+      "hook-result",
+      error instanceof Error ? error.message : String(error),
+    );
+    throw error;
+  }
 
   // Phase 12.1 — i18n collections need locale + translation
   // group resolved before the row is written. On creates the
@@ -1079,7 +1107,16 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
       );
     }
 
-    return persistedDoc;
+    const [hydrated] = await hydratePersistedDocuments(
+      tx,
+      ctx.registration,
+      [persistedDoc],
+      "write-result",
+    );
+    if (!hydrated) {
+      throw new Error(`Saved ${ctx.collection} document could not be hydrated.`);
+    }
+    return hydrated;
   };
 
   if (ctx.outerTx) {
@@ -1106,6 +1143,25 @@ async function firePostCommitHooks(
     documentId: savedDocId,
     operation: ctx.operation,
   };
+
+  await runPostCommit(
+    `collection:${ctx.operation === "create" ? "afterCreate" : "afterUpdate"}`,
+    postCommitCtx,
+    async () => {
+      await npRunCollectionDocumentResultHooks(
+        ctx.config,
+        ctx.operation === "create" ? ctx.config.hooks?.afterCreate : ctx.config.hooks?.afterUpdate,
+        {
+          data: savedDoc,
+          user: ctx.userForHooks,
+          principal: ctx.principal,
+          collection: ctx.collection,
+          originalDoc: ctx.originalDoc,
+        },
+        "write-result",
+      );
+    },
+  );
 
   await runPostCommit("enqueue:content:afterSave", postCommitCtx, () =>
     enqueueJob("content:afterSave", {
@@ -1266,7 +1322,7 @@ export async function autosaveRevision(
     ]);
   }
 
-  const originalDoc = await getDocumentByIdInternal(db, table, collection, documentId);
+  const originalDoc = await getDocumentByIdInternal(db, registration, collection, documentId);
   if (!originalDoc) {
     throw new NpNotFoundError(collection, documentId);
   }
@@ -1408,9 +1464,9 @@ export async function deleteMemberDocument(
   // also looks the row up internally, so this is a small redundant
   // SELECT — but the alternative (returning status from the impl)
   // would change a private API for one caller. Fine to repeat.
-  const table = getCollectionTable(collection) as PgTable;
+  const registration = getCollectionRegistration(collection);
   const db = getDb() as unknown as DrizzleDatabaseLike;
-  const original = await getDocumentByIdInternal(db, table, collection, docId);
+  const original = await getDocumentByIdInternal(db, registration, collection, docId);
   const wasPublished =
     typeof (original as { status?: unknown } | null)?.status === "string" &&
     (original as { status: string }).status === "published";
@@ -1473,9 +1529,10 @@ export async function promoteMemberDocument(
   docId: string,
   staffUserId: string,
 ): Promise<NpSaveResult> {
+  const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
   const db = getDb() as unknown as DrizzleDatabaseLike;
-  const originalDoc = await getDocumentByIdInternal(db, table, collection, docId);
+  const originalDoc = await getDocumentByIdInternal(db, registration, collection, docId);
   if (!originalDoc) {
     throw new NpNotFoundError(collection, docId);
   }
@@ -1531,7 +1588,13 @@ export async function promoteMemberDocument(
       },
     ]);
   }
-  const persistedDoc = toRecord(updated[0]);
+  const [persistedDoc] = await hydratePersistedDocuments(
+    db,
+    registration,
+    [toRecord(updated[0])],
+    "write-result",
+  );
+  if (!persistedDoc) throw new Error(`Promoted ${collection} document could not be hydrated.`);
 
   const { applyReputation } = await import("../community/reputation.js");
   const { recordAuditEvent } = await import("../community/audit.js");
@@ -1577,7 +1640,7 @@ async function deleteDocumentImpl(
   // outer tx, fall back to the singleton pool handle and open a
   // private tx for the cascade (current behavior).
   const dbHandle = (options?.tx ?? getDb()) as unknown as DrizzleDatabaseLike;
-  const originalDoc = await getDocumentByIdInternal(dbHandle, table, collection, docId);
+  const originalDoc = await getDocumentByIdInternal(dbHandle, registration, collection, docId);
 
   // Without this guard the call returns success for non-existent ids:
   // hooks fire with `originalDoc = null`, the DELETE matches zero rows,
@@ -1610,18 +1673,23 @@ async function deleteDocumentImpl(
 
   const userForHooks = actorUserOrNull(actor);
   const principal = actorPrincipal(actor);
-  await runHooks(config.hooks?.beforeDelete, {
-    data: originalDoc,
-    user: userForHooks,
-    principal,
-    collection,
-    originalDoc,
-  });
+  const deleteDoc = await npRunCollectionDocumentResultHooks(
+    config,
+    config.hooks?.beforeDelete,
+    {
+      data: originalDoc,
+      user: userForHooks,
+      principal,
+      collection,
+      originalDoc,
+    },
+    "write-result",
+  );
 
   await runHook("content:beforeDelete", {
     collection,
     documentId: docId,
-    document: originalDoc,
+    document: deleteDoc,
     originalDocument: null,
     operation: "delete",
     source: "request",
@@ -1710,6 +1778,20 @@ async function deleteDocumentImpl(
   }
 
   const postCommitCtx = { collection, documentId: docId, operation: "delete" };
+  await runPostCommit("collection:afterDelete", postCommitCtx, async () => {
+    await npRunCollectionDocumentResultHooks(
+      config,
+      config.hooks?.afterDelete,
+      {
+        data: deleteDoc,
+        user: userForHooks,
+        principal,
+        collection,
+        originalDoc,
+      },
+      "write-result",
+    );
+  });
   await runPostCommit("enqueue:content:afterDelete", postCommitCtx, () =>
     enqueueJob("content:afterDelete", {
       siteId,
@@ -1724,7 +1806,7 @@ async function deleteDocumentImpl(
     runHook("content:afterDelete", {
       collection,
       documentId: docId,
-      document: originalDoc,
+      document: deleteDoc,
       originalDocument: null,
       operation: "delete",
       source: "request",
@@ -1739,21 +1821,25 @@ export async function findDocuments<T extends object = Record<string, unknown>>(
   user?: NpAuthUser,
 ): Promise<NpFindResult<T>> {
   const config = getCollectionConfig(collection);
+  const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
   const db = getDb() as unknown as DrizzleDatabaseLike;
-  const page = normalizePage(options.page);
-  const limit = normalizeLimit(options.limit);
+  const normalizedOptions = npRequireCollectionFindOptions(options, config, {
+    maximumLimit: 10_000,
+    allowSystemWildcards: true,
+  });
+  const page = normalizedOptions.page ?? 1;
+  const limit = normalizedOptions.limit ?? 10;
   const offset = (page - 1) * limit;
 
   await assertReadAccess(config, collection, user ?? null);
 
-  // Phase 12.1 — i18n collections honor the top-level `locale`
-  // option as an additional `locale = $1` filter. Non-i18n
-  // collections silently drop it (the column doesn't exist;
-  // forwarding it would 500 on the SQL parse).
-  let effectiveWhere: Record<string, unknown> = options.where ?? {};
-  if (config.i18n && options.locale) {
-    effectiveWhere = { ...effectiveWhere, locale: options.locale };
+  // i18n collections honor the top-level `locale` option as an
+  // additional `locale = $1` filter. The canonical find contract
+  // rejects locale before this point for non-i18n collections.
+  let effectiveWhere: Record<string, unknown> = normalizedOptions.where ?? {};
+  if (config.i18n && normalizedOptions.locale) {
+    effectiveWhere = { ...effectiveWhere, locale: normalizedOptions.locale };
   }
 
   // Phase 15.2 — multi-site scoping. Reads filter by the
@@ -1796,35 +1882,55 @@ export async function findDocuments<T extends object = Record<string, unknown>>(
     effectiveWhere = rest;
   }
 
+  effectiveWhere = await resolveHasManyWhere(db, registration, effectiveWhere);
+
   const effectiveOptions: NpFindOptions = {
-    ...options,
+    ...normalizedOptions,
     where: effectiveWhere,
   };
   const conditions = buildQueryConditions(table, effectiveOptions);
   const whereClause = combineConditions(conditions);
 
-  const docs = await executeFindQuery(db, table, options, whereClause, limit, offset);
+  const storageRows = await executeFindQuery(
+    db,
+    table,
+    normalizedOptions,
+    whereClause,
+    limit,
+    offset,
+  );
+  const hydratedDocs = await hydratePersistedDocuments(db, registration, storageRows, "read");
+  const docs: Record<string, unknown>[] = [];
+  for (const document of hydratedDocs) {
+    docs.push(await runReadHooks(config, document, user ?? null));
+  }
   const totalResult = (await (whereClause
     ? db.select({ total: count() }).from(table).where(whereClause)
     : db.select({ total: count() }).from(table).limit(1))) as Array<{ total: number | string }>;
   const totalDocs = Number(totalResult[0]?.total ?? 0);
+  if (!Number.isSafeInteger(totalDocs) || totalDocs < 0) {
+    throw new NpCollectionContractError("Invalid collection count result", [
+      {
+        code: "invalid-field",
+        path: "result.totalDocs",
+        message: "must be a non-negative safe integer.",
+      },
+    ]);
+  }
   const totalPages = totalDocs === 0 ? 0 : Math.ceil(totalDocs / limit);
 
-  return {
-    // Runtime rows are `Record<string, unknown>`; the generic `T`
-    // is a structural promise — generated wrapper functions narrow
-    // it to the per-collection document shape. We don't validate
-    // at runtime (Drizzle has already shaped the row to the table
-    // schema, which the generator derived from the same field
-    // configs T was generated from).
-    docs: docs as unknown as T[],
-    totalDocs,
-    totalPages,
-    page,
-    limit,
-    hasNextPage: page < totalPages,
-    hasPrevPage: page > 1 && totalDocs > 0,
-  };
+  return npRequireCollectionFindResult<T>(
+    {
+      docs: docs as unknown as T[],
+      totalDocs,
+      totalPages,
+      page,
+      limit,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1 && totalDocs > 0,
+    },
+    config,
+  );
 }
 
 export async function getDocumentById<T extends object = Record<string, unknown>>(
@@ -1833,9 +1939,9 @@ export async function getDocumentById<T extends object = Record<string, unknown>
   user?: NpAuthUser,
 ): Promise<T | null> {
   const config = getCollectionConfig(collection);
-  const table = getCollectionTable(collection) as PgTable;
   const db = getDb() as unknown as DrizzleDatabaseLike;
-  const doc = await getDocumentByIdOptional(db, table, id);
+  const registration = getCollectionRegistration(collection);
+  const doc = await getDocumentByIdOptional(db, registration, id);
 
   if (!doc) {
     return null;
@@ -1861,7 +1967,17 @@ export async function getDocumentById<T extends object = Record<string, unknown>
     }
   }
 
-  return doc as unknown as T;
+  return (await runReadHooks(config, doc, user ?? null)) as unknown as T;
+}
+
+/** Internal scheduler/worker boundary: hydrate an exact stored document without read hooks. */
+export async function npGetPersistedCollectionDocumentById(
+  collection: string,
+  id: string,
+): Promise<Record<string, unknown> | null> {
+  const registration = getCollectionRegistration(collection);
+  const db = getDb() as unknown as DrizzleDatabaseLike;
+  return getDocumentByIdOptional(db, registration, id, "write-result");
 }
 
 async function assertWriteAccess(
@@ -1915,6 +2031,57 @@ async function runHooks(
   }
 
   return nextData;
+}
+
+export async function npRunCollectionDocumentResultHooks(
+  config: NpCollectionConfig,
+  hooks: NpCollectionHook[] | undefined,
+  args: Parameters<NpCollectionHook>[0],
+  operation: "read" | "write-result",
+): Promise<Record<string, unknown>> {
+  try {
+    const value = await runHooks(hooks, args);
+    return npRequireCollectionDocument(value, config);
+  } catch (error) {
+    npRecordCollectionRuntimeDiagnostic(
+      config.slug,
+      operation === "read" ? "read" : "hook-result",
+      error instanceof Error ? error.message : String(error),
+    );
+    throw error;
+  }
+}
+
+async function runReadHooks(
+  config: NpCollectionConfig,
+  document: Record<string, unknown>,
+  user: NpAuthUser | null,
+): Promise<Record<string, unknown>> {
+  const principal: NpHookPrincipal | null = user ? { kind: "staff", user } : null;
+  const before = await npRunCollectionDocumentResultHooks(
+    config,
+    config.hooks?.beforeRead,
+    {
+      data: document,
+      user,
+      principal,
+      collection: config.slug,
+      originalDoc: document,
+    },
+    "read",
+  );
+  return npRunCollectionDocumentResultHooks(
+    config,
+    config.hooks?.afterRead,
+    {
+      data: before,
+      user,
+      principal,
+      collection: config.slug,
+      originalDoc: document,
+    },
+    "read",
+  );
 }
 
 async function createMainDocument(
@@ -2151,6 +2318,67 @@ async function insertRevision(
   }
 }
 
+function collectTopLevelHasManyFields(fields: readonly NpFieldConfig[]): string[] {
+  return fields.flatMap((field) => {
+    if (field.type === "row" || field.type === "collapsible") {
+      return collectTopLevelHasManyFields(field.fields);
+    }
+    return field.type === "relationship" && field.hasMany ? [field.name] : [];
+  });
+}
+
+async function resolveHasManyWhere(
+  db: DrizzleTransactionLike,
+  registration: ReturnType<typeof getCollectionRegistration>,
+  where: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const resolved = { ...where };
+  let matchingIds: string[] | null = null;
+  for (const field of collectTopLevelHasManyFields(registration.config.fields)) {
+    const candidate = resolved[field];
+    if (candidate === undefined) continue;
+    delete resolved[field];
+    const targets = (Array.isArray(candidate) ? candidate : [candidate]).filter(
+      (value): value is string => typeof value === "string",
+    );
+    if (targets.length === 0) {
+      matchingIds = [];
+      continue;
+    }
+    const tableValue = registration.joinTables?.[field];
+    if (!tableValue) {
+      throw new NpCollectionContractError("Invalid collection registration", [
+        {
+          code: "invariant",
+          path: `collection.${registration.config.slug}.joinTables.${field}`,
+          message: "is required for a hasMany relationship field.",
+        },
+      ]);
+    }
+    const table = tableValue as PgTable;
+    const parentColumnName = findParentColumnName(table, ["parentId"]);
+    const rows = (await db
+      .select({ id: getTableColumn(table, parentColumnName) })
+      .from(table)
+      .where(inArray(getTableColumn(table, "targetId"), targets))) as Array<{ id: unknown }>;
+    const ids = [...new Set(rows.flatMap((row) => (typeof row.id === "string" ? [row.id] : [])))];
+    matchingIds = matchingIds === null ? ids : matchingIds.filter((id) => new Set(ids).has(id));
+  }
+  if (matchingIds !== null) {
+    const existing = resolved.id;
+    if (typeof existing === "string")
+      matchingIds = matchingIds.includes(existing) ? [existing] : [];
+    else if (Array.isArray(existing)) {
+      const allowed = new Set(
+        existing.filter((value): value is string => typeof value === "string"),
+      );
+      matchingIds = matchingIds.filter((id) => allowed.has(id));
+    }
+    resolved.id = matchingIds;
+  }
+  return resolved;
+}
+
 function buildQueryConditions(table: PgTable, options: NpFindOptions): QueryCondition[] {
   const conditions: QueryCondition[] = [];
 
@@ -2285,12 +2513,12 @@ function getSortOrderClause(
  */
 async function getDocumentByIdInternal(
   db: DrizzleTransactionLike,
-  table: PgTable,
+  registration: ReturnType<typeof getCollectionRegistration>,
   collection: string,
   id: string,
   options?: { allowCrossSite?: boolean },
 ): Promise<Record<string, unknown>> {
-  const doc = await getDocumentByIdOptional(db, table, id);
+  const doc = await getDocumentByIdOptional(db, registration, id);
 
   if (!doc) {
     throw new NpNotFoundError(collection, id);
@@ -2308,17 +2536,152 @@ async function getDocumentByIdInternal(
   return doc;
 }
 
+async function hydratePersistedDocuments(
+  db: DrizzleTransactionLike,
+  registration: ReturnType<typeof getCollectionRegistration>,
+  rows: readonly Record<string, unknown>[],
+  operation: "read" | "write-result",
+): Promise<Record<string, unknown>[]> {
+  if (rows.length === 0) return [];
+  try {
+    const storageRows = rows.map((row, index) =>
+      npRequireCollectionStorageRow(
+        row,
+        registration.config,
+        `document.storage[${index.toString()}]`,
+      ),
+    );
+    const ids = storageRows.map((row) => getRecordId(row));
+    const relationState = new Map<
+      string,
+      {
+        arrays: Record<string, unknown[]>;
+        hasMany: Record<string, unknown[]>;
+      }
+    >(ids.map((id) => [id, { arrays: {}, hasMany: {} }]));
+
+    for (const [fieldPath, tableValue] of Object.entries(registration.childTables ?? {})) {
+      const table = tableValue as PgTable;
+      const parentColumnName = findParentColumnName(table, ["parentId"]);
+      const related = await db
+        .select()
+        .from(table)
+        .where(inArray(getTableColumn(table, parentColumnName), ids));
+      const byParent = new Map<string, Record<string, unknown>[]>();
+      for (const value of related) {
+        const row = toRecord(value);
+        const parentId = row[parentColumnName];
+        if (typeof parentId !== "string") {
+          throw new NpCollectionContractError("Invalid persisted collection relation", [
+            {
+              code: "invalid-field",
+              path: `document.${fieldPath}.parentId`,
+              message: "must be a string id.",
+            },
+          ]);
+        }
+        const normalized =
+          parentColumnName === "parentId"
+            ? row
+            : { ...row, parentId, [parentColumnName]: undefined };
+        if (parentColumnName !== "parentId") delete normalized[parentColumnName];
+        const current = byParent.get(parentId) ?? [];
+        current.push(normalized);
+        byParent.set(parentId, current);
+      }
+      for (const id of ids) {
+        const rowsForParent = byParent.get(id) ?? [];
+        rowsForParent.sort((left, right) => Number(left.order) - Number(right.order));
+        const state = relationState.get(id);
+        if (state) state.arrays[fieldPath] = rowsForParent;
+      }
+    }
+
+    for (const [fieldPath, tableValue] of Object.entries(registration.joinTables ?? {})) {
+      const table = tableValue as PgTable;
+      const parentColumnName = findParentColumnName(table, ["parentId"]);
+      const related = await db
+        .select()
+        .from(table)
+        .where(inArray(getTableColumn(table, parentColumnName), ids));
+      const byParent = new Map<string, Record<string, unknown>[]>();
+      for (const value of related) {
+        const row = toRecord(value);
+        const expected = new Set(["id", parentColumnName, "targetId", "order"]);
+        const unknownKey = Object.keys(row).find((key) => !expected.has(key));
+        const parentId = row[parentColumnName];
+        if (
+          unknownKey ||
+          typeof row.id !== "string" ||
+          !isUuid(row.id) ||
+          typeof parentId !== "string" ||
+          !isUuid(parentId) ||
+          !ids.includes(parentId) ||
+          typeof row.targetId !== "string" ||
+          !isUuid(row.targetId) ||
+          !Number.isSafeInteger(row.order) ||
+          (row.order as number) < 0
+        ) {
+          throw new NpCollectionContractError("Invalid persisted collection relation", [
+            {
+              code: "invalid-field",
+              path: `document.${fieldPath}`,
+              message: "join rows must contain exact id, parent, targetId, and order fields.",
+            },
+          ]);
+        }
+        const current = byParent.get(parentId) ?? [];
+        current.push(row);
+        byParent.set(parentId, current);
+      }
+      for (const id of ids) {
+        const rowsForParent = byParent.get(id) ?? [];
+        rowsForParent.sort((left, right) => Number(left.order) - Number(right.order));
+        const targets = rowsForParent.map((row, index) => {
+          if (row.order !== index) {
+            throw new NpCollectionContractError("Invalid persisted collection relation", [
+              {
+                code: "invariant",
+                path: `document.${fieldPath}[${index.toString()}].order`,
+                message: "must be contiguous and zero-based.",
+              },
+            ]);
+          }
+          return row.targetId;
+        });
+        const state = relationState.get(id);
+        if (state) state.hasMany[fieldPath] = targets;
+      }
+    }
+
+    return storageRows.map((row) => {
+      const id = getRecordId(row);
+      const relations = relationState.get(id) ?? { arrays: {}, hasMany: {} };
+      return npHydrateCollectionDocument(registration.config, row, relations);
+    });
+  } catch (error) {
+    if (error instanceof NpCollectionContractError) {
+      npRecordCollectionRuntimeDiagnostic(registration.config.slug, operation, error.message);
+    }
+    throw error;
+  }
+}
+
 async function getDocumentByIdOptional(
   db: DrizzleTransactionLike,
-  table: PgTable,
+  registration: ReturnType<typeof getCollectionRegistration>,
   id: string,
+  operation: "read" | "write-result" = "read",
 ): Promise<Record<string, unknown> | null> {
+  const table = registration.table as PgTable;
   const [doc] = await db
     .select()
     .from(table)
     .where(eq(getTableColumn(table, "id"), id))
     .limit(1);
-  return doc ? toRecord(doc) : null;
+  if (!doc) return null;
+  const [hydrated] = await hydratePersistedDocuments(db, registration, [toRecord(doc)], operation);
+  return hydrated ?? null;
 }
 
 function prepareDocumentData(
@@ -2709,22 +3072,6 @@ function toOptionalRecord(value: unknown): Record<string, unknown> | null {
   }
 
   return value as Record<string, unknown>;
-}
-
-function normalizePage(page?: number): number {
-  if (!page || page < 1) {
-    return 1;
-  }
-
-  return Math.floor(page);
-}
-
-function normalizeLimit(limit?: number): number {
-  if (!limit || limit < 1) {
-    return 10;
-  }
-
-  return Math.floor(limit);
 }
 
 function getFlattenedFieldName(prefix: string[], name: string): string {

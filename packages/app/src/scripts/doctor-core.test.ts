@@ -29,6 +29,7 @@ describe("doctor core", () => {
         "database.reachable",
         "auth.contract",
         "settings.contract",
+        "collections.contract",
         "community.contract",
         "revisions.contract",
         "jobs.contract",

@@ -23,7 +23,9 @@ const resolvePostUrl = (doc: Record<string, unknown>): string | null => {
 
 describe("posts collection URL paths", () => {
   beforeEach(() => {
-    registerCollection("posts", {}, postsWithKinds);
+    registerCollection("posts", {}, postsWithKinds, {
+      joinTables: { categories: {}, tags: {} },
+    });
   });
 
   it("uses kind urlPattern metadata for canonical paths", () => {

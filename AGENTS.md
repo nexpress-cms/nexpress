@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-15 (community registries, adapters, persisted rows,
+**Last refreshed:** 2026-07-16 (collection documents now share one exact
+definition-derived storage/runtime/wire contract; related rows hydrate in
+order, partial updates preserve omitted fields, OpenAPI/import/export are
+closed, and malformed persistence or hook results reach doctor/health.)
+
+**Earlier:** 2026-07-15 (community registries, adapters, persisted rows,
 API requests and wire responses now share one exact client-safe contract;
 malformed state fails closed and contained runtime failures reach doctor/health.)
 
@@ -374,6 +379,15 @@ Collections are declared with `defineCollection({ slug, fields, ... })` and regi
 Adding or changing a collection's fields requires regenerating the schema and running a migration. The Drizzle schema codegen step (`pnpm schema:gen`, which writes `src/db/generated/collections.ts`) runs automatically inside `pnpm dev` whenever a file under `src/collections/` or `src/nexpress.config.ts` changes (#271). The Postgres migration is still manual (`pnpm db:generate && pnpm db:migrate`) so the SQL gets a human review before it touches the DB. A user project's collections live in `src/collections/` (see the `create-nexpress` scaffold); for this monorepo itself, collections for the reference app live in `apps/web/src/collections/`.
 
 The data pipeline (`packages/core/src/collections/pipeline.ts`) handles access control, hook invocation, validation via generated Zod schemas (`validation.ts`), revision tracking, media-ref tracking, and search-vector builds for every document write.
+
+Collection reads/writes use the exact client-safe contract in
+`@nexpress/core/collection-contract`. Generated main rows are validated before
+groups, child-table arrays, and ordered hasMany joins hydrate into runtime
+documents; REST/Admin/import-export serialize the same shape with canonical ISO
+dates. `_status` is request-only and canonical `status` is the sole stored
+column. Generated `documents.ts` emits runtime plus `*DocumentWire` types. Use
+`npCollectionDocumentToWriteInput()` when a framework workflow needs to save a
+validated runtime document again. Author docs: `docs/collection-documents.md`.
 
 Revision snapshots use the client-safe `@nexpress/core/revisions` contract.
 Normal saves and partial autosaves normalize bounded JSON, validate every

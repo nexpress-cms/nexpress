@@ -1,9 +1,4 @@
-import {
-  configureBuiltinJobContext,
-  getCollectionConfig,
-  getDocumentById,
-  startWorker,
-} from "@nexpress/core";
+import { configureBuiltinJobContext, getDocumentById, startWorker } from "@nexpress/core";
 import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
 
 /**
@@ -20,9 +15,8 @@ import { npRequireJobsEnabledFlag } from "@nexpress/core/jobs-contract";
  *   await runWorker({ ensureFor, shutdown: shutdownBootstrap });
  *
  * Resolves the DATABASE_URL from env (loaded by `_load-env`),
- * primes the built-in job context (so the worker can rehydrate
- * `content:afterSave` / `:afterDelete` hooks for staff-authored
- * writes), then hands control to `startWorker` which installs
+ * primes the built-in job context so post-write cache revalidation can
+ * resolve the latest exact document, then hands control to `startWorker` which installs
  * SIGINT/SIGTERM and runs until killed.
  */
 export interface RunWorkerOptions {
@@ -54,57 +48,13 @@ export async function runWorker({ ensureFor, shutdown }: RunWorkerOptions): Prom
         await import("../lib/scheduled-publish-revalidate.js");
       await revalidatePublishedDocuments(byCollection);
     },
-    async resolveContentAfterSaveContext({ collection, documentId, userId, memberId }) {
-      const config = getCollectionConfig(collection);
+    async resolveContentAfterSaveContext({ collection, documentId }) {
       const doc = await getDocumentById(collection, documentId);
       if (!doc) return null;
-      if (memberId) {
-        return {
-          collectionConfig: config,
-          data: doc,
-          user: null,
-          principal: { kind: "member", memberId },
-        };
-      }
-      if (!userId) return null;
-      const user = {
-        id: userId,
-        email: "",
-        name: "",
-        role: "admin" as const,
-        tokenVersion: 0,
-      };
-      return {
-        collectionConfig: config,
-        data: doc,
-        user,
-        principal: { kind: "staff", user },
-      };
+      return { data: doc };
     },
-    resolveContentAfterDeleteContext({ collection, documentId, userId, memberId }) {
-      const config = getCollectionConfig(collection);
-      if (memberId) {
-        return Promise.resolve({
-          collectionConfig: config,
-          data: { id: documentId },
-          user: null,
-          principal: { kind: "member" as const, memberId },
-        });
-      }
-      if (!userId) return Promise.resolve(null);
-      const user = {
-        id: userId,
-        email: "",
-        name: "",
-        role: "admin" as const,
-        tokenVersion: 0,
-      };
-      return Promise.resolve({
-        collectionConfig: config,
-        data: { id: documentId },
-        user,
-        principal: { kind: "staff", user },
-      });
+    resolveContentAfterDeleteContext({ documentId }) {
+      return Promise.resolve({ data: { id: documentId } });
     },
   });
 

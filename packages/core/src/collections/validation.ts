@@ -94,7 +94,7 @@ export function buildZodSchema(
     );
   }
 
-  return z.object(shape);
+  return z.object(shape).strict();
 }
 
 /**
@@ -195,13 +195,19 @@ export function getCollectionZodSchema(
   forData?: Record<string, unknown>,
 ): z.ZodSchema {
   const hidden = forData ? collectHiddenFieldNames(config.fields, forData) : new Set<string>();
-  const base = buildZodSchema(config.fields, hidden).extend({
+  let base = buildZodSchema(config.fields, hidden).extend({
     // Phase 21.17 — per-doc visibility flag. Optional on writes;
     // the pipeline lets the column default to "public" when the
     // caller doesn't specify. Allowed values are the same
     // codegen enum from `getBaseColumns`.
     visibility: z.enum(["public", "private"]).optional(),
   });
+  if (config.slugField) {
+    base = base.extend({ slug: z.string().min(1).max(2048).optional() });
+  }
+  if (config.versions?.drafts && !hasTopLevelField(config.fields, "publishedAt")) {
+    base = base.extend({ publishedAt: z.coerce.date().nullable().optional() });
+  }
   // Phase 12.1 — i18n collections accept `locale` and an
   // optional `translationGroupId` on writes. zod's default
   // strip behavior would otherwise drop them before the
@@ -215,6 +221,15 @@ export function getCollectionZodSchema(
     });
   }
   return base;
+}
+
+function hasTopLevelField(fields: NpFieldConfig[], name: string): boolean {
+  return fields.some((field) => {
+    if (field.type === "row" || field.type === "collapsible") {
+      return hasTopLevelField(field.fields, name);
+    }
+    return field.name === name;
+  });
 }
 
 function buildFieldSchema(

@@ -53,6 +53,43 @@ export type {
   NpSaveResult,
   NpDocumentStatus,
 } from "./config/types.js";
+export {
+  NpCollectionContractError,
+  npAnalyzeCollectionDocument,
+  npAnalyzeCollectionDocumentWire,
+  npAnalyzeCollectionStorageRow,
+  npAnalyzeCollectionSystemRow,
+  npCollectionContractLimits,
+  npCollectionDocumentCanonicalDatePattern,
+  npCollectionDocumentStatuses,
+  npCollectionDocumentToWriteInput,
+  npCollectionDocumentVisibilities,
+  npHydrateCollectionDocument,
+  npParseCollectionDocumentWire,
+  npRequireCollectionDocument,
+  npRequireCollectionDocumentWire,
+  npRequireCollectionStorageRow,
+  npSerializeCollectionDocument,
+} from "./collection-contract/index.js";
+export type {
+  NpCollectionContractIssue,
+  NpCollectionContractIssueCode,
+  NpCollectionContractResult,
+  NpCollectionDocumentBase,
+  NpCollectionDocumentRelations,
+  NpCollectionDocumentValue,
+  NpCollectionDocumentVisibility,
+  NpCollectionDocumentWire,
+  NpCollectionJsonPrimitive,
+  NpCollectionJsonValue,
+  NpCollectionRuntimeDiagnostic,
+  NpCollectionWireValue,
+} from "./collection-contract/index.js";
+export {
+  getCollectionRuntimeDiagnostics,
+  npSerializeCollectionDocumentWithDiagnostics,
+  resetCollectionRuntimeDiagnostics,
+} from "./collections/diagnostics.js";
 export type { NpBlockContent, NpBlockInstance } from "./fields/block-content.js";
 export { isNpBlockContent, npValidateBlockContent } from "./fields/block-content.js";
 export {

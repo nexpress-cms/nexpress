@@ -18,6 +18,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 // the auth re-exports, breaking the Next build (#776). `fields`
 // re-exports just the pure predicate / walker helpers we need.
 import { collectHiddenFieldNames, evaluateFieldCondition } from "@nexpress/core/fields";
+import { npRequireCollectionDocumentWire } from "@nexpress/core/collection-contract";
 import type { NpCollectionConfig, NpFieldConfig } from "@nexpress/core";
 import {
   AlertTriangle,
@@ -1354,8 +1355,9 @@ function CollectionEditViewInner({
       );
     }
 
-    const payload = (await response.json()) as Record<string, unknown>;
-    const savedDoc = isObject(payload.doc) ? payload.doc : payload;
+    const payload: unknown = await response.json();
+    const envelope = isObject(payload) && isObject(payload.doc) ? payload.doc : payload;
+    const savedDoc = npRequireCollectionDocumentWire<Record<string, unknown>>(envelope, config);
     const nextId = typeof savedDoc.id === "string" ? savedDoc.id : doc?.id;
 
     if (doc?.id) {

@@ -4,6 +4,7 @@ import {
   findDocuments,
   getAllCollectionSlugs,
   getCollectionConfig,
+  npCollectionDocumentToWriteInput,
   saveDocument,
   type NpAuthUser,
   type NpFieldConfig,
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
       const fresh = await findDocuments(
         doc.collection,
         {
-          where: { id: { equals: doc.docId } },
+          where: { id: doc.docId },
           limit: 1,
         },
         user,
@@ -124,7 +125,10 @@ export async function POST(request: NextRequest) {
       if (!validation.ok) continue;
       const stripped = stripUnknownInstances(validation.value, await getKnownTypes(), filterTypes);
       if (stripped.removed === 0) continue;
-      const updatedData = { ...row, [doc.fieldName]: stripped.kept };
+      const updatedData = npCollectionDocumentToWriteInput(
+        { ...row, [doc.fieldName]: stripped.kept },
+        getCollectionConfig(doc.collection),
+      );
       validateDocumentBlockContent(doc.collection, updatedData);
       await saveDocument(doc.collection, doc.docId, updatedData, user);
       removedInstances += stripped.removed;

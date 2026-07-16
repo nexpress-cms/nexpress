@@ -124,6 +124,7 @@ describe("collectHiddenFieldNames", () => {
 
 describe("getCollectionZodSchema — condition-aware required", () => {
   const config = baseCollection([
+    field({ type: "text", name: "kind", required: true }),
     field({ type: "text", name: "title", required: true }),
     field({
       type: "text",

@@ -53,6 +53,16 @@
       "import": "./dist/community-contract.js",
       "default": "./dist/community-contract.js"
     },
+    "./collection-contract": {
+      "types": "./dist/collection-contract.d.ts",
+      "import": "./dist/collection-contract.js",
+      "default": "./dist/collection-contract.js"
+    },
+    "./collections": {
+      "types": "./dist/collections.d.ts",
+      "import": "./dist/collections.js",
+      "default": "./dist/collections.js"
+    },
     "./bootstrap": {
       "types": "./dist/bootstrap.d.ts",
       "import": "./dist/bootstrap.js",

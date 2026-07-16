@@ -5,6 +5,7 @@ import type * as NpCacheModule from "@nexpress/core/cache";
 import type * as NpSearchModule from "@nexpress/core/search";
 import type * as NpI18nModule from "@nexpress/core/i18n";
 import type * as NpCommunityModule from "@nexpress/core/community";
+import type * as NpCollectionsModule from "@nexpress/core/collections";
 
 interface HealthTestRuntime {
   config: {
@@ -33,6 +34,7 @@ interface HealthTestRuntime {
   i18nCompileFailures: number;
   i18nFormatFailures: number;
   communityFailures: number;
+  collectionFailures: number;
 }
 
 const runtime = vi.hoisted<HealthTestRuntime>(() => ({
@@ -56,6 +58,7 @@ const runtime = vi.hoisted<HealthTestRuntime>(() => ({
   i18nCompileFailures: 0,
   i18nFormatFailures: 0,
   communityFailures: 0,
+  collectionFailures: 0,
 }));
 
 vi.mock("@nexpress/core", () => ({
@@ -194,6 +197,20 @@ vi.mock("@nexpress/core/community", async (importOriginal) => {
   };
 });
 
+vi.mock("@nexpress/core/collections", async (importOriginal) => {
+  const actual = await importOriginal<typeof NpCollectionsModule>();
+  return {
+    ...actual,
+    getCollectionRuntimeDiagnostics: () =>
+      Array.from({ length: runtime.collectionFailures }, () => ({
+        collection: "posts",
+        operation: "read" as const,
+        message: "simulated persisted row failure",
+        occurredAt: "2026-07-16T00:00:00.000Z",
+      })),
+  };
+});
+
 vi.mock("@/lib/bootstrap", () => ({
   getDb: vi.fn(),
 }));
@@ -203,6 +220,7 @@ const {
   checkObservabilityAdapters,
   checkI18nRuntime,
   checkCommunityRuntime,
+  checkCollectionRuntime,
   checkSearchAdapter,
   checkStorageAdapter,
 } = await import("./system-health.js");
@@ -229,6 +247,7 @@ afterEach(() => {
   runtime.i18nCompileFailures = 0;
   runtime.i18nFormatFailures = 0;
   runtime.communityFailures = 0;
+  runtime.collectionFailures = 0;
 });
 
 describe("live i18n health", () => {
@@ -268,6 +287,27 @@ describe("live community health", () => {
         state: "warn",
         detail: "2 contained runtime contract failures",
         hint: expect.stringContaining("spam"),
+      }),
+    );
+  });
+});
+
+describe("live collection health", () => {
+  it("reports healthy exact document boundaries", () => {
+    expect(checkCollectionRuntime()).toEqual(
+      expect.objectContaining({
+        state: "ok",
+        detail: "storage, runtime, and wire boundaries valid",
+      }),
+    );
+  });
+
+  it("fails closed after a contained collection contract violation", () => {
+    runtime.collectionFailures = 1;
+    expect(checkCollectionRuntime()).toEqual(
+      expect.objectContaining({
+        state: "error",
+        hint: expect.stringContaining("posts"),
       }),
     );
   });

@@ -11,6 +11,14 @@ vi.mock("@nexpress/core", async () => {
     ...actual,
     findDocuments: vi.fn(),
     getDocumentById: vi.fn(),
+    getCollectionConfig: vi.fn((slug: string) => ({
+      slug,
+      labels: { singular: "Document", plural: "Documents" },
+      fields:
+        slug === "pages"
+          ? [{ type: "blocks" as const, name: "blocks", required: true }]
+          : [{ type: "text" as const, name: "title", required: true }],
+    })),
     saveDocument: vi.fn(),
     deleteDocument: vi.fn(),
   };
@@ -79,38 +87,51 @@ describe("parseFindOptions", () => {
     expect(out.search).toBeUndefined();
   });
 
-  // ── #598 — strip reserved `where` keys at the trust boundary ──
+  // ── #598 — reject reserved `where` keys at the trust boundary ──
 
-  it("strips reserved `siteId` from user-supplied where (#598 cross-tenant smuggling guard)", () => {
-    const out = helpers.parseFindOptions(
-      new URLSearchParams(`where=${encodeURIComponent('{"siteId":"*","status":"published"}')}`),
-    );
-    // The pipeline interprets `siteId === "*"` as a trusted-caller
-    // cross-tenant sentinel. An anonymous query parameter must not
-    // be allowed to set it.
-    expect(out.where).toEqual({ status: "published" });
-    expect(out.where).not.toHaveProperty("siteId");
-  });
-
-  it("strips reserved `visibility` from user-supplied where (#598 visibility smuggling guard)", () => {
-    const out = helpers.parseFindOptions(
-      new URLSearchParams(`where=${encodeURIComponent('{"visibility":"*","status":"published"}')}`),
-    );
-    // `visibility === "*"` would drop the public-only filter for
-    // anonymous reads, exposing private posts.
-    expect(out.where).toEqual({ status: "published" });
-    expect(out.where).not.toHaveProperty("visibility");
-  });
-
-  it("strips both reserved keys when present together", () => {
-    const out = helpers.parseFindOptions(
-      new URLSearchParams(
-        `where=${encodeURIComponent(
-          '{"siteId":"*","visibility":"*","status":"published","slug":"about"}',
-        )}`,
+  it("rejects reserved `siteId` from user-supplied where", () => {
+    expect(() =>
+      helpers.parseFindOptions(
+        new URLSearchParams(`where=${encodeURIComponent('{"siteId":"*","status":"published"}')}`),
       ),
+    ).toThrow(NpValidationError);
+  });
+
+  it("rejects reserved `visibility` from user-supplied where", () => {
+    expect(() =>
+      helpers.parseFindOptions(
+        new URLSearchParams(
+          `where=${encodeURIComponent('{"visibility":"*","status":"published"}')}`,
+        ),
+      ),
+    ).toThrow(NpValidationError);
+  });
+
+  it("rejects both reserved keys when present together", () => {
+    expect(() =>
+      helpers.parseFindOptions(
+        new URLSearchParams(
+          `where=${encodeURIComponent(
+            '{"siteId":"*","visibility":"*","status":"published","slug":"about"}',
+          )}`,
+        ),
+      ),
+    ).toThrow(NpValidationError);
+  });
+
+  it("rejects unknown and repeated query parameters", () => {
+    expect(() => helpers.parseFindOptions(new URLSearchParams("typo=1"))).toThrow(
+      NpValidationError,
     );
-    expect(out.where).toEqual({ status: "published", slug: "about" });
+    expect(() => helpers.parseFindOptions(new URLSearchParams("page=1&page=2"))).toThrow(
+      NpValidationError,
+    );
+  });
+
+  it("parses the locale query parameter", () => {
+    expect(helpers.parseFindOptions(new URLSearchParams("locale=ko"))).toMatchObject({
+      locale: "ko",
+    });
   });
 
   it("preserves non-reserved keys verbatim", () => {
@@ -128,6 +149,16 @@ describe("parseFindOptions", () => {
 });
 
 describe("collection operations", () => {
+  const persistedDocument = {
+    id: "11111111-1111-4111-8111-111111111111",
+    status: "published" as const,
+    createdAt: new Date("2026-07-16T00:00:00.000Z"),
+    updatedAt: new Date("2026-07-16T00:00:00.000Z"),
+    createdBy: null,
+    updatedBy: null,
+    visibility: "public" as const,
+    siteId: "default",
+  };
   beforeEach(() => {
     vi.mocked(core.findDocuments).mockReset();
     vi.mocked(core.getDocumentById).mockReset();
@@ -183,7 +214,7 @@ describe("collection operations", () => {
 
   it("saveCollectionDocument passes through to core.saveDocument", async () => {
     vi.mocked(core.saveDocument).mockResolvedValue({
-      doc: { id: "new" },
+      doc: { ...persistedDocument, title: "x" },
       operation: "create",
     });
 
@@ -191,13 +222,18 @@ describe("collection operations", () => {
     const user = { id: "u", email: "u@x", name: "u", role: "admin" as const, tokenVersion: 0 };
     const result = await helpers.saveCollectionDocument("posts", null, { title: "x" }, user);
 
-    expect(result.doc).toEqual({ id: "new" });
+    expect(result.doc).toEqual({
+      ...persistedDocument,
+      createdAt: persistedDocument.createdAt.toISOString(),
+      updatedAt: persistedDocument.updatedAt.toISOString(),
+      title: "x",
+    });
     expect(core.saveDocument).toHaveBeenCalledWith("posts", null, { title: "x" }, user, undefined);
   });
 
   it("saveCollectionDocument forwards save options to core.saveDocument", async () => {
     vi.mocked(core.saveDocument).mockResolvedValue({
-      doc: { id: "new" },
+      doc: { ...persistedDocument, title: "x" },
       operation: "create",
     });
 
@@ -217,7 +253,10 @@ describe("collection operations", () => {
     });
     vi.mocked(core.saveDocument).mockImplementation(() => {
       calls.push("save");
-      return Promise.resolve({ doc: { id: "new" }, operation: "create" });
+      return Promise.resolve({
+        doc: { ...persistedDocument, blocks: [] },
+        operation: "create",
+      });
     });
     const helpers = createCollectionHelpers({
       ensureReady: () => {

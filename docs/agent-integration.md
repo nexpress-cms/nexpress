@@ -29,7 +29,7 @@ request (no cache) covering:
 - Import / export (`/api/import`, `/api/export`). Both accept
   `?collections=a,b` to scope to a subset; import also accepts
   `?dryRun=true` to validate a payload without writing. Full site-config
-  payloads use export format version `2` and carry canonical site identity in
+  payloads use export format version `3` and carry canonical site identity in
   the top-level `site` field.
 - Public discovery (`/api/meta/blocks`, `/api/meta/collections`,
   `/api/meta/plugins`) and search (`/api/search`).
@@ -124,15 +124,23 @@ Match the agent's role to its scope (e.g. a content-importer agent =
 
 ### Create / update
 
-- `POST /api/collections/{slug}` — body is the collection's document
-  schema from OpenAPI (`#/components/schemas/{slug}_document`).
-- `PATCH /api/collections/{slug}/{id}` — same shape, partial updates.
+- `POST /api/collections/{slug}` — body uses the closed OpenAPI
+  `#/components/schemas/{slug}_create_input` schema.
+- `PATCH /api/collections/{slug}/{id}` — body uses the closed partial
+  `#/components/schemas/{slug}_patch_input` schema. Omitted fields retain their
+  stored values.
 - `_status` field on the body controls draft/scheduled/published/archived:
   - `"draft"` / `"published"` — as you'd expect.
   - `"scheduled"` — save with a future `publishedAt`; NexPress coerces
     published→scheduled when `publishedAt > now`. See
     [Scheduled publishing](./scheduled-publishing.md) for the sweep
     endpoint and how to wire cron.
+
+Responses use the exact `{slug}_document` wire schema: all declared and
+capability-derived system fields are present, dates are canonical UTC ISO
+strings, optional scalar/group values are `null`, and array/`hasMany` values
+are arrays. `_status` is request-only; responses expose canonical `status`.
+See [Collection document contracts](./collection-documents.md).
 
 ### Revisions
 

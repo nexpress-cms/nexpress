@@ -10,6 +10,7 @@ import {
   type NpFindResult,
 } from "@nexpress/core";
 import { getDb } from "@nexpress/core/db";
+import type { NpCollectionDocumentWire } from "@nexpress/core/collection-contract";
 import type { NpBlockContent, NpRichTextContent } from "@nexpress/core/fields";
 import { inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
@@ -23,7 +24,8 @@ export interface PostsDocument {
   createdBy: string | null;
   updatedBy: string | null;
   slug: string;
-  _status: "draft" | "published";
+  visibility: "public" | "private";
+  siteId: string;
   kind: string;
   title: string;
   excerpt: string | null;
@@ -32,8 +34,8 @@ export interface PostsDocument {
   publishedAt: Date | null;
   author: string | null;
   wpOriginalAuthor: string | null;
-  categories: string[] | null;
-  tags: string[] | null;
+  categories: string[];
+  tags: string[];
   parent: string | null;
   order: number | null;
   seoMetaTitle: string | null;
@@ -55,6 +57,7 @@ export interface PostsDocument {
   lede: string | null;
   stableSince: string | null;
 }
+export type PostsDocumentWire = NpCollectionDocumentWire<PostsDocument>;
 
 export interface PagesDocument {
   id: string;
@@ -65,13 +68,17 @@ export interface PagesDocument {
   updatedBy: string | null;
   slug: string;
   publishedAt: Date | null;
-  _status: "draft" | "published";
+  visibility: "public" | "private";
+  siteId: string;
+  locale: string;
+  translationGroupId: string;
   title: string;
   seoDescription: string | null;
   template: string | null;
   blocks: NpBlockContent | null;
   seedSource: string | null;
 }
+export type PagesDocumentWire = NpCollectionDocumentWire<PagesDocument>;
 
 export interface CategoriesDocument {
   id: string;
@@ -81,9 +88,12 @@ export interface CategoriesDocument {
   createdBy: string | null;
   updatedBy: string | null;
   slug: string;
+  visibility: "public" | "private";
+  siteId: string;
   name: string;
   description: string | null;
 }
+export type CategoriesDocumentWire = NpCollectionDocumentWire<CategoriesDocument>;
 
 export interface TagsDocument {
   id: string;
@@ -93,9 +103,12 @@ export interface TagsDocument {
   createdBy: string | null;
   updatedBy: string | null;
   slug: string;
+  visibility: "public" | "private";
+  siteId: string;
   name: string;
   description: string | null;
 }
+export type TagsDocumentWire = NpCollectionDocumentWire<TagsDocument>;
 
 export interface DiscussionsDocument {
   id: string;
@@ -107,13 +120,15 @@ export interface DiscussionsDocument {
   memberAuthorId: string | null;
   slug: string;
   publishedAt: Date | null;
-  _status: "draft" | "published";
+  visibility: "public" | "private";
+  siteId: string;
   title: string;
   body: NpRichTextContent | null;
   category: string | null;
   pinned: boolean | null;
   locked: boolean | null;
 }
+export type DiscussionsDocumentWire = NpCollectionDocumentWire<DiscussionsDocument>;
 
 /**
  * Typed listing query for the `posts` collection.
@@ -155,7 +170,7 @@ export async function findPosts(
     // Cast getDb() to NodePgDatabase so the drizzle builder
     // chain (.select.from.where) carries proper return types.
     // The empty-schema generic narrows the return shape away
-    // from any specific tables; the explicit `{ id: string }[]` 
+    // from any specific tables; the explicit `{ id: string }[]`
     // cast at the end matches the projection.
     const db = getDb() as unknown as NodePgDatabase<Record<string, never>>;
     const rows = (await db
@@ -184,9 +199,7 @@ export async function findPosts(
     if (typeof existingId === "string") {
       ids = ids.includes(existingId) ? [existingId] : [];
     } else if (Array.isArray(existingId)) {
-      const allowed = new Set(
-        existingId.filter((v): v is string => typeof v === "string"),
-      );
+      const allowed = new Set(existingId.filter((v): v is string => typeof v === "string"));
       ids = ids.filter((id) => allowed.has(id));
     }
 
@@ -208,10 +221,7 @@ export async function findPosts(
 }
 
 /** Typed by-id fetch for the `posts` collection. */
-export function getPostsDocument(
-  id: string,
-  user?: NpAuthUser,
-): Promise<PostsDocument | null> {
+export function getPostsDocument(id: string, user?: NpAuthUser): Promise<PostsDocument | null> {
   return getDocumentById<PostsDocument>("posts", id, user);
 }
 
@@ -224,10 +234,7 @@ export function findPages(
 }
 
 /** Typed by-id fetch for the `pages` collection. */
-export function getPagesDocument(
-  id: string,
-  user?: NpAuthUser,
-): Promise<PagesDocument | null> {
+export function getPagesDocument(id: string, user?: NpAuthUser): Promise<PagesDocument | null> {
   return getDocumentById<PagesDocument>("pages", id, user);
 }
 
@@ -256,10 +263,7 @@ export function findTags(
 }
 
 /** Typed by-id fetch for the `tags` collection. */
-export function getTagsDocument(
-  id: string,
-  user?: NpAuthUser,
-): Promise<TagsDocument | null> {
+export function getTagsDocument(id: string, user?: NpAuthUser): Promise<TagsDocument | null> {
   return getDocumentById<TagsDocument>("tags", id, user);
 }
 

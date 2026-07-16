@@ -1,6 +1,3 @@
-import { type NpCollectionConfig, type NpCollectionHook } from "../config/types.js";
-import type { NpAuthUser } from "../auth-contract/types.js";
-import type { NpPrincipal as NpHookPrincipal } from "../auth/principal.js";
 import { sendEmail } from "../email/service.js";
 import { npInvalidateCache } from "../cache/runtime.js";
 import { buildInviteEmail, buildMemberVerifyEmail, buildResetEmail } from "../email/templates.js";
@@ -21,39 +18,17 @@ import { registerJobHandler } from "./handlers.js";
 type ContentJobData = NpContentAfterSaveJobData;
 type ContentDeleteJobData = NpContentAfterDeleteJobData;
 
-interface ResolvedHookContext {
-  collectionConfig: NpCollectionConfig;
+interface ResolvedContentContext {
   data: Record<string, unknown>;
-  /**
-   * Resolved staff session, or `null` when the originating actor
-   * was a member (Phase 9.7o widened the hook surface so member
-   * writes also fire `afterCreate` / `afterUpdate`).
-   */
-  user: NpAuthUser | null;
-  /**
-   * Polymorphic actor reference. Resolvers should derive this
-   * from whatever actor metadata they recorded with the job —
-   * e.g. by checking whether the saved `userId` is null
-   * (member-authored) and looking up the member id separately.
-   */
-  principal: NpHookPrincipal;
-  originalDoc?: Record<string, unknown> | null;
-}
-
-interface ResolvedDeleteHookContext {
-  collectionConfig: NpCollectionConfig;
-  data: Record<string, unknown>;
-  user: NpAuthUser | null;
-  principal: NpHookPrincipal;
 }
 
 interface BuiltinJobContext {
   resolveContentAfterSaveContext?: (
     data: ContentJobData,
-  ) => Promise<ResolvedHookContext | null> | ResolvedHookContext | null;
+  ) => Promise<ResolvedContentContext | null> | ResolvedContentContext | null;
   resolveContentAfterDeleteContext?: (
     data: ContentDeleteJobData,
-  ) => Promise<ResolvedDeleteHookContext | null> | ResolvedDeleteHookContext | null;
+  ) => Promise<ResolvedContentContext | null> | ResolvedContentContext | null;
   processImage?: (data: NpMediaProcessImageJobData) => Promise<void> | void;
   cleanupMedia?: (data: NpJobData) => Promise<void> | void;
   runScheduledPluginTask?: (data: NpPluginScheduledTaskJobData) => Promise<void> | void;
@@ -148,7 +123,7 @@ async function handleContentPublishScheduled(_: NpJobData): Promise<void> {
 }
 
 async function handleContentAfterSave(jobData: NpContentAfterSaveJobData): Promise<void> {
-  let context: ResolvedHookContext | null | undefined;
+  let context: ResolvedContentContext | null | undefined;
   try {
     context = await builtinJobContext.resolveContentAfterSaveContext?.(jobData);
   } catch (error) {
@@ -156,27 +131,10 @@ async function handleContentAfterSave(jobData: NpContentAfterSaveJobData): Promi
     throw error;
   }
   await revalidateContentJob(jobData, context?.data);
-
-  if (!context) {
-    return;
-  }
-
-  const hooks =
-    jobData.operation === "create"
-      ? context.collectionConfig.hooks?.afterCreate
-      : context.collectionConfig.hooks?.afterUpdate;
-
-  await runCollectionHooks(hooks, {
-    data: context.data,
-    user: context.user,
-    principal: context.principal,
-    collection: context.collectionConfig.slug,
-    originalDoc: context.originalDoc,
-  });
 }
 
 async function handleContentAfterDelete(jobData: NpContentAfterDeleteJobData): Promise<void> {
-  let context: ResolvedDeleteHookContext | null | undefined;
+  let context: ResolvedContentContext | null | undefined;
   try {
     context = await builtinJobContext.resolveContentAfterDeleteContext?.(jobData);
   } catch (error) {
@@ -184,17 +142,6 @@ async function handleContentAfterDelete(jobData: NpContentAfterDeleteJobData): P
     throw error;
   }
   await revalidateContentJob(jobData, context?.data);
-
-  if (!context) {
-    return;
-  }
-
-  await runCollectionHooks(context.collectionConfig.hooks?.afterDelete, {
-    data: context.data,
-    user: context.user,
-    principal: context.principal,
-    collection: context.collectionConfig.slug,
-  });
 }
 
 async function handleMediaProcessImage(payload: NpMediaProcessImageJobData): Promise<void> {
@@ -283,19 +230,6 @@ async function handleAuthSendPasswordReset(payload: NpPasswordResetJobData): Pro
     text: template.text,
     html: template.html,
   });
-}
-
-async function runCollectionHooks(
-  hooks: NpCollectionHook[] | undefined,
-  args: Parameters<NpCollectionHook>[0],
-): Promise<void> {
-  if (!hooks || hooks.length === 0) {
-    return;
-  }
-
-  for (const hook of hooks) {
-    await hook(args);
-  }
 }
 
 async function revalidateContentJob(

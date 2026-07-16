@@ -312,7 +312,7 @@ export type NpCollectionHook = (args: {
    */
   user: NpAuthUser | null;
   /** Polymorphic actor — see `NpHookPrincipal`. */
-  principal: NpHookPrincipal;
+  principal: NpHookPrincipal | null;
   collection: string;
   originalDoc?: Record<string, unknown> | null;
 }) => Record<string, unknown> | Promise<Record<string, unknown>>;
@@ -1130,11 +1130,9 @@ export interface NpFindOptions<T extends object = Record<string, unknown>> {
   search?: string;
   where?: NpFindWhere<T>;
   /**
-   * Phase 12.1 — restrict the result set to one locale on
-   * i18n-enabled collections. Equivalent to passing
-   * `where: { locale }`, but kept top-level for ergonomics
-   * (callers don't have to know it's a column). Ignored on
-   * non-i18n collections (no `locale` column to match).
+   * Restrict an i18n-enabled collection to one locale. Equivalent
+   * to passing `where: { locale }`, but kept top-level for
+   * ergonomics. Non-i18n collections reject this option.
    */
   locale?: string;
 }
@@ -1176,8 +1174,8 @@ export interface NpSaveOptions {
    * with an internal cast at the boundary.
    *
    * Pre-write hooks still fire OUTSIDE the tx (they shouldn't see
-   * pending state). Post-commit hooks (`content:afterSave` job,
-   * plugin `content:afterCreate` / `content:afterUpdate`) fire
+   * pending state). Post-commit work (collection after-hooks,
+   * `content:afterSave` jobs, and plugin lifecycle hooks) fires
    * after the inner persist block but before the caller's outer
    * tx commits — their side effects can diverge from final DB
    * state on rollback. Same trade-off as `deleteDocument({ tx })`.

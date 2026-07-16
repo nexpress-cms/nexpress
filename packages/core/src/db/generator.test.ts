@@ -42,7 +42,7 @@ describe("generateDrizzleSchema", () => {
     expect(out).toContain('uniqueIndex("np_c_posts_site_slug_idx").on(table.siteId, table.slug)');
   });
 
-  it("adds a _status draft column when versions.drafts is true", () => {
+  it("uses canonical status plus publishedAt when versions.drafts is true", () => {
     const out = generateDrizzleSchema([
       {
         ...collection("posts"),
@@ -51,7 +51,8 @@ describe("generateDrizzleSchema", () => {
     ]);
 
     expect(out).toContain('publishedAt: timestamp("published_at", { withTimezone: true })');
-    expect(out).toContain('_status: text("_status", { enum: ["draft", "published"] })');
+    expect(out).toContain('status: text("status", { enum: ["draft", "scheduled"');
+    expect(out).not.toContain('_status: text("_status"');
   });
 
   it("does not duplicate a user-declared publishedAt date field", () => {

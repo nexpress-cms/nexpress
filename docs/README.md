@@ -20,6 +20,7 @@ behavior they describe changes.
 | [bootstrap.md](bootstrap.md)                           | Intent-based process runtime, host boundary, and shutdown lifecycle    |
 | [caching.md](caching.md)                               | Cache strategy and invalidation                                        |
 | [community.md](community.md)                           | Community / member features (live behavior)                            |
+| [collection-documents.md](collection-documents.md)     | Exact storage, runtime, wire, query, and diagnostics contracts         |
 | [custom-routes.md](custom-routes.md)                   | Code-owned route registry and Admin wire contract                      |
 | [deployment.md](deployment.md)                         | Production deployment notes                                            |
 | [email.md](email.md)                                   | Email adapters and templates                                           |

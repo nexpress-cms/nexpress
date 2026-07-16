@@ -18,6 +18,50 @@ import { GET as exportGET } from "@/app/api/export/route";
 import { POST as importPOST } from "@/app/api/import/route";
 import { GET as openApiGET } from "@/app/api/openapi.json/route";
 
+function postWire(title: string, slug: string): Record<string, unknown> {
+  return {
+    id: "11111111-1111-4111-8111-111111111111",
+    status: "draft",
+    createdAt: "2026-07-16T00:00:00.000Z",
+    updatedAt: "2026-07-16T00:00:00.000Z",
+    createdBy: null,
+    updatedBy: null,
+    visibility: "public",
+    siteId: "default",
+    slug,
+    kind: "article",
+    title,
+    excerpt: null,
+    content: npCreateEmptyRichTextContent(),
+    coverImage: null,
+    publishedAt: null,
+    author: null,
+    wpOriginalAuthor: null,
+    categories: [],
+    tags: [],
+    parent: null,
+    order: null,
+    seoMetaTitle: null,
+    seoMetaDescription: null,
+    seoOgImage: null,
+    seedSource: null,
+    featured: null,
+    authorName: null,
+    readingTime: null,
+    heroImage: null,
+    client: null,
+    year: null,
+    role: null,
+    discipline: null,
+    span: null,
+    coverVariant: null,
+    coverFigure: null,
+    badge: null,
+    lede: null,
+    stableSince: null,
+  };
+}
+
 describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
   beforeAll(async () => {
     await ensureMigrated();
@@ -42,7 +86,7 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
       collections: Record<string, unknown[]>;
     }>(res);
     expect(status).toBe(200);
-    expect(body.version).toBe("2");
+    expect(body.version).toBe("3");
     expect(body.partial).toBe(false);
     expect(body.site).toMatchObject({ name: "Default site", url: null });
     expect(Array.isArray(body.collectionsExported)).toBe(true);
@@ -90,7 +134,7 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
         session,
         query: { dryRun: "true" },
         body: {
-          version: "2",
+          version: "3",
           site: {
             name: "Test Site",
             url: "https://example.com",
@@ -102,14 +146,7 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
             seo: { defaultOgImage: null, twitterHandle: null, defaultLocale: "en_US" },
           },
           collections: {
-            posts: [
-              {
-                title: "Imported",
-                slug: "imported",
-                content: npCreateEmptyRichTextContent(),
-                _status: "draft",
-              },
-            ],
+            posts: [postWire("Imported", "imported")],
           },
         },
       }),
@@ -132,20 +169,13 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
         session,
         query: { collections: "posts", dryRun: "true" },
         body: {
-          version: "2",
+          version: "3",
           theme: { colors: {} },
           settings: {
             seo: { defaultOgImage: null, twitterHandle: null, defaultLocale: "en_US" },
           },
           collections: {
-            posts: [
-              {
-                title: "P",
-                slug: "p",
-                content: npCreateEmptyRichTextContent(),
-                _status: "draft",
-              },
-            ],
+            posts: [postWire("P", "p")],
           },
         },
       }),
@@ -170,15 +200,15 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
         method: "POST",
         session,
         query: { collections: "nonexistent" },
-        body: { version: "2" },
+        body: { version: "3" },
       }),
     );
     expect(res.status).toBe(400);
   });
 
-  it("import requires the exact v2 envelope and rejects unknown top-level fields", async () => {
+  it("import requires the exact v3 envelope and rejects unknown top-level fields", async () => {
     const session = await seedUser({ role: "admin" });
-    for (const body of [{ collections: {} }, { version: "2", legacySettings: {} }]) {
+    for (const body of [{ collections: {} }, { version: "3", legacySettings: {} }]) {
       const res = await importPOST(
         buildRequest("/api/import", {
           method: "POST",
@@ -199,7 +229,7 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
         session,
         query: { dryRun: "true" },
         body: {
-          version: "2",
+          version: "3",
           theme: { colors: { primary: "url(https://example.com/x)" } },
         },
       }),
@@ -210,9 +240,9 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
   it("import rejects duplicate owner ids and the legacy settings.theme location", async () => {
     const session = await seedUser({ role: "admin" });
     for (const body of [
-      { version: "2", settings: { theme: { colors: {} } } },
+      { version: "3", settings: { theme: { colors: {} } } },
       {
-        version: "2",
+        version: "3",
         settings: {
           "jobs.paused": {
             paused: false,
@@ -222,8 +252,8 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
           },
         },
       },
-      { version: "2", media: [{ id: "same" }, { id: "same" }] },
-      { version: "2", plugins: [{ id: "same" }, { id: "same" }] },
+      { version: "3", media: [{ id: "same" }, { id: "same" }] },
+      { version: "3", plugins: [{ id: "same" }, { id: "same" }] },
     ]) {
       const res = await importPOST(
         buildRequest("/api/import", {
@@ -287,7 +317,7 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
         method: "POST",
         session,
         body: {
-          version: "2",
+          version: "3",
           site: {
             name: "Must not persist",
             url: null,
@@ -313,7 +343,7 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
         session,
         query: { dryRun: "true" },
         body: {
-          version: "2",
+          version: "3",
           navigation: {
             header: [{ id: "unsafe", label: "Unsafe", type: "link", url: "javascript:alert(1)" }],
           },

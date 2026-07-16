@@ -7,6 +7,10 @@ import { runHook } from "../plugins/host.js";
 import { withCurrentSite } from "../sites/context.js";
 import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 import { getAllCollectionSlugs, getCollectionConfig, getCollectionTable } from "./registry.js";
+import {
+  npGetPersistedCollectionDocumentById,
+  npRunCollectionDocumentResultHooks,
+} from "./pipeline.js";
 import { getDb } from "../db/runtime.js";
 
 function hasPublishedAtField(fields: NpFieldConfig[]): boolean {
@@ -76,15 +80,30 @@ export async function publishScheduledDocuments(
         throw new Error(`Scheduled ${slug} document ${docId} is missing a canonical siteId.`);
       }
       const siteId = row.siteId;
-      // Fire every hook a plugin would have seen if the user had clicked
-      // Publish directly: afterUpdate (content changed), afterPublish
-      // (status transitioned), and the afterSave job so revalidation +
-      // collection-level afterUpdate hooks run too.
+      // Fire every lifecycle boundary a direct publish would have seen:
+      // the exact collection afterUpdate result contract, plugin afterUpdate
+      // and afterPublish hooks, then the afterSave revalidation job.
       await withCurrentSite(siteId, async () => {
+        const document = await npGetPersistedCollectionDocumentById(slug, docId);
+        if (!document) {
+          throw new Error(`Published ${slug} document ${docId} could not be hydrated.`);
+        }
+        await npRunCollectionDocumentResultHooks(
+          config,
+          config.hooks?.afterUpdate,
+          {
+            data: document,
+            user: null,
+            principal: null,
+            collection: slug,
+            originalDoc: null,
+          },
+          "write-result",
+        );
         await runHook("content:afterUpdate", {
           collection: slug,
           documentId: docId,
-          document: row,
+          document,
           originalDocument: null,
           operation: "update",
           source: "scheduler",
@@ -93,7 +112,7 @@ export async function publishScheduledDocuments(
         await runHook("content:afterPublish", {
           collection: slug,
           documentId: docId,
-          document: row,
+          document,
           originalDocument: null,
           operation: "update",
           source: "scheduler",

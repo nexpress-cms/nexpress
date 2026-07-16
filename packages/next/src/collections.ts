@@ -1,5 +1,8 @@
 import {
   NpValidationError,
+  NpCollectionContractError,
+  getCollectionConfig,
+  npSerializeCollectionDocumentWithDiagnostics,
   type NpAuthUser,
   type NpFindOptions,
   type NpFindResult,
@@ -10,6 +13,18 @@ import {
   saveDocument as coreSaveDocument,
   deleteDocument as coreDeleteDocument,
 } from "@nexpress/core";
+import {
+  npRequireCollectionFindOptions,
+  type NpCollectionDocumentWire,
+} from "@nexpress/core/collection-contract";
+
+export type NpCollectionApiDocument = NpCollectionDocumentWire<Record<string, unknown>>;
+export type NpCollectionApiFindResult = Omit<NpFindResult, "docs"> & {
+  docs: NpCollectionApiDocument[];
+};
+export type NpCollectionApiSaveResult = Omit<NpSaveResult, "doc"> & {
+  doc: NpCollectionApiDocument;
+};
 
 export interface CollectionHelpersOptions {
   /** Called before every collection operation — wire DB/storage/plugins here. */
@@ -25,13 +40,13 @@ export type CollectionHelpers = {
     slug: string,
     options: NpFindOptions,
     user: NpAuthUser | null,
-  ) => Promise<NpFindResult>;
+  ) => Promise<NpCollectionApiFindResult>;
   readonly getCollectionDocument: (
     this: void,
     slug: string,
     id: string,
     user: NpAuthUser | null,
-  ) => Promise<Record<string, unknown> | null>;
+  ) => Promise<NpCollectionApiDocument | null>;
   readonly saveCollectionDocument: (
     this: void,
     slug: string,
@@ -39,7 +54,7 @@ export type CollectionHelpers = {
     data: Record<string, unknown>,
     user: NpAuthUser,
     options?: NpSaveOptions,
-  ) => Promise<NpSaveResult>;
+  ) => Promise<NpCollectionApiSaveResult>;
   readonly deleteCollectionDocument: (
     this: void,
     slug: string,
@@ -84,14 +99,13 @@ function parseWhere(where: string | null): Record<string, unknown> | undefined {
     ]);
   }
 
-  // Strip reserved keys before forwarding. We delete rather than
-  // reject to keep the API forgiving of well-meaning clients that
-  // include keys like `visibility` in their filter object — the
-  // pipeline's documented public surface for visibility filtering
-  // is the access-control machinery, not the where dict.
   const sanitized = { ...(parsed as Record<string, unknown>) };
   for (const key of RESERVED_WHERE_KEYS) {
-    delete sanitized[key];
+    if (Object.hasOwn(sanitized, key)) {
+      throw new NpValidationError("Invalid query parameters", [
+        { field: `where.${key}`, message: "Reserved collection filters are not public." },
+      ]);
+    }
   }
 
   return sanitized;
@@ -130,14 +144,29 @@ export function createCollectionHelpers(
   }
 
   const parseFindOptions = (searchParams: URLSearchParams): NpFindOptions => {
+    const allowed = new Set(["page", "limit", "sort", "search", "where", "locale"]);
+    for (const key of searchParams.keys()) {
+      if (!allowed.has(key)) {
+        throw new NpValidationError("Invalid query parameters", [
+          { field: key, message: "Unsupported query parameter" },
+        ]);
+      }
+      if (searchParams.getAll(key).length > 1) {
+        throw new NpValidationError("Invalid query parameters", [
+          { field: key, message: "Query parameter must not be repeated" },
+        ]);
+      }
+    }
     const sort = searchParams.get("sort");
     const search = searchParams.get("search");
+    const locale = searchParams.get("locale");
     return {
       page: parsePositiveInt(searchParams.get("page"), "page"),
       limit: parsePositiveInt(searchParams.get("limit"), "limit", 100),
       sort: sort && sort.length > 0 ? sort : undefined,
       search: search && search.length > 0 ? search : undefined,
       where: parseWhere(searchParams.get("where")),
+      locale: locale && locale.length > 0 ? locale : undefined,
     };
   };
 
@@ -145,18 +174,50 @@ export function createCollectionHelpers(
     slug: string,
     opts: NpFindOptions,
     user: NpAuthUser | null,
-  ): Promise<NpFindResult> => {
+  ): Promise<NpCollectionApiFindResult> => {
     await ready();
-    return coreFindDocuments(slug, opts, user ?? undefined);
+    const config = getCollectionConfig(slug);
+    let validated: NpFindOptions;
+    try {
+      validated = npRequireCollectionFindOptions(opts, config, {
+        maximumLimit: 100,
+        allowSystemWildcards: false,
+      });
+    } catch (error) {
+      if (error instanceof NpCollectionContractError) {
+        throw new NpValidationError(
+          "Invalid query parameters",
+          error.issues.map((entry) => ({ field: entry.path, message: entry.message })),
+        );
+      }
+      throw error;
+    }
+    const result = await coreFindDocuments(slug, validated, user ?? undefined);
+    return {
+      ...result,
+      docs: result.docs.map((document) =>
+        npSerializeCollectionDocumentWithDiagnostics<Record<string, unknown>>(document, config),
+      ),
+    };
   };
 
   const getCollectionDocument = async (
     slug: string,
     id: string,
     user: NpAuthUser | null,
-  ): Promise<Record<string, unknown> | null> => {
+  ): Promise<NpCollectionApiDocument | null> => {
     await ready();
-    return coreGetDocumentById(slug, id, user ?? undefined);
+    const document = await coreGetDocumentById<Record<string, unknown>>(
+      slug,
+      id,
+      user ?? undefined,
+    );
+    return document
+      ? npSerializeCollectionDocumentWithDiagnostics<Record<string, unknown>>(
+          document,
+          getCollectionConfig(slug),
+        )
+      : null;
   };
 
   const saveCollectionDocument = async (
@@ -165,10 +226,17 @@ export function createCollectionHelpers(
     data: Record<string, unknown>,
     user: NpAuthUser,
     options?: NpSaveOptions,
-  ): Promise<NpSaveResult> => {
+  ): Promise<NpCollectionApiSaveResult> => {
     await ready();
     await helperOptions.validateSave?.(slug, data);
-    return coreSaveDocument(slug, id, data, user, options);
+    const result = await coreSaveDocument(slug, id, data, user, options);
+    return {
+      ...result,
+      doc: npSerializeCollectionDocumentWithDiagnostics<Record<string, unknown>>(
+        result.doc,
+        getCollectionConfig(slug),
+      ),
+    };
   };
 
   const deleteCollectionDocument = async (

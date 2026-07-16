@@ -7,6 +7,7 @@ import {
   npSettings,
   npNavigation,
   getAllCollectionSlugs,
+  getCollectionConfig,
   getPluginConfig,
   getPluginRegistration,
   getThemeById,
@@ -17,6 +18,7 @@ import {
   NP_DEFAULT_SITE_ID,
   can,
 } from "@nexpress/core";
+import { npSerializeCollectionDocumentWithDiagnostics } from "@nexpress/core/collections";
 import { npAnalyzeSettingRecord } from "@nexpress/core/settings";
 import { npAnalyzeThemeTokensOverlay } from "@nexpress/core/theme";
 import { npAnalyzeNavigationItems, npAnalyzeNavigationLocation } from "@nexpress/core/navigation";
@@ -25,7 +27,7 @@ import type { NextRequest } from "next/server";
 
 // Bump when the exported document shape changes in a
 // backwards-incompatible way. Import validates this.
-const EXPORT_VERSION = "2" as const;
+const EXPORT_VERSION = "3" as const;
 
 import { requireAuth } from "../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
@@ -179,7 +181,10 @@ export async function GET(request: NextRequest) {
       // the anonymous/public path. Without this an admin backup
       // silently dropped private collections (#66).
       const result = await findDocuments(slug, { limit: 10000 }, user);
-      collections[slug] = result.docs;
+      const config = getCollectionConfig(slug);
+      collections[slug] = result.docs.map((document) =>
+        npSerializeCollectionDocumentWithDiagnostics<Record<string, unknown>>(document, config),
+      );
     }
 
     const refRows = await db.selectDistinct({ mediaId: npMediaRefs.mediaId }).from(npMediaRefs);

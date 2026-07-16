@@ -152,12 +152,6 @@ export function generateDrizzleSchema(
       columns.push('publishedAt: timestamp("published_at", { withTimezone: true })');
     }
 
-    if (hasDraftVersions(collection)) {
-      columns.push(
-        '_status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull()',
-      );
-    }
-
     columns.push('searchVector: tsvector("search_vector")');
 
     tables.push({

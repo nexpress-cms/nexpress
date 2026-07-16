@@ -29,6 +29,7 @@ import {
   npAnalyzeSiteRecord,
 } from "@nexpress/core/settings";
 import { npAnalyzeRevision } from "@nexpress/core/revisions";
+import { npAnalyzeCollectionSystemRow } from "@nexpress/core/collection-contract";
 import {
   npAnalyzeI18nConfig,
   npAnalyzeStringOverrideRow,
@@ -169,6 +170,7 @@ export async function collectDoctorChecks(
   checks.push(await checkDatabase(env));
   checks.push(await checkAuthContracts(env));
   checks.push(await checkSettingsContracts(env, projectI18nConfig));
+  checks.push(await checkCollectionContracts(env));
   checks.push(await checkCommunityContracts(env));
   checks.push(await checkRevisionContracts(env));
   checks.push(await checkJobContracts(env));
@@ -613,6 +615,113 @@ async function checkDatabase(env: DoctorEnv): Promise<CheckResult> {
       state: "error",
       label: "Postgres reachable",
       detail: messageForConnectionError(url, err, { suggestedPort }),
+    };
+  }
+}
+
+async function checkCollectionContracts(env: DoctorEnv): Promise<CheckResult> {
+  const url = env.DATABASE_URL;
+  if (!url) {
+    return {
+      id: "collections.contract",
+      state: "warn",
+      label: "Collection document contracts",
+      detail: "skipped (no DATABASE_URL)",
+    };
+  }
+  let pg: PgModuleLike;
+  try {
+    pg = (await loadPg()) as PgModuleLike;
+  } catch {
+    return {
+      id: "collections.contract",
+      state: "warn",
+      label: "Collection document contracts",
+      detail: "skipped (no `pg`)",
+    };
+  }
+
+  const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
+  try {
+    await client.connect();
+    const catalog = await client.query<{ tableName: string; columnName: string }>(
+      `select table_name as "tableName", column_name as "columnName"
+         from information_schema.columns
+        where table_schema = 'public' and table_name like 'np_c\\_%' escape '\\'
+        order by table_name, ordinal_position`,
+    );
+    const columnsByTable = new Map<string, Set<string>>();
+    for (const { tableName, columnName } of catalog.rows) {
+      const columns = columnsByTable.get(tableName) ?? new Set<string>();
+      columns.add(columnName);
+      columnsByTable.set(tableName, columns);
+    }
+    const mainTables = [...columnsByTable.entries()].filter(
+      ([, columns]) =>
+        columns.has("id") &&
+        columns.has("site_id") &&
+        (columns.has("status") || columns.has("_status")),
+    );
+    const issues: Array<{ path: string; message: string }> = [];
+    let rowCount = 0;
+    const requiredColumns = ["id", "status", "created_by", "updated_by", "visibility", "site_id"];
+    for (const [tableName, columns] of mainTables) {
+      if (!/^np_c_[a-z0-9_]+$/u.test(tableName)) {
+        issues.push({ path: tableName, message: "has a non-canonical collection table name." });
+        continue;
+      }
+      if (columns.has("_status")) {
+        issues.push({
+          path: `${tableName}._status`,
+          message: "legacy duplicate status storage is still present.",
+        });
+      }
+      const missing = requiredColumns.filter((column) => !columns.has(column));
+      if (missing.length > 0) {
+        issues.push({
+          path: tableName,
+          message: `is missing canonical system column(s): ${missing.join(", ")}.`,
+        });
+        continue;
+      }
+      const identifier = `"${tableName}"`;
+      const rows = await client.query<Record<string, unknown>>(
+        `select id, status, created_by as "createdBy", updated_by as "updatedBy",
+                visibility, site_id as "siteId" from ${identifier}`,
+      );
+      rowCount += rows.rows.length;
+      rows.rows.forEach((row, index) => {
+        const result = npAnalyzeCollectionSystemRow(row, `${tableName}[${index.toString()}]`);
+        if (!result.ok) issues.push(...result.issues);
+      });
+    }
+    await client.end();
+    if (issues.length > 0) {
+      return {
+        id: "collections.contract",
+        state: "error",
+        label: "Collection document contracts",
+        detail: `${issues.length.toString()} contract issue(s); first: ${issues[0]?.path ?? "collections"} ${issues[0]?.message ?? "invalid"}`,
+        hint: "Regenerate collection schemas, run pnpm db:generate && pnpm db:migrate, then repair malformed rows before serving collection traffic.",
+      };
+    }
+    return {
+      id: "collections.contract",
+      state: "ok",
+      label: "Collection document contracts",
+      detail: `${mainTables.length.toString()} table(s) · ${rowCount.toString()} system envelope row(s) checked`,
+    };
+  } catch (error) {
+    try {
+      await client.end();
+    } catch {
+      /* swallow */
+    }
+    return {
+      id: "collections.contract",
+      state: "warn",
+      label: "Collection document contracts",
+      detail: `could not inspect collection rows: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }

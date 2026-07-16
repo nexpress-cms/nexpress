@@ -3,7 +3,20 @@
 /* eslint-disable */
 
 import { relations } from "drizzle-orm";
-import { boolean, customType, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  customType,
+  doublePrecision,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+  type AnyPgColumn,
+} from "drizzle-orm/pg-core";
 import { npMedia, npUsers, npMembers } from "@nexpress/core";
 
 const tsvector = customType<{ data: string }>({
@@ -16,12 +29,16 @@ export const postsTable = pgTable(
   "np_c_posts",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] })
+      .default("draft")
+      .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
     createdBy: uuid("created_by").references((): AnyPgColumn => npUsers.id),
     updatedBy: uuid("updated_by").references((): AnyPgColumn => npUsers.id),
-    visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
+    visibility: text("visibility", { enum: ["public", "private"] })
+      .default("public")
+      .notNull(),
     kind: text("kind").default("article").notNull(),
     title: text("title").notNull(),
     excerpt: text("excerpt"),
@@ -52,10 +69,13 @@ export const postsTable = pgTable(
     stableSince: text("stable_since"),
     slug: text("slug").notNull(),
     siteId: text("site_id").default("default").notNull(),
-    _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("np_c_posts_status_idx").on(table.status), uniqueIndex("np_c_posts_site_slug_idx").on(table.siteId, table.slug), index("np_c_posts_site_idx").on(table.siteId)],
+  (table) => [
+    index("np_c_posts_status_idx").on(table.status),
+    uniqueIndex("np_c_posts_site_slug_idx").on(table.siteId, table.slug),
+    index("np_c_posts_site_idx").on(table.siteId),
+  ],
 );
 
 export const postsTableRelations = relations(postsTable, ({ many, one }) => ({
@@ -72,27 +92,44 @@ export const postsCategoriesTable = pgTable(
   "np_c_posts__categories",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    postsId: uuid("posts_id").notNull().references((): AnyPgColumn => postsTable.id, { onDelete: "cascade" }),
-    targetId: uuid("target_id").notNull().references((): AnyPgColumn => categoriesTable.id, { onDelete: "cascade" }),
+    postsId: uuid("posts_id")
+      .notNull()
+      .references((): AnyPgColumn => postsTable.id, { onDelete: "cascade" }),
+    targetId: uuid("target_id")
+      .notNull()
+      .references((): AnyPgColumn => categoriesTable.id, { onDelete: "cascade" }),
     order: integer("order").default(0).notNull(),
   },
-  (table) => [index("np_c_posts__categories_posts_id_idx").on(table.postsId), uniqueIndex("np_c_posts__categories_parent_target_uidx").on(table.postsId, table.targetId)],
+  (table) => [
+    index("np_c_posts__categories_posts_id_idx").on(table.postsId),
+    uniqueIndex("np_c_posts__categories_parent_target_uidx").on(table.postsId, table.targetId),
+  ],
 );
 
 export const postsCategoriesTableRelations = relations(postsCategoriesTable, ({ many, one }) => ({
   parent: one(postsTable, { fields: [postsCategoriesTable.postsId], references: [postsTable.id] }),
-  target: one(categoriesTable, { fields: [postsCategoriesTable.targetId], references: [categoriesTable.id] }),
+  target: one(categoriesTable, {
+    fields: [postsCategoriesTable.targetId],
+    references: [categoriesTable.id],
+  }),
 }));
 
 export const postsTagsTable = pgTable(
   "np_c_posts__tags",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    postsId: uuid("posts_id").notNull().references((): AnyPgColumn => postsTable.id, { onDelete: "cascade" }),
-    targetId: uuid("target_id").notNull().references((): AnyPgColumn => tagsTable.id, { onDelete: "cascade" }),
+    postsId: uuid("posts_id")
+      .notNull()
+      .references((): AnyPgColumn => postsTable.id, { onDelete: "cascade" }),
+    targetId: uuid("target_id")
+      .notNull()
+      .references((): AnyPgColumn => tagsTable.id, { onDelete: "cascade" }),
     order: integer("order").default(0).notNull(),
   },
-  (table) => [index("np_c_posts__tags_posts_id_idx").on(table.postsId), uniqueIndex("np_c_posts__tags_parent_target_uidx").on(table.postsId, table.targetId)],
+  (table) => [
+    index("np_c_posts__tags_posts_id_idx").on(table.postsId),
+    uniqueIndex("np_c_posts__tags_parent_target_uidx").on(table.postsId, table.targetId),
+  ],
 );
 
 export const postsTagsTableRelations = relations(postsTagsTable, ({ many, one }) => ({
@@ -104,12 +141,16 @@ export const pagesTable = pgTable(
   "np_c_pages",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] })
+      .default("draft")
+      .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
     createdBy: uuid("created_by").references((): AnyPgColumn => npUsers.id),
     updatedBy: uuid("updated_by").references((): AnyPgColumn => npUsers.id),
-    visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
+    visibility: text("visibility", { enum: ["public", "private"] })
+      .default("public")
+      .notNull(),
     title: text("title").notNull(),
     seoDescription: text("seo_description"),
     template: text("template"),
@@ -120,10 +161,15 @@ export const pagesTable = pgTable(
     translationGroupId: uuid("translation_group_id").notNull(),
     siteId: text("site_id").default("default").notNull(),
     publishedAt: timestamp("published_at", { withTimezone: true }),
-    _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("np_c_pages_status_idx").on(table.status), uniqueIndex("np_c_pages_site_locale_slug_idx").on(table.siteId, table.locale, table.slug), index("np_c_pages_translation_group_idx").on(table.translationGroupId), index("np_c_pages_locale_idx").on(table.locale), index("np_c_pages_site_idx").on(table.siteId)],
+  (table) => [
+    index("np_c_pages_status_idx").on(table.status),
+    uniqueIndex("np_c_pages_site_locale_slug_idx").on(table.siteId, table.locale, table.slug),
+    index("np_c_pages_translation_group_idx").on(table.translationGroupId),
+    index("np_c_pages_locale_idx").on(table.locale),
+    index("np_c_pages_site_idx").on(table.siteId),
+  ],
 );
 
 export const pagesTableRelations = relations(pagesTable, ({ many, one }) => ({
@@ -135,19 +181,27 @@ export const categoriesTable = pgTable(
   "np_c_categories",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] })
+      .default("draft")
+      .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
     createdBy: uuid("created_by").references((): AnyPgColumn => npUsers.id),
     updatedBy: uuid("updated_by").references((): AnyPgColumn => npUsers.id),
-    visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
+    visibility: text("visibility", { enum: ["public", "private"] })
+      .default("public")
+      .notNull(),
     name: text("name").notNull(),
     description: text("description"),
     slug: text("slug").notNull(),
     siteId: text("site_id").default("default").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("np_c_categories_status_idx").on(table.status), uniqueIndex("np_c_categories_site_slug_idx").on(table.siteId, table.slug), index("np_c_categories_site_idx").on(table.siteId)],
+  (table) => [
+    index("np_c_categories_status_idx").on(table.status),
+    uniqueIndex("np_c_categories_site_slug_idx").on(table.siteId, table.slug),
+    index("np_c_categories_site_idx").on(table.siteId),
+  ],
 );
 
 export const categoriesTableRelations = relations(categoriesTable, ({ many, one }) => ({
@@ -159,19 +213,27 @@ export const tagsTable = pgTable(
   "np_c_tags",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] })
+      .default("draft")
+      .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
     createdBy: uuid("created_by").references((): AnyPgColumn => npUsers.id),
     updatedBy: uuid("updated_by").references((): AnyPgColumn => npUsers.id),
-    visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
+    visibility: text("visibility", { enum: ["public", "private"] })
+      .default("public")
+      .notNull(),
     name: text("name").notNull(),
     description: text("description"),
     slug: text("slug").notNull(),
     siteId: text("site_id").default("default").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("np_c_tags_status_idx").on(table.status), uniqueIndex("np_c_tags_site_slug_idx").on(table.siteId, table.slug), index("np_c_tags_site_idx").on(table.siteId)],
+  (table) => [
+    index("np_c_tags_status_idx").on(table.status),
+    uniqueIndex("np_c_tags_site_slug_idx").on(table.siteId, table.slug),
+    index("np_c_tags_site_idx").on(table.siteId),
+  ],
 );
 
 export const tagsTableRelations = relations(tagsTable, ({ many, one }) => ({
@@ -183,13 +245,19 @@ export const discussionsTable = pgTable(
   "np_c_discussions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] })
+      .default("draft")
+      .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
     createdBy: uuid("created_by").references((): AnyPgColumn => npUsers.id),
     updatedBy: uuid("updated_by").references((): AnyPgColumn => npUsers.id),
-    visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
-    memberAuthorId: uuid("member_author_id").references((): AnyPgColumn => npMembers.id, { onDelete: "set null" }),
+    visibility: text("visibility", { enum: ["public", "private"] })
+      .default("public")
+      .notNull(),
+    memberAuthorId: uuid("member_author_id").references((): AnyPgColumn => npMembers.id, {
+      onDelete: "set null",
+    }),
     title: text("title").notNull(),
     body: jsonb("body"),
     category: text("category"),
@@ -198,14 +266,21 @@ export const discussionsTable = pgTable(
     slug: text("slug").notNull(),
     siteId: text("site_id").default("default").notNull(),
     publishedAt: timestamp("published_at", { withTimezone: true }),
-    _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("np_c_discussions_status_idx").on(table.status), index("np_c_discussions_member_author_idx").on(table.memberAuthorId), uniqueIndex("np_c_discussions_site_slug_idx").on(table.siteId, table.slug), index("np_c_discussions_site_idx").on(table.siteId)],
+  (table) => [
+    index("np_c_discussions_status_idx").on(table.status),
+    index("np_c_discussions_member_author_idx").on(table.memberAuthorId),
+    uniqueIndex("np_c_discussions_site_slug_idx").on(table.siteId, table.slug),
+    index("np_c_discussions_site_idx").on(table.siteId),
+  ],
 );
 
 export const discussionsTableRelations = relations(discussionsTable, ({ many, one }) => ({
   createdByUser: one(npUsers, { fields: [discussionsTable.createdBy], references: [npUsers.id] }),
   updatedByUser: one(npUsers, { fields: [discussionsTable.updatedBy], references: [npUsers.id] }),
-  memberAuthor: one(npMembers, { fields: [discussionsTable.memberAuthorId], references: [npMembers.id] }),
+  memberAuthor: one(npMembers, {
+    fields: [discussionsTable.memberAuthorId],
+    references: [npMembers.id],
+  }),
 }));

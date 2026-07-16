@@ -35,6 +35,10 @@ export default defineConfig({
     community: "src/community/index.ts",
     // Pure, client-safe community rows, API wires, settings, registries, and adapter contracts.
     "community-contract": "src/community-contract/index.ts",
+    // Pure, client-safe dynamic collection row, relation, and API wire contract.
+    "collection-contract": "src/collection-contract/index.ts",
+    // Server-side collection registry, persistence pipeline, revisions, and search bridge.
+    collections: "src/collections/index.ts",
     // Framework-host singleton wiring. Application code should use
     // @nexpress/next createBootstrap rather than importing this directly.
     bootstrap: "src/bootstrap/index.ts",
