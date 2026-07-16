@@ -51,9 +51,10 @@ describe.skipIf(skipIfNoTestDb())("theme seed + reseed pipeline", () => {
     await truncateAll();
     const { resetThemes, registerThemes } = await import("@nexpress/core");
     const { defaultTheme } = await import("@nexpress/theme-default");
+    const { docsTheme } = await import("@nexpress/theme-docs");
     const { magazineTheme } = await import("@nexpress/theme-magazine");
     resetThemes();
-    registerThemes([defaultTheme, magazineTheme]);
+    registerThemes([defaultTheme, docsTheme, magazineTheme]);
   });
 
   afterAll(async () => {
@@ -189,6 +190,31 @@ describe.skipIf(skipIfNoTestDb())("theme seed + reseed pipeline", () => {
     expect(defaultPosts[0]?.count ?? 0).toBe(0);
     expect(magazinePosts[0]?.count ?? 0).toBeGreaterThan(0);
     expect(magazinePosts[0]?.count).toBe(magResult.posts.created);
+  });
+
+  it("hydrates and wipes docs theme pages with canonical nested slugs", async () => {
+    const actor = await asActor();
+    const { docsTheme } = await import("@nexpress/theme-docs");
+    const { magazineTheme } = await import("@nexpress/theme-magazine");
+    const { findDocuments } = await import("@nexpress/core");
+    const { seedAll, wipeSeededContent } = await import("@/lib/seed-content");
+
+    await seedAll(actor, docsTheme);
+    const docsPages = await findDocuments(
+      "pages",
+      { where: { seedSource: "theme:docs" }, limit: 100 },
+      actor,
+    );
+    expect(docsPages.docs).toEqual(
+      expect.arrayContaining([expect.objectContaining({ slug: "docs/reference/define-plugin" })]),
+    );
+
+    await expect(wipeSeededContent(actor)).resolves.toMatchObject({
+      pagesDeleted: docsTheme.impl.seedContent?.pages?.length,
+    });
+    await expect(seedAll(actor, magazineTheme)).resolves.toMatchObject({
+      pages: { skipped: false },
+    });
   });
 
   it("wipeSeededContent removes seed-marked rows but leaves operator content intact", async () => {

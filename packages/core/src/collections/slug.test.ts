@@ -34,6 +34,11 @@ describe("slugify", () => {
     expect(slugify("/")).toBe("/");
   });
 
+  it("normalizes each nested page-path segment without flattening the path", () => {
+    expect(slugify("Docs / Reference / Define Plugin")).toBe("docs/reference/define-plugin");
+    expect(slugify("/About//Team/")).toBe("about/team");
+  });
+
   it("caps output length at 96 characters", () => {
     const long = "a".repeat(200);
     expect(slugify(long).length).toBe(96);

@@ -221,4 +221,26 @@ describe("theme definition contract", () => {
       ]),
     );
   });
+
+  it("accepts canonical nested seed slugs and rejects malformed paths", () => {
+    const nested = validTheme();
+    const nestedPages = nested.impl.seedContent?.pages;
+    if (!nestedPages?.[0]) throw new Error("fixture missing page");
+    nestedPages[0].slug = "docs/reference/define-plugin";
+    expect(npValidateThemeDefinition(nested)).toEqual({ ok: true });
+
+    const malformed = validTheme();
+    const malformedPages = malformed.impl.seedContent?.pages;
+    if (!malformedPages?.[0]) throw new Error("fixture missing page");
+    malformedPages[0].slug = "docs//reference";
+    expect(npAnalyzeThemeDefinition(malformed)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "seed-content",
+          location: "impl.seedContent.pages.0.slug",
+          message: expect.stringMatching(/canonical relative document path/),
+        }),
+      ]),
+    );
+  });
 });

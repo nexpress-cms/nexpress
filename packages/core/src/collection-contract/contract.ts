@@ -32,21 +32,40 @@ export const npCollectionContractLimits = {
 
 export const npCollectionDocumentCanonicalDatePattern =
   "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$";
-export const npCollectionDocumentSlugPattern = "^(?:/|[\\p{L}\\p{N}]+(?:-[\\p{L}\\p{N}]+)*)$";
+export const npCollectionDocumentSlugPattern =
+  "^(?:/|[\\p{L}\\p{N}]+(?:-[\\p{L}\\p{N}]+)*(?:/[\\p{L}\\p{N}]+(?:-[\\p{L}\\p{N}]+)*)*)$";
 
 export function npNormalizeCollectionDocumentSlug(value: string): string {
   if (value === "/") return value;
   const normalized = value
-    .normalize("NFKD")
-    .toLowerCase()
-    .replace(/[\u0300-\u036f]/g, "")
-    .normalize("NFC")
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/g, "");
+    .split("/")
+    .map((segment) =>
+      segment
+        .normalize("NFKD")
+        .toLowerCase()
+        .replace(/[\u0300-\u036f]/g, "")
+        .normalize("NFC")
+        .replace(/[^\p{L}\p{N}]+/gu, "-")
+        .replace(/^-+|-+$/g, ""),
+    )
+    .filter((segment) => segment.length > 0)
+    .join("/");
   return Array.from(normalized)
     .slice(0, npCollectionContractLimits.slugLength)
     .join("")
-    .replace(/-+$/u, "");
+    .replace(/[-/]+$/u, "");
+}
+
+export function npIsCanonicalCollectionDocumentSlug(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    Array.from(value).length <= npCollectionContractLimits.slugLength &&
+    isWellFormedUnicode(value) &&
+    !value.includes("\0") &&
+    CANONICAL_SLUG_PATTERN.test(value) &&
+    value === npNormalizeCollectionDocumentSlug(value)
+  );
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -327,7 +346,7 @@ function canonicalSlug(
       issue(
         "invalid-field",
         path,
-        'must be "/" or a lowercase letter-or-number slug with single hyphen separators.',
+        'must be "/" or a canonical relative path of lowercase letter-or-number segments with single hyphen separators.',
       ),
     );
   }

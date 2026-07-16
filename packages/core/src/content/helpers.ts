@@ -10,7 +10,7 @@ import { findDocuments, getCollectionConfig, getDb } from "../collections/index.
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 import { npAssertSettingValue, npValidateSettingKey } from "../settings/contract.js";
-import { npNormalizeCollectionDocumentSlug } from "../collection-contract/contract.js";
+import { npIsCanonicalCollectionDocumentSlug } from "../collection-contract/contract.js";
 
 export { getTheme } from "../theme/runtime.js";
 
@@ -197,11 +197,10 @@ export async function getPageBySlug(
 ): Promise<Record<string, unknown> | null> {
   const candidate = slug || "/";
   // The public catch-all probes the page collection before handing a path to
-  // theme/plugin route dispatch. Multi-segment route paths such as
-  // `tag/postgres` are not document slugs, so treat them as an ordinary page
-  // miss instead of sending an intentionally non-canonical value through the
-  // strict collection query boundary.
-  if (npNormalizeCollectionDocumentSlug(candidate) !== candidate) return null;
+  // theme/plugin route dispatch. Canonical multi-segment paths may be nested
+  // page slugs; malformed paths fail as an ordinary page miss instead of
+  // reaching the strict collection query boundary.
+  if (!npIsCanonicalCollectionDocumentSlug(candidate)) return null;
 
   const where: Record<string, unknown> = { slug: candidate };
 

@@ -66,6 +66,7 @@ export {
   npCollectionDocumentStatuses,
   npCollectionDocumentToWriteInput,
   npCollectionDocumentVisibilities,
+  npIsCanonicalCollectionDocumentSlug,
   npNormalizeCollectionDocumentSlug,
   npHydrateCollectionDocument,
   npParseCollectionDocumentWire,

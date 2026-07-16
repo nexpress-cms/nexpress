@@ -5,11 +5,10 @@ import { npNormalizeCollectionDocumentSlug } from "../collection-contract/contra
 /**
  * Stable URL-slug derivation. Lowercases, strips Latin diacritics
  * (Cr\u00e8me \u2192 creme), keeps any Unicode letter or number including
- * Korean/Japanese/Chinese/Cyrillic/Greek/etc., replaces runs of
- * separators (anything that isn't a letter or number) with a
- * single hyphen, trims edge hyphens, and caps at 96 chars so the
- * result fits standard DB slug columns without needing a larger
- * index.
+ * Korean/Japanese/Chinese/Cyrillic/Greek/etc., preserves slash-separated
+ * nested page paths, replaces other separator runs with a single hyphen,
+ * trims empty path segments / edge hyphens, and caps at 96 chars so the result
+ * fits standard DB slug columns without needing a larger index.
  *
  * The two-step `NFKD \u2192 strip combining marks \u2192 NFC` dance does
  * the diacritic strip without permanently decomposing scripts

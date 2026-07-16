@@ -25,10 +25,13 @@ relationships, and broken relation ordering are contract errors.
 
 Slug-bearing documents expose only the canonical slug produced by NexPress:
 the reserved page-root sentinel `/`, or at most 96 lowercase Unicode
-letters/numbers with single hyphen separators. Explicit slugs that normalize
-to an empty value are rejected. JSON fields are bounded recursive JSON values;
-functions, `undefined`, custom prototypes, circular references, excessive
-depth, and excessive inventories are rejected at the write boundary.
+letters/numbers arranged into `/`-separated relative-path segments with single
+hyphen separators inside each segment. This keeps nested page paths such as
+`about/team` exact while rejecting leading/trailing or repeated slashes.
+Explicit slugs that normalize to an empty value are rejected. JSON fields are
+bounded recursive JSON values; functions, `undefined`, custom prototypes,
+circular references, excessive depth, and excessive inventories are rejected
+at the write boundary.
 
 Every document includes `id`, canonical `status`, `createdBy`, `updatedBy`,
 `visibility`, and `siteId`. Timestamp-enabled collections also include

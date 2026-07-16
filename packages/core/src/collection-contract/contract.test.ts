@@ -243,6 +243,18 @@ describe("collection document contract", () => {
     expect(npAnalyzeCollectionDocument({ ...hydratedDocument(), slug: "/" }, config)).toMatchObject(
       { ok: true },
     );
+    expect(
+      npAnalyzeCollectionDocument(
+        { ...hydratedDocument(), slug: "docs/reference/define-plugin" },
+        config,
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      npAnalyzeCollectionDocument({ ...hydratedDocument(), slug: "docs//reference" }, config),
+    ).toMatchObject({
+      ok: false,
+      issues: expect.arrayContaining([expect.objectContaining({ path: "document.slug" })]),
+    });
 
     const circular: Record<string, unknown> = {};
     circular.self = circular;

@@ -36,8 +36,19 @@ describe("content helpers", () => {
     });
   });
 
-  it("treats non-document catch-all paths as a page miss before strict querying", async () => {
+  it("queries canonical nested page paths before theme route dispatch", async () => {
+    collectionMocks.findDocuments.mockResolvedValue({ docs: [] });
+    collectionMocks.getCollectionConfig.mockReturnValue({ i18n: false });
+
     await expect(getPageBySlug("tag/postgres")).resolves.toBeNull();
+    expect(collectionMocks.findDocuments).toHaveBeenCalledWith("pages", {
+      where: { slug: "tag/postgres", status: "published" },
+      limit: 1,
+    });
+  });
+
+  it("treats malformed catch-all paths as a page miss before strict querying", async () => {
+    await expect(getPageBySlug("tag//postgres")).resolves.toBeNull();
     expect(collectionMocks.findDocuments).not.toHaveBeenCalled();
     expect(collectionMocks.getCollectionConfig).not.toHaveBeenCalled();
   });
