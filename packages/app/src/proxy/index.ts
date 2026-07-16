@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { npCreateApiError } from "@nexpress/core/api-contract";
 
 import {
   getOptionalRateLimiter,
@@ -235,16 +236,13 @@ async function runProxy(request: NextRequest, rateLimiter?: NpRateLimiterAdapter
     const decision = await checkRequestRateLimit(ip, pathname, rateLimiter);
 
     if (decision?.limited) {
-      return NextResponse.json(
-        { error: { code: "RATE_LIMITED", message: "Too many requests" }, status: 429 },
-        {
-          status: 429,
-          headers: {
-            ...securityHeaders,
-            "Retry-After": decision.retryAfterSeconds.toString(),
-          },
+      return NextResponse.json(npCreateApiError("RATE_LIMITED", "Too many requests", 429), {
+        status: 429,
+        headers: {
+          ...securityHeaders,
+          "Retry-After": decision.retryAfterSeconds.toString(),
         },
-      );
+      });
     }
 
     // #281 — auto-CSRF for /api/* mutations. Until this guard
@@ -272,10 +270,10 @@ async function runProxy(request: NextRequest, rateLimiter?: NpRateLimiterAdapter
           (memberCookie && memberCookie === headerToken)),
       );
       if (!ok) {
-        return NextResponse.json(
-          { error: { code: "CSRF_INVALID", message: "Invalid CSRF token" }, status: 403 },
-          { status: 403, headers: securityHeaders },
-        );
+        return NextResponse.json(npCreateApiError("CSRF_INVALID", "Invalid CSRF token", 403), {
+          status: 403,
+          headers: securityHeaders,
+        });
       }
     }
   }

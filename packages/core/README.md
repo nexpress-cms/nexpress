@@ -32,6 +32,7 @@ Domain-bounded entries — prefer these over the catch-all root:
 
 ```ts
 import { can } from "@nexpress/core/auth";
+import { npIsApiError } from "@nexpress/core/api-contract";
 import { enqueueJob } from "@nexpress/core/jobs";
 import { getLogger } from "@nexpress/core/observability";
 import { buildSitemap } from "@nexpress/core/seo";
@@ -41,8 +42,9 @@ import { t } from "@nexpress/core/i18n";
 
 Available server subpaths include `auth`, `community`, `db`, `i18n`, `jobs`,
 `media`, `observability`, `routes`, `seo`, and `sites`. Client-safe contract
-subpaths include `fields`, `jobs-contract`, `media-contract`, `navigation`,
-`revisions`, `settings`, and `theme`. The root `@nexpress/core` keeps
+subpaths include `api-contract`, `auth-contract`, `collection-contract`,
+`community-contract`, `fields`, `i18n-contract`, `jobs-contract`,
+`media-contract`, `navigation`, `revisions`, `settings`, and `theme`. The root `@nexpress/core` keeps
 re-exporting everything for back-compat but remains server-only.
 
 ## Quick example

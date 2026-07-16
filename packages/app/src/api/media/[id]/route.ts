@@ -1,5 +1,11 @@
-import { NpForbiddenError, NpNotFoundError, getMediaById, deleteMedia, can } from "@nexpress/core";
-import { NextResponse } from "next/server";
+import {
+  NpConflictError,
+  NpForbiddenError,
+  NpNotFoundError,
+  getMediaById,
+  deleteMedia,
+  can,
+} from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { requireAuth, requireGlobalAuth } from "../../../lib/auth-helpers";
@@ -49,9 +55,9 @@ export async function DELETE(
     const result = await deleteMedia(id);
 
     if (!result.deleted && result.references && result.references.length > 0) {
-      return NextResponse.json(
-        { error: "MEDIA_IN_USE", references: result.references },
-        { status: 409 },
+      throw new NpConflictError(
+        `Media ${id} is referenced by ${result.references.length.toString()} document(s).`,
+        { referenceCount: result.references.length },
       );
     }
 

@@ -117,7 +117,10 @@ thrown handler errors use the standard NexPress error adapter. Invalid-result
 errors include the plugin id and method/path; unexpected handler failures stay
 opaque in production while the server log records their original error and
 stack. Intentional `NpError` subclasses keep their documented API code and
-message.
+message, provided their extension code, status, message, and optional details
+pass the shared [`api-contract`](api-error-codes.md). A handler that explicitly
+returns a `4xx`/`5xx` route result owns that plugin-specific body shape; it is
+not a framework-generated error envelope.
 
 ## Authentication and abuse controls
 
@@ -142,7 +145,8 @@ pnpm --silent run ops:plugins -- doctor --json
 ```
 
 The generated `/api/openapi.json` document includes every loaded route, its
-description, and an automatic `HEAD` operation for each `GET` route.
+description, an automatic `HEAD` operation for each `GET` route, and the
+canonical host-error envelope as its fallback response.
 
 See also [`plugin-capabilities.md`](plugin-capabilities.md) for context gates
 and [`plugin-manifest.md`](plugin-manifest.md) for definition-level fields.

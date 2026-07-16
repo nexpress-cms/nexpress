@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import {
   NpAuthError,
+  NpError,
   NpForbiddenError,
   NpValidationError,
   consumeMemberEmailVerifyToken,
@@ -419,12 +420,8 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
     const { provider: providerId } = await ctx.params;
     const provider = getOAuthProvider(providerId);
     if (!provider || !oauthProviderSupportsAudience(provider, "member")) {
-      return NextResponse.json(
-        {
-          error: { code: "NOT_FOUND", message: `OAuth provider "${providerId}" not registered` },
-          status: 404,
-        },
-        { status: 404 },
+      return npErrorResponse(
+        new NpError(`OAuth provider "${providerId}" not registered`, "NOT_FOUND", 404),
       );
     }
 

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AuthCard, AuthLayout, Button, Input, Label, Switch } from "@nexpress/admin/client";
+import { npIsApiError } from "@nexpress/core/api-contract";
 import { npAuthContractLimits } from "@nexpress/core/auth-contract";
 
 type Step = 1 | 2;
@@ -21,6 +22,16 @@ interface SiteState {
 }
 
 const PASSWORD_MIN = 12;
+
+function validationDetailMessages(details: unknown): string[] {
+  if (!Array.isArray(details)) return [];
+  return details.flatMap((detail) => {
+    if (typeof detail !== "object" || detail === null || Array.isArray(detail)) return [];
+    const field = Reflect.get(detail, "field") as unknown;
+    const message = Reflect.get(detail, "message") as unknown;
+    return typeof field === "string" && typeof message === "string" ? [`${field}: ${message}`] : [];
+  });
+}
 
 /**
  * Theme option the wizard renders in its picker. The server page
@@ -155,22 +166,13 @@ export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
         }),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as {
-          error?: {
-            message?: string;
-            fields?: Array<{ field: string; message: string }>;
-          };
-        };
-        // NpValidationError carries the actual offending fields in
-        // `fields[]`; surfacing only the umbrella `message` ("Invalid
-        // input") leaves operators staring at a screen that says
-        // nothing about what's wrong with their input.
-        const fieldDetail = body.error?.fields?.map((f) => `${f.field}: ${f.message}`).join(" — ");
-        setError(
-          fieldDetail
-            ? `${body.error?.message ?? "Setup failed"} (${fieldDetail})`
-            : (body.error?.message ?? "Setup failed."),
-        );
+        const body: unknown = await res.json().catch(() => null);
+        if (!npIsApiError(body)) {
+          setError(`Setup failed (HTTP ${res.status.toString()}).`);
+          return;
+        }
+        const fieldDetail = validationDetailMessages(body.error.details).join(" — ");
+        setError(fieldDetail ? `${body.error.message} (${fieldDetail})` : body.error.message);
         return;
       }
       router.push("/admin");

@@ -30,6 +30,8 @@ export default defineConfig({
     // exporting everything for back-compat. New consumer code
     // should reach in through these.
     auth: "src/auth/index.ts",
+    // Pure, client-safe REST error envelope, code/status, and detail contract.
+    "api-contract": "src/api-contract/index.ts",
     // Pure, client-safe users, members, JWT claims, sessions, and API wire contracts.
     "auth-contract": "src/auth-contract/index.ts",
     community: "src/community/index.ts",

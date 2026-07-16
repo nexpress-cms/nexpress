@@ -1,8 +1,9 @@
 import { draftMode } from "next/headers";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { can, NpAuthError } from "@nexpress/core";
+import { can, NpForbiddenError } from "@nexpress/core";
 import { requireAuth } from "../../lib/auth-helpers";
+import { npErrorResponse } from "../../lib/api-response";
 import { ensureFor } from "../../lib/init-core";
 
 // `new URL(redirectTo, request.url)` preserves an external origin when
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
     const user = await requireAuth(request);
 
     if (!can(user, "content.publish")) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      throw new NpForbiddenError("preview", "enable");
     }
 
     const draft = await draftMode();
@@ -31,10 +32,7 @@ export async function GET(request: NextRequest) {
 
     const redirectTo = sanitizeRedirectPath(request.nextUrl.searchParams.get("path"));
     return NextResponse.redirect(new URL(redirectTo, request.url));
-  } catch (err) {
-    if (err instanceof NpAuthError) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    throw err;
+  } catch (error) {
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

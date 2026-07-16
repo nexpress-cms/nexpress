@@ -1,4 +1,5 @@
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
+import { npRequireApiError } from "@nexpress/core/api-contract";
 import {
   npAnalyzeAutosaveRevisionWireResult,
   npAnalyzeRevisionWire,
@@ -590,13 +591,22 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
   it("revisions: publishes the closed collection-derived snapshot contract in OpenAPI", async () => {
     const response = await openApiGET();
     const { body } = await readJson<{
-      components: { schemas: Record<string, Record<string, unknown>> };
+      components: {
+        schemas: Record<string, Record<string, unknown>>;
+        responses: Record<string, Record<string, unknown>>;
+      };
       paths: Record<
         string,
         {
           post?: { requestBody?: { content: { "application/json": { schema: unknown } } } };
           get?: {
-            responses: Record<string, { content: { "application/json": { schema: unknown } } }>;
+            responses: Record<
+              string,
+              {
+                $ref?: string;
+                content?: { "application/json"?: { schema: unknown } };
+              }
+            >;
           };
         }
       >;
@@ -615,7 +625,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
     );
     expect(autosaveSchema).not.toHaveProperty("required");
     const detail = body.paths["/api/collections/posts/{id}/revisions/{revisionId}"]?.get;
-    expect(detail?.responses["200"]?.content["application/json"].schema).toEqual(
+    expect(detail?.responses["200"]?.content?.["application/json"]?.schema).toEqual(
       expect.objectContaining({
         additionalProperties: false,
         required: expect.arrayContaining(["snapshot", "createdAt", "changedFields"]),
@@ -648,6 +658,28 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
     expect(body.components.schemas.posts_create_input?.required).not.toContain("kind");
     expect(body.components.schemas.posts_create_input?.properties).not.toHaveProperty("status");
     expect(body.components.schemas.posts_patch_input).not.toHaveProperty("required");
+    expect(body.components.schemas.error_response).toEqual(
+      expect.objectContaining({
+        additionalProperties: false,
+        required: ["error", "status"],
+        "x-np-known-code-statuses": expect.objectContaining({
+          VALIDATION_ERROR: 400,
+          CSRF_INVALID: 403,
+          METHOD_NOT_ALLOWED: 405,
+          INTERNAL_ERROR: 500,
+          SERVICE_UNAVAILABLE: 503,
+        }),
+      }),
+    );
+    expect(body.components.responses.api_error).toEqual(
+      expect.objectContaining({
+        content: {
+          "application/json": { schema: { $ref: "#/components/schemas/error_response" } },
+        },
+      }),
+    );
+    expect(detail?.responses.default?.$ref).toBe("#/components/responses/api_error");
+    expect(body.paths["/api/internal/publish-scheduled"]).toBeUndefined();
   });
 
   it("cancel schedule: PATCH _status=draft + publishedAt=null returns to draft", async () => {
@@ -727,6 +759,31 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
       expect(triggered.body.published).toBe(1);
       expect(triggered.body.byCollection.posts).toContain(created.body.id);
       expect(new Date(triggered.body.at).getTime()).not.toBeNaN();
+    } finally {
+      if (previousToken === undefined) {
+        delete process.env.NP_SCHEDULER_TOKEN;
+      } else {
+        process.env.NP_SCHEDULER_TOKEN = previousToken;
+      }
+    }
+  });
+
+  it("internal scheduled trigger uses the canonical unavailable error", async () => {
+    const previousToken = process.env.NP_SCHEDULER_TOKEN;
+    delete process.env.NP_SCHEDULER_TOKEN;
+    try {
+      const response = await publishScheduledPOST(
+        buildRequest("/api/internal/publish-scheduled", { method: "POST" }),
+      );
+
+      expect(response.status).toBe(503);
+      expect(npRequireApiError(await response.json())).toEqual({
+        error: {
+          code: "SERVICE_UNAVAILABLE",
+          message: "Scheduler token not configured (set NP_SCHEDULER_TOKEN).",
+        },
+        status: 503,
+      });
     } finally {
       if (previousToken === undefined) {
         delete process.env.NP_SCHEDULER_TOKEN;

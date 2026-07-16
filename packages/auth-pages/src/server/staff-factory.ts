@@ -377,12 +377,8 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
     const { provider: providerId } = await ctx.params;
     const provider = getOAuthProvider(providerId);
     if (!provider || !oauthProviderSupportsAudience(provider, "staff")) {
-      return NextResponse.json(
-        {
-          error: { code: "NOT_FOUND", message: `OAuth provider "${providerId}" not registered` },
-          status: 404,
-        },
-        { status: 404 },
+      return npErrorResponse(
+        new NpError(`OAuth provider "${providerId}" not registered`, "NOT_FOUND", 404),
       );
     }
 

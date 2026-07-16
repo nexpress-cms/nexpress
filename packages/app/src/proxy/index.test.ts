@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { npRequireApiError } from "@nexpress/core/api-contract";
 
 function request(path = "/api/auth/login"): NextRequest {
   return new NextRequest(`http://localhost${path}`, {
@@ -32,6 +33,10 @@ describe("shared application proxy rate limiting", () => {
 
     expect(response.status).toBe(429);
     expect(response.headers.get("Retry-After")).toBe("17");
+    expect(npRequireApiError(await response.json())).toEqual({
+      error: { code: "RATE_LIMITED", message: "Too many requests" },
+      status: 429,
+    });
     expect(check).toHaveBeenCalledWith(expect.any(String), 10, 60_000);
   });
 
@@ -112,5 +117,28 @@ describe("shared application proxy rate limiting", () => {
     });
 
     await expect(handler(request())).rejects.toThrow(/retryAfterSeconds/u);
+  });
+
+  it("emits the same canonical contract for CSRF failures", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "memory");
+    const { proxyModule } = await loadModules();
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: {
+        kind: "memory",
+        check: vi.fn().mockResolvedValue({ limited: false, retryAfterSeconds: 60 }),
+      },
+    });
+    const response = await handler(
+      new NextRequest("http://localhost/api/collections/posts", {
+        method: "POST",
+        headers: { "x-forwarded-for": "203.0.113.8" },
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(npRequireApiError(await response.json())).toEqual({
+      error: { code: "CSRF_INVALID", message: "Invalid CSRF token" },
+      status: 403,
+    });
   });
 });
