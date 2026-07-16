@@ -15,3 +15,7 @@ omitted fields, `_status` is request-only, and malformed persistence or hook
 results fail closed with doctor and live-health diagnostics. Collection
 lifecycle after-hooks now run exactly once with the same hydrated document
 contract as plugin lifecycle hooks.
+
+Canonical slugs, bounded JSON write values, complete relation inventories, and
+safe unambiguous pagination/locale filters now fail at their earliest runtime
+boundary as part of the same contract.

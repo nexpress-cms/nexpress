@@ -22,7 +22,7 @@ export const npCollectionContractLimits = {
   documentFields: 1_024,
   arrayRows: 10_000,
   stringLength: 2_000_000,
-  slugLength: 2_048,
+  slugLength: 96,
   localeLength: npI18nContractLimits.localeLength,
   jsonDepth: 64,
   jsonNodes: 100_000,
@@ -32,11 +32,27 @@ export const npCollectionContractLimits = {
 
 export const npCollectionDocumentCanonicalDatePattern =
   "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$";
+export const npCollectionDocumentSlugPattern = "^[\\p{L}\\p{N}]+(?:-[\\p{L}\\p{N}]+)*$";
+
+export function npNormalizeCollectionDocumentSlug(value: string): string {
+  const normalized = value
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[\u0300-\u036f]/g, "")
+    .normalize("NFC")
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+  return Array.from(normalized)
+    .slice(0, npCollectionContractLimits.slugLength)
+    .join("")
+    .replace(/-+$/u, "");
+}
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const DOCUMENT_STATUSES = new Set<string>(npCollectionDocumentStatuses);
 const VISIBILITIES = new Set<string>(npCollectionDocumentVisibilities);
 const CANONICAL_DATE_PATTERN = new RegExp(npCollectionDocumentCanonicalDatePattern, "u");
+const CANONICAL_SLUG_PATTERN = new RegExp(npCollectionDocumentSlugPattern, "u");
 
 type DateMode = "runtime" | "wire";
 
@@ -290,6 +306,33 @@ function canonicalLocale(
   }
 }
 
+function canonicalSlug(
+  value: unknown,
+  path: string,
+  issues: NpCollectionContractIssue[],
+): string | null {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    Array.from(value).length > npCollectionContractLimits.slugLength ||
+    !isWellFormedUnicode(value) ||
+    value.includes("\0")
+  ) {
+    issues.push(issue("invalid-field", path, "must be a bounded well-formed slug."));
+    return null;
+  }
+  if (!CANONICAL_SLUG_PATTERN.test(value) || value !== npNormalizeCollectionDocumentSlug(value)) {
+    issues.push(
+      issue(
+        "invalid-field",
+        path,
+        "must be a lowercase letter-or-number slug with single hyphen separators.",
+      ),
+    );
+  }
+  return value;
+}
+
 function normalizeJson(
   value: unknown,
   path: string,
@@ -347,12 +390,17 @@ function normalizeJson(
   const normalized: Record<string, NpCollectionJsonValue> = {};
   for (const key of inspected.keys) {
     state.keys += 1;
+    if (state.keys > npCollectionContractLimits.jsonKeys) {
+      issues.push(issue("max-items", path, "contains too many JSON keys."));
+      continue;
+    }
     if (
-      state.keys > npCollectionContractLimits.jsonKeys ||
       key.length === 0 ||
-      key.length > npCollectionContractLimits.jsonKeyLength
+      key.length > npCollectionContractLimits.jsonKeyLength ||
+      !isWellFormedUnicode(key) ||
+      key.includes("\0")
     ) {
-      issues.push(issue("max-items", `${path}.${key}`, "has an invalid or excessive JSON key."));
+      issues.push(issue("invalid-field", `${path}.${key}`, "has an invalid JSON key."));
       continue;
     }
     const child = inspected.fields[key];
@@ -360,10 +408,39 @@ function normalizeJson(
       issues.push(issue("invalid-field", `${path}.${key}`, "must not be undefined."));
       continue;
     }
-    normalized[key] = normalizeJson(child, `${path}.${key}`, depth + 1, state, issues);
+    Object.defineProperty(normalized, key, {
+      value: normalizeJson(child, `${path}.${key}`, depth + 1, state, issues),
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
   }
   state.ancestors.delete(value);
   return normalized;
+}
+
+export function npAnalyzeCollectionJsonValue(
+  value: unknown,
+  path = "value",
+): NpCollectionContractResult<NpCollectionJsonValue> {
+  const issues: NpCollectionContractIssue[] = [];
+  const normalized = normalizeJson(
+    value,
+    path,
+    0,
+    { nodes: 0, keys: 0, ancestors: new Set() },
+    issues,
+  );
+  return issues.length === 0
+    ? { ok: true, value: normalized, issues: [] }
+    : { ok: false, value: null, issues: Object.freeze(issues) };
+}
+
+export function npRequireCollectionJsonValue(
+  value: unknown,
+  path = "value",
+): NpCollectionJsonValue {
+  return requireResult(npAnalyzeCollectionJsonValue(value, path), "Invalid collection JSON value");
 }
 
 function normalizeFieldValue(
@@ -575,13 +652,7 @@ function normalizeSystemFields(
     );
   }
   if (config.slugField) {
-    normalized.slug = boundedString(
-      fields.slug,
-      `${path}.slug`,
-      issues,
-      npCollectionContractLimits.slugLength,
-      false,
-    );
+    normalized.slug = canonicalSlug(fields.slug, `${path}.slug`, issues);
   }
   if (config.i18n) {
     normalized.locale = canonicalLocale(fields.locale, `${path}.locale`, issues);
@@ -905,21 +976,26 @@ function inspectRelations(
     hasMany?: Record<string, readonly unknown[]>;
   } = {};
   for (const kind of ["arrays", "hasMany"] as const) {
+    const expected = relationFieldPaths(config.fields, kind);
     const candidate = inspected.fields[kind];
-    if (candidate === undefined) continue;
+    if (candidate === undefined) {
+      if (expected.size > 0) {
+        issues.push(
+          issue(
+            "shape",
+            `document.relations.${kind}`,
+            "is required for this collection's relation inventory.",
+          ),
+        );
+      }
+      continue;
+    }
     const inventory = inspectRecord(candidate, `document.relations.${kind}`, issues);
     if (!inventory) continue;
-    const expected = relationFieldPaths(config.fields, kind);
+    exactKeys(inventory, expected, `document.relations.${kind}`, issues);
     const values: Record<string, readonly unknown[]> = {};
     for (const fieldPath of inventory.keys) {
       if (!expected.has(fieldPath)) {
-        issues.push(
-          issue(
-            "unknown-field",
-            `document.relations.${kind}.${fieldPath}`,
-            "is not declared by this collection.",
-          ),
-        );
         continue;
       }
       const rows = inspectArray(
@@ -1201,6 +1277,9 @@ function normalizeQueryScalar(
     if (descriptor.name === "locale") {
       return canonicalLocale(value, path, issues);
     }
+    if (descriptor.name === "slug") {
+      return canonicalSlug(value, path, issues);
+    }
     if (
       descriptor.name === "createdAt" ||
       descriptor.name === "updatedAt" ||
@@ -1258,6 +1337,11 @@ export function npAnalyzeCollectionFindOptions<T extends object = Record<string,
       normalized[key] = candidate as number;
     }
   }
+  const effectivePage = normalized.page ?? 1;
+  const effectiveLimit = normalized.limit ?? 10;
+  if (effectivePage - 1 > Math.floor(Number.MAX_SAFE_INTEGER / effectiveLimit)) {
+    issues.push(issue("invariant", "find.page", "would produce an unsafe pagination offset."));
+  }
   const fieldDescriptors = findFieldDescriptors(config);
   const sort = inspected.fields.sort;
   if (sort !== undefined) {
@@ -1304,6 +1388,19 @@ export function npAnalyzeCollectionFindOptions<T extends object = Record<string,
           continue;
         }
         const candidate = whereRecord.fields[key];
+        if (
+          Array.isArray(candidate) &&
+          (key === "siteId" || key === "visibility") &&
+          candidate.includes("*")
+        ) {
+          issues.push(
+            issue(
+              "invalid-field",
+              `find.where.${key}`,
+              "accepts the internal wildcard only as a scalar value.",
+            ),
+          );
+        }
         const values = Array.isArray(candidate) ? candidate : [candidate];
         if (values.length > 1_000) {
           issues.push(issue("max-items", `find.where.${key}`, "may contain at most 1000 values."));
@@ -1327,6 +1424,20 @@ export function npAnalyzeCollectionFindOptions<T extends object = Record<string,
       }
       normalized.where = normalizedWhere as NpFindOptions<T>["where"];
     }
+  }
+  const whereLocale = (normalized.where as Record<string, unknown> | undefined)?.locale;
+  if (
+    normalized.locale !== undefined &&
+    whereLocale !== undefined &&
+    whereLocale !== normalized.locale
+  ) {
+    issues.push(
+      issue(
+        "invariant",
+        "find.locale",
+        "must match find.where.locale when both locale filters are provided.",
+      ),
+    );
   }
   return result(normalized, issues);
 }

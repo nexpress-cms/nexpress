@@ -23,6 +23,13 @@ fields are always arrays, including when empty. Unknown or missing keys,
 malformed rich text/block content, invalid UUIDs/dates/enums, duplicate
 relationships, and broken relation ordering are contract errors.
 
+Slug-bearing documents expose only the canonical slug produced by NexPress:
+at most 96 lowercase Unicode letters/numbers with single hyphen separators.
+Explicit slugs that normalize to an empty value are rejected. JSON fields are
+bounded recursive JSON values; functions, `undefined`, custom prototypes,
+circular references, excessive depth, and excessive inventories are rejected
+at the write boundary.
+
 Every document includes `id`, canonical `status`, `createdBy`, `updatedBy`,
 `visibility`, and `siteId`. Timestamp-enabled collections also include
 `createdAt` and `updatedAt`; slug, i18n, member-author, and framework
@@ -61,6 +68,8 @@ and throwing helpers for trusted boundaries:
 - `npSerializeCollectionDocument` / `npParseCollectionDocumentWire`
 - `npAnalyzeCollectionDocument` / `npAnalyzeCollectionDocumentWire`
 - `npAnalyzeCollectionStorageRow`
+- `npAnalyzeCollectionJsonValue`
+- `npNormalizeCollectionDocumentSlug`
 - `npAnalyzeCollectionFindOptions` / `npAnalyzeCollectionFindResult`
 - `npCollectionDocumentToWriteInput`
 
@@ -85,16 +94,18 @@ OpenAPI publishes three closed schemas per collection:
 - `<slug>_patch_input` — closed partial update body.
 
 Unknown/duplicate query parameters, unknown `where` fields, invalid values,
-and public `siteId`/`visibility` filters are rejected. Internal Core callers
-may use the documented `"*"` tenant/visibility sentinel explicitly.
+ambiguous duplicate locale filters, unsafe pagination offsets, and public
+`siteId`/`visibility` filters are rejected. Internal Core callers may use the
+documented scalar `"*"` tenant/visibility sentinel explicitly.
 
 ## Persistence, hooks, and operations
 
 Collection registration requires the exact generated child/join-table
-inventory before startup. Writes validate the complete candidate before and
-after `beforeCreate`/`beforeUpdate` hooks. Reads validate storage plus related
-rows before `beforeRead`/`afterRead`; every hook result is revalidated before
-it is returned or persisted. Collection `afterCreate`, `afterUpdate`,
+inventory before startup, and hydration requires an explicit inventory for
+every declared array and `hasMany` field. Writes validate the complete candidate
+before and after `beforeCreate`/`beforeUpdate` hooks. Reads validate storage plus
+related rows before `beforeRead`/`afterRead`; every hook result is revalidated
+before it is returned or persisted. Collection `afterCreate`, `afterUpdate`,
 `beforeDelete`, and `afterDelete` hooks run alongside plugin lifecycle hooks.
 
 `pnpm run doctor` reports `collections.contract` by inspecting every collection

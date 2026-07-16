@@ -44,6 +44,7 @@ import {
 import {
   npCollectionContractLimits,
   npCollectionDocumentCanonicalDatePattern,
+  npCollectionDocumentSlugPattern,
   npCollectionDocumentStatuses,
   npCollectionDocumentVisibilities,
 } from "@nexpress/core/collection-contract";
@@ -293,7 +294,8 @@ function collectionDocumentSchema(
     properties.slug = {
       type: "string",
       minLength: 1,
-      maxLength: 2048,
+      maxLength: npCollectionContractLimits.slugLength,
+      pattern: npCollectionDocumentSlugPattern,
     };
   }
   if (config.i18n) {

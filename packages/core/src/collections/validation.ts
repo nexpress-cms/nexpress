@@ -8,6 +8,10 @@ import {
 } from "../config/types.js";
 import { npValidateRichTextContent } from "../fields/rich-text.js";
 import { npValidateBlockContent } from "../fields/block-content.js";
+import {
+  npAnalyzeCollectionJsonValue,
+  npCollectionContractLimits,
+} from "../collection-contract/contract.js";
 
 /**
  * Evaluate a field condition — handles both the legacy function
@@ -237,19 +241,19 @@ function buildFieldSchema(
 ): z.ZodTypeAny {
   switch (field.type) {
     case "text": {
-      let schema = z.string();
+      let schema = z.string().max(npCollectionContractLimits.stringLength);
       if (field.minLength !== undefined) schema = schema.min(field.minLength);
       if (field.maxLength !== undefined) schema = schema.max(field.maxLength);
       return schema;
     }
     case "textarea": {
-      let schema = z.string();
+      let schema = z.string().max(npCollectionContractLimits.stringLength);
       if (field.minLength !== undefined) schema = schema.min(field.minLength);
       if (field.maxLength !== undefined) schema = schema.max(field.maxLength);
       return schema;
     }
     case "email":
-      return z.string().email();
+      return z.string().max(320).email();
     case "number": {
       let schema = z.number();
       if (field.integerOnly) schema = schema.int();
@@ -264,7 +268,9 @@ function buildFieldSchema(
     case "radio":
       return createEnumSchema(field.options.map((option) => option.value));
     case "relationship":
-      return field.hasMany ? z.array(z.string().uuid()) : z.string().uuid();
+      return field.hasMany
+        ? z.array(z.string().uuid()).max(npCollectionContractLimits.arrayRows)
+        : z.string().uuid();
     case "upload":
       return z.string().uuid();
     case "date":
@@ -284,9 +290,23 @@ function buildFieldSchema(
         }
       });
     case "json":
-      return z.unknown();
+      return z.unknown().superRefine((value, ctx) => {
+        if (value === null) {
+          ctx.addIssue({ code: "custom", message: "Required JSON fields must not be null." });
+          return;
+        }
+        const parsed = npAnalyzeCollectionJsonValue(value);
+        if (!parsed.ok) {
+          for (const contractIssue of parsed.issues) {
+            ctx.addIssue({
+              code: "custom",
+              message: `${contractIssue.path}: ${contractIssue.message}`,
+            });
+          }
+        }
+      });
     case "array": {
-      let schema = z.array(buildZodSchema(field.fields));
+      let schema = z.array(buildZodSchema(field.fields)).max(npCollectionContractLimits.arrayRows);
       if (field.minRows !== undefined) schema = schema.min(field.minRows);
       if (field.maxRows !== undefined) schema = schema.max(field.maxRows);
       return schema;

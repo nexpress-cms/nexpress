@@ -6,6 +6,7 @@ import {
   npAnalyzeCollectionDocument,
   npAnalyzeCollectionFindOptions,
   npAnalyzeCollectionFindResult,
+  npAnalyzeCollectionJsonValue,
   npAnalyzeCollectionStorageRow,
   npCollectionDocumentToWriteInput,
   npHydrateCollectionDocument,
@@ -218,6 +219,43 @@ describe("collection document contract", () => {
         hasMany: { tags: [] },
       }),
     ).toThrow(NpCollectionContractError);
+
+    expect(() =>
+      npHydrateCollectionDocument(config, storageRow(), {
+        arrays: { items: [] },
+      }),
+    ).toThrow(/hasMany/u);
+    expect(() =>
+      npHydrateCollectionDocument(config, storageRow(), {
+        hasMany: { tags: [] },
+      }),
+    ).toThrow(/arrays/u);
+  });
+
+  it("rejects non-canonical persisted slugs and malformed JSON values", () => {
+    for (const slug of ["Not Canonical", "cr\u00e8me", "\uff41"]) {
+      expect(npAnalyzeCollectionDocument({ ...hydratedDocument(), slug }, config)).toMatchObject({
+        ok: false,
+        issues: expect.arrayContaining([expect.objectContaining({ path: "document.slug" })]),
+      });
+    }
+
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    expect(npAnalyzeCollectionJsonValue(circular)).toMatchObject({
+      ok: false,
+      issues: expect.arrayContaining([expect.objectContaining({ code: "invariant" })]),
+    });
+    expect(npAnalyzeCollectionJsonValue(null)).toEqual({ ok: true, value: null, issues: [] });
+
+    const prototypeKey = npAnalyzeCollectionJsonValue(
+      JSON.parse('{"__proto__":{"safe":true}}') as unknown,
+    );
+    expect(prototypeKey).toMatchObject({ ok: true });
+    if (prototypeKey.ok && typeof prototypeKey.value === "object" && prototypeKey.value !== null) {
+      expect(Object.hasOwn(prototypeKey.value, "__proto__")).toBe(true);
+      expect(Object.getPrototypeOf(prototypeKey.value)).toBe(Object.prototype);
+    }
   });
 
   it("represents an optional flattened group as null only when every child is null", () => {
@@ -357,6 +395,28 @@ describe("collection find contracts", () => {
     ).toMatchObject({
       ok: false,
       issues: expect.arrayContaining([expect.objectContaining({ path: "result.hasNextPage" })]),
+    });
+  });
+
+  it("rejects ambiguous locale filters, wildcard arrays, and unsafe offsets", () => {
+    const result = npAnalyzeCollectionFindOptions(
+      {
+        page: Number.MAX_SAFE_INTEGER,
+        limit: 100,
+        locale: "ko",
+        where: { locale: "en", visibility: ["*"], slug: "Not Canonical" },
+      },
+      config,
+      { maximumLimit: 100, allowSystemWildcards: true },
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({ path: "find.page" }),
+        expect.objectContaining({ path: "find.locale" }),
+        expect.objectContaining({ path: "find.where.visibility" }),
+        expect.objectContaining({ path: "find.where.slug" }),
+      ]),
     });
   });
 });

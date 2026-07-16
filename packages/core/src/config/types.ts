@@ -388,7 +388,7 @@ export interface NpCollectionConfig {
    * the member path — gating is `assertNotBanned(memberId)` plus
    * the opt-in flag plus the ownership check, not the staff
    * access tree. Member-authored docs default to
-   * `_status = "published"` and members CANNOT change status via
+   * `status = "published"` and members CANNOT change status via
    * update; those transitions remain admin-side affordances
    * (a configurable default-status / moderation gate lands in a
    * follow-up).

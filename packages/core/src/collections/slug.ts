@@ -1,5 +1,6 @@
 import { NpValidationError } from "../errors.js";
 import type { NpCollectionConfig } from "../config/types.js";
+import { npNormalizeCollectionDocumentSlug } from "../collection-contract/contract.js";
 
 /**
  * Stable URL-slug derivation. Lowercases, strips Latin diacritics
@@ -16,14 +17,7 @@ import type { NpCollectionConfig } from "../config/types.js";
  * Hangul, which NFKD turns into jamo and NFC then reassembles).
  */
 export function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .normalize("NFC")
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 96);
+  return npNormalizeCollectionDocumentSlug(value);
 }
 
 /**
@@ -43,10 +37,17 @@ export function applySlugField(
 ): void {
   if (!config.slugField) return;
 
-  const existingSlug = typeof data.slug === "string" ? data.slug.trim() : "";
-
-  if (existingSlug.length > 0) {
-    data.slug = slugify(existingSlug) || existingSlug;
+  if (typeof data.slug === "string") {
+    const normalized = slugify(data.slug);
+    if (normalized.length === 0) {
+      throw new NpValidationError("Slug generation failed", [
+        {
+          field: "slug",
+          message: "Explicit slug must contain at least one letter or number.",
+        },
+      ]);
+    }
+    data.slug = normalized;
     return;
   }
 

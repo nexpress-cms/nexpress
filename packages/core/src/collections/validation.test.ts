@@ -220,6 +220,24 @@ describe("buildZodSchema — block content v1 contract", () => {
   });
 });
 
+describe("buildZodSchema — JSON field contract", () => {
+  it("rejects circular and undefined-bearing values at the write boundary", () => {
+    const schema = buildZodSchema([field({ type: "json", name: "metadata", required: true })]);
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+
+    expect(schema.safeParse({ metadata: circular }).success).toBe(false);
+    expect(schema.safeParse({ metadata: { missing: undefined } }).success).toBe(false);
+    expect(schema.safeParse({ metadata: null }).success).toBe(false);
+    expect(schema.safeParse({ metadata: { nested: [true, 2, "safe", null] } }).success).toBe(true);
+  });
+
+  it("keeps null available for optional JSON fields", () => {
+    const schema = buildZodSchema([field({ type: "json", name: "metadata" })]);
+    expect(schema.safeParse({ metadata: null }).success).toBe(true);
+  });
+});
+
 describe("evaluateFieldCondition — serializable expressions (#763)", () => {
   it("undefined → returns true (field visible)", () => {
     expect(evaluateFieldCondition(undefined, {})).toBe(true);
