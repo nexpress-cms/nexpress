@@ -549,14 +549,41 @@ export interface NpPluginConfig {
  */
 export interface NpResolvedPluginLike {
   manifest: {
+    apiVersion?: "1";
     id: string;
     name: string;
     version?: string;
     description?: string;
+    author?: { name: string; email?: string; url?: string };
+    license?: string;
     capabilities: readonly string[];
     allowedHosts?: readonly string[];
     nexpress?: { minVersion?: string; maxVersion?: string };
     requires?: readonly string[];
+    provides?: Partial<
+      Record<
+        | "blocks"
+        | "patterns"
+        | "templates"
+        | "translations"
+        | "collections"
+        | "adminExtensions"
+        | "actions"
+        | "apiRoutes"
+        | "pageRoutes"
+        | "scheduledTasks"
+        | "hooks",
+        readonly string[]
+      >
+    >;
+    agent?: {
+      description?: string;
+      category?: string;
+      tags?: readonly string[];
+      configSchema?: Record<string, unknown>;
+    };
+    usesTokens?: readonly string[];
+    styleSlots?: Readonly<Record<string, string>>;
   };
   hooks?: Record<string, unknown>;
   routes?: ReadonlyArray<{

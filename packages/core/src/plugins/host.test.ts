@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getAllPluginIds,
   getPluginAdminActionDiagnostics,
+  getPluginDiscoveryDiagnostics,
+  getPluginDiscoveryItems,
   getPluginPageRoutes,
   getPluginRegistration,
   getPluginRoutes,
@@ -230,6 +232,95 @@ describe("plugin host", () => {
 
       const reg = getPluginRegistration("full");
       expect(reg?.capabilities).toEqual(["hooks:content", "api:route"]);
+    });
+
+    it("projects manifest metadata and actual runtime inventory without private values", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("discoverable", {
+            capabilities: ["hooks:content", "api:route"],
+            hooks: { "content:afterCreate": () => undefined },
+            routes: [
+              {
+                method: "GET",
+                path: "/ping",
+                handler: () => Promise.resolve({ status: 200 }),
+              },
+            ],
+          }),
+          manifest: {
+            apiVersion: "1" as const,
+            id: "discoverable",
+            name: "Discoverable",
+            version: "1.2.3",
+            description: "Public catalog metadata",
+            author: { name: "NexPress", email: "private@example.com", url: "https://example.com" },
+            license: "MIT",
+            nexpress: { minVersion: "0.0.0-dev" },
+            capabilities: ["hooks:content", "api:route"],
+            provides: { apiRoutes: ["GET /ping"] },
+            agent: {
+              description: "Useful to automation",
+              category: "utility",
+              tags: ["catalog"],
+              configSchema: { enabled: { type: "boolean" } },
+            },
+            usesTokens: ["color.primary"],
+            styleSlots: { panel: ".panel" },
+          },
+          actions: {
+            inspect: {
+              kind: "action" as const,
+              description: "Inspect state",
+              handler: () => Promise.resolve({ ok: true }),
+            },
+          },
+        },
+      ]);
+
+      expect(getPluginDiscoveryItems()).toEqual([
+        expect.objectContaining({
+          apiVersion: "1",
+          legacy: false,
+          id: "discoverable",
+          author: { name: "NexPress", url: "https://example.com" },
+          hooks: ["content:afterCreate"],
+          routes: [{ method: "GET", path: "/ping", auth: false }],
+          actions: [
+            {
+              id: "inspect",
+              kind: "action",
+              source: "definition",
+              description: "Inspect state",
+            },
+          ],
+        }),
+      ]);
+      expect(JSON.stringify(getPluginDiscoveryItems())).not.toContain("private@example.com");
+    });
+
+    it("drops plugins whose discovery metadata cannot cross JSON and diagnoses later mutation", async () => {
+      const setup = vi.fn();
+      await loadPlugins([
+        {
+          ...resolvedPlugin("invalid-discovery"),
+          manifest: {
+            ...resolvedPlugin("invalid-discovery").manifest,
+            agent: { description: "Invalid", configSchema: { execute: () => undefined } },
+          },
+          setup,
+        },
+      ]);
+      expect(getAllPluginIds()).not.toContain("invalid-discovery");
+      expect(setup).not.toHaveBeenCalled();
+
+      await loadPlugins([resolvedPlugin("mutated-discovery")]);
+      const registration = getPluginRegistration("mutated-discovery");
+      expect(registration).toBeDefined();
+      if (registration) registration.discovery.agent.tags.push("duplicate", "duplicate");
+      expect(getPluginDiscoveryDiagnostics()).toEqual([
+        expect.objectContaining({ code: "invalid-field" }),
+      ]);
     });
 
     it("registers and dispatches definition-level actions with kind metadata", async () => {

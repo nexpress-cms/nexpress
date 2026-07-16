@@ -121,6 +121,54 @@ describe("ops plugins core", () => {
     );
   });
 
+  it("diagnoses manifest metadata that public discovery cannot serialize", () => {
+    const report = analyzePlugins([
+      {
+        manifest: {
+          id: "broken-discovery",
+          name: "Broken discovery",
+          agent: {
+            description: "Broken",
+            configSchema: { execute: () => undefined },
+          },
+        },
+      },
+    ]);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.discovery_contract",
+          state: "error",
+          pluginIds: ["broken-discovery"],
+        }),
+      ]),
+    );
+  });
+
+  it("diagnoses non-JSON public style slot metadata", () => {
+    const report = analyzePlugins([
+      {
+        manifest: {
+          id: "broken-style-slot",
+          name: "Broken style slot",
+          styleSlots: { panel: () => undefined },
+        },
+      },
+    ]);
+
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.discovery_contract",
+          state: "error",
+          pluginIds: ["broken-style-slot"],
+        }),
+      ]),
+    );
+  });
+
   it("surfaces cross-plugin template and translation ownership", () => {
     const contributions = {
       templates: { pages: { shared: { label: "Shared", component: () => null } } },

@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-16 (REST errors now share one exact bounded
+**Last refreshed:** 2026-07-16 (public block, collection, and plugin discovery
+now share exact bounded wire contracts; active ownership and runtime inventories
+reach OpenAPI/Admin while malformed metadata fails closed and reaches doctor.)
+
+**Earlier:** 2026-07-16 (REST errors now share one exact bounded
 client-safe envelope, code/status mapping, validation-detail, Next/proxy/auth,
 route, and OpenAPI contract; malformed errors fail closed and reach reporting.)
 
@@ -304,6 +308,7 @@ cli  (standalone scaffolder, no workspace deps)
 | `@nexpress/core/bootstrap`          | experimental framework-host singleton/registry wiring                   |
 | `@nexpress/core/community`          | comments, reactions, follows, reports, bans, audit, mentions, digests   |
 | `@nexpress/core/community-contract` | client-safe rows, requests, settings, adapter and wire validators       |
+| `@nexpress/core/discovery`          | client-safe public block, collection, and plugin discovery contracts    |
 | `@nexpress/core/db`                 | connection factory, runtime accessors, schema codegen                   |
 | `@nexpress/core/email`              | email message/adapter contracts, SMTP, templates, runtime configuration |
 | `@nexpress/core/fields`             | client-safe field helpers plus rich-text and block-content contracts    |

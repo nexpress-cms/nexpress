@@ -1,4 +1,5 @@
 import { getAllCollectionSlugs, getCollectionConfig } from "@nexpress/core";
+import { npRequireCollectionDiscoveryResponse } from "@nexpress/core/discovery";
 
 import { ensureFor } from "../../../lib/init-core";
 import { collectionToManifest } from "../../../lib/manifest";
@@ -12,7 +13,7 @@ export async function GET() {
       .map((slug) => collectionToManifest(getCollectionConfig(slug)))
       .sort((a, b) => a.slug.localeCompare(b.slug));
 
-    return npSuccessResponse({ items });
+    return npSuccessResponse(npRequireCollectionDiscoveryResponse({ items }));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

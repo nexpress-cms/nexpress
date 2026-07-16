@@ -6,6 +6,8 @@ export {
   getPluginPageRoutes,
   getPluginRegistration,
   getAllPluginIds,
+  getPluginDiscoveryItems,
+  getPluginDiscoveryDiagnostics,
   getPluginAdminExtension,
   getPluginAdminActionDiagnostics,
   getRegisteredPluginActions,

@@ -16,6 +16,7 @@ import {
   type NpPluginAdminActionIssue,
   type NpRegisteredPluginAction,
 } from "@nexpress/core";
+import { npAnalyzePluginDiscoveryResponse } from "@nexpress/core/discovery";
 import {
   npAnalyzeBlockContent,
   npAnalyzeBlockDefinitions,
@@ -1189,6 +1190,87 @@ function normalizePlugin(plugin: PluginLike, index: number): OpsPluginEntry {
   };
 }
 
+function buildStaticDiscoveryChecks(
+  pluginObjects: PluginLike[],
+  plugins: OpsPluginEntry[],
+): CheckResult[] {
+  return pluginObjects.flatMap((plugin, index) => {
+    const normalized = plugins[index];
+    if (!normalized) return [];
+    const manifest = plugin.manifest ?? {};
+    const author = isObject(manifest.author)
+      ? {
+          name: readString(manifest.author.name) ?? normalized.author ?? normalized.name,
+          ...(readString(manifest.author.url) ? { url: readString(manifest.author.url)! } : {}),
+        }
+      : null;
+    const nexpress = normalized.nexpress.minVersion
+      ? {
+          minVersion: normalized.nexpress.minVersion,
+          maxVersion: normalized.nexpress.maxVersion,
+        }
+      : null;
+    const rawAgent = isObject(manifest.agent) ? manifest.agent : {};
+    const rawConfigSchema = isObject(rawAgent) ? rawAgent.configSchema : undefined;
+    const styleSlots = isObject(manifest.styleSlots)
+      ? Object.fromEntries(Object.entries(manifest.styleSlots))
+      : {};
+    const result = npAnalyzePluginDiscoveryResponse({
+      items: [
+        {
+          apiVersion: "1",
+          legacy: false,
+          id: normalized.id,
+          name: normalized.name,
+          version: normalized.version,
+          description: normalized.description,
+          author,
+          license: normalized.license,
+          nexpress,
+          capabilities: normalized.capabilities,
+          allowedHosts: normalized.allowedHosts,
+          requires: normalized.requires,
+          provides: normalized.provides,
+          agent: {
+            description: normalized.agent.description ?? "",
+            category: normalized.agent.category,
+            tags: normalized.agent.tags,
+            ...(rawConfigSchema !== undefined ? { configSchema: rawConfigSchema } : {}),
+          },
+          usesTokens: normalized.usesTokens,
+          styleSlots,
+          hooks: [],
+          routes: [],
+          pageRoutes: [],
+          scheduledTasks: [],
+          actions: normalized.actions.map((action) => ({
+            id: action.id,
+            kind: action.kind,
+            source: action.source,
+            ...(action.description ? { description: action.description } : {}),
+          })),
+        },
+      ],
+    });
+    if (result.ok) return [];
+    return [
+      {
+        id: "plugins.discovery_contract",
+        state: "error" as const,
+        label: "Plugin public discovery contract",
+        detail: `${normalized.id}: ${result.issues
+          .slice(0, 5)
+          .map((entry) => `${entry.path}: ${entry.message}`)
+          .join("; ")}`,
+        pluginIds: [normalized.id],
+        hint: withDoctorRerun(
+          "Keep public manifest metadata JSON-safe, bounded, and free of accessors, functions, duplicate arrays, or unknown fields.",
+        ),
+      },
+    ];
+  });
+}
+
 function withDoctorRerun(action: string): string {
   return `${action} Then rerun \`${OPS_PLUGINS_DOCTOR_COMMAND}\` or \`${OPS_PLUGINS_PROJECT_DOCTOR_COMMAND}\` from a generated project.`;
 }
@@ -1350,6 +1432,7 @@ export function analyzePlugins(pluginsInput: unknown): OpsPluginsJson {
     ...buildPageRouteChecks(pluginObjects, plugins),
     ...buildScheduledTaskChecks(pluginObjects, plugins),
     ...buildRemainingDefinitionChecks(pluginObjects, plugins),
+    ...buildStaticDiscoveryChecks(pluginObjects, plugins),
   );
 
   const duplicateIds = duplicateChecks(

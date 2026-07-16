@@ -48,6 +48,7 @@ import {
   npCollectionDocumentStatuses,
   npCollectionDocumentVisibilities,
 } from "@nexpress/core/collection-contract";
+import { npDiscoveryContractLimits, npPluginDiscoveryProvideKeys } from "@nexpress/core/discovery";
 import { npSearchCollectionSlugPattern, npSearchContractLimits } from "@nexpress/core/search";
 import { NextResponse } from "next/server";
 
@@ -499,9 +500,399 @@ function revisionSnapshotSchema(
   };
 }
 
-function buildSpec(): OpenApiSchema {
+export function buildSpec(): OpenApiSchema {
   const slugs = getAllCollectionSlugs();
   const schemas: Record<string, OpenApiSchema> = {
+    discovery_json: {
+      oneOf: [
+        { type: "string", maxLength: npDiscoveryContractLimits.jsonStringLength },
+        { type: "number" },
+        { type: "boolean" },
+        { type: "null" },
+        {
+          type: "array",
+          maxItems: npDiscoveryContractLimits.jsonArrayItems,
+          items: { $ref: "#/components/schemas/discovery_json" },
+        },
+        {
+          type: "object",
+          maxProperties: npDiscoveryContractLimits.jsonObjectKeys,
+          additionalProperties: { $ref: "#/components/schemas/discovery_json" },
+        },
+      ],
+    },
+    discovery_option: {
+      type: "object",
+      additionalProperties: false,
+      required: ["label", "value"],
+      properties: { label: { type: "string" }, value: { type: "string" } },
+    },
+    collection_discovery_field: {
+      type: "object",
+      additionalProperties: false,
+      required: ["name", "type", "source"],
+      properties: {
+        name: { type: "string" },
+        type: {
+          type: "string",
+          enum: [
+            "text",
+            "textarea",
+            "number",
+            "richText",
+            "blocks",
+            "checkbox",
+            "date",
+            "upload",
+            "relationship",
+            "select",
+            "radio",
+            "email",
+            "json",
+            "array",
+            "group",
+            "row",
+            "collapsible",
+          ],
+        },
+        source: { type: "string" },
+        label: { type: "string" },
+        description: { type: "string" },
+        required: { type: "boolean" },
+        defaultValue: { $ref: "#/components/schemas/discovery_json" },
+        options: {
+          type: "array",
+          items: { $ref: "#/components/schemas/discovery_option" },
+        },
+        relationTo: {
+          oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
+        },
+        hasMany: { type: "boolean" },
+        integerOnly: { type: "boolean" },
+        fields: {
+          type: "array",
+          items: { $ref: "#/components/schemas/collection_discovery_field" },
+        },
+      },
+    },
+    collection_discovery_item: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "slug",
+        "source",
+        "labels",
+        "slug_auto",
+        "i18n",
+        "timestamps",
+        "versions",
+        "fields",
+      ],
+      properties: {
+        slug: { type: "string" },
+        source: { type: "string" },
+        labels: {
+          type: "object",
+          additionalProperties: false,
+          required: ["singular", "plural"],
+          properties: { singular: { type: "string" }, plural: { type: "string" } },
+        },
+        description: { type: "string" },
+        slug_auto: { type: "boolean" },
+        i18n: { type: "boolean" },
+        timestamps: { type: "boolean" },
+        versions: {
+          type: "object",
+          additionalProperties: false,
+          required: ["drafts"],
+          properties: {
+            drafts: { type: "boolean" },
+            max: { type: "integer", minimum: 1 },
+          },
+        },
+        fields: {
+          type: "array",
+          items: { $ref: "#/components/schemas/collection_discovery_field" },
+        },
+      },
+    },
+    collection_discovery_response: {
+      type: "object",
+      additionalProperties: false,
+      required: ["items"],
+      properties: {
+        items: {
+          type: "array",
+          items: { $ref: "#/components/schemas/collection_discovery_item" },
+        },
+      },
+    },
+    block_discovery_condition: {
+      type: "array",
+      prefixItems: [{ type: "string" }, { $ref: "#/components/schemas/discovery_json" }],
+      minItems: 2,
+      maxItems: 2,
+    },
+    block_discovery_prop_field: {
+      type: "object",
+      additionalProperties: false,
+      required: ["name", "label", "type"],
+      properties: {
+        name: { type: "string" },
+        label: { type: "string" },
+        type: {
+          type: "string",
+          enum: [
+            "text",
+            "textarea",
+            "number",
+            "boolean",
+            "select",
+            "url",
+            "richtext",
+            "image",
+            "color",
+            "collection",
+            "array",
+            "media",
+          ],
+        },
+        translatable: { type: "boolean" },
+        required: { type: "boolean" },
+        defaultValue: { $ref: "#/components/schemas/discovery_json" },
+        options: { type: "array", items: { $ref: "#/components/schemas/discovery_option" } },
+        description: { type: "string" },
+        placeholder: { type: "string" },
+        min: { type: "number" },
+        max: { type: "number" },
+        step: { type: "number", exclusiveMinimum: 0 },
+        pattern: { type: "string" },
+        patternMessage: { type: "string" },
+        rows: { type: "integer", minimum: 1 },
+        group: { type: "string" },
+        hiddenWhen: {
+          type: "array",
+          items: { $ref: "#/components/schemas/block_discovery_condition" },
+        },
+        visibleWhen: {
+          type: "array",
+          items: { $ref: "#/components/schemas/block_discovery_condition" },
+        },
+        itemSchema: {
+          type: "array",
+          items: { $ref: "#/components/schemas/block_discovery_prop_field" },
+        },
+        itemDefault: {
+          type: "object",
+          additionalProperties: { $ref: "#/components/schemas/discovery_json" },
+        },
+        accept: { type: "array", items: { type: "string" } },
+      },
+    },
+    block_discovery_item: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "type",
+        "label",
+        "source",
+        "keywords",
+        "defaultProps",
+        "propsSchema",
+        "acceptsChildren",
+        "summaryFields",
+        "allowedChildTypes",
+      ],
+      properties: {
+        type: { type: "string" },
+        label: { type: "string" },
+        source: { type: "string" },
+        description: { type: "string" },
+        icon: { type: "string" },
+        iconKind: { type: "string", enum: ["lucide", "emoji"] },
+        category: { type: "string" },
+        keywords: { type: "array", items: { type: "string" } },
+        defaultProps: {
+          type: "object",
+          additionalProperties: { $ref: "#/components/schemas/discovery_json" },
+        },
+        propsSchema: {
+          type: "array",
+          items: { $ref: "#/components/schemas/block_discovery_prop_field" },
+        },
+        acceptsChildren: { type: "boolean" },
+        summaryFields: { type: "array", items: { type: "string" } },
+        allowedChildTypes: { type: "array", items: { type: "string" } },
+        minChildren: { type: "integer", minimum: 0 },
+        maxChildren: { type: "integer", minimum: 0 },
+      },
+    },
+    block_discovery_response: {
+      type: "object",
+      additionalProperties: false,
+      required: ["items"],
+      properties: {
+        items: { type: "array", items: { $ref: "#/components/schemas/block_discovery_item" } },
+      },
+    },
+    plugin_discovery_item: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "apiVersion",
+        "legacy",
+        "id",
+        "name",
+        "version",
+        "description",
+        "author",
+        "license",
+        "nexpress",
+        "capabilities",
+        "allowedHosts",
+        "requires",
+        "provides",
+        "agent",
+        "usesTokens",
+        "styleSlots",
+        "hooks",
+        "routes",
+        "pageRoutes",
+        "scheduledTasks",
+        "actions",
+      ],
+      properties: {
+        apiVersion: { type: ["string", "null"], enum: ["1", null] },
+        legacy: { type: "boolean" },
+        id: { type: "string" },
+        name: { type: "string" },
+        version: { type: ["string", "null"] },
+        description: { type: ["string", "null"] },
+        author: {
+          oneOf: [
+            { type: "null" },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["name"],
+              properties: { name: { type: "string" }, url: { type: "string", format: "uri" } },
+            },
+          ],
+        },
+        license: { type: ["string", "null"] },
+        nexpress: {
+          oneOf: [
+            { type: "null" },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["minVersion", "maxVersion"],
+              properties: {
+                minVersion: { type: "string" },
+                maxVersion: { type: ["string", "null"] },
+              },
+            },
+          ],
+        },
+        capabilities: { type: "array", items: { type: "string" } },
+        allowedHosts: { type: "array", items: { type: "string" } },
+        requires: { type: "array", items: { type: "string" } },
+        provides: {
+          type: "object",
+          additionalProperties: false,
+          required: [...npPluginDiscoveryProvideKeys],
+          properties: Object.fromEntries(
+            npPluginDiscoveryProvideKeys.map((key) => [
+              key,
+              {
+                type: "array",
+                maxItems: npDiscoveryContractLimits.fields,
+                items: { type: "string" },
+              },
+            ]),
+          ),
+        },
+        agent: {
+          type: "object",
+          additionalProperties: false,
+          required: ["description", "category", "tags"],
+          properties: {
+            description: { type: "string" },
+            category: { type: ["string", "null"] },
+            tags: { type: "array", items: { type: "string" } },
+            configSchema: {
+              type: "object",
+              additionalProperties: { $ref: "#/components/schemas/discovery_json" },
+            },
+          },
+        },
+        usesTokens: { type: "array", items: { type: "string" } },
+        styleSlots: { type: "object", additionalProperties: { type: "string" } },
+        hooks: { type: "array", items: { type: "string" } },
+        routes: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["method", "path", "auth"],
+            properties: {
+              method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+              path: { type: "string" },
+              description: { type: "string" },
+              auth: { type: "boolean" },
+            },
+          },
+        },
+        pageRoutes: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["pattern", "surface", "locale"],
+            properties: {
+              pattern: { type: "string" },
+              surface: { type: "string", enum: ["site", "member"] },
+              locale: { type: "string", enum: ["auto", "none"] },
+            },
+          },
+        },
+        scheduledTasks: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["id", "cron"],
+            properties: {
+              id: { type: "string" },
+              cron: { type: "string" },
+              description: { type: "string" },
+            },
+          },
+        },
+        actions: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["id", "kind", "source"],
+            properties: {
+              id: { type: "string" },
+              kind: { type: "string", enum: ["action", "metric", "status", "table"] },
+              source: { type: "string", enum: ["definition", "setup"] },
+              description: { type: "string" },
+            },
+          },
+        },
+      },
+    },
+    plugin_discovery_response: {
+      type: "object",
+      additionalProperties: false,
+      required: ["items"],
+      properties: {
+        items: { type: "array", items: { $ref: "#/components/schemas/plugin_discovery_item" } },
+      },
+    },
     site_runtime_settings: {
       type: "object",
       additionalProperties: false,
@@ -2418,17 +2809,15 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Block manifests registered in this instance",
         description:
-          "Public discovery endpoint — each block declares `type`, `label`, `propsSchema`, etc.",
+          "Public exact discovery endpoint for the process-wide shared registry, including enabled plugin and configured theme ownership.",
+        security: [],
         responses: {
           "200": {
             description: "Block manifest list",
             content: {
               "application/json": {
                 schema: {
-                  type: "object",
-                  properties: {
-                    items: { type: "array", items: { type: "object", additionalProperties: true } },
-                  },
+                  $ref: "#/components/schemas/block_discovery_response",
                 },
               },
             },
@@ -2440,17 +2829,15 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Collection manifests registered in this instance",
         description:
-          "Public discovery endpoint. Mirrors collection definitions with fields, access rules, and labels.",
+          "Public exact discovery endpoint for resolved collection and field metadata. Server-only access callbacks and hooks are omitted.",
+        security: [],
         responses: {
           "200": {
             description: "Collection manifest list",
             content: {
               "application/json": {
                 schema: {
-                  type: "object",
-                  properties: {
-                    items: { type: "array", items: { type: "object", additionalProperties: true } },
-                  },
+                  $ref: "#/components/schemas/collection_discovery_response",
                 },
               },
             },
@@ -2461,17 +2848,16 @@ function buildSpec(): OpenApiSchema {
     "/api/meta/plugins": {
       get: {
         summary: "Plugin manifests loaded in this process",
-        description: "Public surface — capabilities, hooks, routes, and agent metadata.",
+        description:
+          "Public exact manifest metadata plus actual runtime inventories. Config values, author email, handlers, and callbacks are omitted.",
+        security: [],
         responses: {
           "200": {
             description: "Plugin manifest list",
             content: {
               "application/json": {
                 schema: {
-                  type: "object",
-                  properties: {
-                    items: { type: "array", items: { type: "object", additionalProperties: true } },
-                  },
+                  $ref: "#/components/schemas/plugin_discovery_response",
                 },
               },
             },

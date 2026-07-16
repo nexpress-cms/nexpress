@@ -4,6 +4,9 @@ Every NexPress plugin starts with `definePlugin({ manifest, … })`. The
 manifest is the metadata block — the host reads it to gate
 capabilities, validate compatibility, and surface plugin info in admin
 UIs and machine-readable catalogs (npm search, the Discover panel).
+The successfully loaded public projection is available at
+`GET /api/meta/plugins`; its exact privacy and runtime-inventory rules are in
+[`public-discovery.md`](public-discovery.md).
 
 This page is a flat reference. For the procedural side see
 [`plugin-quickstart.md`](plugin-quickstart.md). For capability ↔ ctx

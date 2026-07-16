@@ -2,6 +2,7 @@ import type { NpBlockDefinition } from "@nexpress/blocks";
 import {
   getAllPluginIds,
   getPluginAdminActionDiagnostics,
+  getPluginDiscoveryDiagnostics,
   getPluginPageRoutes,
   getPluginRegistration,
   getPluginRoutes,
@@ -19,6 +20,7 @@ import { collectRuntimeOpsPluginsStatus } from "./ops-plugins-runtime";
 vi.mock("@nexpress/core", () => ({
   getAllPluginIds: vi.fn(),
   getPluginAdminActionDiagnostics: vi.fn(),
+  getPluginDiscoveryDiagnostics: vi.fn(),
   getPluginPageRoutes: vi.fn(),
   getPluginRegistration: vi.fn(),
   getPluginRoutes: vi.fn(),
@@ -34,6 +36,7 @@ vi.mock("@nexpress/blocks", () => ({
 
 const mockPluginIds = vi.mocked(getAllPluginIds);
 const mockPluginActionDiagnostics = vi.mocked(getPluginAdminActionDiagnostics);
+const mockPluginDiscoveryDiagnostics = vi.mocked(getPluginDiscoveryDiagnostics);
 const mockPluginRoutes = vi.mocked(getPluginRoutes);
 const mockPluginPageRoutes = vi.mocked(getPluginPageRoutes);
 const mockPluginRegistration = vi.mocked(getPluginRegistration);
@@ -47,6 +50,7 @@ describe("ops plugins runtime", () => {
   beforeEach(() => {
     mockPluginIds.mockReturnValue([]);
     mockPluginActionDiagnostics.mockReturnValue([]);
+    mockPluginDiscoveryDiagnostics.mockReturnValue([]);
     mockPluginRoutes.mockReturnValue([]);
     mockPluginPageRoutes.mockReturnValue([]);
     mockPluginRegistration.mockReturnValue(undefined);
@@ -251,6 +255,30 @@ describe("ops plugins runtime", () => {
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "plugins.action_missing", pluginIds: ["broken"] }),
+      ]),
+    );
+  });
+
+  it("blocks runtime doctor when public plugin discovery is malformed", () => {
+    mockPluginIds.mockReturnValue(["clean", "broken"]);
+    mockPluginDiscoveryDiagnostics.mockReturnValue([
+      {
+        code: "invalid-field",
+        path: "$.items.1.agent.configSchema.execute",
+        message: "must contain only JSON values.",
+      },
+    ]);
+
+    const report = collectRuntimeOpsPluginsStatus();
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.discovery_contract",
+          state: "error",
+          pluginIds: ["broken"],
+        }),
       ]),
     );
   });
