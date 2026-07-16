@@ -14,10 +14,7 @@ import {
   type TestUserSession,
 } from "./harness.js";
 
-import {
-  GET as collectionGET,
-  POST as collectionPOST,
-} from "@/app/api/collections/[slug]/route";
+import { GET as collectionGET, POST as collectionPOST } from "@/app/api/collections/[slug]/route";
 
 import { NextRequest } from "next/server";
 
@@ -30,11 +27,7 @@ function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = 
   return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
 }
 
-function staffRequest(
-  path: string,
-  user: TestUserSession,
-  init: RequestInit = {},
-): NextRequest {
+function staffRequest(path: string, user: TestUserSession, init: RequestInit = {}): NextRequest {
   return jsonRequest(path, {
     ...init,
     cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
@@ -73,15 +66,14 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
     // does — but KEEP the `community.memberWrite` block so the
     // member-write path is actually exercised. We strip only `access`
     // (so synthetic test principals can write) and `hooks`.
-    const { defineDiscussionsCollection } = await import("@nexpress/plugin-forum");
+    const { discussionsCollection: config } = await import("@/collections/discussions");
     const { registerCollection } = await import("@nexpress/core");
     const { discussionsTable } = await import("@/db/generated/collections");
-    const config = defineDiscussionsCollection();
-    registerCollection(
-      "discussions",
-      discussionsTable as never,
-      { ...config, access: undefined, hooks: undefined },
-    );
+    registerCollection("discussions", discussionsTable as never, {
+      ...config,
+      access: undefined,
+      hooks: undefined,
+    });
   });
   beforeEach(async () => {
     await truncateAll();
@@ -107,9 +99,12 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
     );
-    const body = await readJson<{ id: string; status: string; title: string; createdBy: string | null }>(
-      create,
-    );
+    const body = await readJson<{
+      id: string;
+      status: string;
+      title: string;
+      createdBy: string | null;
+    }>(create);
     expect(body.status).toBe(201);
     expect(body.body.title).toBe("First member-authored thread");
     expect(body.body.status).toBe("published");
@@ -118,10 +113,9 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
     expect(body.body.createdBy).toBeNull();
 
     // Listing returns it for everyone (read access is open).
-    const list = await collectionGET(
-      jsonRequest("/api/collections/discussions"),
-      { params: Promise.resolve({ slug: "discussions" }) },
-    );
+    const list = await collectionGET(jsonRequest("/api/collections/discussions"), {
+      params: Promise.resolve({ slug: "discussions" }),
+    });
     const listBody = await readJson<{ totalDocs: number; docs: Array<{ id: string }> }>(list);
     expect(listBody.body.totalDocs).toBe(1);
   });

@@ -24,11 +24,7 @@ function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = 
   return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
 }
 
-function staffRequest(
-  path: string,
-  user: TestUserSession,
-  init: RequestInit = {},
-): NextRequest {
+function staffRequest(path: string, user: TestUserSession, init: RequestInit = {}): NextRequest {
   return jsonRequest(path, {
     ...init,
     cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
@@ -63,15 +59,14 @@ describe.skipIf(skipIfNoTestDb())("findDocuments memberAuthorId filter (Phase 9.
   beforeAll(async () => {
     await ensureMigrated();
     registerTestCollections();
-    const { defineDiscussionsCollection } = await import("@nexpress/plugin-forum");
+    const { discussionsCollection: config } = await import("@/collections/discussions");
     const { registerCollection } = await import("@nexpress/core");
     const { discussionsTable } = await import("@/db/generated/collections");
-    const config = defineDiscussionsCollection();
-    registerCollection(
-      "discussions",
-      discussionsTable as never,
-      { ...config, access: undefined, hooks: undefined },
-    );
+    registerCollection("discussions", discussionsTable as never, {
+      ...config,
+      access: undefined,
+      hooks: undefined,
+    });
     const { ensureFor } = await import("@/lib/init-core");
     await ensureFor("read");
   });
@@ -147,26 +142,21 @@ describe.skipIf(skipIfNoTestDb())("findDocuments memberAuthorId filter (Phase 9.
     // "my threads" filter is most useful in: a member needs to see
     // their own pending submissions even though the public list
     // hides them.
-    const { defineDiscussionsCollection } = await import("@nexpress/plugin-forum");
+    const { discussionsCollection: config } = await import("@/collections/discussions");
     const { registerCollection } = await import("@nexpress/core");
     const { discussionsTable } = await import("@/db/generated/collections");
-    const config = defineDiscussionsCollection();
-    registerCollection(
-      "discussions",
-      discussionsTable as never,
-      {
-        ...config,
-        community: {
-          ...(config.community ?? {}),
-          memberWrite: {
-            ...(config.community?.memberWrite ?? {}),
-            defaultStatus: "pending" as const,
-          },
+    registerCollection("discussions", discussionsTable as never, {
+      ...config,
+      community: {
+        ...(config.community ?? {}),
+        memberWrite: {
+          ...(config.community?.memberWrite ?? {}),
+          defaultStatus: "pending" as const,
         },
-        access: undefined,
-        hooks: undefined,
       },
-    );
+      access: undefined,
+      hooks: undefined,
+    });
 
     const a = await seedActiveMember("filt-pending");
     await collectionPOST(
@@ -198,11 +188,11 @@ describe.skipIf(skipIfNoTestDb())("findDocuments memberAuthorId filter (Phase 9.
     expect(myList.docs[0].status).toBe("pending");
 
     // Reset for subsequent tests.
-    registerCollection(
-      "discussions",
-      discussionsTable as never,
-      { ...config, access: undefined, hooks: undefined },
-    );
+    registerCollection("discussions", discussionsTable as never, {
+      ...config,
+      access: undefined,
+      hooks: undefined,
+    });
   });
 
   it("staff-authored rows are EXCLUDED when filtering by memberAuthorId", async () => {

@@ -32,27 +32,8 @@ describe.skipIf(skipIfNoTestDb())("portfolio /work/:slug guard", () => {
     const { ensureFor } = await import("@/lib/init-core");
     await ensureFor("plugins");
 
-    // Re-register `posts` against the portfolio-merged config so
-    // the kind option `"project"` is visible to the seed-time
-    // validator. The base `registerTestCollections()` skips the
-    // merge that `defineConfig` runs at boot in the real app —
-    // same trick the front-page test uses.
-    const { mergeThemeRequirements, registerCollection } = await import("@nexpress/core");
-    const { defaultTheme } = await import("@nexpress/theme-default");
-    const { portfolioTheme } = await import("@nexpress/theme-portfolio");
-    const { postsCollection } = await import("@nexpress/app/collections/posts");
-    const { postsTable } = await import(
-      // eslint-disable-next-line import-x/no-relative-packages
-      "../../../packages/core/src/integration/fixtures.js"
-    );
-    const merged = mergeThemeRequirements([postsCollection], [defaultTheme, portfolioTheme]);
-    const mergedPosts = merged.find((c) => c.slug === "posts");
-    if (!mergedPosts) throw new Error("posts merge dropped");
-    registerCollection("posts", postsTable, {
-      ...mergedPosts,
-      access: undefined,
-      hooks: undefined,
-    });
+    // `registerTestCollections()` uses the exact all-theme collection
+    // definition that generated `postsTable`, including `kind="project"`.
   });
 
   beforeEach(async () => {

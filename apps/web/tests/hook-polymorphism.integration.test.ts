@@ -83,10 +83,9 @@ describe.skipIf(skipIfNoTestDb())("hook polymorphism (Phase 9.7o)", () => {
     // `community.memberWrite.{create,delete}`, so both staff and
     // member writes hit the same hook list — exactly the shared
     // path 9.7o is widening.
-    const { defineDiscussionsCollection } = await import("@nexpress/plugin-forum");
+    const { discussionsCollection: baseConfig } = await import("@/collections/discussions");
     const { registerCollection } = await import("@nexpress/core");
     const { discussionsTable } = await import("@/db/generated/collections");
-    const baseConfig = defineDiscussionsCollection();
     const hooked = {
       ...baseConfig,
       access: undefined,

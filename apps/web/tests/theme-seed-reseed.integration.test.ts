@@ -138,13 +138,9 @@ describe.skipIf(skipIfNoTestDb())("theme seed + reseed pipeline", () => {
       // eslint-disable-next-line import-x/no-relative-packages
       "../../../packages/core/src/integration/fixtures.js"
     );
-    const totalPages = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(pagesTable);
+    const totalPages = await db.select({ count: sql<number>`count(*)::int` }).from(pagesTable);
     expect(totalPages[0]?.count ?? 0).toBe(first.pages.created);
-    const totalPosts = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(postsTable);
+    const totalPosts = await db.select({ count: sql<number>`count(*)::int` }).from(postsTable);
     expect(totalPosts[0]?.count ?? 0).toBe(first.posts.created);
   });
 
@@ -214,9 +210,9 @@ describe.skipIf(skipIfNoTestDb())("theme seed + reseed pipeline", () => {
       {
         title: "Operator's manual page",
         slug: "operator-page",
-        // The pages collection ships with a `body` blocks field that
+        // The pages collection ships with a `blocks` field that
         // accepts an empty array.
-        body: [],
+        blocks: [],
       },
       actor,
       { status: "published" },

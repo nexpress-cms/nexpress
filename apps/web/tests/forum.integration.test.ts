@@ -55,18 +55,10 @@ describe.skipIf(skipIfNoTestDb())(
     beforeAll(async () => {
       await ensureMigrated();
       registerTestCollections();
-      // Register the discussions collection for tests so the same flow
-      // exercises what apps/web ships in nexpress.config.ts. Done via
-      // the plugin's exported helper, not a bespoke fixture.
-      const { defineDiscussionsCollection } = await import("@nexpress/plugin-forum");
+      // Register the exact reference-app definition used to generate the table.
+      const { discussionsCollection: config } = await import("@/collections/discussions");
       const { registerCollection } = await import("@nexpress/core");
       const { discussionsTable } = await import("@/db/generated/collections");
-      const config = defineDiscussionsCollection({
-        categories: [
-          { label: "General", value: "general" },
-          { label: "Q&A", value: "qa" },
-        ],
-      });
       // Strip the access policy so the synthetic test principal can write
       // (mirrors how `registerTestCollections` in core integration treats
       // posts).

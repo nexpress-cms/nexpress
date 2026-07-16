@@ -47,7 +47,10 @@ import { z } from "zod";
 
 import { CollectionTabs, type CollectionTabDescriptor } from "./collection-tabs.js";
 import { findCollectionBlockContentError } from "./collection-block-validation.js";
-import { getCollectionFieldDefaultValue } from "./collection-edit-defaults.js";
+import {
+  getCollectionFieldDefaultValue,
+  normalizeCollectionEditorRequestValues,
+} from "./collection-edit-defaults.js";
 import { FieldRenderer } from "./field-renderer.js";
 import { NavMembershipPanel } from "./nav-membership-panel.js";
 import { RevisionsPanel } from "./revisions-panel.js";
@@ -1329,7 +1332,10 @@ function CollectionEditViewInner({
         : undefined;
     const wireStatus =
       status === "scheduled" ? "scheduled" : status === "unschedule" ? "draft" : status;
-    const requestBody: Record<string, unknown> = { ...values, _status: wireStatus };
+    const requestBody: Record<string, unknown> = {
+      ...normalizeCollectionEditorRequestValues(values, Boolean(config.slugField)),
+      _status: wireStatus,
+    };
     if (status === "scheduled" && scheduledPublishedAt) {
       requestBody.publishedAt = scheduledPublishedAt;
     }

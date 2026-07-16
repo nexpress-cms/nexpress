@@ -32,9 +32,10 @@ export const npCollectionContractLimits = {
 
 export const npCollectionDocumentCanonicalDatePattern =
   "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$";
-export const npCollectionDocumentSlugPattern = "^[\\p{L}\\p{N}]+(?:-[\\p{L}\\p{N}]+)*$";
+export const npCollectionDocumentSlugPattern = "^(?:/|[\\p{L}\\p{N}]+(?:-[\\p{L}\\p{N}]+)*)$";
 
 export function npNormalizeCollectionDocumentSlug(value: string): string {
+  if (value === "/") return value;
   const normalized = value
     .normalize("NFKD")
     .toLowerCase()
@@ -326,7 +327,7 @@ function canonicalSlug(
       issue(
         "invalid-field",
         path,
-        "must be a lowercase letter-or-number slug with single hyphen separators.",
+        'must be "/" or a lowercase letter-or-number slug with single hyphen separators.',
       ),
     );
   }

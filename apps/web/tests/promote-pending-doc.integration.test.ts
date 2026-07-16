@@ -29,11 +29,7 @@ function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = 
   return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
 }
 
-function staffRequest(
-  path: string,
-  user: TestUserSession,
-  init: RequestInit = {},
-): NextRequest {
+function staffRequest(path: string, user: TestUserSession, init: RequestInit = {}): NextRequest {
   return jsonRequest(path, {
     ...init,
     cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
@@ -65,10 +61,9 @@ async function seedActiveMember(
 }
 
 async function registerDiscussionsWithPendingDefault(): Promise<void> {
-  const { defineDiscussionsCollection } = await import("@nexpress/plugin-forum");
+  const { discussionsCollection: config } = await import("@/collections/discussions");
   const { registerCollection } = await import("@nexpress/core");
   const { discussionsTable } = await import("@/db/generated/collections");
-  const config = defineDiscussionsCollection();
   const community = {
     ...(config.community ?? {}),
     memberWrite: {
@@ -76,17 +71,21 @@ async function registerDiscussionsWithPendingDefault(): Promise<void> {
       defaultStatus: "pending" as const,
     },
   };
-  registerCollection(
-    "discussions",
-    discussionsTable as never,
-    { ...config, community, access: undefined, hooks: undefined },
-  );
+  registerCollection("discussions", discussionsTable as never, {
+    ...config,
+    community,
+    access: undefined,
+    hooks: undefined,
+  });
 }
 
-async function seedPendingDoc(member: {
-  sessionCookie: string;
-  csrfCookie: string;
-}, slug: string): Promise<{ id: string }> {
+async function seedPendingDoc(
+  member: {
+    sessionCookie: string;
+    csrfCookie: string;
+  },
+  slug: string,
+): Promise<{ id: string }> {
   // Avoid `:` in title — `search_vector` is a tsvector column and
   // postgres parses `:` as a position separator, so a title like
   // "Pending: foo" rejects with a tsvector syntax error before
@@ -263,7 +262,11 @@ describe.skipIf(skipIfNoTestDb())("promote pending member-authored doc (Phase 9.
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
     );
-    const { id: docId, status, memberAuthorId } = await readJson<{
+    const {
+      id: docId,
+      status,
+      memberAuthorId,
+    } = await readJson<{
       id: string;
       status: string;
       memberAuthorId: string | null;
@@ -385,10 +388,7 @@ describe.skipIf(skipIfNoTestDb())("promote pending member-authored doc (Phase 9.
       .select()
       .from(npAuditEvents)
       .where(
-        and(
-          eq(npAuditEvents.action, "document.promote"),
-          eq(npAuditEvents.targetId, docId),
-        ),
+        and(eq(npAuditEvents.action, "document.promote"), eq(npAuditEvents.targetId, docId)),
       )) as Array<unknown>;
     expect(audits).toHaveLength(1);
   });
@@ -412,10 +412,7 @@ describe.skipIf(skipIfNoTestDb())("promote pending member-authored doc (Phase 9.
       .select()
       .from(npAuditEvents)
       .where(
-        and(
-          eq(npAuditEvents.action, "document.promote"),
-          eq(npAuditEvents.targetId, docId),
-        ),
+        and(eq(npAuditEvents.action, "document.promote"), eq(npAuditEvents.targetId, docId)),
       )) as Array<{
       actorKind: string;
       actorUserId: string | null;

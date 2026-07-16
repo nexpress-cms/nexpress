@@ -30,15 +30,10 @@ import {
  *     Bundling the catch-all into these tests would add a Next
  *     render harness for no extra signal.
  *
- * Why `mergeThemeRequirements` runs per-`it`:
- *   - The base `postsCollection` ships with `kind` options =
- *     `[{ Article }]`. Themes contribute their kind option via
- *     `requires.collections.posts.fields.kind` (docs adds Doc,
- *     portfolio adds Project). `defineConfig` applies the merge at
- *     boot in the real app; the unit-level test harness short-
- *     circuits that. Each `it` re-registers `posts` against a
- *     theme-specific merge so seeding `kind: "doc"` /
- *     `kind: "project"` passes the generated Zod validator.
+ * `registerTestCollections()` installs the same all-theme collection
+ * definition that generated the integration tables. Individual cases only
+ * switch the active theme; narrowing the collection definition to one theme
+ * would make valid columns from the generated union look unknown.
  */
 describe.skipIf(skipIfNoTestDb())("theme front-page rendering", () => {
   beforeAll(async () => {
@@ -70,39 +65,17 @@ describe.skipIf(skipIfNoTestDb())("theme front-page rendering", () => {
   }
 
   /**
-   * Registers `theme` and re-registers the `posts` collection
-   * against a `defaultTheme + theme` merge so the kind options
-   * the theme contributes are visible to the seed-time validator.
-   * Pages / categories / tags stay on the base test config —
-   * none of the front templates reach into them, and the merge
-   * is a no-op for collections the theme doesn't `require`.
+   * Registers `theme`; the collection registry remains on the exact
+   * all-theme definition installed by `registerTestCollections()`.
    */
   async function activateThemeForSeed(themeId: "magazine" | "portfolio" | "docs"): Promise<void> {
-    const { mergeThemeRequirements, registerCollection, registerThemes, resetThemes } =
-      await import("@nexpress/core");
+    const { registerThemes, resetThemes } = await import("@nexpress/core");
     const { defaultTheme } = await import("@nexpress/theme-default");
     const { magazineTheme } = await import("@nexpress/theme-magazine");
     const { portfolioTheme } = await import("@nexpress/theme-portfolio");
     const { docsTheme } = await import("@nexpress/theme-docs");
-    const { postsCollection } = await import("@nexpress/app/collections/posts");
-    const { postsTable } = await import(
-      // eslint-disable-next-line import-x/no-relative-packages
-      "../../../packages/core/src/integration/fixtures.js"
-    );
-
     const theme =
       themeId === "magazine" ? magazineTheme : themeId === "portfolio" ? portfolioTheme : docsTheme;
-
-    const merged = mergeThemeRequirements([postsCollection], [defaultTheme, theme]);
-    const mergedPosts = merged.find((c) => c.slug === "posts");
-    if (!mergedPosts) {
-      throw new Error("mergeThemeRequirements dropped the posts collection");
-    }
-    registerCollection("posts", postsTable, {
-      ...mergedPosts,
-      access: undefined,
-      hooks: undefined,
-    });
 
     resetThemes();
     registerThemes([defaultTheme, theme]);

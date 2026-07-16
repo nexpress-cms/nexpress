@@ -240,6 +240,10 @@ describe("collection document contract", () => {
       });
     }
 
+    expect(npAnalyzeCollectionDocument({ ...hydratedDocument(), slug: "/" }, config)).toMatchObject(
+      { ok: true },
+    );
+
     const circular: Record<string, unknown> = {};
     circular.self = circular;
     expect(npAnalyzeCollectionJsonValue(circular)).toMatchObject({

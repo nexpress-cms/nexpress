@@ -30,6 +30,10 @@ describe("slugify", () => {
     expect(slugify("!!!")).toBe("");
   });
 
+  it("preserves the reserved root-page slug", () => {
+    expect(slugify("/")).toBe("/");
+  });
+
   it("caps output length at 96 characters", () => {
     const long = "a".repeat(200);
     expect(slugify(long).length).toBe(96);

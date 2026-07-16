@@ -13,6 +13,7 @@
 // eslint-disable-next-line import-x/no-relative-packages
 import {
   categoriesTable,
+  discussionsTable,
   pagesTable,
   postsCategoriesTable,
   postsTable,
@@ -28,6 +29,8 @@ import { categoriesCollection } from "../../../../apps/web/src/collections/categ
 // eslint-disable-next-line import-x/no-relative-packages
 import { tagsCollection } from "../../../../apps/web/src/collections/tags.js";
 // eslint-disable-next-line import-x/no-relative-packages
+import { discussionsCollection } from "../../../../apps/web/src/collections/discussions.js";
+// eslint-disable-next-line import-x/no-relative-packages
 import { defaultTheme } from "../../../themes/default/src/index.js";
 // eslint-disable-next-line import-x/no-relative-packages
 import { docsTheme } from "../../../themes/docs/src/index.js";
@@ -39,8 +42,6 @@ import { registerCollection } from "../collections/registry.js";
 import { setI18nConfig } from "../i18n/registry.js";
 import type { NpCollectionConfig } from "../config/types.js";
 import { mergeThemeRequirements } from "../themes/merge-requirements.js";
-
-let registered = false;
 
 const resolvedCollectionConfigs = mergeThemeRequirements(
   [postsCollection, pagesCollection, categoriesCollection, tagsCollection],
@@ -71,8 +72,6 @@ function getResolvedCollectionConfig(slug: string): NpCollectionConfig {
  * locale list from.
  */
 export function registerTestCollections(): void {
-  if (registered) return;
-
   const postsConfig: NpCollectionConfig = {
     ...getResolvedCollectionConfig("posts"),
     access: undefined,
@@ -108,9 +107,21 @@ export function registerTestCollections(): void {
   };
   registerCollection("tags", tagsTable, tagsConfig);
 
-  setI18nConfig({ locales: ["en", "ko"], defaultLocale: "en" });
+  registerCollection("discussions", discussionsTable, {
+    ...discussionsCollection,
+    access: undefined,
+    hooks: undefined,
+  });
 
-  registered = true;
+  setI18nConfig({ locales: ["en", "ko"], defaultLocale: "en" });
 }
 
-export { categoriesTable, pagesTable, postsCategoriesTable, postsTable, postsTagsTable, tagsTable };
+export {
+  categoriesTable,
+  discussionsTable,
+  pagesTable,
+  postsCategoriesTable,
+  postsTable,
+  postsTagsTable,
+  tagsTable,
+};
