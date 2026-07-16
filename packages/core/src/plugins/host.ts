@@ -1,4 +1,13 @@
 import type { NpFieldConfig, NpPluginConfig, NpPluginContext } from "../config/types.js";
+import {
+  npAnalyzePluginDiscoveryResponse,
+  npPluginDiscoveryProvideKeys,
+  npRequirePluginDiscoveryResponse,
+  type NpDiscoveryContractIssue,
+  type NpDiscoveryJsonValue,
+  type NpPluginDiscoveryItem,
+  type NpPluginDiscoveryProvides,
+} from "../discovery-contract/index.js";
 import { getLogger } from "../observability/logger.js";
 import { reportError } from "../observability/error-reporter.js";
 import {
@@ -199,6 +208,7 @@ interface PluginRegistration {
   description?: string;
   capabilities: readonly string[];
   allowedHosts: readonly string[];
+  discovery: NpPluginDiscoveryItem;
   admin?: PluginAdminExtension;
   hooks: Map<string, PluginHookHandler[]>;
   routes: PluginRouteHandler[];
@@ -360,10 +370,13 @@ function insertSortedByPriority(list: PluginHookHandler[], entry: PluginHookHand
  */
 export interface ResolvedPluginLike {
   manifest: {
+    apiVersion?: "1";
     id: string;
     name: string;
     version?: string;
     description?: string;
+    author?: { name: string; email?: string; url?: string };
+    license?: string;
     capabilities: readonly string[];
     allowedHosts?: readonly string[];
     /**
@@ -379,6 +392,15 @@ export interface ResolvedPluginLike {
      * have already registered hooks/actions/blocks.
      */
     requires?: readonly string[];
+    provides?: Partial<Record<(typeof npPluginDiscoveryProvideKeys)[number], readonly string[]>>;
+    agent?: {
+      description?: string;
+      category?: string;
+      tags?: readonly string[];
+      configSchema?: Record<string, unknown>;
+    };
+    usesTokens?: readonly string[];
+    styleSlots?: Readonly<Record<string, string>>;
   };
   hooks?: Record<string, unknown>;
   routes?: ReadonlyArray<{
@@ -661,6 +683,159 @@ function createPluginContext(pluginId: string, registration: PluginRegistration)
   };
 }
 
+function emptyDiscoveryProvides(): NpPluginDiscoveryProvides {
+  return {
+    blocks: [],
+    patterns: [],
+    templates: [],
+    translations: [],
+    collections: [],
+    adminExtensions: [],
+    actions: [],
+    apiRoutes: [],
+    pageRoutes: [],
+    scheduledTasks: [],
+    hooks: [],
+  };
+}
+
+function resolvedDiscoveryItem(plugin: ResolvedPluginLike): NpPluginDiscoveryItem {
+  const { manifest } = plugin;
+  const provides = emptyDiscoveryProvides();
+  for (const key of npPluginDiscoveryProvideKeys) {
+    provides[key] = [...(manifest.provides?.[key] ?? [])].sort();
+  }
+  const agentConfigSchema = manifest.agent?.configSchema;
+  return {
+    apiVersion: "1",
+    legacy: false,
+    id: manifest.id,
+    name: manifest.name,
+    version: manifest.version ?? null,
+    description: manifest.description ?? null,
+    author: manifest.author
+      ? {
+          name: manifest.author.name,
+          ...(manifest.author.url ? { url: manifest.author.url } : {}),
+        }
+      : null,
+    license: manifest.license ?? null,
+    nexpress: manifest.nexpress?.minVersion
+      ? {
+          minVersion: manifest.nexpress.minVersion,
+          maxVersion: manifest.nexpress.maxVersion ?? null,
+        }
+      : null,
+    capabilities: [...manifest.capabilities].sort(),
+    allowedHosts: [...(manifest.allowedHosts ?? [])].sort(),
+    requires: [...(manifest.requires ?? [])].sort(),
+    provides,
+    agent: {
+      description: manifest.agent?.description ?? "",
+      category: manifest.agent?.category ?? null,
+      tags: [...(manifest.agent?.tags ?? [])].sort(),
+      ...(agentConfigSchema
+        ? {
+            configSchema: agentConfigSchema as Record<string, NpDiscoveryJsonValue>,
+          }
+        : {}),
+    },
+    usesTokens: [...(manifest.usesTokens ?? [])].sort(),
+    styleSlots: Object.fromEntries(
+      Object.entries(manifest.styleSlots ?? {}).sort(([a], [b]) => a.localeCompare(b)),
+    ),
+    hooks: [],
+    routes: [],
+    pageRoutes: [],
+    scheduledTasks: [],
+    actions: [],
+  };
+}
+
+function legacyDiscoveryItem(plugin: NpPluginConfig): NpPluginDiscoveryItem {
+  return {
+    apiVersion: null,
+    legacy: true,
+    id: plugin.id,
+    name: plugin.name,
+    version: null,
+    description: null,
+    author: null,
+    license: null,
+    nexpress: null,
+    capabilities: ["hooks:content"],
+    allowedHosts: [],
+    requires: [],
+    provides: emptyDiscoveryProvides(),
+    agent: { description: "", category: null, tags: [] },
+    usesTokens: [],
+    styleSlots: {},
+    hooks: [],
+    routes: [],
+    pageRoutes: [],
+    scheduledTasks: [],
+    actions: [],
+  };
+}
+
+function materializePluginDiscoveryItem(registration: PluginRegistration): NpPluginDiscoveryItem {
+  return {
+    ...registration.discovery,
+    capabilities: [...registration.discovery.capabilities],
+    allowedHosts: [...registration.discovery.allowedHosts],
+    requires: [...registration.discovery.requires],
+    provides: Object.fromEntries(
+      npPluginDiscoveryProvideKeys.map((key) => [key, [...registration.discovery.provides[key]]]),
+    ) as NpPluginDiscoveryProvides,
+    agent: {
+      ...registration.discovery.agent,
+      tags: [...registration.discovery.agent.tags],
+      ...(registration.discovery.agent.configSchema
+        ? { configSchema: { ...registration.discovery.agent.configSchema } }
+        : {}),
+    },
+    usesTokens: [...registration.discovery.usesTokens],
+    styleSlots: { ...registration.discovery.styleSlots },
+    hooks: [...registration.hooks.keys()].sort(),
+    routes: registration.routes
+      .map((route) => ({
+        method: route.method,
+        path: route.path,
+        ...(route.description ? { description: route.description } : {}),
+        auth: route.auth,
+      }))
+      .sort((a, b) => `${a.method} ${a.path}`.localeCompare(`${b.method} ${b.path}`)),
+    pageRoutes: registration.pageRoutes
+      .map((route) => ({
+        pattern: route.pattern,
+        surface: route.surface,
+        locale: route.locale,
+      }))
+      .sort((a, b) => a.pattern.localeCompare(b.pattern)),
+    scheduledTasks: [...registration.schedules.values()]
+      .map((task) => ({
+        id: task.taskId,
+        cron: task.cron,
+        ...(task.description ? { description: task.description } : {}),
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+    actions: [...registration.actionMetadata.values()]
+      .map((action) => ({
+        id: action.id,
+        kind: action.kind,
+        source: action.source,
+        ...(action.description ? { description: action.description } : {}),
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+  };
+}
+
+function assertPluginDiscoveryContract(registration: PluginRegistration): void {
+  registration.discovery = npRequirePluginDiscoveryResponse({
+    items: [materializePluginDiscoveryItem(registration)],
+  }).items[0]!;
+}
+
 async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   const { manifest } = plugin;
 
@@ -708,6 +883,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     description: manifest.description,
     capabilities: [...manifest.capabilities],
     allowedHosts: [...(manifest.allowedHosts ?? [])],
+    discovery: resolvedDiscoveryItem(plugin),
     admin: plugin.admin,
     hooks: new Map(),
     routes: [],
@@ -722,6 +898,10 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     pageRoutes: validatedPageRoutes,
   };
 
+  // Public manifest metadata is data-only. Reject it before setup or any
+  // handler registration can execute; validate again after setup below so
+  // dynamically registered actions are covered by the same inventory.
+  assertPluginDiscoveryContract(registration);
   pluginRegistry.set(manifest.id, registration);
 
   // Definition-level actions are the statically inspectable contract used by
@@ -912,6 +1092,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   }
 
   logPluginAdminActionContract(registration);
+  assertPluginDiscoveryContract(registration);
 }
 
 async function loadLegacyPlugin(plugin: NpPluginConfig): Promise<void> {
@@ -920,6 +1101,7 @@ async function loadLegacyPlugin(plugin: NpPluginConfig): Promise<void> {
     name: plugin.name,
     capabilities: ["hooks:content"],
     allowedHosts: [],
+    discovery: legacyDiscoveryItem(plugin),
     hooks: new Map(),
     routes: [],
     actions: new Map(),
@@ -934,12 +1116,14 @@ async function loadLegacyPlugin(plugin: NpPluginConfig): Promise<void> {
     pageRoutes: [],
   };
 
+  assertPluginDiscoveryContract(registration);
   pluginRegistry.set(plugin.id, registration);
 
   if (plugin.init) {
     const ctx = createPluginContext(plugin.id, registration);
     await plugin.init(ctx);
   }
+  assertPluginDiscoveryContract(registration);
 }
 
 export async function loadPlugins(
@@ -1212,6 +1396,23 @@ export function getPluginRegistration(pluginId: string): PluginRegistration | un
 
 export function getAllPluginIds(): string[] {
   return [...pluginRegistry.keys()];
+}
+
+/** Exact public discovery inventory for every successfully loaded plugin. */
+export function getPluginDiscoveryItems(): NpPluginDiscoveryItem[] {
+  const items = [...pluginRegistry.values()]
+    .map((registration) => materializePluginDiscoveryItem(registration))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  return npRequirePluginDiscoveryResponse({ items }).items;
+}
+
+/** Runtime doctor surface for registrations mutated after their load-time check. */
+export function getPluginDiscoveryDiagnostics(): NpDiscoveryContractIssue[] {
+  const items = [...pluginRegistry.values()].map((registration) =>
+    materializePluginDiscoveryItem(registration),
+  );
+  const result = npAnalyzePluginDiscoveryResponse({ items });
+  return result.ok ? [] : [...result.issues];
 }
 
 export function getPluginAdminExtension(pluginId: string): PluginAdminExtension | undefined {

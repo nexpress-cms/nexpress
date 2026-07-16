@@ -15,6 +15,7 @@ import {
   npValidateNavigationLocation,
   type NpNavItem,
 } from "@nexpress/core/navigation";
+import { npRequireCollectionDiscoveryResponse } from "@nexpress/core/discovery";
 import { npRequireCustomRoutesResponse, type NpCustomRoute } from "@nexpress/core/routes";
 import { CornerDownRight, GripVertical, Loader2, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import {
@@ -1806,19 +1807,10 @@ function extractPages(payload: unknown): PageOption[] {
 }
 
 function extractCollections(payload: unknown): CollectionOption[] {
-  const items =
-    isRecord(payload) && Array.isArray(payload.items)
-      ? payload.items
-      : Array.isArray(payload)
-        ? payload
-        : [];
-  return items.filter(isRecord).flatMap((entry) => {
-    const slug = typeof entry.slug === "string" ? entry.slug : null;
-    if (!slug) return [];
-    const labels = isRecord(entry.labels) ? entry.labels : null;
-    const label = labels && typeof labels.plural === "string" ? labels.plural : slug;
-    return [{ slug, label }];
-  });
+  return npRequireCollectionDiscoveryResponse(payload).items.map((entry) => ({
+    slug: entry.slug,
+    label: entry.labels.plural,
+  }));
 }
 
 function labelFor(location: NavLocation, locations: LocationOption[]): string {

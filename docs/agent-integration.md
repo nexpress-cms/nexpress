@@ -41,6 +41,9 @@ search reindex) are omitted by design.
 
 The spec is the single source of truth for paths, request/response schemas,
 and auth requirements. Agents should fetch it once per session and cache.
+The three public catalogs use closed schemas rather than loose objects; see
+[Public discovery API](./public-discovery.md) for their validators, ownership
+fields, bounds, and privacy boundary.
 
 ---
 
@@ -164,6 +167,15 @@ diagnostics.
 ---
 
 ## 4. Discover plugins
+
+For public, read-only cataloging use `GET /api/meta/plugins`. It returns the
+exact manifest catalog plus the host's actual hook, route, page-route,
+scheduled-task, and typed-action inventories. It omits author email, persisted
+plugin config, handlers, and every other executable value. Validate the body
+with `npRequirePluginDiscoveryResponse` from the client-safe
+`@nexpress/core/discovery` entry point.
+
+The following endpoints are authenticated operator surfaces:
 
 - `GET /api/plugins` — admin-only list of installed plugins with:
   - `id`, `name`, `version`, `description`

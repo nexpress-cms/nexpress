@@ -37,6 +37,7 @@ behavior they describe changes.
 | [plugin-hooks.md](plugin-hooks.md)                     | Typed content, auth, media lifecycle hook payloads                     |
 | [plugin-manifest.md](plugin-manifest.md)               | Manifest field reference (required vs auto-defaulted)                  |
 | [plugin-quickstart.md](plugin-quickstart.md)           | Author your first plugin in ~10 minutes                                |
+| [public-discovery.md](public-discovery.md)             | Exact public block, collection, and plugin discovery wire contracts    |
 | [plugin-reload.md](plugin-reload.md)                   | What `/admin/plugins` "Reload all" picks up (and what needs a restart) |
 | [plugin-render.md](plugin-render.md)                   | Plugin render hooks                                                    |
 | [rate-limiting.md](rate-limiting.md)                   | Proxy adapter, request/result, Redis, and multi-node contract          |

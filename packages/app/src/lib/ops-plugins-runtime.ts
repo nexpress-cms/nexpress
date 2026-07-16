@@ -2,6 +2,7 @@ import { getRegisteredBlocks, getRegisteredPatterns } from "@nexpress/blocks";
 import {
   getAllPluginIds,
   getPluginAdminActionDiagnostics,
+  getPluginDiscoveryDiagnostics,
   getPluginPageRoutes,
   getPluginRegistration,
   getPluginRoutes,
@@ -13,6 +14,7 @@ import {
   type PluginPageRouteEntry,
   type PluginRouteHandler,
 } from "@nexpress/core";
+import type { NpDiscoveryContractIssue } from "@nexpress/core/discovery";
 
 import type { CheckResult } from "../scripts/doctor-readiness";
 import type { OpsPluginEntry, OpsPluginsJson } from "../scripts/ops-plugins-core";
@@ -69,6 +71,7 @@ export function collectRuntimeOpsPluginsStatus(): OpsPluginsJson {
         pluginId,
         issues: getPluginAdminActionDiagnostics(pluginId),
       })),
+      discoveryDiagnostics: getPluginDiscoveryDiagnostics(),
     }),
   });
 }
@@ -138,6 +141,7 @@ function buildRuntimeChecks(args: {
   templatesByPlugin: Map<string, string[]>;
   translationsByPlugin: Map<string, string[]>;
   actionDiagnostics: Array<{ pluginId: string; issues: NpPluginAdminActionIssue[] }>;
+  discoveryDiagnostics: NpDiscoveryContractIssue[];
 }): CheckResult[] {
   const pageRouteConflicts = duplicateCheck(
     "plugins.runtime_page_route_conflict",
@@ -219,10 +223,36 @@ function buildRuntimeChecks(args: {
       label: "Runtime plugin translations",
       detail: `${countGrouped(args.translationsByPlugin).toString()} translated strings`,
     },
+    ...buildRuntimeDiscoveryChecks(args.discoveryDiagnostics, args.pluginIds),
     ...buildRuntimeActionChecks(args.actionDiagnostics),
     ...[pageRouteConflicts, blockConflicts, templateConflicts, translationConflicts].filter(
       (check): check is CheckResult => Boolean(check),
     ),
+  ];
+}
+
+function buildRuntimeDiscoveryChecks(
+  diagnostics: NpDiscoveryContractIssue[],
+  pluginIds: string[],
+): CheckResult[] {
+  if (diagnostics.length === 0) return [];
+  const affected = diagnostics.flatMap((entry) => {
+    const match = entry.path.match(/^\$\.items(?:\[|\.)(\d+)/u);
+    const index = match?.[1] ? Number(match[1]) : Number.NaN;
+    return Number.isSafeInteger(index) && pluginIds[index] ? [pluginIds[index]] : [];
+  });
+  return [
+    {
+      id: "plugins.discovery_contract",
+      state: "error",
+      label: "Runtime plugin discovery contract",
+      detail: diagnostics
+        .slice(0, 10)
+        .map((entry) => `${entry.path}: ${entry.message}`)
+        .join("; "),
+      pluginIds: uniqueStrings(affected),
+      hint: "Fix the plugin manifest metadata or runtime registration so /api/meta/plugins can emit an exact JSON-safe contract, then restart.",
+    },
   ];
 }
 
