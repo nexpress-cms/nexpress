@@ -36,6 +36,12 @@ describe("content helpers", () => {
     });
   });
 
+  it("treats non-document catch-all paths as a page miss before strict querying", async () => {
+    await expect(getPageBySlug("tag/postgres")).resolves.toBeNull();
+    expect(collectionMocks.findDocuments).not.toHaveBeenCalled();
+    expect(collectionMocks.getCollectionConfig).not.toHaveBeenCalled();
+  });
+
   it("delegates post filters to the canonical collection query contract", async () => {
     const result = {
       docs: [],
