@@ -58,6 +58,11 @@
       "import": "./dist/community-contract.js",
       "default": "./dist/community-contract.js"
     },
+    "./content-transfer": {
+      "types": "./dist/content-transfer.d.ts",
+      "import": "./dist/content-transfer.js",
+      "default": "./dist/content-transfer.js"
+    },
     "./discovery": {
       "types": "./dist/discovery.d.ts",
       "import": "./dist/discovery.js",

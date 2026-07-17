@@ -1188,6 +1188,12 @@ export type NpDocumentStatus = "draft" | "scheduled" | "published" | "archived" 
 export interface NpSaveOptions {
   status?: NpDocumentStatus;
   /**
+   * Canonical UUID to use for a create. Content-transfer imports use this to
+   * preserve document identity, keep relationship references intact, and
+   * make a repeated import update the same row. Rejected on updates.
+   */
+  createId?: string;
+  /**
    * Caller-owned Drizzle transaction handle. When provided, all
    * reads + writes in the save flow run against this transaction
    * instead of opening a private one — useful for batching many

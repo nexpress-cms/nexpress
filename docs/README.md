@@ -21,6 +21,7 @@ behavior they describe changes.
 | [caching.md](caching.md)                               | Cache strategy and invalidation                                        |
 | [community.md](community.md)                           | Community / member features (live behavior)                            |
 | [collection-documents.md](collection-documents.md)     | Exact storage, runtime, wire, query, and diagnostics contracts         |
+| [content-transfer.md](content-transfer.md)             | Exact v3 content portability and import preflight                      |
 | [custom-routes.md](custom-routes.md)                   | Code-owned route registry and Admin wire contract                      |
 | [deployment.md](deployment.md)                         | Production deployment notes                                            |
 | [email.md](email.md)                                   | Email adapters and templates                                           |

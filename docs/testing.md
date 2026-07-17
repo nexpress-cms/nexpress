@@ -160,13 +160,13 @@ losing its void wrapper.
 
 **API routes (18+ tests, `apps/web/tests/`):**
 
-| File                                                    | Covers                                                                                                            |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `health.integration.test.ts` (1)                        | `/api/health` smoke (no DB)                                                                                       |
-| `auth.integration.test.ts` (3)                          | `/api/auth/me` with valid/missing/tampered session cookie                                                         |
-| `collections.integration.test.ts`                       | Collection CRUD plus exact revision/autosave wire contracts, partial validation, concurrency, and OpenAPI schemas |
-| `import-export.integration.test.ts` (7)                 | export full / partial / unknown-slug / non-admin; import dry-run / partial filter / unknown-slug                  |
-| `translation-interchange-admin.integration.test.ts` (4) | Admin XLIFF/PO export, preview/apply, capability errors, and bounded upload rejection                             |
+| File                                                    | Covers                                                                                                                                                                                              |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `health.integration.test.ts` (1)                        | `/api/health` smoke (no DB)                                                                                                                                                                         |
+| `auth.integration.test.ts` (3)                          | `/api/auth/me` with valid/missing/tampered session cookie                                                                                                                                           |
+| `collections.integration.test.ts`                       | Collection CRUD plus exact revision/autosave wire contracts, partial validation, concurrency, and OpenAPI schemas                                                                                   |
+| `import-export.integration.test.ts` (18)                | exact v3 full/partial export, auth/query failures, definition-owned media, dry-run/projection, UUID idempotency, relationship ordering, atomic rollback, plugin cache, malformed state, and OpenAPI |
+| `translation-interchange-admin.integration.test.ts` (4) | Admin XLIFF/PO export, preview/apply, capability errors, and bounded upload rejection                                                                                                               |
 
 The unit suites in `@nexpress/core`, `@nexpress/next`, and `@nexpress/app`
 also verify the exact bounded API error envelope, known code/status mapping,
