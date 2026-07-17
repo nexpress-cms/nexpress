@@ -71,7 +71,14 @@ export default tseslint.config(
   },
 
   {
-    files: ["packages/admin/**/*.{ts,tsx}", "packages/editor/**/*.{ts,tsx}", "packages/blocks/**/*.{ts,tsx}", "packages/theme/**/*.{ts,tsx}", "packages/auth-pages/**/*.{ts,tsx}", "apps/web/**/*.{ts,tsx}"],
+    files: [
+      "packages/admin/**/*.{ts,tsx}",
+      "packages/editor/**/*.{ts,tsx}",
+      "packages/blocks/**/*.{ts,tsx}",
+      "packages/theme/**/*.{ts,tsx}",
+      "packages/auth-pages/**/*.{ts,tsx}",
+      "apps/web/**/*.{ts,tsx}",
+    ],
     plugins: {
       "react-hooks": reactHooks,
     },
@@ -106,6 +113,17 @@ export default tseslint.config(
     rules: {
       "import-x/no-cycle": "error",
       "import-x/no-self-import": "error",
+    },
+  },
+
+  {
+    files: ["apps/web/src/nexpress.config.ts"],
+    rules: {
+      // This composition root intentionally imports every bundled plugin and
+      // theme. Walking those package graphs from this one file makes
+      // import-x/no-cycle consume unbounded memory; each package remains
+      // cycle-checked by its own lint task.
+      "import-x/no-cycle": "off",
     },
   },
 
