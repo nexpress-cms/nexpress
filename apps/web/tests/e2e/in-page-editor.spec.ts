@@ -46,8 +46,9 @@ test.describe("in-page block editor", () => {
 
     await quickInsert.fill("/hero");
     await expect(quickInsert).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByRole("listbox")).toBeVisible();
-    await quickInsert.press("Enter");
+    const heroOption = page.getByRole("option", { name: /^Hero\b/ });
+    await expect(heroOption).toBeVisible();
+    await heroOption.click();
 
     await expect(page.getByText("2 blocks")).toBeVisible();
 
