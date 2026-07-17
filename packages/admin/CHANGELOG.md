@@ -1,5 +1,13 @@
 # @nexpress/admin
 
+## 0.4.1
+
+### Patch Changes
+
+- @nexpress/blocks@0.4.1
+- @nexpress/core@0.4.1
+- @nexpress/editor@0.4.1
+
 ## 0.4.0
 
 ### Patch Changes

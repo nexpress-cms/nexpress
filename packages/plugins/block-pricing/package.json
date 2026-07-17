@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/plugin-block-pricing",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Pricing-table block. Exercises the propsSchema 'array' field type for nested tier definitions.",
   "license": "MIT",
   "author": "Nexpress",

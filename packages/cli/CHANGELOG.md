@@ -1,5 +1,11 @@
 # create-nexpress
 
+## 0.1.36
+
+### Patch Changes
+
+- 03d0c2c: Restore installable external package manifests for the translation adapters after their initial 0.4.0 registry bootstrap retained monorepo-only `workspace:*` dependency ranges.
+
 ## 0.1.35
 
 ### Patch Changes
