@@ -77,6 +77,15 @@ clicking, ~25 entries for this monorepo:
      the first CI publish, then add TP configs, then revoke
      the token. ("Bypass 2FA" warning is acceptable for a
      token that lives only minutes.)
+
+   > **Do not substitute `npm publish` for `pnpm publish`.** Source
+   > manifests intentionally use pnpm's `workspace:*` protocol. A direct
+   > npm publish from a package directory uploads those literals instead of
+   > replacing them with the current fixed-group version, leaving the package
+   > impossible to install outside this monorepo. Before a first publish,
+   > `pnpm pack --dry-run --json` must show the expected package contents; the
+   > actual publish must still run through `pnpm publish`.
+
 2. **Go to the package settings page on npmjs.com:**
    `https://www.npmjs.com/package/@nexpress/<name>/access`
 3. **"Trusted Publishers" tab → Add a publisher.**
