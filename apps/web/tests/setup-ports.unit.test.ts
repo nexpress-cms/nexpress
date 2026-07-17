@@ -1,10 +1,7 @@
 import { createServer, type Server } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  findFreePort,
-  isPortFree,
-} from "@nexpress/app/scripts/setup-server-ports";
+import { findFreePort, isPortFree } from "@nexpress/app/scripts/setup-server-ports";
 
 /**
  * Pick a port that the OS confirms is currently bindable, then close
@@ -19,8 +16,7 @@ async function reserveAndRelease(): Promise<number> {
     server.once("error", reject);
     server.once("listening", () => {
       const addr = server.address();
-      const port =
-        addr && typeof addr === "object" ? addr.port : Number.NaN;
+      const port = addr && typeof addr === "object" ? addr.port : Number.NaN;
       server.close(() => {
         if (Number.isInteger(port)) resolve(port);
         else reject(new Error("Couldn't read OS-assigned port"));

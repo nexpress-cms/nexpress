@@ -11,9 +11,7 @@ export const docsSettingsSchema = z.object({
   version: z
     .string()
     .default("v1")
-    .describe(
-      "Currently-displayed version label, shown in the masthead. Update on each release.",
-    ),
+    .describe("Currently-displayed version label, shown in the masthead. Update on each release."),
   githubRepo: z
     .string()
     .url()

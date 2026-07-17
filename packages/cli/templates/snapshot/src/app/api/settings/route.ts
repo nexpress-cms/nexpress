@@ -1,1 +1,1 @@
-export { GET,PUT } from "@nexpress/app/api/settings/route";
+export { GET, PUT } from "@nexpress/app/api/settings/route";

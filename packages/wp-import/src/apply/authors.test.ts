@@ -24,26 +24,62 @@ describe("resolveAuthors", () => {
   it("resolves each unique author login once and skips attachments", async () => {
     const bundle = makeBundle({
       authors: [
-        { wpId: 1, login: "alice", email: "alice@example.com", displayName: "Alice", description: null },
+        {
+          wpId: 1,
+          login: "alice",
+          email: "alice@example.com",
+          displayName: "Alice",
+          description: null,
+        },
       ],
       records: [
         {
-          wpId: 1, wpType: "post", status: "publish", slug: "p1", title: "P1",
-          excerpt: null, rawContent: "", wpAuthorLogin: "alice",
-          publishedAt: "2025-04-01 12:00:00", updatedAt: "2025-04-01 12:00:00",
-          terms: [], meta: {}, mediaRefs: [], comments: [],
+          wpId: 1,
+          wpType: "post",
+          status: "publish",
+          slug: "p1",
+          title: "P1",
+          excerpt: null,
+          rawContent: "",
+          wpAuthorLogin: "alice",
+          publishedAt: "2025-04-01 12:00:00",
+          updatedAt: "2025-04-01 12:00:00",
+          terms: [],
+          meta: {},
+          mediaRefs: [],
+          comments: [],
         },
         {
-          wpId: 2, wpType: "post", status: "publish", slug: "p2", title: "P2",
-          excerpt: null, rawContent: "", wpAuthorLogin: "alice",
-          publishedAt: "2025-04-01 12:00:00", updatedAt: "2025-04-01 12:00:00",
-          terms: [], meta: {}, mediaRefs: [], comments: [],
+          wpId: 2,
+          wpType: "post",
+          status: "publish",
+          slug: "p2",
+          title: "P2",
+          excerpt: null,
+          rawContent: "",
+          wpAuthorLogin: "alice",
+          publishedAt: "2025-04-01 12:00:00",
+          updatedAt: "2025-04-01 12:00:00",
+          terms: [],
+          meta: {},
+          mediaRefs: [],
+          comments: [],
         },
         {
-          wpId: 99, wpType: "attachment", status: "publish", slug: "a", title: "A",
-          excerpt: null, rawContent: "", wpAuthorLogin: "should-be-ignored",
-          publishedAt: "2025-04-01 12:00:00", updatedAt: "2025-04-01 12:00:00",
-          terms: [], meta: {}, mediaRefs: [], comments: [],
+          wpId: 99,
+          wpType: "attachment",
+          status: "publish",
+          slug: "a",
+          title: "A",
+          excerpt: null,
+          rawContent: "",
+          wpAuthorLogin: "should-be-ignored",
+          publishedAt: "2025-04-01 12:00:00",
+          updatedAt: "2025-04-01 12:00:00",
+          terms: [],
+          meta: {},
+          mediaRefs: [],
+          comments: [],
         },
       ],
     });
@@ -62,14 +98,36 @@ describe("resolveAuthors", () => {
     const bundle = makeBundle({
       records: [
         {
-          wpId: 1, wpType: "post", status: "publish", slug: "p1", title: "P1",
-          excerpt: null, rawContent: "", wpAuthorLogin: "skipped",
-          publishedAt: "", updatedAt: "", terms: [], meta: {}, mediaRefs: [], comments: [],
+          wpId: 1,
+          wpType: "post",
+          status: "publish",
+          slug: "p1",
+          title: "P1",
+          excerpt: null,
+          rawContent: "",
+          wpAuthorLogin: "skipped",
+          publishedAt: "",
+          updatedAt: "",
+          terms: [],
+          meta: {},
+          mediaRefs: [],
+          comments: [],
         },
         {
-          wpId: 2, wpType: "post", status: "publish", slug: "p2", title: "P2",
-          excerpt: null, rawContent: "", wpAuthorLogin: "boom",
-          publishedAt: "", updatedAt: "", terms: [], meta: {}, mediaRefs: [], comments: [],
+          wpId: 2,
+          wpType: "post",
+          status: "publish",
+          slug: "p2",
+          title: "P2",
+          excerpt: null,
+          rawContent: "",
+          wpAuthorLogin: "boom",
+          publishedAt: "",
+          updatedAt: "",
+          terms: [],
+          meta: {},
+          mediaRefs: [],
+          comments: [],
         },
       ],
     });
@@ -90,17 +148,30 @@ describe("resolveAuthors", () => {
       ],
       records: [
         {
-          wpId: 1, wpType: "post", status: "publish", slug: "p1", title: "P1",
-          excerpt: null, rawContent: "", wpAuthorLogin: "alice",
-          publishedAt: "", updatedAt: "", terms: [], meta: {}, mediaRefs: [], comments: [],
+          wpId: 1,
+          wpType: "post",
+          status: "publish",
+          slug: "p1",
+          title: "P1",
+          excerpt: null,
+          rawContent: "",
+          wpAuthorLogin: "alice",
+          publishedAt: "",
+          updatedAt: "",
+          terms: [],
+          meta: {},
+          mediaRefs: [],
+          comments: [],
         },
       ],
     });
     const captured: { wpAuthor?: { email?: string } } = {};
-    const resolveAuthor = vi.fn((input: { wpAuthorLogin: string; wpAuthor: { email: string } | undefined }) => {
-      captured.wpAuthor = input.wpAuthor;
-      return Promise.resolve({ id: "u1" });
-    });
+    const resolveAuthor = vi.fn(
+      (input: { wpAuthorLogin: string; wpAuthor: { email: string } | undefined }) => {
+        captured.wpAuthor = input.wpAuthor;
+        return Promise.resolve({ id: "u1" });
+      },
+    );
     await resolveAuthors(bundle, { resolveAuthor });
     expect(captured.wpAuthor?.email).toBe("a@x.com");
   });

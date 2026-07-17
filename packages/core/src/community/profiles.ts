@@ -102,10 +102,7 @@ export async function getMemberProfile(
   };
 }
 
-async function getMemberAvatarUrl(
-  mediaId: string,
-  variant: string,
-): Promise<string | null> {
+async function getMemberAvatarUrl(mediaId: string, variant: string): Promise<string | null> {
   try {
     return await getMediaUrl(mediaId, { variant });
   } catch {
@@ -170,9 +167,7 @@ export async function getMemberProfiles(
   const variant = options.avatarVariant ?? "thumbnail";
   await Promise.all(
     rows.map(async (row) => {
-      const avatarUrl = row.avatarId
-        ? await getMemberAvatarUrl(row.avatarId, variant)
-        : null;
+      const avatarUrl = row.avatarId ? await getMemberAvatarUrl(row.avatarId, variant) : null;
       result.set(row.id, {
         id: row.id,
         handle: row.handle,

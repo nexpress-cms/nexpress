@@ -38,7 +38,5 @@
   // `tsc --noEmit -p tsconfig.templates.json` exits 0 (rather than
   // erroring on an empty graph) — the `_typecheck/` stubs are still
   // useful when re-introducing on-disk script templates in future.
-  "include": [
-    "templates/_typecheck/**/*.ts"
-  ]
+  "include": ["templates/_typecheck/**/*.ts"]
 }

@@ -61,7 +61,9 @@ export function SocialLinks() {
             href={link.href}
             aria-label={link.label}
             rel={link.label === "Mastodon" ? "me noopener noreferrer" : "noopener noreferrer"}
-            target={link.href.startsWith("mailto:") || link.href.startsWith("/") ? undefined : "_blank"}
+            target={
+              link.href.startsWith("mailto:") || link.href.startsWith("/") ? undefined : "_blank"
+            }
           >
             <link.Icon />
           </a>

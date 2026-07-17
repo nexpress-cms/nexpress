@@ -27,9 +27,7 @@ export interface CreateDrizzleConfigOptions {
   overrides?: Partial<Config>;
 }
 
-export function createDrizzleConfig(
-  options: CreateDrizzleConfigOptions = {},
-): Config {
+export function createDrizzleConfig(options: CreateDrizzleConfigOptions = {}): Config {
   const envFile = resolve(process.cwd(), options.envPath ?? ".env");
   loadEnv({ path: envFile });
 
@@ -41,10 +39,7 @@ export function createDrizzleConfig(
   }
 
   return defineConfig({
-    schema: [
-      "./node_modules/@nexpress/core/dist/db-schema.js",
-      "./src/db/generated/*.ts",
-    ],
+    schema: ["./node_modules/@nexpress/core/dist/db-schema.js", "./src/db/generated/*.ts"],
     out: "./drizzle",
     dialect: "postgresql",
     dbCredentials: { url: connectionString },

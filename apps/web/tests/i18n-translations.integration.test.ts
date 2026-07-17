@@ -67,9 +67,7 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
   });
 
   it("createTranslation copies the source content into a new locale and links via translationGroupId", async () => {
-    const { createTranslation, findTranslations, saveDocument } = await import(
-      "@nexpress/core"
-    );
+    const { createTranslation, findTranslations, saveDocument } = await import("@nexpress/core");
     const en = await saveDocument(
       "pages",
       null,
@@ -78,12 +76,7 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
       { status: "published" },
     );
     const enId = en.doc.id as string;
-    const created = await createTranslation(
-      "pages",
-      enId,
-      "ko",
-      actor(),
-    );
+    const created = await createTranslation("pages", enId, "ko", actor());
     expect(typeof created.id).toBe("string");
 
     const rows = await findTranslations("pages", enId);
@@ -98,8 +91,7 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
   });
 
   it("createTranslation rejects duplicates for the same target locale", async () => {
-    const { createTranslation, saveDocument, NpValidationError } =
-      await import("@nexpress/core");
+    const { createTranslation, saveDocument, NpValidationError } = await import("@nexpress/core");
     const en = await saveDocument(
       "pages",
       null,
@@ -114,8 +106,7 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
   });
 
   it("createTranslation rejects unknown locales", async () => {
-    const { createTranslation, saveDocument, NpValidationError } =
-      await import("@nexpress/core");
+    const { createTranslation, saveDocument, NpValidationError } = await import("@nexpress/core");
     const en = await saveDocument(
       "pages",
       null,
@@ -124,18 +115,12 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
       { status: "published" },
     );
     await expect(
-      createTranslation(
-        "pages",
-        en.doc.id as string,
-        "fr",
-        actor(),
-      ),
+      createTranslation("pages", en.doc.id as string, "fr", actor()),
     ).rejects.toBeInstanceOf(NpValidationError);
   });
 
   it("createTranslation refuses to create a translation in the source's own locale", async () => {
-    const { createTranslation, saveDocument, NpValidationError } =
-      await import("@nexpress/core");
+    const { createTranslation, saveDocument, NpValidationError } = await import("@nexpress/core");
     const en = await saveDocument(
       "pages",
       null,
@@ -144,19 +129,12 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
       { status: "published" },
     );
     await expect(
-      createTranslation(
-        "pages",
-        en.doc.id as string,
-        "en",
-        actor(),
-      ),
+      createTranslation("pages", en.doc.id as string, "en", actor()),
     ).rejects.toBeInstanceOf(NpValidationError);
   });
 
   it("findTranslations rejects non-i18n collections", async () => {
-    const { findTranslations, NpValidationError } = await import(
-      "@nexpress/core"
-    );
+    const { findTranslations, NpValidationError } = await import("@nexpress/core");
     await expect(
       findTranslations("posts", "00000000-0000-0000-0000-000000000000"),
     ).rejects.toBeInstanceOf(NpValidationError);
@@ -180,20 +158,16 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
         title: "API test",
         seoDescription: "...",
         locale: "ko",
-        translationGroupId: (en.doc as { translationGroupId: string })
-          .translationGroupId,
+        translationGroupId: (en.doc as { translationGroupId: string }).translationGroupId,
       },
       actor(),
       { status: "published" },
     );
 
-    const { GET } = await import(
-      "@/app/api/admin/collections/[slug]/[id]/translations/route"
-    );
-    const req = buildRequest(
-      `/api/admin/collections/pages/${enId}/translations`,
-      { session: editor },
-    );
+    const { GET } = await import("@/app/api/admin/collections/[slug]/[id]/translations/route");
+    const req = buildRequest(`/api/admin/collections/pages/${enId}/translations`, {
+      session: editor,
+    });
     const res = await GET(req, {
       params: Promise.resolve({ slug: "pages", id: enId }),
     });
@@ -216,17 +190,12 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
     );
     const enId = en.doc.id as string;
 
-    const { POST } = await import(
-      "@/app/api/admin/collections/[slug]/[id]/translations/route"
-    );
-    const req = buildRequest(
-      `/api/admin/collections/pages/${enId}/translations`,
-      {
-        session: admin,
-        method: "POST",
-        body: { targetLocale: "ko" },
-      },
-    );
+    const { POST } = await import("@/app/api/admin/collections/[slug]/[id]/translations/route");
+    const req = buildRequest(`/api/admin/collections/pages/${enId}/translations`, {
+      session: admin,
+      method: "POST",
+      body: { targetLocale: "ko" },
+    });
     const res = await POST(req, {
       params: Promise.resolve({ slug: "pages", id: enId }),
     });
@@ -246,17 +215,12 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
       { status: "published" },
     );
     const enId = en.doc.id as string;
-    const { POST } = await import(
-      "@/app/api/admin/collections/[slug]/[id]/translations/route"
-    );
-    const req = buildRequest(
-      `/api/admin/collections/pages/${enId}/translations`,
-      {
-        session: editor,
-        method: "POST",
-        body: { targetLocale: "ko" },
-      },
-    );
+    const { POST } = await import("@/app/api/admin/collections/[slug]/[id]/translations/route");
+    const req = buildRequest(`/api/admin/collections/pages/${enId}/translations`, {
+      session: editor,
+      method: "POST",
+      body: { targetLocale: "ko" },
+    });
     const res = await POST(req, {
       params: Promise.resolve({ slug: "pages", id: enId }),
     });

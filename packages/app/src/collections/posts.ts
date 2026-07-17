@@ -23,11 +23,17 @@ export const postsCollection = defineCollection({
     // the merge-requirements step unions them in.
     groupMeta: {
       Publish: { icon: "Calendar", description: "Status, kind, and publish date." },
-      Lead: { icon: "Layout", description: "Excerpt + cover image used in cards and social previews." },
+      Lead: {
+        icon: "Layout",
+        description: "Excerpt + cover image used in cards and social previews.",
+      },
       Author: { icon: "User", description: "Byline + import-preserved attribution." },
       Taxonomy: { icon: "Tag", description: "Categories + tags." },
       SEO: { icon: "Search", description: "Search-result preview + social card meta." },
-      Hierarchy: { icon: "FolderTree", description: "Parent post + sort order for hierarchical kinds." },
+      Hierarchy: {
+        icon: "FolderTree",
+        description: "Parent post + sort order for hierarchical kinds.",
+      },
     },
   },
   versions: { drafts: { autosave: true }, max: 20 },
@@ -207,7 +213,8 @@ export const postsCollection = defineCollection({
       admin: {
         position: "sidebar",
         group: "SEO",
-        description: "Overrides the page's <title> tag. ~60 chars before search-result truncation. Falls back to the post title.",
+        description:
+          "Overrides the page's <title> tag. ~60 chars before search-result truncation. Falls back to the post title.",
       },
     },
     {
@@ -220,7 +227,8 @@ export const postsCollection = defineCollection({
       admin: {
         position: "sidebar",
         group: "SEO",
-        description: "Meta description / social card description. ~155 chars before search-result truncation. Falls back to the post excerpt.",
+        description:
+          "Meta description / social card description. ~155 chars before search-result truncation. Falls back to the post excerpt.",
       },
     },
     {

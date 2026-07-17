@@ -26,9 +26,9 @@ function makeFetch(responses: Map<string, Response | (() => Response)>) {
 
 describe("createGitHubOAuthProvider (factory guards)", () => {
   it("requires clientId and clientSecret", () => {
-    expect(() =>
-      createGitHubOAuthProvider({ clientId: "", clientSecret: "" }),
-    ).toThrow(/clientId and clientSecret/);
+    expect(() => createGitHubOAuthProvider({ clientId: "", clientSecret: "" })).toThrow(
+      /clientId and clientSecret/,
+    );
   });
 
   it("returns an OAuthProvider with id='github'", () => {
@@ -115,10 +115,7 @@ describe("fetchGitHubProfile", () => {
           headers: { "content-type": "application/json" },
         }),
       ],
-      [
-        "https://api.github.com/user",
-        jsonResponse({ id: 9, login: "x", name: null, email: null }),
-      ],
+      ["https://api.github.com/user", jsonResponse({ id: 9, login: "x", name: null, email: null })],
     ]);
     const { fetch: stubFetch } = makeFetch(responses);
     const profile = await fetchGitHubProfile("tok", stubFetch);
@@ -136,10 +133,7 @@ describe("fetchGitHubProfile", () => {
 
   it("throws when /user payload is missing id (contract violation)", async () => {
     const responses = new Map<string, Response | (() => Response)>([
-      [
-        "https://api.github.com/user",
-        jsonResponse({ login: "no-id", email: "x@example.com" }),
-      ],
+      ["https://api.github.com/user", jsonResponse({ login: "no-id", email: "x@example.com" })],
     ]);
     const { fetch: stubFetch } = makeFetch(responses);
     await expect(fetchGitHubProfile("tok", stubFetch)).rejects.toThrow(/missing id/);

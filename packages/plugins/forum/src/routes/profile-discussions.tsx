@@ -17,9 +17,7 @@ const PAGE_SIZE = 20;
 // handle on every request.
 const cachedGetMemberProfile = cache(getMemberProfile);
 
-export async function profileDiscussionsMetadata(
-  ctx: NpRouteRenderProps,
-): Promise<Metadata> {
+export async function profileDiscussionsMetadata(ctx: NpRouteRenderProps): Promise<Metadata> {
   const handle = typeof ctx.params.handle === "string" ? ctx.params.handle : "";
   if (!handle) return {};
   const profile = await cachedGetMemberProfile(handle);
@@ -43,11 +41,7 @@ export default async function ProfileDiscussionsRoute({
 
   const sp = searchParams ?? {};
   const rawPage =
-    typeof sp.page === "string"
-      ? sp.page
-      : Array.isArray(sp.page)
-        ? sp.page[0]
-        : undefined;
+    typeof sp.page === "string" ? sp.page : Array.isArray(sp.page) ? sp.page[0] : undefined;
   const pageNum = Math.max(1, Number.parseInt(rawPage ?? "1", 10) || 1);
 
   // Public profile view shows only published threads — pending /
@@ -85,8 +79,7 @@ export default async function ProfileDiscussionsRoute({
         ) : null}
         <div style={{ flex: 1 }}>
           <h1 style={{ margin: 0, fontSize: "1.25rem" }}>
-            Discussions by{" "}
-            <Link href={`/u/${profile.handle}`}>@{profile.handle}</Link>
+            Discussions by <Link href={`/u/${profile.handle}`}>@{profile.handle}</Link>
           </h1>
           <p style={{ margin: 0, color: "#64748b", fontSize: "0.875rem" }}>
             {result.totalDocs} {result.totalDocs === 1 ? "thread" : "threads"}

@@ -645,7 +645,9 @@ describe.skipIf(skipIfNoTestDb())("translation interchange round-trip", () => {
       locale: "ko",
     });
     const ko = await getDocumentById("pages", (koRows.docs[0] as { id: string }).id, actor());
-    const root = (ko!.blocks as { document: { root: { children: Array<Record<string, unknown>> } } }).document.root;
+    const root = (
+      ko!.blocks as { document: { root: { children: Array<Record<string, unknown>> } } }
+    ).document.root;
     const paragraph = root.children[0] as { children: Array<Record<string, unknown>> };
     expect(paragraph.children[0]).toEqual(expect.objectContaining({ text: "안녕 ", format: 1 }));
     const link = paragraph.children[1] as { url: string; children: Array<{ text: string }> };
@@ -798,7 +800,9 @@ describe.skipIf(skipIfNoTestDb())("translation interchange round-trip", () => {
       );
       const rich = children.find((block) => block.id === "rich-translation")!;
       const content = (
-        rich.props as { content: { document: { root: { children: Array<Record<string, unknown>> } } } }
+        rich.props as {
+          content: { document: { root: { children: Array<Record<string, unknown>> } } };
+        }
       ).content;
       const firstParagraph = content.document.root.children[0] as {
         children: Array<Record<string, unknown>>;
@@ -907,7 +911,9 @@ describe.skipIf(skipIfNoTestDb())("translation interchange round-trip", () => {
       locale: "ko",
     });
     const target = await getDocumentById("pages", (rows.docs[0] as { id: string }).id, actor());
-    const root = (target!.blocks as { document: { root: { children: Array<Record<string, unknown>> } } }).document.root;
+    const root = (
+      target!.blocks as { document: { root: { children: Array<Record<string, unknown>> } } }
+    ).document.root;
     const paragraph = root.children[0] as { children: Array<Record<string, unknown>> };
     expect(paragraph.children[0]).toEqual(expect.objectContaining({ text: "안녕 ", format: 1 }));
     const link = paragraph.children[1] as { url: string; children: Array<{ text: string }> };
@@ -968,7 +974,9 @@ describe.skipIf(skipIfNoTestDb())("translation interchange round-trip", () => {
       );
       const rich = children.find((block) => block.id === "rich-translation")!;
       const content = (
-        rich.props as { content: { document: { root: { children: Array<Record<string, unknown>> } } } }
+        rich.props as {
+          content: { document: { root: { children: Array<Record<string, unknown>> } } };
+        }
       ).content;
       const paragraph = content.document.root.children[0] as {
         children: Array<Record<string, unknown>>;

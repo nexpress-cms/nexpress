@@ -137,10 +137,7 @@ export function PostCard({
   const reading = readingTimeLabel(doc.readingTime);
   const author = authorName(doc.author);
   const title = doc.title ?? "Untitled";
-  const articleClass =
-    variant === "feature"
-      ? "np-post-card np-post-card-feature"
-      : "np-post-card";
+  const articleClass = variant === "feature" ? "np-post-card np-post-card-feature" : "np-post-card";
   const coverClass = [
     "np-post-card-cover",
     !cover && coverGradient ? `np-cover-grad-${coverGradient.toString()}` : "",
@@ -182,9 +179,7 @@ export function PostCard({
             </ul>
           ) : null}
           <h3 className="np-post-card-title">{title}</h3>
-          {doc.excerpt ? (
-            <p className="np-post-card-excerpt">{doc.excerpt}</p>
-          ) : null}
+          {doc.excerpt ? <p className="np-post-card-excerpt">{doc.excerpt}</p> : null}
           <div className="np-post-card-meta">
             {author ? (
               <span className="np-post-card-meta-author">
@@ -195,9 +190,7 @@ export function PostCard({
             {author && (date || reading) ? (
               <span className="np-post-card-meta-sep" aria-hidden="true" />
             ) : null}
-            {date && !reading ? (
-              <time dateTime={String(doc.publishedAt)}>{date}</time>
-            ) : null}
+            {date && !reading ? <time dateTime={String(doc.publishedAt)}>{date}</time> : null}
             {reading ? <span>{reading}</span> : null}
           </div>
         </div>

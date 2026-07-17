@@ -17,10 +17,7 @@ import type { NpBlockDefinition, NpPattern } from "./types.js";
 
 const StubRender = (() => null) as unknown as NpBlockDefinition["render"];
 
-const stub = (
-  type: string,
-  source: NpBlockDefinition["source"],
-): NpBlockDefinition => ({
+const stub = (type: string, source: NpBlockDefinition["source"]): NpBlockDefinition => ({
   type,
   label: type,
   iconKind: "lucide",

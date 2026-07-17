@@ -57,8 +57,8 @@ export function DocsMembersNotFound(): React.ReactElement {
           lineHeight: 1.6,
         }}
       >
-        Verification and password-reset links are single-use and expire after a
-        short window. Open the sign-in page and request a fresh one.
+        Verification and password-reset links are single-use and expire after a short window. Open
+        the sign-in page and request a fresh one.
       </p>
       <p style={{ margin: "1.75rem 0 0" }}>
         <a

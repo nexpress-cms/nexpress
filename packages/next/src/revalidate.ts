@@ -175,11 +175,7 @@ function encodePathSegment(value: string): string | null {
   }
 }
 
-function substitute(
-  template: string,
-  ctx: SubstituteContext,
-  kind: "path" | "tag",
-): string | null {
+function substitute(template: string, ctx: SubstituteContext, kind: "path" | "tag"): string | null {
   let out = template;
   if (out.includes("{slug}")) {
     if (!ctx.documentSlug) return null;

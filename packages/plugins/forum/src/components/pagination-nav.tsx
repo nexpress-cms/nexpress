@@ -32,19 +32,11 @@ export function PaginationNav({
   if (totalPages <= 1) return null;
   return (
     <nav className={className ?? "np-pagination-nav"} aria-label="Pagination">
-      {hasPrevPage ? (
-        <Link href={hrefForPage(page - 1)}>← Previous</Link>
-      ) : (
-        <span />
-      )}
+      {hasPrevPage ? <Link href={hrefForPage(page - 1)}>← Previous</Link> : <span />}
       <span>
         Page {page} of {totalPages}
       </span>
-      {hasNextPage ? (
-        <Link href={hrefForPage(page + 1)}>Next →</Link>
-      ) : (
-        <span />
-      )}
+      {hasNextPage ? <Link href={hrefForPage(page + 1)}>Next →</Link> : <span />}
     </nav>
   );
 }

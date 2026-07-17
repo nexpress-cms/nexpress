@@ -71,9 +71,11 @@ export function SubscribeForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, listId }),
       });
-      const payload = (await response.json().catch(() => null)) as
-        | { ok?: boolean; message?: string; error?: string }
-        | null;
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        message?: string;
+        error?: string;
+      } | null;
       if (!response.ok || payload?.ok === false) {
         setStatus({
           kind: "error",
@@ -140,9 +142,7 @@ export function SubscribeForm({
         </button>
       </div>
       {status.kind === "error" ? (
-        <p style={{ margin: 0, fontSize: "0.85rem", color: "#b91c1c" }}>
-          {status.message}
-        </p>
+        <p style={{ margin: 0, fontSize: "0.85rem", color: "#b91c1c" }}>{status.message}</p>
       ) : null}
     </form>
   );

@@ -4,10 +4,7 @@ import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 import { createEditorReducer, createBlockInstance } from "./reducer.js";
 
 // Compact builders.
-const def = (
-  type: string,
-  overrides: Partial<NpBlockMetadata> = {},
-): NpBlockMetadata => ({
+const def = (type: string, overrides: Partial<NpBlockMetadata> = {}): NpBlockMetadata => ({
   type,
   label: type,
   defaultProps: {},
@@ -120,11 +117,7 @@ describe("reducer — ADD", () => {
   });
 
   it("rejects when parent is at maxChildren", () => {
-    const filled = [
-      block("a", "paragraph"),
-      block("b", "paragraph"),
-      block("c", "paragraph"),
-    ];
+    const filled = [block("a", "paragraph"), block("b", "paragraph"), block("c", "paragraph")];
     const state = [block("grid", "grid", filled)];
     const out = reducer(state, {
       type: "ADD",
@@ -169,9 +162,7 @@ describe("reducer — INSERT_BEFORE / INSERT_AFTER", () => {
   });
 
   it("rejects insertion when parent's contract excludes the type", () => {
-    const state = [
-      block("tiers", "pricing-tiers", [block("t1", "pricing-tier")]),
-    ];
+    const state = [block("tiers", "pricing-tiers", [block("t1", "pricing-tier")])];
     const out = reducer(state, {
       type: "INSERT_AFTER",
       targetId: "t1",
@@ -203,11 +194,7 @@ describe("reducer — DUPLICATE (contract gate, #523)", () => {
   it("rejects duplication that would push parent past maxChildren", () => {
     // grid maxChildren=3; already at 3, duplicating any child would
     // push to 4. Must no-op.
-    const filled = [
-      block("a", "paragraph"),
-      block("b", "paragraph"),
-      block("c", "paragraph"),
-    ];
+    const filled = [block("a", "paragraph"), block("b", "paragraph"), block("c", "paragraph")];
     const state = [block("grid", "grid", filled)];
     const out = reducer(state, { type: "DUPLICATE", id: "b" });
     expect(out[0].children).toHaveLength(3);
@@ -215,9 +202,7 @@ describe("reducer — DUPLICATE (contract gate, #523)", () => {
 
   it("allows duplication when parent has cap headroom", () => {
     // grid maxChildren=3, currently has 2 — duplicate should fit.
-    const state = [
-      block("grid", "grid", [block("a", "paragraph"), block("b", "paragraph")]),
-    ];
+    const state = [block("grid", "grid", [block("a", "paragraph"), block("b", "paragraph")])];
     const out = reducer(state, { type: "DUPLICATE", id: "a" });
     expect(out[0].children).toHaveLength(3);
   });
@@ -293,9 +278,7 @@ describe("reducer — MOVE_WITHIN_PARENT", () => {
   });
 
   it("operates on the named container's children", () => {
-    const state = [
-      block("row", "row", [block("a", "p"), block("b", "p"), block("c", "p")]),
-    ];
+    const state = [block("row", "row", [block("a", "p"), block("b", "p"), block("c", "p")])];
     const out = reducer(state, {
       type: "MOVE_WITHIN_PARENT",
       parentId: "row",
@@ -351,9 +334,7 @@ describe("reducer — MOVE_INTO", () => {
   });
 
   it("rejects move-into-descendant (would create a cycle)", () => {
-    const state = [
-      block("outer", "row", [block("inner", "row", [])]),
-    ];
+    const state = [block("outer", "row", [block("inner", "row", [])])];
     const out = reducer(state, {
       type: "MOVE_INTO",
       id: "outer",
@@ -373,10 +354,7 @@ describe("reducer — MOVE_INTO", () => {
   });
 
   it("rejects when target's allowedChildTypes excludes the source type", () => {
-    const state = [
-      block("p", "paragraph"),
-      block("tiers", "pricing-tiers", []),
-    ];
+    const state = [block("p", "paragraph"), block("tiers", "pricing-tiers", [])];
     const out = reducer(state, {
       type: "MOVE_INTO",
       id: "p",
@@ -401,11 +379,7 @@ describe("reducer — MOVE_INTO", () => {
 
 describe("reducer — MOVE_OUT (grandparent contract gate, #523)", () => {
   it("promotes a child one level up into its grandparent", () => {
-    const state = [
-      block("outer", "row", [
-        block("middle", "row", [block("inner", "paragraph")]),
-      ]),
-    ];
+    const state = [block("outer", "row", [block("middle", "row", [block("inner", "paragraph")])])];
     const out = reducer(state, { type: "MOVE_OUT", id: "inner" });
     // After: outer contains [middle, inner] with middle empty.
     expect(out[0].children).toHaveLength(2);
@@ -424,9 +398,7 @@ describe("reducer — MOVE_OUT (grandparent contract gate, #523)", () => {
     // outer only accepts pricing-tier; promoting a paragraph from inside
     // the middle would violate that contract.
     const state = [
-      block("outer", "pricing-tiers", [
-        block("middle", "pricing-tier", [block("p", "paragraph")]),
-      ]),
+      block("outer", "pricing-tiers", [block("middle", "pricing-tier", [block("p", "paragraph")])]),
     ];
     // pricing-tier itself isn't acceptsChildren in fixtureDefs, so build
     // a custom registry where it is.
@@ -498,9 +470,7 @@ describe("reducer — WRAP_IN", () => {
     // the wrapper's child during the walk. Top-level case lives in the
     // first WRAP_IN test; this one verifies the same fix holds when
     // the source lives one level down.
-    const state = [
-      block("outer", "row", [block("p", "paragraph", undefined, { text: "hi" })]),
-    ];
+    const state = [block("outer", "row", [block("p", "paragraph", undefined, { text: "hi" })])];
     const out = reducer(state, {
       type: "WRAP_IN",
       id: "p",
@@ -522,11 +492,7 @@ describe("reducer — INSERT_PATTERN", () => {
     id: "test-pattern",
     label: "Test pattern",
     source: "built-in" as const,
-    blocks: [
-      block("p1", "paragraph"),
-      block("p2", "paragraph"),
-      block("p3", "paragraph"),
-    ],
+    blocks: [block("p1", "paragraph"), block("p2", "paragraph"), block("p3", "paragraph")],
   };
 
   it("inserts every pattern block at top level", () => {
@@ -573,11 +539,7 @@ describe("reducer — INSERT_PATTERN", () => {
 
 describe("reducer — DELETE_MANY / DUPLICATE_MANY (#523)", () => {
   it("DELETE_MANY removes every targeted id", () => {
-    const state = [
-      block("a", "paragraph"),
-      block("b", "paragraph"),
-      block("c", "paragraph"),
-    ];
+    const state = [block("a", "paragraph"), block("b", "paragraph"), block("c", "paragraph")];
     const out = reducer(state, { type: "DELETE_MANY", ids: ["a", "c"] });
     expect(out).toHaveLength(1);
     expect(out[0].id).toBe("b");
@@ -596,9 +558,7 @@ describe("reducer — DELETE_MANY / DUPLICATE_MANY (#523)", () => {
     // inner along; cloning inner separately would multiply 4× the
     // descendant. Filter ensures only outer (the highest in the
     // selection) duplicates.
-    const state = [
-      block("outer", "row", [block("inner", "paragraph")]),
-    ];
+    const state = [block("outer", "row", [block("inner", "paragraph")])];
     const out = reducer(state, {
       type: "DUPLICATE_MANY",
       ids: ["outer", "inner"],
@@ -613,9 +573,7 @@ describe("reducer — DELETE_MANY / DUPLICATE_MANY (#523)", () => {
   it("DUPLICATE_MANY skips clones that would push parent past maxChildren", () => {
     // grid max=3, currently 2 children both selected. One can fit, the
     // other is dropped.
-    const state = [
-      block("grid", "grid", [block("a", "paragraph"), block("b", "paragraph")]),
-    ];
+    const state = [block("grid", "grid", [block("a", "paragraph"), block("b", "paragraph")])];
     const out = reducer(state, {
       type: "DUPLICATE_MANY",
       ids: ["a", "b"],
@@ -681,9 +639,7 @@ describe("reducer — REPLACE_TYPE (carried-children re-validation, #523)", () =
   });
 
   it("drops children when the new type is not a container", () => {
-    const state = [
-      block("row", "row", [block("p", "paragraph")]),
-    ];
+    const state = [block("row", "row", [block("p", "paragraph")])];
     const out = reducer(state, {
       type: "REPLACE_TYPE",
       id: "row",
@@ -693,9 +649,7 @@ describe("reducer — REPLACE_TYPE (carried-children re-validation, #523)", () =
   });
 
   it("carries children forward when the new type is also a container", () => {
-    const state = [
-      block("row", "row", [block("p", "paragraph")]),
-    ];
+    const state = [block("row", "row", [block("p", "paragraph")])];
     const out = reducer(state, {
       type: "REPLACE_TYPE",
       id: "row",
@@ -708,9 +662,7 @@ describe("reducer — REPLACE_TYPE (carried-children re-validation, #523)", () =
   it("drops carried children that don't fit the new container's contract", () => {
     // Source row has paragraph + heading. Replace with pricing-tiers
     // which only accepts pricing-tier — both children should drop.
-    const state = [
-      block("row", "row", [block("p", "paragraph"), block("h", "heading")]),
-    ];
+    const state = [block("row", "row", [block("p", "paragraph"), block("h", "heading")])];
     const out = reducer(state, {
       type: "REPLACE_TYPE",
       id: "row",
@@ -720,12 +672,7 @@ describe("reducer — REPLACE_TYPE (carried-children re-validation, #523)", () =
   });
 
   it("preserves children that DO fit the new contract", () => {
-    const state = [
-      block("row", "row", [
-        block("t1", "pricing-tier"),
-        block("p", "paragraph"),
-      ]),
-    ];
+    const state = [block("row", "row", [block("t1", "pricing-tier"), block("p", "paragraph")])];
     const out = reducer(state, {
       type: "REPLACE_TYPE",
       id: "row",
@@ -738,9 +685,7 @@ describe("reducer — REPLACE_TYPE (carried-children re-validation, #523)", () =
   it("rejects when parent's contract excludes the new type", () => {
     // pricing-tiers parent accepts only pricing-tier; converting a
     // pricing-tier child into a paragraph would violate the parent.
-    const state = [
-      block("tiers", "pricing-tiers", [block("t", "pricing-tier")]),
-    ];
+    const state = [block("tiers", "pricing-tiers", [block("t", "pricing-tier")])];
     const out = reducer(state, {
       type: "REPLACE_TYPE",
       id: "t",
@@ -752,11 +697,7 @@ describe("reducer — REPLACE_TYPE (carried-children re-validation, #523)", () =
 
 describe("reducer — WRAP_MANY", () => {
   it("wraps contiguous selection into a single container", () => {
-    const state = [
-      block("a", "paragraph"),
-      block("b", "paragraph"),
-      block("c", "paragraph"),
-    ];
+    const state = [block("a", "paragraph"), block("b", "paragraph"), block("c", "paragraph")];
     const out = reducer(state, {
       type: "WRAP_MANY",
       ids: ["a", "b"],
@@ -768,11 +709,7 @@ describe("reducer — WRAP_MANY", () => {
   });
 
   it("rejects non-contiguous selection", () => {
-    const state = [
-      block("a", "paragraph"),
-      block("b", "paragraph"),
-      block("c", "paragraph"),
-    ];
+    const state = [block("a", "paragraph"), block("b", "paragraph"), block("c", "paragraph")];
     const out = reducer(state, {
       type: "WRAP_MANY",
       ids: ["a", "c"],
@@ -782,10 +719,7 @@ describe("reducer — WRAP_MANY", () => {
   });
 
   it("rejects when wrapper's contract excludes a child type", () => {
-    const state = [
-      block("p", "paragraph"),
-      block("h", "heading"),
-    ];
+    const state = [block("p", "paragraph"), block("h", "heading")];
     const out = reducer(state, {
       type: "WRAP_MANY",
       ids: ["p", "h"],

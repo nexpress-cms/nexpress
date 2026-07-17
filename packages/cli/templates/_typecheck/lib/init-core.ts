@@ -7,9 +7,7 @@
 // stub here avoids dragging the entire reference-app dep graph
 // into packages/cli's typecheck.
 
-export async function ensureFor(
-  _intent: "read" | "plugins" | "write",
-): Promise<void> {
+export async function ensureFor(_intent: "read" | "plugins" | "write"): Promise<void> {
   /* stubbed */
 }
 

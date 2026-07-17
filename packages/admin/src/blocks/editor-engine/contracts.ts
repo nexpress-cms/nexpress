@@ -17,10 +17,7 @@ export function canAcceptChild(
   childType: string,
   currentCount: number,
 ): boolean {
-  if (
-    typeof parentDef.maxChildren === "number" &&
-    currentCount >= parentDef.maxChildren
-  ) {
+  if (typeof parentDef.maxChildren === "number" && currentCount >= parentDef.maxChildren) {
     return false;
   }
   const allowed = parentDef.allowedChildTypes;

@@ -22,21 +22,14 @@ import { GET as auditGET } from "@/app/api/admin/audit/route";
 
 import { NextRequest } from "next/server";
 
-function jsonRequest(
-  path: string,
-  init: RequestInit & { cookies?: string[] } = {},
-): NextRequest {
+function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
   const headers = new Headers(init.headers);
   if (!headers.has("content-type") && init.body) headers.set("content-type", "application/json");
   if (init.cookies && init.cookies.length > 0) headers.set("cookie", init.cookies.join("; "));
   return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
 }
 
-function staffRequest(
-  path: string,
-  user: TestUserSession,
-  init: RequestInit = {},
-): NextRequest {
+function staffRequest(path: string, user: TestUserSession, init: RequestInit = {}): NextRequest {
   return jsonRequest(path, {
     ...init,
     cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
@@ -112,10 +105,7 @@ describe.skipIf(skipIfNoTestDb())("member role grants (Phase 9.5b)", () => {
     const { id: grantId } = await readJson<{ id: string }>(granted).then((r) => r.body);
 
     const list = await roleGrantsGET(
-      staffRequest(
-        `/api/admin/community/role-grants?memberId=${member.memberId}`,
-        admin,
-      ),
+      staffRequest(`/api/admin/community/role-grants?memberId=${member.memberId}`, admin),
     );
     const listBody = await readJson<{ docs: Array<{ id: string; scopeId: string }> }>(list);
     expect(listBody.body.docs).toHaveLength(1);
@@ -130,19 +120,13 @@ describe.skipIf(skipIfNoTestDb())("member role grants (Phase 9.5b)", () => {
     expect(revoked.status).toBe(200);
 
     const after = await roleGrantsGET(
-      staffRequest(
-        `/api/admin/community/role-grants?memberId=${member.memberId}`,
-        admin,
-      ),
+      staffRequest(`/api/admin/community/role-grants?memberId=${member.memberId}`, admin),
     );
     const afterBody = await readJson<{ docs: Array<unknown> }>(after);
     expect(afterBody.body.docs).toHaveLength(0);
 
     const audit = await auditGET(
-      staffRequest(
-        `/api/admin/audit?targetType=member&targetId=${member.memberId}`,
-        admin,
-      ),
+      staffRequest(`/api/admin/audit?targetType=member&targetId=${member.memberId}`, admin),
     );
     const auditBody = await readJson<{ docs: Array<{ action: string }> }>(audit);
     const actions = auditBody.body.docs.map((d) => d.action).sort();
@@ -240,10 +224,7 @@ describe.skipIf(skipIfNoTestDb())("member role grants (Phase 9.5b)", () => {
 
     // Editor can list (staff-mod read).
     const list = await roleGrantsGET(
-      staffRequest(
-        `/api/admin/community/role-grants?memberId=${member.memberId}`,
-        editor,
-      ),
+      staffRequest(`/api/admin/community/role-grants?memberId=${member.memberId}`, editor),
     );
     expect(list.status).toBe(200);
     const listBody = await readJson<{ docs: Array<unknown> }>(list);

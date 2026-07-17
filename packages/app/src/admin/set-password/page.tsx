@@ -19,11 +19,7 @@ export default function SetPasswordPage() {
         description="Choose a password to finish activating your account."
       >
         <Suspense
-          fallback={
-            <p className="text-[13px] text-neutral-500 dark:text-neutral-400">
-              Loading…
-            </p>
-          }
+          fallback={<p className="text-[13px] text-neutral-500 dark:text-neutral-400">Loading…</p>}
         >
           <SetPasswordForm />
         </Suspense>

@@ -16,57 +16,167 @@ import type { TestUserSession } from "./harness.js";
  * uniqueness, and the `siteId: "*"` cross-site sentinel for
  * super-admin contexts.
  */
-describe.skipIf(skipIfNoTestDb())(
-  "multi-site collection scoping (Phase 15.2)",
-  () => {
-    beforeAll(async () => {
-      await ensureMigrated();
-      registerTestCollections();
-      const { ensureFor } = await import("@/lib/init-core");
-      await ensureFor("read");
-    });
-    beforeEach(async () => {
-      await truncateAll();
-      // Wipe non-default sites so previous tests don't leak.
-      const { listSites, deleteSite, resetCurrentSiteResolver } = await import(
-        "@nexpress/core"
-      );
-      const sites = await listSites();
-      for (const site of sites) {
-        if (!site.isDefault) await deleteSite(site.id, { cascade: true });
-      }
-      resetCurrentSiteResolver();
-    });
-    afterEach(async () => {
-      const { resetCurrentSiteResolver } = await import("@nexpress/core");
-      resetCurrentSiteResolver();
-    });
-    afterAll(async () => {
-      await closeTestDb();
-    });
-
-    let session: TestUserSession;
-    beforeEach(async () => {
-      session = await seedUser({ role: "admin" });
-    });
-
-    function actor() {
-      return {
-        id: session.userId,
-        email: session.email,
-        name: "Test",
-        role: session.role,
-        tokenVersion: 0,
-      };
+describe.skipIf(skipIfNoTestDb())("multi-site collection scoping (Phase 15.2)", () => {
+  beforeAll(async () => {
+    await ensureMigrated();
+    registerTestCollections();
+    const { ensureFor } = await import("@/lib/init-core");
+    await ensureFor("read");
+  });
+  beforeEach(async () => {
+    await truncateAll();
+    // Wipe non-default sites so previous tests don't leak.
+    const { listSites, deleteSite, resetCurrentSiteResolver } = await import("@nexpress/core");
+    const sites = await listSites();
+    for (const site of sites) {
+      if (!site.isDefault) await deleteSite(site.id, { cascade: true });
     }
+    resetCurrentSiteResolver();
+  });
+  afterEach(async () => {
+    const { resetCurrentSiteResolver } = await import("@nexpress/core");
+    resetCurrentSiteResolver();
+  });
+  afterAll(async () => {
+    await closeTestDb();
+  });
 
-    it("a write with no site context stamps siteId='default'", async () => {
-      const { saveDocument, findDocuments } = await import("@nexpress/core");
-      const result = await saveDocument(
+  let session: TestUserSession;
+  beforeEach(async () => {
+    session = await seedUser({ role: "admin" });
+  });
+
+  function actor() {
+    return {
+      id: session.userId,
+      email: session.email,
+      name: "Test",
+      role: session.role,
+      tokenVersion: 0,
+    };
+  }
+
+  it("a write with no site context stamps siteId='default'", async () => {
+    const { saveDocument, findDocuments } = await import("@nexpress/core");
+    const result = await saveDocument(
+      "posts",
+      null,
+      {
+        title: "Default-stamped",
+        excerpt: "x",
+        content: lexicalParagraph("body"),
+        publishedAt: new Date().toISOString(),
+        author: session.userId,
+      },
+      actor(),
+      { status: "published" },
+    );
+    expect((result.doc as { siteId?: string }).siteId).toBe("default");
+
+    // findDocuments with no context returns the row (default
+    // filter matches the default-stamped write).
+    const found = await findDocuments("posts", { limit: 10 });
+    expect(found.totalDocs).toBe(1);
+  });
+
+  it("a write inside withCurrentSite stamps that site's id", async () => {
+    const { createSite, saveDocument, withCurrentSite, findDocuments } =
+      await import("@nexpress/core");
+    await createSite({
+      id: "acme",
+      name: "Acme",
+      hostname: "acme.example.com",
+    });
+
+    const created = await withCurrentSite("acme", async () => {
+      return await saveDocument(
         "posts",
         null,
         {
-          title: "Default-stamped",
+          title: "Acme post",
+          excerpt: "x",
+          content: lexicalParagraph("acme body"),
+          publishedAt: new Date().toISOString(),
+          author: session.userId,
+        },
+        actor(),
+        { status: "published" },
+      );
+    });
+    expect((created.doc as { siteId?: string }).siteId).toBe("acme");
+
+    // Reading WITHOUT site context filters to default — and
+    // the acme post should NOT show up.
+    const defaultView = await findDocuments("posts", { limit: 10 });
+    expect(defaultView.totalDocs).toBe(0);
+
+    // Reading INSIDE acme context shows the post.
+    const acmeView = await withCurrentSite("acme", async () => {
+      return await findDocuments("posts", { limit: 10 });
+    });
+    expect(acmeView.totalDocs).toBe(1);
+  });
+
+  it("the same slug can exist on two different sites (per-site slug uniqueness)", async () => {
+    const { createSite, saveDocument, withCurrentSite, findDocuments } =
+      await import("@nexpress/core");
+    await createSite({ id: "site-a", name: "A" });
+    await createSite({ id: "site-b", name: "B" });
+
+    // Both writes use the same title → same derived slug.
+    const a = await withCurrentSite("site-a", async () => {
+      return await saveDocument("pages", null, { title: "About", seoDescription: "..." }, actor(), {
+        status: "published",
+      });
+    });
+    const b = await withCurrentSite("site-b", async () => {
+      return await saveDocument("pages", null, { title: "About", seoDescription: "..." }, actor(), {
+        status: "published",
+      });
+    });
+    expect((a.doc as { slug?: string }).slug).toBe("about");
+    expect((b.doc as { slug?: string }).slug).toBe("about");
+    expect((a.doc as { siteId?: string }).siteId).toBe("site-a");
+    expect((b.doc as { siteId?: string }).siteId).toBe("site-b");
+
+    // Each site sees only its own row.
+    const aView = await withCurrentSite("site-a", async () =>
+      findDocuments("pages", { limit: 10 }),
+    );
+    expect(aView.totalDocs).toBe(1);
+    expect(aView.docs[0]?.id).toBe(a.doc.id);
+  });
+
+  it("the same slug COLLIDES within one site (single-tenant uniqueness preserved)", async () => {
+    const { saveDocument, withCurrentSite, NpValidationError } = await import("@nexpress/core");
+    await withCurrentSite("default", async () => {
+      await saveDocument("pages", null, { title: "Solo", seoDescription: "..." }, actor(), {
+        status: "published",
+      });
+      // Second write with same title → same slug in same site
+      // → unique-index violation.
+      await expect(
+        saveDocument("pages", null, { title: "Solo", seoDescription: "..." }, actor(), {
+          status: "published",
+        }),
+      ).rejects.toThrow();
+    });
+    // Suppress unused-import lint; the import exists for the
+    // type assertion below.
+    void NpValidationError;
+  });
+
+  it("updates can't reassign a row to a different site (siteId is sticky)", async () => {
+    const { createSite, saveDocument, withCurrentSite, findDocuments } =
+      await import("@nexpress/core");
+    await createSite({ id: "stick", name: "Stick" });
+
+    const created = await withCurrentSite("stick", async () => {
+      return await saveDocument(
+        "posts",
+        null,
+        {
+          title: "Sticky",
           excerpt: "x",
           content: lexicalParagraph("body"),
           publishedAt: new Date().toISOString(),
@@ -75,221 +185,88 @@ describe.skipIf(skipIfNoTestDb())(
         actor(),
         { status: "published" },
       );
-      expect((result.doc as { siteId?: string }).siteId).toBe("default");
-
-      // findDocuments with no context returns the row (default
-      // filter matches the default-stamped write).
-      const found = await findDocuments("posts", { limit: 10 });
-      expect(found.totalDocs).toBe(1);
     });
+    const id = created.doc.id as string;
 
-    it("a write inside withCurrentSite stamps that site's id", async () => {
-      const { createSite, saveDocument, withCurrentSite, findDocuments } =
-        await import("@nexpress/core");
-      await createSite({
-        id: "acme",
-        name: "Acme",
-        hostname: "acme.example.com",
-      });
+    // Issue #367 — a cross-site update with a `siteId` flip
+    // attempt now fails the by-id load with Forbidden, before
+    // the pipeline ever sees the bogus payload. The previous
+    // test asserted the stick was an in-pipeline ignore; the
+    // new behavior is stricter: refuse the write entirely.
+    await expect(
+      saveDocument(
+        "posts",
+        id,
+        {
+          title: "Sticky updated",
+          excerpt: "x",
+          content: lexicalParagraph("body"),
+          publishedAt: new Date().toISOString(),
+          author: session.userId,
+          siteId: "default",
+        },
+        actor(),
+      ),
+    ).rejects.toThrow(/Forbidden|cross-site/);
 
-      const created = await withCurrentSite("acme", async () => {
-        return await saveDocument(
-          "posts",
-          null,
-          {
-            title: "Acme post",
-            excerpt: "x",
-            content: lexicalParagraph("acme body"),
-            publishedAt: new Date().toISOString(),
-            author: session.userId,
-          },
-          actor(),
-          { status: "published" },
-        );
-      });
-      expect((created.doc as { siteId?: string }).siteId).toBe("acme");
+    // Row should still belong to "stick" — refused write means
+    // nothing changed.
+    const stickView = await withCurrentSite("stick", async () =>
+      findDocuments("posts", { limit: 10 }),
+    );
+    expect(stickView.totalDocs).toBe(1);
+    expect(stickView.docs[0]?.id).toBe(id);
+  });
 
-      // Reading WITHOUT site context filters to default — and
-      // the acme post should NOT show up.
-      const defaultView = await findDocuments("posts", { limit: 10 });
-      expect(defaultView.totalDocs).toBe(0);
+  it('the `siteId: "*"` sentinel disables the filter (super-admin cross-site reads)', async () => {
+    const { createSite, saveDocument, withCurrentSite, findDocuments } =
+      await import("@nexpress/core");
+    await createSite({ id: "alpha", name: "Alpha" });
+    await createSite({ id: "beta", name: "Beta" });
 
-      // Reading INSIDE acme context shows the post.
-      const acmeView = await withCurrentSite("acme", async () => {
-        return await findDocuments("posts", { limit: 10 });
-      });
-      expect(acmeView.totalDocs).toBe(1);
+    await withCurrentSite("alpha", async () =>
+      saveDocument(
+        "posts",
+        null,
+        {
+          title: "Alpha post",
+          excerpt: "x",
+          content: lexicalParagraph("a"),
+          publishedAt: new Date().toISOString(),
+          author: session.userId,
+        },
+        actor(),
+        { status: "published" },
+      ),
+    );
+    await withCurrentSite("beta", async () =>
+      saveDocument(
+        "posts",
+        null,
+        {
+          title: "Beta post",
+          excerpt: "x",
+          content: lexicalParagraph("b"),
+          publishedAt: new Date().toISOString(),
+          author: session.userId,
+        },
+        actor(),
+        { status: "published" },
+      ),
+    );
+
+    // No site context, no sentinel → default site's view (0 rows).
+    const isolated = await findDocuments("posts", { limit: 10 });
+    expect(isolated.totalDocs).toBe(0);
+
+    // Sentinel: see across all sites.
+    const all = await findDocuments("posts", {
+      limit: 10,
+      where: { siteId: "*" },
     });
-
-    it("the same slug can exist on two different sites (per-site slug uniqueness)", async () => {
-      const { createSite, saveDocument, withCurrentSite, findDocuments } =
-        await import("@nexpress/core");
-      await createSite({ id: "site-a", name: "A" });
-      await createSite({ id: "site-b", name: "B" });
-
-      // Both writes use the same title → same derived slug.
-      const a = await withCurrentSite("site-a", async () => {
-        return await saveDocument(
-          "pages",
-          null,
-          { title: "About", seoDescription: "..." },
-          actor(),
-          { status: "published" },
-        );
-      });
-      const b = await withCurrentSite("site-b", async () => {
-        return await saveDocument(
-          "pages",
-          null,
-          { title: "About", seoDescription: "..." },
-          actor(),
-          { status: "published" },
-        );
-      });
-      expect((a.doc as { slug?: string }).slug).toBe("about");
-      expect((b.doc as { slug?: string }).slug).toBe("about");
-      expect((a.doc as { siteId?: string }).siteId).toBe("site-a");
-      expect((b.doc as { siteId?: string }).siteId).toBe("site-b");
-
-      // Each site sees only its own row.
-      const aView = await withCurrentSite("site-a", async () =>
-        findDocuments("pages", { limit: 10 }),
-      );
-      expect(aView.totalDocs).toBe(1);
-      expect(aView.docs[0]?.id).toBe(a.doc.id);
-    });
-
-    it("the same slug COLLIDES within one site (single-tenant uniqueness preserved)", async () => {
-      const { saveDocument, withCurrentSite, NpValidationError } = await import(
-        "@nexpress/core"
-      );
-      await withCurrentSite("default", async () => {
-        await saveDocument(
-          "pages",
-          null,
-          { title: "Solo", seoDescription: "..." },
-          actor(),
-          { status: "published" },
-        );
-        // Second write with same title → same slug in same site
-        // → unique-index violation.
-        await expect(
-          saveDocument(
-            "pages",
-            null,
-            { title: "Solo", seoDescription: "..." },
-            actor(),
-            { status: "published" },
-          ),
-        ).rejects.toThrow();
-      });
-      // Suppress unused-import lint; the import exists for the
-      // type assertion below.
-      void NpValidationError;
-    });
-
-    it("updates can't reassign a row to a different site (siteId is sticky)", async () => {
-      const { createSite, saveDocument, withCurrentSite, findDocuments } =
-        await import("@nexpress/core");
-      await createSite({ id: "stick", name: "Stick" });
-
-      const created = await withCurrentSite("stick", async () => {
-        return await saveDocument(
-          "posts",
-          null,
-          {
-            title: "Sticky",
-            excerpt: "x",
-            content: lexicalParagraph("body"),
-            publishedAt: new Date().toISOString(),
-            author: session.userId,
-          },
-          actor(),
-          { status: "published" },
-        );
-      });
-      const id = created.doc.id as string;
-
-      // Issue #367 — a cross-site update with a `siteId` flip
-      // attempt now fails the by-id load with Forbidden, before
-      // the pipeline ever sees the bogus payload. The previous
-      // test asserted the stick was an in-pipeline ignore; the
-      // new behavior is stricter: refuse the write entirely.
-      await expect(
-        saveDocument(
-          "posts",
-          id,
-          {
-            title: "Sticky updated",
-            excerpt: "x",
-            content: lexicalParagraph("body"),
-            publishedAt: new Date().toISOString(),
-            author: session.userId,
-            siteId: "default",
-          },
-          actor(),
-        ),
-      ).rejects.toThrow(/Forbidden|cross-site/);
-
-      // Row should still belong to "stick" — refused write means
-      // nothing changed.
-      const stickView = await withCurrentSite("stick", async () =>
-        findDocuments("posts", { limit: 10 }),
-      );
-      expect(stickView.totalDocs).toBe(1);
-      expect(stickView.docs[0]?.id).toBe(id);
-    });
-
-    it('the `siteId: "*"` sentinel disables the filter (super-admin cross-site reads)', async () => {
-      const { createSite, saveDocument, withCurrentSite, findDocuments } =
-        await import("@nexpress/core");
-      await createSite({ id: "alpha", name: "Alpha" });
-      await createSite({ id: "beta", name: "Beta" });
-
-      await withCurrentSite("alpha", async () =>
-        saveDocument(
-          "posts",
-          null,
-          {
-            title: "Alpha post",
-            excerpt: "x",
-            content: lexicalParagraph("a"),
-            publishedAt: new Date().toISOString(),
-            author: session.userId,
-          },
-          actor(),
-          { status: "published" },
-        ),
-      );
-      await withCurrentSite("beta", async () =>
-        saveDocument(
-          "posts",
-          null,
-          {
-            title: "Beta post",
-            excerpt: "x",
-            content: lexicalParagraph("b"),
-            publishedAt: new Date().toISOString(),
-            author: session.userId,
-          },
-          actor(),
-          { status: "published" },
-        ),
-      );
-
-      // No site context, no sentinel → default site's view (0 rows).
-      const isolated = await findDocuments("posts", { limit: 10 });
-      expect(isolated.totalDocs).toBe(0);
-
-      // Sentinel: see across all sites.
-      const all = await findDocuments("posts", {
-        limit: 10,
-        where: { siteId: "*" },
-      });
-      expect(all.totalDocs).toBe(2);
-    });
-  },
-);
+    expect(all.totalDocs).toBe(2);
+  });
+});
 
 function lexicalParagraph(text: string): unknown {
   return {

@@ -1,9 +1,5 @@
 import { getRegisteredPatterns, getSharedRegistry } from "./registry.js";
-import type {
-  NpBlockDefinition,
-  NpBlockMetadata,
-  NpPattern,
-} from "./types.js";
+import type { NpBlockDefinition, NpBlockMetadata, NpPattern } from "./types.js";
 
 /**
  * Phase F.4 — block source identity model.
@@ -32,9 +28,7 @@ export interface NpBlockSource {
   id?: string;
 }
 
-export function parseBlockSource(
-  source: NpBlockMetadata["source"],
-): NpBlockSource | null {
+export function parseBlockSource(source: NpBlockMetadata["source"]): NpBlockSource | null {
   if (!source) {
     // Undefined source is a built-in default (registry seeds them
     // without source). Treat as core.
@@ -150,8 +144,6 @@ export function getRegisteredBlockMetadataForActiveSources(
  * pattern picker only shows patterns for the current site's
  * active theme.
  */
-export function getRegisteredPatternsForActiveSources(
-  ctx: NpActiveSourceContext,
-): NpPattern[] {
+export function getRegisteredPatternsForActiveSources(ctx: NpActiveSourceContext): NpPattern[] {
   return getRegisteredPatterns().filter((p) => isBlockSourceActive(p.source, ctx));
 }

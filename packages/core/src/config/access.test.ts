@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  authenticated,
-  isAdmin,
-  isEditorOrAbove,
-  isOwnerOrAdmin,
-} from "./access.js";
+import { authenticated, isAdmin, isEditorOrAbove, isOwnerOrAdmin } from "./access.js";
 import type { NpAuthUser } from "./types.js";
 
 function user(role: NpAuthUser["role"], id = "user-1"): NpAuthUser {

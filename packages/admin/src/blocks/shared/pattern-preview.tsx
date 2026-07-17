@@ -38,12 +38,7 @@ export interface PatternPreviewProps {
   className?: string;
 }
 
-export function PatternPreview({
-  src,
-  alt,
-  size,
-  className,
-}: PatternPreviewProps) {
+export function PatternPreview({ src, alt, size, className }: PatternPreviewProps) {
   // `errored` flips when the actual image fails to load. Using
   // local state (not a key swap) means the fallback path doesn't
   // re-mount the component when the picker filters/re-renders —
@@ -52,10 +47,7 @@ export function PatternPreview({
 
   const showFallback = !src || errored;
 
-  const sizeClass =
-    size === "card"
-      ? "aspect-[16/10] w-full"
-      : "h-6 w-9 shrink-0";
+  const sizeClass = size === "card" ? "aspect-[16/10] w-full" : "h-6 w-9 shrink-0";
 
   if (showFallback) {
     return (
@@ -68,10 +60,7 @@ export function PatternPreview({
           className,
         )}
       >
-        <LayoutGrid
-          className={size === "card" ? "h-6 w-6" : "h-3 w-3"}
-          aria-hidden
-        />
+        <LayoutGrid className={size === "card" ? "h-6 w-6" : "h-3 w-3"} aria-hidden />
       </div>
     );
   }
@@ -82,11 +71,7 @@ export function PatternPreview({
       alt={alt}
       loading="lazy"
       onError={() => setErrored(true)}
-      className={cn(
-        sizeClass,
-        "rounded-sm border border-border/40 object-cover",
-        className,
-      )}
+      className={cn(sizeClass, "rounded-sm border border-border/40 object-cover", className)}
     />
   );
 }

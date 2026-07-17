@@ -29,9 +29,7 @@ describe.skipIf(skipIfNoTestDb())("i18n UI strings (Phase 12.5)", () => {
   });
   beforeEach(async () => {
     await truncateAll();
-    const { resetStrings, resetStringOverrideCache } = await import(
-      "@nexpress/core"
-    );
+    const { resetStrings, resetStringOverrideCache } = await import("@nexpress/core");
     resetStrings();
     resetStringOverrideCache();
   });

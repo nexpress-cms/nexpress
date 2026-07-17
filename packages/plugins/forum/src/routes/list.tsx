@@ -44,12 +44,12 @@ export async function listMetadata(): Promise<Metadata> {
   });
 }
 
-export default async function DiscussionsListRoute({
-  searchParams,
-}: NpRouteRenderProps) {
+export default async function DiscussionsListRoute({ searchParams }: NpRouteRenderProps) {
   const sp = searchParams ?? {};
-  const rawPage = typeof sp.page === "string" ? sp.page : Array.isArray(sp.page) ? sp.page[0] : undefined;
-  const author = typeof sp.author === "string" ? sp.author : Array.isArray(sp.author) ? sp.author[0] : undefined;
+  const rawPage =
+    typeof sp.page === "string" ? sp.page : Array.isArray(sp.page) ? sp.page[0] : undefined;
+  const author =
+    typeof sp.author === "string" ? sp.author : Array.isArray(sp.author) ? sp.author[0] : undefined;
   const pageNum = Math.max(1, Number.parseInt(rawPage ?? "1", 10) || 1);
   const limit = 20;
 
@@ -86,16 +86,10 @@ export default async function DiscussionsListRoute({
         <div className="np-discussions-toolbar">
           {member ? (
             <>
-              <Link
-                href="/discussions"
-                className={!showMine ? "np-tab-active" : "np-tab"}
-              >
+              <Link href="/discussions" className={!showMine ? "np-tab-active" : "np-tab"}>
                 All
               </Link>
-              <Link
-                href="/discussions?author=me"
-                className={showMine ? "np-tab-active" : "np-tab"}
-              >
+              <Link href="/discussions?author=me" className={showMine ? "np-tab-active" : "np-tab"}>
                 My threads
               </Link>
               <Link href="/discussions/new" className="np-button-primary">
@@ -103,10 +97,7 @@ export default async function DiscussionsListRoute({
               </Link>
             </>
           ) : (
-            <Link
-              href="/members/login?next=/discussions/new"
-              className="np-button-primary"
-            >
+            <Link href="/members/login?next=/discussions/new" className="np-button-primary">
               Sign in to post
             </Link>
           )}
@@ -122,9 +113,7 @@ export default async function DiscussionsListRoute({
       ) : (
         <ul className="np-discussions-list">
           {result.docs.map((doc) => {
-            const profile = doc.memberAuthorId
-              ? authorById.get(doc.memberAuthorId)
-              : null;
+            const profile = doc.memberAuthorId ? authorById.get(doc.memberAuthorId) : null;
             return (
               <li key={doc.id} className="np-discussions-card">
                 <h2>
@@ -132,10 +121,7 @@ export default async function DiscussionsListRoute({
                 </h2>
                 <div className="np-discussions-meta">
                   {profile ? (
-                    <Link
-                      href={`/u/${profile.handle}`}
-                      className="np-discussions-author"
-                    >
+                    <Link href={`/u/${profile.handle}`} className="np-discussions-author">
                       {profile.avatarUrl ? (
                         <img
                           src={profile.avatarUrl}

@@ -77,10 +77,9 @@ function previousReleaseSha(): string | null {
   // release ever, there's nothing earlier — return null and treat as
   // a family release.
   try {
-    const out = execSync(
-      `git log --grep="^chore(release): version packages" --format="%H" -n 2`,
-      { encoding: "utf-8" },
-    ).trim();
+    const out = execSync(`git log --grep="^chore(release): version packages" --format="%H" -n 2`, {
+      encoding: "utf-8",
+    }).trim();
     const lines = out.split("\n").filter(Boolean);
     return lines[1] ?? null;
   } catch {

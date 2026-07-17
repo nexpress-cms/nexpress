@@ -56,6 +56,7 @@ pnpm changeset
 ```
 
 The CLI walks you through:
+
 1. Which packages are affected
 2. The semver bump for each (most contributions are `patch`)
 3. A one-line summary that lands in the package's `CHANGELOG.md`
@@ -64,15 +65,15 @@ The result is a markdown file under `.changeset/` — commit it.
 
 ### When to add a changeset
 
-| Change type                                                | Add a changeset? |
-| ---------------------------------------------------------- | ---------------- |
-| Public API addition / change / removal                     | Yes              |
-| Behavior change visible to a `@nexpress/*` consumer        | Yes              |
-| New collection field type, new block, new plugin hook      | Yes              |
-| Config option added / renamed / removed                    | Yes              |
-| Internal refactor with no consumer-visible difference      | No               |
-| Test, doc, CI, or build-script change                      | No               |
-| `apps/web` only (the reference app — `ignore` in config)   | No               |
+| Change type                                              | Add a changeset? |
+| -------------------------------------------------------- | ---------------- |
+| Public API addition / change / removal                   | Yes              |
+| Behavior change visible to a `@nexpress/*` consumer      | Yes              |
+| New collection field type, new block, new plugin hook    | Yes              |
+| Config option added / renamed / removed                  | Yes              |
+| Internal refactor with no consumer-visible difference    | No               |
+| Test, doc, CI, or build-script change                    | No               |
+| `apps/web` only (the reference app — `ignore` in config) | No               |
 
 When in doubt, add one.
 

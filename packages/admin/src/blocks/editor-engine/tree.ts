@@ -68,9 +68,7 @@ export function filterTree(
   return blocks
     .filter(predicate)
     .map((block) =>
-      block.children
-        ? { ...block, children: filterTree(block.children, predicate) }
-        : block,
+      block.children ? { ...block, children: filterTree(block.children, predicate) } : block,
     );
 }
 
@@ -132,10 +130,7 @@ export const cloneBlockDeep = (block: NpBlockInstance): NpBlockInstance => ({
  * Flat tree-walk that returns the block instance with the given
  * id, anywhere in the tree.
  */
-export function findBlockInTreeFlat(
-  blocks: NpBlockInstance[],
-  id: string,
-): NpBlockInstance | null {
+export function findBlockInTreeFlat(blocks: NpBlockInstance[], id: string): NpBlockInstance | null {
   for (const b of blocks) {
     if (b.id === id) return b;
     if (b.children) {

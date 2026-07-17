@@ -38,16 +38,12 @@ export default defineConfig([
   },
   {
     entry: {
-      "components/member-status-widget":
-        "src/components/member-status-widget.tsx",
-      "components/dark-mode-toggle":
-        "src/components/dark-mode-toggle.tsx",
-      "components/language-picker":
-        "src/components/language-picker.tsx",
+      "components/member-status-widget": "src/components/member-status-widget.tsx",
+      "components/dark-mode-toggle": "src/components/dark-mode-toggle.tsx",
+      "components/language-picker": "src/components/language-picker.tsx",
       "components/mobile-nav": "src/components/mobile-nav.tsx",
       "components/newsletter-form": "src/components/newsletter-form.tsx",
-      "components/search-keyboard-shortcut":
-        "src/components/search-keyboard-shortcut.tsx",
+      "components/search-keyboard-shortcut": "src/components/search-keyboard-shortcut.tsx",
     },
     format: ["esm"],
     dts: true,

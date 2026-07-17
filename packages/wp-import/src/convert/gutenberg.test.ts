@@ -36,13 +36,17 @@ describe("parseGutenbergBlocks", () => {
   });
 
   it("captures attributes verbatim and parses JSON", () => {
-    const out = parseGutenbergBlocks('<!-- wp:list {"ordered":true} --><ol><li>a</li></ol><!-- /wp:list -->');
+    const out = parseGutenbergBlocks(
+      '<!-- wp:list {"ordered":true} --><ol><li>a</li></ol><!-- /wp:list -->',
+    );
     expect(out[0]?.rawAttrs).toBe('{"ordered":true}');
     expect(out[0]?.attrs.ordered).toBe(true);
   });
 
   it("treats malformed JSON attributes as empty without losing the raw text", () => {
-    const out = parseGutenbergBlocks(`<!-- wp:image {bad json} --><figure></figure><!-- /wp:image -->`);
+    const out = parseGutenbergBlocks(
+      `<!-- wp:image {bad json} --><figure></figure><!-- /wp:image -->`,
+    );
     expect(out[0]?.attrs).toEqual({});
     expect(out[0]?.rawAttrs).toBe("{bad json}");
   });

@@ -35,8 +35,7 @@ export default defineConfig([
       "components/copy-button": "src/components/copy-button.tsx",
       "components/error": "src/components/error.tsx",
       "components/members-error": "src/components/members-error.tsx",
-      "components/search-keyboard-shortcut":
-        "src/components/search-keyboard-shortcut.tsx",
+      "components/search-keyboard-shortcut": "src/components/search-keyboard-shortcut.tsx",
       "components/toc-scrollspy": "src/components/toc-scrollspy.tsx",
     },
     format: ["esm"],

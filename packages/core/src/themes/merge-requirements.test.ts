@@ -103,9 +103,7 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
     const cover = posts.fields.find((f) => "name" in f && f.name === "coverImage");
     expect(cover).toMatchObject({ type: "upload", relationTo: "media" });
 
-    const categories = posts.fields.find(
-      (f) => "name" in f && f.name === "categories",
-    );
+    const categories = posts.fields.find((f) => "name" in f && f.name === "categories");
     expect(categories).toMatchObject({
       type: "relationship",
       relationTo: "categories",
@@ -169,10 +167,7 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
     const cats = out.find((c) => c.slug === "categories");
     expect(cats).toBeDefined();
     expect(cats?.labels).toEqual({ singular: "Categorie", plural: "Categories" });
-    expect(cats?.fields.map((f) => ("name" in f ? f.name : ""))).toEqual([
-      "name",
-      "description",
-    ]);
+    expect(cats?.fields.map((f) => ("name" in f ? f.name : ""))).toEqual(["name", "description"]);
     // Synthesised collections carry the originating theme id so
     // the admin sidebar can hide them when that theme isn't
     // active (bundled-themes prebake / runtime-swap path).
@@ -325,14 +320,11 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
   it("never mutates the caller's input collections array or its objects", () => {
     const collections: NpCollectionConfig[] = [basePosts];
     const originalFields = basePosts.fields;
-    const out = mergeThemeRequirements(
-      collections,
-      [
-        theme("magazine", {
-          posts: { fields: { featured: { type: "checkbox" } } },
-        }),
-      ],
-    );
+    const out = mergeThemeRequirements(collections, [
+      theme("magazine", {
+        posts: { fields: { featured: { type: "checkbox" } } },
+      }),
+    ]);
     // Caller's array unchanged in length / identity.
     expect(collections).toHaveLength(1);
     expect(collections[0]?.fields).toBe(originalFields);
@@ -403,9 +395,7 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
 
     const posts = out.find((c) => c.slug === "posts");
     expect(posts).toBeDefined();
-    const names = (posts?.fields ?? []).map((f) =>
-      "name" in f ? f.name : f.type,
-    );
+    const names = (posts?.fields ?? []).map((f) => ("name" in f ? f.name : f.type));
     for (const expected of ["featured", "coverImage", "categories", "author"]) {
       expect(names).toContain(expected);
     }
@@ -455,9 +445,7 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
 
     const out = mergeThemeRequirements([posts], [themeA, themeB]);
     const merged = out.find((c) => c.slug === "posts");
-    const kind = merged?.fields.find(
-      (f) => "name" in f && f.name === "kind",
-    );
+    const kind = merged?.fields.find((f) => "name" in f && f.name === "kind");
     expect(kind?.type).toBe("select");
     if (kind?.type !== "select") return; // type narrow
     const values = kind.options.map((o) => o.value).sort();
@@ -492,9 +480,7 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
 
     const out = mergeThemeRequirements([posts], [themeRelabel]);
     const merged = out.find((c) => c.slug === "posts");
-    const kind = merged?.fields.find(
-      (f) => "name" in f && f.name === "kind",
-    );
+    const kind = merged?.fields.find((f) => "name" in f && f.name === "kind");
     if (kind?.type !== "select") {
       throw new Error("expected merged kind to remain a select");
     }
@@ -524,9 +510,7 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
     });
     const out = mergeThemeRequirements([posts], [bogus]);
     const merged = out.find((c) => c.slug === "posts");
-    const kind = merged?.fields.find(
-      (f) => "name" in f && f.name === "kind",
-    );
+    const kind = merged?.fields.find((f) => "name" in f && f.name === "kind");
     expect(kind?.type).toBe("text");
   });
 
@@ -590,15 +574,9 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
         },
       },
     });
-    const out = mergeThemeRequirements(
-      [basePosts],
-      [themeDocs, themePortfolio],
-    );
+    const out = mergeThemeRequirements([basePosts], [themeDocs, themePortfolio]);
     const merged = out.find((c) => c.slug === "posts");
-    expect(Object.keys(merged?.admin?.kinds ?? {}).sort()).toEqual([
-      "doc",
-      "project",
-    ]);
+    expect(Object.keys(merged?.admin?.kinds ?? {}).sort()).toEqual(["doc", "project"]);
   });
 
   it("last-wins on per-property when two themes claim the same kind value", () => {

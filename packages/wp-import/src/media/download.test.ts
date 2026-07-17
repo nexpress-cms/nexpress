@@ -8,10 +8,7 @@ import {
   WpMediaSsrfError,
 } from "./download.js";
 
-function makeFetchOnce(
-  body: Uint8Array,
-  init: ResponseInit & { url?: string } = {},
-): typeof fetch {
+function makeFetchOnce(body: Uint8Array, init: ResponseInit & { url?: string } = {}): typeof fetch {
   return vi.fn(() => Promise.resolve(new Response(body, init)));
 }
 
@@ -26,10 +23,11 @@ describe("downloadMedia", () => {
       status: 200,
       headers: { "content-type": "image/jpeg" },
     });
-    const out = await downloadMedia(
-      "https://example.com/wp-content/uploads/2025/04/hero.jpg",
-      { fetchImpl, retries: 0, dnsLookupImpl: publicDns },
-    );
+    const out = await downloadMedia("https://example.com/wp-content/uploads/2025/04/hero.jpg", {
+      fetchImpl,
+      retries: 0,
+      dnsLookupImpl: publicDns,
+    });
     expect(Array.from(out.buffer)).toEqual([1, 2, 3]);
     expect(out.mimeType).toBe("image/jpeg");
     expect(out.filename).toBe("hero.jpg");
@@ -49,7 +47,9 @@ describe("downloadMedia", () => {
   });
 
   it("throws WpMediaDownloadError with status on 404 — no retry", async () => {
-    const fetchImpl = vi.fn(() => Promise.resolve(new Response("", { status: 404 }))) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(() =>
+      Promise.resolve(new Response("", { status: 404 })),
+    ) as unknown as typeof fetch;
     await expect(
       downloadMedia("https://example.com/missing.jpg", {
         fetchImpl,
@@ -96,10 +96,11 @@ describe("downloadMedia", () => {
       status: 200,
       headers: { "content-type": "image/jpeg" },
     });
-    const out = await downloadMedia(
-      "https://example.com/path/hello%20world.jpg",
-      { fetchImpl, retries: 0, dnsLookupImpl: publicDns },
-    );
+    const out = await downloadMedia("https://example.com/path/hello%20world.jpg", {
+      fetchImpl,
+      retries: 0,
+      dnsLookupImpl: publicDns,
+    });
     expect(out.filename).toBe("hello world.jpg");
   });
 
@@ -367,18 +368,18 @@ describe("resolveEnvDownloadOptions (#270)", () => {
   });
 
   it("sets allowPrivateHosts when NP_WP_IMPORT_ALLOW_PRIVATE_HOSTS=1", () => {
-    expect(
-      resolveEnvDownloadOptions({ NP_WP_IMPORT_ALLOW_PRIVATE_HOSTS: "1" }),
-    ).toEqual({ allowPrivateHosts: true });
+    expect(resolveEnvDownloadOptions({ NP_WP_IMPORT_ALLOW_PRIVATE_HOSTS: "1" })).toEqual({
+      allowPrivateHosts: true,
+    });
   });
 
   it("also accepts NP_WP_IMPORT_ALLOW_PRIVATE_HOSTS=true", () => {
-    expect(
-      resolveEnvDownloadOptions({ NP_WP_IMPORT_ALLOW_PRIVATE_HOSTS: "true" }),
-    ).toEqual({ allowPrivateHosts: true });
+    expect(resolveEnvDownloadOptions({ NP_WP_IMPORT_ALLOW_PRIVATE_HOSTS: "true" })).toEqual({
+      allowPrivateHosts: true,
+    });
   });
 
-  it("ignores other truthy-ish values — only \"1\" or \"true\" count", () => {
+  it('ignores other truthy-ish values — only "1" or "true" count', () => {
     for (const v of ["yes", "on", "TRUE", "y", "0"]) {
       expect(
         resolveEnvDownloadOptions({ NP_WP_IMPORT_ALLOW_PRIVATE_HOSTS: v }).allowPrivateHosts,
@@ -387,9 +388,9 @@ describe("resolveEnvDownloadOptions (#270)", () => {
   });
 
   it("parses NP_WP_IMPORT_MAX_BYTES as a positive integer", () => {
-    expect(
-      resolveEnvDownloadOptions({ NP_WP_IMPORT_MAX_BYTES: "536870912" }),
-    ).toEqual({ maxBytes: 536870912 });
+    expect(resolveEnvDownloadOptions({ NP_WP_IMPORT_MAX_BYTES: "536870912" })).toEqual({
+      maxBytes: 536870912,
+    });
   });
 
   it("ignores non-numeric / non-positive maxBytes silently", () => {
@@ -425,9 +426,7 @@ describe("downloadMedia — DNS pinning (#382)", () => {
       );
     }) as unknown as typeof fetch;
 
-    const dnsLookupImpl = vi.fn(() =>
-      Promise.resolve([{ address: "93.184.216.34", family: 4 }]),
-    );
+    const dnsLookupImpl = vi.fn(() => Promise.resolve([{ address: "93.184.216.34", family: 4 }]));
     await downloadMedia("https://example.com/x.jpg", {
       fetchImpl,
       retries: 0,

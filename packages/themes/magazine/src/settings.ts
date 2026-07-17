@@ -30,11 +30,10 @@ export const magazineSettingsSchema = z.object({
     .string()
     .regex(/^#[0-9a-f]{6}$/i)
     .optional()
-    .describe("Optional override for the masthead accent color (hex). Falls back to the theme token."),
-  newsletterEnabled: z
-    .boolean()
-    .default(true)
-    .describe("Show the footer newsletter signup form."),
+    .describe(
+      "Optional override for the masthead accent color (hex). Falls back to the theme token.",
+    ),
+  newsletterEnabled: z.boolean().default(true).describe("Show the footer newsletter signup form."),
   leadIssueNumber: z
     .number()
     .int()
@@ -65,13 +64,13 @@ export const magazineSettingsSchema = z.object({
     .string()
     .optional()
     .describe(
-      "Single-line credit under the colophon (e.g. \"Editor — Helena Park · Art — Iseul Ha · Web — Built on NexPress\"). Falls back to a neutral default when unset.",
+      'Single-line credit under the colophon (e.g. "Editor — Helena Park · Art — Iseul Ha · Web — Built on NexPress"). Falls back to a neutral default when unset.',
     ),
   subscribeStats: z
     .string()
     .optional()
     .describe(
-      "Optional stats line under the subscribe button (e.g. \"28,412 readers · 54 countries · 0 ads\"). Hidden when unset.",
+      'Optional stats line under the subscribe button (e.g. "28,412 readers · 54 countries · 0 ads"). Hidden when unset.',
     ),
 });
 

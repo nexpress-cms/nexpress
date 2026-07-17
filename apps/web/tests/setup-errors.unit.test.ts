@@ -15,7 +15,7 @@ describe("messageForConnectionError", () => {
     const msg = messageForConnectionError(TEST_URL, withCode("3D000"));
     expect(msg).toContain('Database "mysite" does not exist');
     expect(msg).toContain("psql -h localhost -p 5433 -U nexpress");
-    expect(msg).toContain("CREATE DATABASE \"mysite\"");
+    expect(msg).toContain('CREATE DATABASE "mysite"');
     // Docker recovery hint stays — covers the operator who's using
     // the scaffold's docker-compose and just needs to rebuild the
     // volume.

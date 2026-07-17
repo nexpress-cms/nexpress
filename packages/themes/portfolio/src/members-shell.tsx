@@ -24,11 +24,7 @@ import { resolvePortfolioSettings } from "./settings-helpers.js";
  * (site) `PortfolioShell` is bypassed when this shell takes over.
  */
 
-export async function PortfolioMembersShell({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export async function PortfolioMembersShell({ children }: { children: ReactNode }) {
   const settings = await resolvePortfolioSettings();
   const styleVars: Record<string, string> = {};
   if (settings.accentColor) {

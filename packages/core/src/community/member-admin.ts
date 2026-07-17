@@ -75,9 +75,9 @@ export async function purgeMemberContent(
   const liveComments = (await db
     .select({ id: npComments.id })
     .from(npComments)
-    .where(
-      and(eq(npComments.memberId, memberId), ne(npComments.status, "deleted")),
-    )) as Array<{ id: string }>;
+    .where(and(eq(npComments.memberId, memberId), ne(npComments.status, "deleted")))) as Array<{
+    id: string;
+  }>;
   let commentsDeleted = 0;
   for (const row of liveComments) {
     try {
@@ -104,8 +104,7 @@ export async function purgeMemberContent(
     if (!config.community?.memberWrite?.create) continue;
 
     const table = getCollectionTable(slug) as PgTable;
-    const memberAuthorCol = (table as unknown as Record<string, unknown>)
-      .memberAuthorId;
+    const memberAuthorCol = (table as unknown as Record<string, unknown>).memberAuthorId;
     const idCol = (table as unknown as Record<string, unknown>).id;
     if (!memberAuthorCol || !idCol) continue;
 
@@ -136,9 +135,9 @@ export async function purgeMemberContent(
   const liveMedia = (await mediaDb
     .select({ id: npMedia.id })
     .from(npMedia)
-    .where(
-      and(eq(npMedia.uploadedByMemberId, memberId), isNull(npMedia.deletedAt)),
-    )) as Array<{ id: string }>;
+    .where(and(eq(npMedia.uploadedByMemberId, memberId), isNull(npMedia.deletedAt)))) as Array<{
+    id: string;
+  }>;
   let mediaDeleted = 0;
   let mediaSkipped = 0;
   for (const row of liveMedia) {

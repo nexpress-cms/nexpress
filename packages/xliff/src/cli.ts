@@ -60,11 +60,7 @@ export async function runCli(
   return { exitCode: 2 };
 }
 
-async function runExport(
-  io: CliIo,
-  args: string[],
-  user: NpAuthUser,
-): Promise<CliRunResult> {
+async function runExport(io: CliIo, args: string[], user: NpAuthUser): Promise<CliRunResult> {
   const outDir = args[0];
   if (!outDir) {
     io.err("xliff export: <out-dir> argument is required\n");
@@ -74,9 +70,7 @@ async function runExport(
   // guard doesn't drop private docs from the bundle (#383).
   const bundle = await exportXliff({ user });
   if (bundle.files.length === 0) {
-    io.out(
-      "xliff export: no i18n collections with translatable content — nothing written.\n",
-    );
+    io.out("xliff export: no i18n collections with translatable content — nothing written.\n");
     return { exitCode: 0 };
   }
   for (const file of bundle.files) {
@@ -94,11 +88,7 @@ async function runExport(
   return { exitCode: 0 };
 }
 
-async function runImport(
-  io: CliIo,
-  args: string[],
-  user: NpAuthUser,
-): Promise<CliRunResult> {
+async function runImport(io: CliIo, args: string[], user: NpAuthUser): Promise<CliRunResult> {
   const positional: string[] = [];
   let dryRun = false;
   for (const arg of args) {
@@ -126,9 +116,7 @@ async function runImport(
   const result = await importXliff({ xml, user, dryRun });
   for (const a of result.applied) {
     const verb = dryRun ? `would ${a.operation}` : a.operation;
-    io.out(
-      `  ${verb}  ${a.collection}/${a.docId}  locale=${a.locale}  units=${a.unitCount}\n`,
-    );
+    io.out(`  ${verb}  ${a.collection}/${a.docId}  locale=${a.locale}  units=${a.unitCount}\n`);
   }
   for (const s of result.skipped) {
     io.out(`  skip   ${s.reason}\n`);

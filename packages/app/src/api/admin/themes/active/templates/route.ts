@@ -42,9 +42,7 @@ export async function GET(request: NextRequest) {
     const docs = await getThemeTemplateSummaries(collection);
     return npSuccessResponse({ docs });
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

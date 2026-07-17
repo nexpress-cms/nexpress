@@ -42,9 +42,7 @@ export async function GET(
     const docs = await findTranslations(slug, id);
     return npSuccessResponse({ docs });
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -72,9 +70,7 @@ export async function POST(
     const result = await createTranslation(slug, id, targetLocale, user);
     return npSuccessResponse(result);
   } catch (error) {
-    return npErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

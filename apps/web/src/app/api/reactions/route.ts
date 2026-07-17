@@ -1,1 +1,1 @@
-export { DELETE,GET,POST } from "@nexpress/app/api/reactions/route";
+export { DELETE, GET, POST } from "@nexpress/app/api/reactions/route";

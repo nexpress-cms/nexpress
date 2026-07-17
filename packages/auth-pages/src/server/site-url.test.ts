@@ -3,8 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { siteUrlLenient, siteUrlStrict } from "./site-url.js";
 
-const fakeRequest = (url: string): NextRequest =>
-  ({ url } as unknown as NextRequest);
+const fakeRequest = (url: string): NextRequest => ({ url }) as unknown as NextRequest;
 
 describe("siteUrlLenient", () => {
   it("returns config.site.url when set", () => {
@@ -28,10 +27,7 @@ describe("siteUrlLenient", () => {
   });
 
   it("falls back to request.url when config.site.url is undefined", () => {
-    const out = siteUrlLenient(
-      { site: {} },
-      fakeRequest("https://example.com/api/oauth/callback"),
-    );
+    const out = siteUrlLenient({ site: {} }, fakeRequest("https://example.com/api/oauth/callback"));
     expect(out.origin).toBe("https://example.com");
   });
 });
@@ -43,9 +39,7 @@ describe("siteUrlStrict", () => {
   });
 
   it("throws when config.site.url is null (#598 host-injection guard)", () => {
-    expect(() => siteUrlStrict({ site: { url: null } })).toThrow(
-      /SITE_URL is unset/,
-    );
+    expect(() => siteUrlStrict({ site: { url: null } })).toThrow(/SITE_URL is unset/);
   });
 
   it("throws when config.site.url is undefined (#598 host-injection guard)", () => {
@@ -53,9 +47,7 @@ describe("siteUrlStrict", () => {
   });
 
   it("throws when config.site.url is the empty string (treated as unset)", () => {
-    expect(() => siteUrlStrict({ site: { url: "" } })).toThrow(
-      /SITE_URL is unset/,
-    );
+    expect(() => siteUrlStrict({ site: { url: "" } })).toThrow(/SITE_URL is unset/);
   });
 
   it("error message points operators at the fix", () => {

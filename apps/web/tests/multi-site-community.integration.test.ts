@@ -354,7 +354,8 @@ describe.skipIf(skipIfNoTestDb())("Phase 18 — community site scope", () => {
   });
 
   it("Issue #219 — markNotificationsRead is scoped to the current site", async () => {
-    const { createSite, withCurrentSite, createNotification, markNotificationsRead } = await import("@nexpress/core");
+    const { createSite, withCurrentSite, createNotification, markNotificationsRead } =
+      await import("@nexpress/core");
     await createSite({ id: "site-a219", name: "A" });
     await createSite({ id: "site-b219", name: "B" });
     const member = await seedMember("phase219");

@@ -1,9 +1,4 @@
-import {
-  NpForbiddenError,
-  npMembers,
-  verifyTokenFull,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, npMembers, verifyTokenFull, can } from "@nexpress/core";
 import { MembersListView, type MemberListRow } from "@nexpress/admin/client";
 import { and, desc, ilike, or, sql, type SQL } from "drizzle-orm";
 import { cookies } from "next/headers";
@@ -31,9 +26,7 @@ interface MembersAdminPageProps {
   searchParams: Promise<{ q?: string; status?: string }>;
 }
 
-export default async function MembersAdminPage({
-  searchParams,
-}: MembersAdminPageProps) {
+export default async function MembersAdminPage({ searchParams }: MembersAdminPageProps) {
   await ensureFor("read");
   const cookieStore = await cookies();
   const token = cookieStore.get("np-session")?.value;
@@ -57,8 +50,7 @@ export default async function MembersAdminPage({
   const params = await searchParams;
   const rawQ = params.q?.trim() ?? "";
   const q = rawQ.length > 0 ? rawQ : null;
-  const status =
-    params.status && isStatus(params.status) ? params.status : null;
+  const status = params.status && isStatus(params.status) ? params.status : null;
 
   const conditions: SQL[] = [];
   if (q) {
@@ -86,14 +78,9 @@ export default async function MembersAdminPage({
     })
     .from(npMembers);
 
-  const filtered =
-    conditions.length === 0
-      ? baseQuery
-      : baseQuery.where(and(...conditions));
+  const filtered = conditions.length === 0 ? baseQuery : baseQuery.where(and(...conditions));
 
-  const rows = (await filtered
-    .orderBy(desc(npMembers.createdAt))
-    .limit(100)) as Array<{
+  const rows = (await filtered.orderBy(desc(npMembers.createdAt)).limit(100)) as Array<{
     id: string;
     handle: string;
     email: string;

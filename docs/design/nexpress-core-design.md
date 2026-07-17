@@ -2522,9 +2522,7 @@ defineCollection({
     update: isOwnerOrAdmin,
     delete: isAdmin,
   },
-  fields: [
-    /* ... */
-  ],
+  fields: [/* ... */],
 });
 
 /**

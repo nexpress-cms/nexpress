@@ -56,11 +56,7 @@ export function useMemberLogin(options: UseMemberLoginOptions = {}): UseMemberLo
       setIsSubmitting(true);
       setErrors({});
       try {
-        const result = await submitJson<{ member: NpAuthMember }>(
-          endpoint,
-          values,
-          messages,
-        );
+        const result = await submitJson<{ member: NpAuthMember }>(endpoint, values, messages);
         if (!result.ok) {
           const fieldErrors: UseMemberLoginResult["errors"] = {};
           if (result.fields?.email) fieldErrors.email = result.fields.email;

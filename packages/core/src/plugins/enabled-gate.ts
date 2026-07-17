@@ -155,8 +155,6 @@ export function setEnabledGateTtlForTest(ms: number): void {
  */
 let fetchOverride: ((pluginId: string) => Promise<boolean>) | null = null;
 
-export function setFetchImplForTest(
-  impl: ((pluginId: string) => Promise<boolean>) | null,
-): void {
+export function setFetchImplForTest(impl: ((pluginId: string) => Promise<boolean>) | null): void {
   fetchOverride = impl;
 }

@@ -4,12 +4,7 @@ import { setJobQueue } from "@nexpress/core/bootstrap";
 
 import { GET } from "@/app/api/health/route";
 import { GET as readyGET } from "@/app/api/health/ready/route";
-import {
-  closeTestDb,
-  ensureMigrated,
-  registerTestCollections,
-  skipIfNoTestDb,
-} from "./harness.js";
+import { closeTestDb, ensureMigrated, registerTestCollections, skipIfNoTestDb } from "./harness.js";
 
 describe("GET /api/health (liveness)", () => {
   it("returns ok + timestamp", async () => {

@@ -24,9 +24,7 @@ import {
  * array up-front so the editor's add-child UI has something to
  * push into without a null-check round-trip.
  */
-export const createBlockInstance = (
-  definition: NpBlockMetadata,
-): NpBlockInstance => ({
+export const createBlockInstance = (definition: NpBlockMetadata): NpBlockInstance => ({
   id: createBlockId(),
   type: definition.type,
   props: { ...definition.defaultProps },
@@ -63,11 +61,7 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
           const parentDef = parent ? definitions.get(parent.type) : null;
           if (
             parentDef &&
-            !canAcceptChild(
-              parentDef,
-              action.blockType,
-              parent?.children?.length ?? 0,
-            )
+            !canAcceptChild(parentDef, action.blockType, parent?.children?.length ?? 0)
           ) {
             return state;
           }
@@ -76,10 +70,7 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         if (action.props) {
           next.props = { ...next.props, ...action.props };
         }
-        return updateContainerChildren(state, parentId, (siblings) => [
-          ...siblings,
-          next,
-        ]);
+        return updateContainerChildren(state, parentId, (siblings) => [...siblings, next]);
       }
       case "INSERT_BEFORE":
       case "INSERT_AFTER": {
@@ -96,11 +87,7 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
           const parentDef = parent ? definitions.get(parent.type) : null;
           if (
             parentDef &&
-            !canAcceptChild(
-              parentDef,
-              action.blockType,
-              parent?.children?.length ?? 0,
-            )
+            !canAcceptChild(parentDef, action.blockType, parent?.children?.length ?? 0)
           ) {
             return state;
           }
@@ -133,11 +120,7 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
           if (
             parentDef &&
             source &&
-            !canAcceptChild(
-              parentDef,
-              source.type,
-              parent?.children?.length ?? 0,
-            )
+            !canAcceptChild(parentDef, source.type, parent?.children?.length ?? 0)
           ) {
             return state;
           }
@@ -146,11 +129,7 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
           const source = siblings[loc.index];
           if (!source) return siblings;
           const clone = cloneBlockDeep(source);
-          return [
-            ...siblings.slice(0, loc.index + 1),
-            clone,
-            ...siblings.slice(loc.index + 1),
-          ];
+          return [...siblings.slice(0, loc.index + 1), clone, ...siblings.slice(loc.index + 1)];
         });
       }
       case "MOVE_WITHIN_PARENT": {
@@ -217,23 +196,15 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
           return state;
         }
         const source = findBlockInTreeFlat(state, action.id);
-        if (
-          source &&
-          !canAcceptChild(
-            targetDef,
-            source.type,
-            target?.children?.length ?? 0,
-          )
-        ) {
+        if (source && !canAcceptChild(targetDef, source.type, target?.children?.length ?? 0)) {
           return state;
         }
         const detached = detachBlock(state, action.id);
         if (!detached) return state;
-        return updateContainerChildren(
-          detached.tree,
-          action.targetParentId,
-          (siblings) => [...siblings, detached.removed],
-        );
+        return updateContainerChildren(detached.tree, action.targetParentId, (siblings) => [
+          ...siblings,
+          detached.removed,
+        ]);
       }
       case "MOVE_OUT": {
         // Promote one level: drop into grandparent immediately
@@ -253,37 +224,27 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         const source = findBlockInTreeFlat(state, action.id);
         if (parentLoc.parentId !== null && source) {
           const grandparent = findBlockInTreeFlat(state, parentLoc.parentId);
-          const grandparentDef = grandparent
-            ? definitions.get(grandparent.type)
-            : null;
+          const grandparentDef = grandparent ? definitions.get(grandparent.type) : null;
           if (
             grandparentDef &&
-            !canAcceptChild(
-              grandparentDef,
-              source.type,
-              grandparent?.children?.length ?? 0,
-            )
+            !canAcceptChild(grandparentDef, source.type, grandparent?.children?.length ?? 0)
           ) {
             return state;
           }
         }
         const detached = detachBlock(state, action.id);
         if (!detached) return state;
-        return updateContainerChildren(
-          detached.tree,
-          parentLoc.parentId,
-          (siblings) => {
-            const parentIndex = siblings.findIndex((s) => s.id === parentId);
-            if (parentIndex === -1) {
-              return [...siblings, detached.removed];
-            }
-            return [
-              ...siblings.slice(0, parentIndex + 1),
-              detached.removed,
-              ...siblings.slice(parentIndex + 1),
-            ];
-          },
-        );
+        return updateContainerChildren(detached.tree, parentLoc.parentId, (siblings) => {
+          const parentIndex = siblings.findIndex((s) => s.id === parentId);
+          if (parentIndex === -1) {
+            return [...siblings, detached.removed];
+          }
+          return [
+            ...siblings.slice(0, parentIndex + 1),
+            detached.removed,
+            ...siblings.slice(parentIndex + 1),
+          ];
+        });
       }
       case "WRAP_IN": {
         const containerDef = definitions.get(action.containerType);
@@ -310,11 +271,7 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
           const parentDef = parent ? definitions.get(parent.type) : null;
           if (
             parentDef &&
-            !canAcceptChild(
-              parentDef,
-              action.containerType,
-              (parent?.children?.length ?? 1) - 1,
-            )
+            !canAcceptChild(parentDef, action.containerType, (parent?.children?.length ?? 1) - 1)
           ) {
             return state;
           }
@@ -326,20 +283,16 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         // terminates. `locateBlock` + `updateContainerChildren` does
         // the substitution exactly once at the right depth.
         if (!sourceLoc) return state;
-        return updateContainerChildren(
-          state,
-          sourceLoc.parentId,
-          (siblings) => {
-            const target = siblings[sourceLoc.index];
-            if (!target) return siblings;
-            const wrapper = createBlockInstance(containerDef);
-            return [
-              ...siblings.slice(0, sourceLoc.index),
-              { ...wrapper, children: [target] },
-              ...siblings.slice(sourceLoc.index + 1),
-            ];
-          },
-        );
+        return updateContainerChildren(state, sourceLoc.parentId, (siblings) => {
+          const target = siblings[sourceLoc.index];
+          if (!target) return siblings;
+          const wrapper = createBlockInstance(containerDef);
+          return [
+            ...siblings.slice(0, sourceLoc.index),
+            { ...wrapper, children: [target] },
+            ...siblings.slice(sourceLoc.index + 1),
+          ];
+        });
       }
       case "INSERT_PATTERN": {
         // Re-id every block in the pattern so each insertion is
@@ -373,10 +326,7 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
             sanitized = accepted;
           }
         }
-        return updateContainerChildren(state, parentId, (siblings) => [
-          ...siblings,
-          ...sanitized,
-        ]);
+        return updateContainerChildren(state, parentId, (siblings) => [...siblings, ...sanitized]);
       }
       case "DELETE_MANY": {
         if (action.ids.length === 0) return state;
@@ -433,10 +383,7 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
               : block;
             out.push(transformed);
             if (idSet.has(block.id)) {
-              if (
-                !parentDef ||
-                canAcceptChild(parentDef, block.type, projected)
-              ) {
+              if (!parentDef || canAcceptChild(parentDef, block.type, projected)) {
                 out.push(cloneBlockDeep(transformed));
                 projected += 1;
               }
@@ -456,9 +403,7 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         // containers would split the selection.
         const locs = action.ids
           .map((id) => locateBlock(state, id))
-          .filter(
-            (l): l is { parentId: string | null; index: number } => l !== null,
-          );
+          .filter((l): l is { parentId: string | null; index: number } => l !== null);
         if (locs.length !== action.ids.length) return state;
         const parentId = locs[0].parentId;
         if (locs.some((l) => l.parentId !== parentId)) return state;
@@ -481,9 +426,7 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
           const parentDef = parent ? definitions.get(parent.type) : null;
           if (parentDef) {
             const postOpCount = (parent?.children?.length ?? 0) - (end - start + 1) + 1;
-            if (
-              !canAcceptChild(parentDef, action.containerType, postOpCount - 1)
-            ) {
+            if (!canAcceptChild(parentDef, action.containerType, postOpCount - 1)) {
               return state;
             }
           }
@@ -505,18 +448,12 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
             ...createBlockInstance(containerDef),
             children: range,
           };
-          return [
-            ...siblings.slice(0, start),
-            wrapper,
-            ...siblings.slice(end + 1),
-          ];
+          return [...siblings.slice(0, start), wrapper, ...siblings.slice(end + 1)];
         });
       }
       case "UPDATE_PROPS":
         return mapTree(state, (block) =>
-          block.id === action.id
-            ? { ...block, props: { ...block.props, ...action.props } }
-            : block,
+          block.id === action.id ? { ...block, props: { ...block.props, ...action.props } } : block,
         );
       case "REPLACE_PROPS":
         // JSON-edit dialog wants the operator to drop keys by
@@ -541,11 +478,7 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
           const parentDef = parent ? definitions.get(parent.type) : null;
           if (
             parentDef &&
-            !canAcceptChild(
-              parentDef,
-              action.newType,
-              (parent?.children?.length ?? 1) - 1,
-            )
+            !canAcceptChild(parentDef, action.newType, (parent?.children?.length ?? 1) - 1)
           ) {
             return state;
           }
@@ -585,16 +518,10 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
           carriedText && preserveText
             ? {
                 ...baseInstance,
-                props: writePrimaryText(
-                  baseInstance.props,
-                  newDef.defaultProps,
-                  carriedText,
-                ),
+                props: writePrimaryText(baseInstance.props, newDef.defaultProps, carriedText),
               }
             : baseInstance;
-        return mapTree(state, (block) =>
-          block.id === action.id ? next : block,
-        );
+        return mapTree(state, (block) => (block.id === action.id ? next : block));
       }
       default:
         return state;
@@ -610,14 +537,7 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
  * atom blocks (paragraph `text`, heading `text`, quote `text`,
  * code `code`, list `items[0]`, image `caption`).
  */
-const PRIMARY_TEXT_KEYS = [
-  "text",
-  "heading",
-  "title",
-  "label",
-  "code",
-  "caption",
-] as const;
+const PRIMARY_TEXT_KEYS = ["text", "heading", "title", "label", "code", "caption"] as const;
 
 function readPrimaryText(block: NpBlockInstance): string {
   for (const key of PRIMARY_TEXT_KEYS) {

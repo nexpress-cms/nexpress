@@ -15,12 +15,11 @@ export function ForgotPasswordForm() {
             <strong>Check your email.</strong>
           </p>
           <p>
-            If <code>{fields.email.value}</code> matches an account, we&apos;ve
-            sent a reset link. The link expires in 1 hour.
+            If <code>{fields.email.value}</code> matches an account, we&apos;ve sent a reset link.
+            The link expires in 1 hour.
           </p>
           <p className="np-form-help">
-            Didn&apos;t get the email? Check your spam folder, or refresh to
-            try again.
+            Didn&apos;t get the email? Check your spam folder, or refresh to try again.
           </p>
         </div>
       </div>
@@ -28,7 +27,12 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <form onSubmit={(e) => { void submit(e); }} className="np-members-form">
+    <form
+      onSubmit={(e) => {
+        void submit(e);
+      }}
+      className="np-members-form"
+    >
       {errors._form ? (
         <div role="alert" className="np-form-error">
           {errors._form}

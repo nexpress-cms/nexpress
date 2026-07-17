@@ -57,12 +57,12 @@ The contract additions below are designed to honor both.
 
 Resolved before this doc was written; restated for the record.
 
-| #   | Decision                                                    | Choice                                                                             | Rationale                                                                                                      |
-| --- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| #   | Decision                                                         | Choice                                                                             | Rationale                                                                                                      |
+| --- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | A   | Include `pnpm exec nexpress theme add` (CLI config registration) | **Yes**                                                                            | Without it, "operator no coding" promise breaks at theme activation.                                           |
-| B   | Member/community surface skinning                           | **Out of scope**                                                                   | `(site)/members/*` carries strong behavior; needs its own track. Theme contract stays presentational for v0.2. |
-| C   | Reference theme count after rebuild                         | **3 v0.2 references** (`magazine`, `docs`, `portfolio`) + `theme-default` baseline | Each presses a different axis. `theme-default` stays as the scaffold fallback; `theme-minimal` retired.        |
-| D   | First implementation order                                  | **F.1 → F.2 → F.3 → ...**                                                          | F.2 (routes) is the largest unlock; F.1 (`requires`) is design-only and unblocks F.8.                          |
+| B   | Member/community surface skinning                                | **Out of scope**                                                                   | `(site)/members/*` carries strong behavior; needs its own track. Theme contract stays presentational for v0.2. |
+| C   | Reference theme count after rebuild                              | **3 v0.2 references** (`magazine`, `docs`, `portfolio`) + `theme-default` baseline | Each presses a different axis. `theme-default` stays as the scaffold fallback; `theme-minimal` retired.        |
+| D   | First implementation order                                       | **F.1 → F.2 → F.3 → ...**                                                          | F.2 (routes) is the largest unlock; F.1 (`requires`) is design-only and unblocks F.8.                          |
 
 ## 2. Goals
 

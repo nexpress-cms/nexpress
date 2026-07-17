@@ -2,13 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import {
-  AuthCard,
-  AuthLayout,
-  Button,
-  Input,
-  Label,
-} from "@nexpress/admin/client";
+import { AuthCard, AuthLayout, Button, Input, Label } from "@nexpress/admin/client";
 
 type Status = "idle" | "submitting" | "sent" | "error";
 
@@ -65,8 +59,8 @@ export default function ForgotPasswordPage() {
       >
         {status === "sent" ? (
           <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[12.5px] leading-[1.5] text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
-            If an account exists for <strong className="font-semibold">{email}</strong>, a reset link has been sent.
-            Check your email.
+            If an account exists for <strong className="font-semibold">{email}</strong>, a reset
+            link has been sent. Check your email.
           </div>
         ) : (
           <form

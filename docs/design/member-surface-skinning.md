@@ -7,10 +7,11 @@
 > docs adoption deferred — fallback chain keeps them working
 > unchanged until they migrate.
 > Prerequisites:
->   - `docs/design/theme-v0.2-extension.md` (theme contract v0.2,
->     deferred this surface to a separate track per §3 / §10)
->   - `docs/community.md` (existing member/community model)
->   - AGENTS.md theme section (v0.1 contract baseline)
+>
+> - `docs/design/theme-v0.2-extension.md` (theme contract v0.2,
+>   deferred this surface to a separate track per §3 / §10)
+> - `docs/community.md` (existing member/community model)
+> - AGENTS.md theme section (v0.1 contract baseline)
 
 ---
 
@@ -51,14 +52,14 @@ enough that themes opt in painlessly.
 
 Routes the framework owns under `apps/web/src/app/(site)/members/`:
 
-| Route | Behavior weight | Surfaces |
-|---|---|---|
-| `/members/login` | Heavy (auth flow) | Email + password form, OAuth buttons (when configured), link to register / forgot-password |
-| `/members/register` | Heavy (auth flow) | Registration form, terms-of-service hint, post-submit "check email" state |
-| `/members/forgot-password` | Heavy | Email submit, "we sent you a link" state |
-| `/members/reset-password` | Heavy | Token-from-URL parse, new password form |
-| `/members/verify` | Medium | Token-from-URL parse, success / failure state, resend link |
-| `/members/me/notifications` | Medium | Per-user inbox, mark-read, preference toggles |
+| Route                       | Behavior weight   | Surfaces                                                                                   |
+| --------------------------- | ----------------- | ------------------------------------------------------------------------------------------ |
+| `/members/login`            | Heavy (auth flow) | Email + password form, OAuth buttons (when configured), link to register / forgot-password |
+| `/members/register`         | Heavy (auth flow) | Registration form, terms-of-service hint, post-submit "check email" state                  |
+| `/members/forgot-password`  | Heavy             | Email submit, "we sent you a link" state                                                   |
+| `/members/reset-password`   | Heavy             | Token-from-URL parse, new password form                                                    |
+| `/members/verify`           | Medium            | Token-from-URL parse, success / failure state, resend link                                 |
+| `/members/me/notifications` | Medium            | Per-user inbox, mark-read, preference toggles                                              |
 
 Plus surface-adjacent components (defined in `(site)/layout.tsx`
 or imported by site pages):
@@ -75,13 +76,13 @@ or imported by site pages):
 Locked 2026-05-10. See § 11 for the four open-question answers
 that fed into these.
 
-| # | Decision | Choice | Rationale |
-|---|----------|--------|-----------|
-| A | Member routes stay app-owned (URLs, behavior, API contracts) | **Yes** | Auth + token + email flows belong to the framework. Theme owns presentation only. |
-| B | Theme contract gains slot for member chrome | **Yes — `impl.members.shell`** | Without this, login pages look default-themed even on Magazine sites. |
-| C | Theme can replace member page bodies wholesale | **No** | Body replacement requires the theme to reimplement form submission, validation messages, and OAuth provider buttons. Slots-only keeps the migration story small. |
-| D | Existing themes work unchanged | **Yes** | All M.* fields are additive optional. |
-| E | Route restructure for clean shell wiring | **Yes — move `members/*` to a new `(member)` route group** | The current `(site)/layout.tsx` already wraps every child in `impl.shell`; nesting `(site)/members/layout.tsx` underneath would double-wrap. Splitting into a sibling `(member)` route group puts member chrome at one layout, no parent-shell to skip. URL stays `/members/...` (route groups don't affect URLs); header-based i18n (proxy sets `x-np-locale` without rewriting URL) is unaffected. |
+| #   | Decision                                                     | Choice                                                     | Rationale                                                                                                                                                                                                                                                                                                                                                                                            |
+| --- | ------------------------------------------------------------ | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A   | Member routes stay app-owned (URLs, behavior, API contracts) | **Yes**                                                    | Auth + token + email flows belong to the framework. Theme owns presentation only.                                                                                                                                                                                                                                                                                                                    |
+| B   | Theme contract gains slot for member chrome                  | **Yes — `impl.members.shell`**                             | Without this, login pages look default-themed even on Magazine sites.                                                                                                                                                                                                                                                                                                                                |
+| C   | Theme can replace member page bodies wholesale               | **No**                                                     | Body replacement requires the theme to reimplement form submission, validation messages, and OAuth provider buttons. Slots-only keeps the migration story small.                                                                                                                                                                                                                                     |
+| D   | Existing themes work unchanged                               | **Yes**                                                    | All M.* fields are additive optional.                                                                                                                                                                                                                                                                                                                                                                |
+| E   | Route restructure for clean shell wiring                     | **Yes — move `members/*` to a new `(member)` route group** | The current `(site)/layout.tsx` already wraps every child in `impl.shell`; nesting `(site)/members/layout.tsx` underneath would double-wrap. Splitting into a sibling `(member)` route group puts member chrome at one layout, no parent-shell to skip. URL stays `/members/...` (route groups don't affect URLs); header-based i18n (proxy sets `x-np-locale` without rewriting URL) is unaffected. |
 
 ## 3. Goals
 
@@ -205,6 +206,7 @@ needs to duplicate the infrastructure pieces of `(site)/layout.tsx`:
 `ensureFor("read")`, `<NpThemeStyle theme={tokens}>`, the
 theme-owned CSS `<style>` tag, and the `data-np-theme` attribute.
 Differences vs `(site)/layout.tsx`:
+
 - Wraps content in `impl.members.shell` (or `impl.shell`, or a
   fragment) instead of `impl.shell` directly.
 - Skips the `<link rel="alternate" type="application/atom+xml">`
@@ -284,7 +286,7 @@ delegation). Sequence:
 
 1. `theme-magazine/src/members/shell.tsx` — wraps `children`
    in `MagazineHeader` + `<main className="np-magazine-members">`
-   + `MagazineFooter` (re-uses existing slot components).
+   - `MagazineFooter` (re-uses existing slot components).
 2. `magazine/src/styles.ts` — add `.np-member-form` overrides
    under `.np-magazine` scope: serif label fonts, hairline
    input borders matching the masthead aesthetic.
@@ -306,22 +308,22 @@ component state; no server-cache invalidation concern.
 
 ## 8. Risk register
 
-| Risk | Severity | Mitigation |
-|---|---|---|
-| Theme's shell makes assumptions about page width that break narrow login forms | 🟡 Medium | Reference impl for magazine ships max-width: 480px wrapper inside the shell; doc the convention in theme-authoring.md |
-| OAuth provider buttons styled by themes look inconsistent with the framework's tokens | 🟡 Medium | Phase M.2 tokens; doc that OAuth buttons consume `--np-member-oauth-*` |
-| i18n drift between theme-provided pageTitle and framework strings | 🟢 Low | Theme strings layered under operator i18n overrides per existing pattern |
-| Auth flow form changes (e.g. captcha row) break theme assumptions | 🟢 Low | Slot contract is opaque `children`; theme doesn't see internals. The risk is purely visual (new row in unfamiliar style); rare enough to fix per release |
+| Risk                                                                                  | Severity  | Mitigation                                                                                                                                               |
+| ------------------------------------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Theme's shell makes assumptions about page width that break narrow login forms        | 🟡 Medium | Reference impl for magazine ships max-width: 480px wrapper inside the shell; doc the convention in theme-authoring.md                                    |
+| OAuth provider buttons styled by themes look inconsistent with the framework's tokens | 🟡 Medium | Phase M.2 tokens; doc that OAuth buttons consume `--np-member-oauth-*`                                                                                   |
+| i18n drift between theme-provided pageTitle and framework strings                     | 🟢 Low    | Theme strings layered under operator i18n overrides per existing pattern                                                                                 |
+| Auth flow form changes (e.g. captcha row) break theme assumptions                     | 🟢 Low    | Slot contract is opaque `children`; theme doesn't see internals. The risk is purely visual (new row in unfamiliar style); rare enough to fix per release |
 
 ## 9. Phasing — final
 
-| Phase | PR | Scope | Estimate | Actual |
-|---|---|---|---|---|
-| **M.1** | #581 | `impl.members.shell` slot + `(member)` route group restructure + framework wiring | ~330 LOC | shipped |
-| **M.2** | #582 | `--np-member-form-*` tokens + framework default CSS | ~150 LOC | shipped |
-| **M.3** | #583 | `impl.members.notFound` / `error` (mirror F.7 / F.7.1) | ~200 LOC | shipped |
-| **M.ref** | #584 | Magazine reference impl (shell + form tokens + members.notFound + members-error subpath) | ~300 LOC | shipped |
-| **M.docs** | this PR | Theme-authoring cookbook member-surface section + cheat-sheet row + design-doc closeout | ~150 LOC | shipping |
+| Phase      | PR      | Scope                                                                                    | Estimate | Actual   |
+| ---------- | ------- | ---------------------------------------------------------------------------------------- | -------- | -------- |
+| **M.1**    | #581    | `impl.members.shell` slot + `(member)` route group restructure + framework wiring        | ~330 LOC | shipped  |
+| **M.2**    | #582    | `--np-member-form-*` tokens + framework default CSS                                      | ~150 LOC | shipped  |
+| **M.3**    | #583    | `impl.members.notFound` / `error` (mirror F.7 / F.7.1)                                   | ~200 LOC | shipped  |
+| **M.ref**  | #584    | Magazine reference impl (shell + form tokens + members.notFound + members-error subpath) | ~300 LOC | shipped  |
+| **M.docs** | this PR | Theme-authoring cookbook member-surface section + cheat-sheet row + design-doc closeout  | ~150 LOC | shipping |
 
 5 PRs shipped. Track total ~1130 LOC. Each phase shipped independently with operator-visible changes; magazine end-to-end adoption (M.ref) proves the contract works in practice.
 

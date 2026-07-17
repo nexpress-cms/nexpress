@@ -5,3 +5,5 @@ dist
 coverage
 pnpm-lock.yaml
 *.generated.ts
+**/.tsup/
+**/drizzle/meta/

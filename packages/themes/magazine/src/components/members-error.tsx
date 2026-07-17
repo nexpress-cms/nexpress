@@ -13,16 +13,11 @@ interface MagazineMembersErrorProps {
   reset: () => void;
 }
 
-export default function MagazineMembersError({
-  error,
-  reset,
-}: MagazineMembersErrorProps) {
+export default function MagazineMembersError({ error, reset }: MagazineMembersErrorProps) {
   return (
     <main className="np-magazine np-magazine-members-error np-magazine-message">
       <p className="np-magazine-message-eyebrow">Subscriber desk</p>
-      <h1 className="np-magazine-message-title">
-        We lost the thread of your session.
-      </h1>
+      <h1 className="np-magazine-message-title">We lost the thread of your session.</h1>
       <p className="np-magazine-message-body">
         {process.env.NODE_ENV === "production"
           ? "A fresh sign-in usually clears this. Try again, or sign in to start over."

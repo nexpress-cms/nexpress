@@ -151,8 +151,6 @@ describe("synchronizeEditorValue", () => {
       },
     };
 
-    expect(() => serializeEditorValue(rawLexical)).toThrow(
-      'exactly "version" and "document"',
-    );
+    expect(() => serializeEditorValue(rawLexical)).toThrow('exactly "version" and "document"');
   });
 });

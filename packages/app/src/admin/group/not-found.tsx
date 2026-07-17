@@ -54,8 +54,8 @@ export default function AdminNotFound() {
             fontSize: "0.9375rem",
           }}
         >
-          The URL might be mistyped, or the page was removed. Use the
-          dashboard to navigate from a known anchor.
+          The URL might be mistyped, or the page was removed. Use the dashboard to navigate from a
+          known anchor.
         </p>
         <Link
           href="/admin"

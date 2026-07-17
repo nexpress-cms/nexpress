@@ -2,10 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 
 import { getDb } from "../db/runtime.js";
 import { recordAuditEvent } from "../community/audit.js";
-import {
-  npMemberIdentities,
-  npMembers,
-} from "../db/schema/community.js";
+import { npMemberIdentities, npMembers } from "../db/schema/community.js";
 import { npUserOAuthIdentities, npUsers } from "../db/schema/system.js";
 import { NpNotFoundError } from "../errors.js";
 
@@ -103,12 +100,7 @@ export async function revokeUserIdentity(
   const [existing] = (await db
     .select()
     .from(npUserOAuthIdentities)
-    .where(
-      and(
-        eq(npUserOAuthIdentities.id, identityId),
-        eq(npUserOAuthIdentities.userId, userId),
-      ),
-    )
+    .where(and(eq(npUserOAuthIdentities.id, identityId), eq(npUserOAuthIdentities.userId, userId)))
     .limit(1)) as NpUserIdentityRow[];
   if (!existing) {
     // Either the identity doesn't exist or it belongs to a different
@@ -148,12 +140,7 @@ export async function revokeMemberIdentity(
   const [existing] = (await db
     .select()
     .from(npMemberIdentities)
-    .where(
-      and(
-        eq(npMemberIdentities.id, identityId),
-        eq(npMemberIdentities.memberId, memberId),
-      ),
-    )
+    .where(and(eq(npMemberIdentities.id, identityId), eq(npMemberIdentities.memberId, memberId)))
     .limit(1)) as NpMemberIdentityRow[];
   if (!existing) throw new NpNotFoundError("identity", identityId);
   const deleted = (await db

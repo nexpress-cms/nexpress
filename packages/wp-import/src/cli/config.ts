@@ -93,7 +93,9 @@ function parseMapping(value: unknown, displayPath: string): ParsedMapping {
   const wpType = row.wpType ?? row.wp_type;
   const collection = row.collection;
   if (typeof wpType !== "string" || wpType.length === 0) {
-    throw new WpImportConfigError(`${displayPath}: "wpType" is required and must be a non-empty string`);
+    throw new WpImportConfigError(
+      `${displayPath}: "wpType" is required and must be a non-empty string`,
+    );
   }
   if (typeof collection !== "string" || collection.length === 0) {
     throw new WpImportConfigError(

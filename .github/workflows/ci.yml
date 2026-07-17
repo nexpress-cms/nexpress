@@ -63,6 +63,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Format check
+        run: pnpm format:check
+
       # Build first so downstream `tsc --noEmit` sees sibling packages' dist/.
       - name: Build
         run: pnpm build

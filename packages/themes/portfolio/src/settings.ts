@@ -77,13 +77,11 @@ export const portfolioSettingsSchema = z.object({
       },
       {
         label: "Selected clients",
-        value:
-          "Aperture, MoMA PS1, Pentagram (NY), Hanmi Gallery, the City of Seoul.",
+        value: "Aperture, MoMA PS1, Pentagram (NY), Hanmi Gallery, the City of Seoul.",
       },
       {
         label: "Recognition",
-        value:
-          "D&AD Yellow Pencil, TDC Tokyo, ADC Gold, Brand New of the Year.",
+        value: "D&AD Yellow Pencil, TDC Tokyo, ADC Gold, Brand New of the Year.",
       },
     ])
     .describe(
@@ -123,9 +121,7 @@ export const portfolioSettingsSchema = z.object({
       { value: "96", label: "Projects shipped" },
       { value: "12 / yr", label: "Our annual ceiling" },
     ])
-    .describe(
-      "2x2 grid of studio stats. Empty array hides the stats column.",
-    ),
+    .describe("2x2 grid of studio stats. Empty array hides the stats column."),
   footerHoursLine: z
     .string()
     .default("Open · Mon — Fri")
@@ -154,9 +150,7 @@ export const portfolioSettingsSchema = z.object({
     .min(2000)
     .max(2100)
     .optional()
-    .describe(
-      "Optional fixed copyright year. Defaults to the current year when omitted.",
-    ),
+    .describe("Optional fixed copyright year. Defaults to the current year when omitted."),
   // Client logos
   clientLogos: z
     .array(
@@ -167,9 +161,7 @@ export const portfolioSettingsSchema = z.object({
       }),
     )
     .default([])
-    .describe(
-      "Client logos rendered in the homepage 'Selected clients' strip. Edit per project.",
-    ),
+    .describe("Client logos rendered in the homepage 'Selected clients' strip. Edit per project."),
   // Social links — rendered under the contact strip as a mid-
   // dot–separated list. Each entry is { platform, url }; the
   // platform name is title-cased and shown verbatim ("Instagram",
@@ -178,9 +170,7 @@ export const portfolioSettingsSchema = z.object({
   socialLinks: z
     .array(
       z.object({
-        platform: z
-          .string()
-          .describe("Display label (e.g. 'Instagram', 'Are.na', 'Dribbble')"),
+        platform: z.string().describe("Display label (e.g. 'Instagram', 'Are.na', 'Dribbble')"),
         url: z.string().url().describe("Profile URL"),
       }),
     )

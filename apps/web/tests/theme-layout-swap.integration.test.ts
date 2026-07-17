@@ -84,9 +84,7 @@ describe.skipIf(skipIfNoTestDb())("theme layout swap (Phase 11.2)", () => {
     // `np_settings.activeTheme` still says `default`. Resolver
     // should still return SOMETHING (the first remaining theme)
     // rather than null — so the site keeps rendering.
-    const { resetThemes, registerThemes, getActiveTheme } = await import(
-      "@nexpress/core"
-    );
+    const { resetThemes, registerThemes, getActiveTheme } = await import("@nexpress/core");
     const { magazineTheme } = await import("@nexpress/theme-magazine");
     resetThemes();
     registerThemes([magazineTheme]);
@@ -103,10 +101,8 @@ describe.skipIf(skipIfNoTestDb())("theme layout swap (Phase 11.2)", () => {
     const { getThemeById } = await import("@nexpress/core");
     const def = getThemeById("default");
     const min = getThemeById("magazine");
-    const defHeader = (def?.impl as { slots?: { header?: unknown } }).slots
-      ?.header;
-    const minHeader = (min?.impl as { slots?: { header?: unknown } }).slots
-      ?.header;
+    const defHeader = (def?.impl as { slots?: { header?: unknown } }).slots?.header;
+    const minHeader = (min?.impl as { slots?: { header?: unknown } }).slots?.header;
     expect(defHeader).toBeDefined();
     expect(minHeader).toBeDefined();
     expect(defHeader).not.toBe(minHeader);

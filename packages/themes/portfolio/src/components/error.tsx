@@ -21,10 +21,7 @@ interface PortfolioErrorProps {
   reset: () => void;
 }
 
-export default function PortfolioError({
-  error,
-  reset,
-}: PortfolioErrorProps) {
+export default function PortfolioError({ error, reset }: PortfolioErrorProps) {
   // Renders `<main>` because the host's (site)/error.tsx no
   // longer relies on the layout for the `<main>` landmark (v0.2
   // shell-wrap refactor moved that into pages). Theme error

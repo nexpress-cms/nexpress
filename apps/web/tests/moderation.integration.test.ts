@@ -24,10 +24,7 @@ import { POST as resolveReportPOST } from "@/app/api/admin/community/reports/[id
 import { POST as staffHidePOST } from "@/app/api/admin/community/comments/[id]/hide/route";
 import { POST as staffRestorePOST } from "@/app/api/admin/community/comments/[id]/restore/route";
 import { DELETE as staffDeleteDELETE } from "@/app/api/admin/community/comments/[id]/route";
-import {
-  GET as bansGET,
-  POST as bansPOST,
-} from "@/app/api/admin/community/bans/route";
+import { GET as bansGET, POST as bansPOST } from "@/app/api/admin/community/bans/route";
 import { DELETE as banDELETE } from "@/app/api/admin/community/bans/[id]/route";
 import { GET as auditGET } from "@/app/api/admin/audit/route";
 
@@ -40,11 +37,7 @@ function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = 
   return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
 }
 
-function staffRequest(
-  path: string,
-  user: TestUserSession,
-  init: RequestInit = {},
-): NextRequest {
+function staffRequest(path: string, user: TestUserSession, init: RequestInit = {}): NextRequest {
   return jsonRequest(path, {
     ...init,
     cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
@@ -186,10 +179,9 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     expect(hide.status).toBe(200);
 
     // Public listing hides it.
-    const after = await commentsGET(
-      jsonRequest(`/api/collections/posts/${postId}/comments`),
-      { params: Promise.resolve({ slug: "posts", id: postId }) },
-    );
+    const after = await commentsGET(jsonRequest(`/api/collections/posts/${postId}/comments`), {
+      params: Promise.resolve({ slug: "posts", id: postId }),
+    });
     const afterBody = await readJson<{ totalDocs: number }>(after);
     expect(afterBody.body.totalDocs).toBe(0);
 
@@ -211,10 +203,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
 
     // Audit log shows hide + restore + delete actions targeting the comment.
     const audit = await auditGET(
-      staffRequest(
-        `/api/admin/audit?targetType=comment&targetId=${commentId}`,
-        staff,
-      ),
+      staffRequest(`/api/admin/audit?targetType=comment&targetId=${commentId}`, staff),
     );
     const auditBody = await readJson<{ docs: Array<{ action: string }> }>(audit);
     expect(auditBody.status).toBe(200);
@@ -262,10 +251,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     expect(afterBody.body.docs).toHaveLength(0);
 
     const audit = await auditGET(
-      staffRequest(
-        `/api/admin/audit?targetType=member&targetId=${target.memberId}`,
-        staff,
-      ),
+      staffRequest(`/api/admin/audit?targetType=member&targetId=${target.memberId}`, staff),
     );
     const auditBody = await readJson<{ docs: Array<{ action: string }> }>(audit);
     const actions = auditBody.body.docs.map((d) => d.action).sort();
@@ -329,21 +315,19 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     expect(filedBody.status).toBe(201);
 
     const first = await resolveReportPOST(
-      staffRequest(
-        `/api/admin/community/reports/${filedBody.body.id}/resolve`,
-        staff,
-        { method: "POST", body: JSON.stringify({ resolution: "dismissed" }) },
-      ),
+      staffRequest(`/api/admin/community/reports/${filedBody.body.id}/resolve`, staff, {
+        method: "POST",
+        body: JSON.stringify({ resolution: "dismissed" }),
+      }),
       { params: Promise.resolve({ id: filedBody.body.id }) },
     );
     expect(first.status).toBe(200);
 
     const second = await resolveReportPOST(
-      staffRequest(
-        `/api/admin/community/reports/${filedBody.body.id}/resolve`,
-        staff,
-        { method: "POST", body: JSON.stringify({ resolution: "dismissed" }) },
-      ),
+      staffRequest(`/api/admin/community/reports/${filedBody.body.id}/resolve`, staff, {
+        method: "POST",
+        body: JSON.stringify({ resolution: "dismissed" }),
+      }),
       { params: Promise.resolve({ id: filedBody.body.id }) },
     );
     expect(second.status).toBe(400);
@@ -490,11 +474,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
   });
 
   it("file report rejects empty targetId", async () => {
-    const reporter = await seedActiveMember(
-      "empty-reporter",
-      "empty@example.com",
-      "password-12",
-    );
+    const reporter = await seedActiveMember("empty-reporter", "empty@example.com", "password-12");
 
     const res = await reportPOST(
       jsonRequest("/api/reports", {
@@ -518,16 +498,8 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
   it("file report accepts a `reply` target by looking up the comment row", async () => {
     const { fileReport, npComments } = await import("@nexpress/core");
     const { getDb } = await import("@nexpress/core/db");
-    const reporter = await seedActiveMember(
-      "reply-reporter",
-      "reply-r@example.com",
-      "password-12",
-    );
-    const author = await seedActiveMember(
-      "reply-author",
-      "reply-a@example.com",
-      "password-12",
-    );
+    const reporter = await seedActiveMember("reply-reporter", "reply-r@example.com", "password-12");
+    const author = await seedActiveMember("reply-author", "reply-a@example.com", "password-12");
 
     // Replies are stored in `np_comments` (Phase 9.2 decision:
     // forum replies reuse the comments table). Insert directly
@@ -556,9 +528,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
   });
 
   it("file report rejects a `thread` target with an unresolvable id", async () => {
-    const { fileReport, NpNotFoundError, NpValidationError } = await import(
-      "@nexpress/core"
-    );
+    const { fileReport, NpNotFoundError, NpValidationError } = await import("@nexpress/core");
     const reporter = await seedActiveMember(
       "thread-reporter",
       "thread-r@example.com",
@@ -581,9 +551,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
         reason: "spam thread",
       }),
     ).rejects.toSatisfy(
-      (error: unknown) =>
-        error instanceof NpValidationError ||
-        error instanceof NpNotFoundError,
+      (error: unknown) => error instanceof NpValidationError || error instanceof NpNotFoundError,
     );
   });
 });

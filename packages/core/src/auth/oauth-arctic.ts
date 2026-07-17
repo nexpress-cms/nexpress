@@ -79,10 +79,7 @@ export interface FromArcticOptions {
    *
    * Throwing aborts the login with `oauth_error=exchange_failed`.
    */
-  fetchProfile: (
-    accessToken: string,
-    tokens: ArcticLikeTokens,
-  ) => Promise<OAuthProfile>;
+  fetchProfile: (accessToken: string, tokens: ArcticLikeTokens) => Promise<OAuthProfile>;
 }
 
 /**
@@ -113,25 +110,29 @@ export function fromArctic(
       // `(state, codeVerifier, scopes)` for PKCE. The structural type
       // hides this; do the dispatch here so plugin code stays clean.
       const url = usePkce
-        ? (arctic.createAuthorizationURL as unknown as (
-            state: string,
-            verifier: string,
-            scopes: string[],
-          ) => URL)(state, codeVerifier, scopes)
-        : (arctic.createAuthorizationURL as unknown as (
-            state: string,
-            scopes: string[],
-          ) => URL)(state, scopes);
+        ? (
+            arctic.createAuthorizationURL as unknown as (
+              state: string,
+              verifier: string,
+              scopes: string[],
+            ) => URL
+          )(state, codeVerifier, scopes)
+        : (arctic.createAuthorizationURL as unknown as (state: string, scopes: string[]) => URL)(
+            state,
+            scopes,
+          );
       return url.toString();
     },
     async exchange({ code, redirectUri, codeVerifier }) {
       const arctic = factory(redirectUri);
       const tokens = usePkce
-        ? await (arctic.validateAuthorizationCode as unknown as (
-            code: string,
-            verifier: string,
-          ) => Promise<ArcticLikeTokens>)(code, codeVerifier)
-        : await (arctic.validateAuthorizationCode)(code);
+        ? await (
+            arctic.validateAuthorizationCode as unknown as (
+              code: string,
+              verifier: string,
+            ) => Promise<ArcticLikeTokens>
+          )(code, codeVerifier)
+        : await arctic.validateAuthorizationCode(code);
       return opts.fetchProfile(tokens.accessToken(), tokens);
     },
   };

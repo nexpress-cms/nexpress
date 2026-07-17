@@ -24,11 +24,7 @@ export default function MagazineError({ error, reset }: MagazineErrorProps) {
           : error.message}
       </p>
       <div className="np-magazine-message-actions">
-        <button
-          type="button"
-          onClick={reset}
-          className="np-magazine-cta"
-        >
+        <button type="button" onClick={reset} className="np-magazine-cta">
           Reload the page
         </button>
       </div>

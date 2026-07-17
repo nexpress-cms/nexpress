@@ -15,13 +15,7 @@ import { useEffect, useState } from "react";
  * if hydration runs and the next render aligns to the boundary,
  * the DOM doesn't flicker.
  */
-export function LocalTimeTicker({
-  zone,
-  initial,
-}: {
-  zone: string;
-  initial: string;
-}) {
+export function LocalTimeTicker({ zone, initial }: { zone: string; initial: string }) {
   const [label, setLabel] = useState(initial);
 
   useEffect(() => {
@@ -38,8 +32,7 @@ export function LocalTimeTicker({
     // every visitor sees ":00" rollovers at the same instant —
     // then settle into a steady 60s tick.
     const now = new Date();
-    const msUntilNextMinute =
-      1000 * 60 - (now.getSeconds() * 1000 + now.getMilliseconds());
+    const msUntilNextMinute = 1000 * 60 - (now.getSeconds() * 1000 + now.getMilliseconds());
     let intervalId: ReturnType<typeof setInterval> | null = null;
     const timeoutId = setTimeout(() => {
       tick();

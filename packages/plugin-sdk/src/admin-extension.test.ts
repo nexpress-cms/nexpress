@@ -160,9 +160,7 @@ describe("npCollectionTabSchema", () => {
         id: "readingTime",
         label: "Reading time",
         collections: "*",
-        widgets: [
-          { id: "wc", label: "Words", kind: "metric", actionId: "countWords" },
-        ],
+        widgets: [{ id: "wc", label: "Words", kind: "metric", actionId: "countWords" }],
       }),
     ).not.toThrow();
   });
@@ -233,9 +231,7 @@ describe("npAdminDashboardWidgetSchema", () => {
   it("npAdminExtensionSchema accepts dashboardWidgets", () => {
     expect(() =>
       npAdminExtensionSchema.parse({
-        dashboardWidgets: [
-          { id: "q", label: "Q", kind: "metric", actionId: "getQuota" },
-        ],
+        dashboardWidgets: [{ id: "q", label: "Q", kind: "metric", actionId: "getQuota" }],
       }),
     ).not.toThrow();
   });

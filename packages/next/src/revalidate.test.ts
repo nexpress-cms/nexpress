@@ -67,21 +67,17 @@ describe("revalidateCollection", () => {
   });
 
   it("encodes document slugs when expanding path segments", async () => {
-    await revalidateCollection(
-      { posts: { paths: ["/blog/{slug}"] } },
-      "posts",
-      { slug: "question?{draft}" },
-    );
+    await revalidateCollection({ posts: { paths: ["/blog/{slug}"] } }, "posts", {
+      slug: "question?{draft}",
+    });
 
     expect(revalidatePath).toHaveBeenCalledWith("/blog/question%3F%7Bdraft%7D");
   });
 
   it("keeps generic invalidation when an encoded document path exceeds the bound", async () => {
-    await revalidateCollection(
-      { posts: { paths: ["/blog/{slug}"] } },
-      "posts",
-      { slug: "😀".repeat(128) },
-    );
+    await revalidateCollection({ posts: { paths: ["/blog/{slug}"] } }, "posts", {
+      slug: "😀".repeat(128),
+    });
 
     expect(revalidatePath).not.toHaveBeenCalled();
     expect(revalidateTag).toHaveBeenCalledWith("nx:collection:posts", "default");

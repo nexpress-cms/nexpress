@@ -32,9 +32,7 @@
  */
 declare const __NP_FRAMEWORK_VERSION__: string;
 const FRAMEWORK_VERSION_FROM_PACKAGE: string =
-  typeof __NP_FRAMEWORK_VERSION__ !== "undefined"
-    ? __NP_FRAMEWORK_VERSION__
-    : "0.0.0-dev";
+  typeof __NP_FRAMEWORK_VERSION__ !== "undefined" ? __NP_FRAMEWORK_VERSION__ : "0.0.0-dev";
 let frameworkVersion: string = FRAMEWORK_VERSION_FROM_PACKAGE;
 
 /**

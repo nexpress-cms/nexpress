@@ -78,8 +78,7 @@ export function RelationshipField({
         }
 
         const payload = (await response.json()) as
-          | NpFindResult<RelatedDocument>
-          | { docs?: RelatedDocument[]; items?: RelatedDocument[] };
+          NpFindResult<RelatedDocument> | { docs?: RelatedDocument[]; items?: RelatedDocument[] };
         const docs = Array.isArray((payload as NpFindResult<RelatedDocument>).docs)
           ? (payload as NpFindResult<RelatedDocument>).docs
           : Array.isArray((payload as { items?: RelatedDocument[] }).items)

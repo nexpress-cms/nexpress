@@ -9,13 +9,7 @@ export default defineConfig([
     dts: !fast,
     clean: true,
     sourcemap: !fast,
-    external: [
-      "react",
-      "react-dom",
-      "@nexpress/core",
-      "@nexpress/editor",
-      "@nexpress/blocks",
-    ],
+    external: ["react", "react-dom", "@nexpress/core", "@nexpress/editor", "@nexpress/blocks"],
   },
   {
     entry: { client: "src/client.ts" },

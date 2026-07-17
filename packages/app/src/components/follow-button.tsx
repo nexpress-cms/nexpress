@@ -130,7 +130,9 @@ export function FollowButton({ memberId }: FollowButtonProps) {
         });
       }
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
         throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
       }
     } catch (e) {
@@ -164,9 +166,7 @@ export function FollowButton({ memberId }: FollowButtonProps) {
       >
         {label}
       </button>
-      {error ? (
-        <span style={{ color: "#dc2626", fontSize: "0.8rem" }}>{error}</span>
-      ) : null}
+      {error ? <span style={{ color: "#dc2626", fontSize: "0.8rem" }}>{error}</span> : null}
     </span>
   );
 }

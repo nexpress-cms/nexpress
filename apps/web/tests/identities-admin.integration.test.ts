@@ -13,18 +13,10 @@ import {
   type TestUserSession,
 } from "./harness.js";
 
-import {
-  GET as userIdentitiesGET,
-} from "@/app/api/admin/users/[id]/identities/route";
-import {
-  DELETE as userIdentityDELETE,
-} from "@/app/api/admin/users/[id]/identities/[identityId]/route";
-import {
-  GET as memberIdentitiesGET,
-} from "@/app/api/admin/members/[id]/identities/route";
-import {
-  DELETE as memberIdentityDELETE,
-} from "@/app/api/admin/members/[id]/identities/[identityId]/route";
+import { GET as userIdentitiesGET } from "@/app/api/admin/users/[id]/identities/route";
+import { DELETE as userIdentityDELETE } from "@/app/api/admin/users/[id]/identities/[identityId]/route";
+import { GET as memberIdentitiesGET } from "@/app/api/admin/members/[id]/identities/route";
+import { DELETE as memberIdentityDELETE } from "@/app/api/admin/members/[id]/identities/[identityId]/route";
 
 import { NextRequest } from "next/server";
 
@@ -35,11 +27,7 @@ function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = 
   return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
 }
 
-function staffRequest(
-  path: string,
-  user: TestUserSession,
-  init: RequestInit = {},
-): NextRequest {
+function staffRequest(path: string, user: TestUserSession, init: RequestInit = {}): NextRequest {
   return jsonRequest(path, {
     ...init,
     cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
@@ -173,11 +161,9 @@ describe.skipIf(skipIfNoTestDb())("identities admin (integration)", () => {
       const identityId = await seedUserIdentity(target.userId, "github", "gh-revoke");
 
       const res = await userIdentityDELETE(
-        staffRequest(
-          `/api/admin/users/${target.userId}/identities/${identityId}`,
-          admin,
-          { method: "DELETE" },
-        ),
+        staffRequest(`/api/admin/users/${target.userId}/identities/${identityId}`, admin, {
+          method: "DELETE",
+        }),
         { params: Promise.resolve({ id: target.userId, identityId }) },
       );
       expect(res.status).toBe(200);
@@ -215,11 +201,9 @@ describe.skipIf(skipIfNoTestDb())("identities admin (integration)", () => {
       const target = await seedUser({ email: "edit-target@example.com" });
       const identityId = await seedUserIdentity(target.userId, "github", "gh-eds");
       const res = await userIdentityDELETE(
-        staffRequest(
-          `/api/admin/users/${target.userId}/identities/${identityId}`,
-          editor,
-          { method: "DELETE" },
-        ),
+        staffRequest(`/api/admin/users/${target.userId}/identities/${identityId}`, editor, {
+          method: "DELETE",
+        }),
         { params: Promise.resolve({ id: target.userId, identityId }) },
       );
       expect(res.status).toBe(403);
@@ -233,11 +217,9 @@ describe.skipIf(skipIfNoTestDb())("identities admin (integration)", () => {
 
       // Hit DELETE with b's id but a's identityId — must NOT delete.
       const res = await userIdentityDELETE(
-        staffRequest(
-          `/api/admin/users/${b.userId}/identities/${aIdentity}`,
-          admin,
-          { method: "DELETE" },
-        ),
+        staffRequest(`/api/admin/users/${b.userId}/identities/${aIdentity}`, admin, {
+          method: "DELETE",
+        }),
         { params: Promise.resolve({ id: b.userId, identityId: aIdentity }) },
       );
       expect(res.status).toBe(404);
@@ -305,11 +287,9 @@ describe.skipIf(skipIfNoTestDb())("identities admin (integration)", () => {
       const identityId = await seedMemberIdentity(memberId, "github", "gh-gamma");
 
       const res = await memberIdentityDELETE(
-        staffRequest(
-          `/api/admin/members/${memberId}/identities/${identityId}`,
-          admin,
-          { method: "DELETE" },
-        ),
+        staffRequest(`/api/admin/members/${memberId}/identities/${identityId}`, admin, {
+          method: "DELETE",
+        }),
         { params: Promise.resolve({ id: memberId, identityId }) },
       );
       expect(res.status).toBe(200);
@@ -346,11 +326,9 @@ describe.skipIf(skipIfNoTestDb())("identities admin (integration)", () => {
       const identityId = await seedMemberIdentity(memberId, "github", "gh-delta");
 
       const res = await memberIdentityDELETE(
-        staffRequest(
-          `/api/admin/members/${memberId}/identities/${identityId}`,
-          editor,
-          { method: "DELETE" },
-        ),
+        staffRequest(`/api/admin/members/${memberId}/identities/${identityId}`, editor, {
+          method: "DELETE",
+        }),
         { params: Promise.resolve({ id: memberId, identityId }) },
       );
       expect(res.status).toBe(403);
@@ -363,11 +341,9 @@ describe.skipIf(skipIfNoTestDb())("identities admin (integration)", () => {
       const aIdentity = await seedMemberIdentity(a, "github", "gh-eve");
 
       const res = await memberIdentityDELETE(
-        staffRequest(
-          `/api/admin/members/${b}/identities/${aIdentity}`,
-          admin,
-          { method: "DELETE" },
-        ),
+        staffRequest(`/api/admin/members/${b}/identities/${aIdentity}`, admin, {
+          method: "DELETE",
+        }),
         { params: Promise.resolve({ id: b, identityId: aIdentity }) },
       );
       expect(res.status).toBe(404);
