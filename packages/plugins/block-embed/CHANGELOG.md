@@ -1,5 +1,29 @@
 # @nexpress/plugin-block-embed
 
+## 0.4.0
+
+### Patch Changes
+
+- bae7088: Require explicit translation intent on textual block props and round-trip declared nested block, array, and rich-text content through validated XLIFF units.
+- Updated dependencies [bae7088]
+- Updated dependencies [7d31c88]
+- Updated dependencies [c10eb69]
+- Updated dependencies [f7ee76e]
+- Updated dependencies [fdd684d]
+- Updated dependencies [3396b1c]
+- Updated dependencies [3d45e43]
+- Updated dependencies [75e6c34]
+- Updated dependencies [e0a2092]
+- Updated dependencies [8cb026a]
+- Updated dependencies [81b3fb5]
+- Updated dependencies [f6fa9d1]
+- Updated dependencies [5522c32]
+- Updated dependencies [0944d13]
+- Updated dependencies [ccad4ed]
+- Updated dependencies [763ce4a]
+  - @nexpress/blocks@0.4.0
+  - @nexpress/plugin-sdk@0.4.0
+
 ## 0.3.26
 
 ### Patch Changes

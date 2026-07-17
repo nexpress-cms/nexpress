@@ -1,5 +1,87 @@
 # @nexpress/theme-default
 
+## 0.4.0
+
+### Patch Changes
+
+- 3adebdb: Unify staff and member authentication around exact identity, JWT, API wire, credential, runtime configuration, and one-row browser-session contracts. Runtime authentication now recognizes `NP_SECRET` as its only signing-key environment variable and fails closed for malformed JWT, lockout, invitation, reset, verification, or OAuth-state settings. Refresh compare-and-swap rotates access and refresh hashes, logout revokes the pair through either live token's shared session id, password replacement and whole-identity revocation commit atomically, single-use credentials reject concurrent replay, OAuth state cookies share the signed token lifetime, and doctor validates runtime configuration plus persisted auth/session rows.
+- fdcbfd3: Unify process bootstrap behind the exact `read`, `plugins`, `worker`, and
+  `write` intents. Startup is race-safe, retryable, and fail-closed; terminal
+  shutdown drains every owned resource in dependency order. Framework-only raw
+  singleton wiring moves from the core root to `@nexpress/core/bootstrap`, while
+  apps, workers, standalone scripts, generated code, and scaffolds use the same
+  `createBootstrap()` contract.
+- 773bd1a: Unify locale config, resolution input, app/theme/plugin ICU catalogs, runtime
+  parameters, Admin request/response wires, persisted overrides, bounded caches,
+  translation-progress counts, doctor, and live health behind one exact
+  fail-closed i18n contract. Add the
+  client-safe `@nexpress/core/i18n-contract` entry for proxy and Admin consumers.
+- a678bb5: Unify search requests, adapter candidates, public results, current-site and
+  visibility scope, cache keys, reindex responses, OpenAPI, themes, bootstrap
+  lifecycle, and live health behind one exact bounded Core contract. Malformed
+  external results and dispatch failures are contained, diagnosed, and fall back
+  to the built-in Postgres path before they can reach caches or callers.
+- 105beb7: Add default-theme member notification entry points in the desktop header and mobile drawer, with refreshed route metadata for the member notifications page.
+- bedb705: Add one exact navigation tree contract across theme seeds, Admin and API
+  writes, backup import/export, OpenAPI, persisted reads, caches, and public
+  rendering. Stored and resolved navigation types are now distinct, malformed
+  rows fail closed, and the client-safe navigation validators are public.
+- 763ce4a: Promote rich-text content to a stable NexPress-owned v1 envelope. Validate the
+  wire format before collection writes; share the type guard, validator, version,
+  and empty-document factory through the client-safe fields subpath; and align
+  editor state, generated types, SSR, search, media and mention extraction,
+  translation interchange, WordPress import, Admin, themes, and example plugins.
+- Updated dependencies [bae7088]
+- Updated dependencies [257e70f]
+- Updated dependencies [3deb01e]
+- Updated dependencies [7d31c88]
+- Updated dependencies [8693411]
+- Updated dependencies [3adebdb]
+- Updated dependencies [fdcbfd3]
+- Updated dependencies [1ff06a7]
+- Updated dependencies [922c708]
+- Updated dependencies [ab83768]
+- Updated dependencies [080fcbf]
+- Updated dependencies [257b120]
+- Updated dependencies [773bd1a]
+- Updated dependencies [21d4748]
+- Updated dependencies [c10eb69]
+- Updated dependencies [4cef9c8]
+- Updated dependencies [a678bb5]
+- Updated dependencies [b44257f]
+- Updated dependencies [3eb1af7]
+- Updated dependencies [27a4f0e]
+- Updated dependencies [9eea115]
+- Updated dependencies [2e35374]
+- Updated dependencies [f3dee13]
+- Updated dependencies [ba9f730]
+- Updated dependencies [e58c4c8]
+- Updated dependencies [f7ee76e]
+- Updated dependencies [23c1f69]
+- Updated dependencies [fdd684d]
+- Updated dependencies [f8ef45e]
+- Updated dependencies [cef1583]
+- Updated dependencies [3396b1c]
+- Updated dependencies [c0a7da6]
+- Updated dependencies [bedb705]
+- Updated dependencies [91867cc]
+- Updated dependencies [3d45e43]
+- Updated dependencies [2dce282]
+- Updated dependencies [75e6c34]
+- Updated dependencies [e0a2092]
+- Updated dependencies [8cb026a]
+- Updated dependencies [81b3fb5]
+- Updated dependencies [f6fa9d1]
+- Updated dependencies [5522c32]
+- Updated dependencies [0944d13]
+- Updated dependencies [ccad4ed]
+- Updated dependencies [763ce4a]
+  - @nexpress/blocks@0.4.0
+  - @nexpress/core@0.4.0
+  - @nexpress/editor@0.4.0
+  - @nexpress/theme@0.4.0
+  - @nexpress/next@0.4.0
+
 ## 0.3.26
 
 ### Patch Changes

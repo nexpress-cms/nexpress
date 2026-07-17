@@ -1,5 +1,31 @@
 # @nexpress/plugin-webhook-relay
 
+## 0.4.0
+
+### Patch Changes
+
+- 75e6c34: Give every content, auth, media, and render hook one exact typed data contract.
+  Normalize content lifecycle payloads around document state, source, and
+  principal; normalize media upload results; reject malformed dispatch data and
+  unknown hook names at the core boundary; and diagnose values returned from
+  fire-and-forget lifecycle handlers.
+- e0a2092: Add typed definition-level plugin actions, validate declarative Admin action
+  ids and result kinds early, and surface missing, mismatched, duplicate,
+  setup-untyped, and Admin-unreferenced actions through plugin doctor.
+- Updated dependencies [7d31c88]
+- Updated dependencies [c10eb69]
+- Updated dependencies [3396b1c]
+- Updated dependencies [3d45e43]
+- Updated dependencies [75e6c34]
+- Updated dependencies [e0a2092]
+- Updated dependencies [8cb026a]
+- Updated dependencies [81b3fb5]
+- Updated dependencies [f6fa9d1]
+- Updated dependencies [5522c32]
+- Updated dependencies [0944d13]
+- Updated dependencies [ccad4ed]
+  - @nexpress/plugin-sdk@0.4.0
+
 ## 0.2.18
 
 ### Patch Changes

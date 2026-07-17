@@ -1,5 +1,157 @@
 # @nexpress/next
 
+## 0.4.0
+
+### Minor Changes
+
+- 922c708: Unify collection storage, runtime, generated, Admin, REST, OpenAPI, and
+  import/export document shapes behind an exact definition-derived contract.
+  Collection reads now hydrate ordered child and hasMany rows, updates preserve
+  omitted fields, `_status` is request-only, and malformed persistence or hook
+  results fail closed with doctor and live-health diagnostics. Collection
+  lifecycle after-hooks now run exactly once with the same hydrated document
+  contract as plugin lifecycle hooks.
+
+  Canonical slugs, bounded JSON write values, complete relation inventories, and
+  safe unambiguous pagination/locale filters now fail at their earliest runtime
+  boundary as part of the same contract.
+
+- fdd684d: Add a definition-aware block content contract that validates registered prop
+  schemas and container rules before Admin/app saves, previews, pattern
+  registration, and rendering. Plugin doctor now reports invalid pattern content
+  while preserving unknown plugin blocks and stale props as warnings. The
+  Magazine story items and Portfolio image-grid items now use their actual nested
+  array schemas. Docs API-table defaults now match its structured Admin schema.
+
+### Patch Changes
+
+- 8693411: Add a closed revision snapshot and API wire contract across persistence,
+  autosave, restore, Admin decoding, OpenAPI, and doctor diagnostics. Revision
+  versions remain monotonic after pruning, concurrent autosaves allocate versions
+  atomically, and document deletion removes its revision history.
+- 3adebdb: Unify staff and member authentication around exact identity, JWT, API wire, credential, runtime configuration, and one-row browser-session contracts. Runtime authentication now recognizes `NP_SECRET` as its only signing-key environment variable and fails closed for malformed JWT, lockout, invitation, reset, verification, or OAuth-state settings. Refresh compare-and-swap rotates access and refresh hashes, logout revokes the pair through either live token's shared session id, password replacement and whole-identity revocation commit atomically, single-use credentials reject concurrent replay, OAuth state cookies share the signed token lifetime, and doctor validates runtime configuration plus persisted auth/session rows.
+- fdcbfd3: Unify process bootstrap behind the exact `read`, `plugins`, `worker`, and
+  `write` intents. Startup is race-safe, retryable, and fail-closed; terminal
+  shutdown drains every owned resource in dependency order. Framework-only raw
+  singleton wiring moves from the core root to `@nexpress/core/bootstrap`, while
+  apps, workers, standalone scripts, generated code, and scaffolds use the same
+  `createBootstrap()` contract.
+- 1ff06a7: Unify cache invalidation behind one exact, awaitable runtime contract. App
+  writes, collection and scheduled-publish workers, plugin cache APIs, Next path
+  and tag invalidation, CDN purge adapters, Admin Health, ops execution, and
+  cached theme/plugin fetch options now validate and report the same bounded
+  request and result shapes. Bootstrap may own an injected CDN adapter and closes
+  its optional lifecycle hook during terminal shutdown.
+- 21d4748: Unify logger and error-reporter adapters under one exact runtime contract.
+  Validate environment intent, adapter kinds, event/context shapes, async void
+  results, child loggers, and shutdown hooks; contain adapter failures and expose
+  them through Admin Health, doctor, and production readiness. Custom adapters
+  now declare `kind`, scaffolds share one `src/lib/observability.ts` definition
+  across web/worker/scripts, and worker shutdown flushes both adapters.
+- c10eb69: Complete the remaining plugin definition contracts: validate page templates,
+  ICU translations, config schema/version/migrations, and lifecycle callbacks;
+  run teardown and clean every source-owned contribution during reload or failed
+  setup; expose template/translation inventories and conflicts in plugin doctor;
+  remove the never-implemented custom-field registry; and align scaffolds,
+  bundled examples, and author documentation.
+- 4cef9c8: Unify rate-limit runtime intent, adapter registration, requests, decisions,
+  proxy injection, Redis replies, shutdown, startup safety, and doctor diagnostics
+  behind one fail-closed contract.
+
+  Custom adapters must now expose a canonical lowercase `kind` and return the
+  required positive `retryAfterSeconds` field on every decision.
+
+- a678bb5: Unify search requests, adapter candidates, public results, current-site and
+  visibility scope, cache keys, reindex responses, OpenAPI, themes, bootstrap
+  lifecycle, and live health behind one exact bounded Core contract. Malformed
+  external results and dispatch failures are contained, diagnosed, and fall back
+  to the built-in Postgres path before they can reach caches or callers.
+- b44257f: Unify page metadata, JSON-LD, sitemap/index entries, Atom entries, and theme
+  SEO callback results behind one exact, bounded runtime contract. Collection
+  URL resolvers and theme sitemap/feed/robots hooks now fail before malformed
+  values reach crawler responses or caches, while Theme and Next consume Core's
+  canonical types directly.
+- 3eb1af7: Unify local, S3, and custom storage under one exact runtime and object
+  contract. Validate configuration, safe keys, metadata, adapter kinds and
+  results across bootstrap, media, health, doctor, setup, and ops; add the
+  `@nexpress/core/storage` entry, custom bootstrap injection, and adapter
+  teardown. Custom adapters now declare `kind`, return exact Web stream, URL,
+  boolean, and void results, and may expose `shutdown()`.
+- ba9f730: Treat `NP_REPLICAS>1` as a production multi-node signal in boot safety,
+  doctor, and admin readiness checks so local storage and in-memory rate-limit
+  risks are surfaced consistently before deploy.
+- 23c1f69: Unify REST errors behind one bounded client-safe envelope, fixed framework code/status mapping, fail-closed Next response boundary, and reusable OpenAPI error contract.
+- cef1583: Unify background job names, built-in and custom payloads, pg-boss rows,
+  schedules, worker heartbeats, logs, Admin API responses, ops reporting, and
+  doctor diagnostics behind one fail-closed runtime contract.
+- c0a7da6: Complete the multi-site runtime contract with persisted request-role projection,
+  capability-based site authorization, exact site and membership validation,
+  fail-closed doctor diagnostics, and atomic deletion across every site-scoped table
+  and collection-owned revision/media-reference row. Server helpers are also
+  available from the new `@nexpress/core/sites` domain subpath.
+- bedb705: Add one exact navigation tree contract across theme seeds, Admin and API
+  writes, backup import/export, OpenAPI, persisted reads, caches, and public
+  rendering. Stored and resolved navigation types are now distinct, malformed
+  rows fail closed, and the client-safe navigation validators are public.
+- 2dce282: Add a complete theme definition contract across module evaluation, config
+  resolution, core registration, Next bootstrap, and CLI installation. Theme
+  metadata, requirements, settings, routes, templates, tokens, translations,
+  blocks, patterns, member/SEO contributions, and seed content now fail early
+  with precise locations instead of being filtered or deferred until render.
+- 81b3fb5: Validate plugin block definitions and prop schemas during definition and bootstrap, reject same-plugin duplicate types, report malformed and conflicting blocks in plugin doctor, and align the CLI scaffold and bundled block examples with the shared contract.
+- f6fa9d1: Validate plugin page route patterns and handlers during definition and boot, fully dispatch raw-path `locale: "none"` routes, report malformed and duplicate routes in plugin doctor, and add a typed public page-route scaffold.
+- 5522c32: Validate plugin page-builder pattern metadata, recursive block trees, block
+  references, source assignment, duplicate ids, and cross-plugin ownership across
+  the SDK, bootstrap, shared registry, and plugin doctor; derive pattern inventory
+  metadata and align the block scaffold plus bundled callout example.
+- Updated dependencies [bae7088]
+- Updated dependencies [257e70f]
+- Updated dependencies [7d31c88]
+- Updated dependencies [8693411]
+- Updated dependencies [3adebdb]
+- Updated dependencies [fdcbfd3]
+- Updated dependencies [1ff06a7]
+- Updated dependencies [922c708]
+- Updated dependencies [ab83768]
+- Updated dependencies [080fcbf]
+- Updated dependencies [257b120]
+- Updated dependencies [773bd1a]
+- Updated dependencies [21d4748]
+- Updated dependencies [c10eb69]
+- Updated dependencies [4cef9c8]
+- Updated dependencies [a678bb5]
+- Updated dependencies [b44257f]
+- Updated dependencies [3eb1af7]
+- Updated dependencies [27a4f0e]
+- Updated dependencies [9eea115]
+- Updated dependencies [2e35374]
+- Updated dependencies [f3dee13]
+- Updated dependencies [ba9f730]
+- Updated dependencies [e58c4c8]
+- Updated dependencies [f7ee76e]
+- Updated dependencies [23c1f69]
+- Updated dependencies [fdd684d]
+- Updated dependencies [f8ef45e]
+- Updated dependencies [cef1583]
+- Updated dependencies [3396b1c]
+- Updated dependencies [c0a7da6]
+- Updated dependencies [bedb705]
+- Updated dependencies [91867cc]
+- Updated dependencies [3d45e43]
+- Updated dependencies [2dce282]
+- Updated dependencies [75e6c34]
+- Updated dependencies [e0a2092]
+- Updated dependencies [8cb026a]
+- Updated dependencies [81b3fb5]
+- Updated dependencies [f6fa9d1]
+- Updated dependencies [5522c32]
+- Updated dependencies [0944d13]
+- Updated dependencies [ccad4ed]
+- Updated dependencies [763ce4a]
+  - @nexpress/blocks@0.4.0
+  - @nexpress/core@0.4.0
+  - @nexpress/theme@0.4.0
+
 ## 0.3.26
 
 ### Patch Changes

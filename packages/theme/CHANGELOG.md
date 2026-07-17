@@ -1,5 +1,82 @@
 # @nexpress/theme
 
+## 0.4.0
+
+### Minor Changes
+
+- f7ee76e: Promote block content to one stable recursive wire contract. Validate block
+  trees before collection writes, pattern storage, Admin JSON/paste/preview,
+  translation, and unknown-block operations; expose client-safe validators and
+  types; and emit the contract in generated document types and OpenAPI.
+- bedb705: Add one exact navigation tree contract across theme seeds, Admin and API
+  writes, backup import/export, OpenAPI, persisted reads, caches, and public
+  rendering. Stored and resolved navigation types are now distinct, malformed
+  rows fail closed, and the client-safe navigation validators are public.
+- 2dce282: Add a complete theme definition contract across module evaluation, config
+  resolution, core registration, Next bootstrap, and CLI installation. Theme
+  metadata, requirements, settings, routes, templates, tokens, translations,
+  blocks, patterns, member/SEO contributions, and seed content now fail early
+  with precise locations instead of being filtered or deferred until render.
+
+### Patch Changes
+
+- 7d31c88: Unify theme definitions, persisted overrides, Admin/import APIs, plugin theme reads and writes, OpenAPI, and CSS generation behind one validated nested token contract.
+- b44257f: Unify page metadata, JSON-LD, sitemap/index entries, Atom entries, and theme
+  SEO callback results behind one exact, bounded runtime contract. Collection
+  URL resolvers and theme sitemap/feed/robots hooks now fail before malformed
+  values reach crawler responses or caches, while Theme and Next consume Core's
+  canonical types directly.
+- 5522c32: Validate plugin page-builder pattern metadata, recursive block trees, block
+  references, source assignment, duplicate ids, and cross-plugin ownership across
+  the SDK, bootstrap, shared registry, and plugin doctor; derive pattern inventory
+  metadata and align the block scaffold plus bundled callout example.
+- Updated dependencies [bae7088]
+- Updated dependencies [257e70f]
+- Updated dependencies [7d31c88]
+- Updated dependencies [8693411]
+- Updated dependencies [3adebdb]
+- Updated dependencies [fdcbfd3]
+- Updated dependencies [1ff06a7]
+- Updated dependencies [922c708]
+- Updated dependencies [ab83768]
+- Updated dependencies [080fcbf]
+- Updated dependencies [257b120]
+- Updated dependencies [773bd1a]
+- Updated dependencies [21d4748]
+- Updated dependencies [c10eb69]
+- Updated dependencies [4cef9c8]
+- Updated dependencies [a678bb5]
+- Updated dependencies [b44257f]
+- Updated dependencies [3eb1af7]
+- Updated dependencies [27a4f0e]
+- Updated dependencies [9eea115]
+- Updated dependencies [2e35374]
+- Updated dependencies [f3dee13]
+- Updated dependencies [ba9f730]
+- Updated dependencies [e58c4c8]
+- Updated dependencies [f7ee76e]
+- Updated dependencies [23c1f69]
+- Updated dependencies [fdd684d]
+- Updated dependencies [f8ef45e]
+- Updated dependencies [cef1583]
+- Updated dependencies [3396b1c]
+- Updated dependencies [c0a7da6]
+- Updated dependencies [bedb705]
+- Updated dependencies [91867cc]
+- Updated dependencies [3d45e43]
+- Updated dependencies [2dce282]
+- Updated dependencies [75e6c34]
+- Updated dependencies [e0a2092]
+- Updated dependencies [8cb026a]
+- Updated dependencies [81b3fb5]
+- Updated dependencies [f6fa9d1]
+- Updated dependencies [5522c32]
+- Updated dependencies [0944d13]
+- Updated dependencies [ccad4ed]
+- Updated dependencies [763ce4a]
+  - @nexpress/blocks@0.4.0
+  - @nexpress/core@0.4.0
+
 ## 0.3.26
 
 ### Patch Changes

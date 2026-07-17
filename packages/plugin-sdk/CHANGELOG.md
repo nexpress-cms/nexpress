@@ -1,5 +1,107 @@
 # @nexpress/plugin-sdk
 
+## 0.4.0
+
+### Minor Changes
+
+- 3396b1c: Add one exact media record and image-variant contract across processing,
+  persisted reads, URL resolution, plugin reads, Admin APIs, OpenAPI, cleanup,
+  and storage diagnostics. Media URLs now use actual stored variant keys rather
+  than guessed WebP paths, the built-in worker processes image jobs by default,
+  and non-image uploads no longer enqueue Sharp work. Legacy `sizes.*.url`
+  members are no longer canonical; remove the cached URL member before optional
+  variant reprocessing so each entry contains storage metadata only.
+  Plugin `ctx.media.getUrl` now accepts `{ variant, fallbackToOriginal }` and
+  returns `null` when the media or required variant is absent; the previously
+  declared on-demand transform argument was never implemented.
+- 3d45e43: Make `np_sites` the single owner of site identity and add a closed,
+  fail-closed framework settings registry across core services, Admin, plugin
+  context, backup import/export, OpenAPI, and doctor. The new
+  `@nexpress/core/settings` subpath exposes the exact site, SEO, registry, and
+  validation contracts. General settings now accept only `site` and `seo`,
+  plugin writes require the calling plugin to be loaded, and malformed persisted
+  theme/plugin settings or migrator failures no longer reset silently. Full
+  site-config imports and exports use format version 2 with top-level canonical
+  site identity. Plugin ids now use one 128-character npm-shaped contract across
+  the SDK, core host, scoped config keys, cache invalidation, and encoded
+  Admin/API paths.
+- 75e6c34: Give every content, auth, media, and render hook one exact typed data contract.
+  Normalize content lifecycle payloads around document state, source, and
+  principal; normalize media upload results; reject malformed dispatch data and
+  unknown hook names at the core boundary; and diagnose values returned from
+  fire-and-forget lifecycle handlers.
+- ccad4ed: Replace the unused `render:afterPage` hook with one typed `render:beforePage`
+  contribution contract, require function-based hook handlers, reject invalid
+  hook registrations and render results, and restore the Analytics Lite
+  body-end collector on public pages.
+
+### Patch Changes
+
+- 7d31c88: Unify theme definitions, persisted overrides, Admin/import APIs, plugin theme reads and writes, OpenAPI, and CSS generation behind one validated nested token contract.
+- c10eb69: Complete the remaining plugin definition contracts: validate page templates,
+  ICU translations, config schema/version/migrations, and lifecycle callbacks;
+  run teardown and clean every source-owned contribution during reload or failed
+  setup; expose template/translation inventories and conflicts in plugin doctor;
+  remove the never-implemented custom-field registry; and align scaffolds,
+  bundled examples, and author documentation.
+- e0a2092: Add typed definition-level plugin actions, validate declarative Admin action
+  ids and result kinds early, and surface missing, mismatched, duplicate,
+  setup-untyped, and Admin-unreferenced actions through plugin doctor.
+- 8cb026a: Validate plugin API route definitions and handler results, share their typed request/response contract across core and the SDK, support bodyless HEAD dispatch for GET routes, and teach plugin doctor and new scaffolds the canonical static-route rules.
+- 81b3fb5: Validate plugin block definitions and prop schemas during definition and bootstrap, reject same-plugin duplicate types, report malformed and conflicting blocks in plugin doctor, and align the CLI scaffold and bundled block examples with the shared contract.
+- f6fa9d1: Validate plugin page route patterns and handlers during definition and boot, fully dispatch raw-path `locale: "none"` routes, report malformed and duplicate routes in plugin doctor, and add a typed public page-route scaffold.
+- 5522c32: Validate plugin page-builder pattern metadata, recursive block trees, block
+  references, source assignment, duplicate ids, and cross-plugin ownership across
+  the SDK, bootstrap, shared registry, and plugin doctor; derive pattern inventory
+  metadata and align the block scaffold plus bundled callout example.
+- 0944d13: Validate plugin scheduled task ids, five-field UTC cron expressions, handlers, duplicate registrations, and runtime results across the SDK and core host; report contract failures in plugin doctor and align the CLI scaffold and analytics example with the typed registry.
+- Updated dependencies [bae7088]
+- Updated dependencies [257e70f]
+- Updated dependencies [7d31c88]
+- Updated dependencies [8693411]
+- Updated dependencies [3adebdb]
+- Updated dependencies [fdcbfd3]
+- Updated dependencies [1ff06a7]
+- Updated dependencies [922c708]
+- Updated dependencies [ab83768]
+- Updated dependencies [080fcbf]
+- Updated dependencies [257b120]
+- Updated dependencies [773bd1a]
+- Updated dependencies [21d4748]
+- Updated dependencies [c10eb69]
+- Updated dependencies [4cef9c8]
+- Updated dependencies [a678bb5]
+- Updated dependencies [b44257f]
+- Updated dependencies [3eb1af7]
+- Updated dependencies [27a4f0e]
+- Updated dependencies [9eea115]
+- Updated dependencies [2e35374]
+- Updated dependencies [f3dee13]
+- Updated dependencies [ba9f730]
+- Updated dependencies [e58c4c8]
+- Updated dependencies [f7ee76e]
+- Updated dependencies [23c1f69]
+- Updated dependencies [fdd684d]
+- Updated dependencies [f8ef45e]
+- Updated dependencies [cef1583]
+- Updated dependencies [3396b1c]
+- Updated dependencies [c0a7da6]
+- Updated dependencies [bedb705]
+- Updated dependencies [91867cc]
+- Updated dependencies [3d45e43]
+- Updated dependencies [2dce282]
+- Updated dependencies [75e6c34]
+- Updated dependencies [e0a2092]
+- Updated dependencies [8cb026a]
+- Updated dependencies [81b3fb5]
+- Updated dependencies [f6fa9d1]
+- Updated dependencies [5522c32]
+- Updated dependencies [0944d13]
+- Updated dependencies [ccad4ed]
+- Updated dependencies [763ce4a]
+  - @nexpress/blocks@0.4.0
+  - @nexpress/core@0.4.0
+
 ## 0.3.26
 
 ### Patch Changes
