@@ -6,15 +6,15 @@ build output should ship with a changeset entry committed alongside the code.
 
 ## When to add a changeset
 
-| Change type                                                | Add a changeset? |
-| ---------------------------------------------------------- | ---------------- |
-| Public API addition / change / removal                     | Yes              |
-| Behavior change visible to a `@nexpress/*` consumer        | Yes              |
-| New collection field type, new block, new plugin hook      | Yes              |
-| Config option added / renamed / removed                    | Yes              |
-| Internal refactor with no consumer-visible difference      | No               |
-| Test, doc, CI, or build-script change                      | No               |
-| `apps/web` only (the reference app — `ignore` in config)   | No               |
+| Change type                                              | Add a changeset? |
+| -------------------------------------------------------- | ---------------- |
+| Public API addition / change / removal                   | Yes              |
+| Behavior change visible to a `@nexpress/*` consumer      | Yes              |
+| New collection field type, new block, new plugin hook    | Yes              |
+| Config option added / renamed / removed                  | Yes              |
+| Internal refactor with no consumer-visible difference    | No               |
+| Test, doc, CI, or build-script change                    | No               |
+| `apps/web` only (the reference app — `ignore` in config) | No               |
 
 When in doubt, add one.
 
@@ -38,6 +38,9 @@ even for new features. Reasons:
   together according to [`.changeset/config.json`](config.json); a single
   `minor` pulls the whole group up. The 0.1.0 → 0.2.0 jump on a single
   first-time-UX feature in `@nexpress/admin` taught us this the hard way.
+  Every publishable `@nexpress/*` workspace package belongs to that one group;
+  `pnpm test:repo` rejects missing, private, duplicate, or stale entries before
+  Changesets can generate or publish a misaligned release.
 - **0.x means everything is "subject to change" by semver
   convention.** Operators don't expect `0.1.x → 0.2.x` to be a "new
   features" boundary — they read it as breaking. Save `minor` for

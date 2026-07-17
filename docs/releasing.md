@@ -114,8 +114,23 @@ pnpm verify            # build + typecheck + test
 pnpm ux-audit          # fresh-scaffold smoke (boots a generated app)
 ```
 
-If both pass, the PR is safe to merge — the next push to `main` will
-publish.
+`pnpm ux-audit` requires Docker. It generates a local-mode app under the real
+`apps/*` workspace, links it without changing `pnpm-lock.yaml`, creates an
+isolated database in the repository Postgres service, generates and pushes the
+fresh schema, completes non-interactive first boot (site, theme, and admin),
+and probes both `next dev` and `next start`. The scaffold and database are
+removed afterward, and a database service started by the audit is stopped
+again. Use `--quick` to skip only the production probe or `--keep` to preserve
+both artifacts for diagnosis.
+
+The repository-level `pnpm test:repo` gate also verifies that every publishable
+`@nexpress/*` workspace package belongs to the single Changesets fixed group.
+It runs automatically from `pnpm test`, `pnpm verify`, `pnpm run version`, and
+`pnpm run release` so a newly added package cannot silently publish at a
+different family version.
+
+If both pre-merge commands pass, the PR is safe to merge — the next push to
+`main` will publish.
 
 ### Version PR merge gate
 
