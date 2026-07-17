@@ -1,677 +1,685 @@
 import {
   NpForbiddenError,
   NpValidationError,
-  npMedia,
-  npPlugins,
-  npSettings,
-  npNavigation,
   NP_DEFAULT_SITE_ID,
+  can,
   getAllCollectionSlugs,
   getCollectionConfig,
+  getCollectionZodSchema,
   getCurrentSiteId,
   getPluginRegistration,
   getThemeById,
+  invalidatePluginEnabled,
+  npMedia,
+  npNavigation,
+  npPlugins,
+  npSettings,
+  npSites,
+  npUsers,
   pluginConfigCacheTag,
   saveDocument,
-  setPluginConfig,
-  setSiteGeneralSettings,
-  updatePluginState,
-  can,
+  withDeferredPostCommit,
   type NpDocumentStatus,
 } from "@nexpress/core";
+import { npGetPersistedCollectionDocumentIds } from "@nexpress/core/collections";
 import {
   npCollectionDocumentToWriteInput,
   npParseCollectionDocumentWire,
 } from "@nexpress/core/collection-contract";
 import {
-  npAnalyzeSettingValue,
-  npNormalizeSiteGeneralSettings,
-  type NpSiteGeneralSettings,
-} from "@nexpress/core/settings";
-import { npAnalyzeThemeTokensOverlay, type NpThemeTokensOverlay } from "@nexpress/core/theme";
-import {
-  npAnalyzeNavigationItems,
-  npAnalyzeNavigationLocation,
-  type NpNavItem,
-} from "@nexpress/core/navigation";
-import {
-  bustThemeCache,
-  invalidateCacheTargets,
-  navCacheTag,
-  readJsonBody,
-  siteCacheTag,
-} from "@nexpress/next";
-import { and, eq, isNull } from "drizzle-orm";
+  npCollectContentTransferMediaReferences,
+  npCollectContentTransferRelationshipReferences,
+  npCompareContentTransferText,
+  npContentTransferContractLimits,
+  npContentTransferDocumentKey,
+  npOrderContentTransferDocumentEntries,
+  npRemapContentTransferMediaReferences,
+  npRequireContentTransferImportReport,
+  type NpContentTransferDocument,
+  type NpContentTransferDocumentEntry,
+  type NpContentTransferEnvelope,
+  type NpContentTransferImportCounts,
+  type NpContentTransferPluginState,
+} from "@nexpress/core/content-transfer";
+import { npAnalyzeSettingValue } from "@nexpress/core/settings";
+import { bustThemeCache, invalidateCacheTargets, navCacheTag, siteCacheTag } from "@nexpress/next";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import type { NextRequest } from "next/server";
-
-const SUPPORTED_EXPORT_VERSION = "3";
 
 import { requireAuth } from "../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
 import { validateDocumentBlockContent } from "../../lib/block-content-validation";
+import {
+  npContentTransferValidationError,
+  npReadContentTransferBody,
+  npReadContentTransferQuery,
+  npRequireContentTransferRequestValue,
+  npSummarizeContentTransferValues,
+} from "../../lib/content-transfer";
 import { getDb } from "../../lib/db";
 import { ensureFor } from "../../lib/init-core";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
+const MEDIA_QUERY_CHUNK = 500;
+
+interface PreparedDocument extends NpContentTransferDocumentEntry {
+  writable: Record<string, unknown>;
+  status: NpDocumentStatus;
+  exists: boolean;
 }
 
-interface ImportMedia {
+interface PreparedPlugin {
   id: string;
-  filename?: string;
-  hash?: string;
-  mimeType?: string;
+  enabled: boolean;
+  config: Record<string, unknown>;
+  configVersion: number;
 }
 
-interface ImportPlugin {
-  id: string;
-  enabled?: boolean;
-  config?: Record<string, unknown>;
-  manifestVersion?: string | null;
-}
-
-interface ImportPayload {
-  version?: string;
-  site?: NpSiteGeneralSettings;
-  theme?: NpThemeTokensOverlay;
-  settings?: Record<string, unknown>;
-  navigation?: Record<string, NpNavItem[]> | Array<{ location?: string; items: NpNavItem[] }>;
-  collections?: Record<string, Record<string, unknown>[]>;
-  media?: ImportMedia[];
-  plugins?: ImportPlugin[];
-}
-
-function validateNavigationPayload(value: unknown): void {
-  if (value === undefined) return;
-  const errors: Array<{ field: string; message: string }> = [];
-
-  if (Array.isArray(value)) {
-    const locations = new Set<string>();
-    for (const [index, entry] of value.entries()) {
-      const path = `navigation.${index.toString()}`;
-      if (!isRecord(entry)) {
-        errors.push({ field: path, message: "navigation entries must be plain objects" });
-        continue;
-      }
-      for (const key of Object.keys(entry)) {
-        if (key !== "location" && key !== "items") {
-          errors.push({
-            field: `${path}.${key}`,
-            message: `unsupported navigation field "${key}"`,
-          });
-        }
-      }
-      const location = entry.location === undefined ? "main" : entry.location;
-      for (const issue of npAnalyzeNavigationLocation(location)) {
-        errors.push({
-          field: issue.path.replace(/^navigation\.location/u, `${path}.location`),
-          message: issue.message,
-        });
-      }
-      if (typeof location === "string") {
-        if (locations.has(location)) {
-          errors.push({
-            field: `${path}.location`,
-            message: `duplicate navigation location "${location}"`,
-          });
-        }
-        locations.add(location);
-      }
-      for (const issue of npAnalyzeNavigationItems(entry.items)) {
-        errors.push({
-          field: issue.path.replace(/^navigation/u, path),
-          message: issue.message,
-        });
-      }
-    }
-  } else if (isRecord(value)) {
-    for (const [location, items] of Object.entries(value)) {
-      for (const issue of npAnalyzeNavigationLocation(location)) {
-        errors.push({
-          field: issue.path.replace(/^navigation\.location/u, `navigation.${location}`),
-          message: issue.message,
-        });
-      }
-      for (const issue of npAnalyzeNavigationItems(items)) {
-        errors.push({
-          field: issue.path.replace(/^navigation\.items/u, `navigation.${location}`),
-          message: issue.message,
-        });
-      }
-    }
-  } else {
-    errors.push({ field: "navigation", message: "navigation must be an object or entry array" });
-  }
-
-  if (errors.length > 0) throw new NpValidationError("Invalid input", errors);
-}
-
-function validatePayload(body: unknown): ImportPayload {
-  if (!isRecord(body)) {
-    throw new NpValidationError("Invalid input", [
-      { field: "body", message: "Request body must be a JSON object" },
+function contentTransferDocumentId(document: NpContentTransferDocument): string {
+  if (typeof document.id !== "string") {
+    throw npContentTransferValidationError("Invalid content transfer document", [
+      { field: "collections", message: "Every transferred document must have a string id." },
     ]);
   }
+  return document.id;
+}
 
-  const allowed = new Set([
-    "version",
-    "exportedAt",
-    "siteUrl",
-    "partial",
-    "collectionsExported",
-    "site",
-    "theme",
-    "settings",
-    "navigation",
-    "collections",
-    "media",
-    "plugins",
-  ]);
-  const unknown = Object.keys(body).find((key) => !allowed.has(key));
-  if (unknown) {
-    throw new NpValidationError("Invalid input", [
-      { field: unknown, message: `Unsupported import field "${unknown}"` },
-    ]);
-  }
-
-  if (body.version !== SUPPORTED_EXPORT_VERSION) {
-    const supplied =
-      typeof body.version === "string" || typeof body.version === "number"
-        ? String(body.version)
-        : "unknown";
-    throw new NpValidationError("Invalid input", [
+function assertRegisteredFilter(
+  filter: readonly string[] | null,
+  registered: ReadonlySet<string>,
+  payload: NpContentTransferEnvelope,
+): void {
+  const unknown = filter?.filter((slug) => !registered.has(slug)) ?? [];
+  if (unknown.length > 0) {
+    throw npContentTransferValidationError("Invalid content transfer query", [
       {
-        field: "version",
-        message: `Unsupported export version "${supplied}" (expected "${SUPPORTED_EXPORT_VERSION}")`,
+        field: "collections",
+        message: `Unknown collection(s): ${npSummarizeContentTransferValues(unknown)}`,
       },
     ]);
   }
-  if (
-    body.exportedAt !== undefined &&
-    (typeof body.exportedAt !== "string" ||
-      Number.isNaN(new Date(body.exportedAt).valueOf()) ||
-      new Date(body.exportedAt).toISOString() !== body.exportedAt)
-  ) {
-    throw new NpValidationError("Invalid input", [
-      { field: "exportedAt", message: "exportedAt must be an ISO date-time string" },
+  const missing = filter?.filter((slug) => !Object.hasOwn(payload.collections, slug)) ?? [];
+  if (missing.length > 0) {
+    throw npContentTransferValidationError("Invalid content transfer query", [
+      {
+        field: "collections",
+        message: `Collection(s) are not present in the transfer: ${npSummarizeContentTransferValues(missing)}`,
+      },
     ]);
   }
-  if (body.siteUrl !== undefined && body.siteUrl !== null && typeof body.siteUrl !== "string") {
-    throw new NpValidationError("Invalid input", [
-      { field: "siteUrl", message: "siteUrl must be a string or null" },
-    ]);
-  }
-  if (body.partial !== undefined && typeof body.partial !== "boolean") {
-    throw new NpValidationError("Invalid input", [
-      { field: "partial", message: "partial must be boolean" },
-    ]);
-  }
-  if (
-    body.collectionsExported !== undefined &&
-    (!Array.isArray(body.collectionsExported) ||
-      !body.collectionsExported.every((entry) => typeof entry === "string"))
-  ) {
-    throw new NpValidationError("Invalid input", [
-      { field: "collectionsExported", message: "collectionsExported must be a string array" },
-    ]);
-  }
+}
 
-  if (body.theme !== undefined) {
-    const tokenIssues = npAnalyzeThemeTokensOverlay(body.theme);
-    if (tokenIssues.length > 0) {
+function normalizeFrameworkSettings(settings: Record<string, unknown>): Record<string, unknown> {
+  const normalized: Record<string, unknown> = { ...settings };
+  for (const [key, value] of Object.entries(settings)) {
+    if (key === "activeTheme" && (typeof value !== "string" || !getThemeById(value))) {
+      throw new NpValidationError("Invalid content transfer", [
+        {
+          field: "settings.activeTheme",
+          message: `Theme '${String(value)}' is not registered.`,
+        },
+      ]);
+    }
+    if (!key.startsWith("theme.settings:")) continue;
+    const themeId = key.slice("theme.settings:".length);
+    const theme = getThemeById(themeId);
+    if (!theme) {
+      throw new NpValidationError("Invalid content transfer", [
+        { field: `settings.${key}`, message: `Theme '${themeId}' is not registered.` },
+      ]);
+    }
+    const envelope = value as { __npVersion: unknown; __npSettings: unknown };
+    const expectedVersion = theme.manifest.settingsVersion ?? 1;
+    if (envelope.__npVersion !== expectedVersion) {
+      throw new NpValidationError("Invalid content transfer", [
+        {
+          field: `settings.${key}.__npVersion`,
+          message: `Theme '${themeId}' settings must use version ${expectedVersion.toString()}.`,
+        },
+      ]);
+    }
+    const schema = theme.manifest.settingsSchema as
+      | {
+          safeParse(
+            input: unknown,
+          ): { success: true; data: unknown } | { success: false; error?: { message: string } };
+        }
+      | undefined;
+    if (!schema) {
+      throw new NpValidationError("Invalid content transfer", [
+        {
+          field: `settings.${key}`,
+          message: `Theme '${themeId}' does not declare settingsSchema.`,
+        },
+      ]);
+    }
+    const parsed = schema.safeParse(envelope.__npSettings);
+    if (!parsed.success) {
+      throw new NpValidationError("Invalid content transfer", [
+        {
+          field: `settings.${key}`,
+          message: parsed.error?.message ?? "Theme settings failed validation",
+        },
+      ]);
+    }
+    normalized[key] = { __npVersion: expectedVersion, __npSettings: parsed.data };
+    const issues = npAnalyzeSettingValue(key, normalized[key]);
+    if (issues.length > 0) {
       throw new NpValidationError(
-        "Invalid input",
-        tokenIssues.map((issue) => ({ field: issue.path, message: issue.message })),
+        "Invalid content transfer",
+        issues.map((issue) => ({ field: issue.path, message: issue.message })),
       );
     }
   }
-
-  if (body.site !== undefined) {
-    try {
-      npNormalizeSiteGeneralSettings(body.site);
-    } catch (error) {
-      throw new NpValidationError("Invalid input", [
-        { field: "site", message: error instanceof Error ? error.message : "Invalid site" },
-      ]);
-    }
-  }
-
-  let normalizedSettings: Record<string, unknown> | undefined;
-  if (body.settings !== undefined) {
-    if (!isRecord(body.settings)) {
-      throw new NpValidationError("Invalid input", [
-        { field: "settings", message: "settings must be an object" },
-      ]);
-    }
-    const settingErrors = Object.entries(body.settings).flatMap(([key, value]) =>
-      npAnalyzeSettingValue(key, value).map((entry) => ({
-        field: entry.path,
-        message: entry.message,
-      })),
-    );
-    if (settingErrors.length > 0) {
-      throw new NpValidationError("Invalid input", settingErrors);
-    }
-    normalizedSettings = { ...body.settings };
-    for (const [key, value] of Object.entries(body.settings)) {
-      if (key === "theme") {
-        throw new NpValidationError("Invalid input", [
-          {
-            field: "settings.theme",
-            message: "Theme token overrides belong in the top-level theme field.",
-          },
-        ]);
-      }
-      if (key === "jobs.paused") {
-        throw new NpValidationError("Invalid input", [
-          {
-            field: "settings.jobs.paused",
-            message: "Global worker pause state is not part of a site-config import.",
-          },
-        ]);
-      }
-      if (key.startsWith("plugin.config:")) {
-        throw new NpValidationError("Invalid input", [
-          {
-            field: `settings.${key}`,
-            message:
-              "Plugin config belongs in the top-level plugins array so its registered schema can validate it.",
-          },
-        ]);
-      }
-      if (key === "activeTheme") {
-        if (typeof value !== "string" || !getThemeById(value)) {
-          throw new NpValidationError("Invalid input", [
-            {
-              field: "settings.activeTheme",
-              message: `Theme '${String(value)}' is not registered.`,
-            },
-          ]);
-        }
-      }
-      if (key.startsWith("theme.settings:")) {
-        const themeId = key.slice("theme.settings:".length);
-        const theme = getThemeById(themeId);
-        if (!theme) {
-          throw new NpValidationError("Invalid input", [
-            { field: `settings.${key}`, message: `Theme '${themeId}' is not registered.` },
-          ]);
-        }
-        const envelope = value as { __npSettings: unknown };
-        const expectedVersion = theme.manifest.settingsVersion ?? 1;
-        if ((value as { __npVersion: unknown }).__npVersion !== expectedVersion) {
-          throw new NpValidationError("Invalid input", [
-            {
-              field: `settings.${key}.__npVersion`,
-              message: `Theme '${themeId}' settings must use version ${expectedVersion.toString()}.`,
-            },
-          ]);
-        }
-        const schema = theme.manifest.settingsSchema as
-          | {
-              safeParse(
-                input: unknown,
-              ): { success: true; data: unknown } | { success: false; error?: { message: string } };
-            }
-          | undefined;
-        if (!schema) {
-          throw new NpValidationError("Invalid input", [
-            {
-              field: `settings.${key}`,
-              message: `Theme '${themeId}' does not declare settingsSchema.`,
-            },
-          ]);
-        }
-        const parsed = schema.safeParse(envelope.__npSettings);
-        if (!parsed.success) {
-          throw new NpValidationError("Invalid input", [
-            {
-              field: `settings.${key}`,
-              message: parsed.error?.message ?? "Theme settings failed validation",
-            },
-          ]);
-        }
-        normalizedSettings[key] = {
-          __npVersion: expectedVersion,
-          __npSettings: parsed.data,
-        };
-        const normalizedIssues = npAnalyzeSettingValue(key, normalizedSettings[key]);
-        if (normalizedIssues.length > 0) {
-          throw new NpValidationError(
-            "Invalid input",
-            normalizedIssues.map((issue) => ({ field: issue.path, message: issue.message })),
-          );
-        }
-      }
-    }
-  }
-
-  validateNavigationPayload(body.navigation);
-
-  if (body.collections !== undefined) {
-    if (!isRecord(body.collections)) {
-      throw new NpValidationError("Invalid input", [
-        { field: "collections", message: "collections must be an object" },
-      ]);
-    }
-
-    for (const [slug, docs] of Object.entries(body.collections)) {
-      if (!Array.isArray(docs) || !docs.every(isRecord)) {
-        throw new NpValidationError("Invalid input", [
-          { field: `collections.${slug}`, message: "Must be an array of objects" },
-        ]);
-      }
-    }
-  }
-
-  if (body.media !== undefined) {
-    if (!Array.isArray(body.media)) {
-      throw new NpValidationError("Invalid input", [
-        { field: "media", message: "media must be an array" },
-      ]);
-    }
-
-    const mediaIds = new Set<string>();
-    for (const [i, entry] of body.media.entries()) {
-      if (!isRecord(entry) || typeof entry.id !== "string") {
-        throw new NpValidationError("Invalid input", [
-          { field: `media.${i}`, message: "Each media item must include an id" },
-        ]);
-      }
-      if (mediaIds.has(entry.id)) {
-        throw new NpValidationError("Invalid input", [
-          { field: `media.${i}.id`, message: `Duplicate media id '${entry.id}'` },
-        ]);
-      }
-      mediaIds.add(entry.id);
-      const unknown = Object.keys(entry).find(
-        (key) => key !== "id" && key !== "filename" && key !== "hash" && key !== "mimeType",
-      );
-      if (unknown) {
-        throw new NpValidationError("Invalid input", [
-          { field: `media.${i}.${unknown}`, message: `Unsupported media field "${unknown}"` },
-        ]);
-      }
-      for (const key of ["filename", "hash", "mimeType"] as const) {
-        if (entry[key] !== undefined && typeof entry[key] !== "string") {
-          throw new NpValidationError("Invalid input", [
-            { field: `media.${i}.${key}`, message: `${key} must be a string` },
-          ]);
-        }
-      }
-    }
-  }
-
-  if (body.plugins !== undefined) {
-    if (!Array.isArray(body.plugins)) {
-      throw new NpValidationError("Invalid input", [
-        { field: "plugins", message: "plugins must be an array" },
-      ]);
-    }
-    const pluginIds = new Set<string>();
-    for (const [i, entry] of body.plugins.entries()) {
-      if (!isRecord(entry) || typeof entry.id !== "string") {
-        throw new NpValidationError("Invalid input", [
-          { field: `plugins.${i}.id`, message: "Each plugin must include an id" },
-        ]);
-      }
-      if (pluginIds.has(entry.id)) {
-        throw new NpValidationError("Invalid input", [
-          { field: `plugins.${i}.id`, message: `Duplicate plugin id '${entry.id}'` },
-        ]);
-      }
-      pluginIds.add(entry.id);
-      const unknown = Object.keys(entry).find(
-        (key) => key !== "id" && key !== "enabled" && key !== "config" && key !== "manifestVersion",
-      );
-      if (unknown) {
-        throw new NpValidationError("Invalid input", [
-          { field: `plugins.${i}.${unknown}`, message: `Unsupported plugin field "${unknown}"` },
-        ]);
-      }
-      if (entry.enabled !== undefined && typeof entry.enabled !== "boolean") {
-        throw new NpValidationError("Invalid input", [
-          { field: `plugins.${i}.enabled`, message: "enabled must be boolean" },
-        ]);
-      }
-      if (entry.config !== undefined && !isRecord(entry.config)) {
-        throw new NpValidationError("Invalid input", [
-          { field: `plugins.${i}.config`, message: "config must be a plain object" },
-        ]);
-      }
-      if (
-        entry.manifestVersion !== undefined &&
-        entry.manifestVersion !== null &&
-        typeof entry.manifestVersion !== "string"
-      ) {
-        throw new NpValidationError("Invalid input", [
-          {
-            field: `plugins.${i}.manifestVersion`,
-            message: "manifestVersion must be a string or null",
-          },
-        ]);
-      }
-    }
-  }
-
-  return {
-    ...body,
-    ...(normalizedSettings ? { settings: normalizedSettings } : {}),
-  };
+  return normalized;
 }
 
-function replaceMediaRefs(value: unknown, mediaMap: ReadonlyMap<string, string | null>): unknown {
-  if (typeof value === "string") {
-    return mediaMap.has(value) ? (mediaMap.get(value) ?? null) : value;
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((entry) => replaceMediaRefs(entry, mediaMap));
-  }
-
-  if (!isRecord(value)) return value;
-
-  return Object.fromEntries(
-    Object.entries(value).map(([key, nested]) => [key, replaceMediaRefs(nested, mediaMap)]),
+async function preparePlugins(
+  plugins: readonly NpContentTransferPluginState[],
+  addWarning: (message: string) => void,
+): Promise<PreparedPlugin[]> {
+  const db = getDb();
+  const installed = new Set(
+    (await db.select({ id: npPlugins.id }).from(npPlugins)).map((row) => row.id),
   );
-}
-
-function resolveNavEntries(
-  navigation: ImportPayload["navigation"],
-): Array<{ location: string; items: NpNavItem[] }> {
-  if (!navigation) return [];
-
-  if (Array.isArray(navigation)) {
-    return navigation.map((entry) => ({
-      location: entry.location ?? "main",
-      items: entry.items,
-    }));
+  const prepared: PreparedPlugin[] = [];
+  for (const plugin of plugins) {
+    if (!installed.has(plugin.id)) {
+      addWarning(`Plugin '${plugin.id}' was not imported because it is not installed.`);
+      continue;
+    }
+    const registration = getPluginRegistration(plugin.id);
+    if (!registration) {
+      throw new NpValidationError("Invalid content transfer", [
+        {
+          field: `plugins.${plugin.id}`,
+          message: `Plugin '${plugin.id}' is installed but not loaded from nexpress.config.ts.`,
+        },
+      ]);
+    }
+    if (plugin.manifestVersion !== null && plugin.manifestVersion !== registration.version) {
+      addWarning(
+        `Plugin '${plugin.id}' was exported at ${plugin.manifestVersion} and is loaded at ${registration.version ?? "an unversioned build"}.`,
+      );
+    }
+    const schema = registration.configSchema as
+      | {
+          safeParse(
+            input: unknown,
+          ): { success: true; data: unknown } | { success: false; error?: { message: string } };
+        }
+      | undefined;
+    const parsed = schema?.safeParse(plugin.config);
+    if (parsed && !parsed.success) {
+      throw new NpValidationError("Invalid content transfer", [
+        {
+          field: `plugins.${plugin.id}.config`,
+          message: parsed.error?.message ?? "Plugin config failed its registered schema.",
+        },
+      ]);
+    }
+    const config = parsed?.success ? parsed.data : plugin.config;
+    if (!config || typeof config !== "object" || Array.isArray(config)) {
+      throw new NpValidationError("Invalid content transfer", [
+        { field: `plugins.${plugin.id}.config`, message: "Plugin config must be an object." },
+      ]);
+    }
+    const configVersion = schema ? (registration.configVersion ?? 1) : 1;
+    const settingIssues = npAnalyzeSettingValue(`plugin.config:${plugin.id}`, {
+      __npVersion: configVersion,
+      __npSettings: config,
+    });
+    if (settingIssues.length > 0) {
+      throw new NpValidationError(
+        "Invalid content transfer",
+        settingIssues.map((issue) => ({
+          field: `plugins.${plugin.id}.config`,
+          message: issue.message,
+        })),
+      );
+    }
+    prepared.push({
+      id: plugin.id,
+      enabled: plugin.enabled,
+      config: config as Record<string, unknown>,
+      configVersion,
+    });
   }
-
-  return Object.entries(navigation).map(([location, items]) => ({ location, items }));
+  return prepared;
 }
 
-/**
- * Parses `?collections=a,b` — when present, only those collection slugs
- * are imported AND theme/settings/navigation/plugins are skipped entirely.
- * Mirrors the export filter contract so a partial export/import round-trip
- * works symmetrically.
- */
-function parseCollectionsFilter(
-  request: NextRequest,
-  registered: ReadonlySet<string>,
-): Set<string> | null {
-  const raw = request.nextUrl.searchParams.get("collections");
-  if (!raw) return null;
-  const slugs = raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (slugs.length === 0) return null;
-  const unknown = slugs.filter((slug) => !registered.has(slug));
-  if (unknown.length > 0) {
-    throw new NpValidationError("Invalid input", [
-      { field: "collections", message: `Unknown collection(s): ${unknown.join(", ")}` },
+async function resolveMedia(
+  payload: NpContentTransferEnvelope,
+  referencedIds: ReadonlySet<string>,
+  addWarning: (message: string) => void,
+): Promise<Map<string, string | null>> {
+  const manifest = new Map(payload.media.map((item) => [item.id, item]));
+  const missing = [...referencedIds].filter((id) => !manifest.has(id));
+  if (missing.length > 0) {
+    throw npContentTransferValidationError("Invalid content transfer", [
+      {
+        field: "media",
+        message: `Document references are missing from the media manifest: ${npSummarizeContentTransferValues(missing)}`,
+      },
     ]);
   }
-  return new Set(slugs);
+
+  const selected = [...referencedIds]
+    .map((id) => manifest.get(id))
+    .filter((item): item is NonNullable<typeof item> => item !== undefined)
+    .sort((left, right) => npCompareContentTransferText(left.id, right.id));
+  const db = getDb();
+  const rows: Array<{ id: string; filename: string; hash: string; mimeType: string }> = [];
+  const hashes = [...new Set(selected.map((item) => item.hash))];
+  for (let index = 0; index < hashes.length; index += MEDIA_QUERY_CHUNK) {
+    const chunk = hashes.slice(index, index + MEDIA_QUERY_CHUNK);
+    rows.push(
+      ...(await db
+        .select({
+          id: npMedia.id,
+          filename: npMedia.filename,
+          hash: npMedia.hash,
+          mimeType: npMedia.mimeType,
+        })
+        .from(npMedia)
+        .where(and(inArray(npMedia.hash, chunk), isNull(npMedia.deletedAt)))
+        .orderBy(asc(npMedia.id))),
+    );
+  }
+  const byHash = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const matches = byHash.get(row.hash) ?? [];
+    matches.push(row);
+    byHash.set(row.hash, matches);
+  }
+
+  const unresolved = selected.filter((item) => !byHash.has(item.hash));
+  const filenameRows: typeof rows = [];
+  const filenames = [...new Set(unresolved.map((item) => item.filename))];
+  for (let index = 0; index < filenames.length; index += MEDIA_QUERY_CHUNK) {
+    const chunk = filenames.slice(index, index + MEDIA_QUERY_CHUNK);
+    filenameRows.push(
+      ...(await db
+        .select({
+          id: npMedia.id,
+          filename: npMedia.filename,
+          hash: npMedia.hash,
+          mimeType: npMedia.mimeType,
+        })
+        .from(npMedia)
+        .where(and(inArray(npMedia.filename, chunk), isNull(npMedia.deletedAt)))
+        .orderBy(asc(npMedia.id))),
+    );
+  }
+  const byFilenameAndType = new Map<string, typeof rows>();
+  for (const row of filenameRows) {
+    const key = `${row.filename}\u0000${row.mimeType}`;
+    const matches = byFilenameAndType.get(key) ?? [];
+    matches.push(row);
+    byFilenameAndType.set(key, matches);
+  }
+
+  const replacements = new Map<string, string | null>();
+  const ambiguous: Array<{ field: string; message: string }> = [];
+  for (const item of selected) {
+    const hashMatches = byHash.get(item.hash) ?? [];
+    const hashMatch = hashMatches.find((row) => row.id === item.id) ?? hashMatches[0];
+    if (hashMatches.length === 1 || hashMatches.some((row) => row.id === item.id)) {
+      replacements.set(item.id, hashMatch?.id ?? null);
+      continue;
+    }
+    if (hashMatches.length > 1) {
+      ambiguous.push({
+        field: `media.${item.id}`,
+        message:
+          "Multiple active target media rows share this hash and none preserves the source id.",
+      });
+      continue;
+    }
+    const filenameMatches = byFilenameAndType.get(`${item.filename}\u0000${item.mimeType}`) ?? [];
+    const filenameMatch = filenameMatches.find((row) => row.id === item.id) ?? filenameMatches[0];
+    if (filenameMatches.length === 1 || filenameMatches.some((row) => row.id === item.id)) {
+      replacements.set(item.id, filenameMatch?.id ?? null);
+      addWarning(`Media '${item.id}' was matched by filename and MIME type fallback.`);
+      continue;
+    }
+    if (filenameMatches.length > 1) {
+      ambiguous.push({
+        field: `media.${item.id}`,
+        message:
+          "Multiple active target media rows share this filename and MIME type and none preserves the source id.",
+      });
+      continue;
+    }
+    replacements.set(item.id, null);
+    addWarning(`Media '${item.id}' was not matched; its schema-owned references were cleared.`);
+  }
+  if (ambiguous.length > 0) {
+    throw npContentTransferValidationError("Ambiguous content transfer media", ambiguous);
+  }
+  return replacements;
+}
+
+async function existingDocumentKeys(
+  entries: readonly PreparedDocument[],
+  siteId: string,
+): Promise<Set<string>> {
+  const idsByCollection = new Map<string, string[]>();
+  for (const entry of entries) {
+    const ids = idsByCollection.get(entry.collection) ?? [];
+    ids.push(entry.documentId);
+    idsByCollection.set(entry.collection, ids);
+  }
+  const keys = new Set<string>();
+  for (const [collection, ids] of idsByCollection) {
+    const existing = await npGetPersistedCollectionDocumentIds(collection, ids, siteId);
+    for (const id of existing) keys.add(npContentTransferDocumentKey(collection, id));
+  }
+  return keys;
+}
+
+async function assertExternalRelationshipTargets(
+  entries: readonly PreparedDocument[],
+  existingKeys: ReadonlySet<string>,
+  registered: ReadonlySet<string>,
+  siteId: string,
+): Promise<void> {
+  const entryKeys = new Set(
+    entries.map((entry) => npContentTransferDocumentKey(entry.collection, entry.documentId)),
+  );
+  const referencesByCollection = new Map<string, Map<string, string>>();
+  const frameworkReferences = new Map<"media" | "users", Map<string, string>>();
+  for (const entry of entries) {
+    for (const reference of npCollectContentTransferRelationshipReferences(
+      entry.fields,
+      entry.document,
+      `collections.${entry.collection}.${entry.documentId}`,
+    )) {
+      const key = npContentTransferDocumentKey(reference.collection, reference.documentId);
+      if (entryKeys.has(key) || existingKeys.has(key)) continue;
+      if (reference.collection === "media" || reference.collection === "users") {
+        const refs = frameworkReferences.get(reference.collection) ?? new Map<string, string>();
+        refs.set(reference.documentId, reference.path);
+        frameworkReferences.set(reference.collection, refs);
+        continue;
+      }
+      if (!registered.has(reference.collection)) continue;
+      const refs = referencesByCollection.get(reference.collection) ?? new Map<string, string>();
+      refs.set(reference.documentId, reference.path);
+      referencesByCollection.set(reference.collection, refs);
+    }
+  }
+
+  const missing: Array<{ field: string; message: string }> = [];
+  for (const [collection, references] of referencesByCollection) {
+    const ids = [...references.keys()];
+    const found = new Set<string>();
+    for (let index = 0; index < ids.length; index += 10_000) {
+      for (const id of await npGetPersistedCollectionDocumentIds(
+        collection,
+        ids.slice(index, index + 10_000),
+        siteId,
+      )) {
+        found.add(id);
+      }
+    }
+    for (const [id, path] of references) {
+      if (!found.has(id)) {
+        missing.push({
+          field: path,
+          message: `Relationship target '${collection}:${id}' is neither transferred nor present on the target site.`,
+        });
+      }
+    }
+  }
+  for (const [collection, references] of frameworkReferences) {
+    const ids = [...references.keys()];
+    const found = new Set<string>();
+    for (let index = 0; index < ids.length; index += 10_000) {
+      const chunk = ids.slice(index, index + 10_000);
+      const rows =
+        collection === "users"
+          ? await getDb().select({ id: npUsers.id }).from(npUsers).where(inArray(npUsers.id, chunk))
+          : await getDb()
+              .select({ id: npMedia.id })
+              .from(npMedia)
+              .where(and(inArray(npMedia.id, chunk), isNull(npMedia.deletedAt)));
+      for (const row of rows) found.add(row.id);
+    }
+    for (const [id, path] of references) {
+      if (!found.has(id)) {
+        missing.push({
+          field: path,
+          message: `Relationship target '${collection}:${id}' is not present on the target instance.`,
+        });
+      }
+    }
+  }
+  if (missing.length > 0) {
+    throw npContentTransferValidationError("Invalid content transfer", missing);
+  }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
-
-    if (!can(user, "admin.manage")) {
-      throw new NpForbiddenError("import", "create");
-    }
+    if (!can(user, "admin.manage")) throw new NpForbiddenError("import", "create");
 
     await ensureFor("write");
-
-    const payload = validatePayload(await readJsonBody(request));
-    const db = getDb();
-    const dryRun = request.nextUrl.searchParams.get("dryRun") === "true";
+    const query = npReadContentTransferQuery(request, { allowDryRun: true });
+    const payload = await npReadContentTransferBody(request);
     const registeredSlugs = new Set(getAllCollectionSlugs());
-    const filter = parseCollectionsFilter(request, registeredSlugs);
-    const partial = filter !== null;
+    assertRegisteredFilter(query.collections, registeredSlugs, payload);
+    const filter = query.collections ? new Set(query.collections) : null;
+    const partial = payload.partial || filter !== null;
     const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+    const db = getDb();
+    const targetSites = await db
+      .select({ id: npSites.id })
+      .from(npSites)
+      .where(eq(npSites.id, siteId))
+      .limit(1);
+    if (targetSites.length !== 1) {
+      throw npContentTransferValidationError("Invalid content transfer target", [
+        { field: "site", message: `Target site '${siteId}' does not exist.` },
+      ]);
+    }
 
     const warnings: string[] = [];
-    const imported = {
-      theme: 0,
-      settings: 0,
-      navigation: 0,
-      pages: 0,
-      mediaMatched: 0,
-      pluginsUpdated: 0,
+    const addWarning = (message: string): void => {
+      if (warnings.length >= npContentTransferContractLimits.warnings) {
+        throw new NpValidationError("Content transfer has too many portability warnings", [
+          {
+            field: "warnings",
+            message: `Resolve transfer differences before exceeding ${npContentTransferContractLimits.warnings.toString()} warnings.`,
+          },
+        ]);
+      }
+      warnings.push(message);
     };
 
-    // Validate every installed plugin owner and config before any import
-    // mutation. Otherwise a bad plugin entry discovered at the end of the
-    // request could leave site/settings/doc writes committed before the 400.
-    const pluginsToImport: ImportPlugin[] = [];
-    if (!partial && payload.plugins) {
-      for (const plugin of payload.plugins) {
-        const [existing] = await db
-          .select({ id: npPlugins.id })
-          .from(npPlugins)
-          .where(eq(npPlugins.id, plugin.id))
-          .limit(1);
-        if (!existing) {
-          warnings.push(
-            `Plugin '${plugin.id}' state not imported — plugin is not installed on this instance.`,
-          );
-          continue;
+    const unknownPayloadCollections = payload.collectionsExported.filter(
+      (slug) => !registeredSlugs.has(slug),
+    );
+    if (unknownPayloadCollections.length > 0) {
+      throw npContentTransferValidationError("Invalid content transfer", [
+        {
+          field: "collections",
+          message: `Collection(s) are not registered on this target: ${npSummarizeContentTransferValues(unknownPayloadCollections)}`,
+        },
+      ]);
+    }
+    const selectedCollections = new Map<string, NpContentTransferDocument[]>();
+    for (const slug of payload.collectionsExported) {
+      if (filter && !filter.has(slug)) continue;
+      const documents = payload.collections[slug];
+      if (!documents) {
+        throw npContentTransferValidationError("Invalid content transfer", [
+          { field: `collections.${slug}`, message: "Inventory entry has no collection payload." },
+        ]);
+      }
+      selectedCollections.set(slug, documents);
+    }
+    if (filter && !payload.partial) {
+      addWarning(
+        "The collections query selected content only; full site, theme, settings, navigation, and plugin sections were ignored.",
+      );
+    }
+
+    const referencedMediaIds = new Set<string>();
+    for (const [slug, documents] of selectedCollections) {
+      const config = getCollectionConfig(slug);
+      for (const document of documents) {
+        const documentId = contentTransferDocumentId(document);
+        for (const reference of npCollectContentTransferMediaReferences(
+          config.fields,
+          document,
+          `collections.${slug}.${documentId}`,
+        )) {
+          referencedMediaIds.add(reference.mediaId);
         }
-        const registration = getPluginRegistration(plugin.id);
-        if (!registration) {
-          throw new NpValidationError("Invalid input", [
+      }
+    }
+    const unusedMedia = payload.media
+      .map((item) => item.id)
+      .filter((id) => !referencedMediaIds.has(id));
+    if (!filter && unusedMedia.length > 0) {
+      throw npContentTransferValidationError("Invalid content transfer", [
+        {
+          field: "media",
+          message: `Media manifest contains unreferenced item(s): ${npSummarizeContentTransferValues(unusedMedia)}`,
+        },
+      ]);
+    }
+    const mediaMap = await resolveMedia(payload, referencedMediaIds, addWarning);
+
+    const preparedDocuments: PreparedDocument[] = [];
+    const documentKeys = new Set<string>();
+    for (const [slug, documents] of selectedCollections) {
+      const config = getCollectionConfig(slug);
+      for (const document of documents) {
+        const sourceDocumentId = contentTransferDocumentId(document);
+        const transformed = npRemapContentTransferMediaReferences(
+          config.fields,
+          document,
+          mediaMap,
+        );
+        let runtimeDocument: Record<string, unknown>;
+        let writable: Record<string, unknown>;
+        try {
+          runtimeDocument = npParseCollectionDocumentWire(transformed, config);
+          writable = npCollectionDocumentToWriteInput(runtimeDocument, config);
+          writable = getCollectionZodSchema(config, writable).parse(writable) as Record<
+            string,
+            unknown
+          >;
+          validateDocumentBlockContent(slug, writable);
+        } catch (error) {
+          throw new NpValidationError("Invalid content transfer document", [
             {
-              field: `plugins.${plugin.id}`,
-              message: `Plugin '${plugin.id}' is installed in the database but is not loaded from nexpress.config.ts.`,
+              field: `collections.${slug}.${sourceDocumentId}`,
+              message: error instanceof Error ? error.message : "Document validation failed.",
             },
           ]);
         }
-        if (plugin.config !== undefined) {
-          const schema = registration.configSchema as
-            | {
-                safeParse(
-                  value: unknown,
-                ):
-                  | { success: true; data: unknown }
-                  | { success: false; error?: { message: string } };
-              }
-            | undefined;
-          const parsed = schema?.safeParse(plugin.config);
-          if (parsed && !parsed.success) {
-            throw new NpValidationError("Invalid input", [
-              {
-                field: `plugins.${plugin.id}.config`,
-                message: parsed.error?.message ?? "Plugin config failed its registered schema",
-              },
-            ]);
-          }
-          const configValue = parsed?.success ? parsed.data : plugin.config;
-          const configIssues = npAnalyzeSettingValue(`plugin.config:${plugin.id}`, {
-            __npVersion: registration.configVersion ?? 1,
-            __npSettings: configValue,
-          });
-          if (configIssues.length > 0) {
-            throw new NpValidationError(
-              "Invalid input",
-              configIssues.map((issue) => ({
-                field: `plugins.${plugin.id}.config`,
-                message: issue.message,
-              })),
-            );
-          }
+        const documentId = sourceDocumentId;
+        const key = npContentTransferDocumentKey(slug, documentId);
+        if (documentKeys.has(key)) {
+          throw new NpValidationError("Invalid content transfer", [
+            { field: `collections.${slug}`, message: `Document id '${documentId}' is repeated.` },
+          ]);
         }
-        pluginsToImport.push(plugin);
+        documentKeys.add(key);
+        preparedDocuments.push({
+          collection: slug,
+          documentId,
+          document: transformed as NpContentTransferDocument,
+          fields: config.fields,
+          writable,
+          status: runtimeDocument.status as NpDocumentStatus,
+          exists: false,
+        });
       }
     }
 
-    const mediaMap = new Map<string, string | null>();
+    const existingKeys = await existingDocumentKeys(preparedDocuments, siteId);
+    for (const entry of preparedDocuments) {
+      entry.exists = existingKeys.has(
+        npContentTransferDocumentKey(entry.collection, entry.documentId),
+      );
+    }
+    await assertExternalRelationshipTargets(
+      preparedDocuments,
+      existingKeys,
+      registeredSlugs,
+      siteId,
+    );
+    const orderedDocuments = npRequireContentTransferRequestValue(() =>
+      npOrderContentTransferDocumentEntries(preparedDocuments, existingKeys),
+    );
 
-    // Media resolution is read-only — safe to run unchanged in dry-run mode.
-    // The resulting `mediaMap` feeds the per-doc `replaceMediaRefs` call so
-    // the dry-run report accurately mirrors what the write path would do.
-    if (payload.media) {
-      for (const m of payload.media) {
-        if (m.hash) {
-          const [match] = await db
-            .select({ id: npMedia.id })
-            .from(npMedia)
-            .where(and(eq(npMedia.hash, m.hash), isNull(npMedia.deletedAt)))
-            .limit(1);
-
-          if (match) {
-            mediaMap.set(m.id, match.id);
-            continue;
-          }
-        }
-
-        if (m.filename) {
-          const [match] = await db
-            .select({ id: npMedia.id })
-            .from(npMedia)
-            .where(and(eq(npMedia.filename, m.filename), isNull(npMedia.deletedAt)))
-            .limit(1);
-
-          if (match) {
-            warnings.push(`Media '${m.id}' matched by filename fallback`);
-            mediaMap.set(m.id, match.id);
-            continue;
-          }
-        }
-
-        mediaMap.set(m.id, null);
-        warnings.push(`Media '${m.id}' not matched, references nullified`);
-      }
-
-      imported.mediaMatched = [...mediaMap.values()].filter(Boolean).length;
+    let normalizedSettings: Record<string, unknown> = {};
+    let preparedPlugins: PreparedPlugin[] = [];
+    if (!partial && !payload.partial) {
+      normalizedSettings = normalizeFrameworkSettings(payload.settings);
+      preparedPlugins = await preparePlugins(payload.plugins, addWarning);
     }
 
-    if (!partial) {
-      if (dryRun) {
-        if (payload.site) imported.settings++;
-        if (payload.theme) imported.theme = 1;
-        if (payload.settings) {
-          imported.settings += Object.keys(payload.settings).length;
-        }
-        imported.navigation = resolveNavEntries(payload.navigation).length;
-      } else {
-        // Phase 15.4 — import lands rows in the current site
-        // (resolved from x-np-host). Cross-site import (a
-        // super-admin picking a target site explicitly via a
-        // request param) isn't built; the resolved siteId is
-        // the only target today.
-        if (payload.site) {
-          await setSiteGeneralSettings(payload.site, siteId);
-          imported.settings++;
-        }
+    const imported: NpContentTransferImportCounts = {
+      site: !partial && !payload.partial ? 1 : 0,
+      theme: !partial && !payload.partial ? 1 : 0,
+      settings: !partial && !payload.partial ? Object.keys(normalizedSettings).length : 0,
+      navigation: !partial && !payload.partial ? Object.keys(payload.navigation).length : 0,
+      documentsCreated: orderedDocuments.filter((entry) => !entry.exists).length,
+      documentsUpdated: orderedDocuments.filter((entry) => entry.exists).length,
+      mediaMatched: [...mediaMap.values()].filter((id) => id !== null).length,
+      pluginsUpdated: preparedPlugins.length,
+    };
+
+    let previousNavigationLocations: string[] = [];
+    if (!query.dryRun) {
+      await withDeferredPostCommit(async () => {
         await db.transaction(async (tx) => {
           const now = new Date();
+          for (const entry of orderedDocuments) {
+            await saveDocument(
+              entry.collection,
+              entry.exists ? entry.documentId : null,
+              entry.writable,
+              user,
+              {
+                status: entry.status,
+                tx,
+                ...(!entry.exists ? { createId: entry.documentId } : {}),
+              },
+            );
+          }
 
-          if (payload.theme) {
+          if (partial || payload.partial) return;
+          const updatedSites = await tx
+            .update(npSites)
+            .set({
+              name: payload.site.name,
+              description: payload.site.description,
+              settings: {
+                siteUrl: payload.site.url,
+                defaultLocale: payload.site.defaultLocale,
+                timezone: payload.site.timezone,
+              },
+              updatedAt: now,
+            })
+            .where(eq(npSites.id, siteId))
+            .returning({ id: npSites.id });
+          if (updatedSites.length !== 1) {
+            throw npContentTransferValidationError("Invalid content transfer target", [
+              { field: "site", message: `Target site '${siteId}' no longer exists.` },
+            ]);
+          }
+
+          if (payload.theme === null) {
+            await tx
+              .delete(npSettings)
+              .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "theme")));
+          } else {
             await tx
               .insert(npSettings)
               .values({
@@ -685,127 +693,115 @@ export async function POST(request: NextRequest) {
                 target: [npSettings.siteId, npSettings.key],
                 set: { value: payload.theme, updatedAt: now, updatedBy: user.id },
               });
-            imported.theme = 1;
           }
 
-          if (payload.settings) {
-            for (const [key, value] of Object.entries(payload.settings)) {
+          const currentPortableSettings = (
+            await tx
+              .select({ key: npSettings.key })
+              .from(npSettings)
+              .where(eq(npSettings.siteId, siteId))
+          )
+            .map((row) => row.key)
+            .filter(
+              (key) =>
+                key !== "theme" && key !== "jobs.paused" && !key.startsWith("plugin.config:"),
+            );
+          for (const key of currentPortableSettings) {
+            if (!Object.hasOwn(normalizedSettings, key)) {
               await tx
-                .insert(npSettings)
-                .values({ siteId, key, value, updatedAt: now, updatedBy: user.id })
-                .onConflictDoUpdate({
-                  target: [npSettings.siteId, npSettings.key],
-                  set: { value, updatedAt: now, updatedBy: user.id },
-                });
-              imported.settings++;
+                .delete(npSettings)
+                .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, key)));
             }
           }
-
-          for (const { location, items } of resolveNavEntries(payload.navigation)) {
+          for (const [key, value] of Object.entries(normalizedSettings)) {
             await tx
-              .insert(npNavigation)
-              .values({ siteId, location, items, updatedAt: now, updatedBy: user.id })
+              .insert(npSettings)
+              .values({ siteId, key, value, updatedAt: now, updatedBy: user.id })
               .onConflictDoUpdate({
-                target: [npNavigation.siteId, npNavigation.location],
-                set: { items, updatedAt: now, updatedBy: user.id },
+                target: [npSettings.siteId, npSettings.key],
+                set: { value, updatedAt: now, updatedBy: user.id },
               });
-            imported.navigation++;
+          }
+
+          previousNavigationLocations = (
+            await tx
+              .delete(npNavigation)
+              .where(eq(npNavigation.siteId, siteId))
+              .returning({ location: npNavigation.location })
+          ).map((row) => row.location);
+          for (const [location, items] of Object.entries(payload.navigation)) {
+            await tx.insert(npNavigation).values({
+              siteId,
+              location,
+              items,
+              updatedAt: now,
+              updatedBy: user.id,
+            });
+          }
+
+          for (const plugin of preparedPlugins) {
+            await tx
+              .insert(npSettings)
+              .values({
+                siteId,
+                key: `plugin.config:${plugin.id}`,
+                value: {
+                  __npVersion: plugin.configVersion,
+                  __npSettings: plugin.config,
+                },
+                updatedAt: now,
+                updatedBy: user.id,
+              })
+              .onConflictDoUpdate({
+                target: [npSettings.siteId, npSettings.key],
+                set: {
+                  value: {
+                    __npVersion: plugin.configVersion,
+                    __npSettings: plugin.config,
+                  },
+                  updatedAt: now,
+                  updatedBy: user.id,
+                },
+              });
+            const updatedPlugins = await tx
+              .update(npPlugins)
+              .set({ enabled: plugin.enabled, updatedAt: now })
+              .where(eq(npPlugins.id, plugin.id))
+              .returning({ id: npPlugins.id });
+            if (updatedPlugins.length !== 1) {
+              throw npContentTransferValidationError("Invalid content transfer target", [
+                {
+                  field: `plugins.${plugin.id}`,
+                  message: `Plugin '${plugin.id}' is no longer installed.`,
+                },
+              ]);
+            }
           }
         });
 
-        for (const { location } of resolveNavEntries(payload.navigation)) {
-          await invalidateCacheTargets({
-            source: "navigation",
-            siteId,
-            navigationLocation: location,
-            tags: [navCacheTag(siteId, location)],
-            paths: [{ path: "/", type: "layout" }],
-          });
-        }
-
-        if (payload.site || payload.settings?.seo) {
+        if (!partial && !payload.partial) {
+          for (const plugin of preparedPlugins) invalidatePluginEnabled(plugin.id);
+          const navigationLocations = new Set([
+            ...previousNavigationLocations,
+            ...Object.keys(payload.navigation),
+          ]);
+          for (const location of navigationLocations) {
+            await invalidateCacheTargets({
+              source: "navigation",
+              siteId,
+              navigationLocation: location,
+              tags: [navCacheTag(siteId, location)],
+              paths: [{ path: "/", type: "layout" }],
+            });
+          }
           await invalidateCacheTargets({
             source: "site",
             siteId,
             tags: [siteCacheTag(siteId), `nx:sitemap:${siteId}`, `nx:feed:${siteId}`],
             paths: [{ path: "/", type: "layout" }],
           });
-        }
-        if (
-          payload.theme ||
-          payload.settings?.activeTheme ||
-          Object.keys(payload.settings ?? {}).some((key) => key.startsWith("theme.settings:"))
-        ) {
           await bustThemeCache(siteId);
-        }
-      }
-    } else if (
-      payload.site ||
-      payload.theme ||
-      payload.settings ||
-      payload.navigation ||
-      payload.plugins
-    ) {
-      warnings.push(
-        "Partial import (collections filter) — theme/settings/navigation/plugins in payload are ignored.",
-      );
-    }
-
-    if (payload.collections) {
-      for (const [slug, docs] of Object.entries(payload.collections)) {
-        if (filter && !filter.has(slug)) {
-          continue;
-        }
-        if (!registeredSlugs.has(slug)) {
-          warnings.push(`Collection '${slug}' not registered, skipped`);
-          continue;
-        }
-
-        for (const doc of docs) {
-          const transformed = replaceMediaRefs(doc, mediaMap) as Record<string, unknown>;
-          const config = getCollectionConfig(slug);
-          let runtimeDocument: Record<string, unknown>;
-          let writable: Record<string, unknown>;
-
-          try {
-            runtimeDocument = npParseCollectionDocumentWire(transformed, config);
-            writable = npCollectionDocumentToWriteInput(runtimeDocument, config);
-            validateDocumentBlockContent(slug, writable);
-          } catch (error) {
-            warnings.push(
-              `Failed to import doc in '${slug}': ${error instanceof Error ? error.message : "unknown"}`,
-            );
-            continue;
-          }
-
-          if (dryRun) {
-            // Definition-aware block validation is safe to run above. The
-            // remaining collection pipeline checks require a write, so their
-            // failures can still surface only during the real import.
-            imported.pages++;
-            continue;
-          }
-
-          try {
-            await saveDocument(slug, null, writable, user, {
-              status: runtimeDocument.status as NpDocumentStatus,
-            });
-            imported.pages++;
-          } catch (err) {
-            warnings.push(
-              `Failed to import doc in '${slug}': ${err instanceof Error ? err.message : "unknown"}`,
-            );
-          }
-        }
-      }
-    }
-
-    if (!partial) {
-      for (const plugin of pluginsToImport) {
-        let changed = false;
-        if (plugin.config !== undefined) {
-          if (!dryRun) {
-            await setPluginConfig(plugin.id, plugin.config, user.id);
+          for (const plugin of preparedPlugins) {
             await invalidateCacheTargets({
               source: "plugin-config",
               siteId,
@@ -813,20 +809,24 @@ export async function POST(request: NextRequest) {
               tags: [pluginConfigCacheTag(plugin.id)],
             });
           }
-          changed = true;
         }
-        if (plugin.enabled !== undefined) changed = true;
-        if (changed) {
-          if (!dryRun) {
-            await updatePluginState(db, plugin.id, { enabled: plugin.enabled });
-          }
-          imported.pluginsUpdated++;
-        }
-      }
+      });
     }
 
-    return npSuccessResponse({ imported, warnings, dryRun, partial });
+    const report = npRequireContentTransferRequestValue(() =>
+      npRequireContentTransferImportReport({
+        imported,
+        warnings,
+        dryRun: query.dryRun,
+        partial,
+      }),
+    );
+    return npSuccessResponse(report);
   } catch (error) {
-    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    const normalized =
+      error instanceof NpValidationError
+        ? npContentTransferValidationError(error.message, error.errors)
+        : error;
+    return npErrorResponse(normalized instanceof Error ? normalized : new Error("Unknown error"));
   }
 }

@@ -37,6 +37,8 @@ export default defineConfig({
     community: "src/community/index.ts",
     // Pure, client-safe community rows, API wires, settings, registries, and adapter contracts.
     "community-contract": "src/community-contract/index.ts",
+    // Exact, bounded site content/settings transfer envelope and remapping helpers.
+    "content-transfer": "src/content-transfer-contract/index.ts",
     // Exact, bounded public block, collection, and plugin discovery wire contracts.
     discovery: "src/discovery-contract/index.ts",
     // Pure, client-safe dynamic collection row, relation, and API wire contract.

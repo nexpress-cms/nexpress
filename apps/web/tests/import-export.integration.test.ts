@@ -1,6 +1,21 @@
+import {
+  findDocuments,
+  invalidatePluginEnabled,
+  isPluginEnabled,
+  npMedia,
+  npMediaRefs,
+  npNavigation,
+  npPlugins,
+  npSettings,
+  npSites,
+  type NpContentTransferEnvelope,
+} from "@nexpress/core";
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
-import { npNavigation, npPlugins, npSettings, npSites } from "@nexpress/core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
+import { GET as exportGET } from "@/app/api/export/route";
+import { POST as importPOST } from "@/app/api/import/route";
+import { GET as openApiGET } from "@/app/api/openapi.json/route";
 
 import {
   buildRequest,
@@ -12,15 +27,15 @@ import {
   seedUser,
   skipIfNoTestDb,
   truncateAll,
+  type TestUserSession,
 } from "./harness.js";
 
-import { GET as exportGET } from "@/app/api/export/route";
-import { POST as importPOST } from "@/app/api/import/route";
-import { GET as openApiGET } from "@/app/api/openapi.json/route";
+const POST_ID = "11111111-1111-4111-8111-111111111111";
+const CATEGORY_ID = "22222222-2222-4222-8222-222222222222";
 
-function postWire(title: string, slug: string): Record<string, unknown> {
+function postWire(title: string, slug: string, id = POST_ID): Record<string, unknown> {
   return {
-    id: "11111111-1111-4111-8111-111111111111",
+    id,
     status: "draft",
     createdAt: "2026-07-16T00:00:00.000Z",
     updatedAt: "2026-07-16T00:00:00.000Z",
@@ -62,6 +77,37 @@ function postWire(title: string, slug: string): Record<string, unknown> {
   };
 }
 
+function categoryWire(name: string, slug: string): Record<string, unknown> {
+  return {
+    id: CATEGORY_ID,
+    status: "draft",
+    createdAt: "2026-07-16T00:00:00.000Z",
+    updatedAt: "2026-07-16T00:00:00.000Z",
+    createdBy: null,
+    updatedBy: null,
+    visibility: "public",
+    siteId: "default",
+    slug,
+    name,
+    description: null,
+  };
+}
+
+async function exportPayload(
+  session: TestUserSession,
+  collections?: string,
+): Promise<NpContentTransferEnvelope> {
+  const response = await exportGET(
+    buildRequest("/api/export", {
+      session,
+      ...(collections ? { query: { collections } } : {}),
+    }),
+  );
+  const { status, body } = await readJson<NpContentTransferEnvelope>(response);
+  expect(status).toBe(200);
+  return body;
+}
+
 describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
   beforeAll(async () => {
     await ensureMigrated();
@@ -74,188 +120,264 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
     await closeTestDb();
   });
 
-  it("export returns full payload shape and carries siteUrl/partial", async () => {
+  it("exports the exact full v3 envelope", async () => {
     const session = await seedUser({ role: "admin" });
-    const res = await exportGET(buildRequest("/api/export", { session }));
-    const { status, body } = await readJson<{
-      version: string;
-      partial: boolean;
-      collectionsExported: string[];
-      siteUrl: string | null;
-      site: { name: string; url: string | null };
-      collections: Record<string, unknown[]>;
-    }>(res);
-    expect(status).toBe(200);
-    expect(body.version).toBe("3");
-    expect(body.partial).toBe(false);
-    expect(body.site).toMatchObject({ name: "Default site", url: null });
-    expect(Array.isArray(body.collectionsExported)).toBe(true);
-    expect(body.collectionsExported).toContain("posts");
+    const body = await exportPayload(session);
+
+    expect(body).toMatchObject({
+      version: "3",
+      partial: false,
+      siteUrl: null,
+      site: { name: "Default site", url: null },
+    });
+    expect(body.collectionsExported).toEqual([...body.collectionsExported].sort());
+    expect(body.collectionsExported).toEqual(Object.keys(body.collections));
+    expect(body.media).toEqual([]);
   });
 
-  it("export with ?collections=posts marks partial and drops non-content sections", async () => {
+  it("exports a closed partial envelope for an exact collection filter", async () => {
     const session = await seedUser({ role: "admin" });
-    const res = await exportGET(
-      buildRequest("/api/export", { session, query: { collections: "posts" } }),
-    );
-    const { status, body } = await readJson<{
-      partial: boolean;
-      collectionsExported: string[];
-      theme?: unknown;
-      plugins?: unknown;
-    }>(res);
-    expect(status).toBe(200);
-    expect(body.partial).toBe(true);
-    expect(body.collectionsExported).toEqual(["posts"]);
-    // Non-content sections omitted on partial export.
-    expect(body.theme).toBeUndefined();
-    expect(body.plugins).toBeUndefined();
+    const body = await exportPayload(session, "posts");
+
+    expect(body).toMatchObject({
+      version: "3",
+      partial: true,
+      collectionsExported: ["posts"],
+      media: [],
+    });
+    expect(body).not.toHaveProperty("site");
+    expect(body).not.toHaveProperty("plugins");
   });
 
-  it("export with unknown collection in filter returns 422", async () => {
+  it("derives media from exported documents instead of the global reference table", async () => {
     const session = await seedUser({ role: "admin" });
-    const res = await exportGET(
-      buildRequest("/api/export", { session, query: { collections: "nonexistent" } }),
-    );
-    expect(res.status).toBe(400);
+    const db = await getTestDb();
+    const mediaId = "22222222-2222-4222-8222-222222222222";
+    await db.insert(npMedia).values({
+      id: mediaId,
+      filename: "other-site.png",
+      originalFilename: "other-site.png",
+      mimeType: "image/png",
+      filesize: 1,
+      storageKey: "other-site.png",
+      hash: "a".repeat(64),
+      status: "ready",
+    });
+    await db.insert(npMediaRefs).values({
+      mediaId,
+      collection: "posts",
+      documentId: "99999999-9999-4999-8999-999999999999",
+      field: "coverImage",
+    });
+
+    expect((await exportPayload(session)).media).toEqual([]);
   });
 
-  it("export without admin role returns 403", async () => {
+  it("rejects unknown, repeated, and unsupported export query values", async () => {
+    const session = await seedUser({ role: "admin" });
+    for (const path of [
+      "/api/export?collections=nonexistent",
+      "/api/export?collections=posts&collections=posts",
+      "/api/export?dryRun=true",
+    ]) {
+      expect((await exportGET(buildRequest(path, { session }))).status).toBe(400);
+    }
+  });
+
+  it("requires admin.manage for export", async () => {
     const session = await seedUser({ role: "editor" });
-    const res = await exportGET(buildRequest("/api/export", { session }));
-    expect(res.status).toBe(403);
+    expect((await exportGET(buildRequest("/api/export", { session }))).status).toBe(403);
   });
 
-  it("import ?dryRun=true reports counts without writing", async () => {
+  it("dry-runs the same preflight and reports exact create counts without writing", async () => {
     const session = await seedUser({ role: "admin" });
-    const res = await importPOST(
+    const payload = await exportPayload(session);
+    payload.collections.posts = [postWire("Imported", "imported")];
+
+    const response = await importPOST(
       buildRequest("/api/import", {
         method: "POST",
         session,
         query: { dryRun: "true" },
-        body: {
-          version: "3",
-          site: {
-            name: "Test Site",
-            url: "https://example.com",
-            description: "A test site",
-            defaultLocale: "en-US",
-            timezone: "UTC",
-          },
-          settings: {
-            seo: { defaultOgImage: null, twitterHandle: null, defaultLocale: "en_US" },
-          },
-          collections: {
-            posts: [postWire("Imported", "imported")],
-          },
-        },
+        body: payload,
       }),
     );
     const { status, body } = await readJson<{
       dryRun: boolean;
-      imported: { pages: number; settings: number };
-    }>(res);
+      imported: { site: number; documentsCreated: number; documentsUpdated: number };
+    }>(response);
+
     expect(status).toBe(200);
-    expect(body.dryRun).toBe(true);
-    expect(body.imported.pages).toBe(1);
-    expect(body.imported.settings).toBe(2);
+    expect(body).toMatchObject({
+      dryRun: true,
+      imported: { site: 1, documentsCreated: 1, documentsUpdated: 0 },
+    });
+    expect((await findDocuments("posts", { limit: 10 })).totalDocs).toBe(0);
   });
 
-  it("import ?collections=posts drops non-content sections with a warning", async () => {
+  it("preserves document ids and turns a repeated import into an update", async () => {
     const session = await seedUser({ role: "admin" });
-    const res = await importPOST(
+    const payload = await exportPayload(session, "posts");
+    payload.collections.posts = [postWire("First", "portable")];
+
+    const first = await importPOST(
+      buildRequest("/api/import", { method: "POST", session, body: payload }),
+    );
+    expect(await first.json()).toMatchObject({
+      imported: { documentsCreated: 1, documentsUpdated: 0 },
+    });
+    payload.collections.posts = [postWire("Second", "portable")];
+    const second = await importPOST(
+      buildRequest("/api/import", { method: "POST", session, body: payload }),
+    );
+    expect(await second.json()).toMatchObject({
+      imported: { documentsCreated: 0, documentsUpdated: 1 },
+    });
+
+    const documents = await findDocuments("posts", { limit: 10 });
+    expect(documents.totalDocs).toBe(1);
+    expect(documents.docs[0]).toMatchObject({ id: POST_ID, title: "Second" });
+  });
+
+  it("creates new relationship targets before documents that reference them", async () => {
+    const session = await seedUser({ role: "admin" });
+    const payload = await exportPayload(session, "categories,posts");
+    payload.collections.categories = [categoryWire("Portable", "portable")];
+    payload.collections.posts = [{ ...postWire("Related", "related"), categories: [CATEGORY_ID] }];
+
+    const response = await importPOST(
+      buildRequest("/api/import", { method: "POST", session, body: payload }),
+    );
+    expect(response.status).toBe(200);
+    expect((await findDocuments("posts", { limit: 10 })).docs[0]).toMatchObject({
+      id: POST_ID,
+      categories: [CATEGORY_ID],
+    });
+  });
+
+  it("rolls back the whole document batch when a later save fails", async () => {
+    const session = await seedUser({ role: "admin" });
+    const payload = await exportPayload(session, "posts");
+    payload.collections.posts = [
+      postWire("First", "duplicate-slug", POST_ID),
+      postWire("Second", "duplicate-slug", CATEGORY_ID),
+    ];
+
+    const response = await importPOST(
+      buildRequest("/api/import", { method: "POST", session, body: payload }),
+    );
+    expect(response.status).not.toBe(200);
+    expect((await findDocuments("posts", { limit: 10 })).totalDocs).toBe(0);
+  });
+
+  it("fails preflight when media hash matching is ambiguous", async () => {
+    const session = await seedUser({ role: "admin" });
+    const payload = await exportPayload(session, "posts");
+    const sourceMediaId = "33333333-3333-4333-8333-333333333333";
+    payload.collections.posts = [
+      { ...postWire("Ambiguous media", "ambiguous-media"), coverImage: sourceMediaId },
+    ];
+    payload.media = [
+      {
+        id: sourceMediaId,
+        filename: "shared.png",
+        hash: "b".repeat(64),
+        mimeType: "image/png",
+      },
+    ];
+    const db = await getTestDb();
+    for (const [id, storageKey] of [
+      ["44444444-4444-4444-8444-444444444444", "one.png"],
+      ["55555555-5555-4555-8555-555555555555", "two.png"],
+    ] as const) {
+      await db.insert(npMedia).values({
+        id,
+        filename: "shared.png",
+        originalFilename: "shared.png",
+        mimeType: "image/png",
+        filesize: 1,
+        storageKey,
+        hash: "b".repeat(64),
+        status: "ready",
+      });
+    }
+
+    const response = await importPOST(
+      buildRequest("/api/import", {
+        method: "POST",
+        session,
+        query: { dryRun: "true" },
+        body: payload,
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect((await findDocuments("posts", { limit: 10 })).totalDocs).toBe(0);
+  });
+
+  it("fails preflight when a framework user relationship is missing", async () => {
+    const session = await seedUser({ role: "admin" });
+    const payload = await exportPayload(session, "posts");
+    payload.collections.posts = [
+      {
+        ...postWire("Missing author", "missing-author"),
+        author: "66666666-6666-4666-8666-666666666666",
+      },
+    ];
+
+    const response = await importPOST(
+      buildRequest("/api/import", {
+        method: "POST",
+        session,
+        query: { dryRun: "true" },
+        body: payload,
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect((await findDocuments("posts", { limit: 10 })).totalDocs).toBe(0);
+  });
+
+  it("uses a collection query as an explicit content-only projection", async () => {
+    const session = await seedUser({ role: "admin" });
+    const payload = await exportPayload(session);
+    payload.collections.posts = [postWire("Projected", "projected")];
+
+    const response = await importPOST(
       buildRequest("/api/import", {
         method: "POST",
         session,
         query: { collections: "posts", dryRun: "true" },
-        body: {
-          version: "3",
-          theme: { colors: {} },
-          settings: {
-            seo: { defaultOgImage: null, twitterHandle: null, defaultLocale: "en_US" },
-          },
-          collections: {
-            posts: [postWire("P", "p")],
-          },
-        },
+        body: payload,
       }),
     );
     const { status, body } = await readJson<{
       partial: boolean;
       warnings: string[];
-      imported: { pages: number; theme: number; settings: number };
-    }>(res);
+      imported: { site: number; theme: number; documentsCreated: number };
+    }>(response);
+
     expect(status).toBe(200);
-    expect(body.partial).toBe(true);
-    expect(body.imported.pages).toBe(1);
-    expect(body.imported.theme).toBe(0);
-    expect(body.imported.settings).toBe(0);
-    expect(body.warnings.some((w) => /Partial import/.test(w))).toBe(true);
+    expect(body).toMatchObject({
+      partial: true,
+      imported: { site: 0, theme: 0, documentsCreated: 1 },
+    });
+    expect(body.warnings).toContainEqual(expect.stringMatching(/content only/u));
   });
 
-  it("import with unknown collection in filter returns 422", async () => {
+  it("rejects malformed or incomplete envelopes before writes", async () => {
     const session = await seedUser({ role: "admin" });
-    const res = await importPOST(
-      buildRequest("/api/import", {
-        method: "POST",
-        session,
-        query: { collections: "nonexistent" },
-        body: { version: "3" },
-      }),
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it("import requires the exact v3 envelope and rejects unknown top-level fields", async () => {
-    const session = await seedUser({ role: "admin" });
-    for (const body of [{ collections: {} }, { version: "3", legacySettings: {} }]) {
-      const res = await importPOST(
-        buildRequest("/api/import", {
-          method: "POST",
-          session,
-          query: { dryRun: "true" },
-          body,
-        }),
-      );
-      expect(res.status).toBe(400);
-    }
-  });
-
-  it("import rejects invalid theme overlays even during dry-run", async () => {
-    const session = await seedUser({ role: "admin" });
-    const res = await importPOST(
-      buildRequest("/api/import", {
-        method: "POST",
-        session,
-        query: { dryRun: "true" },
-        body: {
-          version: "3",
-          theme: { colors: { primary: "url(https://example.com/x)" } },
-        },
-      }),
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it("import rejects duplicate owner ids and the legacy settings.theme location", async () => {
-    const session = await seedUser({ role: "admin" });
+    const valid = await exportPayload(session);
     for (const body of [
-      { version: "3", settings: { theme: { colors: {} } } },
+      { ...valid, version: "2" },
+      { ...valid, extra: true },
+      { ...valid, collectionsExported: [] },
       {
-        version: "3",
-        settings: {
-          "jobs.paused": {
-            paused: false,
-            changedAt: "2026-07-12T00:00:00.000Z",
-            changedByUserId: null,
-            reason: null,
-          },
-        },
+        ...valid,
+        collectionsExported: [...valid.collectionsExported, "unknown"].sort(),
+        collections: { ...valid.collections, unknown: [] },
       },
-      { version: "3", media: [{ id: "same" }, { id: "same" }] },
-      { version: "3", plugins: [{ id: "same" }, { id: "same" }] },
+      { version: "3" },
     ]) {
-      const res = await importPOST(
+      const response = await importPOST(
         buildRequest("/api/import", {
           method: "POST",
           session,
@@ -263,11 +385,71 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
           body,
         }),
       );
-      expect(res.status).toBe(400);
+      expect(response.status).toBe(400);
     }
   });
 
-  it("rejects a site-scoped global setting during export", async () => {
+  it("preflights collection definitions before changing full-site state", async () => {
+    const session = await seedUser({ role: "admin" });
+    const payload = await exportPayload(session);
+    if (payload.partial) throw new Error("expected full payload");
+    payload.site = { ...payload.site, name: "Must not persist" };
+    payload.collections.posts = [{ ...postWire("Invalid", "invalid"), title: 42 }];
+
+    const response = await importPOST(
+      buildRequest("/api/import", { method: "POST", session, body: payload }),
+    );
+    expect(response.status).toBe(400);
+    const [site] = await (await getTestDb()).select({ name: npSites.name }).from(npSites);
+    expect(site?.name).toBe("Default site");
+  });
+
+  it("preflights loaded plugin ownership before changing the target site", async () => {
+    const session = await seedUser({ role: "admin" });
+    const payload = await exportPayload(session);
+    const db = await getTestDb();
+    await db.insert(npPlugins).values({ id: "not-loaded", enabled: true });
+    if (payload.partial) throw new Error("expected full payload");
+    payload.site = { ...payload.site, name: "Must not persist" };
+    payload.plugins = [
+      {
+        id: "not-loaded",
+        enabled: false,
+        config: {},
+        manifestVersion: null,
+      },
+    ];
+
+    const response = await importPOST(
+      buildRequest("/api/import", { method: "POST", session, body: payload }),
+    );
+    expect(response.status).toBe(400);
+    const [site] = await db.select({ name: npSites.name }).from(npSites);
+    expect(site?.name).toBe("Default site");
+  });
+
+  it("invalidates the plugin enabled gate after a full import", async () => {
+    const session = await seedUser({ role: "admin" });
+    const db = await getTestDb();
+    invalidatePluginEnabled("reading-time");
+    await db.insert(npPlugins).values({ id: "reading-time", enabled: false });
+    expect(await isPluginEnabled("reading-time")).toBe(false);
+
+    const payload = await exportPayload(session);
+    if (payload.partial) throw new Error("expected full payload");
+    payload.plugins = payload.plugins.map((plugin) =>
+      plugin.id === "reading-time" ? { ...plugin, enabled: true } : plugin,
+    );
+
+    const response = await importPOST(
+      buildRequest("/api/import", { method: "POST", session, body: payload }),
+    );
+    expect(response.status).toBe(200);
+    expect(await isPluginEnabled("reading-time")).toBe(true);
+    invalidatePluginEnabled("reading-time");
+  });
+
+  it("fails closed on malformed stored settings and navigation during export", async () => {
     const session = await seedUser({ role: "admin" });
     const db = await getTestDb();
     await db.insert(npSettings).values({
@@ -279,98 +461,53 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
         reason: null,
       },
     });
+    expect((await exportGET(buildRequest("/api/export", { session }))).status).toBe(400);
 
-    const res = await exportGET(buildRequest("/api/export", { session }));
-    expect(res.status).toBe(400);
-  });
-
-  it("publishes the closed site-config settings registry in OpenAPI", async () => {
-    const response = await openApiGET();
-    const { body } = await readJson<{
-      components: {
-        schemas: {
-          framework_settings: {
-            additionalProperties: boolean;
-            properties: Record<string, unknown>;
-            patternProperties: Record<string, unknown>;
-          };
-        };
-      };
-    }>(response);
-    const schema = body.components.schemas.framework_settings;
-    expect(schema.additionalProperties).toBe(false);
-    expect(schema.properties).toHaveProperty("seo");
-    expect(schema.properties).not.toHaveProperty("theme");
-    expect(schema.properties).not.toHaveProperty("jobs.paused");
-    expect(Object.keys(schema.patternProperties)).toEqual([
-      "^theme\\.settings:[a-z][a-z0-9-]{0,62}$",
-    ]);
-  });
-
-  it("preflights loaded plugin ownership before changing site settings", async () => {
-    const session = await seedUser({ role: "admin" });
-    const db = await getTestDb();
-    await db.insert(npPlugins).values({ id: "not-loaded", enabled: true });
-
-    const res = await importPOST(
-      buildRequest("/api/import", {
-        method: "POST",
-        session,
-        body: {
-          version: "3",
-          site: {
-            name: "Must not persist",
-            url: null,
-            description: null,
-            defaultLocale: null,
-            timezone: null,
-          },
-          plugins: [{ id: "not-loaded", enabled: false }],
-        },
-      }),
-    );
-
-    expect(res.status).toBe(400);
-    const [site] = await db.select({ name: npSites.name }).from(npSites);
-    expect(site?.name).toBe("Default site");
-  });
-
-  it("import rejects invalid navigation before dry-run or persistence", async () => {
-    const session = await seedUser({ role: "admin" });
-    const res = await importPOST(
-      buildRequest("/api/import", {
-        method: "POST",
-        session,
-        query: { dryRun: "true" },
-        body: {
-          version: "3",
-          navigation: {
-            header: [{ id: "unsafe", label: "Unsafe", type: "link", url: "javascript:alert(1)" }],
-          },
-        },
-      }),
-    );
-    expect(res.status).toBe(400);
-    const db = await getTestDb();
-    expect(await db.select().from(npNavigation)).toHaveLength(0);
-  });
-
-  it("export refuses malformed stored navigation", async () => {
-    const session = await seedUser({ role: "admin" });
-    const db = await getTestDb();
-    await db.insert(npNavigation).values({
+    await truncateAll();
+    const nextSession = await seedUser({ role: "admin" });
+    await (await getTestDb()).insert(npNavigation).values({
       location: "header",
       items: [
         { id: "duplicate", label: "One", type: "link", url: "/" },
-        {
-          id: "duplicate",
-          label: "Two",
-          type: "link",
-          url: "/two",
-        },
+        { id: "duplicate", label: "Two", type: "link", url: "/two" },
       ],
     });
-    const res = await exportGET(buildRequest("/api/export", { session }));
-    expect(res.status).toBe(400);
+    expect((await exportGET(buildRequest("/api/export", { session: nextSession }))).status).toBe(
+      400,
+    );
+  });
+
+  it("publishes the closed v3 transfer schemas in OpenAPI", async () => {
+    const { body } = await readJson<{
+      paths: Record<string, Record<string, unknown>>;
+      components: { schemas: Record<string, Record<string, unknown>> };
+    }>(await openApiGET());
+    const schemas = body.components.schemas;
+
+    expect(schemas.content_transfer_full_envelope).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      properties: { version: { enum: ["3"] }, partial: { enum: [false] } },
+    });
+    expect(schemas.content_transfer_partial_envelope).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      properties: { partial: { enum: [true] } },
+    });
+    expect(schemas.content_transfer_collections).toMatchObject({
+      additionalProperties: false,
+      properties: { posts: { items: { $ref: "#/components/schemas/posts_document" } } },
+    });
+    expect(body.paths["/api/import"]).toMatchObject({
+      post: {
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/content_transfer_envelope" },
+            },
+          },
+        },
+      },
+    });
   });
 });

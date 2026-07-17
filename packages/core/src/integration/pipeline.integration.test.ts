@@ -10,6 +10,7 @@ import {
   findDocuments,
   getDocumentById,
   npGetPersistedCollectionDocumentById,
+  npGetPersistedCollectionDocumentIds,
   saveDocument,
 } from "../collections/pipeline.js";
 import { setJobQueue } from "../jobs/queue.js";
@@ -122,6 +123,27 @@ describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () =
     expect(revs[0].version).toBe(1);
   });
 
+  it("preserves a caller-owned create id for idempotent content transfer", async () => {
+    const user = await seedUser();
+    const createId = "44444444-4444-4444-8444-444444444444";
+    const created = await saveDocument("posts", null, baseDoc, user, {
+      status: "draft",
+      createId,
+    });
+
+    expect(created.doc.id).toBe(createId);
+    await expect(
+      saveDocument("posts", createId, { title: "Updated" }, user, { createId }),
+    ).rejects.toMatchObject({
+      errors: [
+        {
+          field: "createId",
+          message: expect.stringMatching(/only valid for document creates/u),
+        },
+      ],
+    });
+  });
+
   it("keeps version counters monotonic after versions.max prunes old rows", async () => {
     const user = await seedUser();
     const created = await saveDocument("posts", null, baseDoc, user, { status: "draft" });
@@ -177,6 +199,12 @@ describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () =
     ).resolves.toMatchObject({ id: created.doc.id, siteId: "tenant-a" });
     await expect(
       npGetPersistedCollectionDocumentById("posts", created.doc.id as string, "default"),
+    ).rejects.toThrow(/cross-site/u);
+    await expect(
+      npGetPersistedCollectionDocumentIds("posts", [created.doc.id as string], "tenant-a"),
+    ).resolves.toEqual([created.doc.id]);
+    await expect(
+      npGetPersistedCollectionDocumentIds("posts", [created.doc.id as string], "default"),
     ).rejects.toThrow(/cross-site/u);
   });
 

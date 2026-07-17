@@ -141,6 +141,10 @@ function requireDocumentSiteId(document: Record<string, unknown>, context: strin
   return document.siteId;
 }
 
+function isCanonicalCreateId(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(value);
+}
+
 /**
  * Polymorphic actor reference passed to collection hooks and
  * surfaced to plugin hooks via the `principal` payload field.
@@ -671,6 +675,18 @@ async function initSaveContext(
     "hookData" | "prepared" | "searchVector" | "publishTransition" | "unpublishTransition" | "now"
   >
 > {
+  if (options?.createId !== undefined) {
+    if (docId !== null) {
+      throw new NpValidationError("Invalid save options", [
+        { field: "createId", message: "createId is only valid for document creates." },
+      ]);
+    }
+    if (!isCanonicalCreateId(options.createId)) {
+      throw new NpValidationError("Invalid save options", [
+        { field: "createId", message: "createId must be a canonical UUID." },
+      ]);
+    }
+  }
   const config = getCollectionConfig(collection);
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
@@ -1046,6 +1062,7 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
             ctx.config,
             ctx.userForHooks,
             ctx.now,
+            ctx.options?.createId,
           );
     const persistedDocId = getRecordId(persistedDoc);
 
@@ -1990,6 +2007,59 @@ export async function npGetPersistedCollectionDocumentById(
   return document;
 }
 
+/** Framework-host bulk identity boundary used by content-transfer preflight. */
+export async function npGetPersistedCollectionDocumentIds(
+  collection: string,
+  ids: readonly string[],
+  siteId: string,
+): Promise<string[]> {
+  if (!npIsCanonicalSiteId(siteId)) {
+    throw new NpValidationError("Invalid collection document site", [
+      { field: "siteId", message: "Must be a canonical site id" },
+    ]);
+  }
+  if (ids.length > 10_000) {
+    throw new NpValidationError("Invalid collection document ids", [
+      { field: "ids", message: "At most 10000 document ids may be inspected at once." },
+    ]);
+  }
+  const seen = new Set<string>();
+  for (const [index, id] of ids.entries()) {
+    if (!isCanonicalCreateId(id)) {
+      throw new NpValidationError("Invalid collection document ids", [
+        { field: `ids.${index.toString()}`, message: "Must be a canonical UUID." },
+      ]);
+    }
+    if (seen.has(id)) {
+      throw new NpValidationError("Invalid collection document ids", [
+        { field: `ids.${index.toString()}`, message: "Document id must be unique." },
+      ]);
+    }
+    seen.add(id);
+  }
+  if (ids.length === 0) return [];
+
+  const table = getCollectionTable(collection) as PgTable;
+  const db = getDb() as unknown as DrizzleDatabaseLike;
+  const rows = (await db
+    .select({
+      id: getTableColumn(table, "id"),
+      siteId: getTableColumn(table, "siteId"),
+    })
+    .from(table)
+    .where(inArray(getTableColumn(table, "id"), [...ids]))) as Array<{
+    id: unknown;
+    siteId: unknown;
+  }>;
+  for (const row of rows) {
+    if (row.siteId !== siteId) throw new NpForbiddenError(collection, "cross-site");
+  }
+  return rows
+    .map((row) => row.id)
+    .filter((id): id is string => typeof id === "string")
+    .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+}
+
 async function assertWriteAccess(
   config: NpCollectionConfig,
   collection: string,
@@ -2102,6 +2172,7 @@ async function createMainDocument(
   config: NpCollectionConfig,
   user: NpAuthUser | null,
   now: Date,
+  createId?: string,
 ): Promise<Record<string, unknown>> {
   // Member writes (`user === null`) leave `createdBy` / `updatedBy`
   // unset so the FK to `np_users` stays null. The audit log captures
@@ -2110,7 +2181,7 @@ async function createMainDocument(
   // column (codegen'd onto every collection that opts into
   // `community.memberWrite.create`).
   const values: Record<string, unknown> = {
-    id: randomUUID(),
+    id: createId ?? randomUUID(),
     status: "published",
     ...mainData,
     createdBy: user?.id ?? null,

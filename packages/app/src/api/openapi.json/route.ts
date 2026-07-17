@@ -49,6 +49,17 @@ import {
   npCollectionDocumentVisibilities,
 } from "@nexpress/core/collection-contract";
 import { npDiscoveryContractLimits, npPluginDiscoveryProvideKeys } from "@nexpress/core/discovery";
+import {
+  NP_CONTENT_TRANSFER_VERSION,
+  npContentTransferCanonicalDatePattern,
+  npContentTransferCollectionSlugPattern,
+  npContentTransferContractLimits,
+  npContentTransferMimeTypePattern,
+  npContentTransferPluginIdPattern,
+  npContentTransferPluginVersionPattern,
+  npContentTransferSha256Pattern,
+  npContentTransferUuidPattern,
+} from "@nexpress/core/content-transfer";
 import { npSearchCollectionSlugPattern, npSearchContractLimits } from "@nexpress/core/search";
 import { NextResponse } from "next/server";
 
@@ -61,6 +72,12 @@ import {
 } from "../../lib/openapi-api-errors";
 
 type OpenApiSchema = Record<string, unknown>;
+
+const contentTransferCollectionFilterPattern = `^[a-z](?:[a-z0-9]|-(?=[a-z0-9])){0,${(
+  npContentTransferContractLimits.collectionSlugLength - 1
+).toString()}}(?:,[a-z](?:[a-z0-9]|-(?=[a-z0-9])){0,${(
+  npContentTransferContractLimits.collectionSlugLength - 1
+).toString()}})*$`;
 
 function themeTokenGroupSchema(group: NpThemeTokenGroup): OpenApiSchema {
   const optional = new Set<string>(npThemeOptionalTokenKeys[group]);
@@ -502,7 +519,266 @@ function revisionSnapshotSchema(
 
 export function buildSpec(): OpenApiSchema {
   const slugs = getAllCollectionSlugs();
+  const contentTransferBaseProperties: Record<string, OpenApiSchema> = {
+    version: { type: "string", enum: [NP_CONTENT_TRANSFER_VERSION] },
+    exportedAt: {
+      type: "string",
+      format: "date-time",
+      pattern: npContentTransferCanonicalDatePattern,
+    },
+    siteUrl: {
+      type: ["string", "null"],
+      format: "uri",
+      maxLength: 2048,
+      description:
+        "Canonical HTTP(S) origin. For a full transfer it must exactly equal `site.url`.",
+    },
+    collectionsExported: {
+      type: "array",
+      maxItems: npContentTransferContractLimits.collections,
+      uniqueItems: true,
+      items: {
+        type: "string",
+        maxLength: npContentTransferContractLimits.collectionSlugLength,
+        pattern: npContentTransferCollectionSlugPattern,
+        ...(slugs.length > 0 ? { enum: slugs } : {}),
+      },
+      description: "Sorted unique inventory that exactly matches the `collections` keys.",
+    },
+    collections: { $ref: "#/components/schemas/content_transfer_collections" },
+    media: {
+      type: "array",
+      maxItems: npContentTransferContractLimits.mediaItems,
+      items: { $ref: "#/components/schemas/content_transfer_media_item" },
+      description: "Sorted exact manifest of media ids referenced by transferred documents.",
+    },
+  };
+  const contentTransferBaseRequired = [
+    "version",
+    "exportedAt",
+    "siteUrl",
+    "partial",
+    "collectionsExported",
+    "collections",
+    "media",
+  ];
   const schemas: Record<string, OpenApiSchema> = {
+    content_transfer_json: {
+      oneOf: [
+        { type: "string", maxLength: npContentTransferContractLimits.jsonStringLength },
+        { type: "number" },
+        { type: "boolean" },
+        { type: "null" },
+        {
+          type: "array",
+          maxItems: npContentTransferContractLimits.jsonArrayItems,
+          items: { $ref: "#/components/schemas/content_transfer_json" },
+        },
+        {
+          type: "object",
+          maxProperties: npContentTransferContractLimits.jsonObjectKeys,
+          propertyNames: {
+            minLength: 1,
+            maxLength: npContentTransferContractLimits.jsonKeyLength,
+            not: { enum: ["__proto__", "constructor", "prototype"] },
+          },
+          additionalProperties: { $ref: "#/components/schemas/content_transfer_json" },
+        },
+      ],
+    },
+    content_transfer_media_item: {
+      type: "object",
+      additionalProperties: false,
+      required: ["id", "filename", "hash", "mimeType"],
+      properties: {
+        id: { type: "string", format: "uuid", pattern: npContentTransferUuidPattern },
+        filename: {
+          type: "string",
+          minLength: 1,
+          maxLength: npMediaContractLimits.filenameLength,
+          pattern: "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001F\\u007F]+$",
+        },
+        hash: { type: "string", pattern: npContentTransferSha256Pattern },
+        mimeType: {
+          type: "string",
+          minLength: 3,
+          maxLength: npMediaContractLimits.mimeTypeLength,
+          pattern: npContentTransferMimeTypePattern,
+        },
+      },
+    },
+    content_transfer_plugin_state: {
+      type: "object",
+      additionalProperties: false,
+      required: ["id", "enabled", "config", "manifestVersion"],
+      properties: {
+        id: { type: "string", maxLength: 128, pattern: npContentTransferPluginIdPattern },
+        enabled: { type: "boolean" },
+        config: {
+          type: "object",
+          maxProperties: npContentTransferContractLimits.jsonObjectKeys,
+          additionalProperties: { $ref: "#/components/schemas/content_transfer_json" },
+        },
+        manifestVersion: {
+          type: ["string", "null"],
+          minLength: 1,
+          maxLength: 128,
+          pattern: npContentTransferPluginVersionPattern,
+        },
+      },
+    },
+    content_transfer_collections: {
+      type: "object",
+      additionalProperties: false,
+      maxProperties: npContentTransferContractLimits.collections,
+      properties: Object.fromEntries(
+        slugs.map((slug) => [
+          slug,
+          {
+            type: "array",
+            maxItems: npContentTransferContractLimits.documentsPerCollection,
+            items: { $ref: `#/components/schemas/${slug}_document` },
+          },
+        ]),
+      ),
+      description: `At most ${npContentTransferContractLimits.documentsTotal.toString()} documents total. Keys are limited to collections registered on this target.`,
+    },
+    content_transfer_partial_envelope: {
+      type: "object",
+      additionalProperties: false,
+      required: contentTransferBaseRequired,
+      properties: { ...contentTransferBaseProperties, partial: { type: "boolean", enum: [true] } },
+    },
+    content_transfer_full_envelope: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        ...contentTransferBaseRequired,
+        "site",
+        "theme",
+        "settings",
+        "navigation",
+        "plugins",
+      ],
+      properties: {
+        ...contentTransferBaseProperties,
+        partial: { type: "boolean", enum: [false] },
+        site: { $ref: "#/components/schemas/site_general_settings" },
+        theme: { oneOf: [{ type: "null" }, themeTokensOverlaySchema] },
+        settings: {
+          allOf: [{ $ref: "#/components/schemas/framework_settings" }],
+          maxProperties: npContentTransferContractLimits.settings,
+        },
+        navigation: {
+          type: "object",
+          maxProperties: npContentTransferContractLimits.navigationLocations,
+          propertyNames: {
+            maxLength: npNavigationLimits.locationLength,
+            pattern: npNavigationLocationPattern,
+          },
+          additionalProperties: { $ref: "#/components/schemas/navigation_items" },
+        },
+        plugins: {
+          type: "array",
+          maxItems: npContentTransferContractLimits.plugins,
+          items: { $ref: "#/components/schemas/content_transfer_plugin_state" },
+        },
+      },
+    },
+    content_transfer_envelope: {
+      oneOf: [
+        { $ref: "#/components/schemas/content_transfer_full_envelope" },
+        { $ref: "#/components/schemas/content_transfer_partial_envelope" },
+      ],
+      description: `Exact v3 content-transfer envelope; serialized request/response size is capped at ${npContentTransferContractLimits.bodyBytes.toString()} bytes.`,
+    },
+    content_transfer_import_counts: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "site",
+        "theme",
+        "settings",
+        "navigation",
+        "documentsCreated",
+        "documentsUpdated",
+        "mediaMatched",
+        "pluginsUpdated",
+      ],
+      properties: {
+        site: { type: "integer", minimum: 0, maximum: 1 },
+        theme: { type: "integer", minimum: 0, maximum: 1 },
+        settings: {
+          type: "integer",
+          minimum: 0,
+          maximum: npContentTransferContractLimits.settings,
+        },
+        navigation: {
+          type: "integer",
+          minimum: 0,
+          maximum: npContentTransferContractLimits.navigationLocations,
+        },
+        documentsCreated: {
+          type: "integer",
+          minimum: 0,
+          maximum: npContentTransferContractLimits.documentsTotal,
+        },
+        documentsUpdated: {
+          type: "integer",
+          minimum: 0,
+          maximum: npContentTransferContractLimits.documentsTotal,
+        },
+        mediaMatched: {
+          type: "integer",
+          minimum: 0,
+          maximum: npContentTransferContractLimits.mediaItems,
+        },
+        pluginsUpdated: {
+          type: "integer",
+          minimum: 0,
+          maximum: npContentTransferContractLimits.plugins,
+        },
+      },
+      description: `Created plus updated documents cannot exceed ${npContentTransferContractLimits.documentsTotal.toString()}.`,
+    },
+    content_transfer_import_report: {
+      type: "object",
+      additionalProperties: false,
+      required: ["imported", "warnings", "dryRun", "partial"],
+      properties: {
+        imported: { $ref: "#/components/schemas/content_transfer_import_counts" },
+        warnings: {
+          type: "array",
+          maxItems: npContentTransferContractLimits.warnings,
+          items: { type: "string", maxLength: npContentTransferContractLimits.warningLength },
+        },
+        dryRun: { type: "boolean" },
+        partial: { type: "boolean" },
+      },
+      allOf: [
+        {
+          if: { properties: { partial: { const: true } }, required: ["partial"] },
+          then: {
+            properties: {
+              imported: {
+                properties: {
+                  site: { const: 0 },
+                  theme: { const: 0 },
+                  settings: { const: 0 },
+                  navigation: { const: 0 },
+                  pluginsUpdated: { const: 0 },
+                },
+              },
+            },
+          },
+          else: {
+            properties: {
+              imported: { properties: { site: { const: 1 }, theme: { const: 1 } } },
+            },
+          },
+        },
+      ],
+    },
     discovery_json: {
       oneOf: [
         { type: "string", maxLength: npDiscoveryContractLimits.jsonStringLength },
@@ -2949,12 +3225,19 @@ export function buildSpec(): OpenApiSchema {
       get: {
         summary: "Export all content + settings as a single JSON document (admin only)",
         description:
-          "Inverse of `POST /api/import`. Full export includes theme, settings, navigation, every collection's documents, media references (id + hash + filename — not the binary), and plugin enabled/config state. Pass `?collections=posts,pages` to scope the payload to content only (theme / settings / navigation / plugins are omitted).",
+          "Produces the exact bounded v3 envelope accepted by `POST /api/import`. Full export includes site, theme, portable settings, navigation, every selected collection's exact wire documents, definition-owned media references (metadata, not binary objects), and plugin enabled/config state. Pass `?collections=posts,pages` to produce a closed partial content-only envelope. Export fails rather than truncating a collection or returning malformed persisted state.",
         parameters: [
           {
             in: "query",
             name: "collections",
-            schema: { type: "string" },
+            schema: {
+              type: "string",
+              pattern: contentTransferCollectionFilterPattern,
+              maxLength:
+                npContentTransferContractLimits.collections *
+                  (npContentTransferContractLimits.collectionSlugLength + 1) -
+                1,
+            },
             description:
               "Comma-separated slug list. When present, only these collections export and the non-content sections (theme/settings/navigation/plugins) are skipped.",
           },
@@ -2964,70 +3247,7 @@ export function buildSpec(): OpenApiSchema {
             description: "Export payload",
             content: {
               "application/json": {
-                schema: {
-                  type: "object",
-                  additionalProperties: false,
-                  required: [
-                    "version",
-                    "exportedAt",
-                    "siteUrl",
-                    "partial",
-                    "collectionsExported",
-                    "collections",
-                    "media",
-                  ],
-                  properties: {
-                    version: { type: "string", enum: ["2"] },
-                    exportedAt: { type: "string", format: "date-time" },
-                    siteUrl: {
-                      type: "string",
-                      nullable: true,
-                      description:
-                        "Canonical site URL when configured, otherwise SITE_URL at export time.",
-                    },
-                    partial: {
-                      type: "boolean",
-                      description: "True when the `collections` filter was applied.",
-                    },
-                    collectionsExported: { type: "array", items: { type: "string" } },
-                    site: {
-                      oneOf: [
-                        { type: "null" },
-                        { $ref: "#/components/schemas/site_general_settings" },
-                      ],
-                    },
-                    theme: {
-                      oneOf: [{ type: "null" }, themeTokensOverlaySchema],
-                    },
-                    settings: { $ref: "#/components/schemas/framework_settings" },
-                    navigation: {
-                      type: "object",
-                      additionalProperties: { $ref: "#/components/schemas/navigation_items" },
-                    },
-                    collections: {
-                      type: "object",
-                      additionalProperties: {
-                        type: "array",
-                        items: { type: "object", additionalProperties: true },
-                      },
-                    },
-                    media: { type: "array", items: { $ref: "#/components/schemas/media_item" } },
-                    plugins: {
-                      type: "array",
-                      items: {
-                        type: "object",
-                        additionalProperties: false,
-                        required: ["id", "enabled", "config", "manifestVersion"],
-                        properties: {
-                          id: { type: "string" },
-                          enabled: { type: "boolean" },
-                          config: { type: "object", additionalProperties: true },
-                          manifestVersion: { type: ["string", "null"] },
-                        },
-                      },
-                    },
-                  },
-                },
+                schema: { $ref: "#/components/schemas/content_transfer_envelope" },
               },
             },
           },
@@ -3040,19 +3260,26 @@ export function buildSpec(): OpenApiSchema {
       post: {
         summary: "Import a prior `/api/export` payload (admin only)",
         description:
-          "Idempotency: media records are matched by hash (then filename as fallback) before collection docs are written, so re-running on a fresh DB after uploading media produces a consistent result. Plugin code itself is not imported — the plugin must already be registered in `nexpress.config.ts`.\n\nPass `?dryRun=true` to validate the payload without writing — the response returns the same `imported` counts and `warnings` a real run would produce, plus `dryRun: true`. Pass `?collections=a,b` to restrict the import to just those slugs (theme / settings / navigation / plugins in the payload are then ignored with a warning).",
+          "Validates the complete exact v3 envelope, active collection definitions, schema-owned media references, document identities, relationships, themes, and plugin config before mutation. Source document UUIDs are preserved, so repeated imports update the same rows. New relationship targets are ordered before their sources; new cycles fail. Database mutations share one transaction. Plugin/theme code and media binaries are not transferred.\n\nPass the exact string `?dryRun=true` to run the same preflight and counts without writing. Pass `?collections=a,b` to project selected content from either envelope; full-site sections are then ignored with a warning.",
         parameters: [
           {
             in: "query",
             name: "dryRun",
-            schema: { type: "boolean" },
+            schema: { type: "string", enum: ["true", "false"] },
             description:
               "When `true`, skip all writes and return the report that would have been generated.",
           },
           {
             in: "query",
             name: "collections",
-            schema: { type: "string" },
+            schema: {
+              type: "string",
+              pattern: contentTransferCollectionFilterPattern,
+              maxLength:
+                npContentTransferContractLimits.collections *
+                  (npContentTransferContractLimits.collectionSlugLength + 1) -
+                1,
+            },
             description:
               "Comma-separated slug list. When present, only these collections import and theme/settings/navigation/plugins are skipped.",
           },
@@ -3061,76 +3288,7 @@ export function buildSpec(): OpenApiSchema {
           required: true,
           content: {
             "application/json": {
-              schema: {
-                type: "object",
-                additionalProperties: false,
-                required: ["version"],
-                properties: {
-                  version: { type: "string", enum: ["2"] },
-                  exportedAt: { type: "string", format: "date-time" },
-                  siteUrl: { type: ["string", "null"], format: "uri" },
-                  partial: { type: "boolean" },
-                  collectionsExported: { type: "array", items: { type: "string" } },
-                  site: { $ref: "#/components/schemas/site_general_settings" },
-                  theme: themeTokensOverlaySchema,
-                  settings: { $ref: "#/components/schemas/framework_settings" },
-                  navigation: {
-                    oneOf: [
-                      {
-                        type: "object",
-                        additionalProperties: { $ref: "#/components/schemas/navigation_items" },
-                      },
-                      {
-                        type: "array",
-                        items: {
-                          type: "object",
-                          additionalProperties: false,
-                          required: ["items"],
-                          properties: {
-                            location: { $ref: "#/components/schemas/navigation_location" },
-                            items: { $ref: "#/components/schemas/navigation_items" },
-                          },
-                        },
-                      },
-                    ],
-                  },
-                  collections: {
-                    type: "object",
-                    additionalProperties: {
-                      type: "array",
-                      items: { type: "object", additionalProperties: true },
-                    },
-                  },
-                  media: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      additionalProperties: false,
-                      required: ["id"],
-                      properties: {
-                        id: { type: "string" },
-                        filename: { type: "string" },
-                        hash: { type: "string" },
-                        mimeType: { type: "string" },
-                      },
-                    },
-                  },
-                  plugins: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      additionalProperties: false,
-                      required: ["id"],
-                      properties: {
-                        id: { type: "string" },
-                        enabled: { type: "boolean" },
-                        config: { type: "object", additionalProperties: true },
-                        manifestVersion: { type: ["string", "null"] },
-                      },
-                    },
-                  },
-                },
-              },
+              schema: { $ref: "#/components/schemas/content_transfer_envelope" },
             },
           },
         },
@@ -3139,25 +3297,7 @@ export function buildSpec(): OpenApiSchema {
             description: "Import report",
             content: {
               "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    imported: {
-                      type: "object",
-                      properties: {
-                        theme: { type: "integer" },
-                        settings: { type: "integer" },
-                        navigation: { type: "integer" },
-                        pages: { type: "integer" },
-                        mediaMatched: { type: "integer" },
-                        pluginsUpdated: { type: "integer" },
-                      },
-                    },
-                    warnings: { type: "array", items: { type: "string" } },
-                    dryRun: { type: "boolean" },
-                    partial: { type: "boolean" },
-                  },
-                },
+                schema: { $ref: "#/components/schemas/content_transfer_import_report" },
               },
             },
           },

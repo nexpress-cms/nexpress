@@ -28,9 +28,11 @@ request (no cache) covering:
   `plugin:{pluginId}` so agents can scope to one plugin.
 - Import / export (`/api/import`, `/api/export`). Both accept
   `?collections=a,b` to scope to a subset; import also accepts
-  `?dryRun=true` to validate a payload without writing. Full site-config
-  payloads use export format version `3` and carry canonical site identity in
-  the top-level `site` field.
+  the exact string `?dryRun=true` to validate the same preflight without
+  writing. Full and partial payloads use the closed, bounded v3 envelope;
+  collection schemas in OpenAPI define every document entry. See
+  [Content transfer](./content-transfer.md) for identity preservation, media,
+  relationship, transaction, and size semantics.
 - Public discovery (`/api/meta/blocks`, `/api/meta/collections`,
   `/api/meta/plugins`) and search (`/api/search`).
 - Draft mode entrypoints (`/api/preview`, `/api/preview/exit`) and
