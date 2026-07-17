@@ -1,5 +1,11 @@
 # @nexpress/editor
 
+## 0.4.1
+
+### Patch Changes
+
+- @nexpress/core@0.4.1
+
 ## 0.4.0
 
 ### Patch Changes

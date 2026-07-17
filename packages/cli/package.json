@@ -1,6 +1,6 @@
 {
   "name": "create-nexpress",
-  "version": "0.1.35",
+  "version": "0.1.36",
   "description": "Scaffolder CLI for new NexPress projects (npx create-nexpress).",
   "license": "MIT",
   "author": "Nexpress",

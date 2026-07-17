@@ -1,5 +1,38 @@
 # @nexpress/app
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [03d0c2c]
+  - @nexpress/gettext@0.4.1
+  - @nexpress/translation@0.4.1
+  - @nexpress/xliff@0.4.1
+  - @nexpress/admin@0.4.1
+  - @nexpress/auth-pages@0.4.1
+  - @nexpress/blocks@0.4.1
+  - @nexpress/core@0.4.1
+  - @nexpress/editor@0.4.1
+  - @nexpress/next@0.4.1
+  - @nexpress/plugin-block-callout@0.4.1
+  - @nexpress/plugin-block-embed@0.4.1
+  - @nexpress/plugin-block-latest-posts@0.4.1
+  - @nexpress/plugin-block-newsletter@0.4.1
+  - @nexpress/plugin-block-pricing@0.4.1
+  - @nexpress/plugin-block-stats@0.4.1
+  - @nexpress/plugin-forum@0.4.1
+  - @nexpress/plugin-oauth-github@0.4.1
+  - @nexpress/plugin-oauth-google@0.4.1
+  - @nexpress/plugin-reading-time@0.4.1
+  - @nexpress/plugin-sdk@0.4.1
+  - @nexpress/plugin-seo-audit@0.4.1
+  - @nexpress/theme@0.4.1
+  - @nexpress/theme-default@0.4.1
+  - @nexpress/theme-docs@0.4.1
+  - @nexpress/theme-magazine@0.4.1
+  - @nexpress/theme-portfolio@0.4.1
+  - @nexpress/wp-import@0.4.1
+
 ## 0.4.0
 
 ### Minor Changes

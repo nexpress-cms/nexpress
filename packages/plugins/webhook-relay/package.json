@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/plugin-webhook-relay",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Webhook relay plugin for NexPress content lifecycle events.",
   "license": "MIT",
   "author": "Nexpress",
