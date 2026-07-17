@@ -33,7 +33,9 @@ name: Release
 # `pnpm publish --access public` with 2FA, then have its TP
 # config added on npmjs.com afterwards. See
 # `docs/releasing.md` § "Trusted Publisher setup" for the
-# step-by-step.
+# step-by-step. Never replace that bootstrap command with direct
+# `npm publish`: npm does not rewrite pnpm's `workspace:*`
+# dependencies and will upload an uninstallable manifest.
 on:
   workflow_dispatch:
   push:
