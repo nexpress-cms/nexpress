@@ -1,5 +1,199 @@
 # @nexpress/core
 
+## 0.4.0
+
+### Minor Changes
+
+- 257e70f: Add exact bounded public block, collection, and plugin discovery contracts,
+  project active runtime ownership and inventories through the shared routes and
+  OpenAPI document, and consume the collection catalog through the same contract
+  in Admin.
+- 922c708: Unify collection storage, runtime, generated, Admin, REST, OpenAPI, and
+  import/export document shapes behind an exact definition-derived contract.
+  Collection reads now hydrate ordered child and hasMany rows, updates preserve
+  omitted fields, `_status` is request-only, and malformed persistence or hook
+  results fail closed with doctor and live-health diagnostics. Collection
+  lifecycle after-hooks now run exactly once with the same hydrated document
+  contract as plugin lifecycle hooks.
+
+  Canonical slugs, bounded JSON write values, complete relation inventories, and
+  safe unambiguous pagination/locale filters now fail at their earliest runtime
+  boundary as part of the same contract.
+
+- ab83768: Unify community registries, adapters, persisted rows, API requests, wire
+  responses, Admin/member consumers, doctor diagnostics, and live health behind
+  one fail-closed runtime contract. WordPress import audit callbacks now expose
+  the same target-pair and JSON-safe payload guarantees.
+- 773bd1a: Unify locale config, resolution input, app/theme/plugin ICU catalogs, runtime
+  parameters, Admin request/response wires, persisted overrides, bounded caches,
+  translation-progress counts, doctor, and live health behind one exact
+  fail-closed i18n contract. Add the
+  client-safe `@nexpress/core/i18n-contract` entry for proxy and Admin consumers.
+- a678bb5: Unify search requests, adapter candidates, public results, current-site and
+  visibility scope, cache keys, reindex responses, OpenAPI, themes, bootstrap
+  lifecycle, and live health behind one exact bounded Core contract. Malformed
+  external results and dispatch failures are contained, diagnosed, and fall back
+  to the built-in Postgres path before they can reach caches or callers.
+- 27a4f0e: Add the client-safe `@nexpress/core/content-transfer` v3 contract and connect
+  export, import, and active collection OpenAPI to the same exact bounded full or
+  partial envelope. Export now derives a site-scoped media manifest from actual
+  definition-owned references and fails instead of truncating large collections.
+
+  Import validates the complete payload before mutation, remaps only schema-owned
+  media references, preserves document UUIDs, orders relationship targets, and
+  applies document plus site configuration changes in one database transaction.
+  Reports now distinguish created and updated documents exactly.
+
+- e58c4c8: Isolate current-site execution with AsyncLocalStorage and add payload-derived
+  site scoping to job handler registration. Content save/delete jobs now require
+  the originating `siteId`, and scheduled publishing runs hooks and follow-up
+  dispatch in each document's validated site context.
+- f7ee76e: Promote block content to one stable recursive wire contract. Validate block
+  trees before collection writes, pattern storage, Admin JSON/paste/preview,
+  translation, and unknown-block operations; expose client-safe validators and
+  types; and emit the contract in generated document types and OpenAPI.
+- f8ef45e: Make `defineCollection()` a complete runtime contract boundary. Collection and
+  nested field definitions now reject unknown properties, duplicate or reserved
+  names, inconsistent bounds and inventories, stale slug/Admin references, and
+  invalid relationship or upload targets before codegen or application boot.
+  Complete collection-set validation also rejects duplicate slugs, missing
+  relationship targets, unsupported persistence shapes, and invalid theme-merged
+  definitions.
+- 3396b1c: Add one exact media record and image-variant contract across processing,
+  persisted reads, URL resolution, plugin reads, Admin APIs, OpenAPI, cleanup,
+  and storage diagnostics. Media URLs now use actual stored variant keys rather
+  than guessed WebP paths, the built-in worker processes image jobs by default,
+  and non-image uploads no longer enqueue Sharp work. Legacy `sizes.*.url`
+  members are no longer canonical; remove the cached URL member before optional
+  variant reprocessing so each entry contains storage metadata only.
+  Plugin `ctx.media.getUrl` now accepts `{ variant, fallbackToOriginal }` and
+  returns `null` when the media or required variant is absent; the previously
+  declared on-demand transform argument was never implemented.
+- bedb705: Add one exact navigation tree contract across theme seeds, Admin and API
+  writes, backup import/export, OpenAPI, persisted reads, caches, and public
+  rendering. Stored and resolved navigation types are now distinct, malformed
+  rows fail closed, and the client-safe navigation validators are public.
+- 91867cc: Make `defineConfig()` an exact project configuration boundary. Unknown or
+  retired settings now fail at module evaluation, active nested settings are
+  strict, and shared tooling APIs validate site origins, storage URLs, canonical
+  locale inventories, duplicate plugin ids, and missing or cyclic plugin
+  dependencies.
+- 3d45e43: Make `np_sites` the single owner of site identity and add a closed,
+  fail-closed framework settings registry across core services, Admin, plugin
+  context, backup import/export, OpenAPI, and doctor. The new
+  `@nexpress/core/settings` subpath exposes the exact site, SEO, registry, and
+  validation contracts. General settings now accept only `site` and `seo`,
+  plugin writes require the calling plugin to be loaded, and malformed persisted
+  theme/plugin settings or migrator failures no longer reset silently. Full
+  site-config imports and exports use format version 2 with top-level canonical
+  site identity. Plugin ids now use one 128-character npm-shaped contract across
+  the SDK, core host, scoped config keys, cache invalidation, and encoded
+  Admin/API paths.
+- 2dce282: Add a complete theme definition contract across module evaluation, config
+  resolution, core registration, Next bootstrap, and CLI installation. Theme
+  metadata, requirements, settings, routes, templates, tokens, translations,
+  blocks, patterns, member/SEO contributions, and seed content now fail early
+  with precise locations instead of being filtered or deferred until render.
+- 75e6c34: Give every content, auth, media, and render hook one exact typed data contract.
+  Normalize content lifecycle payloads around document state, source, and
+  principal; normalize media upload results; reject malformed dispatch data and
+  unknown hook names at the core boundary; and diagnose values returned from
+  fire-and-forget lifecycle handlers.
+
+### Patch Changes
+
+- 7d31c88: Unify theme definitions, persisted overrides, Admin/import APIs, plugin theme reads and writes, OpenAPI, and CSS generation behind one validated nested token contract.
+- 8693411: Add a closed revision snapshot and API wire contract across persistence,
+  autosave, restore, Admin decoding, OpenAPI, and doctor diagnostics. Revision
+  versions remain monotonic after pruning, concurrent autosaves allocate versions
+  atomically, and document deletion removes its revision history.
+- 3adebdb: Unify staff and member authentication around exact identity, JWT, API wire, credential, runtime configuration, and one-row browser-session contracts. Runtime authentication now recognizes `NP_SECRET` as its only signing-key environment variable and fails closed for malformed JWT, lockout, invitation, reset, verification, or OAuth-state settings. Refresh compare-and-swap rotates access and refresh hashes, logout revokes the pair through either live token's shared session id, password replacement and whole-identity revocation commit atomically, single-use credentials reject concurrent replay, OAuth state cookies share the signed token lifetime, and doctor validates runtime configuration plus persisted auth/session rows.
+- fdcbfd3: Unify process bootstrap behind the exact `read`, `plugins`, `worker`, and
+  `write` intents. Startup is race-safe, retryable, and fail-closed; terminal
+  shutdown drains every owned resource in dependency order. Framework-only raw
+  singleton wiring moves from the core root to `@nexpress/core/bootstrap`, while
+  apps, workers, standalone scripts, generated code, and scaffolds use the same
+  `createBootstrap()` contract.
+- 1ff06a7: Unify cache invalidation behind one exact, awaitable runtime contract. App
+  writes, collection and scheduled-publish workers, plugin cache APIs, Next path
+  and tag invalidation, CDN purge adapters, Admin Health, ops execution, and
+  cached theme/plugin fetch options now validate and report the same bounded
+  request and result shapes. Bootstrap may own an injected CDN adapter and closes
+  its optional lifecycle hook during terminal shutdown.
+- 080fcbf: Unify code-owned custom routes behind one exact, bounded definition and Admin
+  wire contract. Generated sites now own a validated `npCustomRoutes` catalog;
+  source-scoped registration atomically replaces stale HMR entries and rejects
+  cross-source collisions. Admin route inventory, navigation autocomplete, the
+  protected API, scaffold, and `routes.contract` doctor diagnostics consume the
+  same static/dynamic path parser.
+- 257b120: Unify transactional email messages, adapters, SMTP environment parsing,
+  credential expirations, auth job payloads, web and worker delivery,
+  diagnostics, and scaffold guidance behind one fail-closed runtime contract.
+- 21d4748: Unify logger and error-reporter adapters under one exact runtime contract.
+  Validate environment intent, adapter kinds, event/context shapes, async void
+  results, child loggers, and shutdown hooks; contain adapter failures and expose
+  them through Admin Health, doctor, and production readiness. Custom adapters
+  now declare `kind`, scaffolds share one `src/lib/observability.ts` definition
+  across web/worker/scripts, and worker shutdown flushes both adapters.
+- c10eb69: Complete the remaining plugin definition contracts: validate page templates,
+  ICU translations, config schema/version/migrations, and lifecycle callbacks;
+  run teardown and clean every source-owned contribution during reload or failed
+  setup; expose template/translation inventories and conflicts in plugin doctor;
+  remove the never-implemented custom-field registry; and align scaffolds,
+  bundled examples, and author documentation.
+- 4cef9c8: Unify rate-limit runtime intent, adapter registration, requests, decisions,
+  proxy injection, Redis replies, shutdown, startup safety, and doctor diagnostics
+  behind one fail-closed contract.
+
+  Custom adapters must now expose a canonical lowercase `kind` and return the
+  required positive `retryAfterSeconds` field on every decision.
+
+- b44257f: Unify page metadata, JSON-LD, sitemap/index entries, Atom entries, and theme
+  SEO callback results behind one exact, bounded runtime contract. Collection
+  URL resolvers and theme sitemap/feed/robots hooks now fail before malformed
+  values reach crawler responses or caches, while Theme and Next consume Core's
+  canonical types directly.
+- 3eb1af7: Unify local, S3, and custom storage under one exact runtime and object
+  contract. Validate configuration, safe keys, metadata, adapter kinds and
+  results across bootstrap, media, health, doctor, setup, and ops; add the
+  `@nexpress/core/storage` entry, custom bootstrap injection, and adapter
+  teardown. Custom adapters now declare `kind`, return exact Web stream, URL,
+  boolean, and void results, and may expose `shutdown()`.
+- 9eea115: Align project-config validation with runtime plugin loading and storage URL
+  construction. Resolved plugins may depend on successfully loaded legacy
+  plugins, dependents skip failed setup prerequisites, storage base URLs reject
+  non-appendable credentials/query/fragment forms, and root local-media URLs
+  remain valid.
+- 2e35374: Expose recent job failure diagnostics in ops reports and the admin jobs health card.
+- f3dee13: Tighten plugin scheduled-task capability enforcement and label cron schedule origins in the admin Jobs scheduled tab.
+- ba9f730: Treat `NP_REPLICAS>1` as a production multi-node signal in boot safety,
+  doctor, and admin readiness checks so local storage and in-memory rate-limit
+  risks are surfaced consistently before deploy.
+- 23c1f69: Unify REST errors behind one bounded client-safe envelope, fixed framework code/status mapping, fail-closed Next response boundary, and reusable OpenAPI error contract.
+- cef1583: Unify background job names, built-in and custom payloads, pg-boss rows,
+  schedules, worker heartbeats, logs, Admin API responses, ops reporting, and
+  doctor diagnostics behind one fail-closed runtime contract.
+- c0a7da6: Complete the multi-site runtime contract with persisted request-role projection,
+  capability-based site authorization, exact site and membership validation,
+  fail-closed doctor diagnostics, and atomic deletion across every site-scoped table
+  and collection-owned revision/media-reference row. Server helpers are also
+  available from the new `@nexpress/core/sites` domain subpath.
+- e0a2092: Add typed definition-level plugin actions, validate declarative Admin action
+  ids and result kinds early, and surface missing, mismatched, duplicate,
+  setup-untyped, and Admin-unreferenced actions through plugin doctor.
+- 8cb026a: Validate plugin API route definitions and handler results, share their typed request/response contract across core and the SDK, support bodyless HEAD dispatch for GET routes, and teach plugin doctor and new scaffolds the canonical static-route rules.
+- f6fa9d1: Validate plugin page route patterns and handlers during definition and boot, fully dispatch raw-path `locale: "none"` routes, report malformed and duplicate routes in plugin doctor, and add a typed public page-route scaffold.
+- 0944d13: Validate plugin scheduled task ids, five-field UTC cron expressions, handlers, duplicate registrations, and runtime results across the SDK and core host; report contract failures in plugin doctor and align the CLI scaffold and analytics example with the typed registry.
+- ccad4ed: Replace the unused `render:afterPage` hook with one typed `render:beforePage`
+  contribution contract, require function-based hook handlers, reject invalid
+  hook registrations and render results, and restore the Analytics Lite
+  body-end collector on public pages.
+- 763ce4a: Promote rich-text content to a stable NexPress-owned v1 envelope. Validate the
+  wire format before collection writes; share the type guard, validator, version,
+  and empty-document factory through the client-safe fields subpath; and align
+  editor state, generated types, SSR, search, media and mention extraction,
+  translation interchange, WordPress import, Admin, themes, and example plugins.
+
 ## 0.3.26
 
 ### Patch Changes

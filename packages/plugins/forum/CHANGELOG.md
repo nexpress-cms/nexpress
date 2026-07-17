@@ -1,5 +1,80 @@
 # @nexpress/plugin-forum
 
+## 0.4.0
+
+### Patch Changes
+
+- fdcbfd3: Unify process bootstrap behind the exact `read`, `plugins`, `worker`, and
+  `write` intents. Startup is race-safe, retryable, and fail-closed; terminal
+  shutdown drains every owned resource in dependency order. Framework-only raw
+  singleton wiring moves from the core root to `@nexpress/core/bootstrap`, while
+  apps, workers, standalone scripts, generated code, and scaffolds use the same
+  `createBootstrap()` contract.
+- c10eb69: Complete the remaining plugin definition contracts: validate page templates,
+  ICU translations, config schema/version/migrations, and lifecycle callbacks;
+  run teardown and clean every source-owned contribution during reload or failed
+  setup; expose template/translation inventories and conflicts in plugin doctor;
+  remove the never-implemented custom-field registry; and align scaffolds,
+  bundled examples, and author documentation.
+- e0a2092: Add typed definition-level plugin actions, validate declarative Admin action
+  ids and result kinds early, and surface missing, mismatched, duplicate,
+  setup-untyped, and Admin-unreferenced actions through plugin doctor.
+- 763ce4a: Promote rich-text content to a stable NexPress-owned v1 envelope. Validate the
+  wire format before collection writes; share the type guard, validator, version,
+  and empty-document factory through the client-safe fields subpath; and align
+  editor state, generated types, SSR, search, media and mention extraction,
+  translation interchange, WordPress import, Admin, themes, and example plugins.
+- Updated dependencies [bae7088]
+- Updated dependencies [257e70f]
+- Updated dependencies [3deb01e]
+- Updated dependencies [7d31c88]
+- Updated dependencies [8693411]
+- Updated dependencies [3adebdb]
+- Updated dependencies [fdcbfd3]
+- Updated dependencies [1ff06a7]
+- Updated dependencies [922c708]
+- Updated dependencies [ab83768]
+- Updated dependencies [080fcbf]
+- Updated dependencies [257b120]
+- Updated dependencies [773bd1a]
+- Updated dependencies [21d4748]
+- Updated dependencies [c10eb69]
+- Updated dependencies [4cef9c8]
+- Updated dependencies [a678bb5]
+- Updated dependencies [b44257f]
+- Updated dependencies [3eb1af7]
+- Updated dependencies [27a4f0e]
+- Updated dependencies [9eea115]
+- Updated dependencies [2e35374]
+- Updated dependencies [f3dee13]
+- Updated dependencies [ba9f730]
+- Updated dependencies [e58c4c8]
+- Updated dependencies [f7ee76e]
+- Updated dependencies [23c1f69]
+- Updated dependencies [fdd684d]
+- Updated dependencies [f8ef45e]
+- Updated dependencies [cef1583]
+- Updated dependencies [3396b1c]
+- Updated dependencies [c0a7da6]
+- Updated dependencies [bedb705]
+- Updated dependencies [91867cc]
+- Updated dependencies [3d45e43]
+- Updated dependencies [2dce282]
+- Updated dependencies [75e6c34]
+- Updated dependencies [e0a2092]
+- Updated dependencies [8cb026a]
+- Updated dependencies [81b3fb5]
+- Updated dependencies [f6fa9d1]
+- Updated dependencies [5522c32]
+- Updated dependencies [0944d13]
+- Updated dependencies [ccad4ed]
+- Updated dependencies [763ce4a]
+  - @nexpress/blocks@0.4.0
+  - @nexpress/core@0.4.0
+  - @nexpress/editor@0.4.0
+  - @nexpress/plugin-sdk@0.4.0
+  - @nexpress/next@0.4.0
+
 ## 0.3.26
 
 ### Patch Changes

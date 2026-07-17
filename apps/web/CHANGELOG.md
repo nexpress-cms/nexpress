@@ -1,5 +1,90 @@
 # @nexpress/web
 
+## 0.0.38
+
+### Patch Changes
+
+- Updated dependencies [120f83f]
+- Updated dependencies [bae7088]
+- Updated dependencies [c7ae992]
+- Updated dependencies [257e70f]
+- Updated dependencies [3deb01e]
+- Updated dependencies [7d31c88]
+- Updated dependencies [8693411]
+- Updated dependencies [3adebdb]
+- Updated dependencies [fdcbfd3]
+- Updated dependencies [1ff06a7]
+- Updated dependencies [922c708]
+- Updated dependencies [ab83768]
+- Updated dependencies [080fcbf]
+- Updated dependencies [257b120]
+- Updated dependencies [773bd1a]
+- Updated dependencies [21d4748]
+- Updated dependencies [c10eb69]
+- Updated dependencies [4cef9c8]
+- Updated dependencies [a678bb5]
+- Updated dependencies [b44257f]
+- Updated dependencies [3eb1af7]
+- Updated dependencies [27a4f0e]
+- Updated dependencies [288b5ee]
+- Updated dependencies [9eea115]
+- Updated dependencies [2e35374]
+- Updated dependencies [f3dee13]
+- Updated dependencies [ba18038]
+- Updated dependencies [16abe74]
+- Updated dependencies [ba9f730]
+- Updated dependencies [e58c4c8]
+- Updated dependencies [9ae479c]
+- Updated dependencies [105beb7]
+- Updated dependencies [f7ee76e]
+- Updated dependencies [23c1f69]
+- Updated dependencies [fdd684d]
+- Updated dependencies [f8ef45e]
+- Updated dependencies [cef1583]
+- Updated dependencies [3396b1c]
+- Updated dependencies [c0a7da6]
+- Updated dependencies [bedb705]
+- Updated dependencies [91867cc]
+- Updated dependencies [3d45e43]
+- Updated dependencies [2dce282]
+- Updated dependencies [75e6c34]
+- Updated dependencies [e0a2092]
+- Updated dependencies [8cb026a]
+- Updated dependencies [81b3fb5]
+- Updated dependencies [f6fa9d1]
+- Updated dependencies [5522c32]
+- Updated dependencies [0944d13]
+- Updated dependencies [ccad4ed]
+- Updated dependencies [763ce4a]
+  - @nexpress/admin@0.4.0
+  - @nexpress/app@0.4.0
+  - @nexpress/blocks@0.4.0
+  - @nexpress/cli@0.4.0
+  - @nexpress/plugin-block-callout@0.4.0
+  - @nexpress/plugin-block-embed@0.4.0
+  - @nexpress/plugin-block-latest-posts@0.4.0
+  - @nexpress/plugin-block-newsletter@0.4.0
+  - @nexpress/plugin-block-pricing@0.4.0
+  - @nexpress/plugin-block-stats@0.4.0
+  - @nexpress/theme-docs@0.4.0
+  - @nexpress/theme-magazine@0.4.0
+  - @nexpress/theme-portfolio@0.4.0
+  - @nexpress/xliff@0.4.0
+  - @nexpress/core@0.4.0
+  - @nexpress/editor@0.4.0
+  - @nexpress/plugin-sdk@0.4.0
+  - @nexpress/theme@0.4.0
+  - @nexpress/next@0.4.0
+  - @nexpress/auth-pages@0.4.0
+  - @nexpress/theme-default@0.4.0
+  - @nexpress/wp-import@0.4.0
+  - @nexpress/plugin-forum@0.4.0
+  - @nexpress/plugin-oauth-github@0.4.0
+  - @nexpress/plugin-oauth-google@0.4.0
+  - @nexpress/plugin-reading-time@0.4.0
+  - @nexpress/plugin-seo-audit@0.4.0
+  - @nexpress/gettext@0.4.0
+
 ## 0.0.37
 
 ### Patch Changes

@@ -1,5 +1,76 @@
 # @nexpress/theme-magazine
 
+## 0.4.0
+
+### Patch Changes
+
+- bae7088: Require explicit translation intent on textual block props and round-trip declared nested block, array, and rich-text content through validated XLIFF units.
+- fdd684d: Add a definition-aware block content contract that validates registered prop
+  schemas and container rules before Admin/app saves, previews, pattern
+  registration, and rendering. Plugin doctor now reports invalid pattern content
+  while preserving unknown plugin blocks and stale props as warnings. The
+  Magazine story items and Portfolio image-grid items now use their actual nested
+  array schemas. Docs API-table defaults now match its structured Admin schema.
+- bedb705: Add one exact navigation tree contract across theme seeds, Admin and API
+  writes, backup import/export, OpenAPI, persisted reads, caches, and public
+  rendering. Stored and resolved navigation types are now distinct, malformed
+  rows fail closed, and the client-safe navigation validators are public.
+- 763ce4a: Promote rich-text content to a stable NexPress-owned v1 envelope. Validate the
+  wire format before collection writes; share the type guard, validator, version,
+  and empty-document factory through the client-safe fields subpath; and align
+  editor state, generated types, SSR, search, media and mention extraction,
+  translation interchange, WordPress import, Admin, themes, and example plugins.
+- Updated dependencies [bae7088]
+- Updated dependencies [257e70f]
+- Updated dependencies [3deb01e]
+- Updated dependencies [7d31c88]
+- Updated dependencies [8693411]
+- Updated dependencies [3adebdb]
+- Updated dependencies [fdcbfd3]
+- Updated dependencies [1ff06a7]
+- Updated dependencies [922c708]
+- Updated dependencies [ab83768]
+- Updated dependencies [080fcbf]
+- Updated dependencies [257b120]
+- Updated dependencies [773bd1a]
+- Updated dependencies [21d4748]
+- Updated dependencies [c10eb69]
+- Updated dependencies [4cef9c8]
+- Updated dependencies [a678bb5]
+- Updated dependencies [b44257f]
+- Updated dependencies [3eb1af7]
+- Updated dependencies [27a4f0e]
+- Updated dependencies [9eea115]
+- Updated dependencies [2e35374]
+- Updated dependencies [f3dee13]
+- Updated dependencies [ba9f730]
+- Updated dependencies [e58c4c8]
+- Updated dependencies [f7ee76e]
+- Updated dependencies [23c1f69]
+- Updated dependencies [fdd684d]
+- Updated dependencies [f8ef45e]
+- Updated dependencies [cef1583]
+- Updated dependencies [3396b1c]
+- Updated dependencies [c0a7da6]
+- Updated dependencies [bedb705]
+- Updated dependencies [91867cc]
+- Updated dependencies [3d45e43]
+- Updated dependencies [2dce282]
+- Updated dependencies [75e6c34]
+- Updated dependencies [e0a2092]
+- Updated dependencies [8cb026a]
+- Updated dependencies [81b3fb5]
+- Updated dependencies [f6fa9d1]
+- Updated dependencies [5522c32]
+- Updated dependencies [0944d13]
+- Updated dependencies [ccad4ed]
+- Updated dependencies [763ce4a]
+  - @nexpress/blocks@0.4.0
+  - @nexpress/core@0.4.0
+  - @nexpress/editor@0.4.0
+  - @nexpress/theme@0.4.0
+  - @nexpress/next@0.4.0
+
 ## 0.3.26
 
 ### Patch Changes

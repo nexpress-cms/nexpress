@@ -1,5 +1,85 @@
 # create-nexpress
 
+## 0.1.35
+
+### Patch Changes
+
+- 120f83f: Add a bounded Admin translation interchange workflow for XLIFF 1.2 and Gettext
+  PO. Editors can export one collection and locale pair, preview every
+  create/update/skip, and explicitly confirm an import that reparses and
+  revalidates the uploaded catalog before writing.
+- fdcbfd3: Unify process bootstrap behind the exact `read`, `plugins`, `worker`, and
+  `write` intents. Startup is race-safe, retryable, and fail-closed; terminal
+  shutdown drains every owned resource in dependency order. Framework-only raw
+  singleton wiring moves from the core root to `@nexpress/core/bootstrap`, while
+  apps, workers, standalone scripts, generated code, and scaffolds use the same
+  `createBootstrap()` contract.
+- 1ff06a7: Unify cache invalidation behind one exact, awaitable runtime contract. App
+  writes, collection and scheduled-publish workers, plugin cache APIs, Next path
+  and tag invalidation, CDN purge adapters, Admin Health, ops execution, and
+  cached theme/plugin fetch options now validate and report the same bounded
+  request and result shapes. Bootstrap may own an injected CDN adapter and closes
+  its optional lifecycle hook during terminal shutdown.
+- 922c708: Unify collection storage, runtime, generated, Admin, REST, OpenAPI, and
+  import/export document shapes behind an exact definition-derived contract.
+  Collection reads now hydrate ordered child and hasMany rows, updates preserve
+  omitted fields, `_status` is request-only, and malformed persistence or hook
+  results fail closed with doctor and live-health diagnostics. Collection
+  lifecycle after-hooks now run exactly once with the same hydrated document
+  contract as plugin lifecycle hooks.
+
+  Canonical slugs, bounded JSON write values, complete relation inventories, and
+  safe unambiguous pagination/locale filters now fail at their earliest runtime
+  boundary as part of the same contract.
+
+- 080fcbf: Unify code-owned custom routes behind one exact, bounded definition and Admin
+  wire contract. Generated sites now own a validated `npCustomRoutes` catalog;
+  source-scoped registration atomically replaces stale HMR entries and rejects
+  cross-source collisions. Admin route inventory, navigation autocomplete, the
+  protected API, scaffold, and `routes.contract` doctor diagnostics consume the
+  same static/dynamic path parser.
+- 257b120: Unify transactional email messages, adapters, SMTP environment parsing,
+  credential expirations, auth job payloads, web and worker delivery,
+  diagnostics, and scaffold guidance behind one fail-closed runtime contract.
+- 21d4748: Unify logger and error-reporter adapters under one exact runtime contract.
+  Validate environment intent, adapter kinds, event/context shapes, async void
+  results, child loggers, and shutdown hooks; contain adapter failures and expose
+  them through Admin Health, doctor, and production readiness. Custom adapters
+  now declare `kind`, scaffolds share one `src/lib/observability.ts` definition
+  across web/worker/scripts, and worker shutdown flushes both adapters.
+- 4cef9c8: Unify rate-limit runtime intent, adapter registration, requests, decisions,
+  proxy injection, Redis replies, shutdown, startup safety, and doctor diagnostics
+  behind one fail-closed contract.
+
+  Custom adapters must now expose a canonical lowercase `kind` and return the
+  required positive `retryAfterSeconds` field on every decision.
+
+- 3eb1af7: Unify local, S3, and custom storage under one exact runtime and object
+  contract. Validate configuration, safe keys, metadata, adapter kinds and
+  results across bootstrap, media, health, doctor, setup, and ops; add the
+  `@nexpress/core/storage` entry, custom bootstrap injection, and adapter
+  teardown. Custom adapters now declare `kind`, return exact Web stream, URL,
+  boolean, and void results, and may expose `shutdown()`.
+- 288b5ee: Add Gettext PO content translation round-trips and move XLIFF onto the same
+  format-neutral extraction and fail-closed application engine. Atomic strings,
+  Lexical text, and schema-declared nested block props now share live source and
+  routing validation across both interchange formats. Fresh scaffolds include
+  ready-to-run `pnpm gettext` and `pnpm xliff` shims.
+- 9ae479c: Harden Vercel standalone deploys for pnpm installs. `createNextConfig()`
+  now traces sharp and the Linux `@img/sharp-*` native packages through
+  pnpm's real `.pnpm/` store paths so Vercel functions include libvips at
+  runtime, while generated projects declare `sharp` directly to keep the media
+  runtime dependency explicit in production installs.
+- cef1583: Unify background job names, built-in and custom payloads, pg-boss rows,
+  schedules, worker heartbeats, logs, Admin API responses, ops reporting, and
+  doctor diagnostics behind one fail-closed runtime contract.
+- c0a7da6: Complete the multi-site runtime contract with persisted request-role projection,
+  capability-based site authorization, exact site and membership validation,
+  fail-closed doctor diagnostics, and atomic deletion across every site-scoped table
+  and collection-owned revision/media-reference row. Server helpers are also
+  available from the new `@nexpress/core/sites` domain subpath.
+- 8cb026a: Validate plugin API route definitions and handler results, share their typed request/response contract across core and the SDK, support bodyless HEAD dispatch for GET routes, and teach plugin doctor and new scaffolds the canonical static-route rules.
+
 ## 0.1.34
 
 ### Patch Changes
