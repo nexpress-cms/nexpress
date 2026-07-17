@@ -79,9 +79,7 @@ describe("resolveTaxonomies", () => {
   });
 
   it("records terms the resolver explicitly skipped (returned null)", async () => {
-    const records = [
-      makeRecord({ terms: [{ taxonomy: "custom", slug: "x", name: "X" }] }),
-    ];
+    const records = [makeRecord({ terms: [{ taxonomy: "custom", slug: "x", name: "X" }] })];
     const findOrCreate = vi.fn(() => Promise.resolve(null));
     const out = await resolveTaxonomies(records, [], { findOrCreate });
     expect(out.termIds.size).toBe(0);

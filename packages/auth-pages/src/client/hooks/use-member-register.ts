@@ -18,9 +18,7 @@ export interface UseMemberRegisterResult {
     handle: FieldBinding;
     displayName: FieldBinding;
   };
-  errors: Partial<
-    Record<"email" | "password" | "handle" | "displayName" | "_form", string>
-  >;
+  errors: Partial<Record<"email" | "password" | "handle" | "displayName" | "_form", string>>;
   isSubmitting: boolean;
   submit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   /**
@@ -32,9 +30,7 @@ export interface UseMemberRegisterResult {
   isSuccess: boolean;
 }
 
-export function useMemberRegister(
-  options: UseMemberRegisterOptions = {},
-): UseMemberRegisterResult {
+export function useMemberRegister(options: UseMemberRegisterOptions = {}): UseMemberRegisterResult {
   const endpoint = options.endpoint ?? "/api/members/register";
   const messages = resolveMessages(options.messages);
   const { values, fields } = useControlledFields({

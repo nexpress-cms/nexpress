@@ -100,9 +100,7 @@ export async function DocsSidebar(): Promise<React.ReactElement> {
                 group.title
               )}
             </h2>
-            {isLeaf ? null : (
-              <NavTree nodes={group.children} currentSlug={currentSlug} />
-            )}
+            {isLeaf ? null : <NavTree nodes={group.children} currentSlug={currentSlug} />}
           </div>
         );
       })}
@@ -161,9 +159,7 @@ function NavTree({
       {nodes.map((n) => (
         <li key={n.id}>
           <SidebarLink node={n} currentSlug={currentSlug} />
-          {n.children.length > 0 ? (
-            <NavTree nodes={n.children} currentSlug={currentSlug} />
-          ) : null}
+          {n.children.length > 0 ? <NavTree nodes={n.children} currentSlug={currentSlug} /> : null}
         </li>
       ))}
     </ul>
@@ -178,9 +174,7 @@ function SidebarLink({
   currentSlug: string | null;
 }): React.ReactElement {
   const isCurrent = currentSlug !== null && currentSlug === node.slug;
-  const badgeClass = node.badge
-    ? `np-docs-sidebar-badge ${node.badge.toLowerCase()}`
-    : null;
+  const badgeClass = node.badge ? `np-docs-sidebar-badge ${node.badge.toLowerCase()}` : null;
   return (
     <a
       href={`/docs/${node.slug}`}
@@ -188,9 +182,7 @@ function SidebarLink({
       aria-current={isCurrent ? "page" : undefined}
     >
       {node.title}
-      {badgeClass ? (
-        <span className={badgeClass}>{node.badge!.toUpperCase()}</span>
-      ) : null}
+      {badgeClass ? <span className={badgeClass}>{node.badge!.toUpperCase()}</span> : null}
     </a>
   );
 }

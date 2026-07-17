@@ -46,23 +46,15 @@ describe("highlightMatches (Phase 10.7)", () => {
   it("escapes regex-special characters in the query", () => {
     // `.` would normally match any char; with escaping, only
     // a literal `example.com` substring matches.
-    const html = render(
-      highlightMatches("Visit example.com or example_com", "example.com"),
-    );
-    expect(html).toContain(
-      '<mark class="np-search-highlight">example.com</mark>',
-    );
+    const html = render(highlightMatches("Visit example.com or example_com", "example.com"));
+    expect(html).toContain('<mark class="np-search-highlight">example.com</mark>');
     // The underscore variant should NOT be marked (proves
     // escaping worked — without escape, `.` would catch `_`).
-    expect(html).not.toContain(
-      '<mark class="np-search-highlight">example_com</mark>',
-    );
+    expect(html).not.toContain('<mark class="np-search-highlight">example_com</mark>');
   });
 
   it("highlights every term in a multi-word query", () => {
-    const html = render(
-      highlightMatches("the quick brown fox", "quick brown"),
-    );
+    const html = render(highlightMatches("the quick brown fox", "quick brown"));
     expect(html).toContain('<mark class="np-search-highlight">quick</mark>');
     expect(html).toContain('<mark class="np-search-highlight">brown</mark>');
   });

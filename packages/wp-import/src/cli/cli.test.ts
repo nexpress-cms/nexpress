@@ -85,14 +85,24 @@ describe("runCli", () => {
         applyBundle: (_b, ctx) => {
           received.createAuthors = ctx.createAuthors;
           return Promise.resolve({
-            applied: [], skipped: [], errors: [],
+            applied: [],
+            skipped: [],
+            errors: [],
             attachments: { byId: new Map(), byUrl: new Map() },
-            media: null, taxonomies: null, comments: null, authors: null, notes: [],
+            media: null,
+            taxonomies: null,
+            comments: null,
+            authors: null,
+            notes: [],
           });
         },
         resolveActor: () =>
           Promise.resolve({
-            id: "u1", email: "x@y.com", name: "x", role: "admin", tokenVersion: 0,
+            id: "u1",
+            email: "x@y.com",
+            name: "x",
+            role: "admin",
+            tokenVersion: 0,
           }),
       },
     );
@@ -103,24 +113,30 @@ describe("runCli", () => {
   it("21.8 — defaults ctx.createAuthors=true when --no-create-authors is omitted", async () => {
     const { io } = captureIo();
     const received: { createAuthors?: boolean } = {};
-    const code = await runCli(
-      [path.join(FIXTURES_DIR, "minimal.wxr.xml"), "--apply"],
-      io,
-      {
-        applyBundle: (_b, ctx) => {
-          received.createAuthors = ctx.createAuthors;
-          return Promise.resolve({
-            applied: [], skipped: [], errors: [],
-            attachments: { byId: new Map(), byUrl: new Map() },
-            media: null, taxonomies: null, comments: null, authors: null, notes: [],
-          });
-        },
-        resolveActor: () =>
-          Promise.resolve({
-            id: "u1", email: "x@y.com", name: "x", role: "admin", tokenVersion: 0,
-          }),
+    const code = await runCli([path.join(FIXTURES_DIR, "minimal.wxr.xml"), "--apply"], io, {
+      applyBundle: (_b, ctx) => {
+        received.createAuthors = ctx.createAuthors;
+        return Promise.resolve({
+          applied: [],
+          skipped: [],
+          errors: [],
+          attachments: { byId: new Map(), byUrl: new Map() },
+          media: null,
+          taxonomies: null,
+          comments: null,
+          authors: null,
+          notes: [],
+        });
       },
-    );
+      resolveActor: () =>
+        Promise.resolve({
+          id: "u1",
+          email: "x@y.com",
+          name: "x",
+          role: "admin",
+          tokenVersion: 0,
+        }),
+    });
     expect(code).toBe(0);
     expect(received.createAuthors).toBe(true);
   });
@@ -136,14 +152,24 @@ describe("runCli", () => {
         applyBundle: (_b, ctx) => {
           captured.mappings = ctx.collectionMappings;
           return Promise.resolve({
-            applied: [], skipped: [], errors: [],
+            applied: [],
+            skipped: [],
+            errors: [],
             attachments: { byId: new Map(), byUrl: new Map() },
-            media: null, taxonomies: null, comments: null, authors: null, notes: [],
+            media: null,
+            taxonomies: null,
+            comments: null,
+            authors: null,
+            notes: [],
           });
         },
         resolveActor: () =>
           Promise.resolve({
-            id: "u1", email: "x@y.com", name: "x", role: "admin", tokenVersion: 0,
+            id: "u1",
+            email: "x@y.com",
+            name: "x",
+            role: "admin",
+            tokenVersion: 0,
           }),
       },
     );
@@ -170,14 +196,24 @@ describe("runCli", () => {
           captured.update = ctx.update;
           captured.reportHtmlPath = ctx.reportHtmlPath;
           return Promise.resolve({
-            applied: [], skipped: [], errors: [],
+            applied: [],
+            skipped: [],
+            errors: [],
             attachments: { byId: new Map(), byUrl: new Map() },
-            media: null, taxonomies: null, comments: null, authors: null, notes: [],
+            media: null,
+            taxonomies: null,
+            comments: null,
+            authors: null,
+            notes: [],
           });
         },
         resolveActor: () =>
           Promise.resolve({
-            id: "u1", email: "x@y.com", name: "x", role: "admin", tokenVersion: 0,
+            id: "u1",
+            email: "x@y.com",
+            name: "x",
+            role: "admin",
+            tokenVersion: 0,
           }),
       },
     );
@@ -191,26 +227,32 @@ describe("runCli", () => {
   it("21.12 — defaults ctx.strict / ctx.update / ctx.reportHtmlPath off when flags omitted", async () => {
     const { io } = captureIo();
     const captured: { strict?: boolean; update?: boolean; reportHtmlPath?: string | null } = {};
-    const code = await runCli(
-      [path.join(FIXTURES_DIR, "minimal.wxr.xml"), "--apply"],
-      io,
-      {
-        applyBundle: (_b, ctx) => {
-          captured.strict = ctx.strict;
-          captured.update = ctx.update;
-          captured.reportHtmlPath = ctx.reportHtmlPath;
-          return Promise.resolve({
-            applied: [], skipped: [], errors: [],
-            attachments: { byId: new Map(), byUrl: new Map() },
-            media: null, taxonomies: null, comments: null, authors: null, notes: [],
-          });
-        },
-        resolveActor: () =>
-          Promise.resolve({
-            id: "u1", email: "x@y.com", name: "x", role: "admin", tokenVersion: 0,
-          }),
+    const code = await runCli([path.join(FIXTURES_DIR, "minimal.wxr.xml"), "--apply"], io, {
+      applyBundle: (_b, ctx) => {
+        captured.strict = ctx.strict;
+        captured.update = ctx.update;
+        captured.reportHtmlPath = ctx.reportHtmlPath;
+        return Promise.resolve({
+          applied: [],
+          skipped: [],
+          errors: [],
+          attachments: { byId: new Map(), byUrl: new Map() },
+          media: null,
+          taxonomies: null,
+          comments: null,
+          authors: null,
+          notes: [],
+        });
       },
-    );
+      resolveActor: () =>
+        Promise.resolve({
+          id: "u1",
+          email: "x@y.com",
+          name: "x",
+          role: "admin",
+          tokenVersion: 0,
+        }),
+    });
     expect(code).toBe(0);
     expect(captured.strict).toBe(false);
     expect(captured.update).toBe(false);
@@ -227,14 +269,24 @@ describe("runCli", () => {
         applyBundle: (_b, ctx) => {
           captured.resumeStatePath = ctx.resumeStatePath;
           return Promise.resolve({
-            applied: [], skipped: [], errors: [],
+            applied: [],
+            skipped: [],
+            errors: [],
             attachments: { byId: new Map(), byUrl: new Map() },
-            media: null, taxonomies: null, comments: null, authors: null, notes: [],
+            media: null,
+            taxonomies: null,
+            comments: null,
+            authors: null,
+            notes: [],
           });
         },
         resolveActor: () =>
           Promise.resolve({
-            id: "u1", email: "x@y.com", name: "x", role: "admin", tokenVersion: 0,
+            id: "u1",
+            email: "x@y.com",
+            name: "x",
+            role: "admin",
+            tokenVersion: 0,
           }),
       },
     );

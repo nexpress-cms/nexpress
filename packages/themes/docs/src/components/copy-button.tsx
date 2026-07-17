@@ -25,11 +25,14 @@ export function CopyButton({
   const [copied, setCopied] = React.useState(false);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  React.useEffect(() => () => {
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-    }
-  }, []);
+  React.useEffect(
+    () => () => {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+      }
+    },
+    [],
+  );
 
   const handleClick = React.useCallback(() => {
     const writer = typeof navigator !== "undefined" ? navigator.clipboard : null;

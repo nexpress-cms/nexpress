@@ -54,7 +54,12 @@ describe("runMediaPipeline", () => {
     const { bundle, attachments } = loadBundle();
     const download = vi.fn(() => Promise.reject(new Error("should not be called")));
     const upload = vi.fn(() => Promise.reject(new Error("should not be called")));
-    const report = await runMediaPipeline(bundle, attachments, { download, upload }, { dryRun: true });
+    const report = await runMediaPipeline(
+      bundle,
+      attachments,
+      { download, upload },
+      { dryRun: true },
+    );
     expect(report.uploaded).toBe(0);
     expect(report.skipped).toBeGreaterThan(0);
     expect(download).not.toHaveBeenCalled();
@@ -115,9 +120,7 @@ describe("runMediaPipeline", () => {
     expect(report.reused).toBe(1);
     expect(upload).not.toHaveBeenCalled();
     // Hash deps received the SHA-256 of [1, 2, 3].
-    expect(findExistingByHash).toHaveBeenCalledWith(
-      expect.stringMatching(/^[0-9a-f]{64}$/),
-    );
+    expect(findExistingByHash).toHaveBeenCalledWith(expect.stringMatching(/^[0-9a-f]{64}$/));
     // Resolution still points at the reused id, not a new one.
     expect(report.resolution.byUrl.get(HERO_URL)).toBe("reused-id");
   });

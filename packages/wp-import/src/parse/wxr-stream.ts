@@ -1,11 +1,6 @@
 import { createReadStream } from "node:fs";
 
-import {
-  type WpImportRecord,
-  type WpSiteInfo,
-  type WpAuthor,
-  type WpTerm,
-} from "./types.js";
+import { type WpImportRecord, type WpSiteInfo, type WpAuthor, type WpTerm } from "./types.js";
 import { parseWxr } from "./wxr.js";
 
 /**
@@ -158,9 +153,7 @@ export async function parseWxrStream(
         }
         local += next.value;
         if (local.length > maxItemBytes) {
-          throw new WpImportStreamError(
-            `WXR item exceeded ${maxItemBytes} bytes — abort.`,
-          );
+          throw new WpImportStreamError(`WXR item exceeded ${maxItemBytes} bytes — abort.`);
         }
         continue;
       }
@@ -209,4 +202,3 @@ function wrapInChannel(itemXml: string): string {
     `</channel></rss>`
   );
 }
-

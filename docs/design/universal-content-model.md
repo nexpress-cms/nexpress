@@ -3,15 +3,16 @@
 > Version: draft 2 (decisions locked, implementation pending)
 > Date: 2026-05-15
 > Status: design lock — all five decision checkpoints resolved (§10).
->         Phase U.1 implementation next.
+> Phase U.1 implementation next.
 > Prerequisites:
->   - Collection authoring contract
->     (`packages/core/src/config/define-collection.ts`)
->   - Theme `requires.collections` (`packages/theme/src/types.ts`)
->   - Bundled-themes prebake path
->     (`packages/core/src/themes/merge-requirements.ts`)
->   - `@nexpress/app` built-in `posts` collection
->     (`packages/app/src/collections/posts.ts`)
+>
+> - Collection authoring contract
+>   (`packages/core/src/config/define-collection.ts`)
+> - Theme `requires.collections` (`packages/theme/src/types.ts`)
+> - Bundled-themes prebake path
+>   (`packages/core/src/themes/merge-requirements.ts`)
+> - `@nexpress/app` built-in `posts` collection
+>   (`packages/app/src/collections/posts.ts`)
 
 ---
 
@@ -20,12 +21,12 @@
 Today the framework ships and themes contribute multiple prose
 content collections that do the same job under different names:
 
-| Collection | Origin | Body type | Real purpose |
-|---|---|---|---|
-| `posts` | Built-in (`@nexpress/app`) | `richText` | Articles |
-| `docs` | `theme-docs` requires | `richText` | Documentation entries |
-| `pages` | Built-in (`@nexpress/app`) | `blocks` | Page-builder marketing pages |
-| `authors` | `theme-magazine` requires (RETIRED #747) | — | Bylines — already collapsed into `np_users` |
+| Collection | Origin                                   | Body type  | Real purpose                                |
+| ---------- | ---------------------------------------- | ---------- | ------------------------------------------- |
+| `posts`    | Built-in (`@nexpress/app`)               | `richText` | Articles                                    |
+| `docs`     | `theme-docs` requires                    | `richText` | Documentation entries                       |
+| `pages`    | Built-in (`@nexpress/app`)               | `blocks`   | Page-builder marketing pages                |
+| `authors`  | `theme-magazine` requires (RETIRED #747) | —          | Bylines — already collapsed into `np_users` |
 
 The bundled-themes prebake materialises all four themes'
 `requires.collections` even when only one theme is active. An
@@ -77,7 +78,7 @@ This doc covers the bigger move: `docs` → `posts.kind = "doc"`.
   not crossing it.
 - Runtime-pluggable collections (the v2-grade question of
   "plugins add tables"). The universal-posts approach is
-  *aligned* with that future but doesn't depend on it.
+  _aligned_ with that future but doesn't depend on it.
 - Touching `categories` / `tags` — they're taxonomies, not
   content. They stay as-is.
 - Renaming the `posts` collection to `content` or anything else.
@@ -115,7 +116,11 @@ defineCollection({
       hard: false,
       admin: { description: "Parent post — used by hierarchical kinds (e.g. docs)" },
     },
-    { type: "number", name: "order", admin: { description: "Sort order within parent (hierarchical kinds)" } },
+    {
+      type: "number",
+      name: "order",
+      admin: { description: "Sort order within parent (hierarchical kinds)" },
+    },
   ],
 });
 ```
@@ -154,7 +159,7 @@ land on `posts` and are no-ops for articles.
 **Open issue (3.2.a):** field merge today doesn't union-merge
 `select.options`. It replaces. We need to change the merge
 contract so that operator-declared options stay, theme-contributed
-options *add*. Detail in §6.
+options _add_. Detail in §6.
 
 ### 3.3 Per-kind metadata declaration
 
@@ -193,6 +198,7 @@ and renders a sidebar entry per kind under "Content".
 ### 3.4 Admin UX changes
 
 **Before:**
+
 ```
 Content
 ├── Posts        (/admin/collections/posts)
@@ -203,6 +209,7 @@ Content
 ```
 
 **After:**
+
 ```
 Content
 ├── Articles     (/admin/collections/posts?kind=article)
@@ -315,6 +322,7 @@ which kind to look up.
 ### 5.2 Theme code migration
 
 Theme-docs:
+
 - `findDocuments("docs", ...)` → `findDocuments("posts", { where: { kind: "doc", ... } })`
 - Sidebar / TOC / detail / search route changes follow the same pattern
 - Type imports: `DocsDocument` → `PostsDocument` (the generated
@@ -334,8 +342,8 @@ separate `docs` table. After migration:
 
 ```ts
 // Before
-export const postsTable = pgTable("np_c_posts", { /* article fields */ });
-export const docsTable = pgTable("np_c_docs", { /* doc fields */ });
+export const postsTable = pgTable("np_c_posts", {/* article fields */});
+export const docsTable = pgTable("np_c_docs", {/* doc fields */});
 
 // After
 export const postsTable = pgTable("np_c_posts", {
@@ -483,6 +491,7 @@ URLs keep resolving.
 ### 8.1 Existing site upgrade path
 
 Sites with magazine + docs themes active and docs content:
+
 - Migration runs. `np_c_docs` rows move. URLs keep working.
 - If two existing rows have the same slug (one in `np_c_docs`,
   one in `np_c_posts`), the migration aborts with a clear error

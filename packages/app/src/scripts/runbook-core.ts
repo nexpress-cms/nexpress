@@ -1,10 +1,7 @@
 import { toProjectCommand } from "./ops-command-format.js";
 
 export type RunbookId =
-  | "worker-not-draining"
-  | "storage-local-to-s3"
-  | "backup-restore-drill"
-  | "migration-crashed";
+  "worker-not-draining" | "storage-local-to-s3" | "backup-restore-drill" | "migration-crashed";
 
 export interface RunbookEvidence {
   id: string;

@@ -51,11 +51,8 @@ export async function ProjectDetailTemplate({
       ) : null}
       <header className="np-portfolio-project-header">
         <h1>{title}</h1>
-        {project.excerpt ? (
-          <p className="np-portfolio-project-excerpt">{project.excerpt}</p>
-        ) : null}
-        {settings.showProjectMeta &&
-        (project.role || project.year || project.client) ? (
+        {project.excerpt ? <p className="np-portfolio-project-excerpt">{project.excerpt}</p> : null}
+        {settings.showProjectMeta && (project.role || project.year || project.client) ? (
           <dl className="np-portfolio-project-meta">
             {project.client ? (
               <>

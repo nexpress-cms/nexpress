@@ -5,9 +5,7 @@ declare module "next/link" {
     href: string;
   }
 
-  const Link: React.ForwardRefExoticComponent<
-    LinkProps & React.RefAttributes<HTMLAnchorElement>
-  >;
+  const Link: React.ForwardRefExoticComponent<LinkProps & React.RefAttributes<HTMLAnchorElement>>;
 
   export default Link;
 }

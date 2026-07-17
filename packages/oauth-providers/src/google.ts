@@ -1,8 +1,4 @@
-import {
-  fromArctic,
-  type OAuthProfile,
-  type OAuthProvider,
-} from "@nexpress/core";
+import { fromArctic, type OAuthProfile, type OAuthProvider } from "@nexpress/core";
 import { Google } from "arctic";
 
 /**
@@ -91,9 +87,7 @@ export async function fetchGoogleProfile(
 
 export function createGoogleOAuthProvider(options: GoogleOAuthOptions): OAuthProvider {
   if (!options.clientId || !options.clientSecret) {
-    throw new Error(
-      "createGoogleOAuthProvider: clientId and clientSecret are required",
-    );
+    throw new Error("createGoogleOAuthProvider: clientId and clientSecret are required");
   }
   const fetchImpl = options.fetch ?? globalThis.fetch;
 

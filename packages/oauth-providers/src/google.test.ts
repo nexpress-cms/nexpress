@@ -22,9 +22,9 @@ function makeFetch(responses: Map<string, Response | (() => Response)>) {
 
 describe("createGoogleOAuthProvider (factory guards)", () => {
   it("requires clientId and clientSecret", () => {
-    expect(() =>
-      createGoogleOAuthProvider({ clientId: "", clientSecret: "" }),
-    ).toThrow(/clientId and clientSecret/);
+    expect(() => createGoogleOAuthProvider({ clientId: "", clientSecret: "" })).toThrow(
+      /clientId and clientSecret/,
+    );
   });
 
   it("returns an OAuthProvider with id='google'", () => {
@@ -145,10 +145,7 @@ describe("fetchGoogleProfile (verified-email enforcement)", () => {
 
   it("throws on non-2xx userinfo", async () => {
     const responses = new Map<string, Response | (() => Response)>([
-      [
-        "https://openidconnect.googleapis.com/v1/userinfo",
-        new Response("denied", { status: 401 }),
-      ],
+      ["https://openidconnect.googleapis.com/v1/userinfo", new Response("denied", { status: 401 })],
     ]);
     const { fetch: stubFetch } = makeFetch(responses);
     await expect(fetchGoogleProfile("tok", stubFetch)).rejects.toThrow(/HTTP 401/);

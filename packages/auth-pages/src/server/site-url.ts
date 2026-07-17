@@ -42,9 +42,7 @@ export function siteUrlLenient(
  * email-verify flows to work — the boot-time check in
  * `verifyStartupSafety` (#597) already warns when it's unset.
  */
-export function siteUrlStrict(config: {
-  site: { url?: string | null };
-}): URL {
+export function siteUrlStrict(config: { site: { url?: string | null } }): URL {
   if (!config.site.url) {
     throw new Error(
       "SITE_URL is unset — refusing to build a user-deliverable URL " +

@@ -52,10 +52,8 @@ describe("checkNexpressCompat", () => {
 
   it("accepts when host is in range", () => {
     expect(
-      checkNexpressCompat(
-        { nexpress: { minVersion: "0.1.0", maxVersion: "1.0.0" } },
-        "0.5.3",
-      ).compatible,
+      checkNexpressCompat({ nexpress: { minVersion: "0.1.0", maxVersion: "1.0.0" } }, "0.5.3")
+        .compatible,
     ).toBe(true);
   });
 

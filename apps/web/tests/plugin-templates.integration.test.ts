@@ -25,9 +25,7 @@ describe.skipIf(skipIfNoTestDb())("plugin templates (Phase 14.5)", () => {
   });
   beforeEach(async () => {
     await truncateAll();
-    const { resetPluginTemplates, resetThemes } = await import(
-      "@nexpress/core"
-    );
+    const { resetPluginTemplates, resetThemes } = await import("@nexpress/core");
     resetPluginTemplates();
     resetThemes();
   });
@@ -40,11 +38,8 @@ describe.skipIf(skipIfNoTestDb())("plugin templates (Phase 14.5)", () => {
   });
 
   it("getThemeTemplateSummaries merges plugin templates with the active theme's", async () => {
-    const {
-      registerPluginTemplates,
-      registerThemes,
-      getThemeTemplateSummaries,
-    } = await import("@nexpress/core");
+    const { registerPluginTemplates, registerThemes, getThemeTemplateSummaries } =
+      await import("@nexpress/core");
 
     registerThemes([
       {
@@ -79,11 +74,8 @@ describe.skipIf(skipIfNoTestDb())("plugin templates (Phase 14.5)", () => {
   });
 
   it("theme template wins on id collision (theme is the design authority)", async () => {
-    const {
-      registerPluginTemplates,
-      registerThemes,
-      getThemeTemplateSummaries,
-    } = await import("@nexpress/core");
+    const { registerPluginTemplates, registerThemes, getThemeTemplateSummaries } =
+      await import("@nexpress/core");
 
     registerThemes([
       {
@@ -116,11 +108,8 @@ describe.skipIf(skipIfNoTestDb())("plugin templates (Phase 14.5)", () => {
   });
 
   it("resolveTemplateComponent prefers theme over plugin on the same id", async () => {
-    const {
-      registerPluginTemplates,
-      registerThemes,
-      resolveTemplateComponent,
-    } = await import("@nexpress/core");
+    const { registerPluginTemplates, registerThemes, resolveTemplateComponent } =
+      await import("@nexpress/core");
 
     const themeFn = () => null;
     const pluginFn = () => null;
@@ -140,18 +129,16 @@ describe.skipIf(skipIfNoTestDb())("plugin templates (Phase 14.5)", () => {
       pages: { docs: { label: "Plugin", component: pluginFn } },
     });
 
-    const resolved = (await resolveTemplateComponent("pages", "docs")) as
-      | { component?: () => null; label?: string }
-      | null;
+    const resolved = (await resolveTemplateComponent("pages", "docs")) as {
+      component?: () => null;
+      label?: string;
+    } | null;
     expect(resolved?.component).toBe(themeFn);
   });
 
   it("resolveTemplateComponent falls through to plugin when theme has no entry for that id", async () => {
-    const {
-      registerPluginTemplates,
-      registerThemes,
-      resolveTemplateComponent,
-    } = await import("@nexpress/core");
+    const { registerPluginTemplates, registerThemes, resolveTemplateComponent } =
+      await import("@nexpress/core");
 
     const pluginFn = () => null;
 
@@ -170,16 +157,14 @@ describe.skipIf(skipIfNoTestDb())("plugin templates (Phase 14.5)", () => {
       pages: { docs: { label: "Docs", component: pluginFn } },
     });
 
-    const resolved = (await resolveTemplateComponent("pages", "docs")) as
-      | { component?: () => null }
-      | null;
+    const resolved = (await resolveTemplateComponent("pages", "docs")) as {
+      component?: () => null;
+    } | null;
     expect(resolved?.component).toBe(pluginFn);
   });
 
   it("non-i18n collections still see their plugin templates (works for any collection)", async () => {
-    const { registerPluginTemplates, getThemeTemplateSummaries } = await import(
-      "@nexpress/core"
-    );
+    const { registerPluginTemplates, getThemeTemplateSummaries } = await import("@nexpress/core");
     registerPluginTemplates("course", {
       posts: {
         lesson: { label: "Lesson", component: () => null },

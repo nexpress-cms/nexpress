@@ -36,9 +36,7 @@ import { resolve } from "node:path";
 
 const [, , scaffoldDir, tarballDir] = process.argv;
 if (!scaffoldDir || !tarballDir) {
-  console.error(
-    "Usage: link-scaffold-tarballs.mjs <scaffold-dir> <tarball-dir>",
-  );
+  console.error("Usage: link-scaffold-tarballs.mjs <scaffold-dir> <tarball-dir>");
   process.exit(2);
 }
 
@@ -53,16 +51,10 @@ const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
 function tarballFor(npmName) {
   // `@nexpress/core`   → `nexpress-core-X.Y.Z.tgz`
   // `create-nexpress`  → `create-nexpress-X.Y.Z.tgz`
-  const base = npmName.startsWith("@")
-    ? npmName.slice(1).replace("/", "-")
-    : npmName;
-  const found = files.find(
-    (f) => f.startsWith(base + "-") && f.endsWith(".tgz"),
-  );
+  const base = npmName.startsWith("@") ? npmName.slice(1).replace("/", "-") : npmName;
+  const found = files.find((f) => f.startsWith(base + "-") && f.endsWith(".tgz"));
   if (!found) {
-    throw new Error(
-      `No tarball for ${npmName} in ${tarballDir}. Have: ${files.join(", ")}`,
-    );
+    throw new Error(`No tarball for ${npmName} in ${tarballDir}. Have: ${files.join(", ")}`);
   }
   return "file:" + resolve(tarballDir, found);
 }
@@ -90,8 +82,7 @@ pkg.pnpm.overrides ??= {};
 for (const f of files) {
   const m = f.match(/^(nexpress-[a-z-]+|create-nexpress)-\d/);
   if (!m) continue;
-  const npmName =
-    m[1] === "create-nexpress" ? "create-nexpress" : "@" + m[1].replace(/-/, "/");
+  const npmName = m[1] === "create-nexpress" ? "create-nexpress" : "@" + m[1].replace(/-/, "/");
   pkg.pnpm.overrides[npmName] = "file:" + resolve(tarballDir, f);
 }
 

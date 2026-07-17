@@ -22,9 +22,9 @@ function makeFetch(responses: Map<string, Response | (() => Response)>) {
 
 describe("createDiscordOAuthProvider (factory guards)", () => {
   it("requires clientId and clientSecret", () => {
-    expect(() =>
-      createDiscordOAuthProvider({ clientId: "", clientSecret: "" }),
-    ).toThrow(/clientId and clientSecret/);
+    expect(() => createDiscordOAuthProvider({ clientId: "", clientSecret: "" })).toThrow(
+      /clientId and clientSecret/,
+    );
   });
 
   it("returns an OAuthProvider with id='discord'", () => {

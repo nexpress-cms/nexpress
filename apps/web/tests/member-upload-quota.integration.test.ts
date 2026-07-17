@@ -15,10 +15,7 @@ import { POST as uploadPOST } from "@/app/api/members/media/upload/route";
 
 import { NextRequest } from "next/server";
 
-function jsonRequest(
-  path: string,
-  init: RequestInit & { cookies?: string[] } = {},
-): NextRequest {
+function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
   const headers = new Headers(init.headers);
   if (!headers.has("content-type") && init.body && typeof init.body === "string") {
     headers.set("content-type", "application/json");
@@ -38,18 +35,12 @@ async function seedActiveMember(
   };
 }
 
-function uploadRequest(member: {
-  sessionCookie: string;
-  csrfCookie: string;
-}): NextRequest {
+function uploadRequest(member: { sessionCookie: string; csrfCookie: string }): NextRequest {
   const formData = new FormData();
   const blob = new Blob([TINY_PNG], { type: "image/png" });
   formData.append("file", blob, "image.png");
   const headers = new Headers();
-  headers.set(
-    "cookie",
-    `np-mb-session=${member.sessionCookie}; np-mb-csrf=${member.csrfCookie}`,
-  );
+  headers.set("cookie", `np-mb-session=${member.sessionCookie}; np-mb-csrf=${member.csrfCookie}`);
   headers.set("x-csrf-token", member.csrfCookie);
   return new NextRequest("http://localhost:3000/api/members/media/upload", {
     method: "POST",
@@ -87,10 +78,7 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
     await closeTestDb();
   });
 
-  async function setQuota(quota: {
-    perDay?: number | null;
-    total?: number | null;
-  }): Promise<void> {
+  async function setQuota(quota: { perDay?: number | null; total?: number | null }): Promise<void> {
     const { updateCommunitySettings } = await import("@nexpress/core");
     await updateCommunitySettings({ memberUploadQuota: quota }, null);
   }
@@ -147,10 +135,7 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
     const db = await getTestDb();
     const { npMedia } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
-    await db
-      .update(npMedia)
-      .set({ deletedAt: new Date() })
-      .where(eq(npMedia.id, mediaId));
+    await db.update(npMedia).set({ deletedAt: new Date() }).where(eq(npMedia.id, mediaId));
 
     const retry = await uploadPOST(uploadRequest(member));
     expect(retry.status).toBe(202);
@@ -169,10 +154,7 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
     const { npMedia } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const longAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
-    await db
-      .update(npMedia)
-      .set({ createdAt: longAgo })
-      .where(eq(npMedia.id, oldBody.body.id));
+    await db.update(npMedia).set({ createdAt: longAgo }).where(eq(npMedia.id, oldBody.body.id));
 
     // Two more should now pass; a fourth would bump us to perDay=3.
     const a = await uploadPOST(uploadRequest(member));
@@ -270,10 +252,7 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
       .select()
       .from(npMedia)
       .where(
-        and(
-          eq(npMedia.uploadedByMemberId, member.memberId),
-          isNull(npMedia.deletedAt),
-        ),
+        and(eq(npMedia.uploadedByMemberId, member.memberId), isNull(npMedia.deletedAt)),
       )) as Array<unknown>;
     expect(rows).toHaveLength(1);
   });
@@ -287,10 +266,7 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
     const a = await seedActiveMember("quota-race-a");
     const b = await seedActiveMember("quota-race-b");
 
-    const results = await Promise.all([
-      uploadPOST(uploadRequest(a)),
-      uploadPOST(uploadRequest(b)),
-    ]);
+    const results = await Promise.all([uploadPOST(uploadRequest(a)), uploadPOST(uploadRequest(b))]);
     expect(results.map((r) => r.status)).toEqual([202, 202]);
   });
 
@@ -346,10 +322,7 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
         .select()
         .from(npMedia)
         .where(
-          and(
-            eq(npMedia.uploadedByMemberId, member.memberId),
-            isNull(npMedia.deletedAt),
-          ),
+          and(eq(npMedia.uploadedByMemberId, member.memberId), isNull(npMedia.deletedAt)),
         )) as Array<unknown>;
       expect(live).toHaveLength(2);
     } finally {

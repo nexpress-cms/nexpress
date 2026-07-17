@@ -12,9 +12,7 @@ describe("extractNavLocationsFromImpl", () => {
   });
 
   it("returns empty when navLocations is not an object", () => {
-    expect(
-      extractNavLocationsFromImpl({ navLocations: "wrong" }),
-    ).toEqual([]);
+    expect(extractNavLocationsFromImpl({ navLocations: "wrong" })).toEqual([]);
   });
 
   it("extracts declared locations with all fields", () => {

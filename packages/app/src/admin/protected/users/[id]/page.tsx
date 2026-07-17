@@ -1,10 +1,4 @@
-import {
-  NpForbiddenError,
-  NpNotFoundError,
-  npUsers,
-  verifyTokenFull,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, NpNotFoundError, npUsers, verifyTokenFull, can } from "@nexpress/core";
 import { LinkedIdentitiesPanel } from "@nexpress/admin/client";
 import { eq } from "drizzle-orm";
 import Link from "next/link";

@@ -20,9 +20,7 @@ export interface UseMemberLogoutResult {
   logout: () => Promise<void>;
 }
 
-export function useMemberLogout(
-  options: UseMemberLogoutOptions = {},
-): UseMemberLogoutResult {
+export function useMemberLogout(options: UseMemberLogoutOptions = {}): UseMemberLogoutResult {
   const endpoint = options.endpoint ?? "/api/members/logout";
   const messages = resolveMessages(options.messages);
   const [isSubmitting, setIsSubmitting] = useState(false);

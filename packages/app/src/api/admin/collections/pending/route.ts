@@ -1,8 +1,4 @@
-import {
-  NpForbiddenError,
-  listPendingMemberDocs,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, listPendingMemberDocs, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";

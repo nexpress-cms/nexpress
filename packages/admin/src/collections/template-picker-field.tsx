@@ -4,21 +4,9 @@ import { useEffect, useState } from "react";
 import type { Control } from "react-hook-form";
 
 import { npFetch } from "../lib/api-client.js";
-import {
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "../ui/form.js";
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "../ui/form.js";
 import { Input } from "../ui/input.js";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select.js";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 
 interface TemplateSummary {
   id: string;
@@ -52,9 +40,7 @@ export function TemplatePickerField({
   collection,
   description,
 }: TemplatePickerFieldProps) {
-  const [templates, setTemplates] = useState<
-    TemplateSummary[] | "loading" | "none"
-  >("loading");
+  const [templates, setTemplates] = useState<TemplateSummary[] | "loading" | "none">("loading");
 
   useEffect(() => {
     let cancelled = false;
@@ -67,10 +53,7 @@ export function TemplatePickerField({
           if (!cancelled) setTemplates("none");
           return;
         }
-        const raw = (await res.json().catch(() => null)) as Record<
-          string,
-          unknown
-        > | null;
+        const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
         const data = (raw?.data ?? raw) as { docs?: TemplateSummary[] };
         const docs = Array.isArray(data?.docs) ? data.docs : [];
         if (!cancelled) {
@@ -94,11 +77,7 @@ export function TemplatePickerField({
           <FormLabel>{label}</FormLabel>
           <FormControl>
             {templates === "loading" ? (
-              <Input
-                value=""
-                disabled
-                placeholder="Loading templates…"
-              />
+              <Input value="" disabled placeholder="Loading templates…" />
             ) : templates === "none" ? (
               // Active theme doesn't expose templates for this
               // collection. Keep the field editable as a plain
@@ -107,9 +86,7 @@ export function TemplatePickerField({
               // template id later).
               <Input
                 {...formField}
-                value={
-                  typeof formField.value === "string" ? formField.value : ""
-                }
+                value={typeof formField.value === "string" ? formField.value : ""}
                 placeholder="No templates registered by the active theme"
               />
             ) : (
@@ -119,9 +96,7 @@ export function TemplatePickerField({
                     ? formField.value
                     : "default"
                 }
-                onValueChange={(v) =>
-                  formField.onChange(v === "default" ? "" : v)
-                }
+                onValueChange={(v) => formField.onChange(v === "default" ? "" : v)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select template" />
@@ -136,14 +111,9 @@ export function TemplatePickerField({
               </Select>
             )}
           </FormControl>
-          {description ? (
-            <p className="text-xs text-muted-foreground">{description}</p>
-          ) : null}
+          {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
           {Array.isArray(templates) && typeof formField.value === "string" ? (
-            <ActiveDescriptionLine
-              templates={templates}
-              value={formField.value || "default"}
-            />
+            <ActiveDescriptionLine templates={templates} value={formField.value || "default"} />
           ) : null}
           <FormMessage />
         </FormItem>
@@ -161,7 +131,5 @@ function ActiveDescriptionLine({
 }) {
   const found = templates.find((t) => t.id === value);
   if (!found?.description) return null;
-  return (
-    <p className="text-xs text-muted-foreground italic">{found.description}</p>
-  );
+  return <p className="text-xs text-muted-foreground italic">{found.description}</p>;
 }

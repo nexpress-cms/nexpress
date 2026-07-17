@@ -115,7 +115,10 @@ export class WpMediaSsrfError extends WpMediaDownloadError {
   }
 }
 
-export async function downloadMedia(url: string, opts: DownloadOptions = {}): Promise<DownloadResult> {
+export async function downloadMedia(
+  url: string,
+  opts: DownloadOptions = {},
+): Promise<DownloadResult> {
   const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
   if (!fetchImpl) {
     throw new WpMediaDownloadError(url, "no fetch implementation available");
@@ -148,7 +151,12 @@ export async function downloadMedia(url: string, opts: DownloadOptions = {}): Pr
       // won't change the answer.
       if (err instanceof WpMediaSsrfError) throw err;
       // 4xx errors aren't worth retrying.
-      if (err instanceof WpMediaDownloadError && err.status !== null && err.status >= 400 && err.status < 500) {
+      if (
+        err instanceof WpMediaDownloadError &&
+        err.status !== null &&
+        err.status >= 400 &&
+        err.status < 500
+      ) {
         throw err;
       }
       if (attempt >= maxRetries) {
@@ -264,7 +272,10 @@ function assertHttpScheme(url: string): void {
     throw new WpMediaSsrfError(url, `invalid URL "${url}"`);
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new WpMediaSsrfError(url, `unsupported scheme "${parsed.protocol}" — only http(s) is allowed`);
+    throw new WpMediaSsrfError(
+      url,
+      `unsupported scheme "${parsed.protocol}" — only http(s) is allowed`,
+    );
   }
 }
 
@@ -514,8 +525,6 @@ export function resolveEnvDownloadOptions(env: NodeJS.ProcessEnv = process.env):
  */
 export function isAllowedMimeType(mimeType: string): boolean {
   return (
-    mimeType.startsWith("image/") ||
-    mimeType.startsWith("video/") ||
-    mimeType === "application/pdf"
+    mimeType.startsWith("image/") || mimeType.startsWith("video/") || mimeType === "application/pdf"
   );
 }

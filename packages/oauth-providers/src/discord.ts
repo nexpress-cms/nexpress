@@ -1,8 +1,4 @@
-import {
-  fromArctic,
-  type OAuthProfile,
-  type OAuthProvider,
-} from "@nexpress/core";
+import { fromArctic, type OAuthProfile, type OAuthProvider } from "@nexpress/core";
 import { Discord } from "arctic";
 
 /**
@@ -74,12 +70,8 @@ export async function fetchDiscordProfile(
   // Prefer `global_name` (display name) over `username` (handle);
   // falls back to username for accounts without a display name set.
   const name =
-    user.global_name && user.global_name.trim().length > 0
-      ? user.global_name
-      : user.username;
-  const avatarUrl = user.avatar
-    ? `${AVATAR_BASE}/${user.id}/${user.avatar}.png`
-    : null;
+    user.global_name && user.global_name.trim().length > 0 ? user.global_name : user.username;
+  const avatarUrl = user.avatar ? `${AVATAR_BASE}/${user.id}/${user.avatar}.png` : null;
 
   return {
     providerUserId: user.id,
@@ -93,13 +85,9 @@ export async function fetchDiscordProfile(
   };
 }
 
-export function createDiscordOAuthProvider(
-  options: DiscordOAuthOptions,
-): OAuthProvider {
+export function createDiscordOAuthProvider(options: DiscordOAuthOptions): OAuthProvider {
   if (!options.clientId || !options.clientSecret) {
-    throw new Error(
-      "createDiscordOAuthProvider: clientId and clientSecret are required",
-    );
+    throw new Error("createDiscordOAuthProvider: clientId and clientSecret are required");
   }
   const fetchImpl = options.fetch ?? globalThis.fetch;
 

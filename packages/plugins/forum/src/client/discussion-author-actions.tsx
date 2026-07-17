@@ -42,9 +42,9 @@ export function DiscussionAuthorActions({ docId, slug }: DiscussionAuthorActions
         headers,
       });
       if (!res.ok && res.status !== 204) {
-        const body = (await res.json().catch(() => null)) as
-          | { error?: { message?: string } }
-          | null;
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
         setError(body?.error?.message ?? `HTTP ${res.status}`);
         setSubmitting(false);
         return;

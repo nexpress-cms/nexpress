@@ -15,10 +15,7 @@ export default async function NewDiscussionRoute(_props: NpRouteRenderProps) {
           You need to be signed in to post.{" "}
           <Link href="/members/login?next=/discussions/new">Sign in</Link>
           {" or "}
-          <Link href="/members/register?next=/discussions/new">
-            create an account
-          </Link>
-          .
+          <Link href="/members/register?next=/discussions/new">create an account</Link>.
         </p>
       </div>
     );

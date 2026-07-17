@@ -25,7 +25,11 @@ describe("toClientCollectionConfig — active-theme field gate", () => {
   it("keeps every field when activeThemeId is undefined (back-compat)", () => {
     const out = toClientCollectionConfig(baseConfig);
     const names = out.fields.flatMap((f) =>
-      f.type === "row" ? f.fields.map((c) => ("name" in c ? c.name : c.type)) : "name" in f ? [f.name] : [f.type],
+      f.type === "row"
+        ? f.fields.map((c) => ("name" in c ? c.name : c.type))
+        : "name" in f
+          ? [f.name]
+          : [f.type],
     );
     expect(names).toEqual(["title", "featured", "badge", "lede", "subtitle"]);
   });
@@ -33,7 +37,11 @@ describe("toClientCollectionConfig — active-theme field gate", () => {
   it("drops foreign-theme fields when activeThemeId is set", () => {
     const out = toClientCollectionConfig(baseConfig, "magazine");
     const names = out.fields.flatMap((f) =>
-      f.type === "row" ? f.fields.map((c) => ("name" in c ? c.name : c.type)) : "name" in f ? [f.name] : [f.type],
+      f.type === "row"
+        ? f.fields.map((c) => ("name" in c ? c.name : c.type))
+        : "name" in f
+          ? [f.name]
+          : [f.type],
     );
     // - `title` (operator-declared) stays
     // - `featured` (magazine-tagged) stays
@@ -67,7 +75,11 @@ describe("toClientCollectionConfig — active-theme field gate", () => {
   it("keeps operator-declared fields (no _themeOrigin) regardless of activeThemeId", () => {
     const out = toClientCollectionConfig(baseConfig, "nonexistent-theme");
     const names = out.fields.flatMap((f) =>
-      f.type === "row" ? f.fields.map((c) => ("name" in c ? c.name : c.type)) : "name" in f ? [f.name] : [f.type],
+      f.type === "row"
+        ? f.fields.map((c) => ("name" in c ? c.name : c.type))
+        : "name" in f
+          ? [f.name]
+          : [f.type],
     );
     expect(names).toEqual(["title", "subtitle"]);
   });

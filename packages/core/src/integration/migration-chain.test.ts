@@ -63,13 +63,9 @@ describe("migration chain smoke", () => {
   });
 
   it("every journal entry has a corresponding .sql file", () => {
-    const sqlFiles = new Set(
-      readdirSync(DRIZZLE_DIR).filter((f) => f.endsWith(".sql")),
-    );
+    const sqlFiles = new Set(readdirSync(DRIZZLE_DIR).filter((f) => f.endsWith(".sql")));
     for (const entry of journal) {
-      expect(sqlFiles, `missing SQL for journal idx ${entry.idx}`).toContain(
-        `${entry.tag}.sql`,
-      );
+      expect(sqlFiles, `missing SQL for journal idx ${entry.idx}`).toContain(`${entry.tag}.sql`);
     }
   });
 
@@ -77,9 +73,7 @@ describe("migration chain smoke", () => {
     const metaFiles = new Set(readdirSync(META_DIR));
     for (const entry of journal) {
       const expected = `${String(entry.idx).padStart(4, "0")}_snapshot.json`;
-      expect(metaFiles, `missing snapshot for idx ${entry.idx}`).toContain(
-        expected,
-      );
+      expect(metaFiles, `missing snapshot for idx ${entry.idx}`).toContain(expected);
     }
   });
 
@@ -113,13 +107,11 @@ describe("migration chain smoke", () => {
     // statement starting with `` ` ``, which we want to catch here.
     // Comments are valid leading content (Postgres ignores them) so
     // we look at the first non-`--`, non-empty line of each chunk.
-    const validLeading = /^(CREATE|ALTER|DROP|INSERT|UPDATE|DELETE|DO|COMMENT|GRANT|REVOKE|BEGIN|TRUNCATE|SET|WITH)\b/i;
+    const validLeading =
+      /^(CREATE|ALTER|DROP|INSERT|UPDATE|DELETE|DO|COMMENT|GRANT|REVOKE|BEGIN|TRUNCATE|SET|WITH)\b/i;
 
     for (const entry of journal) {
-      const sql = readFileSync(
-        path.join(DRIZZLE_DIR, `${entry.tag}.sql`),
-        "utf8",
-      );
+      const sql = readFileSync(path.join(DRIZZLE_DIR, `${entry.tag}.sql`), "utf8");
       const statements = splitMigrationStatements(sql);
       for (const [i, stmt] of statements.entries()) {
         // First non-comment line of the chunk

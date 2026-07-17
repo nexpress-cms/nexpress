@@ -83,26 +83,20 @@ async function resolveSiteOrigin(siteId: string): Promise<string> {
  * `null` keeps the legacy single-file behavior used when i18n
  * isn't configured.
  */
-async function buildSitemapDirect(
-  origin: string,
-  locale: string | null,
-): Promise<string> {
+async function buildSitemapDirect(origin: string, locale: string | null): Promise<string> {
   const dynamicEntries = await buildSitemap(locale ? { locale } : {});
   // Phase F.7 — pull in theme-contributed entries (e.g. magazine
   // archive landing pages). Theme entries dedupe against the
   // framework output; framework wins on `loc` collision so the
   // theme can't accidentally hide a collection-walk URL.
   const seoHooks = await getActiveThemeSeoHooks();
-  const themeEntries = seoHooks.sitemapEntries
-    ? await seoHooks.sitemapEntries()
-    : [];
+  const themeEntries = seoHooks.sitemapEntries ? await seoHooks.sitemapEntries() : [];
   // Static routes only belong in the default-locale sitemap (or
   // the no-i18n single sitemap). Other locales' sitemaps would
   // re-emit the same path and create duplicates the dedup pass
   // can't catch across files.
   const i18n = getI18nConfig();
-  const includeStatic =
-    !locale || (i18n != null && locale === i18n.defaultLocale);
+  const includeStatic = !locale || (i18n != null && locale === i18n.defaultLocale);
   const seen = new Set<string>();
   const all = [
     ...(includeStatic ? STATIC_ROUTES : []),
@@ -125,10 +119,7 @@ async function buildSitemapDirect(
  * route with `?locale=…` so each child sitemap stays under the
  * sitemaps.org per-file cap.
  */
-function buildSitemapIndexDirect(
-  origin: string,
-  locales: readonly string[],
-): string {
+function buildSitemapIndexDirect(origin: string, locales: readonly string[]): string {
   return renderSitemapIndexXml(
     origin,
     locales.map((locale) => ({
@@ -183,19 +174,13 @@ export async function GET(req: Request): Promise<Response> {
   if (i18n && requestedLocale && !i18n.locales.includes(requestedLocale)) {
     return new Response("Unknown locale", { status: 404 });
   }
-  const mode: "index" | "urlset" =
-    i18n && !requestedLocale ? "index" : "urlset";
+  const mode: "index" | "urlset" = i18n && !requestedLocale ? "index" : "urlset";
 
   // Cache key includes the resolved mode + locale so the index
   // and each per-locale child get distinct cache entries (and
   // the per-locale `revalidateTag("nx:sitemap:<siteId>")` blow
   // still busts every variant for a site).
-  const cacheKeyParts = [
-    "np-sitemap",
-    siteId,
-    mode,
-    requestedLocale ?? "",
-  ];
+  const cacheKeyParts = ["np-sitemap", siteId, mode, requestedLocale ?? ""];
   const buildBody = async (): Promise<string> => {
     if (mode === "index") {
       return buildSitemapIndexDirect(origin, i18n!.locales);
@@ -215,10 +200,7 @@ export async function GET(req: Request): Promise<Response> {
     // (integration tests, scripts). Fall through to the
     // uncached path so the route still works in those
     // contexts; production traffic always has the cache.
-    if (
-      error instanceof Error &&
-      /incrementalCache/i.test(error.message)
-    ) {
+    if (error instanceof Error && /incrementalCache/i.test(error.message)) {
       body = await buildBody();
     } else {
       throw error;
@@ -238,8 +220,7 @@ export async function GET(req: Request): Promise<Response> {
       // re-fetches in the background. Crawlers tolerate
       // slightly-stale sitemaps fine; the smoothing matters
       // when traffic spikes around the expiry boundary.
-      "Cache-Control":
-        "public, max-age=600, s-maxage=600, stale-while-revalidate=86400",
+      "Cache-Control": "public, max-age=600, s-maxage=600, stale-while-revalidate=86400",
     },
   });
 }

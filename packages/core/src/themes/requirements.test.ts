@@ -1,15 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type {
-  NpCollectionConfig,
-  NpThemeManifest,
-} from "../config/types.js";
+import type { NpCollectionConfig, NpThemeManifest } from "../config/types.js";
 
 import { checkThemeRequirements } from "./requirements.js";
 
-const manifest = (
-  requires?: NpThemeManifest["requires"],
-): NpThemeManifest => ({
+const manifest = (requires?: NpThemeManifest["requires"]): NpThemeManifest => ({
   id: "test-theme",
   name: "Test",
   version: "0.1.0",
@@ -51,9 +46,7 @@ describe("checkThemeRequirements", () => {
     );
     expect(result.hasMismatches).toBe(true);
     expect(result.hasHardMismatches).toBe(true);
-    expect(result.missingCollections).toEqual([
-      { collection: "authors", createIfAbsent: true },
-    ]);
+    expect(result.missingCollections).toEqual([{ collection: "authors", createIfAbsent: true }]);
   });
 
   it("flags a missing field on an existing collection", () => {

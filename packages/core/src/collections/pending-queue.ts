@@ -2,11 +2,7 @@ import { sql, type SQL } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 
 import { npMembers } from "../db/schema/community.js";
-import {
-  getAllCollectionSlugs,
-  getCollectionConfig,
-  getCollectionTable,
-} from "./registry.js";
+import { getAllCollectionSlugs, getCollectionConfig, getCollectionTable } from "./registry.js";
 import { getDb } from "../db/runtime.js";
 
 /**
@@ -111,9 +107,7 @@ export async function listPendingMemberDocs(
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
 
-  const slugs = options.collectionSlug
-    ? [options.collectionSlug]
-    : getAllCollectionSlugs();
+  const slugs = options.collectionSlug ? [options.collectionSlug] : getAllCollectionSlugs();
 
   const db = getDb();
 
@@ -133,9 +127,9 @@ export async function listPendingMemberDocs(
   const union = sql.join(branches, sql` UNION ALL `);
 
   const [countRow] = (
-    (await db.execute(
-      sql`SELECT count(*)::int AS total FROM (${union}) p`,
-    )) as unknown as { rows: Array<{ total: number | string }> }
+    (await db.execute(sql`SELECT count(*)::int AS total FROM (${union}) p`)) as unknown as {
+      rows: Array<{ total: number | string }>;
+    }
   ).rows;
   const totalDocs = Number(countRow?.total ?? 0);
 
@@ -169,14 +163,10 @@ export async function listPendingMemberDocs(
   const docs: NpPendingDocSummary[] = result.rows.map((row) => ({
     id: row.id,
     collectionSlug: row.collection_slug,
-    title:
-      typeof row.title === "string" && row.title.length > 0
-        ? row.title
-        : "(untitled)",
+    title: typeof row.title === "string" && row.title.length > 0 ? row.title : "(untitled)",
     slug: row.doc_slug,
     status: "pending",
-    createdAt:
-      row.created_at instanceof Date ? row.created_at : new Date(row.created_at),
+    createdAt: row.created_at instanceof Date ? row.created_at : new Date(row.created_at),
     memberAuthor:
       row.member_id && row.member_handle && row.member_display_name
         ? {

@@ -37,8 +37,8 @@ export function DocsNotFound(): React.ReactElement {
           color: "var(--np-color-muted-foreground)",
         }}
       >
-        It may have been renamed or merged into another section. Try the
-        search bar in the header, or head to the homepage.
+        It may have been renamed or merged into another section. Try the search bar in the header,
+        or head to the homepage.
       </p>
       <a
         href="/"

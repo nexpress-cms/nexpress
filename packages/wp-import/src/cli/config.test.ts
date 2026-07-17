@@ -57,15 +57,15 @@ describe("parseConfig", () => {
   });
 
   it("rejects mappings missing wpType", () => {
-    expect(() =>
-      parseConfig(JSON.stringify({ mappings: [{ collection: "x" }] })),
-    ).toThrow(/wpType/);
+    expect(() => parseConfig(JSON.stringify({ mappings: [{ collection: "x" }] }))).toThrow(
+      /wpType/,
+    );
   });
 
   it("rejects mappings missing collection", () => {
-    expect(() =>
-      parseConfig(JSON.stringify({ mappings: [{ wpType: "x" }] })),
-    ).toThrow(/collection/);
+    expect(() => parseConfig(JSON.stringify({ mappings: [{ wpType: "x" }] }))).toThrow(
+      /collection/,
+    );
   });
 
   it("rejects malformed JSON with a useful message", () => {

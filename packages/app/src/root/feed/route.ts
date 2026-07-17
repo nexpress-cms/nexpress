@@ -1,12 +1,5 @@
-import {
-  NP_DEFAULT_SITE_ID,
-  getActiveThemeSeoHooks,
-  getCurrentSiteId,
-} from "@nexpress/core";
-import {
-  npRequireAtomFeedOptions,
-  renderAtomFeed,
-} from "@nexpress/core/seo";
+import { NP_DEFAULT_SITE_ID, getActiveThemeSeoHooks, getCurrentSiteId } from "@nexpress/core";
+import { npRequireAtomFeedOptions, renderAtomFeed } from "@nexpress/core/seo";
 import { unstable_cache } from "next/cache";
 import type { NextRequest } from "next/server";
 
@@ -47,9 +40,7 @@ async function renderAtomFeedDirect(
   // archive / curated views that aren't in the collection walk).
   // Pass them to renderAtomFeed which dedups + re-sorts.
   const seoHooks = await getActiveThemeSeoHooks();
-  const extraEntries = seoHooks.feedEntries
-    ? await seoHooks.feedEntries()
-    : undefined;
+  const extraEntries = seoHooks.feedEntries ? await seoHooks.feedEntries() : undefined;
   return await renderAtomFeed({
     ...(collection ? { collection } : {}),
     ...(locale ? { locale } : {}),
@@ -72,8 +63,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
   await ensureFor("read");
   const localeParam = request.nextUrl.searchParams.get("locale")?.trim();
-  const locale =
-    localeParam && isLocale(localeParam) ? localeParam : undefined;
+  const locale = localeParam && isLocale(localeParam) ? localeParam : undefined;
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   // Phase 14.8 — site-scoped tags so a multi-tenant deploy
   // doesn't bust feed caches across sites on every write. The
@@ -98,10 +88,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   try {
     xml = await renderAtomFeedCached();
   } catch (error) {
-    if (
-      error instanceof Error &&
-      /incrementalCache/i.test(error.message)
-    ) {
+    if (error instanceof Error && /incrementalCache/i.test(error.message)) {
       xml = await renderAtomFeedDirect(collection, locale);
     } else {
       throw error;
@@ -122,8 +109,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       // CDN can serve stale entries during the regen
       // round-trip; feed readers don't surface a 5-second
       // delay anyway.
-      "Cache-Control":
-        "public, max-age=600, s-maxage=600, stale-while-revalidate=86400",
+      "Cache-Control": "public, max-age=600, s-maxage=600, stale-while-revalidate=86400",
     },
   });
 }

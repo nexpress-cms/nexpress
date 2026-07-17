@@ -48,9 +48,11 @@ describe.skipIf(true)("theme render snapshots (Phase 11.2 fixup, magazine slots)
 
   it("MinimalShell wraps children verbatim (no extra DOM)", async () => {
     const { magazineTheme } = await import("@nexpress/theme-magazine");
-    const Shell = (magazineTheme.impl as {
-      shell: (props: { children: React.ReactNode }) => React.ReactElement;
-    }).shell;
+    const Shell = (
+      magazineTheme.impl as {
+        shell: (props: { children: React.ReactNode }) => React.ReactElement;
+      }
+    ).shell;
     const html = renderToString(Shell({ children: "<probe>hello</probe>" } as never));
     expect(html).toContain("probe");
     expect(html).toContain("hello");
@@ -58,9 +60,11 @@ describe.skipIf(true)("theme render snapshots (Phase 11.2 fixup, magazine slots)
 
   it("MinimalHeader renders only the centered logo (no nav/search/widget)", async () => {
     const { magazineTheme } = await import("@nexpress/theme-magazine");
-    const Header = (magazineTheme.impl as {
-      slots: { header: () => React.ReactElement };
-    }).slots.header;
+    const Header = (
+      magazineTheme.impl as {
+        slots: { header: () => React.ReactElement };
+      }
+    ).slots.header;
     const html = renderToString(Header());
     // Logo present
     expect(html).toContain('class="np-site-logo"');
@@ -75,9 +79,11 @@ describe.skipIf(true)("theme render snapshots (Phase 11.2 fixup, magazine slots)
 
   it("MinimalFooter is the bare top-rule (no menu)", async () => {
     const { magazineTheme } = await import("@nexpress/theme-magazine");
-    const Footer = (magazineTheme.impl as {
-      slots: { footer: () => React.ReactElement };
-    }).slots.footer;
+    const Footer = (
+      magazineTheme.impl as {
+        slots: { footer: () => React.ReactElement };
+      }
+    ).slots.footer;
     const html = renderToString(Footer());
     expect(html).toContain("np-magazine-footer");
     // No `<nav>` / `<ul>` — magazine footer renders just the
@@ -94,9 +100,11 @@ describe.skipIf(true)("theme render snapshots (Phase 11.2 fixup, magazine slots)
     // JSX). Render the magazine one and confirm the markup is
     // recognizably itself.
     const { magazineTheme } = await import("@nexpress/theme-magazine");
-    const Header = (magazineTheme.impl as {
-      slots: { header: () => React.ReactElement };
-    }).slots.header;
+    const Header = (
+      magazineTheme.impl as {
+        slots: { header: () => React.ReactElement };
+      }
+    ).slots.header;
     const html = renderToString(Header());
     expect(html).toContain("np-magazine-header");
     // Default header would contain `np-site-search-input`

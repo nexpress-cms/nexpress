@@ -20,7 +20,7 @@ author, viewer) who manage content. This design extends it with two
 adjacent surfaces:
 
 1. **Member system** — public site visitors who can register, log in, and
-   maintain a profile. Members are *not* CMS staff and never get admin
+   maintain a profile. Members are _not_ CMS staff and never get admin
    access.
 2. **Community** — comments on collection documents, freestanding
    discussion threads, reactions, follows, notifications, and the
@@ -105,17 +105,17 @@ Why a separate table from `np_users`:
 
 ### Auth flow
 
-| Step | Endpoint | Notes |
-|---|---|---|
-| Register | `POST /api/members/register` | Sends verification email; member starts as `status: pending` until verified. |
-| Verify email | `POST /api/members/verify` | Token from email; flips `email_verified` + `status: active`. |
-| Login | `POST /api/members/login` | Same Argon2 + JWT machinery; sets `np-mb-*` cookies. |
-| Refresh | `POST /api/members/refresh` | Rotates session JWT. |
-| Forgot / reset | `POST /api/members/forgot-password`, `POST /api/members/reset-password` | Reuses the email adapter from PR #22. |
-| Logout | `POST /api/members/logout` | Clears cookies + revokes session row. |
-| Me | `GET /api/members/me` | Returns the public profile + private fields the member can see. |
-| Update profile | `PATCH /api/members/me` | Editable fields: display_name, bio, avatar, password. Email change requires re-verification. |
-| Delete | `DELETE /api/members/me` | Soft-delete (sets `status: deleted`, anonymises content). |
+| Step           | Endpoint                                                                | Notes                                                                                        |
+| -------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Register       | `POST /api/members/register`                                            | Sends verification email; member starts as `status: pending` until verified.                 |
+| Verify email   | `POST /api/members/verify`                                              | Token from email; flips `email_verified` + `status: active`.                                 |
+| Login          | `POST /api/members/login`                                               | Same Argon2 + JWT machinery; sets `np-mb-*` cookies.                                         |
+| Refresh        | `POST /api/members/refresh`                                             | Rotates session JWT.                                                                         |
+| Forgot / reset | `POST /api/members/forgot-password`, `POST /api/members/reset-password` | Reuses the email adapter from PR #22.                                                        |
+| Logout         | `POST /api/members/logout`                                              | Clears cookies + revokes session row.                                                        |
+| Me             | `GET /api/members/me`                                                   | Returns the public profile + private fields the member can see.                              |
+| Update profile | `PATCH /api/members/me`                                                 | Editable fields: display_name, bio, avatar, password. Email change requires re-verification. |
+| Delete         | `DELETE /api/members/me`                                                | Soft-delete (sets `status: deleted`, anonymises content).                                    |
 
 JWT shape mirrors staff sessions but adds an `aud: "member"` claim so
 middleware can route correctly:
@@ -153,18 +153,18 @@ np_member_roles
 
 #### Built-in roles
 
-| `role` | Typical scope | Capabilities |
-|---|---|---|
-| `community-mod` | `site` | Hide / restore any community content site-wide. Resolve any report. Ban members. Equivalent to a staff `moderator`, but earned/granted to a member without making them staff. |
-| `category-mod` | `category` | Same as `community-mod`, restricted to threads + replies inside one `np_thread_categories.id`. |
-| `collection-mod` | `collection` (slug) | Same, restricted to comments on documents in one collection (e.g. mod the comments under `posts/*` only). |
-| `thread-author` | `thread` | Edit thread title/body, lock/unlock the thread. Auto-granted on create, never manually. |
+| `role`           | Typical scope       | Capabilities                                                                                                                                                                  |
+| ---------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `community-mod`  | `site`              | Hide / restore any community content site-wide. Resolve any report. Ban members. Equivalent to a staff `moderator`, but earned/granted to a member without making them staff. |
+| `category-mod`   | `category`          | Same as `community-mod`, restricted to threads + replies inside one `np_thread_categories.id`.                                                                                |
+| `collection-mod` | `collection` (slug) | Same, restricted to comments on documents in one collection (e.g. mod the comments under `posts/*` only).                                                                     |
+| `thread-author`  | `thread`            | Edit thread title/body, lock/unlock the thread. Auto-granted on create, never manually.                                                                                       |
 
 The list is **extensible**: plugins can register additional `(role,
 scope_type)` pairs (e.g. `tag-mod` scoped to a tag) via a new
 `registerCommunityRole(...)` API. Capabilities map to a permission
 matrix the host owns; plugins declare what their role can do, but the
-permission *check* is run by the host.
+permission _check_ is run by the host.
 
 #### How grants are created
 
@@ -183,7 +183,7 @@ The single entry point is `memberCan(memberId, action, target)`. It
 walks the grant set in this order:
 
 1. Is the member banned from this scope? (see `np_bans` below) → deny.
-2. Is the member the owner of the target *and* is `action` an
+2. Is the member the owner of the target _and_ is `action` an
    own-content action like `edit-own`? → allow.
 3. Walk grants matching `target`'s scope chain:
    - For a reply targeting thread T in category C: check grants for
@@ -459,14 +459,14 @@ Plugin-extensible touchpoints:
 
 The whole thing is too big to ship in one PR. Suggested order:
 
-| Phase | Slice | Includes |
-|---|---|---|
-| **9.1** | Member identity | `np_members`, `np_member_sessions`, `np_member_roles` (table + permission resolver), member auth helpers, registration + login + me + reset, public profile read, /u/{handle} route, admin Members list (no moderation actions yet — but `memberCan()` lands here so 9.2+ can call it from day one). |
-| **9.2** | Comments on existing collections | `np_comments`, list/post/edit/delete API, render under each `(site)` post page, comments tab in admin edit view, basic hide action, `collection-mod` capability matrix wired (so a member promoted in 9.1 can hide comments on `posts` from day one). |
-| **9.3** | Reactions + follows + notifications | `np_reactions`, `np_follows`, `np_notifications`, mark-read API, in-admin notification preview. |
-| **9.4** | Forum (built-in plugin) | `@nexpress/plugin-forum` package: `defineDiscussionsCollection({ slug, categories })` returns a ready-to-spread collection config; `forumPlugin` exposes a discussions stats dashboard widget. apps/web demo registers a `discussions` collection. **No new community-only tables** — comments, reactions, follows all come from 9.2/9.3. Member-authored top-level threads (Reddit-style) await a separate "member-writable collections" feature. |
-| **9.5** | Moderation | `np_reports`, `np_bans` (scoped), staff `moderator` role, member role grant UI (promote member → category-mod, etc.), reports queue UI, ban flow, audit trail. |
-| **9.6** | Pluggable bits | SSO adapter, anti-spam adapter, reputation rules, community settings page. |
+| Phase   | Slice                               | Includes                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **9.1** | Member identity                     | `np_members`, `np_member_sessions`, `np_member_roles` (table + permission resolver), member auth helpers, registration + login + me + reset, public profile read, /u/{handle} route, admin Members list (no moderation actions yet — but `memberCan()` lands here so 9.2+ can call it from day one).                                                                                                                                               |
+| **9.2** | Comments on existing collections    | `np_comments`, list/post/edit/delete API, render under each `(site)` post page, comments tab in admin edit view, basic hide action, `collection-mod` capability matrix wired (so a member promoted in 9.1 can hide comments on `posts` from day one).                                                                                                                                                                                              |
+| **9.3** | Reactions + follows + notifications | `np_reactions`, `np_follows`, `np_notifications`, mark-read API, in-admin notification preview.                                                                                                                                                                                                                                                                                                                                                    |
+| **9.4** | Forum (built-in plugin)             | `@nexpress/plugin-forum` package: `defineDiscussionsCollection({ slug, categories })` returns a ready-to-spread collection config; `forumPlugin` exposes a discussions stats dashboard widget. apps/web demo registers a `discussions` collection. **No new community-only tables** — comments, reactions, follows all come from 9.2/9.3. Member-authored top-level threads (Reddit-style) await a separate "member-writable collections" feature. |
+| **9.5** | Moderation                          | `np_reports`, `np_bans` (scoped), staff `moderator` role, member role grant UI (promote member → category-mod, etc.), reports queue UI, ban flow, audit trail.                                                                                                                                                                                                                                                                                     |
+| **9.6** | Pluggable bits                      | SSO adapter, anti-spam adapter, reputation rules, community settings page.                                                                                                                                                                                                                                                                                                                                                                         |
 
 Each slice ships with integration tests and OpenAPI updates the same
 way Phases 1–8 did.

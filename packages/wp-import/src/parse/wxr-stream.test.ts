@@ -33,11 +33,7 @@ describe("parseWxrStream", () => {
       records.push(`${record.wpType}/${record.slug}`);
     }
     // Fixture has a post, a page, and an attachment (in that order).
-    expect(records).toEqual([
-      "post/hello-world",
-      "page/about",
-      "attachment/hero-jpg",
-    ]);
+    expect(records).toEqual(["post/hello-world", "page/about", "attachment/hero-jpg"]);
   });
 
   it("aborts when a single item exceeds maxItemBytes", async () => {
@@ -64,8 +60,8 @@ describe("parseWxrStream", () => {
     // No <item> at all — the header guard kicks in once the
     // buffered prefix exceeds the cap.
     writeFileSync(file, "<rss>" + "x".repeat(4096) + "</rss>", "utf8");
-    await expect(parseWxrStream(file, { maxItemBytes: 256, highWaterMark: 64 })).rejects.toBeInstanceOf(
-      WpImportStreamError,
-    );
+    await expect(
+      parseWxrStream(file, { maxItemBytes: 256, highWaterMark: 64 }),
+    ).rejects.toBeInstanceOf(WpImportStreamError);
   });
 });

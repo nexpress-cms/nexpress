@@ -2,10 +2,7 @@ import { findDocuments, findPosts } from "@nexpress/core";
 import type { NpRouteRenderProps } from "@nexpress/theme";
 import * as React from "react";
 
-import {
-  MagazineArchiveItem,
-  type MagazineArchiveItemDoc,
-} from "../components/archive-item.js";
+import { MagazineArchiveItem, type MagazineArchiveItemDoc } from "../components/archive-item.js";
 
 const SECTION_TO_CATEGORY: Record<string, string> = {
   features: "Features",
@@ -60,10 +57,7 @@ export async function MagazineSectionArchiveRoute({
             <ul className="np-magazine-section-list">
               {result.docs.map((doc, index) => (
                 <li key={(doc.id as string | undefined) ?? index.toString()}>
-                  <MagazineArchiveItem
-                    doc={doc as MagazineArchiveItemDoc}
-                    romanIndex={index}
-                  />
+                  <MagazineArchiveItem doc={doc as MagazineArchiveItemDoc} romanIndex={index} />
                 </li>
               ))}
             </ul>

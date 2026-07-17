@@ -15,7 +15,4 @@
  */
 
 export { DocCanvas, type DocCanvasProps } from "./doc-canvas.js";
-export {
-  BlockSettingsDialog,
-  type BlockSettingsDialogProps,
-} from "./block-settings-dialog.js";
+export { BlockSettingsDialog, type BlockSettingsDialogProps } from "./block-settings-dialog.js";

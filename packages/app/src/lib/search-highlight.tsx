@@ -43,9 +43,7 @@ export function highlightMatches(text: string, query: string): ReactNode {
     .map((token) => token.trim())
     .filter((token) => token.length >= 2);
   if (tokens.length === 0) return text;
-  const escaped = tokens.map((t) =>
-    t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-  );
+  const escaped = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const re = new RegExp(`(${escaped.join("|")})`, "gi");
   const parts = text.split(re);
   return parts.map((part, i) =>

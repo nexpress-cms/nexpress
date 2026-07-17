@@ -265,9 +265,7 @@ function collectExistingFieldNames(fields: NpFieldConfig[]): Set<string> {
 }
 
 function titleCase(s: string): string {
-  return s
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+  return s.replace(/[-_]+/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
 function synthesiseCollection(
@@ -350,9 +348,7 @@ export function mergeThemeRequirements(
   // Work on a shallow-copied array; we clone individual
   // collections only when we need to mutate their `fields`.
   const merged: NpCollectionConfig[] = collections.slice();
-  const indexBySlug = new Map<string, number>(
-    merged.map((c, i) => [c.slug, i]),
-  );
+  const indexBySlug = new Map<string, number>(merged.map((c, i) => [c.slug, i]));
   // Track which fields already exist (operator-declared OR
   // earlier-theme-injected) per slug. Initialise with the
   // operator's view so we never overwrite a user-authored field.
@@ -410,9 +406,7 @@ export function mergeThemeRequirements(
           // option sets (e.g. `kind=doc` + `kind=project`) is
           // exactly the case this enables.
           if (fieldReq.type === "select" && fieldReq.options && fieldReq.options.length > 0) {
-            const idx = nextFields.findIndex(
-              (f) => "name" in f && f.name === fieldName,
-            );
+            const idx = nextFields.findIndex((f) => "name" in f && f.name === fieldName);
             const existing = idx >= 0 ? nextFields[idx] : undefined;
             if (existing && existing.type === "select") {
               const merged = mergeSelectOptions(existing.options, fieldReq.options);

@@ -20,10 +20,7 @@ interface PageHeaderProps {
 export function PageHeader({ title, description, actions, className }: PageHeaderProps) {
   return (
     <div
-      className={cn(
-        "flex flex-col gap-3 md:flex-row md:items-end md:justify-between",
-        className,
-      )}
+      className={cn("flex flex-col gap-3 md:flex-row md:items-end md:justify-between", className)}
     >
       <div className="flex flex-col gap-1.5">
         <h1 className="text-[22px] font-semibold leading-[1.15] tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">

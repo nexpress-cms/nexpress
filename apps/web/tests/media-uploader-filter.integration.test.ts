@@ -19,11 +19,7 @@ import { NextRequest } from "next/server";
 
 function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
   const headers = new Headers(init.headers);
-  if (
-    !headers.has("content-type") &&
-    init.body &&
-    typeof init.body === "string"
-  ) {
+  if (!headers.has("content-type") && init.body && typeof init.body === "string") {
     headers.set("content-type", "application/json");
   }
   if (init.cookies && init.cookies.length > 0) {
@@ -32,11 +28,7 @@ function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = 
   return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
 }
 
-function staffRequest(
-  path: string,
-  user: TestUserSession,
-  init: RequestInit = {},
-): NextRequest {
+function staffRequest(path: string, user: TestUserSession, init: RequestInit = {}): NextRequest {
   return jsonRequest(path, {
     ...init,
     cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
@@ -70,10 +62,7 @@ async function memberUpload(
   ]);
   formData.append("file", new Blob([png], { type: "image/png" }), filename);
   const headers = new Headers();
-  headers.set(
-    "cookie",
-    `np-mb-session=${member.sessionCookie}; np-mb-csrf=${member.csrfCookie}`,
-  );
+  headers.set("cookie", `np-mb-session=${member.sessionCookie}; np-mb-csrf=${member.csrfCookie}`);
   headers.set("x-csrf-token", member.csrfCookie);
   const req = new NextRequest("http://localhost:3000/api/members/media/upload", {
     method: "POST",
@@ -121,9 +110,7 @@ describe.skipIf(skipIfNoTestDb())("media uploader filters (Phase 9.7k)", () => {
     await staffUploadDirect(editor.userId, "staff-1.png");
     await memberUpload(member, "member-1.png");
 
-    const res = await mediaListGET(
-      staffRequest("/api/media?uploaderKind=member", editor),
-    );
+    const res = await mediaListGET(staffRequest("/api/media?uploaderKind=member", editor));
     const body = await readJson<{
       docs: Array<{
         id: string;
@@ -153,9 +140,7 @@ describe.skipIf(skipIfNoTestDb())("media uploader filters (Phase 9.7k)", () => {
     await staffUploadDirect(editor.userId, "staff-2.png");
     await memberUpload(member, "member-2.png");
 
-    const res = await mediaListGET(
-      staffRequest("/api/media?uploaderKind=staff", editor),
-    );
+    const res = await mediaListGET(staffRequest("/api/media?uploaderKind=staff", editor));
     const body = await readJson<{
       docs: Array<{
         filename: string;
@@ -214,9 +199,7 @@ describe.skipIf(skipIfNoTestDb())("media uploader filters (Phase 9.7k)", () => {
     const member = await seedActiveMember("typo-typo");
     await memberUpload(member, "typo.png");
 
-    const res = await mediaListGET(
-      staffRequest("/api/media?uploaderKind=hackers", editor),
-    );
+    const res = await mediaListGET(staffRequest("/api/media?uploaderKind=hackers", editor));
     const body = await readJson<{ totalDocs: number }>(res);
     expect(body.status).toBe(200);
     // Filter ignored — the one member row is returned.
@@ -227,9 +210,7 @@ describe.skipIf(skipIfNoTestDb())("media uploader filters (Phase 9.7k)", () => {
     // Pre-existing behavior: GET /api/media requires `editor` role.
     // Just confirming 9.7k didn't change that.
     const author = await seedUser({ role: "author" });
-    const res = await mediaListGET(
-      staffRequest("/api/media?uploaderKind=member", author),
-    );
+    const res = await mediaListGET(staffRequest("/api/media?uploaderKind=member", author));
     expect(res.status).toBe(403);
   });
 });

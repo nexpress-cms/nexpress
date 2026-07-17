@@ -30,8 +30,7 @@ export const magazinePatterns: NpPatternDefinition[] = [
         type: "magazine.hero-feature",
         props: {
           title: "Today's lead story",
-          subtitle:
-            "Replace this subdeck with the lead piece's summary or rotating editor's pick.",
+          subtitle: "Replace this subdeck with the lead piece's summary or rotating editor's pick.",
           ctaText: "Read more",
           ctaUrl: "#",
         },
@@ -62,9 +61,7 @@ export const magazinePatterns: NpPatternDefinition[] = [
         type: "magazine.section-strip",
         props: {
           heading: "Related coverage",
-          items: [
-            { title: "Related piece", url: "#", category: "Section" },
-          ],
+          items: [{ title: "Related piece", url: "#", category: "Section" }],
         },
       },
       {

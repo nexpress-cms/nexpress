@@ -1,8 +1,4 @@
-import {
-  findDocuments,
-  type NpFindOptions,
-  type NpFindResult,
-} from "@nexpress/core";
+import { findDocuments, type NpFindOptions, type NpFindResult } from "@nexpress/core";
 import type { NpBlockRenderContext } from "@nexpress/blocks";
 
 import { getCachedActiveThemeId } from "./cache.js";
@@ -20,8 +16,7 @@ function applyPublishedDefault(
 ): Partial<NpFindOptions> {
   const next: Partial<NpFindOptions> = { ...(options ?? {}) };
   const existingWhere = next.where ?? {};
-  const callerSpecifiedStatus =
-    "status" in existingWhere && existingWhere.status !== undefined;
+  const callerSpecifiedStatus = "status" in existingWhere && existingWhere.status !== undefined;
   if (!callerSpecifiedStatus) {
     next.where = {
       ...existingWhere,

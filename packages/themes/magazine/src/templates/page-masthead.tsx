@@ -14,21 +14,20 @@ export function PageMastheadTemplate(_props: NpTemplateRenderProps) {
         <p>About · The masthead</p>
         <h1>A small review, in the long tradition.</h1>
         <span>
-          Published every other Sunday from Seoul and New York: reporting,
-          profiles, essays, photography, and patient editorial work.
+          Published every other Sunday from Seoul and New York: reporting, profiles, essays,
+          photography, and patient editorial work.
         </span>
       </header>
 
       <section className="np-magazine-masthead-manifesto">
         <p>
-          The Northbound Review was founded in 2014 above a bookstore in
-          Hapjeong-dong. We still edit for the same thing: pieces that can sit
-          on a desk for a month and remain useful when the week has moved on.
+          The Northbound Review was founded in 2014 above a bookstore in Hapjeong-dong. We still
+          edit for the same thing: pieces that can sit on a desk for a month and remain useful when
+          the week has moved on.
         </p>
         <p>
-          We commission slowly, pay on acceptance, edit lightly, and publish in
-          issues rather than feeds. The web edition runs on NexPress; the print
-          edition still ships by post.
+          We commission slowly, pay on acceptance, edit lightly, and publish in issues rather than
+          feeds. The web edition runs on NexPress; the print edition still ships by post.
         </p>
       </section>
 
@@ -40,11 +39,18 @@ export function PageMastheadTemplate(_props: NpTemplateRenderProps) {
         <div className="np-magazine-masthead-grid">
           {editors.map(([role, name, bio], index) => (
             <article className="np-magazine-masthead-editor" key={name}>
-              <div data-initials={name.split(" ").map((p) => p[0]).join("")} />
+              <div
+                data-initials={name
+                  .split(" ")
+                  .map((p) => p[0])
+                  .join("")}
+              />
               <span>{role}</span>
               <h3>{name}</h3>
               <p>{bio}</p>
-              <small>edited {(312 - index * 44).toString()} · since {2014 + index}</small>
+              <small>
+                edited {(312 - index * 44).toString()} · since {2014 + index}
+              </small>
             </article>
           ))}
         </div>

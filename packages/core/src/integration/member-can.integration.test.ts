@@ -1,19 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-import {
-  npBans,
-  npMemberRoles,
-  npMembers,
-} from "../db/schema/community.js";
+import { npBans, npMemberRoles, npMembers } from "../db/schema/community.js";
 import { memberCan } from "../community/can.js";
-import {
-  closeTestDb,
-  ensureMigrated,
-  getTestDb,
-  skipIfNoTestDb,
-  truncateAll,
-} from "./setup.js";
+import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } from "./setup.js";
 
 async function seedMember(
   db: NodePgDatabase<Record<string, unknown>>,
@@ -85,9 +75,9 @@ describe.skipIf(skipIfNoTestDb())("memberCan (integration)", () => {
     const owner = await seedMember(db, { handle: "owner1" });
     const stranger = await seedMember(db, { handle: "stranger1" });
 
-    expect(
-      await memberCan(owner, "edit-own", { type: "comment", id: "c1", ownerId: owner }),
-    ).toBe(true);
+    expect(await memberCan(owner, "edit-own", { type: "comment", id: "c1", ownerId: owner })).toBe(
+      true,
+    );
     expect(
       await memberCan(stranger, "edit-own", { type: "comment", id: "c1", ownerId: owner }),
     ).toBe(false);

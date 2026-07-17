@@ -228,15 +228,9 @@ describe.skipIf(skipIfNoTestDb())("per-doc visibility (Phase 21.17)", () => {
     const anon = await findDocuments("pages", { locale: "en" });
     expect(anon.docs).toHaveLength(0);
 
-    const authed = await findDocuments(
-      "pages",
-      { locale: "en" },
-      actor(),
-    );
+    const authed = await findDocuments("pages", { locale: "en" }, actor());
     expect(authed.docs).toHaveLength(1);
-    expect((authed.docs[0] as { visibility: string }).visibility).toBe(
-      "private",
-    );
+    expect((authed.docs[0] as { visibility: string }).visibility).toBe("private");
   });
 
   it("WP-import: status='private' lands as published+private and stays anonymous-hidden", async () => {
@@ -279,9 +273,7 @@ describe.skipIf(skipIfNoTestDb())("per-doc visibility (Phase 21.17)", () => {
 
     const report = await applyBundle(bundle, { actor: actor(), dryRun: false });
     expect(report.applied).toHaveLength(1);
-    expect(
-      report.notes.some((n) => /visibility=private/.test(n)),
-    ).toBe(true);
+    expect(report.notes.some((n) => /visibility=private/.test(n))).toBe(true);
 
     // Anonymous read — the imported post is hidden by the
     // auto-filter (visibility=public default).
@@ -292,15 +284,9 @@ describe.skipIf(skipIfNoTestDb())("per-doc visibility (Phase 21.17)", () => {
     // visibility=* sentinel so we don't depend on the actual slug
     // (the pipeline's slugField may derive a different slug from
     // the title than the WP record's slug).
-    const authed = await findDocuments(
-      "posts",
-      { where: { visibility: "*" } },
-      actor(),
-    );
+    const authed = await findDocuments("posts", { where: { visibility: "*" } }, actor());
     expect(authed.docs).toHaveLength(1);
-    expect((authed.docs[0] as { visibility: string }).visibility).toBe(
-      "private",
-    );
+    expect((authed.docs[0] as { visibility: string }).visibility).toBe("private");
     expect((authed.docs[0] as { status: string }).status).toBe("published");
   });
 });

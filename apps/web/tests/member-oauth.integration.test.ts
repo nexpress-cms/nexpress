@@ -69,7 +69,8 @@ async function registerStub(
       if (options.failExchange) throw new Error("stub-failure");
       return {
         providerUserId: options.profileSubject ?? `subject-${code}`,
-        email: options.profileEmail === undefined ? `oauth-${code}@example.com` : options.profileEmail,
+        email:
+          options.profileEmail === undefined ? `oauth-${code}@example.com` : options.profileEmail,
         name: options.profileName === undefined ? "Stub Member" : options.profileName,
         metadata: { login: "stub-login" },
       };
@@ -94,10 +95,9 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     const bookkeeping: Bookkeeping = { authorizeCalls: 0, exchangeCalls: 0 };
     const id = await registerStub(bookkeeping);
 
-    const res = await oauthStartGET(
-      jsonRequest(`/api/members/oauth/${id}/start`),
-      { params: Promise.resolve({ provider: id }) },
-    );
+    const res = await oauthStartGET(jsonRequest(`/api/members/oauth/${id}/start`), {
+      params: Promise.resolve({ provider: id }),
+    });
     expect(res.status).toBe(307);
     expect(res.headers.get("location") ?? "").toContain("https://example.invalid/oauth/authorize");
     const cookieState = cookieValue(res.headers.get("set-cookie"), "np-mb-oauth-state");
@@ -106,10 +106,9 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
   });
 
   it("/start 404s for an unregistered provider", async () => {
-    const res = await oauthStartGET(
-      jsonRequest(`/api/members/oauth/missing/start`),
-      { params: Promise.resolve({ provider: "missing" }) },
-    );
+    const res = await oauthStartGET(jsonRequest(`/api/members/oauth/missing/start`), {
+      params: Promise.resolve({ provider: "missing" }),
+    });
     expect(res.status).toBe(404);
   });
 
@@ -117,17 +116,15 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     const bookkeeping: Bookkeeping = { authorizeCalls: 0, exchangeCalls: 0 };
     const id = await registerStub(bookkeeping, { profileEmail: "fresh@example.com" });
 
-    const start = await oauthStartGET(
-      jsonRequest(`/api/members/oauth/${id}/start`),
-      { params: Promise.resolve({ provider: id }) },
-    );
+    const start = await oauthStartGET(jsonRequest(`/api/members/oauth/${id}/start`), {
+      params: Promise.resolve({ provider: id }),
+    });
     const state = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
 
     const callback = await oauthCallbackGET(
-      jsonRequest(
-        `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`np-mb-oauth-state=${state}`] },
-      ),
+      jsonRequest(`/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`, {
+        cookies: [`np-mb-oauth-state=${state}`],
+      }),
       { params: Promise.resolve({ provider: id }) },
     );
     expect(callback.status).toBe(307);
@@ -179,16 +176,14 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
       status: "active",
     });
 
-    const start = await oauthStartGET(
-      jsonRequest(`/api/members/oauth/${id}/start`),
-      { params: Promise.resolve({ provider: id }) },
-    );
+    const start = await oauthStartGET(jsonRequest(`/api/members/oauth/${id}/start`), {
+      params: Promise.resolve({ provider: id }),
+    });
     const state = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
     const cb = await oauthCallbackGET(
-      jsonRequest(
-        `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`np-mb-oauth-state=${state}`] },
-      ),
+      jsonRequest(`/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`, {
+        cookies: [`np-mb-oauth-state=${state}`],
+      }),
       { params: Promise.resolve({ provider: id }) },
     );
     expect(cb.status).toBe(307);
@@ -205,17 +200,15 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     const bookkeeping: Bookkeeping = { authorizeCalls: 0, exchangeCalls: 0 };
     const id = await registerStub(bookkeeping);
 
-    const start = await oauthStartGET(
-      jsonRequest(`/api/members/oauth/${id}/start`),
-      { params: Promise.resolve({ provider: id }) },
-    );
+    const start = await oauthStartGET(jsonRequest(`/api/members/oauth/${id}/start`), {
+      params: Promise.resolve({ provider: id }),
+    });
     const cookieState = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
 
     const cb = await oauthCallbackGET(
-      jsonRequest(
-        `/api/members/oauth/${id}/callback?code=abc&state=tampered`,
-        { cookies: [`np-mb-oauth-state=${cookieState}`] },
-      ),
+      jsonRequest(`/api/members/oauth/${id}/callback?code=abc&state=tampered`, {
+        cookies: [`np-mb-oauth-state=${cookieState}`],
+      }),
       { params: Promise.resolve({ provider: id }) },
     );
     expect(cb.status).toBe(307);
@@ -228,17 +221,15 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     const bookkeeping: Bookkeeping = { authorizeCalls: 0, exchangeCalls: 0 };
     const id = await registerStub(bookkeeping, { failExchange: true });
 
-    const start = await oauthStartGET(
-      jsonRequest(`/api/members/oauth/${id}/start`),
-      { params: Promise.resolve({ provider: id }) },
-    );
+    const start = await oauthStartGET(jsonRequest(`/api/members/oauth/${id}/start`), {
+      params: Promise.resolve({ provider: id }),
+    });
     const state = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
 
     const cb = await oauthCallbackGET(
-      jsonRequest(
-        `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`np-mb-oauth-state=${state}`] },
-      ),
+      jsonRequest(`/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`, {
+        cookies: [`np-mb-oauth-state=${state}`],
+      }),
       { params: Promise.resolve({ provider: id }) },
     );
     expect(cb.status).toBe(307);
@@ -260,16 +251,14 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
       status: "suspended",
     });
 
-    const start = await oauthStartGET(
-      jsonRequest(`/api/members/oauth/${id}/start`),
-      { params: Promise.resolve({ provider: id }) },
-    );
+    const start = await oauthStartGET(jsonRequest(`/api/members/oauth/${id}/start`), {
+      params: Promise.resolve({ provider: id }),
+    });
     const state = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
     const cb = await oauthCallbackGET(
-      jsonRequest(
-        `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`np-mb-oauth-state=${state}`] },
-      ),
+      jsonRequest(`/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`, {
+        cookies: [`np-mb-oauth-state=${state}`],
+      }),
       { params: Promise.resolve({ provider: id }) },
     );
     expect(cb.status).toBe(307);
@@ -302,17 +291,15 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
       })
       .returning({ id: npMembers.id })) as Array<{ id: string }>;
 
-    const start = await oauthStartGET(
-      jsonRequest(`/api/members/oauth/${id}/start`),
-      { params: Promise.resolve({ provider: id }) },
-    );
+    const start = await oauthStartGET(jsonRequest(`/api/members/oauth/${id}/start`), {
+      params: Promise.resolve({ provider: id }),
+    });
     const state = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
 
     const cb = await oauthCallbackGET(
-      jsonRequest(
-        `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`np-mb-oauth-state=${state}`] },
-      ),
+      jsonRequest(`/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`, {
+        cookies: [`np-mb-oauth-state=${state}`],
+      }),
       { params: Promise.resolve({ provider: id }) },
     );
     expect(cb.status).toBe(307);
@@ -334,10 +321,9 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     });
 
     async function runOnce() {
-      const start = await oauthStartGET(
-        jsonRequest(`/api/members/oauth/${id}/start`),
-        { params: Promise.resolve({ provider: id }) },
-      );
+      const start = await oauthStartGET(jsonRequest(`/api/members/oauth/${id}/start`), {
+        params: Promise.resolve({ provider: id }),
+      });
       const state = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
       return oauthCallbackGET(
         jsonRequest(
@@ -368,9 +354,7 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
   // (durable link or email match against an active member) still
   // work — those aren't new registrations.
   it("auto-provisioning new member is refused when registrationEnabled=false (#118)", async () => {
-    const { updateCommunitySettings, npMembers } = await import(
-      "@nexpress/core"
-    );
+    const { updateCommunitySettings, npMembers } = await import("@nexpress/core");
     await updateCommunitySettings({ registrationEnabled: false }, null);
 
     const bookkeeping: Bookkeeping = { authorizeCalls: 0, exchangeCalls: 0 };
@@ -378,23 +362,19 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
       profileEmail: "stranger@example.com",
     });
 
-    const start = await oauthStartGET(
-      jsonRequest(`/api/members/oauth/${id}/start`),
-      { params: Promise.resolve({ provider: id }) },
-    );
+    const start = await oauthStartGET(jsonRequest(`/api/members/oauth/${id}/start`), {
+      params: Promise.resolve({ provider: id }),
+    });
     const state = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
 
     const cb = await oauthCallbackGET(
-      jsonRequest(
-        `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`np-mb-oauth-state=${state}`] },
-      ),
+      jsonRequest(`/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`, {
+        cookies: [`np-mb-oauth-state=${state}`],
+      }),
       { params: Promise.resolve({ provider: id }) },
     );
     expect(cb.status).toBe(307);
-    expect(cb.headers.get("location") ?? "").toContain(
-      "oauth_error=registration_disabled",
-    );
+    expect(cb.headers.get("location") ?? "").toContain("oauth_error=registration_disabled");
 
     const db = await getTestDb();
     const { eq } = await import("drizzle-orm");
@@ -409,12 +389,8 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     // Sanity check: the gate must not break the normal "existing
     // member signs in via OAuth" path. Disabling registration
     // refuses NEW accounts, not pre-existing logins.
-    const {
-      updateCommunitySettings,
-      hashPassword,
-      npMembers,
-      npMemberIdentities,
-    } = await import("@nexpress/core");
+    const { updateCommunitySettings, hashPassword, npMembers, npMemberIdentities } =
+      await import("@nexpress/core");
     const db = await getTestDb();
     const password = await hashPassword("password-12");
     await db.insert(npMembers).values({
@@ -432,16 +408,14 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
       profileEmail: "preexisting@example.com",
     });
 
-    const start = await oauthStartGET(
-      jsonRequest(`/api/members/oauth/${id}/start`),
-      { params: Promise.resolve({ provider: id }) },
-    );
+    const start = await oauthStartGET(jsonRequest(`/api/members/oauth/${id}/start`), {
+      params: Promise.resolve({ provider: id }),
+    });
     const state = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
     const cb = await oauthCallbackGET(
-      jsonRequest(
-        `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`np-mb-oauth-state=${state}`] },
-      ),
+      jsonRequest(`/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`, {
+        cookies: [`np-mb-oauth-state=${state}`],
+      }),
       { params: Promise.resolve({ provider: id }) },
     );
     expect(cb.status).toBe(307);

@@ -53,10 +53,7 @@ export function isPortFree(port: number): Promise<boolean> {
  * the wizard's responsiveness budget for vanishingly diminishing
  * returns.
  */
-export async function findFreePort(
-  start: number,
-  count: number = 100,
-): Promise<number | null> {
+export async function findFreePort(start: number, count: number = 100): Promise<number | null> {
   for (let offset = 0; offset < count; offset += 1) {
     const port = start + offset;
     // Stay inside the usable user-port range. Above 65535 is invalid;

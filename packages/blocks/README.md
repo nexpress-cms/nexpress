@@ -15,11 +15,7 @@ pnpm add @nexpress/blocks
 
 ```ts
 // Server-safe — registry + renderer + types + block definitions
-import {
-  renderBlocks,
-  getDefaultBlocks,
-  createBlockRegistry,
-} from "@nexpress/blocks";
+import { renderBlocks, getDefaultBlocks, createBlockRegistry } from "@nexpress/blocks";
 ```
 
 The page-builder UI itself (drag-and-drop editor + palette) lives

@@ -61,11 +61,8 @@ export async function PageFrontTemplate(_props: NpTemplateRenderProps) {
   // / first root. Split into two explicit lookups so the intent
   // reads top-to-bottom: find the parent, then the child.
   const pluginsRoot = tree.find((node) => node.slug === "plugins");
-  const quickstartChild = pluginsRoot?.children.find(
-    (c) => c.slug === "author-quickstart",
-  );
-  const quickstartTarget =
-    quickstartChild ?? tree[0]?.children[0] ?? tree[0] ?? null;
+  const quickstartChild = pluginsRoot?.children.find((c) => c.slug === "author-quickstart");
+  const quickstartTarget = quickstartChild ?? tree[0]?.children[0] ?? tree[0] ?? null;
 
   return (
     <article className="np-docs-front">
@@ -77,9 +74,9 @@ export async function PageFrontTemplate(_props: NpTemplateRenderProps) {
         </span>
         <h1>Documentation</h1>
         <p className="np-docs-front-lede">
-          Everything you need to install, configure, extend, and ship a
-          NexPress site — from a first install to the API reference. Browse
-          by section, or jump straight into the plugin author quickstart.
+          Everything you need to install, configure, extend, and ship a NexPress site — from a first
+          install to the API reference. Browse by section, or jump straight into the plugin author
+          quickstart.
         </p>
         {quickstartTarget ? (
           <div className="np-docs-front-cta">
@@ -103,11 +100,7 @@ export async function PageFrontTemplate(_props: NpTemplateRenderProps) {
       {tree.length > 0 ? (
         <section className="np-docs-front-groups" aria-label="Documentation sections">
           {tree.map((group) => (
-            <a
-              className="np-docs-front-group"
-              key={group.id}
-              href={`/docs/${group.slug}`}
-            >
+            <a className="np-docs-front-group" key={group.id} href={`/docs/${group.slug}`}>
               <h2 className="np-docs-front-group-title">
                 {group.title}
                 <span className="np-docs-front-group-count">
@@ -115,18 +108,14 @@ export async function PageFrontTemplate(_props: NpTemplateRenderProps) {
                   {group.children.length === 1 ? "" : "s"}
                 </span>
               </h2>
-              {group.lede ? (
-                <p className="np-docs-front-group-lede">{group.lede}</p>
-              ) : null}
+              {group.lede ? <p className="np-docs-front-group-lede">{group.lede}</p> : null}
               {group.children.length > 0 ? (
                 <ul className="np-docs-front-group-children">
                   {group.children.slice(0, 4).map((child) => (
                     <li key={child.id}>
                       {child.title}
                       {child.badge ? (
-                        <span
-                          className={`np-docs-sidebar-badge ${child.badge.toLowerCase()}`}
-                        >
+                        <span className={`np-docs-sidebar-badge ${child.badge.toLowerCase()}`}>
                           {child.badge.toUpperCase()}
                         </span>
                       ) : null}
@@ -140,10 +129,7 @@ export async function PageFrontTemplate(_props: NpTemplateRenderProps) {
       ) : null}
 
       {recent.length > 0 ? (
-        <section
-          className="np-docs-front-recent"
-          aria-label="Recently updated docs"
-        >
+        <section className="np-docs-front-recent" aria-label="Recently updated docs">
           <h2 className="np-docs-front-recent-eyebrow">Recently updated</h2>
           <ul className="np-docs-front-recent-list">
             {recent.map((node) => (
@@ -151,10 +137,7 @@ export async function PageFrontTemplate(_props: NpTemplateRenderProps) {
                 <a href={`/docs/${node.slug}`}>
                   <span className="np-docs-front-recent-title">{node.title}</span>
                   {node.updatedAt ? (
-                    <time
-                      className="np-docs-front-recent-time"
-                      dateTime={node.updatedAt}
-                    >
+                    <time className="np-docs-front-recent-time" dateTime={node.updatedAt}>
                       {formatRelative(node.updatedAt)}
                     </time>
                   ) : null}
@@ -180,8 +163,7 @@ function buildTree(rows: DocRow[]): DocNode[] {
       parent: typeof r.parent === "string" ? r.parent : null,
       order: typeof r.order === "number" ? r.order : 0,
       badge: typeof r.badge === "string" ? r.badge : null,
-      publishedAt:
-        typeof r.publishedAt === "string" ? r.publishedAt : null,
+      publishedAt: typeof r.publishedAt === "string" ? r.publishedAt : null,
       updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : null,
       children: [],
     };
@@ -201,8 +183,7 @@ function recentlyUpdated(rows: DocRow[], limit: number): DocNode[] {
       parent: typeof r.parent === "string" ? r.parent : null,
       order: 0,
       badge: typeof r.badge === "string" ? r.badge : null,
-      publishedAt:
-        typeof r.publishedAt === "string" ? r.publishedAt : null,
+      publishedAt: typeof r.publishedAt === "string" ? r.publishedAt : null,
       updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : null,
       children: [],
     });

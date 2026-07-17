@@ -4,12 +4,13 @@
 > Date: 2026-05-10
 > Status: design lock pending — implementation hasn't started.
 > Prerequisites:
->   - F.2 theme route dispatcher
->     (`packages/next/src/route-dispatcher.ts`, `NpThemeRoute` in
->     `packages/theme/src/define-theme.ts`)
->   - Plugin manifest contract (`docs/plugin-manifest.md`)
->   - F.4–F.6 source-precedence pattern (theme overrides plugin
->     contributions for blocks, patterns, nav locations)
+>
+> - F.2 theme route dispatcher
+>   (`packages/next/src/route-dispatcher.ts`, `NpThemeRoute` in
+>   `packages/theme/src/define-theme.ts`)
+> - Plugin manifest contract (`docs/plugin-manifest.md`)
+> - F.4–F.6 source-precedence pattern (theme overrides plugin
+>   contributions for blocks, patterns, nav locations)
 
 ---
 
@@ -111,7 +112,7 @@ The plugin SDK exposes the route under a new field on
 import { definePlugin } from "@nexpress/plugin-sdk";
 
 definePlugin({
-  manifest: { id: "forum", /* ... */ },
+  manifest: { id: "forum" /* ... */ },
   pageRoutes: [
     { pattern: "/discussions", component: DiscussionsList },
     { pattern: "/discussions/new", component: NewDiscussion, surface: "member" },
@@ -175,6 +176,7 @@ references — `var(--np-color-brand)`, `var(--np-radius-md)`, etc.
 No per-plugin CSS bundle the framework auto-includes.
 
 Rationale:
+
 - Theme tokens are the v0.2 commitment surface; plugins reading
   them inherit the operator's visual customization for free.
 - Plugins shipping their own CSS would compete with theme styles
@@ -331,7 +333,9 @@ const pluginRoutes = getPluginPageRoutes();
 const allRoutes = [
   ...themeRoutes.map((r) => ({ source: "theme", route: r })),
   ...pluginRoutes.map(({ route, pluginId }) => ({
-    source: "plugin", pluginId, route,
+    source: "plugin",
+    pluginId,
+    route,
   })),
 ];
 // Match in order; theme entries appear first → win on collision.
@@ -360,7 +364,12 @@ Each file becomes a React component (no `export default async function Page()` w
 `packages/plugins/forum/src/index.ts` adds:
 
 ```ts
-import { DiscussionsList, NewDiscussion, DiscussionDetail, EditDiscussion } from "./routes/index.js";
+import {
+  DiscussionsList,
+  NewDiscussion,
+  DiscussionDetail,
+  EditDiscussion,
+} from "./routes/index.js";
 
 export const forumPlugin = definePlugin({
   // ...existing manifest...
@@ -386,14 +395,14 @@ After the plugin migration:
 
 ## 7. Risk register
 
-| # | Risk | Mitigation |
-|---|------|------------|
-| 1 | Plugin authors expecting React Server Component lifecycle (`generateStaticParams` etc.) might be surprised by the SDK route shape (single component prop) | Doc the limitation; F.2 had the same trade-off and shipped |
-| 2 | Style collision between plugin routes and theme tokens not catching every operator's customization | Reserve `--np-plugin-<id>-*` namespace early; document the escape path |
-| 3 | Two plugins shipping the same path → the warn-and-resolve approach picks one silently at request time | Boot warning + admin Plugins surface flag for collisions; longer-term: explicit precedence config |
-| 4 | i18n auto-prefix breaks for plugins that handle locale internally | The `locale: "none"` opt-out covers this; tested via at least one example in the implementation phase |
-| 5 | Disabling a plugin yanks its routes — bookmarked links 404 | Documented behavior; admin UI can show "this URL came from plugin X" on the Plugins page |
-| 6 | Theme override of plugin route silently overrides — operator confusion | Boot collision warning lists all sources; admin Health page mirrors |
+| #   | Risk                                                                                                                                                      | Mitigation                                                                                            |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| 1   | Plugin authors expecting React Server Component lifecycle (`generateStaticParams` etc.) might be surprised by the SDK route shape (single component prop) | Doc the limitation; F.2 had the same trade-off and shipped                                            |
+| 2   | Style collision between plugin routes and theme tokens not catching every operator's customization                                                        | Reserve `--np-plugin-<id>-*` namespace early; document the escape path                                |
+| 3   | Two plugins shipping the same path → the warn-and-resolve approach picks one silently at request time                                                     | Boot warning + admin Plugins surface flag for collisions; longer-term: explicit precedence config     |
+| 4   | i18n auto-prefix breaks for plugins that handle locale internally                                                                                         | The `locale: "none"` opt-out covers this; tested via at least one example in the implementation phase |
+| 5   | Disabling a plugin yanks its routes — bookmarked links 404                                                                                                | Documented behavior; admin UI can show "this URL came from plugin X" on the Plugins page              |
+| 6   | Theme override of plugin route silently overrides — operator confusion                                                                                    | Boot collision warning lists all sources; admin Health page mirrors                                   |
 
 ## 8. Phasing
 

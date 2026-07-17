@@ -66,9 +66,7 @@ export interface NpThemeRequirementResult {
  * `group` (which scope their children inside a sub-record —
  * theme requirements don't reach into those, by design).
  */
-function flattenTopLevelFields(
-  fields: NpFieldConfig[],
-): Map<string, NpFieldConfig> {
+function flattenTopLevelFields(fields: NpFieldConfig[]): Map<string, NpFieldConfig> {
   const out = new Map<string, NpFieldConfig>();
   for (const f of fields) {
     if (f.type === "row" || f.type === "collapsible") {
@@ -154,12 +152,7 @@ export function checkThemeRequirements(
         fieldReq.relationTo &&
         actual.type === "relationship"
       ) {
-        if (
-          !relationToMatches(
-            fieldReq.relationTo,
-            actual.relationTo,
-          )
-        ) {
+        if (!relationToMatches(fieldReq.relationTo, actual.relationTo)) {
           result.relationConflicts.push({
             collection: slug,
             field: fieldName,

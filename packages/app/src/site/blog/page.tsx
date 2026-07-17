@@ -41,9 +41,7 @@ interface BlogPageProps {
  * framework default list because docs only ships
  * `templates.posts.doc`. Different content → no canonical.
  */
-export async function generateMetadata({
-  searchParams,
-}: BlogPageProps): Promise<Metadata> {
+export async function generateMetadata({ searchParams }: BlogPageProps): Promise<Metadata> {
   await ensureFor("read");
 
   const { page } = await searchParams;
@@ -62,8 +60,7 @@ export async function generateMetadata({
   // while OG stays at /blog). Paginated pages stay self-
   // canonical regardless of theme.
   const path = isFirstPage ? "/blog" : `/blog?page=${pageNum}`;
-  const canonicalPath =
-    isFirstPage && (await shouldCanonicalizeToHome()) ? "/" : path;
+  const canonicalPath = isFirstPage && (await shouldCanonicalizeToHome()) ? "/" : path;
 
   return buildPageMetadata({
     title: isFirstPage ? "Blog" : `Blog — page ${pageNum}`,
@@ -76,21 +73,15 @@ export async function generateMetadata({
 async function shouldCanonicalizeToHome(): Promise<boolean> {
   const active = await getActiveTheme();
   const postTemplates = active?.impl.templates?.posts;
-  const hasListOrIndex = Boolean(
-    postTemplates?.list ?? postTemplates?.index,
-  );
+  const hasListOrIndex = Boolean(postTemplates?.list ?? postTemplates?.index);
   const hasFrontTemplate = Boolean(active?.impl.templates?.pages?.front);
   if (!hasFrontTemplate || !hasListOrIndex) return false;
 
-  const home = await findDocuments<{ slug?: string; template?: string }>(
-    "pages",
-    {
-      where: { slug: "/", status: "published" },
-      limit: 1,
-    },
-  );
-  const homeTemplate =
-    typeof home.docs[0]?.template === "string" ? home.docs[0].template : null;
+  const home = await findDocuments<{ slug?: string; template?: string }>("pages", {
+    where: { slug: "/", status: "published" },
+    limit: 1,
+  });
+  const homeTemplate = typeof home.docs[0]?.template === "string" ? home.docs[0].template : null;
   return homeTemplate === "front";
 }
 
@@ -198,9 +189,9 @@ type PostsListTemplate = ComponentType<{
  */
 async function resolvePostsListTemplate(): Promise<PostsListTemplate | null> {
   for (const templateId of ["list", "index"] as const) {
-    const entry = (await resolveTemplateComponent("posts", templateId)) as
-      | { component?: PostsListTemplate }
-      | null;
+    const entry = (await resolveTemplateComponent("posts", templateId)) as {
+      component?: PostsListTemplate;
+    } | null;
     if (entry?.component) return entry.component;
   }
   return null;

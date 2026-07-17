@@ -68,8 +68,7 @@ describe.skipIf(skipIfNoTestDb())("i18n pipeline (Phase 12.1)", () => {
 
     const found = await findDocuments("pages", { limit: 10 });
     const row = found.docs.find((d) => d.id === id) as
-      | { locale?: string; translationGroupId?: string }
-      | undefined;
+      { locale?: string; translationGroupId?: string } | undefined;
     expect(row?.locale).toBe("en");
     expect(typeof row?.translationGroupId).toBe("string");
     expect(row?.translationGroupId).toMatch(
@@ -92,12 +91,7 @@ describe.skipIf(skipIfNoTestDb())("i18n pipeline (Phase 12.1)", () => {
   it("rejects unknown locales at write time", async () => {
     const { saveDocument, NpValidationError } = await import("@nexpress/core");
     await expect(
-      saveDocument(
-        "pages",
-        null,
-        { title: "Bogus", seoDescription: "...", locale: "fr" },
-        actor(),
-      ),
+      saveDocument("pages", null, { title: "Bogus", seoDescription: "...", locale: "fr" }, actor()),
     ).rejects.toBeInstanceOf(NpValidationError);
   });
 
@@ -119,8 +113,7 @@ describe.skipIf(skipIfNoTestDb())("i18n pipeline (Phase 12.1)", () => {
         locale: "ko",
         // Link the two as translations of each other by sharing
         // the same translationGroupId.
-        translationGroupId: (en.doc as { translationGroupId: string })
-          .translationGroupId,
+        translationGroupId: (en.doc as { translationGroupId: string }).translationGroupId,
       },
       actor(),
       { status: "published" },
@@ -179,8 +172,7 @@ describe.skipIf(skipIfNoTestDb())("i18n pipeline (Phase 12.1)", () => {
     );
     const id = created.doc.id as string;
     const originalLocale = (created.doc as { locale: string }).locale;
-    const originalGroup = (created.doc as { translationGroupId: string })
-      .translationGroupId;
+    const originalGroup = (created.doc as { translationGroupId: string }).translationGroupId;
 
     await saveDocument(
       "pages",
@@ -197,8 +189,7 @@ describe.skipIf(skipIfNoTestDb())("i18n pipeline (Phase 12.1)", () => {
 
     const found = await findDocuments("pages", { limit: 10 });
     const row = found.docs.find((d) => d.id === id) as
-      | { locale?: string; translationGroupId?: string }
-      | undefined;
+      { locale?: string; translationGroupId?: string } | undefined;
     expect(row?.locale).toBe(originalLocale);
     expect(row?.translationGroupId).toBe(originalGroup);
   });

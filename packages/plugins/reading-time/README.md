@@ -29,9 +29,9 @@ export default defineConfig({
 Open `/admin/plugins/reading-time` after the framework boots — the
 auto-form (G.1) renders a single labeled input:
 
-| Field            | Type   | Default | Range     |
-|------------------|--------|---------|-----------|
-| Words per minute | number | 220     | 50 – 800  |
+| Field            | Type   | Default | Range    |
+| ---------------- | ------ | ------- | -------- |
+| Words per minute | number | 220     | 50 – 800 |
 
 Operator changes persist to `np_settings (key="plugin.config:reading-time")`
 and are picked up by the next hook / route dispatch (no restart).

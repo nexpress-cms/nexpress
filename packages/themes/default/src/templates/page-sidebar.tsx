@@ -32,8 +32,8 @@ export function PageSidebarTemplate({ doc, blockCtx }: NpTemplateRenderProps) {
           <div className="np-page-sidebar-placeholder">
             <p className="np-page-sidebar-placeholder-label">On this page</p>
             <p className="np-page-sidebar-placeholder-hint">
-              Add a <code>sidebar</code> field to your pages collection to fill
-              this column with secondary blocks.
+              Add a <code>sidebar</code> field to your pages collection to fill this column with
+              secondary blocks.
             </p>
           </div>
         )}

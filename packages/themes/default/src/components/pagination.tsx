@@ -19,11 +19,7 @@ export interface PaginationProps {
   siblings?: number;
 }
 
-function pageWindow(
-  current: number,
-  total: number,
-  siblings: number,
-): Array<number | "gap"> {
+function pageWindow(current: number, total: number, siblings: number): Array<number | "gap"> {
   const windowSet = new Set<number>([1, total]);
   for (let i = -siblings; i <= siblings; i++) {
     const candidate = current + i;

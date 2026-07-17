@@ -17,10 +17,7 @@ import { useState } from "react";
 export function NewsletterForm() {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<
-    | { kind: "idle" }
-    | { kind: "submitting" }
-    | { kind: "ok" }
-    | { kind: "error"; message: string }
+    { kind: "idle" } | { kind: "submitting" } | { kind: "ok" } | { kind: "error"; message: string }
   >({ kind: "idle" });
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -41,9 +38,9 @@ export function NewsletterForm() {
         return;
       }
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as
-          | { error?: { message?: string } }
-          | null;
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
         setState({
           kind: "error",
           message: body?.error?.message ?? "Subscription failed. Try again.",

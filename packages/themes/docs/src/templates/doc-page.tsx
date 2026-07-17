@@ -33,7 +33,6 @@ interface DocDoc {
   readingTime?: number | string;
 }
 
-
 /**
  * Doc page template — three-zone article: header strap
  * (breadcrumbs + h1 + lede + meta pills), Lexical-rendered body,
@@ -72,176 +71,162 @@ export async function DocPageTemplate({
     : null;
   const richText = doc.body ?? doc.content;
   const toc = extractHeadingToc(richText);
-  const reportIssueHref = settings.githubRepo
-    ? `${settings.githubRepo}/issues/new`
-    : null;
+  const reportIssueHref = settings.githubRepo ? `${settings.githubRepo}/issues/new` : null;
 
   return (
     <>
-    <article className="np-docs-page">
-      <nav className="np-docs-breadcrumbs" aria-label="Breadcrumb">
-        {breadcrumbs.map((crumb, index) => {
-          const isLast = index === breadcrumbs.length - 1;
-          return (
-            <React.Fragment key={`crumb-${index.toString()}-${crumb.slug ?? "root"}`}>
-              {index > 0 ? (
-                <span className="np-docs-breadcrumbs-sep" aria-hidden="true">
-                  /
-                </span>
-              ) : null}
-              {isLast || !crumb.slug ? (
-                <span>{crumb.title}</span>
-              ) : (
-                <a href={`/docs/${crumb.slug}`}>{crumb.title}</a>
-              )}
-            </React.Fragment>
-          );
-        })}
-      </nav>
-
-      <h1>{doc.title}</h1>
-      {doc.lede ? <p className="np-docs-page-lede">{doc.lede}</p> : null}
-
-      {(doc.stableSince || readingLabel || updatedLabel || editHref) ? (
-        <div className="np-docs-page-meta">
-          {doc.stableSince ? (
-            <span className="np-docs-page-meta-pill status">
-              Stable since {doc.stableSince}
-            </span>
-          ) : null}
-          {readingLabel ? (
-            <span className="np-docs-page-meta-pill">{readingLabel}</span>
-          ) : null}
-          {updatedLabel ? (
-            <>
-              <span className="np-docs-page-meta-sep" aria-hidden="true">
-                ·
-              </span>
-              <span>Updated {updatedLabel}</span>
-            </>
-          ) : null}
-          {editHref ? (
-            <a href={editHref} target="_blank" rel="noreferrer">
-              Edit this page →
-            </a>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div className="np-docs-page-body">
-        {richText ? (
-          renderRichText(richText, { headingAnchors: true })
-        ) : (
-          <p style={{ color: "var(--np-color-muted-foreground)" }}>
-            No body content yet.
-          </p>
-        )}
-      </div>
-
-      <div className="np-docs-feedback">
-        <div>
-          <div className="np-docs-feedback-title">Was this page helpful?</div>
-          <div className="np-docs-feedback-helper">
-            Operators wire the feedback endpoint via a plugin or a custom
-            client island — the form is intentionally inert in v0.1.
-          </div>
-        </div>
-        <div className="np-docs-feedback-buttons">
-          <button type="button">Yes</button>
-          <button type="button">Could be better</button>
-        </div>
-      </div>
-
-      {navInfo.prev || navInfo.next ? (
-        <nav
-          className="np-docs-prev-next"
-          aria-label="Pagination"
-          data-single={
-            navInfo.prev && !navInfo.next
-              ? "prev"
-              : navInfo.next && !navInfo.prev
-                ? "next"
-                : undefined
-          }
-        >
-          {navInfo.prev ? (
-            <a
-              href={`/docs/${navInfo.prev.slug}`}
-              className="np-docs-prev-next-prev"
-            >
-              <div className="np-docs-prev-next-dir">← Previous</div>
-              <div className="np-docs-prev-next-title">{navInfo.prev.title}</div>
-            </a>
-          ) : null}
-          {navInfo.next ? (
-            <a
-              href={`/docs/${navInfo.next.slug}`}
-              className="np-docs-prev-next-next"
-            >
-              <div className="np-docs-prev-next-dir">Next →</div>
-              <div className="np-docs-prev-next-title">{navInfo.next.title}</div>
-            </a>
-          ) : null}
+      <article className="np-docs-page">
+        <nav className="np-docs-breadcrumbs" aria-label="Breadcrumb">
+          {breadcrumbs.map((crumb, index) => {
+            const isLast = index === breadcrumbs.length - 1;
+            return (
+              <React.Fragment key={`crumb-${index.toString()}-${crumb.slug ?? "root"}`}>
+                {index > 0 ? (
+                  <span className="np-docs-breadcrumbs-sep" aria-hidden="true">
+                    /
+                  </span>
+                ) : null}
+                {isLast || !crumb.slug ? (
+                  <span>{crumb.title}</span>
+                ) : (
+                  <a href={`/docs/${crumb.slug}`}>{crumb.title}</a>
+                )}
+              </React.Fragment>
+            );
+          })}
         </nav>
-      ) : null}
-    </article>
 
-    {toc.length > 0 ? (
-      <aside className="np-docs-toc" aria-label="On this page">
-        <p className="np-docs-toc-eyebrow">On this page</p>
-        <ul>
-          {toc.map((entry) => (
-            <li
-              key={`toc-${entry.id}`}
-              className={entry.level === 3 ? "np-docs-toc-l3" : undefined}
-            >
-              <a href={`#${entry.id}`}>{entry.text}</a>
-            </li>
-          ))}
-        </ul>
-        <TocScrollspy ids={toc.map((entry) => entry.id)} />
+        <h1>{doc.title}</h1>
+        {doc.lede ? <p className="np-docs-page-lede">{doc.lede}</p> : null}
 
-        {(editHref || reportIssueHref) ? (
-          <div className="np-docs-toc-secondary">
+        {doc.stableSince || readingLabel || updatedLabel || editHref ? (
+          <div className="np-docs-page-meta">
+            {doc.stableSince ? (
+              <span className="np-docs-page-meta-pill status">Stable since {doc.stableSince}</span>
+            ) : null}
+            {readingLabel ? <span className="np-docs-page-meta-pill">{readingLabel}</span> : null}
+            {updatedLabel ? (
+              <>
+                <span className="np-docs-page-meta-sep" aria-hidden="true">
+                  ·
+                </span>
+                <span>Updated {updatedLabel}</span>
+              </>
+            ) : null}
             {editHref ? (
               <a href={editHref} target="_blank" rel="noreferrer">
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  aria-hidden="true"
-                >
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                  <path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                </svg>
-                Edit on GitHub
-              </a>
-            ) : null}
-            {reportIssueHref ? (
-              <a href={reportIssueHref} target="_blank" rel="noreferrer">
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  aria-hidden="true"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                  <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-                Report an issue
+                Edit this page →
               </a>
             ) : null}
           </div>
         ) : null}
-      </aside>
-    ) : null}
+
+        <div className="np-docs-page-body">
+          {richText ? (
+            renderRichText(richText, { headingAnchors: true })
+          ) : (
+            <p style={{ color: "var(--np-color-muted-foreground)" }}>No body content yet.</p>
+          )}
+        </div>
+
+        <div className="np-docs-feedback">
+          <div>
+            <div className="np-docs-feedback-title">Was this page helpful?</div>
+            <div className="np-docs-feedback-helper">
+              Operators wire the feedback endpoint via a plugin or a custom client island — the form
+              is intentionally inert in v0.1.
+            </div>
+          </div>
+          <div className="np-docs-feedback-buttons">
+            <button type="button">Yes</button>
+            <button type="button">Could be better</button>
+          </div>
+        </div>
+
+        {navInfo.prev || navInfo.next ? (
+          <nav
+            className="np-docs-prev-next"
+            aria-label="Pagination"
+            data-single={
+              navInfo.prev && !navInfo.next
+                ? "prev"
+                : navInfo.next && !navInfo.prev
+                  ? "next"
+                  : undefined
+            }
+          >
+            {navInfo.prev ? (
+              <a href={`/docs/${navInfo.prev.slug}`} className="np-docs-prev-next-prev">
+                <div className="np-docs-prev-next-dir">← Previous</div>
+                <div className="np-docs-prev-next-title">{navInfo.prev.title}</div>
+              </a>
+            ) : null}
+            {navInfo.next ? (
+              <a href={`/docs/${navInfo.next.slug}`} className="np-docs-prev-next-next">
+                <div className="np-docs-prev-next-dir">Next →</div>
+                <div className="np-docs-prev-next-title">{navInfo.next.title}</div>
+              </a>
+            ) : null}
+          </nav>
+        ) : null}
+      </article>
+
+      {toc.length > 0 ? (
+        <aside className="np-docs-toc" aria-label="On this page">
+          <p className="np-docs-toc-eyebrow">On this page</p>
+          <ul>
+            {toc.map((entry) => (
+              <li
+                key={`toc-${entry.id}`}
+                className={entry.level === 3 ? "np-docs-toc-l3" : undefined}
+              >
+                <a href={`#${entry.id}`}>{entry.text}</a>
+              </li>
+            ))}
+          </ul>
+          <TocScrollspy ids={toc.map((entry) => entry.id)} />
+
+          {editHref || reportIssueHref ? (
+            <div className="np-docs-toc-secondary">
+              {editHref ? (
+                <a href={editHref} target="_blank" rel="noreferrer">
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    aria-hidden="true"
+                  >
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                  Edit on GitHub
+                </a>
+              ) : null}
+              {reportIssueHref ? (
+                <a href={reportIssueHref} target="_blank" rel="noreferrer">
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  Report an issue
+                </a>
+              ) : null}
+            </div>
+          ) : null}
+        </aside>
+      ) : null}
     </>
   );
 }
@@ -291,8 +276,8 @@ async function loadPrevNext(
   const idx = docs.findIndex((d) => d.id === current.id);
   if (idx < 0) return { prev: null, next: null };
   return {
-    prev: idx > 0 ? docs[idx - 1] ?? null : null,
-    next: idx < docs.length - 1 ? docs[idx + 1] ?? null : null,
+    prev: idx > 0 ? (docs[idx - 1] ?? null) : null,
+    next: idx < docs.length - 1 ? (docs[idx + 1] ?? null) : null,
   };
 }
 

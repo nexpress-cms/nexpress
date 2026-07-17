@@ -5,7 +5,7 @@
 **Parent roadmap:** [`../roadmap.md`](../roadmap.md), categories 1 + 2 + 4
 
 This file is a planning snapshot. It freezes the sub-phase sequence and the
-dependency graph so we don't drift mid-flight. Update *only* the status line
+dependency graph so we don't drift mid-flight. Update _only_ the status line
 above and the per-sub-phase status as PRs land. Don't rewrite the plan
 mid-phase — open a Phase 24 plan instead.
 
@@ -23,19 +23,19 @@ ops-hardening items so momentum doesn't fade, and end with the heaviest
 piece (rate-limit adapter) so its interface decisions can absorb
 everything we've learned by then.
 
-| #    | Title                                 | Category  | Size   | Status   |
-| ---- | ------------------------------------- | --------- | ------ | -------- |
-| 23.1 | Backup & restore docs                 | 2 (ops)   | S      | done     |
-| 23.2 | LocalStorage production boot warning  | 2 (ops)   | XS     | done     |
-| 23.3 | Plugin author quickstart              | 4 (DX)    | S      | done     |
-| 23.4 | Multi-instance token revocation verify| 2 (ops)   | S      | done     |
-| 23.5 | Stuck-job detector + admin surface    | 2 (ops)   | M      | done     |
-| 23.6 | E2E coverage on golden paths          | 4 (DX)    | M      | partial  |
-| 23.6.1 | Bugs surfaced by E2E (blocks loop + seo strip + auth helper) | 4 (DX) | S | done |
-| 23.6.2 | E2E publish flow + theme switch (re-attempt)| 4 (DX) | S | done |
-| 23.7 | Multi-node rate-limit adapter         | 2 (ops)   | L      | done     |
-| 23.7.1 | `@nexpress/rate-limiter-redis` reference adapter | 2 (ops) | M | done |
-| 23.8 | First publish run (when CI unblocks)  | 1 (ship)  | S      | blocked  |
+| #      | Title                                                        | Category | Size | Status  |
+| ------ | ------------------------------------------------------------ | -------- | ---- | ------- |
+| 23.1   | Backup & restore docs                                        | 2 (ops)  | S    | done    |
+| 23.2   | LocalStorage production boot warning                         | 2 (ops)  | XS   | done    |
+| 23.3   | Plugin author quickstart                                     | 4 (DX)   | S    | done    |
+| 23.4   | Multi-instance token revocation verify                       | 2 (ops)  | S    | done    |
+| 23.5   | Stuck-job detector + admin surface                           | 2 (ops)  | M    | done    |
+| 23.6   | E2E coverage on golden paths                                 | 4 (DX)   | M    | partial |
+| 23.6.1 | Bugs surfaced by E2E (blocks loop + seo strip + auth helper) | 4 (DX)   | S    | done    |
+| 23.6.2 | E2E publish flow + theme switch (re-attempt)                 | 4 (DX)   | S    | done    |
+| 23.7   | Multi-node rate-limit adapter                                | 2 (ops)  | L    | done    |
+| 23.7.1 | `@nexpress/rate-limiter-redis` reference adapter             | 2 (ops)  | M    | done    |
+| 23.8   | First publish run (when CI unblocks)                         | 1 (ship) | S    | blocked |
 
 Sizes are rough: XS ≈ 1h, S ≈ half day, M ≈ 1–2 days, L ≈ several days.
 
@@ -57,11 +57,11 @@ the roadmap "Open questions" section. When billing clears, 23.8 runs
 the first `pnpm release` against whatever's queued — it doesn't wait
 for 23.7 to finish.
 
-## What's deliberately *not* in Phase 23
+## What's deliberately _not_ in Phase 23
 
 - **Plugin v2** (roadmap category 3) — research project, 1.x.
 - **Stability promotion** (category 6) — defer; roadmap says "pick
-  one in 23." We're picking *zero* this round so 23 finishes on time.
+  one in 23." We're picking _zero_ this round so 23 finishes on time.
   Move it to Phase 24.
 - **Marketplace MVP** (category 8) — depends on category 4 momentum.
   Re-evaluate after 23.6 lands.
@@ -178,14 +178,14 @@ exposed a sign-in form behavior the spec couldn't drive past.
   render. Combined with the `onChange(blocks)` effect, that
   produced a `Maximum update depth exceeded` storm whenever a page
   was opened with empty blocks. Fix: dispatch RESET only when the
-  *serialized* blocks change (`JSON.stringify` key) so reference
+  _serialized_ blocks change (`JSON.stringify` key) so reference
   churn doesn't re-fire the effect.
 - **`toClientCollectionConfig` leaks `seo.urlPath`** — the helper
   stripped `access`, `hooks`, and field functions but left the
   `seo` block untouched. Pages and posts both define
   `seo.urlPath` as a function, so the admin create form 500'd on
   RSC serialization (`Functions cannot be passed directly to
-  Client Components`). Fix: walk the `seo` block and drop any
+Client Components`). Fix: walk the `seo` block and drop any
   function-valued slot.
 - **Sign-in helper** — extracted `signInAsE2EAdmin(page)` to
   `tests/e2e/fixtures/auth-helpers.ts` so 23.6.2's specs share a
@@ -219,7 +219,7 @@ left the spec hanging on `waitForURL`. Two changes fix it:
 
 Most specs use the new **API sign-in helper** (`signInAsE2EAdmin`
 posts directly to `/api/auth/login`, immune to hydration races)
-because they're testing something *other* than auth. The auth
+because they're testing something _other_ than auth. The auth
 spec keeps `signInViaForm` so we still catch login UX
 regressions on the form path.
 
@@ -255,7 +255,7 @@ regressions on the form path.
 **Side improvement shipped here:** `signInAsE2EAdmin` and
 `signInViaForm` are now distinct helpers in `auth-helpers.ts`,
 documented to make the choice explicit ("am I testing auth, or
-do I just need to *be* authed").
+do I just need to _be_ authed").
 
 ### 23.7 — Multi-node rate-limit adapter (done)
 

@@ -52,9 +52,7 @@ export function generateSchema(opts: GenerateSchemaOptions): void {
 
   process.stdout.write(`✓ wrote ${schemaFile}\n`);
   process.stdout.write(`✓ wrote ${documentsFile}\n`);
-  process.stdout.write(
-    `  collections: ${opts.config.collections.map((c) => c.slug).join(", ")}\n`,
-  );
+  process.stdout.write(`  collections: ${opts.config.collections.map((c) => c.slug).join(", ")}\n`);
 
   const isWatch = opts.watchMode ?? process.env.NP_SCHEMA_WATCH === "1";
   if (isWatch) {

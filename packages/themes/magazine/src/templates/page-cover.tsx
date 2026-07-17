@@ -23,16 +23,14 @@ export function PageCoverTemplate({ doc, blockCtx }: NpTemplateRenderProps) {
       : typeof cover === "object" &&
           cover !== null &&
           typeof (cover as { url?: unknown }).url === "string"
-        ? ((cover as { url: string }).url)
+        ? (cover as { url: string }).url
         : null;
 
   return (
     <article className="np-magazine-cover">
       <div
         className="np-magazine-cover-hero"
-        style={
-          coverUrl ? { backgroundImage: `url(${JSON.stringify(coverUrl)})` } : undefined
-        }
+        style={coverUrl ? { backgroundImage: `url(${JSON.stringify(coverUrl)})` } : undefined}
       >
         <h1 className="np-magazine-cover-title">{title || "Untitled"}</h1>
       </div>

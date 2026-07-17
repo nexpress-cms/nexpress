@@ -31,10 +31,7 @@ import { fileURLToPath } from "node:url";
  *                     replaces every `__NX_<KEY>__` in the file
  *                     content
  */
-export function readTemplate(
-  relativePath: string,
-  vars?: Record<string, string>,
-): string {
+export function readTemplate(relativePath: string, vars?: Record<string, string>): string {
   const here = dirname(fileURLToPath(import.meta.url));
   // In dev (running from `src/` via tsx), templates live up one
   // directory. In published builds, tsup's onSuccess hook
@@ -53,9 +50,7 @@ export function readTemplate(
     }
   }
   if (content === null) {
-    throw new Error(
-      `Template not found: ${relativePath} (looked in ${candidates.join(", ")})`,
-    );
+    throw new Error(`Template not found: ${relativePath} (looked in ${candidates.join(", ")})`);
   }
   if (!vars) return content;
 
@@ -108,12 +103,9 @@ function resolveTemplateDir(relativePath: string): string {
  * utf-8 string under `{ encoding: "utf8", content }`.
  */
 export type TemplateFile =
-  | { encoding: "utf8"; content: string }
-  | { encoding: "base64"; content: string };
+  { encoding: "utf8"; content: string } | { encoding: "base64"; content: string };
 
-export function walkTemplateTree(
-  relativePath: string,
-): Record<string, TemplateFile> {
+export function walkTemplateTree(relativePath: string): Record<string, TemplateFile> {
   const root = resolveTemplateDir(relativePath);
   const out: Record<string, TemplateFile> = {};
 

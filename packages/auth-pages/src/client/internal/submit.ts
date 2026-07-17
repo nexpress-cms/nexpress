@@ -1,7 +1,4 @@
-import {
-  DEFAULT_AUTH_MESSAGES,
-  type NpAuthErrorCode,
-} from "../../shared/types.js";
+import { DEFAULT_AUTH_MESSAGES, type NpAuthErrorCode } from "../../shared/types.js";
 
 /**
  * Result of a typed JSON POST to one of the auth routes. Either
@@ -96,7 +93,10 @@ export async function submitJson<T>(
       payload && typeof payload === "object"
         ? (payload as { error?: { code?: unknown } }).error?.code
         : undefined;
-    const code = mapErrorCode(typeof serverCode === "string" ? serverCode : undefined, response.status);
+    const code = mapErrorCode(
+      typeof serverCode === "string" ? serverCode : undefined,
+      response.status,
+    );
     return {
       ok: false,
       code,

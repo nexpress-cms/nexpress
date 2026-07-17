@@ -58,8 +58,8 @@ export function PortfolioMembersNotFound(): React.ReactElement {
           lineHeight: 1.6,
         }}
       >
-        Verification and password-reset links are single-use and short-lived.
-        Request a fresh one from the sign-in page.
+        Verification and password-reset links are single-use and short-lived. Request a fresh one
+        from the sign-in page.
       </p>
       <a
         href="/members/login"

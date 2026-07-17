@@ -34,9 +34,7 @@ test.describe("theme switcher", () => {
     // the component fetches the registered themes in a useEffect
     // and shows a skeleton while it's pending. Once any
     // "Activate" button is in the DOM the registry has loaded.
-    const activateButton = page
-      .getByRole("button", { name: /^Activate$/ })
-      .first();
+    const activateButton = page.getByRole("button", { name: /^Activate$/ }).first();
     await expect(activateButton).toBeVisible({ timeout: 10_000 });
 
     // Click the first inactive theme. The active theme renders
@@ -45,8 +43,7 @@ test.describe("theme switcher", () => {
     // is "activating any inactive theme works," not "minimal is
     // the second card."
     const activatePromise = page.waitForResponse(
-      (r) =>
-        r.url().endsWith("/api/admin/themes/active") && r.request().method() === "PUT",
+      (r) => r.url().endsWith("/api/admin/themes/active") && r.request().method() === "PUT",
     );
     await activateButton.click();
     const activateRes = await activatePromise;
@@ -55,9 +52,9 @@ test.describe("theme switcher", () => {
     // After activation at least one card should now show "In use"
     // and the previously-active card should expose an Activate
     // button — the registry rendered the optimistic state.
-    await expect(
-      page.getByRole("button", { name: /^In use$/ }).first(),
-    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("button", { name: /^In use$/ }).first()).toBeVisible({
+      timeout: 5_000,
+    });
 
     // Reset to the canonical "default" theme via the API so the
     // dev environment lands back where it started, regardless of
@@ -66,8 +63,7 @@ test.describe("theme switcher", () => {
     const resetRes = await page.request.put("/api/admin/themes/active", {
       data: { id: "default" },
       headers: {
-        "x-csrf-token": (await context.cookies())
-          .find((c) => c.name === "np-csrf")?.value ?? "",
+        "x-csrf-token": (await context.cookies()).find((c) => c.name === "np-csrf")?.value ?? "",
       },
     });
     expect(resetRes.status()).toBe(200);

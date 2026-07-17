@@ -1,14 +1,11 @@
 declare module "next/link" {
   import type * as React from "react";
 
-  export interface LinkProps
-    extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
+  export interface LinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
     href: string;
   }
 
-  const Link: React.ForwardRefExoticComponent<
-    LinkProps & React.RefAttributes<HTMLAnchorElement>
-  >;
+  const Link: React.ForwardRefExoticComponent<LinkProps & React.RefAttributes<HTMLAnchorElement>>;
 
   export default Link;
 }

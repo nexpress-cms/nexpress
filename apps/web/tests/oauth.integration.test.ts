@@ -68,7 +68,8 @@ async function registerStub(
       if (options.failExchange) throw new Error("stub-failure");
       return {
         providerUserId: options.profileSubject ?? `subject-${code}`,
-        email: options.profileEmail === undefined ? `oauth-${code}@example.com` : options.profileEmail,
+        email:
+          options.profileEmail === undefined ? `oauth-${code}@example.com` : options.profileEmail,
         name: "Stub User",
       };
     },
@@ -122,10 +123,9 @@ describe.skipIf(skipIfNoTestDb())("oauth (integration)", () => {
     const state = cookieValue(start.headers.get("set-cookie"), "np-oauth-state")!;
 
     const callback = await oauthCallbackGET(
-      jsonRequest(
-        `/api/auth/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`np-oauth-state=${state}`] },
-      ),
+      jsonRequest(`/api/auth/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`, {
+        cookies: [`np-oauth-state=${state}`],
+      }),
       { params: Promise.resolve({ provider: id }) },
     );
     expect(callback.status).toBe(307);
@@ -170,16 +170,18 @@ describe.skipIf(skipIfNoTestDb())("oauth (integration)", () => {
     });
     const state = cookieValue(start.headers.get("set-cookie"), "np-oauth-state")!;
     const callback = await oauthCallbackGET(
-      jsonRequest(
-        `/api/auth/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`np-oauth-state=${state}`] },
-      ),
+      jsonRequest(`/api/auth/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`, {
+        cookies: [`np-oauth-state=${state}`],
+      }),
       { params: Promise.resolve({ provider: id }) },
     );
     expect(callback.status).toBe(307);
 
     const { eq } = await import("drizzle-orm");
-    const all = (await db.select().from(npUsers).where(eq(npUsers.email, "existing@example.com"))) as Array<unknown>;
+    const all = (await db
+      .select()
+      .from(npUsers)
+      .where(eq(npUsers.email, "existing@example.com"))) as Array<unknown>;
     expect(all).toHaveLength(1); // no duplicate user created
   });
 
@@ -193,10 +195,9 @@ describe.skipIf(skipIfNoTestDb())("oauth (integration)", () => {
     const cookieState = cookieValue(start.headers.get("set-cookie"), "np-oauth-state")!;
 
     const res = await oauthCallbackGET(
-      jsonRequest(
-        `/api/auth/oauth/${id}/callback?code=abc&state=tampered`,
-        { cookies: [`np-oauth-state=${cookieState}`] },
-      ),
+      jsonRequest(`/api/auth/oauth/${id}/callback?code=abc&state=tampered`, {
+        cookies: [`np-oauth-state=${cookieState}`],
+      }),
       { params: Promise.resolve({ provider: id }) },
     );
     expect(res.status).toBe(307);
@@ -215,10 +216,9 @@ describe.skipIf(skipIfNoTestDb())("oauth (integration)", () => {
     });
     const state = cookieValue(start.headers.get("set-cookie"), "np-oauth-state")!;
     const res = await oauthCallbackGET(
-      jsonRequest(
-        `/api/auth/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`np-oauth-state=${state}`] },
-      ),
+      jsonRequest(`/api/auth/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`, {
+        cookies: [`np-oauth-state=${state}`],
+      }),
       { params: Promise.resolve({ provider: id }) },
     );
     expect(res.status).toBe(307);
@@ -235,10 +235,9 @@ describe.skipIf(skipIfNoTestDb())("oauth (integration)", () => {
       });
       const state = cookieValue(start.headers.get("set-cookie"), "np-oauth-state")!;
       return oauthCallbackGET(
-        jsonRequest(
-          `/api/auth/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-          { cookies: [`np-oauth-state=${state}`] },
-        ),
+        jsonRequest(`/api/auth/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`, {
+          cookies: [`np-oauth-state=${state}`],
+        }),
         { params: Promise.resolve({ provider: id }) },
       );
     }

@@ -61,4 +61,3 @@ describe("NpColorSchemeScript", () => {
     expect(tryCount).toBeGreaterThanOrEqual(2);
   });
 });
-

@@ -118,8 +118,7 @@ export function ThemeReseedDialog({
             { signal: controller.signal },
           );
           const payload = (await res.json().catch(() => null)) as
-            | (PreviewCounts & { error?: { message?: string } })
-            | null;
+            (PreviewCounts & { error?: { message?: string } }) | null;
           if (controller.signal.aborted) return;
           if (!res.ok) {
             setError(payload?.error?.message ?? "Unable to read current state.");

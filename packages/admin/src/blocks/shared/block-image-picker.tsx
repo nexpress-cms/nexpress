@@ -128,8 +128,7 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
     try {
       const files = Array.from(fileList);
       type UploadOutcome =
-        | { status: "fulfilled"; value: string | null }
-        | { status: "rejected"; reason: unknown };
+        { status: "fulfilled"; value: string | null } | { status: "rejected"; reason: unknown };
       const results: UploadOutcome[] = new Array(files.length);
       const uploadOne = async (file: File): Promise<string | null> => {
         const fd = new FormData();

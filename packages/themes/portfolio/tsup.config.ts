@@ -25,21 +25,13 @@ export default defineConfig([
       "components/mobile-nav": "src/components/mobile-nav.tsx",
       "components/error": "src/components/error.tsx",
       "components/members-error": "src/components/members-error.tsx",
-      "components/local-time-ticker":
-        "src/components/local-time-ticker.tsx",
+      "components/local-time-ticker": "src/components/local-time-ticker.tsx",
     },
     format: ["esm"],
     dts: true,
     clean: false,
     sourcemap: true,
-    external: [
-      "react",
-      "react-dom",
-      "next",
-      "next/link",
-      "@nexpress/blocks",
-      "@nexpress/theme",
-    ],
+    external: ["react", "react-dom", "next", "next/link", "@nexpress/blocks", "@nexpress/theme"],
     banner: { js: '"use client";' },
   },
 ]);

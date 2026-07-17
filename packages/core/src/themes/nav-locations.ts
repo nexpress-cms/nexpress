@@ -43,9 +43,7 @@ interface ImplShape {
  * descriptors. Exported for unit testability without the DB
  * roundtrip that `getActiveThemeNavLocations` does.
  */
-export function extractNavLocationsFromImpl(
-  impl: unknown,
-): NpThemeNavLocationDescriptor[] {
+export function extractNavLocationsFromImpl(impl: unknown): NpThemeNavLocationDescriptor[] {
   const shape = impl as ImplShape | undefined;
   const declared = shape?.navLocations;
   if (!declared || typeof declared !== "object") return [];
@@ -57,18 +55,14 @@ export function extractNavLocationsFromImpl(
     out.push({
       key,
       label: raw.label,
-      description:
-        typeof raw.description === "string" ? raw.description : undefined,
-      maxItems:
-        typeof raw.maxItems === "number" ? raw.maxItems : undefined,
+      description: typeof raw.description === "string" ? raw.description : undefined,
+      maxItems: typeof raw.maxItems === "number" ? raw.maxItems : undefined,
     });
   }
   return out;
 }
 
-export async function getActiveThemeNavLocations(): Promise<
-  NpThemeNavLocationDescriptor[]
-> {
+export async function getActiveThemeNavLocations(): Promise<NpThemeNavLocationDescriptor[]> {
   const theme = await getActiveTheme();
   if (!theme) return [];
   return extractNavLocationsFromImpl(theme.impl);

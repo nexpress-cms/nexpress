@@ -25,10 +25,7 @@ export interface UseDocCanvasDragOptions {
   /** Resolve a parent-doc point to a block hit inside the iframe. */
   resolveHit: (clientX: number, clientY: number) => ResolvedBlockHit | null;
   /** Project a block's iframe rect into the container's coord space. */
-  projectIntoContainer: (
-    blockRect: DOMRect,
-    iframeRect: DOMRect,
-  ) => OverlayPosition | null;
+  projectIntoContainer: (blockRect: DOMRect, iframeRect: DOMRect) => OverlayPosition | null;
   /**
    * Optional hook fired right when drag starts — typical use is
    * to release the hover pin so the rail unmounts cleanly behind
@@ -79,9 +76,7 @@ export function useDocCanvasDrag({
   const dragSideRef = useRef<DragSide>("before");
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
-  const [dragOverRect, setDragOverRect] = useState<OverlayPosition | null>(
-    null,
-  );
+  const [dragOverRect, setDragOverRect] = useState<OverlayPosition | null>(null);
   const [dragSide, setDragSide] = useState<DragSide>("before");
 
   const onGripMouseDown = useCallback(
@@ -107,8 +102,7 @@ export function useDocCanvasDrag({
         // bottom half → "after". The reducer adjusts the toIndex
         // accordingly so the visual indicator matches the outcome
         // regardless of drag direction.
-        const midpointY =
-          hit.iframeRect.top + hit.rect.top + hit.rect.height / 2;
+        const midpointY = hit.iframeRect.top + hit.rect.top + hit.rect.height / 2;
         const side: DragSide = e.clientY < midpointY ? "before" : "after";
         dragOverIdRef.current = hit.id;
         dragSideRef.current = side;

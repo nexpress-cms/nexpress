@@ -1,8 +1,4 @@
-import {
-  fromArctic,
-  type OAuthProfile,
-  type OAuthProvider,
-} from "@nexpress/core";
+import { fromArctic, type OAuthProfile, type OAuthProvider } from "@nexpress/core";
 import { GitHub } from "arctic";
 
 /**
@@ -107,9 +103,7 @@ export async function fetchGitHubProfile(
 
 export function createGitHubOAuthProvider(options: GitHubOAuthOptions): OAuthProvider {
   if (!options.clientId || !options.clientSecret) {
-    throw new Error(
-      "createGitHubOAuthProvider: clientId and clientSecret are required",
-    );
+    throw new Error("createGitHubOAuthProvider: clientId and clientSecret are required");
   }
   const fetchImpl = options.fetch ?? globalThis.fetch;
 

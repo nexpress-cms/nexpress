@@ -23,10 +23,7 @@ import { SetupWizard, type SetupWizardThemeOption } from "./setup-client";
 export default async function SetupPage() {
   await ensureFor("read");
   const db = getDb();
-  const rows = await db
-    .select({ value: count() })
-    .from(npUsers)
-    .where(eq(npUsers.role, "admin"));
+  const rows = await db.select({ value: count() }).from(npUsers).where(eq(npUsers.role, "admin"));
   const adminCount = rows[0]?.value ?? 0;
   if (adminCount > 0) redirect("/admin/login");
 
@@ -49,8 +46,7 @@ export default async function SetupPage() {
   // typo'd env doesn't silently fall back, leaving the operator
   // unsure which pick is active.
   const envThemeId = process.env.NP_ADMIN_THEME;
-  const themeId =
-    envThemeId && themes.some((t) => t.id === envThemeId) ? envThemeId : undefined;
+  const themeId = envThemeId && themes.some((t) => t.id === envThemeId) ? envThemeId : undefined;
 
   const prefill = {
     email: process.env.NP_ADMIN_EMAIL ?? "",

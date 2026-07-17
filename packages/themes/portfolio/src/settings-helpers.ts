@@ -1,9 +1,6 @@
 import { getCachedThemeSettings } from "@nexpress/next";
 
-import {
-  portfolioSettingsSchema,
-  type PortfolioSettings,
-} from "./settings.js";
+import { portfolioSettingsSchema, type PortfolioSettings } from "./settings.js";
 
 /**
  * Phase F.9.1-A — typed accessor over the cached theme settings
