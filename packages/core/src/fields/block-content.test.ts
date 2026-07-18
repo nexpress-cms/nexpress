@@ -7,7 +7,14 @@ const validContent = (): NpBlockContent => [
     id: "hero-1",
     type: "acme.hero",
     props: { title: "Hello", columns: 3, flags: [true, null] },
-    children: [{ id: "copy-1", type: "rich-text", props: {} }],
+    children: [
+      {
+        id: "copy-1",
+        type: "rich-text",
+        props: {},
+        layout: { colSpan: 12, mdColSpan: 8, lgColSpan: 6 },
+      },
+    ],
   },
 ];
 
@@ -25,6 +32,23 @@ describe("block content v1 contract", () => {
     [[{ id: "one", type: "hero", props: [] }], ".props must be an object"],
     [[{ id: "one", type: "hero", props: { score: Infinity } }], "finite number"],
     [[{ id: "one", type: "hero", props: { missing: undefined } }], "only JSON values"],
+    [[{ id: "one", type: "hero", props: {}, layout: undefined }], ".layout must be an object"],
+    [[{ id: "one", type: "hero", props: {}, layout: [] }], ".layout must be an object"],
+    [[{ id: "one", type: "hero", props: {}, layout: {} }], ".layout.colSpan must be"],
+    [
+      [{ id: "one", type: "hero", props: {}, layout: { colSpan: 6, rowSpan: 2 } }],
+      '.layout has unsupported field "rowSpan"',
+    ],
+    [[{ id: "one", type: "hero", props: {}, layout: { colSpan: 0 } }], "integer from 1 to 12"],
+    [[{ id: "one", type: "hero", props: {}, layout: { colSpan: 6.5 } }], "integer from 1 to 12"],
+    [
+      [{ id: "one", type: "hero", props: {}, layout: { colSpan: 6, mdColSpan: 13 } }],
+      ".layout.mdColSpan must be",
+    ],
+    [
+      [{ id: "one", type: "hero", props: {}, layout: { colSpan: 6, mdColSpan: undefined } }],
+      ".layout.mdColSpan must be",
+    ],
     [[{ id: "one", type: "hero", props: {}, children: {} }], ".children must be an array"],
   ])("rejects malformed content %#", (value, message) => {
     const result = npValidateBlockContent(value);

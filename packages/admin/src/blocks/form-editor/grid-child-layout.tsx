@@ -1,48 +1,48 @@
 "use client";
 
-import type { NpBlockInstance } from "@nexpress/blocks";
+import type { NpBlockInstance, NpBlockLayout } from "@nexpress/blocks";
 
 import { Label } from "../../ui/label.js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../ui/select.js";
-
-/**
- * Reads the `_layout` meta off a block's `props`. Centralizes the
- * defensive shape check in one place — block authors aren't
- * forced to type the meta carefully on every read.
- */
-export function getLayout(props: Record<string, unknown>): Record<string, unknown> | null {
-  const layout = props._layout;
-  if (typeof layout === "object" && layout !== null && !Array.isArray(layout)) {
-    return layout as Record<string, unknown>;
-  }
-  return null;
-}
 
 type Breakpoint = "base" | "md" | "lg";
 
 export interface GridChildLayoutControlProps {
   block: NpBlockInstance;
   inputId: string;
+  defaultColSpan: number;
   /**
-   * Patch a single breakpoint's column span on the child's
-   * `_layout` meta. Pass `null` for `md` / `lg` to drop the
-   * breakpoint override (the cell falls back through the CSS
-   * cascade — lg → md → base). The base span is always present;
-   * a `null` on base resets to the default 12.
+   * Replace the child's exact top-level layout metadata. An
+   * undefined value means the default full-width layout.
    */
-  onChange: (breakpoint: Breakpoint, value: number | null) => void;
+  onChange: (layout: NpBlockLayout | undefined) => void;
 }
 
 const SPAN_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 
-function readSpan(
-  layout: Record<string, unknown> | null,
-  key: "colSpan" | "mdColSpan" | "lgColSpan",
-): number | null {
-  const value = layout?.[key];
-  if (typeof value !== "number") return null;
-  if (value < 1 || value > 12) return null;
-  return Math.round(value);
+export function updateGridChildLayout(
+  current: NpBlockLayout | undefined,
+  breakpoint: Breakpoint,
+  value: number | null,
+  defaultColSpan = 12,
+): NpBlockLayout | undefined {
+  const next: NpBlockLayout = { ...(current ?? { colSpan: defaultColSpan }) };
+  if (breakpoint === "base") {
+    next.colSpan = value ?? defaultColSpan;
+  } else if (breakpoint === "md") {
+    if (value === null) delete next.mdColSpan;
+    else next.mdColSpan = value;
+  } else if (value === null) {
+    delete next.lgColSpan;
+  } else {
+    next.lgColSpan = value;
+  }
+
+  return next.colSpan === defaultColSpan &&
+    next.mdColSpan === undefined &&
+    next.lgColSpan === undefined
+    ? undefined
+    : next;
 }
 
 /**
@@ -53,11 +53,16 @@ function readSpan(
  * cares about "half-width on tablet+" can leave the desktop value
  * at "auto" and the cell inherits the tablet span.
  */
-export function GridChildLayoutControl({ block, inputId, onChange }: GridChildLayoutControlProps) {
-  const layout = getLayout(block.props);
-  const base = readSpan(layout, "colSpan") ?? 12;
-  const md = readSpan(layout, "mdColSpan");
-  const lg = readSpan(layout, "lgColSpan");
+export function GridChildLayoutControl({
+  block,
+  inputId,
+  defaultColSpan,
+  onChange,
+}: GridChildLayoutControlProps) {
+  const layout = block.layout;
+  const base = layout?.colSpan ?? defaultColSpan;
+  const md = layout?.mdColSpan ?? null;
+  const lg = layout?.lgColSpan ?? null;
 
   return (
     <div className="grid gap-2 rounded-md border border-primary/20 bg-primary/5 p-3">
@@ -73,21 +78,23 @@ export function GridChildLayoutControl({ block, inputId, onChange }: GridChildLa
           label="Mobile"
           value={base}
           allowAuto={false}
-          onChange={(v) => onChange("base", v)}
+          onChange={(value) =>
+            onChange(updateGridChildLayout(layout, "base", value, defaultColSpan))
+          }
         />
         <BreakpointPicker
           inputId={`${inputId}-md`}
           label="Tablet"
           value={md}
           allowAuto={true}
-          onChange={(v) => onChange("md", v)}
+          onChange={(value) => onChange(updateGridChildLayout(layout, "md", value, defaultColSpan))}
         />
         <BreakpointPicker
           inputId={`${inputId}-lg`}
           label="Desktop"
           value={lg}
           allowAuto={true}
-          onChange={(v) => onChange("lg", v)}
+          onChange={(value) => onChange(updateGridChildLayout(layout, "lg", value, defaultColSpan))}
         />
       </div>
       <p className="text-[10px] text-muted-foreground">

@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from "react";
 import type { NpBlockInstance } from "@nexpress/core/fields";
 
-export type { NpBlockInstance } from "@nexpress/core/fields";
+export type { NpBlockInstance, NpBlockLayout } from "@nexpress/core/fields";
 
 import type { NpFindOptions, NpFindResult } from "@nexpress/core";
 import type { NpBlockPropFieldType } from "./block-contract.js";

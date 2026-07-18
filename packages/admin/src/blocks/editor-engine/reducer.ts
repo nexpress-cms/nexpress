@@ -461,6 +461,13 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         return mapTree(state, (block) =>
           block.id === action.id ? { ...block, props: action.props } : block,
         );
+      case "UPDATE_LAYOUT":
+        return mapTree(state, (block) => {
+          if (block.id !== action.id) return block;
+          if (action.layout) return { ...block, layout: { ...action.layout } };
+          const { layout: _removedLayout, ...withoutLayout } = block;
+          return withoutLayout;
+        });
       case "REPLACE_TYPE": {
         const newDef = definitions.get(action.newType);
         if (!newDef) return state;
@@ -489,6 +496,7 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         // Keep the existing id so undo/redo + focus tracking stay
         // anchored on the same row visually.
         baseInstance.id = source.id;
+        if (source.layout) baseInstance.layout = { ...source.layout };
         // Drop children when the new type isn't a container; carry
         // them forward when it is. Mid-conversion children-loss is
         // surprising — operators expect a hero->grid swap to land

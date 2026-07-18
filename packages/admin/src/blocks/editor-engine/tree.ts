@@ -123,6 +123,7 @@ export const cloneBlockDeep = (block: NpBlockInstance): NpBlockInstance => ({
   id: createBlockId(),
   type: block.type,
   props: { ...block.props },
+  ...(block.layout ? { layout: { ...block.layout } } : {}),
   ...(block.children ? { children: block.children.map(cloneBlockDeep) } : {}),
 });
 

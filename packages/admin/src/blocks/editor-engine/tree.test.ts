@@ -202,6 +202,14 @@ describe("cloneBlockDeep", () => {
     expect(clone.props).not.toBe(src.props);
   });
 
+  it("preserves layout metadata in an independent object", () => {
+    const src = block("a", "para");
+    src.layout = { colSpan: 6, mdColSpan: 4 };
+    const clone = cloneBlockDeep(src);
+    expect(clone.layout).toEqual({ colSpan: 6, mdColSpan: 4 });
+    expect(clone.layout).not.toBe(src.layout);
+  });
+
   it("clones children array (different reference)", () => {
     const src = block("a", "row", [block("b", "para")]);
     const clone = cloneBlockDeep(src);

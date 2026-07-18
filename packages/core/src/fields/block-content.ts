@@ -1,7 +1,15 @@
+/** Parent-owned responsive placement metadata for a block instance. */
+export interface NpBlockLayout {
+  colSpan: number;
+  mdColSpan?: number;
+  lgColSpan?: number;
+}
+
 export interface NpBlockInstance {
   id: string;
   type: string;
   props: Record<string, unknown>;
+  layout?: NpBlockLayout;
   children?: NpBlockInstance[];
 }
 
@@ -13,7 +21,8 @@ export type NpBlockContentValidationResult =
 
 type ValidationStatus = { ok: true } | { ok: false; message: string };
 
-const BLOCK_KEYS = new Set(["id", "type", "props", "children"]);
+const BLOCK_KEYS = new Set(["id", "type", "props", "layout", "children"]);
+const LAYOUT_KEYS = new Set(["colSpan", "mdColSpan", "lgColSpan"]);
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const MAX_IDENTIFIER_LENGTH = 128;
 const MAX_BLOCK_TREE_DEPTH = 32;
@@ -43,6 +52,32 @@ function validateIdentifier(value: unknown, path: string): ValidationStatus {
     return invalid(
       `${path} must start with a letter or number, use only letters, numbers, dots, underscores, or hyphens, and contain at most ${MAX_IDENTIFIER_LENGTH.toString()} characters`,
     );
+  }
+  return valid();
+}
+
+function validateLayoutSpan(value: unknown, path: string): ValidationStatus {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 12) {
+    return invalid(`${path} must be an integer from 1 to 12`);
+  }
+  return valid();
+}
+
+function validateLayout(value: unknown, path: string): ValidationStatus {
+  if (!isPlainRecord(value)) return invalid(`${path} must be an object`);
+
+  const unsupportedKey = Object.keys(value).find((key) => !LAYOUT_KEYS.has(key));
+  if (unsupportedKey) return invalid(`${path} has unsupported field "${unsupportedKey}"`);
+
+  const baseResult = validateLayoutSpan(value.colSpan, `${path}.colSpan`);
+  if (!baseResult.ok) return baseResult;
+  if (Object.hasOwn(value, "mdColSpan")) {
+    const mediumResult = validateLayoutSpan(value.mdColSpan, `${path}.mdColSpan`);
+    if (!mediumResult.ok) return mediumResult;
+  }
+  if (Object.hasOwn(value, "lgColSpan")) {
+    const largeResult = validateLayoutSpan(value.lgColSpan, `${path}.lgColSpan`);
+    if (!largeResult.ok) return largeResult;
   }
   return valid();
 }
@@ -111,6 +146,10 @@ function validateBlock(
 
   const propsResult = validateJsonValue(value.props, `${path}.props`, 0, new WeakSet());
   if (!propsResult.ok) return propsResult;
+  if (Object.hasOwn(value, "layout")) {
+    const layoutResult = validateLayout(value.layout, `${path}.layout`);
+    if (!layoutResult.ok) return layoutResult;
+  }
   if (value.children !== undefined && !Array.isArray(value.children)) {
     return invalid(`${path}.children must be an array`);
   }

@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import type { NpBlockDefinition } from "../types.js";
+import type { NpBlockDefinition, NpBlockLayout } from "../types.js";
 
 const readNumber = (value: unknown, fallback: number, min = 1, max = 12): number => {
   const n = typeof value === "number" ? value : Number(value);
@@ -14,8 +14,8 @@ const readString = (value: unknown, fallback: string): string =>
 
 /**
  * 12-column CSS grid container. Children carry an optional
- * `_layout: { colSpan, mdColSpan?, lgColSpan? }` prop on their
- * `props` map (1–12 each).
+ * top-level `layout: { colSpan, mdColSpan?, lgColSpan? }`
+ * metadata (1–12 each).
  *
  * - `colSpan` is the base / mobile span. Defaults to `columns`
  *   (full-width) when unset.
@@ -64,7 +64,7 @@ export const gridBlock: NpBlockDefinition = {
   ],
   acceptsChildren: true,
   render: (props, children) => {
-    const columns = readNumber(props.columns, 12, 1, 12);
+    const columns = readGridColumnCount(props);
     const gap = readString(props.gap, "1rem");
     const style: CSSProperties = {
       display: "grid",
@@ -106,33 +106,21 @@ const GRID_RESPONSIVE_CSS = `
 `;
 
 /**
- * Helper used by the renderer + the editor: read the grid-layout
- * meta off a child's props. Centralizes the default + clamp so
- * the contract is in one place.
+ * Helper used by the renderer to apply a validated child's
+ * grid-layout metadata and the grid's full-width default.
  *
  * `colSpan` is required (defaults to `defaultColSpan`); `mdColSpan`
  * and `lgColSpan` are optional — when omitted, the cell uses the
  * next-smaller breakpoint via the CSS fallback chain in
  * `GRID_RESPONSIVE_CSS`.
  */
+export function readGridColumnCount(props: Record<string, unknown>): number {
+  return readNumber(props.columns, 12, 1, 12);
+}
+
 export function readGridChildLayout(
-  childProps: Record<string, unknown>,
+  layout: NpBlockLayout | undefined,
   defaultColSpan: number,
-): { colSpan: number; mdColSpan?: number; lgColSpan?: number } {
-  const layout = childProps._layout;
-  if (typeof layout === "object" && layout !== null && !Array.isArray(layout)) {
-    const obj = layout as Record<string, unknown>;
-    const colSpan = readNumber(obj.colSpan, defaultColSpan, 1, 12);
-    const out: { colSpan: number; mdColSpan?: number; lgColSpan?: number } = {
-      colSpan,
-    };
-    if (obj.mdColSpan !== undefined && obj.mdColSpan !== null) {
-      out.mdColSpan = readNumber(obj.mdColSpan, colSpan, 1, 12);
-    }
-    if (obj.lgColSpan !== undefined && obj.lgColSpan !== null) {
-      out.lgColSpan = readNumber(obj.lgColSpan, colSpan, 1, 12);
-    }
-    return out;
-  }
-  return { colSpan: defaultColSpan };
+): NpBlockLayout {
+  return layout ? { ...layout } : { colSpan: readNumber(defaultColSpan, 12, 1, 12) };
 }

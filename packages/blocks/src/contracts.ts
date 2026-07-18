@@ -4,6 +4,7 @@ export {
   type NpBlockContent,
   type NpBlockContentValidationResult,
   type NpBlockInstance,
+  type NpBlockLayout,
 } from "@nexpress/core/fields";
 export {
   npAnalyzeBlockDefinitions,

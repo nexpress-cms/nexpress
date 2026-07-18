@@ -1491,6 +1491,16 @@ export function buildSpec(): OpenApiSchema {
         },
       },
     },
+    block_layout: {
+      type: "object",
+      additionalProperties: false,
+      required: ["colSpan"],
+      properties: {
+        colSpan: { type: "integer", minimum: 1, maximum: 12 },
+        mdColSpan: { type: "integer", minimum: 1, maximum: 12 },
+        lgColSpan: { type: "integer", minimum: 1, maximum: 12 },
+      },
+    },
     block_instance: {
       type: "object",
       additionalProperties: false,
@@ -1507,6 +1517,7 @@ export function buildSpec(): OpenApiSchema {
           pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$",
         },
         props: { type: "object", additionalProperties: true },
+        layout: { $ref: "#/components/schemas/block_layout" },
         children: {
           type: "array",
           items: { $ref: "#/components/schemas/block_instance" },

@@ -1,4 +1,4 @@
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { createBlockRegistry } from "./registry.js";
@@ -37,5 +37,88 @@ describe("renderBlocks definition contract", () => {
   it("keeps unknown plugin content visible as a preservation placeholder", () => {
     const tree = renderBlocks([{ id: "old-1", type: "plugin.disabled", props: {} }]);
     expect(renderToStaticMarkup(tree)).toContain("Unknown block type: plugin.disabled");
+  });
+
+  it("renders grid child spans from the top-level layout contract", async () => {
+    const registry = createBlockRegistry();
+    registry.register({
+      type: "grid",
+      label: "Grid",
+      defaultProps: {},
+      propsSchema: [],
+      acceptsChildren: true,
+      render: (_props, children) => <div className="grid">{children}</div>,
+    });
+    registry.register({
+      type: "copy",
+      label: "Copy",
+      defaultProps: {},
+      propsSchema: [],
+      render: () => <p>Copy</p>,
+    });
+
+    const tree = renderBlocks(
+      [
+        {
+          id: "grid-1",
+          type: "grid",
+          props: { columns: 12 },
+          children: [
+            {
+              id: "copy-1",
+              type: "copy",
+              props: {},
+              layout: { colSpan: 12, mdColSpan: 8, lgColSpan: 6 },
+            },
+          ],
+        },
+      ],
+      { registry },
+    );
+    const markup = await new Response(await renderToReadableStream(tree)).text();
+    expect(markup).toContain("np-block-grid-cell");
+    expect(markup).toContain("--np-cell-span:12");
+    expect(markup).toContain("--np-cell-span-md:8");
+    expect(markup).toContain("--np-cell-span-lg:6");
+  });
+
+  it("defaults an unconfigured child to its parent grid's column count", async () => {
+    const registry = createBlockRegistry();
+    registry.register({
+      type: "grid",
+      label: "Grid",
+      defaultProps: {},
+      propsSchema: [],
+      acceptsChildren: true,
+      render: (_props, children) => <div>{children}</div>,
+    });
+    registry.register({
+      type: "copy",
+      label: "Copy",
+      defaultProps: {},
+      propsSchema: [],
+      render: () => <p>Copy</p>,
+    });
+
+    const tree = renderBlocks(
+      [
+        {
+          id: "grid-1",
+          type: "grid",
+          props: { columns: 8 },
+          children: [
+            {
+              id: "copy-1",
+              type: "copy",
+              props: { _layout: { colSpan: 3 } },
+            },
+          ],
+        },
+      ],
+      { registry },
+    );
+    expect(await new Response(await renderToReadableStream(tree)).text()).toContain(
+      "--np-cell-span:8",
+    );
   });
 });

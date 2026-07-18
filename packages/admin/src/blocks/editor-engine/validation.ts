@@ -198,7 +198,6 @@ export function deleteNeedsConfirmation(
   const defaults = definition?.defaultProps ?? {};
   const propKeys = new Set([...Object.keys(defaults), ...Object.keys(block.props)]);
   for (const key of propKeys) {
-    if (key === "_layout") continue; // grid-child layout meta is structural
     const next = block.props[key];
     const prev = defaults[key];
     if (JSON.stringify(next) !== JSON.stringify(prev)) {

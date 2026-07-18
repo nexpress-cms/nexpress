@@ -25,6 +25,7 @@ export {
   type NpBlockContent,
   type NpBlockContentValidationResult,
   type NpBlockInstance,
+  type NpBlockLayout,
 } from "./block-content.js";
 export {
   NP_RICH_TEXT_CONTENT_VERSION,

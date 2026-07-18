@@ -6,7 +6,7 @@ export { ctaBlock } from "./cta.js";
 export { richTextBlock } from "./rich-text.js";
 export { contactFormBlock } from "./contact-form.js";
 export { imageGalleryBlock } from "./image-gallery.js";
-export { gridBlock, readGridChildLayout } from "./grid.js";
+export { gridBlock, readGridChildLayout, readGridColumnCount } from "./grid.js";
 export { sectionHeaderBlock } from "./section-header.js";
 export { testimonialsBlock } from "./testimonials.js";
 export { statsGridBlock } from "./stats-grid.js";

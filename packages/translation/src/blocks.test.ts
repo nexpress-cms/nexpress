@@ -39,6 +39,7 @@ function sourceBlocks(): Array<Record<string, unknown>> {
         {
           id: "hero-1",
           type: "hero",
+          layout: { colSpan: 12, mdColSpan: 8, lgColSpan: 6 },
           props: {
             title: "Welcome",
             subtitle: "Build something useful.",
@@ -137,6 +138,7 @@ describe("block translation codec", () => {
     const children = layout.children!;
     const hero = children.find((block) => block.id === "hero-1")!;
     expect(hero.props).toEqual(expect.objectContaining({ title: "Bienvenue", ctaUrl: "/start" }));
+    expect(hero.layout).toEqual({ colSpan: 12, mdColSpan: 8, lgColSpan: 6 });
     const richBlock = children.find((block) => block.id === "rich-1")!;
     const root = (
       richBlock.props.content as {

@@ -12,10 +12,17 @@ import {
 
 const content: NpBlockContent = [
   {
-    id: "hero-1",
-    type: "acme.hero",
-    props: { title: "Hello" },
-    children: [],
+    id: "grid-1",
+    type: "grid",
+    props: { columns: 12, gap: "1rem" },
+    children: [
+      {
+        id: "hero-1",
+        type: "acme.hero",
+        props: { title: "Hello" },
+        layout: { colSpan: 12, mdColSpan: 8, lgColSpan: 6 },
+      },
+    ],
   },
 ];
 ```
@@ -28,17 +35,27 @@ translation shape.
 
 Every recursive instance contains exactly:
 
-| Field      | Contract                                                                   |
-| ---------- | -------------------------------------------------------------------------- |
-| `id`       | Required, globally unique in the tree, at most 128 identifier characters.  |
-| `type`     | Required block type, at most 128 identifier characters.                    |
-| `props`    | Required plain object containing only JSON values and finite numbers.      |
-| `children` | Optional array of instances using the same contract, up to 32 levels deep. |
+| Field      | Contract                                                                                            |
+| ---------- | --------------------------------------------------------------------------------------------------- |
+| `id`       | Required, globally unique in the tree, at most 128 identifier characters.                           |
+| `type`     | Required block type, at most 128 identifier characters.                                             |
+| `props`    | Required plain object containing only JSON values and finite numbers.                               |
+| `layout`   | Optional exact `{ colSpan, mdColSpan?, lgColSpan? }` object; every present span is an integer 1–12. |
+| `children` | Optional array of instances using the same contract, up to 32 levels deep.                          |
 
 Identifiers start with an ASCII letter or number and then use only letters,
 numbers, `.`, `_`, or `-`. Unknown top-level fields, missing `props`, duplicate
 ids, class instances, `undefined`, functions, non-finite numbers, excessive
 depth, and circular values fail validation.
+
+`layout` is parent-owned placement metadata rather than a block prop. The
+built-in `grid` reads it from each direct child: `colSpan` is the mobile/base
+span, `mdColSpan` applies from 768px, and `lgColSpan` applies from 1024px.
+Omitted breakpoint overrides fall back to the next smaller breakpoint, while
+an omitted `layout` spans the parent grid's configured columns. Other parents
+preserve the field even when they do not render it, so moving or temporarily
+unnesting a block does not lose its placement. Admin exposes the same three
+spans and omits the object when all values resolve to the full-width default.
 
 Block `type` values are not required to be active at structural-validation
 time. This is intentional: disabling a plugin or switching themes must not
@@ -83,9 +100,10 @@ Known prop type, required value, pattern, numeric bound/step, select option,
 rich-text envelope, nested array schema, leaf/container, maximum-child, and
 allowed-child violations are errors. Unknown block types and stale extra props
 are warnings: disabling a plugin or tightening a schema must not destroy stored
-content. `_layout` remains reserved parent-owned layout metadata and is not
-treated as a stale prop. `minChildren` remains a warning because an in-progress
-edit naturally passes through incomplete container states.
+content. Parent-owned placement belongs in top-level `layout`; a legacy
+`props._layout` value is now an ordinary stale prop warning and is ignored by
+the grid renderer. `minChildren` remains a warning because an in-progress edit
+naturally passes through incomplete container states.
 
 The definition-aware validator runs before Admin saves, app collection writes,
 live preview, pattern persistence/registration, and block rendering. Plugin
@@ -98,3 +116,8 @@ The array shape is the v1 contract. Adding an optional instance field is
 non-breaking. Renaming or removing fields, changing identifier rules, or
 wrapping the array requires a versioned migration rather than accepting both
 formats ambiguously.
+
+The pre-1.0 experimental grid convention moved from
+`props._layout: { colSpan, mdColSpan?, lgColSpan? }` to the exact top-level
+`layout` field. Move the object rather than keeping both forms; the retired prop
+is preserved as stale data but no longer controls rendering.

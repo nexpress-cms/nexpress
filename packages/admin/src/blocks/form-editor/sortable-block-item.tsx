@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
+import type { NpBlockInstance, NpBlockLayout, NpBlockMetadata } from "@nexpress/blocks";
 
 import { BlockPalette } from "../block-palette.js";
 import {
@@ -33,7 +33,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../ui/co
 import { Label } from "../../ui/label.js";
 import { cn } from "../../ui/utils.js";
 
-import { GridChildLayoutControl, getLayout } from "./grid-child-layout.js";
+import { GridChildLayoutControl } from "./grid-child-layout.js";
 import { HierarchyMenu } from "./hierarchy-menu.js";
 import { InsertSlot } from "./insert-slot.js";
 
@@ -63,6 +63,7 @@ export interface SortableBlockItemProps {
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
   onUpdateProps: (id: string, props: Record<string, unknown>) => void;
+  onUpdateLayout: (id: string, layout: NpBlockLayout | undefined) => void;
   onReplaceProps: (id: string, props: Record<string, unknown>) => void;
   onAddChild: (parentId: string, blockType: string) => void;
   onInsert: (position: "before" | "after", targetId: string, blockType: string) => void;
@@ -108,6 +109,7 @@ export function SortableBlockItem({
   onDuplicate,
   onDelete,
   onUpdateProps,
+  onUpdateLayout,
   onReplaceProps,
   onAddChild,
   onInsert,
@@ -135,6 +137,7 @@ export function SortableBlockItem({
   const fieldIdPrefix = `np-block-${block.id}`;
   const isContainer = Boolean(definition?.acceptsChildren);
   const isChildOfGrid = parentBlock?.type === "grid";
+  const gridDefaultColSpan = isChildOfGrid ? readGridColumnCount(parentBlock.props) : 12;
   const summary = getRowSummary(definition, block);
   const childCount = block.children?.length ?? 0;
   const validationStatus = getRowValidationStatus(definition, block, definitions.values());
@@ -356,32 +359,13 @@ export function SortableBlockItem({
           <div className="grid min-w-0 gap-4 p-3 sm:p-4">
             {/* Grid-child layout control. Only shown when this
                 block sits directly inside a `grid` container — the
-                meta lives on the child's props as `_layout: { colSpan }`. */}
+                metadata lives on the child's top-level `layout` field. */}
             {isChildOfGrid && parentDefinition ? (
               <GridChildLayoutControl
                 block={block}
-                inputId={`${fieldIdPrefix}-_layout-colSpan`}
-                onChange={(breakpoint, value) => {
-                  const current = getLayout(block.props) ?? {};
-                  // Map UI breakpoint key → meta field. The base
-                  // span is required; tablet / desktop are
-                  // optional and dropped from the meta when set
-                  // to Auto (`null`).
-                  const fieldKey =
-                    breakpoint === "base"
-                      ? "colSpan"
-                      : breakpoint === "md"
-                        ? "mdColSpan"
-                        : "lgColSpan";
-                  const next = { ...current };
-                  if (value === null) {
-                    if (breakpoint === "base") next.colSpan = 12;
-                    else delete next[fieldKey];
-                  } else {
-                    next[fieldKey] = value;
-                  }
-                  onUpdateProps(block.id, { _layout: next });
-                }}
+                inputId={`${fieldIdPrefix}-layout-colSpan`}
+                defaultColSpan={gridDefaultColSpan}
+                onChange={(layout) => onUpdateLayout(block.id, layout)}
               />
             ) : null}
 
@@ -472,6 +456,7 @@ export function SortableBlockItem({
                 onDuplicate={onDuplicate}
                 onDelete={onDelete}
                 onUpdateProps={onUpdateProps}
+                onUpdateLayout={onUpdateLayout}
                 onReplaceProps={onReplaceProps}
                 onAddChild={onAddChild}
                 onInsert={onInsert}
@@ -492,6 +477,12 @@ export function SortableBlockItem({
   );
 }
 
+function readGridColumnCount(props: Record<string, unknown>): number {
+  const value = typeof props.columns === "number" ? props.columns : Number(props.columns);
+  if (!Number.isFinite(value)) return 12;
+  return Math.max(1, Math.min(12, Math.round(value)));
+}
+
 interface ChildrenAreaProps {
   container: NpBlockInstance;
   availableBlocks: NpBlockMetadata[];
@@ -501,6 +492,7 @@ interface ChildrenAreaProps {
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
   onUpdateProps: (id: string, props: Record<string, unknown>) => void;
+  onUpdateLayout: (id: string, layout: NpBlockLayout | undefined) => void;
   onReplaceProps: (id: string, props: Record<string, unknown>) => void;
   onAddChild: (parentId: string, blockType: string) => void;
   onInsert: (position: "before" | "after", targetId: string, blockType: string) => void;
@@ -523,6 +515,7 @@ function ChildrenArea({
   onDuplicate,
   onDelete,
   onUpdateProps,
+  onUpdateLayout,
   onReplaceProps,
   onAddChild,
   onInsert,
@@ -616,6 +609,7 @@ function ChildrenArea({
                     onDuplicate={onDuplicate}
                     onDelete={onDelete}
                     onUpdateProps={onUpdateProps}
+                    onUpdateLayout={onUpdateLayout}
                     onReplaceProps={onReplaceProps}
                     onAddChild={onAddChild}
                     onInsert={onInsert}
