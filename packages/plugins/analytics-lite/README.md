@@ -2,8 +2,9 @@
 
 First-party, storage-backed analytics plugin for small NexPress sites. It
 injects a tiny page-view collector, respects Do Not Track when configured,
-stores bounded daily events, rolls them up on a scheduled task, and exposes
-today's views and top paths through declarative Admin surfaces.
+stores size-bounded daily events with a retention TTL, rolls them up on a
+scheduled task, and exposes today's views and top paths through declarative
+Admin surfaces.
 
 ```bash
 pnpm exec nexpress plugin add @nexpress/plugin-analytics-lite

@@ -13,9 +13,13 @@ pnpm add @nexpress/oauth-providers
 ```ts
 import { createGoogleOAuthProvider } from "@nexpress/oauth-providers";
 
+const clientId = process.env.NP_OAUTH_GOOGLE_CLIENT_ID;
+const clientSecret = process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET;
+if (!clientId || !clientSecret) throw new Error("Google OAuth credentials are required");
+
 const provider = createGoogleOAuthProvider({
-  clientId: process.env.NP_OAUTH_GOOGLE_CLIENT_ID!,
-  clientSecret: process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET!,
+  clientId,
+  clientSecret,
 });
 ```
 

@@ -83,6 +83,17 @@ test("public status docs name the current pre-1.0 release line", async () => {
 test("local links in current README and guide surfaces resolve", async () => {
   const docsDirectory = resolve(repoRoot, "docs");
   const packageDirectories = await findPackageDirectories(resolve(repoRoot, "packages"));
+  const packageReadmes: string[] = [];
+  for (const directory of packageDirectories) {
+    const readme = resolve(directory, "README.md");
+    try {
+      await access(readme);
+      packageReadmes.push(readme);
+    } catch {
+      // Public packages are required to have a README by the test above;
+      // private workspace packages may intentionally omit one.
+    }
+  }
   const docs = (await readdir(docsDirectory, { withFileTypes: true }))
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
     .map((entry) => resolve(docsDirectory, entry.name));
@@ -92,7 +103,7 @@ test("local links in current README and guide surfaces resolve", async () => {
     resolve(repoRoot, "CONTRIBUTING.md"),
     resolve(repoRoot, "SECURITY.md"),
     ...docs,
-    ...packageDirectories.map((directory) => resolve(directory, "README.md")),
+    ...packageReadmes,
   ];
   const broken: string[] = [];
 

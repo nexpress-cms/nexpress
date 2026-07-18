@@ -8,8 +8,8 @@ pnpm exec nexpress plugin add @nexpress/plugin-block-latest-posts
 ```
 
 The Admin props form selects the collection, result limit, layout, and heading.
-Rendering uses the read-only `NpBlockRenderContext`, so collection access,
-publication filtering, and site scope stay inside the normal content pipeline.
+Rendering reads through the read-only `NpBlockRenderContext` with an explicit
+published-status filter, preserving normal collection access and site scope.
 See the
 [plugin block guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-blocks.md).
 

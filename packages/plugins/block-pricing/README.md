@@ -7,8 +7,8 @@ the block `propsSchema` contract.
 pnpm exec nexpress plugin add @nexpress/plugin-block-pricing
 ```
 
-Authors can add, remove, and reorder tiers; each tier carries its name, price,
-cadence, CTA, highlight state, and feature list. See the
+Authors can add and remove tiers; each tier carries its name, price, cadence,
+CTA, highlight state, and feature list. See the
 [plugin block guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-blocks.md).
 
 ## License
