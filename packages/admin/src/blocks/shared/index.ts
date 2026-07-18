@@ -21,7 +21,7 @@
  * row-card UI that's specific to the form-card layout.
  */
 
-export { ArrayFieldControl, normalizeArrayValue } from "./array-field-control.js";
+export { ArrayFieldControl, readArrayValue } from "./array-field-control.js";
 export { BlockIcon, type BlockIconProps } from "./block-icon.js";
 export { EMOJI_TO_LUCIDE, LUCIDE_ICONS } from "./block-icon-registry.js";
 export { PaletteModal, type PaletteModalProps } from "./palette-modal.js";

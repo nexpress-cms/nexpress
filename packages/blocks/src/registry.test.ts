@@ -17,7 +17,7 @@ const stubBlock = (type: string, source: NpBlockDefinition["source"]): NpBlockDe
   label: type,
   iconKind: "lucide",
   icon: "square",
-  source,
+  ...(source ? { source } : {}),
   defaultProps: {},
   propsSchema: [],
   render: StubRender,

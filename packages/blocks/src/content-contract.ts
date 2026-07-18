@@ -33,16 +33,6 @@ export type NpBlockContentContractResult =
     }
   | { readonly ok: false; readonly issues: NpBlockContentIssue[] };
 
-const STRING_FIELD_TYPES = new Set([
-  "text",
-  "textarea",
-  "url",
-  "image",
-  "color",
-  "collection",
-  "media",
-]);
-
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value) as unknown;
@@ -53,7 +43,10 @@ function isMissing(value: unknown): boolean {
   return value === undefined || value === null || value === "";
 }
 
-function isFieldHidden(field: NpBlockPropField, props: Record<string, unknown>): boolean {
+export function npIsBlockPropFieldHidden(
+  field: NpBlockPropField,
+  props: Record<string, unknown>,
+): boolean {
   if (
     field.hiddenWhen?.length &&
     field.hiddenWhen.every(([name, expected]) => props[name] === expected)
@@ -86,8 +79,7 @@ function issue(
 }
 
 function validatePattern(value: string, pattern: string): boolean {
-  const sourceWithoutAnchors = pattern.replace(/^\^/u, "").replace(/\$$/u, "");
-  return new RegExp(`^(?:${sourceWithoutAnchors})$`).test(value);
+  return new RegExp(`^(?:${pattern})$`).test(value);
 }
 
 function isStepAligned(value: number, step: number, base: number): boolean {
@@ -103,7 +95,7 @@ function analyzeFieldValue(
   block: NpBlockInstance,
   issues: NpBlockContentIssue[],
 ): void {
-  if (isFieldHidden(field, props)) return;
+  if (npIsBlockPropFieldHidden(field, props)) return;
 
   if (rawValue === undefined) {
     if (field.defaultValue !== undefined) {
@@ -140,7 +132,14 @@ function analyzeFieldValue(
   }
 
   let reason: string | null = null;
-  if (STRING_FIELD_TYPES.has(field.type)) {
+  if (
+    field.type === "text" ||
+    field.type === "textarea" ||
+    field.type === "url" ||
+    field.type === "image" ||
+    field.type === "color" ||
+    field.type === "collection"
+  ) {
     if (typeof rawValue !== "string") reason = "must be a string";
     else if (
       (field.type === "text" || field.type === "url") &&
@@ -148,17 +147,18 @@ function analyzeFieldValue(
       rawValue.length > 0 &&
       !validatePattern(rawValue, field.pattern)
     ) {
-      reason = field.patternMessage ?? `must match pattern ${field.pattern}`;
+      reason = field.validationMessage ?? `must match pattern ${field.pattern}`;
     }
   } else if (field.type === "number") {
     if (typeof rawValue !== "number" || !Number.isFinite(rawValue)) {
       reason = "must be a finite number";
     } else if (field.min !== undefined && rawValue < field.min) {
-      reason = field.patternMessage ?? `must be greater than or equal to ${field.min.toString()}`;
+      reason =
+        field.validationMessage ?? `must be greater than or equal to ${field.min.toString()}`;
     } else if (field.max !== undefined && rawValue > field.max) {
-      reason = field.patternMessage ?? `must be less than or equal to ${field.max.toString()}`;
+      reason = field.validationMessage ?? `must be less than or equal to ${field.max.toString()}`;
     } else if (field.step !== undefined && !isStepAligned(rawValue, field.step, field.min ?? 0)) {
-      reason = `must align to step ${field.step.toString()}`;
+      reason = field.validationMessage ?? `must align to step ${field.step.toString()}`;
     }
   } else if (field.type === "boolean") {
     if (typeof rawValue !== "boolean") reason = "must be a boolean";
@@ -190,9 +190,12 @@ function analyzeFieldValue(
           );
           continue;
         }
-        analyzePropSchema(field.itemSchema ?? [], itemValue, itemPath, block, issues);
+        analyzePropSchema(field.itemSchema, itemValue, itemPath, block, issues);
       }
     }
+  } else {
+    const exhaustive: never = field;
+    return exhaustive;
   }
 
   if (reason) {

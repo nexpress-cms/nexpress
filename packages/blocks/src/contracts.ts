@@ -18,6 +18,7 @@ export {
 export {
   npAnalyzeBlockContent,
   npAnalyzeBlockProps,
+  npIsBlockPropFieldHidden,
   npValidateBlockContentAgainstDefinitions,
   type NpBlockContentContractResult,
   type NpBlockContentIssue,

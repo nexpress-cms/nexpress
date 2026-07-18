@@ -84,13 +84,37 @@ The runtime field inventory is exported as `npBlockPropFieldTypes`:
 
 ```text
 text, textarea, number, boolean, select, url, richtext, image,
-color, collection, array, media
+color, collection, array
 ```
 
 Every field requires a unique identifier-style `name`, a non-empty `label`,
-and one supported `type`. Optional common fields include `required`,
+and one supported `type`. The TypeScript surface is an exact discriminated
+union: a field exposes only the keys and `defaultValue` type owned by its
+`type`. The runtime validator repeats the same closed-key check for JavaScript
+and SDK-bypassing definitions. Optional common fields are `required`,
 `defaultValue`, `description`, `group`, `hiddenWhen`, and `visibleWhen`.
-Default and conditional values must be serializable.
+Explicit `undefined`, accessors, class instances, and other non-JSON values are
+not definition metadata.
+
+| Type         | Stored/default value   | Type-specific metadata                                        |
+| ------------ | ---------------------- | ------------------------------------------------------------- |
+| `text`       | string                 | `translatable`, `placeholder`, `pattern`, `validationMessage` |
+| `textarea`   | string                 | `translatable`, `placeholder`, `rows`                         |
+| `number`     | finite number          | `placeholder`, `min`, `max`, `step`, `validationMessage`      |
+| `boolean`    | boolean                | —                                                             |
+| `select`     | declared option value  | required non-empty `options`                                  |
+| `url`        | string URI reference   | `placeholder`, `pattern`, `validationMessage`                 |
+| `richtext`   | `NpRichTextContent` v1 | `translatable`                                                |
+| `image`      | image URL string       | —                                                             |
+| `color`      | CSS color string       | —                                                             |
+| `collection` | collection slug string | —                                                             |
+| `array`      | array of objects       | required `itemSchema`, optional `itemDefault`                 |
+
+`url` deliberately accepts relative paths and fragments such as `/pricing` and
+`#details`; use `pattern` when a block needs a narrower URL grammar. `image`
+stores the URL returned by the image library. `color` permits CSS values such
+as `#0f172a`, `rgb(...)`, and `var(--np-color-primary)`. `collection` stores a
+slug; Admin renders the active collection inventory when it is available.
 
 Type-specific rules are checked during plugin loading:
 
@@ -102,19 +126,34 @@ Type-specific rules are checked during plugin loading:
   must be unique.
 - `number` owns `min`, `max`, and positive `step`; `min` cannot exceed `max`.
 - `text` and `url` may declare `pattern`; the regular expression is compiled
-  immediately instead of being ignored by the editor.
+  immediately and matched against the whole value. `validationMessage`
+  customizes the pattern error. Number fields may use the same key when at
+  least one of `min`, `max`, or `step` exists.
 - `textarea` owns positive integer `rows`.
-- `array` requires `itemSchema`, may provide a serializable `itemDefault`, and
-  supports nested schemas up to eight levels without cycles. Translation intent
-  is declared on its recursive textual leaves, not on the array itself.
-- `media` owns the optional `accept` MIME-prefix list.
+- `array` requires `itemSchema`, may provide an object `itemDefault`, and
+  supports nested schemas up to eight levels without cycles. Every stored item
+  must be a plain object; strings, primitive arrays, and JSON-encoded strings
+  are rejected rather than coerced by Admin. `itemDefault` is validated against
+  its own schema and is merged over field defaults when Admin inserts an item.
+  Translation intent is declared on recursive textual leaves, not the array.
+- `hiddenWhen` and `visibleWhen` must be non-empty, cannot repeat a prop, and
+  may reference only a sibling scalar field. The expected string, finite number,
+  or boolean must satisfy that sibling's options, pattern, and numeric bounds.
+  Rich-text and array reference equality is intentionally not a condition
+  language.
+
+The former experimental `media` field was removed before the v1 contract was
+stabilized: it was an alias of the image picker and never honored `accept`.
+Use `image` for image URLs. A future general asset field will ship under a new
+name with its own stored value and Admin control contract.
 
 `summaryFields` must reference names in the top-level `propsSchema`, which
 catches stale collapsed-row summaries during plugin evaluation. Values in
 `defaultProps` and field-level `defaultValue` entries are also checked against
 their declared field types, constraints, rich-text envelope, and nested array
-schema. A malformed default therefore fails while the plugin module loads,
-rather than after an operator inserts the first instance.
+schema. Undeclared keys in `defaultProps` and `itemDefault` are errors. A
+malformed default therefore fails while the plugin module loads, rather than
+after an operator inserts the first instance.
 
 For i18n-enabled collections with a `blocks` field, the XLIFF and Gettext
 translation adapters follow only props marked `translatable: true`. They

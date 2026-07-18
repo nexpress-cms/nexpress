@@ -333,7 +333,7 @@ describe("definePlugin — provides derivation (regression)", () => {
           render: () => null,
         },
       ],
-      /at least one option/,
+      /between 1 and 1000 options/,
     ],
   ])("rejects malformed block registries during evaluation", (blocks, message) => {
     const definition = {

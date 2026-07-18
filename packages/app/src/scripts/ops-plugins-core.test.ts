@@ -318,6 +318,39 @@ describe("ops plugins core", () => {
     );
   });
 
+  it("reports invalid block prop condition references through plugin doctor", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "conditional", name: "Conditional" },
+        blocks: [
+          pluginBlock("conditional.notice", {
+            propsSchema: [
+              {
+                name: "body",
+                label: "Body",
+                type: "text",
+                translatable: true,
+                visibleWhen: [["missing", true]],
+              },
+            ],
+          }),
+        ],
+      },
+    ]);
+
+    expect(report.status).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.block_invalid",
+          state: "error",
+          detail: expect.stringContaining('references unknown sibling prop "missing"'),
+          pluginIds: ["conditional"],
+        }),
+      ]),
+    );
+  });
+
   it("does not report cross-plugin conflicts for malformed block definitions", () => {
     const report = analyzePlugins([
       {

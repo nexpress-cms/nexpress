@@ -32,6 +32,10 @@ function optional<T extends object, Key extends string, Value>(
   return value === undefined ? ({} as T) : ({ [key]: value } as Record<Key, Value>);
 }
 
+function assertNever(value: never): never {
+  throw new TypeError(`Unsupported block prop field: ${String(value)}`);
+}
+
 export function collectionToManifest(config: NpCollectionConfig): NpCollectionManifest {
   const source = sourceName(config.admin?._themeOrigin);
   return {
@@ -103,37 +107,71 @@ function fieldToManifest(field: NpFieldConfig, parentSource: string): NpFieldMan
 }
 
 function propFieldToManifest(field: NpBlockPropField): NpBlockDiscoveryPropField {
-  return {
+  const result: Record<string, unknown> = {
     name: field.name,
     label: field.label,
     type: field.type,
-    ...optional("translatable", field.translatable),
-    ...optional("required", field.required),
-    ...(field.defaultValue === undefined ? {} : { defaultValue: wireValue(field.defaultValue) }),
-    ...(field.options ? { options: field.options.map((entry) => ({ ...entry })) } : {}),
-    ...optional("description", field.description),
-    ...optional("placeholder", field.placeholder),
-    ...optional("min", field.min),
-    ...optional("max", field.max),
-    ...optional("step", field.step),
-    ...optional("pattern", field.pattern),
-    ...optional("patternMessage", field.patternMessage),
-    ...optional("rows", field.rows),
-    ...optional("group", field.group),
-    ...(field.hiddenWhen
-      ? { hiddenWhen: field.hiddenWhen.map(([name, value]) => [name, wireValue(value)] as const) }
-      : {}),
-    ...(field.visibleWhen
-      ? { visibleWhen: field.visibleWhen.map(([name, value]) => [name, wireValue(value)] as const) }
-      : {}),
-    ...(field.itemSchema
-      ? { itemSchema: field.itemSchema.map((nested) => propFieldToManifest(nested)) }
-      : {}),
-    ...(field.itemDefault
-      ? { itemDefault: field.itemDefault as Record<string, NpDiscoveryJsonValue> }
-      : {}),
-    ...(field.accept ? { accept: [...field.accept] } : {}),
   };
+  if (field.required !== undefined) result.required = field.required;
+  if (field.description !== undefined) result.description = field.description;
+  if (field.group !== undefined) result.group = field.group;
+  if (field.hiddenWhen) {
+    result.hiddenWhen = field.hiddenWhen.map(([name, value]) => [name, value] as const);
+  }
+  if (field.visibleWhen) {
+    result.visibleWhen = field.visibleWhen.map(([name, value]) => [name, value] as const);
+  }
+  if (field.defaultValue !== undefined) result.defaultValue = wireValue(field.defaultValue);
+
+  switch (field.type) {
+    case "text":
+      result.translatable = field.translatable;
+      if (field.placeholder !== undefined) result.placeholder = field.placeholder;
+      if (field.pattern !== undefined) result.pattern = field.pattern;
+      if (field.validationMessage !== undefined) {
+        result.validationMessage = field.validationMessage;
+      }
+      break;
+    case "url":
+      if (field.placeholder !== undefined) result.placeholder = field.placeholder;
+      if (field.pattern !== undefined) result.pattern = field.pattern;
+      if (field.validationMessage !== undefined) {
+        result.validationMessage = field.validationMessage;
+      }
+      break;
+    case "textarea":
+      result.translatable = field.translatable;
+      if (field.placeholder !== undefined) result.placeholder = field.placeholder;
+      if (field.rows !== undefined) result.rows = field.rows;
+      break;
+    case "number":
+      if (field.placeholder !== undefined) result.placeholder = field.placeholder;
+      if (field.min !== undefined) result.min = field.min;
+      if (field.max !== undefined) result.max = field.max;
+      if (field.step !== undefined) result.step = field.step;
+      if (field.validationMessage !== undefined) {
+        result.validationMessage = field.validationMessage;
+      }
+      break;
+    case "select":
+      result.options = field.options.map((entry) => ({ ...entry }));
+      break;
+    case "richtext":
+      result.translatable = field.translatable;
+      break;
+    case "array":
+      result.itemSchema = field.itemSchema.map((nested) => propFieldToManifest(nested));
+      if (field.itemDefault) result.itemDefault = wireValue(field.itemDefault);
+      break;
+    case "boolean":
+    case "image":
+    case "color":
+    case "collection":
+      break;
+    default:
+      return assertNever(field);
+  }
+  return result as unknown as NpBlockDiscoveryPropField;
 }
 
 export function blockToManifest(metadata: NpBlockMetadata): NpBlockManifest {

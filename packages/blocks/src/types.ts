@@ -1,10 +1,9 @@
 import type { ReactElement, ReactNode } from "react";
-import type { NpBlockInstance } from "@nexpress/core/fields";
+import type { NpBlockInstance, NpRichTextContent } from "@nexpress/core/fields";
 
 export type { NpBlockInstance, NpBlockLayout } from "@nexpress/core/fields";
 
 import type { NpFindOptions, NpFindResult } from "@nexpress/core";
-import type { NpBlockPropFieldType } from "./block-contract.js";
 
 /**
  * Read-only data API exposed to a block's `render()` so blocks can
@@ -180,45 +179,17 @@ export interface NpBlockDefinition extends NpBlockMetadata {
   ) => ReactElement | Promise<ReactElement>;
 }
 
-export interface NpBlockPropFieldBase {
+export type NpBlockPropConditionValue = string | number | boolean;
+
+export type NpBlockPropCondition = readonly [propName: string, expected: NpBlockPropConditionValue];
+
+interface NpBlockPropFieldBase<TDefault> {
   name: string;
   label: string;
   required?: boolean;
-  defaultValue?: unknown;
-  options?: { label: string; value: string }[];
+  defaultValue?: TDefault;
   /** Optional helper text rendered under the field in the props form. */
   description?: string;
-  /**
-   * Native input placeholder. Applies to `text` / `textarea` /
-   * `url` / `number`. Ignored for non-input types (`boolean`,
-   * `select`, `image`, `media`, `richtext`, `array`, `collection`,
-   * `color`).
-   */
-  placeholder?: string;
-  /**
-   * For `type: "number"`. Mirrors the HTML number input
-   * attributes. Validation pass surfaces a soft warning when the
-   * stored value falls outside `[min, max]` or doesn't align to
-   * `step` from `min` (or 0 if `min` is omitted).
-   */
-  min?: number;
-  max?: number;
-  step?: number;
-  /**
-   * For `type: "text"` / `type: "url"`. Regex source string —
-   * the validation pass tests the stored value against
-   * `new RegExp(pattern)`. The block definition contract rejects
-   * invalid patterns before registration. Use anchors (`^…$`) to
-   * constrain the entire value.
-   */
-  pattern?: string;
-  /** Custom error message paired with `pattern` / `min` / `max`. */
-  patternMessage?: string;
-  /**
-   * For `type: "textarea"`. Number of visible rows. Defaults to
-   * 4 when omitted (matching the existing renderer).
-   */
-  rows?: number;
   /**
    * Field grouping label. Fields with the same `group` render
    * under one collapsible section in the props form, in
@@ -231,46 +202,99 @@ export interface NpBlockPropFieldBase {
   /**
    * Conditional visibility — the field is hidden when *all* of
    * the listed `[propName, value]` predicates match the block's
-   * current `props`. Lets a schema express "show `ctaUrl` only
-   * when `showCta` is true". Leaving the array empty (or omitting
-   * the field) keeps the field always visible.
-   *
-   * Predicate semantics: a missing prop on the block compares
-   * against `undefined`, so `hiddenWhen: [["showCta", undefined]]`
-   * hides until `showCta` is set to anything.
+   * current `props`. Every predicate must reference a sibling scalar
+   * field and use a value accepted by that field's contract.
    */
-  hiddenWhen?: ReadonlyArray<readonly [string, unknown]>;
+  hiddenWhen?: readonly NpBlockPropCondition[];
   /**
    * Conditional visibility — inverse of `hiddenWhen`. The field is
    * shown only when *all* of the listed `[propName, value]`
    * predicates match the block's current `props`. Lets a schema
    * express "show `imageUrl` only when `mode === 'media'`".
-   * Leaving the array empty (or omitting the field) keeps the
-   * field always visible (subject to `hiddenWhen`).
-   *
    * If both `hiddenWhen` and `visibleWhen` are set, the field is
    * shown when `visibleWhen` matches AND `hiddenWhen` doesn't.
    */
-  visibleWhen?: ReadonlyArray<readonly [string, unknown]>;
+  visibleWhen?: readonly NpBlockPropCondition[];
+}
+
+interface NpBlockPatternField {
+  /** JavaScript regular-expression source matched against the whole value. */
+  pattern?: string;
+  /** Custom message for a pattern or numeric constraint violation. */
+  validationMessage?: string;
+}
+
+export interface NpBlockTextPropField extends NpBlockPropFieldBase<string>, NpBlockPatternField {
+  type: "text";
+  translatable: boolean;
+  placeholder?: string;
+}
+
+export interface NpBlockTextareaPropField extends NpBlockPropFieldBase<string> {
+  type: "textarea";
+  translatable: boolean;
+  placeholder?: string;
+  /** Number of visible rows. Admin defaults to four when omitted. */
+  rows?: number;
+}
+
+export interface NpBlockNumberPropField extends NpBlockPropFieldBase<number> {
+  type: "number";
+  placeholder?: string;
+  min?: number;
+  max?: number;
+  /** Positive increment measured from `min`, or zero when `min` is omitted. */
+  step?: number;
+  validationMessage?: string;
+}
+
+export interface NpBlockBooleanPropField extends NpBlockPropFieldBase<boolean> {
+  type: "boolean";
+}
+
+export interface NpBlockSelectPropField extends NpBlockPropFieldBase<string> {
+  type: "select";
+  options: Array<{ label: string; value: string }>;
+}
+
+export interface NpBlockUrlPropField extends NpBlockPropFieldBase<string>, NpBlockPatternField {
+  type: "url";
+  placeholder?: string;
+}
+
+export interface NpBlockRichTextPropField extends NpBlockPropFieldBase<NpRichTextContent> {
+  type: "richtext";
+  translatable: boolean;
+}
+
+/** Image URL selected from the media library or entered directly. */
+export interface NpBlockImagePropField extends NpBlockPropFieldBase<string> {
+  type: "image";
+}
+
+/** CSS color value, including theme-token `var(...)` references. */
+export interface NpBlockColorPropField extends NpBlockPropFieldBase<string> {
+  type: "color";
+}
+
+/** Active collection slug. */
+export interface NpBlockCollectionPropField extends NpBlockPropFieldBase<string> {
+  type: "collection";
+}
+
+export interface NpBlockArrayPropField extends NpBlockPropFieldBase<object[]> {
+  type: "array";
   /**
-   * For `type: "array"`. Schema applied to every entry in the stored
-   * `unknown[]`. The admin renderer recurses through this list when an
+   * Schema applied to every object in the stored array. The admin
+   * renderer recurses through this list when an
    * operator clicks "Add" — fields here use the same `NpBlockPropField`
-   * shape, including shallow nested `array` fields.
+   * union, including nested `array` fields.
    */
-  itemSchema?: NpBlockPropField[];
+  itemSchema: NpBlockPropField[];
   /**
-   * For `type: "array"`. Default object shape inserted when the
-   * operator clicks "Add". Optional; falls back to a `{}` populated
-   * from each `itemSchema[].defaultValue`.
+   * Values merged over item-field defaults when Admin inserts an item.
    */
-  itemDefault?: Record<string, unknown>;
-  /**
-   * For `type: "media"`. Restricts the picker to the listed mime
-   * prefixes (e.g. `["image/", "video/mp4"]`). Empty / omitted
-   * accepts everything the media library has.
-   */
-  accept?: readonly string[];
+  itemDefault?: object;
 }
 
 /**
@@ -280,19 +304,18 @@ export interface NpBlockPropFieldBase {
  * cannot declare translation intent. Array fields declare it recursively on
  * their `itemSchema` leaves.
  */
-export type NpBlockPropField = NpBlockPropFieldBase &
-  (
-    | {
-        /** Supported textual editor control. */
-        type: "text" | "textarea" | "richtext";
-        translatable: boolean;
-      }
-    | {
-        /** Supported non-textual editor control. Runtime inventory: `npBlockPropFieldTypes`. */
-        type: Exclude<NpBlockPropFieldType, "text" | "textarea" | "richtext">;
-        translatable?: never;
-      }
-  );
+export type NpBlockPropField =
+  | NpBlockTextPropField
+  | NpBlockTextareaPropField
+  | NpBlockNumberPropField
+  | NpBlockBooleanPropField
+  | NpBlockSelectPropField
+  | NpBlockUrlPropField
+  | NpBlockRichTextPropField
+  | NpBlockImagePropField
+  | NpBlockColorPropField
+  | NpBlockCollectionPropField
+  | NpBlockArrayPropField;
 
 // The `blocks` field on a document is stored and edited as a flat
 // array of block instances — the editor, the JSONB column, the

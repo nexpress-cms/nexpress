@@ -39,7 +39,9 @@ includes:
 
 - identity and presentation metadata (`type`, `label`, `icon`, `category`);
 - concrete ownership in `source` (`built-in`, `plugin:<id>`, or `theme:<id>`);
-- exact JSON-safe `defaultProps` and recursive `propsSchema`;
+- exact JSON-safe `defaultProps` and the recursive v1 `propsSchema`
+  discriminated union (11 field types, type-specific metadata/defaults,
+  scalar sibling conditions, and object-only arrays);
 - container, summary, keyword, and allowed-child metadata.
 
 The server-only `render` function never crosses the boundary.

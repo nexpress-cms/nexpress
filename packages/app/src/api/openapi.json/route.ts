@@ -73,6 +73,71 @@ import {
 
 type OpenApiSchema = Record<string, unknown>;
 
+const blockNonWhitespaceTextPattern = "^(?=[\\s\\S]*\\S)[\\s\\S]+$";
+
+function blockMetadataText(maxLength: number): OpenApiSchema {
+  return {
+    type: "string",
+    minLength: 1,
+    maxLength,
+    pattern: blockNonWhitespaceTextPattern,
+  };
+}
+
+const blockPropCommonProperties: Record<string, OpenApiSchema> = {
+  name: {
+    type: "string",
+    minLength: 1,
+    maxLength: 128,
+    pattern: "^[A-Za-z_][A-Za-z0-9_-]*$",
+  },
+  label: blockMetadataText(100),
+  required: { type: "boolean" },
+  description: blockMetadataText(500),
+  group: blockMetadataText(100),
+  hiddenWhen: {
+    type: "array",
+    minItems: 1,
+    maxItems: npDiscoveryContractLimits.fields,
+    items: { $ref: "#/components/schemas/block_discovery_condition" },
+  },
+  visibleWhen: {
+    type: "array",
+    minItems: 1,
+    maxItems: npDiscoveryContractLimits.fields,
+    items: { $ref: "#/components/schemas/block_discovery_condition" },
+  },
+};
+
+function blockPropVariant(
+  type: string,
+  required: string[],
+  properties: Record<string, OpenApiSchema>,
+): OpenApiSchema {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["name", "label", "type", ...required],
+    properties: {
+      ...blockPropCommonProperties,
+      type: { type: "string", const: type },
+      ...properties,
+    },
+  };
+}
+
+const blockStringDefault: OpenApiSchema = {
+  type: "string",
+  maxLength: npDiscoveryContractLimits.jsonStringLength,
+};
+
+function blockPropPatternProperties(): Record<string, OpenApiSchema> {
+  return {
+    pattern: blockMetadataText(npDiscoveryContractLimits.textLength),
+    validationMessage: blockMetadataText(300),
+  };
+}
+
 const contentTransferCollectionFilterPattern = `^[a-z](?:[a-z0-9]|-(?=[a-z0-9])){0,${(
   npContentTransferContractLimits.collectionSlugLength - 1
 ).toString()}}(?:,[a-z](?:[a-z0-9]|-(?=[a-z0-9])){0,${(
@@ -903,67 +968,157 @@ export function buildSpec(): OpenApiSchema {
         },
       },
     },
+    block_discovery_rich_text_node: {
+      type: "object",
+      required: ["type", "version"],
+      properties: {
+        type: {
+          type: "string",
+          minLength: 1,
+          maxLength: npDiscoveryContractLimits.jsonStringLength,
+        },
+        version: { type: "integer", minimum: 1 },
+        children: {
+          type: "array",
+          maxItems: npDiscoveryContractLimits.jsonArrayItems,
+          items: { $ref: "#/components/schemas/block_discovery_rich_text_node" },
+        },
+        text: { type: "string", maxLength: npDiscoveryContractLimits.jsonStringLength },
+      },
+      maxProperties: npDiscoveryContractLimits.jsonObjectKeys,
+      additionalProperties: { $ref: "#/components/schemas/discovery_json" },
+    },
+    block_discovery_rich_text_content: {
+      type: "object",
+      additionalProperties: false,
+      required: ["version", "document"],
+      properties: {
+        version: { type: "integer", const: 1 },
+        document: {
+          type: "object",
+          additionalProperties: false,
+          required: ["root"],
+          properties: {
+            root: {
+              type: "object",
+              additionalProperties: false,
+              required: ["type", "children", "direction", "format", "indent", "version"],
+              properties: {
+                type: { type: "string", const: "root" },
+                children: {
+                  type: "array",
+                  maxItems: npDiscoveryContractLimits.jsonArrayItems,
+                  items: { $ref: "#/components/schemas/block_discovery_rich_text_node" },
+                },
+                direction: { type: ["string", "null"], enum: ["ltr", "rtl", null] },
+                format: {
+                  type: "string",
+                  maxLength: npDiscoveryContractLimits.jsonStringLength,
+                },
+                indent: { type: "integer", minimum: 0 },
+                version: { type: "integer", minimum: 1 },
+              },
+            },
+          },
+        },
+      },
+    },
     block_discovery_condition: {
       type: "array",
-      prefixItems: [{ type: "string" }, { $ref: "#/components/schemas/discovery_json" }],
+      prefixItems: [
+        {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          pattern: "^[A-Za-z_][A-Za-z0-9_-]*$",
+        },
+        {
+          oneOf: [
+            { type: "string", maxLength: npDiscoveryContractLimits.jsonStringLength },
+            { type: "number" },
+            { type: "boolean" },
+          ],
+        },
+      ],
       minItems: 2,
       maxItems: 2,
     },
     block_discovery_prop_field: {
       type: "object",
-      additionalProperties: false,
-      required: ["name", "label", "type"],
-      properties: {
-        name: { type: "string" },
-        label: { type: "string" },
-        type: {
-          type: "string",
-          enum: [
-            "text",
-            "textarea",
-            "number",
-            "boolean",
-            "select",
-            "url",
-            "richtext",
-            "image",
-            "color",
-            "collection",
-            "array",
-            "media",
-          ],
-        },
-        translatable: { type: "boolean" },
-        required: { type: "boolean" },
-        defaultValue: { $ref: "#/components/schemas/discovery_json" },
-        options: { type: "array", items: { $ref: "#/components/schemas/discovery_option" } },
-        description: { type: "string" },
-        placeholder: { type: "string" },
-        min: { type: "number" },
-        max: { type: "number" },
-        step: { type: "number", exclusiveMinimum: 0 },
-        pattern: { type: "string" },
-        patternMessage: { type: "string" },
-        rows: { type: "integer", minimum: 1 },
-        group: { type: "string" },
-        hiddenWhen: {
-          type: "array",
-          items: { $ref: "#/components/schemas/block_discovery_condition" },
-        },
-        visibleWhen: {
-          type: "array",
-          items: { $ref: "#/components/schemas/block_discovery_condition" },
-        },
-        itemSchema: {
-          type: "array",
-          items: { $ref: "#/components/schemas/block_discovery_prop_field" },
-        },
-        itemDefault: {
-          type: "object",
-          additionalProperties: { $ref: "#/components/schemas/discovery_json" },
-        },
-        accept: { type: "array", items: { type: "string" } },
-      },
+      discriminator: { propertyName: "type" },
+      oneOf: [
+        blockPropVariant("text", ["translatable"], {
+          translatable: { type: "boolean" },
+          defaultValue: blockStringDefault,
+          placeholder: blockMetadataText(200),
+          ...blockPropPatternProperties(),
+        }),
+        blockPropVariant("textarea", ["translatable"], {
+          translatable: { type: "boolean" },
+          defaultValue: blockStringDefault,
+          placeholder: blockMetadataText(200),
+          rows: { type: "integer", minimum: 1 },
+        }),
+        blockPropVariant("number", [], {
+          defaultValue: { type: "number" },
+          placeholder: blockMetadataText(200),
+          min: { type: "number" },
+          max: { type: "number" },
+          step: { type: "number", exclusiveMinimum: 0 },
+          validationMessage: blockMetadataText(300),
+        }),
+        blockPropVariant("boolean", [], { defaultValue: { type: "boolean" } }),
+        blockPropVariant("select", ["options"], {
+          defaultValue: blockStringDefault,
+          options: {
+            type: "array",
+            minItems: 1,
+            maxItems: npDiscoveryContractLimits.fields,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["label", "value"],
+              properties: {
+                label: blockMetadataText(100),
+                value: blockMetadataText(200),
+              },
+            },
+          },
+        }),
+        blockPropVariant("url", [], {
+          defaultValue: blockStringDefault,
+          placeholder: blockMetadataText(200),
+          ...blockPropPatternProperties(),
+        }),
+        blockPropVariant("richtext", ["translatable"], {
+          translatable: { type: "boolean" },
+          defaultValue: { $ref: "#/components/schemas/block_discovery_rich_text_content" },
+        }),
+        blockPropVariant("image", [], { defaultValue: blockStringDefault }),
+        blockPropVariant("color", [], { defaultValue: blockStringDefault }),
+        blockPropVariant("collection", [], { defaultValue: blockStringDefault }),
+        blockPropVariant("array", ["itemSchema"], {
+          defaultValue: {
+            type: "array",
+            maxItems: npDiscoveryContractLimits.jsonArrayItems,
+            items: {
+              type: "object",
+              maxProperties: npDiscoveryContractLimits.jsonObjectKeys,
+              additionalProperties: { $ref: "#/components/schemas/discovery_json" },
+            },
+          },
+          itemSchema: {
+            type: "array",
+            maxItems: npDiscoveryContractLimits.fields,
+            items: { $ref: "#/components/schemas/block_discovery_prop_field" },
+          },
+          itemDefault: {
+            type: "object",
+            maxProperties: npDiscoveryContractLimits.jsonObjectKeys,
+            additionalProperties: { $ref: "#/components/schemas/discovery_json" },
+          },
+        }),
+      ],
     },
     block_discovery_item: {
       type: "object",
@@ -990,10 +1145,12 @@ export function buildSpec(): OpenApiSchema {
         keywords: { type: "array", items: { type: "string" } },
         defaultProps: {
           type: "object",
+          maxProperties: npDiscoveryContractLimits.jsonObjectKeys,
           additionalProperties: { $ref: "#/components/schemas/discovery_json" },
         },
         propsSchema: {
           type: "array",
+          maxItems: npDiscoveryContractLimits.fields,
           items: { $ref: "#/components/schemas/block_discovery_prop_field" },
         },
         acceptsChildren: { type: "boolean" },

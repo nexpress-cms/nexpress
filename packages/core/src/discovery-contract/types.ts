@@ -1,3 +1,5 @@
+import type { NpRichTextContent } from "../fields/rich-text.js";
+
 export type NpDiscoveryJsonPrimitive = string | number | boolean | null;
 export type NpDiscoveryJsonValue =
   NpDiscoveryJsonPrimitive | NpDiscoveryJsonValue[] | { [key: string]: NpDiscoveryJsonValue };
@@ -85,32 +87,115 @@ export type NpBlockDiscoveryPropFieldType =
   | "image"
   | "color"
   | "collection"
-  | "array"
-  | "media";
+  | "array";
 
-export interface NpBlockDiscoveryPropField {
+export type NpBlockDiscoveryCondition = readonly [
+  propName: string,
+  expected: string | number | boolean,
+];
+
+interface NpBlockDiscoveryPropFieldBase<TType extends NpBlockDiscoveryPropFieldType, TDefault> {
   readonly name: string;
   readonly label: string;
-  readonly type: NpBlockDiscoveryPropFieldType;
-  readonly translatable?: boolean;
+  readonly type: TType;
   readonly required?: boolean;
-  readonly defaultValue?: NpDiscoveryJsonValue;
-  readonly options?: Array<{ readonly label: string; readonly value: string }>;
+  readonly defaultValue?: TDefault;
   readonly description?: string;
+  readonly group?: string;
+  readonly hiddenWhen?: NpBlockDiscoveryCondition[];
+  readonly visibleWhen?: NpBlockDiscoveryCondition[];
+}
+
+interface NpBlockDiscoveryPatternField {
+  readonly pattern?: string;
+  readonly validationMessage?: string;
+}
+
+export interface NpBlockDiscoveryTextPropField
+  extends NpBlockDiscoveryPropFieldBase<"text", string>, NpBlockDiscoveryPatternField {
+  readonly translatable: boolean;
+  readonly placeholder?: string;
+}
+
+export interface NpBlockDiscoveryTextareaPropField extends NpBlockDiscoveryPropFieldBase<
+  "textarea",
+  string
+> {
+  readonly translatable: boolean;
+  readonly placeholder?: string;
+  readonly rows?: number;
+}
+
+export interface NpBlockDiscoveryNumberPropField extends NpBlockDiscoveryPropFieldBase<
+  "number",
+  number
+> {
   readonly placeholder?: string;
   readonly min?: number;
   readonly max?: number;
   readonly step?: number;
-  readonly pattern?: string;
-  readonly patternMessage?: string;
-  readonly rows?: number;
-  readonly group?: string;
-  readonly hiddenWhen?: Array<readonly [string, NpDiscoveryJsonValue]>;
-  readonly visibleWhen?: Array<readonly [string, NpDiscoveryJsonValue]>;
-  readonly itemSchema?: NpBlockDiscoveryPropField[];
-  readonly itemDefault?: { readonly [key: string]: NpDiscoveryJsonValue };
-  readonly accept?: string[];
+  readonly validationMessage?: string;
 }
+
+export interface NpBlockDiscoveryBooleanPropField extends NpBlockDiscoveryPropFieldBase<
+  "boolean",
+  boolean
+> {}
+
+export interface NpBlockDiscoverySelectPropField extends NpBlockDiscoveryPropFieldBase<
+  "select",
+  string
+> {
+  readonly options: Array<{ readonly label: string; readonly value: string }>;
+}
+
+export interface NpBlockDiscoveryUrlPropField
+  extends NpBlockDiscoveryPropFieldBase<"url", string>, NpBlockDiscoveryPatternField {
+  readonly placeholder?: string;
+}
+
+export interface NpBlockDiscoveryRichTextPropField extends NpBlockDiscoveryPropFieldBase<
+  "richtext",
+  NpRichTextContent
+> {
+  readonly translatable: boolean;
+}
+
+export interface NpBlockDiscoveryImagePropField extends NpBlockDiscoveryPropFieldBase<
+  "image",
+  string
+> {}
+
+export interface NpBlockDiscoveryColorPropField extends NpBlockDiscoveryPropFieldBase<
+  "color",
+  string
+> {}
+
+export interface NpBlockDiscoveryCollectionPropField extends NpBlockDiscoveryPropFieldBase<
+  "collection",
+  string
+> {}
+
+export interface NpBlockDiscoveryArrayPropField extends NpBlockDiscoveryPropFieldBase<
+  "array",
+  Array<{ readonly [key: string]: NpDiscoveryJsonValue }>
+> {
+  readonly itemSchema: NpBlockDiscoveryPropField[];
+  readonly itemDefault?: { readonly [key: string]: NpDiscoveryJsonValue };
+}
+
+export type NpBlockDiscoveryPropField =
+  | NpBlockDiscoveryTextPropField
+  | NpBlockDiscoveryTextareaPropField
+  | NpBlockDiscoveryNumberPropField
+  | NpBlockDiscoveryBooleanPropField
+  | NpBlockDiscoverySelectPropField
+  | NpBlockDiscoveryUrlPropField
+  | NpBlockDiscoveryRichTextPropField
+  | NpBlockDiscoveryImagePropField
+  | NpBlockDiscoveryColorPropField
+  | NpBlockDiscoveryCollectionPropField
+  | NpBlockDiscoveryArrayPropField;
 
 export interface NpBlockDiscoveryItem {
   readonly type: string;

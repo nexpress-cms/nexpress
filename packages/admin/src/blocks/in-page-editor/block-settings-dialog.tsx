@@ -3,7 +3,7 @@
 import { useMemo, useState, type Dispatch } from "react";
 import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 
-import { isFieldHidden, type EditorAction } from "../editor-engine/index.js";
+import { getFieldValue, isFieldHidden, type EditorAction } from "../editor-engine/index.js";
 import { BlockIcon } from "../shared/block-icon.js";
 import { FieldControl } from "../shared/field-control.js";
 import { Button } from "../../ui/button.js";
@@ -94,7 +94,7 @@ function BlockSettingsDialogInner({
   const handleSave = () => {
     if (!block) return;
     // REPLACE_PROPS instead of UPDATE_PROPS — the form may have
-    // cleared a previously-set field (e.g. unset a media id), and
+    // cleared a previously-set field (e.g. unset an image URL), and
     // a merge would leave the stale value behind. The dialog's
     // draft is the new full props object.
     dispatch({ type: "REPLACE_PROPS", id: block.id, props: draft });
@@ -165,7 +165,7 @@ function BlockSettingsDialogInner({
                   ) : null}
                   <FieldControl
                     field={field}
-                    value={draft[field.name]}
+                    value={getFieldValue(field, draft[field.name])}
                     onChange={(value) =>
                       setDraft((current) => ({ ...current, [field.name]: value }))
                     }
