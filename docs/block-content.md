@@ -85,6 +85,12 @@ The wire validator checks structure without consulting a registry. The
 definition-aware layer in `@nexpress/blocks` then connects an instance to the
 currently registered `propsSchema` and container contract:
 
+`propsSchema` itself is the stable closed v1 field union documented in
+[`plugin-blocks.md`](plugin-blocks.md). Definition loading rejects type-specific
+key/default mismatches, invalid sibling conditions, malformed rich text,
+undeclared defaults, and non-object array entries before an instance can be
+inserted. The same schema is projected through public discovery and OpenAPI.
+
 ```ts
 import {
   getRegisteredBlockMetadata,

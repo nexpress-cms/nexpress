@@ -2,9 +2,9 @@
 
 import { Plus, Trash2 } from "lucide-react";
 import type { ComponentType } from "react";
-import type { NpBlockPropField } from "@nexpress/blocks";
+import type { NpBlockArrayPropField, NpBlockPropField } from "@nexpress/blocks";
 
-import { isRecord } from "../editor-engine/index.js";
+import { getFieldValue, isFieldHidden } from "../editor-engine/index.js";
 import { Button } from "../../ui/button.js";
 import { Label } from "../../ui/label.js";
 
@@ -29,7 +29,7 @@ interface FieldControlComponentProps {
 }
 
 interface ArrayFieldControlProps {
-  field: NpBlockPropField;
+  field: NpBlockArrayPropField;
   value: unknown;
   onChange: (next: unknown) => void;
   inputId: string;
@@ -42,54 +42,28 @@ interface ArrayFieldControlProps {
 }
 
 /**
- * Normalize legacy `array` prop values into the structured shape
- * the editor expects (`Record<string, unknown>[]`). The render-time
- * parsers in `@nexpress/blocks` already accept legacy shapes, but
- * the editor used to filter everything that wasn't already a
- * record array down to `[]` — which made operators see an empty
- * list, and the first Add / Remove silently overwrote real data.
- *
- * Two legacy shapes need to flow through:
- *   - JSON-string: `'[{"q":"...","a":"..."}]'` (pre-array-field
- *     defaults for FAQ / Feature Grid / Pricing / Image Gallery).
- *   - Primitive array: `["Name","Email","Company"]` (contact-form
- *     fields before its itemSchema landed). Each entry gets
- *     wrapped into `{ [firstFieldName]: value }` so the existing
- *     itemSchema can edit it.
+ * Reads the exact v1 array value. Malformed input stays visibly invalid
+ * instead of being coerced to an empty list and overwritten on the first edit.
  */
-export function normalizeArrayValue(
-  value: unknown,
-  itemSchema: readonly NpBlockPropField[],
-): Record<string, unknown>[] {
-  let source: unknown = value;
-  if (typeof source === "string") {
-    try {
-      source = JSON.parse(source);
-    } catch {
-      return [];
-    }
+export function readArrayValue(value: unknown): Record<string, unknown>[] | null {
+  if (!Array.isArray(value)) return null;
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return null;
+    const prototype = Object.getPrototypeOf(entry) as unknown;
+    if (prototype !== Object.prototype && prototype !== null) return null;
   }
-  if (!Array.isArray(source)) return [];
-
-  const firstFieldName = itemSchema[0]?.name;
-  const out: Record<string, unknown>[] = [];
-  for (const entry of source) {
-    if (isRecord(entry)) {
-      out.push(entry);
-      continue;
-    }
-    if (
-      firstFieldName !== undefined &&
-      (typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean")
-    ) {
-      out.push({ [firstFieldName]: entry });
-    }
-  }
-  return out;
+  return value as Record<string, unknown>[];
 }
 
-export function getEditableArrayItemSchema(field: NpBlockPropField): readonly NpBlockPropField[] {
-  return field.itemSchema ?? [];
+export function getVisibleArrayItemFields(
+  field: NpBlockArrayPropField,
+  item: Record<string, unknown>,
+): readonly NpBlockPropField[] {
+  return field.itemSchema.filter((sub) => !isFieldHidden(sub, item));
+}
+
+function cloneJsonValue<T>(value: T): T {
+  return structuredClone(value);
 }
 
 export function ArrayFieldControl({
@@ -99,28 +73,39 @@ export function ArrayFieldControl({
   inputId,
   FieldControl,
 }: ArrayFieldControlProps) {
-  const itemSchema = getEditableArrayItemSchema(field);
-  const items = normalizeArrayValue(value, itemSchema);
+  const itemSchema = field.itemSchema;
+  const items = readArrayValue(value);
 
   const buildItemDefault = (): Record<string, unknown> => {
-    if (field.itemDefault && typeof field.itemDefault === "object") {
-      return { ...field.itemDefault };
-    }
     const out: Record<string, unknown> = {};
     for (const sub of itemSchema) {
-      if (sub.defaultValue !== undefined) out[sub.name] = sub.defaultValue;
+      if (sub.defaultValue !== undefined) out[sub.name] = cloneJsonValue(sub.defaultValue);
     }
-    return out;
+    return field.itemDefault ? { ...out, ...cloneJsonValue(field.itemDefault) } : out;
   };
 
   const updateAt = (index: number, key: string, next: unknown) => {
+    if (!items) return;
     const updated = items.map((item, i) => (i === index ? { ...item, [key]: next } : item));
     onChange(updated);
   };
 
   const removeAt = (index: number) => {
+    if (!items) return;
     onChange(items.filter((_, i) => i !== index));
   };
+
+  if (!items) {
+    return (
+      <div
+        role="alert"
+        className="rounded-md border border-rose-500/40 bg-rose-500/5 px-3 py-2 text-xs text-rose-700 dark:text-rose-300"
+      >
+        This value is not an array of objects. Repair it in the block JSON editor before editing
+        entries.
+      </div>
+    );
+  }
 
   return (
     <div className="min-w-0 space-y-2">
@@ -149,7 +134,7 @@ export function ArrayFieldControl({
               Remove
             </Button>
           </div>
-          {itemSchema.map((sub) => {
+          {getVisibleArrayItemFields(field, item).map((sub) => {
             const subInputId = `${inputId}-${index}-${sub.name}`;
             return (
               <div key={sub.name} className="grid min-w-0 gap-1.5">
@@ -160,7 +145,7 @@ export function ArrayFieldControl({
                 ) : null}
                 <FieldControl
                   field={sub}
-                  value={item[sub.name]}
+                  value={getFieldValue(sub, item[sub.name])}
                   onChange={(next) => updateAt(index, sub.name, next)}
                   inputId={subInputId}
                 />

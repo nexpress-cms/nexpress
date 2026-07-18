@@ -59,6 +59,11 @@ These notes come from building two bundled example plugins in May 2026:
   same-plugin duplicate types are errors while cross-plugin ownership remains
   an operator-visible warning. The CLI and six bundled block plugins exercise
   the same contract.
+- Block prop schemas now promote that surface to the closed v1 discriminated
+  union. Type-specific keys and defaults, scalar sibling conditions, recursive
+  object arrays, Admin controls, public discovery/OpenAPI, the block scaffold,
+  and doctor use one fail-closed contract. The unfinished alias-only `media`
+  field was removed before stabilization; `image` remains the image URL field.
 - Plugin page-builder patterns now share one recursive definition contract
   across blocks, the SDK, Next bootstrap, the shared registry, and plugin
   doctor. Invalid trees, duplicate ids, unavailable block references, and

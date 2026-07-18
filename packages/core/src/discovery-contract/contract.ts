@@ -1,8 +1,11 @@
 import { z } from "zod";
 
+import { npValidateRichTextContent, type NpRichTextContent } from "../fields/rich-text.js";
+
 import {
   npPluginDiscoveryProvideKeys,
   type NpBlockDiscoveryItem,
+  type NpBlockDiscoveryPropField,
   type NpBlockDiscoveryResponse,
   type NpCollectionDiscoveryField,
   type NpCollectionDiscoveryItem,
@@ -25,6 +28,7 @@ export const npDiscoveryContractLimits = {
   jsonArrayItems: 2_000,
   jsonObjectKeys: 2_000,
   jsonKeyLength: 256,
+  blockSchemaDepth: 8,
 } as const;
 
 const INVALID = Symbol("invalid-discovery-value");
@@ -428,152 +432,368 @@ const collectionItemSchema: z.ZodType<NpCollectionDiscoveryItem> = z
     visit(item.fields, ["fields"], new Map());
   });
 
-const blockFieldTypes = [
-  "text",
-  "textarea",
-  "number",
-  "boolean",
-  "select",
-  "url",
-  "richtext",
-  "image",
-  "color",
-  "collection",
-  "array",
-  "media",
-] as const;
+const blockPropName = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z_][A-Za-z0-9_-]*$/u)
+  .refine((value) => !hasUnsafeText(value), "unsafe text");
+const blockText = (maximum: number) =>
+  text(maximum).refine((value) => value.trim().length > 0, "must contain non-whitespace text");
+const blockPropLabel = blockText(100);
+const blockPropDescription = blockText(500);
+const blockPropPlaceholder = blockText(200);
+const blockPropValidationMessage = blockText(300);
+const blockOptionListSchema = z
+  .array(z.strictObject({ label: blockText(100), value: blockText(200) }))
+  .min(1)
+  .max(npDiscoveryContractLimits.fields)
+  .superRefine((items, context) => {
+    const values = new Set<string>();
+    for (const [index, item] of items.entries()) {
+      if (values.has(item.value)) {
+        context.addIssue({
+          code: "custom",
+          path: [index, "value"],
+          message: `must not repeat "${item.value}"`,
+        });
+      }
+      values.add(item.value);
+    }
+  });
+const conditionValueSchema = z.union([
+  z.string().max(npDiscoveryContractLimits.jsonStringLength),
+  z.number().finite(),
+  z.boolean(),
+]);
+const conditionSchema = z.tuple([blockPropName, conditionValueSchema]);
+const conditionListSchema = z
+  .array(conditionSchema)
+  .min(1)
+  .max(npDiscoveryContractLimits.fields)
+  .superRefine((conditions, context) => {
+    const names = new Set<string>();
+    for (const [index, [name]] of conditions.entries()) {
+      if (names.has(name)) {
+        context.addIssue({
+          code: "custom",
+          path: [index, 0],
+          message: `must not repeat condition prop "${name}"`,
+        });
+      }
+      names.add(name);
+    }
+  });
 
-const conditionSchema = z.tuple([identifier, jsonSchema]);
-const blockPropFieldSchema: z.ZodType<NpBlockDiscoveryItem["propsSchema"][number]> = z.lazy(() =>
+const blockPropFieldCommonShape = {
+  name: blockPropName,
+  label: blockPropLabel,
+  required: z.boolean().optional(),
+  description: blockPropDescription.optional(),
+  group: blockText(100).optional(),
+  hiddenWhen: conditionListSchema.optional(),
+  visibleWhen: conditionListSchema.optional(),
+} as const;
+
+const patternShape = {
+  pattern: blockText(npDiscoveryContractLimits.textLength).optional(),
+  validationMessage: blockPropValidationMessage.optional(),
+} as const;
+
+const stringDefault = z.string().max(npDiscoveryContractLimits.jsonStringLength).optional();
+const objectSchema = z.record(z.string(), jsonSchema);
+
+const blockPropFieldSchema: z.ZodType<NpBlockDiscoveryPropField> = z.lazy(() =>
   z
-    .strictObject({
-      name: identifier,
-      label: identifier,
-      type: z.enum(blockFieldTypes),
-      translatable: z.boolean().optional(),
-      required: z.boolean().optional(),
-      defaultValue: jsonSchema.optional(),
-      options: optionListSchema.optional(),
-      description: text().optional(),
-      placeholder: text().optional(),
-      min: z.number().finite().optional(),
-      max: z.number().finite().optional(),
-      step: z.number().finite().positive().optional(),
-      pattern: text().optional(),
-      patternMessage: text().optional(),
-      rows: z.number().int().positive().optional(),
-      group: identifier.optional(),
-      hiddenWhen: z.array(conditionSchema).max(npDiscoveryContractLimits.fields).optional(),
-      visibleWhen: z.array(conditionSchema).max(npDiscoveryContractLimits.fields).optional(),
-      itemSchema: z.array(blockPropFieldSchema).max(npDiscoveryContractLimits.fields).optional(),
-      itemDefault: z.record(z.string(), jsonSchema).optional(),
-      accept: stringList.optional(),
-    })
+    .discriminatedUnion("type", [
+      z.strictObject({
+        ...blockPropFieldCommonShape,
+        ...patternShape,
+        type: z.literal("text"),
+        translatable: z.boolean(),
+        defaultValue: stringDefault,
+        placeholder: blockPropPlaceholder.optional(),
+      }),
+      z.strictObject({
+        ...blockPropFieldCommonShape,
+        type: z.literal("textarea"),
+        translatable: z.boolean(),
+        defaultValue: stringDefault,
+        placeholder: blockPropPlaceholder.optional(),
+        rows: z.number().int().positive().optional(),
+      }),
+      z.strictObject({
+        ...blockPropFieldCommonShape,
+        type: z.literal("number"),
+        defaultValue: z.number().finite().optional(),
+        placeholder: blockPropPlaceholder.optional(),
+        min: z.number().finite().optional(),
+        max: z.number().finite().optional(),
+        step: z.number().finite().positive().optional(),
+        validationMessage: blockPropValidationMessage.optional(),
+      }),
+      z.strictObject({
+        ...blockPropFieldCommonShape,
+        type: z.literal("boolean"),
+        defaultValue: z.boolean().optional(),
+      }),
+      z.strictObject({
+        ...blockPropFieldCommonShape,
+        type: z.literal("select"),
+        defaultValue: stringDefault,
+        options: blockOptionListSchema,
+      }),
+      z.strictObject({
+        ...blockPropFieldCommonShape,
+        ...patternShape,
+        type: z.literal("url"),
+        defaultValue: stringDefault,
+        placeholder: blockPropPlaceholder.optional(),
+      }),
+      z.strictObject({
+        ...blockPropFieldCommonShape,
+        type: z.literal("richtext"),
+        translatable: z.boolean(),
+        defaultValue: jsonSchema
+          .refine((value) => npValidateRichTextContent(value).ok, "must be NexPress rich text v1")
+          .transform((value) => value as unknown as NpRichTextContent)
+          .optional(),
+      }),
+      z.strictObject({
+        ...blockPropFieldCommonShape,
+        type: z.literal("image"),
+        defaultValue: stringDefault,
+      }),
+      z.strictObject({
+        ...blockPropFieldCommonShape,
+        type: z.literal("color"),
+        defaultValue: stringDefault,
+      }),
+      z.strictObject({
+        ...blockPropFieldCommonShape,
+        type: z.literal("collection"),
+        defaultValue: stringDefault,
+      }),
+      z.strictObject({
+        ...blockPropFieldCommonShape,
+        type: z.literal("array"),
+        defaultValue: z
+          .array(objectSchema)
+          .max(npDiscoveryContractLimits.jsonArrayItems)
+          .optional(),
+        itemSchema: z.array(blockPropFieldSchema).max(npDiscoveryContractLimits.fields),
+        itemDefault: objectSchema.optional(),
+      }),
+    ])
     .superRefine((field, context) => {
-      const textual =
-        field.type === "text" || field.type === "textarea" || field.type === "richtext";
-      if (textual !== (field.translatable !== undefined)) {
-        context.addIssue({
-          code: "custom",
-          path: ["translatable"],
-          message: textual
-            ? `is required for ${field.type} fields`
-            : `is not supported for ${field.type} fields`,
-        });
-      }
-      if ((field.type === "select") !== (field.options !== undefined)) {
-        context.addIssue({
-          code: "custom",
-          path: ["options"],
-          message:
-            field.type === "select"
-              ? "is required for select fields"
-              : `is not supported for ${field.type} fields`,
-        });
-      }
-      for (const key of ["min", "max", "step"] as const) {
-        if (field[key] !== undefined && field.type !== "number") {
+      if (field.type === "number") {
+        if (field.min !== undefined && field.max !== undefined && field.min > field.max) {
+          context.addIssue({ code: "custom", path: ["min"], message: "must not exceed max" });
+        }
+        if (
+          field.validationMessage !== undefined &&
+          field.min === undefined &&
+          field.max === undefined &&
+          field.step === undefined
+        ) {
           context.addIssue({
             code: "custom",
-            path: [key],
-            message: `is not supported for ${field.type} fields`,
+            path: ["validationMessage"],
+            message: "requires min, max, or step",
           });
         }
       }
-      if (field.min !== undefined && field.max !== undefined && field.min > field.max) {
-        context.addIssue({ code: "custom", path: ["min"], message: "must not exceed max" });
-      }
-      if (field.pattern !== undefined && field.type !== "text" && field.type !== "url") {
-        context.addIssue({
-          code: "custom",
-          path: ["pattern"],
-          message: `is not supported for ${field.type} fields`,
-        });
-      }
-      if (field.patternMessage !== undefined && field.pattern === undefined) {
-        context.addIssue({
-          code: "custom",
-          path: ["patternMessage"],
-          message: "requires pattern",
-        });
-      }
-      if (field.rows !== undefined && field.type !== "textarea") {
-        context.addIssue({
-          code: "custom",
-          path: ["rows"],
-          message: `is not supported for ${field.type} fields`,
-        });
-      }
-      if (
-        field.placeholder !== undefined &&
-        field.type !== "text" &&
-        field.type !== "textarea" &&
-        field.type !== "url" &&
-        field.type !== "number"
-      ) {
-        context.addIssue({
-          code: "custom",
-          path: ["placeholder"],
-          message: `is not supported for ${field.type} fields`,
-        });
-      }
-      if ((field.type === "array") !== (field.itemSchema !== undefined)) {
-        context.addIssue({
-          code: "custom",
-          path: ["itemSchema"],
-          message:
-            field.type === "array"
-              ? "is required for array fields"
-              : `is not supported for ${field.type} fields`,
-        });
-      }
-      if (field.itemDefault !== undefined && field.type !== "array") {
-        context.addIssue({
-          code: "custom",
-          path: ["itemDefault"],
-          message: `is not supported for ${field.type} fields`,
-        });
-      }
-      if (field.accept !== undefined && field.type !== "media") {
-        context.addIssue({
-          code: "custom",
-          path: ["accept"],
-          message: `is not supported for ${field.type} fields`,
-        });
-      }
-      const seen = new Set<string>();
-      for (const [index, nested] of (field.itemSchema ?? []).entries()) {
-        if (seen.has(nested.name)) {
+      if (field.type === "text" || field.type === "url") {
+        if (field.validationMessage !== undefined && field.pattern === undefined) {
           context.addIssue({
             code: "custom",
-            path: ["itemSchema", index, "name"],
-            message: `must not repeat "${nested.name}"`,
+            path: ["validationMessage"],
+            message: "requires pattern",
           });
         }
-        seen.add(nested.name);
+        if (field.pattern !== undefined) {
+          try {
+            new RegExp(field.pattern);
+          } catch {
+            context.addIssue({ code: "custom", path: ["pattern"], message: "must be valid" });
+          }
+        }
       }
     }),
 );
+
+interface BlockRefinementContext {
+  addIssue(issue: { code: "custom"; path: Array<string | number>; message: string }): void;
+}
+
+function addBlockValueIssue(
+  field: NpBlockDiscoveryPropField,
+  value: unknown,
+  path: Array<string | number>,
+  context: BlockRefinementContext,
+): void {
+  let message: string | null = null;
+  if (
+    field.type === "text" ||
+    field.type === "textarea" ||
+    field.type === "url" ||
+    field.type === "image" ||
+    field.type === "color" ||
+    field.type === "collection"
+  ) {
+    if (typeof value !== "string") {
+      message = "must be a string";
+    } else if ((field.type === "text" || field.type === "url") && field.pattern !== undefined) {
+      try {
+        if (!new RegExp(`^(?:${field.pattern})$`).test(value)) message = "must satisfy pattern";
+      } catch {
+        message = "must use a valid pattern";
+      }
+    }
+  } else if (field.type === "number") {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      message = "must be a finite number";
+    } else if (field.min !== undefined && value < field.min) {
+      message = `must be greater than or equal to ${field.min.toString()}`;
+    } else if (field.max !== undefined && value > field.max) {
+      message = `must be less than or equal to ${field.max.toString()}`;
+    } else if (field.step !== undefined) {
+      const quotient = (value - (field.min ?? 0)) / field.step;
+      if (Math.abs(quotient - Math.round(quotient)) > 1e-9) {
+        message = `must align to step ${field.step.toString()}`;
+      }
+    }
+  } else if (field.type === "boolean") {
+    if (typeof value !== "boolean") message = "must be boolean";
+  } else if (field.type === "select") {
+    if (typeof value !== "string" || !field.options.some((option) => option.value === value)) {
+      message = "must be one of the declared option values";
+    }
+  } else if (field.type === "richtext") {
+    if (!npValidateRichTextContent(value).ok) message = "must be NexPress rich text v1";
+  } else if (field.type === "array") {
+    if (!Array.isArray(value)) {
+      message = "must be an array";
+    } else {
+      for (const [index, item] of value.entries()) {
+        if (
+          typeof item !== "object" ||
+          item === null ||
+          Array.isArray(item) ||
+          (Object.getPrototypeOf(item) !== Object.prototype && Object.getPrototypeOf(item) !== null)
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: [...path, index],
+            message: "must be an object",
+          });
+          continue;
+        }
+        addBlockPropsIssues(
+          field.itemSchema,
+          item as Record<string, unknown>,
+          [...path, index],
+          context,
+        );
+      }
+    }
+  } else {
+    const exhaustive: never = field;
+    return exhaustive;
+  }
+  if (message) context.addIssue({ code: "custom", path, message });
+}
+
+function addBlockPropsIssues(
+  schema: readonly NpBlockDiscoveryPropField[],
+  props: Record<string, unknown>,
+  path: Array<string | number>,
+  context: BlockRefinementContext,
+): void {
+  const fields = new Map(schema.map((field) => [field.name, field]));
+  for (const key of Object.keys(props)) {
+    if (!fields.has(key)) {
+      context.addIssue({ code: "custom", path: [...path, key], message: "is not declared" });
+    }
+  }
+  for (const field of schema) {
+    if (Object.hasOwn(props, field.name)) {
+      addBlockValueIssue(field, props[field.name], [...path, field.name], context);
+    }
+  }
+}
+
+function addBlockPropSchemaIssues(
+  schema: readonly NpBlockDiscoveryPropField[],
+  path: Array<string | number>,
+  context: BlockRefinementContext,
+  depth = 0,
+): void {
+  if (depth > npDiscoveryContractLimits.blockSchemaDepth) {
+    context.addIssue({
+      code: "custom",
+      path,
+      message: `exceeds the maximum nesting depth of ${npDiscoveryContractLimits.blockSchemaDepth.toString()}`,
+    });
+    return;
+  }
+  const fields = new Map<string, NpBlockDiscoveryPropField>();
+  for (const [index, field] of schema.entries()) {
+    const fieldPath = [...path, index];
+    if (fields.has(field.name)) {
+      context.addIssue({
+        code: "custom",
+        path: [...fieldPath, "name"],
+        message: `must not repeat "${field.name}"`,
+      });
+    }
+    fields.set(field.name, field);
+    if (field.defaultValue !== undefined) {
+      addBlockValueIssue(field, field.defaultValue, [...fieldPath, "defaultValue"], context);
+    }
+    if (field.type === "array") {
+      addBlockPropSchemaIssues(field.itemSchema, [...fieldPath, "itemSchema"], context, depth + 1);
+      if (field.itemDefault !== undefined) {
+        addBlockPropsIssues(
+          field.itemSchema,
+          field.itemDefault,
+          [...fieldPath, "itemDefault"],
+          context,
+        );
+      }
+    }
+  }
+
+  for (const [index, field] of schema.entries()) {
+    for (const key of ["hiddenWhen", "visibleWhen"] as const) {
+      for (const [conditionIndex, [name, expected]] of (field[key] ?? []).entries()) {
+        const conditionPath = [...path, index, key, conditionIndex];
+        const target = fields.get(name);
+        if (!target) {
+          context.addIssue({
+            code: "custom",
+            path: [...conditionPath, 0],
+            message: `references unknown sibling prop "${name}"`,
+          });
+        } else if (target === field) {
+          context.addIssue({
+            code: "custom",
+            path: [...conditionPath, 0],
+            message: "must not reference its own field",
+          });
+        } else if (target.type === "array" || target.type === "richtext") {
+          context.addIssue({
+            code: "custom",
+            path: [...conditionPath, 0],
+            message: `cannot reference ${target.type}; conditions support scalar fields only`,
+          });
+        } else {
+          addBlockValueIssue(target, expected, [...conditionPath, 1], context);
+        }
+      }
+    }
+  }
+}
 
 const blockItemSchema: z.ZodType<NpBlockDiscoveryItem> = z
   .strictObject({
@@ -617,17 +837,9 @@ const blockItemSchema: z.ZodType<NpBlockDiscoveryItem> = z
         message: "must be true when child constraints are present",
       });
     }
-    const propNames = new Set<string>();
-    for (const [index, field] of item.propsSchema.entries()) {
-      if (propNames.has(field.name)) {
-        context.addIssue({
-          code: "custom",
-          path: ["propsSchema", index, "name"],
-          message: `must not repeat "${field.name}"`,
-        });
-      }
-      propNames.add(field.name);
-    }
+    const propNames = new Set(item.propsSchema.map((field) => field.name));
+    addBlockPropSchemaIssues(item.propsSchema, ["propsSchema"], context);
+    addBlockPropsIssues(item.propsSchema, item.defaultProps, ["defaultProps"], context);
     for (const [index, name] of item.summaryFields.entries()) {
       if (!propNames.has(name)) {
         context.addIssue({

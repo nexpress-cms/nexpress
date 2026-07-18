@@ -254,6 +254,12 @@ operational strings such as ids, CSS values, and JSON blobs use \`false\`.
 The XLIFF exporter follows the declaration recursively through array
 \`itemSchema\` fields.
 
+The v1 prop schema is a closed discriminated union. Type-specific keys belong
+only to their field (for example \`options\` on \`select\`, and \`itemSchema\`
+on \`array\`). Conditions must reference a sibling scalar field and arrays
+store object entries only. Use \`image\` for media-library image URLs; the old
+placeholder-only \`media\` field is not part of v1.
+
 ## What's inside
 
 ${
@@ -271,7 +277,7 @@ The package re-imports the client entry through its own \`./client\` subpath
 so Next.js's bundler can detect the server → client boundary. See the inline
 comments in \`tsup.config.ts\` for the why.`
     : `\`src/index.tsx\` defines a single example block (\`${blockTypeRoot}.example\`)
-with text + boolean + select fields. Edit \`propsSchema\` and \`render\` to
+with text + textarea + boolean fields. Edit \`propsSchema\` and \`render\` to
 make it your own. Reference: [Block plugin guide](https://github.com/nexpress-cms/nexpress).`
 }
 `;
@@ -394,7 +400,7 @@ const ${blockComponentName}Block: NpBlockDefinition = {
   defaultProps: {
     title: "Hello, ${blockComponentName}",
     body: "Edit src/index.tsx to make this block your own.",
-    showBorder: true,
+    showBody: true,
   },
   propsSchema: [
     {
@@ -411,10 +417,11 @@ const ${blockComponentName}Block: NpBlockDefinition = {
       type: "textarea",
       translatable: true,
       defaultValue: "Edit src/index.tsx to make this block your own.",
+      visibleWhen: [["showBody", true]],
     },
     {
-      name: "showBorder",
-      label: "Show border",
+      name: "showBody",
+      label: "Show body",
       type: "boolean",
       defaultValue: true,
     },
@@ -422,20 +429,20 @@ const ${blockComponentName}Block: NpBlockDefinition = {
   render: (props) => {
     const title = readString(props.title, "Hello");
     const body = readString(props.body, "");
-    const showBorder = readBool(props.showBorder, true);
+    const showBody = readBool(props.showBody, true);
 
     const wrapperStyle: CSSProperties = {
       padding: "1.25rem 1.5rem",
       margin: "1rem 0",
       borderRadius: "0.5rem",
-      border: showBorder ? "1px solid #e2e8f0" : "none",
+      border: "1px solid #e2e8f0",
       backgroundColor: "#f8fafc",
     };
 
     return (
       <div className="np-block-${blockTypeRoot}" style={wrapperStyle}>
         <h3 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 600 }}>{title}</h3>
-        {body.length > 0 ? (
+        {showBody && body.length > 0 ? (
           <p style={{ margin: "0.375rem 0 0", color: "#475569", lineHeight: 1.55 }}>{body}</p>
         ) : null}
       </div>
@@ -455,7 +462,7 @@ const ${blockComponentName}Patterns = [
         props: {
           title: "Hello, ${blockComponentName}",
           body: "Edit src/index.tsx to make this block your own.",
-          showBorder: true,
+          showBody: true,
         },
       },
     ],

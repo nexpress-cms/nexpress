@@ -17,7 +17,7 @@ import { BlockImagePicker } from "./block-image-picker.js";
 
 /**
  * Lexical editor — same lazy pattern the collection field-renderer
- * uses. Loads only when an `image` / `richtext` block prop actually
+ * uses. Loads only when a `richtext` block prop actually
  * mounts so pages without rich-text blocks don't pay for Lexical's
  * bundle.
  */
@@ -42,6 +42,10 @@ export interface FieldControlProps {
   value: unknown;
   onChange: (next: unknown) => void;
   inputId: string;
+}
+
+function assertNever(value: never): never {
+  throw new TypeError(`Unsupported block prop field: ${String(value)}`);
 }
 
 /**
@@ -134,22 +138,6 @@ export function FieldControl({ field, value, onChange, inputId }: FieldControlPr
     );
   }
 
-  if (field.type === "media") {
-    // Until the admin grows a proper media-library browser,
-    // `media` reuses the existing image picker — operators paste
-    // a URL or upload through the same flow as the legacy `image`
-    // field. The type still differs at the propsSchema level so
-    // block authors can opt into the future picker without
-    // rewriting.
-    return (
-      <BlockImagePicker
-        inputId={inputId}
-        value={typeof value === "string" ? value : ""}
-        onChange={(next) => onChange(next)}
-      />
-    );
-  }
-
   if (field.type === "array") {
     // ArrayFieldControl recurses back into FieldControl for its
     // child fields. Pass FieldControl through props to break the
@@ -178,7 +166,7 @@ export function FieldControl({ field, value, onChange, inputId }: FieldControlPr
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {(field.options ?? []).map((option) => (
+          {field.options.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
             </SelectItem>
@@ -227,6 +215,10 @@ export function FieldControl({ field, value, onChange, inputId }: FieldControlPr
         />
       </div>
     );
+  }
+
+  if (field.type !== "text" && field.type !== "url" && field.type !== "number") {
+    return assertNever(field);
   }
 
   const requiredMissing =

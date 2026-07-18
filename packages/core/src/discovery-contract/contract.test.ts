@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import { npCreateEmptyRichTextContent } from "../fields/rich-text.js";
+
 import {
   NpDiscoveryContractError,
   npAnalyzeBlockDiscoveryResponse,
   npAnalyzeCollectionDiscoveryResponse,
   npAnalyzePluginDiscoveryResponse,
+  npDiscoveryContractLimits,
   npRequireBlockDiscoveryResponse,
   npRequireCollectionDiscoveryResponse,
   npRequirePluginDiscoveryResponse,
@@ -123,6 +126,72 @@ describe("public discovery contracts", () => {
       ok: false,
       issues: expect.arrayContaining([expect.objectContaining({ code: "duplicate" })]),
     });
+  });
+
+  it("enforces the discriminated block prop schema and sibling conditions", () => {
+    const typeSpecific = blockResponse();
+    Object.assign(typeSpecific.items[0].propsSchema[0], {
+      options: [{ label: "Wrong", value: "wrong" }],
+    });
+    expect(npAnalyzeBlockDiscoveryResponse(typeSpecific).ok).toBe(false);
+
+    const wrongDefault = blockResponse();
+    Object.assign(wrongDefault.items[0].propsSchema[0], { defaultValue: 42 });
+    expect(npAnalyzeBlockDiscoveryResponse(wrongDefault).ok).toBe(false);
+
+    const literalDollar = blockResponse();
+    literalDollar.items[0].defaultProps.body = "price$";
+    Object.assign(literalDollar.items[0].propsSchema[0], { pattern: "price\\$" });
+    expect(npRequireBlockDiscoveryResponse(literalDollar)).toEqual(literalDollar);
+
+    const richText = blockResponse();
+    const richTextContent = npCreateEmptyRichTextContent();
+    Object.assign(richText.items[0], {
+      defaultProps: { body: richTextContent },
+      propsSchema: [
+        {
+          name: "body",
+          label: "Body",
+          type: "richtext",
+          translatable: true,
+          defaultValue: richTextContent,
+        },
+      ],
+    });
+    expect(npRequireBlockDiscoveryResponse(richText)).toEqual(richText);
+
+    const unknownCondition = blockResponse();
+    Object.assign(unknownCondition.items[0].propsSchema[0], {
+      visibleWhen: [["missing", true]],
+    });
+    expect(npAnalyzeBlockDiscoveryResponse(unknownCondition).ok).toBe(false);
+
+    const removedMedia = blockResponse();
+    const removedMediaField = removedMedia.items[0].propsSchema[0] as Record<string, unknown>;
+    removedMediaField.type = "media";
+    delete removedMediaField.translatable;
+    expect(npAnalyzeBlockDiscoveryResponse(removedMedia).ok).toBe(false);
+
+    const tooDeep = blockResponse();
+    let nestedSchema: Array<Record<string, unknown>> = [
+      { name: "leaf", label: "Leaf", type: "boolean" },
+    ];
+    for (let depth = 0; depth <= npDiscoveryContractLimits.blockSchemaDepth; depth += 1) {
+      nestedSchema = [
+        {
+          name: `items_${depth.toString()}`,
+          label: "Items",
+          type: "array",
+          itemSchema: nestedSchema,
+        },
+      ];
+    }
+    Object.assign(tooDeep.items[0], {
+      defaultProps: {},
+      propsSchema: nestedSchema,
+      summaryFields: [],
+    });
+    expect(npAnalyzeBlockDiscoveryResponse(tooDeep).ok).toBe(false);
   });
 
   it("fails closed on accessors without executing them", () => {

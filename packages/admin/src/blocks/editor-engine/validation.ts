@@ -1,9 +1,11 @@
 import {
   npAnalyzeBlockContent,
+  npIsBlockPropFieldHidden,
   type NpBlockInstance,
   type NpBlockMetadata,
   type NpBlockPropField,
 } from "@nexpress/blocks";
+import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 
 import type { FieldGroupSection } from "./types.js";
 
@@ -30,13 +32,15 @@ export const getFieldValue = (field: NpBlockPropField, value: unknown): unknown 
   if (field.defaultValue !== undefined) return field.defaultValue;
   if (field.type === "boolean") return false;
   if (field.type === "number") return 0;
+  if (field.type === "array") return [];
+  if (field.type === "richtext") return npCreateEmptyRichTextContent();
   return "";
 };
 
 /**
  * Parses a raw input value (string/boolean from a DOM event) into
- * the wire shape for the given field type. Handles richtext JSON
- * round-trip + number coercion fallbacks.
+ * the wire shape for the given field type. Rich-text and array controls
+ * emit their exact object shapes directly and do not pass through here.
  */
 export const parseFieldInput = (field: NpBlockPropField, rawValue: string | boolean): unknown => {
   if (field.type === "boolean") return Boolean(rawValue);
@@ -46,15 +50,6 @@ export const parseFieldInput = (field: NpBlockPropField, rawValue: string | bool
       return Number.isFinite(parsed) ? parsed : (field.defaultValue ?? 0);
     }
     return field.defaultValue ?? 0;
-  }
-  if (field.type === "richtext") {
-    if (typeof rawValue !== "string") return field.defaultValue ?? {};
-    try {
-      const parsed: unknown = JSON.parse(rawValue);
-      return isRecord(parsed) ? parsed : (field.defaultValue ?? {});
-    } catch {
-      return rawValue;
-    }
   }
   return rawValue;
 };
@@ -74,24 +69,7 @@ export function isFieldHidden(
   field: NpBlockPropField,
   blockProps: Record<string, unknown>,
 ): boolean {
-  const hidden = field.hiddenWhen;
-  if (hidden && hidden.length > 0) {
-    let allMatch = true;
-    for (const [name, expected] of hidden) {
-      if (blockProps[name] !== expected) {
-        allMatch = false;
-        break;
-      }
-    }
-    if (allMatch) return true;
-  }
-  const visible = field.visibleWhen;
-  if (visible && visible.length > 0) {
-    for (const [name, expected] of visible) {
-      if (blockProps[name] !== expected) return true;
-    }
-  }
-  return false;
+  return npIsBlockPropFieldHidden(field, blockProps);
 }
 
 /**
@@ -108,24 +86,29 @@ export function lintFieldValue(field: NpBlockPropField, value: unknown): string 
   if (field.type === "number") {
     if (typeof value !== "number" || !Number.isFinite(value)) return null;
     if (typeof field.min === "number" && value < field.min) {
-      return field.patternMessage ?? `Must be ≥ ${field.min}`;
+      return field.validationMessage ?? `Must be ≥ ${field.min}`;
     }
     if (typeof field.max === "number" && value > field.max) {
-      return field.patternMessage ?? `Must be ≤ ${field.max}`;
+      return field.validationMessage ?? `Must be ≤ ${field.max}`;
+    }
+    if (typeof field.step === "number") {
+      const quotient = (value - (field.min ?? 0)) / field.step;
+      if (Math.abs(quotient - Math.round(quotient)) > 1e-9) {
+        return field.validationMessage ?? `Must align to step ${field.step}`;
+      }
     }
     return null;
   }
   if ((field.type === "text" || field.type === "url") && field.pattern) {
     if (typeof value !== "string" || value.length === 0) return null;
-    const sourceWithoutAnchors = field.pattern.replace(/^\^/, "").replace(/\$$/, "");
     let regex: RegExp;
     try {
-      regex = new RegExp(`^(?:${sourceWithoutAnchors})$`);
+      regex = new RegExp(`^(?:${field.pattern})$`);
     } catch {
       return null;
     }
     if (!regex.test(value)) {
-      return field.patternMessage ?? `Doesn't match pattern \`${field.pattern}\``;
+      return field.validationMessage ?? `Doesn't match pattern \`${field.pattern}\``;
     }
   }
   return null;

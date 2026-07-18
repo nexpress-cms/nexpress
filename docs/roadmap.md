@@ -165,7 +165,7 @@ absorb without a redesign.
   every namespace; non-trivial but high authoring-quality payoff.
 
 - **Block `propsSchema` ↔ `NpFieldConfig` unification.** Today blocks have
-  their own field-type vocabulary (`text` / `select` / `array` / `media` /
+  their own field-type vocabulary (`text` / `select` / `array` / `image` /
   ...) that mirrors `NpFieldConfig` but is structurally separate. Plugin
   authors who already know the collection field system have to learn a
   second one. v2 should let `propsSchema` accept either shape and have the
@@ -239,8 +239,10 @@ promote before 1.0. Each promotion is a contract decision.
 
 - `NpRichTextContent` — promoted to the stable versioned NexPress envelope on
   2026-07-11; see [`rich-text.md`](rich-text.md).
-- `NpBlockDefinition` props schema — current shape is the v1, but block
-  types added since launch have stretched it. Reconcile or version.
+- `NpBlockDefinition` props schema — promoted to the exact v1 discriminated
+  union on 2026-07-18; author, runtime, Admin, discovery, OpenAPI, scaffold,
+  and doctor surfaces now share the same 11 field types and semantics. See
+  [`plugin-blocks.md`](plugin-blocks.md).
 - Theme token names — pick a token system (Style Dictionary? open-ui?) and
   commit to its key shapes.
 - Bootstrap singleton mutation (`setDb`, `setStorageAdapter`, `setJobQueue`, …)

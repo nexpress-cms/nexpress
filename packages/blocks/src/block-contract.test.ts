@@ -1,4 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
+import type { NpBlockDiscoveryPropFieldType } from "@nexpress/core/discovery";
 
 import {
   npAnalyzeBlockDefinitions,
@@ -7,6 +8,7 @@ import {
   type NpBlockPropFieldType,
 } from "./block-contract.js";
 import { getDefaultBlocks } from "./registry.js";
+import type { NpBlockPropField } from "./types.js";
 
 const validBlock = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   type: "demo.callout",
@@ -44,9 +46,15 @@ describe("block definition contract", () => {
       "color",
       "collection",
       "array",
-      "media",
     ]);
     expectTypeOf<(typeof npBlockPropFieldTypes)[number]>().toEqualTypeOf<NpBlockPropFieldType>();
+    expectTypeOf<NpBlockPropFieldType>().toEqualTypeOf<NpBlockDiscoveryPropFieldType>();
+    expectTypeOf<Extract<NpBlockPropField, { type: "number" }>["defaultValue"]>().toEqualTypeOf<
+      number | undefined
+    >();
+    expectTypeOf<Extract<NpBlockPropField, { type: "array" }>["itemSchema"]>().toEqualTypeOf<
+      NpBlockPropField[]
+    >();
   });
 
   it("accepts a complete definition and every bundled built-in block", () => {
@@ -98,6 +106,7 @@ describe("block definition contract", () => {
     expect(
       npValidateBlockDefinition(
         validBlock({
+          defaultProps: { slug: "_" },
           propsSchema: [
             {
               name: "slug",
@@ -108,6 +117,24 @@ describe("block definition contract", () => {
             },
           ],
           summaryFields: ["slug"],
+        }),
+      ),
+    ).toEqual({ ok: true });
+
+    expect(
+      npValidateBlockDefinition(
+        validBlock({
+          defaultProps: { price: "price$" },
+          propsSchema: [
+            {
+              name: "price",
+              label: "Price",
+              type: "text",
+              translatable: false,
+              pattern: "price\\$",
+            },
+          ],
+          summaryFields: ["price"],
         }),
       ),
     ).toEqual({ ok: true });
@@ -146,7 +173,7 @@ describe("block definition contract", () => {
     ],
     [
       validBlock({ propsSchema: [{ name: "tone", label: "Tone", type: "select" }] }),
-      /at least one option/,
+      /between 1 and/,
     ],
     [
       validBlock({
@@ -168,7 +195,7 @@ describe("block definition contract", () => {
       validBlock({
         propsSchema: [{ name: "title", label: "Title", type: "text", translatable: true, min: 1 }],
       }),
-      /min is supported only for number/,
+      /min is not supported for text/,
     ],
     [
       validBlock({
@@ -214,15 +241,21 @@ describe("block definition contract", () => {
           },
         ],
       }),
-      /supported only for array/,
+      /not supported for text/,
     ],
     [
       validBlock({
         propsSchema: [
-          { name: "asset", label: "Asset", type: "media", accept: ["image/", "image/"] },
+          {
+            name: "title",
+            label: "Title",
+            type: "text",
+            translatable: true,
+            patternMessage: "Old key",
+          },
         ],
       }),
-      /must not repeat/,
+      /patternMessage is not supported/,
     ],
   ])("rejects malformed prop schemas %#", (definition, message) => {
     const result = npValidateBlockDefinition(definition);
@@ -234,6 +267,7 @@ describe("block definition contract", () => {
     expect(
       npValidateBlockDefinition(
         validBlock({
+          defaultProps: { items: [] },
           summaryFields: ["items"],
           propsSchema: [
             {
@@ -257,6 +291,198 @@ describe("block definition contract", () => {
     if (!result.ok) expect(result.message).toMatch(/circular schema/);
   });
 
+  it("validates conditional references and array item defaults against sibling schemas", () => {
+    const conditional = (condition: unknown) =>
+      validBlock({
+        defaultProps: {},
+        summaryFields: [],
+        propsSchema: [
+          {
+            name: "mode",
+            label: "Mode",
+            type: "select",
+            options: [{ label: "Image", value: "image" }],
+          },
+          {
+            name: "caption",
+            label: "Caption",
+            type: "text",
+            translatable: true,
+            visibleWhen: condition,
+          },
+        ],
+      });
+
+    expect(npValidateBlockDefinition(conditional([["mode", "image"]]))).toEqual({ ok: true });
+    for (const [condition, message] of [
+      [[], /between 1 and/],
+      [["bad"], /pair/],
+      [[["missing", true]], /unknown sibling/],
+      [[["caption", "x"]], /own field/],
+      [[["mode", "video"]], /select option/],
+    ] as const) {
+      const result = npValidateBlockDefinition(conditional(condition));
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.message).toMatch(message);
+    }
+
+    const invalidItemDefault = npValidateBlockDefinition(
+      validBlock({
+        defaultProps: {},
+        summaryFields: [],
+        propsSchema: [
+          {
+            name: "items",
+            label: "Items",
+            type: "array",
+            itemSchema: [{ name: "enabled", label: "Enabled", type: "boolean" }],
+            itemDefault: { enabled: "yes" },
+          },
+        ],
+      }),
+    );
+    expect(invalidItemDefault).toEqual(
+      expect.objectContaining({ ok: false, message: expect.stringContaining("itemDefault") }),
+    );
+
+    const hiddenInvalidDefault = npValidateBlockDefinition(
+      validBlock({
+        defaultProps: { mode: "image", caption: 42 },
+        summaryFields: [],
+        propsSchema: [
+          {
+            name: "mode",
+            label: "Mode",
+            type: "select",
+            options: [{ label: "Image", value: "image" }],
+          },
+          {
+            name: "caption",
+            label: "Caption",
+            type: "text",
+            translatable: true,
+            hiddenWhen: [["mode", "image"]],
+          },
+        ],
+      }),
+    );
+    expect(hiddenInvalidDefault).toEqual(
+      expect.objectContaining({ ok: false, message: expect.stringContaining("must be a string") }),
+    );
+  });
+
+  it("rejects undeclared defaults and explicit undefined metadata", () => {
+    expect(
+      npValidateBlockDefinition(validBlock({ defaultProps: { title: "Hello", stale: true } })),
+    ).toEqual(
+      expect.objectContaining({ ok: false, message: expect.stringContaining("unregistered prop") }),
+    );
+    expect(
+      npValidateBlockDefinition(
+        validBlock({
+          propsSchema: [
+            {
+              name: "title",
+              label: "Title",
+              type: "text",
+              translatable: true,
+              description: undefined,
+            },
+          ],
+          summaryFields: ["title"],
+        }),
+      ),
+    ).toEqual(
+      expect.objectContaining({ ok: false, message: expect.stringContaining("description") }),
+    );
+  });
+
+  it("fails closed on accessor metadata without executing it", () => {
+    let reads = 0;
+    const definition = validBlock();
+    Object.defineProperty(definition.propsSchema as object, "0", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return { name: "title", label: "Title", type: "text", translatable: true };
+      },
+    });
+
+    expect(npValidateBlockDefinition(definition)).toEqual(
+      expect.objectContaining({ ok: false, message: expect.stringContaining("data property") }),
+    );
+    expect(reads).toBe(0);
+
+    const condition: unknown[] = ["enabled", true];
+    Object.defineProperty(condition, "0", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return "enabled";
+      },
+    });
+    expect(
+      npValidateBlockDefinition(
+        validBlock({
+          defaultProps: {},
+          propsSchema: [
+            { name: "enabled", label: "Enabled", type: "boolean" },
+            {
+              name: "title",
+              label: "Title",
+              type: "text",
+              translatable: true,
+              visibleWhen: [condition],
+            },
+          ],
+          summaryFields: [],
+        }),
+      ),
+    ).toEqual(
+      expect.objectContaining({ ok: false, message: expect.stringContaining("data property") }),
+    );
+    expect(reads).toBe(0);
+
+    const accessorDefinition = validBlock();
+    Object.defineProperty(accessorDefinition, "type", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return "unsafe";
+      },
+    });
+    expect(npAnalyzeBlockDefinitions([accessorDefinition])).toEqual([
+      expect.objectContaining({ code: "invalid-definition" }),
+    ]);
+    expect(reads).toBe(0);
+  });
+
+  it("rejects hidden array metadata and oversized serializable defaults", () => {
+    const schema = [{ name: "title", label: "Title", type: "text", translatable: true }];
+    Object.defineProperty(schema, "hidden", { value: true, enumerable: false });
+    expect(npValidateBlockDefinition(validBlock({ propsSchema: schema }))).toEqual(
+      expect.objectContaining({
+        ok: false,
+        message: expect.stringContaining('unsupported array property "hidden"'),
+      }),
+    );
+
+    expect(
+      npValidateBlockDefinition(
+        validBlock({
+          defaultProps: { title: "x".repeat(100_001) },
+          propsSchema: [{ name: "title", label: "Title", type: "text", translatable: true }],
+          summaryFields: ["title"],
+        }),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        ok: false,
+        message: expect.stringContaining("at most 100000 characters"),
+      }),
+    );
+  });
+
   it("requires explicit translation intent on textual leaves only", () => {
     const missing = npValidateBlockDefinition(
       validBlock({
@@ -275,7 +501,7 @@ describe("block definition contract", () => {
       }),
     );
     expect(misplaced).toEqual(
-      expect.objectContaining({ ok: false, message: expect.stringContaining("supported only") }),
+      expect.objectContaining({ ok: false, message: expect.stringContaining("not supported") }),
     );
   });
 

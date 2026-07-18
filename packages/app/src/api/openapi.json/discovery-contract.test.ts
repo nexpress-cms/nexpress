@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { npBlockPropFieldTypes } from "@nexpress/blocks/contracts";
 
 vi.mock("../../lib/init-core", () => ({ ensureFor: vi.fn(() => Promise.resolve()) }));
 
@@ -36,7 +37,6 @@ describe("OpenAPI public discovery contracts", () => {
 
     for (const schema of [
       "block_discovery_item",
-      "block_discovery_prop_field",
       "collection_discovery_item",
       "collection_discovery_field",
       "plugin_discovery_item",
@@ -46,5 +46,25 @@ describe("OpenAPI public discovery contracts", () => {
         additionalProperties: false,
       });
     }
+
+    const propField = spec.components.schemas.block_discovery_prop_field as {
+      type: string;
+      discriminator: { propertyName: string };
+      oneOf: Array<{ additionalProperties: boolean; properties: { type: { const: string } } }>;
+    };
+    expect(propField).toMatchObject({
+      type: "object",
+      discriminator: { propertyName: "type" },
+    });
+    expect(propField.oneOf).toHaveLength(npBlockPropFieldTypes.length);
+    expect(propField.oneOf.every((variant) => variant.additionalProperties === false)).toBe(true);
+    expect(propField.oneOf.map((variant) => variant.properties.type.const)).toEqual([
+      ...npBlockPropFieldTypes,
+    ]);
+    expect(
+      propField.oneOf.find((variant) => variant.properties.type.const === "richtext")?.properties,
+    ).toMatchObject({
+      defaultValue: { $ref: "#/components/schemas/block_discovery_rich_text_content" },
+    });
   });
 });

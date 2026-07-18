@@ -237,7 +237,7 @@ function collectSlots(
     const fieldPath = [...path, field.name];
     const fieldValue = value[field.name];
     if (field.type === "array") {
-      if (!Array.isArray(fieldValue) || !field.itemSchema) continue;
+      if (!Array.isArray(fieldValue)) continue;
       for (const [index, item] of fieldValue.entries()) {
         slots.push(
           ...collectSlots(fieldName, block, field.itemSchema, [...fieldPath, index], item),
@@ -246,8 +246,8 @@ function collectSlots(
       continue;
     }
     if (
-      field.translatable === true &&
-      (field.type === "text" || field.type === "textarea" || field.type === "richtext")
+      (field.type === "text" || field.type === "textarea" || field.type === "richtext") &&
+      field.translatable === true
     ) {
       slots.push({
         fieldName,
@@ -274,7 +274,7 @@ function fieldAtPath(schema: readonly NpBlockPropField[], path: PropPath): Textu
         ? (field as TextualField)
         : null;
     }
-    if (field.type !== "array" || !field.itemSchema) return null;
+    if (field.type !== "array") return null;
     const itemIndex = path[++index];
     if (typeof itemIndex !== "number") return null;
     currentSchema = field.itemSchema;

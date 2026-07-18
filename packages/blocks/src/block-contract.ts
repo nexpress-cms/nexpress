@@ -1,5 +1,5 @@
 import { npAnalyzeBlockProps } from "./content-contract.js";
-import type { NpBlockMetadata } from "./types.js";
+import type { NpBlockMetadata, NpBlockPropField } from "./types.js";
 
 export const npBlockPropFieldTypes = [
   "text",
@@ -13,7 +13,6 @@ export const npBlockPropFieldTypes = [
   "color",
   "collection",
   "array",
-  "media",
 ] as const;
 
 export type NpBlockPropFieldType = (typeof npBlockPropFieldTypes)[number];
@@ -49,36 +48,59 @@ const blockDefinitionKeys = new Set([
   "render",
 ]);
 
-const propFieldKeys = new Set([
+const commonPropFieldKeys = [
   "name",
   "label",
   "type",
-  "translatable",
   "required",
   "defaultValue",
-  "options",
   "description",
-  "placeholder",
-  "min",
-  "max",
-  "step",
-  "pattern",
-  "patternMessage",
-  "rows",
   "group",
   "hiddenWhen",
   "visibleWhen",
-  "itemSchema",
-  "itemDefault",
-  "accept",
-]);
+] as const;
+
+const propFieldKeysByType: Record<NpBlockPropFieldType, ReadonlySet<string>> = {
+  text: new Set([
+    ...commonPropFieldKeys,
+    "translatable",
+    "placeholder",
+    "pattern",
+    "validationMessage",
+  ]),
+  textarea: new Set([...commonPropFieldKeys, "translatable", "placeholder", "rows"]),
+  number: new Set([
+    ...commonPropFieldKeys,
+    "placeholder",
+    "min",
+    "max",
+    "step",
+    "validationMessage",
+  ]),
+  boolean: new Set(commonPropFieldKeys),
+  select: new Set([...commonPropFieldKeys, "options"]),
+  url: new Set([...commonPropFieldKeys, "placeholder", "pattern", "validationMessage"]),
+  richtext: new Set([...commonPropFieldKeys, "translatable"]),
+  image: new Set(commonPropFieldKeys),
+  color: new Set(commonPropFieldKeys),
+  collection: new Set(commonPropFieldKeys),
+  array: new Set([...commonPropFieldKeys, "itemSchema", "itemDefault"]),
+};
 
 const optionKeys = new Set(["label", "value"]);
 const propFieldTypeSet = new Set<string>(npBlockPropFieldTypes);
 const blockTypePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const propNamePattern = /^[A-Za-z_][A-Za-z0-9_-]*$/u;
 const maxNestedSchemaDepth = 8;
-const maxSerializableDepth = 32;
+const maxSerializableDepth = 64;
+const maxSerializableNodes = 20_000;
+const maxSerializableStringLength = 100_000;
+const maxSerializableArrayItems = 2_000;
+const maxSerializableObjectKeys = 2_000;
+const maxSerializableKeyLength = 256;
+const maxSchemaFields = 1_000;
+const maxFieldOptions = 1_000;
+const maxFieldConditions = 1_000;
 
 function valid(): NpBlockDefinitionValidationResult {
   return { ok: true };
@@ -94,6 +116,21 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
+function hasUnsafeText(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code === 0) return true;
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function unsupportedKey(
   value: Record<string, unknown>,
   allowed: ReadonlySet<string>,
@@ -101,8 +138,50 @@ function unsupportedKey(
   return Object.keys(value).find((key) => !allowed.has(key)) ?? null;
 }
 
+function validateDataRecord(
+  value: Record<string, unknown>,
+  path: string,
+): NpBlockDefinitionValidationResult {
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") return invalid(`${path} must not contain symbol properties.`);
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !("value" in descriptor) || descriptor.enumerable !== true) {
+      return invalid(`${path}.${key} must be an enumerable data property.`);
+    }
+  }
+  return valid();
+}
+
+function validateDataArray(value: unknown[], path: string): NpBlockDefinitionValidationResult {
+  const extra = Reflect.ownKeys(value).find((key) => {
+    if (typeof key !== "string") return true;
+    if (key === "length") return false;
+    if (!/^(?:0|[1-9][0-9]*)$/u.test(key)) return true;
+    return Number(key) >= value.length;
+  });
+  if (extra !== undefined) {
+    return invalid(
+      typeof extra === "symbol"
+        ? `${path} must not contain symbol properties.`
+        : `${path} has unsupported array property "${extra}".`,
+    );
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, index.toString());
+    if (!descriptor || !("value" in descriptor) || descriptor.enumerable !== true) {
+      return invalid(`${path}[${index.toString()}] must be an enumerable data property.`);
+    }
+  }
+  return valid();
+}
+
 function isNonEmptyString(value: unknown, maxLength = 500): value is string {
-  return typeof value === "string" && value.trim().length > 0 && value.length <= maxLength;
+  return (
+    typeof value === "string" &&
+    value.trim().length > 0 &&
+    value.length <= maxLength &&
+    !hasUnsafeText(value)
+  );
 }
 
 function validateOptionalString(
@@ -110,7 +189,7 @@ function validateOptionalString(
   path: string,
   maxLength = 500,
 ): NpBlockDefinitionValidationResult {
-  return value === undefined || isNonEmptyString(value, maxLength)
+  return isNonEmptyString(value, maxLength)
     ? valid()
     : invalid(
         `${path} must be a non-empty string with at most ${maxLength.toString()} characters.`,
@@ -123,6 +202,8 @@ function validateStringArray(
   itemPattern?: RegExp,
 ): NpBlockDefinitionValidationResult {
   if (!Array.isArray(value)) return invalid(`${path} must be an array.`);
+  const arrayShape = validateDataArray(value, path);
+  if (!arrayShape.ok) return arrayShape;
   const seen = new Set<string>();
   for (const [index, item] of value.entries()) {
     if (!isNonEmptyString(item, 128) || (itemPattern && !itemPattern.test(item))) {
@@ -135,23 +216,46 @@ function validateStringArray(
 }
 
 function validateConditions(value: unknown, path: string): NpBlockDefinitionValidationResult {
-  if (!Array.isArray(value)) return invalid(`${path} must be an array of [propName, value] pairs.`);
+  if (!Array.isArray(value) || value.length === 0 || value.length > maxFieldConditions) {
+    return invalid(
+      `${path} must contain between 1 and ${maxFieldConditions.toString()} [propName, value] pairs.`,
+    );
+  }
+  const arrayShape = validateDataArray(value, path);
+  if (!arrayShape.ok) return arrayShape;
+  const names = new Set<string>();
   for (const [index, condition] of value.entries()) {
+    if (!Array.isArray(condition) || condition.length !== 2) {
+      return invalid(`${path}[${index.toString()}] must be a [propName, value] pair.`);
+    }
+    const conditionShape = validateDataArray(condition, `${path}[${index.toString()}]`);
+    if (!conditionShape.ok) return conditionShape;
     if (
-      !Array.isArray(condition) ||
-      condition.length !== 2 ||
       typeof condition[0] !== "string" ||
+      condition[0].length > 128 ||
       !propNamePattern.test(condition[0])
     ) {
       return invalid(`${path}[${index.toString()}] must be a [propName, value] pair.`);
     }
-    const serializable = validateSerializable(
-      condition[1],
-      `${path}[${index.toString()}][1]`,
-      0,
-      new WeakSet(),
-    );
-    if (!serializable.ok) return serializable;
+    if (names.has(condition[0])) {
+      return invalid(`${path} must not repeat condition prop "${condition[0]}".`);
+    }
+    names.add(condition[0]);
+    if (
+      typeof condition[1] !== "string" &&
+      typeof condition[1] !== "boolean" &&
+      (typeof condition[1] !== "number" || !Number.isFinite(condition[1]))
+    ) {
+      return invalid(
+        `${path}[${index.toString()}][1] must be a string, finite number, or boolean.`,
+      );
+    }
+    if (
+      typeof condition[1] === "string" &&
+      (condition[1].length > maxSerializableStringLength || hasUnsafeText(condition[1]))
+    ) {
+      return invalid(`${path}[${index.toString()}][1] must contain bounded well-formed text.`);
+    }
   }
   return valid();
 }
@@ -161,14 +265,22 @@ function validateSerializable(
   path: string,
   depth: number,
   activeValues: WeakSet<object>,
+  state: { nodes: number } = { nodes: 0 },
 ): NpBlockDefinitionValidationResult {
-  if (
-    value === null ||
-    value === undefined ||
-    typeof value === "string" ||
-    typeof value === "boolean"
-  ) {
+  state.nodes += 1;
+  if (state.nodes > maxSerializableNodes) {
+    return invalid(`${path} exceeds the maximum of ${maxSerializableNodes.toString()} values.`);
+  }
+  if (value === null || typeof value === "boolean") {
     return valid();
+  }
+  if (typeof value === "string") {
+    if (value.length > maxSerializableStringLength) {
+      return invalid(
+        `${path} must contain strings with at most ${maxSerializableStringLength.toString()} characters.`,
+      );
+    }
+    return hasUnsafeText(value) ? invalid(`${path} must contain well-formed text.`) : valid();
   }
   if (typeof value === "number") {
     return Number.isFinite(value)
@@ -184,12 +296,26 @@ function validateSerializable(
   if (activeValues.has(value)) return invalid(`${path} must not contain circular values.`);
   activeValues.add(value);
   if (Array.isArray(value)) {
-    for (const [index, item] of value.entries()) {
+    if (value.length > maxSerializableArrayItems) {
+      activeValues.delete(value);
+      return invalid(
+        `${path} must contain at most ${maxSerializableArrayItems.toString()} array items.`,
+      );
+    }
+    const arrayShape = validateDataArray(value, path);
+    if (!arrayShape.ok) {
+      activeValues.delete(value);
+      return arrayShape;
+    }
+    for (let index = 0; index < value.length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, index.toString());
+      const item = descriptor && "value" in descriptor ? descriptor.value : undefined;
       const result = validateSerializable(
         item,
         `${path}[${index.toString()}]`,
         depth + 1,
         activeValues,
+        state,
       );
       if (!result.ok) {
         activeValues.delete(value);
@@ -203,8 +329,28 @@ function validateSerializable(
     activeValues.delete(value);
     return invalid(`${path} must contain only arrays and plain objects.`);
   }
-  for (const [key, item] of Object.entries(value)) {
-    const result = validateSerializable(item, `${path}.${key}`, depth + 1, activeValues);
+  const recordShape = validateDataRecord(value, path);
+  if (!recordShape.ok) {
+    activeValues.delete(value);
+    return recordShape;
+  }
+  const keys = Object.keys(value);
+  if (keys.length > maxSerializableObjectKeys) {
+    activeValues.delete(value);
+    return invalid(
+      `${path} must contain at most ${maxSerializableObjectKeys.toString()} object keys.`,
+    );
+  }
+  for (const key of keys) {
+    if (key.length === 0 || key.length > maxSerializableKeyLength || hasUnsafeText(key)) {
+      activeValues.delete(value);
+      return invalid(
+        `${path} keys must contain between 1 and ${maxSerializableKeyLength.toString()} characters.`,
+      );
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    const item = descriptor && "value" in descriptor ? descriptor.value : undefined;
+    const result = validateSerializable(item, `${path}.${key}`, depth + 1, activeValues, state);
     if (!result.ok) {
       activeValues.delete(value);
       return result;
@@ -215,12 +361,16 @@ function validateSerializable(
 }
 
 function validateOptions(value: unknown, path: string): NpBlockDefinitionValidationResult {
-  if (!Array.isArray(value) || value.length === 0) {
-    return invalid(`${path} must contain at least one option.`);
+  if (!Array.isArray(value) || value.length === 0 || value.length > maxFieldOptions) {
+    return invalid(`${path} must contain between 1 and ${maxFieldOptions.toString()} options.`);
   }
+  const arrayShape = validateDataArray(value, path);
+  if (!arrayShape.ok) return arrayShape;
   const values = new Set<string>();
   for (const [index, option] of value.entries()) {
     if (!isPlainRecord(option)) return invalid(`${path}[${index.toString()}] must be an object.`);
+    const recordShape = validateDataRecord(option, `${path}[${index.toString()}]`);
+    if (!recordShape.ok) return recordShape;
     const extra = unsupportedKey(option, optionKeys);
     if (extra) return invalid(`${path}[${index.toString()}] has unsupported field "${extra}".`);
     if (!isNonEmptyString(option.label, 100)) {
@@ -250,8 +400,8 @@ function validatePropField(
   activeSchemas: WeakSet<object>,
 ): NpBlockDefinitionValidationResult {
   if (!isPlainRecord(value)) return invalid(`${path} must be an object.`);
-  const extra = unsupportedKey(value, propFieldKeys);
-  if (extra) return invalid(`${path} has unsupported field "${extra}".`);
+  const recordShape = validateDataRecord(value, path);
+  if (!recordShape.ok) return recordShape;
   if (!isNonEmptyString(value.name, 128) || !propNamePattern.test(value.name)) {
     return invalid(
       `${path}.name must be an identifier using letters, numbers, underscores, or hyphens.`,
@@ -263,16 +413,15 @@ function validatePropField(
   if (typeof value.type !== "string" || !propFieldTypeSet.has(value.type)) {
     return invalid(`${path}.type must be one of ${npBlockPropFieldTypes.join(", ")}.`);
   }
+  const type = value.type as NpBlockPropFieldType;
+  const extra = unsupportedKey(value, propFieldKeysByType[type]);
+  if (extra) return invalid(`${path}.${extra} is not supported for ${type} fields.`);
+
   const textual = value.type === "text" || value.type === "textarea" || value.type === "richtext";
   if (textual && typeof value.translatable !== "boolean") {
     return invalid(`${path}.translatable must be boolean for ${value.type} fields.`);
   }
-  if (!textual && value.translatable !== undefined) {
-    return invalid(
-      `${path}.translatable is supported only for text, textarea, and richtext fields.`,
-    );
-  }
-  if (value.required !== undefined && typeof value.required !== "boolean") {
+  if (Object.hasOwn(value, "required") && typeof value.required !== "boolean") {
     return invalid(`${path}.required must be boolean.`);
   }
   if (Object.hasOwn(value, "defaultValue")) {
@@ -287,25 +436,22 @@ function validatePropField(
   for (const [key, maxLength] of [
     ["description", 500],
     ["placeholder", 200],
-    ["patternMessage", 300],
+    ["validationMessage", 300],
     ["group", 100],
   ] as const) {
+    if (!Object.hasOwn(value, key)) continue;
     const result = validateOptionalString(value[key], `${path}.${key}`, maxLength);
     if (!result.ok) return result;
   }
 
-  if (value.options !== undefined || value.type === "select") {
-    if (value.type !== "select")
-      return invalid(`${path}.options is supported only for select fields.`);
+  if (value.type === "select") {
     const result = validateOptions(value.options, `${path}.options`);
     if (!result.ok) return result;
   }
 
   const numericKeys = ["min", "max", "step"] as const;
   for (const key of numericKeys) {
-    if (value[key] === undefined) continue;
-    if (value.type !== "number")
-      return invalid(`${path}.${key} is supported only for number fields.`);
+    if (!Object.hasOwn(value, key)) continue;
     const result = validateFiniteNumber(value[key], `${path}.${key}`);
     if (!result.ok) return result;
   }
@@ -316,11 +462,10 @@ function validatePropField(
     return invalid(`${path}.min must be less than or equal to max.`);
   }
 
-  if (value.pattern !== undefined) {
-    if (value.type !== "text" && value.type !== "url") {
-      return invalid(`${path}.pattern is supported only for text and url fields.`);
+  if (Object.hasOwn(value, "pattern")) {
+    if (!isNonEmptyString(value.pattern, 2_000)) {
+      return invalid(`${path}.pattern must be a non-empty string with at most 2000 characters.`);
     }
-    if (typeof value.pattern !== "string") return invalid(`${path}.pattern must be a string.`);
     try {
       new RegExp(value.pattern);
     } catch (error) {
@@ -328,33 +473,37 @@ function validatePropField(
       return invalid(`${path}.pattern is not a valid regular expression: ${reason}`);
     }
   }
-  if (value.patternMessage !== undefined && value.pattern === undefined) {
-    return invalid(`${path}.patternMessage requires pattern.`);
+  if (
+    Object.hasOwn(value, "validationMessage") &&
+    value.type !== "number" &&
+    !Object.hasOwn(value, "pattern")
+  ) {
+    return invalid(`${path}.validationMessage requires pattern.`);
+  }
+  if (
+    Object.hasOwn(value, "validationMessage") &&
+    value.type === "number" &&
+    !Object.hasOwn(value, "min") &&
+    !Object.hasOwn(value, "max") &&
+    !Object.hasOwn(value, "step")
+  ) {
+    return invalid(`${path}.validationMessage requires min, max, or step.`);
   }
 
-  if (value.rows !== undefined) {
-    if (value.type !== "textarea")
-      return invalid(`${path}.rows is supported only for textarea fields.`);
+  if (Object.hasOwn(value, "rows")) {
     if (!Number.isInteger(value.rows) || (value.rows as number) <= 0) {
       return invalid(`${path}.rows must be a positive integer.`);
     }
   }
 
-  if (value.placeholder !== undefined) {
-    const supported = new Set(["text", "textarea", "url", "number"]);
-    if (!supported.has(value.type)) {
-      return invalid(`${path}.placeholder is not supported for ${value.type} fields.`);
-    }
-  }
-
   for (const key of ["hiddenWhen", "visibleWhen"] as const) {
-    if (value[key] === undefined) continue;
+    if (!Object.hasOwn(value, key)) continue;
     const result = validateConditions(value[key], `${path}.${key}`);
     if (!result.ok) return result;
   }
 
   if (value.type === "array") {
-    if (value.itemSchema === undefined)
+    if (!Object.hasOwn(value, "itemSchema"))
       return invalid(`${path}.itemSchema is required for array fields.`);
     const result = validatePropSchema(
       value.itemSchema,
@@ -363,10 +512,10 @@ function validatePropField(
       activeSchemas,
     );
     if (!result.ok) return result;
-    if (value.itemDefault !== undefined && !isPlainRecord(value.itemDefault)) {
+    if (Object.hasOwn(value, "itemDefault") && !isPlainRecord(value.itemDefault)) {
       return invalid(`${path}.itemDefault must be an object.`);
     }
-    if (value.itemDefault !== undefined) {
+    if (Object.hasOwn(value, "itemDefault")) {
       const serializable = validateSerializable(
         value.itemDefault,
         `${path}.itemDefault`,
@@ -375,15 +524,123 @@ function validatePropField(
       );
       if (!serializable.ok) return serializable;
     }
-  } else if (value.itemSchema !== undefined || value.itemDefault !== undefined) {
-    return invalid(`${path}.itemSchema and itemDefault are supported only for array fields.`);
   }
+  return valid();
+}
 
-  if (value.accept !== undefined) {
-    if (value.type !== "media")
-      return invalid(`${path}.accept is supported only for media fields.`);
-    const result = validateStringArray(value.accept, `${path}.accept`);
-    if (!result.ok) return result;
+function validateConditionValue(
+  field: NpBlockPropField,
+  value: unknown,
+  path: string,
+): NpBlockDefinitionValidationResult {
+  if (
+    field.type === "text" ||
+    field.type === "textarea" ||
+    field.type === "url" ||
+    field.type === "image" ||
+    field.type === "color" ||
+    field.type === "collection"
+  ) {
+    if (typeof value !== "string") return invalid(`${path} must be a string.`);
+    if (
+      (field.type === "text" || field.type === "url") &&
+      field.pattern &&
+      !new RegExp(`^(?:${field.pattern})$`).test(value)
+    ) {
+      return invalid(`${path} must satisfy the referenced field pattern.`);
+    }
+    return valid();
+  }
+  if (field.type === "number") {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return invalid(`${path} must be a finite number.`);
+    }
+    if (field.min !== undefined && value < field.min) {
+      return invalid(`${path} must be greater than or equal to ${field.min.toString()}.`);
+    }
+    if (field.max !== undefined && value > field.max) {
+      return invalid(`${path} must be less than or equal to ${field.max.toString()}.`);
+    }
+    if (field.step !== undefined) {
+      const quotient = (value - (field.min ?? 0)) / field.step;
+      if (Math.abs(quotient - Math.round(quotient)) > 1e-9) {
+        return invalid(`${path} must align to step ${field.step.toString()}.`);
+      }
+    }
+    return valid();
+  }
+  if (field.type === "boolean") {
+    return typeof value === "boolean" ? valid() : invalid(`${path} must be boolean.`);
+  }
+  if (field.type === "select") {
+    return typeof value === "string" && field.options.some((option) => option.value === value)
+      ? valid()
+      : invalid(`${path} must be one of the referenced select option values.`);
+  }
+  return invalid(`${path} cannot reference ${field.type}; conditions support scalar fields only.`);
+}
+
+function withoutConditions(field: NpBlockPropField): NpBlockPropField {
+  const { hiddenWhen: _hiddenWhen, visibleWhen: _visibleWhen, ...unconditional } = field;
+  if (field.type === "array") {
+    return {
+      ...unconditional,
+      itemSchema: field.itemSchema.map((nested) => withoutConditions(nested)),
+    } as NpBlockPropField;
+  }
+  return unconditional;
+}
+
+function withoutSchemaConditions(schema: readonly NpBlockPropField[]): NpBlockPropField[] {
+  return schema.map((field) => withoutConditions(field));
+}
+
+function validateSchemaSemantics(
+  schema: readonly NpBlockPropField[],
+  path: string,
+): NpBlockDefinitionValidationResult {
+  const fields = new Map(schema.map((field) => [field.name, field]));
+  for (const [index, field] of schema.entries()) {
+    const fieldPath = `${path}[${index.toString()}]`;
+    for (const key of ["hiddenWhen", "visibleWhen"] as const) {
+      for (const [conditionIndex, [name, expected]] of (field[key] ?? []).entries()) {
+        const conditionPath = `${fieldPath}.${key}[${conditionIndex.toString()}]`;
+        const target = fields.get(name);
+        if (!target) return invalid(`${conditionPath} references unknown sibling prop "${name}".`);
+        if (target === field) return invalid(`${conditionPath} must not reference its own field.`);
+        const result = validateConditionValue(target, expected, `${conditionPath}[1]`);
+        if (!result.ok) return result;
+      }
+    }
+
+    if (Object.hasOwn(field, "defaultValue")) {
+      const defaultIssue = npAnalyzeBlockProps(
+        { [field.name]: field.defaultValue },
+        {
+          type: "prop-default-contract",
+          label: "Prop default contract",
+          defaultProps: {},
+          propsSchema: [withoutConditions(field)],
+        },
+      ).find((issue) => issue.code !== "missing-required-prop");
+      if (defaultIssue) {
+        return invalid(
+          `${fieldPath}.defaultValue violates its field contract: ${defaultIssue.message}`,
+        );
+      }
+    }
+
+    if (field.type === "array" && field.itemDefault !== undefined) {
+      const itemIssue = npAnalyzeBlockProps(field.itemDefault, {
+        type: "array-item-default-contract",
+        label: "Array item default contract",
+        defaultProps: {},
+        propsSchema: withoutSchemaConditions(field.itemSchema),
+      }).find((issue) => issue.code !== "missing-required-prop");
+      if (itemIssue) {
+        return invalid(`${fieldPath}.itemDefault violates itemSchema: ${itemIssue.message}`);
+      }
+    }
   }
   return valid();
 }
@@ -395,6 +652,11 @@ function validatePropSchema(
   activeSchemas: WeakSet<object>,
 ): NpBlockDefinitionValidationResult {
   if (!Array.isArray(value)) return invalid(`${path} must be an array.`);
+  const arrayShape = validateDataArray(value, path);
+  if (!arrayShape.ok) return arrayShape;
+  if (value.length > maxSchemaFields) {
+    return invalid(`${path} must contain at most ${maxSchemaFields.toString()} fields.`);
+  }
   if (depth > maxNestedSchemaDepth) {
     return invalid(
       `${path} exceeds the maximum nesting depth of ${maxNestedSchemaDepth.toString()}.`,
@@ -416,6 +678,11 @@ function validatePropSchema(
     }
     names.add(name);
   }
+  const semanticResult = validateSchemaSemantics(value as NpBlockPropField[], path);
+  if (!semanticResult.ok) {
+    activeSchemas.delete(value);
+    return semanticResult;
+  }
   activeSchemas.delete(value);
   return valid();
 }
@@ -428,6 +695,8 @@ function validateChildCount(value: unknown, path: string): NpBlockDefinitionVali
 
 export function npValidateBlockDefinition(value: unknown): NpBlockDefinitionValidationResult {
   if (!isPlainRecord(value)) return invalid("block definition must be an object.");
+  const recordShape = validateDataRecord(value, "block");
+  if (!recordShape.ok) return recordShape;
   const extra = unsupportedKey(value, blockDefinitionKeys);
   if (extra) return invalid(`block definition has unsupported field "${extra}".`);
   if (!isNonEmptyString(value.type, 128) || !blockTypePattern.test(value.type)) {
@@ -444,6 +713,7 @@ export function npValidateBlockDefinition(value: unknown): NpBlockDefinitionVali
     ["category", 100],
     ["source", 200],
   ] as const) {
+    if (!Object.hasOwn(value, key)) continue;
     const result = validateOptionalString(value[key], `block.${key}`, maxLength);
     if (!result.ok) return result;
   }
@@ -460,27 +730,31 @@ export function npValidateBlockDefinition(value: unknown): NpBlockDefinitionVali
   const schemaResult = validatePropSchema(value.propsSchema, "block.propsSchema", 0, new WeakSet());
   if (!schemaResult.ok) return schemaResult;
   if (typeof value.render !== "function") return invalid("block.render must be a function.");
-  if (value.acceptsChildren !== undefined && typeof value.acceptsChildren !== "boolean") {
+  if (Object.hasOwn(value, "acceptsChildren") && typeof value.acceptsChildren !== "boolean") {
     return invalid("block.acceptsChildren must be boolean.");
   }
-  if (value.iconKind !== undefined && value.iconKind !== "lucide" && value.iconKind !== "emoji") {
+  if (
+    Object.hasOwn(value, "iconKind") &&
+    value.iconKind !== "lucide" &&
+    value.iconKind !== "emoji"
+  ) {
     return invalid('block.iconKind must be "lucide" or "emoji".');
   }
 
   const propNames = new Set(
     (value.propsSchema as Array<{ name: string }>).map((field) => field.name),
   );
-  if (value.summaryFields !== undefined) {
+  if (Object.hasOwn(value, "summaryFields")) {
     const result = validateStringArray(value.summaryFields, "block.summaryFields", propNamePattern);
     if (!result.ok) return result;
     const missing = (value.summaryFields as string[]).find((field) => !propNames.has(field));
     if (missing) return invalid(`block.summaryFields references unknown prop "${missing}".`);
   }
-  if (value.keywords !== undefined) {
+  if (Object.hasOwn(value, "keywords")) {
     const result = validateStringArray(value.keywords, "block.keywords");
     if (!result.ok) return result;
   }
-  if (value.allowedChildTypes !== undefined) {
+  if (Object.hasOwn(value, "allowedChildTypes")) {
     const result = validateStringArray(value.allowedChildTypes, "block.allowedChildTypes");
     if (!result.ok) return result;
     const invalidType = (value.allowedChildTypes as string[]).find(
@@ -490,7 +764,7 @@ export function npValidateBlockDefinition(value: unknown): NpBlockDefinitionVali
       return invalid(`block.allowedChildTypes contains invalid type "${invalidType}".`);
   }
   for (const key of ["minChildren", "maxChildren"] as const) {
-    if (value[key] === undefined) continue;
+    if (!Object.hasOwn(value, key)) continue;
     const result = validateChildCount(value[key], `block.${key}`);
     if (!result.ok) return result;
   }
@@ -511,10 +785,10 @@ export function npValidateBlockDefinition(value: unknown): NpBlockDefinitionVali
   ) {
     return invalid("block.minChildren must be less than or equal to maxChildren.");
   }
-  const defaultIssue = npAnalyzeBlockProps(
-    value.defaultProps,
-    value as unknown as NpBlockMetadata,
-  ).find((issue) => issue.severity === "error" && issue.code !== "missing-required-prop");
+  const defaultIssue = npAnalyzeBlockProps(value.defaultProps, {
+    ...(value as unknown as NpBlockMetadata),
+    propsSchema: withoutSchemaConditions(value.propsSchema as NpBlockPropField[]),
+  }).find((issue) => issue.code !== "missing-required-prop");
   if (defaultIssue) {
     return invalid(`block.defaultProps violates propsSchema: ${defaultIssue.message}`);
   }
@@ -524,6 +798,10 @@ export function npValidateBlockDefinition(value: unknown): NpBlockDefinitionVali
 export function npAnalyzeBlockDefinitions(value: unknown): NpBlockDefinitionIssue[] {
   if (!Array.isArray(value)) {
     return [{ code: "invalid-list", message: "blocks must be an array." }];
+  }
+  const listShape = validateDataArray(value, "blocks");
+  if (!listShape.ok) {
+    return [{ code: "invalid-list", message: listShape.message }];
   }
   const issues: NpBlockDefinitionIssue[] = [];
   const types = new Set<string>();
@@ -536,18 +814,28 @@ export function npAnalyzeBlockDefinitions(value: unknown): NpBlockDefinitionIssu
         message: `invalid block at index ${index.toString()}: ${validation.message}`,
       });
     }
-    if (!isPlainRecord(block) || typeof block.type !== "string" || block.type.length === 0) {
+    if (!isPlainRecord(block)) {
       continue;
     }
-    if (types.has(block.type)) {
+    const typeDescriptor = Object.getOwnPropertyDescriptor(block, "type");
+    if (
+      !typeDescriptor ||
+      !("value" in typeDescriptor) ||
+      typeof typeDescriptor.value !== "string" ||
+      typeDescriptor.value.length === 0
+    ) {
+      continue;
+    }
+    const type = typeDescriptor.value;
+    if (types.has(type)) {
       issues.push({
         code: "duplicate-type",
         index,
-        type: block.type,
-        message: `duplicate block type "${block.type}".`,
+        type,
+        message: `duplicate block type "${type}".`,
       });
     }
-    types.add(block.type);
+    types.add(type);
   }
   return issues;
 }
