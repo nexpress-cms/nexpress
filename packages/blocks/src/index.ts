@@ -3,6 +3,7 @@ export type {
   NpBlockMetadata,
   NpBlockPropField,
   NpBlockInstance,
+  NpBlockLayout,
   NpBlockRegistration,
   NpBlockRegistry,
   NpBlockRenderContext,

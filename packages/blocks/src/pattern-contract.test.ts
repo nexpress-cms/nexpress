@@ -23,6 +23,7 @@ const validPattern = (overrides: Record<string, unknown> = {}): Record<string, u
           id: "template-copy",
           type: "richText",
           props: { content: null },
+          layout: { colSpan: 12, mdColSpan: 8 },
         },
       ],
     },

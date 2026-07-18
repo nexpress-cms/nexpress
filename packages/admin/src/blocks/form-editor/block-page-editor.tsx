@@ -897,6 +897,9 @@ export function BlockPageEditor({
                       onDuplicate={(id) => dispatch({ type: "DUPLICATE", id })}
                       onDelete={(id) => dispatch({ type: "DELETE", id })}
                       onUpdateProps={(id, props) => dispatch({ type: "UPDATE_PROPS", id, props })}
+                      onUpdateLayout={(id, layout) =>
+                        dispatch({ type: "UPDATE_LAYOUT", id, layout })
+                      }
                       onReplaceProps={(id, props) => dispatch({ type: "REPLACE_PROPS", id, props })}
                       onAddChild={(parentId, blockType) =>
                         dispatch({ type: "ADD", blockType, parentId })

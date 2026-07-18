@@ -605,6 +605,26 @@ describe("reducer — UPDATE_PROPS / REPLACE_PROPS", () => {
   });
 });
 
+describe("reducer — UPDATE_LAYOUT", () => {
+  it("sets and removes layout without changing props", () => {
+    const state = [block("a", "paragraph", undefined, { text: "hello" })];
+    const withLayout = reducer(state, {
+      type: "UPDATE_LAYOUT",
+      id: "a",
+      layout: { colSpan: 6, mdColSpan: 4 },
+    });
+    expect(withLayout[0]).toMatchObject({
+      props: { text: "hello" },
+      layout: { colSpan: 6, mdColSpan: 4 },
+    });
+    expect(withLayout[0].layout).not.toBe(state[0].layout);
+
+    const withoutLayout = reducer(withLayout, { type: "UPDATE_LAYOUT", id: "a" });
+    expect(withoutLayout[0].layout).toBeUndefined();
+    expect(withoutLayout[0].props).toEqual({ text: "hello" });
+  });
+});
+
 describe("reducer — REPLACE_TYPE (carried-children re-validation, #523)", () => {
   it("preserves the source's id", () => {
     const state = [block("a", "paragraph", undefined, { text: "hi" })];
@@ -615,6 +635,18 @@ describe("reducer — REPLACE_TYPE (carried-children re-validation, #523)", () =
     });
     expect(out[0].id).toBe("a");
     expect(out[0].type).toBe("heading");
+  });
+
+  it("preserves parent-owned layout metadata", () => {
+    const source = block("a", "paragraph", undefined, { text: "hi" });
+    source.layout = { colSpan: 6, lgColSpan: 4 };
+    const out = reducer([source], {
+      type: "REPLACE_TYPE",
+      id: "a",
+      newType: "heading",
+    });
+    expect(out[0].layout).toEqual({ colSpan: 6, lgColSpan: 4 });
+    expect(out[0].layout).not.toBe(source.layout);
   });
 
   it("carries primary text from paragraph to heading by default", () => {

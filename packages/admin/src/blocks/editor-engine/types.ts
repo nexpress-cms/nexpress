@@ -1,4 +1,4 @@
-import type { NpBlockInstance } from "@nexpress/blocks";
+import type { NpBlockInstance, NpBlockLayout } from "@nexpress/blocks";
 
 import type { NpPattern } from "../patterns.js";
 
@@ -95,6 +95,7 @@ export type EditorAction =
   | { type: "WRAP_MANY"; ids: string[]; containerType: string }
   | { type: "UPDATE_PROPS"; id: string; props: Record<string, unknown> }
   | { type: "REPLACE_PROPS"; id: string; props: Record<string, unknown> }
+  | { type: "UPDATE_LAYOUT"; id: string; layout?: NpBlockLayout }
   // Replace a block's type in place. Retained for convert-type
   // affordances; the id stays the same so undo/redo lands the
   // operator on the same row.

@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { readGridChildLayout } from "./blocks/grid.js";
+import { readGridChildLayout, readGridColumnCount } from "./blocks/grid.js";
 import { npAnalyzeBlockContent } from "./content-contract.js";
 import { getSharedRegistry } from "./registry.js";
 import { isBlockSourceActive } from "./source.js";
@@ -58,7 +58,7 @@ export interface NpRenderBlocksOptions {
  * Container blocks (`acceptsChildren: true`) get their rendered
  * children passed in as the second arg of `definition.render`;
  * the renderer itself handles the recursion + the grid-child
- * `_layout.colSpan` wrapping so individual block renders stay
+ * top-level `layout.colSpan` wrapping so individual block renders stay
  * unaware of where they're placed.
  *
  * The legacy `renderBlocks(pageBlocks, registry)` signature is kept for
@@ -198,7 +198,7 @@ function renderBlock(
   instance: NpBlockInstance,
   registry: NpBlockRegistry,
   ctx: NpBlockRenderContext | undefined,
-  parentType: string | undefined,
+  parent: NpBlockInstance | undefined,
   previewMarkers: boolean,
   contentErrors: ReadonlyMap<string, string>,
 ): React.ReactElement {
@@ -266,7 +266,7 @@ function renderBlock(
     // render() so the parent decides where to place children
     // (inside its grid wrapper, columns, etc.).
     rendered = instance.children.map((child) =>
-      renderBlock(child, registry, ctx, instance.type, previewMarkers, contentErrors),
+      renderBlock(child, registry, ctx, instance, previewMarkers, contentErrors),
     );
   }
 
@@ -344,8 +344,11 @@ function renderBlock(
   // div whose `--np-cell-span*` CSS custom properties carry the
   // per-breakpoint spans. The grid block's scoped `<style>` block
   // applies them through media queries.
-  if (parentType === "grid") {
-    const { colSpan, mdColSpan, lgColSpan } = readGridChildLayout(instance.props, 12);
+  if (parent?.type === "grid") {
+    const { colSpan, mdColSpan, lgColSpan } = readGridChildLayout(
+      instance.layout,
+      readGridColumnCount(parent.props),
+    );
     // Compose the inline style with the base span fixed and the
     // optional md/lg overrides only when set — leaving them
     // unset keeps the CSS fallback chain (lg → md → base) intact.

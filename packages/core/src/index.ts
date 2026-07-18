@@ -169,7 +169,7 @@ export {
   npSerializeCollectionDocumentWithDiagnostics,
   resetCollectionRuntimeDiagnostics,
 } from "./collections/diagnostics.js";
-export type { NpBlockContent, NpBlockInstance } from "./fields/block-content.js";
+export type { NpBlockContent, NpBlockInstance, NpBlockLayout } from "./fields/block-content.js";
 export { isNpBlockContent, npValidateBlockContent } from "./fields/block-content.js";
 export {
   NpI18nContractError,

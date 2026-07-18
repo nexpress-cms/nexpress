@@ -218,7 +218,7 @@ function analyzePropSchema(
 ): void {
   const knownProps = new Set(schema.map((field) => field.name));
   for (const propName of Object.keys(props)) {
-    if (propName === "_layout" || knownProps.has(propName)) continue;
+    if (knownProps.has(propName)) continue;
     issues.push(
       issue(
         "unknown-prop",

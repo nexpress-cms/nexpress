@@ -38,7 +38,7 @@ describe("npAnalyzeBlockContent", () => {
     const issues = npAnalyzeBlockContent(
       [
         block({ type: "plugin.disabled" }),
-        block({ id: "block-2", props: { legacy: true, _layout: { colSpan: 6 } } }),
+        block({ id: "block-2", props: { legacy: true }, layout: { colSpan: 6 } }),
       ],
       [definition()],
     );
@@ -46,6 +46,14 @@ describe("npAnalyzeBlockContent", () => {
     expect(issues).toEqual([
       expect.objectContaining({ code: "unknown-block-type", severity: "warning" }),
       expect.objectContaining({ code: "unknown-prop", propName: "legacy", severity: "warning" }),
+    ]);
+  });
+
+  it("reports the retired props._layout convention as a stale prop", () => {
+    expect(
+      npAnalyzeBlockContent([block({ props: { _layout: { colSpan: 6 } } })], [definition()]),
+    ).toEqual([
+      expect.objectContaining({ code: "unknown-prop", propName: "_layout", severity: "warning" }),
     ]);
   });
 
