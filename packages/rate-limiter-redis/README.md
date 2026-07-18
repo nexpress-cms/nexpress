@@ -73,10 +73,9 @@ A single Lua script issues `INCR` + `PTTL` + a conditional
   always expires.
 - **One round trip per check** — the proxy's hot path stays cheap.
 
-Sliding-window or token-bucket semantics are out of scope for
-v0.1; the adapter implements the same fixed-window contract as
-`InMemoryRateLimiter` so behavior is identical to single-node
-deploys.
+Sliding-window or token-bucket semantics are outside the current pre-1.0
+contract; the adapter implements the same fixed-window contract as
+`InMemoryRateLimiter` so behavior is identical to single-node deploys.
 
 ## Shutdown
 

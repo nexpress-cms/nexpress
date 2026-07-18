@@ -26,6 +26,7 @@ behavior they describe changes.
 | [deployment.md](deployment.md)                         | Production deployment notes                                            |
 | [email.md](email.md)                                   | Email adapters and templates                                           |
 | [i18n.md](i18n.md)                                     | Internationalization                                                   |
+| [in-page-editor.md](in-page-editor.md)                 | In-page block editing modes, interactions, and test coverage           |
 | [jobs.md](jobs.md)                                     | pg-boss-backed job queue                                               |
 | [media.md](media.md)                                   | Canonical media records, variants, URLs, API, and ops contract         |
 | [multi-site.md](multi-site.md)                         | Multi-tenant site model                                                |
@@ -34,13 +35,19 @@ behavior they describe changes.
 | [operations.md](operations.md)                         | Operations runbook — incident recipes, boot warnings, recovery         |
 | [plugin-admin.md](plugin-admin.md)                     | Plugin admin UI surface                                                |
 | [plugin-api-routes.md](plugin-api-routes.md)           | Typed plugin HTTP route and response contracts                         |
+| [plugin-blocks.md](plugin-blocks.md)                   | Plugin block definitions, props schemas, and registry behavior         |
 | [plugin-capabilities.md](plugin-capabilities.md)       | Capability ↔ `ctx.*` mapping reference                                 |
 | [plugin-hooks.md](plugin-hooks.md)                     | Typed content, auth, media lifecycle hook payloads                     |
+| [plugin-i18n.md](plugin-i18n.md)                       | Definition-level plugin ICU catalogs and locale validation             |
 | [plugin-manifest.md](plugin-manifest.md)               | Manifest field reference (required vs auto-defaulted)                  |
+| [plugin-pages.md](plugin-pages.md)                     | Public page routes, matching, shells, and server/client boundaries     |
+| [plugin-patterns.md](plugin-patterns.md)               | Page-builder pattern definitions and block-reference validation        |
 | [plugin-quickstart.md](plugin-quickstart.md)           | Author your first plugin in ~10 minutes                                |
-| [public-discovery.md](public-discovery.md)             | Exact public block, collection, and plugin discovery wire contracts    |
 | [plugin-reload.md](plugin-reload.md)                   | What `/admin/plugins` "Reload all" picks up (and what needs a restart) |
 | [plugin-render.md](plugin-render.md)                   | Plugin render hooks                                                    |
+| [plugin-scheduled-tasks.md](plugin-scheduled-tasks.md) | Scheduled task ids, UTC cron, dispatch, and diagnostics                |
+| [plugin-templates.md](plugin-templates.md)             | Definition-level page templates and reload ownership                   |
+| [public-discovery.md](public-discovery.md)             | Exact public block, collection, and plugin discovery wire contracts    |
 | [rate-limiting.md](rate-limiting.md)                   | Proxy adapter, request/result, Redis, and multi-node contract          |
 | [releasing.md](releasing.md)                           | Changesets release and npm publish checklist                           |
 | [revisions.md](revisions.md)                           | Revision snapshots, autosave, restore, API, and doctor contracts       |
@@ -69,7 +76,7 @@ current architectural overview.
 
 [`roadmap.md`](roadmap.md) — historical pre-publish roadmap snapshot. It is
 kept for context and category vocabulary, not as the current work queue. The
-v0.1 stability _contract_ is in `AGENTS.md`; current behavior lives in the
+pre-1.0 stability contract is in `AGENTS.md`; current behavior lives in the
 focused live guides above.
 
 [`agent-operated-ops.md`](agent-operated-ops.md) started as a planning
@@ -89,12 +96,9 @@ If you want to know how something works **right now**, read the code and the
 matching live guide above. If you want to know **why** a subsystem is
 shaped the way it is, the design snapshot may have the rationale.
 
-```
-design/
-  community-design.md          — original community/member-system rationale
-  nexpress-core-design.md      — original 2026-04-17 core design (203 KB)
-  plugin-system-design.md      — original plugin-system design
-  wordpress-import-design.md   — Phase 21 import rationale
-  nexpress.txt                 — original v3 product brief (Korean)
-  nexpress-summary.txt         — v3 brief summary (Korean)
-```
+The directory currently contains the original core, community, plugin,
+WordPress-import, universal-content, theme-extension, member-surface, route,
+plugin-config, authoring-field-note, alias-removal, and Phase 23 planning
+snapshots, plus the original Korean product brief and summary. The directory
+listing is the authoritative inventory; none of these files supersedes a live
+guide above.

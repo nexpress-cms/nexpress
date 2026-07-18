@@ -109,7 +109,8 @@ pageRoutes: [
 - Parameter names use JavaScript identifier-style ASCII names and may appear
   only once per pattern. Regular expressions compile during plugin loading.
 - Segment **count must agree** — `/discussions` does not match
-  `/discussions/foo`. There is no glob / wildcard / catch-all in v0.1.
+  `/discussions/foo`. The current pre-1.0 contract has no glob, wildcard, or
+  catch-all pattern.
 - Patterns start with `/`, use no empty/trailing/dot segments, and are limited
   to 256 characters. `/` itself is a valid plugin route.
 

@@ -2,8 +2,10 @@
 
 Lexical-based rich text editor for
 [NexPress](https://github.com/nexpress-cms/nexpress) — the Next.js-based CMS.
-Stores content as Lexical JSON; renders the same JSON server-side without
-mounting the editor.
+Stores content in the NexPress-owned `NpRichTextContent` v1 envelope and
+renders the embedded Lexical document server-side without mounting the editor.
+Raw Lexical `{ root }` objects are not the public storage contract and are
+rejected at collection write boundaries.
 
 ## Install
 
@@ -21,6 +23,10 @@ import type { NpRichTextContent } from "@nexpress/editor";
 // Client-only — interactive editor
 import { NpRichTextEditor } from "@nexpress/editor/client";
 ```
+
+`NpRichTextContent` is shared with `@nexpress/core/fields`, which owns the
+version constant, validator, type guard, and empty-document factory. Future
+format changes use a new envelope version and an explicit migration path.
 
 Server pages render rich text without pulling in Lexical:
 
@@ -58,16 +64,17 @@ Passing `null` resets the editor to one empty paragraph.
 ## What's in the box
 
 - Headings, paragraph, blockquote, code block, ordered/unordered lists,
-  links, inline code, bold/italic, horizontal rule
+  links, inline code, bold/italic/underline/strikethrough, and horizontal rules
 - Image node with paste / upload (`config.onUploadImage`)
 - History (undo/redo)
 - Toolbar plugin under `@nexpress/editor/client`
-- Server renderer that walks the same Lexical JSON
+- Server renderer that walks the document inside the same NexPress envelope
 
 ## Links
 
 - [Repository](https://github.com/nexpress-cms/nexpress)
 - [AGENTS.md](https://github.com/nexpress-cms/nexpress/blob/main/AGENTS.md)
+- [Rich-text contract](https://github.com/nexpress-cms/nexpress/blob/main/docs/rich-text.md)
 - [Lexical docs](https://lexical.dev/)
 
 ## License

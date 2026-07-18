@@ -10,8 +10,8 @@ No black-box backend. The app stays yours.
 [Deploy](#deploy-bridge) ·
 [Docs](#docs)
 
-> **Status — pre-1.0 (`v0.3.x`).** Public APIs follow the
-> [stability contract](./AGENTS.md#stability-v01). Breaking changes during
+> **Status — pre-1.0 (`v0.4.x`).** Public APIs follow the
+> [stability contract](./AGENTS.md#stability-pre-10). Breaking changes during
 > `0.x` ship as minor bumps with searchable changelog entries.
 
 ## Why NexPress
@@ -20,8 +20,14 @@ No black-box backend. The app stays yours.
   hosted black box.
 - **Content lives in Postgres.** Collections are typed, migrated, searchable,
   and rendered through your app.
+- **Content stays portable.** Full exports preserve collection documents,
+  relationships, media references, settings, and plugin state; partial exports
+  carry selected collections through the same validated transfer envelope.
 - **Admin is included.** Pages, posts, media, users, members, jobs, themes,
   plugins, imports, and settings ship in the scaffold.
+- **Extensions share one contract.** Plugins can contribute typed hooks,
+  routes, pages, blocks, patterns, scheduled work, and declarative Admin
+  surfaces that are checked at startup and by plugin doctor.
 - **Themes feel real on first boot.** Built-in themes seed matching demo
   content instead of generic placeholder pages.
 - **Deployment is checked before it hurts.** Doctor and deploy-plan scripts
@@ -41,8 +47,8 @@ pnpm dev
 Site: `http://localhost:3000`
 Admin: `http://localhost:3000/admin`
 
-The first Admin visit creates the initial account, site settings, active theme,
-and optional demo content.
+The setup wizard verifies the database and environment, creates the initial
+account and site settings, selects a theme, and can seed matching demo content.
 
 ## Deploy Bridge
 
@@ -130,6 +136,7 @@ Main packages:
 ```text
 packages/core       pipeline, auth, jobs, media, plugins
 packages/app        shared Next.js routes, scripts, config helpers
+packages/auth-pages member and staff auth route factories + headless hooks
 packages/admin      Admin UI
 packages/editor     Lexical editor and SSR renderer
 packages/blocks     page-builder blocks
@@ -138,6 +145,8 @@ packages/xliff      XLIFF 1.2 translation adapter
 packages/gettext    Gettext PO translation adapter
 packages/theme      theme token CSS generation
 packages/cli        create-nexpress
+packages/cli-nexpress project-side `nexpress` CLI
+packages/oauth-providers Google, GitHub, and Discord OAuth factories
 packages/themes/*   built-in themes
 packages/plugins/*  reference plugins
 apps/web            private reference app
@@ -149,8 +158,11 @@ apps/web            private reference app
 - [Contributing](./CONTRIBUTING.md)
 - [Testing](./docs/testing.md)
 - [Releasing](./docs/releasing.md)
+- [Content transfer](./docs/content-transfer.md)
+- [Plugin quickstart](./docs/plugin-quickstart.md)
+- [Theme quickstart](./docs/theme-quickstart.md)
 - [Operations](./docs/operations.md)
-- [Search](./docs/search.md)
+- [Deployment](./docs/deployment.md)
 - [Troubleshooting](./docs/troubleshooting.md)
 - [All docs](./docs/README.md)
 

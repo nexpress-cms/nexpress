@@ -7,7 +7,7 @@ plugins, observability, SEO helpers, i18n, and the multi-site model.
 > **You probably don't install this directly.** It's wired up by
 > `@nexpress/next` from a project scaffolded with `npx create-nexpress`.
 > If you're adding a custom backend behavior to a NexPress site, see
-> [docs/plugin-render.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-render.md)
+> [the plugin quickstart](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-quickstart.md)
 > first — most extension points live in the plugin SDK, not core.
 
 ## Install
@@ -33,6 +33,7 @@ Domain-bounded entries — prefer these over the catch-all root:
 ```ts
 import { can } from "@nexpress/core/auth";
 import { npIsApiError } from "@nexpress/core/api-contract";
+import { npRequireContentTransferEnvelope } from "@nexpress/core/content-transfer";
 import { enqueueJob } from "@nexpress/core/jobs";
 import { getLogger } from "@nexpress/core/observability";
 import { buildSitemap } from "@nexpress/core/seo";
@@ -40,12 +41,18 @@ import { canOnSite } from "@nexpress/core/sites";
 import { t } from "@nexpress/core/i18n";
 ```
 
-Available server subpaths include `auth`, `community`, `db`, `i18n`, `jobs`,
-`media`, `observability`, `routes`, `seo`, and `sites`. Client-safe contract
-subpaths include `api-contract`, `auth-contract`, `collection-contract`,
-`community-contract`, `fields`, `i18n-contract`, `jobs-contract`,
-`media-contract`, `navigation`, `revisions`, `settings`, and `theme`. The root `@nexpress/core` keeps
-re-exporting everything for back-compat but remains server-only.
+Server/domain subpaths include `auth`, `cache`, `collections`, `community`,
+`db`, `email`, `i18n`, `jobs`, `media`, `observability`, `rate-limit`, `routes`,
+`search`, `seo`, `sites`, and `storage`. Client-safe contract subpaths include
+`api-contract`, `auth-contract`, `collection-contract`, `community-contract`,
+`content-transfer`, `discovery`, `fields`, `i18n-contract`, `jobs-contract`,
+`media-contract`, `navigation`, `revisions`, `settings`, and `theme`.
+
+The root entry remains a broad server-only convenience surface, but it does
+not expose raw bootstrap mutation. Framework hosts use the explicitly
+experimental `@nexpress/core/bootstrap` boundary; application code should use
+the domain subpaths above and `@nexpress/next`. Generated Drizzle consumers
+use the separate `db-schema` entry.
 
 ## Quick example
 
@@ -63,8 +70,10 @@ export const posts = defineCollection({
 });
 ```
 
-The collection becomes a typed Drizzle table, generated Zod validators,
-and a CRUD API at `/api/collections/posts` once you re-run
+The collection becomes a typed Drizzle table, generated validators, and a CRUD
+API at `/api/collections/posts`. Generated scaffolds refresh ignored collection
+code automatically before `pnpm typecheck` and `pnpm build`; when the storage
+shape changes, review and apply the migration with
 `pnpm db:generate && pnpm db:migrate`.
 
 `defineCollection()` is also the runtime definition boundary: it rejects

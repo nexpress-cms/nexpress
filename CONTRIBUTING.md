@@ -9,12 +9,17 @@ the contribution mechanics: setup, branching, versioning, and releases.
 
 ```bash
 pnpm install
-docker compose -f docker/docker-compose.yml up -d db    # Postgres 16 on :5433
+docker compose -f docker/docker-compose.yml up -d       # Postgres :5433 + Mailpit :8025
 cp .env.example .env
 # Replace NP_SECRET with 32+ random characters, e.g. `openssl rand -hex 32`.
 pnpm build       # populate dist/ for every workspace
-pnpm dev         # turbo watch (tsup --watch + next dev)
+pnpm dev         # apps/web Next dev + collection schema generation
 ```
+
+`pnpm dev` intentionally watches only the reference app. When editing a leaf
+package, use a dependency-aware slice such as
+`pnpm --filter @nexpress/admin... dev`; reserve `pnpm dev:full` for a genuine
+cross-package refactor because it starts every watcher.
 
 `pnpm test` runs the vitest unit suite (no DB). `pnpm test:integration`
 runs the Postgres-backed suite, gated on `TEST_DATABASE_URL` — see
@@ -22,12 +27,13 @@ runs the Postgres-backed suite, gated on `TEST_DATABASE_URL` — see
 
 ## Branching + PRs
 
-- Branch off `main`. Use a topic prefix that reflects intent: `feat/`,
-  `fix/`, `refactor/`, `chore/`, `docs/`.
+- Branch off `main`. Use a topic prefix that reflects intent; Codex-authored
+  branches use the repository's `codex/` prefix.
 - One concern per PR. If you find unrelated cleanup along the way, open
   a separate PR for it.
-- Every PR runs typecheck + tests locally before opening. CI enforces
-  the same.
+- Run targeted lint/typecheck/tests while iterating, then `pnpm verify` and
+  `pnpm format:check` before opening the PR. CI repeats the full build,
+  typecheck, unit, integration, E2E, and fresh-scaffold gates.
 - Commits use conventional headers (`feat(core): …`, `fix(jobs): …`,
   `docs(deployment): …`) — see `git log` for the in-repo style.
 
@@ -79,42 +85,27 @@ When in doubt, add one.
 
 ## Release flow (maintainer)
 
-Today: local-only while GitHub Actions billing is locked.
+`.github/workflows/release.yml` runs on every push to `main`. Queued
+changesets create or update the **Version Packages** PR. That PR is reviewed
+and merged separately; its merge runs repository invariants, builds the fixed
+package group, publishes through npm Trusted Publishing with provenance, and
+creates the release tag.
 
-```bash
-pnpm version    # consume pending changesets → bump versions + write CHANGELOG.md
-pnpm release    # build + npm publish
-```
+Do not merge a Version Packages PR as part of an ordinary feature or docs PR.
+It is a distinct release decision. See
+[`docs/releasing.md`](./docs/releasing.md) for the exact current workflow and
+first-publish history.
 
-`pnpm release` runs `pnpm build` first via `prepublishOnly`, so the
-tarballs always match the source.
-
-Future: `.github/workflows/release.yml` is wired and will take over
-once Actions billing is resolved and the `push: main` trigger is
-restored. When active it runs the changesets action on every push to
-`main`: queued changesets → "Version Packages" PR; merging that PR →
-publish to npm with `--provenance` attestation.
-
-### Publish order
-
-The CLI scaffolder pins runtime deps to `latest`, so `create-nexpress`
-must publish **after** the framework packages. Order:
-
-1. `@nexpress/core`
-2. `@nexpress/editor`, `@nexpress/theme`, `@nexpress/plugin-sdk`,
-   `@nexpress/next`, `@nexpress/wp-import`, `@nexpress/xliff`
-3. `@nexpress/blocks`
-4. `@nexpress/admin`
-5. `create-nexpress`
-6. `@nexpress/plugin-*`, `@nexpress/theme-*`
-
-`pnpm release` (via `changeset publish`) does this automatically by
-walking the workspace dependency graph.
+`pnpm run version` mutates package versions and changelogs, while
+`pnpm run release` publishes. Do not run either as an ordinary PR validation
+step; use `pnpm verify` and leave versioning/publishing to the dedicated
+Version Packages flow.
 
 ## Testing checklist before opening a PR
 
-- [ ] `pnpm typecheck` passes
-- [ ] `pnpm test` passes
+- [ ] Targeted package lint, typecheck, and tests pass while iterating
+- [ ] `pnpm verify` passes
+- [ ] `pnpm format:check` passes
 - [ ] `pnpm test:integration` passes if you touched the pipeline,
       community write paths, jobs, or auth
 - [ ] If you added a new env var, it's in `.env.example` and named in

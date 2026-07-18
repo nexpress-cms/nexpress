@@ -504,5 +504,9 @@ practice":
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/plugins/reading-time`                 | Hooks, routes, plain handler, **`configSchema` (single-field auto-form)**                                                                         |
 | `packages/plugins/seo-audit`                    | More elaborate routes, admin extension, capabilities, **`configSchema` (mixed number / boolean fields)**                                          |
+| `packages/plugins/analytics-lite`               | Render contribution, plugin storage, API routes, scheduled rollup, and definition-level metric/table actions                                      |
+| `packages/plugins/webhook-relay`                | Content hooks, outbound HTTP, HMAC signing, stored delivery status, and definition-level status/action handlers                                   |
+| `packages/plugins/block-callout`                | Block, reusable pattern, page template, and locale-keyed ICU messages in one definition                                                           |
+| `packages/plugins/block-*`                      | Static, interactive, data-bound, nested-array, route-backed, and collection-aware block examples                                                  |
 | `packages/plugins/forum`                        | Defining a collection from a plugin (`defineDiscussionsCollection`)                                                                               |
 | `packages/plugins/oauth-github`, `oauth-google` | OAuth provider wiring through plugin routes, **`configSchema` with `.meta({ sensitive: true })` masked secret + hybrid env-or-admin credentials** |
