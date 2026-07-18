@@ -32,7 +32,7 @@
     "ux-audit": "tsx scripts/ux-audit.mts",
     "clean": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run clean && rm -rf node_modules",
     "changeset": "changeset",
-    "version": "pnpm test:repo && changeset version",
+    "version": "pnpm test:repo && changeset version && tsx scripts/sync-release-docs.mts && pnpm test:repo",
     "release": "tsx scripts/release.mts"
   },
   "devDependencies": {

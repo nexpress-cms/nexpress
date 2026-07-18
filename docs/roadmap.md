@@ -234,8 +234,9 @@ implementation.
 
 ### 7. Stability promotion (Experimental → Stable)
 
-Items currently listed as Experimental in `AGENTS.md` that we'd like to
-promote before 1.0. Each promotion is a contract decision.
+Items originally tracked as Experimental in `AGENTS.md` for promotion before
+1.0. Completed promotions stay listed here as historical decisions; the live
+stable/experimental inventory remains in `AGENTS.md`.
 
 - `NpRichTextContent` — promoted to the stable versioned NexPress envelope on
   2026-07-11; see [`rich-text.md`](rich-text.md).
@@ -243,18 +244,22 @@ promote before 1.0. Each promotion is a contract decision.
   union on 2026-07-18; author, runtime, Admin, discovery, OpenAPI, scaffold,
   and doctor surfaces now share the same 11 field types and semantics. See
   [`plugin-blocks.md`](plugin-blocks.md).
-- Theme token names — pick a token system (Style Dictionary? open-ui?) and
-  commit to its key shapes.
+- Theme token names — promoted to the stable closed group/key inventory on
+  2026-07-12. Persisted overrides, Admin/import APIs, plugin reads/writes,
+  OpenAPI, and CSS generation now share the same fail-closed contract; see
+  [`theme-authoring.md`](theme-authoring.md).
 - Bootstrap singleton mutation (`setDb`, `setStorageAdapter`, `setJobQueue`, …)
   — moved to the experimental `@nexpress/core/bootstrap` host boundary on
   2026-07-14. Normal domain subpaths retain reads and operations only.
 
 ### 8. Multi-tenant features (deferred — partial 1.0)
 
-Multi-site scoping is in. The product features that ride on top of it are
-not.
+Multi-site scoping is in. Theme selection now rides on top of it; the remaining
+product features below are still deferred.
 
-- Per-site theme override (today: theme is global by `np_settings.activeTheme`).
+- Per-site theme selection — shipped. `np_settings.activeTheme` is keyed by
+  `site_id`, and request execution resolves the active theme inside the
+  canonical site scope.
 - Per-site plugin enable/disable.
 - Per-site quotas (storage, post count, job throughput).
 - Billing hooks (out of scope for the open-source core; document the

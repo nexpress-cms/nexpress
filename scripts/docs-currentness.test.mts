@@ -70,14 +70,25 @@ test("the live-guide index includes every top-level guide", async () => {
 test("public status docs name the current pre-1.0 release line", async () => {
   const readme = await readFile(resolve(repoRoot, "README.md"), "utf8");
   const security = await readFile(resolve(repoRoot, "SECURITY.md"), "utf8");
-  const manifest = JSON.parse(
+  const releasing = await readFile(resolve(repoRoot, "docs/releasing.md"), "utf8");
+  const coreManifest = JSON.parse(
     await readFile(resolve(repoRoot, "packages/core/package.json"), "utf8"),
   ) as PackageManifest;
-  const match = manifest.version?.match(/^(\d+)\.(\d+)\./);
+  const createNexpressManifest = JSON.parse(
+    await readFile(resolve(repoRoot, "packages/cli/package.json"), "utf8"),
+  ) as PackageManifest;
+  const match = coreManifest.version?.match(/^(\d+)\.(\d+)\./);
   assert.ok(match, "@nexpress/core must have a semver version");
+  assert.ok(createNexpressManifest.version, "create-nexpress must have a version");
   const releaseLine = `${match[1]}.${match[2]}.x`;
   assert.ok(readme.includes(`Status — pre-1.0 (\`v${releaseLine}\`)`));
   assert.ok(security.includes(`current framework release line is\n\`${releaseLine}\``));
+  assert.ok(
+    releasing.includes(
+      `**Current published baseline:** NexPress \`${coreManifest.version}\` and ` +
+        `\`create-nexpress ${createNexpressManifest.version}\`\n(tag \`v${coreManifest.version}\`).`,
+    ),
+  );
 });
 
 test("local links in current README and guide surfaces resolve", async () => {

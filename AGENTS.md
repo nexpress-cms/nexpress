@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-18 (block prop schemas now use one exact v1
+**Last refreshed:** 2026-07-19 (Version PR generation now synchronizes public
+release-line and baseline docs from generated package versions, then rechecks
+the repository contract before updating the draft release accumulator; the
+pre-1.0 changeset guidance matches the stable-surface minor-bump policy.)
+
+**Earlier:** 2026-07-18 (block prop schemas now use one exact v1
 discriminated union across author types, definition/content validation, Admin,
 public discovery, OpenAPI, scaffolds, and plugin doctor.)
 
