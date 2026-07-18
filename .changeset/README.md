@@ -64,7 +64,7 @@ during `0.x` follow the repository stability contract and ride a minor bump.
 ## Release flow (maintainer)
 
 ```bash
-pnpm run version    # consume pending changesets → bump versions + write CHANGELOG.md
+pnpm run version    # consume changesets, bump versions/changelogs, sync release docs
 pnpm run release    # build + npm publish
 ```
 
