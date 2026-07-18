@@ -5,6 +5,7 @@
  * Called from `pnpm run release` AFTER `changeset publish --no-git-tag`,
  * so by the time this runs:
  *   - npm publish has already happened for everything in the release;
+ *   - exact registry manifests and provenance attestations were verified;
  *   - `packages/<*>/package.json` carries the just-published version
  *     of each package;
  *   - no per-package tags exist yet for the freshly-published versions.

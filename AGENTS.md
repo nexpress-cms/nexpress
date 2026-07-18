@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-18 (public and package README coverage now matches
+**Last refreshed:** 2026-07-18 (release acceptance now exercises the packed
+scaffolder, keeps Version PRs as draft accumulators, gates on scaffold CI, and
+verifies exact npm manifests plus provenance before tagging.)
+
+**Earlier:** 2026-07-18 (public and package README coverage now matches
 the 0.4 release line, current package exports, and the complete live-guide index.)
 
 **Earlier:** 2026-07-18 (shared TypeScript config is consumer-safe;

@@ -39,11 +39,15 @@ workflow (`.github/workflows/release.yml`) runs on every push to
 1. **No queued changesets** → no-op. The workflow exits without
    opening a PR or publishing.
 2. **Queued changesets, no Version PR yet** → opens / updates the
-   "Version Packages" PR. The PR carries the cumulative diff
-   (`CHANGELOG.md` per package + `package.json` version bumps).
+   "Version Packages" PR as a draft accumulator. The PR carries the cumulative
+   diff (`CHANGELOG.md` per package + `package.json` version bumps); each new
+   main-branch changeset returns it to draft until the maintainer deliberately
+   marks the final batch ready.
 3. **Version PR merged** → `pnpm release` runs repository invariants, builds
-   publishable packages, publishes through Changesets, and creates the release
-   tag. The workflow uploads the new tarballs with Sigstore provenance.
+   and typechecks publishable packages, publishes through Changesets, verifies
+   every exact npm manifest and provenance attestation, and only then creates
+   the release tag. A main push whose workspace versions are already published
+   exits before those expensive gates.
 
 The root `release` script lives in `package.json`. Changesets reads
 `.changeset/config.json`, where `access: "public"` makes scoped
@@ -138,6 +142,12 @@ removed afterward, and a database service started by the audit is stopped
 again. Use `--quick` to skip only the production probe or `--keep` to preserve
 both artifacts for diagnosis.
 
+CI also packs the actual `create-nexpress` tarball and invokes its published
+`bin` entry through `pnpm dlx`; it does not substitute the workspace
+`dist/index.js` path. The generated project then installs every framework
+tarball, typechecks its own source graph, builds, and runs the existing runtime
+and extension journeys inside the single scaffold-smoke job.
+
 The repository-level `pnpm test:repo` gate also verifies that every publishable
 `@nexpress/*` workspace package belongs to the single Changesets fixed group.
 It runs automatically from `pnpm test`, `pnpm verify`, `pnpm run version`, and
@@ -168,6 +178,12 @@ The active `main branch protection` ruleset requires these PR checks:
 - `integration tests (Postgres)`
 - `E2E (Playwright)`
 
+The Version PR bridge additionally requires `scaffold smoke (fresh scaffold
+journey)` and the overall dispatched CI run to succeed before it mirrors any
+of the three ruleset contexts as green. A scaffold failure therefore fails the
+existing required statuses without adding another workflow job or ruleset
+context.
+
 Before merging the Version PR, verify GitHub has attached those checks to the
 current `changeset-release/main` head:
 
@@ -182,10 +198,11 @@ does not automatically fire `pull_request` workflows for commits created by
 that token, so the Release workflow runs a bridge step after opening/updating
 the Version PR:
 
-1. Dispatch `ci.yml` on `changeset-release/main`.
-2. Wait for the CI run to complete.
-3. Mirror the required job conclusions onto the Version PR head commit as
-   commit statuses named exactly like the ruleset contexts.
+1. Return the accumulator PR to draft.
+2. Dispatch `ci.yml` on `changeset-release/main` and wait for it to complete.
+3. Require scaffold smoke and the entire workflow to be green.
+4. Mirror the three ruleset job conclusions onto the Version PR head commit as
+   commit statuses named exactly like the existing contexts.
 
 If `statusCheckRollup` is empty or the PR remains `BLOCKED`, inspect the
 Release workflow's `Bridge Version PR CI into required checks` step first:
@@ -209,12 +226,20 @@ ruleset state while the publish decision looks complete to the operator.
 
 ## Post-publish verification
 
-After the publish workflow run finishes:
+The publish workflow now polls npm before tagging and verifies every public
+workspace package at its exact local version. It requires matching package
+identity, no published `workspace:` dependency ranges, tarball integrity, and
+a provenance attestation. A partial publish or stale registry response fails
+the workflow before the release tag is created.
+
+After that automated gate finishes, run the external acceptance journey:
 
 1. `npm view @nexpress/core version` — should match the merged
    Version PR's bump.
-2. `npx create-nexpress test-site --yes --no-docker` — scaffolds and
-   runs without errors (clean up after).
+2. `npx create-nexpress@<cli-version> test-site --yes --no-docker`, followed
+   by `pnpm install`, `pnpm typecheck`, and `pnpm build` inside the generated
+   project. This confirms registry resolution rather than the pre-publish local
+   tarball path; clean up afterward.
 3. `npm view @nexpress/core --json | jq '.dist.attestations'` —
    should show a non-null attestation block (provenance).
 

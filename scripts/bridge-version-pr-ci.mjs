@@ -10,21 +10,23 @@
  * - The repository ruleset still requires the PR contexts named below.
  *
  * The Release workflow calls this script after `changesets/action` opens or
- * updates the Version PR. We dispatch `ci.yml` manually for the Version PR
- * branch, wait for it to finish, then mirror the required job conclusions as
- * commit statuses with the exact context names the ruleset requires.
+ * updates the Version PR. We keep it in draft, dispatch `ci.yml` manually for
+ * the Version PR branch, and require the whole workflow plus scaffold smoke to
+ * pass before mirroring the three context names the ruleset already requires.
  */
 
-const REQUIRED_CONTEXTS = [
+const MIRRORED_CONTEXTS = [
   "typecheck + build + test",
   "integration tests (Postgres)",
   "E2E (Playwright)",
 ];
+const REQUIRED_JOBS = [...MIRRORED_CONTEXTS, "scaffold smoke (fresh scaffold journey)"];
 
 const repo = requireEnv("GITHUB_REPOSITORY");
 const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
 const serverUrl = process.env.GITHUB_SERVER_URL || "https://github.com";
 const apiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
+const graphqlUrl = process.env.GITHUB_GRAPHQL_URL || "https://api.github.com/graphql";
 const workflowFile = process.env.CI_WORKFLOW_FILE || "ci.yml";
 const versionPrBranch = process.env.VERSION_PR_BRANCH || "changeset-release/main";
 const versionPrBase = process.env.VERSION_PR_BASE || "main";
@@ -51,6 +53,8 @@ try {
   const branchHeadSha = await resolveBranchHeadSha(versionPr.head.ref);
   currentHeadSha = branchHeadSha || prHeadSha;
 
+  await ensureVersionPrDraft(versionPr);
+
   if (branchHeadSha && branchHeadSha !== prHeadSha) {
     console.log(
       `[version-pr-ci] PR head API reported ${prHeadSha.slice(0, 8)}, ` +
@@ -71,35 +75,43 @@ try {
 
   const completedRun = await waitForCompletion(run.id);
   const jobs = await listRunJobs(completedRun.id);
-  const failedContexts = [];
+  const failedJobs = [];
 
-  for (const context of REQUIRED_CONTEXTS) {
-    const job = jobs.find((candidate) => candidate.name === context);
+  for (const jobName of REQUIRED_JOBS) {
+    const job = jobs.find((candidate) => candidate.name === jobName);
     const state = statusStateForJob(job);
     const conclusion = job?.conclusion || job?.status || "missing";
 
-    await setStatus(
-      currentHeadSha,
-      context,
-      state,
-      `CI bridge: ${conclusion}`,
-      job?.html_url || completedRun.html_url,
-    );
-
     if (state !== "success") {
-      failedContexts.push(`${context}: ${conclusion}`);
+      failedJobs.push(`${jobName}: ${conclusion}`);
     }
   }
 
-  if (failedContexts.length > 0) {
-    console.error("[version-pr-ci] required contexts failed:");
-    for (const failure of failedContexts) {
+  if (completedRun.conclusion !== "success") {
+    failedJobs.push(`workflow: ${completedRun.conclusion || completedRun.status}`);
+  }
+
+  if (failedJobs.length > 0) {
+    await setAllStatuses("failure", `CI bridge failed: ${failedJobs[0]}`, completedRun.html_url);
+    console.error("[version-pr-ci] required Version PR jobs failed:");
+    for (const failure of failedJobs) {
       console.error(`  - ${failure}`);
     }
     process.exit(1);
   }
 
-  console.log("[version-pr-ci] required Version PR contexts are green.");
+  for (const context of MIRRORED_CONTEXTS) {
+    const job = jobs.find((candidate) => candidate.name === context);
+    await setStatus(
+      currentHeadSha,
+      context,
+      "success",
+      "CI bridge: success",
+      job?.html_url || completedRun.html_url,
+    );
+  }
+
+  console.log("[version-pr-ci] required Version PR jobs are green.");
 } catch (error) {
   console.error(`[version-pr-ci] ${error instanceof Error ? error.message : String(error)}`);
 
@@ -135,6 +147,31 @@ async function findVersionPr() {
   });
   const prs = await request(`/pulls?${params.toString()}`);
   return prs[0] || null;
+}
+
+async function ensureVersionPrDraft(versionPr) {
+  if (versionPr.draft) {
+    console.log(`[version-pr-ci] PR #${versionPr.number} is already a draft accumulator.`);
+    return;
+  }
+  if (!versionPr.node_id) {
+    throw new Error(`PR #${versionPr.number} did not include a GraphQL node id.`);
+  }
+
+  const result = await graphqlRequest(
+    `mutation ConvertVersionPrToDraft($pullRequestId: ID!) {
+      convertPullRequestToDraft(input: { pullRequestId: $pullRequestId }) {
+        pullRequest { number isDraft }
+      }
+    }`,
+    { pullRequestId: versionPr.node_id },
+  );
+  const converted = result.data?.convertPullRequestToDraft?.pullRequest;
+  if (!converted?.isDraft) {
+    throw new Error(`GitHub did not convert Version PR #${versionPr.number} to draft.`);
+  }
+
+  console.log(`[version-pr-ci] converted PR #${versionPr.number} to a draft accumulator.`);
 }
 
 async function dispatchCi(ref) {
@@ -234,7 +271,7 @@ function statusStateForJob(job) {
 
 async function setAllStatuses(state, description, targetUrl) {
   await Promise.all(
-    REQUIRED_CONTEXTS.map((context) =>
+    MIRRORED_CONTEXTS.map((context) =>
       setStatus(currentHeadSha, context, state, description, targetUrl),
     ),
   );
@@ -275,6 +312,28 @@ async function request(path, init = {}) {
   }
 
   return text ? JSON.parse(text) : null;
+}
+
+async function graphqlRequest(query, variables) {
+  const response = await fetch(graphqlUrl, {
+    method: "POST",
+    headers: {
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`GitHub GraphQL request failed (${response.status}): ${text}`);
+  }
+
+  const result = text ? JSON.parse(text) : {};
+  if (Array.isArray(result.errors) && result.errors.length > 0) {
+    throw new Error(`GitHub GraphQL request failed: ${JSON.stringify(result.errors)}`);
+  }
+  return result;
 }
 
 function actionsUrl() {

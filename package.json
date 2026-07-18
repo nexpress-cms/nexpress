@@ -33,7 +33,7 @@
     "clean": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run clean && rm -rf node_modules",
     "changeset": "changeset",
     "version": "pnpm test:repo && changeset version",
-    "release": "pnpm test:repo && pnpm build && changeset publish --no-git-tag && tsx scripts/tag-release.mts"
+    "release": "tsx scripts/release.mts"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",

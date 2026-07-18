@@ -230,8 +230,9 @@ jobs:
   #
   # The smoke runs end-to-end against a temp project rooted in
   # `$RUNNER_TEMP` (NOT inside the monorepo workspace). The trick:
-  # pack every @nexpress/* package with `pnpm pack`, rewrite the
-  # scaffold's package.json to use `file:` tarball paths, then
+  # pack every public NexPress package with `pnpm pack`, run the packed
+  # create-nexpress binary, rewrite the scaffold's package.json to use
+  # `file:` tarball paths, then
   # `pnpm install --ignore-workspace` in the scaffold dir. This
   # keeps the smoke fully isolated — the monorepo's pnpm-lock.yaml
   # never mutates, the scaffold doesn't accidentally pick up the
@@ -277,7 +278,7 @@ jobs:
       - name: Build (CLI + every package the scaffold pulls in)
         run: pnpm build
 
-      # Pack every @nexpress/* workspace package so the scaffold's
+      # Pack every public NexPress workspace package so the scaffold's
       # direct AND transitive deps all resolve to local tarballs
       # (the link script's `pnpm.overrides` redirects every packed
       # name). Manual enumeration drifted: PR #727 added 11 plugin
@@ -290,7 +291,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/tarballs"
           pnpm m ls --json --depth=-1 \
-            | jq -r '.[] | select(.name and (.name | test("^@nexpress/"))) | .path' \
+            | jq -r '.[] | select(.name and .private != true and ((.name | test("^@nexpress/")) or .name == "create-nexpress")) | .path' \
             | while read -r dir; do
                 (cd "$dir" && pnpm pack --pack-destination "$RUNNER_TEMP/tarballs")
               done
@@ -300,7 +301,9 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/scaffold"
           cd "$RUNNER_TEMP/scaffold"
-          node "$GITHUB_WORKSPACE/packages/cli/dist/index.js" \
+          cli_tarball=$(find "$RUNNER_TEMP/tarballs" -maxdepth 1 -name 'create-nexpress-*.tgz' -print -quit)
+          test -n "$cli_tarball"
+          pnpm dlx --package "$cli_tarball" create-nexpress \
             smoke-app --yes --no-docker --local
 
       - name: Rewrite scaffold deps to use packed tarballs
