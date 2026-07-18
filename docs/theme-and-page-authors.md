@@ -20,7 +20,7 @@ is different (you're shipping behavior, not pages).
 
 The companion docs:
 
-- [`AGENTS.md`](../AGENTS.md) — architectural overview + v0.1
+- [`AGENTS.md`](../AGENTS.md) — architectural overview + current pre-1.0
   stability contract (what the symbols below promise).
 - [`theme-authoring.md`](theme-authoring.md) — the `defineTheme`
   contract, shell / slots / templates, dark mode, registering
@@ -475,7 +475,7 @@ const user = await requireAuth(request);
 if (!can(user, "admin.manage")) throw new NpForbiddenError("settings", "view");
 ```
 
-Capability strings are stable in v0.1 — see `AGENTS.md`'s
+Capability strings are stable throughout the current pre-1.0 contract — see `AGENTS.md`'s
 **Stability** section.
 
 ### 6.1 Member auth pages — framework-owned
@@ -878,7 +878,7 @@ import { createDefaultBlockRenderContext } from "@nexpress/next";
 const ctx = createDefaultBlockRenderContext();
 const body = renderBlocks(page.body, { ctx }); // React tree, server-safe
 
-// Lexical JSON → React tree for rich-text fields that aren't blocks.
+// NexPress rich-text envelope → React tree for fields that aren't blocks.
 const richBody = renderRichText(post.content);
 ```
 

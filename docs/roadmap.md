@@ -1,6 +1,6 @@
 # Roadmap Historical Snapshot
 
-**Last reviewed:** 2026-06-17.
+**Last reviewed:** 2026-07-18.
 
 This file is preserved as the pre-publish roadmap snapshot from 2026-05-02.
 It is no longer the current work queue: the npm publish path, CI triggers,
@@ -13,7 +13,7 @@ implementation contracts live in the focused guides linked from
 [`releasing.md`](releasing.md), [`deployment.md`](deployment.md), and
 [`testing.md`](testing.md).
 
-For the v0.1 stability commitments themselves, see the **STABILITY (v0.1)**
+For the current pre-1.0 stability commitments, see the **STABILITY (pre-1.0)**
 section in [`AGENTS.md`](../AGENTS.md) at the repo root. This file is the
 historical roadmap; that section is the contract.
 

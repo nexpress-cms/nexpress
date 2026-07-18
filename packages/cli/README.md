@@ -46,7 +46,7 @@ A Next.js 16 App Router project with:
 ## Prerequisites
 
 - Node ≥ 20
-- pnpm ≥ 10
+- pnpm 10.33
 - Docker (for the bundled Postgres) **or** any Postgres ≥ 14 reachable
   via `DATABASE_URL`
 

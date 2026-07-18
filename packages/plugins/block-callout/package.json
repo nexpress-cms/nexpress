@@ -1,7 +1,7 @@
 {
   "name": "@nexpress/plugin-block-callout",
   "version": "0.4.1",
-  "description": "Callout block — info/warn/danger notice card. Sample plugin showcasing block contribution.",
+  "description": "Callout block — info/success/warning/danger notice card. Sample plugin showcasing block contribution.",
   "license": "MIT",
   "author": "Nexpress",
   "homepage": "https://github.com/nexpress-cms/nexpress#readme",

@@ -5,6 +5,11 @@ Block-based page builder for
 Drag-and-drop blocks in the admin; render the same blocks server-side
 on the public site.
 
+Stored content uses the stable recursive `NpBlockContent` wire shape. Every
+instance has `id`, `type`, `props`, and optional `children`; definition-aware
+validation checks props and container rules before writes while preserving
+unknown blocks from inactive plugins or themes.
+
 ## Install
 
 ```bash
@@ -40,8 +45,9 @@ argument is passed.
 
 ## Default blocks
 
-`getDefaultBlocks()` returns the built-in definitions: hero, feature
-grid, FAQ, pricing, CTA, rich text, contact form, image gallery.
+`getDefaultBlocks()` returns the built-in definitions: grid, section header,
+hero, feature grid, testimonials, stats grid, logos cloud, tabs, FAQ, pricing,
+CTA, rich text, contact form, and image gallery.
 
 ## Edit in the admin
 
@@ -52,19 +58,32 @@ directly.
 
 ## Authoring a custom block
 
-```ts
+```tsx
 import type { NpBlockDefinition } from "@nexpress/blocks";
 
 export const calloutBlock: NpBlockDefinition = {
   type: "callout",
   label: "Callout",
-  fields: [
-    { name: "tone", type: "select", options: ["info", "warning", "danger"] },
-    { name: "body", type: "richText" },
+  description: "A short highlighted notice.",
+  defaultProps: { tone: "info", body: "Important information" },
+  propsSchema: [
+    {
+      name: "tone",
+      label: "Tone",
+      type: "select",
+      options: [
+        { label: "Info", value: "info" },
+        { label: "Warning", value: "warning" },
+        { label: "Danger", value: "danger" },
+      ],
+    },
+    { name: "body", label: "Body", type: "textarea", translatable: true },
   ],
-  render: ({ data }) => (
-    <aside data-tone={data.tone}>{/* render data.body */}</aside>
-  ),
+  render: (props) => {
+    const tone = typeof props.tone === "string" ? props.tone : "info";
+    const body = typeof props.body === "string" ? props.body : "";
+    return <aside data-tone={tone}>{body}</aside>;
+  },
 };
 ```
 
@@ -75,6 +94,14 @@ const registry = createBlockRegistry();
 for (const block of getDefaultBlocks()) registry.register(block);
 registry.register(calloutBlock);
 ```
+
+Plugins normally contribute blocks through `definePlugin({ blocks: [...] })`
+instead of mutating the registry themselves. Bootstrap validates each
+definition, assigns source ownership, and exposes serializable metadata to the
+Admin picker. See the
+[block contract guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/block-content.md)
+and
+[plugin block guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-blocks.md).
 
 ## Links
 

@@ -13,8 +13,8 @@ pnpm add @nexpress/plugin-sdk
 
 Plugins are **npm-package + rebuild**, not hot-loadable. A plugin can
 register hooks, REST routes, public-site page routes, page-builder
-blocks and patterns, declarative admin extensions, custom field types,
-operator config schemas, and scheduled tasks at startup. It **cannot**
+blocks and patterns, declarative admin extensions, page templates,
+ICU translations, operator config schemas, and scheduled tasks at startup. It **cannot**
 add collection schemas to a site at runtime — collections still require
 codegen + a DB migration. Plugins run in-process with full Node access;
 there is no sandbox in v1.
@@ -32,7 +32,7 @@ export default definePlugin({
     description: "Logs newly-created content through the plugin-scoped logger.",
     author: { name: "Example author" },
     license: "MIT",
-    nexpress: { minVersion: "0.3.0" },
+    nexpress: { minVersion: "0.4.1" },
   },
   hooks: {
     "content:afterCreate": ({ data, ctx }) => {
@@ -62,9 +62,10 @@ Restart the server — the hook fires after every document create.
 
 - **`hooks`** — typed `content:*`, `auth:*`, `media:*`, plus the single
   `render:beforePage` contribution hook
-- **`actions`** — handlers registered through `ctx.actions` and
-  dispatched by admin widgets, buttons, tables, or
-  `/api/plugins/<id>/actions/<name>`
+- **`actions`** — definition-level typed `action | metric | status | table`
+  handlers dispatched by Admin widgets, buttons, tables, or
+  `/api/plugins/<id>/actions/<name>`; setup-time `ctx.actions.register*`
+  remains available for compatibility
 - **`routes`** — full route handlers at `/api/plugins/<id>/<...path>`
   (rate-limited at the framework level — see
   [AGENTS.md](https://github.com/nexpress-cms/nexpress/blob/main/AGENTS.md))
@@ -72,6 +73,8 @@ Restart the server — the hook fires after every document create.
   shell
 - **`blocks` / `patterns`** — page-builder contributions rendered by
   the shared block registry
+- **`templates` / `i18n`** — definition-level page templates and
+  locale-keyed ICU message catalogs with source ownership on reload
 - **`admin`** — declarative settings, widgets, actions, tables,
   collection tabs, and dashboard widgets
 - **`configSchema`** — Zod-backed operator config auto-form persisted
@@ -86,7 +89,7 @@ Restart the server — the hook fires after every document create.
 - [docs/plugin-hooks.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-hooks.md)
 - [docs/plugin-pages.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-pages.md)
 - [docs/plugin-render.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-render.md)
-- [Reference plugins](https://github.com/nexpress-cms/nexpress/tree/main/packages/plugins) — `reading-time`, `seo-audit`, `forum`, `oauth-github`, `oauth-google`
+- [Reference plugins](https://github.com/nexpress-cms/nexpress/tree/main/packages/plugins) — analytics, webhook, blocks, forum, SEO, reading-time, and OAuth examples
 
 ## License
 

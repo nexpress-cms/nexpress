@@ -1,5 +1,10 @@
 # Releasing
 
+**Current published baseline:** NexPress `0.4.1` and `create-nexpress 0.1.36`
+(tag `v0.4.1`). The Version Packages PR remains the only supported path for
+normal package version bumps; merge it only after its generated changelogs,
+package versions, local verification, and required CI have been reviewed.
+
 ## Bootstrap (one-time, v0.1.0 first publish) — completed
 
 > **Status:** Completed for v0.1.0 (published 2026-05-12). This
@@ -36,8 +41,9 @@ workflow (`.github/workflows/release.yml`) runs on every push to
 2. **Queued changesets, no Version PR yet** → opens / updates the
    "Version Packages" PR. The PR carries the cumulative diff
    (`CHANGELOG.md` per package + `package.json` version bumps).
-3. **Version PR merged** → `pnpm release` (= `pnpm build && changeset publish`)
-   pushes the new tarballs to npm with Sigstore provenance.
+3. **Version PR merged** → `pnpm release` runs repository invariants, builds
+   publishable packages, publishes through Changesets, and creates the release
+   tag. The workflow uploads the new tarballs with Sigstore provenance.
 
 The root `release` script lives in `package.json`. Changesets reads
 `.changeset/config.json`, where `access: "public"` makes scoped
@@ -66,7 +72,7 @@ the workflow run's identity and grant publish access.
 
 For every package the workflow needs to publish, register the
 workflow as a Trusted Publisher on npmjs.com. Per-package
-clicking, ~25 entries for this monorepo:
+clicking once for every package in the fixed Changesets group:
 
 1. **Package must already exist on npm.** TP can't be configured
    for a name that doesn't exist yet. For first-time publishes,
