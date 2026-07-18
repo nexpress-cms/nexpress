@@ -18,7 +18,7 @@ name: Release
 # if any are queued and the diff isn't already a Version Packages
 # PR, the action opens / updates that PR. When that PR merges
 # (no remaining changesets), the same step runs `pnpm release`
-# (`pnpm build && changeset publish`) to push tarballs to npm.
+# to validate, publish, verify registry metadata, and tag the release.
 #
 # **No NPM_TOKEN.** Auth uses GitHub's OIDC: the workflow's
 # `id-token: write` permission lets npm exchange the short-lived
@@ -104,13 +104,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
-
-      # Sanity gate: refuse to publish a tarball that doesn't typecheck.
-      - name: Typecheck
-        run: pnpm typecheck
-
       - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@v1
@@ -128,7 +121,10 @@ jobs:
           # changeset-release/main". Same applies to `pnpm run
           # release` below.
           version: pnpm run version
-          # `pnpm run release` runs `pnpm build && changeset publish`.
+          # `pnpm run release` first checks whether any workspace version is
+          # unpublished. A no-op main push exits quickly; a real release runs
+          # repository tests, build, typecheck, publish, registry verification,
+          # and only then creates the release tag.
           # changesets/action only calls this when no changesets are
           # queued (i.e. the Version Packages PR has just merged), so
           # publish doesn't fire mid-track. Auth via Trusted Publishing:
@@ -185,9 +181,9 @@ jobs:
       # Originally this check ALSO required
       # `steps.changesets.outputs.published != 'true'`, but
       # changesets/action's stdout parser doesn't always recognise
-      # OUR publish output as a publish event (we chain
-      # `pnpm build && changeset publish --no-git-tag && tsx
-      # scripts/tag-release.mts`, which breaks the parser's
+      # OUR publish output as a publish event (we use a custom
+      # release wrapper around Changesets, verification, and tagging,
+      # which breaks the parser's
       # expected "🦋 info npm info ..." stream). When publish in
       # fact succeeds but `published` comes back not-`true`, the
       # detector used to fail the workflow despite a clean ship —
