@@ -9,6 +9,11 @@ import * as storage from "../storage/public.js";
 
 describe("framework-host bootstrap exports", () => {
   it("keeps raw singleton wiring out of the core root barrel", () => {
+    const rootTypeIncludesGetDb: "getDb" extends keyof typeof root ? true : false = false;
+    const hostTypeIncludesGetDb: "getDb" extends keyof typeof host ? true : false = true;
+
+    expect(rootTypeIncludesGetDb).toBe(false);
+    expect(hostTypeIncludesGetDb).toBe(true);
     for (const name of [
       "createDbConnection",
       "getDb",

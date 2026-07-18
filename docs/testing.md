@@ -150,13 +150,15 @@ describe.skipIf(skipIfNoTestDb())("my thing", () => {
 | `scheduled.integration.test.ts` (8)          | pipeline coerces published+future → scheduled; framework-managed `publishedAt` columns participate in scheduling; publishScheduledDocuments scopes hooks and exact follow-up payloads to each document site, then remains idempotent |
 | `ctx-settings.integration.test.ts` (6)       | settings.getSite/getPlugin/setPlugin round-trip; theme.setTokens merges; ON CONFLICT prevents row duplication; capability gate                                                                                                       |
 
-**CLI templates (6 tests, `packages/cli/src/templates.test.ts`):**
+**CLI templates (`packages/cli/src/templates.test.ts`):**
 
 Guards the structural invariants verified by manually scaffolding +
 typechecking + `next build`. Tests catch regressions like the stub
 `generated/collections.ts` going missing, the worker template's
 top-level narrowing creeping back, or the admin login `onSubmit`
-losing its void wrapper.
+losing its void wrapper. The generated tsconfig must declare consumer-local
+source roots, and `typecheck` / `build` must run schema codegen first so an
+ignored `src/db/generated/*.ts` file cannot disappear in a clean clone.
 
 **API routes (18+ tests, `apps/web/tests/`):**
 

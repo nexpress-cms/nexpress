@@ -151,8 +151,10 @@ function packageJsonTemplate(config: TemplateConfig): string {
       scripts: {
         predev: "tsx scripts/dev-notice.ts",
         dev: "next dev",
+        prebuild: "pnpm schema:gen",
         build: "tsx scripts/build.ts",
         start: "next start",
+        pretypecheck: "pnpm schema:gen",
         typecheck: "tsc --noEmit",
         "deploy:plan": "tsx scripts/deploy-plan.ts",
         doctor: "tsx scripts/doctor.ts",
@@ -816,13 +818,11 @@ function tsconfigTemplate(): string {
   // Scaffolded projects extend the shared base from @nexpress/app
   // for compiler-level settings (target / module / strict / etc.).
   //
-  // `paths` is *redeclared* here rather than inherited because
-  // TypeScript resolves `paths` relative to the file that declares
-  // them — when the base lives in `node_modules/@nexpress/app/...`
-  // the inherited `@/*` would point at the base's neighbours, not
-  // the consumer's `./src/*`. Same hazard applies to Turbopack /
-  // Next's path-alias support. Keeping the alias local makes the
-  // mapping unambiguous.
+  // Consumer-relative settings are redeclared here rather than
+  // inherited. TypeScript resolves `paths`, `include`, and `exclude`
+  // relative to the file that declares them; inheriting those values
+  // from node_modules would point typecheck at @nexpress/app instead
+  // of the generated site's own source tree.
   return (
     JSON.stringify(
       {
@@ -830,6 +830,14 @@ function tsconfigTemplate(): string {
         compilerOptions: {
           paths: { "@/*": ["./src/*"] },
         },
+        include: [
+          "src",
+          "scripts",
+          "next-env.d.ts",
+          ".next/types/**/*.ts",
+          ".next/dev/types/**/*.ts",
+        ],
+        exclude: ["node_modules"],
       },
       null,
       2,
@@ -918,9 +926,9 @@ pnpm run ops:status -- --brief --no-color
 pnpm run doctor
 \`\`\`
 
-\`ops:status\` is the compact "what needs attention?" command. \`doctor\`
-explains setup/runtime problems with concrete next commands. The full
-operations command reference lives in [docs/ops.md](docs/ops.md).
+\`ops:status\` is the compact "what needs attention?" command. \`doctor\` explains
+setup/runtime problems. \`pnpm typecheck\` and \`pnpm build\` regenerate ignored
+collection code first. The full reference lives in [docs/ops.md](docs/ops.md).
 
 ## Headless / SSH / CI
 

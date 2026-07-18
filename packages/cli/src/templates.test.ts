@@ -114,6 +114,32 @@ describe("getProjectFiles", () => {
     }
   });
 
+  it("typechecks the generated project and refreshes ignored codegen before build", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const pkg = JSON.parse(files["package.json"]) as {
+      scripts: Record<string, string>;
+    };
+    const tsconfig = JSON.parse(files["tsconfig.json"]) as {
+      include?: string[];
+      exclude?: string[];
+      compilerOptions?: { paths?: Record<string, string[]> };
+    };
+
+    expect(pkg.scripts.prebuild).toBe("pnpm schema:gen");
+    expect(pkg.scripts.pretypecheck).toBe("pnpm schema:gen");
+    expect(pkg.scripts.build).toBe("tsx scripts/build.ts");
+    expect(pkg.scripts.typecheck).toBe("tsc --noEmit");
+    expect(tsconfig.compilerOptions?.paths).toEqual({ "@/*": ["./src/*"] });
+    expect(tsconfig.include).toEqual([
+      "src",
+      "scripts",
+      "next-env.d.ts",
+      ".next/types/**/*.ts",
+      ".next/dev/types/**/*.ts",
+    ]);
+    expect(tsconfig.exclude).toEqual(["node_modules"]);
+  });
+
   it("pre-approves native-build deps via pnpm-workspace.yaml allowBuilds", () => {
     // pnpm 10.6+ ignores `pnpm.onlyBuiltDependencies` in package.json
     // for non-workspace projects; the live allowlist is here. Without

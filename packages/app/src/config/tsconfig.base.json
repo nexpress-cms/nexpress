@@ -15,9 +15,6 @@
     "incremental": true,
     "allowJs": true,
     "noEmit": true,
-    "paths": { "@/*": ["./src/*"] },
     "plugins": [{ "name": "next" }]
-  },
-  "include": ["src", "scripts", "next-env.d.ts", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  }
 }
