@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-17 (content transfer now shares one exact bounded
+**Last refreshed:** 2026-07-18 (shared TypeScript config is consumer-safe;
+generated scaffolds typecheck their own source graph and refresh ignored
+collection code before typecheck/build.)
+
+**Earlier:** 2026-07-17 (content transfer now shares one exact bounded
 v3 full/partial envelope across core, export/import, active collection OpenAPI,
 media projection, identity-preserving relationship preflight, and reports.)
 

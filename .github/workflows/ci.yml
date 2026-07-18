@@ -313,7 +313,9 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/scaffold/smoke-app"
           pnpm install --ignore-workspace
-          pnpm exec tsc --noEmit
+          pnpm typecheck
+          pnpm exec tsc --showConfig \
+            | jq -e '.files | any(. == "./src/nexpress.config.ts")' >/dev/null
 
       - name: Build generated scaffold
         run: |
