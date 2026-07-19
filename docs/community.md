@@ -260,29 +260,33 @@ runtime never drops malformed entries or silently rewrites them as defaults.
 
 ## 8. Member-Authored Content
 
-Phase 9.7a–q layered "members can write things" on top of
-the comment surface:
+Member-authored documents build on the same collection pipeline as staff
+writes:
 
-- `defineDiscussionsCollection({ memberWrite: true })` — the
-  forum's discussions collection accepts member-authored
-  threads. `community.memberWrite.create: true` and
-  `defaultStatus: "pending" | "published"` per collection.
+- `community.memberWrite.create/update/delete` opts a collection into the
+  owner-gated member path.
+- `writableFields` limits the exact declared fields a member request may
+  submit. Framework fields and omitted operator-only fields remain locked.
+- `access.create/update/delete` adds row-aware policy after authentication,
+  ownership, and ban gates. `resolveCreateStatus` can derive `published` or
+  `pending` from validated runtime data; spam flags still force `pending`.
 - Pipeline stamps `member_author_id` on member writes
-  (Phase 9.7b codegen) so owner-only update / delete works
-  without staff.
+  so owner-only update / delete works without staff.
 - Pending queue at `/admin/community/pending` — staff
   Approve (promotes to published, fires deferred `document.created`
   reputation event) or Reject (deletes).
-- Site UI:
-  - `/discussions` — public list
-  - `/discussions/new` — member-authored thread form
-  - `/discussions/[slug]/edit` — owner-gated edit
-  - "My threads" tab (logged-in members) shows pending
-    submissions to their author
+- The bundled forum uses those contracts for dynamic boards:
+  - `/boards` — published board index
+  - `/boards/[boardKey]` — board list and member's own pending posts
+  - `/boards/[boardKey]/new` — member composer
+  - `/boards/[boardKey]/[postId]/edit` — owner-gated edit
 - Rich-text editor (`@nexpress/editor`) with image upload
   (Phase 9.7j; image uploads go through the member upload
   endpoint with the `community.memberUploadQuota.{perDay,
 total}` rate limit from Phase 9.7p).
+
+See [plugin-forum.md](plugin-forum.md) for board policy, Admin settings, and
+the skin contract.
 
 ---
 

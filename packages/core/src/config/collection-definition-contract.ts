@@ -344,6 +344,46 @@ function semanticIssues(config: NpCollectionConfig): NpCollectionDefinitionIssue
   };
   collectTopLevel(config.fields);
   const topLevelNames = new Set(topLevelFields.keys());
+  const memberWrite = config.community?.memberWrite;
+  if (memberWrite?.writableFields) {
+    addDuplicateValues(
+      memberWrite.writableFields,
+      "community.memberWrite.writableFields",
+      "writable field",
+      issues,
+    );
+    for (const [index, name] of memberWrite.writableFields.entries()) {
+      if (!topLevelNames.has(name)) {
+        issues.push(
+          issue(
+            "reference",
+            `community.memberWrite.writableFields.${index.toString()}`,
+            `member writable field "${name}" is not a top-level collection field.`,
+          ),
+        );
+      }
+    }
+  }
+  for (const operation of ["create", "update", "delete"] as const) {
+    if (memberWrite?.access?.[operation] && memberWrite[operation] !== true) {
+      issues.push(
+        issue(
+          "reference",
+          `community.memberWrite.access.${operation}`,
+          `member ${operation} access requires community.memberWrite.${operation}=true.`,
+        ),
+      );
+    }
+  }
+  if (memberWrite?.resolveCreateStatus && memberWrite.create !== true) {
+    issues.push(
+      issue(
+        "reference",
+        "community.memberWrite.resolveCreateStatus",
+        "member create status resolution requires community.memberWrite.create=true.",
+      ),
+    );
+  }
   const publishedAtField = topLevelFields.get("publishedAt");
   if (publishedAtField && publishedAtField.type !== "date") {
     issues.push(

@@ -20,8 +20,8 @@ interface ShellWrapProps {
  * Lives at the page level (not the layout) so a single catch-
  * all file can render different chrome depending on which
  * plugin route surface matched — `(site)/[[...slug]]` dispatches
- * `surface: "member"` plugin routes (`/discussions/new`,
- * `/discussions/:slug/edit` for the forum plugin) into the
+ * `surface: "member"` plugin routes (`/boards/:boardKey/new`,
+ * `/boards/:boardKey/:postId/edit` for the forum plugin) into the
  * member shell without forcing a parallel `(member)/[[...slug]]`
  * file route (which Next.js wouldn't let coexist with the site
  * catch-all anyway).

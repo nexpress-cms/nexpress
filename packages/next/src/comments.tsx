@@ -22,6 +22,9 @@ interface CommentRow {
 interface CommentsProps {
   collectionSlug: string;
   documentId: string;
+  /** Hide the composer while keeping existing comments readable. */
+  locked?: boolean;
+  lockedMessage?: string;
 }
 
 /**
@@ -36,7 +39,12 @@ interface CommentsProps {
  */
 type CommentSort = "newest" | "oldest" | "top";
 
-export function Comments({ collectionSlug, documentId }: CommentsProps) {
+export function Comments({
+  collectionSlug,
+  documentId,
+  locked = false,
+  lockedMessage = "This discussion is locked. Existing comments remain visible.",
+}: CommentsProps) {
   const [comments, setComments] = useState<CommentRow[]>([]);
   const [total, setTotal] = useState(0);
   const [bodyMd, setBodyMd] = useState("");
@@ -168,7 +176,11 @@ export function Comments({ collectionSlug, documentId }: CommentsProps) {
         </ul>
       )}
 
-      {memberKnown === false ? (
+      {locked ? (
+        <p className="np-comments-locked" style={{ marginTop: "1.5rem", color: "#64748b" }}>
+          {lockedMessage}
+        </p>
+      ) : memberKnown === false ? (
         <p style={{ marginTop: "1.5rem", color: "#64748b" }}>
           <a href="/members/login">Log in</a> to comment.
         </p>

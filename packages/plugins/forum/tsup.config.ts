@@ -10,7 +10,6 @@ const externals = [
   "react",
   "react/jsx-runtime",
   "react-dom",
-  "@nexpress/blocks",
   "@nexpress/core",
   "@nexpress/editor",
   "@nexpress/editor/server",
@@ -18,7 +17,6 @@ const externals = [
   "@nexpress/next/client",
   "@nexpress/plugin-forum/client",
   "@nexpress/plugin-sdk",
-  "drizzle-orm",
 ];
 
 // Two-entry array config (matches `@nexpress/admin`'s pattern):
@@ -28,8 +26,8 @@ const externals = [
 // chunks with the directive at the top, which is what React's
 // RSC compiler needs to treat them as client components even
 // when they're transitively imported from server-side route
-// files (e.g. `src/routes/edit.tsx` referencing
-// `DiscussionForm`).
+// files (e.g. `src/routes/forum-post-edit.tsx` referencing
+// `ForumPostForm`).
 //
 // The previous sequenced single-entry approach lost this — each
 // invocation only saw one entry, so transitive client modules

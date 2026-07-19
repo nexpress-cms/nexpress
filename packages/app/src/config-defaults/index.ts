@@ -12,7 +12,7 @@ import { latestPostsPlugin } from "@nexpress/plugin-block-latest-posts";
 import { newsletterPlugin } from "@nexpress/plugin-block-newsletter";
 import { pricingPlugin } from "@nexpress/plugin-block-pricing";
 import { statsBlockPlugin } from "@nexpress/plugin-block-stats";
-import { defineDiscussionsCollection, forumPlugin } from "@nexpress/plugin-forum";
+import { forumCollections, forumPlugin } from "@nexpress/plugin-forum";
 import { githubOAuthPlugin } from "@nexpress/plugin-oauth-github";
 import { googleOAuthPlugin } from "@nexpress/plugin-oauth-google";
 import { readingTimePlugin } from "@nexpress/plugin-reading-time";
@@ -34,14 +34,12 @@ import { i18nConfig } from "../i18n-config";
  * `packages/app/src/collections/*.ts` — they're the single
  * source of truth used by both apps/web and every scaffold.
  *
- * `discussions` is built by the `@nexpress/plugin-forum` factory
- * with its default options (no extra categories) so the forum
- * plugin's pre-registered hooks have a target collection from
- * boot. Operators who want custom categories override the entry:
+ * The forum contributes a board registry plus one shared post
+ * collection. Boards are rows, so operators add boards, categories,
+ * skins, and moderation policy in Admin without regenerating schema:
  *
  *   collections: [
- *     ...defaultCollections.filter((c) => c.slug !== "discussions"),
- *     defineDiscussionsCollection({ categories: [...] }),
+ *     ...defaultCollections,
  *   ]
  */
 export const defaultCollections: NpConfig["collections"] = [
@@ -49,7 +47,7 @@ export const defaultCollections: NpConfig["collections"] = [
   pagesCollection,
   categoriesCollection,
   tagsCollection,
-  defineDiscussionsCollection(),
+  ...forumCollections,
 ];
 
 /**
@@ -63,9 +61,8 @@ export const defaultCollections: NpConfig["collections"] = [
  *     / pricing / stats) — add new block types to the page builder.
  *   - reading-time, seo-audit — content-pipeline hooks, no extra
  *     surface.
- *   - forum — registers the `discussions` collection (pre-included
- *     in `defaultCollections` above so the plugin has a target
- *     from boot) plus the public forum routes under `/discussions`.
+ *   - forum — uses the board/post collections pre-included in
+ *     `defaultCollections` and owns the public routes under `/boards`.
  *   - oauth-github, oauth-google — register OAuth provider entries
  *     but only become reachable when the corresponding env vars
  *     (or admin auto-form values) are populated; the empty case logs

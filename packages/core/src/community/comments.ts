@@ -131,7 +131,7 @@ async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRo
   }
 
   // Forum-style "locked" guard: collections that opted into a `locked`
-  // checkbox on their schema (e.g. `defineDiscussionsCollection`) flip
+  // checkbox on their schema (e.g. the bundled forum post collection) flip
   // it to true to prevent new comments. The flag lives at the document
   // level, not the collection level — different threads in the same
   // collection can be locked independently. (#47)

@@ -25,6 +25,7 @@ import {
   type NpCollectionHook,
   type NpFieldConfig,
   type NpHookPrincipal,
+  type NpMemberWriteAccessArgs,
 } from "../config/types.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
 import { isNpRichTextContent } from "../fields/rich-text.js";
@@ -292,6 +293,41 @@ export async function saveDocument(
   return saveDocumentImpl(collection, docId, data, { kind: "staff", user }, options);
 }
 
+function assertMemberWritableFields(
+  config: NpCollectionConfig,
+  collection: string,
+  data: Readonly<Record<string, unknown>>,
+): void {
+  const writableFields = config.community?.memberWrite?.writableFields;
+  if (!writableFields) return;
+  const allowed = new Set(writableFields);
+  const denied = Object.keys(data).filter((field) => !allowed.has(field));
+  if (denied.length === 0) return;
+  throw new NpValidationError("Invalid member-authored fields", [
+    ...denied.map((field) => ({
+      field,
+      message: `Members cannot write field "${field}" on collection "${collection}".`,
+    })),
+  ]);
+}
+
+async function assertMemberWriteAccess(
+  config: NpCollectionConfig,
+  args: NpMemberWriteAccessArgs,
+): Promise<void> {
+  const access = config.community?.memberWrite?.access?.[args.operation];
+  if (!access) return;
+  const allowed = await access(args);
+  if (typeof allowed !== "boolean") {
+    throw new Error(
+      `Collection "${args.collection}" member ${args.operation} access policy must return boolean.`,
+    );
+  }
+  if (!allowed) {
+    throw new NpForbiddenError(args.collection, args.operation);
+  }
+}
+
 /**
  * Member-side document create. Only valid when
  * `config.community?.memberWrite?.create === true`. Assumes the API
@@ -340,6 +376,7 @@ export async function updateMemberDocument(
   if (!config.community?.memberWrite?.update) {
     throw new NpForbiddenError(collection, "update");
   }
+  assertMemberWritableFields(config, collection, data);
   const registration = getCollectionRegistration(collection);
   const dbForGate = getDb() as unknown as DrizzleDatabaseLike;
   const originalDoc = await getDocumentByIdInternal(dbForGate, registration, collection, docId);
@@ -352,6 +389,19 @@ export async function updateMemberDocument(
   }
   const { assertNotBanned } = await import("../community/can.js");
   await assertNotBanned(memberId);
+
+  const candidate = {
+    ...npCollectionDocumentToWriteInput(originalDoc, config),
+    ...data,
+  };
+  const validatedCandidate = toRecord(getCollectionZodSchema(config, candidate).parse(candidate));
+  await assertMemberWriteAccess(config, {
+    collection,
+    operation: "update",
+    memberId,
+    data: validatedCandidate,
+    originalDoc,
+  });
 
   // Re-run the spam + profanity adapters on the submitted patch.
   // Pre-fix this path skipped moderation entirely, so a member
@@ -444,11 +494,37 @@ export async function createMemberDocument(
   if (!config.community?.memberWrite?.create) {
     throw new NpForbiddenError(collection, "create");
   }
+  assertMemberWritableFields(config, collection, data);
   const { assertNotBanned } = await import("../community/can.js");
   await assertNotBanned(memberId);
 
-  const defaultStatus: NpDocumentStatus =
-    config.community?.memberWrite?.defaultStatus === "pending" ? "pending" : "published";
+  const validatedCandidate = toRecord(getCollectionZodSchema(config, data).parse(data));
+  await assertMemberWriteAccess(config, {
+    collection,
+    operation: "create",
+    memberId,
+    data: validatedCandidate,
+    originalDoc: null,
+  });
+
+  const statusResolver = config.community.memberWrite.resolveCreateStatus;
+  const resolvedStatus = statusResolver
+    ? await statusResolver({
+        collection,
+        operation: "create",
+        memberId,
+        data: validatedCandidate,
+        originalDoc: null,
+      })
+    : config.community.memberWrite.defaultStatus === "pending"
+      ? "pending"
+      : "published";
+  if (resolvedStatus !== "published" && resolvedStatus !== "pending") {
+    throw new Error(
+      `Collection "${collection}" member create status resolver returned an invalid status.`,
+    );
+  }
+  const defaultStatus: NpDocumentStatus = resolvedStatus;
 
   const moderation = await runMemberDocModeration({
     collection,
@@ -1686,6 +1762,13 @@ async function deleteDocumentImpl(
     }
     const { assertNotBanned } = await import("../community/can.js");
     await assertNotBanned(actor.memberId);
+    await assertMemberWriteAccess(config, {
+      collection,
+      operation: "delete",
+      memberId: actor.memberId,
+      data: null,
+      originalDoc,
+    });
   }
 
   const userForHooks = actorUserOrNull(actor);

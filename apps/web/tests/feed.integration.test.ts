@@ -83,16 +83,16 @@ describe.skipIf(skipIfNoTestDb())("Atom feed (Phase 10.4)", () => {
     expect(xml).not.toContain("hidden-draft-tomato");
   });
 
-  it("?collection=discussions reads from a different collection", async () => {
+  it("?collection=forum-posts reads from a different collection", async () => {
     const res = await feedGET(
-      new NextRequest("http://localhost:3000/feed.xml?collection=discussions"),
+      new NextRequest("http://localhost:3000/feed.xml?collection=forum-posts"),
     );
     expect(res.status).toBe(200);
     const xml = await res.text();
     expect(xml).toContain("<feed xmlns=");
     // self link encodes the collection query param.
     expect(xml).toContain(
-      '<link rel="self" href="http://localhost:3000/feed.xml?collection=discussions"/>',
+      '<link rel="self" href="http://localhost:3000/feed.xml?collection=forum-posts"/>',
     );
   });
 

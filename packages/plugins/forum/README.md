@@ -1,8 +1,8 @@
 # @nexpress/plugin-forum
 
-Forum plugin for [NexPress](https://github.com/nexpress-cms/nexpress) —
-threaded discussions on top of the community surface (comments,
-reactions, follows, mentions).
+Multi-board forum plugin for [NexPress](https://github.com/nexpress-cms/nexpress).
+It combines native board/post collections, member writes, moderation, rich
+text, comments, and a build-time skin contract.
 
 ## Install
 
@@ -10,32 +10,39 @@ reactions, follows, mentions).
 pnpm add @nexpress/plugin-forum
 ```
 
-## Usage
+Generated projects already receive `forumCollections` and `forumPlugin` through
+the framework defaults. For a custom path, collection names, or skin catalog,
+use one paired factory result:
 
 ```ts
-// nexpress.config.ts
-import forum, { defineDiscussionsCollection } from "@nexpress/plugin-forum";
-import { defaultCollections } from "@nexpress/app/config-defaults";
+import { defineConfig } from "@nexpress/core";
+import { createForum } from "@nexpress/plugin-forum";
+
+const forum = createForum({
+  basePath: "/boards",
+  defaultSkinId: "classic",
+});
 
 export default defineConfig({
-  // ...
-  collections: [...defaultCollections, defineDiscussionsCollection()],
-  plugins: [forum],
+  collections: [...forum.collections],
+  plugins: [forum.plugin],
 });
 ```
 
-Then generate and apply the collection migration:
+Generate and apply the two collection tables, then create and publish a board
+from Admin → Community → Forum boards:
 
 ```bash
 pnpm db:generate && pnpm db:migrate
 ```
 
-The plugin contributes public routes for `/discussions`,
-`/discussions/new`, `/discussions/:slug`, `/discussions/:slug/edit`,
-and `/u/:handle/discussions`.
+The default routes are `/boards`, `/boards/:boardKey`, member create/edit
+routes, and UUID-based post detail URLs. Members can write only board, title,
+body, and category fields; pin, lock, status, board policy, and moderation stay
+operator-owned.
 
-For the plugin model and extension points, see
-[`@nexpress/plugin-sdk`](https://www.npmjs.com/package/@nexpress/plugin-sdk).
+See the full [forum guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-forum.md)
+for board settings, skin authoring, policy behavior, and current scope.
 
 ## License
 

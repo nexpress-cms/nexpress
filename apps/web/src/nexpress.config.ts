@@ -17,8 +17,6 @@ import { seoAuditPlugin } from "@nexpress/plugin-seo-audit";
 // @nexpress:themes-imports-end
 
 import { i18nConfig } from "./i18n.config";
-import { discussionsCollection } from "./collections/discussions";
-
 export default defineConfig({
   site: {
     name: "NexPress Reference",
@@ -28,10 +26,7 @@ export default defineConfig({
     connectionString: process.env.DATABASE_URL ?? "",
   },
   storage: storageFromEnv(),
-  collections: [
-    ...defaultCollections.filter((c) => c.slug !== "discussions"),
-    discussionsCollection,
-  ],
+  collections: [...defaultCollections],
   // Phase 12.1 — i18n config. Required when any collection
   // sets `i18n: true`. `pagesCollection` opts in: each row
   // carries a locale + translation_group_id, and the admin

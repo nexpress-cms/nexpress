@@ -962,9 +962,6 @@ importers:
 
   packages/plugins/forum:
     dependencies:
-      '@nexpress/blocks':
-        specifier: workspace:*
-        version: link:../../blocks
       '@nexpress/core':
         specifier: workspace:*
         version: link:../../core
@@ -977,9 +974,6 @@ importers:
       '@nexpress/plugin-sdk':
         specifier: workspace:*
         version: link:../../plugin-sdk
-      drizzle-orm:
-        specifier: ^0.45.2
-        version: 0.45.2(@types/pg@8.20.0)(pg@8.22.0)
     devDependencies:
       '@types/node':
         specifier: ^26.0.1

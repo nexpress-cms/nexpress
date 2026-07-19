@@ -313,6 +313,68 @@ describe("collection definition contract", () => {
     );
   });
 
+  it("validates member writable fields and row-aware policy opt-ins", () => {
+    const collection = validCollection();
+    collection.community = {
+      comments: true,
+      memberWrite: {
+        create: true,
+        writableFields: ["title", "title", "missing"],
+        access: {
+          create: () => true,
+          update: () => true,
+        },
+        resolveCreateStatus: () => "published",
+      },
+    };
+
+    expect(npAnalyzeCollectionDefinition(collection)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ message: 'duplicate writable field "title".' }),
+        expect.objectContaining({
+          message: 'member writable field "missing" is not a top-level collection field.',
+        }),
+        expect.objectContaining({
+          message: "member update access requires community.memberWrite.update=true.",
+        }),
+      ]),
+    );
+  });
+
+  it("accepts an exact member-write field and policy contract", () => {
+    const collection = validCollection();
+    collection.community = {
+      comments: true,
+      memberWrite: {
+        create: true,
+        update: true,
+        delete: true,
+        writableFields: ["title", "metadata", "sections"],
+        access: {
+          create: () => true,
+          update: () => true,
+          delete: () => true,
+        },
+        resolveCreateStatus: () => "pending",
+      },
+    };
+
+    expect(npValidateCollectionDefinition(collection)).toEqual({ ok: true });
+  });
+
+  it("accepts an empty writable field allowlist for delete-only member contracts", () => {
+    const collection = validCollection();
+    collection.community = {
+      memberWrite: {
+        delete: true,
+        writableFields: [],
+        access: { delete: () => true },
+      },
+    };
+
+    expect(npValidateCollectionDefinition(collection)).toEqual({ ok: true });
+  });
+
   it("allows publishedAt only as a top-level date field", () => {
     const collection = validCollection();
     collection.fields.push({
