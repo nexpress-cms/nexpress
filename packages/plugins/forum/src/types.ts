@@ -41,6 +41,20 @@ export interface NpForumPostSummary {
   author: NpForumAuthor | null;
 }
 
+export interface NpForumPostListQuery {
+  page: number;
+  search: string | null;
+  category: string | null;
+  showMine: boolean;
+}
+
+export interface NpForumPostListQueryPatch {
+  page?: number;
+  search?: string | null;
+  category?: string | null;
+  showMine?: boolean;
+}
+
 export interface NpForumMessages {
   locale: string;
   boards: string;
@@ -51,6 +65,11 @@ export interface NpForumMessages {
   signInToPost: string;
   emptyBoards: string;
   emptyPosts: string;
+  emptyFilteredPosts: string;
+  allCategories: string;
+  searchPosts: string;
+  searchPlaceholder: string;
+  clearFilters: string;
   number: string;
   category: string;
   title: string;
@@ -97,14 +116,14 @@ export interface NpForumPostListSkinProps {
   board: NpForumBoard;
   posts: NpForumPostSummary[];
   pinnedPosts: NpForumPostSummary[];
-  page: number;
   totalPages: number;
   totalPosts: number;
-  showMine: boolean;
+  query: NpForumPostListQuery;
+  searchMaxLength: number;
   isAuthenticated: boolean;
   canCreate: boolean;
   messages: NpForumMessages;
-  hrefForPage: (page: number) => string;
+  hrefForQuery: (patch?: NpForumPostListQueryPatch) => string;
 }
 
 export interface NpForumPostDetailSkinProps {

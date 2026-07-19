@@ -77,12 +77,33 @@ Deleting a board with posts is intentionally restricted by the relationship
 foreign key. Move or delete its posts first so a stale post can never point to
 a missing board.
 
+## List discovery
+
+Board lists support title/body full-text search, category filtering, the
+authenticated member's own posts, and bounded pagination. The public query
+contract recognizes only these values:
+
+| Query      | Contract                                                       |
+| ---------- | -------------------------------------------------------------- |
+| `q`        | Trimmed and whitespace-normalized search text, up to 120 chars |
+| `category` | One stable category key configured on the current board        |
+| `author`   | The literal `me`, available only to an authenticated member    |
+| `page`     | Canonical positive integer from 1 through 10,000               |
+
+Recognized parameters that are duplicated, malformed, out of bounds, or refer
+to another board's category fail closed. Unknown parameters such as campaign
+tags are ignored. Search always combines the current board, visibility/status,
+category, and member filters in one collection query. Pinned notices appear
+only on the unfiltered public first page, so they cannot pollute filtered or
+ranked results. Filter state is preserved by category, author, and pagination
+links.
+
 ## Routes
 
 | Route                            | Surface | Purpose                                 |
 | -------------------------------- | ------- | --------------------------------------- |
 | `/boards`                        | site    | Published board index                   |
-| `/boards/:boardKey`              | site    | Classic board list and author filter    |
+| `/boards/:boardKey`              | site    | Searchable and filterable post list     |
 | `/boards/:boardKey/new`          | member  | Authenticated member composer           |
 | `/boards/:boardKey/:postId`      | site    | Post body, author actions, and comments |
 | `/boards/:boardKey/:postId/edit` | member  | Owner-only edit form                    |
@@ -123,12 +144,20 @@ upload, or collection-write policy. Projects that do not consume
 `@nexpress/app/styles/globals.css` should import
 `@nexpress/plugin-forum/styles.css` themselves.
 
+Post-list skins receive the parsed `query`, `searchMaxLength`, and a
+`hrefForQuery(patch)` helper. Use that helper for author, category, reset, and
+pagination links so every skin preserves the same canonical query ordering and
+omits default values. Filter patches reset pagination unless they explicitly
+provide a page. The route owns parsing, board scoping, search execution, and
+out-of-range rejection; a skin remains presentation-only.
+
 ## Current boundary
 
 The foundation includes multi-board Admin configuration, classic
 index/list/detail/composer skin, member create/edit/delete, owner and board
 policy gates, pending moderation, pin/lock controls, categories, rich-text
-image upload, comments, plugin i18n catalogs, and an Admin dashboard metric.
+image upload, comments, board-scoped search and category discovery, plugin i18n
+catalogs, and an Admin dashboard metric.
 
 Anonymous posting, board passwords, attachment lists, view counters, and
 board-specific moderator roles are not part of this first contract. They should

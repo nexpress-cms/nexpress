@@ -3,8 +3,14 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { buildForumPostListHref } from "./routes/post-list-query.js";
 import { classicForumSkin } from "./skins/classic.js";
-import type { NpForumBoard, NpForumMessages, NpForumPostSummary } from "./types.js";
+import type {
+  NpForumBoard,
+  NpForumMessages,
+  NpForumPostListQuery,
+  NpForumPostSummary,
+} from "./types.js";
 
 const messages: NpForumMessages = {
   locale: "ko",
@@ -16,6 +22,11 @@ const messages: NpForumMessages = {
   signInToPost: "로그인 후 글쓰기",
   emptyBoards: "게시판 없음",
   emptyPosts: "게시글 없음",
+  emptyFilteredPosts: "검색 결과 없음",
+  allCategories: "전체 분류",
+  searchPosts: "게시글 검색",
+  searchPlaceholder: "제목과 내용 검색",
+  clearFilters: "검색 조건 지우기",
   number: "번호",
   category: "분류",
   title: "제목",
@@ -77,6 +88,17 @@ const post: NpForumPostSummary = {
   author: null,
 };
 
+const defaultQuery: NpForumPostListQuery = {
+  page: 1,
+  search: null,
+  category: null,
+  showMine: false,
+};
+
+function hrefForQuery(query: NpForumPostListQuery) {
+  return (patch = {}) => buildForumPostListHref("/boards", "free", query, patch);
+}
+
 async function markup(node: ReturnType<typeof classicForumSkin.renderPostList>): Promise<string> {
   return renderToStaticMarkup(<>{await node}</>);
 }
@@ -89,14 +111,14 @@ describe("classic forum skin", () => {
         board,
         posts: [post],
         pinnedPosts: [],
-        page: 1,
         totalPages: 1,
         totalPosts: 1,
-        showMine: false,
+        query: defaultQuery,
+        searchMaxLength: 120,
         isAuthenticated: true,
         canCreate: true,
         messages,
-        hrefForPage: (page) => `/boards/free?page=${page.toString()}`,
+        hrefForQuery: hrefForQuery(defaultQuery),
       }),
     );
 
@@ -104,6 +126,64 @@ describe("classic forum skin", () => {
     expect(html).toContain('<th scope="col" class="np-forum-column-category">');
     expect(html).toContain('<th scope="col" class="np-forum-column-date">');
     expect(html).toContain('class="np-button-primary"');
+  });
+
+  it("renders bounded discovery controls and preserves filters in pagination", async () => {
+    const query: NpForumPostListQuery = {
+      page: 2,
+      search: "검색어",
+      category: "question",
+      showMine: true,
+    };
+    const html = await markup(
+      classicForumSkin.renderPostList({
+        basePath: "/boards",
+        board,
+        posts: [post],
+        pinnedPosts: [],
+        totalPages: 3,
+        totalPosts: 41,
+        query,
+        searchMaxLength: 120,
+        isAuthenticated: true,
+        canCreate: true,
+        messages,
+        hrefForQuery: hrefForQuery(query),
+      }),
+    );
+
+    expect(html).toContain('role="search"');
+    expect(html).toContain('type="search" maxLength="120"');
+    expect(html).toContain('name="q" value="검색어"');
+    expect(html).toContain('name="category" value="question"');
+    expect(html).toContain('name="author" value="me"');
+    expect(html).toContain(
+      "/boards/free?category=question&amp;q=%EA%B2%80%EC%83%89%EC%96%B4&amp;author=me&amp;page=3",
+    );
+  });
+
+  it("distinguishes an empty filtered result from an empty board", async () => {
+    const query = { ...defaultQuery, search: "missing" };
+    const html = await markup(
+      classicForumSkin.renderPostList({
+        basePath: "/boards",
+        board,
+        posts: [],
+        pinnedPosts: [],
+        totalPages: 0,
+        totalPosts: 0,
+        query,
+        searchMaxLength: 120,
+        isAuthenticated: false,
+        canCreate: false,
+        messages,
+        hrefForQuery: hrefForQuery(query),
+      }),
+    );
+
+    expect(html).toContain("검색 결과 없음");
+    expect(html).toContain("검색 조건 지우기");
+    expect(html).not.toContain("게시글 없음");
   });
 
   it("marks rich text with the forum-owned typography contract", async () => {
