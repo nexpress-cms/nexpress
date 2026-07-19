@@ -8,6 +8,7 @@ import {
   PATCH as collectionPATCH,
 } from "@/app/api/collections/[slug]/[id]/route";
 import { forumBoardsTable, forumPostsTable } from "@/db/generated/collections";
+import type { ForumPostsDocument } from "@/db/generated/documents";
 import { NextRequest } from "next/server";
 
 import {
@@ -275,5 +276,36 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
     const result = await readJson<{ error: { message: string } }>(removed);
     expect(result.status).toBe(400);
     expect(result.body.error.message).toMatch(/still has posts/u);
+  });
+
+  it("keeps full-text discovery inside the selected board and category", async () => {
+    const { id: sourceBoard } = await createBoard({ key: "search-source" });
+    const { id: otherBoard } = await createBoard({ key: "search-other" });
+    const source = await createPost(sourceBoard, { title: "한글 검색 가이드" });
+    const uncategorized = await createPost(sourceBoard, {
+      title: "한글 검색 가이드",
+      category: null,
+    });
+    const other = await createPost(otherBoard, { title: "한글 검색 가이드" });
+    expect(source.response.status).toBe(201);
+    expect(uncategorized.response.status).toBe(201);
+    expect(other.response.status).toBe(201);
+
+    const { findDocuments } = await import("@nexpress/core");
+    const found = await findDocuments<ForumPostsDocument>("forum-posts", {
+      search: "검색 가이드",
+      where: {
+        board: sourceBoard,
+        category: "question",
+        status: "published",
+        pinned: false,
+      },
+      page: 1,
+      limit: 20,
+    });
+    const created = await readJson<{ id: string }>(source.response);
+
+    expect(found.totalDocs).toBe(1);
+    expect(found.docs.map((post) => post.id)).toEqual([created.body.id]);
   });
 });

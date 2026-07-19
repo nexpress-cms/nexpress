@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-19 (the bundled forum now uses one complete
+**Last refreshed:** 2026-07-19 (forum lists now share one bounded board-scoped
+search/category/author/page query contract across routes and skins; malformed
+filters fail closed, navigation preserves state, and notices stay out of
+filtered results.)
+
+**Earlier:** 2026-07-19 (the bundled forum now uses one complete
 index/list/detail/composer skin contract with responsive classic markup and
 framework-independent rich-text typography; routes retain authentication,
 ownership, and write-policy control.)

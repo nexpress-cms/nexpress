@@ -91,6 +91,8 @@ function renderBoardIndex({ basePath, boards, messages }: NpForumBoardIndexSkinP
 
 function renderPostList(props: NpForumPostListSkinProps) {
   const { basePath, board, posts, pinnedPosts, messages } = props;
+  const hasFilters =
+    props.query.search !== null || props.query.category !== null || props.query.showMine;
   const categoryLabels = new Map(
     board.categories.map((category) => [category.key, category.label] as const),
   );
@@ -106,15 +108,15 @@ function renderPostList(props: NpForumPostListSkinProps) {
         </div>
         <nav className="np-forum-toolbar" aria-label={messages.posts}>
           <Link
-            href={`${basePath}/${board.key}`}
-            aria-current={!props.showMine ? "page" : undefined}
+            href={props.hrefForQuery({ showMine: false, page: 1 })}
+            aria-current={!props.query.showMine ? "page" : undefined}
           >
             {messages.allPosts}
           </Link>
           {props.isAuthenticated ? (
             <Link
-              href={`${basePath}/${board.key}?author=me`}
-              aria-current={props.showMine ? "page" : undefined}
+              href={props.hrefForQuery({ showMine: true, page: 1 })}
+              aria-current={props.query.showMine ? "page" : undefined}
             >
               {messages.myPosts}
             </Link>
@@ -134,8 +136,66 @@ function renderPostList(props: NpForumPostListSkinProps) {
         </nav>
       </header>
 
+      <div className="np-forum-discovery">
+        {board.categories.length > 0 ? (
+          <nav className="np-forum-category-filter" aria-label={messages.category}>
+            <Link
+              href={props.hrefForQuery({ category: null, page: 1 })}
+              aria-current={props.query.category === null ? "page" : undefined}
+            >
+              {messages.allCategories}
+            </Link>
+            {board.categories.map((category) => (
+              <Link
+                key={category.key}
+                href={props.hrefForQuery({ category: category.key, page: 1 })}
+                aria-current={props.query.category === category.key ? "page" : undefined}
+              >
+                {category.label}
+              </Link>
+            ))}
+          </nav>
+        ) : null}
+        <form
+          action={`${basePath}/${board.key}`}
+          method="get"
+          role="search"
+          className="np-forum-search"
+        >
+          {props.query.category ? (
+            <input type="hidden" name="category" value={props.query.category} />
+          ) : null}
+          {props.query.showMine ? <input type="hidden" name="author" value="me" /> : null}
+          <label>
+            <span className="np-forum-visually-hidden">{messages.searchPosts}</span>
+            <input
+              type="search"
+              name="q"
+              defaultValue={props.query.search ?? ""}
+              maxLength={props.searchMaxLength}
+              placeholder={messages.searchPlaceholder}
+            />
+          </label>
+          <button type="submit">{messages.searchPosts}</button>
+          {hasFilters ? (
+            <Link
+              href={props.hrefForQuery({
+                search: null,
+                category: null,
+                showMine: false,
+                page: 1,
+              })}
+            >
+              {messages.clearFilters}
+            </Link>
+          ) : null}
+        </form>
+      </div>
+
       {posts.length === 0 && pinnedPosts.length === 0 ? (
-        <p className="np-forum-empty">{messages.emptyPosts}</p>
+        <p className="np-forum-empty">
+          {hasFilters ? messages.emptyFilteredPosts : messages.emptyPosts}
+        </p>
       ) : (
         <div className="np-forum-table-wrap">
           <table className="np-forum-table">
@@ -170,7 +230,7 @@ function renderPostList(props: NpForumPostListSkinProps) {
                 basePath={basePath}
                 boardKey={board.key}
                 posts={posts}
-                firstNumber={props.totalPosts - (props.page - 1) * board.pageSize}
+                firstNumber={props.totalPosts - (props.query.page - 1) * board.pageSize}
                 notice={false}
                 messages={messages}
                 categoryLabels={categoryLabels}
@@ -182,14 +242,16 @@ function renderPostList(props: NpForumPostListSkinProps) {
 
       {props.totalPages > 1 ? (
         <nav className="np-forum-pagination" aria-label="Pagination">
-          {props.page > 1 ? (
-            <Link href={props.hrefForPage(props.page - 1)}>{messages.previous}</Link>
+          {props.query.page > 1 ? (
+            <Link href={props.hrefForQuery({ page: props.query.page - 1 })}>
+              {messages.previous}
+            </Link>
           ) : (
             <span />
           )}
-          <span>{messages.pageOf(props.page, props.totalPages)}</span>
-          {props.page < props.totalPages ? (
-            <Link href={props.hrefForPage(props.page + 1)}>{messages.next}</Link>
+          <span>{messages.pageOf(props.query.page, props.totalPages)}</span>
+          {props.query.page < props.totalPages ? (
+            <Link href={props.hrefForQuery({ page: props.query.page + 1 })}>{messages.next}</Link>
           ) : (
             <span />
           )}

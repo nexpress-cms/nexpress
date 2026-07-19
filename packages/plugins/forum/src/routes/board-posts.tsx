@@ -11,10 +11,11 @@ import {
   type ForumPostDocument,
   type NpForumRuntime,
 } from "../runtime.js";
-
-function firstParam(value: string | string[] | undefined): string | undefined {
-  return typeof value === "string" ? value : value?.[0];
-}
+import {
+  buildForumPostListHref,
+  npForumPostListQueryLimits,
+  parseForumPostListQuery,
+} from "./post-list-query.js";
 
 export function createBoardPostsMetadata(runtime: NpForumRuntime) {
   return async function boardPostsMetadata({ params }: NpRouteRenderProps) {
@@ -33,24 +34,29 @@ export function createBoardPostsRoute(runtime: NpForumRuntime) {
     if (!board) notFound();
 
     const member = await getSiteMember();
-    const showMine = firstParam(searchParams.author) === "me" && member !== null;
-    const page = Math.max(1, Number.parseInt(firstParam(searchParams.page) ?? "1", 10) || 1);
+    const parsedQuery = parseForumPostListQuery(searchParams, board.categories);
+    if (!parsedQuery) notFound();
+    if (parsedQuery.showMine && !member) notFound();
+    const query = parsedQuery;
     const where: NpFindWhere<ForumPostDocument> = { board: board.id };
-    if (showMine && member) {
+    if (query.showMine && member) {
       where.memberAuthorId = member.id;
     } else {
       where.status = "published";
       where.pinned = false;
     }
+    if (query.category) where.category = query.category;
+
+    const showPinned = !query.showMine && !query.search && !query.category && query.page === 1;
 
     const [result, pinnedResult, messages] = await Promise.all([
       findDocuments<ForumPostDocument>(runtime.collections.posts, {
         where,
-        sort: "-createdAt",
-        page,
+        ...(query.search ? { search: query.search } : { sort: "-createdAt" }),
+        page: query.page,
         limit: board.pageSize,
       }),
-      !showMine && page === 1
+      showPinned
         ? findDocuments<ForumPostDocument>(runtime.collections.posts, {
             where: { board: board.id, status: "published", pinned: true },
             sort: "-createdAt",
@@ -60,6 +66,7 @@ export function createBoardPostsRoute(runtime: NpForumRuntime) {
         : Promise.resolve({ docs: [] as ForumPostDocument[] }),
       getForumMessages(),
     ]);
+    if (query.page > Math.max(1, result.totalPages)) notFound();
     const [posts, pinnedPosts] = await Promise.all([
       enrichForumPosts(result.docs),
       enrichForumPosts(pinnedResult.docs),
@@ -70,20 +77,14 @@ export function createBoardPostsRoute(runtime: NpForumRuntime) {
       board,
       posts,
       pinnedPosts,
-      page,
       totalPages: result.totalPages,
       totalPosts: result.totalDocs,
-      showMine,
+      query,
+      searchMaxLength: npForumPostListQueryLimits.searchLength,
       isAuthenticated: member !== null,
       canCreate: member !== null && board.writeMode === "members",
       messages,
-      hrefForPage: (nextPage) => {
-        const query = new URLSearchParams({
-          ...(showMine ? { author: "me" } : {}),
-          page: String(nextPage),
-        });
-        return `${runtime.basePath}/${board.key}?${query.toString()}`;
-      },
+      hrefForQuery: (patch) => buildForumPostListHref(runtime.basePath, board.key, query, patch),
     });
   };
 }

@@ -41,7 +41,9 @@ routes, and UUID-based post detail URLs. A selected skin renders the board
 index, post list, detail, and route-owned create/edit content without taking
 over authentication or write policy. Members can write only board, title, body,
 and category fields; pin, lock, status, board policy, and moderation stay
-operator-owned.
+operator-owned. Board lists include bounded title/body search, category and
+member filters, canonical filter-preserving pagination, and notices that stay
+out of filtered results.
 
 See the full [forum guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-forum.md)
 for board settings, skin authoring, policy behavior, and current scope.
