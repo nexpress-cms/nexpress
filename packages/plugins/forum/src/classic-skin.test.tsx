@@ -36,6 +36,17 @@ const messages: NpForumMessages = {
   staff: "운영자",
   pending: "검토 중",
   locked: "잠김",
+  pagination: "페이지 이동",
+  boardPolicy: "게시판 운영 정책",
+  writeMembers: "회원 글쓰기",
+  writeStaff: "운영자만 글쓰기",
+  writeClosed: "글쓰기 닫힘",
+  moderationPublished: "즉시 게시",
+  moderationPending: "검토 후 게시",
+  commentsOpen: "댓글 사용",
+  commentsClosed: "댓글 사용 안 함",
+  createdAt: "작성",
+  updatedAt: "수정",
   previous: "이전",
   next: "다음",
   pageOf: (page, totalPages) => `${page.toString()} / ${totalPages.toString()}`,
@@ -126,6 +137,7 @@ describe("classic forum skin", () => {
     expect(html).toContain('<th scope="col" class="np-forum-column-category">');
     expect(html).toContain('<th scope="col" class="np-forum-column-date">');
     expect(html).toContain('class="np-button-primary"');
+    expect(html).toContain('data-np-forum-surface="post-list"');
   });
 
   it("renders bounded discovery controls and preserves filters in pagination", async () => {
@@ -208,6 +220,7 @@ describe("classic forum skin", () => {
     const styles = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
 
     expect(html).toContain('class="np-forum-post-body np-forum-rich-text"');
+    expect(html).toContain('data-np-forum-surface="post-detail"');
     expect(html).not.toContain(" prose");
     expect(styles).toContain(".np-forum-rich-text h1");
     expect(styles).toContain("list-style: disc");
@@ -232,6 +245,16 @@ describe("classic forum skin", () => {
       expect(html).toContain(`data-np-forum-composer="${mode}"`);
       expect(html).toContain(`data-testid="${mode}-form"`);
       expect(html).toContain('data-np-forum-skin="classic"');
+      expect(html).toContain('data-np-forum-surface="composer"');
     }
+  });
+
+  it("marks the board index for theme integration without theme-owned chrome", async () => {
+    const html = await markup(
+      classicForumSkin.renderBoardIndex({ basePath: "/boards", boards: [board], messages }),
+    );
+
+    expect(html).toContain('data-np-forum-surface="board-index"');
+    expect(html).not.toContain("np-site-header");
   });
 });

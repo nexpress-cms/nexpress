@@ -67,7 +67,11 @@ function PostRows({
 
 function renderBoardIndex({ basePath, boards, messages }: NpForumBoardIndexSkinProps) {
   return (
-    <main className="np-forum np-forum-classic" data-np-forum-skin="classic">
+    <main
+      className="np-forum np-forum-classic"
+      data-np-forum-skin="classic"
+      data-np-forum-surface="board-index"
+    >
       <header className="np-forum-page-header">
         <h1>{messages.boards}</h1>
       </header>
@@ -97,7 +101,11 @@ function renderPostList(props: NpForumPostListSkinProps) {
     board.categories.map((category) => [category.key, category.label] as const),
   );
   return (
-    <main className="np-forum np-forum-classic" data-np-forum-skin="classic">
+    <main
+      className="np-forum np-forum-classic"
+      data-np-forum-skin="classic"
+      data-np-forum-surface="post-list"
+    >
       <header className="np-forum-page-header">
         <div>
           <Link href={basePath} className="np-forum-back-link">
@@ -241,7 +249,7 @@ function renderPostList(props: NpForumPostListSkinProps) {
       )}
 
       {props.totalPages > 1 ? (
-        <nav className="np-forum-pagination" aria-label="Pagination">
+        <nav className="np-forum-pagination" aria-label={messages.pagination}>
           {props.query.page > 1 ? (
             <Link href={props.hrefForQuery({ page: props.query.page - 1 })}>
               {messages.previous}
@@ -264,7 +272,11 @@ function renderPostList(props: NpForumPostListSkinProps) {
 function renderPostDetail(props: NpForumPostDetailSkinProps) {
   const { basePath, board, post, messages } = props;
   return (
-    <main className="np-forum np-forum-classic" data-np-forum-skin="classic">
+    <main
+      className="np-forum np-forum-classic"
+      data-np-forum-skin="classic"
+      data-np-forum-surface="post-detail"
+    >
       <article className="np-forum-post">
         <header className="np-forum-post-header">
           <Link href={`${basePath}/${board.key}`} className="np-forum-back-link">
@@ -301,6 +313,7 @@ function renderPostComposer(props: NpForumPostComposerSkinProps) {
     <main
       className="np-forum np-forum-classic np-forum-member-page"
       data-np-forum-skin="classic"
+      data-np-forum-surface="composer"
       data-np-forum-composer={props.mode}
     >
       <header className="np-forum-page-header">

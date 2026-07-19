@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-19 (forum lists now share one bounded board-scoped
+**Last refreshed:** 2026-07-19 (the forum now ships independent classic and
+community-full skins over one public np-blocks/token/style-slot contract;
+themes can enhance every route surface without importing the plugin, while the
+plugin retains complete fallbacks without an active integration.)
+
+**Earlier:** 2026-07-19 (forum lists now share one bounded board-scoped
 search/category/author/page query contract across routes and skins; malformed
 filters fail closed, navigation preserves state, and notices stay out of
 filtered results.)
