@@ -13,6 +13,7 @@ import type {
 
 const FORUM_POST_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+export const npForumBoardKeyPattern = /^[a-z][a-z0-9-]{1,62}$/u;
 
 export interface NpForumRuntime {
   basePath: string;
@@ -21,7 +22,7 @@ export interface NpForumRuntime {
   skins: ReadonlyMap<string, NpForumSkin>;
 }
 
-interface ForumBoardDocument extends Record<string, unknown> {
+export interface ForumBoardDocument extends Record<string, unknown> {
   id: string;
   status: string;
   visibility: string;
@@ -370,5 +371,23 @@ export async function getForumMessages(): Promise<NpForumMessages> {
     loginRequired: loginRequired ?? "An account is required to create a post.",
     commentsLocked: commentsLocked ?? "This post is locked. Existing comments remain visible.",
     emptyBody: emptyBody ?? "No content.",
+  };
+}
+
+export interface ForumHomeMessages extends NpForumMessages {
+  viewAll: string;
+  emptyNotices: string;
+}
+
+export async function getForumHomeMessages(): Promise<ForumHomeMessages> {
+  const messages = await getForumMessages();
+  const [viewAll, emptyNotices] = await Promise.all([
+    t("forum.viewAll", messages.locale),
+    t("forum.emptyNotices", messages.locale),
+  ]);
+  return {
+    ...messages,
+    viewAll: viewAll ?? "View all",
+    emptyNotices: emptyNotices ?? "No notices yet.",
   };
 }

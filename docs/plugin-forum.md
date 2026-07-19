@@ -169,6 +169,37 @@ omits default values. Filter patches reset pagination unless they explicitly
 provide a page. The route owns parsing, board scoping, search execution, and
 out-of-range rejection; a skin remains presentation-only.
 
+## Home blocks and pattern
+
+The forum contributes two server-rendered page-builder blocks. Both close over
+the `basePath` and collection slugs passed to `createForum()`, so an editor
+never has to expose an internal collection name in page content.
+
+| Block type              | Purpose                                                        |
+| ----------------------- | -------------------------------------------------------------- |
+| `forum.board-directory` | Active board cards with descriptions, categories, and policies |
+| `forum.post-feed`       | Bounded latest-discussion or pinned-notice feed                |
+
+The directory supports 1–100 boards, automatic or fixed columns, and toggles
+for descriptions, categories, and policy labels. The feed supports 1–20 rows,
+list or card layout, optional board scoping, and board/category/author/date
+visibility toggles. Leave `boardKey` empty to aggregate active boards; an
+unknown key renders the empty state, while a value outside the board's exact
+2–63 character key contract fails before a query.
+
+`latest` excludes pinned notices so it composes without duplicates beside a
+`notices` feed. Cross-board results retain only rows whose board relation and
+immutable board-key snapshot agree with an active public board. Collection
+reads remain site-scoped, anonymous visibility filtering remains active, and
+only `published` posts reach either feed. Malformed, stale, private, draft, or
+orphaned state therefore fails closed instead of leaking into a home page.
+
+The `forum.community-home` pattern composes a board directory, notice list, and
+latest-discussion cards. It references only forum-owned blocks and remains
+available under every theme. The plugin does not expose a fake `popular` mode:
+that requires a future bounded engagement metric rather than sorting by an
+unrelated timestamp.
+
 ## Theme integration
 
 The plugin and the active theme remain independent packages. Forum structural
@@ -177,23 +208,28 @@ imports a theme nor checks a theme ID. A theme can enhance the forum from its
 own CSS without importing `@nexpress/plugin-forum` by setting these inherited
 properties on its shell:
 
-| Property                       | Controls                                 |
-| ------------------------------ | ---------------------------------------- |
-| `--np-forum-content-max`       | Board index and list maximum width       |
-| `--np-forum-detail-max`        | Post detail maximum width                |
-| `--np-forum-composer-max`      | Create/edit maximum width                |
-| `--np-forum-page-gutter`       | Inline viewport gutter                   |
-| `--np-forum-page-space`        | Block margin around a forum route        |
-| `--np-forum-panel-background`  | Full-skin cards and panels               |
-| `--np-forum-panel-border`      | Full-skin panel and row borders          |
-| `--np-forum-panel-radius`      | Full-skin panel radius                   |
-| `--np-forum-panel-shadow`      | Board-card shadow                        |
-| `--np-forum-muted-background`  | Secondary surfaces                       |
-| `--np-forum-muted-foreground`  | Secondary text                           |
-| `--np-forum-accent`            | Active states, links, and policy markers |
-| `--np-forum-accent-foreground` | Text placed on the accent                |
-| `--np-forum-row-min-height`    | Full-skin list density                   |
-| `--np-forum-row-padding`       | Full-skin row padding                    |
+| Property                                | Controls                                 |
+| --------------------------------------- | ---------------------------------------- |
+| `--np-forum-content-max`                | Board index and list maximum width       |
+| `--np-forum-detail-max`                 | Post detail maximum width                |
+| `--np-forum-composer-max`               | Create/edit maximum width                |
+| `--np-forum-page-gutter`                | Inline viewport gutter                   |
+| `--np-forum-page-space`                 | Block margin around a forum route        |
+| `--np-forum-panel-background`           | Full-skin cards and panels               |
+| `--np-forum-panel-border`               | Full-skin panel and row borders          |
+| `--np-forum-panel-radius`               | Full-skin panel radius                   |
+| `--np-forum-panel-shadow`               | Board-card shadow                        |
+| `--np-forum-muted-background`           | Secondary surfaces                       |
+| `--np-forum-muted-foreground`           | Secondary text                           |
+| `--np-forum-accent`                     | Active states, links, and policy markers |
+| `--np-forum-accent-foreground`          | Text placed on the accent                |
+| `--np-forum-row-min-height`             | Full-skin list density                   |
+| `--np-forum-row-padding`                | Full-skin row padding                    |
+| `--np-forum-block-space`                | Vertical spacing around forum blocks     |
+| `--np-forum-block-gap`                  | Directory and feed-card gap              |
+| `--np-forum-block-board-min-height`     | Directory card minimum height            |
+| `--np-forum-block-card-padding`         | Directory card padding                   |
+| `--np-forum-block-feed-card-min-height` | Feed-card minimum height                 |
 
 For example, a future community theme can remain usable without the forum and
 apply optional integration only when forum markup is present:
@@ -209,13 +245,16 @@ apply optional integration only when forum markup is present:
 
 The plugin manifest also publishes stable selectors for the root, board index,
 post list, discovery controls, notice list, normal post rows, post detail,
-composer, and comments. Every bundled skin marks its root with
+composer, comments, board-directory block, post-feed block, and feed items.
+Every bundled skin marks its root with
 `data-np-forum-skin` and one of the `data-np-forum-surface` values
 `board-index`, `post-list`, `post-detail`, or `composer`. Themes should use
 these documented hooks instead of depending on a skin's internal React tree.
+Home blocks expose `data-np-forum-block="board-directory|post-feed"`, while the
+feed adds `data-np-forum-feed-mode`, `data-np-forum-feed-layout`, and
+`data-np-forum-board`.
 Conversely, a theme must not query the forum's configurable collection slugs;
-future latest/popular/notice integrations belong in public plugin blocks or
-query contracts.
+the plugin-owned blocks are the supported integration boundary.
 
 ## Current boundary
 
@@ -223,8 +262,9 @@ The foundation includes multi-board Admin configuration, classic and
 community-full index/list/detail/composer skins, member create/edit/delete,
 owner and board policy gates, pending moderation, pin/lock controls,
 categories, rich-text image upload, comments, board-scoped search and category
-discovery, a theme-neutral style contract, plugin i18n catalogs, and an Admin
-dashboard metric.
+discovery, home-page directory/feed blocks, a community-home pattern, a
+theme-neutral style contract, plugin i18n catalogs, and an Admin dashboard
+metric.
 
 Anonymous posting, board passwords, attachment lists, view counters, and
 board-specific moderator roles are not part of this first contract. They should

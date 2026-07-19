@@ -19,6 +19,16 @@ describe("forum factory", () => {
     expect(
       Object.entries(forumPlugin.actions ?? {}).map(([id, action]) => ({ id, kind: action.kind })),
     ).toEqual([{ id: "countForumPosts", kind: "metric" }]);
+    expect(forumPlugin.blocks?.map((block) => block.type)).toEqual([
+      "forum.board-directory",
+      "forum.post-feed",
+    ]);
+    expect(forumPlugin.patterns?.map((pattern) => pattern.id)).toEqual(["forum.community-home"]);
+    expect(forumPlugin.manifest.provides.blocks).toEqual([
+      "forum.board-directory",
+      "forum.post-feed",
+    ]);
+    expect(forumPlugin.manifest.provides.patterns).toEqual(["forum.community-home"]);
     expect([...createForum().runtime.skins.keys()]).toEqual(["classic", "community-full"]);
     expect(communityFullForumSkin.id).toBe("community-full");
   });
@@ -51,7 +61,30 @@ describe("forum factory", () => {
       "post-detail": '[data-np-forum-surface="post-detail"]',
       composer: '[data-np-forum-surface="composer"]',
       comments: ".np-forum-comments",
+      "board-directory-block": '[data-np-forum-block="board-directory"]',
+      "post-feed-block": '[data-np-forum-block="post-feed"]',
+      "feed-item": ".np-forum-block-feed-list > li",
     });
+  });
+
+  it("ships a self-contained community-home pattern over only forum-owned blocks", () => {
+    expect(forumPlugin.patterns).toEqual([
+      expect.objectContaining({
+        id: "forum.community-home",
+        category: "homepage",
+        blocks: [
+          expect.objectContaining({ type: "forum.board-directory" }),
+          expect.objectContaining({
+            type: "forum.post-feed",
+            props: expect.objectContaining({ mode: "notices" }),
+          }),
+          expect.objectContaining({
+            type: "forum.post-feed",
+            props: expect.objectContaining({ mode: "latest" }),
+          }),
+        ],
+      }),
+    ]);
   });
 
   it("applies custom paths, collection slugs, and skins to every contract surface", () => {

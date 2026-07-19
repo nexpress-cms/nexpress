@@ -1,6 +1,7 @@
 import { definePlugin, type NpPluginPageRouteRegistration } from "@nexpress/plugin-sdk";
 
 import { defineForumBoardsCollection, defineForumPostsCollection } from "./collections.js";
+import { createForumHomeBlocks, forumHomePatterns } from "./home-blocks.js";
 import { createBoardIndexMetadata, createBoardIndexRoute } from "./routes/board-index.js";
 import { createBoardPostsMetadata, createBoardPostsRoute } from "./routes/board-posts.js";
 import { createForumPostDetailRoute, createForumPostMetadata } from "./routes/forum-post-detail.js";
@@ -118,6 +119,8 @@ const messages = {
     "forum.commentsClosed": "Comments disabled",
     "forum.createdAt": "Created",
     "forum.updatedAt": "Updated",
+    "forum.viewAll": "View all",
+    "forum.emptyNotices": "No notices yet.",
     "forum.previous": "Previous",
     "forum.next": "Next",
     "forum.backToBoard": "Back to board",
@@ -176,6 +179,8 @@ const messages = {
     "forum.commentsClosed": "댓글 사용 안 함",
     "forum.createdAt": "작성",
     "forum.updatedAt": "수정",
+    "forum.viewAll": "전체 보기",
+    "forum.emptyNotices": "등록된 공지가 없습니다.",
     "forum.previous": "이전",
     "forum.next": "다음",
     "forum.backToBoard": "목록으로",
@@ -241,6 +246,7 @@ export function createForum(options: NpForumOptions = {}) {
     defineForumBoardsCollection(runtime),
     defineForumPostsCollection(runtime),
   ] as const;
+  const blocks = createForumHomeBlocks(runtime);
   const plugin = definePlugin({
     manifest: {
       id: "forum",
@@ -293,8 +299,13 @@ export function createForum(options: NpForumOptions = {}) {
         "post-detail": '[data-np-forum-surface="post-detail"]',
         composer: '[data-np-forum-surface="composer"]',
         comments: ".np-forum-comments",
+        "board-directory-block": '[data-np-forum-block="board-directory"]',
+        "post-feed-block": '[data-np-forum-block="post-feed"]',
+        "feed-item": ".np-forum-block-feed-list > li",
       },
     },
+    blocks,
+    patterns: forumHomePatterns,
     i18n: messages,
     admin: {
       dashboardWidgets: [
@@ -340,6 +351,7 @@ export const forumCollections = defaultForum.collections;
 
 export { classicForumSkin } from "./skins/classic.js";
 export { communityFullForumSkin } from "./skins/community-full.js";
+export { createForumHomeBlocks, forumHomePatterns } from "./home-blocks.js";
 export type {
   NpForumAuthor,
   NpForumBoard,
