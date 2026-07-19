@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-18 (block prop schemas now use one exact v1
+**Last refreshed:** 2026-07-19 (the bundled forum now uses board rows, shared
+post storage, build-time skins, ID routes, and exact row-aware member-write
+policy while operator fields fail before moderation or persistence.)
+
+**Earlier:** 2026-07-18 (block prop schemas now use one exact v1
 discriminated union across author types, definition/content validation, Admin,
 public discovery, OpenAPI, scaffolds, and plugin doctor.)
 
@@ -464,6 +468,16 @@ at dispatch. Author docs: `docs/plugin-scheduled-tasks.md`.
 Plugin wiring is centralized in `packages/core/src/plugins/host.ts` (registry + `runHook`) and surfaced via `loadPlugins()` / `runHook()` / `getPluginRoutes()` exports. API routes use uppercase `GET`/`POST`/`PUT`/`PATCH`/`DELETE`, canonical static paths, and exact `{ status, body?, headers? }` results; GET registrations also handle HEAD. Definition validation, the core host, and plugin doctor enforce the same contract. See `docs/plugin-api-routes.md`. The catch-all plugin route (`/api/plugins/<id>/<...>` for paths other than `/actions`) is rate-limited at the framework level by `apps/web/src/proxy.ts` (#316) — the conservative default applies to anything matching the catch-all pattern, so plugin authors get a sane floor automatically. A plugin that needs a higher ceiling for a specific endpoint must add its own per-handler rate-limiter on top.
 
 Plugin **page routes** (`pageRoutes` field — #623) let a plugin own public-site URLs end-to-end. `definePlugin()`, the core host, and plugin doctor share the same canonical pattern/handler validation; malformed or same-plugin duplicate routes fail before dispatch. The host catch-all (`apps/web/src/app/(site)/[[...slug]]/page.tsx`) calls `dispatchPluginRoute()` from `@nexpress/next` after the page-slug + slug-redirect + theme-route lookups; a matched plugin component receives `{ params, searchParams, blockCtx }` and renders into the active shell. `locale: "auto"` matches the locale-stripped path, while `locale: "none"` matches only the raw path and does not add automatic hreflang aliases. `surface: "site"` routes use the site shell; `surface: "member"` routes use `impl.members.shell` with the member-surface fallback chain. The flag controls chrome only and is not an auth gate. Server / client boundaries follow the same pattern as `@nexpress/admin`: route components (server) import client widgets via the package's own `./client` subpath (e.g. `@nexpress/plugin-forum/client`), which is marked external in the index entry's tsup config so the bundle preserves the `"use client"` directive. Reference: `packages/plugins/forum/` migrated 2026-05-10. Author docs in `docs/plugin-pages.md`.
+
+The bundled forum is created with one paired `createForum()` result: a
+`forum-boards` registry collection, shared `forum-posts` collection, and plugin
+whose `/boards/:boardKey/:postId` routes, Admin action, build-time skin catalog,
+relationship targets, and row-aware member policy close over those exact slugs.
+Boards are published rows, so adding a board/category/skin selection needs no
+new schema. Member requests can write only board/title/body/category; board
+policy resolves create access and pending status before moderation, while
+pinned/locked/status remain staff-owned. The stable board key plus UUID post id
+avoid Korean-title slug generation. Author docs: `docs/plugin-forum.md`.
 
 ### Next.js app structure (`apps/web/src/app`)
 

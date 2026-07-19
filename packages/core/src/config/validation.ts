@@ -288,7 +288,16 @@ export const collectionConfigSchema = z.strictObject({
           create: z.boolean().optional(),
           update: z.boolean().optional(),
           delete: z.boolean().optional(),
+          writableFields: z.array(z.string().min(1)).optional(),
+          access: z
+            .strictObject({
+              create: functionSchema.optional(),
+              update: functionSchema.optional(),
+              delete: functionSchema.optional(),
+            })
+            .optional(),
           defaultStatus: z.enum(["published", "pending"]).optional(),
+          resolveCreateStatus: functionSchema.optional(),
         })
         .optional(),
     })

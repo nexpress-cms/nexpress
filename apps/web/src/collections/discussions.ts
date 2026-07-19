@@ -1,15 +1,37 @@
-import { defineDiscussionsCollection } from "@nexpress/plugin-forum";
+import { defineCollection, isEditorOrAbove, isOwnerOrAdmin } from "@nexpress/core";
 
 /**
- * Reference-app discussion schema. Keep the category catalog next to the
- * collection so runtime bootstrap, generated tables, and integration fixtures
- * all register the same exact definition.
+ * DB integration fixture. The public reference surface uses the forum's
+ * `forum-boards` + `forum-posts` model; generic community pipeline suites keep
+ * this hidden collection so they can test member writes without board policy.
  */
-export const discussionsCollection = defineDiscussionsCollection({
-  categories: [
-    { label: "General", value: "general" },
-    { label: "Announcements", value: "announcements" },
-    { label: "Q&A", value: "qa" },
-    { label: "Show & Tell", value: "show-and-tell" },
+export const discussionsCollection = defineCollection({
+  slug: "discussions",
+  labels: { singular: "Discussion fixture", plural: "Discussion fixtures" },
+  slugField: { useField: "title", unique: true },
+  admin: { hidden: true },
+  versions: { drafts: true, max: 30 },
+  community: { comments: true, memberWrite: { create: true, update: true, delete: true } },
+  access: {
+    read: () => true,
+    create: isEditorOrAbove,
+    update: isOwnerOrAdmin,
+    delete: isOwnerOrAdmin,
+  },
+  fields: [
+    { type: "text", name: "title", required: true },
+    { type: "richText", name: "body" },
+    {
+      type: "select",
+      name: "category",
+      options: [
+        { label: "General", value: "general" },
+        { label: "Announcements", value: "announcements" },
+        { label: "Q&A", value: "qa" },
+        { label: "Show & Tell", value: "show-and-tell" },
+      ],
+    },
+    { type: "checkbox", name: "pinned", defaultValue: false },
+    { type: "checkbox", name: "locked", defaultValue: false },
   ],
 });

@@ -9,7 +9,7 @@ import { ensureFor } from "../../lib/init-core";
 /**
  * Phase 10.4 — Atom feed. Default collection is `posts`; sites
  * with multiple feed-able collections use the `?collection=` query
- * param (e.g. `/feed.xml?collection=discussions`). The collection
+ * param (e.g. `/feed.xml?collection=forum-posts`). The collection
  * MUST declare `seo.urlPath` (the same opt-in the sitemap uses)
  * — collections without it return 404.
  *

@@ -288,7 +288,7 @@ export default async function CatchAllPage({ params, searchParams }: PageProps) 
       });
       // v0.2 — pick chrome based on the plugin route's declared
       // surface. `surface: "member"` plugin routes (forum's
-      // `/discussions/new`, `/discussions/:slug/edit`) render with
+      // `/boards/:boardKey/new`, `/boards/:boardKey/:postId/edit`) render with
       // member chrome (`impl.members.shell` + chrome fallback)
       // even though they live under the (site) catch-all.
       // Without this dispatch a parallel `(member)/[[...slug]]`

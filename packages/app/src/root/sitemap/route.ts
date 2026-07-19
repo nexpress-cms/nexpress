@@ -19,7 +19,7 @@ import { ensureFor } from "../../lib/init-core";
  * Phase 10.1 — sitemap.xml. The core helper walks every
  * collection that opts in via `seo.urlPath` and emits entries
  * for published documents. We layer on the static routes the
- * reference app exposes (home, /blog index, /discussions index,
+ * reference app exposes (home, /blog index, /boards index,
  * /search) so crawlers find them too — those pages aren't
  * collection rows.
  *
@@ -31,7 +31,7 @@ import { ensureFor } from "../../lib/init-core";
 const STATIC_ROUTES = npDefineSitemapEntries([
   { loc: "/", priority: 1.0, changefreq: "daily" },
   { loc: "/blog", priority: 0.9, changefreq: "daily" },
-  { loc: "/discussions", priority: 0.9, changefreq: "daily" },
+  { loc: "/boards", priority: 0.9, changefreq: "daily" },
   { loc: "/search", priority: 0.5, changefreq: "weekly" },
 ]);
 

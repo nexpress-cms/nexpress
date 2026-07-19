@@ -22,6 +22,27 @@ const baseConfig: NpCollectionConfig = {
 };
 
 describe("toClientCollectionConfig — active-theme field gate", () => {
+  it("strips server-only member-write policy callbacks", () => {
+    const out = toClientCollectionConfig({
+      ...baseConfig,
+      community: {
+        comments: true,
+        memberWrite: {
+          create: true,
+          writableFields: ["title"],
+          access: { create: () => true },
+          resolveCreateStatus: () => "pending",
+        },
+      },
+    });
+
+    expect(out.community).toEqual({
+      comments: true,
+      memberWrite: { create: true, writableFields: ["title"] },
+    });
+    expect(JSON.stringify(out)).not.toContain("resolveCreateStatus");
+  });
+
   it("keeps every field when activeThemeId is undefined (back-compat)", () => {
     const out = toClientCollectionConfig(baseConfig);
     const names = out.fields.flatMap((f) =>
