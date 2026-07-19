@@ -105,6 +105,7 @@ const compactSkin: NpForumSkin = {
   renderBoardIndex: (props) => <CompactBoardIndex {...props} />,
   renderPostList: (props) => <CompactPostList {...props} />,
   renderPostDetail: (props) => <CompactPostDetail {...props} />,
+  renderPostComposer: (props) => <CompactPostComposer {...props} />,
 };
 
 export const forum = createForum({
@@ -115,16 +116,19 @@ export const forum = createForum({
 
 The factory rejects malformed IDs, duplicate IDs, incomplete render contracts,
 and an unregistered default skin during module evaluation. The built-in
-`classic` skin remains available alongside custom skins. Projects that do not
-consume `@nexpress/app/styles/globals.css` should import
+`classic` skin remains available alongside custom skins. The composer props
+contain route-owned form or authentication content, so skins control the
+create/edit presentation without duplicating member authentication, ownership,
+upload, or collection-write policy. Projects that do not consume
+`@nexpress/app/styles/globals.css` should import
 `@nexpress/plugin-forum/styles.css` themselves.
 
 ## Current boundary
 
-The foundation includes multi-board Admin configuration, classic list/detail
-skin, member create/edit/delete, owner and board policy gates, pending
-moderation, pin/lock controls, categories, rich-text image upload, comments,
-plugin i18n catalogs, and an Admin dashboard metric.
+The foundation includes multi-board Admin configuration, classic
+index/list/detail/composer skin, member create/edit/delete, owner and board
+policy gates, pending moderation, pin/lock controls, categories, rich-text
+image upload, comments, plugin i18n catalogs, and an Admin dashboard metric.
 
 Anonymous posting, board passwords, attachment lists, view counters, and
 board-specific moderator roles are not part of this first contract. They should

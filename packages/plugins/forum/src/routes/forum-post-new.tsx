@@ -5,7 +5,12 @@ import { notFound } from "next/navigation";
 
 import { ForumPostForm } from "@nexpress/plugin-forum/client";
 
-import { findForumBoardByKey, getForumMessages, type NpForumRuntime } from "../runtime.js";
+import {
+  findForumBoardByKey,
+  getForumMessages,
+  resolveForumSkin,
+  type NpForumRuntime,
+} from "../runtime.js";
 
 export function createForumPostNewRoute(runtime: NpForumRuntime) {
   return async function ForumPostNewRoute({ params }: NpRouteRenderProps) {
@@ -16,49 +21,40 @@ export function createForumPostNewRoute(runtime: NpForumRuntime) {
     if (!board || board.writeMode !== "members") notFound();
     const member = await getSiteMember();
     const next = `${runtime.basePath}/${board.key}/new`;
-    if (!member) {
-      return (
-        <main className="np-forum np-forum-member-page">
-          <h1>
-            {board.name} · {messages.newPost}
-          </h1>
-          <p>
-            {messages.loginRequired}{" "}
-            <Link href={`/members/login?next=${encodeURIComponent(next)}`}>{messages.signIn}</Link>{" "}
-            /{" "}
-            <Link href={`/members/register?next=${encodeURIComponent(next)}`}>
-              {messages.register}
-            </Link>
-          </p>
-        </main>
-      );
-    }
-    return (
-      <main className="np-forum np-forum-member-page">
-        <header className="np-forum-page-header">
-          <div>
-            <Link href={`${runtime.basePath}/${board.key}`}>← {board.name}</Link>
-            <h1>{messages.newPost}</h1>
-          </div>
-        </header>
-        <ForumPostForm
-          mode="create"
-          basePath={runtime.basePath}
-          collectionSlug={runtime.collections.posts}
-          board={{ id: board.id, key: board.key, categories: board.categories }}
-          labels={{
-            category: messages.category,
-            categoryNone: messages.categoryNone,
-            title: messages.title,
-            body: messages.body,
-            loadingEditor: messages.loadingEditor,
-            saving: messages.saving,
-            create: messages.create,
-            save: messages.save,
-            saveFailed: messages.saveFailed,
-          }}
-        />
-      </main>
+    const content = member ? (
+      <ForumPostForm
+        mode="create"
+        basePath={runtime.basePath}
+        collectionSlug={runtime.collections.posts}
+        board={{ id: board.id, key: board.key, categories: board.categories }}
+        labels={{
+          category: messages.category,
+          categoryNone: messages.categoryNone,
+          title: messages.title,
+          body: messages.body,
+          loadingEditor: messages.loadingEditor,
+          saving: messages.saving,
+          create: messages.create,
+          save: messages.save,
+          saveFailed: messages.saveFailed,
+        }}
+      />
+    ) : (
+      <p className="np-forum-auth-prompt">
+        {messages.loginRequired}{" "}
+        <Link href={`/members/login?next=${encodeURIComponent(next)}`}>{messages.signIn}</Link> /{" "}
+        <Link href={`/members/register?next=${encodeURIComponent(next)}`}>{messages.register}</Link>
+      </p>
     );
+    return resolveForumSkin(runtime, board.skinId).renderPostComposer({
+      basePath: runtime.basePath,
+      board,
+      mode: "create",
+      title: messages.newPost,
+      backHref: `${runtime.basePath}/${board.key}`,
+      backLabel: board.name,
+      content,
+      messages,
+    });
   };
 }

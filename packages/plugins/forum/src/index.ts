@@ -53,7 +53,8 @@ function createRuntime(options: NpForumOptions): NpForumRuntime {
       !skin.label.trim() ||
       typeof skin.renderBoardIndex !== "function" ||
       typeof skin.renderPostList !== "function" ||
-      typeof skin.renderPostDetail !== "function"
+      typeof skin.renderPostDetail !== "function" ||
+      typeof skin.renderPostComposer !== "function"
     ) {
       throw new Error(`Forum skin "${skin.id}" is incomplete.`);
     }
@@ -288,6 +289,7 @@ export type {
   NpForumCollectionSlugs,
   NpForumMessages,
   NpForumModerationMode,
+  NpForumPostComposerSkinProps,
   NpForumPostDetailSkinProps,
   NpForumPostListSkinProps,
   NpForumPostSummary,
