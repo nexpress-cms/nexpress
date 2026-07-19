@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import type {
   NpForumBoardIndexSkinProps,
+  NpForumPostComposerSkinProps,
   NpForumPostDetailSkinProps,
   NpForumPostListSkinProps,
   NpForumPostSummary,
@@ -140,11 +141,19 @@ function renderPostList(props: NpForumPostListSkinProps) {
           <table className="np-forum-table">
             <thead>
               <tr>
-                <th>{messages.number}</th>
-                <th>{messages.category}</th>
-                <th>{messages.title}</th>
-                <th>{messages.author}</th>
-                <th>{messages.date}</th>
+                <th scope="col" className="np-forum-column-number">
+                  {messages.number}
+                </th>
+                <th scope="col" className="np-forum-column-category">
+                  {messages.category}
+                </th>
+                <th scope="col" className="np-forum-column-title">
+                  {messages.title}
+                </th>
+                <th scope="col">{messages.author}</th>
+                <th scope="col" className="np-forum-column-date">
+                  {messages.date}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -218,9 +227,29 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
           </div>
           {props.authorActions}
         </header>
-        <div className="np-forum-post-body prose">{props.body}</div>
+        <div className="np-forum-post-body np-forum-rich-text">{props.body}</div>
         <section className="np-forum-comments">{props.comments}</section>
       </article>
+    </main>
+  );
+}
+
+function renderPostComposer(props: NpForumPostComposerSkinProps) {
+  return (
+    <main
+      className="np-forum np-forum-classic np-forum-member-page"
+      data-np-forum-skin="classic"
+      data-np-forum-composer={props.mode}
+    >
+      <header className="np-forum-page-header">
+        <div>
+          <Link href={props.backHref} className="np-forum-back-link">
+            ← {props.backLabel}
+          </Link>
+          <h1>{props.title}</h1>
+        </div>
+      </header>
+      {props.content}
     </main>
   );
 }
@@ -231,4 +260,5 @@ export const classicForumSkin: NpForumSkin = {
   renderBoardIndex,
   renderPostList,
   renderPostDetail,
+  renderPostComposer,
 };

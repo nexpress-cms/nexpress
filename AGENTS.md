@@ -2,9 +2,14 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-19 (the bundled forum now uses board rows, shared
-post storage, build-time skins, ID routes, and exact row-aware member-write
-policy while operator fields fail before moderation or persistence.)
+**Last refreshed:** 2026-07-19 (the bundled forum now uses one complete
+index/list/detail/composer skin contract with responsive classic markup and
+framework-independent rich-text typography; routes retain authentication,
+ownership, and write-policy control.)
+
+**Earlier:** 2026-07-19 (the bundled forum now uses board rows, shared post
+storage, build-time skins, ID routes, and exact row-aware member-write policy
+while operator fields fail before moderation or persistence.)
 
 **Earlier:** 2026-07-18 (block prop schemas now use one exact v1
 discriminated union across author types, definition/content validation, Admin,

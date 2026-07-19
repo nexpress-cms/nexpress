@@ -37,8 +37,10 @@ pnpm db:generate && pnpm db:migrate
 ```
 
 The default routes are `/boards`, `/boards/:boardKey`, member create/edit
-routes, and UUID-based post detail URLs. Members can write only board, title,
-body, and category fields; pin, lock, status, board policy, and moderation stay
+routes, and UUID-based post detail URLs. A selected skin renders the board
+index, post list, detail, and route-owned create/edit content without taking
+over authentication or write policy. Members can write only board, title, body,
+and category fields; pin, lock, status, board policy, and moderation stay
 operator-owned.
 
 See the full [forum guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-forum.md)

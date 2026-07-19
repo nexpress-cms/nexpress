@@ -117,12 +117,25 @@ export interface NpForumPostDetailSkinProps {
   messages: NpForumMessages;
 }
 
+export interface NpForumPostComposerSkinProps {
+  basePath: string;
+  board: NpForumBoard;
+  mode: "create" | "edit";
+  title: string;
+  backHref: string;
+  backLabel: string;
+  /** Route-owned form or authentication gate; skins own presentation only. */
+  content: ReactNode;
+  messages: NpForumMessages;
+}
+
 export interface NpForumSkin {
   id: string;
   label: string;
   renderBoardIndex(props: NpForumBoardIndexSkinProps): ReactNode | Promise<ReactNode>;
   renderPostList(props: NpForumPostListSkinProps): ReactNode | Promise<ReactNode>;
   renderPostDetail(props: NpForumPostDetailSkinProps): ReactNode | Promise<ReactNode>;
+  renderPostComposer(props: NpForumPostComposerSkinProps): ReactNode | Promise<ReactNode>;
 }
 
 export interface NpForumCollectionSlugs {

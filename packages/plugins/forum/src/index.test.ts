@@ -28,6 +28,7 @@ describe("forum factory", () => {
       renderBoardIndex: () => null,
       renderPostList: () => null,
       renderPostDetail: () => null,
+      renderPostComposer: () => null,
     };
     const forum = createForum({
       basePath: "/community/boards",
@@ -129,9 +130,23 @@ describe("forum factory", () => {
             renderBoardIndex: () => null,
             renderPostList: () => null,
             renderPostDetail: () => null,
+            renderPostComposer: () => null,
           },
         ],
       }),
     ).toThrow(/more than once/u);
+    expect(() =>
+      createForum({
+        skins: [
+          {
+            id: "missing-composer",
+            label: "Incomplete",
+            renderBoardIndex: () => null,
+            renderPostList: () => null,
+            renderPostDetail: () => null,
+          } as never,
+        ],
+      }),
+    ).toThrow(/incomplete/u);
   });
 });
