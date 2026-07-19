@@ -1,0 +1,74 @@
+{
+  "name": "@nexpress/theme-community",
+  "version": "0.4.1",
+  "description": "Korean community portal theme for NexPress.",
+  "license": "MIT",
+  "author": "Nexpress",
+  "homepage": "https://github.com/nexpress-cms/nexpress#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nexpress-cms/nexpress.git",
+    "directory": "packages/themes/community"
+  },
+  "bugs": {
+    "url": "https://github.com/nexpress-cms/nexpress/issues"
+  },
+  "keywords": [
+    "nexpress",
+    "theme",
+    "community",
+    "korean"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./components/error": {
+      "types": "./dist/components/error.d.ts",
+      "import": "./dist/components/error.js"
+    },
+    "./components/members-error": {
+      "types": "./dist/components/members-error.d.ts",
+      "import": "./dist/components/members-error.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "next": "^15.0.0 || ^16.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "@nexpress/blocks": "workspace:*",
+    "@nexpress/core": "workspace:*",
+    "@nexpress/editor": "workspace:*",
+    "@nexpress/next": "workspace:*",
+    "@nexpress/theme": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.0.0",
+    "next": "^16.2.10",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch --no-clean",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --cache --cache-location node_modules/.cache/eslint"
+  }
+}

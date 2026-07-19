@@ -103,7 +103,7 @@ install/remove flow.
 ### Themes
 
 Built-in packs already wired by the scaffold:
-`@nexpress/theme-default`, `@nexpress/theme-magazine`,
+`@nexpress/theme-default`, `@nexpress/theme-community`, `@nexpress/theme-magazine`,
 `@nexpress/theme-portfolio`, `@nexpress/theme-docs`. Switch the active
 one from admin → Appearance.
 

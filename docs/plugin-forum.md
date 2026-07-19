@@ -231,8 +231,9 @@ properties on its shell:
 | `--np-forum-block-card-padding`         | Directory card padding                   |
 | `--np-forum-block-feed-card-min-height` | Feed-card minimum height                 |
 
-For example, a future community theme can remain usable without the forum and
-apply optional integration only when forum markup is present:
+The bundled `@nexpress/theme-community` demonstrates this boundary: it remains
+usable without the forum and applies optional integration only when forum
+markup is present:
 
 ```css
 .np-community-shell {
@@ -242,6 +243,11 @@ apply optional integration only when forum markup is present:
   --np-forum-accent: var(--np-color-primary);
 }
 ```
+
+Its home template also exposes `data-np-community-home-slot="extensions"`.
+Operators can insert the plugin-owned `forum.community-home` pattern there,
+but the theme never imports that pattern, assumes it exists, or queries the
+forum's configurable collection slugs.
 
 The plugin manifest also publishes stable selectors for the root, board index,
 post list, discovery controls, notice list, normal post rows, post detail,

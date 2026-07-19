@@ -71,6 +71,7 @@
     "@nexpress/plugin-sdk": "workspace:*",
     "@nexpress/plugin-seo-audit": "workspace:*",
     "@nexpress/theme": "workspace:*",
+    "@nexpress/theme-community": "workspace:*",
     "@nexpress/theme-default": "workspace:*",
     "@nexpress/theme-docs": "workspace:*",
     "@nexpress/theme-magazine": "workspace:*",

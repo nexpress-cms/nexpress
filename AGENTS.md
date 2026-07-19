@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-19 (forum home integration now uses plugin-owned,
+**Last refreshed:** 2026-07-19 (the bundled Korean community theme now works
+without the forum over generic page/post/member contracts and enhances an
+installed forum only through its public CSS variables, data hooks, and optional
+home block slot.)
+
+**Earlier:** 2026-07-19 (forum home integration now uses plugin-owned,
 site-scoped board-directory and latest/notice feed blocks plus one validated
 community-home pattern; configurable collection slugs stay inside the plugin
 while themes consume only stable style hooks.)

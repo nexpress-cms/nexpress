@@ -132,6 +132,9 @@ importers:
       '@nexpress/theme':
         specifier: workspace:*
         version: link:../../packages/theme
+      '@nexpress/theme-community':
+        specifier: workspace:*
+        version: link:../../packages/themes/community
       '@nexpress/theme-default':
         specifier: workspace:*
         version: link:../../packages/themes/default
@@ -365,6 +368,9 @@ importers:
       '@nexpress/theme':
         specifier: workspace:*
         version: link:../theme
+      '@nexpress/theme-community':
+        specifier: workspace:*
+        version: link:../themes/community
       '@nexpress/theme-default':
         specifier: workspace:*
         version: link:../themes/default
@@ -1189,6 +1195,49 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.4.3
+
+  packages/themes/community:
+    dependencies:
+      '@nexpress/blocks':
+        specifier: workspace:*
+        version: link:../../blocks
+      '@nexpress/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@nexpress/editor':
+        specifier: workspace:*
+        version: link:../../editor
+      '@nexpress/next':
+        specifier: workspace:*
+        version: link:../../next
+      '@nexpress/theme':
+        specifier: workspace:*
+        version: link:../../theme
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.17
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.2.3(@types/react@19.2.17)
+      next:
+        specifier: ^16.2.10
+        version: 16.2.10(@babel/core@7.29.7)(@playwright/test@1.61.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react:
+        specifier: ^19.2.7
+        version: 19.2.7
+      react-dom:
+        specifier: ^19.2.7
+        version: 19.2.7(react@19.2.7)
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.16)(tsx@4.22.4)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
 
   packages/themes/default:
     dependencies:

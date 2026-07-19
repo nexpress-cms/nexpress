@@ -25,7 +25,7 @@ import { mergeThemeRequirements, resetLogger, setLogger, type NpLogger } from "@
  * column shape doesn't match what the theme expects.
  *
  * This test asserts the union is conflict-free today and stays
- * that way as built-ins evolve. A future fifth built-in theme
+ * that way as built-ins evolve. A future built-in theme
  * that collides with an existing one will fail here and force
  * the contributor to rename/rescope the requirement before
  * merging.
