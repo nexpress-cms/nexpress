@@ -465,8 +465,9 @@ clears the stale `np_settings.activeTheme` value.
 
 **Install (manual / explicit form)**: scaffolded sites can list
 themes by hand if they prefer. The built-in pack
-(`@nexpress/theme-default`, `theme-community`, `theme-magazine`,
-`theme-portfolio`, `theme-docs`) is exported as `defaultThemes` from
+(`@nexpress/theme-default`, `@nexpress/theme-community`,
+`@nexpress/theme-magazine`, `@nexpress/theme-portfolio`,
+`@nexpress/theme-docs`) is exported as `defaultThemes` from
 `@nexpress/app/config-defaults` — spread it and append your own:
 
 ```ts
