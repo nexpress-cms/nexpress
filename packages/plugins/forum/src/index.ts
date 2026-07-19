@@ -8,6 +8,7 @@ import { createForumPostEditRoute } from "./routes/forum-post-edit.js";
 import { createForumPostNewRoute } from "./routes/forum-post-new.js";
 import type { NpForumRuntime } from "./runtime.js";
 import { classicForumSkin } from "./skins/classic.js";
+import { communityFullForumSkin } from "./skins/community-full.js";
 import type { NpForumCollectionSlugs, NpForumSkin } from "./types.js";
 
 const SAFE_SEGMENT = /^[a-z][a-z0-9-]*$/u;
@@ -17,7 +18,7 @@ export interface NpForumOptions {
   basePath?: string;
   /** Generated collection slugs. Override before the first schema generation. */
   collections?: Partial<NpForumCollectionSlugs>;
-  /** Additional build-time skins. The built-in `classic` skin is always registered. */
+  /** Additional build-time skins registered after the two built-in skins. */
   skins?: readonly NpForumSkin[];
   /** Default skin for the board index and newly-created boards. */
   defaultSkinId?: string;
@@ -42,7 +43,7 @@ function requireBasePath(value: string): string {
 
 function createRuntime(options: NpForumOptions): NpForumRuntime {
   const skins = new Map<string, NpForumSkin>();
-  for (const skin of [classicForumSkin, ...(options.skins ?? [])]) {
+  for (const skin of [classicForumSkin, communityFullForumSkin, ...(options.skins ?? [])]) {
     if (!SAFE_SEGMENT.test(skin.id)) {
       throw new Error(`Forum skin id "${skin.id}" is invalid.`);
     }
@@ -106,6 +107,17 @@ const messages = {
     "forum.staff": "Staff",
     "forum.pending": "Pending",
     "forum.locked": "Locked",
+    "forum.pagination": "Pagination",
+    "forum.boardPolicy": "Board policy",
+    "forum.writeMembers": "Members can post",
+    "forum.writeStaff": "Staff posts only",
+    "forum.writeClosed": "Posting closed",
+    "forum.moderationPublished": "Posts publish immediately",
+    "forum.moderationPending": "New posts require review",
+    "forum.commentsOpen": "Comments enabled",
+    "forum.commentsClosed": "Comments disabled",
+    "forum.createdAt": "Created",
+    "forum.updatedAt": "Updated",
     "forum.previous": "Previous",
     "forum.next": "Next",
     "forum.backToBoard": "Back to board",
@@ -153,6 +165,17 @@ const messages = {
     "forum.staff": "운영자",
     "forum.pending": "검토 중",
     "forum.locked": "잠김",
+    "forum.pagination": "페이지 이동",
+    "forum.boardPolicy": "게시판 운영 정책",
+    "forum.writeMembers": "회원 글쓰기",
+    "forum.writeStaff": "운영자만 글쓰기",
+    "forum.writeClosed": "글쓰기 닫힘",
+    "forum.moderationPublished": "즉시 게시",
+    "forum.moderationPending": "새 글 검토 후 게시",
+    "forum.commentsOpen": "댓글 사용",
+    "forum.commentsClosed": "댓글 사용 안 함",
+    "forum.createdAt": "작성",
+    "forum.updatedAt": "수정",
     "forum.previous": "이전",
     "forum.next": "다음",
     "forum.backToBoard": "목록으로",
@@ -243,8 +266,34 @@ export function createForum(options: NpForumOptions = {}) {
         category: "content",
         tags: ["forum", "board", "community", "korean"],
       },
-      usesTokens: [],
-      styleSlots: {},
+      usesTokens: [
+        "colors.primary",
+        "colors.primaryForeground",
+        "colors.background",
+        "colors.foreground",
+        "colors.muted",
+        "colors.mutedForeground",
+        "colors.border",
+        "colors.card",
+        "typography.fontHeading",
+        "typography.fontMono",
+        "shape.radiusSm",
+        "shape.radiusMd",
+        "shape.radiusLg",
+        "shape.radiusFull",
+        "shape.shadowSm",
+      ],
+      styleSlots: {
+        root: ".np-forum",
+        "board-index": '[data-np-forum-surface="board-index"]',
+        "post-list": '[data-np-forum-surface="post-list"]',
+        discovery: ".np-forum-discovery",
+        "notice-list": ".np-forum-community-notices",
+        "post-rows": ".np-forum-community-posts",
+        "post-detail": '[data-np-forum-surface="post-detail"]',
+        composer: '[data-np-forum-surface="composer"]',
+        comments: ".np-forum-comments",
+      },
     },
     i18n: messages,
     admin: {
@@ -290,6 +339,7 @@ export const forumPlugin = defaultForum.plugin;
 export const forumCollections = defaultForum.collections;
 
 export { classicForumSkin } from "./skins/classic.js";
+export { communityFullForumSkin } from "./skins/community-full.js";
 export type {
   NpForumAuthor,
   NpForumBoard,

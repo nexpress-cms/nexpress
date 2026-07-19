@@ -40,7 +40,7 @@ const forum = createForum({
     boards: "community-boards",
     posts: "community-posts",
   },
-  defaultSkinId: "classic",
+  defaultSkinId: "community-full",
 });
 
 export default defineConfig({
@@ -111,6 +111,24 @@ links.
 `surface: "member"` selects member chrome; the server route and collection
 pipeline still perform the authentication and ownership checks.
 
+## Bundled skins
+
+Every forum registers two self-contained skins:
+
+| ID               | Purpose                                                                |
+| ---------------- | ---------------------------------------------------------------------- |
+| `classic`        | Familiar Korean board table with a compact detail and composer surface |
+| `community-full` | Feature-rich cards, policy summaries, identity, state, and page chrome |
+
+`classic` remains the default so an upgrade does not silently change an
+existing board. Select `community-full` per board in Admin, or set
+`defaultSkinId: "community-full"` for the `/boards` index and newly-created
+boards. The full skin exposes notices, categories, search, member filtering,
+numbered pagination, author avatars and display names, created/updated dates,
+pin/lock/moderation state, comments, owner actions, and route-owned composers.
+It does not fabricate counts or capabilities that the route contract does not
+provide.
+
 ## Custom skins
 
 Skins are build-time React render contracts. Runtime Admin settings select an
@@ -135,12 +153,12 @@ export const forum = createForum({
 });
 ```
 
-The factory rejects malformed IDs, duplicate IDs, incomplete render contracts,
-and an unregistered default skin during module evaluation. The built-in
-`classic` skin remains available alongside custom skins. The composer props
-contain route-owned form or authentication content, so skins control the
-create/edit presentation without duplicating member authentication, ownership,
-upload, or collection-write policy. Projects that do not consume
+The factory rejects malformed IDs, duplicate IDs (including collisions with
+either bundled skin), incomplete render contracts, and an unregistered default
+skin during module evaluation. The composer props contain route-owned form or
+authentication content, so skins control the create/edit presentation without
+duplicating member authentication, ownership, upload, or collection-write
+policy. Projects that do not consume
 `@nexpress/app/styles/globals.css` should import
 `@nexpress/plugin-forum/styles.css` themselves.
 
@@ -151,13 +169,62 @@ omits default values. Filter patches reset pagination unless they explicitly
 provide a page. The route owns parsing, board scoping, search execution, and
 out-of-range rejection; a skin remains presentation-only.
 
+## Theme integration
+
+The plugin and the active theme remain independent packages. Forum structural
+CSS lives in `@layer np-blocks` with complete core-token fallbacks; it neither
+imports a theme nor checks a theme ID. A theme can enhance the forum from its
+own CSS without importing `@nexpress/plugin-forum` by setting these inherited
+properties on its shell:
+
+| Property                       | Controls                                 |
+| ------------------------------ | ---------------------------------------- |
+| `--np-forum-content-max`       | Board index and list maximum width       |
+| `--np-forum-detail-max`        | Post detail maximum width                |
+| `--np-forum-composer-max`      | Create/edit maximum width                |
+| `--np-forum-page-gutter`       | Inline viewport gutter                   |
+| `--np-forum-page-space`        | Block margin around a forum route        |
+| `--np-forum-panel-background`  | Full-skin cards and panels               |
+| `--np-forum-panel-border`      | Full-skin panel and row borders          |
+| `--np-forum-panel-radius`      | Full-skin panel radius                   |
+| `--np-forum-panel-shadow`      | Board-card shadow                        |
+| `--np-forum-muted-background`  | Secondary surfaces                       |
+| `--np-forum-muted-foreground`  | Secondary text                           |
+| `--np-forum-accent`            | Active states, links, and policy markers |
+| `--np-forum-accent-foreground` | Text placed on the accent                |
+| `--np-forum-row-min-height`    | Full-skin list density                   |
+| `--np-forum-row-padding`       | Full-skin row padding                    |
+
+For example, a future community theme can remain usable without the forum and
+apply optional integration only when forum markup is present:
+
+```css
+.np-community-shell {
+  --np-forum-content-max: 80rem;
+  --np-forum-panel-radius: 0.35rem;
+  --np-forum-row-min-height: 5rem;
+  --np-forum-accent: var(--np-color-primary);
+}
+```
+
+The plugin manifest also publishes stable selectors for the root, board index,
+post list, discovery controls, notice list, normal post rows, post detail,
+composer, and comments. Every bundled skin marks its root with
+`data-np-forum-skin` and one of the `data-np-forum-surface` values
+`board-index`, `post-list`, `post-detail`, or `composer`. Themes should use
+these documented hooks instead of depending on a skin's internal React tree.
+Conversely, a theme must not query the forum's configurable collection slugs;
+future latest/popular/notice integrations belong in public plugin blocks or
+query contracts.
+
 ## Current boundary
 
-The foundation includes multi-board Admin configuration, classic
-index/list/detail/composer skin, member create/edit/delete, owner and board
-policy gates, pending moderation, pin/lock controls, categories, rich-text
-image upload, comments, board-scoped search and category discovery, plugin i18n
-catalogs, and an Admin dashboard metric.
+The foundation includes multi-board Admin configuration, classic and
+community-full index/list/detail/composer skins, member create/edit/delete,
+owner and board policy gates, pending moderation, pin/lock controls,
+categories, rich-text image upload, comments, board-scoped search and category
+discovery, a theme-neutral style contract, plugin i18n catalogs, and an Admin
+dashboard metric.
 
 Anonymous posting, board passwords, attachment lists, view counters, and
 board-specific moderator roles are not part of this first contract. They should

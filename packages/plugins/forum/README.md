@@ -2,7 +2,7 @@
 
 Multi-board forum plugin for [NexPress](https://github.com/nexpress-cms/nexpress).
 It combines native board/post collections, member writes, moderation, rich
-text, comments, and a build-time skin contract.
+text, comments, and theme-neutral build-time skins.
 
 ## Install
 
@@ -20,7 +20,7 @@ import { createForum } from "@nexpress/plugin-forum";
 
 const forum = createForum({
   basePath: "/boards",
-  defaultSkinId: "classic",
+  defaultSkinId: "community-full",
 });
 
 export default defineConfig({
@@ -44,6 +44,14 @@ and category fields; pin, lock, status, board policy, and moderation stay
 operator-owned. Board lists include bounded title/body search, category and
 member filters, canonical filter-preserving pagination, and notices that stay
 out of filtered results.
+
+Two bundled skins are always available: `classic` for the familiar compact
+table and `community-full` for policy summaries, author identity, status-rich
+rows, numbered pagination, detailed post metadata, comments, and composers.
+Both work with any theme. Forum structure ships in `@layer np-blocks` and reads
+core theme tokens with documented `--np-forum-*` override properties, so a
+theme can enhance the plugin without importing it and the plugin remains fully
+usable without that theme.
 
 See the full [forum guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-forum.md)
 for board settings, skin authoring, policy behavior, and current scope.

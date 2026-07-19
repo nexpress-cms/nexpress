@@ -257,6 +257,13 @@ Put **layout-specific** rules here:
 discussion threads). Those live in the consuming app's
 `globals.css` because every theme renders them identically.
 
+For optional plugin styling, consume only the plugin's documented
+`manifest.styleSlots`, theme tokens, and inherited custom properties. Do not
+import the plugin package or query its internal collections from a theme. This
+keeps both packages usable alone and makes their combined presentation a
+progressive enhancement. The forum plugin is the reference integration: see
+[`plugin-forum.md`](plugin-forum.md#theme-integration).
+
 Token references are written as `var(--np-color-primary)`. The
 admin's Settings → Theme tab generates `:root { --np-* }`
 declarations from the saved tokens, so your CSS automatically

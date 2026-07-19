@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createForum, forumCollections, forumPlugin } from "./index.js";
+import { communityFullForumSkin, createForum, forumCollections, forumPlugin } from "./index.js";
 
 describe("forum factory", () => {
   it("closes the default plugin over its board and post collections", () => {
@@ -19,6 +19,39 @@ describe("forum factory", () => {
     expect(
       Object.entries(forumPlugin.actions ?? {}).map(([id, action]) => ({ id, kind: action.kind })),
     ).toEqual([{ id: "countForumPosts", kind: "metric" }]);
+    expect([...createForum().runtime.skins.keys()]).toEqual(["classic", "community-full"]);
+    expect(communityFullForumSkin.id).toBe("community-full");
+  });
+
+  it("publishes theme-neutral token and style-slot integration metadata", () => {
+    expect(forumPlugin.manifest.usesTokens).toEqual([
+      "colors.primary",
+      "colors.primaryForeground",
+      "colors.background",
+      "colors.foreground",
+      "colors.muted",
+      "colors.mutedForeground",
+      "colors.border",
+      "colors.card",
+      "typography.fontHeading",
+      "typography.fontMono",
+      "shape.radiusSm",
+      "shape.radiusMd",
+      "shape.radiusLg",
+      "shape.radiusFull",
+      "shape.shadowSm",
+    ]);
+    expect(forumPlugin.manifest.styleSlots).toEqual({
+      root: ".np-forum",
+      "board-index": '[data-np-forum-surface="board-index"]',
+      "post-list": '[data-np-forum-surface="post-list"]',
+      discovery: ".np-forum-discovery",
+      "notice-list": ".np-forum-community-notices",
+      "post-rows": ".np-forum-community-posts",
+      "post-detail": '[data-np-forum-surface="post-detail"]',
+      composer: '[data-np-forum-surface="composer"]',
+      comments: ".np-forum-comments",
+    });
   });
 
   it("applies custom paths, collection slugs, and skins to every contract surface", () => {
@@ -53,7 +86,14 @@ describe("forum factory", () => {
     const skinField = forum.collections[0].fields.find(
       (field) => "name" in field && field.name === "skin",
     );
-    expect(skinField).toMatchObject({ defaultValue: "compact" });
+    expect(skinField).toMatchObject({
+      defaultValue: "compact",
+      options: [
+        { label: "Classic board", value: "classic" },
+        { label: "Community full", value: "community-full" },
+        { label: "Compact", value: "compact" },
+      ],
+    });
   });
 
   it("defines an exact member-write boundary for forum posts", () => {
@@ -126,6 +166,20 @@ describe("forum factory", () => {
         skins: [
           {
             id: "classic",
+            label: "Duplicate",
+            renderBoardIndex: () => null,
+            renderPostList: () => null,
+            renderPostDetail: () => null,
+            renderPostComposer: () => null,
+          },
+        ],
+      }),
+    ).toThrow(/more than once/u);
+    expect(() =>
+      createForum({
+        skins: [
+          {
+            id: "community-full",
             label: "Duplicate",
             renderBoardIndex: () => null,
             renderPostList: () => null,
