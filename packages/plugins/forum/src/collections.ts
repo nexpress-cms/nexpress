@@ -10,16 +10,15 @@ import {
 import {
   findForumBoardById,
   getForumBoardById,
+  npForumBoardKeyPattern,
   normalizeForumCategories,
   type ForumPostDocument,
   type NpForumRuntime,
 } from "./runtime.js";
 import type { NpForumBoard } from "./types.js";
 
-const BOARD_KEY_PATTERN = /^[a-z][a-z0-9-]{1,62}$/u;
-
 function validateBoardDefinition(data: Record<string, unknown>): Record<string, unknown> {
-  if (typeof data.key !== "string" || !BOARD_KEY_PATTERN.test(data.key)) {
+  if (typeof data.key !== "string" || !npForumBoardKeyPattern.test(data.key)) {
     throw new NpValidationError("Invalid forum board key", [
       {
         field: "key",

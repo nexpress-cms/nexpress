@@ -27,6 +27,11 @@ describe("forum theme integration styles", () => {
       "--np-forum-accent-foreground",
       "--np-forum-row-min-height",
       "--np-forum-row-padding",
+      "--np-forum-block-space",
+      "--np-forum-block-gap",
+      "--np-forum-block-board-min-height",
+      "--np-forum-block-card-padding",
+      "--np-forum-block-feed-card-min-height",
     ]) {
       expect(styles).toMatch(new RegExp(`var\\(\\s*${property},`, "u"));
     }

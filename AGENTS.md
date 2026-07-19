@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-19 (the forum now ships independent classic and
+**Last refreshed:** 2026-07-19 (forum home integration now uses plugin-owned,
+site-scoped board-directory and latest/notice feed blocks plus one validated
+community-home pattern; configurable collection slugs stay inside the plugin
+while themes consume only stable style hooks.)
+
+**Earlier:** 2026-07-19 (the forum now ships independent classic and
 community-full skins over one public np-blocks/token/style-slot contract;
 themes can enhance every route surface without importing the plugin, while the
 plugin retains complete fallbacks without an active integration.)

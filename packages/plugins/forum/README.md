@@ -53,6 +53,12 @@ core theme tokens with documented `--np-forum-*` override properties, so a
 theme can enhance the plugin without importing it and the plugin remains fully
 usable without that theme.
 
+The plugin also registers `forum.board-directory` and `forum.post-feed` blocks
+plus a `forum.community-home` pattern. They use the forum factory's configured
+paths and collection slugs internally, expose only published rows from active
+boards, and give themes stable data/style hooks without making either package
+depend on the other.
+
 See the full [forum guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-forum.md)
 for board settings, skin authoring, policy behavior, and current scope.
 
