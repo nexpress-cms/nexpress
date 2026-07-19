@@ -11,7 +11,8 @@ import {
 
 /**
  * Sanity coverage for the example themes shipped alongside
- * `theme-default` / `theme-magazine` / `theme-portfolio` / `theme-docs`. We aren't trying to lock
+ * `theme-default` / `theme-community` / `theme-magazine` / `theme-portfolio` /
+ * `theme-docs`. We aren't trying to lock
  * in every CSS rule; the goal is to prove each theme exposes
  * the expected manifest, slots, and templates so a future
  * refactor doesn't silently break them.
@@ -135,15 +136,22 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
   });
 
   it("each example theme's CSS is non-trivial and scoped under its own selectors", async () => {
+    const { communityTheme } = await import("@nexpress/theme-community");
     const { magazineTheme } = await import("@nexpress/theme-magazine");
     const { portfolioTheme } = await import("@nexpress/theme-portfolio");
+    const communityCss = communityTheme.impl.css ?? "";
     const magazineCss = magazineTheme.impl.css ?? "";
     const portfolioCss = portfolioTheme.impl.css ?? "";
+    expect(communityCss).toContain(".np-community-shell");
     expect(magazineCss).toContain(".np-magazine");
     expect(portfolioCss).toContain(".np-portfolio");
     // Cross-pollination check: each theme's CSS should NOT
     // mention the other theme's classes.
+    expect(communityCss).not.toContain(".np-magazine");
+    expect(communityCss).not.toContain(".np-portfolio");
+    expect(magazineCss).not.toContain(".np-community-shell");
     expect(magazineCss).not.toContain(".np-portfolio");
+    expect(portfolioCss).not.toContain(".np-community-shell");
     expect(portfolioCss).not.toContain(".np-magazine");
   });
 
@@ -156,8 +164,10 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
     // on the example themes so a future hand-edit can't
     // regress to physical properties without the suite catching
     // it.
+    const { communityTheme } = await import("@nexpress/theme-community");
     const { magazineTheme } = await import("@nexpress/theme-magazine");
     const { portfolioTheme } = await import("@nexpress/theme-portfolio");
+    const communityCss = communityTheme.impl.css ?? "";
     const magazineCss = magazineTheme.impl.css ?? "";
     const portfolioCss = portfolioTheme.impl.css ?? "";
 
@@ -166,7 +176,7 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
     // also trip them. Phrase RTL fixes accordingly — describe
     // the fix in terms of "leading edge" / "logical-property
     // equivalents" rather than the physical-direction names.
-    for (const css of [magazineCss, portfolioCss]) {
+    for (const css of [communityCss, magazineCss, portfolioCss]) {
       // Disallow `float: left|right` (use `float: inline-start|end`).
       expect(css).not.toMatch(/float:\s*(left|right)\b/);
       // Disallow physical margin/padding sides; logical

@@ -50,6 +50,6 @@ test("reports missing, extra, duplicate, and unsorted family entries", () => {
 test("the repository's publishable package inventory satisfies the fixed-family policy", () => {
   const result = checkReleaseInvariants(resolve(import.meta.dirname, ".."));
   assert.deepEqual(result.errors, []);
-  assert.equal(result.publicFamily.length, 33);
+  assert.equal(result.publicFamily.length, 34);
   assert.deepEqual(result.fixedFamily, result.publicFamily);
 });

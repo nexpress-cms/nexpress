@@ -11,8 +11,8 @@ import {
 } from "./harness.js";
 
 /**
- * Front-page render coverage for the three themes that ship a
- * `pages.front` template (magazine, portfolio, docs). Closes the
+ * Front-page render coverage for the four themes that ship a
+ * `pages.front` template (community, magazine, portfolio, docs). Closes the
  * remaining gap from the theme-track wish list — `theme-seed-reseed`
  * (#840) locked in the data-layer side; this file proves the
  * full seed → fetch-on-render → template-output path produces the
@@ -68,18 +68,50 @@ describe.skipIf(skipIfNoTestDb())("theme front-page rendering", () => {
    * Registers `theme`; the collection registry remains on the exact
    * all-theme definition installed by `registerTestCollections()`.
    */
-  async function activateThemeForSeed(themeId: "magazine" | "portfolio" | "docs"): Promise<void> {
+  async function activateThemeForSeed(
+    themeId: "community" | "magazine" | "portfolio" | "docs",
+  ): Promise<void> {
     const { registerThemes, resetThemes } = await import("@nexpress/core");
     const { defaultTheme } = await import("@nexpress/theme-default");
+    const { communityTheme } = await import("@nexpress/theme-community");
     const { magazineTheme } = await import("@nexpress/theme-magazine");
     const { portfolioTheme } = await import("@nexpress/theme-portfolio");
     const { docsTheme } = await import("@nexpress/theme-docs");
     const theme =
-      themeId === "magazine" ? magazineTheme : themeId === "portfolio" ? portfolioTheme : docsTheme;
+      themeId === "community"
+        ? communityTheme
+        : themeId === "magazine"
+          ? magazineTheme
+          : themeId === "portfolio"
+            ? portfolioTheme
+            : docsTheme;
 
     resetThemes();
     registerThemes([defaultTheme, theme]);
   }
+
+  it("community pages.front renders a plugin-independent portal from seeded articles", async () => {
+    await activateThemeForSeed("community");
+    const actor = await asActor();
+    const { communityTheme } = await import("@nexpress/theme-community");
+    const { seedAll } = await import("@/lib/seed-content");
+
+    const seed = await seedAll(actor, communityTheme);
+    expect(seed.posts.created).toBeGreaterThanOrEqual(8);
+
+    const Front = communityTheme.impl.templates!.pages!.front!.component;
+    const element = await (
+      Front as (props: { doc: Record<string, unknown> }) => Promise<React.ReactElement>
+    )({ doc: {} });
+    const html = renderToString(element);
+
+    expect(html).toContain("np-community-home-intro");
+    expect(html).toContain("np-community-highlight-grid");
+    expect(html).toContain("오래 머무는 커뮤니티를 만드는 작은 규칙들");
+    expect(html).toContain("커뮤니티");
+    expect(html).not.toMatch(/[0-9a-f]{8}-[0-9a-f-]{27}/i);
+    expect(html).not.toContain("data-np-forum");
+  });
 
   it("magazine pages.front renders the editorial index with seeded articles", async () => {
     await activateThemeForSeed("magazine");

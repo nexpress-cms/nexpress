@@ -12,7 +12,7 @@ import {
   truncateAll,
 } from "./harness.js";
 
-type BuiltinThemeId = "default" | "docs" | "magazine" | "portfolio";
+type BuiltinThemeId = "community" | "default" | "docs" | "magazine" | "portfolio";
 
 interface ThemeFixture {
   id: BuiltinThemeId;
@@ -54,6 +54,10 @@ describe.skipIf(skipIfNoTestDb())("built-in theme public route smoke", () => {
   });
 
   async function loadTheme(id: BuiltinThemeId): Promise<ThemeFixture> {
+    if (id === "community") {
+      const { communityTheme } = await import("@nexpress/theme-community");
+      return { id, theme: communityTheme };
+    }
     if (id === "default") {
       const { defaultTheme } = await import("@nexpress/theme-default");
       return { id, theme: defaultTheme };
@@ -173,6 +177,38 @@ describe.skipIf(skipIfNoTestDb())("built-in theme public route smoke", () => {
     expect(postHtml).toContain('href="/tag/postgres"');
 
     await renderThemeRoute(fixture, "/tag/postgres", "np-default-tag-metrics");
+  });
+
+  it("community renders its seeded portal home, guidance page, and article detail", async () => {
+    const fixture = await activateThemeForSeed("community");
+    await seedTheme(fixture);
+
+    await renderPageTemplate(fixture, "/", "np-community-highlight-grid");
+    await renderPageTemplate(fixture, "guidelines", "np-community-page-body");
+
+    const { createSiteScopedBlockRenderContext } = await import("@nexpress/next");
+    const { findDocuments } = await import("@nexpress/core");
+    const posts = await findDocuments<Record<string, unknown>>("posts", {
+      where: {
+        slug: "small-rules-for-a-lasting-community",
+        status: "published",
+        seedSource: "theme:community",
+      },
+      limit: 1,
+    });
+    const post = posts.docs[0];
+    expect(post).toBeDefined();
+    const PostTemplate = fixture.theme.impl.templates!.posts!.default!.component;
+    const html = await renderHtml(
+      await PostTemplate({
+        doc: post!,
+        blockCtx: await createSiteScopedBlockRenderContext(),
+      }),
+    );
+    expect(html).toContain("np-community-article-body");
+    expect(html).toContain("오래 머무는 커뮤니티");
+    expect(html).toContain("커뮤니티</li>");
+    expect(html).not.toMatch(/[0-9a-f]{8}-[0-9a-f-]{27}/i);
   });
 
   it("docs renders its seeded landing, search, and doc detail route", async () => {

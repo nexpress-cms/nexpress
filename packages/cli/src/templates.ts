@@ -198,6 +198,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         // can only list themes that exist in node_modules. Without
         // these as direct deps, the picker shows empty even though
         // @nexpress/theme (the engine) is present.
+        "@nexpress/theme-community": nexpressVersion,
         "@nexpress/theme-default": nexpressVersion,
         "@nexpress/theme-docs": nexpressVersion,
         "@nexpress/theme-magazine": nexpressVersion,
@@ -308,7 +309,7 @@ function nexpressConfigTemplate(config: TemplateConfig): string {
   // Built-in collections + themes + i18n are sourced from
   // `@nexpress/app/config-defaults` so the single source of truth
   // lives in the framework, not in scaffolded boilerplate.
-  // The four built-in themes + example collections + default plugins
+  // The five built-in themes + example collections + default plugins
   // are always wired in — the operator picks the active theme and
   // seeds (or skips) sample content in the first-boot admin setup
   // wizard, not at scaffold time.

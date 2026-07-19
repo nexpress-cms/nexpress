@@ -94,7 +94,7 @@ test("the post-publish gate fails closed when a version never reaches the regist
 
 test("the repository inventory includes every public package and excludes private workspaces", () => {
   const packages = readPublishableWorkspacePackages(resolve(import.meta.dirname, ".."));
-  assert.equal(packages.length, 34);
+  assert.equal(packages.length, 35);
   assert.ok(packages.some((pkg) => pkg.name === "create-nexpress"));
   assert.ok(packages.some((pkg) => pkg.name === "@nexpress/core"));
   assert.ok(!packages.some((pkg) => pkg.name === "@nexpress/web"));

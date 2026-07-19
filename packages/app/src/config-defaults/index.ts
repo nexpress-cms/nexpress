@@ -2,6 +2,7 @@ import type { NpConfig, NpRegisteredTheme } from "@nexpress/core";
 import { npReadStorageRuntimeConfig } from "@nexpress/core/storage";
 
 import { defaultTheme } from "@nexpress/theme-default";
+import { communityTheme } from "@nexpress/theme-community";
 import { docsTheme } from "@nexpress/theme-docs";
 import { magazineTheme } from "@nexpress/theme-magazine";
 import { portfolioTheme } from "@nexpress/theme-portfolio";
@@ -101,6 +102,7 @@ export const defaultPlugins: NonNullable<NpConfig["plugins"]> = [
  */
 export const defaultThemes: NpRegisteredTheme[] = [
   defaultTheme,
+  communityTheme,
   magazineTheme,
   portfolioTheme,
   docsTheme,

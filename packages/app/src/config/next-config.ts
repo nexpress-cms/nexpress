@@ -50,6 +50,7 @@ export const defaultTranspilePackages = [
   "@nexpress/editor",
   "@nexpress/blocks",
   "@nexpress/theme",
+  "@nexpress/theme-community",
   "@nexpress/theme-default",
   "@nexpress/theme-docs",
   "@nexpress/theme-magazine",
