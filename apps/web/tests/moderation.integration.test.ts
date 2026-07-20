@@ -88,7 +88,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     await closeTestDb();
   });
 
-  it("member files a report; mod sees it; mod resolves it", async () => {
+  it("member files a comment report; mod hides the target and resolves it", async () => {
     const staff = await seedUser({ role: "editor" });
     const postId = await seedStaffPost(staff);
     const author = await seedActiveMember("alpha", "alpha@example.com", "password-12");
@@ -117,23 +117,61 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     const filedBody = await readJson<{ id: string }>(filed);
     expect(filedBody.status).toBe(201);
     const reportId = filedBody.body.id;
+    const secondReporter = await seedActiveMember(
+      "reporter1b",
+      "reporter1b@example.com",
+      "password-12",
+    );
+    const secondFiled = await readJson<{ id: string }>(
+      await reportPOST(
+        jsonRequest("/api/reports", {
+          method: "POST",
+          cookies: [
+            `np-mb-session=${secondReporter.sessionCookie}`,
+            `np-mb-csrf=${secondReporter.csrfCookie}`,
+          ],
+          headers: { "x-csrf-token": secondReporter.csrfCookie },
+          body: JSON.stringify({ targetType: "comment", targetId: commentId, reason: "abuse" }),
+        }),
+      ),
+    );
+    expect(secondFiled.status).toBe(201);
 
     // Mod (editor) lists reports.
     const list = await adminReportsGET(staffRequest("/api/admin/community/reports", staff));
     const listBody = await readJson<{ docs: Array<{ id: string }>; totalDocs: number }>(list);
     expect(listBody.status).toBe(200);
-    expect(listBody.body.totalDocs).toBe(1);
-    expect(listBody.body.docs[0]?.id).toBe(reportId);
+    expect(listBody.body.totalDocs).toBe(2);
+    expect(listBody.body.docs.map((report) => report.id)).toEqual(
+      expect.arrayContaining([reportId, secondFiled.body.id]),
+    );
 
     // Mod resolves the report.
     const resolved = await resolveReportPOST(
       staffRequest(`/api/admin/community/reports/${reportId}/resolve`, staff, {
         method: "POST",
-        body: JSON.stringify({ resolution: "hidden" }),
+        body: JSON.stringify({ action: "hide-comment" }),
       }),
       { params: Promise.resolve({ id: reportId }) },
     );
     expect(resolved.status).toBe(200);
+
+    // A second reporter can close the same incident without applying the
+    // comment penalty or audit side effects twice.
+    const secondResolved = await resolveReportPOST(
+      staffRequest(`/api/admin/community/reports/${secondFiled.body.id}/resolve`, staff, {
+        method: "POST",
+        body: JSON.stringify({ action: "hide-comment" }),
+      }),
+      { params: Promise.resolve({ id: secondFiled.body.id }) },
+    );
+    expect(secondResolved.status).toBe(200);
+
+    const commentsAfter = await commentsGET(
+      jsonRequest(`/api/collections/posts/${postId}/comments`),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    expect((await readJson<{ totalDocs: number }>(commentsAfter)).body.totalDocs).toBe(0);
 
     // Default list (unresolved) is now empty.
     const after = await adminReportsGET(staffRequest("/api/admin/community/reports", staff));
@@ -314,10 +352,38 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     const filedBody = await readJson<{ id: string }>(filed);
     expect(filedBody.status).toBe(201);
 
+    const nonModerator = await seedUser({ role: "author" });
+    const { resolveReport } = await import("@nexpress/core/community");
+    await expect(
+      resolveReport({
+        reportId: filedBody.body.id,
+        action: "dismiss",
+        actor: {
+          kind: "staff",
+          user: {
+            id: nonModerator.userId,
+            email: nonModerator.email,
+            name: nonModerator.name,
+            role: nonModerator.role,
+            tokenVersion: 0,
+          },
+        },
+      }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+
+    const incompatible = await resolveReportPOST(
+      staffRequest(`/api/admin/community/reports/${filedBody.body.id}/resolve`, staff, {
+        method: "POST",
+        body: JSON.stringify({ action: "hide-comment" }),
+      }),
+      { params: Promise.resolve({ id: filedBody.body.id }) },
+    );
+    expect(incompatible.status).toBe(400);
+
     const first = await resolveReportPOST(
       staffRequest(`/api/admin/community/reports/${filedBody.body.id}/resolve`, staff, {
         method: "POST",
-        body: JSON.stringify({ resolution: "dismissed" }),
+        body: JSON.stringify({ action: "dismiss" }),
       }),
       { params: Promise.resolve({ id: filedBody.body.id }) },
     );
@@ -326,11 +392,23 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     const second = await resolveReportPOST(
       staffRequest(`/api/admin/community/reports/${filedBody.body.id}/resolve`, staff, {
         method: "POST",
-        body: JSON.stringify({ resolution: "dismissed" }),
+        body: JSON.stringify({ action: "dismiss" }),
       }),
       { params: Promise.resolve({ id: filedBody.body.id }) },
     );
     expect(second.status).toBe(400);
+  });
+
+  it("rejects a malformed report id before resolution", async () => {
+    const staff = await seedUser({ role: "moderator" });
+    const response = await resolveReportPOST(
+      staffRequest("/api/admin/community/reports/not-a-uuid/resolve", staff, {
+        method: "POST",
+        body: JSON.stringify({ action: "dismiss" }),
+      }),
+      { params: Promise.resolve({ id: "not-a-uuid" }) },
+    );
+    expect(response.status).toBe(400);
   });
 
   // Regression: SQL operator precedence in listBansForMember had `AND`
@@ -481,77 +559,111 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
         method: "POST",
         cookies: [`np-mb-session=${reporter.sessionCookie}`, `np-mb-csrf=${reporter.csrfCookie}`],
         headers: { "x-csrf-token": reporter.csrfCookie },
-        // targetId omitted on purpose — route coerces to "" and forwards.
+        // targetId omitted on purpose.
         body: JSON.stringify({ targetType: "comment", reason: "spam" }),
       }),
     );
     expect(res.status).toBe(400);
   });
 
-  /**
-   * Phase 9.9 — `reply` and `thread` report targets are
-   * activated. `reply` resolves to a comment row (replies are
-   * stored in np_comments alongside top-level comments).
-   * `thread` resolves to a row in the registered `discussions`
-   * collection (forum plugin's default slug).
-   */
-  it("file report accepts a `reply` target by looking up the comment row", async () => {
-    const { fileReport, npComments } = await import("@nexpress/core");
-    const { getDb } = await import("@nexpress/core/db");
-    const reporter = await seedActiveMember("reply-reporter", "reply-r@example.com", "password-12");
-    const author = await seedActiveMember("reply-author", "reply-a@example.com", "password-12");
-
-    // Replies are stored in `np_comments` (Phase 9.2 decision:
-    // forum replies reuse the comments table). Insert directly
-    // so we don't need a real `posts` row to anchor the
-    // synthetic reply against.
-    const db = getDb();
-    const replyId = "11111111-1111-4111-8111-111111111111";
-    await db.insert(npComments).values({
-      id: replyId,
-      memberId: author.memberId,
-      targetType: "posts",
-      targetId: "22222222-2222-4222-8222-222222222222",
-      bodyMd: "stand-in reply body",
-      bodyHtml: "<p>stand-in reply body</p>",
-      status: "visible",
-    });
-
-    const report = await fileReport({
-      reporterId: reporter.memberId,
-      targetType: "reply",
-      targetId: replyId,
-      reason: "rude reply",
-    });
-    expect(report.targetType).toBe("reply");
-    expect(report.targetId).toBe(replyId);
-  });
-
-  it("file report rejects a `thread` target with an unresolvable id", async () => {
-    const { fileReport, NpNotFoundError, NpValidationError } = await import("@nexpress/core");
+  it("reports a collection document, exposes context, deduplicates, and unpublishes", async () => {
+    const moderator = await seedUser({ role: "moderator" });
+    const editor = await seedUser({ role: "editor" });
+    const postId = await seedStaffPost(editor);
     const reporter = await seedActiveMember(
-      "thread-reporter",
-      "thread-r@example.com",
+      "document-reporter",
+      "document-reporter@example.com",
       "password-12",
     );
+    const reportRequest = () =>
+      reportPOST(
+        jsonRequest("/api/reports", {
+          method: "POST",
+          cookies: [`np-mb-session=${reporter.sessionCookie}`, `np-mb-csrf=${reporter.csrfCookie}`],
+          headers: { "x-csrf-token": reporter.csrfCookie },
+          body: JSON.stringify({ targetType: "posts", targetId: postId, reason: "illegal ad" }),
+        }),
+      );
 
-    // Two valid outcomes depending on whether prior tests in
-    // the same vitest run registered the `discussions`
-    // collection (forum plugin):
-    //   - Not registered → NpValidationError (clear "feature
-    //     not enabled" message)
-    //   - Registered but no such id → NpNotFoundError
-    // Both are correct rejections — the contract is "fileReport
-    // doesn't accept thread targets that can't be resolved."
-    await expect(
-      fileReport({
-        reporterId: reporter.memberId,
-        targetType: "thread",
-        targetId: "00000000-0000-0000-0000-000000000000",
-        reason: "spam thread",
+    const filed = await readJson<{ id: string }>(await reportRequest());
+    expect(filed.status).toBe(201);
+    expect((await reportRequest()).status).toBe(409);
+
+    const queue = await readJson<{
+      docs: Array<{
+        id: string;
+        target: { kind: string; label: string; excerpt: string; href: string; status: string };
+      }>;
+    }>(await adminReportsGET(staffRequest("/api/admin/community/reports", moderator)));
+    expect(queue.body.docs[0]).toMatchObject({
+      id: filed.body.id,
+      target: {
+        kind: "document",
+        label: "Moderation target",
+        excerpt: "Moderation target",
+        href: `/admin/collections/posts/${postId}`,
+        status: "published",
+      },
+    });
+
+    const { getDb } = await import("@nexpress/core/db");
+    const { postsTable } = await import("@/db/generated/collections");
+    const { eq } = await import("drizzle-orm");
+    await getDb().update(postsTable).set({ status: "draft" }).where(eq(postsTable.id, postId));
+    const staleAction = await resolveReportPOST(
+      staffRequest(`/api/admin/community/reports/${filed.body.id}/resolve`, moderator, {
+        method: "POST",
+        body: JSON.stringify({ action: "unpublish-document" }),
       }),
-    ).rejects.toSatisfy(
-      (error: unknown) => error instanceof NpValidationError || error instanceof NpNotFoundError,
+      { params: Promise.resolve({ id: filed.body.id }) },
     );
+    expect(staleAction.status).toBe(400);
+    await getDb().update(postsTable).set({ status: "published" }).where(eq(postsTable.id, postId));
+
+    // A caller cannot smuggle the moderation-only ACL bypass through the
+    // public save options. Only the capability-gated helper owns that control.
+    const { saveDocument } = await import("@nexpress/core/collections");
+    const smuggledOptions = Object.assign(
+      { status: "pending" as const },
+      { bypassStaffAccess: true },
+    ) as Parameters<typeof saveDocument>[4];
+    await expect(
+      saveDocument(
+        "posts",
+        postId,
+        {},
+        {
+          id: moderator.userId,
+          email: moderator.email,
+          name: moderator.name,
+          role: moderator.role,
+          tokenVersion: 0,
+        },
+        smuggledOptions,
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+
+    const resolved = await resolveReportPOST(
+      staffRequest(`/api/admin/community/reports/${filed.body.id}/resolve`, moderator, {
+        method: "POST",
+        body: JSON.stringify({ action: "unpublish-document" }),
+      }),
+      { params: Promise.resolve({ id: filed.body.id }) },
+    );
+    const resolvedBody = await readJson<{ resolution: string }>(resolved);
+    expect(resolvedBody.status).toBe(200);
+    expect(resolvedBody.body.resolution).toBe("unpublish-document");
+
+    const [post] = await getDb()
+      .select({ status: postsTable.status })
+      .from(postsTable)
+      .where(eq(postsTable.id, postId));
+    expect(post?.status).toBe("pending");
+
+    // The partial unique index covers only unresolved rows, so a later
+    // incident can be filed after moderators close the first report and the
+    // document has passed review and returned to public visibility.
+    await getDb().update(postsTable).set({ status: "published" }).where(eq(postsTable.id, postId));
+    expect((await reportRequest()).status).toBe(201);
   });
 });

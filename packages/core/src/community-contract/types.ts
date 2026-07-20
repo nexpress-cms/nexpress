@@ -1,8 +1,14 @@
 export const npCommunityCommentStatuses = ["visible", "pending", "hidden", "deleted"] as const;
 export const npCommunityCommentSorts = ["newest", "oldest", "top"] as const;
 export const npCommunityFollowTargets = ["member", "thread", "tag"] as const;
-export const npCommunityReportTargets = ["comment", "thread", "reply", "member"] as const;
+/** Reserved report targets. Canonical collection slugs are also valid targets. */
+export const npCommunityReportTargets = ["comment", "member"] as const;
 export const npCommunityReportStatuses = ["unresolved", "resolved", "all"] as const;
+export const npCommunityReportResolutionActions = [
+  "dismiss",
+  "hide-comment",
+  "unpublish-document",
+] as const;
 export const npCommunityBanScopes = ["site", "category", "collection"] as const;
 export const npCommunityBanKinds = ["temporary", "permanent"] as const;
 export const npCommunityScopes = ["site", "category", "collection", "thread"] as const;
@@ -34,8 +40,10 @@ export const npCommunityCapabilities = [
 export type CommentStatus = (typeof npCommunityCommentStatuses)[number];
 export type NpCommentSort = (typeof npCommunityCommentSorts)[number];
 export type NpFollowTarget = (typeof npCommunityFollowTargets)[number];
-export type NpReportTarget = (typeof npCommunityReportTargets)[number];
+/** `comment`, `member`, or a canonical collection slug. */
+export type NpReportTarget = string;
 export type NpReportStatus = (typeof npCommunityReportStatuses)[number];
+export type NpReportResolutionAction = (typeof npCommunityReportResolutionActions)[number];
 export type BanScope = (typeof npCommunityBanScopes)[number];
 export type BanKind = (typeof npCommunityBanKinds)[number];
 export type CommunityScope = (typeof npCommunityScopes)[number];
@@ -362,7 +370,7 @@ export interface NpReportRow {
   resolvedAt: Date | null;
   resolvedByUserId: string | null;
   resolvedByMemberId: string | null;
-  resolution: string | null;
+  resolution: NpReportResolutionAction | null;
   siteId: string;
   createdAt: Date;
 }
@@ -371,6 +379,24 @@ export type NpReportWireRow = Omit<NpReportRow, "resolvedAt" | "createdAt"> & {
   resolvedAt: string | null;
   createdAt: string;
 };
+
+export type NpReportTargetContextKind = "comment" | "document" | "member" | "missing";
+
+/** Operator-safe target projection for the moderation queue. */
+export interface NpReportTargetContextWire {
+  kind: NpReportTargetContextKind;
+  label: string;
+  excerpt: string | null;
+  status: string | null;
+  href: string | null;
+  collectionSlug: string | null;
+  documentId: string | null;
+  authorMemberId: string | null;
+}
+
+export interface NpModerationReportWireRow extends NpReportWireRow {
+  target: NpReportTargetContextWire;
+}
 
 export interface FileReportInput {
   reporterId: string;
@@ -393,6 +419,12 @@ export interface ListReportsResult {
 }
 
 export interface NpReportPageWire extends NpPageWire<NpReportWireRow> {}
+
+export interface NpModerationReportPageWire extends NpPageWire<NpModerationReportWireRow> {}
+
+export interface NpResolveReportRequest {
+  action: NpReportResolutionAction;
+}
 
 export interface NpBanRow {
   id: string;

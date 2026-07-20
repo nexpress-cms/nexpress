@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { asc, count, desc, eq, inArray, isNull, max, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import type { NpCommunityJsonObject } from "../community-contract/types.js";
+import { can } from "../auth/capabilities.js";
 import {
   NpCollectionContractError,
   npCollectionDocumentToWriteInput,
@@ -715,6 +716,7 @@ interface SaveContext {
   validatedData: Record<string, unknown>;
   actor: SaveActor;
   options: NpSaveOptions | undefined;
+  bypassStaffAccess: boolean;
   config: ReturnType<typeof getCollectionConfig>;
   registration: ReturnType<typeof getCollectionRegistration>;
   table: PgTable;
@@ -739,12 +741,18 @@ interface SaveContext {
   now: Date;
 }
 
+interface InternalSaveControls {
+  /** Set only by the capability-gated report moderation helper. */
+  bypassStaffAccess?: boolean;
+}
+
 async function initSaveContext(
   collection: string,
   docId: string | null,
   data: Record<string, unknown>,
   actor: SaveActor,
   options: NpSaveOptions | undefined,
+  controls: InternalSaveControls = {},
 ): Promise<
   Omit<
     SaveContext,
@@ -803,6 +811,7 @@ async function initSaveContext(
     validatedData,
     actor,
     options,
+    bypassStaffAccess: controls.bypassStaffAccess === true,
     config,
     registration,
     table,
@@ -825,6 +834,7 @@ async function initSaveContext(
  */
 async function validateActorAccess(ctx: SaveContext): Promise<void> {
   if (ctx.actor.kind === "staff") {
+    if (ctx.bypassStaffAccess) return;
     await assertWriteAccess(
       ctx.config,
       ctx.collection,
@@ -1339,8 +1349,9 @@ async function saveDocumentImpl(
   data: Record<string, unknown>,
   actor: SaveActor,
   options?: NpSaveOptions,
+  controls?: InternalSaveControls,
 ): Promise<NpSaveResult> {
-  const ctxBase = await initSaveContext(collection, docId, data, actor, options);
+  const ctxBase = await initSaveContext(collection, docId, data, actor, options, controls);
   await validateActorAccess(ctxBase as SaveContext);
   const ctx = ctxBase as SaveContext;
   await prepareDocumentForWrite(ctx);
@@ -1714,6 +1725,73 @@ export async function promoteMemberDocument(
   });
 
   return { doc: persistedDoc, operation: "update" };
+}
+
+/**
+ * Move a report-enabled public document into the pending moderation state.
+ * The caller must hold `community.moderate`; collection update ACLs are
+ * deliberately bypassed because the collection's explicit `reports: true`
+ * opt-in grants this one bounded status transition to moderators. All normal
+ * validation, revisions, hooks, jobs, and unpublish transitions still run.
+ */
+export async function unpublishDocumentForModeration(
+  collection: string,
+  docId: string,
+  staffUser: NpAuthUser,
+  reason: string,
+): Promise<NpSaveResult> {
+  if (!can(staffUser, "community.moderate")) {
+    throw new NpForbiddenError(collection, "moderate");
+  }
+  const config = getCollectionConfig(collection);
+  if (config.community?.reports !== true) {
+    throw new NpValidationError("Reports disabled", [
+      {
+        field: "collection",
+        message: `Collection "${collection}" has not enabled community.reports.`,
+      },
+    ]);
+  }
+  const normalizedReason = reason.trim();
+  if (normalizedReason.length === 0 || normalizedReason.length > 1000) {
+    throw new NpValidationError("Invalid moderation reason", [
+      { field: "reason", message: "Reason must be 1–1000 characters." },
+    ]);
+  }
+  const registration = getCollectionRegistration(collection);
+  const db = getDb() as unknown as DrizzleDatabaseLike;
+  const originalDoc = await getDocumentByIdInternal(db, registration, collection, docId);
+  if (!originalDoc) throw new NpNotFoundError(collection, docId);
+  const status = typeof originalDoc.status === "string" ? originalDoc.status : null;
+  if (status === "pending") {
+    return { doc: originalDoc, operation: "update" };
+  }
+  if (status !== "published") {
+    throw new NpValidationError("Invalid document state", [
+      {
+        field: "status",
+        message: `Document is "${status ?? "unknown"}" and cannot be unpublished for moderation.`,
+      },
+    ]);
+  }
+
+  const result = await saveDocumentImpl(
+    collection,
+    docId,
+    {},
+    { kind: "staff", user: staffUser },
+    { status: "pending" },
+    { bypassStaffAccess: true },
+  );
+  const { recordAuditEvent } = await import("../community/audit.js");
+  await recordAuditEvent({
+    actor: { kind: "staff", userId: staffUser.id },
+    action: "document.unpublish",
+    targetType: collection,
+    targetId: docId,
+    payload: { reason: normalizedReason, previousStatus: status, nextStatus: "pending" },
+  });
+  return result;
 }
 
 async function deleteDocumentImpl(

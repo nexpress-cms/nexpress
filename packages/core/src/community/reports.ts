@@ -1,95 +1,246 @@
 import { and, count, desc, eq, isNotNull, isNull } from "drizzle-orm";
-import type { PgTable } from "drizzle-orm/pg-core";
 
-import { getCollectionRegistration, getCollectionTable } from "../collections/registry.js";
-import { npRequireReportRow } from "../community-contract/contract.js";
+import { can } from "../auth/capabilities.js";
+import { NpCollectionContractError } from "../collection-contract/contract.js";
+import { getCollectionConfig } from "../collections/registry.js";
+import { buildSearchVector } from "../collections/search.js";
+import {
+  npGetPersistedCollectionDocumentById,
+  unpublishDocumentForModeration,
+} from "../collections/pipeline.js";
+import {
+  NpCommunityContractError,
+  npRequireCommunityId,
+  npRequireReportRequest,
+  npRequireReportRow,
+  npRequireReportTargetContextWire,
+  npRequireResolveReportRequest,
+} from "../community-contract/contract.js";
 import type {
   FileReportInput,
   ListReportsOptions,
   ListReportsResult,
+  NpReportResolutionAction,
   NpReportRow,
-  NpReportTarget,
+  NpReportTargetContextWire,
 } from "../community-contract/types.js";
 import { getDb } from "../db/runtime.js";
 import { npComments, npMembers, npReports } from "../db/schema/community.js";
-import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
+import {
+  NpConflictError,
+  NpForbiddenError,
+  NpNotFoundError,
+  NpValidationError,
+} from "../errors.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { recordAuditEvent } from "./audit.js";
 import { withMemberWrite } from "./can.js";
+import { staffHideComment } from "./comments.js";
+import { npResolveDocumentEngagementTarget } from "./engagement-target.js";
 import type { Principal } from "./principal.js";
 
-const MAX_REASON_LENGTH = 1000;
-const SUPPORTED_TARGETS = ["comment", "thread", "reply", "member"] as const;
+const EXCERPT_LENGTH = 240;
+
 export type { FileReportInput, ListReportsOptions, ListReportsResult, NpReportRow };
 
-function validateTargetType(value: string): asserts value is NpReportTarget {
-  if (!(SUPPORTED_TARGETS as readonly string[]).includes(value)) {
-    throw new NpValidationError("Invalid input", [
-      {
-        field: "targetType",
-        message: `targetType must be one of: ${SUPPORTED_TARGETS.join(", ")}`,
-      },
-    ]);
+function requireCommunityContract<T>(parser: (value: unknown) => T, value: unknown): T {
+  try {
+    return parser(value);
+  } catch (error) {
+    if (error instanceof NpCommunityContractError) {
+      throw new NpValidationError(
+        "Invalid input",
+        error.contractIssues.map((issue) => ({ field: issue.path, message: issue.message })),
+      );
+    }
+    throw error;
+  }
+}
+
+function excerpt(value: string): string | null {
+  const normalized = value.replace(/\s+/gu, " ").trim();
+  if (normalized.length === 0) return null;
+  return normalized.length <= EXCERPT_LENGTH
+    ? normalized
+    : `${normalized.slice(0, EXCERPT_LENGTH - 1)}…`;
+}
+
+function targetLabel(value: string, fallback: string): string {
+  const candidate = value.replace(/\s+/gu, " ").trim();
+  const normalized = candidate || fallback.replace(/\s+/gu, " ").trim() || "Target";
+  if (normalized.length <= 120) return normalized;
+  return `${normalized.slice(0, 119)}…`;
+}
+
+function missingTarget(targetType: string): NpReportTargetContextWire {
+  return npRequireReportTargetContextWire({
+    kind: "missing",
+    label: `${targetType} target unavailable`,
+    excerpt: null,
+    status: null,
+    href: null,
+    collectionSlug: null,
+    documentId: null,
+    authorMemberId: null,
+  });
+}
+
+function reportTargetContext(value: unknown, targetType: string): NpReportTargetContextWire {
+  try {
+    return npRequireReportTargetContextWire(value);
+  } catch (error) {
+    if (error instanceof NpCommunityContractError) return missingTarget(targetType);
+    throw error;
   }
 }
 
 /**
- * Members file reports against a piece of community content. The
- * reason is free-form; mods triage it via `listReports` and
- * `resolveReport`.
+ * Resolve the operator-safe target context shown in the report queue. Missing
+ * targets stay visible as explicit drift instead of breaking the whole page.
  */
-export async function fileReport(input: FileReportInput): Promise<NpReportRow> {
-  validateTargetType(input.targetType);
-  const targetId = input.targetId.trim();
-  if (targetId.length === 0) {
-    throw new NpValidationError("Invalid input", [
-      { field: "targetId", message: "targetId required" },
-    ]);
+export async function getReportTargetContext(
+  value: NpReportRow,
+): Promise<NpReportTargetContextWire> {
+  const report = npRequireReportRow(value);
+  const requestSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+  if (report.siteId !== requestSiteId) {
+    throw new NpForbiddenError("report", "cross-site");
   }
-  const reason = input.reason.trim();
-  if (reason.length === 0) {
-    throw new NpValidationError("Invalid input", [
-      { field: "reason", message: "Report reason required" },
-    ]);
+  const db = getDb();
+  if (report.targetType === "comment") {
+    const [row] = await db
+      .select({
+        bodyMd: npComments.bodyMd,
+        status: npComments.status,
+        siteId: npComments.siteId,
+        collectionSlug: npComments.targetType,
+        documentId: npComments.targetId,
+        authorMemberId: npComments.memberId,
+        authorHandle: npMembers.handle,
+        authorDisplayName: npMembers.displayName,
+      })
+      .from(npComments)
+      .leftJoin(npMembers, eq(npMembers.id, npComments.memberId))
+      .where(eq(npComments.id, report.targetId))
+      .limit(1);
+    if (!row || row.siteId !== report.siteId) return missingTarget(report.targetType);
+    const author = row.authorDisplayName ?? (row.authorHandle ? `@${row.authorHandle}` : null);
+    return reportTargetContext(
+      {
+        kind: "comment",
+        label: targetLabel(author ? `Comment by ${author}` : "Comment", "Comment"),
+        excerpt: excerpt(row.bodyMd),
+        status: row.status,
+        href: `/admin/collections/${row.collectionSlug}/${row.documentId}`,
+        collectionSlug: row.collectionSlug,
+        documentId: row.documentId,
+        authorMemberId: row.authorMemberId,
+      },
+      report.targetType,
+    );
   }
-  if (reason.length > MAX_REASON_LENGTH) {
-    throw new NpValidationError("Invalid input", [
-      { field: "reason", message: `Reason must be ≤ ${MAX_REASON_LENGTH} characters` },
-    ]);
+  if (report.targetType === "member") {
+    const [row] = await db
+      .select({
+        id: npMembers.id,
+        handle: npMembers.handle,
+        displayName: npMembers.displayName,
+        status: npMembers.status,
+      })
+      .from(npMembers)
+      .where(eq(npMembers.id, report.targetId))
+      .limit(1);
+    if (!row) return missingTarget(report.targetType);
+    return reportTargetContext(
+      {
+        kind: "member",
+        label: targetLabel(row.displayName || `@${row.handle}`, `@${row.handle}`),
+        excerpt: `@${row.handle}`,
+        status: row.status,
+        href: `/admin/members/${row.id}`,
+        collectionSlug: null,
+        documentId: null,
+        authorMemberId: row.id,
+      },
+      report.targetType,
+    );
   }
 
-  // #311 — withMemberWrite enforces the ban gate by structure.
-  // Site-wide bans block every community write including reports
-  // (#53); no obvious scope chain for a polymorphic report target.
-  return withMemberWrite(input.reporterId, [], async () => {
-    return doFileReport(input, targetId, reason);
-  });
+  let config;
+  try {
+    config = getCollectionConfig(report.targetType);
+  } catch {
+    return missingTarget(report.targetType);
+  }
+  let document: Record<string, unknown> | null;
+  try {
+    document = await npGetPersistedCollectionDocumentById(
+      report.targetType,
+      report.targetId,
+      report.siteId,
+    );
+  } catch (error) {
+    if (error instanceof NpForbiddenError || error instanceof NpCollectionContractError) {
+      return missingTarget(report.targetType);
+    }
+    throw error;
+  }
+  if (!document || document.siteId !== report.siteId) return missingTarget(report.targetType);
+  const title = typeof document.title === "string" ? document.title.trim() : "";
+  const searchableText = buildSearchVector(config, document).trim();
+  const excerptText =
+    title && searchableText.startsWith(title)
+      ? searchableText.slice(title.length).trim()
+      : searchableText;
+  const status = typeof document.status === "string" ? document.status : null;
+  const authorMemberId =
+    typeof document.memberAuthorId === "string" ? document.memberAuthorId : null;
+  return reportTargetContext(
+    {
+      kind: "document",
+      label: targetLabel(title || config.labels.singular, config.labels.singular),
+      excerpt: excerpt(excerptText || searchableText),
+      status,
+      href: `/admin/collections/${report.targetType}/${report.targetId}`,
+      collectionSlug: report.targetType,
+      documentId: report.targetId,
+      authorMemberId,
+    },
+    report.targetType,
+  );
 }
 
-async function doFileReport(
-  input: FileReportInput,
-  targetId: string,
-  reason: string,
-): Promise<NpReportRow> {
-  // Verify the target actually exists. Without this, members can fill
-  // the moderation queue with reports against UUIDs that point at
-  // nothing — and the audit log captures the phantom target id too,
-  // making forensic review noisy. (#52)
-  //
-  // Issue #215 — `assertReportTargetExists` now also returns the
-  // target's canonical site so we can reject cross-tenant reports.
-  // A member on site A who guessed at a comment id on site B
-  // shouldn't be able to file a report under either tenant — this
-  // path stays single-tenant.
-  const target = await assertReportTargetExists(input.targetType, targetId);
+/** File one unresolved report for a visible target on the current site. */
+export async function fileReport(input: FileReportInput): Promise<NpReportRow> {
+  const report = requireCommunityContract(npRequireReportRequest, {
+    targetType: input.targetType,
+    targetId: input.targetId,
+    reason: input.reason,
+  });
+  const reporterId = requireCommunityContract(
+    (value) => npRequireCommunityId(value, "community.report.reporterId"),
+    input.reporterId,
+  );
 
+  const scopes =
+    report.targetType === "comment" || report.targetType === "member"
+      ? []
+      : [{ type: "collection" as const, id: report.targetType }];
+  return withMemberWrite(reporterId, scopes, () =>
+    doFileReport({
+      reporterId,
+      targetType: report.targetType,
+      targetId: report.targetId,
+      reason: report.reason,
+    }),
+  );
+}
+
+async function doFileReport(input: FileReportInput): Promise<NpReportRow> {
+  const target = await assertReportTargetExists(input.targetType, input.targetId);
   const db = getDb();
-  // Phase 18 — file the report under the current tenant so the
-  // mod queue surfaces it on the right site.
-  // #272 — write: must NOT silently fall through; a misfiled
-  // report would surface in the wrong moderator's queue.
   const siteId = await requireSiteId();
   if (target.siteId !== null && target.siteId !== siteId) {
     throw new NpForbiddenError("report", "cross-site");
@@ -99,20 +250,23 @@ async function doFileReport(
     .values({
       reporterId: input.reporterId,
       targetType: input.targetType,
-      targetId,
-      reason,
+      targetId: input.targetId,
+      reason: input.reason,
       siteId,
     })
+    .onConflictDoNothing()
     .returning()) as NpReportRow[];
-  if (!row) throw new Error("Report insert returned no row");
+  if (!row) {
+    throw new NpConflictError("You already have an unresolved report for this target.");
+  }
   const checkedRow = npRequireReportRow(row);
 
   await recordAuditEvent({
     actor: { kind: "member", memberId: input.reporterId },
     action: "report.filed",
     targetType: input.targetType,
-    targetId,
-    payload: { reportId: checkedRow.id, reason },
+    targetId: input.targetId,
+    payload: { reportId: checkedRow.id, reason: input.reason },
   });
 
   return checkedRow;
@@ -130,19 +284,12 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
   } else filters.push(isNull(npReports.resolvedAt));
   if (options.targetType) filters.push(eq(npReports.targetType, options.targetType));
 
-  // Phase 18 — scope to current tenant so mods on tenant A
-  // don't see tenant B's queue. Pass `siteId: null` to skip
-  // (super-admin cross-tenant triage); otherwise use the
-  // resolver. Mirrors the pattern from Phase 17 audit.
   if (options.siteId !== null) {
-    const resolvedSite = options.siteId !== undefined ? options.siteId : await getCurrentSiteId();
-    if (resolvedSite !== null) {
-      filters.push(eq(npReports.siteId, resolvedSite));
-    }
+    const resolvedSite = options.siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+    filters.push(eq(npReports.siteId, resolvedSite));
   }
 
   const where = filters.length > 0 ? and(...filters) : undefined;
-
   const reports = (await db
     .select()
     .from(npReports)
@@ -150,189 +297,149 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
     .orderBy(desc(npReports.createdAt))
     .limit(limit)
     .offset(offset)) as NpReportRow[];
-
   const [totalRow] = (await db.select({ total: count() }).from(npReports).where(where)) as Array<{
     total: number;
   }>;
-
   return { reports: reports.map(npRequireReportRow), totalDocs: Number(totalRow?.total ?? 0) };
 }
 
 export interface ResolveReportInput {
   reportId: string;
-  /** Free-form short label: e.g. `"hidden"`, `"banned"`, `"dismissed"`. */
-  resolution: string;
-  actor: Principal;
+  action: NpReportResolutionAction;
+  actor: Extract<Principal, { kind: "staff" }>;
 }
 
-/**
- * Marks a report resolved. Caller is responsible for taking the
- * actual moderation action (hide, ban, etc.) — this only flips the
- * report row and writes an audit entry.
- */
-export async function resolveReport(input: ResolveReportInput): Promise<NpReportRow> {
-  const resolution = input.resolution.trim();
-  if (resolution.length === 0) {
-    throw new NpValidationError("Invalid input", [
-      { field: "resolution", message: "Resolution label required" },
-    ]);
-  }
-  if (resolution.length > MAX_REASON_LENGTH) {
-    throw new NpValidationError("Invalid input", [
-      { field: "resolution", message: `Resolution must be ≤ ${MAX_REASON_LENGTH} characters` },
-    ]);
-  }
+export interface ResolveReportResult {
+  report: NpReportRow;
+  moderatedDocument: { collectionSlug: string; document: Record<string, unknown> } | null;
+}
 
+/** Apply one closed moderation action and resolve the report under one row lock. */
+export async function resolveReport(input: ResolveReportInput): Promise<ResolveReportResult> {
+  if (!can(input.actor.user, "community.moderate")) {
+    throw new NpForbiddenError("reports", "resolve");
+  }
   const db = getDb();
-  // Issue #363 — `listReports` was already site-scoped, but
-  // `resolveReport` fetched and updated by id only. A moderator who
-  // obtained a foreign report id (e.g. from logs of a tenant they
-  // also belong to, or by guessing) could mark it resolved and
-  // write the audit event in their own request context. Fix:
-  // require the request site, reject when the loaded row's siteId
-  // diverges, AND include `siteId` in the update predicate so the
-  // read-check and the write cannot drift.
   const requestSiteId = await requireSiteId();
-  const [existing] = (await db
-    .select()
-    .from(npReports)
-    .where(eq(npReports.id, input.reportId))
-    .limit(1)) as NpReportRow[];
-  if (!existing) throw new NpNotFoundError("report", input.reportId);
-  const checkedExisting = npRequireReportRow(existing);
-  if (checkedExisting.siteId !== requestSiteId) {
-    throw new NpForbiddenError("report", "cross-site");
-  }
-  if (checkedExisting.resolvedAt) {
-    throw new NpValidationError("Invalid state", [
-      { field: "report", message: "Report already resolved" },
-    ]);
-  }
-
-  const resolvedByUserId = input.actor.kind === "staff" ? input.actor.user.id : null;
-  const resolvedByMemberId = input.actor.kind === "member" ? input.actor.memberId : null;
-
-  const [updated] = (await db
-    .update(npReports)
-    .set({
-      resolvedAt: new Date(),
-      resolvedByUserId,
-      resolvedByMemberId,
-      resolution,
-    })
-    .where(and(eq(npReports.id, input.reportId), eq(npReports.siteId, requestSiteId)))
-    .returning()) as NpReportRow[];
-  if (!updated) throw new Error("Report update returned no row");
-  const checkedUpdated = npRequireReportRow(updated);
-
-  await recordAuditEvent({
-    actor:
-      input.actor.kind === "staff"
-        ? { kind: "staff", userId: input.actor.user.id }
-        : { kind: "member", memberId: input.actor.memberId },
-    action: "report.resolved",
-    targetType: checkedExisting.targetType,
-    targetId: checkedExisting.targetId,
-    payload: { reportId: checkedExisting.id, resolution },
+  const reportId = requireCommunityContract(
+    (value) => npRequireCommunityId(value, "community.resolveReport.id"),
+    input.reportId,
+  );
+  const { action } = requireCommunityContract(npRequireResolveReportRequest, {
+    action: input.action,
   });
 
-  return checkedUpdated;
+  const result = await db.transaction(async (tx) => {
+    const [existing] = (await tx
+      .select()
+      .from(npReports)
+      .where(eq(npReports.id, reportId))
+      .limit(1)
+      .for("update")) as NpReportRow[];
+    if (!existing) throw new NpNotFoundError("report", reportId);
+    const checkedExisting = npRequireReportRow(existing);
+    if (checkedExisting.siteId !== requestSiteId) {
+      throw new NpForbiddenError("report", "cross-site");
+    }
+    if (checkedExisting.resolvedAt) {
+      throw new NpValidationError("Invalid state", [
+        { field: "report", message: "Report already resolved" },
+      ]);
+    }
+
+    let moderatedDocument: ResolveReportResult["moderatedDocument"] = null;
+    if (action === "hide-comment") {
+      if (checkedExisting.targetType !== "comment") {
+        throw new NpValidationError("Invalid report action", [
+          { field: "action", message: "hide-comment requires a comment report" },
+        ]);
+      }
+      await staffHideComment(checkedExisting.targetId, input.actor.user.id, checkedExisting.reason);
+    } else if (action === "unpublish-document") {
+      if (checkedExisting.targetType === "comment" || checkedExisting.targetType === "member") {
+        throw new NpValidationError("Invalid report action", [
+          { field: "action", message: "unpublish-document requires a collection document report" },
+        ]);
+      }
+      const saved = await unpublishDocumentForModeration(
+        checkedExisting.targetType,
+        checkedExisting.targetId,
+        input.actor.user,
+        checkedExisting.reason,
+      );
+      moderatedDocument = {
+        collectionSlug: checkedExisting.targetType,
+        document: saved.doc,
+      };
+    } else if (action !== "dismiss") {
+      const exhaustive: never = action;
+      throw new Error(`Unhandled report resolution action: ${String(exhaustive)}`);
+    }
+
+    const [updated] = (await tx
+      .update(npReports)
+      .set({
+        resolvedAt: new Date(),
+        resolvedByUserId: input.actor.user.id,
+        resolvedByMemberId: null,
+        resolution: action,
+      })
+      .where(
+        and(
+          eq(npReports.id, reportId),
+          eq(npReports.siteId, requestSiteId),
+          isNull(npReports.resolvedAt),
+        ),
+      )
+      .returning()) as NpReportRow[];
+    if (!updated) {
+      throw new NpValidationError("Invalid state", [
+        { field: "report", message: "Report was resolved concurrently" },
+      ]);
+    }
+    return { report: npRequireReportRow(updated), moderatedDocument };
+  });
+
+  await recordAuditEvent({
+    actor: { kind: "staff", userId: input.actor.user.id },
+    action: "report.resolved",
+    targetType: result.report.targetType,
+    targetId: result.report.targetId,
+    payload: { reportId: result.report.id, action },
+  });
+  return result;
 }
 
-/**
- * Verify the report's target row actually exists.
- *
- *   - `comment` / `reply` — both stored in `np_comments`
- *     (the forum plugin's replies are just comments under
- *     a discussion thread). Lookup the comment row.
- *   - `member` — direct lookup against `np_members`.
- *   - `thread` — Phase 9.9 enabled. The forum plugin
- *     stores threads as rows in the `discussions` collection
- *     (Phase 9.4 decision: no thread-specific tables, reuse
- *     the codegen pipeline). We resolve the table at runtime
- *     so the report flow works whether the discussions
- *     collection is named `discussions`, `posts`, or anything
- *     else — sites that register a different forum slug just
- *     pass that through as `targetType`. Falls back to a
- *     clear "no such collection" error when unregistered.
- */
-/**
- * Issue #215 — verify the target exists AND surface its canonical
- * site id so the caller can reject cross-tenant report attempts.
- * Returns the target's `siteId` (or `null` for `member` targets,
- * which aren't site-scoped today). The site comparison happens at
- * the call site so the error message stays specific to "reports".
- */
 async function assertReportTargetExists(
   targetType: string,
   targetId: string,
 ): Promise<{ siteId: string | null }> {
   const db = getDb();
-  if (targetType === "comment" || targetType === "reply") {
-    const [row] = (await db
-      .select({ id: npComments.id, siteId: npComments.siteId })
+  if (targetType === "comment") {
+    const [row] = await db
+      .select({ siteId: npComments.siteId, status: npComments.status })
       .from(npComments)
       .where(eq(npComments.id, targetId))
-      .limit(1)) as Array<{ id: string; siteId: string }>;
-    if (!row) throw new NpNotFoundError(targetType, targetId);
+      .limit(1);
+    if (!row || row.status !== "visible") throw new NpNotFoundError("comment", targetId);
     return { siteId: row.siteId };
   }
   if (targetType === "member") {
-    const [row] = (await db
-      .select({ id: npMembers.id })
+    const [row] = await db
+      .select({ status: npMembers.status })
       .from(npMembers)
       .where(eq(npMembers.id, targetId))
-      .limit(1)) as Array<{ id: string }>;
-    if (!row) throw new NpNotFoundError("member", targetId);
-    // Members aren't site-scoped (one np_members row can have
-    // memberships across sites); skip the cross-site check.
+      .limit(1);
+    if (!row || row.status !== "active") throw new NpNotFoundError("member", targetId);
     return { siteId: null };
   }
-  if (targetType === "thread") {
-    // Resolve to a registered collection that opts in to
-    // member-write thread semantics. We try `discussions`
-    // first (the forum plugin's default slug); future
-    // multi-forum setups can register different slugs and
-    // the plugin's report-emission path can supply them.
-    const slug = "discussions";
-    let registered: ReturnType<typeof getCollectionRegistration> | null;
-    try {
-      registered = getCollectionRegistration(slug);
-    } catch {
-      registered = null;
-    }
-    if (!registered) {
-      throw new NpValidationError("Invalid input", [
-        {
-          field: "targetType",
-          message:
-            "Reports against threads require the forum plugin's `discussions` collection to be registered.",
-        },
-      ]);
-    }
-    const table = getCollectionTable(slug) as PgTable;
-    const idCol = (table as unknown as Record<string, unknown>).id;
-    const siteCol = (table as unknown as Record<string, unknown>).siteId;
-    const [row] = (await db
-      .select({ id: idCol as never, siteId: siteCol as never })
-      .from(table)
-      .where(eq(idCol as never, targetId))
-      .limit(1)) as Array<{ id: string; siteId: string | null }>;
-    if (!row) throw new NpNotFoundError("thread", targetId);
-    return { siteId: row.siteId ?? null };
-  }
-  throw new NpValidationError("Invalid input", [
-    {
-      field: "targetType",
-      message: `Reports against "${targetType}" are not supported`,
-    },
-  ]);
+  const target = await npResolveDocumentEngagementTarget(targetType, targetId, "reports");
+  return { siteId: target.siteId };
 }
 
 /** Cheap "is anything in the queue?" probe for the admin badge. */
 export async function unresolvedReportCount(): Promise<number> {
   const db = getDb();
-  // Phase 18 — count only the current tenant's queue.
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const [row] = (await db
     .select({ total: count() })

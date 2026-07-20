@@ -178,17 +178,18 @@ boards. Both skins expose the same route-owned view, visible-comment, and
 document-reaction totals. The full skin additionally exposes notices,
 categories, search, member filtering, numbered pagination, author avatars and
 display names, created/updated dates, pin/lock/moderation state, comments,
-owner actions, and route-owned composers.
+owner actions, member report actions, and route-owned composers.
 
 ## Engagement contract
 
-Forum posts opt into all three Core collection features:
+Forum posts opt into all four Core collection features:
 
 ```ts
 community: {
   comments: true,
   reactions: true,
   views: true,
+  reports: true,
 }
 ```
 
@@ -213,6 +214,15 @@ for missing activity. Lists, skins, and home feeds use this batch contract
 instead of issuing per-post queries. Document deletion removes its comments,
 document reactions, and view receipts; site deletion and `plugin doctor`
 include the view table as well.
+
+`community.reports` adds a member-only report action to published public forum
+post details. The request uses the configured forum-post collection slug, so a
+site that renames `collections.posts` does not depend on a hard-coded `thread`
+target. The Core service rejects missing, private, pending, or cross-site
+documents and duplicate unresolved reports. Admin Reports shows the post title,
+status, and collection edit link; `unpublish-document` moves the post to
+`pending`, while `dismiss` closes the case without changing it. Comments keep
+using the shared `comment` report target and `hide-comment` action.
 
 ## Custom skins
 
@@ -247,6 +257,12 @@ authentication, file ownership, upload, download visibility, or
 collection-write policy. Projects that do not consume
 `@nexpress/app/styles/globals.css` should import
 `@nexpress/plugin-forum/styles.css` themselves.
+
+Detail skins must place both `authorActions` and `reportAction`. They are
+separate route-owned nodes: the former appears only to the owner, while the
+latter appears only to another authenticated member on a published public
+post. Skins may arrange them together, but must not reimplement report target,
+authentication, or CSRF behavior.
 
 Post-list skins receive the parsed `query`, `searchMaxLength`, and a
 `hrefForQuery(patch)` helper. Use that helper for author, category, reset, and

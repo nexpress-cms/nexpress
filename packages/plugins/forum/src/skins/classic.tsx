@@ -325,7 +325,12 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
               {post.createdAt.toLocaleString(messages.locale)}
             </time>
           </div>
-          {props.authorActions}
+          {props.authorActions || props.reportAction ? (
+            <div className="np-forum-post-actions">
+              {props.authorActions}
+              {props.reportAction}
+            </div>
+          ) : null}
         </header>
         <div className="np-forum-post-body np-forum-rich-text">{props.body}</div>
         {props.attachments.length > 0 ? (

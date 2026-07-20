@@ -317,6 +317,7 @@ describe("collection definition contract", () => {
     const collection = validCollection();
     collection.community = {
       comments: true,
+      reports: true,
       memberWrite: {
         create: true,
         writableFields: ["title", "title", "missing"],
@@ -345,6 +346,7 @@ describe("collection definition contract", () => {
     const collection = validCollection();
     collection.community = {
       comments: true,
+      reports: true,
       memberWrite: {
         create: true,
         update: true,
@@ -360,6 +362,21 @@ describe("collection definition contract", () => {
     };
 
     expect(npValidateCollectionDefinition(collection)).toEqual({ ok: true });
+  });
+
+  it("rejects document reports on reserved target slugs", () => {
+    const collection = validCollection();
+    collection.slug = "comment";
+    collection.community = { reports: true };
+
+    expect(npAnalyzeCollectionDefinition(collection)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          location: "community.reports",
+          message: expect.stringMatching(/reserved report target/),
+        }),
+      ]),
+    );
   });
 
   it("accepts an empty writable field allowlist for delete-only member contracts", () => {

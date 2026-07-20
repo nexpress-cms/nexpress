@@ -15,7 +15,7 @@ export interface NpResolvedDocumentEngagementTarget {
 export async function npResolveDocumentEngagementTarget(
   targetType: string,
   targetId: string,
-  feature: "reactions" | "views",
+  feature: "reactions" | "views" | "reports",
   options: { requirePublic?: boolean } = {},
 ): Promise<NpResolvedDocumentEngagementTarget> {
   const target = npRequireEngagementTarget({ targetType, targetId });

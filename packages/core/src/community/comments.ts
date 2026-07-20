@@ -732,8 +732,17 @@ export async function staffHideComment(
   reason?: string | null,
 ): Promise<void> {
   const { row: existing, siteId } = await loadCommentForStaffOp(commentId);
+  if (existing.status === "hidden") return;
+  if (existing.status !== "visible" && existing.status !== "pending") {
+    throw new NpValidationError("Invalid state", [
+      {
+        field: "status",
+        message: `Comment is "${existing.status}" and cannot be hidden`,
+      },
+    ]);
+  }
   const db = getDb();
-  await db
+  const [updated] = await db
     .update(npComments)
     .set({
       status: "hidden",
@@ -741,7 +750,21 @@ export async function staffHideComment(
       hiddenByMemberId: null,
       hiddenReason: reason ?? null,
     })
-    .where(and(eq(npComments.id, commentId), eq(npComments.siteId, siteId)));
+    .where(
+      and(
+        eq(npComments.id, commentId),
+        eq(npComments.siteId, siteId),
+        eq(npComments.status, existing.status),
+      ),
+    )
+    .returning({ id: npComments.id });
+  if (!updated) {
+    const { row: current } = await loadCommentForStaffOp(commentId);
+    if (current.status === "hidden") return;
+    throw new NpValidationError("Invalid state", [
+      { field: "status", message: "Comment status changed concurrently" },
+    ]);
+  }
   await recordAuditEvent({
     actor: { kind: "staff", userId: staffUserId },
     action: "comment.hide",

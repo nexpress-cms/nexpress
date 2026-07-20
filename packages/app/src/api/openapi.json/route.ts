@@ -32,8 +32,14 @@ import {
   npAuthSingleUseTokenPattern,
   npAuthUuidPattern,
   npMemberHandlePattern,
+  npMemberStatuses,
   npUserRoles,
 } from "@nexpress/core/auth-contract";
+import {
+  npCommunityCommentStatuses,
+  npCommunityContractLimits,
+  npCommunityReportResolutionActions,
+} from "@nexpress/core/community-contract";
 import {
   npDynamicSettingOwnerPattern,
   npSettingsContractLimits,
@@ -588,6 +594,60 @@ function revisionSnapshotSchema(
 
 export function buildSpec(): OpenApiSchema {
   const slugs = getAllCollectionSlugs();
+  const reportTargetTypeSchema: OpenApiSchema = {
+    type: "string",
+    maxLength: 63,
+    pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+  };
+  const reportRowProperties: Record<string, OpenApiSchema> = {
+    id: { type: "string", format: "uuid" },
+    reporterId: { type: "string", format: "uuid" },
+    targetType: reportTargetTypeSchema,
+    targetId: { type: "string", format: "uuid" },
+    reason: {
+      type: "string",
+      minLength: 1,
+      maxLength: npCommunityContractLimits.reasonLength,
+      pattern: "^(?!\\s)(?![\\s\\S]*\\s$)[\\s\\S]+$",
+    },
+    resolvedAt: { type: ["string", "null"], format: "date-time" },
+    resolvedByUserId: { type: ["string", "null"], format: "uuid" },
+    resolvedByMemberId: { type: ["string", "null"], format: "uuid" },
+    resolution: {
+      type: ["string", "null"],
+      enum: [...npCommunityReportResolutionActions, null],
+    },
+    siteId: { type: "string", pattern: npSiteIdPattern },
+    createdAt: { type: "string", format: "date-time" },
+  };
+  const reportRowRequired = Object.keys(reportRowProperties);
+  const reportTargetContextProperties: Record<string, OpenApiSchema> = {
+    kind: { type: "string", enum: ["comment", "document", "member", "missing"] },
+    label: {
+      type: "string",
+      minLength: 1,
+      maxLength: npCommunityContractLimits.labelLength,
+    },
+    excerpt: {
+      type: ["string", "null"],
+      maxLength: npCommunityContractLimits.descriptionLength,
+    },
+    status: {
+      type: ["string", "null"],
+      enum: [
+        ...new Set([
+          ...npCommunityCommentStatuses,
+          ...npCollectionDocumentStatuses,
+          ...npMemberStatuses,
+        ]),
+        null,
+      ],
+    },
+    href: { type: ["string", "null"], maxLength: 512, pattern: "^/admin/" },
+    collectionSlug: { ...reportTargetTypeSchema, type: ["string", "null"] },
+    documentId: { type: ["string", "null"], format: "uuid" },
+    authorMemberId: { type: ["string", "null"], format: "uuid" },
+  };
   const contentTransferBaseProperties: Record<string, OpenApiSchema> = {
     version: { type: "string", enum: [NP_CONTENT_TRANSFER_VERSION] },
     exportedAt: {
@@ -632,6 +692,49 @@ export function buildSpec(): OpenApiSchema {
     "media",
   ];
   const schemas: Record<string, OpenApiSchema> = {
+    community_report_row: {
+      type: "object",
+      additionalProperties: false,
+      required: reportRowRequired,
+      properties: reportRowProperties,
+    },
+    community_report_target_context: {
+      type: "object",
+      additionalProperties: false,
+      required: Object.keys(reportTargetContextProperties),
+      properties: reportTargetContextProperties,
+    },
+    community_moderation_report_row: {
+      type: "object",
+      additionalProperties: false,
+      required: [...reportRowRequired, "target"],
+      properties: {
+        ...reportRowProperties,
+        target: { $ref: "#/components/schemas/community_report_target_context" },
+      },
+    },
+    community_moderation_report_page: {
+      type: "object",
+      additionalProperties: false,
+      required: ["docs", "totalDocs", "totalPages", "page", "limit", "hasNextPage", "hasPrevPage"],
+      properties: {
+        docs: {
+          type: "array",
+          maxItems: npCommunityContractLimits.pageRows,
+          items: { $ref: "#/components/schemas/community_moderation_report_row" },
+        },
+        totalDocs: { type: "integer", minimum: 0 },
+        totalPages: { type: "integer", minimum: 0 },
+        page: { type: "integer", minimum: 1 },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: npCommunityContractLimits.pageRows,
+        },
+        hasNextPage: { type: "boolean" },
+        hasPrevPage: { type: "boolean" },
+      },
+    },
     content_transfer_json: {
       oneOf: [
         { type: "string", maxLength: npContentTransferContractLimits.jsonStringLength },
@@ -4633,27 +4736,39 @@ export function buildSpec(): OpenApiSchema {
     post: {
       summary: "File a community report",
       description:
-        "Members report a comment, thread, reply, or another member. The report enters the moderation queue (`/api/admin/community/reports`). One row per submission — duplicate filings are not deduped.",
+        "Members report a visible comment, an active member, or a public document whose collection enables `community.reports`. Document targets use the canonical collection slug. A member can have only one unresolved report per site and target; duplicate open filings return 409.",
       requestBody: {
         required: true,
         content: {
           "application/json": {
             schema: {
               type: "object",
+              additionalProperties: false,
               required: ["targetType", "targetId", "reason"],
               properties: {
-                targetType: { type: "string", enum: ["comment", "thread", "reply", "member"] },
+                targetType: {
+                  ...reportTargetTypeSchema,
+                  description: "Reserved `comment` / `member` target or a collection slug.",
+                },
                 targetId: { type: "string", format: "uuid" },
-                reason: { type: "string", maxLength: 1000 },
+                reason: reportRowProperties.reason,
               },
             },
           },
         },
       },
       responses: {
-        "201": { description: "Report row" },
+        "201": {
+          description: "Report row",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_report_row" },
+            },
+          },
+        },
         "400": { description: "Validation error" },
         "401": { description: "Member auth required" },
+        "409": { description: "The member already has an unresolved report for this target" },
       },
     },
   };
@@ -4670,13 +4785,21 @@ export function buildSpec(): OpenApiSchema {
         {
           in: "query",
           name: "targetType",
-          schema: { type: "string", enum: ["comment", "thread", "reply", "member"] },
+          schema: reportTargetTypeSchema,
         },
         { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 200 } },
         { in: "query", name: "page", schema: { type: "integer", minimum: 1 } },
       ],
       responses: {
-        "200": { description: "Paginated report list" },
+        "200": {
+          description:
+            "Paginated report list with exact operator-safe target context, status, excerpt, and Admin link",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_moderation_report_page" },
+            },
+          },
+        },
         "403": { description: "Requires admin / editor / moderator role" },
       },
     },
@@ -4685,7 +4808,7 @@ export function buildSpec(): OpenApiSchema {
     post: {
       summary: "Resolve a moderation report",
       description:
-        'Marks the report resolved with a free-form `resolution` label (e.g. `"hidden"`, `"banned"`, `"dismissed"`). The actual moderation action (hide / ban / etc.) is a separate call.',
+        "Applies one target-compatible moderation action and resolves the report under a report-row lock. `hide-comment` hides a visible comment; `unpublish-document` moves a report-enabled document to pending review; `dismiss` changes only the report.",
       parameters: [
         { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
       ],
@@ -4695,14 +4818,27 @@ export function buildSpec(): OpenApiSchema {
           "application/json": {
             schema: {
               type: "object",
-              required: ["resolution"],
-              properties: { resolution: { type: "string" } },
+              additionalProperties: false,
+              required: ["action"],
+              properties: {
+                action: {
+                  type: "string",
+                  enum: [...npCommunityReportResolutionActions],
+                },
+              },
             },
           },
         },
       },
       responses: {
-        "200": { description: "Updated report row" },
+        "200": {
+          description: "Updated report row",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_report_row" },
+            },
+          },
+        },
         "400": { description: "Already resolved or validation error" },
         "403": { description: "Requires admin / editor / moderator role" },
         "404": { description: "Report not found" },

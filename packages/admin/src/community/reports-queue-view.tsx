@@ -1,10 +1,12 @@
 "use client";
 
 import {
-  npRequireReportPageWire,
+  npRequireModerationReportPageWire,
+  type NpModerationReportWireRow,
+  type NpReportResolutionAction,
   type NpReportStatus,
-  type NpReportWireRow,
 } from "@nexpress/core/community-contract";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { npFetch } from "../lib/api-client.js";
@@ -21,11 +23,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog.js";
-import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 
-export type ReportRow = NpReportWireRow;
+export type ReportRow = NpModerationReportWireRow;
 type StatusFilter = NpReportStatus;
 
 const STATUS_LABELS: Record<StatusFilter, string> = {
@@ -35,14 +36,15 @@ const STATUS_LABELS: Record<StatusFilter, string> = {
 };
 
 /**
- * Mod-side report queue. Read-only on first paint then mutates via the
- * staff-CSRF-protected resolve endpoint. The actual moderation action
- * (hide / ban / etc.) is a separate call — `resolve` only marks the
- * report row and writes an audit entry.
+ * Mod-side report queue with validated target context and one closed action
+ * contract. Resolving can dismiss, hide a comment, or unpublish a document;
+ * the server rejects actions that do not match the target kind.
  */
 export function ReportsQueueView() {
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [totalDocs, setTotalDocs] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
   const [status, setStatus] = useState<StatusFilter>("unresolved");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,22 +54,27 @@ export function ReportsQueueView() {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ status, limit: "50" });
+      const params = new URLSearchParams({ status, limit: "50", page: page.toString() });
       const res = await npFetch(`/api/admin/community/reports?${params.toString()}`);
       const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok || !raw) {
         const message = extractErrorMessage(raw) ?? `HTTP ${res.status}`;
         throw new Error(message);
       }
-      const pageResult = npRequireReportPageWire(raw);
+      const pageResult = npRequireModerationReportPageWire(raw);
+      if (page > 1 && pageResult.docs.length === 0 && page > pageResult.totalPages) {
+        setPage(Math.max(1, pageResult.totalPages));
+        return;
+      }
       setReports(pageResult.docs);
       setTotalDocs(pageResult.totalDocs);
+      setTotalPages(pageResult.totalPages);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load reports");
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, [page, status]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -85,7 +92,7 @@ export function ReportsQueueView() {
             <Badge variant="secondary">{totalDocs}</Badge>
           </span>
         }
-        description="Member-filed reports against comments, members, and other community content. Resolving a report flips its row and writes an audit entry — take any follow-up action (hide / ban) separately."
+        description="Review the reported target in context, then dismiss it or apply the target's supported moderation action. Every resolution is validated and audited by the server."
       />
 
       <Card className="min-w-0">
@@ -95,7 +102,13 @@ export function ReportsQueueView() {
             <Label className="min-w-0 text-xs uppercase tracking-wide text-muted-foreground">
               Status
             </Label>
-            <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
+            <Select
+              value={status}
+              onValueChange={(value) => {
+                setStatus(value as StatusFilter);
+                setPage(1);
+              }}
+            >
               <SelectTrigger className="min-w-0 sm:w-40">
                 <SelectValue />
               </SelectTrigger>
@@ -133,10 +146,7 @@ export function ReportsQueueView() {
                 >
                   <div className="flex min-w-0 items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="break-words font-medium">{report.targetType}</p>
-                      <p className="break-all font-mono text-xs text-muted-foreground">
-                        {report.targetId}
-                      </p>
+                      <ReportTarget report={report} />
                     </div>
                     {report.resolvedAt ? (
                       <span className="shrink-0">
@@ -200,10 +210,7 @@ export function ReportsQueueView() {
                   reports.map((report) => (
                     <tr key={report.id} className="border-t border-border/60 align-top">
                       <td className="px-4 py-3">
-                        <div className="break-words font-medium">{report.targetType}</div>
-                        <div className="break-all font-mono text-xs text-muted-foreground">
-                          {report.targetId}
-                        </div>
+                        <ReportTarget report={report} />
                       </td>
                       <td className="px-4 py-3 max-w-md">
                         <span className="line-clamp-3 whitespace-pre-wrap break-words">
@@ -238,6 +245,32 @@ export function ReportsQueueView() {
               </tbody>
             </table>
           </div>
+
+          {totalPages > 1 ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
+              <span className="text-xs text-muted-foreground">
+                Page {page} of {totalPages}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={loading || page <= 1}
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={loading || page >= totalPages}
+                  onClick={() => setPage((current) => current + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -262,19 +295,18 @@ interface ResolveDialogProps {
 }
 
 function ResolveDialog({ report, onClose, onResolved }: ResolveDialogProps) {
-  const [resolution, setResolution] = useState("dismissed");
+  const [action, setAction] = useState<NpReportResolutionAction>("dismiss");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const submit = async () => {
-    if (!resolution.trim()) return;
     setSubmitting(true);
     setError(null);
     try {
       const res = await npFetch(`/api/admin/community/reports/${report.id}/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resolution }),
+        body: JSON.stringify({ action }),
       });
       if (!res.ok) {
         const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
@@ -289,13 +321,13 @@ function ResolveDialog({ report, onClose, onResolved }: ResolveDialogProps) {
   };
 
   return (
-    <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
+    <Dialog open onOpenChange={(open) => (!open && !submitting ? onClose() : undefined)}>
       <DialogContent className="min-w-0" data-np-report-resolve-dialog>
         <DialogHeader>
           <DialogTitle>Resolve report</DialogTitle>
           <DialogDescription className="break-words">
-            Free-form label that tells future moderators what action you took. Common values:{" "}
-            <code>hidden</code>, <code>banned</code>, <code>dismissed</code>.
+            Choose one supported action. The target change and report resolution are handled by the
+            same server contract.
           </DialogDescription>
         </DialogHeader>
         <div className="min-w-0 space-y-3">
@@ -304,27 +336,67 @@ function ResolveDialog({ report, onClose, onResolved }: ResolveDialogProps) {
             <div className="mt-1 whitespace-pre-wrap break-words">{report.reason}</div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="resolution">Resolution label</Label>
-            <Input
-              id="resolution"
-              value={resolution}
-              onChange={(event) => setResolution(event.target.value)}
-              placeholder="hidden / banned / dismissed"
-              maxLength={120}
-            />
+            <Label htmlFor="report-action">Action</Label>
+            <Select
+              value={action}
+              onValueChange={(value) => setAction(value as NpReportResolutionAction)}
+              disabled={submitting}
+            >
+              <SelectTrigger id="report-action">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="dismiss">Dismiss without changing the target</SelectItem>
+                {report.target.kind === "comment" ? (
+                  <SelectItem value="hide-comment">Hide comment</SelectItem>
+                ) : null}
+                {report.target.kind === "document" &&
+                (report.target.status === "published" || report.target.status === "pending") ? (
+                  <SelectItem value="unpublish-document">Unpublish document for review</SelectItem>
+                ) : null}
+              </SelectContent>
+            </Select>
           </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button onClick={() => void submit()} disabled={submitting || !resolution.trim()}>
+          <Button onClick={() => void submit()} disabled={submitting}>
             {submitting ? "Resolving…" : "Resolve"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ReportTarget({ report }: { report: ReportRow }) {
+  const content = (
+    <>
+      <span className="block break-words font-medium">{report.target.label}</span>
+      <span className="block break-words text-xs text-muted-foreground">
+        {report.target.kind === "missing"
+          ? "Target no longer resolves"
+          : `${report.targetType} · ${report.target.status ?? "unknown status"}`}
+      </span>
+      {report.target.excerpt ? (
+        <span className="mt-1 block line-clamp-2 break-words text-xs text-muted-foreground">
+          {report.target.excerpt}
+        </span>
+      ) : null}
+    </>
+  );
+  return report.target.href ? (
+    <Link
+      className="block rounded-sm hover:underline focus-visible:outline-none"
+      href={report.target.href}
+    >
+      {content}
+    </Link>
+  ) : (
+    <div>{content}</div>
   );
 }
 

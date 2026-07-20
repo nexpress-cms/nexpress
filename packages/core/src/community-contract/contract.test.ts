@@ -19,6 +19,7 @@ import {
   npRequireContentViewRow,
   npRequireFollowTarget,
   npRequireMarkNotificationsReadRequest,
+  npRequireModerationReportPageWire,
   npRequireNotificationKindCatalog,
   npRequireNotificationPrefs,
   npRequireNotificationPrefsPatch,
@@ -26,6 +27,8 @@ import {
   npRequireRecordAuditEventInput,
   npRequireReactionTarget,
   npRequireReportPageWire,
+  npRequireReportRequest,
+  npRequireResolveReportRequest,
   npRequireReputationDelta,
   npRequireReputationEvent,
   npRequireRuntimeDiagnostics,
@@ -228,6 +231,91 @@ describe("community contract", () => {
     expect(() =>
       npRequireReactionTarget({ targetType: `a${"b".repeat(63)}`, targetId: COMMENT_ID }),
     ).toThrow(/bounded text/u);
+  });
+
+  it("links report requests, target context, and resolution actions", () => {
+    expect(
+      npRequireReportRequest({
+        targetType: "forum-posts",
+        targetId: TARGET_ID,
+        reason: "spam",
+      }),
+    ).toEqual({ targetType: "forum-posts", targetId: TARGET_ID, reason: "spam" });
+    expect(npRequireResolveReportRequest({ action: "unpublish-document" })).toEqual({
+      action: "unpublish-document",
+    });
+    expect(() =>
+      npRequireResolveReportRequest({ action: "dismiss", resolution: "legacy" }),
+    ).toThrow(NpCommunityContractError);
+    expect(() =>
+      npRequireReportRequest({
+        targetType: "Forum Posts",
+        targetId: TARGET_ID,
+        reason: "spam",
+      }),
+    ).toThrow(NpCommunityContractError);
+
+    const report = {
+      id: COMMENT_ID,
+      reporterId: MEMBER_ID,
+      targetType: "forum-posts",
+      targetId: TARGET_ID,
+      reason: "spam",
+      resolvedAt: null,
+      resolvedByUserId: null,
+      resolvedByMemberId: null,
+      resolution: null,
+      siteId: "default",
+      createdAt: NOW,
+      target: {
+        kind: "document",
+        label: "Reported post",
+        excerpt: "Forum post",
+        status: "published",
+        href: `/admin/collections/forum-posts/${TARGET_ID}`,
+        collectionSlug: "forum-posts",
+        documentId: TARGET_ID,
+        authorMemberId: MEMBER_ID,
+      },
+    };
+    expect(
+      npRequireModerationReportPageWire({
+        docs: [report],
+        totalDocs: 1,
+        totalPages: 1,
+        page: 1,
+        limit: 50,
+        hasNextPage: false,
+        hasPrevPage: false,
+      }).docs[0]?.target.kind,
+    ).toBe("document");
+    expect(() =>
+      npRequireModerationReportPageWire({
+        docs: [{ ...report, target: { ...report.target, href: "https://example.com" } }],
+        totalDocs: 1,
+        totalPages: 1,
+        page: 1,
+        limit: 50,
+        hasNextPage: false,
+        hasPrevPage: false,
+      }),
+    ).toThrow(NpCommunityContractError);
+    expect(() =>
+      npRequireModerationReportPageWire({
+        docs: [
+          {
+            ...report,
+            target: { ...report.target, kind: "comment", status: "published" },
+          },
+        ],
+        totalDocs: 1,
+        totalPages: 1,
+        page: 1,
+        limit: 50,
+        hasNextPage: false,
+        hasPrevPage: false,
+      }),
+    ).toThrow(NpCommunityContractError);
   });
 
   it("validates exact daily view receipts and aggregate invariants", () => {

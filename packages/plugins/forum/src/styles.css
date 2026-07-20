@@ -58,6 +58,71 @@
     cursor: pointer;
   }
 
+  .np-forum-author-actions {
+    display: contents;
+  }
+
+  .np-forum-report-backdrop {
+    position: fixed;
+    z-index: 100;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgb(15 23 42 / 55%);
+  }
+
+  .np-forum-report-dialog {
+    display: grid;
+    width: min(100%, 30rem);
+    gap: 0.9rem;
+    padding: 1.25rem;
+    border: 1px solid var(--np-color-border, #d1d5db);
+    border-radius: var(--np-radius-lg, 0.75rem);
+    background: var(--np-color-card, #fff);
+    box-shadow: 0 1.5rem 4rem rgb(15 23 42 / 25%);
+    color: var(--np-color-foreground, #111827);
+  }
+
+  .np-forum-report-dialog h2,
+  .np-forum-report-dialog p {
+    margin: 0;
+  }
+
+  .np-forum-report-dialog p {
+    color: var(--np-color-muted-foreground, #64748b);
+    font-size: 0.9rem;
+  }
+
+  .np-forum-report-dialog p[role="alert"] {
+    color: var(--np-color-destructive, #dc2626);
+  }
+
+  .np-forum-report-dialog textarea {
+    width: 100%;
+    min-height: 8rem;
+    resize: vertical;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--np-color-border, #d1d5db);
+    border-radius: var(--np-radius-md, 0.5rem);
+    background: var(--np-color-background, #fff);
+    color: inherit;
+    font: inherit;
+  }
+
+  .np-forum-report-dialog .np-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.6rem;
+  }
+
+  .np-forum-report-dialog .np-form-actions button:last-child {
+    border-color: var(--np-color-primary, #2563eb);
+    background: var(--np-color-primary, #2563eb);
+    color: var(--np-color-primary-foreground, #fff);
+  }
+
   .np-forum-toolbar a[aria-current="page"] {
     border-color: var(--np-color-primary, #2563eb);
     color: var(--np-color-primary, #2563eb);

@@ -45,8 +45,8 @@ many independent moving parts. Sites pick what they need:
 - **Reactions / follows / notifications** (Phase 9.3).
 - **Forum** — `@nexpress/plugin-forum`, native board/post collections,
   document reactions, and daily-unique view receipts.
-- **Moderation** (Phase 9.5 / 9.5a / 9.5b) — reports queue,
-  bans (scoped), audit log, role-grant UI.
+- **Moderation** (Phase 9.5 / 9.5a / 9.5b) — contextual reports queue,
+  closed resolution actions, bans (scoped), audit log, role-grant UI.
 - **SSO** (Phase 9.6a–e) — pluggable OAuth providers via
   `arctic`. GitHub + Google plugins ship in-tree.
 - **Adapters** (Phase 9.6f–g) — `setSpamAdapter`,
@@ -243,6 +243,17 @@ Counts remain available through `countReactions(targetType, targetId)`. The
 forum detail updates its recommendation state after a successful request and
 refreshes the canonical summary; no realtime push is implied.
 
+Collections opt into document reports independently with
+`community.reports: true`. The report target is the canonical collection slug,
+not a generic `thread` alias, so custom forum collection names resolve through
+the same registry and site boundary as their documents. Reserved targets are
+`comment` and `member`; replies use `comment` because every reply is an
+`np_comments` row, and collections using either reserved slug cannot enable
+document reports. Only visible comments, active members, and published public
+documents can be reported. A partial unique index permits at most one
+unresolved report per site, reporter, and target while allowing a new report
+after the earlier case is closed and the target is public again.
+
 ---
 
 ## 7. Notifications
@@ -316,7 +327,7 @@ Three admin pages:
 
 | Page                        | What it shows                        |
 | --------------------------- | ------------------------------------ |
-| `/admin/community/reports`  | Open reports queue (Phase 9.5)       |
+| `/admin/community/reports`  | Contextual report queue and actions  |
 | `/admin/community/comments` | Comments table with hide / restore   |
 | `/admin/community/pending`  | Member-authored docs awaiting review |
 | `/admin/community/bans`     | Active bans + revoke                 |
@@ -337,6 +348,16 @@ Per-member actions on `/admin/members/[id]`:
 Cascade behavior (Phase 9.7m / 9.7q): deleting a doc
 cascade-deletes its comments, reactions, view receipts, and reports. Deleting
 a comment cascades reactions on it.
+
+The report queue resolves each target to an exact operator-safe projection:
+label, excerpt, current status, author where available, and a link to the
+Admin document/member surface. A missing or cross-site target is shown as
+unavailable rather than crashing the queue. Resolution accepts only three
+actions: `dismiss`, `hide-comment`, and `unpublish-document`. Target/action
+mismatches fail before mutation. Comment hiding and document unpublishing use
+the existing moderation and collection pipelines; document reports move the
+row to `pending` review while retaining validation, revisions, hooks, jobs,
+and the unpublish lifecycle.
 
 ---
 
@@ -494,9 +515,10 @@ target pairs are validated before the best-effort insert, and reputation events
 must name the same recipient whose score would be updated.
 
 `plugin doctor` reports malformed community settings and persisted rows as
-`community.contract`, including malformed `np_content_views` rows. Adapter and
-registry failures are contained in a bounded
-runtime diagnostic buffer and surface as the `community` row in Admin Health;
+`community.contract`, including malformed `np_content_views` rows, invalid or
+orphaned report targets, cross-site report targets, and unresolved report
+duplicates. Adapter and registry failures are contained in a bounded runtime
+diagnostic buffer and surface as the `community` row in Admin Health;
 they are not silently converted into successful moderation or reputation
 results. Malformed persisted notification preferences also emit a runtime
 diagnostic and fail closed for the notification side effect without rolling
@@ -529,8 +551,8 @@ In rough order of likely impact:
   (#207). Per-member opt-in to a daily digest.
 - **Notification preferences UI** — Phase 16.3 (#206).
   Members can opt out per `kind`.
-- **Reports for thread / reply targets** — #197 enabled
-  `thread` / `reply` as report target types.
+- **Collection-native document reports** — report-enabled collections use
+  their real slug; replies share the reserved `comment` target.
 - **Site-scoped community tables** — Phase 18 (#211)
   added `site_id` to `np_comments`, `np_reactions`,
   `np_content_views`, `np_follows`, `np_member_mutes`, `np_notifications`,

@@ -133,6 +133,15 @@ export interface NpForumMessages {
   cancel: string;
   deleting: string;
   deleteFailed: string;
+  report: string;
+  reportTitle: string;
+  reportHelp: string;
+  reportPlaceholder: string;
+  reportSubmit: string;
+  reportSubmitting: string;
+  reportSuccess: string;
+  reportClose: string;
+  reportFailed: string;
   signIn: string;
   register: string;
   loginRequired: string;
@@ -168,6 +177,7 @@ export interface NpForumPostDetailSkinProps {
   post: NpForumPostSummary;
   body: ReactNode;
   authorActions: ReactNode;
+  reportAction: ReactNode;
   engagement: ReactNode;
   comments: ReactNode;
   attachments: NpForumAttachment[];

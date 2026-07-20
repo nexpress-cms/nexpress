@@ -1,6 +1,7 @@
 import { can, NpForbiddenError } from "@nexpress/core";
 import { resolveReport } from "@nexpress/core/community";
 import {
+  npRequireCommunityId,
   npRequireResolveReportRequest,
   npToReportWireRow,
 } from "@nexpress/core/community-contract";
@@ -11,6 +12,7 @@ import { npErrorResponse, npSuccessResponse } from "../../../../../../lib/api-re
 import { requireAuth } from "../../../../../../lib/auth-helpers";
 import { ensureFor } from "../../../../../../lib/init-core";
 import { npRequireCommunityRequest } from "../../../../../../lib/community-contract";
+import { revalidateCollection } from "../../../../../../lib/revalidate";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -21,18 +23,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const { id } = await params;
-    const { resolution } = npRequireCommunityRequest(
+    const reportId = npRequireCommunityRequest(
+      (value) => npRequireCommunityId(value, "community.resolveReport.id"),
+      id,
+    );
+    const { action } = npRequireCommunityRequest(
       npRequireResolveReportRequest,
       await readJsonBody(request).catch(() => null),
     );
 
-    const row = await resolveReport({
-      reportId: id,
-      resolution,
+    const result = await resolveReport({
+      reportId,
+      action,
       actor: { kind: "staff", user },
     });
+    if (result.moderatedDocument) {
+      await revalidateCollection(
+        result.moderatedDocument.collectionSlug,
+        result.moderatedDocument.document,
+      );
+    }
 
-    return npSuccessResponse(npToReportWireRow(row));
+    return npSuccessResponse(npToReportWireRow(result.report));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
