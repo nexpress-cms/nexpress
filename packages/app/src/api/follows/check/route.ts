@@ -15,7 +15,7 @@ import { requireMember } from "../../../lib/member-auth-helpers";
  */
 export async function GET(request: NextRequest) {
   try {
-    await ensureFor("write");
+    await ensureFor("read");
     const member = await requireMember(request);
     const url = request.nextUrl;
     const { targetType, targetId } = npRequireCommunityRequest(npRequireFollowTarget, {

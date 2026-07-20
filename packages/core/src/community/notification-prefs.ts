@@ -49,6 +49,11 @@ const builtinKinds: NpNotificationKindMeta[] = [
     description: "Someone replied to one of your comments.",
   },
   {
+    kind: "comment.received",
+    label: "Comments on your content",
+    description: "Someone commented on a document you authored.",
+  },
+  {
     kind: "comment.mention",
     label: "Mentions in comments",
     description: "Someone @-mentioned you in a comment.",
@@ -67,6 +72,11 @@ const builtinKinds: NpNotificationKindMeta[] = [
     kind: "follow.received",
     label: "New followers",
     description: "Someone started following you.",
+  },
+  {
+    kind: "follow.activity",
+    label: "Subscribed activity",
+    description: "A followed board or document has new activity.",
   },
 ];
 

@@ -1,6 +1,8 @@
 export const npCommunityCommentStatuses = ["visible", "pending", "hidden", "deleted"] as const;
 export const npCommunityCommentSorts = ["newest", "oldest", "top"] as const;
-export const npCommunityFollowTargets = ["member", "thread", "tag"] as const;
+/** Reserved follow targets. Canonical collection slugs are also valid targets. */
+export const npCommunityFollowTargets = ["member"] as const;
+export const npCommunityFollowActivityKinds = ["comment.created", "document.published"] as const;
 /** Reserved report targets. Canonical collection slugs are also valid targets. */
 export const npCommunityReportTargets = ["comment", "member"] as const;
 export const npCommunityReportStatuses = ["unresolved", "resolved", "all"] as const;
@@ -39,7 +41,9 @@ export const npCommunityCapabilities = [
 
 export type CommentStatus = (typeof npCommunityCommentStatuses)[number];
 export type NpCommentSort = (typeof npCommunityCommentSorts)[number];
-export type NpFollowTarget = (typeof npCommunityFollowTargets)[number];
+/** `member` or a canonical collection slug that enabled document follows. */
+export type NpFollowTarget = string;
+export type NpFollowActivityKind = (typeof npCommunityFollowActivityKinds)[number];
 /** `comment`, `member`, or a canonical collection slug. */
 export type NpReportTarget = string;
 export type NpReportStatus = (typeof npCommunityReportStatuses)[number];
@@ -313,6 +317,16 @@ export interface NpFollowInput {
   targetId: string;
 }
 
+export type NpFollowActivityNotificationPayload = {
+  activity: NpFollowActivityKind;
+  subjectType: string;
+  subjectId: string;
+  targetType: string;
+  targetId: string;
+  href: string;
+  commentId: string | null;
+};
+
 export interface NpNotificationRow {
   id: string;
   memberId: string;
@@ -522,7 +536,13 @@ export interface NpPageWire<T> {
 
 export interface NpCommunityRuntimeDiagnostic {
   source:
-    "roles" | "notification-kinds" | "notification-prefs" | "spam" | "profanity" | "reputation";
+    | "roles"
+    | "notification-kinds"
+    | "notification-prefs"
+    | "notifications"
+    | "spam"
+    | "profanity"
+    | "reputation";
   message: string;
   occurredAt: string;
 }

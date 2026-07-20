@@ -64,6 +64,7 @@ describe("forum factory", () => {
       "attachment-item": "[data-np-forum-attachment]",
       comments: ".np-forum-comments",
       engagement: '[data-np-forum-engagement="post"]',
+      subscription: "[data-np-forum-subscription]",
       "engagement-summary": '[data-np-forum-engagement="summary"]',
       "board-directory-block": '[data-np-forum-block="board-directory"]',
       "post-feed-block": '[data-np-forum-block="post-feed"]',

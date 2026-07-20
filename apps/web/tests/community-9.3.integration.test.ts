@@ -104,6 +104,19 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
   beforeAll(async () => {
     await ensureMigrated();
     registerTestCollections();
+    // App bootstrap reconciles the active project collections and intentionally
+    // removes this test-only fixture. Register it once more after bootstrap so
+    // the owner-notification case exercises the real member-write route.
+    const { ensureFor } = await import("@/lib/init-core");
+    await ensureFor("read");
+    const { discussionsCollection } = await import("@/collections/discussions");
+    const { discussionsTable } = await import("@/db/generated/collections");
+    const { registerCollection } = await import("@nexpress/core");
+    registerCollection("discussions", discussionsTable as never, {
+      ...discussionsCollection,
+      access: undefined,
+      hooks: undefined,
+    });
   });
   beforeEach(async () => {
     await truncateAll();
@@ -230,6 +243,55 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     expect(notifs.body.notifications[0]?.payload.replyAuthorId).toBe(replier.memberId);
   });
 
+  it("top-level comments notify a member-authored document owner", async () => {
+    const owner = await seedActiveMember("discussion-owner", "discussion-owner@example.com");
+    const commenter = await seedActiveMember(
+      "discussion-commenter",
+      "discussion-commenter@example.com",
+    );
+    const created = await collectionPOST(
+      jsonRequest("/api/collections/discussions", {
+        method: "POST",
+        cookies: [`np-mb-session=${owner.sessionCookie}`, `np-mb-csrf=${owner.csrfCookie}`],
+        headers: { "x-csrf-token": owner.csrfCookie },
+        body: JSON.stringify({
+          title: "Owned discussion",
+          slug: "owned-discussion",
+          body: npCreateEmptyRichTextContent(),
+        }),
+      }),
+      { params: Promise.resolve({ slug: "discussions" }) },
+    );
+    const discussion = await readJson<{ id: string }>(created);
+    expect(discussion.status).toBe(201);
+
+    const response = await commentsPOST(
+      jsonRequest(`/api/collections/discussions/${discussion.body.id}/comments`, {
+        method: "POST",
+        cookies: [`np-mb-session=${commenter.sessionCookie}`, `np-mb-csrf=${commenter.csrfCookie}`],
+        headers: { "x-csrf-token": commenter.csrfCookie },
+        body: JSON.stringify({ bodyMd: "top-level reply" }),
+      }),
+      { params: Promise.resolve({ slug: "discussions", id: discussion.body.id }) },
+    );
+    expect(response.status).toBe(201);
+
+    const inbox = await notificationsGET(
+      jsonRequest("/api/notifications", {
+        cookies: [`np-mb-session=${owner.sessionCookie}`],
+      }),
+    );
+    const body = await readJson<{
+      unread: number;
+      notifications: Array<{ kind: string; payload: Record<string, unknown> }>;
+    }>(inbox);
+    expect(body.body.unread).toBe(1);
+    expect(body.body.notifications[0]).toMatchObject({
+      kind: "comment.received",
+      payload: { targetType: "discussions", targetId: discussion.body.id },
+    });
+  });
+
   it("follow + unfollow + isFollowing + notification", async () => {
     const a = await seedActiveMember("gail", "gail@example.com");
     const b = await seedActiveMember("hank", "hank@example.com");
@@ -308,6 +370,93 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     );
     const afterBody = await readJson<{ following: boolean }>(after);
     expect(afterBody.body.following).toBe(true);
+  });
+
+  it("subscribes to an enabled collection document and receives one actionable comment event", async () => {
+    const postId = await seedStaffPostId();
+    const subscriber = await seedActiveMember("watcher", "watcher@example.com");
+    const commenter = await seedActiveMember("commenter", "commenter@example.com");
+
+    const followed = await followsPOST(
+      jsonRequest("/api/follows", {
+        method: "POST",
+        cookies: [
+          `np-mb-session=${subscriber.sessionCookie}`,
+          `np-mb-csrf=${subscriber.csrfCookie}`,
+        ],
+        headers: { "x-csrf-token": subscriber.csrfCookie },
+        body: JSON.stringify({ targetType: "posts", targetId: postId }),
+      }),
+    );
+    expect(followed.status).toBe(201);
+
+    await postComment(postId, commenter, "new activity");
+    const inbox = await notificationsGET(
+      jsonRequest("/api/notifications", {
+        cookies: [`np-mb-session=${subscriber.sessionCookie}`],
+      }),
+    );
+    const body = await readJson<{
+      unread: number;
+      notifications: Array<{ kind: string; payload: Record<string, unknown> }>;
+    }>(inbox);
+    expect(body.body.unread).toBe(1);
+    expect(body.body.notifications[0]).toMatchObject({
+      kind: "follow.activity",
+      payload: {
+        activity: "comment.created",
+        subjectType: "posts",
+        subjectId: postId,
+        targetType: "posts",
+        targetId: postId,
+        href: "/blog/9-3-target",
+      },
+    });
+  });
+
+  it("prefers a direct reply over a duplicate subscription notification", async () => {
+    const postId = await seedStaffPostId();
+    const subscriber = await seedActiveMember("reply-watcher", "reply-watcher@example.com");
+    const replier = await seedActiveMember("reply-writer", "reply-writer@example.com");
+    const parentId = await postComment(postId, subscriber, "parent");
+    await followsPOST(
+      jsonRequest("/api/follows", {
+        method: "POST",
+        cookies: [
+          `np-mb-session=${subscriber.sessionCookie}`,
+          `np-mb-csrf=${subscriber.csrfCookie}`,
+        ],
+        headers: { "x-csrf-token": subscriber.csrfCookie },
+        body: JSON.stringify({ targetType: "posts", targetId: postId }),
+      }),
+    );
+
+    await postComment(postId, replier, "reply", parentId);
+    const inbox = await notificationsGET(
+      jsonRequest("/api/notifications", {
+        cookies: [`np-mb-session=${subscriber.sessionCookie}`],
+      }),
+    );
+    const body = await readJson<{
+      unread: number;
+      notifications: Array<{ kind: string }>;
+    }>(inbox);
+    expect(body.body.unread).toBe(1);
+    expect(body.body.notifications.map((item) => item.kind)).toEqual(["comment.reply"]);
+  });
+
+  it("rejects document follows when the collection has not opted in", async () => {
+    const postId = await seedStaffPostId();
+    const member = await seedActiveMember("no-follow", "no-follow@example.com");
+    const response = await followsPOST(
+      jsonRequest("/api/follows", {
+        method: "POST",
+        cookies: [`np-mb-session=${member.sessionCookie}`, `np-mb-csrf=${member.csrfCookie}`],
+        headers: { "x-csrf-token": member.csrfCookie },
+        body: JSON.stringify({ targetType: "pages", targetId: postId }),
+      }),
+    );
+    expect(response.status).toBe(400);
   });
 
   // Issue #124 — pre-fix `follow()` did select-then-insert. Two

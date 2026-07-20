@@ -334,6 +334,7 @@ function renderPostList(props: NpForumPostListSkinProps) {
           <BoardPolicy board={board} messages={messages} />
         </div>
         <nav className="np-forum-community-actions" aria-label={messages.posts}>
+          {props.subscriptionAction}
           <Link
             href={props.hrefForQuery({ showMine: false, page: 1 })}
             aria-current={!props.query.showMine ? "page" : undefined}
@@ -526,8 +527,9 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
               ) : null}
             </div>
           </div>
-          {props.authorActions || props.reportAction ? (
+          {props.authorActions || props.reportAction || props.subscriptionAction ? (
             <div className="np-forum-post-actions">
+              {props.subscriptionAction}
               {props.authorActions}
               {props.reportAction}
             </div>

@@ -135,6 +135,7 @@ function renderPostList(props: NpForumPostListSkinProps) {
           {board.description ? <p>{board.description}</p> : null}
         </div>
         <nav className="np-forum-toolbar" aria-label={messages.posts}>
+          {props.subscriptionAction}
           <Link
             href={props.hrefForQuery({ showMine: false, page: 1 })}
             aria-current={!props.query.showMine ? "page" : undefined}
@@ -325,8 +326,9 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
               {post.createdAt.toLocaleString(messages.locale)}
             </time>
           </div>
-          {props.authorActions || props.reportAction ? (
+          {props.authorActions || props.reportAction || props.subscriptionAction ? (
             <div className="np-forum-post-actions">
+              {props.subscriptionAction}
               {props.authorActions}
               {props.reportAction}
             </div>

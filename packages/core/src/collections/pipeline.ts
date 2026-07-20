@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { asc, count, desc, eq, inArray, isNull, max, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import type { NpCommunityJsonObject } from "../community-contract/types.js";
+import { npRequireNotificationHref } from "../community-contract/contract.js";
 import { can } from "../auth/capabilities.js";
 import {
   NpCollectionContractError,
@@ -42,7 +43,13 @@ import { buildSearchVector, buildWeightedSearchVectorSql } from "./search.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { runHook } from "../plugins/host.js";
 import { npRevisions, npSlugHistory } from "../db/schema/system.js";
-import { npComments, npContentViews, npReactions, npReports } from "../db/schema/community.js";
+import {
+  npComments,
+  npContentViews,
+  npFollows,
+  npReactions,
+  npReports,
+} from "../db/schema/community.js";
 import { npMedia, npMediaRefs } from "../db/schema/media.js";
 import { getDb } from "../db/runtime.js";
 import {
@@ -56,6 +63,18 @@ interface PreparedDocumentData {
   mainData: Record<string, unknown>;
   childRows: Record<string, Record<string, unknown>[]>;
   joinRows: Record<string, string[]>;
+}
+
+function notificationHrefForDocument(
+  config: NpCollectionConfig,
+  document: Record<string, unknown>,
+): string | null {
+  try {
+    const href = config.seo?.urlPath?.(document) ?? null;
+    return href === null ? null : npRequireNotificationHref(href);
+  } catch {
+    return null;
+  }
 }
 
 type QueryCondition = ReturnType<typeof sql>;
@@ -454,14 +473,16 @@ export async function updateMemberDocument(
     const { extractMentionHandlesFromDocData, fanOutMentionNotifications } =
       await import("../community/mentions.js");
     const previousHandles = new Set(extractMentionHandlesFromDocData(originalDoc));
+    const href = notificationHrefForDocument(config, result.doc);
     await fanOutMentionNotifications({
       actorMemberId: memberId,
       kind: "document.mention",
       data,
       previousHandles,
       payload: {
-        collectionSlug: collection,
-        documentId: docId,
+        targetType: collection,
+        targetId: docId,
+        ...(href ? { href } : {}),
       },
     });
   }
@@ -585,13 +606,15 @@ export async function createMemberDocument(
   // won't render.
   if (spamStatus === "published") {
     const { fanOutMentionNotifications } = await import("../community/mentions.js");
+    const href = notificationHrefForDocument(config, result.doc);
     await fanOutMentionNotifications({
       actorMemberId: memberId,
       kind: "document.mention",
       data,
       payload: {
-        collectionSlug: collection,
-        documentId,
+        targetType: collection,
+        targetId: documentId,
+        ...(href ? { href } : {}),
       },
     });
   }
@@ -1932,6 +1955,11 @@ async function deleteDocumentImpl(
       .delete(npContentViews)
       .where(
         sql`${eq(getTableColumn(npContentViews as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npContentViews as unknown as PgTable, "targetId"), docId)}`,
+      );
+    await tx
+      .delete(npFollows)
+      .where(
+        sql`${eq(getTableColumn(npFollows as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npFollows as unknown as PgTable, "targetId"), docId)}`,
       );
     // Doc-level reports (sites that file `target_type=$collection`
     // reports against a post / discussion). The shipped report API

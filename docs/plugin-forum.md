@@ -182,13 +182,15 @@ owner actions, member report actions, and route-owned composers.
 
 ## Engagement contract
 
-Forum posts opt into all four Core collection features:
+Forum boards and posts opt into Core document subscriptions, while posts also
+enable the four engagement/moderation features:
 
 ```ts
 community: {
   comments: true,
   reactions: true,
   views: true,
+  follows: true,
   reports: true,
 }
 ```
@@ -224,6 +226,34 @@ status, and collection edit link; `unpublish-document` moves the post to
 `pending`, while `dismiss` closes the case without changing it. Comments keep
 using the shared `comment` report target and `hide-comment` action.
 
+## Subscription and notification contract
+
+Both forum collections declare `community.follows: true`. The board list route
+passes a route-owned board subscription action into either skin; the detail
+route does the same for one post. Signed-out readers receive a login link that
+preserves the current URL. Authenticated toggles use the exact shared
+`/api/follows` and `/api/follows/check` contracts and expose
+`data-np-forum-subscription="available|subscribed|signed-out"` for independent
+theme styling.
+
+A published forum post runs the plugin's `content:afterPublish` handler and
+fans one `document.published` event out to subscribers of its board. A visible
+comment runs the Core `comment.created` fan-out for subscribers of that post.
+Recipient priority is direct reply, mention, document owner, then general
+subscription, so one member never receives several notifications for the same
+comment. Pending or private content does not notify; the commenter/post author
+is excluded from their own event; mutes and notification preferences remain in
+force. Every forum notification carries the configured `basePath`, board key,
+and post id as a validated local destination. The member inbox and existing
+daily/weekly digest recognize the new activity kind.
+
+The database keeps the existing polymorphic `np_follows` shape, but the public
+target is now either `member` or an actual follow-enabled collection slug. The
+never-functional `thread` and `tag` placeholders are not part of the runtime
+contract. Deleting a board or post removes its follows transactionally, and
+`plugin doctor` reports malformed, missing-collection, orphaned, or cross-site
+follow targets.
+
 ## Custom skins
 
 Skins are build-time React render contracts. Runtime Admin settings select an
@@ -258,13 +288,14 @@ collection-write policy. Projects that do not consume
 `@nexpress/app/styles/globals.css` should import
 `@nexpress/plugin-forum/styles.css` themselves.
 
-Detail skins must place both `authorActions` and `reportAction`. They are
-separate route-owned nodes: the former appears only to the owner, while the
-latter appears only to another authenticated member on a published public
-post. Skins may arrange them together, but must not reimplement report target,
-authentication, or CSRF behavior.
+Detail skins must place `authorActions`, `reportAction`, and
+`subscriptionAction`. They are separate route-owned nodes: the first appears
+only to the owner, the second only to another authenticated member on a
+published public post, and the subscription action owns its authenticated or
+login-required state. Skins may arrange them together, but must not reimplement
+report/follow targets, authentication, or CSRF behavior.
 
-Post-list skins receive the parsed `query`, `searchMaxLength`, and a
+Post-list skins receive route-owned `subscriptionAction`, the parsed `query`, `searchMaxLength`, and a
 `hrefForQuery(patch)` helper. Use that helper for author, category, reset, and
 pagination links so every skin preserves the same canonical query ordering and
 omits default values. Filter patches reset pagination unless they explicitly
@@ -362,6 +393,8 @@ block, and feed items. Attachment markup uses
 It also publishes `engagement` and `engagement-summary` slots backed by
 `data-np-forum-engagement="post|summary"`; individual totals expose
 `data-np-forum-metric="views|comments|reactions"`.
+The `subscription` slot targets `[data-np-forum-subscription]`; themes may style
+that stable state hook without importing the plugin client component.
 Every bundled skin marks its root with
 `data-np-forum-skin` and one of the `data-np-forum-surface` values
 `board-index`, `post-list`, `post-detail`, or `composer`. Themes should use
@@ -380,7 +413,8 @@ owner and board policy gates, pending moderation, pin/lock controls,
 categories, validated member attachments, rich-text image upload, comments,
 board-scoped search and category
 discovery, daily-unique views, document recommendations, batched engagement
-counts, bounded popular ranking, home-page directory/feed blocks, a
+counts, board/post subscriptions, deduplicated actionable notifications,
+bounded popular ranking, home-page directory/feed blocks, a
 community-home pattern, a theme-neutral style contract, plugin i18n catalogs,
 and an Admin dashboard metric.
 

@@ -258,12 +258,14 @@ describe.skipIf(skipIfNoTestDb())("16.2 @mention notifications (integration)", (
       { params: Promise.resolve({ slug: "discussions" }) },
     );
     expect(create.status).toBe(201);
+    const { id: documentId } = (await create.json()) as { id: string };
 
     const inbox = await notificationsFor(target);
     expect(inbox).toHaveLength(1);
     expect(inbox[0]?.kind).toBe("document.mention");
     expect(inbox[0]?.payload.mentionedHandle).toBe(target.handle);
-    expect(inbox[0]?.payload.collectionSlug).toBe("discussions");
+    expect(inbox[0]?.payload.targetType).toBe("discussions");
+    expect(inbox[0]?.payload.targetId).toBe(documentId);
   });
 
   it("editing a discussion to add a new mention only notifies the new handle", async () => {

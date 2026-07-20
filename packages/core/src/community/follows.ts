@@ -1,7 +1,18 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq, gt } from "drizzle-orm";
 
-import { npRequireFollowRow } from "../community-contract/contract.js";
-import type { NpFollowInput, NpFollowRow, NpFollowTarget } from "../community-contract/types.js";
+import {
+  npRequireCommunityId,
+  npRequireFollowActivityNotificationPayload,
+  npRequireFollowRow,
+  npRequireFollowTarget,
+  npRequireFollowTargetType,
+} from "../community-contract/contract.js";
+import type {
+  NpFollowActivityNotificationPayload,
+  NpFollowInput,
+  NpFollowRow,
+  NpFollowTarget,
+} from "../community-contract/types.js";
 import { getDb } from "../db/runtime.js";
 import { npFollows, npMembers } from "../db/schema/community.js";
 import { NpNotFoundError, NpValidationError } from "../errors.js";
@@ -10,33 +21,24 @@ import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { withMemberWrite } from "./can.js";
 import { createNotification } from "./notifications.js";
+import { npResolveDocumentEngagementTarget } from "./engagement-target.js";
 
 /**
- * Follow graph service. v1 supports `member` follows; `thread` and
- * `tag` lands when those subjects exist. Self-follow is rejected so
- * the recommended-follows / "people you follow" reads don't have to
- * special-case it.
+ * Follow graph service. `member` is the sole reserved target; document
+ * subscriptions use the canonical collection slug after that collection
+ * explicitly opts into `community.follows`. Self-follow is rejected so the
+ * recommended-follows / "people you follow" reads don't have to special-case it.
  */
 
-const SUPPORTED_TARGETS = ["member", "thread", "tag"] as const;
 type FollowTarget = NpFollowTarget;
 
 export type { NpFollowInput, NpFollowRow };
 
-function assertSupportedTarget(targetType: string): asserts targetType is FollowTarget {
-  if (!SUPPORTED_TARGETS.includes(targetType as FollowTarget)) {
-    throw new NpValidationError("Invalid input", [
-      {
-        field: "targetType",
-        message: `targetType must be one of: ${SUPPORTED_TARGETS.join(", ")}`,
-      },
-    ]);
-  }
-}
-
 export async function follow(input: NpFollowInput): Promise<NpFollowRow> {
-  assertSupportedTarget(input.targetType);
-  if (input.targetType === "member" && input.targetId === input.followerId) {
+  const followerId = npRequireCommunityId(input.followerId, "community.follow.followerId");
+  const target = npRequireFollowTarget({ targetType: input.targetType, targetId: input.targetId });
+  const checked = { followerId, ...target };
+  if (checked.targetType === "member" && checked.targetId === checked.followerId) {
     throw new NpValidationError("Invalid input", [
       { field: "targetId", message: "Members can't follow themselves." },
     ]);
@@ -46,38 +48,47 @@ export async function follow(input: NpFollowInput): Promise<NpFollowRow> {
   // future write path that forgets the gate can't compile against
   // this helper. Site-wide bans block follows (no obvious scope
   // chain for a polymorphic follow target).
-  return withMemberWrite(input.followerId, [], async () => {
-    return doFollow(input);
+  return withMemberWrite(checked.followerId, [], async () => {
+    return doFollow(checked);
   });
 }
 
 async function doFollow(input: NpFollowInput): Promise<NpFollowRow> {
   const db = getDb();
+  let targetSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+  let memberHandle: string | null = null;
 
-  // Validate the target exists so a typo doesn't quietly insert a
-  // dangling follow row. `thread` / `tag` targets had no validation
-  // path because those subjects don't exist yet — that meant members
-  // could spam the follow graph with arbitrary strings (#75). Until
-  // those surfaces ship, refuse follows for them.
+  // Validate the target exists so a typo cannot insert a dangling follow.
+  // Document targets additionally share the public/site/opt-in gate used by
+  // reactions, views, and reports.
   if (input.targetType === "member") {
     const [target] = (await db
-      .select({ id: npMembers.id, status: npMembers.status })
+      .select({ id: npMembers.id, status: npMembers.status, handle: npMembers.handle })
       .from(npMembers)
       .where(eq(npMembers.id, input.targetId))
-      .limit(1)) as Array<{ id: string; status: string }>;
+      .limit(1)) as Array<{ id: string; status: string; handle: string }>;
     if (!target) throw new NpNotFoundError("member", input.targetId);
     if (target.status !== "active") {
       throw new NpValidationError("Invalid input", [
         { field: "targetId", message: "Cannot follow a non-active member." },
       ]);
     }
+    memberHandle = target.handle;
   } else {
-    throw new NpValidationError("Invalid input", [
-      {
-        field: "targetType",
-        message: `Following ${input.targetType} targets is not supported yet`,
-      },
-    ]);
+    const target = await npResolveDocumentEngagementTarget(
+      input.targetType,
+      input.targetId,
+      "follows",
+    );
+    if (!target.href) {
+      throw new NpValidationError("Invalid input", [
+        {
+          field: "targetId",
+          message: "A followed document must expose a public URL through seo.urlPath.",
+        },
+      ]);
+    }
+    targetSiteId = target.siteId;
   }
 
   // Idempotent: insert with `onConflictDoNothing` so two concurrent
@@ -92,7 +103,7 @@ async function doFollow(input: NpFollowInput): Promise<NpFollowRow> {
   // tenants. The site comes from the request resolver (the
   // click happened on this tenant); falls back to the default
   // site for callers without a resolved site (scripts, jobs).
-  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+  const siteId = targetSiteId;
   const [inserted] = (await db
     .insert(npFollows)
     .values({
@@ -112,7 +123,10 @@ async function doFollow(input: NpFollowInput): Promise<NpFollowRow> {
         memberId: input.targetId,
         kind: "follow.received",
         actorMemberId: input.followerId,
-        payload: { followerId: input.followerId },
+        payload: {
+          followerId: input.followerId,
+          ...(memberHandle ? { href: `/u/${encodeURIComponent(memberHandle)}` } : {}),
+        },
       });
     }
     return checkedInserted;
@@ -143,23 +157,29 @@ async function doFollow(input: NpFollowInput): Promise<NpFollowRow> {
 }
 
 export async function unfollow(input: NpFollowInput): Promise<void> {
-  assertSupportedTarget(input.targetType);
+  const checked = {
+    followerId: npRequireCommunityId(input.followerId, "community.follow.followerId"),
+    ...npRequireFollowTarget({ targetType: input.targetType, targetId: input.targetId }),
+  };
   const db = getDb();
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   await db
     .delete(npFollows)
     .where(
       and(
-        eq(npFollows.followerId, input.followerId),
-        eq(npFollows.targetType, input.targetType),
-        eq(npFollows.targetId, input.targetId),
+        eq(npFollows.followerId, checked.followerId),
+        eq(npFollows.targetType, checked.targetType),
+        eq(npFollows.targetId, checked.targetId),
         eq(npFollows.siteId, siteId),
       ),
     );
 }
 
 export async function isFollowing(input: NpFollowInput): Promise<boolean> {
-  assertSupportedTarget(input.targetType);
+  const checked = {
+    followerId: npRequireCommunityId(input.followerId, "community.follow.followerId"),
+    ...npRequireFollowTarget({ targetType: input.targetType, targetId: input.targetId }),
+  };
   const db = getDb();
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const [row] = (await db
@@ -167,9 +187,9 @@ export async function isFollowing(input: NpFollowInput): Promise<boolean> {
     .from(npFollows)
     .where(
       and(
-        eq(npFollows.followerId, input.followerId),
-        eq(npFollows.targetType, input.targetType),
-        eq(npFollows.targetId, input.targetId),
+        eq(npFollows.followerId, checked.followerId),
+        eq(npFollows.targetType, checked.targetType),
+        eq(npFollows.targetId, checked.targetId),
         eq(npFollows.siteId, siteId),
       ),
     )
@@ -186,6 +206,9 @@ export async function listFollowing(
   options: { targetType?: FollowTarget; limit?: number; offset?: number } = {},
 ): Promise<NpFollowRow[]> {
   const db = getDb();
+  const checkedFollowerId = npRequireCommunityId(followerId, "community.follow.followerId");
+  const checkedTargetType =
+    options.targetType === undefined ? undefined : npRequireFollowTargetType(options.targetType);
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
   // Phase 18 — scope to current site. A member who follows on
@@ -193,13 +216,13 @@ export async function listFollowing(
   // lists, one per site. Falls back to the default site when
   // the resolver isn't wired (scripts).
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-  const where = options.targetType
+  const where = checkedTargetType
     ? and(
-        eq(npFollows.followerId, followerId),
-        eq(npFollows.targetType, options.targetType),
+        eq(npFollows.followerId, checkedFollowerId),
+        eq(npFollows.targetType, checkedTargetType),
         eq(npFollows.siteId, siteId),
       )
-    : and(eq(npFollows.followerId, followerId), eq(npFollows.siteId, siteId));
+    : and(eq(npFollows.followerId, checkedFollowerId), eq(npFollows.siteId, siteId));
   const rows = (await db
     .select()
     .from(npFollows)
@@ -207,4 +230,84 @@ export async function listFollowing(
     .limit(limit)
     .offset(offset)) as NpFollowRow[];
   return rows.map(npRequireFollowRow);
+}
+
+export interface NpNotifyFollowersInput extends NpFollowActivityNotificationPayload {
+  actorMemberId?: string | null;
+  excludeMemberIds?: readonly string[];
+}
+
+/**
+ * Deliver one exact activity notification to every member subscribed to a
+ * public document. Reads use a UUID cursor and fixed pages so a popular target
+ * never becomes one unbounded result set. Recipient preferences and member
+ * mutes remain centralized in `createNotification`.
+ */
+export async function notifyFollowers(input: NpNotifyFollowersInput): Promise<number> {
+  const payload = npRequireFollowActivityNotificationPayload({
+    activity: input.activity,
+    subjectType: input.subjectType,
+    subjectId: input.subjectId,
+    targetType: input.targetType,
+    targetId: input.targetId,
+    href: input.href,
+    commentId: input.commentId,
+  });
+  const actorMemberId =
+    input.actorMemberId == null
+      ? null
+      : npRequireCommunityId(input.actorMemberId, "community.followActivity.actorMemberId");
+  const excluded = new Set(
+    (input.excludeMemberIds ?? []).map((id, index) =>
+      npRequireCommunityId(id, `community.followActivity.excludeMemberIds.${index.toString()}`),
+    ),
+  );
+  if (actorMemberId) excluded.add(actorMemberId);
+
+  // This also pins the subject to the current site and refuses notifications
+  // for a disabled/private/deleted subscription target.
+  const subject = await npResolveDocumentEngagementTarget(
+    payload.subjectType,
+    payload.subjectId,
+    "follows",
+  );
+  const db = getDb();
+  let cursor: string | null = null;
+  let notified = 0;
+  const pageSize = 200;
+
+  while (true) {
+    const where = cursor
+      ? and(
+          eq(npFollows.targetType, payload.subjectType),
+          eq(npFollows.targetId, payload.subjectId),
+          eq(npFollows.siteId, subject.siteId),
+          gt(npFollows.id, cursor),
+        )
+      : and(
+          eq(npFollows.targetType, payload.subjectType),
+          eq(npFollows.targetId, payload.subjectId),
+          eq(npFollows.siteId, subject.siteId),
+        );
+    const rows = (await db
+      .select({ id: npFollows.id, followerId: npFollows.followerId })
+      .from(npFollows)
+      .where(where)
+      .orderBy(asc(npFollows.id))
+      .limit(pageSize)) as Array<{ id: string; followerId: string }>;
+
+    for (const row of rows) {
+      cursor = row.id;
+      if (excluded.has(row.followerId)) continue;
+      const inserted = await createNotification({
+        memberId: row.followerId,
+        kind: "follow.activity",
+        actorMemberId,
+        payload,
+      });
+      if (inserted) notified += 1;
+    }
+    if (rows.length < pageSize) break;
+  }
+  return notified;
 }

@@ -5,7 +5,7 @@ vi.mock("../../lib/init-core", () => ({ ensureFor: vi.fn(() => Promise.resolve()
 import { buildSpec } from "./route.js";
 
 describe("OpenAPI community engagement contract", () => {
-  it("publishes exact reaction, view, and report contracts", () => {
+  it("publishes exact reaction, view, follow, and report contracts", () => {
     const spec = buildSpec() as {
       paths: Record<string, Record<string, Record<string, unknown>>>;
       components: { schemas: Record<string, Record<string, unknown>> };
@@ -60,6 +60,55 @@ describe("OpenAPI community engagement contract", () => {
           },
         },
         "429": {},
+      },
+    });
+    expect(spec.paths["/api/follows"]?.post).toMatchObject({
+      requestBody: {
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              required: ["targetType", "targetId"],
+              properties: {
+                targetType: {
+                  maxLength: 63,
+                  pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                },
+                targetId: { format: "uuid" },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        "201": {
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_follow_row" },
+            },
+          },
+        },
+      },
+    });
+    expect(spec.paths["/api/follows/check"]?.get).toMatchObject({
+      responses: {
+        "200": {
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_following" },
+            },
+          },
+        },
+      },
+    });
+    expect(spec.components.schemas.community_follow_row).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["id", "followerId", "targetType", "targetId", "siteId", "createdAt"],
+      properties: {
+        targetType: { pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$" },
+        targetId: { format: "uuid" },
       },
     });
     expect(spec.paths["/api/reports"]?.post).toMatchObject({

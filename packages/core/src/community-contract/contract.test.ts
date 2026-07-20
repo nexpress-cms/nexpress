@@ -18,6 +18,9 @@ import {
   npRequireContentViewReceiptWire,
   npRequireContentViewRow,
   npRequireFollowTarget,
+  npRequireFollowActivityNotificationPayload,
+  npRequireNotificationHref,
+  npRequireNotificationRow,
   npRequireMarkNotificationsReadRequest,
   npRequireModerationReportPageWire,
   npRequireNotificationKindCatalog,
@@ -225,12 +228,83 @@ describe("community contract", () => {
       targetType: "member",
       targetId: TARGET_ID,
     });
+    expect(npRequireFollowTarget({ targetType: "forum-posts", targetId: TARGET_ID })).toEqual({
+      targetType: "forum-posts",
+      targetId: TARGET_ID,
+    });
+    expect(() =>
+      npRequireFollowTarget({ targetType: "Forum posts", targetId: TARGET_ID }),
+    ).toThrow();
     expect(() =>
       npRequireReactionTarget({ targetType: "Forum posts", targetId: COMMENT_ID }),
     ).toThrow();
     expect(() =>
       npRequireReactionTarget({ targetType: `a${"b".repeat(63)}`, targetId: COMMENT_ID }),
     ).toThrow(/bounded text/u);
+  });
+
+  it("validates local notification destinations and exact follow activity", () => {
+    expect(npRequireNotificationHref("/boards/free/post?id=1#comment")).toBe(
+      "/boards/free/post?id=1#comment",
+    );
+    expect(() => npRequireNotificationHref("https://evil.example/post")).toThrow(/local/u);
+    expect(() => npRequireNotificationHref("//evil.example/post")).toThrow(/local/u);
+    expect(() => npRequireNotificationHref("/boards/free\npost")).toThrow(/local/u);
+    expect(
+      npRequireFollowActivityNotificationPayload({
+        activity: "comment.created",
+        subjectType: "forum-posts",
+        subjectId: TARGET_ID,
+        targetType: "forum-posts",
+        targetId: TARGET_ID,
+        href: "/boards/free/post",
+        commentId: COMMENT_ID,
+      }),
+    ).toEqual({
+      activity: "comment.created",
+      subjectType: "forum-posts",
+      subjectId: TARGET_ID,
+      targetType: "forum-posts",
+      targetId: TARGET_ID,
+      href: "/boards/free/post",
+      commentId: COMMENT_ID,
+    });
+    expect(() =>
+      npRequireFollowActivityNotificationPayload({
+        activity: "document.published",
+        subjectType: "forum-boards",
+        subjectId: TARGET_ID,
+        targetType: "forum-posts",
+        targetId: TARGET_ID,
+        href: "/boards/free/post",
+        commentId: COMMENT_ID,
+      }),
+    ).toThrow(/must be null/u);
+
+    const notification = {
+      id: COMMENT_ID,
+      memberId: MEMBER_ID,
+      kind: "follow.activity",
+      payload: {
+        activity: "document.published",
+        subjectType: "forum-boards",
+        subjectId: TARGET_ID,
+        targetType: "forum-posts",
+        targetId: COMMENT_ID,
+        href: "/boards/free/post",
+        commentId: null,
+      },
+      readAt: null,
+      siteId: "default",
+      createdAt: new Date(NOW),
+    };
+    expect(npRequireNotificationRow(notification).kind).toBe("follow.activity");
+    expect(() =>
+      npRequireNotificationRow({
+        ...notification,
+        payload: { ...notification.payload, unexpected: true },
+      }),
+    ).toThrow(/unexpected/u);
   });
 
   it("links report requests, target context, and resolution actions", () => {

@@ -235,9 +235,21 @@ comments, and reactions for up to 200 unique IDs in input order. This is the
 supported list/feed primitive; callers should not issue reaction or comment
 count queries once per row.
 
-`follow({ followerId, targetType, targetId })` for members
-following members or threads. Generates `notification:follow`
-fan-out events.
+`follow({ followerId, targetType, targetId })` accepts either the reserved
+`member` target or a canonical collection slug. Document subscriptions require
+that collection to declare `community.follows: true`; Core then validates the
+document is published, public, on the current site, and exposes a validated
+local destination through `seo.urlPath` before inserting the follow. The former
+placeholder `thread` and `tag` enum values never had runtime
+subjects and are no longer advertised. Custom forum collection slugs work
+without a generic thread alias.
+
+`notifyFollowers()` is the server-side fan-out primitive for activity on a
+followed document. Its exact tagged payload currently distinguishes
+`comment.created` from `document.published`, requires one validated local
+destination path, and reads followers in bounded 200-row cursor pages. The
+normal mute and per-kind preference gates still apply to every recipient.
+Document deletion removes its polymorphic follow rows in the same transaction.
 
 Counts remain available through `countReactions(targetType, targetId)`. The
 forum detail updates its recommendation state after a successful request and
@@ -264,12 +276,16 @@ after the earlier case is closed and the target is public again.
 - Reply to your comment
 - Reaction on your comment / doc
 - New follow
+- New activity on a subscribed collection document
 - Mention — Phase 16.2 wired `@handle` parsing into the
   notification fan-out, firing `comment.mention` or
   `document.mention` rows.
 
-Each row has `kind`, `actor_id`, `payload` JSON, `read_at`,
-and a tenant-scoped `site_id`. Members read their own via
+Each row has `kind`, bounded `payload` JSON, `read_at`, and a tenant-scoped
+`site_id`. Event payloads carry the relevant actor and target identifiers.
+Known activity destinations are validated as local paths before storage and
+again before the member inbox renders a View link. Opening that link also marks
+the notification read. Members read their own via
 `GET /api/notifications` (`?count=1` returns only `{ unread }`;
 `?unread=1` filters to unread rows) and mark rows read via
 `POST /api/notifications/mark-read` with either `{ ids: [...] }`
@@ -504,7 +520,7 @@ request scope) leave `site_id` null.
 `@nexpress/core/community-contract` is the client-safe boundary shared by
 Core, API routes, Admin/member views, plugin-facing registries, plugin doctor,
 and live health. It exports the exact request, persisted-row, wire-row,
-settings, notification-preference, engagement/view, moderation, reputation, and role-catalog
+settings, notification-preference, engagement/view/follow, moderation, reputation, and role-catalog
 validators without importing the server-only Core runtime.
 
 Community inputs are exact and bounded: unknown keys, malformed dates and ids,
@@ -517,14 +533,17 @@ must name the same recipient whose score would be updated.
 
 `plugin doctor` reports malformed community settings and persisted rows as
 `community.contract`, including malformed `np_content_views` rows, invalid or
-orphaned report targets, cross-site report targets, and unresolved report
-duplicates. Adapter and registry failures are contained in a bounded runtime
+orphaned report/follow targets, cross-site document targets, and unresolved
+report duplicates. Adapter and registry failures are contained in a bounded runtime
 diagnostic buffer and surface as the `community` row in Admin Health;
 they are not silently converted into successful moderation or reputation
 results. Malformed persisted notification preferences also emit a runtime
 diagnostic and fail closed for the notification side effect without rolling
 back the community write that triggered it; unrelated transient preference
-read failures remain fail-open.
+read failures remain fail-open. Comment notification fan-out failures are also
+contained after the durable comment write and recorded in that diagnostic
+buffer, so a delivered comment is never reported to its author as a failed
+write merely because an inbox side effect failed.
 
 ---
 

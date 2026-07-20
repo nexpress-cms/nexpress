@@ -173,6 +173,7 @@ export function defineForumBoardsCollection(runtime: NpForumRuntime): NpCollecti
         "Create and configure public boards without adding another collection or migration.",
     },
     versions: { drafts: true, max: 20 },
+    community: { follows: true },
     access: {
       read: () => true,
       create: isEditorOrAbove,
@@ -376,6 +377,7 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
       comments: true,
       reactions: true,
       views: true,
+      follows: true,
       reports: true,
       memberWrite: {
         create: true,

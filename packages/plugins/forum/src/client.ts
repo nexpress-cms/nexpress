@@ -9,3 +9,5 @@ export { ForumPostForm } from "./client/forum-post-form.js";
 export { ForumPostActions } from "./client/forum-post-actions.js";
 export { ForumPostEngagement } from "./client/forum-post-engagement.js";
 export { ForumPostReportAction } from "./client/forum-post-report-action.js";
+export { ForumSubscriptionAction } from "./client/forum-subscription-action.js";
+export type { ForumSubscriptionActionProps } from "./client/forum-subscription-action.js";
