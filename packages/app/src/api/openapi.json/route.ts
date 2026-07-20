@@ -4201,9 +4201,14 @@ export function buildSpec(): OpenApiSchema {
           in: "query",
           name: "targetType",
           required: true,
-          schema: { type: "string" },
+          schema: {
+            type: "string",
+            minLength: 1,
+            maxLength: 63,
+            pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          },
           description:
-            "Only `comment` is wired today; the polymorphic shape leaves room for future surfaces.",
+            "Use `comment` or a collection slug whose config enables `community.reactions`.",
         },
         {
           in: "query",
@@ -4214,7 +4219,7 @@ export function buildSpec(): OpenApiSchema {
         {
           in: "query",
           name: "kind",
-          schema: { type: "string" },
+          schema: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,29}$" },
           description: "Defaults to `like`.",
         },
       ],
@@ -4225,8 +4230,13 @@ export function buildSpec(): OpenApiSchema {
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
+                required: ["counts", "mine"],
                 properties: {
-                  counts: { type: "object", additionalProperties: { type: "integer" } },
+                  counts: {
+                    type: "object",
+                    additionalProperties: { type: "integer", minimum: 0 },
+                  },
                   mine: { type: "array", items: { type: "string" } },
                 },
               },
@@ -4243,11 +4253,21 @@ export function buildSpec(): OpenApiSchema {
           "application/json": {
             schema: {
               type: "object",
+              additionalProperties: false,
               required: ["targetType", "targetId"],
               properties: {
-                targetType: { type: "string" },
+                targetType: {
+                  type: "string",
+                  minLength: 1,
+                  maxLength: 63,
+                  pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                },
                 targetId: { type: "string", format: "uuid" },
-                kind: { type: "string", description: "Defaults to `like`." },
+                kind: {
+                  type: "string",
+                  pattern: "^[a-z][a-z0-9_-]{0,29}$",
+                  description: "Defaults to `like`.",
+                },
               },
             },
           },
@@ -4255,25 +4275,88 @@ export function buildSpec(): OpenApiSchema {
       },
       responses: {
         "201": { description: "Created (or returned existing if duplicate)" },
-        "400": { description: "Unsupported targetType / unknown comment" },
+        "400": { description: "Invalid target or document reactions are disabled" },
         "401": { description: "Member auth required" },
       },
     },
     delete: {
       summary: "Remove a reaction",
       parameters: [
-        { in: "query", name: "targetType", required: true, schema: { type: "string" } },
+        {
+          in: "query",
+          name: "targetType",
+          required: true,
+          schema: {
+            type: "string",
+            minLength: 1,
+            maxLength: 63,
+            pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          },
+        },
         {
           in: "query",
           name: "targetId",
           required: true,
           schema: { type: "string", format: "uuid" },
         },
-        { in: "query", name: "kind", schema: { type: "string" } },
+        {
+          in: "query",
+          name: "kind",
+          schema: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,29}$" },
+        },
       ],
       responses: {
         "200": { description: "Reaction removed (no-op if it didn't exist)" },
         "401": { description: "Member auth required" },
+      },
+    },
+  };
+  paths["/api/views"] = {
+    post: {
+      summary: "Record a daily-unique public document view",
+      description:
+        "Anonymous and CSRF-exempt. A first-party HttpOnly visitor cookie is hashed before Core receives it, then scoped again to the site, target, and UTC day for persistence; raw cookies, stable cross-document visitor identifiers, IP addresses, and user agents are not stored. The target collection must enable `community.views`.",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              required: ["targetType", "targetId"],
+              properties: {
+                targetType: {
+                  type: "string",
+                  minLength: 1,
+                  maxLength: 63,
+                  pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                },
+                targetId: { type: "string", format: "uuid" },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        "200": {
+          description: "Whether this visitor/day was counted and the current target total",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["counted", "viewCount"],
+                properties: {
+                  counted: { type: "boolean" },
+                  viewCount: { type: "integer", minimum: 0 },
+                },
+              },
+            },
+          },
+        },
+        "400": { description: "Invalid target or document views are disabled" },
+        "404": { description: "Public target document not found" },
+        "429": { description: "Anonymous write rate limit exceeded" },
       },
     },
   };

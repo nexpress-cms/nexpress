@@ -8,6 +8,7 @@ import type {
   NpForumPostSummary,
   NpForumSkin,
 } from "../types.js";
+import { ForumEngagementCounts } from "./engagement.js";
 
 function author(post: NpForumPostSummary, staffLabel: string) {
   return post.author ? (
@@ -54,8 +55,19 @@ function PostRows({
         {post.status !== "published" ? (
           <span className="np-forum-state-badge">{messages.pending}</span>
         ) : null}
+        <ForumEngagementCounts
+          post={post}
+          messages={messages}
+          className="np-forum-row-engagement"
+        />
       </td>
       <td>{author(post, messages.staff)}</td>
+      <td className="np-forum-column-views">
+        {post.engagement.viewCount.toLocaleString(messages.locale)}
+      </td>
+      <td className="np-forum-column-reactions">
+        {post.engagement.reactionCount.toLocaleString(messages.locale)}
+      </td>
       <td className="np-forum-column-date">
         <time dateTime={post.createdAt.toISOString()}>
           {post.createdAt.toLocaleDateString(messages.locale)}
@@ -219,6 +231,12 @@ function renderPostList(props: NpForumPostListSkinProps) {
                   {messages.title}
                 </th>
                 <th scope="col">{messages.author}</th>
+                <th scope="col" className="np-forum-column-views">
+                  {messages.views}
+                </th>
+                <th scope="col" className="np-forum-column-reactions">
+                  {messages.reactions}
+                </th>
                 <th scope="col" className="np-forum-column-date">
                   {messages.date}
                 </th>
@@ -302,6 +320,7 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
           {props.authorActions}
         </header>
         <div className="np-forum-post-body np-forum-rich-text">{props.body}</div>
+        {props.engagement}
         <section className="np-forum-comments">{props.comments}</section>
       </article>
     </main>

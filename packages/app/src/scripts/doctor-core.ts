@@ -49,6 +49,7 @@ import {
   npRequireAuditEventRow,
   npRequireBanRow,
   npRequireCommentRow,
+  npRequireContentViewRow,
   npRequireFollowRow,
   npRequireMemberMuteRow,
   npRequireMemberRoleGrantRow,
@@ -1184,6 +1185,7 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
     const expectedTables = [
       "np_members",
       "np_comments",
+      "np_content_views",
       "np_reactions",
       "np_follows",
       "np_notifications",
@@ -1229,6 +1231,12 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
       `select id, target_type as "targetType", target_id as "targetId",
                   member_id as "memberId", kind, site_id as "siteId", created_at as "createdAt"
              from np_reactions`,
+    );
+    const contentViews = await client.query<Record<string, unknown>>(
+      `select id, target_type as "targetType", target_id as "targetId",
+                  viewer_hash as "viewerHash", viewed_on as "viewedOn",
+                  site_id as "siteId", created_at as "createdAt"
+             from np_content_views`,
     );
     const follows = await client.query<Record<string, unknown>>(
       `select id, follower_id as "followerId", target_type as "targetType",
@@ -1303,6 +1311,7 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
     for (const [name, rows, parser] of [
       ["comments", comments.rows, npRequireCommentRow],
       ["reactions", reactions.rows, npRequireReactionRow],
+      ["contentViews", contentViews.rows, npRequireContentViewRow],
       ["follows", follows.rows, npRequireFollowRow],
       ["notifications", notifications.rows, npRequireNotificationRow],
       ["reports", reports.rows, npRequireReportRow],
@@ -1318,6 +1327,7 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
       members.rows.length +
       comments.rows.length +
       reactions.rows.length +
+      contentViews.rows.length +
       follows.rows.length +
       notifications.rows.length +
       reports.rows.length +

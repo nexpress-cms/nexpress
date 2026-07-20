@@ -1,4 +1,5 @@
 import { findDocuments, getDocumentById, getMemberProfiles } from "@nexpress/core";
+import { npListContentEngagement } from "@nexpress/core/community";
 import { getCurrentLocale, t } from "@nexpress/core/i18n";
 
 import type {
@@ -161,12 +162,19 @@ export function resolveForumSkin(runtime: NpForumRuntime, skinId?: string): NpFo
 
 export async function enrichForumPosts(
   documents: ForumPostDocument[],
+  collectionSlug: string,
 ): Promise<NpForumPostSummary[]> {
   const authorIds = documents
     .map((document) => document.memberAuthorId)
     .filter((value): value is string => typeof value === "string" && value.length > 0);
-  const profiles = await getMemberProfiles(authorIds);
-  return documents.map((document) => {
+  const [profiles, engagement] = await Promise.all([
+    getMemberProfiles(authorIds),
+    npListContentEngagement(
+      collectionSlug,
+      documents.map((document) => document.id),
+    ),
+  ]);
+  return documents.map((document, index) => {
     const profile = document.memberAuthorId ? profiles.get(document.memberAuthorId) : null;
     const author: NpForumAuthor | null = profile
       ? {
@@ -187,6 +195,7 @@ export async function enrichForumPosts(
       updatedAt: document.updatedAt,
       memberAuthorId: document.memberAuthorId,
       author,
+      engagement: engagement[index],
     };
   });
 }
@@ -218,6 +227,12 @@ export async function getForumMessages(): Promise<NpForumMessages> {
       "staff",
       "pending",
       "locked",
+      "views",
+      "commentsCount",
+      "reactions",
+      "recommend",
+      "recommended",
+      "engagementFailed",
       "pagination",
       "boardPolicy",
       "writeMembers",
@@ -277,6 +292,12 @@ export async function getForumMessages(): Promise<NpForumMessages> {
     staff,
     pending,
     locked,
+    views,
+    commentsCount,
+    reactions,
+    recommend,
+    recommended,
+    engagementFailed,
     pagination,
     boardPolicy,
     writeMembers,
@@ -336,6 +357,12 @@ export async function getForumMessages(): Promise<NpForumMessages> {
     staff: staff ?? "Staff",
     pending: pending ?? "Pending",
     locked: locked ?? "Locked",
+    views: views ?? "Views",
+    commentsCount: commentsCount ?? "Comments",
+    reactions: reactions ?? "Reactions",
+    recommend: recommend ?? "Recommend",
+    recommended: recommended ?? "Recommended",
+    engagementFailed: engagementFailed ?? "Could not update this reaction.",
     pagination: pagination ?? "Pagination",
     boardPolicy: boardPolicy ?? "Board policy",
     writeMembers: writeMembers ?? "Members can post",

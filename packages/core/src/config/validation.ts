@@ -283,6 +283,8 @@ export const collectionConfigSchema = z.strictObject({
   community: z
     .strictObject({
       comments: z.boolean().optional(),
+      reactions: z.boolean().optional(),
+      views: z.boolean().optional(),
       memberWrite: z
         .strictObject({
           create: z.boolean().optional(),

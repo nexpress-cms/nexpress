@@ -10,6 +10,7 @@ import type {
   NpForumPostSummary,
   NpForumSkin,
 } from "../types.js";
+import { ForumEngagementCounts } from "./engagement.js";
 
 function boardPolicyItems(
   board: NpForumBoard,
@@ -161,6 +162,7 @@ function PostRow({
             {post.createdAt.toLocaleDateString(messages.locale)}
           </time>
         </div>
+        <ForumEngagementCounts post={post} messages={messages} />
       </div>
       <ForumAuthor post={post} messages={messages} />
       <div className="np-forum-community-row-dates">
@@ -513,6 +515,7 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
           ) : null}
         </header>
         <div className="np-forum-post-body np-forum-rich-text">{props.body}</div>
+        {props.engagement}
         {props.comments ? <section className="np-forum-comments">{props.comments}</section> : null}
         <footer className="np-forum-community-detail-footer">
           <Link href={`${basePath}/${board.key}`}>← {messages.backToBoard}</Link>

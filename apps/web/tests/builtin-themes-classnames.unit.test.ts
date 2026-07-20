@@ -346,6 +346,8 @@ describe("built-in themes — responsive contracts", () => {
     expect(communityCss).toContain("--np-forum-content-max");
     expect(communityCss).toContain('[data-np-forum-surface="post-list"]');
     expect(communityCss).toContain('[data-np-forum-block="board-directory"]');
+    expect(communityCss).toContain('[data-np-forum-engagement="post"]');
+    expect(communityCss).toContain('[data-np-forum-feed-mode="popular"]');
     expect(communityCss).not.toContain("np_c_forum");
     expect(communityCss).not.toMatch(/float:\s*(left|right)\b/);
     expect(communityCss).not.toMatch(/\b(margin|padding)-(left|right)\s*:/);

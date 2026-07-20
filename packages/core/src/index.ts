@@ -1251,6 +1251,8 @@ export {
   runDigestSweep,
   getMemberProfile,
   getMemberProfiles,
+  npListContentEngagement,
+  npRecordContentView,
 } from "./community/index.js";
 export type {
   CommunityCapability,
@@ -1325,6 +1327,12 @@ export type {
   RunDigestSweepInput,
   RunDigestSweepResult,
   NpMemberProfile,
+  NpContentEngagementSummary,
+  NpContentViewReceiptWire,
+  NpContentViewRow,
+  NpEngagementTarget,
+  NpRecordContentViewInput,
+  NpRecordContentViewOptions,
 } from "./community/index.js";
 
 export {

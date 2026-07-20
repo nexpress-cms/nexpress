@@ -68,8 +68,8 @@ export function createBoardPostsRoute(runtime: NpForumRuntime) {
     ]);
     if (query.page > Math.max(1, result.totalPages)) notFound();
     const [posts, pinnedPosts] = await Promise.all([
-      enrichForumPosts(result.docs),
-      enrichForumPosts(pinnedResult.docs),
+      enrichForumPosts(result.docs, runtime.collections.posts),
+      enrichForumPosts(pinnedResult.docs, runtime.collections.posts),
     ]);
 
     return resolveForumSkin(runtime, board.skinId).renderPostList({

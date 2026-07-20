@@ -404,9 +404,10 @@ export interface NpCollectionConfig {
   /**
    * Community features opt-in per collection. Comments are off by
    * default; flip `comments: true` to let members post comments
-   * underneath this collection's documents. Reactions ride on the
-   * comment surface — sites enable reactions by enabling comments;
-   * a per-collection reactions toggle isn't needed today.
+   * underneath this collection's documents. `reactions: true` lets
+   * members react to the documents themselves (comment reactions remain
+   * available through the comment surface), while `views: true` enables
+   * anonymous daily-unique view receipts for public documents.
    *
    * `memberWrite.create` (9.7a) lets logged-in members create
    * documents in this collection without needing a staff role.
@@ -424,6 +425,8 @@ export interface NpCollectionConfig {
    */
   community?: {
     comments?: boolean;
+    reactions?: boolean;
+    views?: boolean;
     memberWrite?: {
       create?: boolean;
       update?: boolean;

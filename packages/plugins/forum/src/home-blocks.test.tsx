@@ -3,11 +3,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type * as NpCoreModule from "@nexpress/core";
+import type * as NpCommunityModule from "@nexpress/core/community";
 
 const mocks = vi.hoisted(() => ({
   contentFind: vi.fn(),
   findDocuments: vi.fn(),
   getMemberProfiles: vi.fn(),
+  listContentEngagement: vi.fn(),
 }));
 
 vi.mock("@nexpress/core", async (importOriginal) => {
@@ -16,6 +18,14 @@ vi.mock("@nexpress/core", async (importOriginal) => {
     ...actual,
     findDocuments: mocks.findDocuments,
     getMemberProfiles: mocks.getMemberProfiles,
+  };
+});
+
+vi.mock("@nexpress/core/community", async (importOriginal) => {
+  const actual = await importOriginal<typeof NpCommunityModule>();
+  return {
+    ...actual,
+    npListContentEngagement: mocks.listContentEngagement,
   };
 });
 
@@ -110,6 +120,19 @@ describe("forum home blocks", () => {
         ],
       ]),
     );
+    mocks.listContentEngagement.mockImplementation(
+      (targetType: string, targetIds: readonly string[]) =>
+        Promise.resolve(
+          targetIds.map((targetId) => ({
+            targetType,
+            targetId,
+            viewCount: 12,
+            commentCount: 3,
+            reactionCount: 2,
+            reactions: { like: 2 },
+          })),
+        ),
+    );
   });
 
   it("renders the active board directory from the configured collection and base path", async () => {
@@ -176,8 +199,72 @@ describe("forum home blocks", () => {
     expect(html).toContain('href="/community/boards/free/2d4af53e-6f78-43e0-8682-67f5a7d2b92e"');
     expect(html).toContain("첫 번째 토론");
     expect(html).toContain("하나");
+    expect(html).toContain("Views 12");
     expect(html).not.toContain("Stale");
     expect(html).not.toContain("Orphan");
+  });
+
+  it("ranks a bounded recent candidate set by the documented popularity score", async () => {
+    const popularId = "3bd66e58-b165-44dd-9a8a-4cb44fa7717a";
+    const newerId = "4d6794f7-205a-4e44-9e3c-8593dfb19c55";
+    const now = new Date();
+    mocks.contentFind.mockImplementation((collection: string) => {
+      if (collection === "community-boards") return Promise.resolve(result([boardDocument]));
+      return Promise.resolve(
+        result([
+          { ...postDocument, id: newerId, title: "Newer", createdAt: now },
+          {
+            ...postDocument,
+            id: popularId,
+            title: "More popular",
+            createdAt: new Date(now.getTime() - 60_000),
+          },
+          {
+            ...postDocument,
+            id: "59be0f52-e45a-4711-b964-886ee3af94ac",
+            title: "Outside window",
+            createdAt: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000),
+          },
+        ]),
+      );
+    });
+    mocks.listContentEngagement.mockImplementation(
+      (targetType: string, targetIds: readonly string[]) =>
+        Promise.resolve(
+          targetIds.map((targetId) => ({
+            targetType,
+            targetId,
+            viewCount: targetId === popularId ? 10 : 20,
+            commentCount: targetId === popularId ? 8 : 0,
+            reactionCount: targetId === popularId ? 4 : 0,
+            reactions: targetId === popularId ? { like: 4 } : {},
+          })),
+        ),
+    );
+
+    const html = await renderBlock("forum.post-feed", {
+      heading: "인기글",
+      mode: "popular",
+      boardKey: "",
+      limit: 2,
+      windowDays: 7,
+      layout: "list",
+      showBoard: true,
+      showCategory: true,
+      showAuthor: false,
+      showDate: false,
+      showEngagement: true,
+    });
+
+    expect(mocks.contentFind).toHaveBeenCalledWith("community-posts", {
+      where: { status: "published", pinned: false },
+      sort: "-createdAt",
+      page: 1,
+      limit: 200,
+    });
+    expect(html).toContain('data-np-forum-feed-mode="popular"');
+    expect(html.indexOf("More popular")).toBeLessThan(html.indexOf("Newer"));
+    expect(html).not.toContain("Outside window");
   });
 
   it("scopes notice feeds to an exact active board and renders a distinct empty state", async () => {

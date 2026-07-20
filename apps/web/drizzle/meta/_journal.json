@@ -120,6 +120,13 @@
       "when": 1784432373360,
       "tag": "0016_short_obadiah_stane",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784506816903,
+      "tag": "0017_many_swordsman",
+      "breakpoints": true
     }
   ]
 }

@@ -36,6 +36,12 @@ const messages: NpForumMessages = {
   staff: "운영자",
   pending: "검토 중",
   locked: "잠김",
+  views: "조회",
+  commentsCount: "댓글",
+  reactions: "추천",
+  recommend: "추천",
+  recommended: "추천 취소",
+  engagementFailed: "추천 실패",
   pagination: "페이지 이동",
   boardPolicy: "게시판 운영 정책",
   writeMembers: "회원 글쓰기",
@@ -97,6 +103,14 @@ const post: NpForumPostSummary = {
   updatedAt: new Date("2026-07-19T00:00:00.000Z"),
   memberAuthorId: null,
   author: null,
+  engagement: {
+    targetType: "forum-posts",
+    targetId: "2d4af53e-6f78-43e0-8682-67f5a7d2b92e",
+    viewCount: 12,
+    commentCount: 3,
+    reactionCount: 2,
+    reactions: { like: 2 },
+  },
 };
 
 const defaultQuery: NpForumPostListQuery = {
@@ -213,6 +227,7 @@ describe("classic forum skin", () => {
           </>
         ),
         authorActions: null,
+        engagement: <div data-testid="engagement" />,
         comments: null,
         messages,
       }),

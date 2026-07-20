@@ -26,6 +26,9 @@ import {
   type NpCommentListWire,
   type NpCommentRow,
   type NpCommentWireRow,
+  type NpContentEngagementSummary,
+  type NpContentViewReceiptWire,
+  type NpContentViewRow,
   type NpCommunityContractIssue,
   type NpCommunityContractResult,
   type NpCommunityJsonObject,
@@ -36,6 +39,7 @@ import {
   type NpFollowRow,
   type NpFollowTarget,
   type NpFollowWireRow,
+  type NpEngagementTarget,
   type NpMarkNotificationsReadRequest,
   type NpMarkNotificationsReadWire,
   type NpMemberMuteSummary,
@@ -95,6 +99,10 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 const REACTION_KIND_PATTERN = new RegExp(npCommunityReactionKindPattern, "u");
 const KIND_PATTERN = new RegExp(npCommunityKindPattern, "u");
 const ROLE_PATTERN = new RegExp(npCommunityRolePattern, "u");
+const VIEWER_HASH_PATTERN = /^[0-9a-f]{64}$/u;
+const CALENDAR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
+const ENGAGEMENT_TARGET_TYPE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
+const ENGAGEMENT_TARGET_TYPE_MAX_LENGTH = 63;
 const COMMENT_STATUSES = new Set<string>(npCommunityCommentStatuses);
 const COMMENT_SORTS = new Set<string>(npCommunityCommentSorts);
 const FOLLOW_TARGETS = new Set<string>(npCommunityFollowTargets);
@@ -426,6 +434,24 @@ function opaqueTarget(value: unknown, path: string): string {
 
 function targetType(value: unknown, path: string): string {
   return boundedString(value, path, npCommunityContractLimits.targetTypeLength, { trim: true });
+}
+
+function engagementTargetType(value: unknown, path: string): string {
+  const parsed = boundedString(value, path, ENGAGEMENT_TARGET_TYPE_MAX_LENGTH, { trim: true });
+  if (!ENGAGEMENT_TARGET_TYPE_PATTERN.test(parsed)) {
+    fail(path, "must be comment or a canonical collection slug");
+  }
+  return parsed;
+}
+
+function calendarDate(value: unknown, path: string): string {
+  const parsed = boundedString(value, path, 10);
+  if (!CALENDAR_DATE_PATTERN.test(parsed)) fail(path, "must be a canonical calendar date");
+  const date = new Date(`${parsed}T00:00:00.000Z`);
+  if (Number.isNaN(date.valueOf()) || date.toISOString().slice(0, 10) !== parsed) {
+    fail(path, "must be a real canonical calendar date");
+  }
+  return parsed;
 }
 
 function stringArray(
@@ -1034,6 +1060,31 @@ export function npToReactionWireRow(value: unknown): NpReactionWireRow {
   return npRequireReactionWireRow({ ...row, createdAt: row.createdAt.toISOString() });
 }
 
+export function npRequireContentViewRow(value: unknown): NpContentViewRow {
+  const raw = exactRecord(value, "community.contentView", [
+    "id",
+    "targetType",
+    "targetId",
+    "viewerHash",
+    "viewedOn",
+    "siteId",
+    "createdAt",
+  ]);
+  const viewerHash = boundedString(raw.viewerHash, "community.contentView.viewerHash", 64);
+  if (!VIEWER_HASH_PATTERN.test(viewerHash)) {
+    fail("community.contentView.viewerHash", "must be a lowercase SHA-256 digest");
+  }
+  return {
+    id: uuid(raw.id, "community.contentView.id"),
+    targetType: engagementTargetType(raw.targetType, "community.contentView.targetType"),
+    targetId: uuid(raw.targetId, "community.contentView.targetId"),
+    viewerHash,
+    viewedOn: calendarDate(raw.viewedOn, "community.contentView.viewedOn"),
+    siteId: siteId(raw.siteId, "community.contentView.siteId"),
+    createdAt: validDate(raw.createdAt, "community.contentView.createdAt"),
+  };
+}
+
 function parseFollowCommon(
   value: unknown,
   path: string,
@@ -1557,6 +1608,75 @@ export function npRequireReactionSummaryWire(value: unknown): NpReactionSummaryW
   return { counts, mine };
 }
 
+function reactionCounts(value: unknown, path: string): Record<string, number> {
+  if (!isPlainRecord(value)) fail(path, "must be a plain object", "shape");
+  const counts: Record<string, number> = {};
+  for (const key of plainDataKeys(value, path)) {
+    const checkedKey = reactionKind(key, `${path}.<kind>`);
+    Object.defineProperty(counts, checkedKey, {
+      configurable: true,
+      enumerable: true,
+      value: nonNegativeInteger(value[key], `${path}.${key}`),
+      writable: true,
+    });
+  }
+  return counts;
+}
+
+export function npRequireContentEngagementSummary(
+  value: unknown,
+  path = "community.engagementSummary",
+): NpContentEngagementSummary {
+  const raw = exactRecord(value, path, [
+    "targetType",
+    "targetId",
+    "viewCount",
+    "commentCount",
+    "reactionCount",
+    "reactions",
+  ]);
+  const reactions = reactionCounts(raw.reactions, `${path}.reactions`);
+  const reactionCount = nonNegativeInteger(raw.reactionCount, `${path}.reactionCount`);
+  const summedReactions = Object.values(reactions).reduce((sum, count) => sum + count, 0);
+  if (reactionCount !== summedReactions) {
+    fail(`${path}.reactionCount`, "must equal the sum of per-kind reaction counts", "invariant");
+  }
+  return {
+    targetType: engagementTargetType(raw.targetType, `${path}.targetType`),
+    targetId: uuid(raw.targetId, `${path}.targetId`),
+    viewCount: nonNegativeInteger(raw.viewCount, `${path}.viewCount`),
+    commentCount: nonNegativeInteger(raw.commentCount, `${path}.commentCount`),
+    reactionCount,
+    reactions,
+  };
+}
+
+export function npRequireContentEngagementSummaries(value: unknown): NpContentEngagementSummary[] {
+  const summaries = safeArrayValues(
+    value,
+    "community.engagementSummaries",
+    npCommunityContractLimits.pageRows,
+  ).map((entry, index) =>
+    npRequireContentEngagementSummary(entry, `community.engagementSummaries[${index.toString()}]`),
+  );
+  const keys = summaries.map((summary) => `${summary.targetType}:${summary.targetId}`);
+  if (new Set(keys).size !== keys.length) {
+    fail("community.engagementSummaries", "must not contain duplicate targets", "duplicate");
+  }
+  return summaries;
+}
+
+export function npRequireContentViewReceiptWire(value: unknown): NpContentViewReceiptWire {
+  const raw = exactRecord(value, "community.contentViewReceipt", ["counted", "viewCount"]);
+  if (typeof raw.counted !== "boolean") {
+    fail("community.contentViewReceipt.counted", "must be a boolean");
+  }
+  return {
+    counted: raw.counted,
+    viewCount: nonNegativeInteger(raw.viewCount, "community.contentViewReceipt.viewCount"),
+  };
+}
+
 export function npRequireNotificationListWire(value: unknown): NpNotificationListWire {
   const raw = exactRecord(value, "community.notificationList", [
     "notifications",
@@ -1658,8 +1778,15 @@ export function npRequireReportRequest(value: unknown): {
   };
 }
 
-export function npRequireReactionTarget(value: unknown): {
-  targetType: "comment";
+export function npRequireEngagementTarget(value: unknown): NpEngagementTarget {
+  const raw = exactRecord(value, "community.engagementTarget", ["targetType", "targetId"]);
+  return {
+    targetType: engagementTargetType(raw.targetType, "community.engagementTarget.targetType"),
+    targetId: uuid(raw.targetId, "community.engagementTarget.targetId"),
+  };
+}
+
+export function npRequireReactionTarget(value: unknown): NpEngagementTarget & {
   targetId: string;
   kind: string;
 } {
@@ -1669,11 +1796,8 @@ export function npRequireReactionTarget(value: unknown): {
     ["targetType", "targetId"],
     ["kind"],
   );
-  if (raw.targetType !== "comment") {
-    fail("community.reactionRequest.targetType", "must be comment in v1");
-  }
   return {
-    targetType: "comment",
+    targetType: engagementTargetType(raw.targetType, "community.reactionRequest.targetType"),
     targetId: uuid(raw.targetId, "community.reactionRequest.targetId"),
     kind:
       raw.kind === undefined ? "like" : reactionKind(raw.kind, "community.reactionRequest.kind"),

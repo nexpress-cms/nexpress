@@ -267,6 +267,58 @@
     font-size: 0.875rem;
   }
 
+  .np-forum-row-engagement {
+    display: none;
+  }
+
+  .np-forum-engagement-counts,
+  .np-forum-engagement {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    color: var(--np-color-muted-foreground, #64748b);
+    font-size: 0.76rem;
+  }
+
+  .np-forum-engagement {
+    justify-content: center;
+    padding: 1rem 0 1.5rem;
+    border-top: 1px solid var(--np-color-border, #d1d5db);
+  }
+
+  .np-forum-engagement strong {
+    color: var(--np-color-foreground, #111827);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .np-forum-engagement button {
+    padding: 0.45rem 0.8rem;
+    border: 1px solid var(--np-color-primary, #2563eb);
+    border-radius: var(--np-radius-full, 999px);
+    background: transparent;
+    color: var(--np-color-primary, #2563eb);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .np-forum-engagement button[aria-pressed="true"] {
+    background: var(--np-color-primary, #2563eb);
+    color: var(--np-color-primary-foreground, #fff);
+  }
+
+  .np-forum-engagement button:disabled {
+    cursor: wait;
+    opacity: 0.6;
+  }
+
+  .np-forum-engagement [role="alert"] {
+    flex-basis: 100%;
+    color: var(--np-color-danger, #dc2626);
+    text-align: center;
+  }
+
   .np-forum-post-actions {
     margin-top: 1rem;
   }
@@ -708,6 +760,10 @@
     margin: 0.25rem 0 0;
     font-size: 1rem;
     line-height: 1.4;
+  }
+
+  .np-forum-community-row-main .np-forum-engagement-counts {
+    margin-top: 0.45rem;
   }
 
   .np-forum-community-row-main h3 a {
@@ -1214,6 +1270,10 @@
     margin-top: 0.45rem;
   }
 
+  .np-forum-block-feed-list .np-forum-engagement-counts {
+    margin-top: 0.45rem;
+  }
+
   .np-forum-block-feed-author {
     text-decoration: none;
   }
@@ -1259,8 +1319,15 @@
 
     .np-forum-column-number,
     .np-forum-column-category,
+    .np-forum-column-views,
+    .np-forum-column-reactions,
     .np-forum-column-date {
       display: none;
+    }
+
+    .np-forum-row-engagement {
+      display: flex;
+      margin-top: 0.35rem;
     }
 
     .np-forum-community-index-header,

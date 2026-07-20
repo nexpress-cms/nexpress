@@ -13,11 +13,12 @@ import {
   type NpForumRuntime,
 } from "./runtime.js";
 import type { NpForumBoard, NpForumMessages, NpForumPostSummary } from "./types.js";
+import { ForumEngagementCounts } from "./skins/engagement.js";
 
 const MAX_FEED_LIMIT = 20;
 const MAX_FEED_SCAN = 200;
 
-type ForumFeedMode = "latest" | "notices";
+type ForumFeedMode = "latest" | "notices" | "popular";
 type ForumFeedLayout = "list" | "cards";
 type ForumDirectoryColumns = "auto" | "two" | "three" | "four";
 type ForumBlockRenderContext = NonNullable<Parameters<NpBlockDefinition["render"]>[2]>;
@@ -50,7 +51,17 @@ function readBoardKey(value: unknown): string | null {
 }
 
 function readFeedMode(value: unknown): ForumFeedMode {
-  return value === "notices" ? "notices" : "latest";
+  return value === "notices" || value === "popular" ? value : "latest";
+}
+
+function readWindowDays(value: unknown): number {
+  return readLimit(value, 7, 90);
+}
+
+export function npForumPopularityScore(post: NpForumPostSummary): number {
+  return (
+    post.engagement.viewCount + post.engagement.commentCount * 4 + post.engagement.reactionCount * 6
+  );
 }
 
 function readFeedLayout(value: unknown): ForumFeedLayout {
@@ -120,7 +131,17 @@ async function findForumBoardByKeyForBlock(
 async function listForumFeed(
   runtime: NpForumRuntime,
   ctx: ForumBlockRenderContext,
-  { mode, boardKey, limit }: { mode: ForumFeedMode; boardKey: string | null; limit: number },
+  {
+    mode,
+    boardKey,
+    limit,
+    windowDays,
+  }: {
+    mode: ForumFeedMode;
+    boardKey: string | null;
+    limit: number;
+    windowDays: number;
+  },
 ): Promise<ForumFeedItem[]> {
   const selectedBoard = boardKey ? await findForumBoardByKeyForBlock(runtime, boardKey, ctx) : null;
   if (boardKey && !selectedBoard) return [];
@@ -134,22 +155,42 @@ async function listForumFeed(
   };
   if (selectedBoard) where.board = selectedBoard.id;
 
-  const scanLimit = selectedBoard ? limit : Math.min(MAX_FEED_SCAN, Math.max(50, limit * 4));
+  const scanLimit =
+    mode === "popular"
+      ? MAX_FEED_SCAN
+      : selectedBoard
+        ? limit
+        : Math.min(MAX_FEED_SCAN, Math.max(50, limit * 4));
   const result = await ctx.content.find(runtime.collections.posts, {
     where,
     sort: "-createdAt",
     page: 1,
     limit: scanLimit,
   });
-  const activeDocuments = (result.docs as ForumPostDocument[])
-    .filter((document) => {
-      const board = boardsById.get(document.board);
-      return board !== undefined && document.boardKey === board.key;
-    })
-    .slice(0, limit);
-  const posts = await enrichForumPosts(activeDocuments);
-  return posts.flatMap((post, index) => {
-    const document = activeDocuments[index];
+  const cutoff = Date.now() - windowDays * 24 * 60 * 60 * 1000;
+  const activeDocuments = (result.docs as ForumPostDocument[]).filter((document) => {
+    const board = boardsById.get(document.board);
+    return (
+      board !== undefined &&
+      document.boardKey === board.key &&
+      (mode !== "popular" || document.createdAt.getTime() >= cutoff)
+    );
+  });
+  const posts = await enrichForumPosts(activeDocuments, runtime.collections.posts);
+  const orderedPosts =
+    mode === "popular"
+      ? posts
+          .sort(
+            (left, right) =>
+              npForumPopularityScore(right) - npForumPopularityScore(left) ||
+              right.createdAt.getTime() - left.createdAt.getTime() ||
+              left.id.localeCompare(right.id),
+          )
+          .slice(0, limit)
+      : posts.slice(0, limit);
+  const documentsById = new Map(activeDocuments.map((document) => [document.id, document]));
+  return orderedPosts.flatMap((post) => {
+    const document = documentsById.get(post.id);
     const board = document ? boardsById.get(document.board) : undefined;
     return board ? [{ board, post }] : [];
   });
@@ -262,6 +303,8 @@ async function ForumPostFeedBody({
   showCategory,
   showAuthor,
   showDate,
+  showEngagement,
+  windowDays,
 }: {
   runtime: NpForumRuntime;
   ctx: ForumBlockRenderContext;
@@ -274,9 +317,11 @@ async function ForumPostFeedBody({
   showCategory: boolean;
   showAuthor: boolean;
   showDate: boolean;
+  showEngagement: boolean;
+  windowDays: number;
 }) {
   const [items, messages] = await Promise.all([
-    listForumFeed(runtime, ctx, { mode, boardKey, limit }),
+    listForumFeed(runtime, ctx, { mode, boardKey, limit, windowDays }),
     getForumHomeMessages(),
   ]);
   const feedHref = boardKey ? `${runtime.basePath}/${boardKey}` : runtime.basePath;
@@ -326,6 +371,7 @@ async function ForumPostFeedBody({
                     ) : null}
                   </div>
                 ) : null}
+                {showEngagement ? <ForumEngagementCounts post={post} messages={messages} /> : null}
               </li>
             );
           })}
@@ -424,10 +470,11 @@ export function createForumHomeBlocks(runtime: NpForumRuntime): NpBlockDefinitio
     {
       type: "forum.post-feed",
       label: "Forum post feed",
-      description: "Shows the latest discussions or notices from active public forum boards.",
+      description:
+        "Shows latest, notice, or bounded-window popular discussions from active public forum boards.",
       icon: "💬",
       category: "content",
-      keywords: ["forum", "community", "posts", "notices", "latest"],
+      keywords: ["forum", "community", "posts", "notices", "latest", "popular"],
       summaryFields: ["heading", "mode", "boardKey", "limit"],
       defaultProps: {
         heading: "Latest discussions",
@@ -439,6 +486,8 @@ export function createForumHomeBlocks(runtime: NpForumRuntime): NpBlockDefinitio
         showCategory: true,
         showAuthor: true,
         showDate: true,
+        showEngagement: true,
+        windowDays: 7,
       },
       propsSchema: [
         {
@@ -457,6 +506,7 @@ export function createForumHomeBlocks(runtime: NpForumRuntime): NpBlockDefinitio
           options: [
             { label: "Latest discussions", value: "latest" },
             { label: "Notices", value: "notices" },
+            { label: "Popular discussions", value: "popular" },
           ],
           group: "Content",
         },
@@ -480,6 +530,17 @@ export function createForumHomeBlocks(runtime: NpForumRuntime): NpBlockDefinitio
           max: MAX_FEED_LIMIT,
           step: 1,
           defaultValue: 8,
+          group: "Content",
+        },
+        {
+          name: "windowDays",
+          label: "Popularity window (days)",
+          type: "number",
+          min: 1,
+          max: 90,
+          step: 1,
+          defaultValue: 7,
+          visibleWhen: [["mode", "popular"]],
           group: "Content",
         },
         {
@@ -515,6 +576,13 @@ export function createForumHomeBlocks(runtime: NpForumRuntime): NpBlockDefinitio
           group: "Display",
         },
         {
+          name: "showEngagement",
+          label: "Show view, comment, and reaction counts",
+          type: "boolean",
+          defaultValue: true,
+          group: "Display",
+        },
+        {
           name: "showDate",
           label: "Show date",
           type: "boolean",
@@ -537,6 +605,8 @@ export function createForumHomeBlocks(runtime: NpForumRuntime): NpBlockDefinitio
           showCategory: readBoolean(props.showCategory, true),
           showAuthor: readBoolean(props.showAuthor, true),
           showDate: readBoolean(props.showDate, true),
+          showEngagement: readBoolean(props.showEngagement, true),
+          windowDays: readWindowDays(props.windowDays),
         });
       },
     },
@@ -548,7 +618,7 @@ export const forumHomePatterns = [
     id: "forum.community-home",
     label: "Community home",
     description:
-      "A board directory, notices, and latest discussions using the active forum configuration.",
+      "A board directory, notices, popular discussions, and latest posts using the active forum configuration.",
     category: "homepage",
     blocks: [
       {
@@ -579,6 +649,23 @@ export const forumHomePatterns = [
         },
       },
       {
+        id: "forum-home-popular",
+        type: "forum.post-feed",
+        props: {
+          heading: "Popular discussions",
+          mode: "popular",
+          boardKey: "",
+          limit: 6,
+          windowDays: 7,
+          layout: "cards",
+          showBoard: true,
+          showCategory: true,
+          showAuthor: false,
+          showDate: false,
+          showEngagement: true,
+        },
+      },
+      {
         id: "forum-home-latest",
         type: "forum.post-feed",
         props: {
@@ -591,6 +678,7 @@ export const forumHomePatterns = [
           showCategory: true,
           showAuthor: true,
           showDate: true,
+          showEngagement: true,
         },
       },
     ],

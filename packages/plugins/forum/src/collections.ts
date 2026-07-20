@@ -276,6 +276,8 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
     versions: { drafts: true, max: 30 },
     community: {
       comments: true,
+      reactions: true,
+      views: true,
       memberWrite: {
         create: true,
         update: true,

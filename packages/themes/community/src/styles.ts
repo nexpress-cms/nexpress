@@ -525,6 +525,9 @@ export const communityCss = `
 .np-community-shell [data-np-forum-surface="post-list"] { letter-spacing: -0.012em; }
 .np-community-shell [data-np-forum-block] { width: 100%; }
 .np-community-shell [data-np-forum-block="board-directory"] + [data-np-forum-block="post-feed"] { margin-top: 0.85rem; }
+.np-community-shell [data-np-forum-engagement] { font-variant-numeric: tabular-nums; }
+.np-community-shell [data-np-forum-engagement="post"] button { border-radius: 0.4rem; }
+.np-community-shell [data-np-forum-feed-mode="popular"] { --np-forum-panel-shadow: 0 10px 28px rgba(28,43,68,0.08); }
 
 @media (max-width: 1020px) {
   .np-community-content-grid { grid-template-columns: minmax(0, 1fr); }

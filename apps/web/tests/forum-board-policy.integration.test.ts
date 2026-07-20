@@ -7,6 +7,7 @@ import {
   DELETE as collectionDELETE,
   PATCH as collectionPATCH,
 } from "@/app/api/collections/[slug]/[id]/route";
+import { POST as viewPOST } from "@/app/api/views/route";
 import { forumBoardsTable, forumPostsTable } from "@/db/generated/collections";
 import type { ForumPostsDocument } from "@/db/generated/documents";
 import { NextRequest } from "next/server";
@@ -14,6 +15,7 @@ import { NextRequest } from "next/server";
 import {
   closeTestDb,
   ensureMigrated,
+  getTestDb,
   readJson,
   registerTestCollections,
   seedActiveMember,
@@ -307,5 +309,123 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
 
     expect(found.totalDocs).toBe(1);
     expect(found.docs.map((post) => post.id)).toEqual([created.body.id]);
+  });
+
+  it("deduplicates daily views and aggregates document comments and reactions without orphans", async () => {
+    const { id: boardId } = await createBoard({ key: "engagement" });
+    const { response, member: author } = await createPost(boardId, {
+      title: "참여 계약",
+    });
+    const created = await readJson<{ id: string }>(response);
+    expect(created.status).toBe(201);
+    const reactor = await seedActiveMember({
+      handle: `reactor-${Math.random().toString(36).slice(2)}`,
+    });
+    const {
+      addReaction,
+      createComment,
+      npContentViews,
+      npListContentEngagement,
+      npRecordContentView,
+    } = await import("@nexpress/core");
+
+    await createComment({
+      targetType: "forum-posts",
+      targetId: created.body.id,
+      memberId: reactor.memberId,
+      bodyMd: "집계되는 댓글",
+    });
+    await addReaction({
+      targetType: "forum-posts",
+      targetId: created.body.id,
+      memberId: reactor.memberId,
+      kind: "like",
+    });
+
+    const viewerHash = "a".repeat(64);
+    expect(
+      await npRecordContentView(
+        { targetType: "forum-posts", targetId: created.body.id, viewerHash },
+        { now: new Date("2026-07-20T01:00:00.000Z") },
+      ),
+    ).toEqual({ counted: true, viewCount: 1 });
+    expect(
+      await npRecordContentView(
+        { targetType: "forum-posts", targetId: created.body.id, viewerHash },
+        { now: new Date("2026-07-20T23:59:59.000Z") },
+      ),
+    ).toEqual({ counted: false, viewCount: 1 });
+    expect(
+      await npRecordContentView(
+        { targetType: "forum-posts", targetId: created.body.id, viewerHash },
+        { now: new Date("2026-07-21T00:00:00.000Z") },
+      ),
+    ).toEqual({ counted: true, viewCount: 2 });
+
+    await expect(npListContentEngagement("forum-posts", [created.body.id])).resolves.toEqual([
+      {
+        targetType: "forum-posts",
+        targetId: created.body.id,
+        viewCount: 2,
+        commentCount: 1,
+        reactionCount: 1,
+        reactions: { like: 1 },
+      },
+    ]);
+    const db = await getTestDb();
+    const persistedViews = await db.select().from(npContentViews);
+    expect(persistedViews).toHaveLength(2);
+    expect(persistedViews.every((row) => row.viewerHash !== viewerHash)).toBe(true);
+    expect(new Set(persistedViews.map((row) => row.viewerHash))).toHaveProperty("size", 2);
+
+    const removed = await collectionDELETE(
+      request(
+        `/api/collections/forum-posts/${created.body.id}`,
+        {
+          cookie: `np-mb-session=${author.sessionCookie}`,
+          csrfCookie: `np-mb-csrf=${author.csrfCookie}`,
+          csrfHeader: author.csrfCookie,
+        },
+        { method: "DELETE" },
+      ),
+      { params: Promise.resolve({ slug: "forum-posts", id: created.body.id }) },
+    );
+    expect(removed.status).toBe(204);
+    expect(await db.select().from(npContentViews)).toHaveLength(0);
+  });
+
+  it("keeps the anonymous visitor id HttpOnly and returns a stable daily view receipt", async () => {
+    const { id: boardId } = await createBoard({ key: "view-api" });
+    const { response } = await createPost(boardId, { title: "조회 API" });
+    const created = await readJson<{ id: string }>(response);
+    expect(created.status).toBe(201);
+    const body = JSON.stringify({ targetType: "forum-posts", targetId: created.body.id });
+
+    const first = await viewPOST(
+      new NextRequest("http://localhost:3000/api/views", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      }),
+    );
+    const firstResult = await readJson<{ counted: boolean; viewCount: number }>(first);
+    expect(firstResult).toEqual({ status: 200, body: { counted: true, viewCount: 1 } });
+    const setCookie = first.headers.get("set-cookie") ?? "";
+    expect(setCookie).toMatch(/^np-visitor=[^;]+;/u);
+    expect(setCookie).toContain("HttpOnly");
+    const visitorCookie = setCookie.split(";", 1)[0];
+
+    const second = await viewPOST(
+      new NextRequest("http://localhost:3000/api/views", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: visitorCookie ?? "" },
+        body,
+      }),
+    );
+    await expect(readJson<{ counted: boolean; viewCount: number }>(second)).resolves.toEqual({
+      status: 200,
+      body: { counted: false, viewCount: 1 },
+    });
+    expect(second.headers.get("set-cookie")).toBeNull();
   });
 });

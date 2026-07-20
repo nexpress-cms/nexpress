@@ -35,6 +35,12 @@ const messages: NpForumMessages = {
   staff: "운영자",
   pending: "검토 중",
   locked: "잠김",
+  views: "조회",
+  commentsCount: "댓글",
+  reactions: "추천",
+  recommend: "추천",
+  recommended: "추천 취소",
+  engagementFailed: "추천 실패",
   pagination: "페이지 이동",
   boardPolicy: "게시판 운영 정책",
   writeMembers: "회원 글쓰기",
@@ -103,6 +109,14 @@ const post: NpForumPostSummary = {
     handle: "hana",
     displayName: "하나",
     avatarUrl: "https://cdn.example.com/hana.png",
+  },
+  engagement: {
+    targetType: "forum-posts",
+    targetId: "2d4af53e-6f78-43e0-8682-67f5a7d2b92e",
+    viewCount: 120,
+    commentCount: 9,
+    reactionCount: 7,
+    reactions: { like: 7 },
   },
 };
 
@@ -201,6 +215,7 @@ describe("community full forum skin", () => {
           </>
         ),
         authorActions: <button type="button">수정 액션</button>,
+        engagement: <div data-testid="engagement">참여 지표</div>,
         comments: <div data-testid="comments">댓글 영역</div>,
         messages,
       }),

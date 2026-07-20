@@ -61,6 +61,8 @@ describe("forum factory", () => {
       "post-detail": '[data-np-forum-surface="post-detail"]',
       composer: '[data-np-forum-surface="composer"]',
       comments: ".np-forum-comments",
+      engagement: '[data-np-forum-engagement="post"]',
+      "engagement-summary": '[data-np-forum-engagement="summary"]',
       "board-directory-block": '[data-np-forum-block="board-directory"]',
       "post-feed-block": '[data-np-forum-block="post-feed"]',
       "feed-item": ".np-forum-block-feed-list > li",
@@ -77,6 +79,10 @@ describe("forum factory", () => {
           expect.objectContaining({
             type: "forum.post-feed",
             props: expect.objectContaining({ mode: "notices" }),
+          }),
+          expect.objectContaining({
+            type: "forum.post-feed",
+            props: expect.objectContaining({ mode: "popular", windowDays: 7 }),
           }),
           expect.objectContaining({
             type: "forum.post-feed",
@@ -140,6 +146,11 @@ describe("forum factory", () => {
     expect(forum.collections[1].community?.memberWrite?.access?.create).toBeTypeOf("function");
     expect(forum.collections[1].community?.memberWrite?.access?.update).toBeTypeOf("function");
     expect(forum.collections[1].community?.memberWrite?.resolveCreateStatus).toBeTypeOf("function");
+    expect(forum.collections[1].community).toMatchObject({
+      comments: true,
+      reactions: true,
+      views: true,
+    });
     expect(forum.collections[0].seo?.urlPath?.({ slug: "free" })).toBe("/boards/free");
     expect(
       forum.collections[1].seo?.urlPath?.({

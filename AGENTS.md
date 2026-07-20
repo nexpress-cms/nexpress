@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-19 (the bundled Korean community theme now works
+**Last refreshed:** 2026-07-20 (forum engagement now shares opt-in document
+reactions, privacy-bounded daily views, batched counts, and bounded recent
+popularity across Core, API, skins, home blocks, theme hooks, doctor, and docs.)
+
+**Earlier:** 2026-07-19 (the bundled Korean community theme now works
 without the forum over generic page/post/member contracts and enhances an
 installed forum only through its public CSS variables, data hooks, and optional
 home block slot.)
