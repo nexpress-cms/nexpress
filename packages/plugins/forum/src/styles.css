@@ -47,6 +47,7 @@
   }
 
   .np-forum-toolbar a:not(.np-button-primary),
+  .np-forum-toolbar .np-forum-subscription button,
   .np-forum-post-actions a,
   .np-forum-post-actions button {
     padding: 0.5rem 0.8rem;
@@ -56,6 +57,34 @@
     text-decoration: none;
     font: inherit;
     cursor: pointer;
+  }
+
+  .np-forum-subscription {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .np-forum-subscription button {
+    white-space: nowrap;
+  }
+
+  .np-forum-subscription button[aria-pressed="true"] {
+    border-color: var(--np-forum-accent, var(--np-color-primary, #2563eb));
+    background: var(--np-forum-accent, var(--np-color-primary, #2563eb));
+    color: var(--np-color-primary-foreground, #fff);
+  }
+
+  .np-forum-subscription button:disabled {
+    cursor: wait;
+    opacity: 0.65;
+  }
+
+  .np-forum-subscription [role="alert"] {
+    flex-basis: 100%;
+    color: var(--np-color-danger, #dc2626);
+    font-size: 0.8rem;
   }
 
   .np-forum-author-actions {
@@ -856,13 +885,17 @@
     gap: 0.5rem;
   }
 
-  .np-forum-community-actions a {
+  .np-forum-community-actions a,
+  .np-forum-community-actions .np-forum-subscription button {
     padding: 0.55rem 0.85rem;
     border: 1px solid var(--np-forum-community-border);
     border-radius: var(--np-radius-md, 0.5rem);
     background: var(--np-forum-community-panel);
     text-decoration: none;
     white-space: nowrap;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
   }
 
   .np-forum-community-actions a[aria-current="page"] {

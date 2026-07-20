@@ -2,8 +2,8 @@ import { and, count, desc, eq, isNull, inArray } from "drizzle-orm";
 
 import {
   npRequireCommunityId,
-  npRequireCommunityJsonObject,
   npRequireNotificationKind,
+  npRequireNotificationPayload,
   npRequireNotificationRow,
 } from "../community-contract/contract.js";
 import type {
@@ -27,10 +27,12 @@ import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
  *
  * `kind` is a free-form string. The current vocabulary:
  *  - `comment.reply`        — your comment got a reply
+ *  - `comment.received`     — your document got a comment
  *  - `comment.mention`      — you were mentioned in a comment
  *  - `document.mention`     — you were mentioned in a document
  *  - `reaction.received`    — someone reacted to your content
  *  - `follow.received`      — someone followed you
+ *  - `follow.activity`      — a subscribed document has new activity
  * Plugins can write their own kinds; the recipient UI fans them out
  * to whichever rendering it knows.
  */
@@ -52,10 +54,7 @@ export async function createNotification(
       ? null
       : npRequireCommunityId(input.actorMemberId, "community.notification.actorMemberId");
   const kind = npRequireNotificationKind(input.kind, "community.notification.kind");
-  const payload = npRequireCommunityJsonObject(
-    input.payload ?? {},
-    "community.notification.payload",
-  );
+  const payload = npRequireNotificationPayload(kind, input.payload ?? {});
 
   // Mute check — defer the import to avoid a notifications →
   // mutes circular at module load. Mutes module imports

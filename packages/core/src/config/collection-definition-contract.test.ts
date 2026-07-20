@@ -317,6 +317,7 @@ describe("collection definition contract", () => {
     const collection = validCollection();
     collection.community = {
       comments: true,
+      follows: true,
       reports: true,
       memberWrite: {
         create: true,
@@ -374,6 +375,36 @@ describe("collection definition contract", () => {
         expect.objectContaining({
           location: "community.reports",
           message: expect.stringMatching(/reserved report target/),
+        }),
+      ]),
+    );
+  });
+
+  it("rejects document follows on the reserved member target", () => {
+    const collection = validCollection();
+    collection.slug = "member";
+    collection.community = { follows: true };
+
+    expect(npAnalyzeCollectionDefinition(collection)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          location: "community.follows",
+          message: expect.stringMatching(/reserved follow target/),
+        }),
+      ]),
+    );
+  });
+
+  it("requires follow-enabled collections to define a public URL resolver", () => {
+    const collection = validCollection();
+    collection.community = { follows: true };
+    collection.seo = undefined;
+
+    expect(npAnalyzeCollectionDefinition(collection)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          location: "community.follows",
+          message: expect.stringMatching(/require seo\.urlPath/u),
         }),
       ]),
     );

@@ -9,7 +9,7 @@ import {
   npCommunityCommentSorts,
   npCommunityCommentStatuses,
   npCommunityDigestCadences,
-  npCommunityFollowTargets,
+  npCommunityFollowActivityKinds,
   npCommunityModerationVerdictKinds,
   npCommunityReportResolutionActions,
   npCommunityReportStatuses,
@@ -38,6 +38,8 @@ import {
   type NpCommunitySettings,
   type NpCommunitySettingsPatch,
   type NpFollowRow,
+  type NpFollowActivityNotificationPayload,
+  type NpFollowActivityKind,
   type NpFollowTarget,
   type NpFollowWireRow,
   type NpEngagementTarget,
@@ -113,7 +115,7 @@ const ENGAGEMENT_TARGET_TYPE_MAX_LENGTH = 63;
 const COMMENT_STATUSES = new Set<string>(npCommunityCommentStatuses);
 const DOCUMENT_STATUSES = new Set<string>(npCollectionDocumentStatuses);
 const COMMENT_SORTS = new Set<string>(npCommunityCommentSorts);
-const FOLLOW_TARGETS = new Set<string>(npCommunityFollowTargets);
+const FOLLOW_ACTIVITY_KINDS = new Set<string>(npCommunityFollowActivityKinds);
 const REPORT_STATUSES = new Set<string>(npCommunityReportStatuses);
 const REPORT_RESOLUTION_ACTIONS = new Set<string>(npCommunityReportResolutionActions);
 const REPORT_CONTEXT_KINDS = new Set<string>(["comment", "document", "member", "missing"]);
@@ -969,7 +971,7 @@ function parseCommentCommon(
   );
   const common = {
     id: uuid(raw.id, `${path}.id`),
-    targetType: targetType(raw.targetType, `${path}.targetType`),
+    targetType: engagementTargetType(raw.targetType, `${path}.targetType`),
     targetId: uuid(raw.targetId, `${path}.targetId`),
     parentId: nullableUuid(raw.parentId, `${path}.parentId`),
     memberId: uuid(raw.memberId, `${path}.memberId`),
@@ -1114,8 +1116,8 @@ function parseFollowCommon(
   const common = {
     id: uuid(raw.id, `${path}.id`),
     followerId: uuid(raw.followerId, `${path}.followerId`),
-    targetType: enumString<NpFollowTarget>(raw.targetType, `${path}.targetType`, FOLLOW_TARGETS),
-    targetId: opaqueTarget(raw.targetId, `${path}.targetId`),
+    targetType: targetType(raw.targetType, `${path}.targetType`),
+    targetId: uuid(raw.targetId, `${path}.targetId`),
     siteId: siteId(raw.siteId, `${path}.siteId`),
   };
   return wire
@@ -1150,11 +1152,12 @@ function parseNotificationCommon(
     "siteId",
     "createdAt",
   ]);
+  const kind = notificationKind(raw.kind, `${path}.kind`);
   const common = {
     id: uuid(raw.id, `${path}.id`),
     memberId: uuid(raw.memberId, `${path}.memberId`),
-    kind: notificationKind(raw.kind, `${path}.kind`),
-    payload: npRequireCommunityJsonObject(raw.payload, `${path}.payload`),
+    kind,
+    payload: npRequireNotificationPayload(kind, raw.payload),
     siteId: siteId(raw.siteId, `${path}.siteId`),
   };
   return wire
@@ -1168,6 +1171,14 @@ function parseNotificationCommon(
         readAt: nullableDate(raw.readAt, `${path}.readAt`),
         createdAt: validDate(raw.createdAt, `${path}.createdAt`),
       };
+}
+
+export function npRequireNotificationPayload(kind: string, value: unknown): NpCommunityJsonObject {
+  const checkedKind = notificationKind(kind, "community.notification.kind");
+  if (checkedKind === "follow.activity") {
+    return { ...npRequireFollowActivityNotificationPayload(value) };
+  }
+  return npRequireCommunityJsonObject(value, "community.notification.payload");
 }
 
 export function npRequireNotificationRow(value: unknown): NpNotificationRow {
@@ -1969,12 +1980,76 @@ export function npRequireFollowTarget(value: unknown): {
 } {
   const raw = exactRecord(value, "community.followRequest", ["targetType", "targetId"]);
   return {
-    targetType: enumString<NpFollowTarget>(
-      raw.targetType,
-      "community.followRequest.targetType",
-      FOLLOW_TARGETS,
-    ),
-    targetId: opaqueTarget(raw.targetId, "community.followRequest.targetId"),
+    targetType: engagementTargetType(raw.targetType, "community.followRequest.targetType"),
+    targetId: uuid(raw.targetId, "community.followRequest.targetId"),
+  };
+}
+
+export function npRequireFollowTargetType(value: unknown): NpFollowTarget {
+  return engagementTargetType(value, "community.followRequest.targetType");
+}
+
+export function npRequireNotificationHref(value: unknown): string {
+  const href = boundedString(value, "community.notification.href", 2048);
+  const hasControlCharacter = Array.from(href).some((character) => {
+    const code = character.charCodeAt(0);
+    return code < 0x20 || code === 0x7f;
+  });
+  if (
+    !href.startsWith("/") ||
+    href.startsWith("//") ||
+    href.includes("\\") ||
+    hasControlCharacter
+  ) {
+    fail("community.notification.href", "must be a local absolute path");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(href, "https://nexpress.invalid");
+  } catch {
+    fail("community.notification.href", "must be a valid local absolute path");
+  }
+  if (parsed.origin !== "https://nexpress.invalid" || parsed.username || parsed.password) {
+    fail("community.notification.href", "must stay on the current site");
+  }
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+}
+
+export function npRequireFollowActivityNotificationPayload(
+  value: unknown,
+): NpFollowActivityNotificationPayload {
+  const raw = exactRecord(value, "community.followActivity", [
+    "activity",
+    "subjectType",
+    "subjectId",
+    "targetType",
+    "targetId",
+    "href",
+    "commentId",
+  ]);
+  const activity = enumString<NpFollowActivityKind>(
+    raw.activity,
+    "community.followActivity.activity",
+    FOLLOW_ACTIVITY_KINDS,
+  );
+  const commentId =
+    raw.commentId === null ? null : uuid(raw.commentId, "community.followActivity.commentId");
+  if ((activity === "comment.created") !== (commentId !== null)) {
+    fail(
+      "community.followActivity.commentId",
+      activity === "comment.created"
+        ? "is required for comment activity"
+        : "must be null for document activity",
+    );
+  }
+  return {
+    activity,
+    subjectType: engagementTargetType(raw.subjectType, "community.followActivity.subjectType"),
+    subjectId: uuid(raw.subjectId, "community.followActivity.subjectId"),
+    targetType: engagementTargetType(raw.targetType, "community.followActivity.targetType"),
+    targetId: uuid(raw.targetId, "community.followActivity.targetId"),
+    href: npRequireNotificationHref(raw.href),
+    commentId,
   };
 }
 
@@ -2334,6 +2409,7 @@ export function npRequireRuntimeDiagnostics(value: unknown): NpCommunityRuntimeD
         "roles",
         "notification-kinds",
         "notification-prefs",
+        "notifications",
         "spam",
         "profanity",
         "reputation",

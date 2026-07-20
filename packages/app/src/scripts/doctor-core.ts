@@ -1360,9 +1360,58 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
         });
       });
     }
+    const followIntegrityIssues: Array<{ path: string; message: string }> = [];
+    const missingMemberFollowTargets = await client.query<{ id: string }>(
+      `select f.id
+         from np_follows f
+         left join np_members m on f.target_type = 'member' and m.id::text = f.target_id
+        where f.target_type = 'member' and m.id is null`,
+    );
+    missingMemberFollowTargets.rows.forEach((row) => {
+      followIntegrityIssues.push({
+        path: `follows.${row.id}.targetId`,
+        message: "references a missing member target.",
+      });
+    });
+    const followedCollectionTypes = [
+      ...new Set(
+        follows.rows.flatMap((row) =>
+          typeof row.targetType === "string" && row.targetType !== "member" ? [row.targetType] : [],
+        ),
+      ),
+    ];
+    for (const targetType of followedCollectionTypes) {
+      const tableName = `np_c_${targetType}`;
+      if (
+        !npIsCanonicalCollectionMainTableName(tableName) ||
+        !presentCollectionTables.has(tableName)
+      ) {
+        followIntegrityIssues.push({
+          path: `follows.targetType.${targetType}`,
+          message: `references missing collection table ${tableName}.`,
+        });
+        continue;
+      }
+      const missingDocuments = await client.query<{ id: string }>(
+        `select f.id
+           from np_follows f
+           left join "${tableName}" d on d.id::text = f.target_id and d.site_id = f.site_id
+          where f.target_type = $1 and d.id is null`,
+        [targetType],
+      );
+      missingDocuments.rows.forEach((row) => {
+        followIntegrityIssues.push({
+          path: `follows.${row.id}.targetId`,
+          message: `references a missing or cross-site ${targetType} document.`,
+        });
+      });
+    }
     await client.end();
 
-    const issues: Array<{ path: string; message: string }> = [...reportIntegrityIssues];
+    const issues: Array<{ path: string; message: string }> = [
+      ...reportIntegrityIssues,
+      ...followIntegrityIssues,
+    ];
     const inspect = (
       path: string,
       value: unknown,
@@ -1427,7 +1476,7 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
           state: "error",
           label: "Community persistence contracts",
           detail: `${issues.length.toString()} contract issue(s); first: ${issues[0]?.path ?? "community"} ${issues[0]?.message ?? "invalid"}`,
-          hint: "Repair malformed or orphaned community rows, unresolved report duplicates, and notification preferences before accepting member traffic.",
+          hint: "Repair malformed or orphaned community rows, unresolved report duplicates, follow targets, and notification preferences before accepting member traffic.",
         };
   } catch (error) {
     try {

@@ -15,8 +15,10 @@ import { applyReputation } from "./reputation.js";
 import { getCommunitySettings } from "./settings.js";
 import {
   npResolveDocumentEngagementTarget,
+  npResolveDocumentPublicHref,
   type NpResolvedDocumentEngagementTarget,
 } from "./engagement-target.js";
+import { getDocumentById } from "../collections/pipeline.js";
 
 /**
  * Reactions service. `kind` is gated by both:
@@ -96,6 +98,7 @@ async function resolveReactionTarget(
   const [comment] = (await db
     .select({
       targetType: npComments.targetType,
+      targetId: npComments.targetId,
       memberId: npComments.memberId,
       status: npComments.status,
       siteId: npComments.siteId,
@@ -104,6 +107,7 @@ async function resolveReactionTarget(
     .where(eq(npComments.id, checked.targetId))
     .limit(1)) as Array<{
     targetType: string;
+    targetId: string;
     memberId: string;
     status: string;
     siteId: string;
@@ -118,11 +122,16 @@ async function resolveReactionTarget(
   if (comment.siteId !== requestSiteId) {
     throw new NpForbiddenError("reaction", "cross-site");
   }
+  const document = await getDocumentById<Record<string, unknown>>(
+    comment.targetType,
+    comment.targetId,
+  );
   return {
     targetType: checked.targetType,
     targetId: checked.targetId,
     siteId: comment.siteId,
     recipientId: comment.memberId,
+    href: document ? npResolveDocumentPublicHref(comment.targetType, document) : null,
     scopes: [{ type: "collection", id: comment.targetType }],
   };
 }
@@ -188,6 +197,7 @@ async function doAddReaction(
         targetType: target.targetType,
         targetId: target.targetId,
         reactionKind: input.kind,
+        ...(target.href ? { href: target.href } : {}),
       },
     });
     await applyReputation(target.recipientId, {

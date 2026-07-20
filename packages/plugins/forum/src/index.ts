@@ -1,4 +1,5 @@
 import { definePlugin, type NpPluginPageRouteRegistration } from "@nexpress/plugin-sdk";
+import { notifyFollowers } from "@nexpress/core/community";
 
 import { defineForumBoardsCollection, defineForumPostsCollection } from "./collections.js";
 import { createForumHomeBlocks, forumHomePatterns } from "./home-blocks.js";
@@ -114,6 +115,13 @@ const messages = {
     "forum.recommend": "Recommend",
     "forum.recommended": "Recommended",
     "forum.engagementFailed": "Could not update this reaction.",
+    "forum.subscribeBoard": "Subscribe to board",
+    "forum.subscribedBoard": "Board subscribed",
+    "forum.subscribePost": "Subscribe to post",
+    "forum.subscribedPost": "Post subscribed",
+    "forum.subscriptionLoading": "Loading subscription…",
+    "forum.signInToSubscribe": "Sign in to subscribe",
+    "forum.subscriptionFailed": "Could not update this subscription.",
     "forum.pagination": "Pagination",
     "forum.boardPolicy": "Board policy",
     "forum.writeMembers": "Members can post",
@@ -198,6 +206,13 @@ const messages = {
     "forum.recommend": "추천",
     "forum.recommended": "추천 취소",
     "forum.engagementFailed": "추천을 변경하지 못했습니다.",
+    "forum.subscribeBoard": "게시판 구독",
+    "forum.subscribedBoard": "게시판 구독 중",
+    "forum.subscribePost": "게시글 구독",
+    "forum.subscribedPost": "게시글 구독 중",
+    "forum.subscriptionLoading": "구독 상태 확인 중…",
+    "forum.signInToSubscribe": "로그인 후 구독",
+    "forum.subscriptionFailed": "구독 상태를 변경하지 못했습니다.",
     "forum.pagination": "페이지 이동",
     "forum.boardPolicy": "게시판 운영 정책",
     "forum.writeMembers": "회원 글쓰기",
@@ -350,6 +365,7 @@ export function createForum(options: NpForumOptions = {}) {
         attachments: '[data-np-forum-attachments="list"]',
         "attachment-item": "[data-np-forum-attachment]",
         engagement: '[data-np-forum-engagement="post"]',
+        subscription: "[data-np-forum-subscription]",
         "engagement-summary": '[data-np-forum-engagement="summary"]',
         "board-directory-block": '[data-np-forum-block="board-directory"]',
         "post-feed-block": '[data-np-forum-block="post-feed"]',
@@ -359,6 +375,37 @@ export function createForum(options: NpForumOptions = {}) {
     blocks,
     patterns: forumHomePatterns,
     i18n: messages,
+    hooks: {
+      "content:afterPublish": async ({ data }) => {
+        const { collection, document, principal } = data;
+        if (collection !== runtime.collections.posts || document.visibility !== "public") return;
+        const boardValue = document.board;
+        const boardId =
+          typeof boardValue === "string"
+            ? boardValue
+            : boardValue &&
+                typeof boardValue === "object" &&
+                "id" in boardValue &&
+                typeof boardValue.id === "string"
+              ? boardValue.id
+              : null;
+        const postId = typeof document.id === "string" ? document.id : null;
+        const boardKey = typeof document.boardKey === "string" ? document.boardKey : null;
+        const memberAuthorId =
+          typeof document.memberAuthorId === "string" ? document.memberAuthorId : null;
+        if (!boardId || !postId || !boardKey) return;
+        await notifyFollowers({
+          activity: "document.published",
+          subjectType: runtime.collections.boards,
+          subjectId: boardId,
+          targetType: runtime.collections.posts,
+          targetId: postId,
+          href: `${runtime.basePath}/${boardKey}/${postId}`,
+          commentId: null,
+          actorMemberId: principal?.kind === "member" ? principal.memberId : memberAuthorId,
+        });
+      },
+    },
     admin: {
       dashboardWidgets: [
         {

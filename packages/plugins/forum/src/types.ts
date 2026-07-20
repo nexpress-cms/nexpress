@@ -103,6 +103,13 @@ export interface NpForumMessages {
   recommend: string;
   recommended: string;
   engagementFailed: string;
+  subscribeBoard: string;
+  subscribedBoard: string;
+  subscribePost: string;
+  subscribedPost: string;
+  subscriptionLoading: string;
+  signInToSubscribe: string;
+  subscriptionFailed: string;
   pagination: string;
   previous: string;
   next: string;
@@ -167,6 +174,7 @@ export interface NpForumPostListSkinProps {
   searchMaxLength: number;
   isAuthenticated: boolean;
   canCreate: boolean;
+  subscriptionAction: ReactNode;
   messages: NpForumMessages;
   hrefForQuery: (patch?: NpForumPostListQueryPatch) => string;
 }
@@ -178,6 +186,7 @@ export interface NpForumPostDetailSkinProps {
   body: ReactNode;
   authorActions: ReactNode;
   reportAction: ReactNode;
+  subscriptionAction: ReactNode;
   engagement: ReactNode;
   comments: ReactNode;
   attachments: NpForumAttachment[];

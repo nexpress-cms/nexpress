@@ -2,6 +2,7 @@ import { findDocuments, type NpFindWhere } from "@nexpress/core";
 import { buildPageMetadata, getSiteMember } from "@nexpress/next";
 import type { NpRouteRenderProps } from "@nexpress/next";
 import { notFound } from "next/navigation";
+import { ForumSubscriptionAction } from "@nexpress/plugin-forum/client";
 
 import {
   enrichForumPosts,
@@ -83,6 +84,21 @@ export function createBoardPostsRoute(runtime: NpForumRuntime) {
       searchMaxLength: npForumPostListQueryLimits.searchLength,
       isAuthenticated: member !== null,
       canCreate: member !== null && board.writeMode === "members",
+      subscriptionAction: (
+        <ForumSubscriptionAction
+          targetType={runtime.collections.boards}
+          targetId={board.id}
+          isAuthenticated={member !== null}
+          loginHref={`/members/login?next=${encodeURIComponent(`${runtime.basePath}/${board.key}`)}`}
+          labels={{
+            subscribe: messages.subscribeBoard,
+            subscribed: messages.subscribedBoard,
+            loading: messages.subscriptionLoading,
+            signIn: messages.signInToSubscribe,
+            failed: messages.subscriptionFailed,
+          }}
+        />
+      ),
       messages,
       hrefForQuery: (patch) => buildForumPostListHref(runtime.basePath, board.key, query, patch),
     });

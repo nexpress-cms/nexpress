@@ -89,8 +89,8 @@ export type { NpReactionRow, NpReactToInput } from "./reactions.js";
 export { npListContentEngagement, npRecordContentView } from "./engagement.js";
 export type { NpRecordContentViewInput, NpRecordContentViewOptions } from "./engagement.js";
 
-export { follow, unfollow, isFollowing, listFollowing } from "./follows.js";
-export type { NpFollowRow, NpFollowInput } from "./follows.js";
+export { follow, unfollow, isFollowing, listFollowing, notifyFollowers } from "./follows.js";
+export type { NpFollowRow, NpFollowInput, NpNotifyFollowersInput } from "./follows.js";
 
 export {
   createNotification,

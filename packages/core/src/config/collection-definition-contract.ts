@@ -32,6 +32,7 @@ const reservedFieldNames = new Set([
 ]);
 const builtinRelationshipTargets = new Set(["media", "users"]);
 const reservedReportTargets = new Set(["comment", "member"]);
+const reservedFollowTargets = new Set(["member"]);
 
 function issue(
   code: NpCollectionDefinitionIssueCode,
@@ -331,6 +332,24 @@ function semanticIssues(config: NpCollectionConfig): NpCollectionDefinitionIssue
         "reference",
         "community.reports",
         `collection slug "${config.slug}" is a reserved report target and cannot enable document reports.`,
+      ),
+    );
+  }
+  if (config.community?.follows === true && reservedFollowTargets.has(config.slug)) {
+    issues.push(
+      issue(
+        "reference",
+        "community.follows",
+        `collection slug "${config.slug}" is a reserved follow target and cannot enable document follows.`,
+      ),
+    );
+  }
+  if (config.community?.follows === true && typeof config.seo?.urlPath !== "function") {
+    issues.push(
+      issue(
+        "reference",
+        "community.follows",
+        "document follows require seo.urlPath so every subscription can resolve a public destination.",
       ),
     );
   }

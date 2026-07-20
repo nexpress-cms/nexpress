@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-20 (community reports now use reserved or
+**Last refreshed:** 2026-07-20 (community follows now use member or opted-in
+collection targets, bounded activity fan-out, actionable deduplicated
+notifications, transactional cleanup, orphan diagnostics, and independent
+forum board/post subscription UI across both skins.)
+
+**Earlier:** 2026-07-20 (community reports now use reserved or
 report-enabled collection targets, unresolved deduplication, contextual Admin
 rows, target-serialized closed moderation actions, forum post reporting, and
 orphan diagnostics.)

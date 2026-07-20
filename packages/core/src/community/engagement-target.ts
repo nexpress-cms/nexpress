@@ -1,6 +1,7 @@
 import { getCollectionConfig } from "../collections/registry.js";
 import { getDocumentById } from "../collections/pipeline.js";
 import { npRequireEngagementTarget } from "../community-contract/contract.js";
+import { npRequireNotificationHref } from "../community-contract/contract.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
@@ -10,12 +11,13 @@ export interface NpResolvedDocumentEngagementTarget {
   targetId: string;
   siteId: string;
   recipientId: string | null;
+  href: string | null;
 }
 
 export async function npResolveDocumentEngagementTarget(
   targetType: string,
   targetId: string,
-  feature: "reactions" | "views" | "reports",
+  feature: "reactions" | "views" | "follows" | "reports",
   options: { requirePublic?: boolean } = {},
 ): Promise<NpResolvedDocumentEngagementTarget> {
   const target = npRequireEngagementTarget({ targetType, targetId });
@@ -53,5 +55,16 @@ export async function npResolveDocumentEngagementTarget(
     ...target,
     siteId: targetSiteId,
     recipientId: typeof document.memberAuthorId === "string" ? document.memberAuthorId : null,
+    href: npResolveDocumentPublicHref(target.targetType, document),
   };
+}
+
+export function npResolveDocumentPublicHref(
+  targetType: string,
+  document: Record<string, unknown>,
+): string | null {
+  const urlPath = getCollectionConfig(targetType).seo?.urlPath;
+  if (!urlPath) return null;
+  const href = urlPath(document);
+  return href === null ? null : npRequireNotificationHref(href);
 }

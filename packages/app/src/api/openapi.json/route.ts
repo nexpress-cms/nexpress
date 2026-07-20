@@ -594,7 +594,7 @@ function revisionSnapshotSchema(
 
 export function buildSpec(): OpenApiSchema {
   const slugs = getAllCollectionSlugs();
-  const reportTargetTypeSchema: OpenApiSchema = {
+  const communityTargetTypeSchema: OpenApiSchema = {
     type: "string",
     maxLength: 63,
     pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
@@ -602,7 +602,7 @@ export function buildSpec(): OpenApiSchema {
   const reportRowProperties: Record<string, OpenApiSchema> = {
     id: { type: "string", format: "uuid" },
     reporterId: { type: "string", format: "uuid" },
-    targetType: reportTargetTypeSchema,
+    targetType: communityTargetTypeSchema,
     targetId: { type: "string", format: "uuid" },
     reason: {
       type: "string",
@@ -644,7 +644,7 @@ export function buildSpec(): OpenApiSchema {
       ],
     },
     href: { type: ["string", "null"], maxLength: 512, pattern: "^/admin/" },
-    collectionSlug: { ...reportTargetTypeSchema, type: ["string", "null"] },
+    collectionSlug: { ...communityTargetTypeSchema, type: ["string", "null"] },
     documentId: { type: ["string", "null"], format: "uuid" },
     authorMemberId: { type: ["string", "null"], format: "uuid" },
   };
@@ -692,6 +692,43 @@ export function buildSpec(): OpenApiSchema {
     "media",
   ];
   const schemas: Record<string, OpenApiSchema> = {
+    community_follow_row: {
+      type: "object",
+      additionalProperties: false,
+      required: ["id", "followerId", "targetType", "targetId", "siteId", "createdAt"],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        followerId: { type: "string", format: "uuid" },
+        targetType: { ...communityTargetTypeSchema },
+        targetId: { type: "string", format: "uuid" },
+        siteId: { type: "string", pattern: npSiteIdPattern },
+        createdAt: { type: "string", format: "date-time" },
+      },
+    },
+    community_follow_list: {
+      type: "object",
+      additionalProperties: false,
+      required: ["follows"],
+      properties: {
+        follows: {
+          type: "array",
+          maxItems: npCommunityContractLimits.pageRows,
+          items: { $ref: "#/components/schemas/community_follow_row" },
+        },
+      },
+    },
+    community_following: {
+      type: "object",
+      additionalProperties: false,
+      required: ["following"],
+      properties: { following: { type: "boolean" } },
+    },
+    community_ok: {
+      type: "object",
+      additionalProperties: false,
+      required: ["ok"],
+      properties: { ok: { type: "boolean", const: true } },
+    },
     community_report_row: {
       type: "object",
       additionalProperties: false,
@@ -4617,46 +4654,91 @@ export function buildSpec(): OpenApiSchema {
         {
           in: "query",
           name: "targetType",
-          schema: { type: "string", enum: ["member", "thread", "tag"] },
+          schema: {
+            type: "string",
+            pattern: npSearchCollectionSlugPattern,
+            maxLength: 63,
+          },
+          description: "`member` or a canonical collection slug with `community.follows` enabled.",
         },
         { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 200 } },
         { in: "query", name: "offset", schema: { type: "integer", minimum: 0 } },
       ],
       responses: {
-        "200": { description: "Follow rows" },
+        "200": {
+          description: "Follow rows",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_follow_list" },
+            },
+          },
+        },
         "401": { description: "Member auth required" },
       },
     },
     post: {
-      summary: "Follow a member / thread / tag",
+      summary: "Follow a member or subscribe to a public collection document",
       requestBody: {
         required: true,
         content: {
           "application/json": {
             schema: {
               type: "object",
+              additionalProperties: false,
               required: ["targetType", "targetId"],
               properties: {
-                targetType: { type: "string", enum: ["member", "thread", "tag"] },
-                targetId: { type: "string", description: "UUID for member/thread; slug for tag." },
+                targetType: {
+                  type: "string",
+                  pattern: npSearchCollectionSlugPattern,
+                  maxLength: 63,
+                  description:
+                    "`member` or a canonical collection slug with `community.follows` enabled.",
+                },
+                targetId: { type: "string", format: "uuid" },
               },
             },
           },
         },
       },
       responses: {
-        "201": { description: "Followed (or existing follow returned on duplicate)" },
-        "400": { description: "Self-follow / unknown target / unsupported type" },
+        "201": {
+          description: "Followed (or existing follow returned on duplicate)",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_follow_row" },
+            },
+          },
+        },
+        "400": { description: "Self-follow or collection document follows are disabled" },
+        "404": { description: "Active member or public document target not found" },
       },
     },
     delete: {
       summary: "Unfollow",
       parameters: [
-        { in: "query", name: "targetType", required: true, schema: { type: "string" } },
-        { in: "query", name: "targetId", required: true, schema: { type: "string" } },
+        {
+          in: "query",
+          name: "targetType",
+          required: true,
+          schema: { type: "string", pattern: npSearchCollectionSlugPattern, maxLength: 63 },
+          description: "`member` or a canonical collection slug.",
+        },
+        {
+          in: "query",
+          name: "targetId",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
       ],
       responses: {
-        "200": { description: "Removed" },
+        "200": {
+          description: "Removed",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_ok" },
+            },
+          },
+        },
         "401": { description: "Member auth required" },
       },
     },
@@ -4671,12 +4753,24 @@ export function buildSpec(): OpenApiSchema {
           in: "query",
           name: "targetType",
           required: true,
-          schema: { type: "string", enum: ["member", "thread", "tag"] },
+          schema: { type: "string", pattern: npSearchCollectionSlugPattern, maxLength: 63 },
         },
-        { in: "query", name: "targetId", required: true, schema: { type: "string" } },
+        {
+          in: "query",
+          name: "targetId",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
       ],
       responses: {
-        "200": { description: "{ following: boolean }" },
+        "200": {
+          description: "Current follow state",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_following" },
+            },
+          },
+        },
         "401": { description: "Member auth required" },
       },
     },
@@ -4747,7 +4841,7 @@ export function buildSpec(): OpenApiSchema {
               required: ["targetType", "targetId", "reason"],
               properties: {
                 targetType: {
-                  ...reportTargetTypeSchema,
+                  ...communityTargetTypeSchema,
                   description: "Reserved `comment` / `member` target or a collection slug.",
                 },
                 targetId: { type: "string", format: "uuid" },
@@ -4785,7 +4879,7 @@ export function buildSpec(): OpenApiSchema {
         {
           in: "query",
           name: "targetType",
-          schema: reportTargetTypeSchema,
+          schema: communityTargetTypeSchema,
         },
         { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 200 } },
         { in: "query", name: "page", schema: { type: "integer", minimum: 1 } },

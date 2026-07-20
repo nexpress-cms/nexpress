@@ -15,6 +15,7 @@ import {
   ForumPostActions,
   ForumPostEngagement,
   ForumPostReportAction,
+  ForumSubscriptionAction,
 } from "@nexpress/plugin-forum/client";
 
 import {
@@ -137,6 +138,21 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
             }}
           />
         ) : null,
+      subscriptionAction: (
+        <ForumSubscriptionAction
+          targetType={runtime.collections.posts}
+          targetId={post.id}
+          isAuthenticated={member !== null}
+          loginHref={`/members/login?next=${encodeURIComponent(`${runtime.basePath}/${board.key}/${post.id}`)}`}
+          labels={{
+            subscribe: messages.subscribePost,
+            subscribed: messages.subscribedPost,
+            loading: messages.subscriptionLoading,
+            signIn: messages.signInToSubscribe,
+            failed: messages.subscriptionFailed,
+          }}
+        />
+      ),
       engagement: (
         <ForumPostEngagement
           targetType={runtime.collections.posts}

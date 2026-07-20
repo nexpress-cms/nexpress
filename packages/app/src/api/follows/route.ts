@@ -1,12 +1,10 @@
-import { NpValidationError } from "@nexpress/core";
 import { follow, listFollowing, unfollow } from "@nexpress/core/community";
 import {
-  npCommunityFollowTargets,
   npRequireFollowListWire,
   npRequireFollowTarget,
+  npRequireFollowTargetType,
   npRequireOkWire,
   npToFollowWireRow,
-  type NpFollowTarget,
 } from "@nexpress/core/community-contract";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
@@ -16,30 +14,19 @@ import { ensureFor } from "../../lib/init-core";
 import { npReadCommunityWindow, npRequireCommunityRequest } from "../../lib/community-contract";
 import { requireMember } from "../../lib/member-auth-helpers";
 
-const SUPPORTED = npCommunityFollowTargets;
-type FollowTarget = NpFollowTarget;
-
 function readTarget(raw: unknown) {
   return npRequireCommunityRequest(npRequireFollowTarget, raw);
 }
 
 export async function GET(request: NextRequest) {
   try {
-    await ensureFor("write");
+    await ensureFor("read");
     const member = await requireMember(request);
     const url = request.nextUrl;
     const targetType = url.searchParams.get("targetType");
     const { limit, offset } = npReadCommunityWindow(url.searchParams);
-    if (targetType !== null && !(SUPPORTED as readonly string[]).includes(targetType)) {
-      throw new NpValidationError("Invalid input", [
-        { field: "targetType", message: `Must be one of: ${SUPPORTED.join(", ")}` },
-      ]);
-    }
     const rows = await listFollowing(member.id, {
-      targetType:
-        targetType && (SUPPORTED as readonly string[]).includes(targetType)
-          ? (targetType as FollowTarget)
-          : undefined,
+      targetType: targetType === null ? undefined : npRequireFollowTargetType(targetType),
       limit,
       offset,
     });
@@ -68,15 +55,11 @@ export async function DELETE(request: NextRequest) {
     const url = request.nextUrl;
     const targetType = url.searchParams.get("targetType");
     const targetId = url.searchParams.get("targetId");
-    if (!targetType || !targetId || !(SUPPORTED as readonly string[]).includes(targetType)) {
-      throw new NpValidationError("Invalid input", [
-        { field: "target", message: "targetType and targetId query params required" },
-      ]);
-    }
+    const target = readTarget({ targetType, targetId });
     await unfollow({
       followerId: member.id,
-      targetType: targetType as FollowTarget,
-      targetId,
+      targetType: target.targetType,
+      targetId: target.targetId,
     });
     return npSuccessResponse(npRequireOkWire({ ok: true }));
   } catch (error) {
