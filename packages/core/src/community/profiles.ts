@@ -1,8 +1,11 @@
-import { and, eq, inArray, ne, or } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
+import { npIsCanonicalAuthId, npIsCanonicalMemberHandle } from "../auth-contract/contract.js";
 import { getDb } from "../db/runtime.js";
 import { npMembers } from "../db/schema/community.js";
 import { getMediaUrl } from "../media/url.js";
+import { npRequirePublicMemberProfileWire } from "../community-contract/contract.js";
+import type { NpPublicMemberProfileWire } from "../community-contract/types.js";
 
 /**
  * Public-facing member profile. Hand-picked from `np_members` to
@@ -11,7 +14,7 @@ import { getMediaUrl } from "../media/url.js";
  * surfaces (`/u/[handle]` etc.) get a safe-to-render shape without
  * having to remember which columns are sensitive.
  *
- * Suspended / deleted members are filtered out — calling
+ * Pending, suspended, and deleted members are filtered out — calling
  * `getMemberProfile` for a hidden member returns `null`. The
  * "imported" status (Phase 21 WordPress-import provisional members)
  * IS exposed because those profiles are visible on the public site
@@ -29,6 +32,18 @@ export interface NpMemberProfile {
   joinedAt: Date;
 }
 
+export function npToPublicMemberProfileWire(profile: NpMemberProfile): NpPublicMemberProfileWire {
+  return npRequirePublicMemberProfileWire({
+    id: profile.id,
+    handle: profile.handle,
+    displayName: profile.displayName,
+    avatarUrl: profile.avatarUrl,
+    bio: profile.bio,
+    reputation: profile.reputation,
+    joinedAt: profile.joinedAt.toISOString(),
+  });
+}
+
 /**
  * Fetch a public member profile by id or handle.
  *
@@ -41,7 +56,7 @@ export interface NpMemberProfile {
  *
  * Returns `null` when:
  *  - no row matches the id / handle,
- *  - the member's status is `suspended` or `deleted` (treat as
+ *  - the member's status is not `active` or `imported` (treat as
  *    "not found" for public surfaces).
  */
 export async function getMemberProfile(
@@ -58,11 +73,14 @@ export async function getMemberProfile(
   // for UUIDs — they're stored lowercase too — so we don't need
   // to detect which form the caller passed.
   const needle = idOrHandle.toLowerCase();
+  const isId = npIsCanonicalAuthId(needle);
+  if (!isId && !npIsCanonicalMemberHandle(needle)) return null;
   const db = getDb();
 
-  // Match either id or handle in one query — we don't know which
-  // form the caller has and a UUID-shape check would fail for
-  // imported / synthetic ids that don't match the v4 pattern.
+  // PostgreSQL UUID columns reject arbitrary handle strings before an OR
+  // predicate can short-circuit. Canonical ids and handles are disjoint by
+  // contract, so choose the typed predicate before sending the query.
+  const identity = isId ? eq(npMembers.id, needle) : eq(npMembers.handle, needle);
   const rows = await db
     .select({
       id: npMembers.id,
@@ -75,13 +93,7 @@ export async function getMemberProfile(
       createdAt: npMembers.createdAt,
     })
     .from(npMembers)
-    .where(
-      and(
-        or(eq(npMembers.id, needle), eq(npMembers.handle, needle)),
-        ne(npMembers.status, "suspended"),
-        ne(npMembers.status, "deleted"),
-      ),
-    )
+    .where(and(identity, inArray(npMembers.status, ["active", "imported"])))
     .limit(1);
 
   const row = rows[0];
@@ -156,13 +168,7 @@ export async function getMemberProfiles(
       createdAt: npMembers.createdAt,
     })
     .from(npMembers)
-    .where(
-      and(
-        inArray(npMembers.id, unique),
-        ne(npMembers.status, "suspended"),
-        ne(npMembers.status, "deleted"),
-      ),
-    );
+    .where(and(inArray(npMembers.id, unique), inArray(npMembers.status, ["active", "imported"])));
 
   const variant = options.avatarVariant ?? "thumbnail";
   await Promise.all(

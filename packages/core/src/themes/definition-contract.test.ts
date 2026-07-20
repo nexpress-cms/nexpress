@@ -43,7 +43,11 @@ function validTheme(): Record<string, unknown> {
       i18n: { en: { "newsroom.title": "Newsroom" } },
       routes: [{ pattern: "/news/:slug", component: () => null }],
       navLocations: { primary: { label: "Primary", maxItems: 8 } },
-      members: { shell: null, pageTitle: { login: "Sign in" } },
+      members: {
+        shell: null,
+        publicProfile: () => null,
+        pageTitle: { login: "Sign in" },
+      },
       seo: { robotsTxt: () => "User-agent: *" },
       blocks: [],
       patterns: [],
@@ -100,6 +104,10 @@ describe("registered theme definition contract", () => {
     [
       { ...validTheme(), impl: { navLocations: { primary: { label: "", maxItems: 0 } } } },
       /labels must be non-empty/,
+    ],
+    [
+      { ...validTheme(), impl: { members: { publicProfile: "not-a-component" } } },
+      /publicProfile must be a function/,
     ],
     [{ ...validTheme(), impl: { i18n: { "en-us": { title: "Hi" } } } }, /canonical BCP 47/],
     [

@@ -945,17 +945,26 @@ function validateMembers(value: unknown): NpThemeDefinitionIssue[] {
   if (value === undefined) return [];
   if (
     !isRecord(value) ||
-    unsupportedKey(value, new Set(["shell", "pageTitle", "notFound", "error"]))
+    unsupportedKey(value, new Set(["shell", "publicProfile", "pageTitle", "notFound", "error"]))
   ) {
     return [
       issue(
         "implementation",
         "impl.members",
-        "impl.members may contain only shell, pageTitle, notFound, and error.",
+        "impl.members may contain only shell, publicProfile, pageTitle, notFound, and error.",
       ),
     ];
   }
   const issues: NpThemeDefinitionIssue[] = [];
+  if (value.publicProfile !== undefined && typeof value.publicProfile !== "function") {
+    issues.push(
+      issue(
+        "implementation",
+        "impl.members.publicProfile",
+        "impl.members.publicProfile must be a function.",
+      ),
+    );
+  }
   for (const key of ["notFound", "error"] as const) {
     if (value[key] !== undefined && typeof value[key] !== "function") {
       issues.push(

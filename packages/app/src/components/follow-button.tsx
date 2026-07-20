@@ -5,7 +5,22 @@ import { useCallback, useEffect, useState } from "react";
 interface FollowButtonProps {
   /** The id of the member being viewed (target of the follow). */
   memberId: string;
+  labels?: {
+    loading: string;
+    signedOut: string;
+    follow: string;
+    following: string;
+    actionFailed: string;
+  };
 }
+
+const defaultLabels: NonNullable<FollowButtonProps["labels"]> = {
+  loading: "Loading…",
+  signedOut: "Log in to follow",
+  follow: "Follow",
+  following: "Following",
+  actionFailed: "Action failed",
+};
 
 /**
  * Site-side follow / unfollow toggle. Fetches the viewer's session +
@@ -16,7 +31,7 @@ interface FollowButtonProps {
  *
  * Optimistic — the button flips instantly and rolls back on API error.
  */
-export function FollowButton({ memberId }: FollowButtonProps) {
+export function FollowButton({ memberId, labels = defaultLabels }: FollowButtonProps) {
   const [viewerId, setViewerId] = useState<string | null | undefined>(undefined);
   const [following, setFollowing] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -62,18 +77,12 @@ export function FollowButton({ memberId }: FollowButtonProps) {
   if (viewerId === undefined) {
     return (
       <button
+        className="np-member-follow-action"
+        data-np-member-follow="loading"
         type="button"
         disabled
-        style={{
-          border: "1px solid #e2e8f0",
-          background: "#fff",
-          color: "#94a3b8",
-          borderRadius: 999,
-          padding: "0.35rem 0.9rem",
-          fontSize: "0.85rem",
-        }}
       >
-        Loading…
+        {labels.loading}
       </button>
     );
   }
@@ -81,19 +90,11 @@ export function FollowButton({ memberId }: FollowButtonProps) {
   if (viewerId === null) {
     return (
       <a
+        className="np-member-follow-action"
+        data-np-member-follow="signed-out"
         href="/members/login"
-        style={{
-          display: "inline-block",
-          border: "1px solid #e2e8f0",
-          background: "#fff",
-          color: "#0f172a",
-          borderRadius: 999,
-          padding: "0.35rem 0.9rem",
-          fontSize: "0.85rem",
-          textDecoration: "none",
-        }}
       >
-        Log in to follow
+        {labels.signedOut}
       </a>
     );
   }
@@ -138,35 +139,32 @@ export function FollowButton({ memberId }: FollowButtonProps) {
     } catch (e) {
       // Roll back on failure.
       setFollowing(!next);
-      setError(e instanceof Error ? e.message : "Action failed");
+      setError(e instanceof Error ? e.message : labels.actionFailed);
     } finally {
       setBusy(false);
     }
   };
 
-  const label = following ? "Following" : "Follow";
+  const label = following ? labels.following : labels.follow;
   return (
-    <span style={{ display: "inline-flex", flexDirection: "column", gap: "0.25rem" }}>
+    <span className="np-member-follow-control">
       <button
+        className="np-member-follow-action"
+        data-np-member-follow={following ? "following" : "available"}
         type="button"
         onClick={() => {
           void toggle();
         }}
         disabled={busy || following === null}
         aria-pressed={Boolean(following)}
-        style={{
-          border: following ? "1px solid #0f172a" : "1px solid #e2e8f0",
-          background: following ? "#0f172a" : "#fff",
-          color: following ? "#fff" : "#0f172a",
-          borderRadius: 999,
-          padding: "0.35rem 0.9rem",
-          fontSize: "0.85rem",
-          cursor: busy ? "default" : "pointer",
-        }}
       >
         {label}
       </button>
-      {error ? <span style={{ color: "#dc2626", fontSize: "0.8rem" }}>{error}</span> : null}
+      {error ? (
+        <span className="np-member-follow-error" role="alert">
+          {error}
+        </span>
+      ) : null}
     </span>
   );
 }

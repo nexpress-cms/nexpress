@@ -23,6 +23,8 @@ import {
   npRequireNotificationHref,
   npRequireNotificationRow,
   npRequireMarkNotificationsReadRequest,
+  npRequireMemberProfileActivityPageWire,
+  npRequireMemberProfileActivityQuery,
   npRequireModerationReportPageWire,
   npRequireNotificationKindCatalog,
   npRequireNotificationPrefs,
@@ -36,6 +38,7 @@ import {
   npRequireReputationDelta,
   npRequireReputationEvent,
   npRequireRuntimeDiagnostics,
+  npRequirePublicMemberProfileWire,
   npToCommentListItemWire,
   npToCommentWireRow,
 } from "./contract.js";
@@ -101,6 +104,11 @@ describe("community contract", () => {
     ).toEqual([
       { source: "notification-prefs", message: "invalid stored preferences", occurredAt: NOW },
     ]);
+    expect(
+      npRequireRuntimeDiagnostics([
+        { source: "profiles", message: "invalid activity target", occurredAt: NOW },
+      ]),
+    ).toEqual([{ source: "profiles", message: "invalid activity target", occurredAt: NOW }]);
   });
 
   it("enforces exact audit input actors and target pairs before persistence", () => {
@@ -623,5 +631,87 @@ describe("community contract", () => {
         createdAt: NOW,
       }),
     ).toThrow();
+  });
+
+  it("validates exact public member profiles and bounded activity pages", () => {
+    expect(
+      npRequirePublicMemberProfileWire({
+        id: MEMBER_ID,
+        handle: "member-one",
+        displayName: "Member One",
+        avatarUrl: "/api/media/avatar",
+        bio: "Public bio",
+        reputation: -3,
+        joinedAt: NOW,
+      }),
+    ).toMatchObject({ id: MEMBER_ID, reputation: -3 });
+    expect(() =>
+      npRequirePublicMemberProfileWire({
+        id: MEMBER_ID,
+        handle: "member-one",
+        displayName: "",
+        avatarUrl: null,
+        bio: null,
+        reputation: 0,
+        joinedAt: NOW,
+      }),
+    ).toThrow(/must not be empty/u);
+
+    expect(npRequireMemberProfileActivityQuery({ kind: "documents", page: 2, limit: 20 })).toEqual({
+      kind: "documents",
+      page: 2,
+      limit: 20,
+    });
+    expect(() =>
+      npRequireMemberProfileActivityQuery({ kind: "documents", page: 1, limit: 51 }),
+    ).toThrow(/page limit/u);
+
+    expect(
+      npRequireMemberProfileActivityPageWire({
+        kind: "documents",
+        items: [
+          {
+            kind: "document",
+            collectionSlug: "forum-posts",
+            collectionLabel: "Forum post",
+            documentId: TARGET_ID,
+            title: "A public post",
+            href: `/boards/free/${TARGET_ID}`,
+            createdAt: NOW,
+            updatedAt: NOW,
+          },
+        ],
+        totalDocs: 1,
+        totalPages: 1,
+        page: 1,
+        limit: 20,
+        hasNextPage: false,
+        hasPrevPage: false,
+      }),
+    ).toMatchObject({ kind: "documents", totalDocs: 1 });
+
+    expect(() =>
+      npRequireMemberProfileActivityPageWire({
+        kind: "comments",
+        items: [
+          {
+            kind: "document",
+            collectionSlug: "forum-posts",
+            collectionLabel: "Forum post",
+            documentId: TARGET_ID,
+            title: "Wrong item kind",
+            href: null,
+            createdAt: NOW,
+            updatedAt: NOW,
+          },
+        ],
+        totalDocs: 1,
+        totalPages: 1,
+        page: 1,
+        limit: 20,
+        hasNextPage: false,
+        hasPrevPage: false,
+      }),
+    ).toThrow(/does not match/u);
   });
 });

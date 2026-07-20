@@ -365,6 +365,43 @@ describe("collection definition contract", () => {
     expect(npValidateCollectionDefinition(collection)).toEqual({ ok: true });
   });
 
+  it("validates explicit public profile activity dependencies", () => {
+    const collection = validCollection();
+    collection.community = {
+      profileActivity: { documents: true, comments: true },
+    };
+    collection.seo = undefined;
+
+    expect(npAnalyzeCollectionDefinition(collection)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          location: "community.profileActivity.documents",
+          message: expect.stringMatching(/memberWrite\.create=true/u),
+        }),
+        expect.objectContaining({
+          location: "community.profileActivity.comments",
+          message: expect.stringMatching(/comments=true/u),
+        }),
+        expect.objectContaining({
+          location: "community.profileActivity",
+          message: expect.stringMatching(/seo\.urlPath/u),
+        }),
+      ]),
+    );
+  });
+
+  it("accepts an exact public profile activity contract", () => {
+    const collection = validCollection();
+    collection.community = {
+      comments: true,
+      memberWrite: { create: true },
+      profileActivity: { documents: true, comments: true },
+    };
+    collection.seo = { urlPath: (doc) => `/discussions/${String(doc.id)}` };
+
+    expect(npValidateCollectionDefinition(collection)).toEqual({ ok: true });
+  });
+
   it("rejects document reports on reserved target slugs", () => {
     const collection = validCollection();
     collection.slug = "comment";

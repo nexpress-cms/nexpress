@@ -8,6 +8,10 @@ import type {
   NpPatternDefinition,
 } from "@nexpress/blocks";
 import type { NpRegisteredTheme, NpThemeManifest } from "@nexpress/core";
+import type {
+  NpMemberProfileActivityPageWire,
+  NpPublicMemberProfileWire,
+} from "@nexpress/core/community-contract";
 import type { NpNavItem as CoreNpNavItem } from "@nexpress/core/navigation";
 import type { NpFeedEntry, NpSitemapEntry } from "@nexpress/core/seo";
 import type { NpThemeTokensOverlay as CoreNpThemeTokensOverlay } from "@nexpress/core/theme";
@@ -33,6 +37,34 @@ export type NpThemeTokensOverlay = CoreNpThemeTokensOverlay;
 
 export interface NpThemeShellProps {
   children: ReactNode;
+}
+
+export interface NpThemeMemberProfileProps {
+  profile: NpPublicMemberProfileWire;
+  activity: NpMemberProfileActivityPageWire;
+  followAction: ReactNode;
+  locale: string;
+  links: {
+    documents: string;
+    comments: string;
+    previous: string | null;
+    next: string | null;
+  };
+  labels: {
+    member: string;
+    comment: string;
+    documents: string;
+    comments: string;
+    emptyBio: string;
+    emptyDocuments: string;
+    emptyComments: string;
+    previous: string;
+    next: string;
+    memberSince: string;
+    reputation: string;
+    activityNavigation: string;
+    paginationNavigation: string;
+  };
 }
 
 export interface NpThemeSlots {
@@ -530,6 +562,8 @@ export interface NpThemeImpl {
    */
   members?: {
     shell?: ComponentType<NpThemeShellProps> | null;
+    /** Public `/u/:handle` profile presentation over framework-owned data. */
+    publicProfile?: ComponentType<NpThemeMemberProfileProps>;
     pageTitle?: {
       login?: string;
       register?: string;

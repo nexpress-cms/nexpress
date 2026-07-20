@@ -74,10 +74,47 @@ Schema highlights (`np_members`):
 - `status` — `active`, `pending`, `suspended`, `deleted`, `imported`
 - `reputation` — integer, mutated by `setReputationAdapter`
 
-Public profile renders at `/u/{handle}`. The site's
-`<MemberStatusWidget />` (theme-default header) shows the
-signed-in member's avatar + handle + Sign out, or
-Sign in / Register links for anonymous visitors.
+Public profile renders at `/u/{handle}` with a PII-free identity projection and
+an exact, paginated Posts / Comments activity window. Only collections that
+explicitly opt into the public projection participate:
+
+```ts
+defineCollection({
+  // ...
+  community: {
+    comments: true,
+    memberWrite: { create: true },
+    profileActivity: { documents: true, comments: true },
+  },
+  timestamps: true,
+  seo: {
+    urlPath: (doc) => (typeof doc.slug === "string" ? `/articles/${doc.slug}` : null),
+  },
+});
+```
+
+`documents` requires member create support; `comments` requires comments.
+Either projection also requires timestamps and `seo.urlPath`, so every visible
+row can carry a validated local destination. Pending/private member documents,
+non-visible comments, cross-site rows, and comments on pending/private targets
+are excluded from both counts and pages. A pending, suspended, deleted, or
+missing activity subject fails closed as not found. Core reads subject status,
+count, page, and target documents from one repeatable-read snapshot and uses
+stable tie-breakers for exact pagination.
+
+`GET /api/members/{handle}` returns the exact `NpPublicMemberProfileWire`.
+`GET /api/members/{handle}/activity?kind=documents|comments&page=1&limit=20`
+returns `NpMemberProfileActivityPageWire`; `limit` is bounded to 50, and
+unknown or repeated query parameters fail before runtime reads. The public
+route owns authentication-neutral navigation and supplies prepared links,
+locale-aware labels, and follow UI to an optional theme `impl.members.publicProfile`
+renderer. Themes render those props and must not query collection tables or
+reimplement visibility policy. Without that slot, the framework's complete
+`.np-member-profile*` fallback remains active.
+
+The site's `<MemberStatusWidget />` (theme-default header) shows the signed-in
+member's avatar + handle + Sign out, or Sign in / Register links for anonymous
+visitors.
 
 ---
 
@@ -541,8 +578,9 @@ request scope) leave `site_id` null.
 `@nexpress/core/community-contract` is the client-safe boundary shared by
 Core, API routes, Admin/member views, plugin-facing registries, plugin doctor,
 and live health. It exports the exact request, persisted-row, wire-row,
-settings, notification-preference, engagement/view/follow, moderation, reputation, and role-catalog
-validators without importing the server-only Core runtime.
+settings, notification-preference, engagement/view/follow, public profile and
+activity, moderation, reputation, and role-catalog validators without importing
+the server-only Core runtime.
 
 Community inputs are exact and bounded: unknown keys, malformed dates and ids,
 invalid tagged unions, sparse arrays, accessors, non-JSON payloads, and broken
@@ -574,10 +612,8 @@ In rough order of likely impact:
 
 - **Real-time push** — counts and lists update on next
   render, no WebSocket / SSE.
-- **Comment sort orders beyond `top`** — Phase 16
-  added `top` (sort by reaction count, #201) on top of
-  chronological. "Controversial" / "newest" still not
-  surfaced.
+- **Comment sort orders beyond `newest`, `oldest`, and `top`** —
+  "Controversial" remains intentionally unimplemented.
 - **DMs / private messaging** — design doc explicitly
   defers; out of scope.
 - **Federated identity (ActivityPub)** — design doc defers;

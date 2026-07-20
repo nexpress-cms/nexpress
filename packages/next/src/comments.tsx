@@ -536,6 +536,7 @@ function CommentItem({
 
   return (
     <li
+      id={`comment-${comment.id}`}
       className="np-comment"
       data-np-comment="item"
       data-np-comment-id={comment.id}

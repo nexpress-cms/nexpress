@@ -353,6 +353,58 @@ function semanticIssues(config: NpCollectionConfig): NpCollectionDefinitionIssue
       ),
     );
   }
+  const profileActivity = config.community?.profileActivity;
+  if (profileActivity && profileActivity.documents !== true && profileActivity.comments !== true) {
+    issues.push(
+      issue(
+        "reference",
+        "community.profileActivity",
+        "profile activity must enable documents, comments, or both.",
+      ),
+    );
+  }
+  if (profileActivity?.documents === true && config.community?.memberWrite?.create !== true) {
+    issues.push(
+      issue(
+        "reference",
+        "community.profileActivity.documents",
+        "document profile activity requires community.memberWrite.create=true.",
+      ),
+    );
+  }
+  if (profileActivity?.comments === true && config.community?.comments !== true) {
+    issues.push(
+      issue(
+        "reference",
+        "community.profileActivity.comments",
+        "comment profile activity requires community.comments=true.",
+      ),
+    );
+  }
+  if (
+    (profileActivity?.documents === true || profileActivity?.comments === true) &&
+    typeof config.seo?.urlPath !== "function"
+  ) {
+    issues.push(
+      issue(
+        "reference",
+        "community.profileActivity",
+        "public profile activity requires seo.urlPath for target destinations.",
+      ),
+    );
+  }
+  if (
+    (profileActivity?.documents === true || profileActivity?.comments === true) &&
+    config.timestamps === false
+  ) {
+    issues.push(
+      issue(
+        "reference",
+        "community.profileActivity",
+        "public profile activity requires collection timestamps.",
+      ),
+    );
+  }
   validateFieldList(config.fields, "fields", issues);
   const topLevelStorageNames = new Map<string, string>();
   for (const name of reservedFieldNames) {

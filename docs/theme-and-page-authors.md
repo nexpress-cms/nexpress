@@ -744,8 +744,8 @@ const profile = await getMemberProfile(handle);
 Returns `null` when:
 
 - no member matches the id / handle, or
-- the member's status is `suspended` or `deleted` (treat as "not
-  found" on public surfaces).
+- the member's status is not `active` or public `imported` (treat pending,
+  suspended, and deleted identities as "not found" on public surfaces).
 
 The avatar is resolved through `getMediaUrl` (defaults to the
 `thumbnail` variant for profile-card sizes; pass `avatarVariant:
@@ -759,6 +759,29 @@ PII columns (`email`, `password`, `loginAttempts`, reset tokens,
 notification prefs, plugin meta bag) are deliberately excluded —
 this helper is safe to call from any public page without a
 sensitivity audit.
+
+### Public activity contract
+
+The built-in `/u/{handle}` route calls `listMemberProfileActivity(memberId,
+{ kind, page, limit })` from `@nexpress/core/community`. It returns the exact
+`NpMemberProfileActivityPageWire` union: document items carry collection label,
+title, destination, and timestamps; comment items carry target title, bounded
+plain-text excerpt, destination anchor, and timestamps.
+
+Collections are invisible to this service by default. Authors must opt in with
+`community.profileActivity.documents` and/or `.comments`; the collection
+definition validator enforces the matching member-write/comment capability,
+timestamps, and `seo.urlPath`. That explicit projection is the privacy boundary
+and should not be replaced by scanning every member-writable collection in a
+page or theme.
+
+Theme packages may declare `impl.members.publicProfile`. Its
+`NpThemeMemberProfileProps` contains only prepared wire data, route-owned links
+and labels, and the opaque follow action. Render those props as a server
+component; do not fetch activity or reproduce visibility rules. The framework
+fallback and the bundled community renderer expose stable
+`data-np-member-profile`, `data-np-member-activity`, and
+`data-np-member-activity-item` hooks.
 
 ### Listings — batch fetch
 

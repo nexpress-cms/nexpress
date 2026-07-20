@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-20 (public comment windows now include batched
+**Last refreshed:** 2026-07-21 (public member profiles now share one explicit,
+site-scoped collection activity projection, exact snapshot pagination,
+PII-free API wires, prepared theme renderer props, community-theme UI,
+scaffolds, OpenAPI, integration tests, and docs.)
+
+**Earlier:** 2026-07-20 (public comment windows now include batched
 author profiles, viewer reaction summaries, exact pagination, nested member
 actions, localization, and independent forum/theme styling hooks.)
 

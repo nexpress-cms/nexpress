@@ -432,6 +432,20 @@ export interface NpCollectionConfig {
     views?: boolean;
     follows?: boolean;
     reports?: boolean;
+    /**
+     * Explicit public-profile activity opt-in. These projections deliberately
+     * bypass collection document reads so Core can produce exact
+     * cross-collection pagination without leaking private policy state.
+     * Enable only the activity kinds whose published/public rows are safe to
+     * expose on an author's public profile. Each enabled kind also requires a
+     * stable `seo.urlPath` destination and normal timestamps.
+     */
+    profileActivity?: {
+      /** List published/public member-authored documents. */
+      documents?: boolean;
+      /** List visible comments whose parent document is published/public. */
+      comments?: boolean;
+    };
     memberWrite?: {
       create?: boolean;
       update?: boolean;

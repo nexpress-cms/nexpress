@@ -1,4 +1,4 @@
-import { npMemberHandlePattern } from "../auth-contract/contract.js";
+import { npAuthContractLimits, npMemberHandlePattern } from "../auth-contract/contract.js";
 import { npMemberStatuses } from "../auth-contract/types.js";
 import { npCollectionDocumentStatuses } from "../collection-contract/types.js";
 import { npIsCanonicalSiteId } from "../sites/id-contract.js";
@@ -15,6 +15,7 @@ import {
   npCommunityReportResolutionActions,
   npCommunityReportStatuses,
   npCommunityScopes,
+  npMemberProfileActivityKinds,
   type AuditActor,
   type AuditActorKind,
   type AuditEventRow,
@@ -50,6 +51,12 @@ import {
   type NpMarkNotificationsReadWire,
   type NpMemberMuteSummary,
   type NpMemberMuteRow,
+  type NpMemberProfileActivityItemWire,
+  type NpMemberProfileActivityKind,
+  type NpMemberProfileActivityPageWire,
+  type NpMemberProfileActivityQuery,
+  type NpMemberProfileCommentActivityWire,
+  type NpMemberProfileDocumentActivityWire,
   type NpMemberPurgeResult,
   type NpMemberRoleGrantRow,
   type NpMemberRoleGrantWireRow,
@@ -63,6 +70,7 @@ import {
   type NpNotificationRow,
   type NpNotificationWireRow,
   type NpPageWire,
+  type NpPublicMemberProfileWire,
   type NpReactionRow,
   type NpReactionSummaryWire,
   type NpReactionWireRow,
@@ -101,6 +109,8 @@ export const npCommunityContractLimits = {
   jsonKeyLength: 160,
   jsonStringLength: 16_000,
   diagnostics: 100,
+  profileActivityPageRows: 50,
+  profileActivityExcerptLength: 240,
 } as const;
 
 export const npCommunityReactionKindPattern = "^[a-z][a-z0-9_-]{0,29}$";
@@ -131,6 +141,7 @@ const VERDICT_KINDS = new Set<string>(npCommunityModerationVerdictKinds);
 const AUDIT_ACTORS = new Set<string>(npCommunityAuditActorKinds);
 const CAPABILITIES = new Set<string>(npCommunityCapabilities);
 const MEMBER_STATUSES = new Set<string>(npMemberStatuses);
+const PROFILE_ACTIVITY_KINDS = new Set<string>(npMemberProfileActivityKinds);
 
 export class NpCommunityContractError extends Error {
   readonly contractIssues: NpCommunityContractIssue[];
@@ -305,6 +316,13 @@ function nullableDate(value: unknown, path: string): Date | null {
 function nonNegativeInteger(value: unknown, path: string): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
     fail(path, "must be a non-negative safe integer");
+  }
+  return value;
+}
+
+function safeInteger(value: unknown, path: string): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+    fail(path, "must be a safe integer");
   }
   return value;
 }
@@ -1071,6 +1089,187 @@ function npRequireCommentAuthor(value: unknown, path: string): NpCommentAuthor {
     avatarUrl = candidate;
   }
   return { handle, displayName, avatarUrl };
+}
+
+export function npRequirePublicMemberProfileWire(value: unknown): NpPublicMemberProfileWire {
+  const path = "community.publicMemberProfile";
+  const raw = exactRecord(value, path, [
+    "id",
+    "handle",
+    "displayName",
+    "avatarUrl",
+    "bio",
+    "reputation",
+    "joinedAt",
+  ]);
+  const author = npRequireCommentAuthor(
+    {
+      handle: raw.handle,
+      displayName: raw.displayName,
+      avatarUrl: raw.avatarUrl,
+    },
+    path,
+  );
+  if (author.displayName.length === 0) {
+    fail(`${path}.displayName`, "must not be empty");
+  }
+  if (author.displayName.length > npAuthContractLimits.displayNameLength) {
+    fail(`${path}.displayName`, "exceeds the public member display-name limit", "limit");
+  }
+  const bio = boundedNullableString(raw.bio, `${path}.bio`, npAuthContractLimits.bioLength);
+  return {
+    id: uuid(raw.id, `${path}.id`),
+    ...author,
+    bio,
+    reputation: safeInteger(raw.reputation, `${path}.reputation`),
+    joinedAt: canonicalIso(raw.joinedAt, `${path}.joinedAt`),
+  };
+}
+
+function profileActivityHref(value: unknown, path: string): string | null {
+  if (value === null) return null;
+  try {
+    return npRequireNotificationHref(value);
+  } catch (error) {
+    if (error instanceof NpCommunityContractError) {
+      fail(path, error.message);
+    }
+    throw error;
+  }
+}
+
+function npRequireMemberProfileDocumentActivityWire(
+  value: unknown,
+): NpMemberProfileDocumentActivityWire {
+  const path = "community.memberProfileActivity.document";
+  const raw = exactRecord(value, path, [
+    "kind",
+    "collectionSlug",
+    "collectionLabel",
+    "documentId",
+    "title",
+    "href",
+    "createdAt",
+    "updatedAt",
+  ]);
+  if (raw.kind !== "document") fail(`${path}.kind`, 'must be "document"');
+  return {
+    kind: "document",
+    collectionSlug: targetType(raw.collectionSlug, `${path}.collectionSlug`),
+    collectionLabel: boundedString(raw.collectionLabel, `${path}.collectionLabel`, 120),
+    documentId: uuid(raw.documentId, `${path}.documentId`),
+    title: boundedString(raw.title, `${path}.title`, 240),
+    href: profileActivityHref(raw.href, `${path}.href`),
+    createdAt: canonicalIso(raw.createdAt, `${path}.createdAt`),
+    updatedAt: canonicalIso(raw.updatedAt, `${path}.updatedAt`),
+  };
+}
+
+function npRequireMemberProfileCommentActivityWire(
+  value: unknown,
+): NpMemberProfileCommentActivityWire {
+  const path = "community.memberProfileActivity.comment";
+  const raw = exactRecord(value, path, [
+    "kind",
+    "commentId",
+    "targetType",
+    "targetId",
+    "targetTitle",
+    "href",
+    "excerpt",
+    "createdAt",
+    "editedAt",
+  ]);
+  if (raw.kind !== "comment") fail(`${path}.kind`, 'must be "comment"');
+  return {
+    kind: "comment",
+    commentId: uuid(raw.commentId, `${path}.commentId`),
+    targetType: targetType(raw.targetType, `${path}.targetType`),
+    targetId: uuid(raw.targetId, `${path}.targetId`),
+    targetTitle: boundedString(raw.targetTitle, `${path}.targetTitle`, 240),
+    href: profileActivityHref(raw.href, `${path}.href`),
+    excerpt: boundedString(
+      raw.excerpt,
+      `${path}.excerpt`,
+      npCommunityContractLimits.profileActivityExcerptLength,
+      { allowEmpty: true },
+    ),
+    createdAt: canonicalIso(raw.createdAt, `${path}.createdAt`),
+    editedAt: nullableIso(raw.editedAt, `${path}.editedAt`),
+  };
+}
+
+export function npRequireMemberProfileActivityItemWire(
+  value: unknown,
+): NpMemberProfileActivityItemWire {
+  if (!isPlainRecord(value)) fail("community.memberProfileActivity", "must be a plain object");
+  if (value.kind === "document") return npRequireMemberProfileDocumentActivityWire(value);
+  if (value.kind === "comment") return npRequireMemberProfileCommentActivityWire(value);
+  fail("community.memberProfileActivity.kind", "must be document or comment");
+}
+
+export function npRequireMemberProfileActivityQuery(value: unknown): NpMemberProfileActivityQuery {
+  const path = "community.memberProfileActivityQuery";
+  const raw = exactRecord(value, path, ["kind", "page", "limit"]);
+  const limit = positiveInteger(raw.limit, `${path}.limit`);
+  if (limit > npCommunityContractLimits.profileActivityPageRows) {
+    fail(`${path}.limit`, "exceeds profile activity page limit", "limit");
+  }
+  const page = positiveInteger(raw.page, `${path}.page`);
+  if (page > 10_000) fail(`${path}.page`, "exceeds profile activity page bound", "limit");
+  return {
+    kind: enumString<NpMemberProfileActivityKind>(raw.kind, `${path}.kind`, PROFILE_ACTIVITY_KINDS),
+    page,
+    limit,
+  };
+}
+
+export function npRequireMemberProfileActivityPageWire(
+  value: unknown,
+): NpMemberProfileActivityPageWire {
+  const path = "community.memberProfileActivityPage";
+  const raw = exactRecord(value, path, [
+    "kind",
+    "items",
+    "totalDocs",
+    "totalPages",
+    "page",
+    "limit",
+    "hasNextPage",
+    "hasPrevPage",
+  ]);
+  const kind = enumString<NpMemberProfileActivityKind>(
+    raw.kind,
+    `${path}.kind`,
+    PROFILE_ACTIVITY_KINDS,
+  );
+  const parsed = pageWire(
+    {
+      docs: raw.items,
+      totalDocs: raw.totalDocs,
+      totalPages: raw.totalPages,
+      page: raw.page,
+      limit: raw.limit,
+      hasNextPage: raw.hasNextPage,
+      hasPrevPage: raw.hasPrevPage,
+    },
+    path,
+    npRequireMemberProfileActivityItemWire,
+  );
+  if (parsed.limit > npCommunityContractLimits.profileActivityPageRows) {
+    fail(`${path}.limit`, "exceeds profile activity page limit", "limit");
+  }
+  for (const [index, item] of parsed.docs.entries()) {
+    if ((kind === "documents") !== (item.kind === "document")) {
+      fail(`${path}.items.${index.toString()}.kind`, "does not match the activity page kind");
+    }
+  }
+  return { kind, items: parsed.docs, ...withoutDocs(parsed) };
+}
+
+function withoutDocs<T>(page: NpPageWire<T>): Omit<NpPageWire<T>, "docs"> {
+  const { docs: _docs, ...rest } = page;
+  return rest;
 }
 
 export function npRequireCommentListItemWire(value: unknown): NpCommentListItemWire {
@@ -2574,6 +2773,7 @@ export function npRequireRuntimeDiagnostics(value: unknown): NpCommunityRuntimeD
         "spam",
         "profanity",
         "reputation",
+        "profiles",
       ]);
       return {
         source: enumString(raw.source, `${path}.source`, allowed),

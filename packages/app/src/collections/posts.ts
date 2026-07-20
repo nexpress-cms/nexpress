@@ -37,7 +37,12 @@ export const postsCollection = defineCollection({
     },
   },
   versions: { drafts: { autosave: true }, max: 20 },
-  community: { comments: true, follows: true, reports: true },
+  community: {
+    comments: true,
+    follows: true,
+    reports: true,
+    profileActivity: { comments: true },
+  },
   access: {
     read: () => true,
     create: isEditorOrAbove,
