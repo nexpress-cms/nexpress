@@ -10,7 +10,7 @@ interface InsertValuesQuery extends Promise<unknown> {
 }
 
 interface SelectQuery extends Promise<unknown[]> {
-  where(condition: SQL | ReturnType<typeof and> | ReturnType<typeof eq>): SelectQuery;
+  where(condition: SQL): SelectQuery;
   orderBy(order: SQL): SelectQuery;
   limit(limit: number): SelectQuery;
   for(strength: "key share"): SelectQuery;

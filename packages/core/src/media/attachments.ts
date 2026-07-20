@@ -271,16 +271,12 @@ function hasOleStream(buffer: Buffer, streamNames: readonly string[]): boolean {
 }
 
 function isZip(buffer: Buffer): boolean {
-  const startsWithArchive =
-    startsWith(buffer, [0x50, 0x4b, 0x03, 0x04]) || startsWith(buffer, [0x50, 0x4b, 0x05, 0x06]);
-  if (!startsWithArchive) return false;
-  const eocd = Buffer.from([0x50, 0x4b, 0x05, 0x06]);
-  return buffer.lastIndexOf(eocd) >= Math.max(0, buffer.length - (22 + 65_535));
+  return readZipEntryNames(buffer) !== null;
 }
 
 function hasZipEntries(buffer: Buffer, required: readonly string[]): boolean {
-  if (!isZip(buffer)) return false;
   const entries = readZipEntryNames(buffer);
+  if (!entries) return false;
   return required.every((expected) =>
     expected.endsWith("/")
       ? entries.some((entry) => entry.startsWith(expected))
@@ -288,37 +284,92 @@ function hasZipEntries(buffer: Buffer, required: readonly string[]): boolean {
   );
 }
 
-function readZipEntryNames(buffer: Buffer): string[] {
-  const names: string[] = [];
-  const signatures = [
-    { bytes: Buffer.from([0x50, 0x4b, 0x03, 0x04]), headerSize: 30, nameOffset: 26 },
-    { bytes: Buffer.from([0x50, 0x4b, 0x01, 0x02]), headerSize: 46, nameOffset: 28 },
-  ];
-  for (const signature of signatures) {
-    let offset = 0;
-    let scans = 0;
-    while (names.length < 4096 && scans < 8192) {
-      scans += 1;
-      const index = buffer.indexOf(signature.bytes, offset);
-      if (index < 0) break;
-      if (index + signature.headerSize > buffer.length) break;
-      const nameLength = buffer.readUInt16LE(index + signature.nameOffset);
-      const nameStart = index + signature.headerSize;
-      const nameEnd = nameStart + nameLength;
-      if (nameLength > 0 && nameEnd <= buffer.length) {
-        try {
-          const name = new TextDecoder("utf-8", { fatal: true }).decode(
-            buffer.subarray(nameStart, nameEnd),
-          );
-          if (!name.includes("\u0000")) names.push(name);
-        } catch {
-          // Invalid entry names do not contribute to the container contract.
-        }
-      }
-      offset = Math.max(index + 4, nameEnd);
+function readZipEntryNames(buffer: Buffer): string[] | null {
+  if (buffer.length < 22) return null;
+  const eocdSignature = Buffer.from([0x50, 0x4b, 0x05, 0x06]);
+  const minimumEocdOffset = Math.max(0, buffer.length - (22 + 65_535));
+  let eocdOffset = -1;
+  let candidateOffset = buffer.length - 22;
+  while (candidateOffset >= minimumEocdOffset) {
+    candidateOffset = buffer.lastIndexOf(eocdSignature, candidateOffset);
+    if (candidateOffset < minimumEocdOffset) break;
+    const candidateCommentLength = buffer.readUInt16LE(candidateOffset + 20);
+    if (candidateOffset + 22 + candidateCommentLength === buffer.length) {
+      eocdOffset = candidateOffset;
+      break;
     }
+    candidateOffset -= 1;
   }
-  return names;
+  if (eocdOffset < 0) return null;
+
+  const diskNumber = buffer.readUInt16LE(eocdOffset + 4);
+  const directoryDisk = buffer.readUInt16LE(eocdOffset + 6);
+  const entriesOnDisk = buffer.readUInt16LE(eocdOffset + 8);
+  const entryCount = buffer.readUInt16LE(eocdOffset + 10);
+  const directorySize = buffer.readUInt32LE(eocdOffset + 12);
+  const directoryOffset = buffer.readUInt32LE(eocdOffset + 16);
+  if (
+    diskNumber !== 0 ||
+    directoryDisk !== 0 ||
+    entriesOnDisk !== entryCount ||
+    entryCount === 0xffff ||
+    directorySize === 0xffffffff ||
+    directoryOffset === 0xffffffff ||
+    entryCount > 4096
+  ) {
+    return null;
+  }
+
+  const directoryEnd = directoryOffset + directorySize;
+  if (
+    !Number.isSafeInteger(directoryEnd) ||
+    directoryOffset > eocdOffset ||
+    directoryEnd > eocdOffset
+  ) {
+    return null;
+  }
+
+  const names: string[] = [];
+  let offset = directoryOffset;
+  for (let index = 0; index < entryCount; index += 1) {
+    if (offset + 46 > directoryEnd || buffer.readUInt32LE(offset) !== 0x02014b50) return null;
+    const nameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const entryCommentLength = buffer.readUInt16LE(offset + 32);
+    const entryDisk = buffer.readUInt16LE(offset + 34);
+    const localHeaderOffset = buffer.readUInt32LE(offset + 42);
+    const nameStart = offset + 46;
+    const nameEnd = nameStart + nameLength;
+    const nextOffset = nameEnd + extraLength + entryCommentLength;
+    if (
+      entryDisk !== 0 ||
+      nameLength === 0 ||
+      nameEnd > directoryEnd ||
+      nextOffset > directoryEnd ||
+      localHeaderOffset + 30 > directoryOffset ||
+      buffer.readUInt32LE(localHeaderOffset) !== 0x04034b50
+    ) {
+      return null;
+    }
+
+    const localNameLength = buffer.readUInt16LE(localHeaderOffset + 26);
+    const localExtraLength = buffer.readUInt16LE(localHeaderOffset + 28);
+    const localNameStart = localHeaderOffset + 30;
+    const localNameEnd = localNameStart + localNameLength;
+    if (
+      localNameEnd + localExtraLength > directoryOffset ||
+      localNameLength !== nameLength ||
+      !buffer.subarray(localNameStart, localNameEnd).equals(buffer.subarray(nameStart, nameEnd))
+    ) {
+      return null;
+    }
+
+    const encodedName = buffer.subarray(nameStart, nameEnd);
+    if (encodedName.includes(0)) return null;
+    names.push(encodedName.toString("utf8"));
+    offset = nextOffset;
+  }
+  return offset === directoryEnd ? names : null;
 }
 
 function isAcceptedText(buffer: Buffer): boolean {

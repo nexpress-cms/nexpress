@@ -37,7 +37,39 @@ function media(overrides: Partial<NpMediaRecord> = {}): NpMediaRecord {
   };
 }
 
-function zipWithEntries(names: readonly string[]): Buffer {
+function zipWithEntries(names: readonly string[], comment = Buffer.alloc(0)): Buffer {
+  const localParts: Buffer[] = [];
+  const directoryParts: Buffer[] = [];
+  let localOffset = 0;
+  for (const name of names) {
+    const encoded = Buffer.from(name, "utf8");
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(encoded.byteLength, 26);
+    localParts.push(localHeader, encoded);
+
+    const directoryHeader = Buffer.alloc(46);
+    directoryHeader.writeUInt32LE(0x02014b50, 0);
+    directoryHeader.writeUInt16LE(20, 4);
+    directoryHeader.writeUInt16LE(20, 6);
+    directoryHeader.writeUInt16LE(encoded.byteLength, 28);
+    directoryHeader.writeUInt32LE(localOffset, 42);
+    directoryParts.push(directoryHeader, encoded);
+    localOffset += localHeader.byteLength + encoded.byteLength;
+  }
+  const directory = Buffer.concat(directoryParts);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(names.length, 8);
+  eocd.writeUInt16LE(names.length, 10);
+  eocd.writeUInt32LE(directory.byteLength, 12);
+  eocd.writeUInt32LE(localOffset, 16);
+  eocd.writeUInt16LE(comment.byteLength, 20);
+  return Buffer.concat([...localParts, directory, eocd, comment]);
+}
+
+function zipLookalikeWithLocalNames(names: readonly string[]): Buffer {
   return Buffer.concat([
     ...names.map((name) => {
       const encoded = Buffer.from(name, "utf8");
@@ -131,6 +163,20 @@ describe("media attachment contracts", () => {
     expect(
       npInspectMediaAttachmentUpload("fake.docx", mime, zipWithEntries(["payload.txt"])),
     ).toMatchObject({ ok: false, message: expect.stringContaining("contents") });
+    expect(
+      npInspectMediaAttachmentUpload(
+        "lookalike.docx",
+        mime,
+        zipLookalikeWithLocalNames(["[Content_Types].xml", "word/document.xml"]),
+      ),
+    ).toMatchObject({ ok: false, message: expect.stringContaining("contents") });
+    expect(
+      npInspectMediaAttachmentUpload(
+        "commented.zip",
+        "application/zip",
+        zipWithEntries(["readme.txt"], Buffer.from([0x50, 0x4b, 0x05, 0x06, 0, 0])),
+      ),
+    ).toMatchObject({ ok: true, mimeType: "application/zip" });
   });
 
   it("distinguishes legacy OLE document families by their canonical stream names", () => {

@@ -255,6 +255,9 @@ export function ForumPostForm({
       return;
     }
     void deleteMemberAttachment(attachment.id).catch((cause: unknown) => {
+      setAttachments((current) =>
+        current.some((item) => item.id === attachment.id) ? current : [...current, attachment],
+      );
       setError(cause instanceof Error ? cause.message : labels.uploadFailed);
     });
   };
