@@ -790,6 +790,21 @@ deleted members are dropped) — so always check `if (author)`
 before reading fields. Empty input returns an empty map without
 hitting the DB.
 
+### Comment surfaces already batch profiles
+
+Do not call `getMemberProfile` from every rendered comment. The public comment
+endpoint returns `NpCommentListWire`; each item already contains the safe
+`author` projection and viewer-aware `reactions` summary. The shared
+`Comments` component from `@nexpress/next/client` owns fetching, reply nesting,
+owner edit/delete, pagination, and mutation state.
+
+Themes should enhance its stable `.np-comments`, `.np-comment-*`, and
+`data-np-comment-*` hooks. In particular, `data-np-comment-depth`,
+`data-np-comment-owner`, `data-np-comment-status`, and
+`data-np-comment-detached` expose state without coupling to the component's
+React tree. Keep fallback rules in the framework layer usable without a theme;
+theme rules should remain optional visual enhancement.
+
 ### `joinedAt` is a `Date`, not a string
 
 `NpMemberProfile.joinedAt` is a server-side `Date` instance.

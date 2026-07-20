@@ -1276,6 +1276,7 @@ export type {
   NpCommunitySettings,
   NpMemberUploadQuota,
   CommentStatus,
+  NpCommentListItem,
   NpCommentRow,
   NpCommentCreateInput,
   NpCommentListOptions,

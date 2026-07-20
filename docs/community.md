@@ -191,8 +191,9 @@ therefore use the configured forum-post collection slug rather than a parallel
 thread schema. Comments support:
 
 - Nested replies via `parent_id`. Visual nesting is one
-  level by default; the column allows arbitrary depth for
-  future "Reddit-style" themes.
+  level by default while the public tree preserves arbitrary depth. Offset
+  pages can contain a reply without its parent; the shared client renders that
+  row as a bounded detached root instead of dropping it or recursing.
 - Hide / restore (Phase 9.5). Hidden comments stay in DB
   with `status = 'hidden'`; restore flips back to `'visible'`.
 - Soft delete on member request (Phase 9.7l mass-delete-by-
@@ -200,6 +201,26 @@ thread schema. Comments support:
 - Owner/moderator edits; soft-deleted comments cannot be edited back.
 - Markdown rendering (`renderCommentMarkdown` — XSS-safe
   subset).
+
+The public list endpoint returns one exact `NpCommentListWire` window:
+`comments`, `totalDocs`, `limit`, `offset`, `hasNextPage`, and `hasPrevPage`.
+Every list item retains `parentId` and adds a PII-free public author projection
+(`handle`, `displayName`, resolved `avatarUrl`) plus the viewer-aware reaction
+summary (`counts`, `mine`). Core resolves authors and reactions in bounded batch
+queries, so clients must not issue one member or reaction request per row.
+Suspended, deleted, or otherwise unavailable profiles become `author: null`.
+Single create/edit responses remain the canonical persisted comment wire row.
+
+`Comments` from `@nexpress/next/client` consumes that contract and provides
+root/reply composers, owner edit and soft-delete controls, report/mute/reaction
+actions, exact offset pagination, locale-aware timestamps, and host-supplied
+labels. Stable styling hooks include `.np-comments`, `.np-comments-list`,
+`.np-comment`, `.np-comment-card`, `.np-comment-author`, `.np-comment-actions`,
+and `.np-comment-composer`. State is also exposed through
+`data-np-comments`, `data-np-comment-id`, `data-np-comment-depth`,
+`data-np-comment-owner`, `data-np-comment-status`,
+`data-np-comment-detached`, and `data-np-comment-composer`. Themes may style
+those hooks but should not duplicate the API or comment state machine.
 
 Spam + profanity adapter checks fire at create time
 (Phase 9.7n stacked profanity → spam, reject short-circuits).

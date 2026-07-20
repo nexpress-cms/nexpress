@@ -65,6 +65,7 @@ export {
 } from "./comments.js";
 export type {
   CommentStatus,
+  NpCommentListItem,
   NpCommentRow,
   NpCommentCreateInput,
   NpCommentListOptions,

@@ -1,225 +1,412 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import type { NpCommentListItemWire, NpCommentListWire } from "@nexpress/core/community-contract";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
-interface CommentRow {
-  id: string;
-  bodyHtml: string;
-  memberId: string;
-  status: string;
-  /**
-   * Phase 21.11 — author's `np_members.status`. `null` for live
-   * comments today since `np_member_status` doesn't have a chip
-   * for the regular flow; `"imported"` flags WordPress-archived
-   * authors so the public site can render an `(imported)` badge
-   * next to the timestamp.
-   */
-  authorStatus?: string | null;
-  createdAt: string;
-  editedAt: string | null;
+import { npBuildCommentTree, type NpCommentTreeNode } from "./comments-model.js";
+
+type CommentSort = "newest" | "oldest" | "top";
+
+export interface NpCommentsLabels {
+  title: string;
+  empty: string;
+  loadFailed: string;
+  sortLabel: string;
+  oldest: string;
+  newest: string;
+  top: string;
+  signIn: string;
+  signInPrompt: string;
+  placeholder: string;
+  post: string;
+  posting: string;
+  postFailed: string;
+  reply: string;
+  replyingTo: string;
+  replyPlaceholder: string;
+  postReply: string;
+  edit: string;
+  save: string;
+  saving: string;
+  editFailed: string;
+  delete: string;
+  deleting: string;
+  deleteConfirm: string;
+  deleteFailed: string;
+  cancel: string;
+  edited: string;
+  imported: string;
+  importedTitle: string;
+  unknownAuthor: string;
+  previous: string;
+  next: string;
+  page: string;
+  like: string;
+  unlike: string;
+  signInToReact: string;
+  reactionFailed: string;
+  report: string;
+  reportTitle: string;
+  reportHelp: string;
+  reportReasonLabel: string;
+  reportPlaceholder: string;
+  reportSubmit: string;
+  reportSubmitting: string;
+  reportSuccess: string;
+  close: string;
+  reportFailed: string;
+  mute: string;
+  muting: string;
+  muteTitle: string;
+  muteConfirm: string;
+  muteFailed: string;
 }
 
-interface CommentsProps {
+const DEFAULT_LABELS: NpCommentsLabels = {
+  title: "Comments",
+  empty: "No comments yet.",
+  loadFailed: "Could not load comments.",
+  sortLabel: "Comment sort order",
+  oldest: "Oldest",
+  newest: "Newest",
+  top: "Top",
+  signIn: "Log in",
+  signInPrompt: "to comment.",
+  placeholder: "Write a comment… **bold**, *italic*, `code` supported.",
+  post: "Post comment",
+  posting: "Posting…",
+  postFailed: "Failed to post comment.",
+  reply: "Reply",
+  replyingTo: "Replying to",
+  replyPlaceholder: "Write a reply…",
+  postReply: "Post reply",
+  edit: "Edit",
+  save: "Save",
+  saving: "Saving…",
+  editFailed: "Failed to edit comment.",
+  delete: "Delete",
+  deleting: "Deleting…",
+  deleteConfirm: "Delete this comment? Its text will be removed permanently.",
+  deleteFailed: "Failed to delete comment.",
+  cancel: "Cancel",
+  edited: "edited",
+  imported: "imported",
+  importedTitle: "Imported from a WordPress export",
+  unknownAuthor: "Unknown member",
+  previous: "Previous",
+  next: "Next",
+  page: "Page",
+  like: "Like",
+  unlike: "Unlike",
+  signInToReact: "Log in to react",
+  reactionFailed: "Could not update this reaction.",
+  report: "Report",
+  reportTitle: "Report this comment",
+  reportHelp: "Tell us briefly what's wrong. Moderators see this verbatim.",
+  reportReasonLabel: "Report reason",
+  reportPlaceholder: "e.g. Spam, harassment, off-topic…",
+  reportSubmit: "Send report",
+  reportSubmitting: "Sending…",
+  reportSuccess: "Thanks — a moderator will review it.",
+  close: "Close",
+  reportFailed: "Failed to file report.",
+  mute: "Mute",
+  muting: "Muting…",
+  muteTitle: "Mute this member",
+  muteConfirm:
+    "Mute this member? Their comments and reaction notifications will be hidden from you. You can unmute later from your profile.",
+  muteFailed: "Failed to mute member.",
+};
+
+export interface CommentsProps {
   collectionSlug: string;
   documentId: string;
-  /** Hide the composer while keeping existing comments readable. */
+  /** Hide every reply/composer control while keeping the thread readable. */
   locked?: boolean;
   lockedMessage?: string;
+  /** Locale used only for public dates and number formatting. */
+  locale?: string;
+  /** Copy supplied by the host plugin/theme. Missing keys fall back to English. */
+  labels?: Partial<NpCommentsLabels>;
+  /** Bounded API page size. */
+  pageSize?: number;
+}
+
+function responseError(value: unknown, fallback: string): string {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "error" in value &&
+    typeof value.error === "object" &&
+    value.error !== null &&
+    "message" in value.error &&
+    typeof value.error.message === "string"
+  ) {
+    return value.error.message;
+  }
+  return fallback;
+}
+
+async function errorFromResponse(response: Response, fallback: string): Promise<Error> {
+  const body = (await response.json().catch(() => null)) as unknown;
+  return new Error(responseError(body, fallback));
 }
 
 /**
- * Public-site comment block. Lists visible comments under a document,
- * lets a logged-in member post, react, or report. Optimistically
- * reloads the list after each successful action — paginated polling
- * lands later when reactions / notifications need it.
- *
- * The CSRF token comes from the `np-mb-csrf` cookie which is non-
- * httpOnly so the client can read it. If a member isn't logged in,
- * the form is hidden and only the read view shows.
+ * Framework-owned public comment surface. The list API supplies an exact,
+ * viewer-aware page: author profiles and reaction summaries arrive with each
+ * row, while reply/edit/delete reuse the canonical community write routes.
  */
-type CommentSort = "newest" | "oldest" | "top";
-
 export function Comments({
   collectionSlug,
   documentId,
   locked = false,
   lockedMessage = "This discussion is locked. Existing comments remain visible.",
+  locale,
+  labels: labelOverrides,
+  pageSize = 20,
 }: CommentsProps) {
-  const [comments, setComments] = useState<CommentRow[]>([]);
+  const labels = useMemo(() => ({ ...DEFAULT_LABELS, ...labelOverrides }), [labelOverrides]);
+  const requestedPageSize = Number.isFinite(pageSize) ? Math.trunc(pageSize) : 20;
+  const limit = Math.min(Math.max(requestedPageSize, 1), 200);
+  const [comments, setComments] = useState<NpCommentListItemWire[]>([]);
   const [total, setTotal] = useState(0);
-  const [bodyMd, setBodyMd] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [hasPrevPage, setHasPrevPage] = useState(false);
+  const [sort, setSort] = useState<CommentSort>("oldest");
+  const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
   const [memberKnown, setMemberKnown] = useState<boolean | null>(null);
   const [viewerMemberId, setViewerMemberId] = useState<string | null>(null);
-  const [sort, setSort] = useState<CommentSort>("oldest");
+  const [bodyMd, setBodyMd] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [composerError, setComposerError] = useState<string | null>(null);
+  const listRequestId = useRef(0);
 
-  const refresh = useCallback(async () => {
-    const res = await fetch(
-      `/api/collections/${collectionSlug}/${documentId}/comments?order=${sort}`,
-    );
-    if (res.ok) {
-      const body = (await res.json()) as { comments: CommentRow[]; totalDocs: number };
-      setComments(body.comments);
-      setTotal(body.totalDocs);
-    }
-  }, [collectionSlug, documentId, sort]);
+  const load = useCallback(
+    async (nextOffset: number, nextSort: CommentSort): Promise<boolean> => {
+      const requestId = ++listRequestId.current;
+      setLoading(true);
+      setListError(null);
+      try {
+        const params = new URLSearchParams({
+          order: nextSort,
+          limit: limit.toString(),
+          offset: nextOffset.toString(),
+        });
+        const response = await fetch(
+          `/api/collections/${encodeURIComponent(collectionSlug)}/${encodeURIComponent(documentId)}/comments?${params.toString()}`,
+          { credentials: "include" },
+        );
+        if (!response.ok) throw await errorFromResponse(response, labels.loadFailed);
+        const body = (await response.json()) as NpCommentListWire;
+        if (requestId !== listRequestId.current) return false;
+        setComments(body.comments);
+        setTotal(body.totalDocs);
+        setOffset(nextOffset);
+        setSort(nextSort);
+        setHasNextPage(body.hasNextPage);
+        setHasPrevPage(body.hasPrevPage);
+        return true;
+      } catch (error) {
+        if (requestId !== listRequestId.current) return false;
+        setListError(error instanceof Error ? error.message : labels.loadFailed);
+        return false;
+      } finally {
+        if (requestId === listRequestId.current) setLoading(false);
+      }
+    },
+    [collectionSlug, documentId, labels.loadFailed, limit],
+  );
 
-  // Probe `/api/members/me` once on mount to show or hide the form. The
-  // probe is cheap (single DB read by id) and avoids prop-drilling
-  // session state into every page that mounts the comment block.
-  // The lint rule wants external-system sync; this is a fetch-on-mount
-  // → setState pattern, which is the canonical client-component shape
-  // until we move to Suspense + a data layer.
+  useEffect(() => {
+    void load(0, "oldest");
+  }, [load]);
+
   useEffect(() => {
     fetch("/api/members/me", { credentials: "include" })
-      .then(async (res) => {
-        if (!res.ok) {
+      .then(async (response) => {
+        if (!response.ok) {
           setMemberKnown(false);
           return;
         }
-        setMemberKnown(true);
-        const body = (await res.json().catch(() => null)) as { member?: { id?: unknown } } | null;
+        const body = (await response.json().catch(() => null)) as {
+          member?: { id?: unknown };
+        } | null;
         const id = body?.member?.id;
-        if (typeof id === "string") setViewerMemberId(id);
+        setViewerMemberId(typeof id === "string" ? id : null);
+        setMemberKnown(true);
       })
       .catch(() => setMemberKnown(false));
-    void refresh();
-  }, [refresh]);
+  }, []);
 
-  const submit = async () => {
-    if (!bodyMd.trim()) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const csrf = readCookie("np-mb-csrf");
-      const res = await fetch(`/api/collections/${collectionSlug}/${documentId}/comments`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
-        },
-        body: JSON.stringify({ bodyMd }),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
+  const refresh = useCallback(async () => load(offset, sort), [load, offset, sort]);
+  const tree = useMemo(() => npBuildCommentTree(comments), [comments]);
+
+  const submitComment = useCallback(
+    async (value: string, parentId: string | null): Promise<string | null> => {
+      const trimmed = value.trim();
+      if (!trimmed) return labels.postFailed;
+      try {
+        const csrf = readCookie("np-mb-csrf");
+        const response = await fetch(
+          `/api/collections/${encodeURIComponent(collectionSlug)}/${encodeURIComponent(documentId)}/comments`,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+              ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+            },
+            body: JSON.stringify({ bodyMd: trimmed, parentId }),
+          },
+        );
+        if (!response.ok) throw await errorFromResponse(response, labels.postFailed);
+        const created = (await response.json()) as { status?: unknown };
+        let nextOffset = offset;
+        if (created.status === "visible") {
+          if (sort === "oldest") nextOffset = Math.floor(total / limit) * limit;
+          if (sort === "newest") nextOffset = 0;
+        }
+        await load(nextOffset, sort);
+        return null;
+      } catch (error) {
+        return error instanceof Error ? error.message : labels.postFailed;
       }
-      setBodyMd("");
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to post comment");
-    } finally {
-      setSubmitting(false);
-    }
+    },
+    [collectionSlug, documentId, labels.postFailed, limit, load, offset, sort, total],
+  );
+
+  const submitRoot = async () => {
+    if (!bodyMd.trim() || submitting) return;
+    setSubmitting(true);
+    setComposerError(null);
+    const error = await submitComment(bodyMd, null);
+    if (error) setComposerError(error);
+    else setBodyMd("");
+    setSubmitting(false);
   };
 
+  const currentPage = Math.floor(offset / limit) + 1;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+
   return (
-    <section className="np-comments" style={{ marginTop: "3rem", maxWidth: 720 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          marginBottom: "1rem",
-          gap: "0.75rem",
-          flexWrap: "wrap",
-        }}
-      >
-        <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Comments {total > 0 ? `(${total})` : ""}</h2>
+    <section
+      className="np-comments"
+      data-np-comments="thread"
+      data-np-comment-sort={sort}
+      aria-busy={loading}
+    >
+      <header className="np-comments-header">
+        <h2>
+          {labels.title} {total > 0 ? `(${total.toLocaleString(locale)})` : ""}
+        </h2>
         {total > 1 ? (
-          <div
-            style={{ display: "inline-flex", gap: "0.25rem", fontSize: "0.875rem" }}
-            role="tablist"
-            aria-label="Comment sort order"
-          >
+          <div className="np-comments-sort" role="group" aria-label={labels.sortLabel}>
             {(["oldest", "newest", "top"] as const).map((value) => (
               <button
                 key={value}
                 type="button"
-                role="tab"
-                aria-selected={sort === value}
-                onClick={() => setSort(value)}
-                style={{
-                  padding: "0.25rem 0.625rem",
-                  borderRadius: 999,
-                  border: 0,
-                  cursor: "pointer",
-                  background: sort === value ? "#0f172a" : "transparent",
-                  color: sort === value ? "#f8fafc" : "#475569",
-                  fontWeight: sort === value ? 600 : 400,
-                }}
+                aria-pressed={sort === value}
+                data-active={sort === value ? "true" : "false"}
+                disabled={loading}
+                onClick={() => void load(0, value)}
               >
-                {value === "oldest" ? "Oldest" : value === "newest" ? "Newest" : "Top"}
+                {value === "oldest"
+                  ? labels.oldest
+                  : value === "newest"
+                    ? labels.newest
+                    : labels.top}
               </button>
             ))}
           </div>
         ) : null}
-      </div>
+      </header>
 
-      {comments.length === 0 ? (
-        <p style={{ color: "#64748b" }}>No comments yet.</p>
+      {listError ? (
+        <p className="np-comments-error" role="alert">
+          {listError}
+        </p>
+      ) : null}
+
+      {!loading && comments.length === 0 && !listError ? (
+        <p className="np-comments-empty">{labels.empty}</p>
       ) : (
-        <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: "1rem" }}>
-          {comments.map((c) => (
-            <CommentItem
-              key={c.id}
-              comment={c}
-              memberKnown={memberKnown}
-              viewerMemberId={viewerMemberId}
-              onMuted={refresh}
-            />
-          ))}
-        </ul>
+        <CommentBranch
+          nodes={tree}
+          depth={0}
+          labels={labels}
+          locale={locale}
+          memberKnown={memberKnown}
+          viewerMemberId={viewerMemberId}
+          locked={locked}
+          onReply={submitComment}
+          onChanged={refresh}
+          onRemoved={async () => {
+            const nextOffset =
+              comments.length === 1 && offset > 0 ? Math.max(0, offset - limit) : offset;
+            await load(nextOffset, sort);
+          }}
+        />
       )}
 
+      {totalPages > 1 ? (
+        <nav className="np-comments-pagination" aria-label={labels.page} data-np-comment-pagination>
+          <button
+            type="button"
+            disabled={!hasPrevPage || loading}
+            onClick={() => void load(Math.max(0, offset - limit), sort)}
+          >
+            {labels.previous}
+          </button>
+          <span aria-live="polite">
+            {labels.page} {currentPage.toLocaleString(locale)} / {totalPages.toLocaleString(locale)}
+          </span>
+          <button
+            type="button"
+            disabled={!hasNextPage || loading}
+            onClick={() => void load(offset + limit, sort)}
+          >
+            {labels.next}
+          </button>
+        </nav>
+      ) : null}
+
       {locked ? (
-        <p className="np-comments-locked" style={{ marginTop: "1.5rem", color: "#64748b" }}>
-          {lockedMessage}
-        </p>
+        <p className="np-comments-locked">{lockedMessage}</p>
       ) : memberKnown === false ? (
-        <p style={{ marginTop: "1.5rem", color: "#64748b" }}>
-          <a href="/members/login">Log in</a> to comment.
+        <p className="np-comments-login">
+          <a href="/members/login">{labels.signIn}</a> {labels.signInPrompt}
         </p>
       ) : memberKnown === true ? (
         <form
-          style={{ marginTop: "1.5rem", display: "grid", gap: "0.5rem" }}
+          className="np-comment-composer"
+          data-np-comment-composer="root"
           onSubmit={(event) => {
             event.preventDefault();
-            void submit();
+            void submitRoot();
           }}
         >
           <textarea
             value={bodyMd}
             onChange={(event) => setBodyMd(event.target.value)}
-            placeholder="Write a comment… **bold**, *italic*, `code` supported."
-            rows={3}
-            style={{
-              padding: "0.75rem",
-              borderRadius: 6,
-              border: "1px solid #cbd5e1",
-              fontFamily: "inherit",
-            }}
-            maxLength={5000}
+            placeholder={labels.placeholder}
+            aria-label={labels.placeholder}
+            rows={4}
+            maxLength={5_000}
           />
-          {error ? <p style={{ color: "#dc2626", fontSize: "0.875rem" }}>{error}</p> : null}
+          {composerError ? (
+            <p className="np-comments-error" role="alert">
+              {composerError}
+            </p>
+          ) : null}
           <button
+            className="np-comment-primary-action"
             type="submit"
             disabled={submitting || !bodyMd.trim()}
-            style={{
-              alignSelf: "start",
-              padding: "0.5rem 1rem",
-              borderRadius: 6,
-              border: 0,
-              background: "#0f172a",
-              color: "#fff",
-              cursor: "pointer",
-            }}
           >
-            {submitting ? "Posting…" : "Post comment"}
+            {submitting ? labels.posting : labels.post}
           </button>
         </form>
       ) : null}
@@ -227,112 +414,426 @@ export function Comments({
   );
 }
 
-interface CommentItemProps {
-  comment: CommentRow;
+interface CommentBranchProps {
+  nodes: NpCommentTreeNode[];
+  depth: number;
+  labels: NpCommentsLabels;
+  locale?: string;
   memberKnown: boolean | null;
   viewerMemberId: string | null;
-  onMuted: () => void | Promise<void>;
+  locked: boolean;
+  onReply: (bodyMd: string, parentId: string) => Promise<string | null>;
+  onChanged: () => Promise<boolean>;
+  onRemoved: () => Promise<void>;
 }
 
-function CommentItem({ comment, memberKnown, viewerMemberId, onMuted }: CommentItemProps) {
+function CommentBranch(props: CommentBranchProps) {
+  if (props.nodes.length === 0) return null;
+  const { nodes, ...itemProps } = props;
+  return (
+    <ul
+      className={props.depth === 0 ? "np-comments-list" : "np-comment-children"}
+      data-np-comment-list={props.depth === 0 ? "page" : "replies"}
+    >
+      {nodes.map((node) => (
+        <CommentItem key={node.comment.id} node={node} {...itemProps} />
+      ))}
+    </ul>
+  );
+}
+
+interface CommentItemProps extends Omit<CommentBranchProps, "nodes"> {
+  node: NpCommentTreeNode;
+}
+
+function CommentItem({
+  node,
+  depth,
+  labels,
+  locale,
+  memberKnown,
+  viewerMemberId,
+  locked,
+  onReply,
+  onChanged,
+  onRemoved,
+}: CommentItemProps) {
+  const { comment } = node;
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyBody, setReplyBody] = useState("");
+  const [replyBusy, setReplyBusy] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editBody, setEditBody] = useState(comment.bodyMd);
+  const [editBusy, setEditBusy] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
-  const canMute =
-    memberKnown === true && viewerMemberId !== null && viewerMemberId !== comment.memberId;
+  const own = memberKnown === true && viewerMemberId === comment.memberId;
+  const canMute = memberKnown === true && viewerMemberId !== null && !own;
+  const authorName = comment.author?.displayName || comment.author?.handle || labels.unknownAuthor;
+
+  const submitReply = async () => {
+    if (!replyBody.trim() || replyBusy) return;
+    setReplyBusy(true);
+    setReplyError(null);
+    const error = await onReply(replyBody, comment.id);
+    if (error) setReplyError(error);
+    else {
+      setReplyBody("");
+      setReplyOpen(false);
+    }
+    setReplyBusy(false);
+  };
+
+  const saveEdit = async () => {
+    if (!editBody.trim() || editBusy) return;
+    setEditBusy(true);
+    setActionError(null);
+    try {
+      const csrf = readCookie("np-mb-csrf");
+      const response = await fetch(`/api/comments/${encodeURIComponent(comment.id)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        },
+        body: JSON.stringify({ bodyMd: editBody.trim() }),
+      });
+      if (!response.ok) throw await errorFromResponse(response, labels.editFailed);
+      setEditOpen(false);
+      await onChanged();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : labels.editFailed);
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (deleteBusy || typeof window === "undefined" || !window.confirm(labels.deleteConfirm))
+      return;
+    setDeleteBusy(true);
+    setActionError(null);
+    try {
+      const csrf = readCookie("np-mb-csrf");
+      const response = await fetch(`/api/comments/${encodeURIComponent(comment.id)}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: {
+          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        },
+      });
+      if (!response.ok) throw await errorFromResponse(response, labels.deleteFailed);
+      await onRemoved();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : labels.deleteFailed);
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   return (
     <li
-      style={{
-        border: "1px solid #e2e8f0",
-        borderRadius: 8,
-        padding: "0.75rem 1rem",
-        background: "#fff",
-      }}
+      className="np-comment"
+      data-np-comment="item"
+      data-np-comment-id={comment.id}
+      data-np-comment-depth={depth}
+      data-np-comment-owner={own ? "true" : "false"}
+      data-np-comment-status={comment.status}
+      data-np-comment-detached={node.detached ? "true" : "false"}
     >
-      <div style={{ fontSize: "0.85rem", color: "#64748b", marginBottom: "0.25rem" }}>
-        {new Date(comment.createdAt).toLocaleString()}
-        {comment.editedAt ? " · edited" : null}
-        {comment.authorStatus === "imported" ? (
-          <span
-            // Phase 21.11 — visual cue that this thread came from a
-            // WP import, not the live community. Keeps archived
-            // discussion legible without making it look like new
-            // activity.
-            title="Imported from a WordPress export"
-            style={{
-              marginLeft: "0.5rem",
-              padding: "0.1rem 0.4rem",
-              borderRadius: 4,
-              fontSize: "0.75rem",
-              background: "#f1f5f9",
-              color: "#475569",
-              fontWeight: 500,
-            }}
-          >
-            imported
+      <article className="np-comment-card">
+        <header className="np-comment-meta">
+          {comment.author ? (
+            <a
+              className="np-comment-author"
+              data-np-comment-author={comment.author.handle}
+              href={`/u/${encodeURIComponent(comment.author.handle)}`}
+            >
+              {comment.author.avatarUrl ? (
+                <img src={comment.author.avatarUrl} alt="" width={40} height={40} loading="lazy" />
+              ) : (
+                <span className="np-comment-avatar-fallback" aria-hidden="true">
+                  {authorName.slice(0, 1).toUpperCase()}
+                </span>
+              )}
+              <span>
+                <strong>{authorName}</strong>
+                <small>@{comment.author.handle}</small>
+              </span>
+            </a>
+          ) : (
+            <span
+              className="np-comment-author np-comment-author-missing"
+              data-np-comment-author="missing"
+            >
+              <span className="np-comment-avatar-fallback" aria-hidden="true">
+                ?
+              </span>
+              <strong>{labels.unknownAuthor}</strong>
+            </span>
+          )}
+          <span className="np-comment-date">
+            <time dateTime={comment.createdAt}>
+              {new Date(comment.createdAt).toLocaleString(locale)}
+            </time>
+            {comment.editedAt ? <span> · {labels.edited}</span> : null}
+            {comment.authorStatus === "imported" ? (
+              <span className="np-comment-imported" title={labels.importedTitle}>
+                {labels.imported}
+              </span>
+            ) : null}
           </span>
-        ) : null}
-      </div>
-      <div className="np-comment-body" dangerouslySetInnerHTML={{ __html: comment.bodyHtml }} />
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.75rem",
-          marginTop: "0.5rem",
-          fontSize: "0.85rem",
-        }}
-      >
-        <ReactionButton commentId={comment.id} memberKnown={memberKnown} />
-        {memberKnown === true ? (
-          <button
-            type="button"
-            onClick={() => setReportOpen(true)}
-            style={{
-              border: 0,
-              background: "transparent",
-              color: "#64748b",
-              cursor: "pointer",
-              padding: "0.25rem 0.4rem",
-              fontSize: "0.85rem",
+        </header>
+
+        {editOpen ? (
+          <form
+            className="np-comment-composer np-comment-edit-form"
+            data-np-comment-composer="edit"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveEdit();
             }}
           >
-            Report
-          </button>
+            <textarea
+              value={editBody}
+              onChange={(event) => setEditBody(event.target.value)}
+              aria-label={labels.edit}
+              rows={4}
+              maxLength={5_000}
+            />
+            <div className="np-comment-form-actions">
+              <button
+                className="np-comment-primary-action"
+                type="submit"
+                disabled={editBusy || !editBody.trim()}
+              >
+                {editBusy ? labels.saving : labels.save}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditBody(comment.bodyMd);
+                  setEditOpen(false);
+                  setActionError(null);
+                }}
+              >
+                {labels.cancel}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="np-comment-body" dangerouslySetInnerHTML={{ __html: comment.bodyHtml }} />
+        )}
+
+        <div className="np-comment-actions" data-np-comment-actions>
+          <ReactionButton
+            key={`${comment.id}:${comment.reactions.counts.like ?? 0}:${comment.reactions.mine.includes("like")}`}
+            comment={comment}
+            memberKnown={memberKnown}
+            labels={labels}
+          />
+          {memberKnown === true && !locked ? (
+            <button
+              type="button"
+              onClick={() => {
+                const nextOpen = !replyOpen;
+                setReplyOpen(nextOpen);
+                if (nextOpen) setReplyError(null);
+                setEditOpen(false);
+                setActionError(null);
+              }}
+            >
+              {labels.reply}
+            </button>
+          ) : null}
+          {own ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditBody(comment.bodyMd);
+                  setEditOpen(true);
+                  setReplyOpen(false);
+                  setActionError(null);
+                }}
+              >
+                {labels.edit}
+              </button>
+              <button type="button" disabled={deleteBusy} onClick={() => void remove()}>
+                {deleteBusy ? labels.deleting : labels.delete}
+              </button>
+            </>
+          ) : null}
+          {memberKnown === true ? (
+            <button type="button" onClick={() => setReportOpen(true)}>
+              {labels.report}
+            </button>
+          ) : null}
+          {canMute ? (
+            <MuteButton targetMemberId={comment.memberId} labels={labels} onMuted={onRemoved} />
+          ) : null}
+        </div>
+
+        {actionError ? (
+          <p className="np-comments-error" role="alert">
+            {actionError}
+          </p>
         ) : null}
-        {canMute ? <MuteButton targetMemberId={comment.memberId} onMuted={onMuted} /> : null}
-      </div>
+
+        {replyOpen ? (
+          <form
+            className="np-comment-composer np-comment-reply-form"
+            data-np-comment-composer="reply"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitReply();
+            }}
+          >
+            <p className="np-comment-replying-to">
+              {labels.replyingTo} <strong>{authorName}</strong>
+            </p>
+            <textarea
+              value={replyBody}
+              onChange={(event) => setReplyBody(event.target.value)}
+              placeholder={labels.replyPlaceholder}
+              aria-label={labels.replyPlaceholder}
+              rows={3}
+              maxLength={5_000}
+            />
+            {replyError ? (
+              <p className="np-comments-error" role="alert">
+                {replyError}
+              </p>
+            ) : null}
+            <div className="np-comment-form-actions">
+              <button
+                className="np-comment-primary-action"
+                type="submit"
+                disabled={replyBusy || !replyBody.trim()}
+              >
+                {replyBusy ? labels.posting : labels.postReply}
+              </button>
+              <button type="button" onClick={() => setReplyOpen(false)}>
+                {labels.cancel}
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </article>
+
+      <CommentBranch
+        nodes={node.children}
+        depth={depth + 1}
+        labels={labels}
+        locale={locale}
+        memberKnown={memberKnown}
+        viewerMemberId={viewerMemberId}
+        locked={locked}
+        onReply={onReply}
+        onChanged={onChanged}
+        onRemoved={onRemoved}
+      />
+
       {reportOpen ? (
-        <ReportDialog
-          targetType="comment"
-          targetId={comment.id}
-          onClose={() => setReportOpen(false)}
-        />
+        <ReportDialog targetId={comment.id} labels={labels} onClose={() => setReportOpen(false)} />
       ) : null}
     </li>
   );
 }
 
-interface MuteButtonProps {
-  targetMemberId: string;
-  onMuted: () => void | Promise<void>;
+interface ReactionButtonProps {
+  comment: NpCommentListItemWire;
+  memberKnown: boolean | null;
+  labels: NpCommentsLabels;
 }
 
-function MuteButton({ targetMemberId, onMuted }: MuteButtonProps) {
+function ReactionButton({ comment, memberKnown, labels }: ReactionButtonProps) {
+  const initialCount = Number(comment.reactions.counts.like ?? 0);
+  const initialMine = comment.reactions.mine.includes("like");
+  const [count, setCount] = useState(initialCount);
+  const [mine, setMine] = useState(initialMine);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const mute = async () => {
-    if (busy) return;
-    if (typeof window !== "undefined") {
-      const ok = window.confirm(
-        "Mute this member? Their comments and reaction notifications will be hidden from you. You can unmute later from your profile.",
-      );
-      if (!ok) return;
-    }
+  const toggle = async () => {
+    if (memberKnown !== true || busy) return;
     setBusy(true);
     setError(null);
     try {
       const csrf = readCookie("np-mb-csrf");
-      const res = await fetch("/api/members/me/mutes", {
+      const headers = {
+        "Content-Type": "application/json",
+        ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+      };
+      const params = new URLSearchParams({
+        targetType: "comment",
+        targetId: comment.id,
+        kind: "like",
+      });
+      const response = mine
+        ? await fetch(`/api/reactions?${params.toString()}`, {
+            method: "DELETE",
+            credentials: "include",
+            headers,
+          })
+        : await fetch("/api/reactions", {
+            method: "POST",
+            credentials: "include",
+            headers,
+            body: JSON.stringify({ targetType: "comment", targetId: comment.id, kind: "like" }),
+          });
+      if (!response.ok) throw await errorFromResponse(response, labels.reactionFailed);
+      setMine(!mine);
+      setCount((value) => Math.max(0, value + (mine ? -1 : 1)));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : labels.reactionFailed);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disabled = memberKnown !== true || busy;
+  return (
+    <span className="np-comment-reaction">
+      <button
+        type="button"
+        onClick={() => void toggle()}
+        disabled={disabled}
+        aria-pressed={mine}
+        data-active={mine ? "true" : "false"}
+        title={memberKnown === true ? (mine ? labels.unlike : labels.like) : labels.signInToReact}
+      >
+        <span aria-hidden="true">👍</span> {count}
+      </button>
+      {error ? (
+        <span className="np-comment-inline-error" role="alert">
+          {error}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+interface MuteButtonProps {
+  targetMemberId: string;
+  labels: NpCommentsLabels;
+  onMuted: () => Promise<void>;
+}
+
+function MuteButton({ targetMemberId, labels, onMuted }: MuteButtonProps) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const mute = async () => {
+    if (busy || typeof window === "undefined" || !window.confirm(labels.muteConfirm)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const csrf = readCookie("np-mb-csrf");
+      const response = await fetch("/api/members/me/mutes", {
         method: "POST",
         credentials: "include",
         headers: {
@@ -341,157 +842,36 @@ function MuteButton({ targetMemberId, onMuted }: MuteButtonProps) {
         },
         body: JSON.stringify({ targetId: targetMemberId }),
       });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
-      }
+      if (!response.ok) throw await errorFromResponse(response, labels.muteFailed);
       await onMuted();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to mute member");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : labels.muteFailed);
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
-      <button
-        type="button"
-        onClick={() => {
-          void mute();
-        }}
-        disabled={busy}
-        title="Mute this member"
-        style={{
-          border: 0,
-          background: "transparent",
-          color: "#64748b",
-          cursor: busy ? "default" : "pointer",
-          padding: "0.25rem 0.4rem",
-          fontSize: "0.85rem",
-          opacity: busy ? 0.7 : 1,
-        }}
-      >
-        {busy ? "Muting…" : "Mute"}
+    <span className="np-comment-mute">
+      <button type="button" onClick={() => void mute()} disabled={busy} title={labels.muteTitle}>
+        {busy ? labels.muting : labels.mute}
       </button>
-      {error ? <span style={{ color: "#dc2626", fontSize: "0.8rem" }}>{error}</span> : null}
-    </span>
-  );
-}
-
-interface ReactionButtonProps {
-  commentId: string;
-  memberKnown: boolean | null;
-}
-
-function ReactionButton({ commentId, memberKnown }: ReactionButtonProps) {
-  const [count, setCount] = useState(0);
-  const [mine, setMine] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    const params = new URLSearchParams({
-      targetType: "comment",
-      targetId: commentId,
-      kind: "like",
-    });
-    const res = await fetch(`/api/reactions?${params.toString()}`, {
-      credentials: "include",
-    });
-    if (res.ok) {
-      const body = (await res.json()) as { counts: Record<string, number>; mine: string[] };
-      setCount(Number(body.counts.like ?? 0));
-      setMine(body.mine.includes("like"));
-    }
-  }, [commentId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const toggle = async () => {
-    if (memberKnown !== true || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const csrf = readCookie("np-mb-csrf");
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        ...(csrf ? { "X-CSRF-Token": csrf } : {}),
-      };
-      let res: Response;
-      if (mine) {
-        const params = new URLSearchParams({
-          targetType: "comment",
-          targetId: commentId,
-          kind: "like",
-        });
-        res = await fetch(`/api/reactions?${params.toString()}`, {
-          method: "DELETE",
-          credentials: "include",
-          headers,
-        });
-      } else {
-        res = await fetch(`/api/reactions`, {
-          method: "POST",
-          credentials: "include",
-          headers,
-          body: JSON.stringify({ targetType: "comment", targetId: commentId, kind: "like" }),
-        });
-      }
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
-      }
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Reaction failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const disabled = memberKnown !== true || busy;
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
-      <button
-        type="button"
-        onClick={() => {
-          void toggle();
-        }}
-        disabled={disabled}
-        aria-pressed={mine}
-        title={memberKnown === true ? (mine ? "Unlike" : "Like") : "Log in to react"}
-        style={{
-          border: "1px solid #e2e8f0",
-          borderRadius: 999,
-          padding: "0.2rem 0.6rem",
-          background: mine ? "#fef3c7" : "#fff",
-          color: mine ? "#854d0e" : "#475569",
-          cursor: disabled ? "default" : "pointer",
-          fontSize: "0.85rem",
-          opacity: disabled && memberKnown !== true ? 0.7 : 1,
-        }}
-      >
-        👍 {count}
-      </button>
-      {error ? <span style={{ color: "#dc2626", fontSize: "0.8rem" }}>{error}</span> : null}
+      {error ? (
+        <span className="np-comment-inline-error" role="alert">
+          {error}
+        </span>
+      ) : null}
     </span>
   );
 }
 
 interface ReportDialogProps {
-  targetType: "comment";
   targetId: string;
+  labels: NpCommentsLabels;
   onClose: () => void;
 }
 
-function ReportDialog({ targetType, targetId, onClose }: ReportDialogProps) {
+function ReportDialog({ targetId, labels, onClose }: ReportDialogProps) {
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -499,7 +879,6 @@ function ReportDialog({ targetType, targetId, onClose }: ReportDialogProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const titleId = useId();
 
-  // Esc to close + lock body scroll while open. Initial focus → textarea.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -515,29 +894,24 @@ function ReportDialog({ targetType, targetId, onClose }: ReportDialogProps) {
   }, [onClose]);
 
   const submit = async () => {
-    if (!reason.trim()) return;
+    if (!reason.trim() || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
       const csrf = readCookie("np-mb-csrf");
-      const res = await fetch("/api/reports", {
+      const response = await fetch("/api/reports", {
         method: "POST",
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
           ...(csrf ? { "X-CSRF-Token": csrf } : {}),
         },
-        body: JSON.stringify({ targetType, targetId, reason: reason.trim() }),
+        body: JSON.stringify({ targetType: "comment", targetId, reason: reason.trim() }),
       });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
-      }
+      if (!response.ok) throw await errorFromResponse(response, labels.reportFailed);
       setDone(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to file report");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : labels.reportFailed);
     } finally {
       setSubmitting(false);
     }
@@ -545,115 +919,59 @@ function ReportDialog({ targetType, targetId, onClose }: ReportDialogProps) {
 
   return (
     <div
+      className="np-comment-dialog-backdrop"
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15, 23, 42, 0.5)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: 50,
-      }}
+      data-np-comment-dialog="report"
       onClick={onClose}
     >
-      <div
-        onClick={(event) => event.stopPropagation()}
-        style={{
-          background: "#fff",
-          borderRadius: 8,
-          padding: "1.25rem",
-          width: "min(420px, 92vw)",
-          display: "grid",
-          gap: "0.75rem",
-          boxShadow: "0 12px 40px rgba(15, 23, 42, 0.2)",
-        }}
-      >
-        <h3 id={titleId} style={{ margin: 0, fontSize: "1rem" }}>
-          Report this {targetType}
-        </h3>
+      <div className="np-comment-dialog" onClick={(event) => event.stopPropagation()}>
+        <h3 id={titleId}>{labels.reportTitle}</h3>
         {done ? (
           <>
-            <p style={{ margin: 0, color: "#475569", fontSize: "0.9rem" }}>
-              Thanks — a moderator will review it.
-            </p>
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                onClick={onClose}
-                style={{
-                  border: 0,
-                  background: "#0f172a",
-                  color: "#fff",
-                  borderRadius: 6,
-                  padding: "0.4rem 0.9rem",
-                  cursor: "pointer",
-                }}
-              >
-                Close
+            <p>{labels.reportSuccess}</p>
+            <div className="np-comment-dialog-actions">
+              <button className="np-comment-primary-action" type="button" onClick={onClose}>
+                {labels.close}
               </button>
             </div>
           </>
         ) : (
-          <>
-            <p style={{ margin: 0, color: "#64748b", fontSize: "0.85rem" }}>
-              Tell us briefly what's wrong. Moderators see this verbatim.
-            </p>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
+            }}
+          >
+            <p>{labels.reportHelp}</p>
             <textarea
               ref={textareaRef}
-              aria-label="Report reason"
+              aria-label={labels.reportReasonLabel}
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               rows={4}
-              maxLength={1000}
-              placeholder="e.g. Spam, harassment, off-topic…"
-              style={{
-                padding: "0.6rem",
-                borderRadius: 6,
-                border: "1px solid #cbd5e1",
-                fontFamily: "inherit",
-                fontSize: "0.9rem",
-              }}
+              maxLength={1_000}
+              placeholder={labels.reportPlaceholder}
             />
             {error ? (
-              <p style={{ color: "#dc2626", fontSize: "0.85rem", margin: 0 }}>{error}</p>
+              <p className="np-comments-error" role="alert">
+                {error}
+              </p>
             ) : null}
-            <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                onClick={onClose}
-                style={{
-                  border: "1px solid #e2e8f0",
-                  background: "#fff",
-                  color: "#0f172a",
-                  borderRadius: 6,
-                  padding: "0.4rem 0.9rem",
-                  cursor: "pointer",
-                }}
-              >
-                Cancel
+            <div className="np-comment-dialog-actions">
+              <button type="button" onClick={onClose}>
+                {labels.cancel}
               </button>
               <button
-                type="button"
-                onClick={() => {
-                  void submit();
-                }}
+                className="np-comment-primary-action"
+                type="submit"
                 disabled={submitting || !reason.trim()}
-                style={{
-                  border: 0,
-                  background: "#dc2626",
-                  color: "#fff",
-                  borderRadius: 6,
-                  padding: "0.4rem 0.9rem",
-                  cursor: submitting || !reason.trim() ? "default" : "pointer",
-                  opacity: submitting || !reason.trim() ? 0.7 : 1,
-                }}
               >
-                {submitting ? "Sending…" : "Send report"}
+                {submitting ? labels.reportSubmitting : labels.reportSubmit}
               </button>
             </div>
-          </>
+          </form>
         )}
       </div>
     </div>
@@ -662,7 +980,7 @@ function ReportDialog({ targetType, targetId, onClose }: ReportDialogProps) {
 
 function readCookie(name: string): string | null {
   if (typeof document === "undefined") return null;
-  const match = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`).exec(document.cookie);
-  const value = match?.[1];
-  return value !== undefined ? decodeURIComponent(value) : null;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${escaped}=([^;]*)`, "u"));
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
 }

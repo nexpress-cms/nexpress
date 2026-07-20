@@ -470,12 +470,11 @@ export const communityCss = `
 .np-community-article-footer li { padding: 0.3rem 0.55rem; border-radius: 999px; background: var(--np-community-soft); color: var(--np-community-subtle); font-size: 0.7rem; }
 .np-community-article-footer > a { color: var(--np-community-accent); font-size: 0.76rem; font-weight: 800; text-decoration: none; white-space: nowrap; }
 
-/* Framework-owned comments remain part of the article surface even when the
-   forum plugin is not installed. Inline component styles retain behavior;
-   these rules supply the community theme's layout and typography. */
+/* Framework-owned comments remain a standalone contract even when the forum
+   plugin is absent. The theme consumes only stable np-comment classes and
+   state hooks; no forum collection, route, or React import is required. */
 .np-community-shell .np-comments {
   width: min(calc(100% - 2rem), 54rem);
-  max-width: 54rem !important;
   margin: 2rem auto 3rem;
   padding: 1.25rem;
   background: var(--np-community-surface);
@@ -484,13 +483,29 @@ export const communityCss = `
   box-shadow: 0 10px 30px rgba(28,43,68,0.05);
 }
 .np-community-shell .np-comments h2 { color: var(--np-community-ink); letter-spacing: -0.025em; }
-.np-community-shell .np-comments p { color: var(--np-community-subtle) !important; line-height: 1.7; }
-.np-community-shell .np-comments a { color: var(--np-community-accent); font-weight: 800; text-underline-offset: 0.18rem; }
-.np-community-shell .np-comments textarea { width: 100%; border-color: var(--np-community-line) !important; background: var(--np-community-surface); color: var(--np-community-ink); }
+.np-community-shell .np-comments-sort { border-color: var(--np-community-line); background: var(--np-community-soft); }
+.np-community-shell .np-comments-sort button[data-active="true"] { background: var(--np-community-ink); color: var(--np-community-surface); }
+.np-community-shell .np-comment-card { border-color: var(--np-community-line); border-radius: 0.45rem; background: var(--np-community-surface); }
+.np-community-shell .np-comment-children { border-color: color-mix(in srgb, var(--np-community-accent) 35%, var(--np-community-line)); }
+.np-community-shell .np-comment-author { color: var(--np-community-ink); font-weight: 800; }
+.np-community-shell .np-comment-author small,
+.np-community-shell .np-comment-date,
+.np-community-shell .np-comment-replying-to,
+.np-community-shell .np-comments-empty,
+.np-community-shell .np-comments-locked,
+.np-community-shell .np-comments-login { color: var(--np-community-subtle); }
+.np-community-shell .np-comments-login a { color: var(--np-community-accent); font-weight: 800; text-underline-offset: 0.18rem; }
+.np-community-shell .np-comment-actions button:hover:not(:disabled) { background: var(--np-community-soft); color: var(--np-community-ink); }
+.np-community-shell .np-comment-reaction button[data-active="true"] { border-color: var(--np-community-accent); background: color-mix(in srgb, var(--np-community-accent) 12%, transparent); color: var(--np-community-accent); }
+.np-community-shell .np-comments textarea,
+.np-community-shell .np-comment-dialog textarea { border-color: var(--np-community-line); background: var(--np-community-surface); color: var(--np-community-ink); }
 .np-community-shell .np-comments textarea:focus-visible { outline: 2px solid var(--np-community-accent); outline-offset: 2px; }
-.np-community-shell .np-comments form > button { background: var(--np-community-accent) !important; color: var(--np-community-accent-foreground) !important; }
+.np-community-shell .np-comments .np-comment-primary-action,
+.np-community-shell .np-comment-dialog .np-comment-primary-action { background: var(--np-community-accent); color: var(--np-community-accent-foreground); }
+.np-community-shell .np-comments-pagination button { border-color: var(--np-community-line); background: var(--np-community-surface); }
+.np-community-shell .np-comment-dialog { background: var(--np-community-surface); color: var(--np-community-ink); }
 .np-community-shell .np-comment-body { line-height: 1.75; }
-.np-community-shell .np-comment-body p { margin: 0 0 0.75rem; color: var(--np-community-ink) !important; }
+.np-community-shell .np-comment-body p { color: var(--np-community-ink); }
 .np-community-shell .np-comment-body ul,
 .np-community-shell .np-comment-body ol { padding-inline-start: 1.25rem; }
 

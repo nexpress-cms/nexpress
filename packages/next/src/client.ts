@@ -10,3 +10,4 @@
  * server functions go in the root.
  */
 export { Comments } from "./comments.js";
+export type { CommentsProps, NpCommentsLabels } from "./comments.js";

@@ -9,6 +9,7 @@ import {
   npRequireBanRequest,
   npRequireCommentCreateRequest,
   npRequireCommentHideRequest,
+  npRequireCommentListWire,
   npRequireCommunityJsonObject,
   npRequireCommunityPagination,
   npRequireCommunityRoleCatalog,
@@ -35,6 +36,7 @@ import {
   npRequireReputationDelta,
   npRequireReputationEvent,
   npRequireRuntimeDiagnostics,
+  npToCommentListItemWire,
   npToCommentWireRow,
 } from "./contract.js";
 
@@ -206,6 +208,93 @@ describe("community contract", () => {
         createdAt: new Date(NOW),
       }).createdAt,
     ).toBe(NOW);
+  });
+
+  it("validates enriched comment windows and their pagination invariants", () => {
+    const item = npToCommentListItemWire({
+      id: COMMENT_ID,
+      targetType: "posts",
+      targetId: TARGET_ID,
+      parentId: null,
+      memberId: MEMBER_ID,
+      bodyMd: "hello",
+      bodyHtml: "<p>hello</p>",
+      status: "visible",
+      hiddenByUserId: null,
+      hiddenByMemberId: null,
+      hiddenReason: null,
+      editedAt: null,
+      siteId: "default",
+      createdAt: new Date(NOW),
+      author: {
+        handle: "member_1",
+        displayName: "Member One",
+        avatarUrl: "/api/media/avatar",
+      },
+      reactions: { counts: { like: 2 }, mine: ["like"] },
+    });
+    expect(
+      npRequireCommentListWire({
+        comments: [item],
+        totalDocs: 2,
+        limit: 1,
+        offset: 0,
+        hasNextPage: true,
+        hasPrevPage: false,
+      }),
+    ).toMatchObject({ totalDocs: 2, limit: 1, offset: 0 });
+    expect(() =>
+      npRequireCommentListWire({
+        comments: [item],
+        totalDocs: 1,
+        limit: 1,
+        offset: 0,
+        hasNextPage: true,
+        hasPrevPage: false,
+      }),
+    ).toThrow(NpCommunityContractError);
+    expect(() =>
+      npToCommentListItemWire({
+        ...item,
+        createdAt: new Date(NOW),
+        author: {
+          handle: "member_1",
+          displayName: "Member One",
+          avatarUrl: "javascript:alert(1)",
+        },
+      }),
+    ).toThrow(NpCommunityContractError);
+    expect(() =>
+      npToCommentListItemWire({
+        ...item,
+        createdAt: new Date(NOW),
+        author: {
+          handle: "member_1",
+          displayName: "Member One",
+          avatarUrl: "/\\example.com/avatar.png",
+        },
+      }),
+    ).toThrow(NpCommunityContractError);
+    expect(() =>
+      npRequireCommentListWire({
+        comments: [
+          {
+            ...item,
+            reactions: {
+              counts: Object.fromEntries(
+                Array.from({ length: 33 }, (_, index) => [`kind_${index.toString()}`, 1]),
+              ),
+              mine: [],
+            },
+          },
+        ],
+        totalDocs: 1,
+        limit: 1,
+        offset: 0,
+        hasNextPage: false,
+        hasPrevPage: false,
+      }),
+    ).toThrow(NpCommunityContractError);
   });
 
   it("validates exact request shapes instead of coercing values", () => {

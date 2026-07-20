@@ -119,12 +119,60 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
     expect(createBody.body.bodyHtml).toContain("<strong>world</strong>");
     expect(createBody.body.status).toBe("visible");
 
-    const list = await commentsGET(jsonRequest(`/api/collections/posts/${postId}/comments`), {
-      params: Promise.resolve({ slug: "posts", id: postId }),
-    });
-    const listBody = await readJson<{ comments: Array<{ id: string }>; totalDocs: number }>(list);
-    expect(listBody.body.totalDocs).toBe(1);
+    const reply = await commentsPOST(
+      jsonRequest(`/api/collections/posts/${postId}/comments`, {
+        method: "POST",
+        cookies: [`np-mb-session=${sessionCookie}`, `np-mb-csrf=${csrfCookie}`],
+        headers: { "x-csrf-token": csrfCookie },
+        body: JSON.stringify({ bodyMd: "Nested reply", parentId: createBody.body.id }),
+      }),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    expect(reply.status).toBe(201);
+
+    const list = await commentsGET(
+      jsonRequest(`/api/collections/posts/${postId}/comments?order=oldest&limit=1&offset=0`),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    const listBody = await readJson<{
+      comments: Array<{
+        id: string;
+        parentId: string | null;
+        author: { handle: string; displayName: string; avatarUrl: string | null } | null;
+        reactions: { counts: Record<string, number>; mine: string[] };
+      }>;
+      totalDocs: number;
+      limit: number;
+      offset: number;
+      hasNextPage: boolean;
+      hasPrevPage: boolean;
+    }>(list);
+    expect(listBody.body.totalDocs).toBe(2);
     expect(listBody.body.comments[0]?.id).toBe(createBody.body.id);
+    expect(listBody.body.comments[0]?.author).toEqual({
+      handle: "alice",
+      displayName: "alice",
+      avatarUrl: null,
+    });
+    expect(listBody.body.comments[0]?.reactions).toEqual({ counts: {}, mine: [] });
+    expect(listBody.body).toMatchObject({
+      limit: 1,
+      offset: 0,
+      hasNextPage: true,
+      hasPrevPage: false,
+    });
+
+    const replyPage = await commentsGET(
+      jsonRequest(`/api/collections/posts/${postId}/comments?order=oldest&limit=1&offset=1`),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    const replyBody = await readJson<{
+      comments: Array<{ parentId: string | null }>;
+      hasNextPage: boolean;
+      hasPrevPage: boolean;
+    }>(replyPage);
+    expect(replyBody.body.comments[0]?.parentId).toBe(createBody.body.id);
+    expect(replyBody.body).toMatchObject({ hasNextPage: false, hasPrevPage: true });
   });
 
   it("rejects creation when collection has community.comments=false", async () => {
@@ -527,8 +575,23 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
       kind: "like",
     });
 
-    const top = await core.listComments("posts", post, { order: "top" });
+    const top = await core.listComments("posts", post, {
+      order: "top",
+      viewerMemberId: author.memberId,
+    });
     expect(top.comments[0]?.id).toBe(b.id);
+    expect(top.comments[0]?.author).toMatchObject({
+      handle: "sort-author",
+      displayName: "sort-author",
+    });
+    expect(top.comments[0]?.reactions).toEqual({ counts: { like: 2 }, mine: ["like"] });
+    expect(top).toMatchObject({
+      totalDocs: 3,
+      limit: 50,
+      offset: 0,
+      hasNextPage: false,
+      hasPrevPage: false,
+    });
 
     const oldest = await core.listComments("posts", post, { order: "oldest" });
     expect(oldest.comments.map((row) => row.bodyMd)).toEqual(["first", "second (top)", "third"]);

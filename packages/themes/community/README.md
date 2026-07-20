@@ -12,6 +12,11 @@ community. When the plugin is installed, the theme enhances its documented
 engagement summaries and the bounded-window popular feed. The theme never
 owns forum queries, ranking, view receipts, or reaction state.
 
+It also styles the framework-owned `.np-comments` / `.np-comment-*` contract.
+That enhancement works on any collection that renders the shared comment
+component, whether or not the forum plugin is installed; comment data and
+actions remain owned by Core and the application routes.
+
 ```bash
 pnpm add @nexpress/theme-community
 ```

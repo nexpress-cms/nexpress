@@ -395,6 +395,14 @@ It also publishes `engagement` and `engagement-summary` slots backed by
 `data-np-forum-metric="views|comments|reactions"`.
 The `subscription` slot targets `[data-np-forum-subscription]`; themes may style
 that stable state hook without importing the plugin client component.
+The `comments` slot continues to target the plugin-owned `.np-forum-comments`
+wrapper. Inside it, the framework comment contract exposes
+`data-np-comments="thread"`, `data-np-comment="item"`, author/action/composer
+classes, and explicit owner/depth/status/detached state hooks. Both bundled
+skins pass the plugin locale and full comment-action catalog into the shared
+component; a theme can therefore restyle the experience without importing the
+forum or owning reply, edit, delete, report, mute, reaction, or pagination
+behavior.
 Every bundled skin marks its root with
 `data-np-forum-skin` and one of the `data-np-forum-surface` values
 `board-index`, `post-list`, `post-detail`, or `composer`. Themes should use
@@ -410,7 +418,8 @@ the plugin-owned blocks are the supported integration boundary.
 The foundation includes multi-board Admin configuration, classic and
 community-full index/list/detail/composer skins, member create/edit/delete,
 owner and board policy gates, pending moderation, pin/lock controls,
-categories, validated member attachments, rich-text image upload, comments,
+categories, validated member attachments, rich-text image upload, localized
+threaded comments with public author identity, owner controls, and pagination,
 board-scoped search and category
 discovery, daily-unique views, document recommendations, batched engagement
 counts, board/post subscriptions, deduplicated actionable notifications,

@@ -649,14 +649,411 @@
     line-height: 1.7;
   }
 
-  /* Comments (already styled in @nexpress/blocks via the
-   * shared component, but the wrapper class needs spacing) */
+  /* Comments -------------------------------------------------------
+   * Framework-owned fallback styling. Plugins and themes can enhance
+   * these stable np-comment classes / data hooks from np-theme without
+   * importing or replacing the client component. */
   .np-comments {
-    margin-top: 2rem;
+    width: min(100%, 45rem);
+    margin-top: 3rem;
+    color: var(--np-color-foreground, #0f172a);
+  }
+
+  .np-comments-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .np-comments-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    line-height: 1.3;
+  }
+
+  .np-comments-sort {
+    display: inline-flex;
+    gap: 0.2rem;
+    padding: 0.2rem;
+    border: 1px solid var(--np-color-border, #dbe3ee);
+    border-radius: 999px;
+    background: var(--np-color-muted, #f8fafc);
+  }
+
+  .np-comments-sort button,
+  .np-comment-actions button,
+  .np-comment-form-actions button,
+  .np-comments-pagination button,
+  .np-comment-dialog-actions button {
+    min-height: 2rem;
+    padding: 0.3rem 0.65rem;
+    border: 0;
+    border-radius: 0.4rem;
+    background: transparent;
+    color: var(--np-color-muted-foreground, #64748b);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .np-comments-sort button[data-active="true"] {
+    background: var(--np-color-foreground, #0f172a);
+    color: var(--np-color-background, #fff);
+  }
+
+  .np-comments-sort button:focus-visible,
+  .np-comment-actions button:focus-visible,
+  .np-comment-form-actions button:focus-visible,
+  .np-comments-pagination button:focus-visible,
+  .np-comment-dialog-actions button:focus-visible {
+    outline: 2px solid var(--np-color-primary, #2563eb);
+    outline-offset: 2px;
+  }
+
+  .np-comments-list,
+  .np-comment-children {
+    display: grid;
+    gap: 0.85rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .np-comment-children {
+    margin-top: 0.75rem;
+    margin-inline-start: clamp(0.75rem, 4vw, 2rem);
+    padding-inline-start: clamp(0.5rem, 2vw, 1rem);
+    border-inline-start: 2px solid var(--np-color-border, #dbe3ee);
+  }
+
+  .np-comment-children .np-comment-children {
+    margin-inline-start: 0;
+  }
+
+  .np-comment-card {
+    padding: 1rem;
+    border: 1px solid var(--np-color-border, #dbe3ee);
+    border-radius: var(--np-radius-md, 0.5rem);
+    background: var(--np-color-card, #fff);
+    color: var(--np-color-card-foreground, var(--np-color-foreground, #0f172a));
+  }
+
+  .np-comment[data-np-comment-detached="true"] > .np-comment-card {
+    border-inline-start: 3px solid var(--np-color-muted-foreground, #64748b);
+  }
+
+  .np-comment-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem 1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .np-comment-author {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.6rem;
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .np-comment-author > span:last-child {
+    display: grid;
+    min-width: 0;
+  }
+
+  .np-comment-author strong,
+  .np-comment-author small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .np-comment-author strong {
+    font-size: 0.9rem;
+  }
+
+  .np-comment-author small {
+    color: var(--np-color-muted-foreground, #64748b);
+    font-size: 0.74rem;
+  }
+
+  .np-comment-author img,
+  .np-comment-avatar-fallback {
+    width: 2.5rem;
+    height: 2.5rem;
+    flex: 0 0 2.5rem;
+    border-radius: 999px;
+    object-fit: cover;
+  }
+
+  .np-comment-avatar-fallback {
+    display: inline-grid;
+    place-items: center;
+    background: var(--np-color-muted, #eef2f7);
+    color: var(--np-color-muted-foreground, #64748b);
+    font-size: 0.85rem;
+    font-weight: 800;
+  }
+
+  .np-comment-author-missing {
+    color: var(--np-color-muted-foreground, #64748b);
+  }
+
+  .np-comment-date {
+    color: var(--np-color-muted-foreground, #64748b);
+    font-size: 0.76rem;
+  }
+
+  .np-comment-imported {
+    display: inline-flex;
+    margin-inline-start: 0.45rem;
+    padding: 0.08rem 0.35rem;
+    border-radius: 0.25rem;
+    background: var(--np-color-muted, #eef2f7);
+    font-size: 0.68rem;
+    font-weight: 700;
   }
 
   .np-comment-body {
+    overflow-wrap: anywhere;
+    line-height: 1.7;
+  }
+
+  .np-comment-body > :first-child {
+    margin-top: 0;
+  }
+
+  .np-comment-body > :last-child {
+    margin-bottom: 0;
+  }
+
+  .np-comment-body p,
+  .np-comment-body ul,
+  .np-comment-body ol,
+  .np-comment-body blockquote,
+  .np-comment-body pre {
+    margin: 0.75rem 0;
+  }
+
+  .np-comment-body ul,
+  .np-comment-body ol {
+    padding-inline-start: 1.4rem;
+  }
+
+  .np-comment-body blockquote {
+    padding-inline-start: 0.85rem;
+    border-inline-start: 3px solid var(--np-color-border, #dbe3ee);
+    color: var(--np-color-muted-foreground, #64748b);
+  }
+
+  .np-comment-body code {
+    padding: 0.1rem 0.25rem;
+    border-radius: 0.2rem;
+    background: var(--np-color-muted, #eef2f7);
+    font-size: 0.9em;
+  }
+
+  .np-comment-body pre {
+    overflow-x: auto;
+    padding: 0.8rem;
+    border-radius: 0.4rem;
+    background: var(--np-color-muted, #eef2f7);
+  }
+
+  .np-comment-body pre code {
+    padding: 0;
+    background: transparent;
+  }
+
+  .np-comment-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.15rem;
+    margin-top: 0.75rem;
+  }
+
+  .np-comment-actions button:hover:not(:disabled) {
+    background: var(--np-color-muted, #eef2f7);
+    color: var(--np-color-foreground, #0f172a);
+  }
+
+  .np-comment-reaction,
+  .np-comment-mute {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .np-comment-reaction button {
+    border: 1px solid var(--np-color-border, #dbe3ee);
+    border-radius: 999px;
+  }
+
+  .np-comment-reaction button[data-active="true"] {
+    border-color: color-mix(in srgb, var(--np-color-primary, #2563eb) 35%, transparent);
+    background: color-mix(in srgb, var(--np-color-primary, #2563eb) 10%, transparent);
+    color: var(--np-color-primary, #2563eb);
+  }
+
+  .np-comment-inline-error,
+  .np-comments-error {
+    color: var(--np-color-destructive, #dc2626);
+    font-size: 0.8rem;
+  }
+
+  .np-comments-error,
+  .np-comments-empty,
+  .np-comments-locked,
+  .np-comments-login {
+    margin: 1rem 0;
+  }
+
+  .np-comments-empty,
+  .np-comments-locked,
+  .np-comments-login {
+    color: var(--np-color-muted-foreground, #64748b);
+  }
+
+  .np-comments-login a {
+    color: var(--np-color-primary, #2563eb);
+    font-weight: 700;
+  }
+
+  .np-comment-composer {
+    display: grid;
+    gap: 0.6rem;
+    margin-top: 1.25rem;
+  }
+
+  .np-comment-composer textarea,
+  .np-comment-dialog textarea {
+    width: 100%;
+    min-width: 0;
+    resize: vertical;
+    padding: 0.75rem;
+    border: 1px solid var(--np-color-border, #cbd5e1);
+    border-radius: var(--np-radius-md, 0.5rem);
+    background: var(--np-color-background, #fff);
+    color: var(--np-color-foreground, #0f172a);
+    font: inherit;
     line-height: 1.6;
+  }
+
+  .np-comment-composer textarea:focus-visible,
+  .np-comment-dialog textarea:focus-visible {
+    outline: 2px solid var(--np-color-primary, #2563eb);
+    outline-offset: 2px;
+  }
+
+  .np-comment-reply-form,
+  .np-comment-edit-form {
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--np-color-border, #dbe3ee);
+  }
+
+  .np-comment-replying-to {
+    margin: 0;
+    color: var(--np-color-muted-foreground, #64748b);
+    font-size: 0.82rem;
+  }
+
+  .np-comment-form-actions,
+  .np-comment-dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.4rem;
+  }
+
+  .np-comments .np-comment-primary-action,
+  .np-comment-dialog .np-comment-primary-action {
+    background: var(--np-color-primary, #2563eb);
+    color: var(--np-color-primary-foreground, #fff);
+  }
+
+  .np-comment-primary-action:disabled,
+  .np-comments button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .np-comments-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+    color: var(--np-color-muted-foreground, #64748b);
+    font-size: 0.82rem;
+  }
+
+  .np-comments-pagination button {
+    border: 1px solid var(--np-color-border, #dbe3ee);
+    background: var(--np-color-card, #fff);
+  }
+
+  .np-comment-dialog-backdrop {
+    position: fixed;
+    z-index: 100;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgb(15 23 42 / 55%);
+  }
+
+  .np-comment-dialog {
+    width: min(100%, 27rem);
+    padding: 1.25rem;
+    border-radius: var(--np-radius-md, 0.5rem);
+    background: var(--np-color-card, #fff);
+    color: var(--np-color-card-foreground, #0f172a);
+    box-shadow: 0 1.25rem 3rem rgb(15 23 42 / 25%);
+  }
+
+  .np-comment-dialog h3 {
+    margin: 0;
+    font-size: 1rem;
+  }
+
+  .np-comment-dialog p {
+    margin: 0.75rem 0;
+    color: var(--np-color-muted-foreground, #64748b);
+    line-height: 1.6;
+  }
+
+  .np-comment-dialog form {
+    display: grid;
+    gap: 0.65rem;
+  }
+
+  @media (max-width: 36rem) {
+    .np-comment-card {
+      padding: 0.8rem;
+    }
+
+    .np-comment-meta {
+      align-items: flex-start;
+    }
+
+    .np-comment-date {
+      width: 100%;
+      padding-inline-start: 3.1rem;
+    }
+
+    .np-comment-children {
+      margin-inline-start: 0.35rem;
+      padding-inline-start: 0.5rem;
+    }
   }
 
   /* Search --------------------------------------------- */

@@ -246,7 +246,7 @@ describe.skipIf(skipIfNoTestDb())("Phase 18 — community site scope", () => {
     const author = await seedMember("phase18comment");
     const postId = await seedStaffPostId("p18-comment", "tenant-a");
 
-    const { createComment } = await import("@nexpress/core");
+    const { createComment, listComments } = await import("@nexpress/core");
     const comment = await withCurrentSite("tenant-a", () =>
       createComment({
         targetType: "posts",
@@ -264,6 +264,10 @@ describe.skipIf(skipIfNoTestDb())("Phase 18 — community site scope", () => {
       .from(npComments)
       .where(eq(npComments.id, comment.id))) as Array<{ siteId: string }>;
     expect(row.siteId).toBe("tenant-a");
+    const visibleOnA = await withCurrentSite("tenant-a", () => listComments("posts", postId));
+    const hiddenOnDefault = await withCurrentSite("default", () => listComments("posts", postId));
+    expect(visibleOnA.comments.map((item) => item.id)).toEqual([comment.id]);
+    expect(hiddenOnDefault).toMatchObject({ comments: [], totalDocs: 0 });
   });
 
   it("mutes are per-site: muting on A doesn't silence B", async () => {
