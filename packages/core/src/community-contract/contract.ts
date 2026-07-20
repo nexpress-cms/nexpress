@@ -102,6 +102,7 @@ const ROLE_PATTERN = new RegExp(npCommunityRolePattern, "u");
 const VIEWER_HASH_PATTERN = /^[0-9a-f]{64}$/u;
 const CALENDAR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 const ENGAGEMENT_TARGET_TYPE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
+const ENGAGEMENT_TARGET_TYPE_MAX_LENGTH = 63;
 const COMMENT_STATUSES = new Set<string>(npCommunityCommentStatuses);
 const COMMENT_SORTS = new Set<string>(npCommunityCommentSorts);
 const FOLLOW_TARGETS = new Set<string>(npCommunityFollowTargets);
@@ -436,7 +437,7 @@ function targetType(value: unknown, path: string): string {
 }
 
 function engagementTargetType(value: unknown, path: string): string {
-  const parsed = targetType(value, path);
+  const parsed = boundedString(value, path, ENGAGEMENT_TARGET_TYPE_MAX_LENGTH, { trim: true });
   if (!ENGAGEMENT_TARGET_TYPE_PATTERN.test(parsed)) {
     fail(path, "must be comment or a canonical collection slug");
   }

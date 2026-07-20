@@ -225,6 +225,9 @@ describe("community contract", () => {
     expect(() =>
       npRequireReactionTarget({ targetType: "Forum posts", targetId: COMMENT_ID }),
     ).toThrow();
+    expect(() =>
+      npRequireReactionTarget({ targetType: `a${"b".repeat(63)}`, targetId: COMMENT_ID }),
+    ).toThrow(/bounded text/u);
   });
 
   it("validates exact daily view receipts and aggregate invariants", () => {

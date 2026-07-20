@@ -20,6 +20,7 @@ describe("OpenAPI community engagement contract", () => {
               required: ["targetType", "targetId"],
               properties: {
                 targetType: {
+                  maxLength: 63,
                   pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
                 },
                 targetId: { format: "uuid" },
@@ -38,6 +39,9 @@ describe("OpenAPI community engagement contract", () => {
               type: "object",
               additionalProperties: false,
               required: ["targetType", "targetId"],
+              properties: {
+                targetType: { maxLength: 63 },
+              },
             },
           },
         },

@@ -4204,7 +4204,7 @@ export function buildSpec(): OpenApiSchema {
           schema: {
             type: "string",
             minLength: 1,
-            maxLength: 80,
+            maxLength: 63,
             pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
           },
           description:
@@ -4259,7 +4259,7 @@ export function buildSpec(): OpenApiSchema {
                 targetType: {
                   type: "string",
                   minLength: 1,
-                  maxLength: 80,
+                  maxLength: 63,
                   pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
                 },
                 targetId: { type: "string", format: "uuid" },
@@ -4289,7 +4289,7 @@ export function buildSpec(): OpenApiSchema {
           schema: {
             type: "string",
             minLength: 1,
-            maxLength: 80,
+            maxLength: 63,
             pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
           },
         },
@@ -4328,7 +4328,7 @@ export function buildSpec(): OpenApiSchema {
                 targetType: {
                   type: "string",
                   minLength: 1,
-                  maxLength: 80,
+                  maxLength: 63,
                   pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
                 },
                 targetId: { type: "string", format: "uuid" },
