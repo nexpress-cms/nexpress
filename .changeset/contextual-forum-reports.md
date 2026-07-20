@@ -7,6 +7,7 @@
 ---
 
 Complete the community report contract with report-enabled collection targets,
-race-safe unresolved deduplication, contextual Admin rows, and closed dismiss,
-comment-hide, and document-unpublish actions. Add localized forum post reporting
-that follows configured collection slugs and update OpenAPI, doctor, and docs.
+race-safe unresolved deduplication, contextual Admin rows, and target-serialized
+dismiss, comment-hide, and document-unpublish actions. Add localized forum post
+reporting that follows configured collection slugs and update OpenAPI, doctor,
+and docs.

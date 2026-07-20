@@ -1,4 +1,4 @@
-import { and, count, desc, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, count, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 
 import { can } from "../auth/capabilities.js";
 import { NpCollectionContractError } from "../collection-contract/contract.js";
@@ -346,6 +346,13 @@ export async function resolveReport(input: ResolveReportInput): Promise<ResolveR
         { field: "report", message: "Report already resolved" },
       ]);
     }
+
+    // Different reporters can create distinct rows for the same target. Lock
+    // the target identity as well as this report row so concurrent moderators
+    // cannot both observe a public document/comment and repeat its transition
+    // hooks, revisions, reputation, or audit side effects.
+    const targetLockKey = `${requestSiteId}:${checkedExisting.targetType}:${checkedExisting.targetId}`;
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${targetLockKey}, 0))`);
 
     let moderatedDocument: ResolveReportResult["moderatedDocument"] = null;
     if (action === "hide-comment") {

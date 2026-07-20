@@ -357,7 +357,8 @@ actions: `dismiss`, `hide-comment`, and `unpublish-document`. Target/action
 mismatches fail before mutation. Comment hiding and document unpublishing use
 the existing moderation and collection pipelines; document reports move the
 row to `pending` review while retaining validation, revisions, hooks, jobs,
-and the unpublish lifecycle.
+and the unpublish lifecycle. Resolutions for the same site and target serialize,
+so concurrent moderators cannot repeat target transition side effects.
 
 ---
 

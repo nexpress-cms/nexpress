@@ -575,19 +575,31 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
       "document-reporter@example.com",
       "password-12",
     );
-    const reportRequest = () =>
+    const secondReporter = await seedActiveMember(
+      "document-reporter-two",
+      "document-reporter-two@example.com",
+      "password-12",
+    );
+    const reportRequest = (
+      session: Awaited<ReturnType<typeof seedActiveMember>> = reporter,
+      reason = "illegal ad",
+    ) =>
       reportPOST(
         jsonRequest("/api/reports", {
           method: "POST",
-          cookies: [`np-mb-session=${reporter.sessionCookie}`, `np-mb-csrf=${reporter.csrfCookie}`],
-          headers: { "x-csrf-token": reporter.csrfCookie },
-          body: JSON.stringify({ targetType: "posts", targetId: postId, reason: "illegal ad" }),
+          cookies: [`np-mb-session=${session.sessionCookie}`, `np-mb-csrf=${session.csrfCookie}`],
+          headers: { "x-csrf-token": session.csrfCookie },
+          body: JSON.stringify({ targetType: "posts", targetId: postId, reason }),
         }),
       );
 
     const filed = await readJson<{ id: string }>(await reportRequest());
     expect(filed.status).toBe(201);
     expect((await reportRequest()).status).toBe(409);
+    const secondFiled = await readJson<{ id: string }>(
+      await reportRequest(secondReporter, "coordinated spam"),
+    );
+    expect(secondFiled.status).toBe(201);
 
     const queue = await readJson<{
       docs: Array<{
@@ -595,7 +607,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
         target: { kind: string; label: string; excerpt: string; href: string; status: string };
       }>;
     }>(await adminReportsGET(staffRequest("/api/admin/community/reports", moderator)));
-    expect(queue.body.docs[0]).toMatchObject({
+    expect(queue.body.docs.find((report) => report.id === filed.body.id)).toMatchObject({
       id: filed.body.id,
       target: {
         kind: "document",
@@ -608,7 +620,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
 
     const { getDb } = await import("@nexpress/core/db");
     const { postsTable } = await import("@/db/generated/collections");
-    const { eq } = await import("drizzle-orm");
+    const { and, eq } = await import("drizzle-orm");
     await getDb().update(postsTable).set({ status: "draft" }).where(eq(postsTable.id, postId));
     const staleAction = await resolveReportPOST(
       staffRequest(`/api/admin/community/reports/${filed.body.id}/resolve`, moderator, {
@@ -643,22 +655,44 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
       ),
     ).rejects.toMatchObject({ statusCode: 403 });
 
-    const resolved = await resolveReportPOST(
-      staffRequest(`/api/admin/community/reports/${filed.body.id}/resolve`, moderator, {
-        method: "POST",
-        body: JSON.stringify({ action: "unpublish-document" }),
-      }),
-      { params: Promise.resolve({ id: filed.body.id }) },
-    );
-    const resolvedBody = await readJson<{ resolution: string }>(resolved);
-    expect(resolvedBody.status).toBe(200);
-    expect(resolvedBody.body.resolution).toBe("unpublish-document");
+    const resolveDocumentReport = (reportId: string) =>
+      resolveReportPOST(
+        staffRequest(`/api/admin/community/reports/${reportId}/resolve`, moderator, {
+          method: "POST",
+          body: JSON.stringify({ action: "unpublish-document" }),
+        }),
+        { params: Promise.resolve({ id: reportId }) },
+      );
+    const [resolved, secondResolved] = await Promise.all([
+      resolveDocumentReport(filed.body.id),
+      resolveDocumentReport(secondFiled.body.id),
+    ]);
+    const [resolvedBody, secondResolvedBody] = await Promise.all([
+      readJson<{ resolution: string }>(resolved),
+      readJson<{ resolution: string }>(secondResolved),
+    ]);
+    expect(resolvedBody).toMatchObject({
+      status: 200,
+      body: { resolution: "unpublish-document" },
+    });
+    expect(secondResolvedBody).toMatchObject({
+      status: 200,
+      body: { resolution: "unpublish-document" },
+    });
 
     const [post] = await getDb()
       .select({ status: postsTable.status })
       .from(postsTable)
       .where(eq(postsTable.id, postId));
     expect(post?.status).toBe("pending");
+    const { npAuditEvents } = await import("@nexpress/core");
+    const unpublishAudits = await getDb()
+      .select({ id: npAuditEvents.id })
+      .from(npAuditEvents)
+      .where(
+        and(eq(npAuditEvents.action, "document.unpublish"), eq(npAuditEvents.targetId, postId)),
+      );
+    expect(unpublishAudits).toHaveLength(1);
 
     // The partial unique index covers only unresolved rows, so a later
     // incident can be filed after moderators close the first report and the
