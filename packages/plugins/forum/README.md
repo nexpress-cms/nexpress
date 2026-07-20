@@ -66,6 +66,13 @@ core theme tokens with documented `--np-forum-*` override properties, so a
 theme can enhance the plugin without importing it and the plugin remains fully
 usable without that theme.
 
+Post detail routes localize the shared framework comment surface rather than
+owning a parallel comment implementation. Each page receives batched public
+author profiles and viewer reaction summaries and supports nested replies,
+member-owned edit/delete, reporting, muting, sorting, and bounded pagination.
+Skins and themes can enhance the stable `.np-comment-*` and
+`data-np-comment-*` hooks independently.
+
 The plugin also registers `forum.board-directory` and `forum.post-feed` blocks
 plus a `forum.community-home` pattern. They use the forum factory's configured
 paths and collection slugs internally, expose only published rows from active

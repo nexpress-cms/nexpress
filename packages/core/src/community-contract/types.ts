@@ -208,6 +208,27 @@ export type NpCommentWireRow = Omit<NpCommentRow, "editedAt" | "createdAt"> & {
   createdAt: string;
 };
 
+/** Public, PII-free author projection attached to comment list rows. */
+export interface NpCommentAuthor {
+  handle: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+/**
+ * A list row combines the persisted comment with the public author and the
+ * viewer-aware reaction summary needed to render it without per-row fetches.
+ */
+export type NpCommentListItem = NpCommentRow & {
+  author: NpCommentAuthor | null;
+  reactions: NpReactionSummaryWire;
+};
+
+export type NpCommentListItemWire = Omit<NpCommentListItem, "editedAt" | "createdAt"> & {
+  editedAt: string | null;
+  createdAt: string;
+};
+
 export interface NpCommentCreateInput {
   targetType: string;
   targetId: string;
@@ -225,13 +246,21 @@ export interface NpCommentListOptions {
 }
 
 export interface NpCommentListResult {
-  comments: NpCommentRow[];
+  comments: NpCommentListItem[];
   totalDocs: number;
+  limit: number;
+  offset: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
 }
 
 export interface NpCommentListWire {
-  comments: NpCommentWireRow[];
+  comments: NpCommentListItemWire[];
   totalDocs: number;
+  limit: number;
+  offset: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
 }
 
 export interface NpCommentUpdateInput {

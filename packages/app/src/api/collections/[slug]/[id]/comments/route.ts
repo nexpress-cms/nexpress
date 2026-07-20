@@ -4,6 +4,7 @@ import {
   npIsCommentSort,
   npRequireCommentCreateRequest,
   npRequireCommentListWire,
+  npToCommentListItemWire,
   npToCommentWireRow,
 } from "@nexpress/core/community-contract";
 import { readJsonBody } from "@nexpress/next";
@@ -28,7 +29,7 @@ export async function GET(
   { params }: { params: Promise<{ slug: string; id: string }> },
 ) {
   try {
-    await ensureFor("write");
+    await ensureFor("read");
     const { slug, id } = await params;
     const member = await optionalMember(request);
 
@@ -69,8 +70,12 @@ export async function GET(
     });
     return npSuccessResponse(
       npRequireCommentListWire({
-        comments: result.comments.map(npToCommentWireRow),
+        comments: result.comments.map(npToCommentListItemWire),
         totalDocs: result.totalDocs,
+        limit: result.limit,
+        offset: result.offset,
+        hasNextPage: result.hasNextPage,
+        hasPrevPage: result.hasPrevPage,
       }),
     );
   } catch (error) {

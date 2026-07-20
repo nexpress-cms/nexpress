@@ -621,6 +621,29 @@ export function buildSpec(): OpenApiSchema {
     createdAt: { type: "string", format: "date-time" },
   };
   const reportRowRequired = Object.keys(reportRowProperties);
+  const commentWireProperties: Record<string, OpenApiSchema> = {
+    id: { type: "string", format: "uuid" },
+    targetType: { ...communityTargetTypeSchema },
+    targetId: { type: "string", format: "uuid" },
+    parentId: { type: ["string", "null"], format: "uuid" },
+    memberId: { type: "string", format: "uuid" },
+    bodyMd: { type: "string", maxLength: npCommunityContractLimits.bodyLength },
+    bodyHtml: { type: "string", maxLength: npCommunityContractLimits.htmlLength },
+    status: { type: "string", enum: [...npCommunityCommentStatuses] },
+    hiddenByUserId: { type: ["string", "null"], format: "uuid" },
+    hiddenByMemberId: { type: ["string", "null"], format: "uuid" },
+    hiddenReason: {
+      type: ["string", "null"],
+      maxLength: npCommunityContractLimits.reasonLength,
+    },
+    editedAt: { type: ["string", "null"], format: "date-time" },
+    siteId: { type: "string", pattern: npSiteIdPattern },
+    createdAt: { type: "string", format: "date-time" },
+    authorStatus: { type: ["string", "null"], enum: [...npMemberStatuses, null] },
+  };
+  const commentWireRequired = Object.keys(commentWireProperties).filter(
+    (key) => key !== "authorStatus",
+  );
   const reportTargetContextProperties: Record<string, OpenApiSchema> = {
     kind: { type: "string", enum: ["comment", "document", "member", "missing"] },
     label: {
@@ -728,6 +751,70 @@ export function buildSpec(): OpenApiSchema {
       additionalProperties: false,
       required: ["ok"],
       properties: { ok: { type: "boolean", const: true } },
+    },
+    community_comment_author: {
+      type: "object",
+      additionalProperties: false,
+      required: ["handle", "displayName", "avatarUrl"],
+      properties: {
+        handle: { type: "string", pattern: npMemberHandlePattern, maxLength: 30 },
+        displayName: { type: "string", maxLength: 120 },
+        avatarUrl: { type: ["string", "null"], format: "uri-reference", maxLength: 2048 },
+      },
+    },
+    community_reaction_summary: {
+      type: "object",
+      additionalProperties: false,
+      required: ["counts", "mine"],
+      properties: {
+        counts: {
+          type: "object",
+          maxProperties: npCommunityContractLimits.reactionKinds,
+          propertyNames: { pattern: "^[a-z][a-z0-9_-]{0,29}$" },
+          additionalProperties: { type: "integer", minimum: 0 },
+        },
+        mine: {
+          type: "array",
+          maxItems: npCommunityContractLimits.reactionKinds,
+          uniqueItems: true,
+          items: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,29}$" },
+        },
+      },
+    },
+    community_comment_row: {
+      type: "object",
+      additionalProperties: false,
+      required: commentWireRequired,
+      properties: commentWireProperties,
+    },
+    community_comment_list_item: {
+      type: "object",
+      additionalProperties: false,
+      required: [...commentWireRequired, "author", "reactions"],
+      properties: {
+        ...commentWireProperties,
+        author: {
+          anyOf: [{ $ref: "#/components/schemas/community_comment_author" }, { type: "null" }],
+        },
+        reactions: { $ref: "#/components/schemas/community_reaction_summary" },
+      },
+    },
+    community_comment_list: {
+      type: "object",
+      additionalProperties: false,
+      required: ["comments", "totalDocs", "limit", "offset", "hasNextPage", "hasPrevPage"],
+      properties: {
+        comments: {
+          type: "array",
+          maxItems: npCommunityContractLimits.pageRows,
+          items: { $ref: "#/components/schemas/community_comment_list_item" },
+        },
+        totalDocs: { type: "integer", minimum: 0 },
+        limit: { type: "integer", minimum: 1, maximum: npCommunityContractLimits.pageRows },
+        offset: { type: "integer", minimum: 0 },
+        hasNextPage: { type: "boolean" },
+        hasPrevPage: { type: "boolean" },
+      },
     },
     community_report_row: {
       type: "object",
@@ -4350,7 +4437,11 @@ export function buildSpec(): OpenApiSchema {
           parameters: [
             { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 200 } },
             { in: "query", name: "offset", schema: { type: "integer", minimum: 0 } },
-            { in: "query", name: "order", schema: { type: "string", enum: ["newest", "oldest"] } },
+            {
+              in: "query",
+              name: "order",
+              schema: { type: "string", enum: ["newest", "oldest", "top"] },
+            },
             {
               in: "query",
               name: "includeHidden",
@@ -4363,16 +4454,7 @@ export function buildSpec(): OpenApiSchema {
               description: "Paged comment list",
               content: {
                 "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      comments: {
-                        type: "array",
-                        items: { type: "object", additionalProperties: true },
-                      },
-                      totalDocs: { type: "integer" },
-                    },
-                  },
+                  schema: { $ref: "#/components/schemas/community_comment_list" },
                 },
               },
             },
@@ -4398,7 +4480,14 @@ export function buildSpec(): OpenApiSchema {
             },
           },
           responses: {
-            "201": { description: "Created comment" },
+            "201": {
+              description: "Created comment",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/community_comment_row" },
+                },
+              },
+            },
             "400": { description: "Comments disabled for this collection or invalid body" },
             "401": { description: "Member auth required" },
             "404": { description: "parentId not found or doesn't belong to this document" },
@@ -4429,7 +4518,14 @@ export function buildSpec(): OpenApiSchema {
         },
       },
       responses: {
-        "200": { description: "Updated comment" },
+        "200": {
+          description: "Updated comment",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_comment_row" },
+            },
+          },
+        },
         "401": { description: "Member auth required" },
         "403": { description: "No permission" },
       },
@@ -4437,7 +4533,12 @@ export function buildSpec(): OpenApiSchema {
     delete: {
       summary: "Soft-delete a comment (own or with delete-any-comment grant)",
       responses: {
-        "200": { description: "Deleted (status='deleted', body cleared)" },
+        "200": {
+          description: "Deleted (status='deleted', body cleared)",
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/community_ok" } },
+          },
+        },
         "401": { description: "Member auth required" },
         "403": { description: "No permission" },
       },

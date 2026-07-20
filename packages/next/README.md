@@ -80,6 +80,15 @@ setCdnPurgeAdapter({
 });
 ```
 
+## Public comments
+
+`Comments` from `@nexpress/next/client` renders the framework-owned public
+discussion surface. Its bounded list request receives author profiles,
+viewer-aware reaction summaries, and exact pagination metadata in one response;
+reply, edit, delete, report, and mute actions reuse the shared community routes.
+Themes can style the stable `.np-comments` / `.np-comment-*` classes and
+`data-np-comment-*` hooks without importing a plugin.
+
 For bootstrap-owned lifecycle, pass the same adapter as
 `createBootstrap({ ..., cdnPurgeAdapter })`; optional `shutdown()` is awaited.
 Requests, adapter results, cache key parts, tags, and TTLs share the exact

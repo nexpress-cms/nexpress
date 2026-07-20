@@ -1,3 +1,4 @@
+import { npMemberHandlePattern } from "../auth-contract/contract.js";
 import { npMemberStatuses } from "../auth-contract/types.js";
 import { npCollectionDocumentStatuses } from "../collection-contract/types.js";
 import { npIsCanonicalSiteId } from "../sites/id-contract.js";
@@ -24,6 +25,8 @@ import {
   type NpAuditPageWire,
   type NpBanRow,
   type NpBanWireRow,
+  type NpCommentAuthor,
+  type NpCommentListItemWire,
   type NpCommentListWire,
   type NpCommentRow,
   type NpCommentWireRow,
@@ -108,6 +111,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 const REACTION_KIND_PATTERN = new RegExp(npCommunityReactionKindPattern, "u");
 const KIND_PATTERN = new RegExp(npCommunityKindPattern, "u");
 const ROLE_PATTERN = new RegExp(npCommunityRolePattern, "u");
+const MEMBER_HANDLE_PATTERN = new RegExp(npMemberHandlePattern, "u");
 const VIEWER_HASH_PATTERN = /^[0-9a-f]{64}$/u;
 const CALENDAR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 const ENGAGEMENT_TARGET_TYPE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
@@ -1035,6 +1039,123 @@ export function npToCommentWireRow(value: unknown): NpCommentWireRow {
   });
 }
 
+function npRequireCommentAuthor(value: unknown, path: string): NpCommentAuthor {
+  const raw = exactRecord(value, path, ["handle", "displayName", "avatarUrl"]);
+  const handle = boundedString(raw.handle, `${path}.handle`, 30);
+  if (!MEMBER_HANDLE_PATTERN.test(handle)) {
+    fail(`${path}.handle`, "must be a canonical member handle");
+  }
+  const displayName = boundedString(raw.displayName, `${path}.displayName`, 120, {
+    allowEmpty: true,
+  });
+  let avatarUrl: string | null = null;
+  if (raw.avatarUrl !== null) {
+    const candidate = boundedString(raw.avatarUrl, `${path}.avatarUrl`, 2_048);
+    const local = candidate.startsWith("/") && !candidate.startsWith("//");
+    let parsed: URL;
+    try {
+      parsed = new URL(candidate, "https://nexpress.invalid");
+    } catch {
+      fail(`${path}.avatarUrl`, "must be a valid HTTP(S) or local URL");
+    }
+    if (
+      parsed.username ||
+      parsed.password ||
+      (local && (candidate.includes("\\") || parsed.origin !== "https://nexpress.invalid")) ||
+      (!local &&
+        (!/^https?:\/\//iu.test(candidate) ||
+          (parsed.protocol !== "http:" && parsed.protocol !== "https:")))
+    ) {
+      fail(`${path}.avatarUrl`, "must be an HTTP(S) URL or a local absolute path");
+    }
+    avatarUrl = candidate;
+  }
+  return { handle, displayName, avatarUrl };
+}
+
+export function npRequireCommentListItemWire(value: unknown): NpCommentListItemWire {
+  const raw = optionalRecord(
+    value,
+    "community.commentListItem",
+    [
+      "id",
+      "targetType",
+      "targetId",
+      "parentId",
+      "memberId",
+      "bodyMd",
+      "bodyHtml",
+      "status",
+      "hiddenByUserId",
+      "hiddenByMemberId",
+      "hiddenReason",
+      "editedAt",
+      "siteId",
+      "createdAt",
+      "author",
+      "reactions",
+    ],
+    ["authorStatus"],
+  );
+  const comment = npRequireCommentWireRow({
+    id: raw.id,
+    targetType: raw.targetType,
+    targetId: raw.targetId,
+    parentId: raw.parentId,
+    memberId: raw.memberId,
+    bodyMd: raw.bodyMd,
+    bodyHtml: raw.bodyHtml,
+    status: raw.status,
+    hiddenByUserId: raw.hiddenByUserId,
+    hiddenByMemberId: raw.hiddenByMemberId,
+    hiddenReason: raw.hiddenReason,
+    editedAt: raw.editedAt,
+    siteId: raw.siteId,
+    createdAt: raw.createdAt,
+    ...(raw.authorStatus !== undefined ? { authorStatus: raw.authorStatus } : {}),
+  });
+  return {
+    ...comment,
+    author:
+      raw.author === null
+        ? null
+        : npRequireCommentAuthor(raw.author, "community.commentListItem.author"),
+    reactions: npRequireReactionSummaryWire(raw.reactions),
+  };
+}
+
+export function npToCommentListItemWire(value: unknown): NpCommentListItemWire {
+  const raw = optionalRecord(
+    value,
+    "community.commentListItem",
+    ["author", "reactions"],
+    [
+      "id",
+      "targetType",
+      "targetId",
+      "parentId",
+      "memberId",
+      "bodyMd",
+      "bodyHtml",
+      "status",
+      "hiddenByUserId",
+      "hiddenByMemberId",
+      "hiddenReason",
+      "editedAt",
+      "siteId",
+      "createdAt",
+      "authorStatus",
+    ],
+  );
+  const { author, reactions, ...commentInput } = raw;
+  const comment = npToCommentWireRow(commentInput);
+  return npRequireCommentListItemWire({
+    ...comment,
+    author,
+    reactions,
+  });
+}
+
 function parseReactionCommon(
   value: unknown,
   path: string,
@@ -1743,16 +1864,48 @@ function pageWire<T>(value: unknown, path: string, parseRow: (value: unknown) =>
 }
 
 export function npRequireCommentListWire(value: unknown): NpCommentListWire {
-  const raw = exactRecord(value, "community.commentList", ["comments", "totalDocs"]);
+  const raw = exactRecord(value, "community.commentList", [
+    "comments",
+    "totalDocs",
+    "limit",
+    "offset",
+    "hasNextPage",
+    "hasPrevPage",
+  ]);
   const comments = safeArrayValues(
     raw.comments,
     "community.commentList.comments",
     npCommunityContractLimits.pageRows,
-  ).map(npRequireCommentWireRow);
+  ).map(npRequireCommentListItemWire);
   const totalDocs = nonNegativeInteger(raw.totalDocs, "community.commentList.totalDocs");
+  const limit = nonNegativeInteger(raw.limit, "community.commentList.limit");
+  const offset = nonNegativeInteger(raw.offset, "community.commentList.offset");
+  if (limit < 1 || limit > npCommunityContractLimits.pageRows) {
+    fail("community.commentList.limit", "must be between 1 and the page row limit", "limit");
+  }
   if (comments.length > totalDocs)
     fail("community.commentList.comments", "cannot exceed totalDocs", "invariant");
-  return { comments, totalDocs };
+  if (comments.length > limit)
+    fail("community.commentList.comments", "cannot exceed limit", "invariant");
+  if (typeof raw.hasNextPage !== "boolean" || typeof raw.hasPrevPage !== "boolean") {
+    fail("community.commentList", "pagination flags must be booleans");
+  }
+  const expectedNext = offset + comments.length < totalDocs;
+  const expectedPrev = offset > 0 && totalDocs > 0;
+  if (raw.hasNextPage !== expectedNext) {
+    fail("community.commentList.hasNextPage", "does not match the returned window", "invariant");
+  }
+  if (raw.hasPrevPage !== expectedPrev) {
+    fail("community.commentList.hasPrevPage", "does not match the returned window", "invariant");
+  }
+  return {
+    comments,
+    totalDocs,
+    limit,
+    offset,
+    hasNextPage: raw.hasNextPage,
+    hasPrevPage: raw.hasPrevPage,
+  };
 }
 
 export function npRequireReactionSummaryWire(value: unknown): NpReactionSummaryWire {
@@ -1760,7 +1913,11 @@ export function npRequireReactionSummaryWire(value: unknown): NpReactionSummaryW
   if (!isPlainRecord(raw.counts))
     fail("community.reactionSummary.counts", "must be a plain object", "shape");
   const counts: Record<string, number> = {};
-  for (const key of plainDataKeys(raw.counts, "community.reactionSummary.counts")) {
+  const countKeys = plainDataKeys(raw.counts, "community.reactionSummary.counts");
+  if (countKeys.length > npCommunityContractLimits.reactionKinds) {
+    fail("community.reactionSummary.counts", "has too many reaction kinds", "limit");
+  }
+  for (const key of countKeys) {
     const checkedKey = reactionKind(key, "community.reactionSummary.counts.<kind>");
     Object.defineProperty(counts, checkedKey, {
       configurable: true,
@@ -1781,7 +1938,11 @@ export function npRequireReactionSummaryWire(value: unknown): NpReactionSummaryW
 function reactionCounts(value: unknown, path: string): Record<string, number> {
   if (!isPlainRecord(value)) fail(path, "must be a plain object", "shape");
   const counts: Record<string, number> = {};
-  for (const key of plainDataKeys(value, path)) {
+  const keys = plainDataKeys(value, path);
+  if (keys.length > npCommunityContractLimits.reactionKinds) {
+    fail(path, "has too many reaction kinds", "limit");
+  }
+  for (const key of keys) {
     const checkedKey = reactionKind(key, `${path}.<kind>`);
     Object.defineProperty(counts, checkedKey, {
       configurable: true,

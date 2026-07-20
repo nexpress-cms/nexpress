@@ -1,20 +1,25 @@
-import { and, asc, count, desc, eq, notInArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, notInArray, sql, type SQL } from "drizzle-orm";
 
 import { getCollectionConfig } from "../collections/registry.js";
 import { getDocumentById } from "../collections/pipeline.js";
-import { npRequireCommentRow } from "../community-contract/contract.js";
+import {
+  npRequireCommentRow,
+  npRequireReactionSummaryWire,
+} from "../community-contract/contract.js";
 import type {
   CommentStatus,
   NpCommentCreateInput,
   NpCommentDeleteInput,
   NpCommentHideInput,
   NpCommentListOptions,
+  NpCommentListItem,
   NpCommentListResult,
   NpCommentRestoreInput,
   NpCommentRow,
   NpCommentSort,
   NpCommentUpdateInput,
   NpCommunityJsonObject,
+  NpReactionSummaryWire,
 } from "../community-contract/types.js";
 import { getDb } from "../db/runtime.js";
 import { npComments, npMembers, npReactions } from "../db/schema/community.js";
@@ -40,6 +45,7 @@ import { npRecordCommunityRuntimeDiagnostic } from "./diagnostics.js";
 import { getProfanityAdapter } from "./profanity-adapter.js";
 import { applyReputation } from "./reputation.js";
 import { getSpamAdapter } from "./spam-adapter.js";
+import { getMemberProfiles } from "./profiles.js";
 
 /**
  * Service layer for `np_comments`. Routes call into here so the
@@ -59,6 +65,7 @@ export type {
   NpCommentDeleteInput,
   NpCommentHideInput,
   NpCommentListOptions,
+  NpCommentListItem,
   NpCommentListResult,
   NpCommentRestoreInput,
   NpCommentRow,
@@ -424,6 +431,7 @@ export async function listComments(
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
   const order = options.order ?? "newest";
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 
   // Phase 16.1 — apply viewer mute list as a NOT IN clause.
   // We resolve the muted ids once per call (single SELECT
@@ -438,8 +446,17 @@ export async function listComments(
     mutedAuthorIds.length > 0 ? notInArray(npComments.memberId, mutedAuthorIds) : undefined;
 
   const baseWhere = options.includeHidden
-    ? and(eq(npComments.targetType, targetType), eq(npComments.targetId, targetId))
-    : sql`${eq(npComments.targetType, targetType)} and ${eq(npComments.targetId, targetId)} and ${eq(npComments.status, "visible")}`;
+    ? and(
+        eq(npComments.siteId, siteId),
+        eq(npComments.targetType, targetType),
+        eq(npComments.targetId, targetId),
+      )
+    : and(
+        eq(npComments.siteId, siteId),
+        eq(npComments.targetType, targetType),
+        eq(npComments.targetId, targetId),
+        eq(npComments.status, "visible"),
+      );
 
   const where = muteFilter ? and(baseWhere, muteFilter) : baseWhere;
 
@@ -450,7 +467,7 @@ export async function listComments(
   // reactions across the table.
   const orderBy: SQL =
     order === "top"
-      ? sql`(SELECT COUNT(*) FROM ${npReactions} WHERE ${npReactions.targetType} = 'comment' AND ${npReactions.targetId} = ${npComments.id}) DESC, ${npComments.createdAt} DESC`
+      ? sql`(SELECT COUNT(*) FROM ${npReactions} WHERE ${npReactions.siteId} = ${siteId} AND ${npReactions.targetType} = 'comment' AND ${npReactions.targetId} = ${npComments.id}) DESC, ${npComments.createdAt} DESC`
       : order === "oldest"
         ? asc(npComments.createdAt)
         : desc(npComments.createdAt);
@@ -460,29 +477,112 @@ export async function listComments(
   // `(imported)` chip without a second round trip). The join is
   // bounded by `limit` (≤200), so the cost is the page-size lookup
   // rather than a table scan.
-  const joinedRows = (await db
-    .select({
-      comment: npComments,
-      authorStatus: npMembers.status,
-    })
-    .from(npComments)
-    .leftJoin(npMembers, eq(npComments.memberId, npMembers.id))
-    .where(where)
-    .orderBy(orderBy)
-    .limit(limit)
-    .offset(offset)) as Array<{
-    comment: NpCommentRow;
-    authorStatus: string | null;
-  }>;
+  // Rows and count must describe one snapshot. Without repeatable read, a
+  // concurrent create/hide/delete between the two SELECTs can produce an
+  // impossible exact window (for example one returned row with totalDocs=0).
+  const window = await db.transaction(
+    async (tx) => {
+      const joinedRows = (await tx
+        .select({
+          comment: npComments,
+          authorStatus: npMembers.status,
+        })
+        .from(npComments)
+        .leftJoin(npMembers, eq(npComments.memberId, npMembers.id))
+        .where(where)
+        .orderBy(orderBy)
+        .limit(limit)
+        .offset(offset)) as Array<{
+        comment: NpCommentRow;
+        authorStatus: string | null;
+      }>;
+      const [totalRow] = (await tx
+        .select({ total: count() })
+        .from(npComments)
+        .where(where)) as Array<{ total: number | string }>;
+      return { joinedRows, totalDocs: Number(totalRow?.total ?? 0) };
+    },
+    { isolationLevel: "repeatable read", accessMode: "read only" },
+  );
+  const { joinedRows, totalDocs } = window;
   const rows = joinedRows.map(({ comment, authorStatus }) =>
     npRequireCommentRow({ ...comment, authorStatus }),
   );
+  const comments = await enrichCommentListItems(rows, options.viewerMemberId);
+  return {
+    comments,
+    totalDocs,
+    limit,
+    offset,
+    hasNextPage: offset + rows.length < totalDocs,
+    hasPrevPage: offset > 0 && totalDocs > 0,
+  };
+}
 
-  const [totalRow] = (await db.select({ total: count() }).from(npComments).where(where)) as Array<{
-    total: number | string;
-  }>;
+async function enrichCommentListItems(
+  rows: NpCommentRow[],
+  viewerMemberId?: string,
+): Promise<NpCommentListItem[]> {
+  if (rows.length === 0) return [];
+  const ids = rows.map((row) => row.id);
+  const siteId = rows[0]?.siteId ?? NP_DEFAULT_SITE_ID;
+  const db = getDb();
+  const [profiles, countRows, viewerRows] = await Promise.all([
+    getMemberProfiles(
+      rows.map((row) => row.memberId),
+      { avatarVariant: "thumbnail" },
+    ),
+    db
+      .select({ targetId: npReactions.targetId, kind: npReactions.kind, total: count() })
+      .from(npReactions)
+      .where(
+        and(
+          eq(npReactions.siteId, siteId),
+          eq(npReactions.targetType, "comment"),
+          inArray(npReactions.targetId, ids),
+        ),
+      )
+      .groupBy(npReactions.targetId, npReactions.kind),
+    viewerMemberId
+      ? db
+          .select({ targetId: npReactions.targetId, kind: npReactions.kind })
+          .from(npReactions)
+          .where(
+            and(
+              eq(npReactions.siteId, siteId),
+              eq(npReactions.targetType, "comment"),
+              inArray(npReactions.targetId, ids),
+              eq(npReactions.memberId, viewerMemberId),
+            ),
+          )
+      : Promise.resolve([]),
+  ]);
 
-  return { comments: rows, totalDocs: Number(totalRow?.total ?? 0) };
+  const reactions = new Map<string, NpReactionSummaryWire>();
+  for (const id of ids) reactions.set(id, { counts: {}, mine: [] });
+  for (const row of countRows) {
+    const summary = reactions.get(row.targetId);
+    if (summary) summary.counts[row.kind] = Number(row.total);
+  }
+  for (const row of viewerRows) {
+    const summary = reactions.get(row.targetId);
+    if (summary) summary.mine.push(row.kind);
+  }
+
+  return rows.map((row) => {
+    const profile = profiles.get(row.memberId);
+    return {
+      ...row,
+      author: profile
+        ? {
+            handle: profile.handle,
+            displayName: profile.displayName,
+            avatarUrl: profile.avatarUrl,
+          }
+        : null,
+      reactions: npRequireReactionSummaryWire(reactions.get(row.id) ?? { counts: {}, mine: [] }),
+    };
+  });
 }
 
 export async function updateComment(input: NpCommentUpdateInput): Promise<NpCommentRow> {

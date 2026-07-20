@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-20 (community follows now use member or opted-in
+**Last refreshed:** 2026-07-20 (public comment windows now include batched
+author profiles, viewer reaction summaries, exact pagination, nested member
+actions, localization, and independent forum/theme styling hooks.)
+
+**Earlier:** 2026-07-20 (community follows now use member or opted-in
 collection targets, bounded activity fan-out, actionable deduplicated
 notifications, transactional cleanup, orphan diagnostics, and independent
 forum board/post subscription UI across both skins.)
