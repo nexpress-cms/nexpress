@@ -97,9 +97,10 @@ defineCollection({
 Either projection also requires timestamps and `seo.urlPath`, so every visible
 row can carry a validated local destination. Pending/private member documents,
 non-visible comments, cross-site rows, and comments on pending/private targets
-are excluded from both counts and pages. Core reads count, page, and target
-documents from one repeatable-read snapshot and uses stable tie-breakers for
-exact pagination.
+are excluded from both counts and pages. A pending, suspended, deleted, or
+missing activity subject fails closed as not found. Core reads subject status,
+count, page, and target documents from one repeatable-read snapshot and uses
+stable tie-breakers for exact pagination.
 
 `GET /api/members/{handle}` returns the exact `NpPublicMemberProfileWire`.
 `GET /api/members/{handle}/activity?kind=documents|comments&page=1&limit=20`

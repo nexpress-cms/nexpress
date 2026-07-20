@@ -1,4 +1,9 @@
-import { buildPersonJsonLd, getMemberProfile, getSiteSeoSettings } from "@nexpress/core";
+import {
+  buildPersonJsonLd,
+  getMemberProfile,
+  getSiteSeoSettings,
+  NpNotFoundError,
+} from "@nexpress/core";
 import { listMemberProfileActivity, npToPublicMemberProfileWire } from "@nexpress/core/community";
 import type { NpMemberProfileActivityKind } from "@nexpress/core/community-contract";
 import { getCurrentLocale } from "@nexpress/core/i18n";
@@ -137,6 +142,9 @@ export default async function PublicProfilePage({ params, searchParams }: Profil
     kind: query.kind,
     page: query.page,
     limit: 20,
+  }).catch((error: unknown) => {
+    if (error instanceof NpNotFoundError) notFound();
+    throw error;
   });
   if (query.page > 1 && (activity.totalPages === 0 || query.page > activity.totalPages)) notFound();
 

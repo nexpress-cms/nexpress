@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 
-import { npIsCanonicalAuthId } from "../auth-contract/contract.js";
+import { npIsCanonicalAuthId, npIsCanonicalMemberHandle } from "../auth-contract/contract.js";
 import { getDb } from "../db/runtime.js";
 import { npMembers } from "../db/schema/community.js";
 import { getMediaUrl } from "../media/url.js";
@@ -73,14 +73,14 @@ export async function getMemberProfile(
   // for UUIDs — they're stored lowercase too — so we don't need
   // to detect which form the caller passed.
   const needle = idOrHandle.toLowerCase();
+  const isId = npIsCanonicalAuthId(needle);
+  if (!isId && !npIsCanonicalMemberHandle(needle)) return null;
   const db = getDb();
 
   // PostgreSQL UUID columns reject arbitrary handle strings before an OR
   // predicate can short-circuit. Canonical ids and handles are disjoint by
   // contract, so choose the typed predicate before sending the query.
-  const identity = npIsCanonicalAuthId(needle)
-    ? eq(npMembers.id, needle)
-    : eq(npMembers.handle, needle);
+  const identity = isId ? eq(npMembers.id, needle) : eq(npMembers.handle, needle);
   const rows = await db
     .select({
       id: npMembers.id,

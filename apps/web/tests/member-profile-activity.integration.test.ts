@@ -1,4 +1,5 @@
 import { createComment, listMemberProfileActivity } from "@nexpress/core/community";
+import { npMembers } from "@nexpress/core";
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -214,5 +215,24 @@ describe.skipIf(skipIfNoTestDb())("public member profile activity (integration)"
       ),
     );
     expect(duplicate.status).toBe(400);
+  });
+
+  it("fails closed when the activity subject is no longer public", async () => {
+    const member = await seedActiveMember({ handle: "hidden-activity" });
+    await createDiscussion(member, "Previously public discussion");
+    await (
+      await getTestDb()
+    )
+      .update(npMembers)
+      .set({ status: "suspended" })
+      .where(eq(npMembers.id, member.memberId));
+
+    await expect(
+      listMemberProfileActivity(member.memberId, {
+        kind: "documents",
+        page: 1,
+        limit: 20,
+      }),
+    ).rejects.toThrow(/member/u);
   });
 });

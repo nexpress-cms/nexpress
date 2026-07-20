@@ -19,7 +19,8 @@ import {
   getCollectionTable,
 } from "../collections/registry.js";
 import { getDb } from "../db/runtime.js";
-import { npComments } from "../db/schema/community.js";
+import { npComments, npMembers } from "../db/schema/community.js";
+import { NpNotFoundError } from "../errors.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 import { npRecordCommunityRuntimeDiagnostic } from "./diagnostics.js";
@@ -42,6 +43,15 @@ interface RegisteredActivityCollection {
 }
 
 type ActivityDb = Pick<ReturnType<typeof getDb>, "execute" | "select">;
+
+async function requirePublicMember(db: ActivityDb, memberId: string): Promise<void> {
+  const [member] = await db
+    .select({ id: npMembers.id })
+    .from(npMembers)
+    .where(and(eq(npMembers.id, memberId), inArray(npMembers.status, ["active", "imported"])))
+    .limit(1);
+  if (!member) throw new NpNotFoundError("member", memberId);
+}
 
 function tableColumn(table: PgTable, name: string): unknown {
   return (table as unknown as Record<string, unknown>)[name];
@@ -250,6 +260,13 @@ function commentExcerpt(bodyMd: string): string {
     .slice(0, npCommunityContractLimits.profileActivityExcerptLength);
 }
 
+function commentHref(href: string | null, commentId: string): string | null {
+  if (!href) return null;
+  const parsed = new URL(href, "https://nexpress.invalid");
+  parsed.hash = `comment-${commentId}`;
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+}
+
 function buildItems(
   collections: RegisteredActivityCollection[],
   rows: ActivityIndexRow[],
@@ -290,7 +307,7 @@ function buildItems(
       targetType: row.collectionSlug,
       targetId: row.targetId,
       targetTitle: title,
-      href: href ? `${href}#comment-${row.commentId}` : null,
+      href: commentHref(href, row.commentId),
       excerpt: commentExcerpt(row.bodyMd),
       createdAt: row.createdAt.toISOString(),
       editedAt: row.editedAt?.toISOString() ?? null,
@@ -316,6 +333,7 @@ export async function listMemberProfileActivity(
     const collections = activityCollections(query.kind);
     const { index, documents } = await getDb().transaction(
       async (tx) => {
+        await requirePublicMember(tx, checkedMemberId);
         const index = await queryActivityIndex(tx, collections, checkedMemberId, siteId, query);
         const documents = await loadTargetDocuments(tx, collections, index.rows, siteId);
         return { index, documents };
