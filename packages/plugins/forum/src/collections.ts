@@ -376,6 +376,7 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
       comments: true,
       reactions: true,
       views: true,
+      reports: true,
       memberWrite: {
         create: true,
         update: true,

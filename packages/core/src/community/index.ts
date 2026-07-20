@@ -120,13 +120,20 @@ export type {
   ListAuditOptions,
 } from "./audit.js";
 
-export { fileReport, listReports, resolveReport, unresolvedReportCount } from "./reports.js";
+export {
+  fileReport,
+  getReportTargetContext,
+  listReports,
+  resolveReport,
+  unresolvedReportCount,
+} from "./reports.js";
 export type {
   NpReportRow,
   FileReportInput,
   ListReportsOptions,
   ListReportsResult,
   ResolveReportInput,
+  ResolveReportResult,
 } from "./reports.js";
 
 export { issueBan, listBansForMember, revokeBan } from "./bans.js";

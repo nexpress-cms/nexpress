@@ -407,7 +407,9 @@ export interface NpCollectionConfig {
    * underneath this collection's documents. `reactions: true` lets
    * members react to the documents themselves (comment reactions remain
    * available through the comment surface), while `views: true` enables
-   * anonymous daily-unique view receipts for public documents.
+   * anonymous daily-unique view receipts for public documents. `reports: true`
+   * lets members file one unresolved moderation report per target and exposes
+   * that target through the staff report queue.
    *
    * `memberWrite.create` (9.7a) lets logged-in members create
    * documents in this collection without needing a staff role.
@@ -427,6 +429,7 @@ export interface NpCollectionConfig {
     comments?: boolean;
     reactions?: boolean;
     views?: boolean;
+    reports?: boolean;
     memberWrite?: {
       create?: boolean;
       update?: boolean;

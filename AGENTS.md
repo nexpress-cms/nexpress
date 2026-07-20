@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-20 (forum attachments now reuse media ownership,
+**Last refreshed:** 2026-07-20 (community reports now use reserved or
+report-enabled collection targets, unresolved deduplication, contextual Admin
+rows, target-serialized closed moderation actions, forum post reporting, and
+orphan diagnostics.)
+
+**Earlier:** 2026-07-20 (forum attachments now reuse media ownership,
 signature validation, race-safe document refs/deletion, forced-download
 visibility, board policy, both skins, exact OpenAPI, scaffolds, integration
 tests, and docs.)

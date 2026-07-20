@@ -48,6 +48,10 @@ out of filtered results. List and detail surfaces share batched view, visible
 comment, and reaction totals; the detail recommendation button uses the same
 Core reaction contract as comments.
 
+Published public posts expose a member-only report action. Reports use the
+configured post collection slug, reject duplicate unresolved filings, surface
+target context in Admin, and resolve through closed dismiss/unpublish actions.
+
 Each board can enable attachments and set an exact file-count and per-file
 size cap. Uploads reuse Core media storage, verify extension/MIME/signature,
 remain uploader-only until referenced by a public published post, and are

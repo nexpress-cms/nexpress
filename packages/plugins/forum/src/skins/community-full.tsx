@@ -526,8 +526,11 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
               ) : null}
             </div>
           </div>
-          {props.authorActions ? (
-            <div className="np-forum-post-actions">{props.authorActions}</div>
+          {props.authorActions || props.reportAction ? (
+            <div className="np-forum-post-actions">
+              {props.authorActions}
+              {props.reportAction}
+            </div>
           ) : null}
         </header>
         <div className="np-forum-post-body np-forum-rich-text">{props.body}</div>

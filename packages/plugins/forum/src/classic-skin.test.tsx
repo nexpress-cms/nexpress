@@ -72,6 +72,15 @@ const messages: NpForumMessages = {
   cancel: "취소",
   deleting: "삭제 중",
   deleteFailed: "삭제 실패",
+  report: "신고",
+  reportTitle: "게시글 신고",
+  reportHelp: "문제를 알려주세요.",
+  reportPlaceholder: "신고 사유",
+  reportSubmit: "신고 보내기",
+  reportSubmitting: "보내는 중",
+  reportSuccess: "신고했습니다.",
+  reportClose: "닫기",
+  reportFailed: "신고 실패",
   signIn: "로그인",
   register: "회원가입",
   loginRequired: "로그인이 필요합니다.",
@@ -242,6 +251,7 @@ describe("classic forum skin", () => {
           </>
         ),
         authorActions: null,
+        reportAction: <button type="button">신고</button>,
         engagement: <div data-testid="engagement" />,
         comments: null,
         attachments: [attachment],
@@ -252,6 +262,7 @@ describe("classic forum skin", () => {
 
     expect(html).toContain('class="np-forum-post-body np-forum-rich-text"');
     expect(html).toContain('data-np-forum-surface="post-detail"');
+    expect(html).toContain("신고");
     expect(html).not.toContain(" prose");
     expect(styles).toContain(".np-forum-rich-text h1");
     expect(styles).toContain("list-style: disc");

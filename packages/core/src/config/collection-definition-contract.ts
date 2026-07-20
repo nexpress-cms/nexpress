@@ -31,6 +31,7 @@ const reservedFieldNames = new Set([
   "_status",
 ]);
 const builtinRelationshipTargets = new Set(["media", "users"]);
+const reservedReportTargets = new Set(["comment", "member"]);
 
 function issue(
   code: NpCollectionDefinitionIssueCode,
@@ -321,6 +322,15 @@ function semanticIssues(config: NpCollectionConfig): NpCollectionDefinitionIssue
         "field",
         "slug",
         `collection slug "${config.slug}" is reserved for a framework relation target.`,
+      ),
+    );
+  }
+  if (config.community?.reports === true && reservedReportTargets.has(config.slug)) {
+    issues.push(
+      issue(
+        "reference",
+        "community.reports",
+        `collection slug "${config.slug}" is a reserved report target and cannot enable document reports.`,
       ),
     );
   }

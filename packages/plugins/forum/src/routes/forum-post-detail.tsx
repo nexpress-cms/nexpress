@@ -11,8 +11,11 @@ import { buildPageMetadata, getSiteMember, JsonLd } from "@nexpress/next";
 import type { NpRouteRenderProps } from "@nexpress/next";
 import { notFound } from "next/navigation";
 
-import { ForumPostActions } from "@nexpress/plugin-forum/client";
-import { ForumPostEngagement } from "@nexpress/plugin-forum/client";
+import {
+  ForumPostActions,
+  ForumPostEngagement,
+  ForumPostReportAction,
+} from "@nexpress/plugin-forum/client";
 
 import {
   enrichForumPosts,
@@ -112,6 +115,28 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
           }}
         />
       ) : null,
+      reportAction:
+        member !== null &&
+        !isOwner &&
+        post.status === "published" &&
+        post.visibility === "public" ? (
+          <ForumPostReportAction
+            collectionSlug={runtime.collections.posts}
+            postId={post.id}
+            labels={{
+              report: messages.report,
+              title: messages.reportTitle,
+              help: messages.reportHelp,
+              placeholder: messages.reportPlaceholder,
+              submit: messages.reportSubmit,
+              submitting: messages.reportSubmitting,
+              success: messages.reportSuccess,
+              close: messages.reportClose,
+              cancel: messages.cancel,
+              failed: messages.reportFailed,
+            }}
+          />
+        ) : null,
       engagement: (
         <ForumPostEngagement
           targetType={runtime.collections.posts}

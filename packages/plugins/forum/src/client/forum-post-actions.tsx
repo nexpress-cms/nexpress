@@ -63,7 +63,7 @@ export function ForumPostActions({
   };
 
   return (
-    <div className="np-forum-post-actions">
+    <div className="np-forum-post-actions np-forum-author-actions">
       <Link href={`${basePath}/${boardKey}/${postId}/edit`}>{labels.edit}</Link>
       <button type="button" onClick={() => setConfirming(true)} disabled={submitting}>
         {labels.delete}

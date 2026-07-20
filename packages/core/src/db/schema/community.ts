@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   boolean,
@@ -11,6 +12,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -459,10 +461,11 @@ export const npNotifications = pgTable(
 );
 
 /**
- * Member-filed reports against community content. `target_type` is
- * `'comment' | 'thread' | 'reply' | 'member'` — anything a member can
- * report. `resolved_at` flags closed cases; the unresolved index
- * powers the moderation queue's "unread first" view.
+ * Member-filed reports against community content. `target_type` is the
+ * reserved `comment` / `member` value or a report-enabled collection slug.
+ * `resolved_at` flags closed cases; the unresolved index powers the
+ * moderation queue's "unread first" view. A member can have at most one
+ * unresolved report for the same site and target.
  *
  * `resolved_by_user_id` and `resolved_by_member_id` are mutually
  * exclusive — staff resolutions populate the user, member-mod
@@ -494,6 +497,9 @@ export const npReports = pgTable(
     index("np_reports_queue_idx").on(table.resolvedAt, table.createdAt),
     index("np_reports_target_idx").on(table.targetType, table.targetId),
     index("np_reports_site_queue_idx").on(table.siteId, table.resolvedAt),
+    uniqueIndex("np_reports_unresolved_reporter_target_uidx")
+      .on(table.siteId, table.reporterId, table.targetType, table.targetId)
+      .where(sql`${table.resolvedAt} is null`),
   ],
 );
 

@@ -1,11 +1,12 @@
 import { can, NpForbiddenError, NpValidationError } from "@nexpress/core";
-import { listReports } from "@nexpress/core/community";
+import { getReportTargetContext, listReports } from "@nexpress/core/community";
 import {
   npIsReportStatus,
   npIsReportTarget,
-  npRequireReportPageWire,
+  npRequireModerationReportPageWire,
   npToReportWireRow,
 } from "@nexpress/core/community-contract";
+import type { NpModerationReportWireRow } from "@nexpress/core/community-contract";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
@@ -31,7 +32,10 @@ export async function GET(request: NextRequest) {
     }
     if (targetType !== null && !npIsReportTarget(targetType)) {
       throw new NpValidationError("Invalid input", [
-        { field: "targetType", message: "Must be comment, thread, reply, or member" },
+        {
+          field: "targetType",
+          message: "Must be comment, member, or a canonical collection slug",
+        },
       ]);
     }
     const { limit, page, offset } = npReadCommunityPage(params);
@@ -45,9 +49,22 @@ export async function GET(request: NextRequest) {
 
     const totalPages = result.totalDocs === 0 ? 0 : Math.ceil(result.totalDocs / limit);
 
+    const docs: NpModerationReportWireRow[] = [];
+    for (let index = 0; index < result.reports.length; index += 10) {
+      const batch = result.reports.slice(index, index + 10);
+      docs.push(
+        ...(await Promise.all(
+          batch.map(async (report) => ({
+            ...npToReportWireRow(report),
+            target: await getReportTargetContext(report),
+          })),
+        )),
+      );
+    }
+
     return npSuccessResponse(
-      npRequireReportPageWire({
-        docs: result.reports.map(npToReportWireRow),
+      npRequireModerationReportPageWire({
+        docs,
         totalDocs: result.totalDocs,
         totalPages,
         page,

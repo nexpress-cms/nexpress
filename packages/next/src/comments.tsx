@@ -486,7 +486,7 @@ function ReactionButton({ commentId, memberKnown }: ReactionButtonProps) {
 }
 
 interface ReportDialogProps {
-  targetType: "comment" | "thread" | "reply" | "member";
+  targetType: "comment";
   targetId: string;
   onClose: () => void;
 }
@@ -527,7 +527,7 @@ function ReportDialog({ targetType, targetId, onClose }: ReportDialogProps) {
           "Content-Type": "application/json",
           ...(csrf ? { "X-CSRF-Token": csrf } : {}),
         },
-        body: JSON.stringify({ targetType, targetId, reason }),
+        body: JSON.stringify({ targetType, targetId, reason: reason.trim() }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as {
@@ -602,6 +602,7 @@ function ReportDialog({ targetType, targetId, onClose }: ReportDialogProps) {
             </p>
             <textarea
               ref={textareaRef}
+              aria-label="Report reason"
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               rows={4}

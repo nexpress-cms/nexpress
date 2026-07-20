@@ -1,4 +1,5 @@
 import { npMemberStatuses } from "../auth-contract/types.js";
+import { npCollectionDocumentStatuses } from "../collection-contract/types.js";
 import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 import {
   npCommunityAuditActorKinds,
@@ -10,8 +11,8 @@ import {
   npCommunityDigestCadences,
   npCommunityFollowTargets,
   npCommunityModerationVerdictKinds,
+  npCommunityReportResolutionActions,
   npCommunityReportStatuses,
-  npCommunityReportTargets,
   npCommunityScopes,
   type AuditActor,
   type AuditActorKind,
@@ -47,6 +48,8 @@ import {
   type NpMemberPurgeResult,
   type NpMemberRoleGrantRow,
   type NpMemberRoleGrantWireRow,
+  type NpModerationReportPageWire,
+  type NpModerationReportWireRow,
   type NpModerationCheckContext,
   type NpModerationVerdict,
   type NpNotificationKindMeta,
@@ -59,10 +62,14 @@ import {
   type NpReactionSummaryWire,
   type NpReactionWireRow,
   type NpReportPageWire,
+  type NpReportResolutionAction,
   type NpReportRow,
   type NpReportStatus,
   type NpReportTarget,
   type NpReportWireRow,
+  type NpReportTargetContextKind,
+  type NpReportTargetContextWire,
+  type NpResolveReportRequest,
   type NpReputationEvent,
   type RecordAuditEventInput,
 } from "./types.js";
@@ -104,10 +111,12 @@ const CALENDAR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 const ENGAGEMENT_TARGET_TYPE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 const ENGAGEMENT_TARGET_TYPE_MAX_LENGTH = 63;
 const COMMENT_STATUSES = new Set<string>(npCommunityCommentStatuses);
+const DOCUMENT_STATUSES = new Set<string>(npCollectionDocumentStatuses);
 const COMMENT_SORTS = new Set<string>(npCommunityCommentSorts);
 const FOLLOW_TARGETS = new Set<string>(npCommunityFollowTargets);
-const REPORT_TARGETS = new Set<string>(npCommunityReportTargets);
 const REPORT_STATUSES = new Set<string>(npCommunityReportStatuses);
+const REPORT_RESOLUTION_ACTIONS = new Set<string>(npCommunityReportResolutionActions);
+const REPORT_CONTEXT_KINDS = new Set<string>(["comment", "document", "member", "missing"]);
 const BAN_SCOPES = new Set<string>(npCommunityBanScopes);
 const BAN_KINDS = new Set<string>(npCommunityBanKinds);
 const SCOPES = new Set<string>(npCommunityScopes);
@@ -442,6 +451,10 @@ function engagementTargetType(value: unknown, path: string): string {
     fail(path, "must be comment or a canonical collection slug");
   }
   return parsed;
+}
+
+function reportTargetType(value: unknown, path: string): NpReportTarget {
+  return engagementTargetType(value, path);
 }
 
 function calendarDate(value: unknown, path: string): string {
@@ -1195,18 +1208,21 @@ function parseReportCommon(
   const common = {
     id: uuid(raw.id, `${path}.id`),
     reporterId: uuid(raw.reporterId, `${path}.reporterId`),
-    targetType: enumString<NpReportTarget>(raw.targetType, `${path}.targetType`, REPORT_TARGETS),
-    targetId: opaqueTarget(raw.targetId, `${path}.targetId`),
+    targetType: reportTargetType(raw.targetType, `${path}.targetType`),
+    targetId: uuid(raw.targetId, `${path}.targetId`),
     reason: boundedString(raw.reason, `${path}.reason`, npCommunityContractLimits.reasonLength, {
       trim: true,
     }),
     resolvedByUserId: nullableUuid(raw.resolvedByUserId, `${path}.resolvedByUserId`),
     resolvedByMemberId: nullableUuid(raw.resolvedByMemberId, `${path}.resolvedByMemberId`),
-    resolution: boundedNullableString(
-      raw.resolution,
-      `${path}.resolution`,
-      npCommunityContractLimits.reasonLength,
-    ),
+    resolution:
+      raw.resolution === null
+        ? null
+        : enumString<NpReportResolutionAction>(
+            raw.resolution,
+            `${path}.resolution`,
+            REPORT_RESOLUTION_ACTIONS,
+          ),
     siteId: siteId(raw.siteId, `${path}.siteId`),
   };
   if ((raw.resolvedAt === null) !== (raw.resolution === null)) {
@@ -1248,6 +1264,149 @@ export function npToReportWireRow(value: unknown): NpReportWireRow {
     resolvedAt: row.resolvedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   });
+}
+
+export function npRequireReportTargetContextWire(value: unknown): NpReportTargetContextWire {
+  const raw = exactRecord(value, "community.reportTargetContext", [
+    "kind",
+    "label",
+    "excerpt",
+    "status",
+    "href",
+    "collectionSlug",
+    "documentId",
+    "authorMemberId",
+  ]);
+  const kind = enumString<NpReportTargetContextKind>(
+    raw.kind,
+    "community.reportTargetContext.kind",
+    REPORT_CONTEXT_KINDS,
+  );
+  const href =
+    raw.href === null ? null : boundedString(raw.href, "community.reportTargetContext.href", 512);
+  if (href !== null && !href.startsWith("/admin/")) {
+    fail("community.reportTargetContext.href", "must be an internal Admin path");
+  }
+  const collectionSlug =
+    raw.collectionSlug === null
+      ? null
+      : engagementTargetType(raw.collectionSlug, "community.reportTargetContext.collectionSlug");
+  const documentId =
+    raw.documentId === null
+      ? null
+      : uuid(raw.documentId, "community.reportTargetContext.documentId");
+  const authorMemberId =
+    raw.authorMemberId === null
+      ? null
+      : uuid(raw.authorMemberId, "community.reportTargetContext.authorMemberId");
+  if (kind === "document" && (collectionSlug === null || documentId === null || href === null)) {
+    fail(
+      "community.reportTargetContext",
+      "document targets require collectionSlug, documentId, and href",
+      "invariant",
+    );
+  }
+  if (kind === "comment" && (collectionSlug === null || documentId === null || href === null)) {
+    fail(
+      "community.reportTargetContext",
+      "comment targets require their parent collection, document, and href",
+      "invariant",
+    );
+  }
+  if (
+    kind === "member" &&
+    (href === null || collectionSlug !== null || documentId !== null || authorMemberId === null)
+  ) {
+    fail(
+      "community.reportTargetContext",
+      "member targets require only their author id and Admin href",
+      "invariant",
+    );
+  }
+  if (
+    kind === "missing" &&
+    (href !== null || collectionSlug !== null || documentId !== null || authorMemberId !== null)
+  ) {
+    fail(
+      "community.reportTargetContext",
+      "missing targets cannot expose stale identifiers or links",
+      "invariant",
+    );
+  }
+  const status =
+    raw.status === null
+      ? null
+      : kind === "comment"
+        ? enumString<string>(raw.status, "community.reportTargetContext.status", COMMENT_STATUSES)
+        : kind === "document"
+          ? enumString<string>(
+              raw.status,
+              "community.reportTargetContext.status",
+              DOCUMENT_STATUSES,
+            )
+          : kind === "member"
+            ? enumString<string>(
+                raw.status,
+                "community.reportTargetContext.status",
+                MEMBER_STATUSES,
+              )
+            : boundedString(raw.status, "community.reportTargetContext.status", 40);
+  if ((kind === "missing") !== (status === null)) {
+    fail(
+      "community.reportTargetContext.status",
+      "resolved targets require a status and missing targets require null",
+      "invariant",
+    );
+  }
+  return {
+    kind,
+    label: boundedString(
+      raw.label,
+      "community.reportTargetContext.label",
+      npCommunityContractLimits.labelLength,
+    ),
+    excerpt: boundedNullableString(
+      raw.excerpt,
+      "community.reportTargetContext.excerpt",
+      npCommunityContractLimits.descriptionLength,
+    ),
+    status,
+    href,
+    collectionSlug,
+    documentId,
+    authorMemberId,
+  };
+}
+
+export function npRequireModerationReportWireRow(value: unknown): NpModerationReportWireRow {
+  const raw = exactRecord(value, "community.moderationReport", [
+    "id",
+    "reporterId",
+    "targetType",
+    "targetId",
+    "reason",
+    "resolvedAt",
+    "resolvedByUserId",
+    "resolvedByMemberId",
+    "resolution",
+    "siteId",
+    "createdAt",
+    "target",
+  ]);
+  const report = npRequireReportWireRow({
+    id: raw.id,
+    reporterId: raw.reporterId,
+    targetType: raw.targetType,
+    targetId: raw.targetId,
+    reason: raw.reason,
+    resolvedAt: raw.resolvedAt,
+    resolvedByUserId: raw.resolvedByUserId,
+    resolvedByMemberId: raw.resolvedByMemberId,
+    resolution: raw.resolution,
+    siteId: raw.siteId,
+    createdAt: raw.createdAt,
+  });
+  return { ...report, target: npRequireReportTargetContextWire(raw.target) };
 }
 
 function parseBanCommon(value: unknown, path: string, wire: boolean): NpBanRow | NpBanWireRow {
@@ -1700,6 +1859,10 @@ export function npRequireReportPageWire(value: unknown): NpReportPageWire {
   return pageWire(value, "community.reportPage", npRequireReportWireRow);
 }
 
+export function npRequireModerationReportPageWire(value: unknown): NpModerationReportPageWire {
+  return pageWire(value, "community.moderationReportPage", npRequireModerationReportWireRow);
+}
+
 export function npRequireAuditPageWire(value: unknown): NpAuditPageWire {
   return pageWire(value, "community.auditPage", npRequireAuditEventWireRow);
 }
@@ -1763,12 +1926,8 @@ export function npRequireReportRequest(value: unknown): {
 } {
   const raw = exactRecord(value, "community.reportRequest", ["targetType", "targetId", "reason"]);
   return {
-    targetType: enumString<NpReportTarget>(
-      raw.targetType,
-      "community.reportRequest.targetType",
-      REPORT_TARGETS,
-    ),
-    targetId: opaqueTarget(raw.targetId, "community.reportRequest.targetId"),
+    targetType: reportTargetType(raw.targetType, "community.reportRequest.targetType"),
+    targetId: uuid(raw.targetId, "community.reportRequest.targetId"),
     reason: boundedString(
       raw.reason,
       "community.reportRequest.reason",
@@ -2018,14 +2177,13 @@ export function npRequireRoleGrantRequest(value: unknown): {
   };
 }
 
-export function npRequireResolveReportRequest(value: unknown): { resolution: string } {
-  const raw = exactRecord(value, "community.resolveReport", ["resolution"]);
+export function npRequireResolveReportRequest(value: unknown): NpResolveReportRequest {
+  const raw = exactRecord(value, "community.resolveReport", ["action"]);
   return {
-    resolution: boundedString(
-      raw.resolution,
-      "community.resolveReport.resolution",
-      npCommunityContractLimits.reasonLength,
-      { trim: true },
+    action: enumString<NpReportResolutionAction>(
+      raw.action,
+      "community.resolveReport.action",
+      REPORT_RESOLUTION_ACTIONS,
     ),
   };
 }
@@ -2202,5 +2360,10 @@ export function npIsReportStatus(value: unknown): value is NpReportStatus {
 }
 
 export function npIsReportTarget(value: unknown): value is NpReportTarget {
-  return typeof value === "string" && REPORT_TARGETS.has(value);
+  try {
+    reportTargetType(value, "community.reportTarget");
+    return true;
+  } catch {
+    return false;
+  }
 }
