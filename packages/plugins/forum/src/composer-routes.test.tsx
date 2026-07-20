@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getSiteMember: vi.fn(),
   resolveForumSkin: vi.fn(),
   renderPostComposer: vi.fn(),
+  resolveForumAttachments: vi.fn(),
 }));
 
 vi.mock("@nexpress/core", () => ({
@@ -38,6 +39,11 @@ const board = {
   commentsEnabled: true,
   pageSize: 20,
   categories: [],
+  attachments: {
+    enabled: true,
+    maxFiles: 5,
+    maxFileSizeBytes: 20 * 1024 * 1024,
+  },
 };
 
 const messages = {
@@ -58,10 +64,23 @@ const messages = {
   saveFailed: "저장 실패",
 };
 
+const attachmentLabels = {
+  attachments: "첨부파일",
+  addAttachments: "파일 추가",
+  uploadingAttachment: "업로드 중",
+  removeAttachment: "삭제",
+  attachmentHelp: "최대 5개",
+  attachmentUploadFailed: "업로드 실패",
+  attachmentTooLarge: "파일이 너무 큽니다.",
+  attachmentLimitExceeded: "첨부파일 수를 초과했습니다.",
+};
+
 vi.mock("./runtime.js", () => ({
   findForumBoardByKey: vi.fn(() => Promise.resolve(board)),
   getForumMessages: vi.fn(() => Promise.resolve(messages)),
+  getForumAttachmentFormLabels: vi.fn(() => Promise.resolve(attachmentLabels)),
   isForumPostId: vi.fn(() => true),
+  resolveForumAttachments: mocks.resolveForumAttachments,
   resolveForumSkin: mocks.resolveForumSkin,
 }));
 
@@ -95,7 +114,9 @@ describe("forum composer routes", () => {
       title: "기존 글",
       body: null,
       category: null,
+      attachments: [],
     });
+    mocks.resolveForumAttachments.mockResolvedValue([]);
     mocks.resolveForumSkin.mockReturnValue({
       renderPostComposer: mocks.renderPostComposer,
     });

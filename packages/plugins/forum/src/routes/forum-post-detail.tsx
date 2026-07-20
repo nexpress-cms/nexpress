@@ -20,6 +20,7 @@ import {
   getForumMessages,
   isForumPostId,
   resolveForumSkin,
+  resolveForumAttachments,
   type ForumPostDocument,
   type NpForumRuntime,
 } from "../runtime.js";
@@ -62,7 +63,10 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
     const [summary] = await enrichForumPosts([post], runtime.collections.posts);
     if (!summary) notFound();
     const body: NpRichTextContent | null = isNpRichTextContent(post.body) ? post.body : null;
-    const messages = await getForumMessages();
+    const [messages, attachments] = await Promise.all([
+      getForumMessages(),
+      resolveForumAttachments(post.attachments),
+    ]);
     const comments =
       post.status === "published" ? (
         <Comments
@@ -129,6 +133,7 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
         />
       ),
       comments,
+      attachments,
       messages,
     });
     return (

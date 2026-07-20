@@ -5,12 +5,19 @@ import {
   findDocuments,
   isEditorOrAbove,
   type NpCollectionConfig,
+  type NpPrincipal,
 } from "@nexpress/core";
+import {
+  getMediaById,
+  npIsSupportedMediaAttachment,
+  npMediaAttachmentLimits,
+} from "@nexpress/core/media";
 
 import {
   findForumBoardById,
   getForumBoardById,
   npForumBoardKeyPattern,
+  normalizeForumAttachmentIds,
   normalizeForumCategories,
   type ForumPostDocument,
   type NpForumRuntime,
@@ -85,6 +92,67 @@ async function boardAllowsMemberUpdate(
   if (typeof boardId !== "string") return null;
   const board = await findForumBoardById(runtime, boardId);
   return board && categoryAllowed(board, data.category) ? board : null;
+}
+
+async function validateForumAttachments(
+  board: NpForumBoard,
+  data: Readonly<Record<string, unknown>>,
+  principal: NpPrincipal | null | undefined,
+  originalAttachments?: unknown,
+): Promise<void> {
+  let ids: string[];
+  try {
+    ids = normalizeForumAttachmentIds(data.attachments);
+  } catch (error) {
+    throw new NpValidationError("Invalid forum attachments", [
+      {
+        field: "attachments",
+        message: error instanceof Error ? error.message : "Invalid attachment list.",
+      },
+    ]);
+  }
+  const originalIds = new Set(normalizeForumAttachmentIds(originalAttachments));
+  const addedIds = new Set(ids.filter((id) => !originalIds.has(id)));
+  if (!board.attachments.enabled && addedIds.size > 0) {
+    throw new NpValidationError("Forum attachments are disabled", [
+      { field: "attachments", message: "This board does not accept attachments." },
+    ]);
+  }
+  if (ids.length > board.attachments.maxFiles && addedIds.size > 0) {
+    throw new NpValidationError("Too many forum attachments", [
+      {
+        field: "attachments",
+        message: `This board accepts at most ${board.attachments.maxFiles.toString()} attachments.`,
+      },
+    ]);
+  }
+
+  const records = await Promise.all(ids.map((id) => getMediaById(id)));
+  for (const [index, media] of records.entries()) {
+    if (!media || !npIsSupportedMediaAttachment(media)) {
+      throw new NpValidationError("Invalid forum attachment", [
+        {
+          field: `attachments.${index.toString()}.file`,
+          message: "Select a supported, active media attachment.",
+        },
+      ]);
+    }
+    if (addedIds.has(media.id) && media.filesize > board.attachments.maxFileSizeBytes) {
+      throw new NpValidationError("Forum attachment is too large", [
+        {
+          field: `attachments.${index.toString()}.file`,
+          message: `This board limits each attachment to ${board.attachments.maxFileSizeBytes.toString()} bytes.`,
+        },
+      ]);
+    }
+    if (
+      principal?.kind === "member" &&
+      addedIds.has(media.id) &&
+      media.uploadedByMemberId !== principal.memberId
+    ) {
+      throw new NpForbiddenError("forum attachment", "use");
+    }
+  }
 }
 
 export function defineForumBoardsCollection(runtime: NpForumRuntime): NpCollectionConfig {
@@ -234,6 +302,36 @@ export function defineForumBoardsCollection(runtime: NpForumRuntime): NpCollecti
         admin: { position: "sidebar", group: "Board" },
       },
       {
+        type: "checkbox",
+        name: "attachmentsEnabled",
+        label: "Allow attachments",
+        required: true,
+        defaultValue: true,
+        admin: { position: "sidebar", group: "Attachments" },
+      },
+      {
+        type: "number",
+        name: "maxAttachments",
+        label: "Maximum attachments per post",
+        required: true,
+        defaultValue: 5,
+        min: 1,
+        max: npMediaAttachmentLimits.maxFilesPerDocument,
+        integerOnly: true,
+        admin: { position: "sidebar", group: "Attachments" },
+      },
+      {
+        type: "number",
+        name: "maxAttachmentSizeMb",
+        label: "Maximum size per attachment (MB)",
+        required: true,
+        defaultValue: 20,
+        min: 1,
+        max: npMediaAttachmentLimits.maxFileSizeBytes / (1024 * 1024),
+        integerOnly: true,
+        admin: { position: "sidebar", group: "Attachments" },
+      },
+      {
         type: "array",
         name: "categories",
         label: "Categories",
@@ -282,7 +380,7 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
         create: true,
         update: true,
         delete: true,
-        writableFields: ["board", "title", "body", "category"],
+        writableFields: ["board", "title", "body", "category", "attachments"],
         access: {
           create: async ({ data }) =>
             data !== null && (await boardAllowsMemberWrite(runtime, data)) !== null,
@@ -332,6 +430,7 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
               { field: "category", message: "Select a category configured on this board." },
             ]);
           }
+          await validateForumAttachments(board, data, principal);
           return {
             ...data,
             boardKey: board.key,
@@ -340,7 +439,7 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
         },
       ],
       beforeUpdate: [
-        async ({ data, principal }) => {
+        async ({ data, principal, originalDoc }) => {
           const boardId = data.board;
           const board =
             typeof boardId === "string"
@@ -358,6 +457,7 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
               { field: "category", message: "Select a category configured on this board." },
             ]);
           }
+          await validateForumAttachments(board, data, principal, originalDoc?.attachments);
           return { ...data, boardKey: board.key };
         },
       ],
@@ -397,6 +497,25 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
         type: "richText",
         name: "body",
         required: true,
+      },
+      {
+        type: "array",
+        name: "attachments",
+        label: "Attachments",
+        maxRows: npMediaAttachmentLimits.maxFilesPerDocument,
+        admin: {
+          description:
+            "Files shown below the post body. Member uploads must satisfy the selected board policy.",
+        },
+        fields: [
+          {
+            type: "upload",
+            name: "file",
+            label: "File",
+            relationTo: "media",
+            required: true,
+          },
+        ],
       },
       {
         type: "text",

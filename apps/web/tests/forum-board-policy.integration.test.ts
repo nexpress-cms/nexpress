@@ -8,7 +8,11 @@ import {
   PATCH as collectionPATCH,
 } from "@/app/api/collections/[slug]/[id]/route";
 import { POST as viewPOST } from "@/app/api/views/route";
-import { forumBoardsTable, forumPostsTable } from "@/db/generated/collections";
+import {
+  forumBoardsTable,
+  forumPostsAttachmentsTable,
+  forumPostsTable,
+} from "@/db/generated/collections";
 import type { ForumPostsDocument } from "@/db/generated/documents";
 import { NextRequest } from "next/server";
 
@@ -42,7 +46,9 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
     registerTestCollections();
     const { registerCollection } = await import("@nexpress/core");
     registerCollection("forum-boards", forumBoardsTable as never, forumCollections[0]);
-    registerCollection("forum-posts", forumPostsTable as never, forumCollections[1]);
+    registerCollection("forum-posts", forumPostsTable as never, forumCollections[1], {
+      childTables: { attachments: forumPostsAttachmentsTable as never },
+    });
   });
 
   beforeEach(async () => {

@@ -3,7 +3,7 @@
 Multi-board forum plugin for [NexPress](https://github.com/nexpress-cms/nexpress).
 It combines native board/post collections, member writes, moderation, rich
 text, daily-unique views, recommendations, bounded popular feeds, comments,
-and theme-neutral build-time skins.
+validated member attachments, and theme-neutral build-time skins.
 
 ## Install
 
@@ -40,13 +40,19 @@ pnpm db:generate && pnpm db:migrate
 The default routes are `/boards`, `/boards/:boardKey`, member create/edit
 routes, and UUID-based post detail URLs. A selected skin renders the board
 index, post list, detail, and route-owned create/edit content without taking
-over authentication or write policy. Members can write only board, title, body,
-and category fields; pin, lock, status, board policy, and moderation stay
+over authentication or write policy. Members can write only board, title,
+body, category, and attachment fields; pin, lock, status, board policy, and moderation stay
 operator-owned. Board lists include bounded title/body search, category and
 member filters, canonical filter-preserving pagination, and notices that stay
 out of filtered results. List and detail surfaces share batched view, visible
 comment, and reaction totals; the detail recommendation button uses the same
 Core reaction contract as comments.
+
+Each board can enable attachments and set an exact file-count and per-file
+size cap. Uploads reuse Core media storage, verify extension/MIME/signature,
+remain uploader-only until referenced by a public published post, and are
+served only as forced sandboxed downloads. Both bundled skins render the same
+attachment count, detail list, and route-owned composer controls.
 
 Two bundled skins are always available: `classic` for the familiar compact
 table and `community-full` for policy summaries, author identity, status-rich

@@ -77,6 +77,7 @@ const messages: NpForumMessages = {
   loginRequired: "로그인이 필요합니다.",
   commentsLocked: "댓글이 잠겼습니다.",
   emptyBody: "내용이 없습니다.",
+  attachments: "첨부파일",
 };
 
 const board: NpForumBoard = {
@@ -90,6 +91,11 @@ const board: NpForumBoard = {
   commentsEnabled: true,
   pageSize: 20,
   categories: [{ key: "question", label: "질문" }],
+  attachments: {
+    enabled: true,
+    maxFiles: 5,
+    maxFileSizeBytes: 20 * 1024 * 1024,
+  },
 };
 
 const post: NpForumPostSummary = {
@@ -111,6 +117,15 @@ const post: NpForumPostSummary = {
     reactionCount: 2,
     reactions: { like: 2 },
   },
+  attachmentCount: 1,
+};
+
+const attachment = {
+  id: "ec6ff5a8-90cf-4388-917e-b4cf6b6ac76a",
+  filename: "사용 안내.pdf",
+  mimeType: "application/pdf",
+  filesize: 2048,
+  downloadUrl: "/api/media/attachments/ec6ff5a8-90cf-4388-917e-b4cf6b6ac76a",
 };
 
 const defaultQuery: NpForumPostListQuery = {
@@ -229,6 +244,7 @@ describe("classic forum skin", () => {
         authorActions: null,
         engagement: <div data-testid="engagement" />,
         comments: null,
+        attachments: [attachment],
         messages,
       }),
     );
@@ -240,6 +256,9 @@ describe("classic forum skin", () => {
     expect(styles).toContain(".np-forum-rich-text h1");
     expect(styles).toContain("list-style: disc");
     expect(styles).toContain(".np-forum-toolbar a:not(.np-button-primary)");
+    expect(html).toContain('data-np-forum-attachments="list"');
+    expect(html).toContain("사용 안내.pdf");
+    expect(html).toContain('download=""');
   });
 
   it("renders route-owned create and edit content through the selected skin", async () => {

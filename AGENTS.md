@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-20 (forum engagement now shares opt-in document
+**Last refreshed:** 2026-07-20 (forum attachments now reuse media ownership,
+signature validation, race-safe document refs/deletion, forced-download
+visibility, board policy, both skins, exact OpenAPI, scaffolds, integration
+tests, and docs.)
+
+**Earlier:** 2026-07-20 (forum engagement now shares opt-in document
 reactions, privacy-bounded daily views, batched counts, and bounded recent
 popularity across Core, API, skins, home blocks, theme hooks, doctor, and docs.)
 

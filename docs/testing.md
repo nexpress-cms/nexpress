@@ -169,6 +169,7 @@ ignored `src/db/generated/*.ts` file cannot disappear in a clean clone.
 | `collections.integration.test.ts`                       | Collection CRUD plus exact revision/autosave wire contracts, partial validation, concurrency, and OpenAPI schemas                                                                                   |
 | `import-export.integration.test.ts` (18)                | exact v3 full/partial export, auth/query failures, definition-owned media, dry-run/projection, UUID idempotency, relationship ordering, atomic rollback, plugin cache, malformed state, and OpenAPI |
 | `translation-interchange-admin.integration.test.ts` (4) | Admin XLIFF/PO export, preview/apply, capability errors, and bounded upload rejection                                                                                                               |
+| `member-attachment.integration.test.ts` (5)             | signature validation, exact wire/OpenAPI, owner access/delete, public post visibility, reference deletion guard, and forum board/uploader policy                                                    |
 
 The unit suites in `@nexpress/core`, `@nexpress/next`, and `@nexpress/app`
 also verify the exact bounded API error envelope, known code/status mapping,

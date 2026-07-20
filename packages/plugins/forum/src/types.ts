@@ -9,6 +9,20 @@ export interface NpForumCategory {
   label: string;
 }
 
+export interface NpForumAttachmentPolicy {
+  enabled: boolean;
+  maxFiles: number;
+  maxFileSizeBytes: number;
+}
+
+export interface NpForumAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  filesize: number;
+  downloadUrl: string;
+}
+
 export interface NpForumBoard {
   id: string;
   key: string;
@@ -20,6 +34,7 @@ export interface NpForumBoard {
   commentsEnabled: boolean;
   pageSize: number;
   categories: NpForumCategory[];
+  attachments: NpForumAttachmentPolicy;
 }
 
 export interface NpForumAuthor {
@@ -41,6 +56,7 @@ export interface NpForumPostSummary {
   memberAuthorId: string | null;
   author: NpForumAuthor | null;
   engagement: NpContentEngagementSummary;
+  attachmentCount: number;
 }
 
 export interface NpForumPostListQuery {
@@ -122,6 +138,7 @@ export interface NpForumMessages {
   loginRequired: string;
   commentsLocked: string;
   emptyBody: string;
+  attachments: string;
 }
 
 export interface NpForumBoardIndexSkinProps {
@@ -153,6 +170,7 @@ export interface NpForumPostDetailSkinProps {
   authorActions: ReactNode;
   engagement: ReactNode;
   comments: ReactNode;
+  attachments: NpForumAttachment[];
   messages: NpForumMessages;
 }
 

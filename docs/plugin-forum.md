@@ -19,8 +19,8 @@ After setup:
 
 1. Open Admin → Community → Forum boards.
 2. Create a board, choose a stable ASCII key such as `free`, and publish it.
-3. Choose the skin, member-write mode, moderation mode, comment default, page
-   size, and optional categories.
+3. Choose the skin, member-write mode, moderation mode, comment default,
+   attachment limits, page size, and optional categories.
 4. Visit `/boards`.
 
 Board keys form `/boards/<boardKey>` URLs. Post detail URLs use the immutable
@@ -64,9 +64,13 @@ actions, and relationship targets over one exact runtime definition.
 | Allow comments on new posts | Sets new posts to unlocked or locked; staff can change each post later |
 | Posts per page              | Board-specific list size from 5 to 100                                 |
 | Categories                  | Stable key plus display label pairs, scoped to the board               |
+| Allow attachments           | Allows new files; existing files stay visible/removable if disabled    |
+| Maximum attachments         | Board-specific cap from 1 to 20 files                                  |
+| Maximum attachment size     | Per-file cap from 1 to 25 MiB                                          |
 
 Staff manage `pinned`, `locked`, and status from the Forum posts collection.
-Members can submit only `board`, `title`, `body`, and `category`. The core
+Members can submit only `board`, `title`, `body`, `category`, and
+`attachments`. The core
 member-write pipeline rejects any attempt to send operator fields before
 moderation or persistence, checks the current board policy, prevents authors
 from moving a post to another board, and derives `published` versus `pending`
@@ -76,6 +80,53 @@ board normally publishes immediately.
 Deleting a board with posts is intentionally restricted by the relationship
 foreign key. Move or delete its posts first so a stale post can never point to
 a missing board.
+
+## Attachments
+
+The composer uploads attachments through the member-owned media endpoint and
+persists only exact `{ file: <media UUID> }` rows on the post. Forum storage is
+therefore not a parallel blob system: `np_media` owns each object and the
+normal document media-reference table tracks its use. Removing a newly added
+file deletes it immediately; removing an existing file deletes it after the
+post update succeeds. If a browser is closed before saving, the upload remains
+an unreferenced media row for normal operator cleanup rather than risking the
+deletion of a file another request has already attached.
+
+Supported extensions are `png`, `jpg`, `jpeg`, `gif`, `webp`, `pdf`, `zip`,
+`7z`, `rar`, `gz`, `txt`, `csv`, `md`, `hwp`, `hwpx`, `doc`, `docx`, `xls`,
+`xlsx`, `ppt`, `pptx`, `odt`, `ods`, and `odp`. Upload accepts a safe basename
+only and requires the extension, browser-declared MIME type, and file
+signature/container to agree. SVG, HTML, executable formats, empty files,
+binary data disguised as text, and files above the framework or board cap fail
+before persistence. Text and CSV inspection accepts UTF-8 and Korean
+CP949/EUC-KR. Members may attach only their own active uploads; staff retain
+the normal collection-management path.
+
+Lowering or disabling a board policy does not trap old posts: an owner may
+save or remove attachments that were already accepted, but cannot add a new
+file outside the current policy.
+
+`GET /api/media/attachments/:id` is available to the uploader while the file
+is unreferenced or belongs to a private/pending post. It becomes anonymously
+downloadable only when at least one current-site `published` + `public`
+document references it through `attachments.file`. Every successful response
+uses `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, a
+sandbox CSP, and `private, no-store`; user content is never rendered inline.
+`DELETE /api/members/media/attachments/:id` is uploader-only and returns a
+conflict while any document reference remains.
+Core serializes reference creation and soft-delete on the media row, ensuring
+that concurrent submit/delete requests cannot leave a post pointing at a
+deleted object.
+
+Changing the forum attachment fields changes the generated collection schema.
+After adding or upgrading the plugin, regenerate, review, and apply the
+migration:
+
+```bash
+pnpm schema:gen
+pnpm db:generate
+pnpm db:migrate
+```
 
 ## List discovery
 
@@ -189,10 +240,11 @@ export const forum = createForum({
 
 The factory rejects malformed IDs, duplicate IDs (including collisions with
 either bundled skin), incomplete render contracts, and an unregistered default
-skin during module evaluation. The composer props contain route-owned form or
-authentication content, so skins control the create/edit presentation without
-duplicating member authentication, ownership, upload, or collection-write
-policy. Projects that do not consume
+skin during module evaluation. The detail props contain resolved attachment
+descriptors and the composer props contain route-owned form or authentication
+content, so skins control presentation without duplicating member
+authentication, file ownership, upload, download visibility, or
+collection-write policy. Projects that do not consume
 `@nexpress/app/styles/globals.css` should import
 `@nexpress/plugin-forum/styles.css` themselves.
 
@@ -288,7 +340,9 @@ forum's configurable collection slugs.
 
 The plugin manifest also publishes stable selectors for the root, board index,
 post list, discovery controls, notice list, normal post rows, post detail,
-composer, comments, board-directory block, post-feed block, and feed items.
+composer, attachment list/items, comments, board-directory block, post-feed
+block, and feed items. Attachment markup uses
+`data-np-forum-attachments="list"` and `data-np-forum-attachment="<mediaId>"`.
 It also publishes `engagement` and `engagement-summary` slots backed by
 `data-np-forum-engagement="post|summary"`; individual totals expose
 `data-np-forum-metric="views|comments|reactions"`.
@@ -307,13 +361,14 @@ the plugin-owned blocks are the supported integration boundary.
 The foundation includes multi-board Admin configuration, classic and
 community-full index/list/detail/composer skins, member create/edit/delete,
 owner and board policy gates, pending moderation, pin/lock controls,
-categories, rich-text image upload, comments, board-scoped search and category
+categories, validated member attachments, rich-text image upload, comments,
+board-scoped search and category
 discovery, daily-unique views, document recommendations, batched engagement
 counts, bounded popular ranking, home-page directory/feed blocks, a
 community-home pattern, a theme-neutral style contract, plugin i18n catalogs,
 and an Admin dashboard metric.
 
-Anonymous posting, board passwords, attachment lists, and board-specific
-moderator roles are not part of this first contract. They should
+Anonymous posting, board passwords, and board-specific moderator roles are not
+part of this first contract. They should
 build on the shared community capability and audit surfaces instead of adding
 parallel authentication or moderation systems inside the plugin.

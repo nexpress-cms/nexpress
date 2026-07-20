@@ -15,7 +15,7 @@ import { ForumEngagementCounts } from "./engagement.js";
 function boardPolicyItems(
   board: NpForumBoard,
   messages: NpForumMessages,
-): Array<{ id: "comments" | "moderation" | "write"; label: string }> {
+): Array<{ id: "attachments" | "comments" | "moderation" | "write"; label: string }> {
   const write = {
     members: messages.writeMembers,
     staff: messages.writeStaff,
@@ -34,6 +34,14 @@ function boardPolicyItems(
       id: "comments",
       label: board.commentsEnabled ? messages.commentsOpen : messages.commentsClosed,
     },
+    ...(board.attachments.enabled
+      ? [
+          {
+            id: "attachments" as const,
+            label: `${messages.attachments} · ${board.attachments.maxFiles.toLocaleString(messages.locale)}`,
+          },
+        ]
+      : []),
   ];
 }
 
@@ -155,6 +163,14 @@ function PostRow({
         </div>
         <h3>
           <Link href={`${basePath}/${board.key}/${post.id}`}>{post.title}</Link>
+          {post.attachmentCount > 0 ? (
+            <span
+              className="np-forum-attachment-count"
+              aria-label={`${messages.attachments}: ${post.attachmentCount.toLocaleString(messages.locale)}`}
+            >
+              📎 {post.attachmentCount.toLocaleString(messages.locale)}
+            </span>
+          ) : null}
         </h3>
         <div className="np-forum-community-row-mobile-meta">
           <ForumAuthor post={post} messages={messages} />
@@ -515,6 +531,27 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
           ) : null}
         </header>
         <div className="np-forum-post-body np-forum-rich-text">{props.body}</div>
+        {props.attachments.length > 0 ? (
+          <section
+            className="np-forum-attachments np-forum-community-attachments"
+            data-np-forum-attachments="list"
+          >
+            <div className="np-forum-community-section-heading">
+              <h2>{messages.attachments}</h2>
+              <p>{props.attachments.length.toLocaleString(messages.locale)}</p>
+            </div>
+            <ul>
+              {props.attachments.map((attachment) => (
+                <li key={attachment.id} data-np-forum-attachment={attachment.id}>
+                  <a href={attachment.downloadUrl} download>
+                    <span>{attachment.filename}</span>
+                    <small>{formatFileSize(attachment.filesize, messages.locale)}</small>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         {props.engagement}
         {props.comments ? <section className="np-forum-comments">{props.comments}</section> : null}
         <footer className="np-forum-community-detail-footer">
@@ -524,6 +561,13 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
       </article>
     </main>
   );
+}
+
+function formatFileSize(bytes: number, locale: string): string {
+  if (bytes < 1024) return `${bytes.toLocaleString(locale)} B`;
+  const megabytes = bytes / (1024 * 1024);
+  if (megabytes >= 1) return `${megabytes.toLocaleString(locale, { maximumFractionDigits: 1 })} MB`;
+  return `${(bytes / 1024).toLocaleString(locale, { maximumFractionDigits: 1 })} KB`;
 }
 
 function renderPostComposer(props: NpForumPostComposerSkinProps) {

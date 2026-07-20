@@ -23,6 +23,9 @@ describe("forum runtime contracts", () => {
         moderation: "pending",
         commentsEnabled: true,
         pageSize: 20,
+        attachmentsEnabled: true,
+        maxAttachments: 5,
+        maxAttachmentSizeMb: 20,
         categories: [{ key: "question", label: " 질문 " }],
       }),
     ).toEqual({
@@ -36,6 +39,11 @@ describe("forum runtime contracts", () => {
       commentsEnabled: true,
       pageSize: 20,
       categories: [{ key: "question", label: "질문" }],
+      attachments: {
+        enabled: true,
+        maxFiles: 5,
+        maxFileSizeBytes: 20 * 1024 * 1024,
+      },
     });
   });
 
@@ -63,8 +71,13 @@ describe("forum runtime contracts", () => {
       moderation: "published",
       commentsEnabled: true,
       pageSize: 20,
+      attachmentsEnabled: true,
+      maxAttachments: 5,
+      maxAttachmentSizeMb: 20,
     };
     expect(() => normalizeForumBoard({ ...base, writeMode: "everyone" })).toThrow(/write mode/u);
     expect(() => normalizeForumBoard({ ...base, pageSize: 0 })).toThrow(/page size/u);
+    expect(() => normalizeForumBoard({ ...base, maxAttachments: 21 })).toThrow(/attachment/u);
+    expect(() => normalizeForumBoard({ ...base, maxAttachmentSizeMb: 26 })).toThrow(/attachment/u);
   });
 });
