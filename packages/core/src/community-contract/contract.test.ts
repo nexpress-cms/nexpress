@@ -14,6 +14,9 @@ import {
   npRequireCommunityRoleCatalog,
   npRequireCommunitySettings,
   npRequireCommunitySettingsPatch,
+  npRequireContentEngagementSummary,
+  npRequireContentViewReceiptWire,
+  npRequireContentViewRow,
   npRequireFollowTarget,
   npRequireMarkNotificationsReadRequest,
   npRequireNotificationKindCatalog,
@@ -210,11 +213,67 @@ describe("community contract", () => {
       targetId: COMMENT_ID,
       kind: "like",
     });
+    expect(npRequireReactionTarget({ targetType: "forum-posts", targetId: TARGET_ID })).toEqual({
+      targetType: "forum-posts",
+      targetId: TARGET_ID,
+      kind: "like",
+    });
     expect(npRequireFollowTarget({ targetType: "member", targetId: TARGET_ID })).toEqual({
       targetType: "member",
       targetId: TARGET_ID,
     });
-    expect(() => npRequireReactionTarget({ targetType: "post", targetId: COMMENT_ID })).toThrow();
+    expect(() =>
+      npRequireReactionTarget({ targetType: "Forum posts", targetId: COMMENT_ID }),
+    ).toThrow();
+  });
+
+  it("validates exact daily view receipts and aggregate invariants", () => {
+    expect(
+      npRequireContentViewRow({
+        id: COMMENT_ID,
+        targetType: "forum-posts",
+        targetId: TARGET_ID,
+        viewerHash: "a".repeat(64),
+        viewedOn: "2026-07-20",
+        siteId: "default",
+        createdAt: new Date(NOW),
+      }).viewedOn,
+    ).toBe("2026-07-20");
+    expect(
+      npRequireContentEngagementSummary({
+        targetType: "forum-posts",
+        targetId: TARGET_ID,
+        viewCount: 12,
+        commentCount: 3,
+        reactionCount: 2,
+        reactions: { like: 2 },
+      }).reactionCount,
+    ).toBe(2);
+    expect(npRequireContentViewReceiptWire({ counted: false, viewCount: 12 })).toEqual({
+      counted: false,
+      viewCount: 12,
+    });
+    expect(() =>
+      npRequireContentEngagementSummary({
+        targetType: "forum-posts",
+        targetId: TARGET_ID,
+        viewCount: 0,
+        commentCount: 0,
+        reactionCount: 2,
+        reactions: { like: 1 },
+      }),
+    ).toThrow(/sum/u);
+    expect(() =>
+      npRequireContentViewRow({
+        id: COMMENT_ID,
+        targetType: "forum-posts",
+        targetId: TARGET_ID,
+        viewerHash: "raw-cookie",
+        viewedOn: "2026-07-20",
+        siteId: "default",
+        createdAt: new Date(NOW),
+      }),
+    ).toThrow(/SHA-256/u);
   });
 
   it("enforces mark-read and pagination limits", () => {

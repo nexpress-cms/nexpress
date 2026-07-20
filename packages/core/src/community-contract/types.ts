@@ -263,6 +263,31 @@ export interface NpReactionSummaryWire {
   mine: string[];
 }
 
+export interface NpEngagementTarget {
+  targetType: string;
+  targetId: string;
+}
+
+export interface NpContentViewRow extends NpEngagementTarget {
+  id: string;
+  viewerHash: string;
+  viewedOn: string;
+  siteId: string;
+  createdAt: Date;
+}
+
+export interface NpContentViewReceiptWire {
+  counted: boolean;
+  viewCount: number;
+}
+
+export interface NpContentEngagementSummary extends NpEngagementTarget {
+  viewCount: number;
+  commentCount: number;
+  reactionCount: number;
+  reactions: Record<string, number>;
+}
+
 export interface NpFollowRow {
   id: string;
   followerId: string;

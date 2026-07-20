@@ -7,6 +7,7 @@ import {
   npAuditEvents,
   npBans,
   npComments,
+  npContentViews,
   npFollows,
   npMemberMutes,
   npMemberRoles,
@@ -315,6 +316,7 @@ async function getSiteUsageSummaryWithDb(
   // it would silently leave them orphaned.
   const pluginStorage = await countWhere(npPluginStorage, eq(npPluginStorage.siteId, id));
   const comments = await countWhere(npComments, eq(npComments.siteId, id));
+  const contentViews = await countWhere(npContentViews, eq(npContentViews.siteId, id));
   const reactions = await countWhere(npReactions, eq(npReactions.siteId, id));
   const follows = await countWhere(npFollows, eq(npFollows.siteId, id));
   const mutes = await countWhere(npMemberMutes, eq(npMemberMutes.siteId, id));
@@ -337,6 +339,7 @@ async function getSiteUsageSummaryWithDb(
     stringOverrides,
     pluginStorage,
     comments,
+    contentViews,
     reactions,
     follows,
     mutes,
@@ -354,6 +357,7 @@ async function getSiteUsageSummaryWithDb(
       stringOverrides +
       pluginStorage +
       comments +
+      contentViews +
       reactions +
       follows +
       mutes +
@@ -485,6 +489,7 @@ export async function deleteSite(id: string, options?: NpDeleteSiteOptions): Pro
       // Reactions reference comment ids polymorphically, so they
       // go before comments to keep the DB clean even though there's
       // no FK to enforce ordering.
+      await tx.delete(npContentViews).where(eq(npContentViews.siteId, id));
       await tx.delete(npReactions).where(eq(npReactions.siteId, id));
       await tx.delete(npFollows).where(eq(npFollows.siteId, id));
       await tx.delete(npMemberMutes).where(eq(npMemberMutes.siteId, id));

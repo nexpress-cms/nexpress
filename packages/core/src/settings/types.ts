@@ -68,6 +68,7 @@ export interface NpSiteUsage {
   stringOverrides: number;
   pluginStorage: number;
   comments: number;
+  contentViews: number;
   reactions: number;
   follows: number;
   mutes: number;

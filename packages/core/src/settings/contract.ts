@@ -91,6 +91,7 @@ const siteUsageKeys = new Set([
   "stringOverrides",
   "pluginStorage",
   "comments",
+  "contentViews",
   "reactions",
   "follows",
   "mutes",

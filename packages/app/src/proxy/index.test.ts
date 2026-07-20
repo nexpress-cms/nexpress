@@ -141,4 +141,23 @@ describe("shared application proxy rate limiting", () => {
       status: 403,
     });
   });
+
+  it("allows anonymous view receipts without CSRF and rate-limits the route", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "memory");
+    const { proxyModule } = await loadModules();
+    const check = vi.fn().mockResolvedValue({ limited: false, retryAfterSeconds: 60 });
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: { kind: "memory", check },
+    });
+
+    const response = await handler(
+      new NextRequest("http://localhost/api/views", {
+        method: "POST",
+        headers: { "x-forwarded-for": "203.0.113.8" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(check).toHaveBeenCalledWith(expect.any(String), 120, 60_000);
+  });
 });

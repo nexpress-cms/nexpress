@@ -7,3 +7,4 @@
  */
 export { ForumPostForm } from "./client/forum-post-form.js";
 export { ForumPostActions } from "./client/forum-post-actions.js";
+export { ForumPostEngagement } from "./client/forum-post-engagement.js";

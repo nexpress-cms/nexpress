@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { NpContentEngagementSummary } from "@nexpress/core/community-contract";
 
 export type NpForumBoardWriteMode = "members" | "staff" | "closed";
 export type NpForumModerationMode = "published" | "pending";
@@ -39,6 +40,7 @@ export interface NpForumPostSummary {
   updatedAt: Date;
   memberAuthorId: string | null;
   author: NpForumAuthor | null;
+  engagement: NpContentEngagementSummary;
 }
 
 export interface NpForumPostListQuery {
@@ -79,6 +81,12 @@ export interface NpForumMessages {
   staff: string;
   pending: string;
   locked: string;
+  views: string;
+  commentsCount: string;
+  reactions: string;
+  recommend: string;
+  recommended: string;
+  engagementFailed: string;
   pagination: string;
   previous: string;
   next: string;
@@ -143,6 +151,7 @@ export interface NpForumPostDetailSkinProps {
   post: NpForumPostSummary;
   body: ReactNode;
   authorActions: ReactNode;
+  engagement: ReactNode;
   comments: ReactNode;
   messages: NpForumMessages;
 }

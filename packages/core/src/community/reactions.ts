@@ -1,6 +1,6 @@
 import { and, count, eq } from "drizzle-orm";
 
-import { npRequireReactionRow } from "../community-contract/contract.js";
+import { npRequireEngagementTarget, npRequireReactionRow } from "../community-contract/contract.js";
 import type { NpReactionRow, NpReactToInput } from "../community-contract/types.js";
 import { getDb } from "../db/runtime.js";
 import { npComments, npReactions } from "../db/schema/community.js";
@@ -13,6 +13,10 @@ import { type CommunityScope } from "./roles.js";
 import { createNotification } from "./notifications.js";
 import { applyReputation } from "./reputation.js";
 import { getCommunitySettings } from "./settings.js";
+import {
+  npResolveDocumentEngagementTarget,
+  type NpResolvedDocumentEngagementTarget,
+} from "./engagement-target.js";
 
 /**
  * Reactions service. `kind` is gated by both:
@@ -30,6 +34,10 @@ export const DEFAULT_REACTION_KINDS = ["like"] as const;
 const KIND_RE = /^[a-z][a-z0-9_-]{0,29}$/;
 
 export type { NpReactionRow, NpReactToInput };
+
+interface NpResolvedReactionTarget extends NpResolvedDocumentEngagementTarget {
+  scopes: ReadonlyArray<{ type: CommunityScope; id: string }>;
+}
 
 function validateKind(kind: string): void {
   if (!KIND_RE.test(kind)) {
@@ -61,65 +69,69 @@ export async function addReaction(input: NpReactToInput): Promise<NpReactionRow>
     ]);
   }
 
-  // #311 — withMemberWrite enforces the ban gate by structure.
-  // #340 — for comment targets we now derive the parent
-  // collection so collection-scoped bans block reactions
-  // consistently with comments. The lookup is a single PK
-  // select; doAddReaction re-reads the row downstream for
-  // siteId, but the redundancy is negligible vs. introducing
-  // a one-call helper. Other target types (profile, etc.)
-  // stay site-wide-only for now.
-  const scopes = await deriveScopesFor(input);
-  return withMemberWrite(input.memberId, scopes, async () => {
-    return doAddReaction(input);
+  const target = await resolveReactionTarget(input.targetType, input.targetId);
+  return withMemberWrite(input.memberId, target.scopes, async () => {
+    return doAddReaction(input, target);
   });
 }
 
-async function deriveScopesFor(
-  input: NpReactToInput,
-): Promise<ReadonlyArray<{ type: CommunityScope; id: string }>> {
-  if (input.targetType !== "comment") return [];
+async function resolveReactionTarget(
+  targetType: string,
+  targetId: string,
+): Promise<NpResolvedReactionTarget> {
+  const checked = npRequireEngagementTarget({ targetType, targetId });
+  if (checked.targetType !== "comment") {
+    const target = await npResolveDocumentEngagementTarget(
+      checked.targetType,
+      checked.targetId,
+      "reactions",
+    );
+    return {
+      ...target,
+      scopes: [{ type: "collection", id: target.targetType }],
+    };
+  }
+
   const db = getDb();
   const [comment] = (await db
-    .select({ targetType: npComments.targetType })
+    .select({
+      targetType: npComments.targetType,
+      memberId: npComments.memberId,
+      status: npComments.status,
+      siteId: npComments.siteId,
+    })
     .from(npComments)
-    .where(eq(npComments.id, input.targetId))
-    .limit(1)) as Array<{ targetType: string }>;
-  if (!comment) return [];
-  return [{ type: "collection", id: comment.targetType }];
-}
-
-async function doAddReaction(input: NpReactToInput): Promise<NpReactionRow> {
-  const db = getDb();
-
-  // Phase 18 — derive site_id from the target so the reaction
-  // is grouped with its target's tenant. Today only `comment`
-  // targets are wired; the lookup is a single PK select. Falls
-  // back to the request resolver / default site so legacy
-  // single-tenant rows still get a valid value.
-  //
-  // Issue #215 — also enforce that the request's tenant matches
-  // the target's. A member acting on site A can't react to
-  // site B's content just by passing B's UUID; without this,
-  // the reaction lands under B (correct grouping) but still
-  // fans out a notification through A's request context, and
-  // we expose no UI affordance that would justify the cross-
-  // tenant call. Reject outright.
-  const requestSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-  let targetSiteId: string;
-  if (input.targetType === "comment") {
-    const [t] = (await db
-      .select({ siteId: npComments.siteId })
-      .from(npComments)
-      .where(eq(npComments.id, input.targetId))
-      .limit(1)) as Array<{ siteId: string }>;
-    targetSiteId = t?.siteId ?? requestSiteId;
-  } else {
-    targetSiteId = requestSiteId;
+    .where(eq(npComments.id, checked.targetId))
+    .limit(1)) as Array<{
+    targetType: string;
+    memberId: string;
+    status: string;
+    siteId: string;
+  }>;
+  if (!comment) throw new NpNotFoundError("comment", checked.targetId);
+  if (comment.status === "deleted") {
+    throw new NpValidationError("Invalid input", [
+      { field: "targetId", message: "Cannot react to a deleted comment" },
+    ]);
   }
-  if (targetSiteId !== requestSiteId) {
+  const requestSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+  if (comment.siteId !== requestSiteId) {
     throw new NpForbiddenError("reaction", "cross-site");
   }
+  return {
+    targetType: checked.targetType,
+    targetId: checked.targetId,
+    siteId: comment.siteId,
+    recipientId: comment.memberId,
+    scopes: [{ type: "collection", id: comment.targetType }],
+  };
+}
+
+async function doAddReaction(
+  input: NpReactToInput,
+  target: NpResolvedReactionTarget,
+): Promise<NpReactionRow> {
+  const db = getDb();
 
   // Idempotent insert via ON CONFLICT. The previous select-then-insert
   // pattern lost a race when two identical clicks arrived in parallel —
@@ -134,11 +146,11 @@ async function doAddReaction(input: NpReactToInput): Promise<NpReactionRow> {
   const inserted = (await db
     .insert(npReactions)
     .values({
-      targetType: input.targetType,
-      targetId: input.targetId,
+      targetType: target.targetType,
+      targetId: target.targetId,
       memberId: input.memberId,
       kind: input.kind,
-      siteId: targetSiteId,
+      siteId: target.siteId,
     })
     .onConflictDoNothing()
     .returning()) as NpReactionRow[];
@@ -152,10 +164,11 @@ async function doAddReaction(input: NpReactToInput): Promise<NpReactionRow> {
       .from(npReactions)
       .where(
         and(
-          eq(npReactions.targetType, input.targetType),
-          eq(npReactions.targetId, input.targetId),
+          eq(npReactions.targetType, target.targetType),
+          eq(npReactions.targetId, target.targetId),
           eq(npReactions.memberId, input.memberId),
           eq(npReactions.kind, input.kind),
+          eq(npReactions.siteId, target.siteId),
         ),
       )
       .limit(1)) as NpReactionRow[];
@@ -165,33 +178,26 @@ async function doAddReaction(input: NpReactToInput): Promise<NpReactionRow> {
 
   // Fan out a notification + apply reputation delta to the recipient.
   // Self-reactions are filtered for both — neither makes sense.
-  if (input.targetType === "comment") {
-    const [comment] = (await db
-      .select({ memberId: npComments.memberId })
-      .from(npComments)
-      .where(eq(npComments.id, input.targetId))
-      .limit(1)) as Array<{ memberId: string }>;
-    if (comment && comment.memberId !== input.memberId) {
-      await createNotification({
-        memberId: comment.memberId,
-        kind: "reaction.received",
-        actorMemberId: input.memberId,
-        payload: {
-          reactorId: input.memberId,
-          targetType: input.targetType,
-          targetId: input.targetId,
-          reactionKind: input.kind,
-        },
-      });
-      await applyReputation(comment.memberId, {
-        kind: "reaction.received",
-        reactionKind: input.kind,
-        recipientId: comment.memberId,
+  if (target.recipientId && target.recipientId !== input.memberId) {
+    await createNotification({
+      memberId: target.recipientId,
+      kind: "reaction.received",
+      actorMemberId: input.memberId,
+      payload: {
         reactorId: input.memberId,
-        targetType: input.targetType,
-        targetId: input.targetId,
-      });
-    }
+        targetType: target.targetType,
+        targetId: target.targetId,
+        reactionKind: input.kind,
+      },
+    });
+    await applyReputation(target.recipientId, {
+      kind: "reaction.received",
+      reactionKind: input.kind,
+      recipientId: target.recipientId,
+      reactorId: input.memberId,
+      targetType: target.targetType,
+      targetId: target.targetId,
+    });
   }
 
   return row;
@@ -199,6 +205,10 @@ async function doAddReaction(input: NpReactToInput): Promise<NpReactionRow> {
 
 export async function removeReaction(input: NpReactToInput): Promise<void> {
   validateKind(input.kind);
+  const checked = npRequireEngagementTarget({
+    targetType: input.targetType,
+    targetId: input.targetId,
+  });
   const db = getDb();
   // Look up the reaction's recipient BEFORE deleting so the
   // reputation event has the right context. We only emit
@@ -215,17 +225,35 @@ export async function removeReaction(input: NpReactToInput): Promise<void> {
   // resolver value, the row only deletes when both ids agree.
   const requestSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   let recipientId: string | null = null;
-  if (input.targetType === "comment") {
+  if (checked.targetType === "comment") {
     const [comment] = (await db
       .select({ memberId: npComments.memberId, siteId: npComments.siteId })
       .from(npComments)
-      .where(eq(npComments.id, input.targetId))
+      .where(eq(npComments.id, checked.targetId))
       .limit(1)) as Array<{ memberId: string; siteId: string }>;
     if (comment && comment.siteId !== requestSiteId) {
       throw new NpForbiddenError("reaction", "cross-site");
     }
     if (comment && comment.memberId !== input.memberId) {
       recipientId = comment.memberId;
+    }
+  } else {
+    try {
+      const target = await npResolveDocumentEngagementTarget(
+        checked.targetType,
+        checked.targetId,
+        "reactions",
+        { requirePublic: false },
+      );
+      if (target.recipientId !== input.memberId) recipientId = target.recipientId;
+    } catch (error) {
+      if (error instanceof NpForbiddenError) throw error;
+      if (!(error instanceof NpNotFoundError) && !(error instanceof NpValidationError)) {
+        throw error;
+      }
+      // A retired collection capability or already-deleted target must not
+      // trap a member's existing reaction. The site-scoped delete below still
+      // prevents cross-tenant removal; only recipient reputation is skipped.
     }
   }
 
@@ -238,8 +266,8 @@ export async function removeReaction(input: NpReactToInput): Promise<void> {
     .delete(npReactions)
     .where(
       and(
-        eq(npReactions.targetType, input.targetType),
-        eq(npReactions.targetId, input.targetId),
+        eq(npReactions.targetType, checked.targetType),
+        eq(npReactions.targetId, checked.targetId),
         eq(npReactions.memberId, input.memberId),
         eq(npReactions.kind, input.kind),
         eq(npReactions.siteId, requestSiteId),
@@ -253,8 +281,8 @@ export async function removeReaction(input: NpReactToInput): Promise<void> {
       reactionKind: input.kind,
       recipientId,
       reactorId: input.memberId,
-      targetType: input.targetType,
-      targetId: input.targetId,
+      targetType: checked.targetType,
+      targetId: checked.targetId,
     });
   }
 }
@@ -267,11 +295,20 @@ export async function countReactions(
   targetType: string,
   targetId: string,
 ): Promise<Record<string, number>> {
+  const target = npRequireEngagementTarget({ targetType, targetId });
+  await assertReactableExists(target.targetType, target.targetId);
   const db = getDb();
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const rows = (await db
     .select({ kind: npReactions.kind, total: count() })
     .from(npReactions)
-    .where(and(eq(npReactions.targetType, targetType), eq(npReactions.targetId, targetId)))
+    .where(
+      and(
+        eq(npReactions.siteId, siteId),
+        eq(npReactions.targetType, target.targetType),
+        eq(npReactions.targetId, target.targetId),
+      ),
+    )
     .groupBy(npReactions.kind)) as Array<{ kind: string; total: number | string }>;
   const out: Record<string, number> = {};
   for (const row of rows) out[row.kind] = Number(row.total);
@@ -287,47 +324,28 @@ export async function listMemberReactions(
   targetId: string,
   memberId: string,
 ): Promise<string[]> {
+  const target = npRequireEngagementTarget({ targetType, targetId });
+  await assertReactableExists(target.targetType, target.targetId);
   const db = getDb();
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const rows = (await db
     .select({ kind: npReactions.kind })
     .from(npReactions)
     .where(
       and(
-        eq(npReactions.targetType, targetType),
-        eq(npReactions.targetId, targetId),
+        eq(npReactions.targetType, target.targetType),
+        eq(npReactions.targetId, target.targetId),
         eq(npReactions.memberId, memberId),
+        eq(npReactions.siteId, siteId),
       ),
     )) as Array<{ kind: string }>;
   return rows.map((r) => r.kind);
 }
 
 /**
- * Internal helper — assert that the target exists for the given kind.
- * Today only `comment` is supported. The polymorphic shape leaves
- * room for `thread` / `reply` once a thread schema lands; the forum
- * plugin shipped without one (it reuses `np_comments` under the
- * `discussions` collection), so widening this surface is on hold
- * until a separate threads design.
+ * Internal helper — assert that a comment or reaction-enabled public
+ * collection document exists in the current site.
  */
 export async function assertReactableExists(targetType: string, targetId: string): Promise<void> {
-  if (targetType !== "comment") {
-    throw new NpValidationError("Invalid input", [
-      {
-        field: "targetType",
-        message: `Reactions on '${targetType}' aren't supported yet — only 'comment' is wired today.`,
-      },
-    ]);
-  }
-  const db = getDb();
-  const [comment] = (await db
-    .select({ id: npComments.id, status: npComments.status })
-    .from(npComments)
-    .where(eq(npComments.id, targetId))
-    .limit(1)) as Array<{ id: string; status: string }>;
-  if (!comment) throw new NpNotFoundError("comment", targetId);
-  if (comment.status === "deleted") {
-    throw new NpValidationError("Invalid input", [
-      { field: "targetId", message: "Cannot react to a deleted comment" },
-    ]);
-  }
+  await resolveReactionTarget(targetType, targetId);
 }

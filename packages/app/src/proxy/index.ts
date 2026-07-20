@@ -104,6 +104,9 @@ const CSRF_SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
  *     submit on CSRF would 403 every fresh visitor. The route
  *     has its own per-IP rate limit (see RATE_LIMITS) to discourage
  *     subscribe-spam.
+ *   - `/api/views`: anonymous daily-unique content view receipt. The
+ *     first-party visitor cookie is HttpOnly and the handler persists only
+ *     its hash; a per-IP rate limit bounds write amplification.
  *   - `/api/internal/*`: bearer-token auth via NP_SCHEDULER_TOKEN.
  *     No browser session involved.
  *   - `/api/plugins/<id>/<...>` for `<...>` other than the
@@ -119,6 +122,7 @@ const CSRF_EXEMPT_PATTERNS: readonly RegExp[] = [
   /^\/api\/members\/(login|logout|register|forgot-password|reset-password|verify|refresh)$/,
   /^\/api\/admin\/setup$/,
   /^\/api\/newsletter$/,
+  /^\/api\/views$/,
   /^\/api\/internal\//,
   // plugins/<id>/<segment>/... where <segment> != "actions" — the
   // catch-all proxy. plugins/<id> (CRUD) and plugins/<id>/actions/<id>
@@ -154,6 +158,7 @@ const RATE_LIMITS: Array<{ pattern: RegExp; limit: number; windowMs: number }> =
   // Newsletter subscribe — anonymous public form, no CSRF gate, so the
   // IP bucket is the only floor against subscribe-spam. Keep tight.
   { pattern: /^\/api\/newsletter$/, limit: 5, windowMs: 60_000 },
+  { pattern: /^\/api\/views$/, limit: 120, windowMs: 60_000 },
   // Phase 20.1 — job actions that do real work or bulk fan-out get
   // tighter limits than the general /api/admin/ bucket. Each
   // retry-all call fires up to 200 retries; enqueue runs an

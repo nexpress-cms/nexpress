@@ -2,7 +2,8 @@
 
 Multi-board forum plugin for [NexPress](https://github.com/nexpress-cms/nexpress).
 It combines native board/post collections, member writes, moderation, rich
-text, comments, and theme-neutral build-time skins.
+text, daily-unique views, recommendations, bounded popular feeds, comments,
+and theme-neutral build-time skins.
 
 ## Install
 
@@ -43,7 +44,9 @@ over authentication or write policy. Members can write only board, title, body,
 and category fields; pin, lock, status, board policy, and moderation stay
 operator-owned. Board lists include bounded title/body search, category and
 member filters, canonical filter-preserving pagination, and notices that stay
-out of filtered results.
+out of filtered results. List and detail surfaces share batched view, visible
+comment, and reaction totals; the detail recommendation button uses the same
+Core reaction contract as comments.
 
 Two bundled skins are always available: `classic` for the familiar compact
 table and `community-full` for policy summaries, author identity, status-rich
@@ -57,7 +60,8 @@ The plugin also registers `forum.board-directory` and `forum.post-feed` blocks
 plus a `forum.community-home` pattern. They use the forum factory's configured
 paths and collection slugs internally, expose only published rows from active
 boards, and give themes stable data/style hooks without making either package
-depend on the other.
+depend on the other. The post feed supports latest, notices, and a 1–90 day
+popular mode over at most 200 recent candidates.
 
 See the full [forum guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-forum.md)
 for board settings, skin authoring, policy behavior, and current scope.

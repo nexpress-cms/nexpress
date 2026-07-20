@@ -100,13 +100,13 @@ links.
 
 ## Routes
 
-| Route                            | Surface | Purpose                                 |
-| -------------------------------- | ------- | --------------------------------------- |
-| `/boards`                        | site    | Published board index                   |
-| `/boards/:boardKey`              | site    | Searchable and filterable post list     |
-| `/boards/:boardKey/new`          | member  | Authenticated member composer           |
-| `/boards/:boardKey/:postId`      | site    | Post body, author actions, and comments |
-| `/boards/:boardKey/:postId/edit` | member  | Owner-only edit form                    |
+| Route                            | Surface | Purpose                                  |
+| -------------------------------- | ------- | ---------------------------------------- |
+| `/boards`                        | site    | Published board index                    |
+| `/boards/:boardKey`              | site    | Searchable and filterable post list      |
+| `/boards/:boardKey/new`          | member  | Authenticated member composer            |
+| `/boards/:boardKey/:postId`      | site    | Post body, engagement, actions, comments |
+| `/boards/:boardKey/:postId/edit` | member  | Owner-only edit form                     |
 
 `surface: "member"` selects member chrome; the server route and collection
 pipeline still perform the authentication and ownership checks.
@@ -123,11 +123,45 @@ Every forum registers two self-contained skins:
 `classic` remains the default so an upgrade does not silently change an
 existing board. Select `community-full` per board in Admin, or set
 `defaultSkinId: "community-full"` for the `/boards` index and newly-created
-boards. The full skin exposes notices, categories, search, member filtering,
-numbered pagination, author avatars and display names, created/updated dates,
-pin/lock/moderation state, comments, owner actions, and route-owned composers.
-It does not fabricate counts or capabilities that the route contract does not
-provide.
+boards. Both skins expose the same route-owned view, visible-comment, and
+document-reaction totals. The full skin additionally exposes notices,
+categories, search, member filtering, numbered pagination, author avatars and
+display names, created/updated dates, pin/lock/moderation state, comments,
+owner actions, and route-owned composers.
+
+## Engagement contract
+
+Forum posts opt into all three Core collection features:
+
+```ts
+community: {
+  comments: true,
+  reactions: true,
+  views: true,
+}
+```
+
+`community.reactions` extends the existing reaction API from comments to
+published public documents in that collection. The site's exact
+`community.reactionKinds` allow-list still gates kinds, member authentication
+and CSRF still gate mutations, and collection/site-scoped bans still apply.
+The detail route uses `like` as the forum recommendation action.
+
+`community.views` enables `POST /api/views`. The anonymous endpoint writes at
+most one receipt per target, first-party browser visitor, and UTC calendar day.
+The raw HttpOnly `np-visitor` value, IP address, and user agent are never
+persisted. Core stores only a site/target/day-scoped derivative of the
+browser-side SHA-256 digest, preventing persisted rows from carrying one
+cross-document visitor identifier. The proxy exempts this single anonymous
+endpoint from CSRF and bounds it to 120 requests per IP per minute.
+
+`npListContentEngagement(targetType, targetIds)` aggregates views, visible
+comments, and per-kind reactions in three site-scoped grouped queries. Calls
+are capped at 200 unique document IDs, preserve input order, and return zeroes
+for missing activity. Lists, skins, and home feeds use this batch contract
+instead of issuing per-post queries. Document deletion removes its comments,
+document reactions, and view receipts; site deletion and `plugin doctor`
+include the view table as well.
 
 ## Custom skins
 
@@ -178,27 +212,30 @@ never has to expose an internal collection name in page content.
 | Block type              | Purpose                                                        |
 | ----------------------- | -------------------------------------------------------------- |
 | `forum.board-directory` | Active board cards with descriptions, categories, and policies |
-| `forum.post-feed`       | Bounded latest-discussion or pinned-notice feed                |
+| `forum.post-feed`       | Bounded latest, pinned-notice, or recent-popularity feed       |
 
 The directory supports 1–100 boards, automatic or fixed columns, and toggles
 for descriptions, categories, and policy labels. The feed supports 1–20 rows,
-list or card layout, optional board scoping, and board/category/author/date
-visibility toggles. Leave `boardKey` empty to aggregate active boards; an
+list or card layout, optional board scoping, and board/category/author/date/
+engagement visibility toggles. Leave `boardKey` empty to aggregate active boards; an
 unknown key renders the empty state, while a value outside the board's exact
 2–63 character key contract fails before a query.
 
 `latest` excludes pinned notices so it composes without duplicates beside a
-`notices` feed. Cross-board results retain only rows whose board relation and
-immutable board-key snapshot agree with an active public board. Collection
+`notices` feed. `popular` scans at most the 200 newest non-notice candidates
+inside a configurable 1–90 day window (7 days by default), then ranks them by
+`views + comments × 4 + reactions × 6`. This is a bounded recent-popularity
+signal, not an unbounded all-time table scan. Equal scores fall back to newest
+creation time and then stable document ID. Cross-board results retain only
+rows whose board relation and immutable board-key snapshot agree with an
+active public board. Collection
 reads remain site-scoped, anonymous visibility filtering remains active, and
 only `published` posts reach either feed. Malformed, stale, private, draft, or
 orphaned state therefore fails closed instead of leaking into a home page.
 
-The `forum.community-home` pattern composes a board directory, notice list, and
-latest-discussion cards. It references only forum-owned blocks and remains
-available under every theme. The plugin does not expose a fake `popular` mode:
-that requires a future bounded engagement metric rather than sorting by an
-unrelated timestamp.
+The `forum.community-home` pattern composes a board directory, notice list,
+popular-discussion cards, and latest-discussion cards. It references only
+forum-owned blocks and remains available under every theme.
 
 ## Theme integration
 
@@ -252,6 +289,9 @@ forum's configurable collection slugs.
 The plugin manifest also publishes stable selectors for the root, board index,
 post list, discovery controls, notice list, normal post rows, post detail,
 composer, comments, board-directory block, post-feed block, and feed items.
+It also publishes `engagement` and `engagement-summary` slots backed by
+`data-np-forum-engagement="post|summary"`; individual totals expose
+`data-np-forum-metric="views|comments|reactions"`.
 Every bundled skin marks its root with
 `data-np-forum-skin` and one of the `data-np-forum-surface` values
 `board-index`, `post-list`, `post-detail`, or `composer`. Themes should use
@@ -268,11 +308,12 @@ The foundation includes multi-board Admin configuration, classic and
 community-full index/list/detail/composer skins, member create/edit/delete,
 owner and board policy gates, pending moderation, pin/lock controls,
 categories, rich-text image upload, comments, board-scoped search and category
-discovery, home-page directory/feed blocks, a community-home pattern, a
-theme-neutral style contract, plugin i18n catalogs, and an Admin dashboard
-metric.
+discovery, daily-unique views, document recommendations, batched engagement
+counts, bounded popular ranking, home-page directory/feed blocks, a
+community-home pattern, a theme-neutral style contract, plugin i18n catalogs,
+and an Admin dashboard metric.
 
-Anonymous posting, board passwords, attachment lists, view counters, and
-board-specific moderator roles are not part of this first contract. They should
+Anonymous posting, board passwords, attachment lists, and board-specific
+moderator roles are not part of this first contract. They should
 build on the shared community capability and audit surfaces instead of adding
 parallel authentication or moderation systems inside the plugin.

@@ -12,6 +12,7 @@ import type { NpRouteRenderProps } from "@nexpress/next";
 import { notFound } from "next/navigation";
 
 import { ForumPostActions } from "@nexpress/plugin-forum/client";
+import { ForumPostEngagement } from "@nexpress/plugin-forum/client";
 
 import {
   enrichForumPosts,
@@ -58,7 +59,7 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
     const isOwner = member !== null && post.memberAuthorId === member.id;
     if ((post.status !== "published" || post.visibility !== "public") && !isOwner) notFound();
 
-    const [summary] = await enrichForumPosts([post]);
+    const [summary] = await enrichForumPosts([post], runtime.collections.posts);
     if (!summary) notFound();
     const body: NpRichTextContent | null = isNpRichTextContent(post.body) ? post.body : null;
     const messages = await getForumMessages();
@@ -107,6 +108,26 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
           }}
         />
       ) : null,
+      engagement: (
+        <ForumPostEngagement
+          targetType={runtime.collections.posts}
+          targetId={post.id}
+          initial={summary.engagement}
+          locale={messages.locale}
+          isAuthenticated={
+            member !== null && post.status === "published" && post.visibility === "public"
+          }
+          trackViews={post.status === "published" && post.visibility === "public"}
+          labels={{
+            views: messages.views,
+            comments: messages.commentsCount,
+            reactions: messages.reactions,
+            recommend: messages.recommend,
+            recommended: messages.recommended,
+            failed: messages.engagementFailed,
+          }}
+        />
+      ),
       comments,
       messages,
     });

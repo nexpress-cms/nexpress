@@ -1,6 +1,7 @@
 import {
   type AnyPgColumn,
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -278,10 +279,8 @@ export const npComments = pgTable(
 );
 
 /**
- * Polymorphic reactions. `target_type` is the surface — only
- * `'comment'` is wired today; `'thread'` / `'reply'` are reserved
- * for a future threads schema (the forum plugin shipped without
- * one, reusing `np_comments` under the `discussions` collection).
+ * Polymorphic reactions. `target_type` is either `comment` or a
+ * collection slug whose config explicitly enables document reactions.
  * `kind` is configurable per site — default vocabulary in v1 is
  * just `'like'`. The unique constraint enforces "one reaction-of-
  * kind per member per target," so toggling a like is an upsert /
@@ -305,6 +304,39 @@ export const npReactions = pgTable(
     index("np_reactions_target_idx").on(table.targetType, table.targetId),
     index("np_reactions_site_idx").on(table.siteId),
     unique("np_reactions_unique").on(table.targetType, table.targetId, table.memberId, table.kind),
+  ],
+);
+
+/**
+ * Daily-unique public document views. The browser receives an opaque
+ * first-party visitor cookie; the application hashes that value before Core
+ * receives it, then Core derives a site/target/day-scoped digest for storage.
+ * The unique key therefore caps one target to one view per visitor per UTC
+ * day without leaving a stable cross-target identifier in persistence. Raw
+ * cookies, IP addresses, and user agents are never stored. The target remains polymorphic because
+ * collection tables are generated at build time and cannot carry one FK.
+ */
+export const npContentViews = pgTable(
+  "np_content_views",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    targetType: text("target_type").notNull(),
+    targetId: uuid("target_id").notNull(),
+    viewerHash: text("viewer_hash").notNull(),
+    viewedOn: date("viewed_on", { mode: "string" }).notNull(),
+    siteId: text("site_id").default("default").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("np_content_views_target_idx").on(table.siteId, table.targetType, table.targetId),
+    index("np_content_views_day_idx").on(table.siteId, table.viewedOn),
+    unique("np_content_views_daily_visitor_uq").on(
+      table.siteId,
+      table.targetType,
+      table.targetId,
+      table.viewerHash,
+      table.viewedOn,
+    ),
   ],
 );
 

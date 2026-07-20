@@ -41,7 +41,7 @@ import { buildSearchVector, buildWeightedSearchVectorSql } from "./search.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { runHook } from "../plugins/host.js";
 import { npRevisions, npSlugHistory } from "../db/schema/system.js";
-import { npComments, npReactions, npReports } from "../db/schema/community.js";
+import { npComments, npContentViews, npReactions, npReports } from "../db/schema/community.js";
 import { npMediaRefs } from "../db/schema/media.js";
 import { getDb } from "../db/runtime.js";
 import {
@@ -1849,6 +1849,11 @@ async function deleteDocumentImpl(
       .delete(npReactions)
       .where(
         sql`${eq(getTableColumn(npReactions as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npReactions as unknown as PgTable, "targetId"), docId)}`,
+      );
+    await tx
+      .delete(npContentViews)
+      .where(
+        sql`${eq(getTableColumn(npContentViews as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npContentViews as unknown as PgTable, "targetId"), docId)}`,
       );
     // Doc-level reports (sites that file `target_type=$collection`
     // reports against a post / discussion). The shipped report API

@@ -8,7 +8,9 @@ integration contract.
 The theme does not import `@nexpress/plugin-forum`, query forum collections, or
 assume the plugin is active. Without the plugin it works as a complete article
 community. When the plugin is installed, the theme enhances its documented
-`--np-forum-*` variables and `data-np-forum-*` hooks.
+`--np-forum-*` variables and `data-np-forum-*` hooks, including post
+engagement summaries and the bounded-window popular feed. The theme never
+owns forum queries, ranking, view receipts, or reaction state.
 
 ```bash
 pnpm add @nexpress/theme-community

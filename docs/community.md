@@ -17,7 +17,7 @@
 3. [Member Authentication](#3-member-authentication)
 4. [SSO Providers](#4-sso-providers)
 5. [Comments](#5-comments)
-6. [Reactions and Follows](#6-reactions-and-follows)
+6. [Reactions, Views, and Follows](#6-reactions-views-and-follows)
 7. [Notifications](#7-notifications)
 8. [Member-Authored Content](#8-member-authored-content)
 9. [Moderation Surface](#9-moderation-surface)
@@ -43,8 +43,8 @@ many independent moving parts. Sites pick what they need:
   not just blog posts. Polymorphic `target_type` /
   `target_id`.
 - **Reactions / follows / notifications** (Phase 9.3).
-- **Forum** (Phase 9.4) — `@nexpress/plugin-forum`,
-  `discussions` collection, no new community-only tables.
+- **Forum** — `@nexpress/plugin-forum`, native board/post collections,
+  document reactions, and daily-unique view receipts.
 - **Moderation** (Phase 9.5 / 9.5a / 9.5b) — reports queue,
   bans (scoped), audit log, role-grant UI.
 - **SSO** (Phase 9.6a–e) — pluggable OAuth providers via
@@ -186,9 +186,9 @@ Linked identities surface in:
 ## 5. Comments
 
 `createComment({ targetType, targetId, bodyMd, memberId })`.
-Polymorphic — `targetType` can be any collection slug, plus
-`thread` / `reply` (forum) and any future surface that opts
-in. Comments support:
+Polymorphic — `targetType` is an opted-in collection slug; forum post comments
+therefore use the configured forum-post collection slug rather than a parallel
+thread schema. Comments support:
 
 - Nested replies via `parent_id`. Visual nesting is one
   level by default; the column allows arbitrary depth for
@@ -207,7 +207,7 @@ Edits go through the same gates (Phase 9.7n closed #123).
 
 ---
 
-## 6. Reactions and Follows
+## 6. Reactions, Views, and Follows
 
 `addReaction({ memberId, targetType, targetId, kind })` with
 idempotent `ON CONFLICT` insert. The set of allowed `kind`
@@ -215,13 +215,33 @@ values is gated by the admin's `community.reactionKinds`
 allow-list — defaults to `["like"]`, sites add
 `["like", "love", "celebrate", ...]`.
 
+Targets may be `comment` or a published public document from a collection that
+explicitly sets `community.reactions: true`. Document reactions use the same
+site boundary, collection-scoped ban checks, recipient notification, and
+reputation event as comments. A disabled collection or missing/private target
+fails before insertion.
+
+Collections opt into anonymous daily-unique document views separately with
+`community.views: true`. `POST /api/views` owns an HttpOnly first-party
+`np-visitor` cookie and passes only its SHA-256 digest to Core. Core derives a
+second site/target/day-scoped digest, so persisted rows cannot use one stable
+identifier to connect a visitor across documents or days. `np_content_views`
+stores no raw cookie, IP address, or user agent and has one unique row per
+site, target, scoped digest, and UTC day. Only published public documents can
+receive a view.
+
+`npListContentEngagement(targetType, targetIds)` batches views, visible
+comments, and reactions for up to 200 unique IDs in input order. This is the
+supported list/feed primitive; callers should not issue reaction or comment
+count queries once per row.
+
 `follow({ followerId, targetType, targetId })` for members
 following members or threads. Generates `notification:follow`
 fan-out events.
 
-Counts via `countReactions(targetType, targetId)`. Live
-on the comment / doc detail page; updates pessimistically on
-the next render (no realtime push).
+Counts remain available through `countReactions(targetType, targetId)`. The
+forum detail updates its recommendation state after a successful request and
+refreshes the canonical summary; no realtime push is implied.
 
 ---
 
@@ -229,7 +249,7 @@ the next render (no realtime push).
 
 `np_notifications` rows fire on:
 
-- Comment under your own thread / reply / member doc
+- Comment under your own collection document
 - Reply to your comment
 - Reaction on your comment / doc
 - New follow
@@ -315,7 +335,7 @@ Per-member actions on `/admin/members/[id]`:
   media owned by the member. Idempotent.
 
 Cascade behavior (Phase 9.7m / 9.7q): deleting a doc
-cascade-deletes its comments, reactions, and reports. Deleting
+cascade-deletes its comments, reactions, view receipts, and reports. Deleting
 a comment cascades reactions on it.
 
 ---
@@ -385,8 +405,8 @@ Reputation events the framework emits:
 Enforcement points (`assertNotBanned` is the gate):
 
 - Comment create / edit
-- Reaction add (site-wide bans, plus collection-scoped bans for
-  comment targets)
+- Reaction add (site-wide bans plus the collection scope resolved from either
+  a comment or document target)
 - Member-authored doc create / update / delete
 - Reports filing
 - Member media upload
@@ -462,7 +482,7 @@ request scope) leave `site_id` null.
 `@nexpress/core/community-contract` is the client-safe boundary shared by
 Core, API routes, Admin/member views, plugin-facing registries, plugin doctor,
 and live health. It exports the exact request, persisted-row, wire-row,
-settings, notification-preference, moderation, reputation, and role-catalog
+settings, notification-preference, engagement/view, moderation, reputation, and role-catalog
 validators without importing the server-only Core runtime.
 
 Community inputs are exact and bounded: unknown keys, malformed dates and ids,
@@ -474,7 +494,8 @@ target pairs are validated before the best-effort insert, and reputation events
 must name the same recipient whose score would be updated.
 
 `plugin doctor` reports malformed community settings and persisted rows as
-`community.contract`. Adapter and registry failures are contained in a bounded
+`community.contract`, including malformed `np_content_views` rows. Adapter and
+registry failures are contained in a bounded
 runtime diagnostic buffer and surface as the `community` row in Admin Health;
 they are not silently converted into successful moderation or reputation
 results. Malformed persisted notification preferences also emit a runtime
@@ -512,7 +533,7 @@ In rough order of likely impact:
   `thread` / `reply` as report target types.
 - **Site-scoped community tables** — Phase 18 (#211)
   added `site_id` to `np_comments`, `np_reactions`,
-  `np_follows`, `np_member_mutes`, `np_notifications`,
+  `np_content_views`, `np_follows`, `np_member_mutes`, `np_notifications`,
   `np_reports`, and `np_bans`. `np_members` itself is
   still global (one identity, many tenants).
 
