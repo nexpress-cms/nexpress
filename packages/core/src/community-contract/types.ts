@@ -56,6 +56,9 @@ export type NpModerationVerdictKind = (typeof npCommunityModerationVerdictKinds)
 export type AuditActorKind = (typeof npCommunityAuditActorKinds)[number];
 export type CommunityCapability = (typeof npCommunityCapabilities)[number];
 
+export const npMemberProfileActivityKinds = ["documents", "comments"] as const;
+export type NpMemberProfileActivityKind = (typeof npMemberProfileActivityKinds)[number];
+
 export type NpCommunityJsonPrimitive = string | number | boolean | null;
 export type NpCommunityJsonValue =
   NpCommunityJsonPrimitive | NpCommunityJsonValue[] | { [key: string]: NpCommunityJsonValue };
@@ -213,6 +216,60 @@ export interface NpCommentAuthor {
   handle: string;
   displayName: string;
   avatarUrl: string | null;
+}
+
+/** Exact PII-free public member profile shared by API, routes, and themes. */
+export interface NpPublicMemberProfileWire {
+  id: string;
+  handle: string;
+  displayName: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  reputation: number;
+  joinedAt: string;
+}
+
+export interface NpMemberProfileDocumentActivityWire {
+  kind: "document";
+  collectionSlug: string;
+  collectionLabel: string;
+  documentId: string;
+  title: string;
+  href: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NpMemberProfileCommentActivityWire {
+  kind: "comment";
+  commentId: string;
+  targetType: string;
+  targetId: string;
+  targetTitle: string;
+  href: string | null;
+  excerpt: string;
+  createdAt: string;
+  editedAt: string | null;
+}
+
+export type NpMemberProfileActivityItemWire =
+  NpMemberProfileDocumentActivityWire | NpMemberProfileCommentActivityWire;
+
+export interface NpMemberProfileActivityQuery {
+  kind: NpMemberProfileActivityKind;
+  page: number;
+  limit: number;
+}
+
+export interface NpMemberProfileActivityPageWire {
+  kind: NpMemberProfileActivityKind;
+  items: NpMemberProfileActivityItemWire[];
+  totalDocs: number;
+  totalPages: number;
+  page: number;
+  limit: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
 }
 
 /**
@@ -571,7 +628,8 @@ export interface NpCommunityRuntimeDiagnostic {
     | "notifications"
     | "spam"
     | "profanity"
-    | "reputation";
+    | "reputation"
+    | "profiles";
   message: string;
   occurredAt: string;
 }

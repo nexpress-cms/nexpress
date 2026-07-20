@@ -1254,6 +1254,8 @@ export {
   runDigestSweep,
   getMemberProfile,
   getMemberProfiles,
+  npToPublicMemberProfileWire,
+  listMemberProfileActivity,
   npListContentEngagement,
   npRecordContentView,
 } from "./community/index.js";

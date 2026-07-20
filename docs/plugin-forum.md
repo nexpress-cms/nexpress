@@ -425,7 +425,10 @@ discovery, daily-unique views, document recommendations, batched engagement
 counts, board/post subscriptions, deduplicated actionable notifications,
 bounded popular ranking, home-page directory/feed blocks, a
 community-home pattern, a theme-neutral style contract, plugin i18n catalogs,
-and an Admin dashboard metric.
+an Admin dashboard metric, and explicit public member-profile document/comment
+activity. Forum posts opt into Core's generic profile projection and expose
+their configured UUID detail route through `seo.urlPath`; neither skin nor a
+theme queries the forum collections to build member activity.
 
 Anonymous posting, board passwords, and board-specific moderator roles are not
 part of this first contract. They should

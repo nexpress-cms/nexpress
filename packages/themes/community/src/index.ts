@@ -4,6 +4,7 @@ import { CommunityFooter } from "./footer.js";
 import { CommunityHeader } from "./header.js";
 import { CommunityMembersNotFound } from "./members-not-found.js";
 import { CommunityMembersShell } from "./members-shell.js";
+import { CommunityMemberProfile } from "./member-profile.js";
 import { CommunityNotFound } from "./not-found.js";
 import { communitySettingsSchema } from "./settings.js";
 import { CommunityShell } from "./shell.js";
@@ -322,6 +323,7 @@ export const communityTheme = defineTheme({
     notFound: CommunityNotFound,
     members: {
       shell: CommunityMembersShell,
+      publicProfile: CommunityMemberProfile,
       notFound: CommunityMembersNotFound,
       pageTitle: {
         login: "커뮤니티 로그인",
@@ -344,6 +346,7 @@ export const communityTheme = defineTheme({
 export { CommunityFooter } from "./footer.js";
 export { CommunityHeader } from "./header.js";
 export { CommunityMembersShell } from "./members-shell.js";
+export { CommunityMemberProfile } from "./member-profile.js";
 export { CommunityShell } from "./shell.js";
 export { communityCss } from "./styles.js";
 export { communitySettingsSchema, type CommunitySettings } from "./settings.js";

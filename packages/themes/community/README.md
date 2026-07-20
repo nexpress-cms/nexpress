@@ -17,6 +17,12 @@ That enhancement works on any collection that renders the shared comment
 component, whether or not the forum plugin is installed; comment data and
 actions remain owned by Core and the application routes.
 
+The theme implements the optional `impl.members.publicProfile` renderer over
+the framework's PII-free profile and exact public activity props. It works for
+any collection that explicitly opts into profile activity and does not import
+the forum plugin; an installed forum participates only through the same generic
+collection contract.
+
 ```bash
 pnpm add @nexpress/theme-community
 ```

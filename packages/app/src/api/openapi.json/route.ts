@@ -816,6 +816,160 @@ export function buildSpec(): OpenApiSchema {
         hasPrevPage: { type: "boolean" },
       },
     },
+    community_public_member_profile: {
+      type: "object",
+      additionalProperties: false,
+      required: ["id", "handle", "displayName", "avatarUrl", "bio", "reputation", "joinedAt"],
+      properties: {
+        id: { type: "string", format: "uuid", pattern: npAuthUuidPattern },
+        handle: { type: "string", pattern: npMemberHandlePattern, maxLength: 30 },
+        displayName: {
+          type: "string",
+          minLength: 1,
+          maxLength: npAuthContractLimits.displayNameLength,
+        },
+        avatarUrl: { type: ["string", "null"], format: "uri-reference", maxLength: 2048 },
+        bio: { type: ["string", "null"], maxLength: npAuthContractLimits.bioLength },
+        reputation: { type: "integer" },
+        joinedAt: {
+          type: "string",
+          format: "date-time",
+          pattern: npAuthCanonicalDatePattern,
+        },
+      },
+    },
+    community_member_profile_document_activity: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "kind",
+        "collectionSlug",
+        "collectionLabel",
+        "documentId",
+        "title",
+        "href",
+        "createdAt",
+        "updatedAt",
+      ],
+      properties: {
+        kind: { type: "string", const: "document" },
+        collectionSlug: { ...communityTargetTypeSchema },
+        collectionLabel: { type: "string", minLength: 1, maxLength: 120 },
+        documentId: { type: "string", format: "uuid", pattern: npAuthUuidPattern },
+        title: { type: "string", minLength: 1, maxLength: 240 },
+        href: { type: ["string", "null"], maxLength: 2048, pattern: "^/(?!/)" },
+        createdAt: {
+          type: "string",
+          format: "date-time",
+          pattern: npAuthCanonicalDatePattern,
+        },
+        updatedAt: {
+          type: "string",
+          format: "date-time",
+          pattern: npAuthCanonicalDatePattern,
+        },
+      },
+    },
+    community_member_profile_comment_activity: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "kind",
+        "commentId",
+        "targetType",
+        "targetId",
+        "targetTitle",
+        "href",
+        "excerpt",
+        "createdAt",
+        "editedAt",
+      ],
+      properties: {
+        kind: { type: "string", const: "comment" },
+        commentId: { type: "string", format: "uuid", pattern: npAuthUuidPattern },
+        targetType: { ...communityTargetTypeSchema },
+        targetId: { type: "string", format: "uuid", pattern: npAuthUuidPattern },
+        targetTitle: { type: "string", minLength: 1, maxLength: 240 },
+        href: { type: ["string", "null"], maxLength: 2048, pattern: "^/(?!/)" },
+        excerpt: {
+          type: "string",
+          maxLength: npCommunityContractLimits.profileActivityExcerptLength,
+        },
+        createdAt: {
+          type: "string",
+          format: "date-time",
+          pattern: npAuthCanonicalDatePattern,
+        },
+        editedAt: {
+          type: ["string", "null"],
+          format: "date-time",
+          pattern: npAuthCanonicalDatePattern,
+        },
+      },
+    },
+    community_member_profile_activity_page: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "kind",
+        "items",
+        "totalDocs",
+        "totalPages",
+        "page",
+        "limit",
+        "hasNextPage",
+        "hasPrevPage",
+      ],
+      properties: {
+        kind: { type: "string", enum: ["documents", "comments"] },
+        items: {
+          type: "array",
+          maxItems: npCommunityContractLimits.profileActivityPageRows,
+          items: {
+            oneOf: [
+              { $ref: "#/components/schemas/community_member_profile_document_activity" },
+              { $ref: "#/components/schemas/community_member_profile_comment_activity" },
+            ],
+          },
+        },
+        totalDocs: { type: "integer", minimum: 0 },
+        totalPages: { type: "integer", minimum: 0 },
+        page: { type: "integer", minimum: 1, maximum: 10_000 },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: npCommunityContractLimits.profileActivityPageRows,
+        },
+        hasNextPage: { type: "boolean" },
+        hasPrevPage: { type: "boolean" },
+      },
+      allOf: [
+        {
+          if: { properties: { kind: { const: "documents" } } },
+          then: {
+            properties: {
+              items: {
+                items: {
+                  $ref: "#/components/schemas/community_member_profile_document_activity",
+                },
+              },
+            },
+          },
+        },
+        {
+          if: { properties: { kind: { const: "comments" } } },
+          then: {
+            properties: {
+              items: {
+                items: {
+                  $ref: "#/components/schemas/community_member_profile_comment_activity",
+                },
+              },
+            },
+          },
+        },
+      ],
+    },
     community_report_row: {
       type: "object",
       additionalProperties: false,
@@ -2986,10 +3140,59 @@ export function buildSpec(): OpenApiSchema {
       get: {
         summary: "Public member profile by handle",
         description:
-          "Returns only public-safe columns (display_name, avatar, bio, reputation, joined). 404 for pending / suspended / deleted handles.",
+          "Returns the exact PII-free public profile contract with a resolved avatar URL. Pending, suspended, and deleted handles return 404; imported public profiles remain visible.",
         responses: {
-          "200": { description: "Public profile" },
+          "200": {
+            description: "Exact public member profile",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/community_public_member_profile" },
+              },
+            },
+          },
           "404": { description: "No active member with that handle" },
+        },
+      },
+    },
+    "/api/members/{handle}/activity": {
+      parameters: [{ in: "path", name: "handle", required: true, schema: { type: "string" } }],
+      get: {
+        summary: "List a member's public activity",
+        description:
+          "Returns exact site-scoped pages from collection-authorized public profile projections. Documents must be published/public; comments must be visible beneath a published/public target.",
+        parameters: [
+          {
+            in: "query",
+            name: "kind",
+            schema: { type: "string", enum: ["documents", "comments"], default: "documents" },
+          },
+          {
+            in: "query",
+            name: "page",
+            schema: { type: "integer", minimum: 1, maximum: 10_000, default: 1 },
+          },
+          {
+            in: "query",
+            name: "limit",
+            schema: {
+              type: "integer",
+              minimum: 1,
+              maximum: npCommunityContractLimits.profileActivityPageRows,
+              default: 20,
+            },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Exact public member activity page",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/community_member_profile_activity_page" },
+              },
+            },
+          },
+          "400": { description: "Malformed or out-of-range activity query" },
+          "404": { description: "No public member with that handle" },
         },
       },
     },

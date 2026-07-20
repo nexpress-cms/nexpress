@@ -385,10 +385,10 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
       params: Promise.resolve({ handle: "frank" }),
     });
     expect(active.status).toBe(200);
-    const body = await readJson<{ member: { handle: string; email?: string } }>(active);
-    expect(body.body.member.handle).toBe("frank");
+    const body = await readJson<{ handle: string; email?: string }>(active);
+    expect(body.body.handle).toBe("frank");
     // Email must NOT leak in public profile.
-    expect(body.body.member.email).toBeUndefined();
+    expect(body.body.email).toBeUndefined();
 
     // Unknown handle.
     const unknown = await profileGET(jsonRequest("/api/members/ghost"), {

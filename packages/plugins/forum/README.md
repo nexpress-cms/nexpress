@@ -73,6 +73,12 @@ member-owned edit/delete, reporting, muting, sorting, and bounded pagination.
 Skins and themes can enhance the stable `.np-comment-*` and
 `data-np-comment-*` hooks independently.
 
+Forum post collections also opt into the shared public member-profile activity
+contract. Published public posts and visible comments on published public posts
+appear under `/u/:handle`; pending/private targets are absent from both counts
+and pages. The route and Core own that projection, so skins and themes consume
+prepared activity rather than importing or querying forum collections.
+
 The plugin also registers `forum.board-directory` and `forum.post-feed` blocks
 plus a `forum.community-home` pattern. They use the forum factory's configured
 paths and collection slugs internally, expose only published rows from active

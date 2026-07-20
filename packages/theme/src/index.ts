@@ -45,6 +45,7 @@ export type {
   NpTheme,
   NpThemeImpl,
   NpThemeShellProps,
+  NpThemeMemberProfileProps,
   NpThemeSlots,
   NpThemeTemplate,
   NpThemeTemplates,
