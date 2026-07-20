@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { defaultThemeCss } from "@nexpress/theme-default";
+import { communityCss } from "@nexpress/theme-community";
 import { docsCss } from "@nexpress/theme-docs";
 import { magazineCss } from "@nexpress/theme-magazine";
 import { portfolioCss } from "@nexpress/theme-portfolio";
@@ -144,6 +145,11 @@ const themes: ThemeUnderTest[] = [
     srcDir: join(THEME_SRC_ROOT, "default", "src"),
   },
   {
+    id: "community",
+    css: communityCss,
+    srcDir: join(THEME_SRC_ROOT, "community", "src"),
+  },
+  {
     id: "magazine",
     css: magazineCss,
     srcDir: join(THEME_SRC_ROOT, "magazine", "src"),
@@ -224,6 +230,7 @@ const themes: ThemeUnderTest[] = [
  */
 const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
   default: [],
+  community: [],
   magazine: [
     // UNVERIFIED — post-card.tsx (`np-magazine-card-*`, 7 entries).
     // Component is exported from `@nexpress/theme-magazine` but
@@ -332,6 +339,21 @@ describe("built-in themes — className ↔ CSS coverage", () => {
 });
 
 describe("built-in themes — responsive contracts", () => {
+  it("community: mobile drawer and optional forum integration use public contracts", () => {
+    expect(communityCss).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*\.np-community-desktop-nav \{ display: none; \}[\s\S]*\.np-community-mobile-nav \{ display: flex; \}/,
+    );
+    expect(communityCss).toContain("--np-forum-content-max");
+    expect(communityCss).toContain('[data-np-forum-surface="post-list"]');
+    expect(communityCss).toContain('[data-np-forum-block="board-directory"]');
+    expect(communityCss).toContain('[data-np-forum-engagement="post"]');
+    expect(communityCss).toContain('[data-np-forum-feed-mode="popular"]');
+    expect(communityCss).not.toContain("np_c_forum");
+    expect(communityCss).not.toMatch(/float:\s*(left|right)\b/);
+    expect(communityCss).not.toMatch(/\b(margin|padding)-(left|right)\s*:/);
+    expect(communityCss).not.toMatch(/text-align:\s*(left|right)\b/);
+  });
+
   it("default: mobile drawer uses the same breakpoint as desktop nav collapse", () => {
     expect(defaultThemeCss).toMatch(
       /@media \(max-width: 1180px\) \{[\s\S]*\.np-site-nav-desktop \{ display: none; \}[\s\S]*\.np-mobile-nav-toggle \{ display: inline-flex; \}/,

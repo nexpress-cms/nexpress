@@ -106,6 +106,59 @@ export interface TagsDocument {
 }
 export type TagsDocumentWire = NpCollectionDocumentWire<TagsDocument>;
 
+export interface ForumBoardsDocument {
+  id: string;
+  status: "draft" | "scheduled" | "published" | "archived" | "pending";
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+  updatedBy: string | null;
+  slug: string;
+  publishedAt: Date | null;
+  visibility: "public" | "private";
+  siteId: string;
+  key: string;
+  name: string;
+  description: string | null;
+  skin: string;
+  writeMode: string;
+  moderation: string;
+  commentsEnabled: boolean;
+  pageSize: number;
+  attachmentsEnabled: boolean;
+  maxAttachments: number;
+  maxAttachmentSizeMb: number;
+  categories: Array<{
+    key: string;
+    label: string;
+  }>;
+}
+export type ForumBoardsDocumentWire = NpCollectionDocumentWire<ForumBoardsDocument>;
+
+export interface ForumPostsDocument {
+  id: string;
+  status: "draft" | "scheduled" | "published" | "archived" | "pending";
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+  updatedBy: string | null;
+  memberAuthorId: string | null;
+  publishedAt: Date | null;
+  visibility: "public" | "private";
+  siteId: string;
+  board: string;
+  boardKey: string | null;
+  title: string;
+  body: NpRichTextContent;
+  attachments: Array<{
+    file: string;
+  }>;
+  category: string | null;
+  pinned: boolean | null;
+  locked: boolean | null;
+}
+export type ForumPostsDocumentWire = NpCollectionDocumentWire<ForumPostsDocument>;
+
 export interface DiscussionsDocument {
   id: string;
   status: "draft" | "scheduled" | "published" | "archived" | "pending";
@@ -179,6 +232,38 @@ export function findTags(
 /** Typed by-id fetch for the `tags` collection. */
 export function getTagsDocument(id: string, user?: NpAuthUser): Promise<TagsDocument | null> {
   return getDocumentById<TagsDocument>("tags", id, user);
+}
+
+/** Typed listing query for the `forum-boards` collection. */
+export function findForumBoards(
+  options: NpFindOptions<ForumBoardsDocument> = {},
+  user?: NpAuthUser,
+): Promise<NpFindResult<ForumBoardsDocument>> {
+  return findDocuments<ForumBoardsDocument>("forum-boards", options, user);
+}
+
+/** Typed by-id fetch for the `forum-boards` collection. */
+export function getForumBoardsDocument(
+  id: string,
+  user?: NpAuthUser,
+): Promise<ForumBoardsDocument | null> {
+  return getDocumentById<ForumBoardsDocument>("forum-boards", id, user);
+}
+
+/** Typed listing query for the `forum-posts` collection. */
+export function findForumPosts(
+  options: NpFindOptions<ForumPostsDocument> = {},
+  user?: NpAuthUser,
+): Promise<NpFindResult<ForumPostsDocument>> {
+  return findDocuments<ForumPostsDocument>("forum-posts", options, user);
+}
+
+/** Typed by-id fetch for the `forum-posts` collection. */
+export function getForumPostsDocument(
+  id: string,
+  user?: NpAuthUser,
+): Promise<ForumPostsDocument | null> {
+  return getDocumentById<ForumPostsDocument>("forum-posts", id, user);
 }
 
 /** Typed listing query for the `discussions` collection. */

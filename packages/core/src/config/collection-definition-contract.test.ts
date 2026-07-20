@@ -313,6 +313,116 @@ describe("collection definition contract", () => {
     );
   });
 
+  it("validates member writable fields and row-aware policy opt-ins", () => {
+    const collection = validCollection();
+    collection.community = {
+      comments: true,
+      follows: true,
+      reports: true,
+      memberWrite: {
+        create: true,
+        writableFields: ["title", "title", "missing"],
+        access: {
+          create: () => true,
+          update: () => true,
+        },
+        resolveCreateStatus: () => "published",
+      },
+    };
+
+    expect(npAnalyzeCollectionDefinition(collection)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ message: 'duplicate writable field "title".' }),
+        expect.objectContaining({
+          message: 'member writable field "missing" is not a top-level collection field.',
+        }),
+        expect.objectContaining({
+          message: "member update access requires community.memberWrite.update=true.",
+        }),
+      ]),
+    );
+  });
+
+  it("accepts an exact member-write field and policy contract", () => {
+    const collection = validCollection();
+    collection.community = {
+      comments: true,
+      reports: true,
+      memberWrite: {
+        create: true,
+        update: true,
+        delete: true,
+        writableFields: ["title", "metadata", "sections"],
+        access: {
+          create: () => true,
+          update: () => true,
+          delete: () => true,
+        },
+        resolveCreateStatus: () => "pending",
+      },
+    };
+
+    expect(npValidateCollectionDefinition(collection)).toEqual({ ok: true });
+  });
+
+  it("rejects document reports on reserved target slugs", () => {
+    const collection = validCollection();
+    collection.slug = "comment";
+    collection.community = { reports: true };
+
+    expect(npAnalyzeCollectionDefinition(collection)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          location: "community.reports",
+          message: expect.stringMatching(/reserved report target/),
+        }),
+      ]),
+    );
+  });
+
+  it("rejects document follows on the reserved member target", () => {
+    const collection = validCollection();
+    collection.slug = "member";
+    collection.community = { follows: true };
+
+    expect(npAnalyzeCollectionDefinition(collection)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          location: "community.follows",
+          message: expect.stringMatching(/reserved follow target/),
+        }),
+      ]),
+    );
+  });
+
+  it("requires follow-enabled collections to define a public URL resolver", () => {
+    const collection = validCollection();
+    collection.community = { follows: true };
+    collection.seo = undefined;
+
+    expect(npAnalyzeCollectionDefinition(collection)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          location: "community.follows",
+          message: expect.stringMatching(/require seo\.urlPath/u),
+        }),
+      ]),
+    );
+  });
+
+  it("accepts an empty writable field allowlist for delete-only member contracts", () => {
+    const collection = validCollection();
+    collection.community = {
+      memberWrite: {
+        delete: true,
+        writableFields: [],
+        access: { delete: () => true },
+      },
+    };
+
+    expect(npValidateCollectionDefinition(collection)).toEqual({ ok: true });
+  });
+
   it("allows publishedAt only as a top-level date field", () => {
     const collection = validCollection();
     collection.fields.push({

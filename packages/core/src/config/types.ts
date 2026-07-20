@@ -12,6 +12,35 @@ export type NpAccessFunction = (args: {
   data?: Record<string, unknown>;
 }) => boolean | Promise<boolean>;
 
+export type NpMemberWriteOperation = "create" | "update" | "delete";
+
+/**
+ * Server-only member-write policy context. Collection authors can use this to
+ * apply row-derived policy (for example, a forum board's write mode) without
+ * moving member writes outside the canonical collection pipeline.
+ */
+export interface NpMemberWriteAccessArgs {
+  collection: string;
+  operation: NpMemberWriteOperation;
+  memberId: string;
+  /** Validated create document or complete update candidate. `null` for delete. */
+  data: Readonly<Record<string, unknown>> | null;
+  /** Persisted document for update/delete. `null` for create. */
+  originalDoc: Readonly<Record<string, unknown>> | null;
+}
+
+export type NpMemberWriteAccessFunction = (
+  args: NpMemberWriteAccessArgs,
+) => boolean | Promise<boolean>;
+
+export type NpMemberCreateStatusResolver = (
+  args: Omit<NpMemberWriteAccessArgs, "operation" | "originalDoc"> & {
+    operation: "create";
+    data: Readonly<Record<string, unknown>>;
+    originalDoc: null;
+  },
+) => "published" | "pending" | Promise<"published" | "pending">;
+
 /**
  * Free-form predicate. Server-only — functions don't survive the
  * server→client boundary in Next.js (the framework's
@@ -375,9 +404,13 @@ export interface NpCollectionConfig {
   /**
    * Community features opt-in per collection. Comments are off by
    * default; flip `comments: true` to let members post comments
-   * underneath this collection's documents. Reactions ride on the
-   * comment surface — sites enable reactions by enabling comments;
-   * a per-collection reactions toggle isn't needed today.
+   * underneath this collection's documents. `reactions: true` lets
+   * members react to the documents themselves (comment reactions remain
+   * available through the comment surface), while `views: true` enables
+   * anonymous daily-unique view receipts for public documents. `follows: true`
+   * lets members subscribe to public documents in the collection. `reports: true`
+   * lets members file one unresolved moderation report per target and exposes
+   * that target through the staff report queue.
    *
    * `memberWrite.create` (9.7a) lets logged-in members create
    * documents in this collection without needing a staff role.
@@ -389,16 +422,32 @@ export interface NpCollectionConfig {
    * the opt-in flag plus the ownership check, not the staff
    * access tree. Member-authored docs default to
    * `status = "published"` and members CANNOT change status via
-   * update; those transitions remain admin-side affordances
-   * (a configurable default-status / moderation gate lands in a
-   * follow-up).
+   * update; those transitions remain admin-side affordances. Collections can
+   * narrow request fields, add row-aware access, and derive the create status
+   * through the additive contracts below.
    */
   community?: {
     comments?: boolean;
+    reactions?: boolean;
+    views?: boolean;
+    follows?: boolean;
+    reports?: boolean;
     memberWrite?: {
       create?: boolean;
       update?: boolean;
       delete?: boolean;
+      /**
+       * Top-level collection fields a member request may submit. Framework
+       * fields (`status`, ownership, timestamps, visibility) are never valid
+       * entries. Omit to retain the legacy all-declared-fields behavior.
+       */
+      writableFields?: string[];
+      /** Additional row-aware policy after the boolean opt-in and ban gates. */
+      access?: {
+        create?: NpMemberWriteAccessFunction;
+        update?: NpMemberWriteAccessFunction;
+        delete?: NpMemberWriteAccessFunction;
+      };
       /**
        * Status that member-authored creates land in by default.
        * Defaults to `"published"` (a member's thread is live as
@@ -410,6 +459,11 @@ export interface NpCollectionConfig {
        * this default (`flag` verdict).
        */
       defaultStatus?: "published" | "pending";
+      /**
+       * Resolve the default create status from runtime data. This runs before
+       * moderation; a spam/profanity `flag` still forces `pending`.
+       */
+      resolveCreateStatus?: NpMemberCreateStatusResolver;
     };
   };
   /**

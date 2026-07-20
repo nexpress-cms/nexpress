@@ -21,17 +21,32 @@ export function toClientCollectionConfig(
   config: NpCollectionConfig,
   activeThemeId?: string | null,
 ): NpCollectionConfig {
-  const { access: _access, hooks: _hooks, seo, fields, ...rest } = config;
+  const { access: _access, hooks: _hooks, seo, community, fields, ...rest } = config;
   void _access;
   void _hooks;
   return {
     ...rest,
     ...(seo ? { seo: stripSeoFunctions(seo) } : {}),
+    ...(community ? { community: stripCommunityFunctions(community) } : {}),
     fields: fields
       .map((f) => filterFieldByThemeOrigin(f, activeThemeId))
       .filter((f): f is NpFieldConfig => f !== null)
       .map(stripFieldFunctions),
   };
+}
+
+function stripCommunityFunctions(
+  community: NonNullable<NpCollectionConfig["community"]>,
+): NonNullable<NpCollectionConfig["community"]> {
+  if (!community.memberWrite) return community;
+  const {
+    access: _access,
+    resolveCreateStatus: _resolveCreateStatus,
+    ...memberWrite
+  } = community.memberWrite;
+  void _access;
+  void _resolveCreateStatus;
+  return { ...community, memberWrite };
 }
 
 /**

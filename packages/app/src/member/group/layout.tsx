@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
  * (`components/shell-wrap.tsx`) — the layout no longer wraps in
  * shell. The same-named per-page wrap is what enables the (site)
  * catch-all to render `surface: "member"` plugin routes (e.g.
- * forum's `/discussions/new`) with member chrome without forcing
+ * forum's `/boards/:boardKey/new`) with member chrome without forcing
  * a parallel `(member)/[[...slug]]` file route.
  *
  * See `docs/design/member-surface-skinning.md` § 5.1.1 for the

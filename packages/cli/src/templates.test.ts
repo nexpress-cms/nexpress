@@ -221,6 +221,7 @@ describe("getProjectFiles", () => {
       "@nexpress/next",
       "@nexpress/plugin-sdk",
       "@nexpress/theme",
+      "@nexpress/theme-community",
       "@nexpress/theme-default",
       "@nexpress/theme-docs",
       "@nexpress/theme-magazine",

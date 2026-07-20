@@ -1,6 +1,5 @@
 import {
   addReaction,
-  assertReactableExists,
   countReactions,
   listMemberReactions,
   removeReaction,
@@ -20,10 +19,9 @@ import { npRequireCommunityRequest } from "../../lib/community-contract";
 import { optionalMember, requireMember } from "../../lib/member-auth-helpers";
 
 /**
- * Polymorphic reactions over the community surface. v1 supports
- * `targetType: "comment"` only. The DELETE leg uses `?targetType=…&
- * targetId=…&kind=…` query params so the same path can both add and
- * remove without hard-coupling the wire shape to a per-row id.
+ * Polymorphic reactions over comments and collection documents that enable
+ * `community.reactions`. The DELETE leg uses query parameters so the same
+ * path can both add and remove without hard-coupling the wire shape to a row id.
  */
 
 function readTargetFromQuery(request: NextRequest) {
@@ -60,7 +58,6 @@ export async function POST(request: NextRequest) {
     await ensureFor("write");
     const member = await requireMember(request);
     const target = npRequireCommunityRequest(npRequireReactionTarget, await readJsonBody(request));
-    await assertReactableExists(target.targetType, target.targetId);
     const row = await addReaction({
       targetType: target.targetType,
       targetId: target.targetId,

@@ -1,8 +1,16 @@
 export const npCommunityCommentStatuses = ["visible", "pending", "hidden", "deleted"] as const;
 export const npCommunityCommentSorts = ["newest", "oldest", "top"] as const;
-export const npCommunityFollowTargets = ["member", "thread", "tag"] as const;
-export const npCommunityReportTargets = ["comment", "thread", "reply", "member"] as const;
+/** Reserved follow targets. Canonical collection slugs are also valid targets. */
+export const npCommunityFollowTargets = ["member"] as const;
+export const npCommunityFollowActivityKinds = ["comment.created", "document.published"] as const;
+/** Reserved report targets. Canonical collection slugs are also valid targets. */
+export const npCommunityReportTargets = ["comment", "member"] as const;
 export const npCommunityReportStatuses = ["unresolved", "resolved", "all"] as const;
+export const npCommunityReportResolutionActions = [
+  "dismiss",
+  "hide-comment",
+  "unpublish-document",
+] as const;
 export const npCommunityBanScopes = ["site", "category", "collection"] as const;
 export const npCommunityBanKinds = ["temporary", "permanent"] as const;
 export const npCommunityScopes = ["site", "category", "collection", "thread"] as const;
@@ -33,9 +41,13 @@ export const npCommunityCapabilities = [
 
 export type CommentStatus = (typeof npCommunityCommentStatuses)[number];
 export type NpCommentSort = (typeof npCommunityCommentSorts)[number];
-export type NpFollowTarget = (typeof npCommunityFollowTargets)[number];
-export type NpReportTarget = (typeof npCommunityReportTargets)[number];
+/** `member` or a canonical collection slug that enabled document follows. */
+export type NpFollowTarget = string;
+export type NpFollowActivityKind = (typeof npCommunityFollowActivityKinds)[number];
+/** `comment`, `member`, or a canonical collection slug. */
+export type NpReportTarget = string;
 export type NpReportStatus = (typeof npCommunityReportStatuses)[number];
+export type NpReportResolutionAction = (typeof npCommunityReportResolutionActions)[number];
 export type BanScope = (typeof npCommunityBanScopes)[number];
 export type BanKind = (typeof npCommunityBanKinds)[number];
 export type CommunityScope = (typeof npCommunityScopes)[number];
@@ -263,6 +275,31 @@ export interface NpReactionSummaryWire {
   mine: string[];
 }
 
+export interface NpEngagementTarget {
+  targetType: string;
+  targetId: string;
+}
+
+export interface NpContentViewRow extends NpEngagementTarget {
+  id: string;
+  viewerHash: string;
+  viewedOn: string;
+  siteId: string;
+  createdAt: Date;
+}
+
+export interface NpContentViewReceiptWire {
+  counted: boolean;
+  viewCount: number;
+}
+
+export interface NpContentEngagementSummary extends NpEngagementTarget {
+  viewCount: number;
+  commentCount: number;
+  reactionCount: number;
+  reactions: Record<string, number>;
+}
+
 export interface NpFollowRow {
   id: string;
   followerId: string;
@@ -279,6 +316,16 @@ export interface NpFollowInput {
   targetType: NpFollowTarget;
   targetId: string;
 }
+
+export type NpFollowActivityNotificationPayload = {
+  activity: NpFollowActivityKind;
+  subjectType: string;
+  subjectId: string;
+  targetType: string;
+  targetId: string;
+  href: string;
+  commentId: string | null;
+};
 
 export interface NpNotificationRow {
   id: string;
@@ -337,7 +384,7 @@ export interface NpReportRow {
   resolvedAt: Date | null;
   resolvedByUserId: string | null;
   resolvedByMemberId: string | null;
-  resolution: string | null;
+  resolution: NpReportResolutionAction | null;
   siteId: string;
   createdAt: Date;
 }
@@ -346,6 +393,24 @@ export type NpReportWireRow = Omit<NpReportRow, "resolvedAt" | "createdAt"> & {
   resolvedAt: string | null;
   createdAt: string;
 };
+
+export type NpReportTargetContextKind = "comment" | "document" | "member" | "missing";
+
+/** Operator-safe target projection for the moderation queue. */
+export interface NpReportTargetContextWire {
+  kind: NpReportTargetContextKind;
+  label: string;
+  excerpt: string | null;
+  status: string | null;
+  href: string | null;
+  collectionSlug: string | null;
+  documentId: string | null;
+  authorMemberId: string | null;
+}
+
+export interface NpModerationReportWireRow extends NpReportWireRow {
+  target: NpReportTargetContextWire;
+}
 
 export interface FileReportInput {
   reporterId: string;
@@ -368,6 +433,12 @@ export interface ListReportsResult {
 }
 
 export interface NpReportPageWire extends NpPageWire<NpReportWireRow> {}
+
+export interface NpModerationReportPageWire extends NpPageWire<NpModerationReportWireRow> {}
+
+export interface NpResolveReportRequest {
+  action: NpReportResolutionAction;
+}
 
 export interface NpBanRow {
   id: string;
@@ -465,7 +536,13 @@ export interface NpPageWire<T> {
 
 export interface NpCommunityRuntimeDiagnostic {
   source:
-    "roles" | "notification-kinds" | "notification-prefs" | "spam" | "profanity" | "reputation";
+    | "roles"
+    | "notification-kinds"
+    | "notification-prefs"
+    | "notifications"
+    | "spam"
+    | "profanity"
+    | "reputation";
   message: string;
   occurredAt: string;
 }

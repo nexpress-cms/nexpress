@@ -59,6 +59,7 @@ const SITE_USAGE_TABLES: ReadonlyArray<
   ["stringOverrides", "np_string_overrides"],
   ["pluginStorage", "np_plugin_storage"],
   ["comments", "np_comments"],
+  ["contentViews", "np_content_views"],
   ["reactions", "np_reactions"],
   ["follows", "np_follows"],
   ["mutes", "np_member_mutes"],

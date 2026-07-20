@@ -90,12 +90,13 @@ Full host recipes live in [docs/deployment.md](./docs/deployment.md).
 
 ## Built-In Themes
 
-| Theme                       | Best for                   | Fresh-site feel                                   |
-| --------------------------- | -------------------------- | ------------------------------------------------- |
-| `@nexpress/theme-default`   | Publications, blogs, teams | Writing index, featured essays, About, newsletter |
-| `@nexpress/theme-docs`      | Product docs, handbooks    | Docs landing, sidebar hierarchy, quickstart copy  |
-| `@nexpress/theme-magazine`  | Editorial sites            | Masthead, cover story, archive, bylines           |
-| `@nexpress/theme-portfolio` | Studios, agencies          | Work grid, projects, studio page, journal         |
+| Theme                       | Best for                    | Fresh-site feel                                              |
+| --------------------------- | --------------------------- | ------------------------------------------------------------ |
+| `@nexpress/theme-default`   | Publications, blogs, teams  | Writing index, featured essays, About, newsletter            |
+| `@nexpress/theme-community` | Korean communities, portals | Dense feed, recommendations, member and forum-ready surfaces |
+| `@nexpress/theme-docs`      | Product docs, handbooks     | Docs landing, sidebar hierarchy, quickstart copy             |
+| `@nexpress/theme-magazine`  | Editorial sites             | Masthead, cover story, archive, bylines                      |
+| `@nexpress/theme-portfolio` | Studios, agencies           | Work grid, projects, studio page, journal                    |
 
 Switch themes from Admin → Appearance or configure them in
 `src/nexpress.config.ts`.
@@ -108,6 +109,7 @@ Switch themes from Admin → Appearance or configure them in
 | Collections        | `src/collections/*.ts`                                     |
 | Theme authoring    | [docs/theme-authoring.md](./docs/theme-authoring.md)       |
 | Plugin authoring   | [docs/plugin-quickstart.md](./docs/plugin-quickstart.md)   |
+| Multi-board forum  | [docs/plugin-forum.md](./docs/plugin-forum.md)             |
 | Deployment         | [docs/deployment.md](./docs/deployment.md)                 |
 | Site customization | [docs/site-customization.md](./docs/site-customization.md) |
 
@@ -160,6 +162,7 @@ apps/web            private reference app
 - [Releasing](./docs/releasing.md)
 - [Content transfer](./docs/content-transfer.md)
 - [Plugin quickstart](./docs/plugin-quickstart.md)
+- [Forum plugin](./docs/plugin-forum.md)
 - [Theme quickstart](./docs/theme-quickstart.md)
 - [Operations](./docs/operations.md)
 - [Deployment](./docs/deployment.md)

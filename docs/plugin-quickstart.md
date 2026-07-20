@@ -508,5 +508,5 @@ practice":
 | `packages/plugins/webhook-relay`                | Content hooks, outbound HTTP, HMAC signing, stored delivery status, and definition-level status/action handlers                                   |
 | `packages/plugins/block-callout`                | Block, reusable pattern, page template, and locale-keyed ICU messages in one definition                                                           |
 | `packages/plugins/block-*`                      | Static, interactive, data-bound, nested-array, route-backed, and collection-aware block examples                                                  |
-| `packages/plugins/forum`                        | Defining a collection from a plugin (`defineDiscussionsCollection`)                                                                               |
+| `packages/plugins/forum`                        | Paired collection/plugin factory, row-aware member policy, page routes, i18n, and build-time skins                                                |
 | `packages/plugins/oauth-github`, `oauth-google` | OAuth provider wiring through plugin routes, **`configSchema` with `.meta({ sensitive: true })` masked secret + hybrid env-or-admin credentials** |

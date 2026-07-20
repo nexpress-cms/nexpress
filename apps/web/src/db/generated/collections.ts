@@ -241,6 +241,148 @@ export const tagsTableRelations = relations(tagsTable, ({ many, one }) => ({
   updatedByUser: one(npUsers, { fields: [tagsTable.updatedBy], references: [npUsers.id] }),
 }));
 
+export const forumBoardsTable = pgTable(
+  "np_c_forum-boards",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] })
+      .default("draft")
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdBy: uuid("created_by").references((): AnyPgColumn => npUsers.id),
+    updatedBy: uuid("updated_by").references((): AnyPgColumn => npUsers.id),
+    visibility: text("visibility", { enum: ["public", "private"] })
+      .default("public")
+      .notNull(),
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    skin: text("skin").default("classic").notNull(),
+    writeMode: text("write_mode").default("members").notNull(),
+    moderation: text("moderation").default("published").notNull(),
+    commentsEnabled: boolean("comments_enabled").default(true).notNull(),
+    pageSize: integer("page_size").default(20).notNull(),
+    attachmentsEnabled: boolean("attachments_enabled").default(true).notNull(),
+    maxAttachments: integer("max_attachments").default(5).notNull(),
+    maxAttachmentSizeMb: integer("max_attachment_size_mb").default(20).notNull(),
+    slug: text("slug").notNull(),
+    siteId: text("site_id").default("default").notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    searchVector: tsvector("search_vector"),
+  },
+  (table) => [
+    index("np_c_forum-boards_status_idx").on(table.status),
+    uniqueIndex("np_c_forum-boards_site_slug_idx").on(table.siteId, table.slug),
+    index("np_c_forum-boards_site_idx").on(table.siteId),
+  ],
+);
+
+export const forumBoardsTableRelations = relations(forumBoardsTable, ({ many, one }) => ({
+  createdByUser: one(npUsers, { fields: [forumBoardsTable.createdBy], references: [npUsers.id] }),
+  updatedByUser: one(npUsers, { fields: [forumBoardsTable.updatedBy], references: [npUsers.id] }),
+}));
+
+export const forumBoardsCategoriesTable = pgTable(
+  "np_c_forum-boards__categories",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    parentId: uuid("parent_id")
+      .notNull()
+      .references((): AnyPgColumn => forumBoardsTable.id, { onDelete: "cascade" }),
+    order: integer("order").default(0).notNull(),
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+  },
+  (table) => [index("np_c_forum-boards__categories_parent_idx").on(table.parentId)],
+);
+
+export const forumBoardsCategoriesTableRelations = relations(
+  forumBoardsCategoriesTable,
+  ({ many, one }) => ({
+    parent: one(forumBoardsTable, {
+      fields: [forumBoardsCategoriesTable.parentId],
+      references: [forumBoardsTable.id],
+    }),
+  }),
+);
+
+export const forumPostsTable = pgTable(
+  "np_c_forum-posts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] })
+      .default("draft")
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdBy: uuid("created_by").references((): AnyPgColumn => npUsers.id),
+    updatedBy: uuid("updated_by").references((): AnyPgColumn => npUsers.id),
+    visibility: text("visibility", { enum: ["public", "private"] })
+      .default("public")
+      .notNull(),
+    memberAuthorId: uuid("member_author_id").references((): AnyPgColumn => npMembers.id, {
+      onDelete: "set null",
+    }),
+    board: uuid("board")
+      .references((): AnyPgColumn => forumBoardsTable.id)
+      .notNull(),
+    boardKey: text("board_key"),
+    title: text("title").notNull(),
+    body: jsonb("body").notNull(),
+    category: text("category"),
+    pinned: boolean("pinned").default(false),
+    locked: boolean("locked").default(false),
+    siteId: text("site_id").default("default").notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    searchVector: tsvector("search_vector"),
+  },
+  (table) => [
+    index("np_c_forum-posts_status_idx").on(table.status),
+    index("np_c_forum-posts_member_author_idx").on(table.memberAuthorId),
+    index("np_c_forum-posts_site_idx").on(table.siteId),
+  ],
+);
+
+export const forumPostsTableRelations = relations(forumPostsTable, ({ many, one }) => ({
+  createdByUser: one(npUsers, { fields: [forumPostsTable.createdBy], references: [npUsers.id] }),
+  updatedByUser: one(npUsers, { fields: [forumPostsTable.updatedBy], references: [npUsers.id] }),
+  memberAuthor: one(npMembers, {
+    fields: [forumPostsTable.memberAuthorId],
+    references: [npMembers.id],
+  }),
+  board: one(forumBoardsTable, {
+    fields: [forumPostsTable.board],
+    references: [forumBoardsTable.id],
+  }),
+}));
+
+export const forumPostsAttachmentsTable = pgTable(
+  "np_c_forum-posts__attachments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    parentId: uuid("parent_id")
+      .notNull()
+      .references((): AnyPgColumn => forumPostsTable.id, { onDelete: "cascade" }),
+    order: integer("order").default(0).notNull(),
+    file: uuid("file")
+      .references((): AnyPgColumn => npMedia.id)
+      .notNull(),
+  },
+  (table) => [index("np_c_forum-posts__attachments_parent_idx").on(table.parentId)],
+);
+
+export const forumPostsAttachmentsTableRelations = relations(
+  forumPostsAttachmentsTable,
+  ({ many, one }) => ({
+    parent: one(forumPostsTable, {
+      fields: [forumPostsAttachmentsTable.parentId],
+      references: [forumPostsTable.id],
+    }),
+    file: one(npMedia, { fields: [forumPostsAttachmentsTable.file], references: [npMedia.id] }),
+  }),
+);
+
 export const discussionsTable = pgTable(
   "np_c_discussions",
   {

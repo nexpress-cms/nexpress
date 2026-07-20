@@ -7,8 +7,8 @@ shell — same chrome (header / footer / theme styles) any operator-
 authored page gets.
 
 This is what enables a plugin like `@nexpress/plugin-forum` to own
-`/discussions/*` end-to-end without the host app shipping a
-`(site)/discussions/` directory.
+`/boards/*` end-to-end without the host app shipping a
+`(site)/boards/` directory.
 
 For the architectural rationale + locked design decisions, see
 [`docs/design/plugin-routes.md`](design/plugin-routes.md). This page is
@@ -196,8 +196,8 @@ The catch-all dispatches in this order:
 4. **Plugin route** — your `pageRoutes` entries.
 5. `/` empty-state fallback → `notFound()`.
 
-So an operator who publishes a `pages` row with slug `discussions`
-**shadows** the forum plugin's `/discussions` route silently. That's
+So an operator who publishes a `pages` row with slug `boards`
+**shadows** the forum plugin's `/boards` route silently. That's
 intentional — operator content is authoritative.
 
 ---
@@ -298,22 +298,22 @@ instead:
 ```ts
 import { findDocuments } from "@nexpress/core";
 
-interface DiscussionRow {
+interface ForumPostRow {
   id: string;
-  slug: string;
+  board: string;
   title: string;
   status: "draft" | "published" | "archived" | "pending";
   // …
 }
 
-const result = await findDocuments<DiscussionRow>("discussions", {
-  where: { slug, status: "published" },
+const result = await findDocuments<ForumPostRow>("forum-posts", {
+  where: { id: postId, status: "published" },
   limit: 1,
 });
 ```
 
-You own the schema (`defineDiscussionsCollection`), so re-stating the
-shape on the plugin side is the source of truth, not a copy.
+The paired `createForum()` factory owns the schema, so re-stating the shape on
+the plugin side is the source of truth, not a copy.
 
 ---
 
@@ -364,5 +364,6 @@ fetcher's closure.
   for adding tags to operator-authored pages.
 - [`docs/design/plugin-routes.md`](design/plugin-routes.md) —
   architectural decisions + locked contract behind this surface.
-- [`packages/plugins/forum/`](../packages/plugins/forum/) — reference
-  implementation: forum plugin owns `/discussions/*`.
+- [`plugin-forum.md`](plugin-forum.md) and
+  [`packages/plugins/forum/`](../packages/plugins/forum/) — the reference
+  multi-board factory and `/boards/*` implementation.

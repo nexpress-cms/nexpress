@@ -257,6 +257,13 @@ Put **layout-specific** rules here:
 discussion threads). Those live in the consuming app's
 `globals.css` because every theme renders them identically.
 
+For optional plugin styling, consume only the plugin's documented
+`manifest.styleSlots`, theme tokens, and inherited custom properties. Do not
+import the plugin package or query its internal collections from a theme. This
+keeps both packages usable alone and makes their combined presentation a
+progressive enhancement. The forum plugin is the reference integration: see
+[`plugin-forum.md`](plugin-forum.md#theme-integration).
+
 Token references are written as `var(--np-color-primary)`. The
 admin's Settings → Theme tab generates `:root { --np-* }`
 declarations from the saved tokens, so your CSS automatically
@@ -458,8 +465,9 @@ clears the stale `np_settings.activeTheme` value.
 
 **Install (manual / explicit form)**: scaffolded sites can list
 themes by hand if they prefer. The built-in pack
-(`@nexpress/theme-default`, `theme-magazine`, `theme-portfolio`,
-`theme-docs`) is exported as `defaultThemes` from
+(`@nexpress/theme-default`, `@nexpress/theme-community`,
+`@nexpress/theme-magazine`, `@nexpress/theme-portfolio`,
+`@nexpress/theme-docs`) is exported as `defaultThemes` from
 `@nexpress/app/config-defaults` — spread it and append your own:
 
 ```ts
@@ -502,8 +510,8 @@ rather than 500.
 
 ### Bundled-themes prebake — runtime swap without migration
 
-Built-in themes (`@nexpress/theme-default`, `theme-magazine`,
-`theme-portfolio`, `theme-docs`) ship together as `defaultThemes`,
+Built-in themes (`@nexpress/theme-default`, `theme-community`,
+`theme-magazine`, `theme-portfolio`, `theme-docs`) ship together as `defaultThemes`,
 and a freshly scaffolded `nexpress.config.ts` spreads the whole
 pack into `themes:`. Because `defineConfig` runs
 `mergeThemeRequirements` over EVERY entry in that array, every
@@ -795,12 +803,13 @@ fetch it via an API route.
 
 | Package                     | Role in repo                                                                                                  | v0.2 surfaces                              |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `@nexpress/theme-community` | Independent Korean community portal with dense feeds, member chrome, and optional public forum style hooks.   | F.3, F.6, F.7 + M.*                        |
 | `@nexpress/theme-magazine`  | Editorial / blog layout, hero + archives + patterns.                                                          | F.1–F.7 + M.* (every surface)              |
 | `@nexpress/theme-docs`      | Hierarchical docs with sidebar + search route.                                                                | F.1–F.3, F.6, F.7 (no patterns / archives) |
 | `@nexpress/theme-portfolio` | Image-led dark theme, deep settings (12 fields).                                                              | F.1, F.3, F.4, F.6, F.7                    |
 | `@nexpress/theme-default`   | v0.1-era baseline. Pre-v0.2 surfaces only — kept as the framework fallback when no other theme is configured. | v0.1 only                                  |
 
-For new themes, copy from `theme-magazine` / `theme-docs` /
+For new themes, copy from `theme-community` / `theme-magazine` / `theme-docs` /
 `theme-portfolio` — they exercise the v0.2 surfaces (manifest
 requires, settingsSchema, blocks, patterns, navLocations,
 archives, routes, seo). `theme-default` is kept as a working

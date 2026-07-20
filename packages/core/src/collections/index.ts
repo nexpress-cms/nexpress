@@ -17,6 +17,7 @@ export {
   createMemberDocument,
   updateMemberDocument,
   promoteMemberDocument,
+  unpublishDocumentForModeration,
   autosaveRevision,
   deleteDocument,
   deleteMemberDocument,

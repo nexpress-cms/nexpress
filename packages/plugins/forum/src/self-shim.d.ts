@@ -6,7 +6,7 @@
  * and DTS for both entries kicks off in parallel. The
  * `index.ts` dts step needs to resolve
  * `@nexpress/plugin-forum/client` to typecheck imports in
- * `src/routes/*.tsx` (`DiscussionForm`, `DiscussionAuthorActions`).
+ * `src/routes/*.tsx` (`ForumPostForm`, `ForumPostActions`).
  * On a fresh CI build the parallel client dts might not have
  * emitted `dist/client.d.ts` yet when index dts tries to
  * resolve the subpath, breaking the build with "Could not
@@ -18,6 +18,10 @@
  * `"use client"` RSC boundary).
  */
 declare module "@nexpress/plugin-forum/client" {
-  export { DiscussionForm } from "./client/discussion-form.js";
-  export { DiscussionAuthorActions } from "./client/discussion-author-actions.js";
+  export { ForumPostForm } from "./client/forum-post-form.js";
+  export { ForumPostActions } from "./client/forum-post-actions.js";
+  export { ForumPostEngagement } from "./client/forum-post-engagement.js";
+  export { ForumPostReportAction } from "./client/forum-post-report-action.js";
+  export { ForumSubscriptionAction } from "./client/forum-subscription-action.js";
+  export type { ForumSubscriptionActionProps } from "./client/forum-subscription-action.js";
 }

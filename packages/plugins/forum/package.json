@@ -1,7 +1,7 @@
 {
   "name": "@nexpress/plugin-forum",
   "version": "0.4.1",
-  "description": "Forum plugin for NexPress — threaded discussions on top of the community surface.",
+  "description": "Korean-style multi-board forum plugin for NexPress.",
   "license": "MIT",
   "author": "Nexpress",
   "homepage": "https://github.com/nexpress-cms/nexpress#readme",
@@ -17,7 +17,8 @@
     "nexpress",
     "plugin",
     "forum",
-    "discussions"
+    "boards",
+    "community"
   ],
   "type": "module",
   "main": "./dist/index.js",
@@ -32,10 +33,12 @@
       "types": "./dist/client.d.ts",
       "import": "./dist/client.js",
       "default": "./dist/client.js"
-    }
+    },
+    "./styles.css": "./src/styles.css"
   },
   "files": [
-    "dist"
+    "dist",
+    "src/styles.css"
   ],
   "engines": {
     "node": ">=20"
@@ -45,18 +48,18 @@
     "react": "^19.0.0"
   },
   "dependencies": {
-    "@nexpress/blocks": "workspace:*",
     "@nexpress/core": "workspace:*",
     "@nexpress/editor": "workspace:*",
     "@nexpress/next": "workspace:*",
-    "@nexpress/plugin-sdk": "workspace:*",
-    "drizzle-orm": "^0.45.2"
+    "@nexpress/plugin-sdk": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",
     "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.0.0",
     "next": "^16.2.10",
     "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0",
     "vitest": "^4.1.10"

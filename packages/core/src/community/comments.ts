@@ -27,9 +27,16 @@ import { recordAuditEvent } from "./audit.js";
 import { memberCan, withMemberWrite } from "./can.js";
 import { renderCommentMarkdown } from "./markdown.js";
 import { runProfanityCheck, runSpamCheck } from "./moderation.js";
-import { extractMentionHandles, fanOutMentionNotifications } from "./mentions.js";
+import {
+  extractMentionHandles,
+  fanOutMentionNotifications,
+  resolveMentionedMembers,
+} from "./mentions.js";
 import { getMutedTargetIds } from "./mutes.js";
 import { createNotification } from "./notifications.js";
+import { notifyFollowers } from "./follows.js";
+import { npResolveDocumentPublicHref } from "./engagement-target.js";
+import { npRecordCommunityRuntimeDiagnostic } from "./diagnostics.js";
 import { getProfanityAdapter } from "./profanity-adapter.js";
 import { applyReputation } from "./reputation.js";
 import { getSpamAdapter } from "./spam-adapter.js";
@@ -131,7 +138,7 @@ async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRo
   }
 
   // Forum-style "locked" guard: collections that opted into a `locked`
-  // checkbox on their schema (e.g. `defineDiscussionsCollection`) flip
+  // checkbox on their schema (e.g. the bundled forum post collection) flip
   // it to true to prevent new comments. The flag lives at the document
   // level, not the collection level — different threads in the same
   // collection can be locked independently. (#47)
@@ -304,48 +311,97 @@ async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRo
     });
   }
 
-  // Reply notification — fire-and-forget. Self-replies don't notify.
-  // Pending (spam-flagged) comments don't notify either: surfacing a
-  // notification for content the public list won't render is just
-  // confusing. If a mod later restores the row to visible, that's
-  // when it makes sense to notify; the moderation surface owns that
-  // decision.
-  if (initialStatus === "visible" && parentAuthorId && parentAuthorId !== input.memberId) {
-    await createNotification({
-      memberId: parentAuthorId,
-      kind: "comment.reply",
-      actorMemberId: input.memberId,
-      payload: {
-        commentId: checkedRow.id,
-        replyAuthorId: input.memberId,
-        targetType: input.targetType,
-        targetId: input.targetId,
-      },
-    });
-  }
-
-  // Phase 16.2 — @mention fan-out. Skipped on pending rows (same
-  // reason as the reply notification: don't notify on content the
-  // public can't see yet). Parent author already received
-  // `comment.reply` so we exclude them to avoid two pings for one
-  // comment.
   if (initialStatus === "visible") {
-    const exclude = new Set<string>();
-    if (parentAuthorId) exclude.add(parentAuthorId);
-    await fanOutMentionNotifications({
-      actorMemberId: input.memberId,
-      kind: "comment.mention",
-      source: input.bodyMd,
-      exclude,
-      payload: {
-        commentId: checkedRow.id,
-        targetType: input.targetType,
-        targetId: input.targetId,
-      },
-    });
+    try {
+      await notifyVisibleComment({
+        row: checkedRow,
+        targetDocument: targetDoc,
+        parentAuthorId,
+      });
+    } catch (error) {
+      // The comment is already durable. Notification delivery is a contained
+      // side effect: preserve the successful write and make the failure
+      // operator-visible instead of returning a misleading 500 to the author.
+      npRecordCommunityRuntimeDiagnostic(
+        "notifications",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   return checkedRow;
+}
+
+async function notifyVisibleComment(input: {
+  row: NpCommentRow;
+  targetDocument: Record<string, unknown>;
+  parentAuthorId: string | null;
+}): Promise<void> {
+  const { row, targetDocument, parentAuthorId } = input;
+  const href = npResolveDocumentPublicHref(row.targetType, targetDocument);
+  const commonPayload = {
+    commentId: row.id,
+    targetType: row.targetType,
+    targetId: row.targetId,
+    ...(href ? { href } : {}),
+  };
+  const alreadyNotified = new Set<string>([row.memberId]);
+
+  // One event has a stable priority: direct reply, mention, document owner,
+  // then general subscription. A recipient only receives the first matching
+  // notification, preventing the reply+mention+subscription triple ping.
+  if (parentAuthorId && parentAuthorId !== row.memberId) {
+    await createNotification({
+      memberId: parentAuthorId,
+      kind: "comment.reply",
+      actorMemberId: row.memberId,
+      payload: { ...commonPayload, replyAuthorId: row.memberId },
+    });
+    alreadyNotified.add(parentAuthorId);
+  }
+
+  const mentionedMembers = await resolveMentionedMembers(extractMentionHandles(row.bodyMd));
+  for (const member of mentionedMembers) {
+    if (alreadyNotified.has(member.id)) continue;
+    await createNotification({
+      memberId: member.id,
+      kind: "comment.mention",
+      actorMemberId: row.memberId,
+      payload: {
+        ...commonPayload,
+        mentionedMemberId: member.id,
+        mentionedHandle: member.handle,
+      },
+    });
+    alreadyNotified.add(member.id);
+  }
+
+  const ownerId =
+    typeof targetDocument.memberAuthorId === "string" ? targetDocument.memberAuthorId : null;
+  if (ownerId && !alreadyNotified.has(ownerId)) {
+    await createNotification({
+      memberId: ownerId,
+      kind: "comment.received",
+      actorMemberId: row.memberId,
+      payload: commonPayload,
+    });
+    alreadyNotified.add(ownerId);
+  }
+
+  const config = getCollectionConfig(row.targetType);
+  if (config.community?.follows === true && href) {
+    await notifyFollowers({
+      activity: "comment.created",
+      subjectType: row.targetType,
+      subjectId: row.targetId,
+      targetType: row.targetType,
+      targetId: row.targetId,
+      commentId: row.id,
+      href,
+      actorMemberId: row.memberId,
+      excludeMemberIds: [...alreadyNotified],
+    });
+  }
 }
 
 /**
@@ -732,8 +788,17 @@ export async function staffHideComment(
   reason?: string | null,
 ): Promise<void> {
   const { row: existing, siteId } = await loadCommentForStaffOp(commentId);
+  if (existing.status === "hidden") return;
+  if (existing.status !== "visible" && existing.status !== "pending") {
+    throw new NpValidationError("Invalid state", [
+      {
+        field: "status",
+        message: `Comment is "${existing.status}" and cannot be hidden`,
+      },
+    ]);
+  }
   const db = getDb();
-  await db
+  const [updated] = await db
     .update(npComments)
     .set({
       status: "hidden",
@@ -741,7 +806,21 @@ export async function staffHideComment(
       hiddenByMemberId: null,
       hiddenReason: reason ?? null,
     })
-    .where(and(eq(npComments.id, commentId), eq(npComments.siteId, siteId)));
+    .where(
+      and(
+        eq(npComments.id, commentId),
+        eq(npComments.siteId, siteId),
+        eq(npComments.status, existing.status),
+      ),
+    )
+    .returning({ id: npComments.id });
+  if (!updated) {
+    const { row: current } = await loadCommentForStaffOp(commentId);
+    if (current.status === "hidden") return;
+    throw new NpValidationError("Invalid state", [
+      { field: "status", message: "Comment status changed concurrently" },
+    ]);
+  }
   await recordAuditEvent({
     actor: { kind: "staff", userId: staffUserId },
     action: "comment.hide",

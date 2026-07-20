@@ -31,6 +31,8 @@ const reservedFieldNames = new Set([
   "_status",
 ]);
 const builtinRelationshipTargets = new Set(["media", "users"]);
+const reservedReportTargets = new Set(["comment", "member"]);
+const reservedFollowTargets = new Set(["member"]);
 
 function issue(
   code: NpCollectionDefinitionIssueCode,
@@ -324,6 +326,33 @@ function semanticIssues(config: NpCollectionConfig): NpCollectionDefinitionIssue
       ),
     );
   }
+  if (config.community?.reports === true && reservedReportTargets.has(config.slug)) {
+    issues.push(
+      issue(
+        "reference",
+        "community.reports",
+        `collection slug "${config.slug}" is a reserved report target and cannot enable document reports.`,
+      ),
+    );
+  }
+  if (config.community?.follows === true && reservedFollowTargets.has(config.slug)) {
+    issues.push(
+      issue(
+        "reference",
+        "community.follows",
+        `collection slug "${config.slug}" is a reserved follow target and cannot enable document follows.`,
+      ),
+    );
+  }
+  if (config.community?.follows === true && typeof config.seo?.urlPath !== "function") {
+    issues.push(
+      issue(
+        "reference",
+        "community.follows",
+        "document follows require seo.urlPath so every subscription can resolve a public destination.",
+      ),
+    );
+  }
   validateFieldList(config.fields, "fields", issues);
   const topLevelStorageNames = new Map<string, string>();
   for (const name of reservedFieldNames) {
@@ -344,6 +373,46 @@ function semanticIssues(config: NpCollectionConfig): NpCollectionDefinitionIssue
   };
   collectTopLevel(config.fields);
   const topLevelNames = new Set(topLevelFields.keys());
+  const memberWrite = config.community?.memberWrite;
+  if (memberWrite?.writableFields) {
+    addDuplicateValues(
+      memberWrite.writableFields,
+      "community.memberWrite.writableFields",
+      "writable field",
+      issues,
+    );
+    for (const [index, name] of memberWrite.writableFields.entries()) {
+      if (!topLevelNames.has(name)) {
+        issues.push(
+          issue(
+            "reference",
+            `community.memberWrite.writableFields.${index.toString()}`,
+            `member writable field "${name}" is not a top-level collection field.`,
+          ),
+        );
+      }
+    }
+  }
+  for (const operation of ["create", "update", "delete"] as const) {
+    if (memberWrite?.access?.[operation] && memberWrite[operation] !== true) {
+      issues.push(
+        issue(
+          "reference",
+          `community.memberWrite.access.${operation}`,
+          `member ${operation} access requires community.memberWrite.${operation}=true.`,
+        ),
+      );
+    }
+  }
+  if (memberWrite?.resolveCreateStatus && memberWrite.create !== true) {
+    issues.push(
+      issue(
+        "reference",
+        "community.memberWrite.resolveCreateStatus",
+        "member create status resolution requires community.memberWrite.create=true.",
+      ),
+    );
+  }
   const publishedAtField = topLevelFields.get("publishedAt");
   if (publishedAtField && publishedAtField.type !== "date") {
     issues.push(

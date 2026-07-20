@@ -17,6 +17,10 @@ import {
   npNavigationLocationPattern,
 } from "@nexpress/core/navigation";
 import {
+  npMediaAttachmentExtensions,
+  npMediaAttachmentLimits,
+  npMediaAttachmentMimeTypes,
+  npMediaAttachmentStatuses,
   npMediaContractLimits,
   npMediaStorageKeyPattern,
   npMediaStatuses,
@@ -28,8 +32,14 @@ import {
   npAuthSingleUseTokenPattern,
   npAuthUuidPattern,
   npMemberHandlePattern,
+  npMemberStatuses,
   npUserRoles,
 } from "@nexpress/core/auth-contract";
+import {
+  npCommunityCommentStatuses,
+  npCommunityContractLimits,
+  npCommunityReportResolutionActions,
+} from "@nexpress/core/community-contract";
 import {
   npDynamicSettingOwnerPattern,
   npSettingsContractLimits,
@@ -584,6 +594,60 @@ function revisionSnapshotSchema(
 
 export function buildSpec(): OpenApiSchema {
   const slugs = getAllCollectionSlugs();
+  const communityTargetTypeSchema: OpenApiSchema = {
+    type: "string",
+    maxLength: 63,
+    pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+  };
+  const reportRowProperties: Record<string, OpenApiSchema> = {
+    id: { type: "string", format: "uuid" },
+    reporterId: { type: "string", format: "uuid" },
+    targetType: communityTargetTypeSchema,
+    targetId: { type: "string", format: "uuid" },
+    reason: {
+      type: "string",
+      minLength: 1,
+      maxLength: npCommunityContractLimits.reasonLength,
+      pattern: "^(?!\\s)(?![\\s\\S]*\\s$)[\\s\\S]+$",
+    },
+    resolvedAt: { type: ["string", "null"], format: "date-time" },
+    resolvedByUserId: { type: ["string", "null"], format: "uuid" },
+    resolvedByMemberId: { type: ["string", "null"], format: "uuid" },
+    resolution: {
+      type: ["string", "null"],
+      enum: [...npCommunityReportResolutionActions, null],
+    },
+    siteId: { type: "string", pattern: npSiteIdPattern },
+    createdAt: { type: "string", format: "date-time" },
+  };
+  const reportRowRequired = Object.keys(reportRowProperties);
+  const reportTargetContextProperties: Record<string, OpenApiSchema> = {
+    kind: { type: "string", enum: ["comment", "document", "member", "missing"] },
+    label: {
+      type: "string",
+      minLength: 1,
+      maxLength: npCommunityContractLimits.labelLength,
+    },
+    excerpt: {
+      type: ["string", "null"],
+      maxLength: npCommunityContractLimits.descriptionLength,
+    },
+    status: {
+      type: ["string", "null"],
+      enum: [
+        ...new Set([
+          ...npCommunityCommentStatuses,
+          ...npCollectionDocumentStatuses,
+          ...npMemberStatuses,
+        ]),
+        null,
+      ],
+    },
+    href: { type: ["string", "null"], maxLength: 512, pattern: "^/admin/" },
+    collectionSlug: { ...communityTargetTypeSchema, type: ["string", "null"] },
+    documentId: { type: ["string", "null"], format: "uuid" },
+    authorMemberId: { type: ["string", "null"], format: "uuid" },
+  };
   const contentTransferBaseProperties: Record<string, OpenApiSchema> = {
     version: { type: "string", enum: [NP_CONTENT_TRANSFER_VERSION] },
     exportedAt: {
@@ -628,6 +692,86 @@ export function buildSpec(): OpenApiSchema {
     "media",
   ];
   const schemas: Record<string, OpenApiSchema> = {
+    community_follow_row: {
+      type: "object",
+      additionalProperties: false,
+      required: ["id", "followerId", "targetType", "targetId", "siteId", "createdAt"],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        followerId: { type: "string", format: "uuid" },
+        targetType: { ...communityTargetTypeSchema },
+        targetId: { type: "string", format: "uuid" },
+        siteId: { type: "string", pattern: npSiteIdPattern },
+        createdAt: { type: "string", format: "date-time" },
+      },
+    },
+    community_follow_list: {
+      type: "object",
+      additionalProperties: false,
+      required: ["follows"],
+      properties: {
+        follows: {
+          type: "array",
+          maxItems: npCommunityContractLimits.pageRows,
+          items: { $ref: "#/components/schemas/community_follow_row" },
+        },
+      },
+    },
+    community_following: {
+      type: "object",
+      additionalProperties: false,
+      required: ["following"],
+      properties: { following: { type: "boolean" } },
+    },
+    community_ok: {
+      type: "object",
+      additionalProperties: false,
+      required: ["ok"],
+      properties: { ok: { type: "boolean", const: true } },
+    },
+    community_report_row: {
+      type: "object",
+      additionalProperties: false,
+      required: reportRowRequired,
+      properties: reportRowProperties,
+    },
+    community_report_target_context: {
+      type: "object",
+      additionalProperties: false,
+      required: Object.keys(reportTargetContextProperties),
+      properties: reportTargetContextProperties,
+    },
+    community_moderation_report_row: {
+      type: "object",
+      additionalProperties: false,
+      required: [...reportRowRequired, "target"],
+      properties: {
+        ...reportRowProperties,
+        target: { $ref: "#/components/schemas/community_report_target_context" },
+      },
+    },
+    community_moderation_report_page: {
+      type: "object",
+      additionalProperties: false,
+      required: ["docs", "totalDocs", "totalPages", "page", "limit", "hasNextPage", "hasPrevPage"],
+      properties: {
+        docs: {
+          type: "array",
+          maxItems: npCommunityContractLimits.pageRows,
+          items: { $ref: "#/components/schemas/community_moderation_report_row" },
+        },
+        totalDocs: { type: "integer", minimum: 0 },
+        totalPages: { type: "integer", minimum: 0 },
+        page: { type: "integer", minimum: 1 },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: npCommunityContractLimits.pageRows,
+        },
+        hasNextPage: { type: "boolean" },
+        hasPrevPage: { type: "boolean" },
+      },
+    },
     content_transfer_json: {
       oneOf: [
         { type: "string", maxLength: npContentTransferContractLimits.jsonStringLength },
@@ -2051,6 +2195,38 @@ export function buildSpec(): OpenApiSchema {
         },
       },
     },
+    media_attachment: {
+      type: "object",
+      additionalProperties: false,
+      description:
+        "Exact client-safe attachment descriptor. Storage keys and uploader identity are intentionally omitted.",
+      required: ["id", "filename", "mimeType", "filesize", "status", "downloadUrl"],
+      properties: {
+        id: { type: "string", format: "uuid", pattern: npAuthUuidPattern },
+        filename: {
+          type: "string",
+          minLength: 1,
+          maxLength: npMediaAttachmentLimits.filenameLength,
+          pattern:
+            "^(?!\\s)(?!.*\\s$)[^/\\\\\\u0000-\\u001F\\u007F-\\u009F\\u061C\\u200E\\u200F\\u202A-\\u202E\\u2066-\\u2069]+$",
+          description: `Safe basename with one supported extension: ${npMediaAttachmentExtensions.join(", ")}.`,
+        },
+        mimeType: {
+          type: "string",
+          enum: [...new Set(Object.values(npMediaAttachmentMimeTypes))],
+        },
+        filesize: {
+          type: "integer",
+          minimum: 1,
+          maximum: npMediaAttachmentLimits.maxFileSizeBytes,
+        },
+        status: { type: "string", enum: [...npMediaAttachmentStatuses] },
+        downloadUrl: {
+          type: "string",
+          pattern: `^/api/media/attachments/${npAuthUuidPattern.slice(1, -1)}$`,
+        },
+      },
+    },
     media_variant: {
       type: "object",
       additionalProperties: false,
@@ -3048,6 +3224,117 @@ export function buildSpec(): OpenApiSchema {
           "200": { description: "Updated theme; triggers public-site revalidation." },
           "403": { description: "Caller is not an admin" },
           "400": { description: "Theme token contract invalid" },
+        },
+      },
+    },
+    "/api/members/media/attachments": {
+      post: {
+        summary: "Upload a member attachment",
+        description: `Accepts one file up to ${npMediaAttachmentLimits.maxFileSizeBytes.toString()} bytes. The safe extension, declared MIME type, and file signature must agree.`,
+        security: [{ memberSessionCookie: [], memberCsrfHeader: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["file"],
+                properties: {
+                  file: { type: "string", format: "binary" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "202": {
+            description: "Attachment accepted; images may still be processing",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/media_attachment" },
+              },
+            },
+          },
+          "400": { description: "Unsafe name, unsupported type, mismatched bytes, or size limit" },
+          "401": { description: "Active member session required" },
+          "403": { description: "Member upload policy denied the request" },
+          "429": { description: "Member upload quota exceeded" },
+        },
+      },
+    },
+    "/api/members/media/attachments/{id}": {
+      parameters: [
+        { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+      ],
+      delete: {
+        summary: "Delete an unreferenced member attachment",
+        description:
+          "Only the member who uploaded the file may delete it. A document reference must be removed first.",
+        security: [{ memberSessionCookie: [], memberCsrfHeader: [] }],
+        responses: {
+          "200": {
+            description: "Deleted",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["id", "deleted"],
+                  properties: {
+                    id: { type: "string", format: "uuid" },
+                    deleted: { type: "boolean", const: true },
+                  },
+                },
+              },
+            },
+          },
+          "401": { description: "Active member session required" },
+          "404": { description: "Attachment not found or not owned by the caller" },
+          "409": { description: "Attachment is still referenced by a document" },
+        },
+      },
+    },
+    "/api/media/attachments/{id}": {
+      parameters: [
+        { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+      ],
+      get: {
+        summary: "Download an attachment",
+        description:
+          "Available to the uploader or when a published public document references the attachment. Responses always force download, disable sniffing, and use a sandbox CSP.",
+        security: [],
+        responses: {
+          "200": {
+            description: "Attachment bytes",
+            headers: {
+              "Content-Disposition": {
+                description: "Always `attachment` with ASCII and RFC 5987 UTF-8 filenames.",
+                schema: { type: "string" },
+              },
+              "X-Content-Type-Options": { schema: { type: "string", const: "nosniff" } },
+              "Content-Security-Policy": {
+                schema: {
+                  type: "string",
+                  const: "default-src 'none'; frame-ancestors 'none'; sandbox",
+                },
+              },
+            },
+            content: {
+              "application/octet-stream": { schema: { type: "string", format: "binary" } },
+            },
+          },
+          "404": { description: "Attachment absent or not visible to the caller" },
+        },
+      },
+      head: {
+        summary: "Inspect a downloadable attachment",
+        description:
+          "Uses the same owner/public-reference authorization and download headers as GET.",
+        security: [],
+        responses: {
+          "200": { description: "Download headers without a response body" },
+          "404": { description: "Attachment absent or not visible to the caller" },
         },
       },
     },
@@ -4201,9 +4488,14 @@ export function buildSpec(): OpenApiSchema {
           in: "query",
           name: "targetType",
           required: true,
-          schema: { type: "string" },
+          schema: {
+            type: "string",
+            minLength: 1,
+            maxLength: 63,
+            pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          },
           description:
-            "Only `comment` is wired today; the polymorphic shape leaves room for future surfaces.",
+            "Use `comment` or a collection slug whose config enables `community.reactions`.",
         },
         {
           in: "query",
@@ -4214,7 +4506,7 @@ export function buildSpec(): OpenApiSchema {
         {
           in: "query",
           name: "kind",
-          schema: { type: "string" },
+          schema: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,29}$" },
           description: "Defaults to `like`.",
         },
       ],
@@ -4225,8 +4517,13 @@ export function buildSpec(): OpenApiSchema {
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
+                required: ["counts", "mine"],
                 properties: {
-                  counts: { type: "object", additionalProperties: { type: "integer" } },
+                  counts: {
+                    type: "object",
+                    additionalProperties: { type: "integer", minimum: 0 },
+                  },
                   mine: { type: "array", items: { type: "string" } },
                 },
               },
@@ -4243,11 +4540,21 @@ export function buildSpec(): OpenApiSchema {
           "application/json": {
             schema: {
               type: "object",
+              additionalProperties: false,
               required: ["targetType", "targetId"],
               properties: {
-                targetType: { type: "string" },
+                targetType: {
+                  type: "string",
+                  minLength: 1,
+                  maxLength: 63,
+                  pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                },
                 targetId: { type: "string", format: "uuid" },
-                kind: { type: "string", description: "Defaults to `like`." },
+                kind: {
+                  type: "string",
+                  pattern: "^[a-z][a-z0-9_-]{0,29}$",
+                  description: "Defaults to `like`.",
+                },
               },
             },
           },
@@ -4255,25 +4562,88 @@ export function buildSpec(): OpenApiSchema {
       },
       responses: {
         "201": { description: "Created (or returned existing if duplicate)" },
-        "400": { description: "Unsupported targetType / unknown comment" },
+        "400": { description: "Invalid target or document reactions are disabled" },
         "401": { description: "Member auth required" },
       },
     },
     delete: {
       summary: "Remove a reaction",
       parameters: [
-        { in: "query", name: "targetType", required: true, schema: { type: "string" } },
+        {
+          in: "query",
+          name: "targetType",
+          required: true,
+          schema: {
+            type: "string",
+            minLength: 1,
+            maxLength: 63,
+            pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          },
+        },
         {
           in: "query",
           name: "targetId",
           required: true,
           schema: { type: "string", format: "uuid" },
         },
-        { in: "query", name: "kind", schema: { type: "string" } },
+        {
+          in: "query",
+          name: "kind",
+          schema: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,29}$" },
+        },
       ],
       responses: {
         "200": { description: "Reaction removed (no-op if it didn't exist)" },
         "401": { description: "Member auth required" },
+      },
+    },
+  };
+  paths["/api/views"] = {
+    post: {
+      summary: "Record a daily-unique public document view",
+      description:
+        "Anonymous and CSRF-exempt. A first-party HttpOnly visitor cookie is hashed before Core receives it, then scoped again to the site, target, and UTC day for persistence; raw cookies, stable cross-document visitor identifiers, IP addresses, and user agents are not stored. The target collection must enable `community.views`.",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              required: ["targetType", "targetId"],
+              properties: {
+                targetType: {
+                  type: "string",
+                  minLength: 1,
+                  maxLength: 63,
+                  pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                },
+                targetId: { type: "string", format: "uuid" },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        "200": {
+          description: "Whether this visitor/day was counted and the current target total",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["counted", "viewCount"],
+                properties: {
+                  counted: { type: "boolean" },
+                  viewCount: { type: "integer", minimum: 0 },
+                },
+              },
+            },
+          },
+        },
+        "400": { description: "Invalid target or document views are disabled" },
+        "404": { description: "Public target document not found" },
+        "429": { description: "Anonymous write rate limit exceeded" },
       },
     },
   };
@@ -4284,46 +4654,91 @@ export function buildSpec(): OpenApiSchema {
         {
           in: "query",
           name: "targetType",
-          schema: { type: "string", enum: ["member", "thread", "tag"] },
+          schema: {
+            type: "string",
+            pattern: npSearchCollectionSlugPattern,
+            maxLength: 63,
+          },
+          description: "`member` or a canonical collection slug with `community.follows` enabled.",
         },
         { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 200 } },
         { in: "query", name: "offset", schema: { type: "integer", minimum: 0 } },
       ],
       responses: {
-        "200": { description: "Follow rows" },
+        "200": {
+          description: "Follow rows",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_follow_list" },
+            },
+          },
+        },
         "401": { description: "Member auth required" },
       },
     },
     post: {
-      summary: "Follow a member / thread / tag",
+      summary: "Follow a member or subscribe to a public collection document",
       requestBody: {
         required: true,
         content: {
           "application/json": {
             schema: {
               type: "object",
+              additionalProperties: false,
               required: ["targetType", "targetId"],
               properties: {
-                targetType: { type: "string", enum: ["member", "thread", "tag"] },
-                targetId: { type: "string", description: "UUID for member/thread; slug for tag." },
+                targetType: {
+                  type: "string",
+                  pattern: npSearchCollectionSlugPattern,
+                  maxLength: 63,
+                  description:
+                    "`member` or a canonical collection slug with `community.follows` enabled.",
+                },
+                targetId: { type: "string", format: "uuid" },
               },
             },
           },
         },
       },
       responses: {
-        "201": { description: "Followed (or existing follow returned on duplicate)" },
-        "400": { description: "Self-follow / unknown target / unsupported type" },
+        "201": {
+          description: "Followed (or existing follow returned on duplicate)",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_follow_row" },
+            },
+          },
+        },
+        "400": { description: "Self-follow or collection document follows are disabled" },
+        "404": { description: "Active member or public document target not found" },
       },
     },
     delete: {
       summary: "Unfollow",
       parameters: [
-        { in: "query", name: "targetType", required: true, schema: { type: "string" } },
-        { in: "query", name: "targetId", required: true, schema: { type: "string" } },
+        {
+          in: "query",
+          name: "targetType",
+          required: true,
+          schema: { type: "string", pattern: npSearchCollectionSlugPattern, maxLength: 63 },
+          description: "`member` or a canonical collection slug.",
+        },
+        {
+          in: "query",
+          name: "targetId",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
       ],
       responses: {
-        "200": { description: "Removed" },
+        "200": {
+          description: "Removed",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_ok" },
+            },
+          },
+        },
         "401": { description: "Member auth required" },
       },
     },
@@ -4338,12 +4753,24 @@ export function buildSpec(): OpenApiSchema {
           in: "query",
           name: "targetType",
           required: true,
-          schema: { type: "string", enum: ["member", "thread", "tag"] },
+          schema: { type: "string", pattern: npSearchCollectionSlugPattern, maxLength: 63 },
         },
-        { in: "query", name: "targetId", required: true, schema: { type: "string" } },
+        {
+          in: "query",
+          name: "targetId",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
       ],
       responses: {
-        "200": { description: "{ following: boolean }" },
+        "200": {
+          description: "Current follow state",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_following" },
+            },
+          },
+        },
         "401": { description: "Member auth required" },
       },
     },
@@ -4403,27 +4830,39 @@ export function buildSpec(): OpenApiSchema {
     post: {
       summary: "File a community report",
       description:
-        "Members report a comment, thread, reply, or another member. The report enters the moderation queue (`/api/admin/community/reports`). One row per submission — duplicate filings are not deduped.",
+        "Members report a visible comment, an active member, or a public document whose collection enables `community.reports`. Document targets use the canonical collection slug. A member can have only one unresolved report per site and target; duplicate open filings return 409.",
       requestBody: {
         required: true,
         content: {
           "application/json": {
             schema: {
               type: "object",
+              additionalProperties: false,
               required: ["targetType", "targetId", "reason"],
               properties: {
-                targetType: { type: "string", enum: ["comment", "thread", "reply", "member"] },
+                targetType: {
+                  ...communityTargetTypeSchema,
+                  description: "Reserved `comment` / `member` target or a collection slug.",
+                },
                 targetId: { type: "string", format: "uuid" },
-                reason: { type: "string", maxLength: 1000 },
+                reason: reportRowProperties.reason,
               },
             },
           },
         },
       },
       responses: {
-        "201": { description: "Report row" },
+        "201": {
+          description: "Report row",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_report_row" },
+            },
+          },
+        },
         "400": { description: "Validation error" },
         "401": { description: "Member auth required" },
+        "409": { description: "The member already has an unresolved report for this target" },
       },
     },
   };
@@ -4440,13 +4879,21 @@ export function buildSpec(): OpenApiSchema {
         {
           in: "query",
           name: "targetType",
-          schema: { type: "string", enum: ["comment", "thread", "reply", "member"] },
+          schema: communityTargetTypeSchema,
         },
         { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 200 } },
         { in: "query", name: "page", schema: { type: "integer", minimum: 1 } },
       ],
       responses: {
-        "200": { description: "Paginated report list" },
+        "200": {
+          description:
+            "Paginated report list with exact operator-safe target context, status, excerpt, and Admin link",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_moderation_report_page" },
+            },
+          },
+        },
         "403": { description: "Requires admin / editor / moderator role" },
       },
     },
@@ -4455,7 +4902,7 @@ export function buildSpec(): OpenApiSchema {
     post: {
       summary: "Resolve a moderation report",
       description:
-        'Marks the report resolved with a free-form `resolution` label (e.g. `"hidden"`, `"banned"`, `"dismissed"`). The actual moderation action (hide / ban / etc.) is a separate call.',
+        "Applies one target-compatible moderation action and resolves the report under a report-row lock. `hide-comment` hides a visible comment; `unpublish-document` moves a report-enabled document to pending review; `dismiss` changes only the report.",
       parameters: [
         { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
       ],
@@ -4465,14 +4912,27 @@ export function buildSpec(): OpenApiSchema {
           "application/json": {
             schema: {
               type: "object",
-              required: ["resolution"],
-              properties: { resolution: { type: "string" } },
+              additionalProperties: false,
+              required: ["action"],
+              properties: {
+                action: {
+                  type: "string",
+                  enum: [...npCommunityReportResolutionActions],
+                },
+              },
             },
           },
         },
       },
       responses: {
-        "200": { description: "Updated report row" },
+        "200": {
+          description: "Updated report row",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_report_row" },
+            },
+          },
+        },
         "400": { description: "Already resolved or validation error" },
         "403": { description: "Requires admin / editor / moderator role" },
         "404": { description: "Report not found" },
@@ -4940,6 +5400,8 @@ export function buildSpec(): OpenApiSchema {
       securitySchemes: {
         sessionCookie: { type: "apiKey", in: "cookie", name: "np-session" },
         csrfHeader: { type: "apiKey", in: "header", name: "X-CSRF-Token" },
+        memberSessionCookie: { type: "apiKey", in: "cookie", name: "np-mb-session" },
+        memberCsrfHeader: { type: "apiKey", in: "header", name: "X-CSRF-Token" },
       },
     },
     security: [{ sessionCookie: [], csrfHeader: [] }],

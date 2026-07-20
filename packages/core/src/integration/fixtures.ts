@@ -33,6 +33,8 @@ import { discussionsCollection } from "../../../../apps/web/src/collections/disc
 // eslint-disable-next-line import-x/no-relative-packages
 import { defaultTheme } from "../../../themes/default/src/index.js";
 // eslint-disable-next-line import-x/no-relative-packages
+import { communityTheme } from "../../../themes/community/src/index.js";
+// eslint-disable-next-line import-x/no-relative-packages
 import { docsTheme } from "../../../themes/docs/src/index.js";
 // eslint-disable-next-line import-x/no-relative-packages
 import { magazineTheme } from "../../../themes/magazine/src/index.js";
@@ -45,7 +47,7 @@ import { mergeThemeRequirements } from "../themes/merge-requirements.js";
 
 const resolvedCollectionConfigs = mergeThemeRequirements(
   [postsCollection, pagesCollection, categoriesCollection, tagsCollection],
-  [defaultTheme, magazineTheme, portfolioTheme, docsTheme],
+  [defaultTheme, communityTheme, magazineTheme, portfolioTheme, docsTheme],
 );
 
 function getResolvedCollectionConfig(slug: string): NpCollectionConfig {

@@ -66,7 +66,7 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
     // unconditional — they don't depend on any DB state.
     expect(xml).toContain("<loc>http://localhost:3000/</loc>");
     expect(xml).toContain("<loc>http://localhost:3000/blog</loc>");
-    expect(xml).toContain("<loc>http://localhost:3000/discussions</loc>");
+    expect(xml).toContain("<loc>http://localhost:3000/boards</loc>");
     expect(xml).toContain("<loc>http://localhost:3000/search</loc>");
     expect(xml).toContain("<priority>1.0</priority>");
   });
@@ -233,11 +233,11 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
     const res = await sitemapGET(sitemapRequest("ko"));
     expect(res.status).toBe(200);
     const xml = await res.text();
-    // Static routes (/, /blog, /search, /discussions) live in the
+    // Static routes (/, /blog, /search, /boards) live in the
     // default-locale sitemap so a row never appears in two siblings.
     expect(xml).not.toContain("<loc>http://localhost:3000/</loc>");
     expect(xml).not.toContain("<loc>http://localhost:3000/blog</loc>");
-    expect(xml).not.toContain("<loc>http://localhost:3000/discussions</loc>");
+    expect(xml).not.toContain("<loc>http://localhost:3000/boards</loc>");
     // It IS a urlset though — header must be present even when empty.
     expect(xml).toContain("<urlset");
   });

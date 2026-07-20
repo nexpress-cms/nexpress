@@ -269,9 +269,9 @@ const CORE_FEATURE_LINKS: ReadonlyArray<{
     description: "Posts collection — list view + per-slug detail pages.",
   },
   {
-    title: "Discussions",
-    href: "/discussions",
-    description: "Member-authored threads with comments and reactions.",
+    title: "Boards",
+    href: "/boards",
+    description: "Korean-style boards with member posts, moderation, and comments.",
   },
   {
     title: "Search",

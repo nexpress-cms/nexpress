@@ -162,6 +162,7 @@ describe("framework settings contract", () => {
       stringOverrides: 0,
       pluginStorage: 0,
       comments: 0,
+      contentViews: 0,
       reactions: 0,
       follows: 0,
       mutes: 0,

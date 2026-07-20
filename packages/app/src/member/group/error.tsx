@@ -36,6 +36,7 @@ interface ErrorPageProps {
 }
 
 const THEME_MEMBER_ERRORS: Record<string, LazyExoticComponent<ComponentType<ErrorPageProps>>> = {
+  community: lazy(() => import("@nexpress/theme-community/components/members-error")),
   magazine: lazy(() => import("@nexpress/theme-magazine/components/members-error")),
   portfolio: lazy(() => import("@nexpress/theme-portfolio/components/members-error")),
   docs: lazy(() => import("@nexpress/theme-docs/components/members-error")),

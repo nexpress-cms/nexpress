@@ -99,9 +99,10 @@ validators from `@nexpress/core/theme`, or read the full guide at
 
 ## Reference themes
 
-The monorepo ships four:
+The monorepo ships five:
 
 - `@nexpress/theme-default`
+- `@nexpress/theme-community`
 - `@nexpress/theme-magazine`
 - `@nexpress/theme-portfolio`
 - `@nexpress/theme-docs`

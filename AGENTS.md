@@ -2,10 +2,58 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-19 (Version PR generation now synchronizes public
+**Last refreshed:** 2026-07-20 (community follows now use member or opted-in
+collection targets, bounded activity fan-out, actionable deduplicated
+notifications, transactional cleanup, orphan diagnostics, and independent
+forum board/post subscription UI across both skins.)
+
+**Earlier:** 2026-07-20 (community reports now use reserved or
+report-enabled collection targets, unresolved deduplication, contextual Admin
+rows, target-serialized closed moderation actions, forum post reporting, and
+orphan diagnostics.)
+
+**Earlier:** 2026-07-20 (forum attachments now reuse media ownership,
+signature validation, race-safe document refs/deletion, forced-download
+visibility, board policy, both skins, exact OpenAPI, scaffolds, integration
+tests, and docs.)
+
+**Earlier:** 2026-07-20 (forum engagement now shares opt-in document
+reactions, privacy-bounded daily views, batched counts, and bounded recent
+popularity across Core, API, skins, home blocks, theme hooks, doctor, and docs.)
+
+**Earlier:** 2026-07-19 (Version PR generation now synchronizes public
 release-line and baseline docs from generated package versions, then rechecks
 the repository contract before updating the draft release accumulator; the
 pre-1.0 changeset guidance matches the stable-surface minor-bump policy.)
+
+**Earlier:** 2026-07-19 (the bundled Korean community theme now works
+without the forum over generic page/post/member contracts and enhances an
+installed forum only through its public CSS variables, data hooks, and optional
+home block slot.)
+
+**Earlier:** 2026-07-19 (forum home integration now uses plugin-owned,
+site-scoped board-directory and latest/notice feed blocks plus one validated
+community-home pattern; configurable collection slugs stay inside the plugin
+while themes consume only stable style hooks.)
+
+**Earlier:** 2026-07-19 (the forum now ships independent classic and
+community-full skins over one public np-blocks/token/style-slot contract;
+themes can enhance every route surface without importing the plugin, while the
+plugin retains complete fallbacks without an active integration.)
+
+**Earlier:** 2026-07-19 (forum lists now share one bounded board-scoped
+search/category/author/page query contract across routes and skins; malformed
+filters fail closed, navigation preserves state, and notices stay out of
+filtered results.)
+
+**Earlier:** 2026-07-19 (the bundled forum now uses one complete
+index/list/detail/composer skin contract with responsive classic markup and
+framework-independent rich-text typography; routes retain authentication,
+ownership, and write-policy control.)
+
+**Earlier:** 2026-07-19 (the bundled forum now uses board rows, shared post
+storage, build-time skins, ID routes, and exact row-aware member-write policy
+while operator fields fail before moderation or persistence.)
 
 **Earlier:** 2026-07-18 (block prop schemas now use one exact v1
 discriminated union across author types, definition/content validation, Admin,
@@ -469,6 +517,16 @@ at dispatch. Author docs: `docs/plugin-scheduled-tasks.md`.
 Plugin wiring is centralized in `packages/core/src/plugins/host.ts` (registry + `runHook`) and surfaced via `loadPlugins()` / `runHook()` / `getPluginRoutes()` exports. API routes use uppercase `GET`/`POST`/`PUT`/`PATCH`/`DELETE`, canonical static paths, and exact `{ status, body?, headers? }` results; GET registrations also handle HEAD. Definition validation, the core host, and plugin doctor enforce the same contract. See `docs/plugin-api-routes.md`. The catch-all plugin route (`/api/plugins/<id>/<...>` for paths other than `/actions`) is rate-limited at the framework level by `apps/web/src/proxy.ts` (#316) — the conservative default applies to anything matching the catch-all pattern, so plugin authors get a sane floor automatically. A plugin that needs a higher ceiling for a specific endpoint must add its own per-handler rate-limiter on top.
 
 Plugin **page routes** (`pageRoutes` field — #623) let a plugin own public-site URLs end-to-end. `definePlugin()`, the core host, and plugin doctor share the same canonical pattern/handler validation; malformed or same-plugin duplicate routes fail before dispatch. The host catch-all (`apps/web/src/app/(site)/[[...slug]]/page.tsx`) calls `dispatchPluginRoute()` from `@nexpress/next` after the page-slug + slug-redirect + theme-route lookups; a matched plugin component receives `{ params, searchParams, blockCtx }` and renders into the active shell. `locale: "auto"` matches the locale-stripped path, while `locale: "none"` matches only the raw path and does not add automatic hreflang aliases. `surface: "site"` routes use the site shell; `surface: "member"` routes use `impl.members.shell` with the member-surface fallback chain. The flag controls chrome only and is not an auth gate. Server / client boundaries follow the same pattern as `@nexpress/admin`: route components (server) import client widgets via the package's own `./client` subpath (e.g. `@nexpress/plugin-forum/client`), which is marked external in the index entry's tsup config so the bundle preserves the `"use client"` directive. Reference: `packages/plugins/forum/` migrated 2026-05-10. Author docs in `docs/plugin-pages.md`.
+
+The bundled forum is created with one paired `createForum()` result: a
+`forum-boards` registry collection, shared `forum-posts` collection, and plugin
+whose `/boards/:boardKey/:postId` routes, Admin action, build-time skin catalog,
+relationship targets, and row-aware member policy close over those exact slugs.
+Boards are published rows, so adding a board/category/skin selection needs no
+new schema. Member requests can write only board/title/body/category; board
+policy resolves create access and pending status before moderation, while
+pinned/locked/status remain staff-owned. The stable board key plus UUID post id
+avoid Korean-title slug generation. Author docs: `docs/plugin-forum.md`.
 
 ### Next.js app structure (`apps/web/src/app`)
 

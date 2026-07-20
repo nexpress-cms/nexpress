@@ -268,6 +268,7 @@ export async function truncateAll(): Promise<void> {
     "np_notifications",
     "np_follows",
     "np_reactions",
+    "np_content_views",
     "np_comments",
     "np_bans",
     "np_member_roles",

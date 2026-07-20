@@ -30,6 +30,7 @@
       "@nexpress/plugin-webhook-relay",
       "@nexpress/rate-limiter-redis",
       "@nexpress/theme",
+      "@nexpress/theme-community",
       "@nexpress/theme-default",
       "@nexpress/theme-docs",
       "@nexpress/theme-magazine",

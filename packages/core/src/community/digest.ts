@@ -48,10 +48,12 @@ export interface BuildDigestEmailInput {
 
 const LABELS: Record<string, string> = {
   "comment.reply": "New reply on your comment",
+  "comment.received": "New comment on your content",
   "comment.mention": "You were mentioned in a comment",
   "document.mention": "You were mentioned in a discussion",
   "reaction.received": "Someone reacted to your content",
   "follow.received": "Someone followed you",
+  "follow.activity": "New activity on followed content",
 };
 
 function labelFor(kind: string): string {
@@ -82,7 +84,8 @@ export function buildDigestEmail(input: BuildDigestEmailInput): NpDigestEmailCon
   const lines = input.notifications.map((n) => {
     const label = labelFor(n.kind);
     const when = n.createdAt.toISOString();
-    return `- ${label} (${when})`;
+    const href = typeof n.payload.href === "string" ? ` — ${n.payload.href}` : "";
+    return `- ${label} (${when})${href}`;
   });
   const text = [
     `Hi @${input.member.handle},`,
@@ -98,7 +101,8 @@ export function buildDigestEmail(input: BuildDigestEmailInput): NpDigestEmailCon
     .map((n) => {
       const label = escapeHtml(labelFor(n.kind));
       const when = escapeHtml(n.createdAt.toISOString());
-      return `<li><strong>${label}</strong> <span style="color:#64748b">— ${when}</span></li>`;
+      const href = typeof n.payload.href === "string" ? escapeHtml(n.payload.href) : null;
+      return `<li><strong>${label}</strong> <span style="color:#64748b">— ${when}</span>${href ? ` <code>${href}</code>` : ""}</li>`;
     })
     .join("");
   const html = [

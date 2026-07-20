@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { defaultTheme } from "@nexpress/theme-default";
+import { communityTheme } from "@nexpress/theme-community";
 import { docsTheme } from "@nexpress/theme-docs";
 import { magazineTheme } from "@nexpress/theme-magazine";
 import { portfolioTheme } from "@nexpress/theme-portfolio";
@@ -99,6 +100,31 @@ describe("built-in theme seed parity", () => {
     expect(defaultTheme.impl.routes?.map((route) => route.pattern)).toContain("/tag/:slug");
     assertLocalNavTargetsResolve(defaultTheme);
     assertSeedBlocksResolve(defaultTheme);
+  });
+
+  it("community seeds an independent Korean portal home and resolvable guidance links", () => {
+    const pages = communityTheme.impl.seedContent?.pages ?? [];
+    const posts = communityTheme.impl.seedContent?.posts ?? [];
+    expect(pages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ slug: "/", template: "front" }),
+        expect.objectContaining({ slug: "about", template: "default" }),
+        expect.objectContaining({ slug: "guidelines", template: "default" }),
+      ]),
+    );
+    expect(posts.length).toBeGreaterThanOrEqual(8);
+    expect(posts[0]).toEqual(
+      expect.objectContaining({
+        title: "오래 머무는 커뮤니티를 만드는 작은 규칙들",
+        slug: "small-rules-for-a-lasting-community",
+      }),
+    );
+    expect(communityTheme.impl.templates?.pages?.front).toBeDefined();
+    expect(communityTheme.impl.templates?.posts?.default).toBeDefined();
+    expect(communityTheme.impl.templates?.posts?.list).toBeDefined();
+    expect(communityTheme.manifest.requires).toBeUndefined();
+    assertLocalNavTargetsResolve(communityTheme);
+    assertSeedBlocksResolve(communityTheme);
   });
 
   it("docs seeds API reference and changelog pages with dedicated templates", () => {

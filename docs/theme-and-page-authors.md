@@ -114,11 +114,11 @@ and `get${Pascal}Document` wrappers that bind the type generic so
 your call sites don't have to:
 
 ```ts
-// app/(site)/u/[handle]/discussions/page.tsx
-import { findDiscussions } from "@/db/generated/documents";
+// app/(site)/blog/page.tsx
+import { findPosts } from "@/db/generated/documents";
 
-const result = await findDiscussions({
-  where: { memberAuthorId: profile.id, status: "published" },
+const result = await findPosts({
+  where: { status: "published" },
   sort: "-createdAt",
   page: pageNum,
   limit: 20,
@@ -126,15 +126,15 @@ const result = await findDiscussions({
 
 result.docs.map((doc) => (
   <li key={doc.id}>
-    <a href={`/discussions/${doc.slug}`}>{doc.title}</a>
+    <a href={`/blog/${doc.slug}`}>{doc.title}</a>
     <time>{doc.createdAt.toLocaleDateString()}</time>
   </li>
 ));
 ```
 
 No `as string` / `as Date` casts. The `where` clause is
-`Partial<DiscussionsDocument>` — typo on a field name (e.g.
-`memberAutorId`) is a compile error, not a silent 0-result query.
+`Partial<PostsDocument>` — typo on a field name is a compile error, not a
+silent 0-result query.
 
 System-level filters (`siteId`, `visibility`, `locale`) live on
 the where clause too without being collection fields — they're
@@ -980,7 +980,7 @@ import { PaginationNav } from "@/components/pagination-nav";
   totalPages={result.totalPages}
   hasPrevPage={result.hasPrevPage}
   hasNextPage={result.hasNextPage}
-  hrefForPage={(p) => `/discussions?page=${p}`}
+  hrefForPage={(p) => `/blog?page=${p}`}
 />;
 ```
 

@@ -283,12 +283,25 @@ export const collectionConfigSchema = z.strictObject({
   community: z
     .strictObject({
       comments: z.boolean().optional(),
+      reactions: z.boolean().optional(),
+      views: z.boolean().optional(),
+      follows: z.boolean().optional(),
+      reports: z.boolean().optional(),
       memberWrite: z
         .strictObject({
           create: z.boolean().optional(),
           update: z.boolean().optional(),
           delete: z.boolean().optional(),
+          writableFields: z.array(z.string().min(1)).optional(),
+          access: z
+            .strictObject({
+              create: functionSchema.optional(),
+              update: functionSchema.optional(),
+              delete: functionSchema.optional(),
+            })
+            .optional(),
           defaultStatus: z.enum(["published", "pending"]).optional(),
+          resolveCreateStatus: functionSchema.optional(),
         })
         .optional(),
     })

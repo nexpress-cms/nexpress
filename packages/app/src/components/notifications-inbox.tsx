@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   npRequireMarkNotificationsReadWire,
+  npRequireNotificationHref,
   type NpNotificationWireRow,
 } from "@nexpress/core/community-contract";
 
@@ -16,10 +17,12 @@ interface NotificationsInboxProps {
 
 const LABELS: Record<string, string> = {
   "comment.reply": "New reply",
+  "comment.received": "New comment",
   "comment.mention": "Comment mention",
   "document.mention": "Discussion mention",
   "reaction.received": "Reaction received",
   "follow.received": "New follower",
+  "follow.activity": "Subscribed activity",
 };
 
 export function NotificationsInbox({
@@ -134,6 +137,7 @@ export function NotificationsInbox({
           {items.map((item) => {
             const isUnread = item.readAt === null;
             const isBusy = busyIds.has(item.id);
+            const href = hrefFor(item);
             return (
               <li
                 key={item.id}
@@ -177,24 +181,43 @@ export function NotificationsInbox({
                     {isUnread ? "Unread" : "Read"}
                   </span>
                 </div>
-                {isUnread ? (
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => void markOneRead(item.id)}
-                      disabled={isBusy}
-                      style={{
-                        padding: "0.4rem 0.7rem",
-                        borderRadius: 6,
-                        border: "1px solid #cbd5e1",
-                        background: "#fff",
-                        color: "#0f172a",
-                        cursor: isBusy ? "default" : "pointer",
-                        opacity: isBusy ? 0.7 : 1,
-                      }}
-                    >
-                      {isBusy ? "Marking..." : "Mark read"}
-                    </button>
+                {isUnread || href ? (
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    {href ? (
+                      <a
+                        href={href}
+                        onClick={() => {
+                          if (isUnread) void markOneRead(item.id);
+                        }}
+                        style={{
+                          padding: "0.4rem 0.7rem",
+                          borderRadius: 6,
+                          background: "#0f172a",
+                          color: "#fff",
+                          textDecoration: "none",
+                        }}
+                      >
+                        View
+                      </a>
+                    ) : null}
+                    {isUnread ? (
+                      <button
+                        type="button"
+                        onClick={() => void markOneRead(item.id)}
+                        disabled={isBusy}
+                        style={{
+                          padding: "0.4rem 0.7rem",
+                          borderRadius: 6,
+                          border: "1px solid #cbd5e1",
+                          background: "#fff",
+                          color: "#0f172a",
+                          cursor: isBusy ? "default" : "pointer",
+                          opacity: isBusy ? 0.7 : 1,
+                        }}
+                      >
+                        {isBusy ? "Marking..." : "Mark read"}
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </li>
@@ -225,6 +248,7 @@ async function markRead(input: { ids: string[] } | { all: true }): Promise<numbe
   const res = await fetch("/api/notifications/mark-read", {
     method: "POST",
     credentials: "include",
+    keepalive: true,
     headers: {
       "Content-Type": "application/json",
       ...(csrf ? { "X-CSRF-Token": csrf } : {}),
@@ -249,6 +273,8 @@ function summaryFor(item: NotificationInboxItem): string {
   switch (item.kind) {
     case "comment.reply":
       return `Someone replied to ${targetPhrase(item.payload)}.`;
+    case "comment.received":
+      return `Someone commented on ${targetPhrase(item.payload)}.`;
     case "comment.mention":
       return `You were mentioned in a comment on ${targetPhrase(item.payload)}.`;
     case "document.mention":
@@ -260,8 +286,22 @@ function summaryFor(item: NotificationInboxItem): string {
     }
     case "follow.received":
       return "A member followed your profile.";
+    case "follow.activity":
+      return item.payload.activity === "document.published"
+        ? "A followed board has a new post."
+        : "A followed discussion has a new comment.";
     default:
       return "A new notification was added to your inbox.";
+  }
+}
+
+function hrefFor(item: NotificationInboxItem): string | null {
+  const href = readString(item.payload, "href");
+  if (!href) return null;
+  try {
+    return npRequireNotificationHref(href);
+  } catch {
+    return null;
   }
 }
 

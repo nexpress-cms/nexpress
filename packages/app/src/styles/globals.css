@@ -9,6 +9,10 @@
  * is identical for every NexPress site.
  */
 
+@layer np-base, np-blocks, np-theme, np-overrides;
+
+@import "@nexpress/plugin-forum/styles.css";
+
 /* Tailwind v4's source scanner can drop arbitrary-value classes that
  * live inside long multi-utility strings (e.g. the AuthCard's
  * `shadow-[…]` + `bg-[radial-gradient(…)]` in a single cn() arg).
@@ -32,8 +36,6 @@
  * who hasn't picked a theme still sees the right surface on first
  * paint. */
 @variant dark (&:where(.dark, .dark *));
-
-@layer np-base, np-blocks, np-theme, np-overrides;
 
 /* ------------------------------------------------------------------
  * Admin brand accent — used as a quiet indicator (active sidebar

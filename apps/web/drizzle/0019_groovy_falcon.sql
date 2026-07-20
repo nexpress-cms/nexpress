@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "np_reports_unresolved_reporter_target_uidx" ON "np_reports" USING btree ("site_id","reporter_id","target_type","target_id") WHERE "np_reports"."resolved_at" is null;

@@ -1,9 +1,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 
-import { asc, count, desc, eq, inArray, max, sql, type SQL } from "drizzle-orm";
+import { asc, count, desc, eq, inArray, isNull, max, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import type { NpCommunityJsonObject } from "../community-contract/types.js";
+import { npRequireNotificationHref } from "../community-contract/contract.js";
+import { can } from "../auth/capabilities.js";
 import {
   NpCollectionContractError,
   npCollectionDocumentToWriteInput,
@@ -25,6 +27,7 @@ import {
   type NpCollectionHook,
   type NpFieldConfig,
   type NpHookPrincipal,
+  type NpMemberWriteAccessArgs,
 } from "../config/types.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
 import { isNpRichTextContent } from "../fields/rich-text.js";
@@ -40,8 +43,14 @@ import { buildSearchVector, buildWeightedSearchVectorSql } from "./search.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { runHook } from "../plugins/host.js";
 import { npRevisions, npSlugHistory } from "../db/schema/system.js";
-import { npComments, npReactions, npReports } from "../db/schema/community.js";
-import { npMediaRefs } from "../db/schema/media.js";
+import {
+  npComments,
+  npContentViews,
+  npFollows,
+  npReactions,
+  npReports,
+} from "../db/schema/community.js";
+import { npMedia, npMediaRefs } from "../db/schema/media.js";
 import { getDb } from "../db/runtime.js";
 import {
   NpRevisionContractError,
@@ -56,6 +65,18 @@ interface PreparedDocumentData {
   joinRows: Record<string, string[]>;
 }
 
+function notificationHrefForDocument(
+  config: NpCollectionConfig,
+  document: Record<string, unknown>,
+): string | null {
+  try {
+    const href = config.seo?.urlPath?.(document) ?? null;
+    return href === null ? null : npRequireNotificationHref(href);
+  } catch {
+    return null;
+  }
+}
+
 type QueryCondition = ReturnType<typeof sql>;
 
 interface SelectQuery extends Promise<unknown[]> {
@@ -63,7 +84,7 @@ interface SelectQuery extends Promise<unknown[]> {
   orderBy(order: QueryCondition): SelectQuery;
   limit(limit: number): SelectQuery;
   offset(offset: number): SelectQuery;
-  for(strength: "update"): SelectQuery;
+  for(strength: "update" | "key share"): SelectQuery;
 }
 
 interface InsertValuesQuery extends Promise<unknown> {
@@ -292,6 +313,41 @@ export async function saveDocument(
   return saveDocumentImpl(collection, docId, data, { kind: "staff", user }, options);
 }
 
+function assertMemberWritableFields(
+  config: NpCollectionConfig,
+  collection: string,
+  data: Readonly<Record<string, unknown>>,
+): void {
+  const writableFields = config.community?.memberWrite?.writableFields;
+  if (!writableFields) return;
+  const allowed = new Set(writableFields);
+  const denied = Object.keys(data).filter((field) => !allowed.has(field));
+  if (denied.length === 0) return;
+  throw new NpValidationError("Invalid member-authored fields", [
+    ...denied.map((field) => ({
+      field,
+      message: `Members cannot write field "${field}" on collection "${collection}".`,
+    })),
+  ]);
+}
+
+async function assertMemberWriteAccess(
+  config: NpCollectionConfig,
+  args: NpMemberWriteAccessArgs,
+): Promise<void> {
+  const access = config.community?.memberWrite?.access?.[args.operation];
+  if (!access) return;
+  const allowed = await access(args);
+  if (typeof allowed !== "boolean") {
+    throw new Error(
+      `Collection "${args.collection}" member ${args.operation} access policy must return boolean.`,
+    );
+  }
+  if (!allowed) {
+    throw new NpForbiddenError(args.collection, args.operation);
+  }
+}
+
 /**
  * Member-side document create. Only valid when
  * `config.community?.memberWrite?.create === true`. Assumes the API
@@ -340,6 +396,7 @@ export async function updateMemberDocument(
   if (!config.community?.memberWrite?.update) {
     throw new NpForbiddenError(collection, "update");
   }
+  assertMemberWritableFields(config, collection, data);
   const registration = getCollectionRegistration(collection);
   const dbForGate = getDb() as unknown as DrizzleDatabaseLike;
   const originalDoc = await getDocumentByIdInternal(dbForGate, registration, collection, docId);
@@ -352,6 +409,19 @@ export async function updateMemberDocument(
   }
   const { assertNotBanned } = await import("../community/can.js");
   await assertNotBanned(memberId);
+
+  const candidate = {
+    ...npCollectionDocumentToWriteInput(originalDoc, config),
+    ...data,
+  };
+  const validatedCandidate = toRecord(getCollectionZodSchema(config, candidate).parse(candidate));
+  await assertMemberWriteAccess(config, {
+    collection,
+    operation: "update",
+    memberId,
+    data: validatedCandidate,
+    originalDoc,
+  });
 
   // Re-run the spam + profanity adapters on the submitted patch.
   // Pre-fix this path skipped moderation entirely, so a member
@@ -403,14 +473,16 @@ export async function updateMemberDocument(
     const { extractMentionHandlesFromDocData, fanOutMentionNotifications } =
       await import("../community/mentions.js");
     const previousHandles = new Set(extractMentionHandlesFromDocData(originalDoc));
+    const href = notificationHrefForDocument(config, result.doc);
     await fanOutMentionNotifications({
       actorMemberId: memberId,
       kind: "document.mention",
       data,
       previousHandles,
       payload: {
-        collectionSlug: collection,
-        documentId: docId,
+        targetType: collection,
+        targetId: docId,
+        ...(href ? { href } : {}),
       },
     });
   }
@@ -444,11 +516,37 @@ export async function createMemberDocument(
   if (!config.community?.memberWrite?.create) {
     throw new NpForbiddenError(collection, "create");
   }
+  assertMemberWritableFields(config, collection, data);
   const { assertNotBanned } = await import("../community/can.js");
   await assertNotBanned(memberId);
 
-  const defaultStatus: NpDocumentStatus =
-    config.community?.memberWrite?.defaultStatus === "pending" ? "pending" : "published";
+  const validatedCandidate = toRecord(getCollectionZodSchema(config, data).parse(data));
+  await assertMemberWriteAccess(config, {
+    collection,
+    operation: "create",
+    memberId,
+    data: validatedCandidate,
+    originalDoc: null,
+  });
+
+  const statusResolver = config.community.memberWrite.resolveCreateStatus;
+  const resolvedStatus = statusResolver
+    ? await statusResolver({
+        collection,
+        operation: "create",
+        memberId,
+        data: validatedCandidate,
+        originalDoc: null,
+      })
+    : config.community.memberWrite.defaultStatus === "pending"
+      ? "pending"
+      : "published";
+  if (resolvedStatus !== "published" && resolvedStatus !== "pending") {
+    throw new Error(
+      `Collection "${collection}" member create status resolver returned an invalid status.`,
+    );
+  }
+  const defaultStatus: NpDocumentStatus = resolvedStatus;
 
   const moderation = await runMemberDocModeration({
     collection,
@@ -508,13 +606,15 @@ export async function createMemberDocument(
   // won't render.
   if (spamStatus === "published") {
     const { fanOutMentionNotifications } = await import("../community/mentions.js");
+    const href = notificationHrefForDocument(config, result.doc);
     await fanOutMentionNotifications({
       actorMemberId: memberId,
       kind: "document.mention",
       data,
       payload: {
-        collectionSlug: collection,
-        documentId,
+        targetType: collection,
+        targetId: documentId,
+        ...(href ? { href } : {}),
       },
     });
   }
@@ -639,6 +739,7 @@ interface SaveContext {
   validatedData: Record<string, unknown>;
   actor: SaveActor;
   options: NpSaveOptions | undefined;
+  bypassStaffAccess: boolean;
   config: ReturnType<typeof getCollectionConfig>;
   registration: ReturnType<typeof getCollectionRegistration>;
   table: PgTable;
@@ -663,12 +764,18 @@ interface SaveContext {
   now: Date;
 }
 
+interface InternalSaveControls {
+  /** Set only by the capability-gated report moderation helper. */
+  bypassStaffAccess?: boolean;
+}
+
 async function initSaveContext(
   collection: string,
   docId: string | null,
   data: Record<string, unknown>,
   actor: SaveActor,
   options: NpSaveOptions | undefined,
+  controls: InternalSaveControls = {},
 ): Promise<
   Omit<
     SaveContext,
@@ -727,6 +834,7 @@ async function initSaveContext(
     validatedData,
     actor,
     options,
+    bypassStaffAccess: controls.bypassStaffAccess === true,
     config,
     registration,
     table,
@@ -749,6 +857,7 @@ async function initSaveContext(
  */
 async function validateActorAccess(ctx: SaveContext): Promise<void> {
   if (ctx.actor.kind === "staff") {
+    if (ctx.bypassStaffAccess) return;
     await assertWriteAccess(
       ctx.config,
       ctx.collection,
@@ -1066,8 +1175,6 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
           );
     const persistedDocId = getRecordId(persistedDoc);
 
-    await syncChildTables(tx, ctx.registration.childTables, ctx.prepared.childRows, persistedDocId);
-    await syncJoinTables(tx, ctx.registration.joinTables, ctx.prepared.joinRows, persistedDocId);
     await syncMediaRefsForDocument(
       tx,
       ctx.collection,
@@ -1075,6 +1182,8 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
       ctx.config.fields,
       ctx.hookData,
     );
+    await syncChildTables(tx, ctx.registration.childTables, ctx.prepared.childRows, persistedDocId);
+    await syncJoinTables(tx, ctx.registration.joinTables, ctx.prepared.joinRows, persistedDocId);
 
     // Slug-rename history. When a slug-having collection's row
     // changes its slug, write an `oldSlug → newSlug` record so
@@ -1263,8 +1372,9 @@ async function saveDocumentImpl(
   data: Record<string, unknown>,
   actor: SaveActor,
   options?: NpSaveOptions,
+  controls?: InternalSaveControls,
 ): Promise<NpSaveResult> {
-  const ctxBase = await initSaveContext(collection, docId, data, actor, options);
+  const ctxBase = await initSaveContext(collection, docId, data, actor, options, controls);
   await validateActorAccess(ctxBase as SaveContext);
   const ctx = ctxBase as SaveContext;
   await prepareDocumentForWrite(ctx);
@@ -1640,6 +1750,73 @@ export async function promoteMemberDocument(
   return { doc: persistedDoc, operation: "update" };
 }
 
+/**
+ * Move a report-enabled public document into the pending moderation state.
+ * The caller must hold `community.moderate`; collection update ACLs are
+ * deliberately bypassed because the collection's explicit `reports: true`
+ * opt-in grants this one bounded status transition to moderators. All normal
+ * validation, revisions, hooks, jobs, and unpublish transitions still run.
+ */
+export async function unpublishDocumentForModeration(
+  collection: string,
+  docId: string,
+  staffUser: NpAuthUser,
+  reason: string,
+): Promise<NpSaveResult> {
+  if (!can(staffUser, "community.moderate")) {
+    throw new NpForbiddenError(collection, "moderate");
+  }
+  const config = getCollectionConfig(collection);
+  if (config.community?.reports !== true) {
+    throw new NpValidationError("Reports disabled", [
+      {
+        field: "collection",
+        message: `Collection "${collection}" has not enabled community.reports.`,
+      },
+    ]);
+  }
+  const normalizedReason = reason.trim();
+  if (normalizedReason.length === 0 || normalizedReason.length > 1000) {
+    throw new NpValidationError("Invalid moderation reason", [
+      { field: "reason", message: "Reason must be 1–1000 characters." },
+    ]);
+  }
+  const registration = getCollectionRegistration(collection);
+  const db = getDb() as unknown as DrizzleDatabaseLike;
+  const originalDoc = await getDocumentByIdInternal(db, registration, collection, docId);
+  if (!originalDoc) throw new NpNotFoundError(collection, docId);
+  const status = typeof originalDoc.status === "string" ? originalDoc.status : null;
+  if (status === "pending") {
+    return { doc: originalDoc, operation: "update" };
+  }
+  if (status !== "published") {
+    throw new NpValidationError("Invalid document state", [
+      {
+        field: "status",
+        message: `Document is "${status ?? "unknown"}" and cannot be unpublished for moderation.`,
+      },
+    ]);
+  }
+
+  const result = await saveDocumentImpl(
+    collection,
+    docId,
+    {},
+    { kind: "staff", user: staffUser },
+    { status: "pending" },
+    { bypassStaffAccess: true },
+  );
+  const { recordAuditEvent } = await import("../community/audit.js");
+  await recordAuditEvent({
+    actor: { kind: "staff", userId: staffUser.id },
+    action: "document.unpublish",
+    targetType: collection,
+    targetId: docId,
+    payload: { reason: normalizedReason, previousStatus: status, nextStatus: "pending" },
+  });
+  return result;
+}
+
 async function deleteDocumentImpl(
   collection: string,
   docId: string,
@@ -1686,6 +1863,13 @@ async function deleteDocumentImpl(
     }
     const { assertNotBanned } = await import("../community/can.js");
     await assertNotBanned(actor.memberId);
+    await assertMemberWriteAccess(config, {
+      collection,
+      operation: "delete",
+      memberId: actor.memberId,
+      data: null,
+      originalDoc,
+    });
   }
 
   const userForHooks = actorUserOrNull(actor);
@@ -1766,6 +1950,16 @@ async function deleteDocumentImpl(
       .delete(npReactions)
       .where(
         sql`${eq(getTableColumn(npReactions as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npReactions as unknown as PgTable, "targetId"), docId)}`,
+      );
+    await tx
+      .delete(npContentViews)
+      .where(
+        sql`${eq(getTableColumn(npContentViews as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npContentViews as unknown as PgTable, "targetId"), docId)}`,
+      );
+    await tx
+      .delete(npFollows)
+      .where(
+        sql`${eq(getTableColumn(npFollows as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npFollows as unknown as PgTable, "targetId"), docId)}`,
       );
     // Doc-level reports (sites that file `target_type=$collection`
     // reports against a post / discussion). The shipped report API
@@ -2927,6 +3121,29 @@ async function syncMediaRefsForDocument(
         sql`${eq(getTableColumn(npMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
       );
     return;
+  }
+
+  // Serialize reference creation against media soft-delete. Without a row
+  // lock, deleteMedia() can observe zero refs and mark an object deleted after
+  // field validation but before this insert, leaving a newly saved document
+  // pointing at an unavailable attachment. All writers lock ids in canonical
+  // order so multi-upload documents do not deadlock one another.
+  const mediaIds = [...new Set(refs.map((ref) => ref.mediaId))].sort();
+  const activeRows = (await tx
+    .select({ id: npMedia.id })
+    .from(npMedia)
+    .where(sql`${inArray(npMedia.id, mediaIds)} and ${isNull(npMedia.deletedAt)}`)
+    .orderBy(asc(npMedia.id))
+    .for("key share")) as Array<{ id: string }>;
+  const activeIds = new Set(activeRows.map((row) => row.id));
+  const unavailable = mediaIds.filter((id) => !activeIds.has(id));
+  if (unavailable.length > 0) {
+    throw new NpValidationError("Invalid media reference", [
+      {
+        field: refs.find((ref) => unavailable.includes(ref.mediaId))?.field ?? "media",
+        message: "Referenced media must exist and be active.",
+      },
+    ]);
   }
 
   await tx

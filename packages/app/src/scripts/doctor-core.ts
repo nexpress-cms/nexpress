@@ -49,6 +49,7 @@ import {
   npRequireAuditEventRow,
   npRequireBanRow,
   npRequireCommentRow,
+  npRequireContentViewRow,
   npRequireFollowRow,
   npRequireMemberMuteRow,
   npRequireMemberRoleGrantRow,
@@ -1184,6 +1185,7 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
     const expectedTables = [
       "np_members",
       "np_comments",
+      "np_content_views",
       "np_reactions",
       "np_follows",
       "np_notifications",
@@ -1230,6 +1232,12 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
                   member_id as "memberId", kind, site_id as "siteId", created_at as "createdAt"
              from np_reactions`,
     );
+    const contentViews = await client.query<Record<string, unknown>>(
+      `select id, target_type as "targetType", target_id as "targetId",
+                  viewer_hash as "viewerHash", viewed_on as "viewedOn",
+                  site_id as "siteId", created_at as "createdAt"
+             from np_content_views`,
+    );
     const follows = await client.query<Record<string, unknown>>(
       `select id, follower_id as "followerId", target_type as "targetType",
                   target_id as "targetId", site_id as "siteId", created_at as "createdAt"
@@ -1272,9 +1280,138 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
                   target_id as "targetId", payload, site_id as "siteId", created_at as "createdAt"
              from np_audit_events`,
     );
+    const reportIntegrityIssues: Array<{ path: string; message: string }> = [];
+    const duplicateReports = await client.query<{
+      siteId: string;
+      reporterId: string;
+      targetType: string;
+      targetId: string;
+      total: number | string;
+    }>(
+      `select site_id as "siteId", reporter_id as "reporterId",
+              target_type as "targetType", target_id as "targetId", count(*)::int as total
+         from np_reports
+        where resolved_at is null
+        group by site_id, reporter_id, target_type, target_id
+       having count(*) > 1`,
+    );
+    duplicateReports.rows.forEach((row) => {
+      reportIntegrityIssues.push({
+        path: `reports.${row.siteId}.${row.reporterId}.${row.targetType}.${row.targetId}`,
+        message: `${String(row.total)} unresolved duplicate reports exist for one reporter and target.`,
+      });
+    });
+    const missingReservedTargets = await client.query<{ id: string; targetType: string }>(
+      `select r.id, r.target_type as "targetType"
+         from np_reports r
+         left join np_comments c
+           on r.target_type = 'comment' and c.id::text = r.target_id and c.site_id = r.site_id
+         left join np_members m
+           on r.target_type = 'member' and m.id::text = r.target_id
+        where (r.target_type = 'comment' and c.id is null)
+           or (r.target_type = 'member' and m.id is null)`,
+    );
+    missingReservedTargets.rows.forEach((row) => {
+      reportIntegrityIssues.push({
+        path: `reports.${row.id}.targetId`,
+        message: `references a missing or cross-site ${row.targetType} target.`,
+      });
+    });
+    const documentTargetTypes = [
+      ...new Set(
+        reports.rows.flatMap((row) =>
+          typeof row.targetType === "string" &&
+          row.targetType !== "comment" &&
+          row.targetType !== "member"
+            ? [row.targetType]
+            : [],
+        ),
+      ),
+    ];
+    const collectionTables = await client.query<{ tableName: string }>(
+      `select table_name as "tableName"
+         from information_schema.tables
+        where table_schema = 'public' and table_name like 'np_c_%'`,
+    );
+    const presentCollectionTables = new Set(collectionTables.rows.map((row) => row.tableName));
+    for (const targetType of documentTargetTypes) {
+      const tableName = `np_c_${targetType}`;
+      if (
+        !npIsCanonicalCollectionMainTableName(tableName) ||
+        !presentCollectionTables.has(tableName)
+      ) {
+        reportIntegrityIssues.push({
+          path: `reports.targetType.${targetType}`,
+          message: `references missing collection table ${tableName}.`,
+        });
+        continue;
+      }
+      const missingDocuments = await client.query<{ id: string }>(
+        `select r.id
+           from np_reports r
+           left join "${tableName}" d on d.id::text = r.target_id and d.site_id = r.site_id
+          where r.target_type = $1 and d.id is null`,
+        [targetType],
+      );
+      missingDocuments.rows.forEach((row) => {
+        reportIntegrityIssues.push({
+          path: `reports.${row.id}.targetId`,
+          message: `references a missing or cross-site ${targetType} document.`,
+        });
+      });
+    }
+    const followIntegrityIssues: Array<{ path: string; message: string }> = [];
+    const missingMemberFollowTargets = await client.query<{ id: string }>(
+      `select f.id
+         from np_follows f
+         left join np_members m on f.target_type = 'member' and m.id::text = f.target_id
+        where f.target_type = 'member' and m.id is null`,
+    );
+    missingMemberFollowTargets.rows.forEach((row) => {
+      followIntegrityIssues.push({
+        path: `follows.${row.id}.targetId`,
+        message: "references a missing member target.",
+      });
+    });
+    const followedCollectionTypes = [
+      ...new Set(
+        follows.rows.flatMap((row) =>
+          typeof row.targetType === "string" && row.targetType !== "member" ? [row.targetType] : [],
+        ),
+      ),
+    ];
+    for (const targetType of followedCollectionTypes) {
+      const tableName = `np_c_${targetType}`;
+      if (
+        !npIsCanonicalCollectionMainTableName(tableName) ||
+        !presentCollectionTables.has(tableName)
+      ) {
+        followIntegrityIssues.push({
+          path: `follows.targetType.${targetType}`,
+          message: `references missing collection table ${tableName}.`,
+        });
+        continue;
+      }
+      const missingDocuments = await client.query<{ id: string }>(
+        `select f.id
+           from np_follows f
+           left join "${tableName}" d on d.id::text = f.target_id and d.site_id = f.site_id
+          where f.target_type = $1 and d.id is null`,
+        [targetType],
+      );
+      missingDocuments.rows.forEach((row) => {
+        followIntegrityIssues.push({
+          path: `follows.${row.id}.targetId`,
+          message: `references a missing or cross-site ${targetType} document.`,
+        });
+      });
+    }
     await client.end();
 
-    const issues: Array<{ path: string; message: string }> = [];
+    const issues: Array<{ path: string; message: string }> = [
+      ...reportIntegrityIssues,
+      ...followIntegrityIssues,
+    ];
     const inspect = (
       path: string,
       value: unknown,
@@ -1303,6 +1440,7 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
     for (const [name, rows, parser] of [
       ["comments", comments.rows, npRequireCommentRow],
       ["reactions", reactions.rows, npRequireReactionRow],
+      ["contentViews", contentViews.rows, npRequireContentViewRow],
       ["follows", follows.rows, npRequireFollowRow],
       ["notifications", notifications.rows, npRequireNotificationRow],
       ["reports", reports.rows, npRequireReportRow],
@@ -1318,6 +1456,7 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
       members.rows.length +
       comments.rows.length +
       reactions.rows.length +
+      contentViews.rows.length +
       follows.rows.length +
       notifications.rows.length +
       reports.rows.length +
@@ -1337,7 +1476,7 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
           state: "error",
           label: "Community persistence contracts",
           detail: `${issues.length.toString()} contract issue(s); first: ${issues[0]?.path ?? "community"} ${issues[0]?.message ?? "invalid"}`,
-          hint: "Repair malformed community rows and notification preferences before accepting member traffic.",
+          hint: "Repair malformed or orphaned community rows, unresolved report duplicates, follow targets, and notification preferences before accepting member traffic.",
         };
   } catch (error) {
     try {

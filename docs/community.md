@@ -17,7 +17,7 @@
 3. [Member Authentication](#3-member-authentication)
 4. [SSO Providers](#4-sso-providers)
 5. [Comments](#5-comments)
-6. [Reactions and Follows](#6-reactions-and-follows)
+6. [Reactions, Views, and Follows](#6-reactions-views-and-follows)
 7. [Notifications](#7-notifications)
 8. [Member-Authored Content](#8-member-authored-content)
 9. [Moderation Surface](#9-moderation-surface)
@@ -43,10 +43,10 @@ many independent moving parts. Sites pick what they need:
   not just blog posts. Polymorphic `target_type` /
   `target_id`.
 - **Reactions / follows / notifications** (Phase 9.3).
-- **Forum** (Phase 9.4) — `@nexpress/plugin-forum`,
-  `discussions` collection, no new community-only tables.
-- **Moderation** (Phase 9.5 / 9.5a / 9.5b) — reports queue,
-  bans (scoped), audit log, role-grant UI.
+- **Forum** — `@nexpress/plugin-forum`, native board/post collections,
+  document reactions, and daily-unique view receipts.
+- **Moderation** (Phase 9.5 / 9.5a / 9.5b) — contextual reports queue,
+  closed resolution actions, bans (scoped), audit log, role-grant UI.
 - **SSO** (Phase 9.6a–e) — pluggable OAuth providers via
   `arctic`. GitHub + Google plugins ship in-tree.
 - **Adapters** (Phase 9.6f–g) — `setSpamAdapter`,
@@ -186,9 +186,9 @@ Linked identities surface in:
 ## 5. Comments
 
 `createComment({ targetType, targetId, bodyMd, memberId })`.
-Polymorphic — `targetType` can be any collection slug, plus
-`thread` / `reply` (forum) and any future surface that opts
-in. Comments support:
+Polymorphic — `targetType` is an opted-in collection slug; forum post comments
+therefore use the configured forum-post collection slug rather than a parallel
+thread schema. Comments support:
 
 - Nested replies via `parent_id`. Visual nesting is one
   level by default; the column allows arbitrary depth for
@@ -207,7 +207,7 @@ Edits go through the same gates (Phase 9.7n closed #123).
 
 ---
 
-## 6. Reactions and Follows
+## 6. Reactions, Views, and Follows
 
 `addReaction({ memberId, targetType, targetId, kind })` with
 idempotent `ON CONFLICT` insert. The set of allowed `kind`
@@ -215,13 +215,56 @@ values is gated by the admin's `community.reactionKinds`
 allow-list — defaults to `["like"]`, sites add
 `["like", "love", "celebrate", ...]`.
 
-`follow({ followerId, targetType, targetId })` for members
-following members or threads. Generates `notification:follow`
-fan-out events.
+Targets may be `comment` or a published public document from a collection that
+explicitly sets `community.reactions: true`. Document reactions use the same
+site boundary, collection-scoped ban checks, recipient notification, and
+reputation event as comments. A disabled collection or missing/private target
+fails before insertion.
 
-Counts via `countReactions(targetType, targetId)`. Live
-on the comment / doc detail page; updates pessimistically on
-the next render (no realtime push).
+Collections opt into anonymous daily-unique document views separately with
+`community.views: true`. `POST /api/views` owns an HttpOnly first-party
+`np-visitor` cookie and passes only its SHA-256 digest to Core. Core derives a
+second site/target/day-scoped digest, so persisted rows cannot use one stable
+identifier to connect a visitor across documents or days. `np_content_views`
+stores no raw cookie, IP address, or user agent and has one unique row per
+site, target, scoped digest, and UTC day. Only published public documents can
+receive a view.
+
+`npListContentEngagement(targetType, targetIds)` batches views, visible
+comments, and reactions for up to 200 unique IDs in input order. This is the
+supported list/feed primitive; callers should not issue reaction or comment
+count queries once per row.
+
+`follow({ followerId, targetType, targetId })` accepts either the reserved
+`member` target or a canonical collection slug. Document subscriptions require
+that collection to declare `community.follows: true`; Core then validates the
+document is published, public, on the current site, and exposes a validated
+local destination through `seo.urlPath` before inserting the follow. The former
+placeholder `thread` and `tag` enum values never had runtime
+subjects and are no longer advertised. Custom forum collection slugs work
+without a generic thread alias.
+
+`notifyFollowers()` is the server-side fan-out primitive for activity on a
+followed document. Its exact tagged payload currently distinguishes
+`comment.created` from `document.published`, requires one validated local
+destination path, and reads followers in bounded 200-row cursor pages. The
+normal mute and per-kind preference gates still apply to every recipient.
+Document deletion removes its polymorphic follow rows in the same transaction.
+
+Counts remain available through `countReactions(targetType, targetId)`. The
+forum detail updates its recommendation state after a successful request and
+refreshes the canonical summary; no realtime push is implied.
+
+Collections opt into document reports independently with
+`community.reports: true`. The report target is the canonical collection slug,
+not a generic `thread` alias, so custom forum collection names resolve through
+the same registry and site boundary as their documents. Reserved targets are
+`comment` and `member`; replies use `comment` because every reply is an
+`np_comments` row, and collections using either reserved slug cannot enable
+document reports. Only visible comments, active members, and published public
+documents can be reported. A partial unique index permits at most one
+unresolved report per site, reporter, and target while allowing a new report
+after the earlier case is closed and the target is public again.
 
 ---
 
@@ -229,16 +272,20 @@ the next render (no realtime push).
 
 `np_notifications` rows fire on:
 
-- Comment under your own thread / reply / member doc
+- Comment under your own collection document
 - Reply to your comment
 - Reaction on your comment / doc
 - New follow
+- New activity on a subscribed collection document
 - Mention — Phase 16.2 wired `@handle` parsing into the
   notification fan-out, firing `comment.mention` or
   `document.mention` rows.
 
-Each row has `kind`, `actor_id`, `payload` JSON, `read_at`,
-and a tenant-scoped `site_id`. Members read their own via
+Each row has `kind`, bounded `payload` JSON, `read_at`, and a tenant-scoped
+`site_id`. Event payloads carry the relevant actor and target identifiers.
+Known activity destinations are validated as local paths before storage and
+again before the member inbox renders a View link. Opening that link also marks
+the notification read. Members read their own via
 `GET /api/notifications` (`?count=1` returns only `{ unread }`;
 `?unread=1` filters to unread rows) and mark rows read via
 `POST /api/notifications/mark-read` with either `{ ids: [...] }`
@@ -260,29 +307,33 @@ runtime never drops malformed entries or silently rewrites them as defaults.
 
 ## 8. Member-Authored Content
 
-Phase 9.7a–q layered "members can write things" on top of
-the comment surface:
+Member-authored documents build on the same collection pipeline as staff
+writes:
 
-- `defineDiscussionsCollection({ memberWrite: true })` — the
-  forum's discussions collection accepts member-authored
-  threads. `community.memberWrite.create: true` and
-  `defaultStatus: "pending" | "published"` per collection.
+- `community.memberWrite.create/update/delete` opts a collection into the
+  owner-gated member path.
+- `writableFields` limits the exact declared fields a member request may
+  submit. Framework fields and omitted operator-only fields remain locked.
+- `access.create/update/delete` adds row-aware policy after authentication,
+  ownership, and ban gates. `resolveCreateStatus` can derive `published` or
+  `pending` from validated runtime data; spam flags still force `pending`.
 - Pipeline stamps `member_author_id` on member writes
-  (Phase 9.7b codegen) so owner-only update / delete works
-  without staff.
+  so owner-only update / delete works without staff.
 - Pending queue at `/admin/community/pending` — staff
   Approve (promotes to published, fires deferred `document.created`
   reputation event) or Reject (deletes).
-- Site UI:
-  - `/discussions` — public list
-  - `/discussions/new` — member-authored thread form
-  - `/discussions/[slug]/edit` — owner-gated edit
-  - "My threads" tab (logged-in members) shows pending
-    submissions to their author
+- The bundled forum uses those contracts for dynamic boards:
+  - `/boards` — published board index
+  - `/boards/[boardKey]` — board list and member's own pending posts
+  - `/boards/[boardKey]/new` — member composer
+  - `/boards/[boardKey]/[postId]/edit` — owner-gated edit
 - Rich-text editor (`@nexpress/editor`) with image upload
   (Phase 9.7j; image uploads go through the member upload
   endpoint with the `community.memberUploadQuota.{perDay,
 total}` rate limit from Phase 9.7p).
+
+See [plugin-forum.md](plugin-forum.md) for board policy, Admin settings, and
+the skin contract.
 
 ---
 
@@ -292,7 +343,7 @@ Three admin pages:
 
 | Page                        | What it shows                        |
 | --------------------------- | ------------------------------------ |
-| `/admin/community/reports`  | Open reports queue (Phase 9.5)       |
+| `/admin/community/reports`  | Contextual report queue and actions  |
 | `/admin/community/comments` | Comments table with hide / restore   |
 | `/admin/community/pending`  | Member-authored docs awaiting review |
 | `/admin/community/bans`     | Active bans + revoke                 |
@@ -311,8 +362,19 @@ Per-member actions on `/admin/members/[id]`:
   media owned by the member. Idempotent.
 
 Cascade behavior (Phase 9.7m / 9.7q): deleting a doc
-cascade-deletes its comments, reactions, and reports. Deleting
+cascade-deletes its comments, reactions, view receipts, and reports. Deleting
 a comment cascades reactions on it.
+
+The report queue resolves each target to an exact operator-safe projection:
+label, excerpt, current status, author where available, and a link to the
+Admin document/member surface. A missing or cross-site target is shown as
+unavailable rather than crashing the queue. Resolution accepts only three
+actions: `dismiss`, `hide-comment`, and `unpublish-document`. Target/action
+mismatches fail before mutation. Comment hiding and document unpublishing use
+the existing moderation and collection pipelines; document reports move the
+row to `pending` review while retaining validation, revisions, hooks, jobs,
+and the unpublish lifecycle. Resolutions for the same site and target serialize,
+so concurrent moderators cannot repeat target transition side effects.
 
 ---
 
@@ -381,8 +443,8 @@ Reputation events the framework emits:
 Enforcement points (`assertNotBanned` is the gate):
 
 - Comment create / edit
-- Reaction add (site-wide bans, plus collection-scoped bans for
-  comment targets)
+- Reaction add (site-wide bans plus the collection scope resolved from either
+  a comment or document target)
 - Member-authored doc create / update / delete
 - Reports filing
 - Member media upload
@@ -458,7 +520,7 @@ request scope) leave `site_id` null.
 `@nexpress/core/community-contract` is the client-safe boundary shared by
 Core, API routes, Admin/member views, plugin-facing registries, plugin doctor,
 and live health. It exports the exact request, persisted-row, wire-row,
-settings, notification-preference, moderation, reputation, and role-catalog
+settings, notification-preference, engagement/view/follow, moderation, reputation, and role-catalog
 validators without importing the server-only Core runtime.
 
 Community inputs are exact and bounded: unknown keys, malformed dates and ids,
@@ -470,13 +532,18 @@ target pairs are validated before the best-effort insert, and reputation events
 must name the same recipient whose score would be updated.
 
 `plugin doctor` reports malformed community settings and persisted rows as
-`community.contract`. Adapter and registry failures are contained in a bounded
-runtime diagnostic buffer and surface as the `community` row in Admin Health;
+`community.contract`, including malformed `np_content_views` rows, invalid or
+orphaned report/follow targets, cross-site document targets, and unresolved
+report duplicates. Adapter and registry failures are contained in a bounded runtime
+diagnostic buffer and surface as the `community` row in Admin Health;
 they are not silently converted into successful moderation or reputation
 results. Malformed persisted notification preferences also emit a runtime
 diagnostic and fail closed for the notification side effect without rolling
 back the community write that triggered it; unrelated transient preference
-read failures remain fail-open.
+read failures remain fail-open. Comment notification fan-out failures are also
+contained after the durable comment write and recorded in that diagnostic
+buffer, so a delivered comment is never reported to its author as a failed
+write merely because an inbox side effect failed.
 
 ---
 
@@ -504,11 +571,11 @@ In rough order of likely impact:
   (#207). Per-member opt-in to a daily digest.
 - **Notification preferences UI** — Phase 16.3 (#206).
   Members can opt out per `kind`.
-- **Reports for thread / reply targets** — #197 enabled
-  `thread` / `reply` as report target types.
+- **Collection-native document reports** — report-enabled collections use
+  their real slug; replies share the reserved `comment` target.
 - **Site-scoped community tables** — Phase 18 (#211)
   added `site_id` to `np_comments`, `np_reactions`,
-  `np_follows`, `np_member_mutes`, `np_notifications`,
+  `np_content_views`, `np_follows`, `np_member_mutes`, `np_notifications`,
   `np_reports`, and `np_bans`. `np_members` itself is
   still global (one identity, many tenants).
 

@@ -60,8 +60,8 @@ Flags:
   --local              use workspace:* deps (only inside the NexPress monorepo)
   -h, --help           show this help
 
-Every scaffold ships the four built-in themes (default / magazine /
-portfolio / docs) and the example collections + plugins. Pick the
+Every scaffold ships the five built-in themes (default / community /
+magazine / portfolio / docs) and the example collections + plugins. Pick the
 active theme and decide whether to seed sample content in the
 first-boot admin setup wizard at /admin/setup.
 
