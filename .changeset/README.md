@@ -50,18 +50,21 @@ even for new features. Reasons:
   prematurely, the only way back is a revert + new bump.
 
 Reserve `minor` for: deliberate "milestone" releases (e.g. `0.2.0`
-when M-track or G-track lands as a whole), or genuinely API-shape
-additions you want highlighted in the changelog.
+when M-track or G-track lands as a whole), genuinely API-shape additions you
+want highlighted in the changelog, or breaking changes to a surface listed as
+stable in `AGENTS.md`. Stable-surface breaks must include a searchable
+migration note.
 
-Reserve `major` for: actually-breaking changes the user must
-migrate for, even pre-1.0.
+Reserve `major` for the deliberate `1.0.0` stability release (or an exceptional
+pre-1.0 reset that maintainers explicitly approve). Normal breaking changes
+during `0.x` follow the repository stability contract and ride a minor bump.
 
 `@nexpress/web` is the private reference app, so it is not published.
 
 ## Release flow (maintainer)
 
 ```bash
-pnpm run version    # consume pending changesets → bump versions + write CHANGELOG.md
+pnpm run version    # consume changesets, bump versions/changelogs, sync release docs
 pnpm run release    # build + npm publish
 ```
 

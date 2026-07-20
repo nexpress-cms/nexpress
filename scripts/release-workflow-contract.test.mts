@@ -34,3 +34,14 @@ test("the Release workflow delegates conditional verification to the release scr
   assert.doesNotMatch(workflow, /^\s+- name: Typecheck$/m);
   assert.equal(rootManifest.scripts?.release, "tsx scripts/release.mts");
 });
+
+test("Version PR generation synchronizes and rechecks public release docs", async () => {
+  const rootManifest = JSON.parse(await readFile(resolve(repoRoot, "package.json"), "utf8")) as {
+    scripts?: Record<string, string>;
+  };
+
+  assert.equal(
+    rootManifest.scripts?.version,
+    "pnpm test:repo && changeset version && tsx scripts/sync-release-docs.mts && pnpm test:repo",
+  );
+});

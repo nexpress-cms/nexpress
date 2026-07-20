@@ -40,9 +40,10 @@ workflow (`.github/workflows/release.yml`) runs on every push to
    opening a PR or publishing.
 2. **Queued changesets, no Version PR yet** → opens / updates the
    "Version Packages" PR as a draft accumulator. The PR carries the cumulative
-   diff (`CHANGELOG.md` per package + `package.json` version bumps); each new
-   main-branch changeset returns it to draft until the maintainer deliberately
-   marks the final batch ready.
+   diff (`CHANGELOG.md` per package + `package.json` version bumps) and derives
+   the matching README, security-policy, and release-baseline markers from those
+   generated versions. Each new main-branch changeset returns it to draft until
+   the maintainer deliberately marks the final batch ready.
 3. **Version PR merged** → `pnpm release` runs repository invariants, builds
    and typechecks publishable packages, publishes through Changesets, verifies
    every exact npm manifest and provenance attestation, and only then creates
@@ -52,6 +53,11 @@ workflow (`.github/workflows/release.yml`) runs on every push to
 The root `release` script lives in `package.json`. Changesets reads
 `.changeset/config.json`, where `access: "public"` makes scoped
 packages publishable without per-package `publishConfig` blocks.
+`pnpm run version` runs the repository contract tests before versioning,
+executes `scripts/sync-release-docs.mts`, and reruns those cheap tests against
+the generated release state. Do not hand-edit release-line markers on `main`;
+the generated Version PR owns the transition so public docs do not advertise
+an unpublished line early.
 
 ## Auth: Trusted Publishing (OIDC)
 

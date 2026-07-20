@@ -109,8 +109,9 @@ jobs:
         uses: changesets/action@v1
         with:
           # `pnpm run version` invokes the `version` script in
-          # root package.json (= repository release-invariant tests followed
-          # by `changeset version`). MUST be
+          # root package.json (= repository release-invariant tests,
+          # `changeset version`, public release-doc synchronization, then a
+          # generated-state contract recheck). MUST be
           # `pnpm run version`, NOT `pnpm version` — bare `version`
           # is a pnpm built-in (alias for npm's version subcommand)
           # that shadows package.json scripts of the same name.

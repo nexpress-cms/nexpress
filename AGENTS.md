@@ -21,6 +21,11 @@ tests, and docs.)
 reactions, privacy-bounded daily views, batched counts, and bounded recent
 popularity across Core, API, skins, home blocks, theme hooks, doctor, and docs.)
 
+**Earlier:** 2026-07-19 (Version PR generation now synchronizes public
+release-line and baseline docs from generated package versions, then rechecks
+the repository contract before updating the draft release accumulator; the
+pre-1.0 changeset guidance matches the stable-surface minor-bump policy.)
+
 **Earlier:** 2026-07-19 (the bundled Korean community theme now works
 without the forum over generic page/post/member contracts and enhances an
 installed forum only through its public CSS variables, data hooks, and optional
