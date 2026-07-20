@@ -1,9 +1,16 @@
 "use client";
 
 import { isNpRichTextContent, npCreateEmptyRichTextContent } from "@nexpress/core/fields";
+import {
+  npMediaAttachmentAccept,
+  npRequireMediaAttachmentWire,
+  type NpMediaAttachmentWire,
+} from "@nexpress/core/media-contract";
 import type { NpRichTextContent } from "@nexpress/editor";
 import { useRouter } from "next/navigation";
-import { Suspense, lazy, useState, type ComponentType } from "react";
+import { Suspense, lazy, useRef, useState, type ComponentType } from "react";
+
+type ForumFormAttachment = Omit<NpMediaAttachmentWire, "status">;
 
 interface ForumPostFormProps {
   mode: "create" | "edit";
@@ -13,12 +20,18 @@ interface ForumPostFormProps {
     id: string;
     key: string;
     categories: Array<{ key: string; label: string }>;
+    attachments: {
+      enabled: boolean;
+      maxFiles: number;
+      maxFileSizeBytes: number;
+    };
   };
   initial?: {
     postId: string;
     title: string;
     body: NpRichTextContent | null;
     category: string | null;
+    attachments: ForumFormAttachment[];
   };
   labels: {
     category: string;
@@ -30,6 +43,14 @@ interface ForumPostFormProps {
     create: string;
     save: string;
     saveFailed: string;
+    attachments: string;
+    add: string;
+    uploading: string;
+    remove: string;
+    uploadFailed: string;
+    help: string;
+    tooMany: string;
+    tooLarge: string;
   };
 }
 
@@ -82,6 +103,39 @@ async function uploadMemberImage(file: File): Promise<{ url: string }> {
   return { url };
 }
 
+async function uploadMemberAttachment(file: File): Promise<NpMediaAttachmentWire> {
+  const csrf = readCookie("np-mb-csrf");
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch("/api/members/media/attachments", {
+    method: "POST",
+    credentials: "include",
+    headers: csrf ? { "X-CSRF-Token": csrf } : {},
+    body: formData,
+  });
+  const result: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(extractError(result) ?? `HTTP ${response.status}`);
+  return npRequireMediaAttachmentWire(result);
+}
+
+async function deleteMemberAttachment(id: string): Promise<void> {
+  const csrf = readCookie("np-mb-csrf");
+  const response = await fetch(`/api/members/media/attachments/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+    headers: csrf ? { "X-CSRF-Token": csrf } : {},
+  });
+  if (response.ok || response.status === 404) return;
+  const result = (await response.json().catch(() => null)) as { data?: unknown } | null;
+  throw new Error(extractError(result) ?? `HTTP ${response.status}`);
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes.toString()} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function ForumPostForm({
   mode,
   basePath,
@@ -94,6 +148,12 @@ export function ForumPostForm({
   const [title, setTitle] = useState(initial?.title ?? "");
   const [body, setBody] = useState<NpRichTextContent | null>(initial?.body ?? null);
   const [category, setCategory] = useState(initial?.category ?? "");
+  const [attachments, setAttachments] = useState<ForumFormAttachment[]>(initial?.attachments ?? []);
+  const initialAttachmentIds = useRef(
+    new Set((initial?.attachments ?? []).map((attachment) => attachment.id)),
+  );
+  const removedInitialAttachmentIds = useRef(new Set<string>());
+  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -119,6 +179,7 @@ export function ForumPostForm({
             title: title.trim(),
             body: body ?? npCreateEmptyRichTextContent(),
             category: category || null,
+            attachments: attachments.map((attachment) => ({ file: attachment.id })),
           }),
         },
       );
@@ -132,6 +193,11 @@ export function ForumPostForm({
         return;
       }
       const result = json?.data ?? json;
+      if (mode === "edit" && removedInitialAttachmentIds.current.size > 0) {
+        await Promise.allSettled(
+          [...removedInitialAttachmentIds.current].map(deleteMemberAttachment),
+        );
+      }
       if (mode === "create" && result?.status === "pending") {
         router.push(`${basePath}/${board.key}?author=me`);
       } else {
@@ -144,6 +210,56 @@ export function ForumPostForm({
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const addAttachments = async (files: FileList | null) => {
+    if (!files || files.length === 0 || !board.attachments.enabled) return;
+    const selected = [...files];
+    if (attachments.length + selected.length > board.attachments.maxFiles) {
+      setError(labels.tooMany);
+      return;
+    }
+    const oversized = selected.find((file) => file.size > board.attachments.maxFileSizeBytes);
+    if (oversized) {
+      setError(`${oversized.name}: ${labels.tooLarge}`);
+      return;
+    }
+
+    setUploading(true);
+    setError(null);
+    const uploaded: ForumFormAttachment[] = [];
+    try {
+      for (const file of selected) {
+        const attachment = await uploadMemberAttachment(file);
+        uploaded.push({
+          id: attachment.id,
+          filename: attachment.filename,
+          mimeType: attachment.mimeType,
+          filesize: attachment.filesize,
+          downloadUrl: attachment.downloadUrl,
+        });
+      }
+      setAttachments((current) => [...current, ...uploaded]);
+    } catch (cause) {
+      await Promise.allSettled(uploaded.map((attachment) => deleteMemberAttachment(attachment.id)));
+      setError(cause instanceof Error ? cause.message : labels.uploadFailed);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeAttachment = (attachment: ForumFormAttachment) => {
+    setAttachments((current) => current.filter((item) => item.id !== attachment.id));
+    if (initialAttachmentIds.current.has(attachment.id)) {
+      removedInitialAttachmentIds.current.add(attachment.id);
+      return;
+    }
+    void deleteMemberAttachment(attachment.id).catch((cause: unknown) => {
+      setAttachments((current) =>
+        current.some((item) => item.id === attachment.id) ? current : [...current, attachment],
+      );
+      setError(cause instanceof Error ? cause.message : labels.uploadFailed);
+    });
   };
 
   return (
@@ -204,8 +320,54 @@ export function ForumPostForm({
           />
         </Suspense>
       </div>
+      {board.attachments.enabled || attachments.length > 0 ? (
+        <fieldset className="np-forum-attachment-field" disabled={submitting}>
+          <legend className="np-form-label">{labels.attachments}</legend>
+          {attachments.length > 0 ? (
+            <ul className="np-forum-attachment-editor-list">
+              {attachments.map((attachment) => (
+                <li key={attachment.id} data-np-forum-attachment={attachment.id}>
+                  <span>
+                    <strong>{attachment.filename}</strong>
+                    <small>{formatFileSize(attachment.filesize)}</small>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(attachment)}
+                    disabled={uploading || submitting}
+                  >
+                    {labels.remove}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {board.attachments.enabled ? (
+            <label className="np-forum-attachment-picker">
+              <span>{uploading ? labels.uploading : labels.add}</span>
+              <input
+                type="file"
+                multiple
+                accept={npMediaAttachmentAccept}
+                disabled={
+                  uploading || submitting || attachments.length >= board.attachments.maxFiles
+                }
+                onChange={(event) => {
+                  void addAttachments(event.target.files);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+          ) : null}
+          <p className="np-form-description">{labels.help}</p>
+        </fieldset>
+      ) : null}
       <div className="np-form-actions">
-        <button type="submit" className="np-button-primary" disabled={submitting || !title.trim()}>
+        <button
+          type="submit"
+          className="np-button-primary"
+          disabled={submitting || uploading || !title.trim()}
+        >
           {submitting ? labels.saving : mode === "create" ? labels.create : labels.save}
         </button>
       </div>

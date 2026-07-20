@@ -65,6 +65,7 @@ interface SelectQuery extends Promise<unknown[]> {
   orderBy(order: ReturnType<typeof desc>): SelectQuery;
   limit(limit: number): SelectQuery;
   offset(offset: number): SelectQuery;
+  for(strength: "update"): SelectQuery;
 }
 
 interface InsertValuesQuery extends Promise<unknown> {
@@ -88,6 +89,7 @@ interface DrizzleDatabaseLike {
   select(selection?: Record<string, unknown>): {
     from(table: PgTable): SelectQuery;
   };
+  transaction<T>(callback: (tx: DrizzleDatabaseLike) => Promise<T>): Promise<T>;
 }
 
 export { getStorageAdapter } from "../storage/registry.js";
@@ -367,32 +369,37 @@ export async function deleteMedia(
   id: string,
 ): Promise<{ deleted: boolean; references?: unknown[] }> {
   const db = getDb() as unknown as DrizzleDatabaseLike;
-  const references = await db.select().from(npMediaRefs).where(eq(npMediaRefs.mediaId, id));
+  return db.transaction(async (tx) => {
+    // Reference writers lock the same media row before inserting np_media_refs.
+    // Taking the lock first makes the zero-ref check and soft-delete atomic
+    // with respect to a concurrent document save.
+    const [media] = await tx
+      .select()
+      .from(npMedia)
+      .where(and(eq(npMedia.id, id), isNull(npMedia.deletedAt)))
+      .limit(1)
+      .for("update");
 
-  if (references.length > 0) {
-    return { deleted: false, references };
-  }
+    if (!media) {
+      return { deleted: false };
+    }
 
-  const [media] = await db
-    .select()
-    .from(npMedia)
-    .where(and(eq(npMedia.id, id), isNull(npMedia.deletedAt)))
-    .limit(1);
+    const references = await tx.select().from(npMediaRefs).where(eq(npMediaRefs.mediaId, id));
+    if (references.length > 0) {
+      return { deleted: false, references };
+    }
 
-  if (!media) {
-    return { deleted: false };
-  }
+    await tx
+      .update(npMedia)
+      .set({
+        deletedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(npMedia.id, id))
+      .returning();
 
-  await db
-    .update(npMedia)
-    .set({
-      deletedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(npMedia.id, id))
-    .returning();
-
-  return { deleted: true };
+    return { deleted: true };
+  });
 }
 
 /**

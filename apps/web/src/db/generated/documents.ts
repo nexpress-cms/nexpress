@@ -125,6 +125,9 @@ export interface ForumBoardsDocument {
   moderation: string;
   commentsEnabled: boolean;
   pageSize: number;
+  attachmentsEnabled: boolean;
+  maxAttachments: number;
+  maxAttachmentSizeMb: number;
   categories: Array<{
     key: string;
     label: string;
@@ -147,6 +150,9 @@ export interface ForumPostsDocument {
   boardKey: string | null;
   title: string;
   body: NpRichTextContent;
+  attachments: Array<{
+    file: string;
+  }>;
   category: string | null;
   pinned: boolean | null;
   locked: boolean | null;

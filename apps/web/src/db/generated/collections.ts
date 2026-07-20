@@ -263,6 +263,9 @@ export const forumBoardsTable = pgTable(
     moderation: text("moderation").default("published").notNull(),
     commentsEnabled: boolean("comments_enabled").default(true).notNull(),
     pageSize: integer("page_size").default(20).notNull(),
+    attachmentsEnabled: boolean("attachments_enabled").default(true).notNull(),
+    maxAttachments: integer("max_attachments").default(5).notNull(),
+    maxAttachmentSizeMb: integer("max_attachment_size_mb").default(20).notNull(),
     slug: text("slug").notNull(),
     siteId: text("site_id").default("default").notNull(),
     publishedAt: timestamp("published_at", { withTimezone: true }),
@@ -353,6 +356,32 @@ export const forumPostsTableRelations = relations(forumPostsTable, ({ many, one 
     references: [forumBoardsTable.id],
   }),
 }));
+
+export const forumPostsAttachmentsTable = pgTable(
+  "np_c_forum-posts__attachments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    parentId: uuid("parent_id")
+      .notNull()
+      .references((): AnyPgColumn => forumPostsTable.id, { onDelete: "cascade" }),
+    order: integer("order").default(0).notNull(),
+    file: uuid("file")
+      .references((): AnyPgColumn => npMedia.id)
+      .notNull(),
+  },
+  (table) => [index("np_c_forum-posts__attachments_parent_idx").on(table.parentId)],
+);
+
+export const forumPostsAttachmentsTableRelations = relations(
+  forumPostsAttachmentsTable,
+  ({ many, one }) => ({
+    parent: one(forumPostsTable, {
+      fields: [forumPostsAttachmentsTable.parentId],
+      references: [forumPostsTable.id],
+    }),
+    file: one(npMedia, { fields: [forumPostsAttachmentsTable.file], references: [npMedia.id] }),
+  }),
+);
 
 export const discussionsTable = pgTable(
   "np_c_discussions",

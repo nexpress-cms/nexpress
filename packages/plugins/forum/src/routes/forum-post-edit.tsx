@@ -8,9 +8,11 @@ import { ForumPostForm } from "@nexpress/plugin-forum/client";
 
 import {
   findForumBoardByKey,
+  getForumAttachmentFormLabels,
   getForumMessages,
   isForumPostId,
   resolveForumSkin,
+  resolveForumAttachments,
   type ForumPostDocument,
   type NpForumRuntime,
 } from "../runtime.js";
@@ -27,13 +29,22 @@ export function createForumPostEditRoute(runtime: NpForumRuntime) {
     if (!isForumPostId(postId)) notFound();
     const post = await getDocumentById<ForumPostDocument>(runtime.collections.posts, postId);
     if (!post || post.board !== board.id || post.memberAuthorId !== member.id) notFound();
+    const [attachmentLabels, attachments] = await Promise.all([
+      getForumAttachmentFormLabels(board),
+      resolveForumAttachments(post.attachments),
+    ]);
 
     const content = (
       <ForumPostForm
         mode="edit"
         basePath={runtime.basePath}
         collectionSlug={runtime.collections.posts}
-        board={{ id: board.id, key: board.key, categories: board.categories }}
+        board={{
+          id: board.id,
+          key: board.key,
+          categories: board.categories,
+          attachments: board.attachments,
+        }}
         labels={{
           category: messages.category,
           categoryNone: messages.categoryNone,
@@ -44,12 +55,14 @@ export function createForumPostEditRoute(runtime: NpForumRuntime) {
           create: messages.create,
           save: messages.save,
           saveFailed: messages.saveFailed,
+          ...attachmentLabels,
         }}
         initial={{
           postId: post.id,
           title: post.title,
           body: isNpRichTextContent(post.body) ? post.body : null,
           category: typeof post.category === "string" ? post.category : null,
+          attachments,
         }}
       />
     );

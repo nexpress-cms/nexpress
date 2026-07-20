@@ -150,6 +150,15 @@ const messages = {
     "forum.loginRequired": "An account is required to create a post.",
     "forum.commentsLocked": "This post is locked. Existing comments remain visible.",
     "forum.emptyBody": "No content.",
+    "forum.attachments": "Attachments",
+    "forum.attachmentAdd": "Add files",
+    "forum.attachmentUploading": "Uploading…",
+    "forum.attachmentRemove": "Remove",
+    "forum.attachmentUploadFailed": "Could not upload this file.",
+    "forum.attachmentHelp":
+      "Up to {maxFiles} files, {maxSizeMb} MB each. Images, PDF, archives, text, HWP/HWPX, Office, and OpenDocument files are supported.",
+    "forum.attachmentTooMany": "You can attach up to {maxFiles} files.",
+    "forum.attachmentTooLarge": "Each attachment must be {maxSizeMb} MB or smaller.",
   },
   ko: {
     "forum.boards": "게시판",
@@ -216,6 +225,15 @@ const messages = {
     "forum.loginRequired": "게시글을 쓰려면 계정이 필요합니다.",
     "forum.commentsLocked": "잠긴 게시글입니다. 기존 댓글은 계속 볼 수 있습니다.",
     "forum.emptyBody": "내용이 없습니다.",
+    "forum.attachments": "첨부파일",
+    "forum.attachmentAdd": "파일 추가",
+    "forum.attachmentUploading": "업로드 중…",
+    "forum.attachmentRemove": "삭제",
+    "forum.attachmentUploadFailed": "파일을 업로드하지 못했습니다.",
+    "forum.attachmentHelp":
+      "파일당 {maxSizeMb}MB, 최대 {maxFiles}개. 이미지, PDF, 압축, 텍스트, HWP/HWPX, Office, OpenDocument 파일을 지원합니다.",
+    "forum.attachmentTooMany": "첨부파일은 최대 {maxFiles}개까지 등록할 수 있습니다.",
+    "forum.attachmentTooLarge": "첨부파일 한 개의 크기는 {maxSizeMb}MB 이하여야 합니다.",
   },
 } as const;
 
@@ -311,6 +329,8 @@ export function createForum(options: NpForumOptions = {}) {
         "post-detail": '[data-np-forum-surface="post-detail"]',
         composer: '[data-np-forum-surface="composer"]',
         comments: ".np-forum-comments",
+        attachments: '[data-np-forum-attachments="list"]',
+        "attachment-item": "[data-np-forum-attachment]",
         engagement: '[data-np-forum-engagement="post"]',
         "engagement-summary": '[data-np-forum-engagement="summary"]',
         "board-directory-block": '[data-np-forum-block="board-directory"]',
@@ -368,6 +388,8 @@ export { communityFullForumSkin } from "./skins/community-full.js";
 export { createForumHomeBlocks, forumHomePatterns } from "./home-blocks.js";
 export type {
   NpForumAuthor,
+  NpForumAttachment,
+  NpForumAttachmentPolicy,
   NpForumBoard,
   NpForumBoardIndexSkinProps,
   NpForumBoardWriteMode,

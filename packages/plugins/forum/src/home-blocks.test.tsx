@@ -53,6 +53,9 @@ const boardDocument = {
   moderation: "pending",
   commentsEnabled: true,
   pageSize: 20,
+  attachmentsEnabled: true,
+  maxAttachments: 5,
+  maxAttachmentSizeMb: 20,
   categories: [
     { key: "question", label: "질문" },
     { key: "guide", label: "정보" },

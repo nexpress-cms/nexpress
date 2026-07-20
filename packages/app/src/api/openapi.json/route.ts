@@ -17,6 +17,10 @@ import {
   npNavigationLocationPattern,
 } from "@nexpress/core/navigation";
 import {
+  npMediaAttachmentExtensions,
+  npMediaAttachmentLimits,
+  npMediaAttachmentMimeTypes,
+  npMediaAttachmentStatuses,
   npMediaContractLimits,
   npMediaStorageKeyPattern,
   npMediaStatuses,
@@ -2051,6 +2055,38 @@ export function buildSpec(): OpenApiSchema {
         },
       },
     },
+    media_attachment: {
+      type: "object",
+      additionalProperties: false,
+      description:
+        "Exact client-safe attachment descriptor. Storage keys and uploader identity are intentionally omitted.",
+      required: ["id", "filename", "mimeType", "filesize", "status", "downloadUrl"],
+      properties: {
+        id: { type: "string", format: "uuid", pattern: npAuthUuidPattern },
+        filename: {
+          type: "string",
+          minLength: 1,
+          maxLength: npMediaAttachmentLimits.filenameLength,
+          pattern:
+            "^(?!\\s)(?!.*\\s$)[^/\\\\\\u0000-\\u001F\\u007F-\\u009F\\u061C\\u200E\\u200F\\u202A-\\u202E\\u2066-\\u2069]+$",
+          description: `Safe basename with one supported extension: ${npMediaAttachmentExtensions.join(", ")}.`,
+        },
+        mimeType: {
+          type: "string",
+          enum: [...new Set(Object.values(npMediaAttachmentMimeTypes))],
+        },
+        filesize: {
+          type: "integer",
+          minimum: 1,
+          maximum: npMediaAttachmentLimits.maxFileSizeBytes,
+        },
+        status: { type: "string", enum: [...npMediaAttachmentStatuses] },
+        downloadUrl: {
+          type: "string",
+          pattern: `^/api/media/attachments/${npAuthUuidPattern.slice(1, -1)}$`,
+        },
+      },
+    },
     media_variant: {
       type: "object",
       additionalProperties: false,
@@ -3048,6 +3084,117 @@ export function buildSpec(): OpenApiSchema {
           "200": { description: "Updated theme; triggers public-site revalidation." },
           "403": { description: "Caller is not an admin" },
           "400": { description: "Theme token contract invalid" },
+        },
+      },
+    },
+    "/api/members/media/attachments": {
+      post: {
+        summary: "Upload a member attachment",
+        description: `Accepts one file up to ${npMediaAttachmentLimits.maxFileSizeBytes.toString()} bytes. The safe extension, declared MIME type, and file signature must agree.`,
+        security: [{ memberSessionCookie: [], memberCsrfHeader: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["file"],
+                properties: {
+                  file: { type: "string", format: "binary" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "202": {
+            description: "Attachment accepted; images may still be processing",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/media_attachment" },
+              },
+            },
+          },
+          "400": { description: "Unsafe name, unsupported type, mismatched bytes, or size limit" },
+          "401": { description: "Active member session required" },
+          "403": { description: "Member upload policy denied the request" },
+          "429": { description: "Member upload quota exceeded" },
+        },
+      },
+    },
+    "/api/members/media/attachments/{id}": {
+      parameters: [
+        { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+      ],
+      delete: {
+        summary: "Delete an unreferenced member attachment",
+        description:
+          "Only the member who uploaded the file may delete it. A document reference must be removed first.",
+        security: [{ memberSessionCookie: [], memberCsrfHeader: [] }],
+        responses: {
+          "200": {
+            description: "Deleted",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["id", "deleted"],
+                  properties: {
+                    id: { type: "string", format: "uuid" },
+                    deleted: { type: "boolean", const: true },
+                  },
+                },
+              },
+            },
+          },
+          "401": { description: "Active member session required" },
+          "404": { description: "Attachment not found or not owned by the caller" },
+          "409": { description: "Attachment is still referenced by a document" },
+        },
+      },
+    },
+    "/api/media/attachments/{id}": {
+      parameters: [
+        { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+      ],
+      get: {
+        summary: "Download an attachment",
+        description:
+          "Available to the uploader or when a published public document references the attachment. Responses always force download, disable sniffing, and use a sandbox CSP.",
+        security: [],
+        responses: {
+          "200": {
+            description: "Attachment bytes",
+            headers: {
+              "Content-Disposition": {
+                description: "Always `attachment` with ASCII and RFC 5987 UTF-8 filenames.",
+                schema: { type: "string" },
+              },
+              "X-Content-Type-Options": { schema: { type: "string", const: "nosniff" } },
+              "Content-Security-Policy": {
+                schema: {
+                  type: "string",
+                  const: "default-src 'none'; frame-ancestors 'none'; sandbox",
+                },
+              },
+            },
+            content: {
+              "application/octet-stream": { schema: { type: "string", format: "binary" } },
+            },
+          },
+          "404": { description: "Attachment absent or not visible to the caller" },
+        },
+      },
+      head: {
+        summary: "Inspect a downloadable attachment",
+        description:
+          "Uses the same owner/public-reference authorization and download headers as GET.",
+        security: [],
+        responses: {
+          "200": { description: "Download headers without a response body" },
+          "404": { description: "Attachment absent or not visible to the caller" },
         },
       },
     },
@@ -5023,6 +5170,8 @@ export function buildSpec(): OpenApiSchema {
       securitySchemes: {
         sessionCookie: { type: "apiKey", in: "cookie", name: "np-session" },
         csrfHeader: { type: "apiKey", in: "header", name: "X-CSRF-Token" },
+        memberSessionCookie: { type: "apiKey", in: "cookie", name: "np-mb-session" },
+        memberCsrfHeader: { type: "apiKey", in: "header", name: "X-CSRF-Token" },
       },
     },
     security: [{ sessionCookie: [], csrfHeader: [] }],

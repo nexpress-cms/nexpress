@@ -60,6 +60,8 @@ describe("forum factory", () => {
       "post-rows": ".np-forum-community-posts",
       "post-detail": '[data-np-forum-surface="post-detail"]',
       composer: '[data-np-forum-surface="composer"]',
+      attachments: '[data-np-forum-attachments="list"]',
+      "attachment-item": "[data-np-forum-attachment]",
       comments: ".np-forum-comments",
       engagement: '[data-np-forum-engagement="post"]',
       "engagement-summary": '[data-np-forum-engagement="summary"]',
@@ -141,7 +143,7 @@ describe("forum factory", () => {
       create: true,
       update: true,
       delete: true,
-      writableFields: ["board", "title", "body", "category"],
+      writableFields: ["board", "title", "body", "category", "attachments"],
     });
     expect(forum.collections[1].community?.memberWrite?.access?.create).toBeTypeOf("function");
     expect(forum.collections[1].community?.memberWrite?.access?.update).toBeTypeOf("function");

@@ -19,6 +19,8 @@ pulling Sharp, PostgreSQL, or the storage adapters into a browser bundle:
 ```ts
 import {
   isNpMediaApiItem,
+  isNpMediaAttachmentWire,
+  npMediaAttachmentAccept,
   npValidateMediaProcessingOptions,
   npValidateMediaVariants,
   type NpMediaRecord,
@@ -27,6 +29,33 @@ import {
 ```
 
 `@nexpress/core/media` also re-exports the contract for server-only consumers.
+
+## Member attachment contract
+
+NexPress reuses media rows for downloadable document attachments. The
+client-safe `NpMediaAttachmentWire` contains only `id`, safe filename,
+canonical MIME type, byte count, processing status, and the fixed download
+URL. It never exposes a storage key, direct object URL, hash, or uploader
+identity. `npMediaAttachmentAccept` provides the matching browser file-picker
+value; the server remains authoritative.
+
+`POST /api/members/media/attachments` accepts one multipart `file` from an
+active member. It applies the normal member upload quota, validates a safe
+basename, a maximum of 25 MiB, the extension/MIME pair, and file magic or
+container signature before writing `np_media`. Images may return
+`status: "processing"`; other accepted attachments are ready immediately.
+
+`GET|HEAD /api/media/attachments/:id` streams the original only to its member
+uploader or when a public published document currently references the media
+through an `attachments.file` field. It always forces download, sends
+`nosniff`, a sandbox CSP, and `private, no-store`. The owner-only
+`DELETE /api/members/media/attachments/:id` deletes only an unreferenced file.
+Reference creation and soft-delete lock the same media row, so a concurrent
+post save cannot succeed with an attachment that the delete request already
+made unavailable.
+These endpoints intentionally differ from ordinary resolved image URLs: an
+attachment must never become inline active content merely because its original
+object exists in storage.
 
 ## Persisted variant shape
 

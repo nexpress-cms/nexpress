@@ -76,6 +76,7 @@ const messages: NpForumMessages = {
   loginRequired: "로그인이 필요합니다.",
   commentsLocked: "댓글이 잠겼습니다.",
   emptyBody: "내용이 없습니다.",
+  attachments: "첨부파일",
 };
 
 const board: NpForumBoard = {
@@ -92,6 +93,11 @@ const board: NpForumBoard = {
     { key: "question", label: "질문" },
     { key: "guide", label: "정보" },
   ],
+  attachments: {
+    enabled: true,
+    maxFiles: 5,
+    maxFileSizeBytes: 20 * 1024 * 1024,
+  },
 };
 
 const post: NpForumPostSummary = {
@@ -118,6 +124,7 @@ const post: NpForumPostSummary = {
     reactionCount: 7,
     reactions: { like: 7 },
   },
+  attachmentCount: 1,
 };
 
 const notice: NpForumPostSummary = {
@@ -217,6 +224,15 @@ describe("community full forum skin", () => {
         authorActions: <button type="button">수정 액션</button>,
         engagement: <div data-testid="engagement">참여 지표</div>,
         comments: <div data-testid="comments">댓글 영역</div>,
+        attachments: [
+          {
+            id: "ec6ff5a8-90cf-4388-917e-b4cf6b6ac76a",
+            filename: "운영 안내.pdf",
+            mimeType: "application/pdf",
+            filesize: 4096,
+            downloadUrl: "/api/media/attachments/ec6ff5a8-90cf-4388-917e-b4cf6b6ac76a",
+          },
+        ],
         messages,
       }),
     );
@@ -228,6 +244,8 @@ describe("community full forum skin", () => {
     expect(html).toContain('data-testid="comments"');
     expect(html).toContain("새 글 검토 후 게시");
     expect(html).toContain("댓글 사용");
+    expect(html).toContain('data-np-forum-attachments="list"');
+    expect(html).toContain("운영 안내.pdf");
   });
 
   it("wraps both route-owned composer modes without owning write policy", async () => {

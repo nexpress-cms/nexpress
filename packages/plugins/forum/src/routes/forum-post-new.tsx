@@ -7,6 +7,7 @@ import { ForumPostForm } from "@nexpress/plugin-forum/client";
 
 import {
   findForumBoardByKey,
+  getForumAttachmentFormLabels,
   getForumMessages,
   resolveForumSkin,
   type NpForumRuntime,
@@ -19,14 +20,22 @@ export function createForumPostNewRoute(runtime: NpForumRuntime) {
       getForumMessages(),
     ]);
     if (!board || board.writeMode !== "members") notFound();
-    const member = await getSiteMember();
+    const [member, attachmentLabels] = await Promise.all([
+      getSiteMember(),
+      getForumAttachmentFormLabels(board),
+    ]);
     const next = `${runtime.basePath}/${board.key}/new`;
     const content = member ? (
       <ForumPostForm
         mode="create"
         basePath={runtime.basePath}
         collectionSlug={runtime.collections.posts}
-        board={{ id: board.id, key: board.key, categories: board.categories }}
+        board={{
+          id: board.id,
+          key: board.key,
+          categories: board.categories,
+          attachments: board.attachments,
+        }}
         labels={{
           category: messages.category,
           categoryNone: messages.categoryNone,
@@ -37,6 +46,7 @@ export function createForumPostNewRoute(runtime: NpForumRuntime) {
           create: messages.create,
           save: messages.save,
           saveFailed: messages.saveFailed,
+          ...attachmentLabels,
         }}
       />
     ) : (

@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 
-import { asc, count, desc, eq, inArray, max, sql, type SQL } from "drizzle-orm";
+import { asc, count, desc, eq, inArray, isNull, max, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import type { NpCommunityJsonObject } from "../community-contract/types.js";
 import {
@@ -42,7 +42,7 @@ import { enqueueJob } from "../jobs/queue.js";
 import { runHook } from "../plugins/host.js";
 import { npRevisions, npSlugHistory } from "../db/schema/system.js";
 import { npComments, npContentViews, npReactions, npReports } from "../db/schema/community.js";
-import { npMediaRefs } from "../db/schema/media.js";
+import { npMedia, npMediaRefs } from "../db/schema/media.js";
 import { getDb } from "../db/runtime.js";
 import {
   NpRevisionContractError,
@@ -64,7 +64,7 @@ interface SelectQuery extends Promise<unknown[]> {
   orderBy(order: QueryCondition): SelectQuery;
   limit(limit: number): SelectQuery;
   offset(offset: number): SelectQuery;
-  for(strength: "update"): SelectQuery;
+  for(strength: "update" | "key share"): SelectQuery;
 }
 
 interface InsertValuesQuery extends Promise<unknown> {
@@ -1142,8 +1142,6 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
           );
     const persistedDocId = getRecordId(persistedDoc);
 
-    await syncChildTables(tx, ctx.registration.childTables, ctx.prepared.childRows, persistedDocId);
-    await syncJoinTables(tx, ctx.registration.joinTables, ctx.prepared.joinRows, persistedDocId);
     await syncMediaRefsForDocument(
       tx,
       ctx.collection,
@@ -1151,6 +1149,8 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
       ctx.config.fields,
       ctx.hookData,
     );
+    await syncChildTables(tx, ctx.registration.childTables, ctx.prepared.childRows, persistedDocId);
+    await syncJoinTables(tx, ctx.registration.joinTables, ctx.prepared.joinRows, persistedDocId);
 
     // Slug-rename history. When a slug-having collection's row
     // changes its slug, write an `oldSlug → newSlug` record so
@@ -3015,6 +3015,29 @@ async function syncMediaRefsForDocument(
         sql`${eq(getTableColumn(npMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
       );
     return;
+  }
+
+  // Serialize reference creation against media soft-delete. Without a row
+  // lock, deleteMedia() can observe zero refs and mark an object deleted after
+  // field validation but before this insert, leaving a newly saved document
+  // pointing at an unavailable attachment. All writers lock ids in canonical
+  // order so multi-upload documents do not deadlock one another.
+  const mediaIds = [...new Set(refs.map((ref) => ref.mediaId))].sort();
+  const activeRows = (await tx
+    .select({ id: npMedia.id })
+    .from(npMedia)
+    .where(sql`${inArray(npMedia.id, mediaIds)} and ${isNull(npMedia.deletedAt)}`)
+    .orderBy(asc(npMedia.id))
+    .for("key share")) as Array<{ id: string }>;
+  const activeIds = new Set(activeRows.map((row) => row.id));
+  const unavailable = mediaIds.filter((id) => !activeIds.has(id));
+  if (unavailable.length > 0) {
+    throw new NpValidationError("Invalid media reference", [
+      {
+        field: refs.find((ref) => unavailable.includes(ref.mediaId))?.field ?? "media",
+        message: "Referenced media must exist and be active.",
+      },
+    ]);
   }
 
   await tx
