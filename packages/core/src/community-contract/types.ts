@@ -1,5 +1,6 @@
 export const npCommunityCommentStatuses = ["visible", "pending", "hidden", "deleted"] as const;
 export const npCommunityCommentSorts = ["newest", "oldest", "top"] as const;
+export const npCommunityDocumentAudiences = ["public", "members", "private"] as const;
 /** Reserved follow targets. Canonical collection slugs are also valid targets. */
 export const npCommunityFollowTargets = ["member"] as const;
 export const npCommunityFollowActivityKinds = ["comment.created", "document.published"] as const;
@@ -49,6 +50,7 @@ export const npCommunityThreadModerationActions = [
 
 export type CommentStatus = (typeof npCommunityCommentStatuses)[number];
 export type NpCommentSort = (typeof npCommunityCommentSorts)[number];
+export type NpCommunityDocumentAudience = (typeof npCommunityDocumentAudiences)[number];
 /** `member` or a canonical collection slug that enabled document follows. */
 export type NpFollowTarget = string;
 export type NpFollowActivityKind = (typeof npCommunityFollowActivityKinds)[number];
@@ -650,7 +652,8 @@ export interface NpCommunityRuntimeDiagnostic {
     | "spam"
     | "profanity"
     | "reputation"
-    | "profiles";
+    | "profiles"
+    | "audience";
   message: string;
   occurredAt: string;
 }

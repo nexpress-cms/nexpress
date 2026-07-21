@@ -24,6 +24,50 @@ import {
 } from "./runtime.js";
 import type { NpForumBoard } from "./types.js";
 
+const audienceRank = { public: 0, members: 1, private: 2 } as const;
+
+function requireForumAudience(value: unknown): keyof typeof audienceRank {
+  if (value === "public" || value === "members" || value === "private") return value;
+  throw new NpValidationError("Invalid forum audience", [
+    { field: "audience", message: "Choose public, members, or private." },
+  ]);
+}
+
+function boardAllowsAudience(board: NpForumBoard, value: unknown): boolean {
+  const audience = requireForumAudience(value);
+  return audienceRank[audience] >= audienceRank[board.audience];
+}
+
+async function validateBoardAudienceTransition(
+  runtime: NpForumRuntime,
+  data: Readonly<Record<string, unknown>>,
+  originalDoc: Readonly<Record<string, unknown>> | null | undefined,
+): Promise<void> {
+  if (!originalDoc || typeof originalDoc.id !== "string") return;
+  const previous = requireForumAudience(originalDoc.audience);
+  const next = requireForumAudience(data.audience);
+  if (audienceRank[next] <= audienceRank[previous]) return;
+  const incompatible = next === "members" ? ["public"] : ["public", "members"];
+  const posts = await findDocuments<ForumPostDocument>(runtime.collections.posts, {
+    where: {
+      board: originalDoc.id,
+      audience: incompatible,
+      visibility: "*",
+    },
+    page: 1,
+    limit: 1,
+  });
+  if (posts.totalDocs > 0) {
+    throw new NpValidationError("Forum board audience conflicts with existing posts", [
+      {
+        field: "audience",
+        message:
+          "Move existing posts to an equally restrictive audience before narrowing this board.",
+      },
+    ]);
+  }
+}
+
 function validateBoardDefinition(data: Record<string, unknown>): Record<string, unknown> {
   if (typeof data.key !== "string" || !npForumBoardKeyPattern.test(data.key)) {
     throw new NpValidationError("Invalid forum board key", [
@@ -74,11 +118,17 @@ function categoryAllowed(board: NpForumBoard, value: unknown): boolean {
 async function boardAllowsMemberWrite(
   runtime: NpForumRuntime,
   data: Readonly<Record<string, unknown>>,
+  memberId: string,
 ): Promise<NpForumBoard | null> {
   const boardId = data.board;
   if (typeof boardId !== "string") return null;
-  const board = await findForumBoardById(runtime, boardId);
-  if (!board || board.writeMode !== "members" || !categoryAllowed(board, data.category)) {
+  const board = await findForumBoardById(runtime, boardId, memberId);
+  if (
+    !board ||
+    board.writeMode !== "members" ||
+    !categoryAllowed(board, data.category) ||
+    !boardAllowsAudience(board, data.audience)
+  ) {
     return null;
   }
   return board;
@@ -87,11 +137,14 @@ async function boardAllowsMemberWrite(
 async function boardAllowsMemberUpdate(
   runtime: NpForumRuntime,
   data: Readonly<Record<string, unknown>>,
+  memberId: string,
 ): Promise<NpForumBoard | null> {
   const boardId = data.board;
   if (typeof boardId !== "string") return null;
-  const board = await findForumBoardById(runtime, boardId);
-  return board && categoryAllowed(board, data.category) ? board : null;
+  const board = await findForumBoardById(runtime, boardId, memberId);
+  return board && categoryAllowed(board, data.category) && boardAllowsAudience(board, data.audience)
+    ? board
+    : null;
 }
 
 async function validateForumAttachments(
@@ -167,13 +220,13 @@ export function defineForumBoardsCollection(runtime: NpForumRuntime): NpCollecti
     slugField: { useField: "key", unique: true },
     admin: {
       group: "Community",
-      listColumns: ["name", "key", "skin", "writeMode", "moderation", "status"],
+      listColumns: ["name", "key", "skin", "audience", "writeMode", "moderation", "status"],
       defaultSort: "name",
       description:
-        "Create and configure public boards without adding another collection or migration.",
+        "Create and configure public, member-only, or moderator-only boards without another collection.",
     },
     versions: { drafts: true, max: 20 },
-    community: { follows: true },
+    community: { follows: true, audience: true, audienceCategoryField: "id" },
     access: {
       read: () => true,
       create: isEditorOrAbove,
@@ -183,7 +236,7 @@ export function defineForumBoardsCollection(runtime: NpForumRuntime): NpCollecti
     hooks: {
       beforeCreate: [({ data }) => validateBoardDefinition(data)],
       beforeUpdate: [
-        ({ data, originalDoc }) => {
+        async ({ data, originalDoc }) => {
           if (originalDoc && data.key !== originalDoc.key) {
             throw new NpValidationError("Forum board key cannot be changed", [
               {
@@ -194,6 +247,7 @@ export function defineForumBoardsCollection(runtime: NpForumRuntime): NpCollecti
           }
           const validated = validateBoardDefinition(data);
           validateStableCategoryKeys(validated, originalDoc);
+          await validateBoardAudienceTransition(runtime, validated, originalDoc);
           return validated;
         },
       ],
@@ -270,6 +324,24 @@ export function defineForumBoardsCollection(runtime: NpForumRuntime): NpCollecti
           { label: "Closed", value: "closed" },
         ],
         admin: { position: "sidebar", group: "Board" },
+      },
+      {
+        type: "select",
+        name: "audience",
+        label: "Who can read this board",
+        required: true,
+        defaultValue: "public",
+        options: [
+          { label: "Everyone", value: "public" },
+          { label: "Signed-in members", value: "members" },
+          { label: "Moderators only", value: "private" },
+        ],
+        admin: {
+          position: "sidebar",
+          group: "Board",
+          description:
+            "Narrowing requires every existing post to use an equally restrictive audience.",
+        },
       },
       {
         type: "select",
@@ -368,12 +440,22 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
     labels: { singular: "Forum post", plural: "Forum posts" },
     admin: {
       group: "Community",
-      listColumns: ["title", "board", "category", "status", "pinned", "locked", "updatedAt"],
+      listColumns: [
+        "title",
+        "board",
+        "category",
+        "audience",
+        "status",
+        "pinned",
+        "locked",
+        "updatedAt",
+      ],
       defaultSort: "-updatedAt",
       description: "Member and staff posts across all configured forum boards.",
     },
     versions: { drafts: true, max: 30 },
     community: {
+      audience: true,
       comments: true,
       reactions: true,
       views: true,
@@ -390,17 +472,17 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
         create: true,
         update: true,
         delete: true,
-        writableFields: ["board", "title", "body", "category", "attachments"],
+        writableFields: ["board", "title", "body", "category", "attachments", "audience"],
         access: {
-          create: async ({ data }) =>
-            data !== null && (await boardAllowsMemberWrite(runtime, data)) !== null,
-          update: async ({ data, originalDoc }) => {
+          create: async ({ data, memberId }) =>
+            data !== null && (await boardAllowsMemberWrite(runtime, data, memberId)) !== null,
+          update: async ({ data, originalDoc, memberId }) => {
             if (!data || !originalDoc || data.board !== originalDoc.board) return false;
-            return (await boardAllowsMemberUpdate(runtime, data)) !== null;
+            return (await boardAllowsMemberUpdate(runtime, data, memberId)) !== null;
           },
         },
-        resolveCreateStatus: async ({ data }) => {
-          const board = await boardAllowsMemberWrite(runtime, data);
+        resolveCreateStatus: async ({ data, memberId }) => {
+          const board = await boardAllowsMemberWrite(runtime, data, memberId);
           if (!board) {
             throw new NpForbiddenError(runtime.collections.posts, "create");
           }
@@ -427,7 +509,7 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
           const board =
             typeof boardId === "string"
               ? principal?.kind === "member"
-                ? await findForumBoardById(runtime, boardId)
+                ? await findForumBoardById(runtime, boardId, principal.memberId)
                 : await getForumBoardById(runtime, boardId)
               : null;
           if (!board) {
@@ -438,6 +520,14 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
           if (!categoryAllowed(board, data.category)) {
             throw new NpValidationError("Invalid forum post category", [
               { field: "category", message: "Select a category configured on this board." },
+            ]);
+          }
+          if (!boardAllowsAudience(board, data.audience)) {
+            throw new NpValidationError("Invalid forum post audience", [
+              {
+                field: "audience",
+                message: "Post audience cannot be broader than the selected board.",
+              },
             ]);
           }
           await validateForumAttachments(board, data, principal);
@@ -454,7 +544,7 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
           const board =
             typeof boardId === "string"
               ? principal?.kind === "member"
-                ? await findForumBoardById(runtime, boardId)
+                ? await findForumBoardById(runtime, boardId, principal.memberId)
                 : await getForumBoardById(runtime, boardId)
               : null;
           if (!board) {
@@ -465,6 +555,14 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
           if (!categoryAllowed(board, data.category)) {
             throw new NpValidationError("Invalid forum post category", [
               { field: "category", message: "Select a category configured on this board." },
+            ]);
+          }
+          if (!boardAllowsAudience(board, data.audience)) {
+            throw new NpValidationError("Invalid forum post audience", [
+              {
+                field: "audience",
+                message: "Post audience cannot be broader than the selected board.",
+              },
             ]);
           }
           await validateForumAttachments(board, data, principal, originalDoc?.attachments);
@@ -535,6 +633,23 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
           position: "sidebar",
           group: "Board",
           description: "Use a category key configured on the selected board.",
+        },
+      },
+      {
+        type: "select",
+        name: "audience",
+        label: "Who can read this post",
+        required: true,
+        defaultValue: "public",
+        options: [
+          { label: "Everyone", value: "public" },
+          { label: "Signed-in members", value: "members" },
+          { label: "Author and moderators", value: "private" },
+        ],
+        admin: {
+          position: "sidebar",
+          group: "Publishing",
+          description: "The post cannot be broader than its board audience.",
         },
       },
       {

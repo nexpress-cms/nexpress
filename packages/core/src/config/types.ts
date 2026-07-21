@@ -433,6 +433,22 @@ export interface NpCollectionConfig {
     follows?: boolean;
     reports?: boolean;
     /**
+     * Opt into the canonical document audience contract. The collection must
+     * declare one required top-level `audience` select with the exact values
+     * `public`, `members`, and `private`. Public discovery only exposes
+     * `public`; authenticated members may read `members`; `private` is limited
+     * to the member author and scoped moderators. Staff authorization remains
+     * the responsibility of the staff-facing collection/API surface.
+     */
+    audience?: true;
+    /**
+     * Optionally project one required single relationship (or the document `id`) as the
+     * category scope used when authorizing private-audience moderators. This
+     * is useful for row-owned containers such as forum boards whose exact
+     * category moderator must be able to read and follow the board itself.
+     */
+    audienceCategoryField?: string;
+    /**
      * Declare that documents in this collection are moderatable threads.
      * Core always projects the document id as the `thread` scope and the
      * collection slug as the `collection` scope. `categoryField`, when set,

@@ -170,6 +170,8 @@ export interface FanOutMentionsInput {
    * everyone already mentioned.
    */
   previousHandles?: ReadonlySet<string>;
+  /** Optional target-visibility gate evaluated before a recipient is notified. */
+  canNotify?: (memberId: string) => boolean | Promise<boolean>;
 }
 
 /**
@@ -198,6 +200,7 @@ export async function fanOutMentionNotifications(input: FanOutMentionsInput): Pr
   for (const t of targets) {
     if (t.id === input.actorMemberId) continue;
     if (input.exclude?.has(t.id)) continue;
+    if (input.canNotify && !(await input.canNotify(t.id))) continue;
     const row = await createNotification({
       memberId: t.id,
       kind: input.kind,

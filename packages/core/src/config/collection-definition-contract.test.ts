@@ -571,6 +571,71 @@ describe("collection definition contract", () => {
     expect(npValidateCollectionDefinition(collection)).toEqual({ ok: true });
   });
 
+  it("requires the exact canonical audience field contract", () => {
+    const collection = validCollection();
+    collection.community = { audience: true };
+
+    expect(npAnalyzeCollectionDefinition(collection)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          location: "community.audience",
+          message: expect.stringMatching(/top-level select field/u),
+        }),
+      ]),
+    );
+
+    collection.fields.push({
+      type: "select",
+      name: "audience",
+      required: true,
+      defaultValue: "public",
+      options: [
+        { label: "Everyone", value: "public" },
+        { label: "Members", value: "members" },
+        { label: "Private", value: "private" },
+      ],
+    });
+    expect(npValidateCollectionDefinition(collection)).toEqual({ ok: true });
+
+    collection.community.audienceCategoryField = "id";
+    expect(npValidateCollectionDefinition(collection)).toEqual({ ok: true });
+    collection.community.audienceCategoryField = "missing";
+    expect(npAnalyzeCollectionDefinition(collection)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ location: "community.audienceCategoryField" }),
+      ]),
+    );
+    delete collection.community.audienceCategoryField;
+
+    const malformed = {
+      ...collection,
+      fields: collection.fields.map((field) =>
+        "name" in field && field.name === "audience"
+          ? { ...field, defaultValue: "members" }
+          : field,
+      ),
+    };
+    expect(npAnalyzeCollectionDefinition(malformed)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          location: "community.audience",
+          message: expect.stringMatching(/defaultValue="public"/u),
+        }),
+      ]),
+    );
+
+    const undeclared = validCollection();
+    undeclared.fields.push(collection.fields.at(-1)!);
+    expect(npAnalyzeCollectionDefinition(undeclared)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          location: "fields.audience",
+          message: expect.stringMatching(/reserved/u),
+        }),
+      ]),
+    );
+  });
+
   it("rejects document reports on reserved target slugs", () => {
     const collection = validCollection();
     collection.slug = "comment";

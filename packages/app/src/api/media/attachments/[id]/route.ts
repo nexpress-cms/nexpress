@@ -1,4 +1,6 @@
 import { NpNotFoundError, getDocumentById } from "@nexpress/core";
+import type { NpPrincipal } from "@nexpress/core/auth";
+import { npCanReadCommunityDocument } from "@nexpress/core/community";
 import {
   getMediaById,
   getStorageAdapter,
@@ -11,10 +13,14 @@ import type { NextRequest } from "next/server";
 import { npErrorResponse } from "../../../../lib/api-response";
 import { ensureFor } from "../../../../lib/init-core";
 import { optionalMember } from "../../../../lib/member-auth-helpers";
+import { optionalAuth } from "../../../../lib/auth-helpers";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
-async function isPublicAttachmentReference(mediaId: string): Promise<boolean> {
+async function isReadableAttachmentReference(
+  mediaId: string,
+  principals: readonly (NpPrincipal | null)[],
+): Promise<boolean> {
   const references = await listMediaReferences(mediaId, {
     field: "attachments.file",
     limit: 100,
@@ -25,7 +31,16 @@ async function isPublicAttachmentReference(mediaId: string): Promise<boolean> {
         reference.collection,
         reference.documentId,
       );
-      if (document?.status === "published" && document.visibility === "public") return true;
+      if (!document) continue;
+      for (const principal of principals) {
+        if (
+          await npCanReadCommunityDocument(reference.collection, document, principal, {
+            allowUnpublished: principal !== null,
+          })
+        ) {
+          return true;
+        }
+      }
     } catch {
       // Inactive collections, denied rows, and malformed persisted documents fail closed.
     }
@@ -61,9 +76,12 @@ async function handleDownload(
       throw new NpNotFoundError("media attachment", id);
     }
 
-    const member = await optionalMember(request);
+    const [member, staff] = await Promise.all([optionalMember(request), optionalAuth(request)]);
     const isOwner = member !== null && media.uploadedByMemberId === member.id;
-    if (!isOwner && !(await isPublicAttachmentReference(id))) {
+    const principals: Array<NpPrincipal | null> = [null];
+    if (member) principals.push({ kind: "member", memberId: member.id });
+    if (staff) principals.push({ kind: "staff", user: staff });
+    if (!isOwner && !(await isReadableAttachmentReference(id, principals))) {
       throw new NpNotFoundError("media attachment", id);
     }
 

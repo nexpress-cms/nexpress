@@ -57,6 +57,7 @@ import {
   npRequireNotificationRow,
   npRequireReactionRow,
   npRequireReportRow,
+  npIsCommunityDocumentAudience,
 } from "@nexpress/core/community-contract";
 
 import { inferDeployTargetFromEnv, type DeployTarget } from "./deploy-targets.js";
@@ -696,14 +697,21 @@ async function checkCollectionContracts(env: DoctorEnv): Promise<CheckResult> {
         continue;
       }
       const identifier = `"${tableName}"`;
+      const audienceProjection = columns.has("audience") ? ", audience" : "";
       const rows = await client.query<Record<string, unknown>>(
         `select id, status, created_by as "createdBy", updated_by as "updatedBy",
-                visibility, site_id as "siteId" from ${identifier}`,
+                visibility, site_id as "siteId"${audienceProjection} from ${identifier}`,
       );
       rowCount += rows.rows.length;
       rows.rows.forEach((row, index) => {
         const result = npAnalyzeCollectionSystemRow(row, `${tableName}[${index.toString()}]`);
         if (!result.ok) issues.push(...result.issues);
+        if (columns.has("audience") && !npIsCommunityDocumentAudience(row.audience)) {
+          issues.push({
+            path: `${tableName}[${index.toString()}].audience`,
+            message: "must be public, members, or private.",
+          });
+        }
       });
     }
     await client.end();

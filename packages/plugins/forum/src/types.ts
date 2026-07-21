@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 import type { NpContentEngagementSummary } from "@nexpress/core/community-contract";
+import type { NpCommunityDocumentAudience } from "@nexpress/core/community-contract";
 
 export type NpForumBoardWriteMode = "members" | "staff" | "closed";
 export type NpForumModerationMode = "published" | "pending";
+export type NpForumAudience = NpCommunityDocumentAudience;
 
 export interface NpForumCategory {
   key: string;
@@ -29,6 +31,7 @@ export interface NpForumBoard {
   name: string;
   description: string | null;
   skinId: string;
+  audience: NpForumAudience;
   writeMode: NpForumBoardWriteMode;
   moderation: NpForumModerationMode;
   commentsEnabled: boolean;
@@ -50,6 +53,7 @@ export interface NpForumPostSummary {
   category: string | null;
   pinned: boolean;
   locked: boolean;
+  audience: NpForumAudience;
   status: string;
   createdAt: Date;
   updatedAt: Date;
@@ -116,6 +120,11 @@ export interface NpForumMessages {
   previous: string;
   next: string;
   boardPolicy: string;
+  audience: string;
+  audiencePublic: string;
+  audienceMembers: string;
+  audiencePrivateBoard: string;
+  audiencePrivate: string;
   writeMembers: string;
   writeStaff: string;
   writeClosed: string;

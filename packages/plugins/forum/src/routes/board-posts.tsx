@@ -36,10 +36,10 @@ export function createBoardPostsMetadata(runtime: NpForumRuntime) {
 
 export function createBoardPostsRoute(runtime: NpForumRuntime) {
   return async function BoardPostsRoute({ params, searchParams }: NpRouteRenderProps) {
-    const board = await findForumBoardByKey(runtime, params.boardKey ?? "");
+    const member = await getSiteMember();
+    const board = await findForumBoardByKey(runtime, params.boardKey ?? "", member?.id ?? null);
     if (!board) notFound();
 
-    const member = await getSiteMember();
     const parsedQuery = parseForumPostListQuery(searchParams, board.categories);
     if (!parsedQuery) notFound();
     if (parsedQuery.showMine && !member) notFound();
@@ -62,6 +62,7 @@ export function createBoardPostsRoute(runtime: NpForumRuntime) {
     } else if (!canViewPending) {
       where.status = "published";
       where.pinned = false;
+      where.audience = member ? ["public", "members"] : "public";
     } else {
       where.status = ["published", "pending"];
     }
@@ -79,7 +80,12 @@ export function createBoardPostsRoute(runtime: NpForumRuntime) {
       }),
       showPinned
         ? findDocuments<ForumPostDocument>(runtime.collections.posts, {
-            where: { board: board.id, status: "published", pinned: true },
+            where: {
+              board: board.id,
+              status: "published",
+              pinned: true,
+              audience: member ? ["public", "members"] : "public",
+            },
             sort: "-createdAt",
             page: 1,
             limit: 100,

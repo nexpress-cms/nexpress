@@ -19,6 +19,7 @@ describe("forum runtime contracts", () => {
         name: "자유게시판",
         description: "  함께 이야기해요  ",
         skin: "classic",
+        audience: "members",
         writeMode: "members",
         moderation: "pending",
         commentsEnabled: true,
@@ -34,6 +35,7 @@ describe("forum runtime contracts", () => {
       name: "자유게시판",
       description: "함께 이야기해요",
       skinId: "classic",
+      audience: "members",
       writeMode: "members",
       moderation: "pending",
       commentsEnabled: true,
@@ -67,6 +69,7 @@ describe("forum runtime contracts", () => {
       slug: "free",
       name: "Free",
       skin: "classic",
+      audience: "public",
       writeMode: "members",
       moderation: "published",
       commentsEnabled: true,
@@ -76,6 +79,7 @@ describe("forum runtime contracts", () => {
       maxAttachmentSizeMb: 20,
     };
     expect(() => normalizeForumBoard({ ...base, writeMode: "everyone" })).toThrow(/write mode/u);
+    expect(() => normalizeForumBoard({ ...base, audience: "friends" })).toThrow(/audience/u);
     expect(() => normalizeForumBoard({ ...base, pageSize: 0 })).toThrow(/page size/u);
     expect(() => normalizeForumBoard({ ...base, maxAttachments: 21 })).toThrow(/attachment/u);
     expect(() => normalizeForumBoard({ ...base, maxAttachmentSizeMb: 26 })).toThrow(/attachment/u);

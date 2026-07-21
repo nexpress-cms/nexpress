@@ -1,5 +1,6 @@
 import { buildPageMetadata } from "@nexpress/next";
 import type { NpRouteRenderProps } from "@nexpress/next";
+import { getSiteMember } from "@nexpress/next";
 
 import {
   getForumMessages,
@@ -21,7 +22,11 @@ export function createBoardIndexMetadata(runtime: NpForumRuntime) {
 
 export function createBoardIndexRoute(runtime: NpForumRuntime) {
   return async function BoardIndexRoute(_props: NpRouteRenderProps) {
-    const [boards, messages] = await Promise.all([listForumBoards(runtime), getForumMessages()]);
+    const member = await getSiteMember();
+    const [boards, messages] = await Promise.all([
+      listForumBoards(runtime, member?.id ?? null),
+      getForumMessages(),
+    ]);
     return resolveForumSkin(runtime).renderBoardIndex({
       basePath: runtime.basePath,
       boards,

@@ -10,6 +10,7 @@ import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { withMemberWrite } from "./can.js";
+import { npCanReadCommunityDocument, npRequireReadableCommunityDocument } from "./audience.js";
 import { type CommunityScope } from "./roles.js";
 import { createNotification } from "./notifications.js";
 import { applyReputation } from "./reputation.js";
@@ -42,6 +43,7 @@ const KIND_RE = /^[a-z][a-z0-9_-]{0,29}$/;
 export type { NpReactionRow, NpReactToInput };
 
 interface NpResolvedReactionTarget extends NpResolvedDocumentEngagementTarget {
+  collection: string;
   scopes: ReadonlyArray<{ type: CommunityScope; id: string }>;
 }
 
@@ -75,7 +77,7 @@ export async function addReaction(input: NpReactToInput): Promise<NpReactionRow>
     ]);
   }
 
-  const target = await resolveReactionTarget(input.targetType, input.targetId);
+  const target = await resolveReactionTarget(input.targetType, input.targetId, input.memberId);
   return withMemberWrite(input.memberId, target.scopes, async () => {
     return doAddReaction(input, target);
   });
@@ -84,6 +86,7 @@ export async function addReaction(input: NpReactToInput): Promise<NpReactionRow>
 async function resolveReactionTarget(
   targetType: string,
   targetId: string,
+  viewerMemberId: string | null,
 ): Promise<NpResolvedReactionTarget> {
   const checked = npRequireEngagementTarget({ targetType, targetId });
   if (checked.targetType !== "comment") {
@@ -91,9 +94,13 @@ async function resolveReactionTarget(
       checked.targetType,
       checked.targetId,
       "reactions",
+      {
+        principal: viewerMemberId ? { kind: "member", memberId: viewerMemberId } : null,
+      },
     );
     return {
       ...target,
+      collection: target.targetType,
       scopes: npProjectDocumentCommunityScopes(
         getCollectionConfig(target.targetType),
         target.document,
@@ -126,9 +133,15 @@ async function resolveReactionTarget(
     throw new NpForbiddenError("reaction", "cross-site");
   }
   const parent = await npResolveDocumentCommunityTarget(comment.targetType, comment.targetId);
+  await npRequireReadableCommunityDocument(
+    parent.collection,
+    parent.document,
+    viewerMemberId ? { kind: "member", memberId: viewerMemberId } : null,
+  );
   return {
     targetType: checked.targetType,
     targetId: checked.targetId,
+    collection: parent.collection,
     document: parent.document,
     siteId: comment.siteId,
     recipientId: comment.memberId,
@@ -189,18 +202,25 @@ async function doAddReaction(
   // Fan out a notification + apply reputation delta to the recipient.
   // Self-reactions are filtered for both — neither makes sense.
   if (target.recipientId && target.recipientId !== input.memberId) {
-    await createNotification({
-      memberId: target.recipientId,
-      kind: "reaction.received",
-      actorMemberId: input.memberId,
-      payload: {
-        reactorId: input.memberId,
-        targetType: target.targetType,
-        targetId: target.targetId,
-        reactionKind: input.kind,
-        ...(target.href ? { href: target.href } : {}),
-      },
-    });
+    if (
+      await npCanReadCommunityDocument(target.collection, target.document, {
+        kind: "member",
+        memberId: target.recipientId,
+      })
+    ) {
+      await createNotification({
+        memberId: target.recipientId,
+        kind: "reaction.received",
+        actorMemberId: input.memberId,
+        payload: {
+          reactorId: input.memberId,
+          targetType: target.targetType,
+          targetId: target.targetId,
+          reactionKind: input.kind,
+          ...(target.href ? { href: target.href } : {}),
+        },
+      });
+    }
     await applyReputation(target.recipientId, {
       kind: "reaction.received",
       reactionKind: input.kind,
@@ -305,9 +325,10 @@ export async function removeReaction(input: NpReactToInput): Promise<void> {
 export async function countReactions(
   targetType: string,
   targetId: string,
+  options: { viewerMemberId?: string } = {},
 ): Promise<Record<string, number>> {
   const target = npRequireEngagementTarget({ targetType, targetId });
-  await assertReactableExists(target.targetType, target.targetId);
+  await assertReactableExists(target.targetType, target.targetId, options.viewerMemberId);
   const db = getDb();
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const rows = (await db
@@ -336,7 +357,7 @@ export async function listMemberReactions(
   memberId: string,
 ): Promise<string[]> {
   const target = npRequireEngagementTarget({ targetType, targetId });
-  await assertReactableExists(target.targetType, target.targetId);
+  await assertReactableExists(target.targetType, target.targetId, memberId);
   const db = getDb();
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const rows = (await db
@@ -357,6 +378,10 @@ export async function listMemberReactions(
  * Internal helper — assert that a comment or reaction-enabled public
  * collection document exists in the current site.
  */
-export async function assertReactableExists(targetType: string, targetId: string): Promise<void> {
-  await resolveReactionTarget(targetType, targetId);
+export async function assertReactableExists(
+  targetType: string,
+  targetId: string,
+  viewerMemberId?: string,
+): Promise<void> {
+  await resolveReactionTarget(targetType, targetId, viewerMemberId ?? null);
 }

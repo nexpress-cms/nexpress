@@ -94,6 +94,7 @@ function documentBranch(
       AND site_id = ${siteId}
       AND status = 'published'
       AND visibility = 'public'
+      ${collection.config.community?.audience === true ? sql`AND audience = 'public'` : sql``}
   `;
 }
 
@@ -116,6 +117,7 @@ function commentBranch(collection: RegisteredActivityCollection, memberId: strin
       AND d.site_id = ${siteId}
       AND d.status = 'published'
       AND d.visibility = 'public'
+      ${collection.config.community?.audience === true ? sql`AND d.audience = 'public'` : sql``}
   `;
 }
 
@@ -208,6 +210,10 @@ async function loadTargetDocuments(
       const siteColumn = tableColumn(collection.table, "siteId");
       const statusColumn = tableColumn(collection.table, "status");
       const visibilityColumn = tableColumn(collection.table, "visibility");
+      const audienceColumn =
+        collection.config.community?.audience === true
+          ? tableColumn(collection.table, "audience")
+          : null;
       if (!idColumn || !siteColumn || !statusColumn || !visibilityColumn) return;
       const selected = (await db
         .select()
@@ -218,6 +224,7 @@ async function loadTargetDocuments(
             eq(siteColumn as never, siteId),
             eq(statusColumn as never, "published"),
             eq(visibilityColumn as never, "public"),
+            ...(audienceColumn ? [eq(audienceColumn as never, "public")] : []),
           ),
         )) as Array<Record<string, unknown>>;
       for (const document of selected) {

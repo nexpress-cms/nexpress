@@ -11,6 +11,7 @@ import {
   npSeoContractLimits,
 } from "./contract.js";
 import type { BuildSitemapOptions, NpSitemapEntry, NpSitemapIndexEntry } from "./types.js";
+import { npPublicCommunityAudienceWhere } from "../community/audience.js";
 
 const DEFAULT_LIMIT_PER_COLLECTION = 5_000;
 
@@ -63,7 +64,7 @@ export async function buildSitemap(
         {
           limit,
           page: 1,
-          where: { status: "published" },
+          where: { status: "published", ...npPublicCommunityAudienceWhere(config) },
           // For i18n collections we deliberately fetch *every*
           // locale's rows even when a localeFilter is set so the
           // grouping pass below can still build a complete

@@ -22,6 +22,7 @@ import {
 } from "../../../../lib/collection-helpers";
 import { ensureFor } from "../../../../lib/init-core";
 import { optionalMember } from "../../../../lib/member-auth-helpers";
+import { npCanReadCommunityDocument } from "@nexpress/core/community";
 import { revalidateCollection } from "../../../../lib/revalidate";
 
 export async function GET(
@@ -31,6 +32,7 @@ export async function GET(
   try {
     const { slug, id } = await params;
     const user = await optionalAuth(request);
+    const member = user ? null : await optionalMember(request);
     const document = await getCollectionDocument(slug, id, user);
 
     if (!document) {
@@ -43,7 +45,22 @@ export async function GET(
     if (!user) {
       await ensureFor("read");
       const config = getCollectionConfig(slug);
-      if (config.versions?.drafts && document.status !== "published") {
+      if (
+        config.versions?.drafts &&
+        document.status !== "published" &&
+        config.community?.audience !== true
+      ) {
+        throw new NpNotFoundError(slug, id);
+      }
+      if (
+        config.community?.audience === true &&
+        !(await npCanReadCommunityDocument(
+          config,
+          document,
+          member ? { kind: "member", memberId: member.id } : null,
+          { allowUnpublished: true },
+        ))
+      ) {
         throw new NpNotFoundError(slug, id);
       }
     }

@@ -4,6 +4,7 @@ import { getCollectionConfig } from "../collections/registry.js";
 import { npRequireAtomFeedOptions, npRequireFeedEntries, npRequireSeoPath } from "./contract.js";
 import { getSiteSeoSettings } from "./page-metadata.js";
 import type { BuildAtomFeedOptions, NpAtomFeedResult, NpFeedEntry } from "./types.js";
+import { npPublicCommunityAudienceWhere } from "../community/audience.js";
 
 /**
  * Phase 10.4 — Atom feed builder. Atom (RFC 4287) over RSS 2.0
@@ -52,7 +53,7 @@ export async function buildAtomFeed(
     result = await findDocuments(
       collection,
       {
-        where: { status: "published" },
+        where: { status: "published", ...npPublicCommunityAudienceWhere(config) },
         limit,
         page: 1,
         sort: "-updatedAt",

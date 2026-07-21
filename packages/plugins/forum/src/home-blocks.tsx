@@ -106,7 +106,7 @@ async function listForumBoardsForBlock(
   ctx: ForumBlockRenderContext,
 ): Promise<NpForumBoard[]> {
   const result = await ctx.content.find(runtime.collections.boards, {
-    where: { status: "published" },
+    where: { status: "published", audience: "public" },
     sort: "name",
     page: 1,
     limit: 100,
@@ -120,7 +120,7 @@ async function findForumBoardByKeyForBlock(
   ctx: ForumBlockRenderContext,
 ): Promise<NpForumBoard | null> {
   const result = await ctx.content.find(runtime.collections.boards, {
-    where: { slug: key, status: "published" },
+    where: { slug: key, status: "published", audience: "public" },
     page: 1,
     limit: 1,
   });
@@ -151,6 +151,7 @@ async function listForumFeed(
   const boardsById = new Map(boards.map((board) => [board.id, board] as const));
   const where: Record<string, unknown> = {
     status: "published",
+    audience: "public",
     pinned: mode === "notices",
   };
   if (selectedBoard) where.board = selectedBoard.id;

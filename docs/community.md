@@ -96,9 +96,10 @@ defineCollection({
 
 `documents` requires member create support; `comments` requires comments.
 Either projection also requires timestamps and `seo.urlPath`, so every visible
-row can carry a validated local destination. Pending/private member documents,
-non-visible comments, cross-site rows, and comments on pending/private targets
-are excluded from both counts and pages. A pending, suspended, deleted, or
+row can carry a validated local destination. Pending, member-only, and private
+member documents, non-visible comments, cross-site rows, and comments on those
+non-public targets are excluded from both counts and pages. A pending,
+suspended, deleted, or
 missing activity subject fails closed as not found. Core reads subject status,
 count, page, and target documents from one repeatable-read snapshot and uses
 stable tie-breakers for exact pagination.
@@ -280,11 +281,12 @@ values is gated by the admin's `community.reactionKinds`
 allow-list — defaults to `["like"]`, sites add
 `["like", "love", "celebrate", ...]`.
 
-Targets may be `comment` or a published public document from a collection that
-explicitly sets `community.reactions: true`. Document reactions use the same
-site boundary, collection-scoped ban checks, recipient notification, and
-reputation event as comments. A disabled collection or missing/private target
-fails before insertion.
+Targets may be `comment` or a published document readable by the acting member
+from a collection that explicitly sets `community.reactions: true`. Document
+reactions use the same site boundary, collection-scoped ban checks, recipient
+access recheck, notification, and reputation event as comments. A disabled
+collection or unreadable target fails before insertion; anonymous count reads
+remain limited to public-audience targets.
 
 Collections opt into anonymous daily-unique document views separately with
 `community.views: true`. `POST /api/views` owns an HttpOnly first-party
@@ -292,8 +294,8 @@ Collections opt into anonymous daily-unique document views separately with
 second site/target/day-scoped digest, so persisted rows cannot use one stable
 identifier to connect a visitor across documents or days. `np_content_views`
 stores no raw cookie, IP address, or user agent and has one unique row per
-site, target, scoped digest, and UTC day. Only published public documents can
-receive a view.
+site, target, scoped digest, and UTC day. Only published, public-audience
+documents can receive a view.
 
 `npListContentEngagement(targetType, targetIds)` batches views, visible
 comments, and reactions for up to 200 unique IDs in input order. This is the
@@ -303,7 +305,8 @@ count queries once per row.
 `follow({ followerId, targetType, targetId })` accepts either the reserved
 `member` target or a canonical collection slug. Document subscriptions require
 that collection to declare `community.follows: true`; Core then validates the
-document is published, public, on the current site, and exposes a validated
+document is published, readable by the current member, on the current site,
+and exposes a validated
 local destination through `seo.urlPath` before inserting the follow. The former
 placeholder `thread` and `tag` enum values never had runtime
 subjects and are no longer advertised. Custom forum collection slugs work
@@ -314,6 +317,8 @@ followed document. Its exact tagged payload currently distinguishes
 `comment.created` from `document.published`, requires one validated local
 destination path, and reads followers in bounded 200-row cursor pages. The
 normal mute and per-kind preference gates still apply to every recipient.
+Audience authorization is rechecked per recipient, so a role or board-policy
+change cannot leave stale subscription notifications behind.
 Document deletion removes its polymorphic follow rows in the same transaction.
 
 Counts remain available through `countReactions(targetType, targetId)`. The
@@ -326,10 +331,11 @@ not a generic `thread` alias, so custom forum collection names resolve through
 the same registry and site boundary as their documents. Reserved targets are
 `comment` and `member`; replies use `comment` because every reply is an
 `np_comments` row, and collections using either reserved slug cannot enable
-document reports. Only visible comments, active members, and published public
-documents can be reported. A partial unique index permits at most one
-unresolved report per site, reporter, and target while allowing a new report
-after the earlier case is closed and the target is public again.
+document reports. Only visible comments, active members, and published
+documents readable by the reporting member can be reported. A partial unique
+index permits at most one unresolved report per site, reporter, and target
+while allowing a new report after the earlier case is closed and the target is
+readable again.
 
 ---
 
@@ -385,6 +391,20 @@ writes:
   `pending` from validated runtime data; spam flags still force `pending`.
 - Pipeline stamps `member_author_id` on member writes so owner update/delete and
   implicit thread-author capabilities work without persisted grants.
+- `community.audience: true` requires one top-level `audience` select with the
+  exact `public`, `members`, and `private` values and
+  `defaultValue: "public"`. Anonymous readers receive only public rows;
+  authenticated members may read member rows; private rows require the member
+  author or an exact scoped moderator. The generic collection list includes
+  private rows only for an authenticated exact `memberAuthorId` self-filter;
+  direct detail reads enforce the same ownership rule. Search, sitemap/feed,
+  public profile activity, comments, reactions, reports, follows, mentions, and
+  attachment downloads consume the same rule. Staff-facing Admin collection access stays
+  separately authorized. The top-level `audience` name is reserved for this
+  declaration, and public cross-collection search uses the built-in Postgres
+  path until external adapters can carry an equivalent viewer-audience proof.
+  `audienceCategoryField` may name `id` or one required single relationship when the
+  private audience must also recognize that exact category-moderator scope.
 - Pending queue at `/admin/community/pending` — staff
   Approve (promotes to published and fires deferred `document.created`
   reputation plus mention events only on first approval) or Reject (deletes).
@@ -671,7 +691,9 @@ must name the same recipient whose score would be updated.
 `plugin doctor` reports malformed community settings and persisted rows as
 `community.contract`, including malformed `np_content_views` rows, invalid or
 orphaned report/follow targets, cross-site document targets, and unresolved
-report duplicates. It also reports collection grants whose collection table is
+report duplicates. Collection tables carrying the canonical `audience` column
+are checked for invalid persisted values as part of `collections.contract`.
+It also reports collection grants whose collection table is
 missing and category/thread grants whose target document is missing or belongs
 to another site. Adapter and registry failures are contained in a bounded runtime
 diagnostic buffer and surface as the `community` row in Admin Health;

@@ -50,6 +50,11 @@ const messages: NpForumMessages = {
   subscriptionFailed: "구독 실패",
   pagination: "페이지 이동",
   boardPolicy: "게시판 운영 정책",
+  audience: "공개 범위",
+  audiencePublic: "전체 공개",
+  audienceMembers: "회원 공개",
+  audiencePrivateBoard: "운영진만",
+  audiencePrivate: "작성자와 운영자만",
   writeMembers: "회원 글쓰기",
   writeStaff: "운영자만 글쓰기",
   writeClosed: "글쓰기 닫힘",
@@ -149,6 +154,7 @@ const board: NpForumBoard = {
   name: "자유게시판",
   description: "함께 이야기해요",
   skinId: "community-full",
+  audience: "public",
   writeMode: "members",
   moderation: "pending",
   commentsEnabled: true,
@@ -170,6 +176,7 @@ const post: NpForumPostSummary = {
   category: "question",
   pinned: false,
   locked: true,
+  audience: "members",
   status: "pending",
   createdAt: new Date("2026-07-18T00:00:00.000Z"),
   updatedAt: new Date("2026-07-19T00:00:00.000Z"),
@@ -227,6 +234,19 @@ describe("community full forum skin", () => {
     expect(html).not.toContain("np-site-header");
   });
 
+  it("uses the moderator-only label for a private board policy", async () => {
+    const html = await markup(
+      communityFullForumSkin.renderBoardIndex({
+        basePath: "/boards",
+        boards: [{ ...board, audience: "private" }],
+        messages,
+      }),
+    );
+
+    expect(html).toContain("운영진만");
+    expect(html).not.toContain("작성자와 운영자만");
+  });
+
   it("surfaces notices, discovery, author identity, states, dates, and bounded pagination", async () => {
     const query: NpForumPostListQuery = {
       page: 5,
@@ -262,6 +282,8 @@ describe("community full forum skin", () => {
     expect(html).toContain('src="https://cdn.example.com/hana.png"');
     expect(html).toContain('data-np-forum-locked="true"');
     expect(html).toContain('data-np-forum-status="pending"');
+    expect(html).toContain('data-np-forum-audience="members"');
+    expect(html).toContain("회원 공개");
     expect(html).toContain("수정");
     expect(html).toContain('role="search"');
     expect(html).toContain('name="category" value="question"');

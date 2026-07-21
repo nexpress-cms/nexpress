@@ -7,6 +7,7 @@ import {
   type NpMediaAttachmentWire,
 } from "@nexpress/core/media-contract";
 import type { NpRichTextContent } from "@nexpress/editor";
+import type { NpCommunityDocumentAudience } from "@nexpress/core/community-contract";
 import { useRouter } from "next/navigation";
 import { Suspense, lazy, useRef, useState, type ComponentType } from "react";
 
@@ -19,6 +20,7 @@ interface ForumPostFormProps {
   board: {
     id: string;
     key: string;
+    audience: NpCommunityDocumentAudience;
     categories: Array<{ key: string; label: string }>;
     attachments: {
       enabled: boolean;
@@ -31,11 +33,16 @@ interface ForumPostFormProps {
     title: string;
     body: NpRichTextContent | null;
     category: string | null;
+    audience: NpCommunityDocumentAudience;
     attachments: ForumFormAttachment[];
   };
   labels: {
     category: string;
     categoryNone: string;
+    audience: string;
+    audiencePublic: string;
+    audienceMembers: string;
+    audiencePrivate: string;
     title: string;
     body: string;
     loadingEditor: string;
@@ -148,6 +155,9 @@ export function ForumPostForm({
   const [title, setTitle] = useState(initial?.title ?? "");
   const [body, setBody] = useState<NpRichTextContent | null>(initial?.body ?? null);
   const [category, setCategory] = useState(initial?.category ?? "");
+  const [audience, setAudience] = useState<NpCommunityDocumentAudience>(
+    initial?.audience ?? board.audience,
+  );
   const [attachments, setAttachments] = useState<ForumFormAttachment[]>(initial?.attachments ?? []);
   const initialAttachmentIds = useRef(
     new Set((initial?.attachments ?? []).map((attachment) => attachment.id)),
@@ -179,6 +189,7 @@ export function ForumPostForm({
             title: title.trim(),
             body: body ?? npCreateEmptyRichTextContent(),
             category: category || null,
+            audience,
             attachments: attachments.map((attachment) => ({ file: attachment.id })),
           }),
         },
@@ -292,6 +303,23 @@ export function ForumPostForm({
           </select>
         </label>
       ) : null}
+      <label className="np-form-field">
+        <span className="np-form-label">{labels.audience}</span>
+        <select
+          value={audience}
+          onChange={(event) => setAudience(event.target.value as NpCommunityDocumentAudience)}
+          disabled={submitting}
+          className="np-form-input"
+        >
+          {board.audience === "public" ? (
+            <option value="public">{labels.audiencePublic}</option>
+          ) : null}
+          {board.audience !== "private" ? (
+            <option value="members">{labels.audienceMembers}</option>
+          ) : null}
+          <option value="private">{labels.audiencePrivate}</option>
+        </select>
+      </label>
       <label className="np-form-field">
         <span className="np-form-label">{labels.title}</span>
         <input
