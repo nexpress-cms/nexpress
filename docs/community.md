@@ -318,7 +318,8 @@ followed document. Its exact tagged payload currently distinguishes
 destination path, and reads followers in bounded 200-row cursor pages. The
 normal mute and per-kind preference gates still apply to every recipient.
 Audience authorization is rechecked per recipient, so a role or board-policy
-change cannot leave stale subscription notifications behind.
+change cannot create new subscription notifications for a reader whose access
+was revoked.
 Document deletion removes its polymorphic follow rows in the same transaction.
 
 Counts remain available through `countReactions(targetType, targetId)`. The
