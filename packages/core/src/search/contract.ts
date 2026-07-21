@@ -1,10 +1,14 @@
 import { npIsCanonicalSiteId } from "../sites/id-contract.js";
+import { npCommunityDocumentAudiences } from "../community-contract/types.js";
 import {
+  npSearchAudienceModes,
   npSearchDocumentStatuses,
   npSearchVisibilities,
   type NpSearchAdapter,
   type NpSearchAdapterContext,
   type NpSearchAdapterResult,
+  type NpSearchAudienceMode,
+  type NpSearchAudienceScope,
   type NpSearchCollectionFacet,
   type NpSearchContractIssue,
   type NpSearchContractValidationResult,
@@ -13,6 +17,7 @@ import {
   type NpSearchReindexResult,
   type NpSearchReindexResponse,
   type NpSearchRequest,
+  type NpSearchResolvedRequest,
   type NpSearchResult,
   type NpSearchResultDocument,
   type NpSearchResultItem,
@@ -55,8 +60,10 @@ const requestKeys = new Set([
   "siteId",
   "visibility",
 ]);
-const contextKeys = new Set(requestKeys);
-const adapterKeys = new Set(["kind", "search", "shutdown"]);
+const resolvedRequestKeys = new Set(requestKeys);
+const adapterContextKeys = new Set([...requestKeys, "audience"]);
+const audienceScopeKeys = new Set(["mode", "collections"]);
+const adapterKeys = new Set(["kind", "audience", "search", "shutdown"]);
 const adapterResultKeys = new Set(["results", "total", "perCollection"]);
 const resultKeys = new Set([...adapterResultKeys, "facets", "limit", "offset", "hasNextPage"]);
 const itemKeys = new Set(["collection", "doc", "score"]);
@@ -67,6 +74,8 @@ const apiQueryKeys = new Set(["q", "collections", "limit", "page", "offset", "lo
 const reindexQueryKeys = new Set(["collection"]);
 const documentStatuses = new Set<string>(npSearchDocumentStatuses);
 const visibilitySet = new Set<string>(npSearchVisibilities);
+const audienceModeSet = new Set<string>(npSearchAudienceModes);
+const documentAudienceSet = new Set<string>(npCommunityDocumentAudiences);
 
 interface Parsed<T> {
   readonly issues: NpSearchContractIssue[];
@@ -468,11 +477,12 @@ function parseVisibility(
   return "public";
 }
 
-function parseRequest(value: unknown, path: string, requireSite: boolean): Parsed<NpSearchRequest> {
-  const issues: NpSearchContractIssue[] = [];
-  const inspected = inspectRecord(value, path, issues);
-  if (!inspected) return fail(issues);
-  pushUnknownFields(inspected, requireSite ? contextKeys : requestKeys, path, issues);
+function parseRequestFields(
+  inspected: InspectedRecord,
+  path: string,
+  requireSite: boolean,
+  issues: NpSearchContractIssue[],
+): NpSearchRequest | null {
   const q = parseQuery(inspected.fields.q, `${path}.q`, issues);
   const collections = parseCollections(inspected.fields.collections, `${path}.collections`, issues);
   const limit = parseInteger(
@@ -504,7 +514,7 @@ function parseRequest(value: unknown, path: string, requireSite: boolean): Parse
     locale === null ||
     siteId === null
   ) {
-    return fail(issues);
+    return null;
   }
   const result: NpSearchRequest = {
     q,
@@ -515,7 +525,21 @@ function parseRequest(value: unknown, path: string, requireSite: boolean): Parse
     ...(siteId ? { siteId } : {}),
     visibility,
   };
-  return { issues, value: Object.freeze(result) };
+  return Object.freeze(result);
+}
+
+function parseRequest(
+  value: unknown,
+  path: string,
+  requireSite: boolean,
+  allowedKeys: ReadonlySet<string> = requestKeys,
+): Parsed<NpSearchRequest> {
+  const issues: NpSearchContractIssue[] = [];
+  const inspected = inspectRecord(value, path, issues);
+  if (!inspected) return fail(issues);
+  pushUnknownFields(inspected, allowedKeys, path, issues);
+  const request = parseRequestFields(inspected, path, requireSite, issues);
+  return request && issues.length === 0 ? { issues, value: request } : fail(issues);
 }
 
 export function npAnalyzeSearchRequest(
@@ -529,30 +553,109 @@ export function npRequireSearchRequest(value: unknown, path = "search.request"):
   return requireParsed(parseRequest(value, path, false), "Invalid search request");
 }
 
+export function npAnalyzeSearchResolvedRequest(
+  value: unknown,
+  path = "search.resolvedRequest",
+): NpSearchContractValidationResult<NpSearchResolvedRequest> {
+  const parsed = parseRequest(value, path, true, resolvedRequestKeys);
+  return validationResult({
+    issues: parsed.issues,
+    value: parsed.value as NpSearchResolvedRequest | null,
+  });
+}
+
+export function npRequireSearchResolvedRequest(
+  value: unknown,
+  path = "search.resolvedRequest",
+): NpSearchResolvedRequest {
+  const parsed = parseRequest(value, path, true, resolvedRequestKeys);
+  return requireParsed(
+    { issues: parsed.issues, value: parsed.value as NpSearchResolvedRequest | null },
+    "Invalid resolved search request",
+  );
+}
+
+function parseAudienceScope(
+  value: unknown,
+  path: string,
+  visibility: NpSearchVisibility,
+  issues: NpSearchContractIssue[],
+): NpSearchAudienceScope | null {
+  const inspected = inspectRecord(value, path, issues);
+  if (!inspected) return null;
+  pushUnknownFields(inspected, audienceScopeKeys, path, issues);
+  const mode = inspected.fields.mode;
+  if (typeof mode !== "string" || !audienceModeSet.has(mode)) {
+    issues.push(issue("invalid-field", `${path}.mode`, 'must be exactly "public" or "all".'));
+  } else if (mode !== visibility) {
+    issues.push(issue("invariant", `${path}.mode`, "must match the normalized visibility scope."));
+  }
+  const entries = inspectArray(
+    inspected.fields.collections,
+    `${path}.collections`,
+    npSearchContractLimits.collectionCount,
+    issues,
+  );
+  const collections: string[] = [];
+  const seen = new Set<string>();
+  if (entries) {
+    for (const [index, entry] of entries.entries()) {
+      const slug = parseCollectionSlug(entry, `${path}.collections.${index.toString()}`, issues);
+      if (!slug) continue;
+      if (seen.has(slug)) {
+        issues.push(
+          issue(
+            "duplicate",
+            `${path}.collections.${index.toString()}`,
+            `duplicate audience-aware collection "${slug}".`,
+          ),
+        );
+        continue;
+      }
+      seen.add(slug);
+      collections.push(slug);
+    }
+  }
+  if (typeof mode !== "string" || !audienceModeSet.has(mode) || !entries || issues.length > 0) {
+    return null;
+  }
+  return Object.freeze({
+    mode: mode as NpSearchAudienceMode,
+    collections: Object.freeze(collections),
+  });
+}
+
+function parseAdapterContext(value: unknown, path: string): Parsed<NpSearchAdapterContext> {
+  const issues: NpSearchContractIssue[] = [];
+  const inspected = inspectRecord(value, path, issues);
+  if (!inspected) return fail(issues);
+  pushUnknownFields(inspected, adapterContextKeys, path, issues);
+  const request = parseRequestFields(inspected, path, true, issues);
+  const audience = parseAudienceScope(
+    inspected.fields.audience,
+    `${path}.audience`,
+    request?.visibility ?? "public",
+    issues,
+  );
+  if (!request?.siteId || !audience || issues.length > 0) return fail(issues);
+  return {
+    issues,
+    value: Object.freeze({ ...request, siteId: request.siteId, audience }),
+  };
+}
+
 export function npAnalyzeSearchAdapterContext(
   value: unknown,
   path = "search.adapter.context",
 ): NpSearchContractValidationResult<NpSearchAdapterContext> {
-  const parsed = parseRequest(value, path, true);
-  if (parsed.value?.siteId === undefined) return validationResult(fail(parsed.issues));
-  return validationResult({
-    issues: parsed.issues,
-    value: parsed.value as NpSearchAdapterContext,
-  });
+  return validationResult(parseAdapterContext(value, path));
 }
 
 export function npRequireSearchAdapterContext(
   value: unknown,
   path = "search.adapter.context",
 ): NpSearchAdapterContext {
-  const parsed = parseRequest(value, path, true);
-  if (parsed.value?.siteId === undefined) {
-    parsed.issues.push(issue("invalid-field", `${path}.siteId`, "is required."));
-  }
-  return requireParsed(
-    { issues: parsed.issues, value: parsed.value as NpSearchAdapterContext | null },
-    "Invalid search adapter context",
-  );
+  return requireParsed(parseAdapterContext(value, path), "Invalid search adapter context");
 }
 
 function parseAdapter(value: unknown, path: string): Parsed<NpSearchAdapter> {
@@ -561,6 +664,7 @@ function parseAdapter(value: unknown, path: string): Parsed<NpSearchAdapter> {
   if (!inspected) return fail(issues);
   pushUnknownFields(inspected, adapterKeys, path, issues);
   const kind = inspected.fields.kind;
+  const audience = inspected.fields.audience;
   const search = inspected.fields.search;
   const shutdown = inspected.fields.shutdown;
   if (
@@ -569,6 +673,15 @@ function parseAdapter(value: unknown, path: string): Parsed<NpSearchAdapter> {
     !adapterKindPattern.test(kind)
   ) {
     issues.push(issue("invalid-field", `${path}.kind`, "must be a canonical adapter kind."));
+  }
+  if (audience !== "document-v1") {
+    issues.push(
+      issue(
+        "invalid-field",
+        `${path}.audience`,
+        'must declare the exact "document-v1" audience contract.',
+      ),
+    );
   }
   if (typeof search !== "function") {
     issues.push(issue("invalid-field", `${path}.search`, "must be a function."));
@@ -582,6 +695,7 @@ function parseAdapter(value: unknown, path: string): Parsed<NpSearchAdapter> {
     issues,
     value: Object.freeze({
       kind,
+      audience: "document-v1",
       search: search as NpSearchAdapter["search"],
       ...(typeof shutdown === "function"
         ? { shutdown: shutdown as NonNullable<NpSearchAdapter["shutdown"]> }
@@ -780,6 +894,7 @@ function parseResultItem(
   path: string,
   context: NpSearchAdapterContext,
   allowedCollections: ReadonlySet<string>,
+  audienceCollections: ReadonlySet<string>,
   issues: NpSearchContractIssue[],
 ): NpSearchResultItem | null {
   const inspected = inspectRecord(value, path, issues);
@@ -826,6 +941,47 @@ function parseResultItem(
     }
     if (doc.visibility !== "public" && doc.visibility !== "private") {
       issues.push(issue("invalid-field", `${path}.doc.visibility`, "must be public or private."));
+    }
+    if (
+      doc.audience !== undefined &&
+      (typeof doc.audience !== "string" || !documentAudienceSet.has(doc.audience))
+    ) {
+      issues.push(
+        issue(
+          "invalid-field",
+          `${path}.doc.audience`,
+          'must be exactly "public", "members", or "private" when present.',
+        ),
+      );
+    }
+    if (collection && audienceCollections.has(collection)) {
+      if (doc.audience === undefined) {
+        issues.push(
+          issue(
+            "invariant",
+            `${path}.doc.audience`,
+            `audience-aware collection "${collection}" results must expose their audience.`,
+          ),
+        );
+      } else if (context.audience.mode === "public" && doc.audience !== "public") {
+        issues.push(
+          issue(
+            "invariant",
+            `${path}.doc.audience`,
+            "public audience search results must have public audience.",
+          ),
+        );
+      }
+    } else if (context.visibility === "public" && doc.audience !== undefined) {
+      if (doc.audience !== "public") {
+        issues.push(
+          issue(
+            "invariant",
+            `${path}.doc.audience`,
+            "public search results must not expose a restricted audience.",
+          ),
+        );
+      }
     }
     if (context.visibility === "public") {
       if (doc.status !== "published") {
@@ -925,6 +1081,18 @@ function parseAdapterResult(
   const allowedCollections = context.collections
     ? new Set(context.collections.filter((slug) => knownCollections.has(slug)))
     : knownCollections;
+  const audienceCollections = new Set(context.audience.collections);
+  for (const collection of audienceCollections) {
+    if (!allowedCollections.has(collection)) {
+      issues.push(
+        issue(
+          "invariant",
+          `${path}.audience.collections`,
+          `audience-aware collection "${collection}" is not searchable in this request.`,
+        ),
+      );
+    }
+  }
   const rawResults = inspectArray(
     inspected.fields.results,
     `${path}.results`,
@@ -940,6 +1108,7 @@ function parseAdapterResult(
         `${path}.results.${index.toString()}`,
         context,
         allowedCollections,
+        audienceCollections,
         issues,
       );
       if (!result) continue;

@@ -37,6 +37,7 @@ function request(
     limit: 5,
     offset: 0,
     visibility: "public",
+    audience: { mode: "public", collections: [] },
     ...overrides,
   };
 }
@@ -77,7 +78,19 @@ describe("search cache", () => {
           locale: "en",
         }),
       ),
-    ).toEqual(["nx:search", "site-a", "walnut", "pages,posts", "10", "20", "en", "public"]);
+    ).toEqual([
+      "nx:search",
+      "site-a",
+      "walnut",
+      "pages,posts",
+      "10",
+      "20",
+      "en",
+      "public",
+      "document-v1",
+      "public",
+      "",
+    ]);
 
     expect(
       buildSearchCacheKeyParts(
@@ -88,14 +101,44 @@ describe("search cache", () => {
           locale: "en",
         }),
       ),
-    ).toEqual(["nx:search", "site-a", "walnut", "posts,pages", "10", "20", "en", "public"]);
+    ).toEqual([
+      "nx:search",
+      "site-a",
+      "walnut",
+      "posts,pages",
+      "10",
+      "20",
+      "en",
+      "public",
+      "document-v1",
+      "public",
+      "",
+    ]);
+
+    expect(
+      buildSearchCacheKeyParts(request({ audience: { mode: "public", collections: ["posts"] } })),
+    ).toEqual([
+      "nx:search",
+      "site-a",
+      "walnut",
+      "posts",
+      "5",
+      "0",
+      "",
+      "public",
+      "document-v1",
+      "public",
+      "posts",
+    ]);
   });
 
   it("rejects cross-site requests before they enter Next's public cache", () => {
     expect(() => buildSearchCacheKeyParts(request({ siteId: "*" }))).toThrow(/must not enter/u);
-    expect(() => buildSearchCacheKeyParts(request({ visibility: "all" }))).toThrow(
-      /must not enter/u,
-    );
+    expect(() =>
+      buildSearchCacheKeyParts(
+        request({ visibility: "all", audience: { mode: "all", collections: [] } }),
+      ),
+    ).toThrow(/must not enter/u);
   });
 
   it("registers site-scoped and legacy search tags with a short TTL", async () => {
@@ -107,13 +150,33 @@ describe("search cache", () => {
 
     expect(unstable_cache).toHaveBeenCalledWith(
       expect.any(Function),
-      ["nx:search", "site-a", "walnut", "posts", "5", "0", "ko", "public"],
+      [
+        "nx:search",
+        "site-a",
+        "walnut",
+        "posts",
+        "5",
+        "0",
+        "ko",
+        "public",
+        "document-v1",
+        "public",
+        "",
+      ],
       {
         tags: ["nx:search:site-a", "nx:search"],
         revalidate: SEARCH_CACHE_REVALIDATE_SECONDS,
       },
     );
-    expect(search).toHaveBeenCalledWith(context);
+    expect(search).toHaveBeenCalledWith({
+      siteId: "site-a",
+      q: "walnut",
+      collections: ["posts"],
+      limit: 5,
+      offset: 0,
+      locale: "ko",
+      visibility: "public",
+    });
   });
 
   it("falls back to a revalidated direct search when Next's incremental cache is absent", async () => {

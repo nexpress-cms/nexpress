@@ -8,6 +8,7 @@ export {
   npAnalyzeSearchReindexResult,
   npAnalyzeSearchReindexResponse,
   npAnalyzeSearchRequest,
+  npAnalyzeSearchResolvedRequest,
   npAnalyzeSearchResult,
   npCreateEmptySearchResult,
   npCreateSearchResult,
@@ -20,18 +21,21 @@ export {
   npRequireSearchReindexResult,
   npRequireSearchReindexResponse,
   npRequireSearchRequest,
+  npRequireSearchResolvedRequest,
   npRequireSearchResult,
   npSearchAdapterKindPattern,
   npSearchCollectionSlugPattern,
   npSearchContractLimits,
 } from "./contract.js";
-export { npSearchDocumentStatuses, npSearchVisibilities } from "./types.js";
+export { npSearchAudienceModes, npSearchDocumentStatuses, npSearchVisibilities } from "./types.js";
 export type {
   NpSearchAdapter,
   NpSearchAdapterContext,
   NpSearchAdapterDiagnostics,
   NpSearchAdapterFailure,
   NpSearchAdapterResult,
+  NpSearchAudienceMode,
+  NpSearchAudienceScope,
   NpSearchCollectionFacet,
   NpSearchContractIssue,
   NpSearchContractIssueCode,
@@ -43,6 +47,7 @@ export type {
   NpSearchReindexResponse,
   NpSearchRequest,
   NpSearchRequestInput,
+  NpSearchResolvedRequest,
   NpSearchResult,
   NpSearchResultDocument,
   NpSearchResultItem,
@@ -52,6 +57,7 @@ export type {
 
 export {
   getSearchCollectionLabels,
+  resolveSearchAdapterContext,
   searchCollections,
   reindexCollection,
 } from "../collections/search-api.js";

@@ -402,8 +402,9 @@ writes:
   public profile activity, comments, reactions, reports, follows, mentions, and
   attachment downloads consume the same rule. Staff-facing Admin collection access stays
   separately authorized. The top-level `audience` name is reserved for this
-  declaration, and public cross-collection search uses the built-in Postgres
-  path until external adapters can carry an equivalent viewer-audience proof.
+  declaration. Public cross-collection search supplies external adapters with
+  the exact audience-aware collection subset and accepts only `public` hits;
+  invalid or restricted adapter pages are diagnosed and fall back to Postgres.
   `audienceCategoryField` may name `id` or one required single relationship when the
   private audience must also recognize that exact category-moderator scope.
 - Pending queue at `/admin/community/pending` — staff

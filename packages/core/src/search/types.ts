@@ -1,4 +1,7 @@
+import type { NpCommunityDocumentAudience } from "../community-contract/types.js";
+
 export const npSearchVisibilities = ["public", "all"] as const;
+export const npSearchAudienceModes = ["public", "all"] as const;
 export const npSearchDocumentStatuses = [
   "draft",
   "scheduled",
@@ -8,6 +11,7 @@ export const npSearchDocumentStatuses = [
 ] as const;
 
 export type NpSearchVisibility = (typeof npSearchVisibilities)[number];
+export type NpSearchAudienceMode = (typeof npSearchAudienceModes)[number];
 export type NpSearchDocumentStatus = (typeof npSearchDocumentStatuses)[number];
 export type NpSearchSiteId = string;
 
@@ -25,6 +29,7 @@ export type NpSearchResultDocument = NpSearchDocument & {
   readonly siteId: string;
   readonly status: NpSearchDocumentStatus;
   readonly visibility: "public" | "private";
+  readonly audience?: NpCommunityDocumentAudience;
 };
 
 /** Public Core input. Optional fields are normalized before adapter or DB dispatch. */
@@ -49,8 +54,8 @@ export interface NpSearchRequest {
   readonly visibility: NpSearchVisibility;
 }
 
-/** Exact context supplied to an external search adapter. */
-export interface NpSearchAdapterContext {
+/** Exact normalized request after the current site fallback is resolved. */
+export interface NpSearchResolvedRequest {
   readonly q: string;
   readonly collections?: readonly string[];
   readonly limit: number;
@@ -58,6 +63,20 @@ export interface NpSearchAdapterContext {
   readonly locale?: string;
   readonly siteId: NpSearchSiteId;
   readonly visibility: NpSearchVisibility;
+}
+
+/**
+ * Framework-derived document-audience scope. `collections` contains only the
+ * selected collections that opted into `community.audience`.
+ */
+export interface NpSearchAudienceScope {
+  readonly mode: NpSearchAudienceMode;
+  readonly collections: readonly string[];
+}
+
+/** Exact context supplied to an external search adapter. */
+export interface NpSearchAdapterContext extends NpSearchResolvedRequest {
+  readonly audience: NpSearchAudienceScope;
 }
 
 export interface NpSearchResultItem {
@@ -95,6 +114,8 @@ export interface NpSearchResult extends NpSearchAdapterResult {
 export interface NpSearchAdapter {
   /** Canonical operator-visible adapter identifier. */
   readonly kind: string;
+  /** Declares support for the exact document-audience scope in every search context. */
+  readonly audience: "document-v1";
   search(
     context: NpSearchAdapterContext,
   ): NpSearchAdapterResult | null | undefined | Promise<NpSearchAdapterResult | null | undefined>;
@@ -136,6 +157,7 @@ export interface NpSearchAdapterFailure {
 
 export interface NpSearchAdapterDiagnostics {
   readonly adapterKind: string | null;
+  readonly audienceContract: "document-v1" | null;
   readonly dispatchFailures: number;
   readonly resultContractFailures: number;
   readonly shutdownFailures: number;

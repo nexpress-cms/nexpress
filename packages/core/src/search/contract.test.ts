@@ -13,6 +13,7 @@ import {
   npRequireSearchReindexResult,
   npRequireSearchReindexResponse,
   npRequireSearchRequest,
+  npRequireSearchResolvedRequest,
   npRequireSearchResult,
   npSearchContractLimits,
 } from "./contract.js";
@@ -24,6 +25,7 @@ const context = npRequireSearchAdapterContext({
   offset: 0,
   siteId: "default",
   visibility: "public",
+  audience: { mode: "public", collections: [] },
 });
 
 function adapterResult() {
@@ -75,6 +77,33 @@ describe("search request contract", () => {
     expect(() => npRequireSearchRequest({ q: "x", limit: Number.NaN })).toThrow(/safe integer/u);
     expect(() => npRequireSearchRequest({ q: "x", locale: "en-us" })).toThrow(/canonical BCP 47/u);
     expect(() => npRequireSearchRequest({ q: "x".repeat(257) })).toThrow(/at most 256/u);
+  });
+
+  it("separates resolved requests from framework-derived adapter contexts", () => {
+    expect(
+      npRequireSearchResolvedRequest({
+        q: "walnut",
+        limit: 10,
+        offset: 0,
+        siteId: "default",
+        visibility: "public",
+      }),
+    ).toEqual({
+      q: "walnut",
+      limit: 10,
+      offset: 0,
+      siteId: "default",
+      visibility: "public",
+    });
+    expect(() =>
+      npRequireSearchResolvedRequest({
+        q: "walnut",
+        limit: 10,
+        offset: 0,
+        visibility: "public",
+      }),
+    ).toThrow(/siteId/u);
+    expect(() => npRequireSearchResolvedRequest(context)).toThrow(/unsupported search field/u);
   });
 
   it("rejects hostile and oversized arrays before enumerating entries", () => {
@@ -134,16 +163,47 @@ describe("search adapter and result contract", () => {
   it("requires an exact named adapter descriptor", () => {
     const adapter = npRequireSearchAdapter({
       kind: "algolia",
+      audience: "document-v1",
       search: () => null,
     });
     expect(adapter.kind).toBe("algolia");
     expect(Object.isFrozen(adapter)).toBe(true);
-    expect(() => npRequireSearchAdapter({ kind: "Algolia", search: () => null })).toThrow(
-      /canonical adapter kind/u,
-    );
     expect(() =>
-      npRequireSearchAdapter({ kind: "algolia", search: () => null, extra: true }),
+      npRequireSearchAdapter({
+        kind: "Algolia",
+        audience: "document-v1",
+        search: () => null,
+      }),
+    ).toThrow(/canonical adapter kind/u);
+    expect(() =>
+      npRequireSearchAdapter({
+        kind: "algolia",
+        audience: "document-v1",
+        search: () => null,
+        extra: true,
+      }),
     ).toThrow(/unsupported search field/u);
+    expect(() => npRequireSearchAdapter({ kind: "algolia", search: () => null })).toThrow(
+      /document-v1/u,
+    );
+  });
+
+  it("requires one exact framework-derived audience scope", () => {
+    expect(context.audience).toEqual({ mode: "public", collections: [] });
+    expect(Object.isFrozen(context.audience)).toBe(true);
+    expect(Object.isFrozen(context.audience.collections)).toBe(true);
+    expect(() =>
+      npRequireSearchAdapterContext({
+        ...context,
+        audience: { mode: "all", collections: [] },
+      }),
+    ).toThrow(/must match the normalized visibility/u);
+    expect(() =>
+      npRequireSearchAdapterContext({
+        ...context,
+        audience: { mode: "public", collections: ["forum-posts", "forum-posts"] },
+      }),
+    ).toThrow(/duplicate audience-aware collection/u);
   });
 
   it("clones JSON-safe documents, canonicalizes dates, and freezes the envelope", () => {
@@ -265,6 +325,56 @@ describe("search adapter and result contract", () => {
     ).toBe(false);
   });
 
+  it("requires canonical public audiences for scoped adapter results", () => {
+    const audienceContext = npRequireSearchAdapterContext({
+      ...context,
+      collections: ["forum-posts"],
+      audience: { mode: "public", collections: ["forum-posts"] },
+    });
+    const result = (audience: unknown) => ({
+      results: [
+        {
+          collection: "forum-posts",
+          doc: {
+            id: "forum-post-1",
+            siteId: "default",
+            status: "published",
+            visibility: "public",
+            ...(audience === undefined ? {} : { audience }),
+          },
+        },
+      ],
+      total: 1,
+      perCollection: { "forum-posts": 1 },
+    });
+
+    expect(
+      npRequireSearchAdapterResult(result("public"), audienceContext, new Set(["forum-posts"]))
+        .results[0]?.doc.audience,
+    ).toBe("public");
+    expect(() =>
+      npRequireSearchAdapterResult(result(undefined), audienceContext, new Set(["forum-posts"])),
+    ).toThrow(/must expose their audience/u);
+    expect(() =>
+      npRequireSearchAdapterResult(result("members"), audienceContext, new Set(["forum-posts"])),
+    ).toThrow(/must have public audience/u);
+    expect(() =>
+      npRequireSearchAdapterResult(result("friends"), audienceContext, new Set(["forum-posts"])),
+    ).toThrow(/public.*members.*private/u);
+
+    expect(
+      npRequireSearchAdapterResult(
+        result("private"),
+        {
+          ...audienceContext,
+          visibility: "all",
+          audience: { mode: "all", collections: ["forum-posts"] },
+        },
+        new Set(["forum-posts"]),
+      ).results[0]?.doc.audience,
+    ).toBe("private");
+  });
+
   it("accepts trusted all-scope rows but still validates locale and document structure", () => {
     const trusted = npRequireSearchAdapterResult(
       {
@@ -282,7 +392,12 @@ describe("search adapter and result contract", () => {
         total: 1,
         perCollection: { posts: 1 },
       },
-      { ...context, siteId: "*", visibility: "all" },
+      {
+        ...context,
+        siteId: "*",
+        visibility: "all",
+        audience: { mode: "all", collections: [] },
+      },
       new Set(["posts"]),
     );
     expect(trusted.results[0]?.doc.status).toBe("draft");

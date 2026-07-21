@@ -57,9 +57,10 @@ factory options. Storage, observability, and email require the matching `custom`
 Built-in intent rejects an injected adapter instead of silently selecting a
 different implementation. CDN purge has no environment mode; pass
 `cdnPurgeAdapter` to make bootstrap own its optional `shutdown()` lifecycle.
-Search also has no environment mode; pass an exact `searchAdapter` to install it
-for read traffic, detach only that owned instance on retry rollback, and run its
-optional void `shutdown()` during terminal cleanup. See [search.md](./search.md).
+Search also has no environment mode; pass an exact `searchAdapter` with
+`audience: "document-v1"` to install it for read traffic, detach only that owned
+instance on retry rollback, and run its optional void `shutdown()` during
+terminal cleanup. See [search.md](./search.md).
 
 ## Shutdown
 

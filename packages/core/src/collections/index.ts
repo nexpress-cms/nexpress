@@ -45,7 +45,12 @@ export type {
   NpRevisionListResult,
   NpRevisionSnapshotValidator,
 } from "./revisions.js";
-export { getSearchCollectionLabels, searchCollections, reindexCollection } from "./search-api.js";
+export {
+  getSearchCollectionLabels,
+  resolveSearchAdapterContext,
+  searchCollections,
+  reindexCollection,
+} from "./search-api.js";
 export type {
   NpSearchCollectionFacet,
   NpSearchRequestInput,
@@ -66,6 +71,9 @@ export type {
   NpSearchAdapterContext,
   NpSearchAdapterDiagnostics,
   NpSearchAdapterResult,
+  NpSearchAudienceMode,
+  NpSearchAudienceScope,
+  NpSearchResolvedRequest,
 } from "../search/types.js";
 export { buildZodSchema, getCollectionZodSchema } from "./validation.js";
 export { slugify, applySlugField } from "./slug.js";

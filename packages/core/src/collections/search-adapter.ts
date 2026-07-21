@@ -56,6 +56,7 @@ export function resetSearchAdapter(expected?: NpSearchAdapter): void {
 export function getSearchAdapterDiagnostics(): NpSearchAdapterDiagnostics {
   return Object.freeze({
     adapterKind: currentAdapter?.kind ?? null,
+    audienceContract: currentAdapter?.audience ?? null,
     dispatchFailures,
     resultContractFailures,
     shutdownFailures,

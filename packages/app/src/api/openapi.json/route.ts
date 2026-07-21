@@ -4059,7 +4059,7 @@ export function buildSpec(): OpenApiSchema {
       get: {
         summary: "Full-text search across published documents in every collection",
         description:
-          'Public, current-site endpoint. Unknown or duplicate query parameters and ambiguous page/offset pairs are rejected. Uses the installed exact search adapter or the built-in Postgres search_vector path; every result is revalidated as status="published" and visibility="public" before it is returned.',
+          'Public, current-site endpoint. Unknown or duplicate query parameters and ambiguous page/offset pairs are rejected. Uses the installed exact search adapter or the built-in Postgres search_vector path; every result is revalidated as status="published" and visibility="public", and audience-aware collection results must additionally expose audience="public" before they are returned.',
         parameters: [
           {
             in: "query",
@@ -4163,6 +4163,11 @@ export function buildSpec(): OpenApiSchema {
                               siteId: { type: "string", pattern: npSiteIdPattern },
                               status: { const: "published" },
                               visibility: { const: "public" },
+                              audience: {
+                                const: "public",
+                                description:
+                                  "Required for collections that opt into the document audience contract; omitted by collections without that field.",
+                              },
                             },
                             additionalProperties: true,
                           },

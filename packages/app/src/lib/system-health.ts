@@ -528,7 +528,7 @@ export function checkSearchAdapter(): Check {
         id: "search",
         label: "Search adapter",
         state: "warn",
-        detail: `${kind} · ${failures.toString()} failure${failures === 1 ? "" : "s"} contained`,
+        detail: `${kind} · ${diagnostics.audienceContract ?? "no audience contract"} · ${failures.toString()} failure${failures === 1 ? "" : "s"} contained`,
         hint: last
           ? `Last ${last.operation} failure from ${last.adapterKind} at ${last.occurredAt}: ${last.message}`
           : "Inspect process logs and the external search service.",
@@ -538,7 +538,9 @@ export function checkSearchAdapter(): Check {
       id: "search",
       label: "Search adapter",
       state: "ok",
-      detail: diagnostics.adapterKind ? `external (${kind})` : "built-in Postgres tsvector",
+      detail: diagnostics.adapterKind
+        ? `external (${kind}) · ${diagnostics.audienceContract ?? "no audience contract"}`
+        : "built-in Postgres tsvector",
     };
   } catch (error) {
     return {

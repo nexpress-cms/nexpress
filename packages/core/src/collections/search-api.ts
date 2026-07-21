@@ -17,13 +17,16 @@ import {
   npRequireSearchAdapterContext,
   npRequireSearchCollectionSlug,
   npRequireSearchReindexResult,
+  npRequireSearchResolvedRequest,
   npRequireSearchRequest,
   npSearchContractLimits,
 } from "../search/contract.js";
 import type {
   NpSearchAdapterResult,
+  NpSearchAdapterContext,
   NpSearchReindexResult,
   NpSearchRequestInput,
+  NpSearchResolvedRequest,
   NpSearchResult,
   NpSearchResultItem,
 } from "../search/types.js";
@@ -139,9 +142,10 @@ function scoreSearchResult(
 export async function searchCollections(opts: NpSearchRequestInput): Promise<NpSearchResult> {
   const request = npRequireSearchRequest(opts);
   const siteId = request.siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-  const context = npRequireSearchAdapterContext({ ...request, siteId });
-  const { slugs, labels } = resolveSearchCatalog(context.collections);
-  assertConfiguredSearchLocale(context.locale);
+  const resolvedRequest = npRequireSearchResolvedRequest({ ...request, siteId });
+  const { slugs, labels } = resolveSearchCatalog(resolvedRequest.collections);
+  assertConfiguredSearchLocale(resolvedRequest.locale);
+  const context = createSearchAdapterContext(resolvedRequest, slugs);
   if (
     (context.offset + context.limit) * Math.max(1, slugs.length) >
     npSearchContractLimits.candidateRows
@@ -154,7 +158,7 @@ export async function searchCollections(opts: NpSearchRequestInput): Promise<NpS
       },
     ]);
   }
-  if (context.q.length === 0) return npCreateEmptySearchResult(context, labels);
+  if (context.q.length === 0) return npCreateEmptySearchResult(resolvedRequest, labels);
 
   const query = context.q;
   const limit = context.limit;
@@ -164,18 +168,14 @@ export async function searchCollections(opts: NpSearchRequestInput): Promise<NpS
     context.visibility === "public"
       ? { status: "published", visibility: "public", siteId: context.siteId }
       : { visibility: "*", siteId: context.siteId };
-  const containsAudienceCollection =
-    context.visibility === "public" &&
-    slugs.some((slug) => getCollectionConfig(slug).community?.audience === true);
-
   // External engines own only the normalized candidate page. Core validates
   // its complete result/site/visibility/count contract before returning it;
   // malformed or throwing adapters are diagnosed and fall back to Postgres.
+  // The exact adapter context identifies every audience-aware collection and
+  // requires those result documents to carry the matching canonical audience.
   // The adapter can deliberately return null when its index is unavailable.
-  // Public searches involving audience-aware collections stay on Postgres
-  // until the adapter context can express and prove the same audience filter.
   const adapter = getSearchAdapter();
-  if (adapter && !containsAudienceCollection) {
+  if (adapter) {
     try {
       const adapterResult = await adapter.search(context);
       if (adapterResult !== null && adapterResult !== undefined) {
@@ -260,6 +260,19 @@ export async function searchCollections(opts: NpSearchRequestInput): Promise<NpS
   return npCreateSearchResult(candidate, context, labels);
 }
 
+function createSearchAdapterContext(
+  request: NpSearchResolvedRequest,
+  slugs: readonly string[],
+): NpSearchAdapterContext {
+  return npRequireSearchAdapterContext({
+    ...request,
+    audience: {
+      mode: request.visibility,
+      collections: slugs.filter((slug) => getCollectionConfig(slug).community?.audience === true),
+    },
+  });
+}
+
 function resolveSearchCatalog(collections: readonly string[] | undefined): {
   readonly slugs: readonly string[];
   readonly labels: Readonly<Record<string, string>>;
@@ -313,6 +326,14 @@ export function getSearchCollectionLabels(
   collections?: readonly string[],
 ): Readonly<Record<string, string>> {
   return resolveSearchCatalog(collections).labels;
+}
+
+/** Resolve one exact adapter/cache context from registered collection policy. */
+export function resolveSearchAdapterContext(input: unknown): NpSearchAdapterContext {
+  const request = npRequireSearchResolvedRequest(input);
+  const { slugs } = resolveSearchCatalog(request.collections);
+  assertConfiguredSearchLocale(request.locale);
+  return createSearchAdapterContext(request, slugs);
 }
 
 function assertConfiguredSearchLocale(locale: string | undefined): void {
