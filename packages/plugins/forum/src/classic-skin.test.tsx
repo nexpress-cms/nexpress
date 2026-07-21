@@ -51,6 +51,11 @@ const messages: NpForumMessages = {
   subscriptionFailed: "구독 실패",
   pagination: "페이지 이동",
   boardPolicy: "게시판 운영 정책",
+  audience: "공개 범위",
+  audiencePublic: "전체 공개",
+  audienceMembers: "회원 공개",
+  audiencePrivateBoard: "운영진만",
+  audiencePrivate: "작성자와 운영자만",
   writeMembers: "회원 글쓰기",
   writeStaff: "운영자만 글쓰기",
   writeClosed: "글쓰기 닫힘",
@@ -150,6 +155,7 @@ const board: NpForumBoard = {
   name: "자유게시판",
   description: "함께 이야기해요",
   skinId: "classic",
+  audience: "public",
   writeMode: "members",
   moderation: "published",
   commentsEnabled: true,
@@ -168,6 +174,7 @@ const post: NpForumPostSummary = {
   category: "question",
   pinned: false,
   locked: false,
+  audience: "public",
   status: "published",
   createdAt: new Date("2026-07-19T00:00:00.000Z"),
   updatedAt: new Date("2026-07-19T00:00:00.000Z"),
@@ -364,5 +371,36 @@ describe("classic forum skin", () => {
 
     expect(html).toContain('data-np-forum-surface="board-index"');
     expect(html).not.toContain("np-site-header");
+  });
+
+  it("labels restricted board and post scopes independently", async () => {
+    const boardHtml = await markup(
+      classicForumSkin.renderBoardIndex({
+        basePath: "/boards",
+        boards: [{ ...board, audience: "private" }],
+        messages,
+      }),
+    );
+    const postHtml = await markup(
+      classicForumSkin.renderPostList({
+        basePath: "/boards",
+        board,
+        posts: [{ ...post, audience: "private" }],
+        pinnedPosts: [],
+        totalPages: 1,
+        totalPosts: 1,
+        query: defaultQuery,
+        searchMaxLength: 120,
+        isAuthenticated: true,
+        canCreate: true,
+        subscriptionAction: null,
+        messages,
+        hrefForQuery: hrefForQuery(defaultQuery),
+      }),
+    );
+
+    expect(boardHtml).toContain("운영진만");
+    expect(boardHtml).not.toContain("작성자와 운영자만");
+    expect(postHtml).toContain("작성자와 운영자만");
   });
 });

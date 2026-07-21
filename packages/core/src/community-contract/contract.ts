@@ -9,6 +9,7 @@ import {
   npCommunityCapabilities,
   npCommunityCommentSorts,
   npCommunityCommentStatuses,
+  npCommunityDocumentAudiences,
   npCommunityDigestCadences,
   npCommunityFollowActivityKinds,
   npCommunityModerationVerdictKinds,
@@ -38,6 +39,7 @@ import {
   type NpContentViewRow,
   type NpCommunityContractIssue,
   type NpCommunityContractResult,
+  type NpCommunityDocumentAudience,
   type NpCommunityJsonObject,
   type NpCommunityJsonValue,
   type NpCommunityRuntimeDiagnostic,
@@ -133,6 +135,7 @@ const ENGAGEMENT_TARGET_TYPE_MAX_LENGTH = 63;
 const COMMENT_STATUSES = new Set<string>(npCommunityCommentStatuses);
 const DOCUMENT_STATUSES = new Set<string>(npCollectionDocumentStatuses);
 const COMMENT_SORTS = new Set<string>(npCommunityCommentSorts);
+const DOCUMENT_AUDIENCES = new Set<string>(npCommunityDocumentAudiences);
 const FOLLOW_ACTIVITY_KINDS = new Set<string>(npCommunityFollowActivityKinds);
 const REPORT_STATUSES = new Set<string>(npCommunityReportStatuses);
 const REPORT_RESOLUTION_ACTIONS = new Set<string>(npCommunityReportResolutionActions);
@@ -2841,6 +2844,7 @@ export function npRequireRuntimeDiagnostics(value: unknown): NpCommunityRuntimeD
         "profanity",
         "reputation",
         "profiles",
+        "audience",
       ]);
       return {
         source: enumString(raw.source, `${path}.source`, allowed),
@@ -2857,6 +2861,19 @@ export function npRequireRuntimeDiagnostics(value: unknown): NpCommunityRuntimeD
 
 export function npIsCommentSort(value: unknown): value is (typeof npCommunityCommentSorts)[number] {
   return typeof value === "string" && COMMENT_SORTS.has(value);
+}
+
+export function npIsCommunityDocumentAudience(
+  value: unknown,
+): value is NpCommunityDocumentAudience {
+  return typeof value === "string" && DOCUMENT_AUDIENCES.has(value);
+}
+
+export function npRequireCommunityDocumentAudience(
+  value: unknown,
+  path = "community.document.audience",
+): NpCommunityDocumentAudience {
+  return enumString(value, path, DOCUMENT_AUDIENCES);
 }
 
 export function npIsReportStatus(value: unknown): value is NpReportStatus {

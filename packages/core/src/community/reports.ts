@@ -39,6 +39,7 @@ import { memberCapabilities, withMemberWrite } from "./can.js";
 import { hideComment, staffHideComment } from "./comments.js";
 import { moderateMemberThread } from "./document-moderation.js";
 import { npResolveDocumentEngagementTarget } from "./engagement-target.js";
+import { npRequireReadableCommunityDocument } from "./audience.js";
 import { npResolveDocumentCommunityTarget, type NpCommunityTargetScope } from "./target-scopes.js";
 import { principalCan, type Principal } from "./principal.js";
 
@@ -252,7 +253,7 @@ async function reportTargetScopes(targetType: string, targetId: string) {
 }
 
 async function doFileReport(input: FileReportInput): Promise<NpReportRow> {
-  const target = await assertReportTargetExists(input.targetType, input.targetId);
+  const target = await assertReportTargetExists(input.targetType, input.targetId, input.reporterId);
   const db = getDb();
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   if (target.siteId !== null && target.siteId !== siteId) {
@@ -613,15 +614,26 @@ export async function resolveReport(input: ResolveReportInput): Promise<ResolveR
 async function assertReportTargetExists(
   targetType: string,
   targetId: string,
+  reporterId: string,
 ): Promise<{ siteId: string | null }> {
   const db = getDb();
   if (targetType === "comment") {
     const [row] = await db
-      .select({ siteId: npComments.siteId, status: npComments.status })
+      .select({
+        siteId: npComments.siteId,
+        status: npComments.status,
+        targetType: npComments.targetType,
+        targetId: npComments.targetId,
+      })
       .from(npComments)
       .where(eq(npComments.id, targetId))
       .limit(1);
     if (!row || row.status !== "visible") throw new NpNotFoundError("comment", targetId);
+    const parent = await npResolveDocumentCommunityTarget(row.targetType, row.targetId);
+    await npRequireReadableCommunityDocument(parent.collection, parent.document, {
+      kind: "member",
+      memberId: reporterId,
+    });
     return { siteId: row.siteId };
   }
   if (targetType === "member") {
@@ -633,7 +645,9 @@ async function assertReportTargetExists(
     if (!row || row.status !== "active") throw new NpNotFoundError("member", targetId);
     return { siteId: null };
   }
-  const target = await npResolveDocumentEngagementTarget(targetType, targetId, "reports");
+  const target = await npResolveDocumentEngagementTarget(targetType, targetId, "reports", {
+    principal: { kind: "member", memberId: reporterId },
+  });
   return { siteId: target.siteId };
 }
 

@@ -3,8 +3,10 @@ import { getDocumentById } from "../collections/pipeline.js";
 import { npRequireEngagementTarget } from "../community-contract/contract.js";
 import { npRequireNotificationHref } from "../community-contract/contract.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
+import type { NpPrincipal } from "../auth/principal.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { npRequireReadableCommunityDocument } from "./audience.js";
 
 export interface NpResolvedDocumentEngagementTarget {
   targetType: string;
@@ -19,7 +21,7 @@ export async function npResolveDocumentEngagementTarget(
   targetType: string,
   targetId: string,
   feature: "reactions" | "views" | "follows" | "reports",
-  options: { requirePublic?: boolean } = {},
+  options: { requirePublic?: boolean; principal?: NpPrincipal | null } = {},
 ): Promise<NpResolvedDocumentEngagementTarget> {
   const target = npRequireEngagementTarget({ targetType, targetId });
   const config = getCollectionConfig(target.targetType);
@@ -39,11 +41,8 @@ export async function npResolveDocumentEngagementTarget(
   if (!document) {
     throw new NpNotFoundError(target.targetType, target.targetId);
   }
-  if (
-    options.requirePublic !== false &&
-    (document.status !== "published" || document.visibility !== "public")
-  ) {
-    throw new NpNotFoundError(target.targetType, target.targetId);
+  if (options.requirePublic !== false) {
+    await npRequireReadableCommunityDocument(config, document, options.principal ?? null);
   }
 
   const requestSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;

@@ -19,8 +19,8 @@ After setup:
 
 1. Open Admin → Community → Forum boards.
 2. Create a board, choose a stable ASCII key such as `free`, and publish it.
-3. Choose the skin, member-write mode, moderation mode, comment default,
-   attachment limits, page size, and optional categories.
+3. Choose the skin, read audience, member-write mode, moderation mode, comment
+   default, attachment limits, page size, and optional categories.
 4. Visit `/boards`.
 
 Board keys form `/boards/<boardKey>` URLs. Post detail URLs use the immutable
@@ -59,6 +59,7 @@ actions, and relationship targets over one exact runtime definition.
 | --------------------------- | ---------------------------------------------------------------------- |
 | Board key                   | Stable lowercase URL segment; 2–63 letters, digits, or hyphens         |
 | Skin                        | Selects one build-time registered `NpForumSkin`                        |
+| Who can read this board     | Everyone, signed-in members, or scoped moderators                      |
 | Who can create posts        | `members`, `staff`, or `closed`                                        |
 | New member posts            | Publish immediately or enter the shared Admin pending queue            |
 | Allow comments on new posts | Sets new posts to unlocked or locked; staff can change each post later |
@@ -74,8 +75,12 @@ the public detail route, plus board-list pending/report indicators and inline
 report handling. Their list includes published posts and eligible member or
 previously-hidden pending posts, including pending rows that were pinned before
 moderation; initial staff drafts never cross this member surface. Members can
-submit only `board`, `title`, `body`, `category`, and
-`attachments`. The core
+submit only `board`, `title`, `body`, `category`, `attachments`, and
+`audience`. A post can be public, member-only, or private to its author and
+scoped moderators, but never broader than its board. Narrowing a board is
+rejected until every existing post uses an equally restrictive audience; this
+keeps direct URLs and discovery consistent without a non-atomic background
+rewrite. The core
 member-write pipeline rejects any attempt to send operator fields before
 moderation or persistence, checks the current board policy, prevents authors
 and scoped moderators from moving a post to another board, and derives
@@ -112,9 +117,10 @@ save or remove attachments that were already accepted, but cannot add a new
 file outside the current policy.
 
 `GET /api/media/attachments/:id` is available to the uploader while the file
-is unreferenced or belongs to a private/pending post. It becomes anonymously
-downloadable only when at least one current-site `published` + `public`
-document references it through `attachments.file`. Every successful response
+is unreferenced. A document reference grants download only when the current
+viewer may read it: anonymous for `public`, signed-in members for `members`,
+and the author/scoped moderator for `private`. Pending rows remain limited to
+their author or moderator. Every successful response
 uses `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, a
 sandbox CSP, and `private, no-store`; user content is never rendered inline.
 `DELETE /api/members/media/attachments/:id` is uploader-only and returns a
@@ -123,9 +129,9 @@ Core serializes reference creation and soft-delete on the media row, ensuring
 that concurrent submit/delete requests cannot leave a post pointing at a
 deleted object.
 
-Changing the forum attachment fields changes the generated collection schema.
-After adding or upgrading the plugin, regenerate, review, and apply the
-migration:
+Changing the forum attachment or audience fields changes the generated
+collection schema. After adding or upgrading the plugin, regenerate, review,
+and apply the migration:
 
 ```bash
 pnpm schema:gen
@@ -149,7 +155,9 @@ contract recognizes only these values:
 Recognized parameters that are duplicated, malformed, out of bounds, or refer
 to another board's category fail closed. Unknown parameters such as campaign
 tags are ignored. Search always combines the current board, visibility/status,
-category, and member filters in one collection query. Pinned notices appear
+audience, category, and member filters in one collection query. Private posts
+appear in the author's `author=me` view or a moderator view, not an ordinary
+member list. Pinned notices appear
 only on the unfiltered public first page, so they cannot pollute filtered or
 ranked results. Filter state is preserved by category, author, and pagination
 links.
@@ -193,6 +201,7 @@ enable the four engagement/moderation features:
 
 ```ts
 community: {
+  audience: true,
   comments: true,
   reactions: true,
   views: true,
@@ -213,8 +222,20 @@ restore from being mistaken for first approval. Because this adds a collection
 column, upgrades must regenerate and apply the project migration using the
 commands in [Attachments](#attachments).
 
+`community.audience: true` binds the collection to one required top-level
+`audience` select whose exact values are `public`, `members`, and `private` and
+whose default is `public`. Core consumes the same declaration for comments,
+reactions, follows, reports, mentions, profile activity, search, sitemap/feed,
+and attachment downloads. Invalid persisted values fail closed and reach
+Doctor. Public cross-collection search stays on the built-in Postgres path
+when its catalog contains an audience-aware collection; external adapters do
+not yet receive a viewer-audience proof in their request contract.
+The board collection additionally declares `audienceCategoryField: "id"`, so
+an exact board-scoped category moderator can read and subscribe to that
+moderator-only board without granting site-wide access.
+
 `community.reactions` extends the existing reaction API from comments to
-published public documents in that collection. The site's exact
+published documents readable by the current member. The site's exact
 `community.reactionKinds` allow-list still gates kinds, member authentication
 and CSRF still gate mutations, and collection/site-scoped bans still apply.
 The detail route uses `like` as the forum recommendation action.
@@ -235,10 +256,10 @@ instead of issuing per-post queries. Document deletion removes its comments,
 document reactions, and view receipts; site deletion and `plugin doctor`
 include the view table as well.
 
-`community.reports` adds a member-only report action to published public forum
+`community.reports` adds a member-only report action to readable published forum
 post details. The request uses the configured forum-post collection slug, so a
 site that renames `collections.posts` does not depend on a hard-coded `thread`
-target. The Core service rejects missing, private, pending, or cross-site
+target. The Core service rejects missing, unreadable, pending, or cross-site
 documents and duplicate unresolved reports. Admin Reports shows the post title,
 status, and collection edit link; `unpublish-document` moves the post to
 `pending`, while `dismiss` closes the case without changing it. Comments keep
@@ -264,8 +285,10 @@ fans one `document.published` event out to subscribers of its board. A visible
 comment runs the Core `comment.created` fan-out for subscribers of that post.
 Recipient priority is direct reply, mention, document owner, then general
 subscription, so one member never receives several notifications for the same
-comment. Pending or private content does not notify; the commenter/post author
-is excluded from their own event; mutes and notification preferences remain in
+comment. Pending content does not notify. Member-only/private activity reaches
+only subscribers who can still read both the followed board and target post;
+revoked access is checked again during fan-out. The commenter/post author is
+excluded from their own event; mutes and notification preferences remain in
 force. Every forum notification carries the configured `basePath`, board key,
 and post id as a validated local destination. The member inbox and existing
 daily/weekly digest recognize the new activity kind.

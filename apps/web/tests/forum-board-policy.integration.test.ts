@@ -1,12 +1,16 @@
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { forumCollections } from "@nexpress/plugin-forum";
+import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { POST as collectionPOST } from "@/app/api/collections/[slug]/route";
+import { GET as collectionGET, POST as collectionPOST } from "@/app/api/collections/[slug]/route";
 import {
   DELETE as collectionDELETE,
+  GET as collectionDetailGET,
   PATCH as collectionPATCH,
 } from "@/app/api/collections/[slug]/[id]/route";
+import { GET as commentsGET } from "@/app/api/collections/[slug]/[id]/comments/route";
+import { GET as reactionsGET } from "@/app/api/reactions/route";
 import { POST as viewPOST } from "@/app/api/views/route";
 import {
   forumBoardsTable,
@@ -20,6 +24,7 @@ import {
   closeTestDb,
   ensureMigrated,
   getTestDb,
+  getTestDatabaseUrl,
   readJson,
   registerTestCollections,
   seedActiveMember,
@@ -65,6 +70,7 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
     commentsEnabled?: boolean;
     status?: "draft" | "published";
     writeMode?: "members" | "staff" | "closed";
+    audience?: "public" | "members" | "private";
   }): Promise<{ id: string; staff: Awaited<ReturnType<typeof seedUser>> }> {
     const staff = await seedUser({ role: "editor" });
     const response = await collectionPOST(
@@ -81,6 +87,7 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
             key: input.key,
             name: input.key,
             skin: "classic",
+            audience: input.audience ?? "public",
             writeMode: input.writeMode ?? "members",
             moderation: input.moderation ?? "published",
             commentsEnabled: input.commentsEnabled ?? true,
@@ -173,6 +180,252 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
       { params: Promise.resolve({ slug: "forum-posts", id: created.body.id }) },
     );
     expect(update.status).toBe(403);
+  });
+
+  it("enforces public, member, and private audiences across read and engagement APIs", async () => {
+    const { id: boardId } = await createBoard({ key: "audience" });
+    const memberOnly = await createPost(boardId, { audience: "members", title: "회원 글" });
+    const memberOnlyResult = await readJson<{ id: string }>(memberOnly.response);
+    expect(memberOnlyResult.status).toBe(201);
+    const privatePost = await createPost(boardId, { audience: "private", title: "비공개 글" });
+    const privateResult = await readJson<{ id: string }>(privatePost.response);
+    expect(privateResult.status).toBe(201);
+    const reader = await seedActiveMember({
+      handle: `reader-${Math.random().toString(36).slice(2)}`,
+    });
+    const readerSession = {
+      cookie: `np-mb-session=${reader.sessionCookie}`,
+      csrfCookie: `np-mb-csrf=${reader.csrfCookie}`,
+      csrfHeader: reader.csrfCookie,
+    };
+    const ownerSession = {
+      cookie: `np-mb-session=${privatePost.member.sessionCookie}`,
+      csrfCookie: `np-mb-csrf=${privatePost.member.csrfCookie}`,
+      csrfHeader: privatePost.member.csrfCookie,
+    };
+
+    const anonymousList = await collectionGET(
+      new NextRequest("http://localhost:3000/api/collections/forum-posts"),
+      { params: Promise.resolve({ slug: "forum-posts" }) },
+    );
+    const anonymousListResult = await readJson<{ docs: Array<{ id: string }> }>(anonymousList);
+    expect(anonymousListResult.body.docs).toEqual([]);
+
+    const memberList = await collectionGET(
+      request("/api/collections/forum-posts", readerSession, { method: "GET" }),
+      { params: Promise.resolve({ slug: "forum-posts" }) },
+    );
+    const memberListResult = await readJson<{ docs: Array<{ id: string }> }>(memberList);
+    expect(memberListResult.body.docs.map((doc) => doc.id)).toEqual([memberOnlyResult.body.id]);
+
+    const ownerWhere = encodeURIComponent(
+      JSON.stringify({ memberAuthorId: privatePost.member.memberId }),
+    );
+    const ownerList = await collectionGET(
+      request(`/api/collections/forum-posts?where=${ownerWhere}`, ownerSession, {
+        method: "GET",
+      }),
+      { params: Promise.resolve({ slug: "forum-posts" }) },
+    );
+    const ownerListResult = await readJson<{ docs: Array<{ id: string }> }>(ownerList);
+    expect(ownerListResult.body.docs.map((doc) => doc.id)).toEqual([privateResult.body.id]);
+
+    const anonymousMemberDetail = await collectionDetailGET(
+      new NextRequest(
+        `http://localhost:3000/api/collections/forum-posts/${memberOnlyResult.body.id}`,
+      ),
+      {
+        params: Promise.resolve({ slug: "forum-posts", id: memberOnlyResult.body.id }),
+      },
+    );
+    expect(anonymousMemberDetail.status).toBe(404);
+    const readerMemberDetail = await collectionDetailGET(
+      request(`/api/collections/forum-posts/${memberOnlyResult.body.id}`, readerSession, {
+        method: "GET",
+      }),
+      {
+        params: Promise.resolve({ slug: "forum-posts", id: memberOnlyResult.body.id }),
+      },
+    );
+    expect(readerMemberDetail.status).toBe(200);
+
+    const readerPrivateDetail = await collectionDetailGET(
+      request(`/api/collections/forum-posts/${privateResult.body.id}`, readerSession, {
+        method: "GET",
+      }),
+      { params: Promise.resolve({ slug: "forum-posts", id: privateResult.body.id }) },
+    );
+    expect(readerPrivateDetail.status).toBe(404);
+    const ownerPrivateDetail = await collectionDetailGET(
+      request(`/api/collections/forum-posts/${privateResult.body.id}`, ownerSession, {
+        method: "GET",
+      }),
+      { params: Promise.resolve({ slug: "forum-posts", id: privateResult.body.id }) },
+    );
+    expect(ownerPrivateDetail.status).toBe(200);
+
+    const anonymousComments = await commentsGET(
+      new NextRequest(
+        `http://localhost:3000/api/collections/forum-posts/${memberOnlyResult.body.id}/comments`,
+      ),
+      { params: Promise.resolve({ slug: "forum-posts", id: memberOnlyResult.body.id }) },
+    );
+    expect(anonymousComments.status).toBe(404);
+    const memberComments = await commentsGET(
+      request(`/api/collections/forum-posts/${memberOnlyResult.body.id}/comments`, readerSession, {
+        method: "GET",
+      }),
+      { params: Promise.resolve({ slug: "forum-posts", id: memberOnlyResult.body.id }) },
+    );
+    expect(memberComments.status).toBe(200);
+
+    const readerReactions = await reactionsGET(
+      request(
+        `/api/reactions?targetType=forum-posts&targetId=${privateResult.body.id}`,
+        readerSession,
+        { method: "GET" },
+      ),
+    );
+    expect(readerReactions.status).toBe(404);
+    const ownerReactions = await reactionsGET(
+      request(
+        `/api/reactions?targetType=forum-posts&targetId=${privateResult.body.id}`,
+        ownerSession,
+        { method: "GET" },
+      ),
+    );
+    expect(ownerReactions.status).toBe(200);
+
+    const anonymousView = await viewPOST(
+      new NextRequest("http://localhost:3000/api/views", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          targetType: "forum-posts",
+          targetId: memberOnlyResult.body.id,
+        }),
+      }),
+    );
+    expect(anonymousView.status).toBe(404);
+  });
+
+  it("requires posts to be narrowed before their board audience", async () => {
+    const { id: boardId, staff } = await createBoard({ key: "narrowing" });
+    const post = await createPost(boardId);
+    const created = await readJson<{ id: string }>(post.response);
+    expect(created.status).toBe(201);
+    const staffSession = {
+      cookie: `np-session=${staff.accessToken}`,
+      csrfCookie: `np-csrf=${staff.csrfToken}`,
+      csrfHeader: staff.csrfToken,
+    };
+
+    const rejected = await collectionPATCH(
+      request(`/api/collections/forum-boards/${boardId}`, staffSession, {
+        method: "PATCH",
+        body: JSON.stringify({ audience: "members" }),
+      }),
+      { params: Promise.resolve({ slug: "forum-boards", id: boardId }) },
+    );
+    expect(rejected.status).toBe(400);
+
+    const authorSession = {
+      cookie: `np-mb-session=${post.member.sessionCookie}`,
+      csrfCookie: `np-mb-csrf=${post.member.csrfCookie}`,
+      csrfHeader: post.member.csrfCookie,
+    };
+    const narrowedPost = await collectionPATCH(
+      request(`/api/collections/forum-posts/${created.body.id}`, authorSession, {
+        method: "PATCH",
+        body: JSON.stringify({ audience: "members" }),
+      }),
+      { params: Promise.resolve({ slug: "forum-posts", id: created.body.id }) },
+    );
+    expect(narrowedPost.status).toBe(200);
+
+    const narrowedBoard = await collectionPATCH(
+      request(`/api/collections/forum-boards/${boardId}`, staffSession, {
+        method: "PATCH",
+        body: JSON.stringify({ audience: "members" }),
+      }),
+      { params: Promise.resolve({ slug: "forum-boards", id: boardId }) },
+    );
+    expect(narrowedBoard.status).toBe(200);
+  });
+
+  it("lets an exact board moderator read and follow a private board", async () => {
+    const { id: boardId, staff } = await createBoard({
+      key: "private-board",
+      audience: "private",
+    });
+    const moderator = await seedActiveMember({
+      handle: `board-mod-${Math.random().toString(36).slice(2)}`,
+    });
+    const ordinary = await seedActiveMember({
+      handle: `ordinary-${Math.random().toString(36).slice(2)}`,
+    });
+    const { follow, grantMemberRole } = await import("@nexpress/core");
+    await grantMemberRole({
+      memberId: moderator.memberId,
+      role: "category-mod",
+      scopeType: "category",
+      scopeId: boardId,
+      grantedByUserId: staff.userId,
+    });
+    const moderatorSession = {
+      cookie: `np-mb-session=${moderator.sessionCookie}`,
+      csrfCookie: `np-mb-csrf=${moderator.csrfCookie}`,
+      csrfHeader: moderator.csrfCookie,
+    };
+    const ordinarySession = {
+      cookie: `np-mb-session=${ordinary.sessionCookie}`,
+      csrfCookie: `np-mb-csrf=${ordinary.csrfCookie}`,
+      csrfHeader: ordinary.csrfCookie,
+    };
+
+    const moderatorRead = await collectionDetailGET(
+      request(`/api/collections/forum-boards/${boardId}`, moderatorSession, { method: "GET" }),
+      { params: Promise.resolve({ slug: "forum-boards", id: boardId }) },
+    );
+    expect(moderatorRead.status).toBe(200);
+    const ordinaryRead = await collectionDetailGET(
+      request(`/api/collections/forum-boards/${boardId}`, ordinarySession, { method: "GET" }),
+      { params: Promise.resolve({ slug: "forum-boards", id: boardId }) },
+    );
+    expect(ordinaryRead.status).toBe(404);
+    await expect(
+      follow({
+        followerId: moderator.memberId,
+        targetType: "forum-boards",
+        targetId: boardId,
+      }),
+    ).resolves.toMatchObject({ followerId: moderator.memberId, targetId: boardId });
+  });
+
+  it("reports malformed persisted audiences through Doctor", async () => {
+    const { id: boardId } = await createBoard({ key: "doctor-audience" });
+    const post = await createPost(boardId);
+    const created = await readJson<{ id: string }>(post.response);
+    expect(created.status).toBe(201);
+    const db = await getTestDb();
+    await db.execute(
+      sql`update ${forumPostsTable} set audience = 'friends' where id = ${created.body.id}`,
+    );
+
+    const databaseUrl = getTestDatabaseUrl();
+    expect(databaseUrl).not.toBeNull();
+    const { collectDoctorChecks } =
+      await import("../../../packages/app/src/scripts/doctor-core.js");
+    const checks = await collectDoctorChecks({
+      env: { DATABASE_URL: databaseUrl ?? undefined },
+      nodeVersion: process.versions.node,
+    });
+    expect(checks.find((check) => check.id === "collections.contract")).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: expect.stringContaining("audience"),
+      }),
+    );
   });
 
   it("lets staff manage posts on draft boards while validating their categories", async () => {

@@ -15,15 +15,13 @@ import {
 
 export function createForumPostNewRoute(runtime: NpForumRuntime) {
   return async function ForumPostNewRoute({ params }: NpRouteRenderProps) {
+    const member = await getSiteMember();
     const [board, messages] = await Promise.all([
-      findForumBoardByKey(runtime, params.boardKey ?? ""),
+      findForumBoardByKey(runtime, params.boardKey ?? "", member?.id ?? null),
       getForumMessages(),
     ]);
     if (!board || board.writeMode !== "members") notFound();
-    const [member, attachmentLabels] = await Promise.all([
-      getSiteMember(),
-      getForumAttachmentFormLabels(board),
-    ]);
+    const attachmentLabels = await getForumAttachmentFormLabels(board);
     const next = `${runtime.basePath}/${board.key}/new`;
     const content = member ? (
       <ForumPostForm
@@ -33,12 +31,17 @@ export function createForumPostNewRoute(runtime: NpForumRuntime) {
         board={{
           id: board.id,
           key: board.key,
+          audience: board.audience,
           categories: board.categories,
           attachments: board.attachments,
         }}
         labels={{
           category: messages.category,
           categoryNone: messages.categoryNone,
+          audience: messages.audience,
+          audiencePublic: messages.audiencePublic,
+          audienceMembers: messages.audienceMembers,
+          audiencePrivate: messages.audiencePrivate,
           title: messages.title,
           body: messages.body,
           loadingEditor: messages.loadingEditor,

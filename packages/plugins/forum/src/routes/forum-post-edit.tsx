@@ -20,12 +20,13 @@ import {
 
 export function createForumPostEditRoute(runtime: NpForumRuntime) {
   return async function ForumPostEditRoute({ params }: NpRouteRenderProps) {
-    const [board, member, messages] = await Promise.all([
-      findForumBoardByKey(runtime, params.boardKey ?? ""),
-      getSiteMember(),
+    const member = await getSiteMember();
+    if (!member) notFound();
+    const [board, messages] = await Promise.all([
+      findForumBoardByKey(runtime, params.boardKey ?? "", member.id),
       getForumMessages(),
     ]);
-    if (!board || !member) notFound();
+    if (!board) notFound();
     const postId = params.postId ?? "";
     if (!isForumPostId(postId)) notFound();
     const post = await getDocumentById<ForumPostDocument>(runtime.collections.posts, postId);
@@ -48,12 +49,17 @@ export function createForumPostEditRoute(runtime: NpForumRuntime) {
         board={{
           id: board.id,
           key: board.key,
+          audience: board.audience,
           categories: board.categories,
           attachments: board.attachments,
         }}
         labels={{
           category: messages.category,
           categoryNone: messages.categoryNone,
+          audience: messages.audience,
+          audiencePublic: messages.audiencePublic,
+          audienceMembers: messages.audienceMembers,
+          audiencePrivate: messages.audiencePrivate,
           title: messages.title,
           body: messages.body,
           loadingEditor: messages.loadingEditor,
@@ -68,6 +74,7 @@ export function createForumPostEditRoute(runtime: NpForumRuntime) {
           title: post.title,
           body: isNpRichTextContent(post.body) ? post.body : null,
           category: typeof post.category === "string" ? post.category : null,
+          audience: post.audience,
           attachments,
         }}
       />

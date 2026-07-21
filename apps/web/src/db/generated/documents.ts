@@ -122,6 +122,7 @@ export interface ForumBoardsDocument {
   description: string | null;
   skin: string;
   writeMode: string;
+  audience: string;
   moderation: string;
   commentsEnabled: boolean;
   pageSize: number;
@@ -154,6 +155,7 @@ export interface ForumPostsDocument {
     file: string;
   }>;
   category: string | null;
+  audience: string;
   moderationHidden: boolean;
   pinned: boolean | null;
   locked: boolean | null;

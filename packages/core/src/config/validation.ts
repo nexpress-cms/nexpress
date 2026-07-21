@@ -287,6 +287,8 @@ export const collectionConfigSchema = z.strictObject({
       views: z.boolean().optional(),
       follows: z.boolean().optional(),
       reports: z.boolean().optional(),
+      audience: z.literal(true).optional(),
+      audienceCategoryField: z.string().min(1).optional(),
       moderation: z
         .strictObject({
           categoryField: z.string().min(1).optional(),

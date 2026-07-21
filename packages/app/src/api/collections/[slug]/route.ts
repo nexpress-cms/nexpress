@@ -20,12 +20,14 @@ import {
 } from "../../../lib/collection-helpers";
 import { ensureFor } from "../../../lib/init-core";
 import { optionalMember } from "../../../lib/member-auth-helpers";
+import { npPublicCommunityAudienceWhere } from "@nexpress/core/community";
 import { revalidateCollection } from "../../../lib/revalidate";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
     const user = await optionalAuth(request);
+    const member = user ? null : await optionalMember(request);
     const findOptions = parseFindOptions(request.nextUrl.searchParams);
 
     // Anonymous callers must not see drafts / scheduled / archived rows
@@ -40,6 +42,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const config = getCollectionConfig(slug);
       if (config.versions?.drafts) {
         findOptions.where = { ...(findOptions.where ?? {}), status: "published" };
+      }
+      if (config.community?.audience === true) {
+        const requestsOwnRows = member !== null && findOptions.where?.memberAuthorId === member.id;
+        findOptions.where = {
+          ...(findOptions.where ?? {}),
+          ...(requestsOwnRows
+            ? { audience: ["public", "members", "private"] }
+            : member
+              ? { audience: ["public", "members"] }
+              : npPublicCommunityAudienceWhere(config)),
+        };
       }
     }
 

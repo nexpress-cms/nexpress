@@ -49,6 +49,7 @@ const board = {
   name: "자유게시판",
   description: null,
   skinId: "classic",
+  audience: "public" as const,
   writeMode: "members" as const,
   moderation: "published" as const,
   commentsEnabled: true,
@@ -120,6 +121,7 @@ describe("forum board post-list route", () => {
         board: "board-1",
         status: "published",
         pinned: false,
+        audience: "public",
         category: "question",
       },
       search: "한글 검색",
@@ -144,7 +146,7 @@ describe("forum board post-list route", () => {
 
     expect(mocks.findDocuments).toHaveBeenCalledTimes(2);
     expect(mocks.findDocuments).toHaveBeenNthCalledWith(2, "forum-posts", {
-      where: { board: "board-1", status: "published", pinned: true },
+      where: { board: "board-1", status: "published", pinned: true, audience: "public" },
       sort: "-createdAt",
       page: 1,
       limit: 100,
@@ -240,7 +242,12 @@ describe("forum board post-list route", () => {
     await render();
 
     expect(mocks.findDocuments).toHaveBeenNthCalledWith(1, "forum-posts", {
-      where: { board: "board-1", status: "published", pinned: false },
+      where: {
+        board: "board-1",
+        status: "published",
+        pinned: false,
+        audience: ["public", "members"],
+      },
       sort: "-createdAt",
       page: 1,
       limit: 20,

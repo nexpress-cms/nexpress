@@ -426,6 +426,69 @@ function semanticIssues(config: NpCollectionConfig): NpCollectionDefinitionIssue
   collectTopLevel(config.fields);
   const topLevelNames = new Set(topLevelFields.keys());
   const memberWrite = config.community?.memberWrite;
+  const audienceField = topLevelFields.get("audience");
+  if (audienceField && config.community?.audience !== true) {
+    issues.push(
+      issue(
+        "reference",
+        "fields.audience",
+        'the top-level "audience" field is reserved for community.audience=true.',
+      ),
+    );
+  }
+  if (config.community?.audience === true) {
+    const expectedAudiences = new Set(["public", "members", "private"]);
+    if (!audienceField) {
+      issues.push(
+        issue(
+          "reference",
+          "community.audience",
+          'document audience requires a top-level select field named "audience".',
+        ),
+      );
+    } else if (
+      audienceField.type !== "select" ||
+      audienceField.hasMany === true ||
+      audienceField.required !== true ||
+      audienceField.defaultValue !== "public" ||
+      audienceField.options.length !== expectedAudiences.size ||
+      audienceField.options.some((option) => !expectedAudiences.has(option.value))
+    ) {
+      issues.push(
+        issue(
+          "field",
+          "community.audience",
+          'the audience field must be a required single select with defaultValue="public" and the exact public, members, private values.',
+        ),
+      );
+    }
+  }
+  const audienceCategoryField = config.community?.audienceCategoryField;
+  if (audienceCategoryField && config.community?.audience !== true) {
+    issues.push(
+      issue(
+        "reference",
+        "community.audienceCategoryField",
+        "an audience category field requires community.audience=true.",
+      ),
+    );
+  } else if (audienceCategoryField && audienceCategoryField !== "id") {
+    const categoryField = topLevelFields.get(audienceCategoryField);
+    if (
+      !categoryField ||
+      categoryField.type !== "relationship" ||
+      categoryField.hasMany === true ||
+      categoryField.required !== true
+    ) {
+      issues.push(
+        issue(
+          "reference",
+          "community.audienceCategoryField",
+          "the audience category field must name id or one required top-level single relationship.",
+        ),
+      );
+    }
+  }
   const moderation = config.community?.moderation;
   if (moderation) {
     const mappedStateFields = [

@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-21 (declarative document moderation now projects
+**Last refreshed:** 2026-07-21 (community document audiences now use one
+fail-closed public/member/private contract across Forum boards and posts,
+community actions, discovery, profiles, notifications, attachments, Admin,
+Doctor, both skins, and generated migrations.)
+
+**Earlier:** 2026-07-21 (declarative document moderation now projects
 thread/category/collection scopes across member writes, comments, reports,
 forum routes, Admin role choices, doctor diagnostics, and both bundled skins.)
 

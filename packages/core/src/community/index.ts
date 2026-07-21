@@ -60,6 +60,14 @@ export { listMemberProfileActivity } from "./profile-activity.js";
 
 export type { MemberAction, MemberCanTarget } from "./can.js";
 
+export {
+  npCanReadCommunityDocument,
+  npGetCommunityDocumentAudience,
+  npPublicCommunityAudienceWhere,
+  npRequireReadableCommunityDocument,
+} from "./audience.js";
+export type { NpCommunityDocumentReadOptions } from "./audience.js";
+
 export { renderCommentMarkdown } from "./markdown.js";
 
 export {

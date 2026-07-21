@@ -15,13 +15,25 @@ import { ForumEngagementCounts } from "./engagement.js";
 function boardPolicyItems(
   board: NpForumBoard,
   messages: NpForumMessages,
-): Array<{ id: "attachments" | "comments" | "moderation" | "write"; label: string }> {
+): Array<{
+  id: "attachments" | "audience" | "comments" | "moderation" | "write";
+  label: string;
+}> {
   const write = {
     members: messages.writeMembers,
     staff: messages.writeStaff,
     closed: messages.writeClosed,
   }[board.writeMode];
   return [
+    {
+      id: "audience",
+      label:
+        board.audience === "public"
+          ? messages.audiencePublic
+          : board.audience === "members"
+            ? messages.audienceMembers
+            : messages.audiencePrivateBoard,
+    },
     { id: "write", label: write },
     {
       id: "moderation",
@@ -117,6 +129,7 @@ function PostStateBadges({
     !showNotice &&
     !post.locked &&
     post.status === "published" &&
+    post.audience === "public" &&
     (post.unresolvedReportCount ?? 0) === 0
   )
     return null;
@@ -126,6 +139,11 @@ function PostStateBadges({
       {post.locked ? <span className="np-forum-state-badge">{messages.locked}</span> : null}
       {post.status !== "published" ? (
         <span className="np-forum-state-badge">{messages.pending}</span>
+      ) : null}
+      {post.audience !== "public" ? (
+        <span className="np-forum-state-badge">
+          {post.audience === "members" ? messages.audienceMembers : messages.audiencePrivate}
+        </span>
       ) : null}
       {(post.unresolvedReportCount ?? 0) > 0 ? (
         <span className="np-forum-report-badge">
@@ -161,6 +179,7 @@ function PostRow({
       data-np-forum-pinned={post.pinned || notice ? "true" : "false"}
       data-np-forum-locked={post.locked ? "true" : "false"}
       data-np-forum-status={post.status}
+      data-np-forum-audience={post.audience}
     >
       <div className="np-forum-community-row-number" aria-hidden="true">
         {notice ? messages.notice : number?.toLocaleString(messages.locale)}

@@ -29,6 +29,7 @@ import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 
 import { recordAuditEvent } from "./audit.js";
+import { npCanReadCommunityDocument, npRequireReadableCommunityDocument } from "./audience.js";
 import { memberCan, withMemberWrite } from "./can.js";
 import { renderCommentMarkdown } from "./markdown.js";
 import { runProfanityCheck, runSpamCheck } from "./moderation.js";
@@ -103,11 +104,23 @@ function validateBody(bodyMd: string): void {
   }
 }
 
-async function commentScopes(row: { targetType: string; targetId: string; siteId: string }) {
+async function commentScopes(
+  row: { targetType: string; targetId: string; siteId: string },
+  viewerMemberId: string,
+) {
   const target = await npResolveDocumentCommunityTarget(row.targetType, row.targetId);
   if (row.siteId !== target.siteId) {
     throw new NpForbiddenError("comment", "cross-site");
   }
+  await npRequireReadableCommunityDocument(
+    target.collection,
+    target.document,
+    {
+      kind: "member",
+      memberId: viewerMemberId,
+    },
+    { allowUnpublished: true },
+  );
   return target.scopes;
 }
 
@@ -121,6 +134,10 @@ export async function createComment(input: NpCommentCreateInput): Promise<NpComm
   );
   if (!targetDoc) throw new NpNotFoundError(input.targetType, input.targetId);
   const config = getCollectionConfig(input.targetType);
+  await npRequireReadableCommunityDocument(config, targetDoc, {
+    kind: "member",
+    memberId: input.memberId,
+  });
   const scopes = npProjectDocumentCommunityScopes(config, targetDoc);
 
   // #311 — withMemberWrite enforces the ban gate by structure.
@@ -354,6 +371,9 @@ async function notifyVisibleComment(input: {
   parentAuthorId: string | null;
 }): Promise<void> {
   const { row, targetDocument, parentAuthorId } = input;
+  const config = getCollectionConfig(row.targetType);
+  const canNotify = (memberId: string) =>
+    npCanReadCommunityDocument(config, targetDocument, { kind: "member", memberId });
   const href = npResolveDocumentPublicHref(row.targetType, targetDocument);
   const commonPayload = {
     commentId: row.id,
@@ -366,7 +386,7 @@ async function notifyVisibleComment(input: {
   // One event has a stable priority: direct reply, mention, document owner,
   // then general subscription. A recipient only receives the first matching
   // notification, preventing the reply+mention+subscription triple ping.
-  if (parentAuthorId && parentAuthorId !== row.memberId) {
+  if (parentAuthorId && parentAuthorId !== row.memberId && (await canNotify(parentAuthorId))) {
     await createNotification({
       memberId: parentAuthorId,
       kind: "comment.reply",
@@ -379,6 +399,7 @@ async function notifyVisibleComment(input: {
   const mentionedMembers = await resolveMentionedMembers(extractMentionHandles(row.bodyMd));
   for (const member of mentionedMembers) {
     if (alreadyNotified.has(member.id)) continue;
+    if (!(await canNotify(member.id))) continue;
     await createNotification({
       memberId: member.id,
       kind: "comment.mention",
@@ -394,7 +415,7 @@ async function notifyVisibleComment(input: {
 
   const ownerId =
     typeof targetDocument.memberAuthorId === "string" ? targetDocument.memberAuthorId : null;
-  if (ownerId && !alreadyNotified.has(ownerId)) {
+  if (ownerId && !alreadyNotified.has(ownerId) && (await canNotify(ownerId))) {
     await createNotification({
       memberId: ownerId,
       kind: "comment.received",
@@ -404,7 +425,6 @@ async function notifyVisibleComment(input: {
     alreadyNotified.add(ownerId);
   }
 
-  const config = getCollectionConfig(row.targetType);
   if (config.community?.follows === true && href) {
     await notifyFollowers({
       activity: "comment.created",
@@ -436,9 +456,32 @@ export async function listComments(
   targetId: string,
   options: NpCommentListOptions = {},
 ): Promise<NpCommentListResult> {
-  const db = getDb();
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
+  let target: Awaited<ReturnType<typeof npResolveDocumentCommunityTarget>>;
+  try {
+    target = await npResolveDocumentCommunityTarget(targetType, targetId);
+  } catch (error) {
+    // Preserve the historical tenant-isolation list behavior: a target that
+    // exists only in another site is indistinguishable from an empty thread.
+    if (error instanceof NpForbiddenError) {
+      return {
+        comments: [],
+        totalDocs: 0,
+        limit,
+        offset,
+        hasNextPage: false,
+        hasPrevPage: false,
+      };
+    }
+    throw error;
+  }
+  await npRequireReadableCommunityDocument(
+    target.collection,
+    target.document,
+    options.viewerMemberId ? { kind: "member", memberId: options.viewerMemberId } : null,
+  );
+  const db = getDb();
   const order = options.order ?? "newest";
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 
@@ -448,9 +491,10 @@ export async function listComments(
   // member with a handful of mutes the cost is trivial.
   // Empty mute list short-circuits — no NOT IN clause is
   // appended.
-  const mutedAuthorIds: string[] = options.viewerMemberId
-    ? Array.from(await getMutedTargetIds(options.viewerMemberId))
-    : [];
+  const mutedAuthorIds: string[] =
+    options.viewerMemberId && !options.includeHidden
+      ? Array.from(await getMutedTargetIds(options.viewerMemberId))
+      : [];
   const muteFilter: SQL | undefined =
     mutedAuthorIds.length > 0 ? notInArray(npComments.memberId, mutedAuthorIds) : undefined;
 
@@ -616,7 +660,7 @@ export async function updateComment(input: NpCommentUpdateInput): Promise<NpComm
   }
 
   // Owner edits via `edit-own`; mods via `edit-any-comment`.
-  const scopes = await commentScopes(existing);
+  const scopes = await commentScopes(existing, input.memberId);
   const ownerCan = await memberCan(input.memberId, "edit-own", {
     type: "comment",
     id: existing.id,
@@ -728,11 +772,17 @@ export async function updateComment(input: NpCommentUpdateInput): Promise<NpComm
   // public can't see yet).
   if (checkedUpdated.status === "visible") {
     const previousHandles = new Set(extractMentionHandles(existing.bodyMd));
+    const target = await npResolveDocumentCommunityTarget(existing.targetType, existing.targetId);
     await fanOutMentionNotifications({
       actorMemberId: input.memberId,
       kind: "comment.mention",
       source: input.bodyMd,
       previousHandles,
+      canNotify: (memberId) =>
+        npCanReadCommunityDocument(target.collection, target.document, {
+          kind: "member",
+          memberId,
+        }),
       payload: {
         commentId: checkedUpdated.id,
         targetType: existing.targetType,
@@ -762,7 +812,7 @@ export async function deleteComment(input: NpCommentDeleteInput): Promise<void> 
   if (!existing) throw new NpNotFoundError("comment", input.commentId);
   npRequireCommentRow(existing);
 
-  const scopes = await commentScopes(existing);
+  const scopes = await commentScopes(existing, input.memberId);
   const ownerCan = await memberCan(input.memberId, "delete-own", {
     type: "comment",
     id: existing.id,
@@ -811,7 +861,7 @@ export async function hideComment(input: NpCommentHideInput): Promise<void> {
     type: "comment",
     id: existing.id,
     ownerId: existing.memberId,
-    scopes: await commentScopes(existing),
+    scopes: await commentScopes(existing, input.memberId),
   });
   if (!ok) throw new NpForbiddenError("comment", "hide");
   if (existing.status === "hidden") return;
@@ -875,7 +925,7 @@ export async function restoreComment(input: NpCommentRestoreInput): Promise<void
     type: "comment",
     id: existing.id,
     ownerId: existing.memberId,
-    scopes: await commentScopes(existing),
+    scopes: await commentScopes(existing, input.memberId),
   });
   if (!ok) throw new NpForbiddenError("comment", "restore");
   if (existing.status !== "hidden") {

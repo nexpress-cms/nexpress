@@ -45,6 +45,7 @@ const boardDocument = {
   siteId: "default",
   status: "published",
   visibility: "public",
+  audience: "public",
   slug: "free",
   name: "자유게시판",
   description: "함께 이야기해요",
@@ -67,6 +68,7 @@ const postDocument = {
   siteId: "default",
   status: "published",
   visibility: "public",
+  audience: "public",
   board: "board-1",
   boardKey: "free",
   title: "첫 번째 토론",
@@ -151,7 +153,7 @@ describe("forum home blocks", () => {
     });
 
     expect(mocks.contentFind).toHaveBeenCalledWith("community-boards", {
-      where: { status: "published" },
+      where: { status: "published", audience: "public" },
       sort: "name",
       page: 1,
       limit: 100,
@@ -191,7 +193,7 @@ describe("forum home blocks", () => {
     });
 
     expect(mocks.contentFind).toHaveBeenCalledWith("community-posts", {
-      where: { status: "published", pinned: false },
+      where: { status: "published", audience: "public", pinned: false },
       sort: "-createdAt",
       page: 1,
       limit: 50,
@@ -260,7 +262,7 @@ describe("forum home blocks", () => {
     });
 
     expect(mocks.contentFind).toHaveBeenCalledWith("community-posts", {
-      where: { status: "published", pinned: false },
+      where: { status: "published", audience: "public", pinned: false },
       sort: "-createdAt",
       page: 1,
       limit: 200,
@@ -289,7 +291,7 @@ describe("forum home blocks", () => {
     });
 
     expect(mocks.contentFind).toHaveBeenCalledWith("community-posts", {
-      where: { status: "published", pinned: true, board: "board-1" },
+      where: { status: "published", audience: "public", pinned: true, board: "board-1" },
       sort: "-createdAt",
       page: 1,
       limit: 5,

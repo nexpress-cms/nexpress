@@ -38,6 +38,19 @@ Every document includes `id`, canonical `status`, `createdBy`, `updatedBy`,
 `createdAt` and `updatedAt`; slug, i18n, member-author, and framework
 `publishedAt` fields appear when their collection capabilities require them.
 
+Collections that opt into `community.audience: true` additionally declare a
+required top-level `audience` select with the exact `public`, `members`, and
+`private` values and `defaultValue: "public"`. This content audience does not
+replace the framework `visibility` envelope: a live audience row still
+requires `status="published"` and `visibility="public"`. Core applies the
+declaration to public discovery and community target operations and fails
+closed on malformed persisted values. The top-level `audience` field name is
+reserved for this declaration so schema generation, runtime authorization, and
+Doctor all interpret the persisted column identically.
+An optional `community.audienceCategoryField` may name the document `id` or one
+required top-level single relationship; private reads then include an exact
+moderator grant for that projected category scope.
+
 `_status` is only a REST write sentinel. It selects the requested transition
 and is never stored or returned. The persisted and response field is `status`.
 

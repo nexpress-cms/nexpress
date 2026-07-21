@@ -537,6 +537,13 @@ export async function updateMemberDocument(
       kind: "document.mention",
       data,
       previousHandles,
+      canNotify: async (recipientId) => {
+        const { npCanReadCommunityDocument } = await import("../community/audience.js");
+        return npCanReadCommunityDocument(config, result.doc, {
+          kind: "member",
+          memberId: recipientId,
+        });
+      },
       payload: {
         targetType: collection,
         targetId: docId,
@@ -669,6 +676,13 @@ export async function createMemberDocument(
       actorMemberId: memberId,
       kind: "document.mention",
       data,
+      canNotify: async (recipientId) => {
+        const { npCanReadCommunityDocument } = await import("../community/audience.js");
+        return npCanReadCommunityDocument(config, result.doc, {
+          kind: "member",
+          memberId: recipientId,
+        });
+      },
       payload: {
         targetType: collection,
         targetId: documentId,
@@ -1871,6 +1885,13 @@ export async function promoteMemberDocument(
           actorMemberId: memberAuthorId,
           kind: "document.mention",
           data: persistedDoc,
+          canNotify: async (recipientId) => {
+            const { npCanReadCommunityDocument } = await import("../community/audience.js");
+            return npCanReadCommunityDocument(config, persistedDoc, {
+              kind: "member",
+              memberId: recipientId,
+            });
+          },
           payload: {
             targetType: collection,
             targetId: docId,
@@ -2102,6 +2123,13 @@ export async function npApplyMemberThreadModeration(
               actorMemberId: ownerId,
               kind: "document.mention",
               data: result.doc,
+              canNotify: async (recipientId) => {
+                const { npCanReadCommunityDocument } = await import("../community/audience.js");
+                return npCanReadCommunityDocument(config, result.doc, {
+                  kind: "member",
+                  memberId: recipientId,
+                });
+              },
               payload: {
                 targetType: input.collection,
                 targetId: input.documentId,

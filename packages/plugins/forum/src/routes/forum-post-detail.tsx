@@ -6,6 +6,7 @@ import {
 import {
   getDocumentModerationPermissions,
   listMemberDocumentReportCases,
+  npCanReadCommunityDocument,
 } from "@nexpress/core/community";
 import { npToReportWireRow } from "@nexpress/core/community-contract";
 import { isNpRichTextContent } from "@nexpress/core/fields";
@@ -35,9 +36,14 @@ import {
   type NpForumRuntime,
 } from "../runtime.js";
 
-async function getPost(runtime: NpForumRuntime, boardKey: string, postId: string) {
+async function getPost(
+  runtime: NpForumRuntime,
+  boardKey: string,
+  postId: string,
+  memberId: string | null = null,
+) {
   if (!isForumPostId(postId)) return null;
-  const board = await findForumBoardByKey(runtime, boardKey);
+  const board = await findForumBoardByKey(runtime, boardKey, memberId);
   if (!board) return null;
   const post = await getDocumentById<ForumPostDocument>(runtime.collections.posts, postId);
   if (!post || post.board !== board.id) return null;
@@ -47,7 +53,10 @@ async function getPost(runtime: NpForumRuntime, boardKey: string, postId: string
 export function createForumPostMetadata(runtime: NpForumRuntime) {
   return async function forumPostMetadata({ params }: NpRouteRenderProps) {
     const result = await getPost(runtime, params.boardKey ?? "", params.postId ?? "");
-    const published = result?.post.status === "published" && result.post.visibility === "public";
+    const published =
+      result?.post.status === "published" &&
+      result.post.visibility === "public" &&
+      result.post.audience === "public";
     return buildPageMetadata({
       title: published ? result.post.title : "Forum post",
       description: null,
@@ -63,20 +72,28 @@ export function createForumPostMetadata(runtime: NpForumRuntime) {
 
 export function createForumPostDetailRoute(runtime: NpForumRuntime) {
   return async function ForumPostDetailRoute({ params }: NpRouteRenderProps) {
-    const result = await getPost(runtime, params.boardKey ?? "", params.postId ?? "");
+    const member = await getSiteMember();
+    const result = await getPost(
+      runtime,
+      params.boardKey ?? "",
+      params.postId ?? "",
+      member?.id ?? null,
+    );
     if (!result) notFound();
     const { board, post } = result;
-    const member = await getSiteMember();
     const isOwner = member !== null && post.memberAuthorId === member.id;
-    const isPublic = post.status === "published" && post.visibility === "public";
+    const isPublished = post.status === "published" && post.visibility === "public";
+    const isPublic = isPublished && post.audience === "public";
     const permissions = member
       ? await getDocumentModerationPermissions(member.id, runtime.collections.posts, post.id)
       : null;
     if (
-      (post.status !== "published" || post.visibility !== "public") &&
-      !isOwner &&
-      permissions?.editThread !== true &&
-      !permissions?.actions.includes("restore")
+      !(await npCanReadCommunityDocument(
+        runtime.collections.posts,
+        post,
+        member ? { kind: "member", memberId: member.id } : null,
+        { allowUnpublished: true },
+      ))
     ) {
       notFound();
     }
@@ -91,101 +108,99 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
         ? listMemberDocumentReportCases(member.id, runtime.collections.posts, post.id)
         : Promise.resolve([]),
     ]);
-    const comments =
-      post.status === "published" ? (
-        <Comments
-          collectionSlug={runtime.collections.posts}
-          documentId={post.id}
-          locked={post.locked === true}
-          lockedMessage={messages.commentsLocked}
-          locale={messages.locale}
-          labels={{
-            title: messages.commentsCount,
-            empty: messages.commentsEmpty,
-            loadFailed: messages.commentsLoadFailed,
-            sortLabel: messages.commentsSort,
-            oldest: messages.commentsOldest,
-            newest: messages.commentsNewest,
-            top: messages.commentsTop,
-            signIn: messages.signIn,
-            signInPrompt: messages.commentsSignInPrompt,
-            placeholder: messages.commentPlaceholder,
-            post: messages.commentPost,
-            posting: messages.commentPosting,
-            postFailed: messages.commentPostFailed,
-            reply: messages.commentReply,
-            replyingTo: messages.commentReplyingTo,
-            replyPlaceholder: messages.commentReplyPlaceholder,
-            postReply: messages.commentPostReply,
-            edit: messages.edit,
-            save: messages.save,
-            saving: messages.saving,
-            editFailed: messages.commentEditFailed,
-            delete: messages.delete,
-            deleting: messages.deleting,
-            deleteConfirm: messages.commentDeleteConfirm,
-            deleteFailed: messages.commentDeleteFailed,
-            cancel: messages.cancel,
-            edited: messages.commentEdited,
-            imported: messages.commentImported,
-            importedTitle: messages.commentImportedTitle,
-            unknownAuthor: messages.commentUnknownAuthor,
-            previous: messages.previous,
-            next: messages.next,
-            page: messages.pagination,
-            like: messages.recommend,
-            unlike: messages.recommended,
-            signInToReact: messages.commentSignInToReact,
-            reactionFailed: messages.engagementFailed,
-            report: messages.report,
-            reportTitle: messages.commentReportTitle,
-            reportHelp: messages.reportHelp,
-            reportReasonLabel: messages.commentReportReasonLabel,
-            reportPlaceholder: messages.reportPlaceholder,
-            reportSubmit: messages.reportSubmit,
-            reportSubmitting: messages.reportSubmitting,
-            reportSuccess: messages.reportSuccess,
-            close: messages.reportClose,
-            reportFailed: messages.reportFailed,
-            mute: messages.commentMute,
-            muting: messages.commentMuting,
-            muteTitle: messages.commentMuteTitle,
-            muteConfirm: messages.commentMuteConfirm,
-            muteFailed: messages.commentMuteFailed,
-            hide: messages.hideComment,
-            hiding: messages.hidingComment,
-            hideFailed: messages.moderationActionFailed,
-            restore: messages.restoreComment,
-            restoring: messages.restoringComment,
-            restoreFailed: messages.moderationActionFailed,
-          }}
-          moderation={
-            permissions
-              ? {
-                  editAny: permissions.editComments,
-                  deleteAny: permissions.deleteComments,
-                  hide: permissions.hideComments,
-                  restore: permissions.restoreComments,
-                }
-              : undefined
-          }
-        />
-      ) : null;
+    const comments = isPublished ? (
+      <Comments
+        collectionSlug={runtime.collections.posts}
+        documentId={post.id}
+        locked={post.locked === true}
+        lockedMessage={messages.commentsLocked}
+        locale={messages.locale}
+        labels={{
+          title: messages.commentsCount,
+          empty: messages.commentsEmpty,
+          loadFailed: messages.commentsLoadFailed,
+          sortLabel: messages.commentsSort,
+          oldest: messages.commentsOldest,
+          newest: messages.commentsNewest,
+          top: messages.commentsTop,
+          signIn: messages.signIn,
+          signInPrompt: messages.commentsSignInPrompt,
+          placeholder: messages.commentPlaceholder,
+          post: messages.commentPost,
+          posting: messages.commentPosting,
+          postFailed: messages.commentPostFailed,
+          reply: messages.commentReply,
+          replyingTo: messages.commentReplyingTo,
+          replyPlaceholder: messages.commentReplyPlaceholder,
+          postReply: messages.commentPostReply,
+          edit: messages.edit,
+          save: messages.save,
+          saving: messages.saving,
+          editFailed: messages.commentEditFailed,
+          delete: messages.delete,
+          deleting: messages.deleting,
+          deleteConfirm: messages.commentDeleteConfirm,
+          deleteFailed: messages.commentDeleteFailed,
+          cancel: messages.cancel,
+          edited: messages.commentEdited,
+          imported: messages.commentImported,
+          importedTitle: messages.commentImportedTitle,
+          unknownAuthor: messages.commentUnknownAuthor,
+          previous: messages.previous,
+          next: messages.next,
+          page: messages.pagination,
+          like: messages.recommend,
+          unlike: messages.recommended,
+          signInToReact: messages.commentSignInToReact,
+          reactionFailed: messages.engagementFailed,
+          report: messages.report,
+          reportTitle: messages.commentReportTitle,
+          reportHelp: messages.reportHelp,
+          reportReasonLabel: messages.commentReportReasonLabel,
+          reportPlaceholder: messages.reportPlaceholder,
+          reportSubmit: messages.reportSubmit,
+          reportSubmitting: messages.reportSubmitting,
+          reportSuccess: messages.reportSuccess,
+          close: messages.reportClose,
+          reportFailed: messages.reportFailed,
+          mute: messages.commentMute,
+          muting: messages.commentMuting,
+          muteTitle: messages.commentMuteTitle,
+          muteConfirm: messages.commentMuteConfirm,
+          muteFailed: messages.commentMuteFailed,
+          hide: messages.hideComment,
+          hiding: messages.hidingComment,
+          hideFailed: messages.moderationActionFailed,
+          restore: messages.restoreComment,
+          restoring: messages.restoringComment,
+          restoreFailed: messages.moderationActionFailed,
+        }}
+        moderation={
+          permissions
+            ? {
+                editAny: permissions.editComments,
+                deleteAny: permissions.deleteComments,
+                hide: permissions.hideComments,
+                restore: permissions.restoreComments,
+              }
+            : undefined
+        }
+      />
+    ) : null;
 
-    const jsonLd =
-      post.status === "published" && post.visibility === "public"
-        ? await (async () => {
-            const settings = await getSiteSeoSettings();
-            return buildDiscussionForumPostingJsonLd({
-              url: `${settings.siteUrl.replace(/\/+$/u, "")}${runtime.basePath}/${board.key}/${post.id}`,
-              headline: post.title,
-              description: null,
-              datePublished: post.createdAt,
-              dateModified: post.updatedAt,
-              authorName: summary.author?.displayName ?? null,
-            });
-          })()
-        : null;
+    const jsonLd = isPublic
+      ? await (async () => {
+          const settings = await getSiteSeoSettings();
+          return buildDiscussionForumPostingJsonLd({
+            url: `${settings.siteUrl.replace(/\/+$/u, "")}${runtime.basePath}/${board.key}/${post.id}`,
+            headline: post.title,
+            description: null,
+            datePublished: post.createdAt,
+            dateModified: post.updatedAt,
+            authorName: summary.author?.displayName ?? null,
+          });
+        })()
+      : null;
     const page = await resolveForumSkin(runtime, board.skinId).renderPostDetail({
       basePath: runtime.basePath,
       board,
@@ -222,10 +237,7 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
           />
         ) : null,
       reportAction:
-        member !== null &&
-        !isOwner &&
-        post.status === "published" &&
-        post.visibility === "public" ? (
+        member !== null && !isOwner && isPublished ? (
           <ForumPostReportAction
             collectionSlug={runtime.collections.posts}
             postId={post.id}
@@ -243,7 +255,7 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
             }}
           />
         ) : null,
-      subscriptionAction: isPublic ? (
+      subscriptionAction: isPublished ? (
         <ForumSubscriptionAction
           targetType={runtime.collections.posts}
           targetId={post.id}
@@ -284,7 +296,7 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
           targetId={post.id}
           initial={summary.engagement}
           locale={messages.locale}
-          isAuthenticated={member !== null && isPublic}
+          isAuthenticated={member !== null}
           trackViews={isPublic}
           labels={{
             views: messages.views,

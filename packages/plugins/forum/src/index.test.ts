@@ -144,12 +144,18 @@ describe("forum factory", () => {
       create: true,
       update: true,
       delete: true,
-      writableFields: ["board", "title", "body", "category", "attachments"],
+      writableFields: ["board", "title", "body", "category", "attachments", "audience"],
     });
     expect(forum.collections[1].community?.memberWrite?.access?.create).toBeTypeOf("function");
     expect(forum.collections[1].community?.memberWrite?.access?.update).toBeTypeOf("function");
     expect(forum.collections[1].community?.memberWrite?.resolveCreateStatus).toBeTypeOf("function");
+    expect(forum.collections[0].community).toMatchObject({
+      audience: true,
+      audienceCategoryField: "id",
+      follows: true,
+    });
     expect(forum.collections[1].community).toMatchObject({
+      audience: true,
       comments: true,
       reactions: true,
       views: true,
@@ -163,42 +169,60 @@ describe("forum factory", () => {
     ).toBe("/boards/free/2d4af53e-6f78-43e0-8682-67f5a7d2b92e");
   });
 
-  it("keeps published board URL keys immutable", () => {
+  it("keeps published board URL keys immutable", async () => {
     const forum = createForum();
     const beforeUpdate = forum.collections[0].hooks?.beforeUpdate?.[0];
     expect(beforeUpdate).toBeTypeOf("function");
-    expect(() =>
+    await expect(
       beforeUpdate?.({
-        data: { key: "renamed", categories: [] },
-        originalDoc: { key: "free" },
+        data: { key: "renamed", audience: "public", categories: [] },
+        originalDoc: { id: "board-1", key: "free", audience: "public" },
         user: null,
         principal: null,
         collection: "forum-boards",
       }),
-    ).toThrow(/cannot be changed/u);
+    ).rejects.toThrow(/cannot be changed/u);
   });
 
-  it("keeps existing board category keys stable while allowing labels to change", () => {
+  it("keeps existing board category keys stable while allowing labels to change", async () => {
     const forum = createForum();
     const beforeUpdate = forum.collections[0].hooks?.beforeUpdate?.[0];
-    expect(() =>
+    await expect(
       beforeUpdate?.({
-        data: { key: "free", categories: [{ key: "new", label: "신규" }] },
-        originalDoc: { key: "free", categories: [{ key: "question", label: "질문" }] },
+        data: {
+          key: "free",
+          audience: "public",
+          categories: [{ key: "new", label: "신규" }],
+        },
+        originalDoc: {
+          id: "board-1",
+          key: "free",
+          audience: "public",
+          categories: [{ key: "question", label: "질문" }],
+        },
         user: null,
         principal: null,
         collection: "forum-boards",
       }),
-    ).toThrow(/category keys cannot be removed/u);
-    expect(() =>
+    ).rejects.toThrow(/category keys cannot be removed/u);
+    await expect(
       beforeUpdate?.({
-        data: { key: "free", categories: [{ key: "question", label: "문의" }] },
-        originalDoc: { key: "free", categories: [{ key: "question", label: "질문" }] },
+        data: {
+          key: "free",
+          audience: "public",
+          categories: [{ key: "question", label: "문의" }],
+        },
+        originalDoc: {
+          id: "board-1",
+          key: "free",
+          audience: "public",
+          categories: [{ key: "question", label: "질문" }],
+        },
         user: null,
         principal: null,
         collection: "forum-boards",
       }),
-    ).not.toThrow();
+    ).resolves.toMatchObject({ key: "free" });
   });
 
   it("rejects malformed paths and skin registries at definition time", () => {

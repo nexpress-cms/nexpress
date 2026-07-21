@@ -14,12 +14,14 @@ import type {
   NpFollowTarget,
 } from "../community-contract/types.js";
 import { getDb } from "../db/runtime.js";
+import { getCollectionConfig } from "../collections/registry.js";
 import { npFollows, npMembers } from "../db/schema/community.js";
 import { NpNotFoundError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { withMemberWrite } from "./can.js";
+import { npCanReadCommunityDocument } from "./audience.js";
 import { createNotification } from "./notifications.js";
 import { npResolveDocumentEngagementTarget } from "./engagement-target.js";
 
@@ -79,6 +81,7 @@ async function doFollow(input: NpFollowInput): Promise<NpFollowRow> {
       input.targetType,
       input.targetId,
       "follows",
+      { principal: { kind: "member", memberId: input.followerId } },
     );
     if (!target.href) {
       throw new NpValidationError("Invalid input", [
@@ -264,13 +267,33 @@ export async function notifyFollowers(input: NpNotifyFollowersInput): Promise<nu
   );
   if (actorMemberId) excluded.add(actorMemberId);
 
-  // This also pins the subject to the current site and refuses notifications
-  // for a disabled/private/deleted subscription target.
+  // Pin the subject to the current site. Recipient-specific audience checks
+  // happen below so member-only and private subscriptions remain useful
+  // without notifying somebody whose access was later revoked.
   const subject = await npResolveDocumentEngagementTarget(
     payload.subjectType,
     payload.subjectId,
     "follows",
+    { requirePublic: false },
   );
+  if (subject.document.status !== "published" || subject.document.visibility !== "public") {
+    throw new NpNotFoundError(payload.subjectType, payload.subjectId);
+  }
+  const subjectConfig = getCollectionConfig(payload.subjectType);
+  const activityTarget =
+    payload.targetType === payload.subjectType && payload.targetId === payload.subjectId
+      ? subject
+      : await npResolveDocumentEngagementTarget(payload.targetType, payload.targetId, "follows", {
+          requirePublic: false,
+        });
+  if (
+    activityTarget.siteId !== subject.siteId ||
+    activityTarget.document.status !== "published" ||
+    activityTarget.document.visibility !== "public"
+  ) {
+    throw new NpNotFoundError(payload.targetType, payload.targetId);
+  }
+  const activityTargetConfig = getCollectionConfig(payload.targetType);
   const db = getDb();
   let cursor: string | null = null;
   let notified = 0;
@@ -299,6 +322,18 @@ export async function notifyFollowers(input: NpNotifyFollowersInput): Promise<nu
     for (const row of rows) {
       cursor = row.id;
       if (excluded.has(row.followerId)) continue;
+      if (
+        !(await npCanReadCommunityDocument(subjectConfig, subject.document, {
+          kind: "member",
+          memberId: row.followerId,
+        })) ||
+        !(await npCanReadCommunityDocument(activityTargetConfig, activityTarget.document, {
+          kind: "member",
+          memberId: row.followerId,
+        }))
+      ) {
+        continue;
+      }
       const inserted = await createNotification({
         memberId: row.followerId,
         kind: "follow.activity",

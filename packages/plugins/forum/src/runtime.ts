@@ -1,5 +1,6 @@
 import { findDocuments, getDocumentById, getMemberProfiles } from "@nexpress/core";
-import { npListContentEngagement } from "@nexpress/core/community";
+import { npCanReadCommunityDocument, npListContentEngagement } from "@nexpress/core/community";
+import { npRequireCommunityDocumentAudience } from "@nexpress/core/community-contract";
 import { getCurrentLocale, t } from "@nexpress/core/i18n";
 import {
   getMediaById,
@@ -37,6 +38,7 @@ export interface ForumBoardDocument extends Record<string, unknown> {
   name: string;
   description?: string | null;
   skin: string;
+  audience: unknown;
   writeMode: string;
   moderation: string;
   commentsEnabled: boolean;
@@ -59,6 +61,7 @@ export interface ForumPostDocument extends Record<string, unknown> {
   moderationHidden: boolean;
   pinned?: boolean | null;
   locked?: boolean | null;
+  audience: unknown;
   attachments?: unknown;
   memberAuthorId: string | null;
   createdAt: Date;
@@ -131,6 +134,7 @@ export function normalizeForumBoard(value: ForumBoardDocument): NpForumBoard {
         ? value.description.trim()
         : null,
     skinId: value.skin,
+    audience: npRequireCommunityDocumentAudience(value.audience, "forum.board.audience"),
     writeMode: value.writeMode,
     moderation: value.moderation,
     commentsEnabled: value.commentsEnabled,
@@ -144,19 +148,61 @@ export function normalizeForumBoard(value: ForumBoardDocument): NpForumBoard {
   };
 }
 
-export async function listForumBoards(runtime: NpForumRuntime): Promise<NpForumBoard[]> {
-  const result = await findDocuments<ForumBoardDocument>(runtime.collections.boards, {
-    where: { status: "published" },
+async function canReadForumBoard(
+  runtime: NpForumRuntime,
+  document: ForumBoardDocument,
+  memberId: string | null,
+): Promise<boolean> {
+  return npCanReadCommunityDocument(
+    runtime.collections.boards,
+    document,
+    memberId ? { kind: "member", memberId } : null,
+  );
+}
+
+export async function listForumBoards(
+  runtime: NpForumRuntime,
+  memberId: string | null = null,
+): Promise<NpForumBoard[]> {
+  const visible = await findDocuments<ForumBoardDocument>(runtime.collections.boards, {
+    where: {
+      status: "published",
+      audience: memberId ? ["public", "members"] : "public",
+    },
     sort: "name",
     page: 1,
     limit: 100,
   });
-  return result.docs.map(normalizeForumBoard);
+  if (!memberId) return visible.docs.map(normalizeForumBoard);
+
+  // Fetch moderator-only boards separately so inaccessible private rows never
+  // consume the public/member result window. Merge and re-bound after the
+  // recipient-specific capability check.
+  const restricted = await findDocuments<ForumBoardDocument>(runtime.collections.boards, {
+    where: { status: "published", audience: "private" },
+    sort: "name",
+    page: 1,
+    limit: 100,
+  });
+  const readableRestricted = await Promise.all(
+    restricted.docs.map(async (document) => ({
+      document,
+      readable: await canReadForumBoard(runtime, document, memberId),
+    })),
+  );
+  return [
+    ...visible.docs,
+    ...readableRestricted.filter((entry) => entry.readable).map((entry) => entry.document),
+  ]
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .slice(0, 100)
+    .map(normalizeForumBoard);
 }
 
 export async function findForumBoardByKey(
   runtime: NpForumRuntime,
   key: string,
+  memberId: string | null = null,
 ): Promise<NpForumBoard | null> {
   const result = await findDocuments<ForumBoardDocument>(runtime.collections.boards, {
     where: { slug: key, status: "published" },
@@ -164,15 +210,18 @@ export async function findForumBoardByKey(
     limit: 1,
   });
   const board = result.docs[0];
-  return board ? normalizeForumBoard(board) : null;
+  return board && (await canReadForumBoard(runtime, board, memberId))
+    ? normalizeForumBoard(board)
+    : null;
 }
 
 export async function findForumBoardById(
   runtime: NpForumRuntime,
   id: string,
+  memberId: string | null = null,
 ): Promise<NpForumBoard | null> {
   const board = await getDocumentById<ForumBoardDocument>(runtime.collections.boards, id);
-  return board && board.status === "published" && board.visibility === "public"
+  return board && (await canReadForumBoard(runtime, board, memberId))
     ? normalizeForumBoard(board)
     : null;
 }
@@ -223,6 +272,7 @@ export async function enrichForumPosts(
       category: typeof document.category === "string" ? document.category : null,
       pinned: document.pinned === true,
       locked: document.locked === true,
+      audience: npRequireCommunityDocumentAudience(document.audience, "forum.post.audience"),
       status: document.status,
       createdAt: document.createdAt,
       updatedAt: document.updatedAt,
@@ -316,6 +366,11 @@ export async function getForumMessages(): Promise<NpForumMessages> {
       "subscriptionFailed",
       "pagination",
       "boardPolicy",
+      "audience",
+      "audiencePublic",
+      "audienceMembers",
+      "audiencePrivateBoard",
+      "audiencePrivate",
       "writeMembers",
       "writeStaff",
       "writeClosed",
@@ -446,6 +501,11 @@ export async function getForumMessages(): Promise<NpForumMessages> {
     subscriptionFailed,
     pagination,
     boardPolicy,
+    audience,
+    audiencePublic,
+    audienceMembers,
+    audiencePrivateBoard,
+    audiencePrivate,
     writeMembers,
     writeStaff,
     writeClosed,
@@ -576,6 +636,11 @@ export async function getForumMessages(): Promise<NpForumMessages> {
     subscriptionFailed: subscriptionFailed ?? "Could not update this subscription.",
     pagination: pagination ?? "Pagination",
     boardPolicy: boardPolicy ?? "Board policy",
+    audience: audience ?? "Audience",
+    audiencePublic: audiencePublic ?? "Everyone",
+    audienceMembers: audienceMembers ?? "Signed-in members",
+    audiencePrivateBoard: audiencePrivateBoard ?? "Moderators only",
+    audiencePrivate: audiencePrivate ?? "Author and moderators",
     writeMembers: writeMembers ?? "Members can post",
     writeStaff: writeStaff ?? "Staff posts only",
     writeClosed: writeClosed ?? "Posting closed",

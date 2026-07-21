@@ -111,6 +111,41 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
     expect(result.results.find((r) => r.doc.slug === "native-pumpkin")).toBeUndefined();
   });
 
+  it("does not trust adapter pages for public audience-aware searches", async () => {
+    let adapterCalls = 0;
+    const { searchCollections, setSearchAdapter } = await import("@nexpress/core");
+    setSearchAdapter({
+      kind: "audience-unaware",
+      search: () => {
+        adapterCalls += 1;
+        return {
+          results: [
+            {
+              collection: "forum-posts",
+              doc: {
+                id: "private-result",
+                siteId: "default",
+                status: "published",
+                visibility: "public",
+                audience: "private",
+                title: "Must not escape the adapter",
+              },
+            },
+          ],
+          total: 1,
+          perCollection: { "forum-posts": 1 },
+        };
+      },
+    });
+
+    const result = await searchCollections({
+      q: "private",
+      collections: ["forum-posts"],
+    });
+    expect(adapterCalls).toBe(0);
+    expect(result).toMatchObject({ results: [], total: 0, perCollection: { "forum-posts": 0 } });
+  });
+
   it("adapter returning null falls through to pg tsvector", async () => {
     const staff = await seedUser({ role: "editor" });
     await collectionPOST(
@@ -132,7 +167,7 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
     });
 
     // An explicit canonical slug is preserved by the write contract.
-    const result = await searchCollections({ q: "brown" });
+    const result = await searchCollections({ q: "brown", collections: ["posts"] });
     expect(result.total).toBeGreaterThanOrEqual(1);
     expect(result.results[0]?.doc.slug).toBe("native-brown");
   });
@@ -159,7 +194,7 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
 
     // Should NOT throw — the adapter's error is logged and we
     // fall back to pg.
-    const result = await searchCollections({ q: "walnut" });
+    const result = await searchCollections({ q: "walnut", collections: ["posts"] });
     expect(result.total).toBeGreaterThanOrEqual(1);
   });
 
@@ -182,7 +217,7 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
       search: () => false as never,
     });
 
-    const falseResult = await searchCollections({ q: "chestnut" });
+    const falseResult = await searchCollections({ q: "chestnut", collections: ["posts"] });
     expect(falseResult.results.some((item) => item.doc.slug === "fallback-chestnut")).toBe(true);
     expect(getSearchAdapterDiagnostics()).toEqual(
       expect.objectContaining({
@@ -211,7 +246,7 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
       }),
     });
 
-    const result = await searchCollections({ q: "chestnut" });
+    const result = await searchCollections({ q: "chestnut", collections: ["posts"] });
     expect(result.results.some((item) => item.doc.slug === "fallback-chestnut")).toBe(true);
     expect(getSearchAdapterDiagnostics()).toEqual(
       expect.objectContaining({

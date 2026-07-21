@@ -69,11 +69,11 @@ export async function GET(
       offset,
       order,
       includeHidden,
+      ...(member ? { viewerMemberId: member.id } : {}),
       // Phase 16.1 — apply viewer's mute list. Anonymous
       // viewers see the unfiltered feed; mod-mode
       // (`includeHidden=true`) bypasses mutes because mods
       // need to see everything.
-      ...(member && !includeHidden ? { viewerMemberId: member.id } : {}),
     });
     return npSuccessResponse(
       npRequireCommentListWire({

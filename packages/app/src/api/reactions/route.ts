@@ -42,8 +42,10 @@ export async function GET(request: NextRequest) {
   try {
     await ensureFor("write");
     const target = readTargetFromQuery(request);
-    const counts = await countReactions(target.targetType, target.targetId);
     const member = await optionalMember(request);
+    const counts = await countReactions(target.targetType, target.targetId, {
+      ...(member ? { viewerMemberId: member.id } : {}),
+    });
     const mine = member
       ? await listMemberReactions(target.targetType, target.targetId, member.id)
       : [];

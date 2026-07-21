@@ -39,6 +39,7 @@ const board = {
   name: "자유게시판",
   description: null,
   skinId: "compact",
+  audience: "public" as const,
   writeMode: "members" as const,
   moderation: "published" as const,
   commentsEnabled: true,
@@ -60,6 +61,10 @@ const messages = {
   register: "회원가입",
   category: "분류",
   categoryNone: "없음",
+  audience: "공개 범위",
+  audiencePublic: "전체 공개",
+  audienceMembers: "회원 공개",
+  audiencePrivate: "작성자와 운영자만",
   title: "제목",
   body: "내용",
   loadingEditor: "불러오는 중",
@@ -119,6 +124,7 @@ describe("forum composer routes", () => {
       title: "기존 글",
       body: null,
       category: null,
+      audience: "private",
       attachments: [],
     });
     mocks.resolveForumAttachments.mockResolvedValue([]);
@@ -184,6 +190,7 @@ describe("forum composer routes", () => {
       title: "검토할 글",
       body: null,
       category: null,
+      audience: "members",
       attachments: [],
     });
     mocks.getDocumentModerationPermissions.mockResolvedValue({ editThread: true });

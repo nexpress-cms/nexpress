@@ -164,13 +164,18 @@ export async function searchCollections(opts: NpSearchRequestInput): Promise<NpS
     context.visibility === "public"
       ? { status: "published", visibility: "public", siteId: context.siteId }
       : { visibility: "*", siteId: context.siteId };
+  const containsAudienceCollection =
+    context.visibility === "public" &&
+    slugs.some((slug) => getCollectionConfig(slug).community?.audience === true);
 
   // External engines own only the normalized candidate page. Core validates
   // its complete result/site/visibility/count contract before returning it;
   // malformed or throwing adapters are diagnosed and fall back to Postgres.
   // The adapter can deliberately return null when its index is unavailable.
+  // Public searches involving audience-aware collections stay on Postgres
+  // until the adapter context can express and prove the same audience filter.
   const adapter = getSearchAdapter();
-  if (adapter) {
+  if (adapter && !containsAudienceCollection) {
     try {
       const adapterResult = await adapter.search(context);
       if (adapterResult !== null && adapterResult !== undefined) {
@@ -209,10 +214,14 @@ export async function searchCollections(opts: NpSearchRequestInput): Promise<NpS
     // a config check here.
     const config = getCollectionConfig(slug);
     const collectionLocale = config.i18n && context.locale ? context.locale : undefined;
+    const audienceWhere =
+      context.visibility === "public" && config.community?.audience === true
+        ? { audience: "public" as const }
+        : {};
 
     const page = await findDocuments(slug, {
       search: query,
-      where: baseWhere,
+      where: { ...baseWhere, ...audienceWhere },
       limit: perCollectionLimit,
       page: 1,
       ...(collectionLocale ? { locale: collectionLocale } : {}),

@@ -10,6 +10,18 @@ import type {
 } from "../types.js";
 import { ForumEngagementCounts } from "./engagement.js";
 
+function audienceLabel(
+  audience: NpForumPostSummary["audience"],
+  messages: NpForumPostListSkinProps["messages"],
+  privateLabel = messages.audiencePrivate,
+): string {
+  return audience === "public"
+    ? messages.audiencePublic
+    : audience === "members"
+      ? messages.audienceMembers
+      : privateLabel;
+}
+
 function author(post: NpForumPostSummary, staffLabel: string) {
   return post.author ? (
     <Link href={`/u/${post.author.handle}`} className="np-forum-author">
@@ -54,6 +66,9 @@ function PostRows({
         {post.locked ? <span className="np-forum-state-badge">{messages.locked}</span> : null}
         {post.status !== "published" ? (
           <span className="np-forum-state-badge">{messages.pending}</span>
+        ) : null}
+        {post.audience !== "public" ? (
+          <span className="np-forum-state-badge">{audienceLabel(post.audience, messages)}</span>
         ) : null}
         {(post.unresolvedReportCount ?? 0) > 0 ? (
           <span className="np-forum-report-badge">
@@ -109,6 +124,11 @@ function renderBoardIndex({ basePath, boards, messages }: NpForumBoardIndexSkinP
               <Link href={`${basePath}/${board.key}`}>
                 <strong>{board.name}</strong>
                 {board.description ? <span>{board.description}</span> : null}
+                {board.audience !== "public" ? (
+                  <small>
+                    {audienceLabel(board.audience, messages, messages.audiencePrivateBoard)}
+                  </small>
+                ) : null}
               </Link>
             </li>
           ))}
@@ -323,6 +343,9 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
             ) : null}
             {post.pinned ? <span className="np-forum-notice-badge">{messages.notice}</span> : null}
             {post.locked ? <span className="np-forum-state-badge">{messages.locked}</span> : null}
+            {post.audience !== "public" ? (
+              <span className="np-forum-state-badge">{audienceLabel(post.audience, messages)}</span>
+            ) : null}
           </div>
           <h1>{post.title}</h1>
           <div className="np-forum-post-meta">
