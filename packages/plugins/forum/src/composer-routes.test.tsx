@@ -8,10 +8,15 @@ const mocks = vi.hoisted(() => ({
   resolveForumSkin: vi.fn(),
   renderPostComposer: vi.fn(),
   resolveForumAttachments: vi.fn(),
+  getDocumentModerationPermissions: vi.fn(),
 }));
 
 vi.mock("@nexpress/core", () => ({
   getDocumentById: mocks.getDocumentById,
+}));
+
+vi.mock("@nexpress/core/community", () => ({
+  getDocumentModerationPermissions: mocks.getDocumentModerationPermissions,
 }));
 
 vi.mock("@nexpress/next", () => ({
@@ -117,6 +122,7 @@ describe("forum composer routes", () => {
       attachments: [],
     });
     mocks.resolveForumAttachments.mockResolvedValue([]);
+    mocks.getDocumentModerationPermissions.mockResolvedValue({ editThread: false });
     mocks.resolveForumSkin.mockReturnValue({
       renderPostComposer: mocks.renderPostComposer,
     });
@@ -167,6 +173,29 @@ describe("forum composer routes", () => {
     );
     expect(mocks.resolveForumSkin).toHaveBeenCalledWith(runtime, "compact");
     expect(html).toContain('data-selected-composer="edit"');
+    expect(html).toContain('data-forum-form="edit"');
+  });
+
+  it("allows a scoped moderator to use the same route-owned edit form", async () => {
+    mocks.getDocumentById.mockResolvedValue({
+      id: routeProps.params.postId,
+      board: board.id,
+      memberAuthorId: "author-1",
+      title: "검토할 글",
+      body: null,
+      category: null,
+      attachments: [],
+    });
+    mocks.getDocumentModerationPermissions.mockResolvedValue({ editThread: true });
+
+    const page = await createForumPostEditRoute(runtime)(routeProps as never);
+    const html = renderToStaticMarkup(<>{page}</>);
+
+    expect(mocks.getDocumentModerationPermissions).toHaveBeenCalledWith(
+      "member-1",
+      "forum-posts",
+      routeProps.params.postId,
+    );
     expect(html).toContain('data-forum-form="edit"');
   });
 });

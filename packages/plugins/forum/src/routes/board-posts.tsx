@@ -1,4 +1,9 @@
-import { findDocuments, type NpFindWhere } from "@nexpress/core";
+import { findDocuments, getCollectionConfig, type NpFindWhere } from "@nexpress/core";
+import {
+  countUnresolvedDocumentReports,
+  memberCapabilities,
+  npIsMemberModeratableDocument,
+} from "@nexpress/core/community";
 import { buildPageMetadata, getSiteMember } from "@nexpress/next";
 import type { NpRouteRenderProps } from "@nexpress/next";
 import { notFound } from "next/navigation";
@@ -39,16 +44,31 @@ export function createBoardPostsRoute(runtime: NpForumRuntime) {
     if (!parsedQuery) notFound();
     if (parsedQuery.showMine && !member) notFound();
     const query = parsedQuery;
+    const boardCapabilities = member
+      ? await memberCapabilities(member.id, ["hide-thread", "resolve-report"], {
+          type: "category",
+          id: board.id,
+          scopes: [
+            { type: "category", id: board.id },
+            { type: "collection", id: runtime.collections.posts },
+          ],
+        })
+      : new Set<"hide-thread" | "resolve-report">();
+    const canViewPending = boardCapabilities.has("hide-thread");
+    const canReviewReports = boardCapabilities.has("resolve-report");
     const where: NpFindWhere<ForumPostDocument> = { board: board.id };
     if (query.showMine && member) {
       where.memberAuthorId = member.id;
-    } else {
+    } else if (!canViewPending) {
       where.status = "published";
       where.pinned = false;
+    } else {
+      where.status = ["published", "pending"];
     }
     if (query.category) where.category = query.category;
 
-    const showPinned = !query.showMine && !query.search && !query.category && query.page === 1;
+    const showPinned =
+      !canViewPending && !query.showMine && !query.search && !query.category && query.page === 1;
 
     const [result, pinnedResult, messages] = await Promise.all([
       findDocuments<ForumPostDocument>(runtime.collections.posts, {
@@ -68,16 +88,31 @@ export function createBoardPostsRoute(runtime: NpForumRuntime) {
       getForumMessages(),
     ]);
     if (query.page > Math.max(1, result.totalPages)) notFound();
-    const [posts, pinnedPosts] = await Promise.all([
-      enrichForumPosts(result.docs, runtime.collections.posts),
+    const postConfig = getCollectionConfig(runtime.collections.posts);
+    const visibleDocs = canViewPending
+      ? result.docs.filter((post) => npIsMemberModeratableDocument(postConfig, post))
+      : result.docs;
+    const [posts, pinnedPosts, reportCounts] = await Promise.all([
+      enrichForumPosts(visibleDocs, runtime.collections.posts),
       enrichForumPosts(pinnedResult.docs, runtime.collections.posts),
+      canReviewReports
+        ? countUnresolvedDocumentReports(
+            runtime.collections.posts,
+            [...visibleDocs, ...pinnedResult.docs].map((post) => post.id),
+          )
+        : Promise.resolve(new Map<string, number>()),
     ]);
+    const withReportCounts = (items: typeof posts) =>
+      items.map((post) => ({
+        ...post,
+        unresolvedReportCount: reportCounts.get(post.id) ?? 0,
+      }));
 
     return resolveForumSkin(runtime, board.skinId).renderPostList({
       basePath: runtime.basePath,
       board,
-      posts,
-      pinnedPosts,
+      posts: withReportCounts(posts),
+      pinnedPosts: withReportCounts(pinnedPosts),
       totalPages: result.totalPages,
       totalPosts: result.totalDocs,
       query,

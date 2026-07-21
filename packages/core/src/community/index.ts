@@ -6,7 +6,16 @@ export {
 } from "./roles.js";
 export type { CommunityCapability, CommunityRoleDefinition, CommunityScope } from "./roles.js";
 
-export { memberCan, assertNotBanned, withMemberWrite } from "./can.js";
+export { memberCan, memberCapabilities, assertNotBanned, withMemberWrite } from "./can.js";
+export {
+  npIsMemberModeratableDocument,
+  npProjectDocumentCommunityScopes,
+  npResolveDocumentCommunityTarget,
+} from "./target-scopes.js";
+export type { NpCommunityTargetScope, NpResolvedDocumentCommunityTarget } from "./target-scopes.js";
+export { getDocumentModerationPermissions, moderateMemberThread } from "./document-moderation.js";
+export type { NpDocumentModerationPermissions } from "./document-moderation.js";
+export { listCommunityScopeOptions } from "./scope-options.js";
 
 export { setSpamAdapter, getSpamAdapter, resetSpamAdapter } from "./spam-adapter.js";
 export type {
@@ -126,6 +135,8 @@ export {
   fileReport,
   getReportTargetContext,
   listReports,
+  listMemberDocumentReportCases,
+  countUnresolvedDocumentReports,
   resolveReport,
   unresolvedReportCount,
 } from "./reports.js";
@@ -134,6 +145,7 @@ export type {
   FileReportInput,
   ListReportsOptions,
   ListReportsResult,
+  NpMemberDocumentReportCase,
   ResolveReportInput,
   ResolveReportResult,
 } from "./reports.js";

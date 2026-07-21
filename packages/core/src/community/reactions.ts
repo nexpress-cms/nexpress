@@ -2,6 +2,7 @@ import { and, count, eq } from "drizzle-orm";
 
 import { npRequireEngagementTarget, npRequireReactionRow } from "../community-contract/contract.js";
 import type { NpReactionRow, NpReactToInput } from "../community-contract/types.js";
+import { getCollectionConfig } from "../collections/registry.js";
 import { getDb } from "../db/runtime.js";
 import { npComments, npReactions } from "../db/schema/community.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
@@ -18,7 +19,10 @@ import {
   npResolveDocumentPublicHref,
   type NpResolvedDocumentEngagementTarget,
 } from "./engagement-target.js";
-import { getDocumentById } from "../collections/pipeline.js";
+import {
+  npProjectDocumentCommunityScopes,
+  npResolveDocumentCommunityTarget,
+} from "./target-scopes.js";
 
 /**
  * Reactions service. `kind` is gated by both:
@@ -90,7 +94,10 @@ async function resolveReactionTarget(
     );
     return {
       ...target,
-      scopes: [{ type: "collection", id: target.targetType }],
+      scopes: npProjectDocumentCommunityScopes(
+        getCollectionConfig(target.targetType),
+        target.document,
+      ),
     };
   }
 
@@ -113,26 +120,20 @@ async function resolveReactionTarget(
     siteId: string;
   }>;
   if (!comment) throw new NpNotFoundError("comment", checked.targetId);
-  if (comment.status === "deleted") {
-    throw new NpValidationError("Invalid input", [
-      { field: "targetId", message: "Cannot react to a deleted comment" },
-    ]);
-  }
+  if (comment.status !== "visible") throw new NpNotFoundError("comment", checked.targetId);
   const requestSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   if (comment.siteId !== requestSiteId) {
     throw new NpForbiddenError("reaction", "cross-site");
   }
-  const document = await getDocumentById<Record<string, unknown>>(
-    comment.targetType,
-    comment.targetId,
-  );
+  const parent = await npResolveDocumentCommunityTarget(comment.targetType, comment.targetId);
   return {
     targetType: checked.targetType,
     targetId: checked.targetId,
+    document: parent.document,
     siteId: comment.siteId,
     recipientId: comment.memberId,
-    href: document ? npResolveDocumentPublicHref(comment.targetType, document) : null,
-    scopes: [{ type: "collection", id: comment.targetType }],
+    href: npResolveDocumentPublicHref(comment.targetType, parent.document),
+    scopes: parent.scopes,
   };
 }
 

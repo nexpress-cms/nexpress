@@ -9,6 +9,7 @@ import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 export interface NpResolvedDocumentEngagementTarget {
   targetType: string;
   targetId: string;
+  document: Record<string, unknown>;
   siteId: string;
   recipientId: string | null;
   href: string | null;
@@ -53,6 +54,7 @@ export async function npResolveDocumentEngagementTarget(
 
   return {
     ...target,
+    document,
     siteId: targetSiteId,
     recipientId: typeof document.memberAuthorId === "string" ? document.memberAuthorId : null,
     href: npResolveDocumentPublicHref(target.targetType, document),

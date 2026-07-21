@@ -124,6 +124,24 @@ const messages: NpForumMessages = {
   commentMuteFailed: "회원 차단 실패",
   emptyBody: "내용이 없습니다.",
   attachments: "첨부파일",
+  hidePost: "숨기기",
+  restorePost: "게시 승인",
+  lockPost: "잠그기",
+  unlockPost: "잠금 해제",
+  pinPost: "공지로 고정",
+  unpinPost: "공지 해제",
+  moderationActionFailed: "운영 상태 변경 실패",
+  hideComment: "댓글 숨기기",
+  restoreComment: "댓글 복원",
+  hidingComment: "댓글 숨기는 중",
+  restoringComment: "댓글 복원 중",
+  reportsPending: "미처리 신고",
+  reportReason: "신고 사유",
+  dismissReport: "신고 기각",
+  hideReportedComment: "댓글 숨기고 처리",
+  hideReportedPost: "게시글 숨기고 처리",
+  resolvingReport: "처리 중",
+  resolveReportFailed: "신고 처리 실패",
 };
 
 const board: NpForumBoard = {
@@ -164,6 +182,7 @@ const post: NpForumPostSummary = {
     reactions: { like: 2 },
   },
   attachmentCount: 1,
+  unresolvedReportCount: 2,
 };
 
 const attachment = {
@@ -214,6 +233,7 @@ describe("classic forum skin", () => {
     expect(html).toContain('<th scope="col" class="np-forum-column-date">');
     expect(html).toContain('class="np-button-primary"');
     expect(html).toContain('data-np-forum-surface="post-list"');
+    expect(html).toContain("미처리 신고: 2");
   });
 
   it("renders bounded discovery controls and preserves filters in pagination", async () => {
@@ -293,6 +313,7 @@ describe("classic forum skin", () => {
         authorActions: null,
         reportAction: <button type="button">신고</button>,
         subscriptionAction: <button type="button">게시글 구독</button>,
+        moderationPanel: <aside>신고 처리</aside>,
         engagement: <div data-testid="engagement" />,
         comments: null,
         attachments: [attachment],
@@ -304,6 +325,7 @@ describe("classic forum skin", () => {
     expect(html).toContain('class="np-forum-post-body np-forum-rich-text"');
     expect(html).toContain('data-np-forum-surface="post-detail"');
     expect(html).toContain("신고");
+    expect(html).toContain("신고 처리");
     expect(html).not.toContain(" prose");
     expect(styles).toContain(".np-forum-rich-text h1");
     expect(styles).toContain("list-style: disc");

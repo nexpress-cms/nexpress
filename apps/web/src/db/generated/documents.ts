@@ -154,6 +154,7 @@ export interface ForumPostsDocument {
     file: string;
   }>;
   category: string | null;
+  moderationHidden: boolean;
   pinned: boolean | null;
   locked: boolean | null;
 }

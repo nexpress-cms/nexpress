@@ -39,6 +39,7 @@ import {
   npCommunityCommentStatuses,
   npCommunityContractLimits,
   npCommunityReportResolutionActions,
+  npCommunityThreadModerationActions,
 } from "@nexpress/core/community-contract";
 import {
   npDynamicSettingOwnerPattern,
@@ -4414,6 +4415,46 @@ export function buildSpec(): OpenApiSchema {
       },
     };
 
+    if (config.community?.moderation) {
+      paths[`/api/collections/${slug}/{id}/moderation`] = {
+        parameters: [
+          { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+        ],
+        post: {
+          summary: `Moderate a ${manifest.labels.singular.toLowerCase()} as a scoped member moderator`,
+          description:
+            "Applies one declared thread transition after resolving site, collection, category, and thread scopes. Lock/pin actions are available only when the collection maps the corresponding checkbox field.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["action"],
+                  properties: {
+                    action: { type: "string", enum: [...npCommunityThreadModerationActions] },
+                    reason: {
+                      type: ["string", "null"],
+                      minLength: 1,
+                      maxLength: npCommunityContractLimits.reasonLength,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "{ ok: true }" },
+            "400": { description: "Unsupported action or invalid current state" },
+            "401": { description: "Member auth required" },
+            "403": { description: "The member lacks the required capability in this scope" },
+            "404": { description: "Document not found" },
+          },
+        },
+      };
+    }
+
     paths[`/api/collections/${slug}/bulk`] = {
       post: {
         summary: `Bulk publish / unpublish / delete ${manifest.labels.plural.toLowerCase()}`,
@@ -5167,6 +5208,45 @@ export function buildSpec(): OpenApiSchema {
         "400": { description: "Validation error" },
         "401": { description: "Member auth required" },
         "409": { description: "The member already has an unresolved report for this target" },
+      },
+    },
+  };
+  paths["/api/reports/{id}/resolve"] = {
+    post: {
+      summary: "Resolve a report as a scoped member moderator",
+      description:
+        "Requires `resolve-report` on the report target's projected category, collection, thread, or site scope. The action remains constrained by the report target kind.",
+      parameters: [
+        { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              required: ["action"],
+              properties: {
+                action: { type: "string", enum: [...npCommunityReportResolutionActions] },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        "200": {
+          description: "Updated report row",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_report_row" },
+            },
+          },
+        },
+        "400": { description: "Already resolved, incompatible action, or invalid target state" },
+        "401": { description: "Member auth required" },
+        "403": { description: "The member lacks resolve-report in this target scope" },
+        "404": { description: "Report or target not found" },
       },
     },
   };

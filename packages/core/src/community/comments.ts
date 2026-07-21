@@ -42,6 +42,10 @@ import { createNotification } from "./notifications.js";
 import { notifyFollowers } from "./follows.js";
 import { npResolveDocumentPublicHref } from "./engagement-target.js";
 import { npRecordCommunityRuntimeDiagnostic } from "./diagnostics.js";
+import {
+  npProjectDocumentCommunityScopes,
+  npResolveDocumentCommunityTarget,
+} from "./target-scopes.js";
 import { getProfanityAdapter } from "./profanity-adapter.js";
 import { applyReputation } from "./reputation.js";
 import { getSpamAdapter } from "./spam-adapter.js";
@@ -99,40 +103,47 @@ function validateBody(bodyMd: string): void {
   }
 }
 
-function commentScopes(row: { targetType: string }): Array<{ type: "collection"; id: string }> {
-  // The only scope a comment carries today is its target collection.
-  // If a thread schema is ever added, this is where `category` /
-  // `thread` would join the chain so category-mod / thread-author
-  // grants resolve.
-  return [{ type: "collection", id: row.targetType }];
+async function commentScopes(row: { targetType: string; targetId: string; siteId: string }) {
+  const target = await npResolveDocumentCommunityTarget(row.targetType, row.targetId);
+  if (row.siteId !== target.siteId) {
+    throw new NpForbiddenError("comment", "cross-site");
+  }
+  return target.scopes;
 }
 
 export async function createComment(input: NpCommentCreateInput): Promise<NpCommentRow> {
   validateBody(input.bodyMd);
   assertCollectionAcceptsComments(input.targetType);
 
+  const targetDoc = await getDocumentById<Record<string, unknown>>(
+    input.targetType,
+    input.targetId,
+  );
+  if (!targetDoc) throw new NpNotFoundError(input.targetType, input.targetId);
+  const config = getCollectionConfig(input.targetType);
+  const scopes = npProjectDocumentCommunityScopes(config, targetDoc);
+
   // #311 — withMemberWrite enforces the ban gate by structure.
   // Site-wide bans block every comment; collection-scoped bans
   // block writes to that collection (#53 — without the gate,
   // banned members kept commenting because createComment never
   // went through memberCan).
-  return withMemberWrite(input.memberId, [{ type: "collection", id: input.targetType }], async () =>
-    doCreateComment(input),
+  return withMemberWrite(input.memberId, scopes, async () =>
+    doCreateComment(input, targetDoc, config.community?.moderation?.lockField),
   );
 }
 
-async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRow> {
+async function doCreateComment(
+  input: NpCommentCreateInput,
+  targetDoc: Record<string, unknown>,
+  lockField: string | undefined,
+): Promise<NpCommentRow> {
   // Target document must actually exist. Without this guard, members
   // could insert orphan comment rows under random UUIDs for any
   // comment-enabled collection (#49). We use the public read path
   // (`undefined` user = anonymous) so the comment-creation surface
   // matches what's publicly visible — comments under a draft would
   // be filtered out of the rendered site anyway.
-  const targetDoc = await getDocumentById(input.targetType, input.targetId);
-  if (!targetDoc) {
-    throw new NpNotFoundError(input.targetType, input.targetId);
-  }
-
   // Issue #215 — reject cross-tenant writes. A member on site A
   // shouldn't be able to comment on site B's content just by
   // passing B's document UUID. Compare the target doc's
@@ -144,12 +155,10 @@ async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRo
     throw new NpForbiddenError("comment", "cross-site");
   }
 
-  // Forum-style "locked" guard: collections that opted into a `locked`
-  // checkbox on their schema (e.g. the bundled forum post collection) flip
-  // it to true to prevent new comments. The flag lives at the document
-  // level, not the collection level — different threads in the same
-  // collection can be locked independently. (#47)
-  if (targetDoc.locked === true) {
+  // A declared lock field blocks new top-level comments and replies. The flag
+  // lives at document scope, so different threads in one collection can be
+  // locked independently without coupling Core to a field name.
+  if (lockField && targetDoc[lockField] === true) {
     throw new NpValidationError("Invalid input", [
       { field: "targetId", message: "This thread is locked and does not accept new comments." },
     ]);
@@ -607,11 +616,12 @@ export async function updateComment(input: NpCommentUpdateInput): Promise<NpComm
   }
 
   // Owner edits via `edit-own`; mods via `edit-any-comment`.
+  const scopes = await commentScopes(existing);
   const ownerCan = await memberCan(input.memberId, "edit-own", {
     type: "comment",
     id: existing.id,
     ownerId: existing.memberId,
-    scopes: commentScopes(existing),
+    scopes,
   });
   const modCan = ownerCan
     ? false
@@ -619,7 +629,7 @@ export async function updateComment(input: NpCommentUpdateInput): Promise<NpComm
         type: "comment",
         id: existing.id,
         ownerId: existing.memberId,
-        scopes: commentScopes(existing),
+        scopes,
       });
   if (!ownerCan && !modCan) {
     throw new NpForbiddenError("comment", "update");
@@ -730,6 +740,15 @@ export async function updateComment(input: NpCommentUpdateInput): Promise<NpComm
       },
     });
   }
+  if (modCan) {
+    await recordAuditEvent({
+      actor: { kind: "member", memberId: input.memberId },
+      action: "comment.edit",
+      targetType: "comment",
+      targetId: checkedUpdated.id,
+      payload: { collection: existing.targetType, byModerator: true },
+    });
+  }
   return checkedUpdated;
 }
 
@@ -743,11 +762,12 @@ export async function deleteComment(input: NpCommentDeleteInput): Promise<void> 
   if (!existing) throw new NpNotFoundError("comment", input.commentId);
   npRequireCommentRow(existing);
 
+  const scopes = await commentScopes(existing);
   const ownerCan = await memberCan(input.memberId, "delete-own", {
     type: "comment",
     id: existing.id,
     ownerId: existing.memberId,
-    scopes: commentScopes(existing),
+    scopes,
   });
   const modCan = ownerCan
     ? false
@@ -755,7 +775,7 @@ export async function deleteComment(input: NpCommentDeleteInput): Promise<void> 
         type: "comment",
         id: existing.id,
         ownerId: existing.memberId,
-        scopes: commentScopes(existing),
+        scopes,
       });
   if (!ownerCan && !modCan) {
     throw new NpForbiddenError("comment", "delete");
@@ -768,6 +788,13 @@ export async function deleteComment(input: NpCommentDeleteInput): Promise<void> 
     .update(npComments)
     .set({ status: "deleted", bodyMd: "", bodyHtml: "", editedAt: new Date() })
     .where(eq(npComments.id, input.commentId));
+  await recordAuditEvent({
+    actor: { kind: "member", memberId: input.memberId },
+    action: "comment.delete",
+    targetType: "comment",
+    targetId: existing.id,
+    payload: { collection: existing.targetType, byModerator: modCan },
+  });
 }
 
 export async function hideComment(input: NpCommentHideInput): Promise<void> {
@@ -784,18 +811,39 @@ export async function hideComment(input: NpCommentHideInput): Promise<void> {
     type: "comment",
     id: existing.id,
     ownerId: existing.memberId,
-    scopes: commentScopes(existing),
+    scopes: await commentScopes(existing),
   });
   if (!ok) throw new NpForbiddenError("comment", "hide");
+  if (existing.status === "hidden") return;
+  if (existing.status !== "visible" && existing.status !== "pending") {
+    throw new NpValidationError("Invalid state", [
+      {
+        field: "status",
+        message: `Comment is "${existing.status}" and cannot be hidden`,
+      },
+    ]);
+  }
 
-  await db
+  const [updated] = await db
     .update(npComments)
     .set({
       status: "hidden",
       hiddenByMemberId: input.memberId,
       hiddenReason: input.reason ?? null,
     })
-    .where(eq(npComments.id, input.commentId));
+    .where(and(eq(npComments.id, input.commentId), eq(npComments.status, existing.status)))
+    .returning({ id: npComments.id });
+  if (!updated) {
+    const [current] = (await db
+      .select({ status: npComments.status })
+      .from(npComments)
+      .where(eq(npComments.id, input.commentId))
+      .limit(1)) as Array<{ status: CommentStatus }>;
+    if (current?.status === "hidden") return;
+    throw new NpValidationError("Invalid state", [
+      { field: "status", message: "Comment status changed concurrently" },
+    ]);
+  }
 
   await recordAuditEvent({
     actor: { kind: "member", memberId: input.memberId },
@@ -803,6 +851,13 @@ export async function hideComment(input: NpCommentHideInput): Promise<void> {
     targetType: "comment",
     targetId: existing.id,
     payload: { reason: input.reason ?? null, collection: existing.targetType },
+  });
+  await applyReputation(existing.memberId, {
+    kind: "comment.hidden",
+    commentId: existing.id,
+    memberId: existing.memberId,
+    byStaff: false,
+    reason: input.reason ?? null,
   });
 }
 
@@ -815,21 +870,21 @@ export async function restoreComment(input: NpCommentRestoreInput): Promise<void
     .limit(1)) as NpCommentRow[];
   if (!existing) throw new NpNotFoundError("comment", input.commentId);
   npRequireCommentRow(existing);
+
+  const ok = await memberCan(input.memberId, "restore-comment", {
+    type: "comment",
+    id: existing.id,
+    ownerId: existing.memberId,
+    scopes: await commentScopes(existing),
+  });
+  if (!ok) throw new NpForbiddenError("comment", "restore");
   if (existing.status !== "hidden") {
     throw new NpValidationError("Invalid state", [
       { field: "status", message: `Comment is "${existing.status}", not "hidden"` },
     ]);
   }
 
-  const ok = await memberCan(input.memberId, "restore-comment", {
-    type: "comment",
-    id: existing.id,
-    ownerId: existing.memberId,
-    scopes: commentScopes(existing),
-  });
-  if (!ok) throw new NpForbiddenError("comment", "restore");
-
-  await db
+  const [updated] = await db
     .update(npComments)
     .set({
       status: "visible",
@@ -837,7 +892,13 @@ export async function restoreComment(input: NpCommentRestoreInput): Promise<void
       hiddenByMemberId: null,
       hiddenReason: null,
     })
-    .where(eq(npComments.id, input.commentId));
+    .where(and(eq(npComments.id, input.commentId), eq(npComments.status, "hidden")))
+    .returning({ id: npComments.id });
+  if (!updated) {
+    throw new NpValidationError("Invalid state", [
+      { field: "status", message: "Comment status changed concurrently" },
+    ]);
+  }
 
   await recordAuditEvent({
     actor: { kind: "member", memberId: input.memberId },

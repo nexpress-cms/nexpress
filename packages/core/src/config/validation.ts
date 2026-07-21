@@ -287,6 +287,14 @@ export const collectionConfigSchema = z.strictObject({
       views: z.boolean().optional(),
       follows: z.boolean().optional(),
       reports: z.boolean().optional(),
+      moderation: z
+        .strictObject({
+          categoryField: z.string().min(1).optional(),
+          hiddenField: z.string().min(1),
+          lockField: z.string().min(1).optional(),
+          pinField: z.string().min(1).optional(),
+        })
+        .optional(),
       profileActivity: z
         .strictObject({
           documents: z.boolean().optional(),

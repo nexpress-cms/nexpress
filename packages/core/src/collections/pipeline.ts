@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 
 import { asc, count, desc, eq, inArray, isNull, max, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
-import type { NpCommunityJsonObject } from "../community-contract/types.js";
+import type {
+  CommunityCapability,
+  NpCommunityJsonObject,
+  NpThreadModerationAction,
+} from "../community-contract/types.js";
 import { npRequireNotificationHref } from "../community-contract/contract.js";
 import { can } from "../auth/capabilities.js";
 import {
@@ -92,6 +96,7 @@ interface InsertValuesQuery extends Promise<unknown> {
 }
 
 interface DrizzleTransactionLike {
+  execute(query: SQL): Promise<unknown>;
   insert(table: PgTable): {
     values(values: Record<string, unknown> | Record<string, unknown>[]): InsertValuesQuery;
   };
@@ -348,6 +353,35 @@ async function assertMemberWriteAccess(
   }
 }
 
+function moderationRelationshipId(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    "id" in value &&
+    typeof value.id === "string"
+  ) {
+    return value.id;
+  }
+  return null;
+}
+
+function assertModeratorKeepsCategory(
+  config: NpCollectionConfig,
+  collection: string,
+  originalDoc: Record<string, unknown>,
+  candidate: Record<string, unknown>,
+): void {
+  const categoryField = config.community?.moderation?.categoryField;
+  if (
+    categoryField &&
+    moderationRelationshipId(candidate[categoryField]) !==
+      moderationRelationshipId(originalDoc[categoryField])
+  ) {
+    throw new NpForbiddenError(collection, "move-moderated-thread");
+  }
+}
+
 /**
  * Member-side document create. Only valid when
  * `config.community?.memberWrite?.create === true`. Assumes the API
@@ -364,8 +398,8 @@ async function assertMemberWriteAccess(
  */
 /**
  * Member-side document update. Only valid when
- * `config.community?.memberWrite?.update === true` AND the existing
- * row's `member_author_id` matches the caller. Members can NOT
+ * `config.community?.memberWrite?.update === true` AND the caller owns the
+ * row or holds an exact declared thread/category/site edit capability. Members can NOT
  * change `_status` via update — `options.status` is stripped here
  * so a forged body field can't bypass the moderation pipeline. The
  * author column itself is also locked — see saveDocumentImpl.
@@ -386,7 +420,7 @@ export async function updateMemberDocument(
   // adapters before `saveDocumentImpl` rejects them. Order:
   //   1. collection opt-in
   //   2. doc existence
-  //   3. owner check
+  //   3. owner / scoped moderator check
   //   4. ban check
   // These are duplicated inside `saveDocumentImpl`, but both
   // execute the same SELECT-or-cache queries; doing them here
@@ -404,17 +438,34 @@ export async function updateMemberDocument(
     throw new NpNotFoundError(collection, docId);
   }
   const authorId = (originalDoc as { memberAuthorId?: string | null }).memberAuthorId ?? null;
-  if (authorId !== memberId) {
+  const { memberCapabilities, assertNotBanned } = await import("../community/can.js");
+  const { npIsMemberModeratableDocument, npProjectDocumentCommunityScopes } =
+    await import("../community/target-scopes.js");
+  const scopes = npProjectDocumentCommunityScopes(config, originalDoc);
+  const delegated =
+    authorId !== memberId && npIsMemberModeratableDocument(config, originalDoc)
+      ? await memberCapabilities(memberId, ["edit-any-thread", "edit-own-thread"], {
+          type: "thread",
+          id: docId,
+          ownerId: authorId ?? undefined,
+          scopes,
+        })
+      : null;
+  const moderator =
+    delegated?.has("edit-any-thread") === true || delegated?.has("edit-own-thread") === true;
+  if (authorId !== memberId && !moderator) {
     throw new NpForbiddenError(collection, "update");
   }
-  const { assertNotBanned } = await import("../community/can.js");
-  await assertNotBanned(memberId);
+  await assertNotBanned(memberId, scopes);
 
   const candidate = {
     ...npCollectionDocumentToWriteInput(originalDoc, config),
     ...data,
   };
   const validatedCandidate = toRecord(getCollectionZodSchema(config, candidate).parse(candidate));
+  if (moderator) {
+    assertModeratorKeepsCategory(config, collection, originalDoc, validatedCandidate);
+  }
   await assertMemberWriteAccess(config, {
     collection,
     operation: "update",
@@ -441,10 +492,16 @@ export async function updateMemberDocument(
     memberOptions.status = "pending";
   }
 
+  const moderationHiddenField = config.community?.moderation?.hiddenField;
+  const writeData =
+    moderation.flaggedBy.length > 0 && originalDoc.status === "published" && moderationHiddenField
+      ? { ...data, [moderationHiddenField]: true }
+      : data;
+
   const result = await saveDocumentImpl(
     collection,
     docId,
-    data,
+    writeData,
     { kind: "member", memberId },
     memberOptions,
   );
@@ -457,6 +514,7 @@ export async function updateMemberDocument(
     payload: {
       collectionSlug: collection,
       event: "update",
+      byModerator: moderator,
       ...(moderation.flaggedBy.length > 0 ? { sources: moderation.flaggedBy } : {}),
       ...(moderation.profanityVerdict ? { profanityVerdict: moderation.profanityVerdict } : {}),
       ...(moderation.spamVerdict ? { spamVerdict: moderation.spamVerdict } : {}),
@@ -740,6 +798,7 @@ interface SaveContext {
   actor: SaveActor;
   options: NpSaveOptions | undefined;
   bypassStaffAccess: boolean;
+  bypassMemberAccess: boolean;
   config: ReturnType<typeof getCollectionConfig>;
   registration: ReturnType<typeof getCollectionRegistration>;
   table: PgTable;
@@ -767,6 +826,8 @@ interface SaveContext {
 interface InternalSaveControls {
   /** Set only by the capability-gated report moderation helper. */
   bypassStaffAccess?: boolean;
+  /** Set only by the capability-gated member thread moderation helper. */
+  bypassMemberAccess?: boolean;
 }
 
 async function initSaveContext(
@@ -835,6 +896,7 @@ async function initSaveContext(
     actor,
     options,
     bypassStaffAccess: controls.bypassStaffAccess === true,
+    bypassMemberAccess: controls.bypassMemberAccess === true,
     config,
     registration,
     table,
@@ -869,11 +931,15 @@ async function validateActorAccess(ctx: SaveContext): Promise<void> {
     return;
   }
   // Member actor. Phase 9.7a opened create; 9.7b opens update with
-  // an owner-only check. Each transition has a separate opt-in
+  // an owner-or-scoped-moderator check. Each transition has a separate opt-in
   // flag so a site can allow self-authoring without enabling
   // self-edit. Defer-load to avoid the community ↔ collections
   // import cycle.
   const { assertNotBanned } = await import("../community/can.js");
+  if (ctx.bypassMemberAccess) {
+    await assertNotBanned(ctx.actor.memberId);
+    return;
+  }
   if (ctx.operation === "create") {
     if (!ctx.config.community?.memberWrite?.create) {
       throw new NpForbiddenError(ctx.collection, "create");
@@ -881,10 +947,9 @@ async function validateActorAccess(ctx: SaveContext): Promise<void> {
     await assertNotBanned(ctx.actor.memberId);
     return;
   }
-  // update — the doc must exist and must be authored by THIS
-  // member (`member_author_id` matches). 404 / 403 disambiguate:
-  // 404 when there's no row at all, 403 when the row belongs to
-  // someone else (or to staff with `member_author_id = null`).
+  // update — the doc must exist and be authored by this member or covered by
+  // one exact thread/category/site edit capability. 404 / 403 disambiguate a
+  // missing row from a row outside the member's ownership/delegated scope.
   if (!ctx.originalDoc) {
     throw new NpNotFoundError(ctx.collection, ctx.docId ?? "unknown");
   }
@@ -892,10 +957,28 @@ async function validateActorAccess(ctx: SaveContext): Promise<void> {
     throw new NpForbiddenError(ctx.collection, "update");
   }
   const authorId = (ctx.originalDoc as { memberAuthorId?: string | null }).memberAuthorId ?? null;
-  if (authorId !== ctx.actor.memberId) {
+  const { memberCapabilities } = await import("../community/can.js");
+  const { npIsMemberModeratableDocument, npProjectDocumentCommunityScopes } =
+    await import("../community/target-scopes.js");
+  const scopes = npProjectDocumentCommunityScopes(ctx.config, ctx.originalDoc);
+  const delegated =
+    authorId !== ctx.actor.memberId && npIsMemberModeratableDocument(ctx.config, ctx.originalDoc)
+      ? await memberCapabilities(ctx.actor.memberId, ["edit-any-thread", "edit-own-thread"], {
+          type: "thread",
+          id: ctx.docId ?? "unknown",
+          ownerId: authorId ?? undefined,
+          scopes,
+        })
+      : null;
+  const moderator =
+    delegated?.has("edit-any-thread") === true || delegated?.has("edit-own-thread") === true;
+  if (authorId !== ctx.actor.memberId && !moderator) {
     throw new NpForbiddenError(ctx.collection, "update");
   }
-  await assertNotBanned(ctx.actor.memberId);
+  if (moderator) {
+    assertModeratorKeepsCategory(ctx.config, ctx.collection, ctx.originalDoc, ctx.validatedData);
+  }
+  await assertNotBanned(ctx.actor.memberId, scopes);
 }
 
 /**
@@ -1090,6 +1173,12 @@ async function prepareDocumentForWrite(c: SaveContext): Promise<void> {
   const previousStatus = c.originalDoc?.status as string | undefined;
   const wasPublished = previousStatus === "published";
   const willBePublished = nextStatus === "published";
+  const moderationHiddenField = c.config.community?.moderation?.hiddenField;
+  if (wasPublished && nextStatus === "pending" && moderationHiddenField) {
+    c.prepared.mainData[moderationHiddenField] = true;
+  } else if (willBePublished && moderationHiddenField) {
+    c.prepared.mainData[moderationHiddenField] = false;
+  }
   c.publishTransition = !wasPublished && willBePublished;
   c.unpublishTransition = wasPublished && !willBePublished;
 }
@@ -1567,19 +1656,16 @@ export async function deleteDocument(
 }
 
 /**
- * Member-side delete. Owner-only — the existing row's
- * `member_author_id` must match the caller. Fires
+ * Member-side delete. The caller must own the row or hold an exact declared
+ * thread/category/site delete capability. Fires
  * `document.deleted` reputation event so adapters can debit the
  * author the same way `comment.deleted` debits commenters.
  *
- * The reputation event is gated on the row's status at delete
- * time: only `published` docs ever earned a `document.created`
- * credit (the create path withholds it for pending rows; promote
- * later backfills the credit). Issuing a `document.deleted`
- * debit for a row that was never credited would drive the
- * member negative for deleting their own not-yet-visible
- * content (#126). The audit row is unconditional — the operator
- * still wants to see "member deleted X".
+ * The reputation event is gated on whether the row was ever published:
+ * currently-published rows and moderation-hidden pending rows earned a
+ * `document.created` credit; an initial pending row did not. Issuing a debit
+ * for never-visible content would drive its author negative (#126). The audit
+ * row remains unconditional.
  */
 export async function deleteMemberDocument(
   collection: string,
@@ -1594,9 +1680,29 @@ export async function deleteMemberDocument(
   const registration = getCollectionRegistration(collection);
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const original = await getDocumentByIdInternal(db, registration, collection, docId);
-  const wasPublished =
-    typeof (original as { status?: unknown } | null)?.status === "string" &&
-    (original as { status: string }).status === "published";
+  if (!original) throw new NpNotFoundError(collection, docId);
+  const config = getCollectionConfig(collection);
+  const hadPublishedCredit =
+    original.status === "published" ||
+    (config.community?.moderation?.hiddenField !== undefined &&
+      original[config.community.moderation.hiddenField] === true);
+  const authorId = (original as { memberAuthorId?: string | null }).memberAuthorId ?? null;
+  const { memberCan } = await import("../community/can.js");
+  const { npIsMemberModeratableDocument, npProjectDocumentCommunityScopes } =
+    await import("../community/target-scopes.js");
+  const scopes = npProjectDocumentCommunityScopes(config, original);
+  const moderator =
+    authorId !== memberId &&
+    npIsMemberModeratableDocument(config, original) &&
+    (await memberCan(memberId, "delete-any-thread", {
+      type: "thread",
+      id: docId,
+      ownerId: authorId ?? undefined,
+      scopes,
+    }));
+  if (authorId !== memberId && !moderator) {
+    throw new NpForbiddenError(collection, "delete");
+  }
 
   await deleteDocumentImpl(collection, docId, { kind: "member", memberId });
   const { applyReputation } = await import("../community/reputation.js");
@@ -1616,14 +1722,15 @@ export async function deleteMemberDocument(
         typeof (original as { status?: unknown } | null)?.status === "string"
           ? (original as { status: string }).status
           : null,
+      byModerator: moderator,
     },
   });
-  if (wasPublished) {
-    await applyReputation(memberId, {
+  if (hadPublishedCredit && authorId) {
+    await applyReputation(authorId, {
       kind: "document.deleted",
       collectionSlug: collection,
       documentId: docId,
-      memberId,
+      memberId: authorId,
     });
   }
 }
@@ -1633,10 +1740,9 @@ export async function deleteMemberDocument(
  * (Phase 9.7d). Closes the loop on the 9.7c moderation gate:
  *   - the row's status flips to `published` (visible on the public
  *     site immediately)
- *   - the deferred `document.created` reputation event fires now,
- *     crediting the author for content that was held in review
- *     (mirrors how a comment promoted from `pending` would, in a
- *     hypothetical comment-promote API — not implemented yet)
+ *   - a first approval fires the deferred `document.created` reputation and
+ *     mention events; restoring a previously published moderation-hidden row
+ *     clears its marker without awarding either event twice
  *   - audit log records `document.promote` with the staff actor
  *     and the original member author in the payload
  *
@@ -1648,8 +1754,8 @@ export async function deleteMemberDocument(
  *     edit path
  *
  * Idempotence: a second promote on an already-`published` row 400s
- * rather than silently no-op'ing — the audit trail and reputation
- * backfill must run exactly once per row.
+ * rather than silently no-op'ing — the audit trail and any first-approval
+ * follow-ups must run exactly once per transition.
  */
 export async function promoteMemberDocument(
   collection: string,
@@ -1681,6 +1787,9 @@ export async function promoteMemberDocument(
       },
     ]);
   }
+  const config = registration.config;
+  const hiddenField = config.community?.moderation?.hiddenField;
+  const initialApproval = hiddenField ? originalDoc[hiddenField] !== true : true;
 
   // Conditional UPDATE on `status = 'pending'`. Two mods racing to
   // promote the same row would each pass the read-side check above
@@ -1698,7 +1807,12 @@ export async function promoteMemberDocument(
   const now = new Date();
   const updated = (await db
     .update(table)
-    .set({ status: "published", updatedAt: now, updatedBy: staffUserId })
+    .set({
+      status: "published",
+      updatedAt: now,
+      updatedBy: staffUserId,
+      ...(hiddenField ? { [hiddenField]: false } : {}),
+    })
     .where(
       sql`${eq(getTableColumn(table, "id"), docId)} and ${eq(getTableColumn(table, "status"), "pending")} and ${eq(getTableColumn(table, "siteId"), requestSiteId)}`,
     )
@@ -1734,18 +1848,38 @@ export async function promoteMemberDocument(
       collectionSlug: collection,
       memberAuthorId,
       previousStatus: "pending",
+      initialApproval,
     },
   });
-  // Backfill the reputation credit that was withheld at create time
-  // when status landed as pending. The adapter sees the same event
-  // shape as a fresh member create — adapters that key off creation
-  // time should consult the audit log, not infer from the event.
-  await applyReputation(memberAuthorId, {
-    kind: "document.created",
-    collectionSlug: collection,
-    documentId: docId,
-    memberId: memberAuthorId,
-  });
+  // Backfill the reputation credit and mentions withheld when an initial
+  // member submission landed pending. A moderation hide/restore carries the
+  // hidden marker and must not emit either event again.
+  if (initialApproval) {
+    await applyReputation(memberAuthorId, {
+      kind: "document.created",
+      collectionSlug: collection,
+      documentId: docId,
+      memberId: memberAuthorId,
+    });
+    await runPostCommit(
+      "community:document-approved-mentions",
+      { collection, documentId: docId, operation: "update" },
+      async () => {
+        const { fanOutMentionNotifications } = await import("../community/mentions.js");
+        const href = notificationHrefForDocument(config, persistedDoc);
+        await fanOutMentionNotifications({
+          actorMemberId: memberAuthorId,
+          kind: "document.mention",
+          data: persistedDoc,
+          payload: {
+            targetType: collection,
+            targetId: docId,
+            ...(href ? { href } : {}),
+          },
+        });
+      },
+    );
+  }
 
   return { doc: persistedDoc, operation: "update" };
 }
@@ -1801,7 +1935,7 @@ export async function unpublishDocumentForModeration(
   const result = await saveDocumentImpl(
     collection,
     docId,
-    {},
+    config.community?.moderation ? { [config.community.moderation.hiddenField]: true } : {},
     { kind: "staff", user: staffUser },
     { status: "pending" },
     { bypassStaffAccess: true },
@@ -1815,6 +1949,186 @@ export async function unpublishDocumentForModeration(
     payload: { reason: normalizedReason, previousStatus: status, nextStatus: "pending" },
   });
   return result;
+}
+
+export interface NpApplyMemberThreadModerationInput {
+  collection: string;
+  documentId: string;
+  memberId: string;
+  action: NpThreadModerationAction;
+  reason?: string | null;
+}
+
+/**
+ * Capability-gated member thread state transition. The collection's
+ * declarative moderation field mapping is the only writable surface: callers
+ * cannot smuggle arbitrary fields through this helper. A transaction-scoped
+ * advisory lock serializes every transition for one site/document while the
+ * normal collection hooks, revisions, search, and publish hooks still run.
+ *
+ * This is consumed by `community/document-moderation.ts`; it is intentionally
+ * not re-exported from the collection or root barrels.
+ */
+export async function npApplyMemberThreadModeration(
+  input: NpApplyMemberThreadModerationInput,
+): Promise<NpSaveResult> {
+  const config = getCollectionConfig(input.collection);
+  const moderation = config.community?.moderation;
+  if (!moderation) {
+    throw new NpForbiddenError(input.collection, "moderate");
+  }
+  const db = getDb() as unknown as DrizzleDatabaseLike;
+  const registration = getCollectionRegistration(input.collection);
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+
+  const transition = await withDeferredPostCommit(() =>
+    db.transaction(async (tx) => {
+      const lockKey = `community-thread:${siteId}:${input.collection}:${input.documentId}`;
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+      const originalDoc = await getDocumentByIdInternal(
+        tx,
+        registration,
+        input.collection,
+        input.documentId,
+      );
+      const { memberCan } = await import("../community/can.js");
+      const { npIsMemberModeratableDocument, npProjectDocumentCommunityScopes } =
+        await import("../community/target-scopes.js");
+      if (!npIsMemberModeratableDocument(config, originalDoc)) {
+        throw new NpForbiddenError(input.collection, "moderate-staff-draft");
+      }
+      const scopes = npProjectDocumentCommunityScopes(config, originalDoc);
+      const ownerId =
+        (originalDoc as { memberAuthorId?: string | null }).memberAuthorId ?? undefined;
+      const target = {
+        type: "thread",
+        id: input.documentId,
+        ownerId,
+        scopes,
+      };
+      const capability = (
+        {
+          hide: "hide-thread",
+          restore: "restore-thread",
+          lock: "lock-thread",
+          unlock: "unlock-thread",
+          pin: "pin-thread",
+          unpin: "unpin-thread",
+        } satisfies Record<NpThreadModerationAction, CommunityCapability>
+      )[input.action];
+      const allowed =
+        (await memberCan(input.memberId, capability, target)) ||
+        ((input.action === "lock" || input.action === "unlock") &&
+          (await memberCan(input.memberId, "lock-own-thread", target)));
+      if (!allowed) throw new NpForbiddenError(input.collection, input.action);
+
+      const status = typeof originalDoc.status === "string" ? originalDoc.status : null;
+      let nextStatus: NpDocumentStatus | undefined;
+      let initialApproval = false;
+      const patch: Record<string, unknown> = {};
+      if (input.action === "hide") {
+        if (status !== "published") {
+          throw new NpValidationError("Invalid thread state", [
+            { field: "status", message: `Expected published, received ${status ?? "unknown"}.` },
+          ]);
+        }
+        nextStatus = "pending";
+        patch[moderation.hiddenField] = true;
+      } else if (input.action === "restore") {
+        if (status !== "pending") {
+          throw new NpValidationError("Invalid thread state", [
+            { field: "status", message: `Expected pending, received ${status ?? "unknown"}.` },
+          ]);
+        }
+        if (originalDoc[moderation.hiddenField] !== true && !ownerId) {
+          throw new NpForbiddenError(input.collection, "restore-staff-draft");
+        }
+        nextStatus = "published";
+        initialApproval = originalDoc[moderation.hiddenField] !== true;
+        patch[moderation.hiddenField] = false;
+      } else {
+        const field =
+          input.action === "lock" || input.action === "unlock"
+            ? moderation.lockField
+            : moderation.pinField;
+        if (!field) {
+          throw new NpValidationError("Unsupported thread action", [
+            { field: "action", message: `${input.action} is not configured for this collection.` },
+          ]);
+        }
+        const expected = input.action === "unlock" || input.action === "unpin";
+        const current = originalDoc[field] === true;
+        if (current !== expected) {
+          throw new NpValidationError("Invalid thread state", [
+            {
+              field,
+              message: `Expected ${expected.toString()} before ${input.action}.`,
+            },
+          ]);
+        }
+        patch[field] = !expected;
+      }
+
+      const result = await saveDocumentImpl(
+        input.collection,
+        input.documentId,
+        patch,
+        { kind: "member", memberId: input.memberId },
+        { ...(nextStatus ? { status: nextStatus } : {}), tx },
+        { bypassMemberAccess: true },
+      );
+
+      if (initialApproval && ownerId) {
+        await runPostCommit(
+          "community:document-approved-reputation",
+          { collection: input.collection, documentId: input.documentId, operation: "update" },
+          async () => {
+            const { applyReputation } = await import("../community/reputation.js");
+            await applyReputation(ownerId, {
+              kind: "document.created",
+              collectionSlug: input.collection,
+              documentId: input.documentId,
+              memberId: ownerId,
+            });
+          },
+        );
+        await runPostCommit(
+          "community:document-approved-mentions",
+          { collection: input.collection, documentId: input.documentId, operation: "update" },
+          async () => {
+            const { fanOutMentionNotifications } = await import("../community/mentions.js");
+            const href = notificationHrefForDocument(config, result.doc);
+            await fanOutMentionNotifications({
+              actorMemberId: ownerId,
+              kind: "document.mention",
+              data: result.doc,
+              payload: {
+                targetType: input.collection,
+                targetId: input.documentId,
+                ...(href ? { href } : {}),
+              },
+            });
+          },
+        );
+      }
+
+      return { result, initialApproval };
+    }),
+  );
+
+  const { recordAuditEvent } = await import("../community/audit.js");
+  await recordAuditEvent({
+    actor: { kind: "member", memberId: input.memberId },
+    action: `document.${input.action}`,
+    targetType: input.collection,
+    targetId: input.documentId,
+    payload: {
+      collectionSlug: input.collection,
+      reason: input.reason ?? null,
+      initialApproval: transition.initialApproval,
+    },
+  });
+  return transition.result;
 }
 
 async function deleteDocumentImpl(
@@ -1853,16 +2167,28 @@ async function deleteDocumentImpl(
       }
     }
   } else {
-    // Member delete: opt-in flag plus owner check plus ban check.
+    // Member delete: opt-in flag plus owner / scoped moderator check plus ban check.
     if (!config.community?.memberWrite?.delete) {
       throw new NpForbiddenError(collection, "delete");
     }
     const authorId = (originalDoc as { memberAuthorId?: string | null }).memberAuthorId ?? null;
-    if (authorId !== actor.memberId) {
+    const { memberCan, assertNotBanned } = await import("../community/can.js");
+    const { npIsMemberModeratableDocument, npProjectDocumentCommunityScopes } =
+      await import("../community/target-scopes.js");
+    const scopes = npProjectDocumentCommunityScopes(config, originalDoc);
+    const moderator =
+      authorId !== actor.memberId &&
+      npIsMemberModeratableDocument(config, originalDoc) &&
+      (await memberCan(actor.memberId, "delete-any-thread", {
+        type: "thread",
+        id: docId,
+        ownerId: authorId ?? undefined,
+        scopes,
+      }));
+    if (authorId !== actor.memberId && !moderator) {
       throw new NpForbiddenError(collection, "delete");
     }
-    const { assertNotBanned } = await import("../community/can.js");
-    await assertNotBanned(actor.memberId);
+    await assertNotBanned(actor.memberId, scopes);
     await assertMemberWriteAccess(config, {
       collection,
       operation: "delete",

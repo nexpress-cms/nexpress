@@ -5,6 +5,7 @@ import {
   npRequireRoleGrantListWire,
   type CommunityRoleDefinition,
   type CommunityScope,
+  type NpCommunityScopeOptionWire,
   type NpMemberRoleGrantWireRow,
 } from "@nexpress/core/community-contract";
 import { useEffect, useMemo, useState } from "react";
@@ -40,6 +41,7 @@ interface MemberRolesPanelProps {
    * handler so non-admins still see the active grant list.
    */
   canModify: boolean;
+  scopeOptions?: NpCommunityScopeOptionWire[];
 }
 
 interface GrantFormState {
@@ -65,7 +67,12 @@ const EMPTY_FORM: GrantFormState = {
  * filtered by the chosen scope so a `category-mod` definition
  * doesn't show up under scope `collection`.
  */
-export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRolesPanelProps) {
+export function MemberRolesPanel({
+  memberId,
+  memberHandle,
+  canModify,
+  scopeOptions = [],
+}: MemberRolesPanelProps) {
   const router = useRouter();
   const [grants, setGrants] = useState<MemberRoleGrantRow[]>([]);
   const [definitions, setDefinitions] = useState<RoleDefinition[]>([]);
@@ -82,6 +89,10 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
   const eligibleRoles = useMemo(
     () => definitions.filter((d) => d.scopeType === form.scopeType),
     [definitions, form.scopeType],
+  );
+  const eligibleScopes = useMemo(
+    () => scopeOptions.filter((option) => option.scopeType === form.scopeType),
+    [form.scopeType, scopeOptions],
   );
 
   useEffect(() => {
@@ -233,6 +244,9 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
           <ul className="space-y-2">
             {grants.map((g) => {
               const def = definitions.find((d) => d.role === g.role && d.scopeType === g.scopeType);
+              const scope = scopeOptions.find(
+                (option) => option.scopeType === g.scopeType && option.scopeId === g.scopeId,
+              );
               return (
                 <li
                   key={g.id}
@@ -243,9 +257,14 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
                       <Badge variant="default">{def?.label ?? g.role}</Badge>
                       <Badge variant="secondary">{g.scopeType}</Badge>
                       {g.scopeId ? (
-                        <code className="inline-block max-w-full break-all rounded bg-background px-2 py-0.5 font-mono text-xs">
-                          {g.scopeId}
-                        </code>
+                        <span className="inline-flex max-w-full flex-wrap items-center gap-1">
+                          {scope ? (
+                            <span className="break-words text-xs">{scope.label}</span>
+                          ) : null}
+                          <code className="inline-block max-w-full break-all rounded bg-background px-2 py-0.5 font-mono text-xs">
+                            {g.scopeId}
+                          </code>
+                        </span>
                       ) : null}
                       {g.expiresAt ? (
                         <span className="text-xs text-muted-foreground">
@@ -302,7 +321,14 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
                 </Label>
                 <Select
                   value={form.scopeType}
-                  onValueChange={(v) => setForm((f) => ({ ...f, scopeType: v as CommunityScope }))}
+                  onValueChange={(v) =>
+                    setForm((f) => ({
+                      ...f,
+                      scopeType: v as CommunityScope,
+                      role: "",
+                      scopeId: "",
+                    }))
+                  }
                 >
                   <SelectTrigger className="min-w-0">
                     <SelectValue />
@@ -345,28 +371,35 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
 
               {form.scopeType !== "site" ? (
                 <div className="min-w-0 space-y-1">
-                  <Label
-                    htmlFor="grant-scope-id"
-                    className="text-xs uppercase tracking-wide text-muted-foreground"
-                  >
-                    {form.scopeType === "collection"
-                      ? "Collection slug"
-                      : form.scopeType === "category"
-                        ? "Category id"
-                        : "Thread id"}
+                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Target
                   </Label>
-                  <Input
-                    id="grant-scope-id"
-                    value={form.scopeId}
-                    onChange={(e) => setForm((f) => ({ ...f, scopeId: e.target.value }))}
-                    placeholder={
-                      form.scopeType === "collection"
-                        ? "posts, discussions, …"
-                        : form.scopeType === "category"
-                          ? "category-uuid"
-                          : "thread-uuid"
-                    }
-                  />
+                  {eligibleScopes.length > 0 ? (
+                    <Select
+                      value={form.scopeId}
+                      onValueChange={(value) =>
+                        setForm((current) => ({ ...current, scopeId: value }))
+                      }
+                    >
+                      <SelectTrigger className="min-w-0">
+                        <SelectValue placeholder="Pick a declared target" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {eligibleScopes.map((option) => (
+                          <SelectItem
+                            key={`${option.scopeType}:${option.scopeId}`}
+                            value={option.scopeId}
+                          >
+                            {option.label} · {option.sourceCollection}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className="break-words text-sm text-muted-foreground">
+                      No active targets declare this moderation scope.
+                    </p>
+                  )}
                 </div>
               ) : null}
 
@@ -398,7 +431,11 @@ export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRo
               >
                 Cancel
               </Button>
-              <Button type="button" onClick={() => void grant()} disabled={granting || !form.role}>
+              <Button
+                type="button"
+                onClick={() => void grant()}
+                disabled={granting || !form.role || (form.scopeType !== "site" && !form.scopeId)}
+              >
                 {granting ? "Granting…" : "Grant role"}
               </Button>
             </DialogFooter>

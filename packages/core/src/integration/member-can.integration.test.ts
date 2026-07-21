@@ -223,4 +223,18 @@ describe.skipIf(skipIfNoTestDb())("memberCan (integration)", () => {
       }),
     ).toBe(false);
   });
+
+  it("treats the document owner as the implicit thread author without a stale grant row", async () => {
+    const db = await getTestDb();
+    const memberId = await seedMember(db);
+
+    expect(
+      await memberCan(memberId, "lock-own-thread", {
+        type: "thread",
+        id: "t1",
+        ownerId: memberId,
+        scopes: [{ type: "thread", id: "t1" }],
+      }),
+    ).toBe(true);
+  });
 });

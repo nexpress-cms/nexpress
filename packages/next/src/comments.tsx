@@ -60,6 +60,12 @@ export interface NpCommentsLabels {
   muteTitle: string;
   muteConfirm: string;
   muteFailed: string;
+  hide: string;
+  hiding: string;
+  hideFailed: string;
+  restore: string;
+  restoring: string;
+  restoreFailed: string;
 }
 
 const DEFAULT_LABELS: NpCommentsLabels = {
@@ -116,7 +122,20 @@ const DEFAULT_LABELS: NpCommentsLabels = {
   muteConfirm:
     "Mute this member? Their comments and reaction notifications will be hidden from you. You can unmute later from your profile.",
   muteFailed: "Failed to mute member.",
+  hide: "Hide",
+  hiding: "Hiding…",
+  hideFailed: "Failed to hide comment.",
+  restore: "Restore",
+  restoring: "Restoring…",
+  restoreFailed: "Failed to restore comment.",
 };
+
+export interface NpCommentsModerationPermissions {
+  editAny?: boolean;
+  deleteAny?: boolean;
+  hide?: boolean;
+  restore?: boolean;
+}
 
 export interface CommentsProps {
   collectionSlug: string;
@@ -130,6 +149,8 @@ export interface CommentsProps {
   labels?: Partial<NpCommentsLabels>;
   /** Bounded API page size. */
   pageSize?: number;
+  /** Server-resolved member moderator capabilities for this exact document. */
+  moderation?: NpCommentsModerationPermissions;
 }
 
 function responseError(value: unknown, fallback: string): string {
@@ -165,6 +186,7 @@ export function Comments({
   locale,
   labels: labelOverrides,
   pageSize = 20,
+  moderation,
 }: CommentsProps) {
   const labels = useMemo(() => ({ ...DEFAULT_LABELS, ...labelOverrides }), [labelOverrides]);
   const requestedPageSize = Number.isFinite(pageSize) ? Math.trunc(pageSize) : 20;
@@ -195,6 +217,7 @@ export function Comments({
           limit: limit.toString(),
           offset: nextOffset.toString(),
         });
+        if (moderation?.restore) params.set("includeHidden", "1");
         const response = await fetch(
           `/api/collections/${encodeURIComponent(collectionSlug)}/${encodeURIComponent(documentId)}/comments?${params.toString()}`,
           { credentials: "include" },
@@ -217,7 +240,7 @@ export function Comments({
         if (requestId === listRequestId.current) setLoading(false);
       }
     },
-    [collectionSlug, documentId, labels.loadFailed, limit],
+    [collectionSlug, documentId, labels.loadFailed, limit, moderation?.restore],
   );
 
   useEffect(() => {
@@ -341,6 +364,7 @@ export function Comments({
           memberKnown={memberKnown}
           viewerMemberId={viewerMemberId}
           locked={locked}
+          moderation={moderation}
           onReply={submitComment}
           onChanged={refresh}
           onRemoved={async () => {
@@ -422,6 +446,7 @@ interface CommentBranchProps {
   memberKnown: boolean | null;
   viewerMemberId: string | null;
   locked: boolean;
+  moderation?: NpCommentsModerationPermissions;
   onReply: (bodyMd: string, parentId: string) => Promise<string | null>;
   onChanged: () => Promise<boolean>;
   onRemoved: () => Promise<void>;
@@ -454,6 +479,7 @@ function CommentItem({
   memberKnown,
   viewerMemberId,
   locked,
+  moderation,
   onReply,
   onChanged,
   onRemoved,
@@ -467,9 +493,13 @@ function CommentItem({
   const [editBody, setEditBody] = useState(comment.bodyMd);
   const [editBusy, setEditBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [moderationBusy, setModerationBusy] = useState<"hide" | "restore" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const own = memberKnown === true && viewerMemberId === comment.memberId;
+  const canEdit = own || moderation?.editAny === true;
+  const canDelete = own || moderation?.deleteAny === true;
+  const isVisible = comment.status === "visible";
   const canMute = memberKnown === true && viewerMemberId !== null && !own;
   const authorName = comment.author?.displayName || comment.author?.handle || labels.unknownAuthor;
 
@@ -531,6 +561,41 @@ function CommentItem({
       setActionError(error instanceof Error ? error.message : labels.deleteFailed);
     } finally {
       setDeleteBusy(false);
+    }
+  };
+
+  const moderate = async (action: "hide" | "restore") => {
+    if (moderationBusy) return;
+    setModerationBusy(action);
+    setActionError(null);
+    try {
+      const csrf = readCookie("np-mb-csrf");
+      const response = await fetch(`/api/comments/${encodeURIComponent(comment.id)}/${action}`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        },
+        body: action === "hide" ? JSON.stringify({ reason: null }) : undefined,
+      });
+      if (!response.ok) {
+        throw await errorFromResponse(
+          response,
+          action === "hide" ? labels.hideFailed : labels.restoreFailed,
+        );
+      }
+      await onChanged();
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : action === "hide"
+            ? labels.hideFailed
+            : labels.restoreFailed,
+      );
+    } finally {
+      setModerationBusy(null);
     }
   };
 
@@ -630,13 +695,15 @@ function CommentItem({
         )}
 
         <div className="np-comment-actions" data-np-comment-actions>
-          <ReactionButton
-            key={`${comment.id}:${comment.reactions.counts.like ?? 0}:${comment.reactions.mine.includes("like")}`}
-            comment={comment}
-            memberKnown={memberKnown}
-            labels={labels}
-          />
-          {memberKnown === true && !locked ? (
+          {isVisible ? (
+            <ReactionButton
+              key={`${comment.id}:${comment.reactions.counts.like ?? 0}:${comment.reactions.mine.includes("like")}`}
+              comment={comment}
+              memberKnown={memberKnown}
+              labels={labels}
+            />
+          ) : null}
+          {memberKnown === true && !locked && isVisible ? (
             <button
               type="button"
               onClick={() => {
@@ -650,25 +717,48 @@ function CommentItem({
               {labels.reply}
             </button>
           ) : null}
-          {own ? (
+          {canEdit || canDelete ? (
             <>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditBody(comment.bodyMd);
-                  setEditOpen(true);
-                  setReplyOpen(false);
-                  setActionError(null);
-                }}
-              >
-                {labels.edit}
-              </button>
-              <button type="button" disabled={deleteBusy} onClick={() => void remove()}>
-                {deleteBusy ? labels.deleting : labels.delete}
-              </button>
+              {canEdit && comment.status !== "deleted" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditBody(comment.bodyMd);
+                    setEditOpen(true);
+                    setReplyOpen(false);
+                    setActionError(null);
+                  }}
+                >
+                  {labels.edit}
+                </button>
+              ) : null}
+              {canDelete && comment.status !== "deleted" ? (
+                <button type="button" disabled={deleteBusy} onClick={() => void remove()}>
+                  {deleteBusy ? labels.deleting : labels.delete}
+                </button>
+              ) : null}
             </>
           ) : null}
-          {memberKnown === true ? (
+          {moderation?.hide === true &&
+          (comment.status === "visible" || comment.status === "pending") ? (
+            <button
+              type="button"
+              disabled={moderationBusy !== null}
+              onClick={() => void moderate("hide")}
+            >
+              {moderationBusy === "hide" ? labels.hiding : labels.hide}
+            </button>
+          ) : null}
+          {moderation?.restore === true && comment.status === "hidden" ? (
+            <button
+              type="button"
+              disabled={moderationBusy !== null}
+              onClick={() => void moderate("restore")}
+            >
+              {moderationBusy === "restore" ? labels.restoring : labels.restore}
+            </button>
+          ) : null}
+          {memberKnown === true && isVisible ? (
             <button type="button" onClick={() => setReportOpen(true)}>
               {labels.report}
             </button>
@@ -733,6 +823,7 @@ function CommentItem({
         memberKnown={memberKnown}
         viewerMemberId={viewerMemberId}
         locked={locked}
+        moderation={moderation}
         onReply={onReply}
         onChanged={onChanged}
         onRemoved={onRemoved}

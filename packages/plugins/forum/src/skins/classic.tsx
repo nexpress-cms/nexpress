@@ -55,6 +55,11 @@ function PostRows({
         {post.status !== "published" ? (
           <span className="np-forum-state-badge">{messages.pending}</span>
         ) : null}
+        {(post.unresolvedReportCount ?? 0) > 0 ? (
+          <span className="np-forum-report-badge">
+            {messages.reportsPending}: {post.unresolvedReportCount?.toLocaleString(messages.locale)}
+          </span>
+        ) : null}
         {post.attachmentCount > 0 ? (
           <span
             className="np-forum-attachment-count"
@@ -350,6 +355,7 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
             </ul>
           </section>
         ) : null}
+        {props.moderationPanel}
         {props.engagement}
         {props.comments ? <section className="np-forum-comments">{props.comments}</section> : null}
       </article>

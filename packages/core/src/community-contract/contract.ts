@@ -15,6 +15,7 @@ import {
   npCommunityReportResolutionActions,
   npCommunityReportStatuses,
   npCommunityScopes,
+  npCommunityThreadModerationActions,
   npMemberProfileActivityKinds,
   type AuditActor,
   type AuditActorKind,
@@ -22,6 +23,7 @@ import {
   type BanKind,
   type BanScope,
   type CommunityRoleDefinition,
+  type NpCommunityScopeOptionWire,
   type NpAuditEventWireRow,
   type NpAuditPageWire,
   type NpBanRow,
@@ -82,6 +84,8 @@ import {
   type NpReportWireRow,
   type NpReportTargetContextKind,
   type NpReportTargetContextWire,
+  type NpThreadModerationAction,
+  type NpThreadModerationRequest,
   type NpResolveReportRequest,
   type NpReputationEvent,
   type RecordAuditEventInput,
@@ -140,6 +144,7 @@ const DIGEST_CADENCES = new Set<string>(npCommunityDigestCadences);
 const VERDICT_KINDS = new Set<string>(npCommunityModerationVerdictKinds);
 const AUDIT_ACTORS = new Set<string>(npCommunityAuditActorKinds);
 const CAPABILITIES = new Set<string>(npCommunityCapabilities);
+const THREAD_MODERATION_ACTIONS = new Set<string>(npCommunityThreadModerationActions);
 const MEMBER_STATUSES = new Set<string>(npMemberStatuses);
 const PROFILE_ACTIVITY_KINDS = new Set<string>(npMemberProfileActivityKinds);
 
@@ -2634,6 +2639,31 @@ export function npRequireOkWire(value: unknown): { ok: true } {
   return { ok: true };
 }
 
+export function npRequireThreadModerationRequest(value: unknown): NpThreadModerationRequest {
+  const raw = optionalRecord(value, "community.threadModeration", ["action"], ["reason"]);
+  const reason = raw.reason;
+  return {
+    action: enumString<NpThreadModerationAction>(
+      raw.action,
+      "community.threadModeration.action",
+      THREAD_MODERATION_ACTIONS,
+    ),
+    ...(reason === undefined
+      ? {}
+      : {
+          reason:
+            reason === null
+              ? null
+              : boundedString(
+                  reason,
+                  "community.threadModeration.reason",
+                  npCommunityContractLimits.reasonLength,
+                  { trim: true },
+                ),
+        }),
+  };
+}
+
 export function npRequireRemovedWire(value: unknown): { ok: true; removed: boolean } {
   const raw = exactRecord(value, "community.removed", ["ok", "removed"]);
   if (raw.ok !== true || typeof raw.removed !== "boolean") {
@@ -2679,6 +2709,43 @@ export function npRequireRoleGrantListWire(value: unknown): { docs: NpMemberRole
 export function npRequireRoleCatalogWire(value: unknown): { docs: CommunityRoleDefinition[] } {
   const raw = exactRecord(value, "community.roleCatalog", ["docs"]);
   return { docs: npRequireCommunityRoleCatalog(raw.docs) };
+}
+
+export function npRequireCommunityScopeOptionWire(
+  value: unknown,
+  path = "community.scopeOption",
+): NpCommunityScopeOptionWire {
+  const raw = exactRecord(value, path, ["scopeType", "scopeId", "label", "sourceCollection"]);
+  const scopeType = enumString<NpCommunityScopeOptionWire["scopeType"]>(
+    raw.scopeType,
+    `${path}.scopeType`,
+    new Set(["category", "collection", "thread"]),
+  );
+  const scopeId =
+    scopeType === "collection"
+      ? engagementTargetType(raw.scopeId, `${path}.scopeId`)
+      : uuid(raw.scopeId, `${path}.scopeId`);
+  return {
+    scopeType,
+    scopeId,
+    label: boundedString(raw.label, `${path}.label`, npCommunityContractLimits.labelLength),
+    sourceCollection: engagementTargetType(raw.sourceCollection, `${path}.sourceCollection`),
+  };
+}
+
+export function npRequireCommunityScopeCatalogWire(value: unknown): {
+  docs: NpCommunityScopeOptionWire[];
+} {
+  const raw = exactRecord(value, "community.scopeCatalog", ["docs"]);
+  return {
+    docs: safeArrayValues(
+      raw.docs,
+      "community.scopeCatalog.docs",
+      npCommunityContractLimits.pageRows,
+    ).map((entry, index) =>
+      npRequireCommunityScopeOptionWire(entry, `community.scopeCatalog.docs[${index.toString()}]`),
+    ),
+  };
 }
 
 export function npRequireMuteSummary(value: unknown): NpMemberMuteSummary {

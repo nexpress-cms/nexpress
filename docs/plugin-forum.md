@@ -68,14 +68,19 @@ actions, and relationship targets over one exact runtime definition.
 | Maximum attachments         | Board-specific cap from 1 to 20 files                                  |
 | Maximum attachment size     | Per-file cap from 1 to 25 MiB                                          |
 
-Staff manage `pinned`, `locked`, and status from the Forum posts collection.
-Members can submit only `board`, `title`, `body`, `category`, and
+Staff can manage `pinned`, `locked`, and status from the Forum posts collection.
+Declared category/site moderators receive the same exact state transitions on
+the public detail route, plus board-list pending/report indicators and inline
+report handling. Their list includes published posts and eligible member or
+previously-hidden pending posts, including pending rows that were pinned before
+moderation; initial staff drafts never cross this member surface. Members can
+submit only `board`, `title`, `body`, `category`, and
 `attachments`. The core
 member-write pipeline rejects any attempt to send operator fields before
 moderation or persistence, checks the current board policy, prevents authors
-from moving a post to another board, and derives `published` versus `pending`
-from that board. A spam/profanity `flag` still forces `pending` even when the
-board normally publishes immediately.
+and scoped moderators from moving a post to another board, and derives
+`published` versus `pending` from that board. A spam/profanity `flag` still
+forces `pending` even when the board normally publishes immediately.
 
 Deleting a board with posts is intentionally restricted by the relationship
 foreign key. Move or delete its posts first so a stale post can never point to
@@ -157,7 +162,7 @@ links.
 | `/boards/:boardKey`              | site    | Searchable and filterable post list      |
 | `/boards/:boardKey/new`          | member  | Authenticated member composer            |
 | `/boards/:boardKey/:postId`      | site    | Post body, engagement, actions, comments |
-| `/boards/:boardKey/:postId/edit` | member  | Owner-only edit form                     |
+| `/boards/:boardKey/:postId/edit` | member  | Owner or scoped-moderator edit form      |
 
 `surface: "member"` selects member chrome; the server route and collection
 pipeline still perform the authentication and ownership checks.
@@ -175,7 +180,8 @@ Every forum registers two self-contained skins:
 existing board. Select `community-full` per board in Admin, or set
 `defaultSkinId: "community-full"` for the `/boards` index and newly-created
 boards. Both skins expose the same route-owned view, visible-comment, and
-document-reaction totals. The full skin additionally exposes notices,
+document-reaction totals, moderation state/report badges, exact action set,
+and inline report panel. The full skin additionally exposes notices,
 categories, search, member filtering, numbered pagination, author avatars and
 display names, created/updated dates, pin/lock/moderation state, comments,
 owner actions, member report actions, and route-owned composers.
@@ -192,8 +198,20 @@ community: {
   views: true,
   follows: true,
   reports: true,
+  moderation: {
+    categoryField: "board",
+    hiddenField: "moderationHidden",
+    lockField: "locked",
+    pinField: "pinned",
+  },
 }
 ```
+
+`moderationHidden` is an internal required checkbox with `defaultValue: false`.
+It records whether a pending post was previously published, preventing a
+restore from being mistaken for first approval. Because this adds a collection
+column, upgrades must regenerate and apply the project migration using the
+commands in [Attachments](#attachments).
 
 `community.reactions` extends the existing reaction API from comments to
 published public documents in that collection. The site's exact
@@ -224,7 +242,12 @@ target. The Core service rejects missing, private, pending, or cross-site
 documents and duplicate unresolved reports. Admin Reports shows the post title,
 status, and collection edit link; `unpublish-document` moves the post to
 `pending`, while `dismiss` closes the case without changing it. Comments keep
-using the shared `comment` report target and `hide-comment` action.
+using the shared `comment` report target and `hide-comment` action. A category
+moderator sees unresolved direct and nested-comment cases on that same detail
+page and can hide the target or dismiss the case. Collection moderators can
+triage the collection's cases but never receive a thread-state action they do
+not hold. Every resolution is re-authorized by the API; the skin does not own
+scope or report policy.
 
 ## Subscription and notification contract
 
@@ -288,12 +311,14 @@ collection-write policy. Projects that do not consume
 `@nexpress/app/styles/globals.css` should import
 `@nexpress/plugin-forum/styles.css` themselves.
 
-Detail skins must place `authorActions`, `reportAction`, and
-`subscriptionAction`. They are separate route-owned nodes: the first appears
-only to the owner, the second only to another authenticated member on a
-published public post, and the subscription action owns its authenticated or
-login-required state. Skins may arrange them together, but must not reimplement
-report/follow targets, authentication, or CSRF behavior.
+Detail skins must place `authorActions`, `reportAction`, `subscriptionAction`,
+and `moderationPanel`. They are separate route-owned nodes: the first contains
+the exact owner or scoped-moderator post actions, the second appears only to
+another authenticated member on a published public post, the subscription
+action owns its authenticated or login-required state, and the panel contains
+only server-authorized report actions. Skins may arrange them together, but
+must not reimplement report/follow targets, authentication, scope resolution,
+or CSRF behavior.
 
 Post-list skins receive route-owned `subscriptionAction`, the parsed `query`, `searchMaxLength`, and a
 `hrefForQuery(patch)` helper. Use that helper for author, category, reset, and
@@ -395,6 +420,10 @@ It also publishes `engagement` and `engagement-summary` slots backed by
 `data-np-forum-metric="views|comments|reactions"`.
 The `subscription` slot targets `[data-np-forum-subscription]`; themes may style
 that stable state hook without importing the plugin client component.
+Moderator surfaces expose `data-np-forum-moderation="reports"`,
+`data-np-forum-report="<reportId>"`,
+`data-np-forum-moderation-action="hide|restore|lock|unlock|pin|unpin"`, and
+`.np-forum-report-badge` without coupling a theme to either bundled skin.
 The `comments` slot continues to target the plugin-owned `.np-forum-comments`
 wrapper. Inside it, the framework comment contract exposes
 `data-np-comments="thread"`, `data-np-comment="item"`, author/action/composer
@@ -430,7 +459,7 @@ activity. Forum posts opt into Core's generic profile projection and expose
 their configured UUID detail route through `seo.urlPath`; neither skin nor a
 theme queries the forum collections to build member activity.
 
-Anonymous posting, board passwords, and board-specific moderator roles are not
-part of this first contract. They should
-build on the shared community capability and audit surfaces instead of adding
-parallel authentication or moderation systems inside the plugin.
+Anonymous posting and board passwords are not part of this contract. Board
+moderation is intentionally supplied by Core's shared `category-mod` role,
+capability, scoped-ban, report, and audit surfaces rather than a parallel role
+system inside the plugin.

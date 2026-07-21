@@ -61,9 +61,9 @@ const builtInRoles: CommunityRoleDefinition[] = [
     role: "collection-mod",
     scopeType: "collection",
     label: "Collection moderator",
-    // Collection-mods only have authority over the comments under a
-    // collection's documents. Thread-only capabilities don't apply, so
-    // they're omitted on purpose.
+    // Collection-mods can moderate comments and triage reports under a
+    // collection. Thread-state capabilities stay omitted, so a report may be
+    // dismissed but cannot be used to mutate the document itself.
     capabilities: [
       "hide-comment",
       "restore-comment",
@@ -79,8 +79,9 @@ const builtInRoles: CommunityRoleDefinition[] = [
     role: "thread-author",
     scopeType: "thread",
     label: "Thread author",
-    // Auto-granted on thread create. Lets the OP edit / lock their own
-    // thread without giving them broader powers.
+    // `memberCapabilities()` applies these capabilities implicitly when
+    // target.ownerId matches the caller. An explicit scoped grant remains a
+    // deliberate edit/lock delegation and doctor checks that target's life.
     capabilities: ["edit-own-thread", "lock-own-thread"],
   },
 ];

@@ -1,4 +1,5 @@
 import { getDocumentById } from "@nexpress/core";
+import { getDocumentModerationPermissions } from "@nexpress/core/community";
 import { isNpRichTextContent } from "@nexpress/core/fields";
 import { getSiteMember } from "@nexpress/next";
 import type { NpRouteRenderProps } from "@nexpress/next";
@@ -28,7 +29,12 @@ export function createForumPostEditRoute(runtime: NpForumRuntime) {
     const postId = params.postId ?? "";
     if (!isForumPostId(postId)) notFound();
     const post = await getDocumentById<ForumPostDocument>(runtime.collections.posts, postId);
-    if (!post || post.board !== board.id || post.memberAuthorId !== member.id) notFound();
+    if (!post || post.board !== board.id) notFound();
+    const isOwner = post.memberAuthorId === member.id;
+    const permissions = isOwner
+      ? null
+      : await getDocumentModerationPermissions(member.id, runtime.collections.posts, post.id);
+    if (!isOwner && permissions?.editThread !== true) notFound();
     const [attachmentLabels, attachments] = await Promise.all([
       getForumAttachmentFormLabels(board),
       resolveForumAttachments(post.attachments),

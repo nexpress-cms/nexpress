@@ -433,6 +433,25 @@ export interface NpCollectionConfig {
     follows?: boolean;
     reports?: boolean;
     /**
+     * Declare that documents in this collection are moderatable threads.
+     * Core always projects the document id as the `thread` scope and the
+     * collection slug as the `collection` scope. `categoryField`, when set,
+     * must name one required top-level single relationship field; its related
+     * document id becomes the `category` scope. `hiddenField` must name a required
+     * checkbox with `defaultValue: false`; it distinguishes an initial pending
+     * submission from a previously-published thread hidden by moderation.
+     * Optional checkbox mappings enable lock and pin transitions without
+     * exposing arbitrary document patches to member moderators. A moderation
+     * declaration requires an explicit `memberWrite.writableFields` allow-list,
+     * and none of these state fields may appear in that list.
+     */
+    moderation?: {
+      categoryField?: string;
+      hiddenField: string;
+      lockField?: string;
+      pinField?: string;
+    };
+    /**
      * Explicit public-profile activity opt-in. These projections deliberately
      * bypass collection document reads so Core can produce exact
      * cross-collection pagination without leaking private policy state.

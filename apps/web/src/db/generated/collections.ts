@@ -331,6 +331,7 @@ export const forumPostsTable = pgTable(
     title: text("title").notNull(),
     body: jsonb("body").notNull(),
     category: text("category"),
+    moderationHidden: boolean("moderation_hidden").default(false).notNull(),
     pinned: boolean("pinned").default(false),
     locked: boolean("locked").default(false),
     siteId: text("site_id").default("default").notNull(),

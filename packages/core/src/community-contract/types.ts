@@ -38,6 +38,14 @@ export const npCommunityCapabilities = [
   "manage-category",
   "view-staff-tools",
 ] as const;
+export const npCommunityThreadModerationActions = [
+  "hide",
+  "restore",
+  "lock",
+  "unlock",
+  "pin",
+  "unpin",
+] as const;
 
 export type CommentStatus = (typeof npCommunityCommentStatuses)[number];
 export type NpCommentSort = (typeof npCommunityCommentSorts)[number];
@@ -55,6 +63,12 @@ export type NpDigestCadence = (typeof npCommunityDigestCadences)[number];
 export type NpModerationVerdictKind = (typeof npCommunityModerationVerdictKinds)[number];
 export type AuditActorKind = (typeof npCommunityAuditActorKinds)[number];
 export type CommunityCapability = (typeof npCommunityCapabilities)[number];
+export type NpThreadModerationAction = (typeof npCommunityThreadModerationActions)[number];
+
+export interface NpThreadModerationRequest {
+  action: NpThreadModerationAction;
+  reason?: string | null;
+}
 
 export const npMemberProfileActivityKinds = ["documents", "comments"] as const;
 export type NpMemberProfileActivityKind = (typeof npMemberProfileActivityKinds)[number];
@@ -186,6 +200,13 @@ export interface CommunityRoleDefinition {
   capabilities: readonly CommunityCapability[];
   label?: string;
   source?: string;
+}
+
+export interface NpCommunityScopeOptionWire {
+  scopeType: Exclude<CommunityScope, "site">;
+  scopeId: string;
+  label: string;
+  sourceCollection: string;
 }
 
 export interface NpCommentRow {
