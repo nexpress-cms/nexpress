@@ -1,6 +1,5 @@
-import { and, count, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 
-import { can } from "../auth/capabilities.js";
 import { NpCollectionContractError } from "../collection-contract/contract.js";
 import { getCollectionConfig } from "../collections/registry.js";
 import { buildSearchVector } from "../collections/search.js";
@@ -36,10 +35,12 @@ import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { recordAuditEvent } from "./audit.js";
-import { withMemberWrite } from "./can.js";
-import { staffHideComment } from "./comments.js";
+import { memberCapabilities, withMemberWrite } from "./can.js";
+import { hideComment, staffHideComment } from "./comments.js";
+import { moderateMemberThread } from "./document-moderation.js";
 import { npResolveDocumentEngagementTarget } from "./engagement-target.js";
-import type { Principal } from "./principal.js";
+import { npResolveDocumentCommunityTarget, type NpCommunityTargetScope } from "./target-scopes.js";
+import { principalCan, type Principal } from "./principal.js";
 
 const EXCERPT_LENGTH = 240;
 
@@ -224,10 +225,7 @@ export async function fileReport(input: FileReportInput): Promise<NpReportRow> {
     input.reporterId,
   );
 
-  const scopes =
-    report.targetType === "comment" || report.targetType === "member"
-      ? []
-      : [{ type: "collection" as const, id: report.targetType }];
+  const scopes = await reportTargetScopes(report.targetType, report.targetId);
   return withMemberWrite(reporterId, scopes, () =>
     doFileReport({
       reporterId,
@@ -238,10 +236,25 @@ export async function fileReport(input: FileReportInput): Promise<NpReportRow> {
   );
 }
 
+async function reportTargetScopes(targetType: string, targetId: string) {
+  if (targetType === "member") return [];
+  if (targetType === "comment") {
+    const db = getDb();
+    const [comment] = await db
+      .select({ targetType: npComments.targetType, targetId: npComments.targetId })
+      .from(npComments)
+      .where(eq(npComments.id, targetId))
+      .limit(1);
+    if (!comment) throw new NpNotFoundError("comment", targetId);
+    return (await npResolveDocumentCommunityTarget(comment.targetType, comment.targetId)).scopes;
+  }
+  return (await npResolveDocumentCommunityTarget(targetType, targetId)).scopes;
+}
+
 async function doFileReport(input: FileReportInput): Promise<NpReportRow> {
   const target = await assertReportTargetExists(input.targetType, input.targetId);
   const db = getDb();
-  const siteId = await requireSiteId();
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   if (target.siteId !== null && target.siteId !== siteId) {
     throw new NpForbiddenError("report", "cross-site");
   }
@@ -303,10 +316,149 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
   return { reports: reports.map(npRequireReportRow), totalDocs: Number(totalRow?.total ?? 0) };
 }
 
+export interface NpMemberDocumentReportCase {
+  report: NpReportRow;
+  target: NpReportTargetContextWire;
+  actions: NpReportResolutionAction[];
+}
+
+/**
+ * Resolve the unresolved report cases attached to one exact document or any
+ * of its comments. The member capability check uses the same projected
+ * thread/category/collection chain as every action on the detail surface.
+ */
+export async function listMemberDocumentReportCases(
+  memberId: string,
+  collection: string,
+  documentId: string,
+): Promise<NpMemberDocumentReportCase[]> {
+  const target = await npResolveDocumentCommunityTarget(collection, documentId);
+  const permissionTarget = {
+    type: "report",
+    id: documentId,
+    ownerId: target.ownerId ?? undefined,
+    scopes: target.scopes,
+  };
+  const allowed = await memberCapabilities(
+    memberId,
+    ["resolve-report", "hide-comment", "hide-thread"] as const,
+    permissionTarget,
+  );
+  if (!allowed.has("resolve-report")) throw new NpForbiddenError("reports", "list");
+
+  const db = getDb();
+  const rows = (await db
+    .select()
+    .from(npReports)
+    .where(
+      and(
+        eq(npReports.siteId, target.siteId),
+        isNull(npReports.resolvedAt),
+        or(
+          and(eq(npReports.targetType, collection), eq(npReports.targetId, documentId)),
+          and(
+            eq(npReports.targetType, "comment"),
+            sql`exists (
+              select 1 from ${npComments}
+               where ${npComments.id}::text = ${npReports.targetId}
+                 and ${npComments.targetType} = ${collection}
+                 and ${npComments.targetId} = ${documentId}
+                 and ${npComments.siteId} = ${target.siteId}
+            )`,
+          ),
+        ),
+      ),
+    )
+    .orderBy(desc(npReports.createdAt))
+    .limit(50)) as NpReportRow[];
+  const checked = rows.map(npRequireReportRow);
+  return Promise.all(
+    checked.map(async (report) => {
+      const context = await getReportTargetContext(report);
+      const actions: NpReportResolutionAction[] = ["dismiss"];
+      if (
+        context.kind === "comment" &&
+        (context.status === "visible" || context.status === "pending") &&
+        allowed.has("hide-comment")
+      ) {
+        actions.unshift("hide-comment");
+      }
+      if (
+        context.kind === "document" &&
+        context.status === "published" &&
+        allowed.has("hide-thread")
+      ) {
+        actions.unshift("unpublish-document");
+      }
+      return { report, target: context, actions };
+    }),
+  );
+}
+
+/** Batch unresolved direct + comment report totals for board-list badges. */
+export async function countUnresolvedDocumentReports(
+  collection: string,
+  documentIds: readonly string[],
+): Promise<Map<string, number>> {
+  if (documentIds.length > 200) {
+    throw new NpValidationError("Invalid report count request", [
+      { field: "documentIds", message: "At most 200 document ids may be counted." },
+    ]);
+  }
+  const ids = [
+    ...new Set(
+      documentIds.map((id, index) =>
+        requireCommunityContract(
+          (value) => npRequireCommunityId(value, `community.reportCounts.documentIds.${index}`),
+          id,
+        ),
+      ),
+    ),
+  ];
+  const totals = new Map<string, number>();
+  if (ids.length === 0) return totals;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+  const db = getDb();
+  const directRows = await db
+    .select({ documentId: npReports.targetId, total: count() })
+    .from(npReports)
+    .where(
+      and(
+        eq(npReports.siteId, siteId),
+        eq(npReports.targetType, collection),
+        inArray(npReports.targetId, ids),
+        isNull(npReports.resolvedAt),
+      ),
+    )
+    .groupBy(npReports.targetId);
+  const commentRows = await db
+    .select({ documentId: npComments.targetId, total: count() })
+    .from(npReports)
+    .innerJoin(
+      npComments,
+      sql`${npReports.targetType} = 'comment'
+          and ${npReports.targetId} = ${npComments.id}::text
+          and ${npReports.siteId} = ${npComments.siteId}`,
+    )
+    .where(
+      and(
+        eq(npReports.siteId, siteId),
+        eq(npComments.targetType, collection),
+        inArray(npComments.targetId, ids),
+        isNull(npReports.resolvedAt),
+      ),
+    )
+    .groupBy(npComments.targetId);
+  for (const row of [...directRows, ...commentRows]) {
+    totals.set(row.documentId, (totals.get(row.documentId) ?? 0) + Number(row.total));
+  }
+  return totals;
+}
+
 export interface ResolveReportInput {
   reportId: string;
   action: NpReportResolutionAction;
-  actor: Extract<Principal, { kind: "staff" }>;
+  actor: Principal;
 }
 
 export interface ResolveReportResult {
@@ -316,9 +468,6 @@ export interface ResolveReportResult {
 
 /** Apply one closed moderation action and resolve the report under one row lock. */
 export async function resolveReport(input: ResolveReportInput): Promise<ResolveReportResult> {
-  if (!can(input.actor.user, "community.moderate")) {
-    throw new NpForbiddenError("reports", "resolve");
-  }
   const db = getDb();
   const requestSiteId = await requireSiteId();
   const reportId = requireCommunityContract(
@@ -346,6 +495,26 @@ export async function resolveReport(input: ResolveReportInput): Promise<ResolveR
         { field: "report", message: "Report already resolved" },
       ]);
     }
+    let scopes: NpCommunityTargetScope[];
+    try {
+      scopes = await reportTargetScopes(checkedExisting.targetType, checkedExisting.targetId);
+    } catch (error) {
+      // Staff must be able to close an orphaned queue row whose target was
+      // removed outside the normal cascade. This exception is deliberately
+      // limited to no-mutation dismissals; member scope checks and every target
+      // state transition still require a live, current-site target.
+      if (input.actor.kind !== "staff" || action !== "dismiss") throw error;
+      scopes = [];
+    }
+    if (
+      !(await principalCan(input.actor, "resolve-report", {
+        type: "report",
+        id: checkedExisting.id,
+        scopes,
+      }))
+    ) {
+      throw new NpForbiddenError("reports", "resolve");
+    }
 
     // Different reporters can create distinct rows for the same target. Lock
     // the target identity as well as this report row so concurrent moderators
@@ -361,19 +530,40 @@ export async function resolveReport(input: ResolveReportInput): Promise<ResolveR
           { field: "action", message: "hide-comment requires a comment report" },
         ]);
       }
-      await staffHideComment(checkedExisting.targetId, input.actor.user.id, checkedExisting.reason);
+      if (input.actor.kind === "staff") {
+        await staffHideComment(
+          checkedExisting.targetId,
+          input.actor.user.id,
+          checkedExisting.reason,
+        );
+      } else {
+        await hideComment({
+          commentId: checkedExisting.targetId,
+          memberId: input.actor.memberId,
+          reason: checkedExisting.reason,
+        });
+      }
     } else if (action === "unpublish-document") {
       if (checkedExisting.targetType === "comment" || checkedExisting.targetType === "member") {
         throw new NpValidationError("Invalid report action", [
           { field: "action", message: "unpublish-document requires a collection document report" },
         ]);
       }
-      const saved = await unpublishDocumentForModeration(
-        checkedExisting.targetType,
-        checkedExisting.targetId,
-        input.actor.user,
-        checkedExisting.reason,
-      );
+      const saved =
+        input.actor.kind === "staff"
+          ? await unpublishDocumentForModeration(
+              checkedExisting.targetType,
+              checkedExisting.targetId,
+              input.actor.user,
+              checkedExisting.reason,
+            )
+          : await moderateMemberThread({
+              collection: checkedExisting.targetType,
+              documentId: checkedExisting.targetId,
+              memberId: input.actor.memberId,
+              action: "hide",
+              reason: checkedExisting.reason,
+            });
       moderatedDocument = {
         collectionSlug: checkedExisting.targetType,
         document: saved.doc,
@@ -387,8 +577,8 @@ export async function resolveReport(input: ResolveReportInput): Promise<ResolveR
       .update(npReports)
       .set({
         resolvedAt: new Date(),
-        resolvedByUserId: input.actor.user.id,
-        resolvedByMemberId: null,
+        resolvedByUserId: input.actor.kind === "staff" ? input.actor.user.id : null,
+        resolvedByMemberId: input.actor.kind === "member" ? input.actor.memberId : null,
         resolution: action,
       })
       .where(
@@ -408,7 +598,10 @@ export async function resolveReport(input: ResolveReportInput): Promise<ResolveR
   });
 
   await recordAuditEvent({
-    actor: { kind: "staff", userId: input.actor.user.id },
+    actor:
+      input.actor.kind === "staff"
+        ? { kind: "staff", userId: input.actor.user.id }
+        : { kind: "member", memberId: input.actor.memberId },
     action: "report.resolved",
     targetType: result.report.targetType,
     targetId: result.report.targetId,

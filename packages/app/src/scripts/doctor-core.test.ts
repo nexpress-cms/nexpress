@@ -9,8 +9,68 @@ import {
   npIsCanonicalCollectionMainTableName,
   npIsCollectionMainTableName,
 } from "./doctor-collection-contract.js";
+import {
+  npFindMissingCommunityRoleGrantTargets,
+  npPlanCommunityRoleGrantTargets,
+} from "./doctor-community-grants.js";
 
 describe("doctor core", () => {
+  it("reports malformed, missing, and cross-site community role targets", () => {
+    const categoryId = "e9fb7723-14fd-4c0c-8e9a-dd223279a5ed";
+    const threadId = "4c70615b-7685-4817-9272-cea2bdd08d73";
+    const plan = npPlanCommunityRoleGrantTargets(
+      [
+        {
+          id: "grant-category",
+          role: "category-mod",
+          scopeType: "category",
+          scopeId: categoryId,
+          siteId: "default",
+        },
+        {
+          id: "grant-thread",
+          role: "thread-author",
+          scopeType: "thread",
+          scopeId: threadId,
+          siteId: "community",
+        },
+        {
+          id: "grant-invalid",
+          role: "category-mod",
+          scopeType: "category",
+          scopeId: "not-a-document-id",
+          siteId: "default",
+        },
+        {
+          id: "grant-collection",
+          role: "collection-mod",
+          scopeType: "collection",
+          scopeId: "missing-posts",
+          siteId: "default",
+        },
+      ],
+      new Set(["np_c_forum-posts"]),
+    );
+
+    expect(plan.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "grants.grant-invalid.scopeId" }),
+        expect.objectContaining({ path: "grants.grant-collection.scopeId" }),
+      ]),
+    );
+    expect(
+      npFindMissingCommunityRoleGrantTargets(
+        plan.scopedTargets,
+        new Set([`default:${categoryId}`]),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        path: "grants.grant-thread.scopeId",
+        message: expect.stringContaining("missing or cross-site"),
+      }),
+    ]);
+  });
+
   it("classifies collection main tables without relying on required columns", () => {
     expect(npIsCollectionMainTableName("np_c_posts")).toBe(true);
     expect(npIsCollectionMainTableName("np_c_blog-post")).toBe(true);

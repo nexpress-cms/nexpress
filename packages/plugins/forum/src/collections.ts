@@ -379,6 +379,12 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
       views: true,
       follows: true,
       reports: true,
+      moderation: {
+        categoryField: "board",
+        hiddenField: "moderationHidden",
+        lockField: "locked",
+        pinField: "pinned",
+      },
       profileActivity: { documents: true, comments: true },
       memberWrite: {
         create: true,
@@ -530,6 +536,13 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
           group: "Board",
           description: "Use a category key configured on the selected board.",
         },
+      },
+      {
+        type: "checkbox",
+        name: "moderationHidden",
+        required: true,
+        defaultValue: false,
+        hidden: true,
       },
       {
         type: "checkbox",

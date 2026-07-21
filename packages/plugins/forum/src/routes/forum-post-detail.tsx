@@ -3,6 +3,11 @@ import {
   getDocumentById,
   getSiteSeoSettings,
 } from "@nexpress/core";
+import {
+  getDocumentModerationPermissions,
+  listMemberDocumentReportCases,
+} from "@nexpress/core/community";
+import { npToReportWireRow } from "@nexpress/core/community-contract";
 import { isNpRichTextContent } from "@nexpress/core/fields";
 import type { NpRichTextContent } from "@nexpress/editor";
 import { renderRichText } from "@nexpress/editor/server";
@@ -14,6 +19,7 @@ import { notFound } from "next/navigation";
 import {
   ForumPostActions,
   ForumPostEngagement,
+  ForumModerationPanel,
   ForumPostReportAction,
   ForumSubscriptionAction,
 } from "@nexpress/plugin-forum/client";
@@ -62,14 +68,28 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
     const { board, post } = result;
     const member = await getSiteMember();
     const isOwner = member !== null && post.memberAuthorId === member.id;
-    if ((post.status !== "published" || post.visibility !== "public") && !isOwner) notFound();
+    const isPublic = post.status === "published" && post.visibility === "public";
+    const permissions = member
+      ? await getDocumentModerationPermissions(member.id, runtime.collections.posts, post.id)
+      : null;
+    if (
+      (post.status !== "published" || post.visibility !== "public") &&
+      !isOwner &&
+      permissions?.editThread !== true &&
+      !permissions?.actions.includes("restore")
+    ) {
+      notFound();
+    }
 
     const [summary] = await enrichForumPosts([post], runtime.collections.posts);
     if (!summary) notFound();
     const body: NpRichTextContent | null = isNpRichTextContent(post.body) ? post.body : null;
-    const [messages, attachments] = await Promise.all([
+    const [messages, attachments, reportCases] = await Promise.all([
       getForumMessages(),
       resolveForumAttachments(post.attachments),
+      member && permissions?.resolveReports
+        ? listMemberDocumentReportCases(member.id, runtime.collections.posts, post.id)
+        : Promise.resolve([]),
     ]);
     const comments =
       post.status === "published" ? (
@@ -132,7 +152,23 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
             muteTitle: messages.commentMuteTitle,
             muteConfirm: messages.commentMuteConfirm,
             muteFailed: messages.commentMuteFailed,
+            hide: messages.hideComment,
+            hiding: messages.hidingComment,
+            hideFailed: messages.moderationActionFailed,
+            restore: messages.restoreComment,
+            restoring: messages.restoringComment,
+            restoreFailed: messages.moderationActionFailed,
           }}
+          moderation={
+            permissions
+              ? {
+                  editAny: permissions.editComments,
+                  deleteAny: permissions.deleteComments,
+                  hide: permissions.hideComments,
+                  restore: permissions.restoreComments,
+                }
+              : undefined
+          }
         />
       ) : null;
 
@@ -155,22 +191,36 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
       board,
       post: summary,
       body: body ? renderRichText(body) : <p>{messages.emptyBody}</p>,
-      authorActions: isOwner ? (
-        <ForumPostActions
-          basePath={runtime.basePath}
-          collectionSlug={runtime.collections.posts}
-          boardKey={board.key}
-          postId={post.id}
-          labels={{
-            edit: messages.edit,
-            delete: messages.delete,
-            deleteConfirm: messages.deleteConfirm,
-            cancel: messages.cancel,
-            deleting: messages.deleting,
-            deleteFailed: messages.deleteFailed,
-          }}
-        />
-      ) : null,
+      authorActions:
+        isOwner ||
+        permissions?.editThread ||
+        permissions?.deleteThread ||
+        (permissions?.actions.length ?? 0) > 0 ? (
+          <ForumPostActions
+            basePath={runtime.basePath}
+            collectionSlug={runtime.collections.posts}
+            boardKey={board.key}
+            postId={post.id}
+            canEdit={isOwner || permissions?.editThread === true}
+            canDelete={isOwner || permissions?.deleteThread === true}
+            moderationActions={permissions?.actions ?? []}
+            labels={{
+              edit: messages.edit,
+              delete: messages.delete,
+              deleteConfirm: messages.deleteConfirm,
+              cancel: messages.cancel,
+              deleting: messages.deleting,
+              deleteFailed: messages.deleteFailed,
+              hide: messages.hidePost,
+              restore: messages.restorePost,
+              lock: messages.lockPost,
+              unlock: messages.unlockPost,
+              pin: messages.pinPost,
+              unpin: messages.unpinPost,
+              moderationFailed: messages.moderationActionFailed,
+            }}
+          />
+        ) : null,
       reportAction:
         member !== null &&
         !isOwner &&
@@ -193,7 +243,7 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
             }}
           />
         ) : null,
-      subscriptionAction: (
+      subscriptionAction: isPublic ? (
         <ForumSubscriptionAction
           targetType={runtime.collections.posts}
           targetId={post.id}
@@ -207,17 +257,35 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
             failed: messages.subscriptionFailed,
           }}
         />
-      ),
+      ) : null,
+      moderationPanel:
+        reportCases.length > 0 ? (
+          <ForumModerationPanel
+            cases={reportCases.map(({ report, target, actions }) => ({
+              report: npToReportWireRow(report),
+              target,
+              actions,
+            }))}
+            locale={messages.locale}
+            labels={{
+              title: messages.reportsPending,
+              reason: messages.reportReason,
+              dismiss: messages.dismissReport,
+              hideComment: messages.hideReportedComment,
+              hidePost: messages.hideReportedPost,
+              resolving: messages.resolvingReport,
+              failed: messages.resolveReportFailed,
+            }}
+          />
+        ) : null,
       engagement: (
         <ForumPostEngagement
           targetType={runtime.collections.posts}
           targetId={post.id}
           initial={summary.engagement}
           locale={messages.locale}
-          isAuthenticated={
-            member !== null && post.status === "published" && post.visibility === "public"
-          }
-          trackViews={post.status === "published" && post.visibility === "public"}
+          isAuthenticated={member !== null && isPublic}
+          trackViews={isPublic}
           labels={{
             views: messages.views,
             comments: messages.commentsCount,

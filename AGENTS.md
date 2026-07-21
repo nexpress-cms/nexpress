@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-21 (public member profiles now share one explicit,
+**Last refreshed:** 2026-07-21 (declarative document moderation now projects
+thread/category/collection scopes across member writes, comments, reports,
+forum routes, Admin role choices, doctor diagnostics, and both bundled skins.)
+
+**Earlier:** 2026-07-21 (public member profiles now share one explicit,
 site-scoped collection activity projection, exact snapshot pagination,
 PII-free API wires, prepared theme renderer props, community-theme UI,
 scaffolds, OpenAPI, integration tests, and docs.)

@@ -113,13 +113,24 @@ function PostStateBadges({
   hideNotice?: boolean;
 }) {
   const showNotice = !hideNotice && post.pinned;
-  if (!showNotice && !post.locked && post.status === "published") return null;
+  if (
+    !showNotice &&
+    !post.locked &&
+    post.status === "published" &&
+    (post.unresolvedReportCount ?? 0) === 0
+  )
+    return null;
   return (
     <span className="np-forum-community-state">
       {showNotice ? <span className="np-forum-notice-badge">{messages.notice}</span> : null}
       {post.locked ? <span className="np-forum-state-badge">{messages.locked}</span> : null}
       {post.status !== "published" ? (
         <span className="np-forum-state-badge">{messages.pending}</span>
+      ) : null}
+      {(post.unresolvedReportCount ?? 0) > 0 ? (
+        <span className="np-forum-report-badge">
+          {messages.reportsPending}: {post.unresolvedReportCount?.toLocaleString(messages.locale)}
+        </span>
       ) : null}
     </span>
   );
@@ -557,6 +568,7 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
             </ul>
           </section>
         ) : null}
+        {props.moderationPanel}
         {props.engagement}
         {props.comments ? <section className="np-forum-comments">{props.comments}</section> : null}
         <footer className="np-forum-community-detail-footer">

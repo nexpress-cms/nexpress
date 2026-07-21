@@ -1,5 +1,6 @@
 "use client";
 
+import type { NpThreadModerationAction } from "@nexpress/core/community-contract";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -9,6 +10,9 @@ interface ForumPostActionsProps {
   collectionSlug: string;
   boardKey: string;
   postId: string;
+  canEdit: boolean;
+  canDelete: boolean;
+  moderationActions: readonly NpThreadModerationAction[];
   labels: {
     edit: string;
     delete: string;
@@ -16,6 +20,13 @@ interface ForumPostActionsProps {
     cancel: string;
     deleting: string;
     deleteFailed: string;
+    hide: string;
+    restore: string;
+    lock: string;
+    unlock: string;
+    pin: string;
+    unpin: string;
+    moderationFailed: string;
   };
 }
 
@@ -31,12 +42,16 @@ export function ForumPostActions({
   collectionSlug,
   boardKey,
   postId,
+  canEdit,
+  canDelete,
+  moderationActions,
   labels,
 }: ForumPostActionsProps) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [moderating, setModerating] = useState<NpThreadModerationAction | null>(null);
 
   const remove = async () => {
     setSubmitting(true);
@@ -62,12 +77,57 @@ export function ForumPostActions({
     }
   };
 
+  const moderate = async (action: NpThreadModerationAction) => {
+    if (moderating) return;
+    setModerating(action);
+    setError(null);
+    try {
+      const csrf = readCookie("np-mb-csrf");
+      const response = await fetch(
+        `/api/collections/${encodeURIComponent(collectionSlug)}/${encodeURIComponent(postId)}/moderation`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+          },
+          body: JSON.stringify({ action }),
+        },
+      );
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        throw new Error(body?.error?.message ?? labels.moderationFailed);
+      }
+      router.refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : labels.moderationFailed);
+    } finally {
+      setModerating(null);
+    }
+  };
+
   return (
     <div className="np-forum-post-actions np-forum-author-actions">
-      <Link href={`${basePath}/${boardKey}/${postId}/edit`}>{labels.edit}</Link>
-      <button type="button" onClick={() => setConfirming(true)} disabled={submitting}>
-        {labels.delete}
-      </button>
+      {canEdit ? <Link href={`${basePath}/${boardKey}/${postId}/edit`}>{labels.edit}</Link> : null}
+      {moderationActions.map((action) => (
+        <button
+          key={action}
+          type="button"
+          onClick={() => void moderate(action)}
+          disabled={moderating !== null || submitting}
+          data-np-forum-moderation-action={action}
+        >
+          {labels[action]}
+        </button>
+      ))}
+      {canDelete ? (
+        <button type="button" onClick={() => setConfirming(true)} disabled={submitting}>
+          {labels.delete}
+        </button>
+      ) : null}
       {error ? <span role="alert">{error}</span> : null}
       {confirming ? (
         <div role="dialog" aria-modal="true" className="np-confirm-dialog">

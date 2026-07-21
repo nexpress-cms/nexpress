@@ -57,6 +57,8 @@ export interface NpForumPostSummary {
   author: NpForumAuthor | null;
   engagement: NpContentEngagementSummary;
   attachmentCount: number;
+  /** Present only on moderator list projections. */
+  unresolvedReportCount?: number;
 }
 
 export interface NpForumPostListQuery {
@@ -140,6 +142,24 @@ export interface NpForumMessages {
   cancel: string;
   deleting: string;
   deleteFailed: string;
+  hidePost: string;
+  restorePost: string;
+  lockPost: string;
+  unlockPost: string;
+  pinPost: string;
+  unpinPost: string;
+  moderationActionFailed: string;
+  hideComment: string;
+  restoreComment: string;
+  hidingComment: string;
+  restoringComment: string;
+  reportsPending: string;
+  reportReason: string;
+  dismissReport: string;
+  hideReportedComment: string;
+  hideReportedPost: string;
+  resolvingReport: string;
+  resolveReportFailed: string;
   report: string;
   reportTitle: string;
   reportHelp: string;
@@ -217,6 +237,7 @@ export interface NpForumPostDetailSkinProps {
   authorActions: ReactNode;
   reportAction: ReactNode;
   subscriptionAction: ReactNode;
+  moderationPanel: ReactNode;
   engagement: ReactNode;
   comments: ReactNode;
   attachments: NpForumAttachment[];

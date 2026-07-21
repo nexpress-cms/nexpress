@@ -5,6 +5,7 @@ import {
   MemberPurgePanel,
   MemberRolesPanel,
 } from "@nexpress/admin/client";
+import { listCommunityScopeOptions } from "@nexpress/core/community";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { cookies } from "next/headers";
@@ -56,6 +57,8 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
     createdAt: Date;
   }>;
   if (!row) throw new NpNotFoundError("member", id);
+  const canManage = can(user, "admin.manage");
+  const communityScopeOptions = canManage ? await listCommunityScopeOptions(user) : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -81,11 +84,7 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
         </p>
       </div>
 
-      <LinkedIdentitiesPanel
-        subjectKind="member"
-        subjectId={row.id}
-        canRevoke={can(user, "admin.manage")}
-      />
+      <LinkedIdentitiesPanel subjectKind="member" subjectId={row.id} canRevoke={canManage} />
 
       {/*
         Roles panel surfaces the `np_member_roles` grants. Read is
@@ -96,7 +95,8 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
       <MemberRolesPanel
         memberId={row.id}
         memberHandle={row.handle}
-        canModify={can(user, "admin.manage")}
+        canModify={canManage}
+        scopeOptions={communityScopeOptions}
       />
 
       {/*
@@ -116,9 +116,7 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
         moderation surfaces. Shown last so the page reads
         identity-first, dangerous-action-last.
       */}
-      {can(user, "admin.manage") ? (
-        <MemberPurgePanel memberId={row.id} memberHandle={row.handle} />
-      ) : null}
+      {canManage ? <MemberPurgePanel memberId={row.id} memberHandle={row.handle} /> : null}
     </div>
   );
 }

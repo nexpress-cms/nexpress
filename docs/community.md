@@ -46,7 +46,8 @@ many independent moving parts. Sites pick what they need:
 - **Forum** — `@nexpress/plugin-forum`, native board/post collections,
   document reactions, and daily-unique view receipts.
 - **Moderation** (Phase 9.5 / 9.5a / 9.5b) — contextual reports queue,
-  closed resolution actions, bans (scoped), audit log, role-grant UI.
+  closed resolution actions, declarative thread/category scopes, scoped bans,
+  audit log, and target-aware role-grant UI.
 - **SSO** (Phase 9.6a–e) — pluggable OAuth providers via
   `arctic`. GitHub + Google plugins ship in-tree.
 - **Adapters** (Phase 9.6f–g) — `setSpamAdapter`,
@@ -259,6 +260,12 @@ and `.np-comment-composer`. State is also exposed through
 `data-np-comment-detached`, and `data-np-comment-composer`. Themes may style
 those hooks but should not duplicate the API or comment state machine.
 
+A host that renders a moderation-enabled document may pass one server-resolved
+`moderation` snapshot to `Comments`. Edit, delete, hide, restore, and hidden-row
+visibility then use the document's exact thread → category → collection scope
+chain. The browser flags control presentation only; every comment endpoint
+re-resolves the member grant, current site, target document, and scoped ban.
+
 Spam + profanity adapter checks fire at create time
 (Phase 9.7n stacked profanity → spam, reject short-circuits).
 Edits go through the same gates (Phase 9.7n closed #123).
@@ -369,22 +376,23 @@ Member-authored documents build on the same collection pipeline as staff
 writes:
 
 - `community.memberWrite.create/update/delete` opts a collection into the
-  owner-gated member path.
+  owner-gated member path; a declarative moderation contract may additionally
+  authorize exact scoped edit/delete operations.
 - `writableFields` limits the exact declared fields a member request may
   submit. Framework fields and omitted operator-only fields remain locked.
 - `access.create/update/delete` adds row-aware policy after authentication,
   ownership, and ban gates. `resolveCreateStatus` can derive `published` or
   `pending` from validated runtime data; spam flags still force `pending`.
-- Pipeline stamps `member_author_id` on member writes
-  so owner-only update / delete works without staff.
+- Pipeline stamps `member_author_id` on member writes so owner update/delete and
+  implicit thread-author capabilities work without persisted grants.
 - Pending queue at `/admin/community/pending` — staff
-  Approve (promotes to published, fires deferred `document.created`
-  reputation event) or Reject (deletes).
+  Approve (promotes to published and fires deferred `document.created`
+  reputation plus mention events only on first approval) or Reject (deletes).
 - The bundled forum uses those contracts for dynamic boards:
   - `/boards` — published board index
   - `/boards/[boardKey]` — board list and member's own pending posts
   - `/boards/[boardKey]/new` — member composer
-  - `/boards/[boardKey]/[postId]/edit` — owner-gated edit
+  - `/boards/[boardKey]/[postId]/edit` — owner or scoped-moderator edit
 - Rich-text editor (`@nexpress/editor`) with image upload
   (Phase 9.7j; image uploads go through the member upload
   endpoint with the `community.memberUploadQuota.{perDay,
@@ -397,7 +405,7 @@ the skin contract.
 
 ## 9. Moderation Surface
 
-Three admin pages:
+Admin pages:
 
 | Page                        | What it shows                        |
 | --------------------------- | ------------------------------------ |
@@ -433,6 +441,59 @@ the existing moderation and collection pipelines; document reports move the
 row to `pending` review while retaining validation, revisions, hooks, jobs,
 and the unpublish lifecycle. Resolutions for the same site and target serialize,
 so concurrent moderators cannot repeat target transition side effects.
+
+Collections that want member moderators to operate document state declare one
+closed field mapping:
+
+```ts
+defineCollection({
+  versions: { drafts: true },
+  community: {
+    moderation: {
+      categoryField: "board", // required single relationship, optional
+      hiddenField: "moderationHidden", // required checkbox, default false
+      lockField: "locked", // optional checkbox
+      pinField: "pinned", // optional checkbox
+    },
+    memberWrite: {
+      update: true,
+      delete: true,
+      writableFields: ["board", "title", "body"],
+    },
+  },
+  fields: [
+    { type: "relationship", name: "board", relationTo: "forum-boards", required: true },
+    { type: "checkbox", name: "moderationHidden", required: true, defaultValue: false },
+    { type: "checkbox", name: "locked", defaultValue: false },
+    { type: "checkbox", name: "pinned", defaultValue: false },
+  ],
+});
+```
+
+Core always projects the document UUID as `thread` and collection slug as
+`collection`; `categoryField` inserts its related document UUID between them.
+The hidden-state marker distinguishes first approval from a hide/restore cycle,
+so restoring a previously published thread cannot award initial reputation or
+mention notifications twice. `POST /api/collections/{slug}/{id}/moderation`
+accepts only `hide`, `restore`, `lock`, `unlock`, `pin`, or `unpin`, and it can
+write only the declared fields. Unsupported mappings, invalid current states,
+and concurrent stale transitions fail closed. The member allow-list is required
+and cannot contain any mapped moderation field, so normal document updates
+cannot forge state transitions. Hidden, lock, and pin mappings must be distinct;
+the declared lock field is also enforced by the comment write service, not only
+by the rendered composer.
+Scoped moderator edits also retain the original category relationship; moving a
+thread is a separate policy operation and cannot be used to escape the scope
+that authorized the edit. Initial staff-authored drafts remain outside member
+moderation entirely; member-authored, currently public, or previously hidden
+threads are eligible.
+
+Scoped members can resolve cases from the forum detail surface through
+`POST /api/reports/{id}/resolve`. Each case carries only actions the member can
+actually perform: a collection moderator can hide comments and dismiss cases,
+while a category/site moderator may also unpublish a thread. Direct document
+and nested-comment report totals are fetched in bounded batches for moderator
+list badges.
 
 ---
 
@@ -521,6 +582,13 @@ roles:
 - `collection-mod` — moderate comments on one collection
 - `community-mod` — moderate community content site-wide
 
+The shipped scope semantics are exact: `category-mod` covers threads, comments,
+and reports under one declared category; `collection-mod` covers comments and
+report triage without thread-state mutations; and `community-mod` covers the
+site. A document owner receives the catalog's `thread-author` capabilities
+implicitly; an explicit thread-scoped grant is an optional edit/lock delegation
+and doctor tracks whether its target still exists.
+
 `memberCan(memberId, action, target)` resolves grants in
 priority order: site-wide member roles → scoped grants →
 default `member` capabilities. Staff users always pass
@@ -529,6 +597,13 @@ default `member` capabilities. Staff users always pass
 Capability matrix lives in `packages/core/src/community/can.ts`.
 The matrix is the source of truth — UI buttons read it via
 the `memberCan` helper rather than hardcoding role names.
+`memberCapabilities()` resolves a complete button set through one batched resolver call.
+Admin role grants use a bounded current-site catalog of declared collection,
+category, and thread targets; operators no longer type opaque scope ids. Scope
+type changes clear the selected target before submission. Thread choices and
+moderator board rows exclude initial staff-authored drafts by the same shared
+moderatable-document predicate; pending pinned rows remain visible to scoped
+moderators instead of falling between the normal and notice queries.
 
 ---
 
@@ -548,14 +623,17 @@ Stored in `np_settings` under `community` key, per-site
 ## 14. Audit Log
 
 `recordAuditEvent({ actor, kind, target, payload })` rows
-land in `np_audit_events` for every staff-initiated state
-change:
+land in `np_audit_events` for staff and scoped-member state changes:
 
 - `member.ban.issue` / `member.ban.revoke`
 - `member.role.grant` / `member.role.revoke`
 - `member.identity.revoke` / `user.identity.revoke`
 - `comment.hide` / `comment.restore`
 - `document.flag` / `document.promote`
+- `document.hide` / `document.restore` / `document.lock` / `document.unlock`
+- `document.pin` / `document.unpin`
+- member-moderated comment edit / delete / hide / restore
+- `report.resolved` by staff or a scoped member moderator
 - `member.content.purge` (mass delete)
 
 Surfaces in `/admin/audit` (filtered list). The actor
@@ -593,7 +671,9 @@ must name the same recipient whose score would be updated.
 `plugin doctor` reports malformed community settings and persisted rows as
 `community.contract`, including malformed `np_content_views` rows, invalid or
 orphaned report/follow targets, cross-site document targets, and unresolved
-report duplicates. Adapter and registry failures are contained in a bounded runtime
+report duplicates. It also reports collection grants whose collection table is
+missing and category/thread grants whose target document is missing or belongs
+to another site. Adapter and registry failures are contained in a bounded runtime
 diagnostic buffer and surface as the `community` row in Admin Health;
 they are not silently converted into successful moderation or reputation
 results. Malformed persisted notification preferences also emit a runtime

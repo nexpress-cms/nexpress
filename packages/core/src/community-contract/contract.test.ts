@@ -9,10 +9,12 @@ import {
   npRequireBanRequest,
   npRequireCommentCreateRequest,
   npRequireCommentHideRequest,
+  npRequireThreadModerationRequest,
   npRequireCommentListWire,
   npRequireCommunityJsonObject,
   npRequireCommunityPagination,
   npRequireCommunityRoleCatalog,
+  npRequireCommunityScopeCatalogWire,
   npRequireCommunitySettings,
   npRequireCommunitySettingsPatch,
   npRequireContentEngagementSummary,
@@ -338,6 +340,61 @@ describe("community contract", () => {
     expect(() =>
       npRequireReactionTarget({ targetType: `a${"b".repeat(63)}`, targetId: COMMENT_ID }),
     ).toThrow(/bounded text/u);
+  });
+
+  it("validates exact discoverable moderation scope options", () => {
+    expect(
+      npRequireCommunityScopeCatalogWire({
+        docs: [
+          {
+            scopeType: "category",
+            scopeId: "2d4af53e-6f78-43e0-8682-67f5a7d2b92e",
+            label: "Free board",
+            sourceCollection: "forum-boards",
+          },
+        ],
+      }),
+    ).toEqual({
+      docs: [
+        {
+          scopeType: "category",
+          scopeId: "2d4af53e-6f78-43e0-8682-67f5a7d2b92e",
+          label: "Free board",
+          sourceCollection: "forum-boards",
+        },
+      ],
+    });
+    expect(() =>
+      npRequireCommunityScopeCatalogWire({
+        docs: [{ scopeType: "site", scopeId: "default", label: "Site", sourceCollection: "sites" }],
+      }),
+    ).toThrow(NpCommunityContractError);
+    expect(() =>
+      npRequireCommunityScopeCatalogWire({
+        docs: [
+          {
+            scopeType: "thread",
+            scopeId: "not-a-document-id",
+            label: "Thread",
+            sourceCollection: "forum-posts",
+          },
+        ],
+      }),
+    ).toThrow(NpCommunityContractError);
+  });
+
+  it("validates the closed thread moderation request contract", () => {
+    expect(npRequireThreadModerationRequest({ action: "lock" })).toEqual({ action: "lock" });
+    expect(npRequireThreadModerationRequest({ action: "hide", reason: "spam" })).toEqual({
+      action: "hide",
+      reason: "spam",
+    });
+    expect(() => npRequireThreadModerationRequest({ action: "publish" })).toThrow(
+      NpCommunityContractError,
+    );
+    expect(() => npRequireThreadModerationRequest({ action: "lock", unexpected: true })).toThrow(
+      NpCommunityContractError,
+    );
   });
 
   it("validates local notification destinations and exact follow activity", () => {

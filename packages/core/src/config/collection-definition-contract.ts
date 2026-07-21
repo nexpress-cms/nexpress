@@ -426,6 +426,129 @@ function semanticIssues(config: NpCollectionConfig): NpCollectionDefinitionIssue
   collectTopLevel(config.fields);
   const topLevelNames = new Set(topLevelFields.keys());
   const memberWrite = config.community?.memberWrite;
+  const moderation = config.community?.moderation;
+  if (moderation) {
+    const mappedStateFields = [
+      moderation.hiddenField,
+      moderation.lockField,
+      moderation.pinField,
+    ].filter((field): field is string => field !== undefined);
+    if (new Set(mappedStateFields).size !== mappedStateFields.length) {
+      issues.push(
+        issue(
+          "reference",
+          "community.moderation",
+          "hiddenField, lockField, and pinField must name distinct checkbox fields.",
+        ),
+      );
+    }
+    if (!config.versions?.drafts) {
+      issues.push(
+        issue(
+          "reference",
+          "community.moderation",
+          "thread moderation requires versions.drafts so hide and restore status transitions stay private.",
+        ),
+      );
+    }
+    for (const operation of ["update", "delete"] as const) {
+      if (memberWrite?.[operation] !== true) {
+        issues.push(
+          issue(
+            "reference",
+            "community.moderation",
+            `thread moderation requires community.memberWrite.${operation}=true for its complete capability contract.`,
+          ),
+        );
+      }
+    }
+    if (moderation.categoryField) {
+      const field = topLevelFields.get(moderation.categoryField);
+      if (!field) {
+        issues.push(
+          issue(
+            "reference",
+            "community.moderation.categoryField",
+            `category field "${moderation.categoryField}" is not a top-level collection field.`,
+          ),
+        );
+      } else if (
+        field.type !== "relationship" ||
+        field.hasMany === true ||
+        typeof field.relationTo !== "string" ||
+        field.required !== true
+      ) {
+        issues.push(
+          issue(
+            "reference",
+            "community.moderation.categoryField",
+            "category field must be a required, single, non-polymorphic relationship so scope ids stay stable and discoverable.",
+          ),
+        );
+      }
+    }
+    for (const [key, fieldName] of [
+      ["hiddenField", moderation.hiddenField],
+      ["lockField", moderation.lockField],
+      ["pinField", moderation.pinField],
+    ] as const) {
+      if (!fieldName) continue;
+      const field = topLevelFields.get(fieldName);
+      if (!field) {
+        issues.push(
+          issue(
+            "reference",
+            `community.moderation.${key}`,
+            `${key === "hiddenField" ? "hidden-state" : key === "lockField" ? "lock" : "pin"} field "${fieldName}" is not a top-level collection field.`,
+          ),
+        );
+      } else if (field.type !== "checkbox") {
+        issues.push(
+          issue(
+            "reference",
+            `community.moderation.${key}`,
+            `${key === "hiddenField" ? "hidden-state" : key === "lockField" ? "lock" : "pin"} field must be a checkbox.`,
+          ),
+        );
+      } else if (
+        key === "hiddenField" &&
+        (field.required !== true || field.defaultValue !== false)
+      ) {
+        issues.push(
+          issue(
+            "field",
+            "community.moderation.hiddenField",
+            "hidden-state field must be required and default to false so first approval and moderation restore remain distinguishable.",
+          ),
+        );
+      }
+    }
+    if (!memberWrite?.writableFields) {
+      issues.push(
+        issue(
+          "reference",
+          "community.moderation",
+          "thread moderation requires an explicit community.memberWrite.writableFields allow-list that excludes moderation state.",
+        ),
+      );
+    } else {
+      for (const [key, fieldName] of [
+        ["hiddenField", moderation.hiddenField],
+        ["lockField", moderation.lockField],
+        ["pinField", moderation.pinField],
+      ] as const) {
+        if (fieldName && memberWrite.writableFields.includes(fieldName)) {
+          issues.push(
+            issue(
+              "reference",
+              "community.memberWrite.writableFields",
+              `moderation ${key} "${fieldName}" must remain operator-only.`,
+            ),
+          );
+        }
+      }
+    }
+  }
   if (memberWrite?.writableFields) {
     addDuplicateValues(
       memberWrite.writableFields,

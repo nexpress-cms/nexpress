@@ -1,5 +1,10 @@
 import { NpValidationError } from "@nexpress/core";
-import { createComment, listComments, memberCan } from "@nexpress/core/community";
+import {
+  createComment,
+  listComments,
+  memberCan,
+  npResolveDocumentCommunityTarget,
+} from "@nexpress/core/community";
 import {
   npIsCommentSort,
   npRequireCommentCreateRequest,
@@ -50,10 +55,12 @@ export async function GET(
     // permission a mod needs to un-hide a comment.
     let includeHidden = false;
     if (url.searchParams.get("includeHidden") === "1" && member) {
+      const target = await npResolveDocumentCommunityTarget(slug, id);
       includeHidden = await memberCan(member.id, "restore-comment", {
         type: "comment-list",
         id,
-        scopes: [{ type: "collection", id: slug }],
+        ownerId: target.ownerId ?? undefined,
+        scopes: target.scopes,
       });
     }
 

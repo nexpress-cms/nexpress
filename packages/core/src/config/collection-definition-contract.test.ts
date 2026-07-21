@@ -365,6 +365,175 @@ describe("collection definition contract", () => {
     expect(npValidateCollectionDefinition(collection)).toEqual({ ok: true });
   });
 
+  it("validates declarative thread moderation field mappings", () => {
+    const collection = validCollection();
+    collection.versions = { drafts: true };
+    collection.community = {
+      moderation: {
+        categoryField: "title",
+        hiddenField: "missingHidden",
+        lockField: "missing",
+        pinField: "title",
+      },
+      memberWrite: { update: true },
+    };
+
+    expect(npAnalyzeCollectionDefinition(collection)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          location: "community.moderation",
+          message: expect.stringMatching(/memberWrite\.delete=true/u),
+        }),
+        expect.objectContaining({
+          location: "community.moderation.categoryField",
+          message: expect.stringMatching(/single.*relationship/u),
+        }),
+        expect.objectContaining({
+          location: "community.moderation.hiddenField",
+          message: expect.stringMatching(/not a top-level/u),
+        }),
+        expect.objectContaining({
+          location: "community.moderation.lockField",
+          message: expect.stringMatching(/not a top-level/u),
+        }),
+        expect.objectContaining({
+          location: "community.moderation.pinField",
+          message: expect.stringMatching(/checkbox/u),
+        }),
+      ]),
+    );
+  });
+
+  it("accepts one complete thread moderation projection", () => {
+    const collection = validCollection();
+    collection.versions = { drafts: true };
+    collection.fields.push(
+      { type: "relationship", name: "board", relationTo: "boards", required: true },
+      { type: "checkbox", name: "moderationHidden", required: true, defaultValue: false },
+      { type: "checkbox", name: "locked", defaultValue: false },
+      { type: "checkbox", name: "pinned", defaultValue: false },
+    );
+    collection.community = {
+      moderation: {
+        categoryField: "board",
+        hiddenField: "moderationHidden",
+        lockField: "locked",
+        pinField: "pinned",
+      },
+      memberWrite: { update: true, delete: true, writableFields: ["title"] },
+    };
+
+    expect(npValidateCollectionDefinition(collection)).toEqual({ ok: true });
+  });
+
+  it("requires a non-null hidden-state marker for thread moderation", () => {
+    const collection = validCollection();
+    collection.versions = { drafts: true };
+    collection.fields.push({
+      type: "checkbox",
+      name: "moderationHidden",
+      defaultValue: false,
+    });
+    collection.community = {
+      moderation: { hiddenField: "moderationHidden" },
+      memberWrite: { update: true, delete: true, writableFields: ["title"] },
+    };
+
+    expect(npValidateCollectionDefinition(collection)).toEqual({
+      ok: false,
+      issue: expect.objectContaining({
+        code: "field",
+        location: "community.moderation.hiddenField",
+        message: expect.stringMatching(/required.*default/u),
+      }),
+    });
+  });
+
+  it("requires a non-null category relationship for scope projection", () => {
+    const collection = validCollection();
+    collection.versions = { drafts: true };
+    collection.fields.push(
+      { type: "relationship", name: "board", relationTo: "boards" },
+      {
+        type: "checkbox",
+        name: "moderationHidden",
+        required: true,
+        defaultValue: false,
+      },
+    );
+    collection.community = {
+      moderation: { categoryField: "board", hiddenField: "moderationHidden" },
+      memberWrite: { update: true, delete: true, writableFields: ["title"] },
+    };
+
+    expect(npValidateCollectionDefinition(collection)).toEqual({
+      ok: false,
+      issue: expect.objectContaining({
+        code: "reference",
+        location: "community.moderation.categoryField",
+        message: expect.stringMatching(/required/u),
+      }),
+    });
+  });
+
+  it("keeps every thread moderation state field outside member patches", () => {
+    const collection = validCollection();
+    collection.versions = { drafts: true };
+    collection.fields.push(
+      {
+        type: "checkbox",
+        name: "moderationHidden",
+        required: true,
+        defaultValue: false,
+      },
+      { type: "checkbox", name: "locked", defaultValue: false },
+    );
+    collection.community = {
+      moderation: { hiddenField: "moderationHidden", lockField: "locked" },
+      memberWrite: {
+        update: true,
+        delete: true,
+        writableFields: ["title", "locked"],
+      },
+    };
+
+    expect(npAnalyzeCollectionDefinition(collection)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          location: "community.memberWrite.writableFields",
+          message: expect.stringMatching(/operator-only/u),
+        }),
+      ]),
+    );
+  });
+
+  it("requires distinct thread moderation state fields", () => {
+    const collection = validCollection();
+    collection.versions = { drafts: true };
+    collection.fields.push({
+      type: "checkbox",
+      name: "moderationState",
+      required: true,
+      defaultValue: false,
+    });
+    collection.community = {
+      moderation: {
+        hiddenField: "moderationState",
+        lockField: "moderationState",
+      },
+      memberWrite: { update: true, delete: true, writableFields: ["title"] },
+    };
+
+    expect(npAnalyzeCollectionDefinition(collection)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          location: "community.moderation",
+          message: expect.stringMatching(/distinct/u),
+        }),
+      ]),
+    );
+  });
+
   it("validates explicit public profile activity dependencies", () => {
     const collection = validCollection();
     collection.community = {

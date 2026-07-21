@@ -66,6 +66,10 @@ import {
   npIsCollectionMainTableName,
 } from "./doctor-collection-contract.js";
 import {
+  npFindMissingCommunityRoleGrantTargets,
+  npPlanCommunityRoleGrantTargets,
+} from "./doctor-community-grants.js";
+import {
   checkJobsEnabledProd,
   checkMigrationStatusReadiness,
   checkObservabilityProd,
@@ -1334,6 +1338,25 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
         where table_schema = 'public' and table_name like 'np_c_%'`,
     );
     const presentCollectionTables = new Set(collectionTables.rows.map((row) => row.tableName));
+    const grantPlan = npPlanCommunityRoleGrantTargets(grants.rows, presentCollectionTables);
+    const grantIntegrityIssues = [...grantPlan.issues];
+    const foundScopedTargets = new Set<string>();
+    if (grantPlan.scopedTargets.length > 0) {
+      const ids = [...new Set(grantPlan.scopedTargets.map((grant) => grant.scopeId))];
+      for (const tableName of presentCollectionTables) {
+        if (!npIsCanonicalCollectionMainTableName(tableName)) continue;
+        const rows = await client.query<{ id: string; siteId: string }>(
+          `select id::text as id, site_id as "siteId"
+             from "${tableName}"
+            where id = any($1::uuid[])`,
+          [ids],
+        );
+        rows.rows.forEach((row) => foundScopedTargets.add(`${row.siteId}:${row.id}`));
+      }
+      grantIntegrityIssues.push(
+        ...npFindMissingCommunityRoleGrantTargets(grantPlan.scopedTargets, foundScopedTargets),
+      );
+    }
     for (const targetType of documentTargetTypes) {
       const tableName = `np_c_${targetType}`;
       if (
@@ -1411,6 +1434,7 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
     const issues: Array<{ path: string; message: string }> = [
       ...reportIntegrityIssues,
       ...followIntegrityIssues,
+      ...grantIntegrityIssues,
     ];
     const inspect = (
       path: string,
@@ -1476,7 +1500,7 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
           state: "error",
           label: "Community persistence contracts",
           detail: `${issues.length.toString()} contract issue(s); first: ${issues[0]?.path ?? "community"} ${issues[0]?.message ?? "invalid"}`,
-          hint: "Repair malformed or orphaned community rows, unresolved report duplicates, follow targets, and notification preferences before accepting member traffic.",
+          hint: "Repair malformed or orphaned community rows, role scopes, unresolved report duplicates, follow targets, and notification preferences before accepting member traffic.",
         };
   } catch (error) {
     try {

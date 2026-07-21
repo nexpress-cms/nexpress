@@ -123,6 +123,24 @@ const messages: NpForumMessages = {
   commentMuteFailed: "회원 차단 실패",
   emptyBody: "내용이 없습니다.",
   attachments: "첨부파일",
+  hidePost: "숨기기",
+  restorePost: "게시 승인",
+  lockPost: "잠그기",
+  unlockPost: "잠금 해제",
+  pinPost: "공지로 고정",
+  unpinPost: "공지 해제",
+  moderationActionFailed: "운영 상태 변경 실패",
+  hideComment: "댓글 숨기기",
+  restoreComment: "댓글 복원",
+  hidingComment: "댓글 숨기는 중",
+  restoringComment: "댓글 복원 중",
+  reportsPending: "미처리 신고",
+  reportReason: "신고 사유",
+  dismissReport: "신고 기각",
+  hideReportedComment: "댓글 숨기고 처리",
+  hideReportedPost: "게시글 숨기고 처리",
+  resolvingReport: "처리 중",
+  resolveReportFailed: "신고 처리 실패",
 };
 
 const board: NpForumBoard = {
@@ -271,6 +289,7 @@ describe("community full forum skin", () => {
         authorActions: <button type="button">수정 액션</button>,
         reportAction: <button type="button">신고</button>,
         subscriptionAction: <button type="button">게시글 구독</button>,
+        moderationPanel: <aside>신고 처리</aside>,
         engagement: <div data-testid="engagement">참여 지표</div>,
         comments: <div data-testid="comments">댓글 영역</div>,
         attachments: [
@@ -291,6 +310,7 @@ describe("community full forum skin", () => {
     expect(html).toContain("본문 제목");
     expect(html).toContain("수정 액션");
     expect(html).toContain("신고");
+    expect(html).toContain("신고 처리");
     expect(html).toContain('data-testid="comments"');
     expect(html).toContain("새 글 검토 후 게시");
     expect(html).toContain("댓글 사용");

@@ -166,19 +166,53 @@ export async function memberCan(
   target: MemberCanTarget,
   options: MemberCanOptions = {},
 ): Promise<boolean> {
+  const allowed = await memberCapabilities(memberId, [action], target, options);
+  return allowed.has(action);
+}
+
+/**
+ * Resolve several actions with one ban/grant query. Render paths use this to
+ * build an exact moderation action set without issuing one database query per
+ * button. Own-thread capabilities are implicit for the document owner, which
+ * is equivalent to the built-in thread-author role without persisting a grant
+ * that can outlive the thread.
+ */
+export async function memberCapabilities<TAction extends MemberAction>(
+  memberId: string,
+  actions: readonly TAction[],
+  target: MemberCanTarget,
+  options: MemberCanOptions = {},
+): Promise<Set<TAction>> {
   const db = options.db ?? getDb();
   const now = options.now ?? new Date();
   const scopes = target.scopes ?? [];
+  const requested = new Set<MemberAction>(actions);
+  const allowed = new Set<TAction>();
 
   // Step 1: ban check. Site-wide bans always apply; scoped bans match
   // when the target's scope chain contains the ban's scope.
   const isBanned = await isMemberBanned(memberId, scopes, db, now);
-  if (isBanned) return false;
+  if (isBanned) return allowed;
 
   // Step 2: ownership shortcut for own-content actions.
-  if (action === "edit-own" || action === "delete-own") {
-    return Boolean(target.ownerId) && target.ownerId === memberId;
+  if (target.ownerId === memberId) {
+    for (const action of actions) {
+      if (
+        action === "edit-own" ||
+        action === "delete-own" ||
+        action === "edit-own-thread" ||
+        action === "lock-own-thread"
+      ) {
+        allowed.add(action);
+      }
+    }
   }
+
+  const grantActions = actions.filter(
+    (action): action is TAction & CommunityCapability =>
+      action !== "edit-own" && action !== "delete-own" && !allowed.has(action),
+  );
+  if (grantActions.length === 0) return allowed;
 
   // Step 3+4: walk grants. Pull the member's unexpired grants
   // on the current tenant only — a community-mod on tenant A
@@ -208,16 +242,14 @@ export async function memberCan(
   for (const grant of grants) {
     const def = getCommunityRole(grant.role, grant.scopeType);
     if (!def) continue;
-    if (!def.capabilities.includes(action)) continue;
-
-    if (grant.scopeType === "site") {
-      return true;
+    const matchesScope =
+      grant.scopeType === "site" ||
+      scopes.some((scope) => scope.type === grant.scopeType && scope.id === grant.scopeId);
+    if (!matchesScope) continue;
+    for (const action of grantActions) {
+      if (requested.has(action) && def.capabilities.includes(action)) allowed.add(action);
     }
-    const matchesTargetScope = scopes.some(
-      (s) => s.type === grant.scopeType && s.id === grant.scopeId,
-    );
-    if (matchesTargetScope) return true;
   }
 
-  return false;
+  return allowed;
 }
