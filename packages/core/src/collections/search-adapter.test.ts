@@ -4,6 +4,7 @@ import {
   getSearchAdapter,
   getSearchAdapterDiagnostics,
   npRecordSearchAdapterFailure,
+  npRecordSearchIndexFailure,
   resetSearchAdapter,
   setSearchAdapter,
   shutdownSearchAdapter,
@@ -34,10 +35,14 @@ describe("search adapter runtime", () => {
     expect(getSearchAdapterDiagnostics()).toEqual({
       adapterKind: "meilisearch",
       audienceContract: "document-v1",
+      indexingContract: null,
       dispatchFailures: 0,
       resultContractFailures: 0,
+      indexWriteFailures: 0,
+      indexReplaceFailures: 0,
       shutdownFailures: 0,
       lastFailure: null,
+      lastIndexFailure: null,
     });
   });
 
@@ -59,6 +64,31 @@ describe("search adapter runtime", () => {
       expect.objectContaining({
         dispatchFailures: 1,
         lastFailure: expect.objectContaining({ message: "Unknown search adapter failure." }),
+      }),
+    );
+  });
+
+  it("reports the installed indexing contract and separate write/replace failures", () => {
+    setSearchAdapter({
+      kind: "meilisearch",
+      audience: "document-v1",
+      search: vi.fn(() => null),
+      indexing: {
+        contract: "document-v1",
+        write: vi.fn(),
+        replaceCollection: vi.fn(),
+      },
+    });
+    npRecordSearchIndexFailure("meilisearch", "index-write", new Error("write failed"));
+    npRecordSearchIndexFailure("meilisearch", "index-replace", new Error("replace failed"));
+
+    expect(getSearchAdapterDiagnostics()).toEqual(
+      expect.objectContaining({
+        indexingContract: "document-v1",
+        indexWriteFailures: 1,
+        indexReplaceFailures: 1,
+        lastFailure: null,
+        lastIndexFailure: expect.objectContaining({ operation: "index-replace" }),
       }),
     );
   });

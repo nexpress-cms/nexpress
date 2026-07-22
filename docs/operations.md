@@ -61,9 +61,10 @@ noop reporter. See [observability.md](./observability.md) for the shared
 `src/lib/observability.ts` wiring.
 
 Admin Health also reports the active search path: built-in Postgres tsvector or
-the exact external adapter kind. External dispatch/result-contract failures and
-terminal shutdown failures are contained, counted, and shown as warnings while
-search traffic falls back to Postgres when dispatch cannot be trusted.
+the exact external adapter kind, audience contract, and query-only/indexing
+capability. External dispatch/result-contract failures fall back to Postgres;
+index write/replace failures remain retryable; all runtime and terminal cleanup
+failures are counted and shown as warnings.
 See [search.md](./search.md).
 
 ## Admin ops cockpit

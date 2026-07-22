@@ -9,6 +9,7 @@ import { getI18nConfig } from "../i18n/registry.js";
 import { getAllCollectionSlugs, getCollectionConfig, getCollectionTable } from "./registry.js";
 import { buildSearchVectorParts, buildWeightedSearchVectorSql } from "./search.js";
 import { getSearchAdapter, npRecordSearchAdapterFailure } from "./search-adapter.js";
+import { npReplaceSearchCollectionIndex } from "./search-indexing.js";
 import type { NpCollectionConfig, NpFindWhere } from "../config/types.js";
 import {
   NpSearchContractError,
@@ -382,6 +383,7 @@ function getTableColumn(table: PgTable, key: string): AnyPgColumn {
  * safe to run against a live collection while writes continue.
  */
 export async function reindexCollection(slug: string): Promise<NpSearchReindexResult> {
+  const startedAt = new Date().toISOString();
   const collection = npRequireSearchCollectionSlug(slug, "search.reindex.collection");
   let config: NpCollectionConfig;
   let table: PgTable;
@@ -430,6 +432,15 @@ export async function reindexCollection(slug: string): Promise<NpSearchReindexRe
       .where(eq(idCol, row.id as string));
     processed += 1;
   }
+
+  await npReplaceSearchCollectionIndex(
+    collection,
+    rows.map((row) => ({
+      documentId: row.id as string,
+      siteId: row.siteId as string,
+    })),
+    startedAt,
+  );
 
   return npRequireSearchReindexResult({ collection, processed });
 }

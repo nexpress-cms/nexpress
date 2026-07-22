@@ -60,7 +60,9 @@ different implementation. CDN purge has no environment mode; pass
 Search also has no environment mode; pass an exact `searchAdapter` with
 `audience: "document-v1"` to install it for read traffic, detach only that owned
 instance on retry rollback, and run its optional void `shutdown()` during
-terminal cleanup. See [search.md](./search.md).
+terminal cleanup. Its optional `indexing: { contract: "document-v1", ... }`
+capability is also installed for worker content-job synchronization and the
+internal full-reindex route. See [search.md](./search.md).
 
 ## Shutdown
 

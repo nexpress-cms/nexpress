@@ -520,15 +520,20 @@ export function checkSearchAdapter(): Check {
     const failures =
       diagnostics.dispatchFailures +
       diagnostics.resultContractFailures +
+      diagnostics.indexWriteFailures +
+      diagnostics.indexReplaceFailures +
       diagnostics.shutdownFailures;
     const kind = diagnostics.adapterKind ?? "postgres-tsvector";
     if (failures > 0) {
-      const last = diagnostics.lastFailure;
+      const last = [diagnostics.lastFailure, diagnostics.lastIndexFailure]
+        .filter((entry) => entry !== null)
+        .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt))
+        .at(-1);
       return {
         id: "search",
         label: "Search adapter",
         state: "warn",
-        detail: `${kind} · ${diagnostics.audienceContract ?? "no audience contract"} · ${failures.toString()} failure${failures === 1 ? "" : "s"} contained`,
+        detail: `${kind} · ${diagnostics.audienceContract ?? "no audience contract"} · ${diagnostics.indexingContract ? `indexing ${diagnostics.indexingContract}` : "query-only"} · ${failures.toString()} runtime failure${failures === 1 ? "" : "s"}`,
         hint: last
           ? `Last ${last.operation} failure from ${last.adapterKind} at ${last.occurredAt}: ${last.message}`
           : "Inspect process logs and the external search service.",
@@ -539,7 +544,7 @@ export function checkSearchAdapter(): Check {
       label: "Search adapter",
       state: "ok",
       detail: diagnostics.adapterKind
-        ? `external (${kind}) · ${diagnostics.audienceContract ?? "no audience contract"}`
+        ? `external (${kind}) · ${diagnostics.audienceContract ?? "no audience contract"} · ${diagnostics.indexingContract ? `indexing ${diagnostics.indexingContract}` : "query-only"}`
         : "built-in Postgres tsvector",
     };
   } catch (error) {

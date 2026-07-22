@@ -96,6 +96,49 @@ export interface NpSearchAdapterResult {
   readonly perCollection: Readonly<Record<string, number>>;
 }
 
+export interface NpSearchIndexUpsert {
+  readonly operation: "upsert";
+  readonly collection: string;
+  readonly siteId: string;
+  readonly documentId: string;
+  /** Framework observation time used by adapters to preserve overlapping writes. */
+  readonly observedAt: string;
+  readonly doc: NpSearchResultDocument;
+}
+
+export interface NpSearchIndexDelete {
+  readonly operation: "delete";
+  readonly collection: string;
+  readonly siteId: string;
+  readonly documentId: string;
+  /** Framework observation time used by adapters to preserve overlapping writes. */
+  readonly observedAt: string;
+}
+
+/** Exact latest-state mutation dispatched by durable content jobs. */
+export type NpSearchIndexMutation = NpSearchIndexUpsert | NpSearchIndexDelete;
+
+/**
+ * One-shot collection snapshot supplied during a full reindex. The adapter
+ * must consume `documents` completely before resolving and atomically publish
+ * the replacement without discarding overlapping, later `write()` mutations.
+ */
+export interface NpSearchIndexReplaceContext {
+  readonly collection: string;
+  readonly siteId: "*";
+  readonly startedAt: string;
+  readonly documents: AsyncIterable<NpSearchIndexUpsert>;
+}
+
+export interface NpSearchIndexingAdapter {
+  /** Declares the exact JSON document and latest-state mutation contract. */
+  readonly contract: "document-v1";
+  /** Apply one idempotent latest-state mutation. Must resolve to void. */
+  write(mutation: NpSearchIndexMutation): void | Promise<void>;
+  /** Replace one collection across all sites. Must resolve to void. */
+  replaceCollection(context: NpSearchIndexReplaceContext): void | Promise<void>;
+}
+
 export interface NpSearchCollectionFacet {
   readonly collection: string;
   readonly label: string;
@@ -119,6 +162,8 @@ export interface NpSearchAdapter {
   search(
     context: NpSearchAdapterContext,
   ): NpSearchAdapterResult | null | undefined | Promise<NpSearchAdapterResult | null | undefined>;
+  /** Optional external-index synchronization capability. */
+  readonly indexing?: NpSearchIndexingAdapter;
   /** Optional terminal resource cleanup. Must resolve to void. */
   readonly shutdown?: () => void | Promise<void>;
 }
@@ -155,11 +200,22 @@ export interface NpSearchAdapterFailure {
   readonly occurredAt: string;
 }
 
+export interface NpSearchIndexFailure {
+  readonly adapterKind: string;
+  readonly operation: "index-write" | "index-replace";
+  readonly message: string;
+  readonly occurredAt: string;
+}
+
 export interface NpSearchAdapterDiagnostics {
   readonly adapterKind: string | null;
   readonly audienceContract: "document-v1" | null;
+  readonly indexingContract: "document-v1" | null;
   readonly dispatchFailures: number;
   readonly resultContractFailures: number;
+  readonly indexWriteFailures: number;
+  readonly indexReplaceFailures: number;
   readonly shutdownFailures: number;
   readonly lastFailure: NpSearchAdapterFailure | null;
+  readonly lastIndexFailure: NpSearchIndexFailure | null;
 }

@@ -73,6 +73,12 @@ export type {
   NpSearchAdapterResult,
   NpSearchAudienceMode,
   NpSearchAudienceScope,
+  NpSearchIndexDelete,
+  NpSearchIndexFailure,
+  NpSearchIndexMutation,
+  NpSearchIndexReplaceContext,
+  NpSearchIndexUpsert,
+  NpSearchIndexingAdapter,
   NpSearchResolvedRequest,
 } from "../search/types.js";
 export { buildZodSchema, getCollectionZodSchema } from "./validation.js";

@@ -419,6 +419,7 @@ export {
   npAnalyzeSearchAdapter,
   npAnalyzeSearchAdapterContext,
   npAnalyzeSearchAdapterResult,
+  npAnalyzeSearchIndexMutation,
   npAnalyzeSearchReindexResult,
   npAnalyzeSearchReindexResponse,
   npAnalyzeSearchRequest,
@@ -431,6 +432,7 @@ export {
   npRequireSearchAdapter,
   npRequireSearchAdapterContext,
   npRequireSearchAdapterResult,
+  npRequireSearchIndexMutation,
   npRequireSearchCollectionSlug,
   npRequireSearchReindexResult,
   npRequireSearchReindexResponse,
@@ -516,6 +518,12 @@ export type {
   NpSearchAdapterResult,
   NpSearchAudienceMode,
   NpSearchAudienceScope,
+  NpSearchIndexDelete,
+  NpSearchIndexFailure,
+  NpSearchIndexMutation,
+  NpSearchIndexReplaceContext,
+  NpSearchIndexUpsert,
+  NpSearchIndexingAdapter,
   NpSearchResolvedRequest,
 } from "./collections/index.js";
 export type {
