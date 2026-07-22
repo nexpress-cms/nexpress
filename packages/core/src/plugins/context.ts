@@ -99,6 +99,9 @@ interface BuildContextOptions {
   config: Record<string, unknown>;
   registration: RegistrationLike;
   lookupRegistration: (pluginId: string) => RegistrationLike | undefined;
+  /** Rebuild setup-registered action context at dispatch time so site-scoped
+   * config follows the active request rather than the bootstrap site. */
+  resolveActionContext?: () => Promise<Record<string, unknown>>;
 }
 
 /**
@@ -196,9 +199,17 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
       });
     }
     registration.actionMetadata?.set(actionName, metadata);
-    registration.actions.set(actionName, async (data) =>
-      npValidatePluginActionResult(pluginId, actionName, kind, await handler(data, runtimeContext)),
-    );
+    registration.actions.set(actionName, async (data) => {
+      const actionContext = options.resolveActionContext
+        ? await options.resolveActionContext()
+        : runtimeContext;
+      return npValidatePluginActionResult(
+        pluginId,
+        actionName,
+        kind,
+        await handler(data, actionContext),
+      );
+    });
   }
 
   const runtimeContext: Record<string, unknown> = {
@@ -725,6 +736,13 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
           return {
             ok: false,
             error: `Action "${actionName}" not found on plugin "${targetPluginId}"`,
+          };
+        }
+        const { isPluginEnabled } = await import("./enabled-gate.js");
+        if (!(await isPluginEnabled(targetPluginId))) {
+          return {
+            ok: false,
+            error: `Plugin "${targetPluginId}" is disabled for the active site`,
           };
         }
         return action(data);

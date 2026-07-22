@@ -1127,14 +1127,14 @@ pnpm --silent run ops:plugins -- list --json
 pnpm --silent run ops:plugins -- doctor --json
 pnpm --silent run ops:plugins -- inspect reading-time --json
 pnpm --silent run ops:plugins -- upgrade-plan reading-time --json
-pnpm --silent run ops:plugins -- disable reading-time --json
-pnpm --silent run ops:plugins -- disable reading-time --execute --approve plugin-disable --json
-pnpm --silent run ops:plugins -- enable reading-time --execute --approve plugin-enable --json
+pnpm --silent run ops:plugins -- disable reading-time --site default --json
+pnpm --silent run ops:plugins -- disable reading-time --site default --execute --approve plugin-disable --json
+pnpm --silent run ops:plugins -- enable reading-time --site default --execute --approve plugin-enable --json
 \`\`\`
 
 \`ops:plugins\` reports plugin inventory, single-plugin manifests,
 route/block conflicts, read-only upgrade plans, and approval-gated enable /
-disable operations that write \`np_plugins.enabled\`. Doctor reports include
+disable operations that require \`--site\` and write \`np_site_plugins\`. Doctor reports include
 \`nextCommand\`, \`projectNextCommand\`, and \`plan.nextCommands\`.
 Use the first suggested inspect command when a plugin-owned block, API route,
 or page route conflict appears.

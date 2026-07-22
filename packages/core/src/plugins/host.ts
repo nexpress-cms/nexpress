@@ -1,5 +1,9 @@
 import type { NpFieldConfig, NpPluginConfig, NpPluginContext } from "../config/types.js";
 import {
+  resetPluginOAuthProviders,
+  unregisterOAuthProvidersBySourcePlugin,
+} from "../auth/oauth-providers.js";
+import {
   npAnalyzePluginDiscoveryResponse,
   npPluginDiscoveryProvideKeys,
   npRequirePluginDiscoveryResponse,
@@ -298,6 +302,7 @@ function scrubPluginRegistration(pluginId: string): void {
   pluginRegistry.delete(pluginId);
   unregisterPluginTemplates(pluginId);
   unregisterPluginStrings(pluginId);
+  unregisterOAuthProvidersBySourcePlugin(pluginId);
 }
 
 async function runPluginTeardown(registration: PluginRegistration): Promise<void> {
@@ -586,6 +591,7 @@ async function buildCtxFor(pluginId: string): Promise<Record<string, unknown>> {
     config,
     registration,
     lookupRegistration: (id) => pluginRegistry.get(id),
+    resolveActionContext: () => buildCtxFor(pluginId),
   });
 }
 
@@ -1399,8 +1405,11 @@ export function getAllPluginIds(): string[] {
 }
 
 /** Exact public discovery inventory for every successfully loaded plugin. */
-export function getPluginDiscoveryItems(): NpPluginDiscoveryItem[] {
+export function getPluginDiscoveryItems(
+  activePluginIds?: ReadonlySet<string>,
+): NpPluginDiscoveryItem[] {
   const items = [...pluginRegistry.values()]
+    .filter((registration) => !activePluginIds || activePluginIds.has(registration.id))
     .map((registration) => materializePluginDiscoveryItem(registration))
     .sort((a, b) => a.id.localeCompare(b.id));
   return npRequirePluginDiscoveryResponse({ items }).items;
@@ -1456,9 +1465,13 @@ export interface ResolvedCollectionTab {
  * The returned array is already flattened and annotated with the source
  * plugin, ready to pass into the admin edit view.
  */
-export function getCollectionTabsForSlug(collectionSlug: string): ResolvedCollectionTab[] {
+export function getCollectionTabsForSlug(
+  collectionSlug: string,
+  activePluginIds?: ReadonlySet<string>,
+): ResolvedCollectionTab[] {
   const result: ResolvedCollectionTab[] = [];
   for (const registration of pluginRegistry.values()) {
+    if (activePluginIds && !activePluginIds.has(registration.id)) continue;
     const tabs = registration.admin?.collectionTabs;
     if (!tabs || tabs.length === 0) continue;
     for (const tab of tabs) {
@@ -1501,9 +1514,12 @@ export interface ResolvedDashboardWidget {
  * them in render order: `priority` asc (missing priority = Infinity, i.e.
  * rendered last), ties broken by plugin registration order.
  */
-export function getDashboardWidgetsFromPlugins(): ResolvedDashboardWidget[] {
+export function getDashboardWidgetsFromPlugins(
+  activePluginIds?: ReadonlySet<string>,
+): ResolvedDashboardWidget[] {
   const result: ResolvedDashboardWidget[] = [];
   for (const registration of pluginRegistry.values()) {
+    if (activePluginIds && !activePluginIds.has(registration.id)) continue;
     const widgets = registration.admin?.dashboardWidgets;
     if (!widgets || widgets.length === 0) continue;
     for (const widget of widgets) {
@@ -1558,7 +1574,9 @@ export async function dispatchPluginAction(
 
 export async function schedulePluginTask(pluginId: string, taskId: string): Promise<void> {
   const { enqueueJob } = await import("../jobs/queue.js");
-  await enqueueJob("plugin:scheduledTask", { pluginId, taskId });
+  const { requireSiteId } = await import("../sites/context.js");
+  const siteId = await requireSiteId();
+  await enqueueJob("plugin:scheduledTask", { siteId, pluginId, taskId });
 }
 
 /**
@@ -1623,6 +1641,7 @@ export function resetPlugins(): void {
   globalRoutes.length = 0;
   resetPluginTemplates();
   resetPluginStrings();
+  resetPluginOAuthProviders();
 }
 
 export { isPluginEnabled, invalidatePluginEnabled } from "./enabled-gate.js";

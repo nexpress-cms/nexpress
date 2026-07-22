@@ -2,7 +2,6 @@ import {
   buildWebSiteJsonLd,
   findSlugRedirect,
   getPageBySlug,
-  getPluginTemplatesForCollection,
   resolveTemplateComponent,
 } from "@nexpress/core";
 import {
@@ -427,14 +426,12 @@ async function resolvePageTemplate(templateId: string | null): Promise<Component
   if (themeDefault) return themeDefault;
 
   const pluginDefault = (
-    getPluginTemplatesForCollection("pages").get("default") as
-      | {
-          component?: ComponentType<{
-            doc: Record<string, unknown>;
-            blockCtx?: NpBlockRenderContext;
-          }>;
-        }
-      | undefined
+    (await resolveTemplateComponent("pages", "default")) as {
+      component?: ComponentType<{
+        doc: Record<string, unknown>;
+        blockCtx?: NpBlockRenderContext;
+      }>;
+    } | null
   )?.component;
   return pluginDefault ?? null;
 }

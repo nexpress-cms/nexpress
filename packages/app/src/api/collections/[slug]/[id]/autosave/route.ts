@@ -36,7 +36,7 @@ export async function POST(
     const { _status: _ignored, ...data } = raw;
     void _ignored;
 
-    validateDocumentBlockContent(slug, data);
+    await validateDocumentBlockContent(slug, data);
     const result = await autosaveRevision(slug, id, data, user);
     return npSuccessResponse({
       saved: !result.reused,

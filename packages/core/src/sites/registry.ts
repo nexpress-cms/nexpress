@@ -22,6 +22,7 @@ import {
   npRevisions,
   npSettings,
   npSiteMemberships,
+  npSitePlugins,
   npSites,
   npSlugHistory,
   npStringOverrides,
@@ -508,6 +509,9 @@ export async function deleteSite(id: string, options?: NpDeleteSiteOptions): Pro
       await tx.delete(npSiteMemberships).where(eq(npSiteMemberships.siteId, id));
     }
 
+    // Activation overrides are site metadata, not tenant content. Remove them
+    // for both empty and cascaded deletes so no orphan can survive.
+    await tx.delete(npSitePlugins).where(eq(npSitePlugins.siteId, id));
     await tx.delete(npSites).where(eq(npSites.id, id));
   });
 }

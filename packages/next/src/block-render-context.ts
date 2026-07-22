@@ -1,4 +1,10 @@
-import { findDocuments, type NpFindOptions, type NpFindResult } from "@nexpress/core";
+import {
+  findDocuments,
+  listEnabledPluginIds,
+  type NpFindOptions,
+  type NpFindResult,
+} from "@nexpress/core";
+import { getDb } from "@nexpress/core/bootstrap";
 import type { NpBlockRenderContext } from "@nexpress/blocks";
 
 import { getCachedActiveThemeId } from "./cache.js";
@@ -97,10 +103,13 @@ export function createDefaultBlockRenderContext(): NpBlockRenderContext {
  * and theme route components use this async one.
  */
 export async function createSiteScopedBlockRenderContext(): Promise<NpBlockRenderContext> {
-  const themeId = await getCachedActiveThemeId();
+  const [themeId, pluginIds] = await Promise.all([
+    getCachedActiveThemeId(),
+    listEnabledPluginIds(getDb()),
+  ]);
   const base = createDefaultBlockRenderContext();
   return {
     ...base,
-    activeSources: { themeId },
+    activeSources: { themeId, pluginIds: new Set(pluginIds) },
   };
 }

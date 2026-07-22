@@ -1,13 +1,15 @@
 import {
   NpForbiddenError,
+  NpConflictError,
   NpNotFoundError,
   can,
   getPluginRegistration,
+  isPluginEnabled,
   schedulePluginTask,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { requireGlobalAuth } from "../../../../../../lib/auth-helpers";
+import { requireAuth } from "../../../../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../../../../lib/api-response";
 import { ensureFor } from "../../../../../../lib/init-core";
 
@@ -25,7 +27,7 @@ export async function POST(
   { params }: { params: Promise<{ pluginId: string; taskId: string }> },
 ) {
   try {
-    const user = await requireGlobalAuth(request);
+    const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("plugin-schedule", "run");
     }
@@ -39,6 +41,9 @@ export async function POST(
     }
     if (!reg.schedules.has(taskId)) {
       throw new NpNotFoundError("plugin-schedule", `${pluginId}/${taskId}`);
+    }
+    if (!(await isPluginEnabled(pluginId))) {
+      throw new NpConflictError(`Plugin "${pluginId}" is disabled for the active site.`);
     }
 
     await schedulePluginTask(pluginId, taskId);

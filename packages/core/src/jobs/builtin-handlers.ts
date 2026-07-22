@@ -12,6 +12,7 @@ import {
   type NpNotificationDigestJobData,
   type NpPasswordResetJobData,
   type NpPluginScheduledTaskJobData,
+  type NpPluginScheduledTaskTickJobData,
   type NpSearchReindexJobData,
 } from "../jobs-contract/index.js";
 import { registerJobHandler } from "./handlers.js";
@@ -67,6 +68,10 @@ function resolveContentJobSiteId(
   return data.siteId;
 }
 
+function resolvePluginScheduledTaskSiteId(data: NpPluginScheduledTaskJobData): string {
+  return data.siteId;
+}
+
 export function configureBuiltinJobContext(context: Partial<BuiltinJobContext>): void {
   if (typeof context !== "object" || context === null || Array.isArray(context)) {
     throw new Error("Built-in job context must be a plain object.");
@@ -102,7 +107,10 @@ export function registerBuiltinHandlers(): void {
   registerJobHandler("content:publishScheduled", handleContentPublishScheduled);
   registerJobHandler("media:processImage", handleMediaProcessImage);
   registerJobHandler("media:cleanup", handleMediaCleanup);
-  registerJobHandler("plugin:scheduledTask", handlePluginScheduledTask);
+  registerJobHandler("plugin:scheduledTask", handlePluginScheduledTask, {
+    resolveSiteId: resolvePluginScheduledTaskSiteId,
+  });
+  registerJobHandler("plugin:scheduledTaskTick", handlePluginScheduledTaskTick);
   registerJobHandler("system:revisionPrune", handleRevisionPrune);
   registerJobHandler("system:sessionCleanup", handleSessionCleanup);
   registerJobHandler("system:jobLogPrune", handleJobLogPrune);
@@ -214,6 +222,24 @@ async function handlePluginScheduledTask(data: NpPluginScheduledTaskJobData): Pr
     if (!builtinJobContext.runScheduledPluginTask) throw err;
   }
   await builtinJobContext.runScheduledPluginTask(data);
+}
+
+async function handlePluginScheduledTaskTick(
+  data: NpPluginScheduledTaskTickJobData,
+): Promise<void> {
+  const [{ getDb }, { listEnabledPluginSiteIds }, { enqueueJob }] = await Promise.all([
+    import("../db/runtime.js"),
+    import("../plugins/persistence.js"),
+    import("./queue.js"),
+  ]);
+  const siteIds = await listEnabledPluginSiteIds(getDb(), data.pluginId);
+  for (const siteId of siteIds) {
+    await enqueueJob("plugin:scheduledTask", {
+      siteId,
+      pluginId: data.pluginId,
+      taskId: data.taskId,
+    });
+  }
 }
 
 async function handleRevisionPrune(_: NpJobData): Promise<void> {

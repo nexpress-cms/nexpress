@@ -210,7 +210,7 @@ export async function seedPages(
     };
     if (seedSource) payload.seedSource = seedSource;
     if (slug) payload.slug = slug;
-    validateDocumentBlockContent("pages", payload);
+    await validateDocumentBlockContent("pages", payload);
     await saveDocument("pages", null, payload, actor, {
       status: "published",
       tx: options.tx,
@@ -296,7 +296,7 @@ export async function seedPosts(
     if (typeof order === "number") payload.order = order;
     if (seedSource) payload.seedSource = seedSource;
     if (slug) payload.slug = slug;
-    validateDocumentBlockContent("posts", payload);
+    await validateDocumentBlockContent("posts", payload);
     const saved = await saveDocument("posts", null, payload, actor, {
       status: status ?? "published",
       tx: options.tx,

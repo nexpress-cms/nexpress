@@ -13,7 +13,6 @@ import {
   configureStorageRuntime,
   getDb as getCoreDb,
   getOptionalJobQueue,
-  listPluginStates,
   loadPlugins,
   npCloseDbConnection,
   npShutdownStorageAdapter,
@@ -213,8 +212,8 @@ export type NpBootstrap = {
   readonly ensureFor: (this: void, intent: NpBootstrapIntent) => Promise<void>;
   /**
    * Phase 5.1 — reset the registered plugin set + re-run the load
-   * pipeline. Picks up DB-side state changes (enabled toggles, config
-   * edits) and re-runs each plugin's `setup(ctx)` so handlers that
+   * pipeline. Picks up DB-side config edits and re-runs each plugin's
+   * `setup(ctx)` so handlers that
    * read config at boot get a fresh value. Does NOT bust the Node
    * module cache — code edits to a plugin still need a dev server
    * restart to take effect.
@@ -677,11 +676,10 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
       const configuredIds = configured.map(resolvePluginId);
 
       await syncPluginRegistrations(instance, configuredIds);
-      const states = await listPluginStates(instance);
-      const disabledIds = new Set(states.filter((s) => !s.enabled).map((s) => s.id));
-
-      const enabled = configured.filter((plugin) => !disabledIds.has(resolvePluginId(plugin)));
-      const enabledWithContributions = enabled.map((plugin) => ({
+      // Plugin code and registries are process-global. Every configured plugin
+      // must be loaded so two concurrent sites can use different activation
+      // sets; site-scoped dispatch and source filters decide what is active.
+      const pluginsWithContributions = configured.map((plugin) => ({
         plugin,
         blocks: pluginBlocks(plugin),
         patterns: pluginPatterns(plugin),
@@ -689,9 +687,9 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
       const themesWithContributions = (config.themes ?? []).map(themeContributions);
       const pluginBlockTypes = new Set([
         ...getDefaultBlocks().map((block) => block.type),
-        ...enabledWithContributions.flatMap(({ blocks }) => blocks.map((block) => block.type)),
+        ...pluginsWithContributions.flatMap(({ blocks }) => blocks.map((block) => block.type)),
       ]);
-      for (const { plugin, patterns } of enabledWithContributions) {
+      for (const { plugin, patterns } of pluginsWithContributions) {
         assertKnownPatternBlockTypes(
           `plugin:${resolvePluginId(plugin)}`,
           patterns,
@@ -705,13 +703,13 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
           new Set([...pluginBlockTypes, ...blocks.map((block) => block.type)]),
         );
       }
-      await loadPlugins(enabled);
-      // Push each enabled plugin's blocks into the shared block
+      await loadPlugins(configured);
+      // Push each configured plugin's blocks into the shared block
       // registry so they appear in the admin's Add-block popover
       // and resolve correctly during server render.
       // `registerBlock` overwrites an existing source on HMR /
       // re-bootstrap. Same-plugin duplicates were rejected above.
-      for (const { plugin, blocks } of enabledWithContributions) {
+      for (const { plugin, blocks } of pluginsWithContributions) {
         const pluginId = resolvePluginId(plugin);
         for (const block of blocks) {
           // Phase F.4 — auto-stamp concrete source identity
@@ -740,7 +738,7 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
         }
       }
       // Register patterns only after every referenced block is present.
-      for (const { plugin, patterns } of enabledWithContributions) {
+      for (const { plugin, patterns } of pluginsWithContributions) {
         const pluginId = resolvePluginId(plugin);
         for (const pattern of patterns) {
           registerPattern({ ...pattern, source: `plugin:${pluginId}` });
@@ -815,30 +813,19 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
     const loading = (async () => {
       await teardownPlugins();
       resetPlugins();
-      // Issue #477 — also drop plugin-contributed blocks from the
-      // shared block registry. `resetPlugins()` clears hooks /
-      // routes / actions, but block definitions live in a separate
-      // registry that previously persisted across reloads. After a
-      // disable + reload the disabled plugin's blocks would still
-      // surface in the admin's Add-block popover and still resolve
-      // server-side. Resetting here, then re-registering only the
-      // currently-enabled set below, settles on
-      // `built-ins + enabled plugins` — the obvious invariant.
+      // Plugin block/pattern registries are rebuilt alongside the host
+      // registry. All configured contributions are registered process-wide;
+      // site activation is applied when each surface reads the registry.
       resetSharedBlockRegistry();
-      // Same invariant for patterns: drop plugin-contributed
-      // patterns on reload so a disabled plugin's pattern doesn't
-      // linger in the editor's command-menu picker.
+      // Same invariant for patterns: drop removed or config-changed
+      // contributions before rebuilding the process registry.
       resetSharedPatternRegistry();
       const instance = requireDbInstance();
       const configured = config.plugins ?? [];
       const configuredIds = configured.map(resolvePluginId);
 
       await syncPluginRegistrations(instance, configuredIds);
-      const states = await listPluginStates(instance);
-      const disabledIds = new Set(states.filter((s) => !s.enabled).map((s) => s.id));
-
-      const enabled = configured.filter((plugin) => !disabledIds.has(resolvePluginId(plugin)));
-      const enabledWithContributions = enabled.map((plugin) => ({
+      const pluginsWithContributions = configured.map((plugin) => ({
         plugin,
         blocks: pluginBlocks(plugin),
         patterns: pluginPatterns(plugin),
@@ -846,9 +833,9 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
       const themesWithContributions = (config.themes ?? []).map(themeContributions);
       const pluginBlockTypes = new Set([
         ...getDefaultBlocks().map((block) => block.type),
-        ...enabledWithContributions.flatMap(({ blocks }) => blocks.map((block) => block.type)),
+        ...pluginsWithContributions.flatMap(({ blocks }) => blocks.map((block) => block.type)),
       ]);
-      for (const { plugin, patterns } of enabledWithContributions) {
+      for (const { plugin, patterns } of pluginsWithContributions) {
         assertKnownPatternBlockTypes(
           `plugin:${resolvePluginId(plugin)}`,
           patterns,
@@ -862,8 +849,8 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
           new Set([...pluginBlockTypes, ...blocks.map((block) => block.type)]),
         );
       }
-      await loadPlugins(enabled);
-      for (const { plugin, blocks } of enabledWithContributions) {
+      await loadPlugins(configured);
+      for (const { plugin, blocks } of pluginsWithContributions) {
         const pluginId = resolvePluginId(plugin);
         for (const block of blocks) {
           // Same concrete-source stamping as `ensurePluginsLoaded`.
@@ -883,7 +870,7 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
           });
         }
       }
-      for (const { plugin, patterns } of enabledWithContributions) {
+      for (const { plugin, patterns } of pluginsWithContributions) {
         const pluginId = resolvePluginId(plugin);
         for (const pattern of patterns) {
           registerPattern({ ...pattern, source: `plugin:${pluginId}` });

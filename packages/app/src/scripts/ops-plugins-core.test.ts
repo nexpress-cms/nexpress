@@ -1084,21 +1084,24 @@ describe("ops plugins core", () => {
     const report = await runOpsPluginsMutation({
       action: "disable",
       pluginId: "demo",
+      siteId: "default",
       cwd,
       env: {},
     });
 
     expect(report).toEqual(
       expect.objectContaining({
-        schemaVersion: "np.ops-plugins-mutation.v1",
+        schemaVersion: "np.ops-plugins-mutation.v2",
         action: "disable",
         pluginId: "demo",
+        siteId: "default",
         mutation: expect.objectContaining({
           action: "plugins.disable",
           mode: "dry-run",
           applied: false,
         }),
-        nextCommand: "nexpress ops plugins disable demo --execute --approve plugin-disable --json",
+        nextCommand:
+          "nexpress ops plugins disable demo --site default --execute --approve plugin-disable --json",
       }),
     );
     expect(renderBriefOpsPluginsMutation(report, { color: false })).toContain(
@@ -1116,6 +1119,7 @@ describe("ops plugins core", () => {
     const report = await runOpsPluginsMutation({
       action: "enable",
       pluginId: "demo",
+      siteId: "default",
       execute: true,
       out: join(cwd, "plugin-enable.json"),
       cwd,

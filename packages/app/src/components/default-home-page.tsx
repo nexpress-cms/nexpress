@@ -5,6 +5,7 @@ import {
   getCollectionConfig,
   getI18nConfig,
   getPluginRegistration,
+  isPluginEnabled,
 } from "@nexpress/core";
 import type { NpResolvedNavItem } from "@nexpress/core/navigation";
 import { getCachedActiveTheme, getCachedNavigation } from "@nexpress/next";
@@ -25,8 +26,15 @@ import { getCachedActiveTheme, getCachedNavigation } from "@nexpress/next";
  */
 export async function DefaultHomePage() {
   const collectionSlugs = collectSiteCollections();
-  const plugins = collectPluginInfo();
-  const [headerNav, footerNav] = await Promise.all([safeGetNav("header"), safeGetNav("footer")]);
+  const [plugins, headerNav, footerNav] = await Promise.all([
+    collectPluginInfo(),
+    safeGetNav("header"),
+    safeGetNav("footer"),
+  ]);
+  const activePluginIds = new Set(plugins.map((plugin) => plugin.id));
+  const featureLinks = CORE_FEATURE_LINKS.filter(
+    (link) => !link.requiresPluginId || activePluginIds.has(link.requiresPluginId),
+  );
   const activeTheme = await safeGetActiveTheme();
   const i18n = getI18nConfig();
 
@@ -79,7 +87,7 @@ export async function DefaultHomePage() {
           <span className="text-xs opacity-60">Public routes that ship with every install</span>
         </header>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {CORE_FEATURE_LINKS.map((link) => (
+          {featureLinks.map((link) => (
             <a
               key={link.href}
               href={link.href}
@@ -245,12 +253,16 @@ interface PluginCardInfo {
   version?: string;
 }
 
-function collectPluginInfo(): PluginCardInfo[] {
-  return getAllPluginIds()
+async function collectPluginInfo(): Promise<PluginCardInfo[]> {
+  const active = await Promise.all(
+    getAllPluginIds().map(async (id) => ({ id, enabled: await isPluginEnabled(id) })),
+  );
+  return active
+    .filter((entry) => entry.enabled)
     .map((id) => {
-      const reg = getPluginRegistration(id);
+      const reg = getPluginRegistration(id.id);
       return {
-        id,
+        id: id.id,
         name: reg?.name,
         version: reg?.version,
       };
@@ -262,6 +274,7 @@ const CORE_FEATURE_LINKS: ReadonlyArray<{
   title: string;
   href: string;
   description: string;
+  requiresPluginId?: string;
 }> = [
   {
     title: "Blog",
@@ -272,6 +285,7 @@ const CORE_FEATURE_LINKS: ReadonlyArray<{
     title: "Boards",
     href: "/boards",
     description: "Korean-style boards with member posts, moderation, and comments.",
+    requiresPluginId: "forum",
   },
   {
     title: "Search",

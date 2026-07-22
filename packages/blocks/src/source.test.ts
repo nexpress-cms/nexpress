@@ -7,6 +7,7 @@ import {
   resetSharedPatternRegistry,
 } from "./registry.js";
 import {
+  getBlockForActiveSources,
   getRegisteredBlockMetadataForActiveSources,
   getRegisteredBlocksForActiveSources,
   getRegisteredPatternsForActiveSources,
@@ -67,7 +68,10 @@ describe("parseBlockSource", () => {
 });
 
 describe("isBlockSourceActive", () => {
-  const ctx = (themeId: string | null) => ({ themeId });
+  const ctx = (themeId: string | null, pluginIds: string[] = []) => ({
+    themeId,
+    pluginIds: new Set(pluginIds),
+  });
 
   it("core / built-in always active", () => {
     expect(isBlockSourceActive(undefined, ctx(null))).toBe(true);
@@ -75,8 +79,9 @@ describe("isBlockSourceActive", () => {
     expect(isBlockSourceActive("built-in", ctx("magazine"))).toBe(true);
   });
 
-  it("plugins always pass (process-global; pruned at write time)", () => {
-    expect(isBlockSourceActive("plugin:reading-time", ctx(null))).toBe(true);
+  it("filters concrete plugins by the active site set", () => {
+    expect(isBlockSourceActive("plugin:reading-time", ctx(null, ["reading-time"]))).toBe(true);
+    expect(isBlockSourceActive("plugin:reading-time", ctx(null))).toBe(false);
     expect(isBlockSourceActive("plugin", ctx(null))).toBe(true);
   });
 
@@ -108,6 +113,7 @@ describe("getRegisteredBlocks*ForActiveSources — integration with shared regis
 
     const definitions = getRegisteredBlocksForActiveSources({
       themeId: "magazine",
+      pluginIds: new Set(["reading-time"]),
     });
     const types = definitions.map((d) => d.type);
     expect(types).toContain("magazine.hero");
@@ -123,6 +129,7 @@ describe("getRegisteredBlocks*ForActiveSources — integration with shared regis
 
     const metadata = getRegisteredBlockMetadataForActiveSources({
       themeId: "magazine",
+      pluginIds: new Set(),
     });
     const hero = metadata.find((m) => m.type === "magazine.hero");
     expect(hero).toBeDefined();
@@ -136,9 +143,31 @@ describe("getRegisteredBlocks*ForActiveSources — integration with shared regis
 
     const types = getRegisteredBlocksForActiveSources({
       themeId: null,
+      pluginIds: new Set(),
     }).map((d) => d.type);
     expect(types).not.toContain("magazine.hero");
     expect(types).not.toContain("portfolio.grid");
+  });
+
+  it("restores the previous active owner after a colliding plugin is disabled", () => {
+    resetSharedBlockRegistry();
+    const first = stub("shared.card", "plugin:first");
+    const second = stub("shared.card", "plugin:second");
+    registerBlock(first);
+    registerBlock(second);
+
+    expect(
+      getBlockForActiveSources("shared.card", {
+        themeId: null,
+        pluginIds: new Set(["first"]),
+      }),
+    ).toBe(first);
+    expect(
+      getBlockForActiveSources("shared.card", {
+        themeId: null,
+        pluginIds: new Set(["first", "second"]),
+      }),
+    ).toBe(second);
   });
 });
 
@@ -164,6 +193,7 @@ describe("getRegisteredPatternsForActiveSources — theme pattern filter", () =>
 
     const ids = getRegisteredPatternsForActiveSources({
       themeId: "magazine",
+      pluginIds: new Set(["reading-time"]),
     }).map((p) => p.id);
     expect(ids).toContain("magazine.hero-cta");
     expect(ids).not.toContain("portfolio.grid-3");
@@ -178,6 +208,7 @@ describe("getRegisteredPatternsForActiveSources — theme pattern filter", () =>
 
     const ids = getRegisteredPatternsForActiveSources({
       themeId: null,
+      pluginIds: new Set(["reading-time"]),
     }).map((p) => p.id);
     expect(ids).not.toContain("magazine.hero-cta");
     expect(ids).toContain("plugin.email-cta");
@@ -194,8 +225,44 @@ describe("getRegisteredPatternsForActiveSources — theme pattern filter", () =>
 
     const filtered = getRegisteredPatternsForActiveSources({
       themeId: "magazine",
+      pluginIds: new Set(),
     });
     expect(filtered[0]?.preview).toBe("/themes/magazine/preview.png");
     expect(filtered[0]?.category).toBe("homepage");
+  });
+
+  it("restores a previous active pattern owner and hides inactive block references", () => {
+    resetSharedBlockRegistry();
+    resetSharedPatternRegistry();
+    registerBlock(stub("plugin.private", "plugin:private"));
+    registerBlock(stub("shared.owned", "plugin:first"));
+    registerBlock({
+      ...stub("shared.owned", "plugin:second"),
+      propsSchema: [
+        { name: "title", label: "Title", type: "text", translatable: true, required: true },
+      ],
+    });
+    registerPattern(stubPattern("shared.pattern", "plugin:first"));
+    registerPattern(stubPattern("shared.pattern", "plugin:second"));
+    registerPattern(
+      stubPattern("private.pattern", "plugin:first", {
+        blocks: [{ id: "private-block", type: "plugin.private", props: {} }],
+      }),
+    );
+    registerPattern(
+      stubPattern("owned.pattern", "plugin:first", {
+        blocks: [{ id: "owned-block", type: "shared.owned", props: {} }],
+      }),
+    );
+
+    const patterns = getRegisteredPatternsForActiveSources({
+      themeId: null,
+      pluginIds: new Set(["first"]),
+    });
+    expect(patterns.find((pattern) => pattern.id === "shared.pattern")?.source).toBe(
+      "plugin:first",
+    );
+    expect(patterns.some((pattern) => pattern.id === "private.pattern")).toBe(false);
+    expect(patterns.some((pattern) => pattern.id === "owned.pattern")).toBe(true);
   });
 });

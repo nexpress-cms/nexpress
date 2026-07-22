@@ -187,6 +187,8 @@ export type { NpRegisteredPluginTemplate } from "./templates.js";
 
 export {
   listPluginStates,
+  listEnabledPluginIds,
+  listEnabledPluginSiteIds,
   getPluginState,
   syncPluginRegistrations,
   updatePluginState,

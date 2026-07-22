@@ -220,7 +220,9 @@ export async function getThemeTemplateSummaries(
   // (plugins know about themes' template shape; themes don't
   // depend on plugins at type-import time).
   const { getPluginTemplatesForCollection } = await import("../plugins/templates.js");
-  for (const [id, value] of getPluginTemplatesForCollection(collectionSlug)) {
+  const { listEnabledPluginIds } = await import("../plugins/persistence.js");
+  const activePluginIds = new Set(await listEnabledPluginIds(getDb()));
+  for (const [id, value] of getPluginTemplatesForCollection(collectionSlug, activePluginIds)) {
     const def = value as { label?: unknown; description?: unknown };
     summaries.set(id, {
       id,
@@ -270,6 +272,10 @@ export async function resolveTemplateComponent(
   }
 
   const { getPluginTemplatesForCollection } = await import("../plugins/templates.js");
-  const pluginEntry = getPluginTemplatesForCollection(collectionSlug).get(templateId);
+  const { listEnabledPluginIds } = await import("../plugins/persistence.js");
+  const activePluginIds = new Set(await listEnabledPluginIds(getDb()));
+  const pluginEntry = getPluginTemplatesForCollection(collectionSlug, activePluginIds).get(
+    templateId,
+  );
   return pluginEntry ?? null;
 }

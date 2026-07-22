@@ -14,7 +14,7 @@ import {
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { requireAuth, requireGlobalAuth } from "../../../lib/auth-helpers";
+import { requireAuth } from "../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import { parseBodyRecord } from "../../../lib/collection-helpers";
 import { getDb } from "../../../lib/db";
@@ -77,6 +77,7 @@ async function buildScheduleDetails(pluginId: string): Promise<ScheduleDetail[]>
 }
 
 async function toDetail(state: {
+  siteId: string;
   id: string;
   enabled: boolean;
   installedAt: Date;
@@ -89,6 +90,7 @@ async function toDetail(state: {
   // for callers (admin detail page, internal scripts).
   const config = (await getPluginConfig(state.id)) ?? {};
   return {
+    siteId: state.siteId,
     id: state.id,
     name: reg?.name ?? state.id,
     version: reg?.version ?? null,
@@ -139,7 +141,7 @@ export async function PATCH(
   { params }: { params: Promise<{ pluginId: string }> },
 ) {
   try {
-    const user = await requireGlobalAuth(request);
+    const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("plugins", "update");
     }

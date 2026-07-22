@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { listOAuthProvidersFor } from "@nexpress/core/auth";
+import { isOAuthProviderAvailableFor, listOAuthProvidersFor } from "@nexpress/core/auth";
 
 import { LoginForm } from "../../components/member-login-form";
 import { ShellWrap } from "../../components/shell-wrap";
@@ -23,10 +23,15 @@ export default async function MemberLoginPage({ searchParams }: LoginPageProps) 
   if (member) {
     redirect(safeNext(next));
   }
-  const providers = listOAuthProvidersFor("member").map((provider) => ({
-    id: provider.id,
-    label: provider.label ?? provider.id,
-  }));
+  const providers = (
+    await Promise.all(
+      listOAuthProvidersFor("member").map(async (provider) =>
+        (await isOAuthProviderAvailableFor(provider, "member"))
+          ? { id: provider.id, label: provider.label ?? provider.id }
+          : null,
+      ),
+    )
+  ).filter((provider): provider is { id: string; label: string } => provider !== null);
 
   return (
     <ShellWrap surface="member">

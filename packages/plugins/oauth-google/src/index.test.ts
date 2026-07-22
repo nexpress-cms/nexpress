@@ -61,6 +61,7 @@ describe("plugin metadata", () => {
     expect(googleOAuthPlugin.manifest.id).toBe("oauth-google");
     expect(googleOAuthPlugin.manifest.version).toBe("0.3.0");
     expect(googleOAuthPlugin.manifest.capabilities).toContain("network:fetch");
+    expect(googleOAuthPlugin.manifest.capabilities).toContain("settings:read");
   });
 
   it("does NOT declare admin.settings.fields (auto-form replaces it)", () => {
@@ -101,6 +102,7 @@ describe("setup credential resolution", () => {
       calls,
       ctx: {
         config,
+        settings: { getPlugin: () => Promise.resolve(config) },
         log: {
           warn: (msg: string, data?: unknown) => calls.push({ level: "warn", msg, data }),
           error: (msg: string, data?: unknown) => calls.push({ level: "error", msg, data }),
@@ -122,17 +124,21 @@ describe("setup credential resolution", () => {
     scopes: ["openid", "email", "profile"],
   } satisfies GoogleOAuthConfig;
 
-  it("registers the provider when both env vars are set (env source)", () => {
+  it("registers the provider when both env vars are set (env source)", async () => {
     process.env.NP_OAUTH_GOOGLE_CLIENT_ID = "1234567890.apps.googleusercontent.com";
     process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET = "GOCSPX-envsecret";
     const { ctx, calls } = makeCtx(validConfig);
     runSetup(ctx);
     expect(registerOAuthProvider).toHaveBeenCalledTimes(1);
-    expect(calls.find((c) => c.level === "info")?.data).toEqual({ source: "env" });
+    expect(calls.find((c) => c.level === "info")?.data).toEqual({
+      credentials: "environment",
+      resolution: "request-time",
+    });
     expect(registeredProvider()?.audiences).toEqual(["staff", "member"]);
+    await expect(registeredProvider()?.isAvailable?.("member")).resolves.toBe(true);
   });
 
-  it("registers the provider when both admin-form fields are set (admin source)", () => {
+  it("registers the provider when both admin-form fields are set (admin source)", async () => {
     const { ctx, calls } = makeCtx({
       clientId: "1234567890.apps.googleusercontent.com",
       clientSecret: "GOCSPX-adminsecret",
@@ -140,8 +146,12 @@ describe("setup credential resolution", () => {
     });
     runSetup(ctx);
     expect(registerOAuthProvider).toHaveBeenCalledTimes(1);
-    expect(calls.find((c) => c.level === "info")?.data).toEqual({ source: "admin" });
+    expect(calls.find((c) => c.level === "info")?.data).toEqual({
+      credentials: "site-config",
+      resolution: "request-time",
+    });
     expect(registeredProvider()?.audiences).toEqual(["staff", "member"]);
+    await expect(registeredProvider()?.isAvailable?.("staff")).resolves.toBe(true);
   });
 
   it("REFUSES to register when env has clientId but no clientSecret", () => {
@@ -168,12 +178,11 @@ describe("setup credential resolution", () => {
     expect(calls.find((c) => c.level === "error")).toBeDefined();
   });
 
-  it("logs an informational setup hint and skips when no source provides credentials", () => {
-    const { ctx, calls } = makeCtx(validConfig);
+  it("registers once but hides the provider when the current site has no credentials", async () => {
+    const { ctx } = makeCtx(validConfig);
     runSetup(ctx);
-    expect(registerOAuthProvider).not.toHaveBeenCalled();
-    expect(calls.find((c) => c.level === "warn")).toBeUndefined();
-    expect(calls.find((c) => c.level === "info")?.msg).toMatch(/skipping provider registration/i);
+    expect(registerOAuthProvider).toHaveBeenCalledOnce();
+    await expect(registeredProvider()?.isAvailable?.("staff")).resolves.toBe(false);
   });
 });
 
@@ -181,6 +190,7 @@ function registeredProvider():
   | {
       id?: string;
       audiences?: readonly string[];
+      isAvailable?: (audience: "staff" | "member") => boolean | Promise<boolean>;
     }
   | undefined {
   return vi.mocked(registerOAuthProvider).mock.calls[0]?.[0];

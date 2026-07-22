@@ -32,13 +32,12 @@ export interface NpBlockRenderContext {
    * blocks render unconditionally (back-compat with pre-F.4
    * callers that don't build ctx with active sources).
    *
-   * v0.2 only carries `themeId` — plugins are process-global
-   * and already pruned at registry-write time, so a plugin
-   * block reaching the renderer is necessarily from an enabled
-   * plugin. See `source.ts` `isBlockSourceActive` for the rules.
+   * Both theme and plugin registries are process-global; this exact site
+   * snapshot keeps their contributions isolated at render time.
    */
   readonly activeSources?: {
     themeId: string | null;
+    pluginIds: ReadonlySet<string>;
   };
 }
 

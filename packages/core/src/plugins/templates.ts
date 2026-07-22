@@ -83,13 +83,19 @@ export function resetPluginTemplates(): void {
 
 export function getPluginTemplatesForCollection(
   collection: string,
+  activePluginIds?: ReadonlySet<string>,
 ): Map<string, NpPluginTemplateRegistration> {
-  return new Map(
-    [...(registry.get(collection)?.entries() ?? [])].map(([id, entry]) => [
-      id,
-      { ...entry.definition },
-    ]),
-  );
+  const selected = new Map<string, NpPluginTemplateRegistration>();
+  for (const [pluginId, collections] of pluginRegistries) {
+    if (activePluginIds && !activePluginIds.has(pluginId)) continue;
+    for (const [id, definition] of Object.entries(collections[collection] ?? {})) {
+      // Preserve the registry's documented last-loaded-wins rule among the
+      // plugins active on this particular site. A disabled later owner must
+      // not hide an earlier active owner's same-id template.
+      selected.set(id, { ...definition });
+    }
+  }
+  return selected;
 }
 
 export function getRegisteredPluginTemplates(): NpRegisteredPluginTemplate[] {

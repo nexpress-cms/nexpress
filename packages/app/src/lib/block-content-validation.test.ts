@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NpValidationError } from "@nexpress/core";
 import type * as BlocksModule from "@nexpress/blocks";
 import type * as CoreModule from "@nexpress/core";
+import type * as NextModule from "@nexpress/next";
 
 vi.mock("@nexpress/core", async () => {
   const actual = await vi.importActual<typeof CoreModule>("@nexpress/core");
@@ -11,7 +12,19 @@ vi.mock("@nexpress/core", async () => {
 
 vi.mock("@nexpress/blocks", async () => {
   const actual = await vi.importActual<typeof BlocksModule>("@nexpress/blocks");
-  return { ...actual, getRegisteredBlockMetadata: vi.fn() };
+  return { ...actual, getRegisteredBlockMetadataForActiveSources: vi.fn() };
+});
+
+vi.mock("@nexpress/next", async () => {
+  const actual = await vi.importActual<typeof NextModule>("@nexpress/next");
+  return {
+    ...actual,
+    createSiteScopedBlockRenderContext: vi.fn(() =>
+      Promise.resolve({
+        activeSources: { themeId: "default", pluginIds: new Set(["active-plugin"]) },
+      }),
+    ),
+  };
 });
 
 const core = await import("@nexpress/core");
@@ -20,7 +33,7 @@ const { validateDocumentBlockContent } = await import("./block-content-validatio
 
 describe("validateDocumentBlockContent", () => {
   beforeEach(() => {
-    vi.mocked(blocks.getRegisteredBlockMetadata).mockReturnValue([
+    vi.mocked(blocks.getRegisteredBlockMetadataForActiveSources).mockReturnValue([
       {
         type: "card",
         label: "Card",
@@ -38,21 +51,21 @@ describe("validateDocumentBlockContent", () => {
     ]);
   });
 
-  it("rejects a known block mismatch before a write", () => {
+  it("rejects a known block mismatch before a write", async () => {
     vi.mocked(core.getCollectionConfig).mockReturnValue({
       slug: "pages",
       labels: { singular: "Page", plural: "Pages" },
       fields: [{ type: "blocks", name: "content" }],
     });
 
-    expect(() =>
+    await expect(
       validateDocumentBlockContent("pages", {
         content: [{ id: "card-1", type: "card", props: {} }],
       }),
-    ).toThrow(NpValidationError);
+    ).rejects.toThrow(NpValidationError);
   });
 
-  it("walks nested field containers and permits inactive block types", () => {
+  it("walks nested field containers and permits inactive block types", async () => {
     vi.mocked(core.getCollectionConfig).mockReturnValue({
       slug: "pages",
       labels: { singular: "Page", plural: "Pages" },
@@ -71,12 +84,12 @@ describe("validateDocumentBlockContent", () => {
       ],
     });
 
-    expect(() =>
+    await expect(
       validateDocumentBlockContent("pages", {
         layout: {
           sections: [{ content: [{ id: "old-1", type: "plugin.disabled", props: {} }] }],
         },
       }),
-    ).not.toThrow();
+    ).resolves.toBeUndefined();
   });
 });

@@ -22,7 +22,7 @@ describe("oauth-github configSchema", () => {
   it("provides empty-string defaults for clientId / clientSecret", () => {
     // Empty defaults make the schema parse cleanly when neither env
     // nor admin form is filled — `setup()` then detects the empty
-    // strings and skips registration with a clear setup hint. Without
+    // strings and hides the request-time provider until configured. Without
     // defaults, the first cold read has no valid schema defaults and
     // cannot construct the plugin config form.
     const parsed = schema.parse({});
@@ -78,6 +78,7 @@ describe("plugin metadata", () => {
     expect(githubOAuthPlugin.manifest.id).toBe("oauth-github");
     expect(githubOAuthPlugin.manifest.version).toBe("0.3.0");
     expect(githubOAuthPlugin.manifest.capabilities).toContain("network:fetch");
+    expect(githubOAuthPlugin.manifest.capabilities).toContain("settings:read");
   });
 
   it("does NOT declare admin.settings.fields (auto-form replaces it)", () => {
@@ -114,6 +115,7 @@ describe("setup credential resolution", () => {
       calls,
       ctx: {
         config,
+        settings: { getPlugin: () => Promise.resolve(config) },
         log: {
           warn: (msg: string, data?: unknown) => calls.push({ level: "warn", msg, data }),
           error: (msg: string, data?: unknown) => calls.push({ level: "error", msg, data }),
@@ -136,20 +138,22 @@ describe("setup credential resolution", () => {
     audience: "staff",
   } satisfies GitHubOAuthConfig;
 
-  it("registers the provider when both env vars are set (env source)", () => {
+  it("registers the provider when both env vars are set (env source)", async () => {
     process.env.NP_OAUTH_GITHUB_CLIENT_ID = "Iv1.fromenv";
     process.env.NP_OAUTH_GITHUB_CLIENT_SECRET = "envsecret";
     const { ctx, calls } = makeCtx(validConfig);
     runSetup(ctx);
     expect(registerOAuthProvider).toHaveBeenCalledTimes(1);
     expect(calls.find((c) => c.level === "info")?.data).toEqual({
-      source: "env",
-      audience: "staff",
+      credentials: "environment",
+      resolution: "request-time",
     });
-    expect(registeredProvider()?.audiences).toEqual(["staff"]);
+    expect(registeredProvider()?.audiences).toEqual(["staff", "member"]);
+    await expect(registeredProvider()?.isAvailable?.("staff")).resolves.toBe(true);
+    await expect(registeredProvider()?.isAvailable?.("member")).resolves.toBe(false);
   });
 
-  it("registers the provider when both admin-form fields are set (admin source)", () => {
+  it("registers the provider when both admin-form fields are set (admin source)", async () => {
     const { ctx, calls } = makeCtx({
       clientId: "Iv1.fromadmin",
       clientSecret: "adminsecret",
@@ -159,10 +163,11 @@ describe("setup credential resolution", () => {
     runSetup(ctx);
     expect(registerOAuthProvider).toHaveBeenCalledTimes(1);
     expect(calls.find((c) => c.level === "info")?.data).toEqual({
-      source: "admin",
-      audience: "member",
+      credentials: "site-config",
+      resolution: "request-time",
     });
-    expect(registeredProvider()?.audiences).toEqual(["member"]);
+    expect(registeredProvider()?.audiences).toEqual(["staff", "member"]);
+    await expect(registeredProvider()?.isAvailable?.("member")).resolves.toBe(true);
   });
 
   it("env wins over admin form when both sources have credentials", () => {
@@ -210,12 +215,11 @@ describe("setup credential resolution", () => {
     expect(calls.find((c) => c.level === "error")).toBeDefined();
   });
 
-  it("logs an informational setup hint and skips when no source provides credentials", () => {
-    const { ctx, calls } = makeCtx(validConfig);
+  it("registers once but hides the provider when the current site has no credentials", async () => {
+    const { ctx } = makeCtx(validConfig);
     runSetup(ctx);
-    expect(registerOAuthProvider).not.toHaveBeenCalled();
-    expect(calls.find((c) => c.level === "warn")).toBeUndefined();
-    expect(calls.find((c) => c.level === "info")?.msg).toMatch(/skipping provider registration/i);
+    expect(registerOAuthProvider).toHaveBeenCalledOnce();
+    await expect(registeredProvider()?.isAvailable?.("staff")).resolves.toBe(false);
   });
 });
 
@@ -223,6 +227,7 @@ function registeredProvider():
   | {
       id?: string;
       audiences?: readonly string[];
+      isAvailable?: (audience: "staff" | "member") => boolean | Promise<boolean>;
     }
   | undefined {
   return vi.mocked(registerOAuthProvider).mock.calls[0]?.[0];

@@ -77,17 +77,35 @@ export const getDefaultBlocks = (): NpBlockDefinition[] => [...defaultBlocks];
 // and the admin's block picker (client). Seeded with the built-in
 // defaults; plugins push more via `registerBlock` at boot time
 // (see bootstrap.ts in @nexpress/next). The shared registry's
-// `register` overwrites on duplicate `type` instead of throwing —
-// loadPlugins runs on every cold boot and HMR refresh, so a strict
-// "already registered" error would make the dev loop unusable.
+// `register` keeps registration-order candidates per contributor while its
+// legacy global view remains last-loaded-wins. The candidate history lets a
+// site where the last owner is inactive fall back to an earlier active owner.
 const sharedDefinitions = new Map<string, NpBlockDefinition>();
-for (const block of defaultBlocks) sharedDefinitions.set(block.type, block);
+const sharedDefinitionCandidates = new Map<string, NpBlockDefinition[]>();
+
+function blockSourceKey(definition: NpBlockDefinition): string {
+  return definition.source ?? "core";
+}
+
+function storeSharedDefinition(definition: NpBlockDefinition): void {
+  const candidates = sharedDefinitionCandidates.get(definition.type) ?? [];
+  const sourceKey = blockSourceKey(definition);
+  const existingIndex = candidates.findIndex(
+    (candidate) => blockSourceKey(candidate) === sourceKey,
+  );
+  if (existingIndex !== -1) candidates.splice(existingIndex, 1);
+  candidates.push(definition);
+  sharedDefinitionCandidates.set(definition.type, candidates);
+  sharedDefinitions.set(definition.type, candidates[candidates.length - 1]);
+}
+
+for (const block of defaultBlocks) storeSharedDefinition(block);
 
 const sharedRegistry: NpBlockRegistry = {
   register(definition) {
     assertValidBlockDefinition(definition);
     detectAndWarnBlockCollision(sharedDefinitions.get(definition.type), definition);
-    sharedDefinitions.set(definition.type, definition);
+    storeSharedDefinition(definition);
   },
   get(type) {
     return sharedDefinitions.get(type);
@@ -151,7 +169,8 @@ function detectAndWarnBlockCollision(
  * Adds a block to the shared registry. Plugins call this (via the
  * bootstrap, not directly) so their blocks appear in the admin
  * Add-block popover and resolve correctly during server render.
- * Overwrites on duplicate `type` — see comment on sharedDefinitions.
+ * Retains duplicate cross-source candidates — see comment on
+ * sharedDefinitions. The legacy global registry still resolves the last one.
  */
 export const registerBlock = (definition: NpBlockDefinition): void => {
   sharedRegistry.register(definition);
@@ -160,20 +179,23 @@ export const registerBlock = (definition: NpBlockDefinition): void => {
 /**
  * Resets the shared block registry to the built-in defaults
  * (issue #477). Called by the bootstrap's `reloadPlugins()` so
- * disabled / removed plugins don't leave their block definitions
- * lingering in the registry — without this, a disabled plugin's
- * block would still appear in the admin's Add-block popover and
- * still resolve during server render after a reload, even though
- * its hooks / routes / actions had been cleared by `resetPlugins()`.
+ * removed plugins don't leave their block definitions lingering in the
+ * registry. Site activation itself is applied at read/render time and does
+ * not require a reload.
  *
  * Safe to call repeatedly — the bootstrap re-registers every
- * enabled plugin's blocks immediately after, so the registry
- * settles on `defaults + currently-enabled plugin contributions`.
+ * configured plugin's blocks immediately after, so the registry settles on
+ * `defaults + configured plugin contributions`.
  */
 export const resetSharedBlockRegistry = (): void => {
   sharedDefinitions.clear();
-  for (const block of defaultBlocks) sharedDefinitions.set(block.type, block);
+  sharedDefinitionCandidates.clear();
+  for (const block of defaultBlocks) storeSharedDefinition(block);
 };
+
+/** Internal activation view: registration-order candidates for each block type. */
+export const getSharedBlockCandidates = (): ReadonlyMap<string, readonly NpBlockDefinition[]> =>
+  sharedDefinitionCandidates;
 
 /** Returns every block in the shared registry — defaults + plugin contributions. */
 export const getRegisteredBlocks = (): NpBlockDefinition[] => sharedRegistry.getAll();
@@ -205,16 +227,41 @@ export const getSharedRegistry = (): NpBlockRegistry => sharedRegistry;
 // ----------------------------------------------------------------
 
 const sharedPatterns = new Map<string, NpPattern>();
+const sharedPatternCandidates = new Map<string, NpPattern[]>();
+
+function patternSourceKey(pattern: NpPattern): string {
+  return pattern.source;
+}
+
+function storeSharedPattern(pattern: NpPattern): void {
+  const candidates = sharedPatternCandidates.get(pattern.id) ?? [];
+  const sourceKey = patternSourceKey(pattern);
+  const existingIndex = candidates.findIndex(
+    (candidate) => patternSourceKey(candidate) === sourceKey,
+  );
+  if (existingIndex !== -1) candidates.splice(existingIndex, 1);
+  candidates.push(pattern);
+  sharedPatternCandidates.set(pattern.id, candidates);
+  sharedPatterns.set(pattern.id, candidates[candidates.length - 1]);
+}
 
 function assertValidPattern(pattern: unknown): asserts pattern is NpPattern {
   const validation = npValidatePattern(pattern);
   if (!validation.ok) throw new Error(`Invalid pattern definition: ${validation.message}`);
+  const validPattern = pattern as NpPattern;
+  const patternSource = validPattern.source;
+  const sourceDefinitions = [...sharedDefinitionCandidates.values()].map(
+    (candidates) =>
+      [...candidates]
+        .reverse()
+        .find((definition) => blockSourceKey(definition) === patternSource) ??
+      candidates[candidates.length - 1],
+  );
   const referenceIssue = npAnalyzePatternDefinitions([pattern], {
-    knownBlockTypes: new Set(sharedDefinitions.keys()),
+    knownBlockTypes: new Set(sourceDefinitions.map((definition) => definition.type)),
   }).find((issue) => issue.code === "unknown-block-type");
   if (referenceIssue) throw new Error(`Invalid pattern definition: ${referenceIssue.message}`);
-  const validPattern = pattern as NpPattern;
-  const contentIssue = npAnalyzeBlockContent(validPattern.blocks, sharedDefinitions.values()).find(
+  const contentIssue = npAnalyzeBlockContent(validPattern.blocks, sourceDefinitions).find(
     (issue) => issue.severity === "error",
   );
   if (contentIssue) throw new Error(`Invalid pattern definition: ${contentIssue.message}`);
@@ -252,27 +299,30 @@ function detectAndWarnPatternCollision(existing: NpPattern | undefined, incoming
 }
 
 /**
- * Adds a pattern to the shared registry. Plugins / themes call
- * this (via the bootstrap, not directly) so their patterns appear
- * in the page-builder's command-menu pattern picker. Overwrites on
- * duplicate `id` so HMR / re-bootstrap don't blow up; the last
- * registration wins, mirroring `registerBlock`.
+ * Adds a pattern to the shared registry. Plugins / themes call this (via the
+ * bootstrap, not directly) so their patterns appear in the page-builder's
+ * command-menu pattern picker. Cross-source candidates are retained for
+ * site-specific fallback while the legacy global view remains last-loaded.
  */
 export const registerPattern = (pattern: NpPattern): void => {
   assertValidPattern(pattern);
   detectAndWarnPatternCollision(sharedPatterns.get(pattern.id), pattern);
-  sharedPatterns.set(pattern.id, pattern);
+  storeSharedPattern(pattern);
 };
 
 /**
  * Resets the shared pattern registry. Called by the bootstrap's
- * `reloadPlugins()` so disabled / removed plugins don't leave their
- * pattern definitions behind — same invariant as the block registry
- * reset.
+ * `reloadPlugins()` so removed/config-changed contributions are rebuilt —
+ * same invariant as the block registry reset.
  */
 export const resetSharedPatternRegistry = (): void => {
   sharedPatterns.clear();
+  sharedPatternCandidates.clear();
 };
+
+/** Internal activation view: registration-order candidates for each pattern id. */
+export const getSharedPatternCandidates = (): ReadonlyMap<string, readonly NpPattern[]> =>
+  sharedPatternCandidates;
 
 /** Returns every pattern in the shared registry — plugin + theme contributions. */
 export const getRegisteredPatterns = (): NpPattern[] => Array.from(sharedPatterns.values());

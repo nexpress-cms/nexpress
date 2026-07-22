@@ -11,9 +11,13 @@ import { getJobHandler } from "./handlers.js";
 import { resetPlugins } from "../plugins/index.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { resetEmailAdapter, setEmailAdapter } from "../email/service.js";
+import { resetDb, setDb } from "../db/runtime.js";
+import { setJobQueue } from "./queue.js";
 
 afterEach(() => {
   resetEmailAdapter();
+  setJobQueue(null);
+  resetDb();
 });
 
 describe("built-in media job contract", () => {
@@ -68,8 +72,50 @@ describe("built-in media job contract", () => {
     registerBuiltinHandlers();
 
     await expect(
-      getJobHandler("plugin:scheduledTask")?.({ pluginId: "missing", taskId: "daily" }),
+      getJobHandler("plugin:scheduledTask")?.({
+        siteId: "tenant-a",
+        pluginId: "missing",
+        taskId: "daily",
+      }),
     ).rejects.toThrow('Plugin "missing" is not registered');
+  });
+
+  it("fans a cron tick into one exact durable job per enabled site", async () => {
+    const rows = Promise.resolve([
+      { siteId: "default", enabled: null },
+      { siteId: "tenant-a", enabled: true },
+    ]);
+    setDb({
+      select: () => ({
+        from: () => ({
+          leftJoin: () => rows,
+        }),
+      }),
+    } as never);
+    const enqueue = vi.fn().mockResolvedValue("job-id");
+    setJobQueue({
+      enqueue,
+      start: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+    });
+    registerBuiltinHandlers();
+
+    await getJobHandler("plugin:scheduledTaskTick")?.({
+      pluginId: "analytics",
+      taskId: "daily",
+    });
+
+    expect(enqueue).toHaveBeenCalledTimes(2);
+    expect(enqueue).toHaveBeenNthCalledWith(1, "plugin:scheduledTask", {
+      siteId: "default",
+      pluginId: "analytics",
+      taskId: "daily",
+    });
+    expect(enqueue).toHaveBeenNthCalledWith(2, "plugin:scheduledTask", {
+      siteId: "tenant-a",
+      pluginId: "analytics",
+      taskId: "daily",
+    });
   });
 
   it("dispatches content jobs inside the exact payload site scope", async () => {

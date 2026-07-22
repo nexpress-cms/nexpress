@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { count, eq } from "drizzle-orm";
 import { npUsers } from "@nexpress/core";
-import { listOAuthProvidersFor } from "@nexpress/core/auth";
+import { isOAuthProviderAvailableFor, listOAuthProvidersFor } from "@nexpress/core/auth";
 
 import { getDb } from "../../lib/db";
 import { ensureFor } from "../../lib/init-core";
@@ -26,10 +26,15 @@ export default async function LoginPage() {
     redirect("/admin/setup");
   }
 
-  const providers = listOAuthProvidersFor("staff").map((provider) => ({
-    id: provider.id,
-    label: provider.label ?? provider.id,
-  }));
+  const providers = (
+    await Promise.all(
+      listOAuthProvidersFor("staff").map(async (provider) =>
+        (await isOAuthProviderAvailableFor(provider, "staff"))
+          ? { id: provider.id, label: provider.label ?? provider.id }
+          : null,
+      ),
+    )
+  ).filter((provider): provider is { id: string; label: string } => provider !== null);
 
   return <LoginClient providers={providers} />;
 }

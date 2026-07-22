@@ -155,6 +155,13 @@
       "when": 1784618298492,
       "tag": "0021_chemical_morg",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1784718029028,
+      "tag": "0022_low_vance_astro",
+      "breakpoints": true
     }
   ]
 }

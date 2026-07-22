@@ -49,7 +49,8 @@ auto-form renders these editable fields:
 | Scopes        | one item per line | `read:user`<br>`user:email` |
 | Audience      | select            | `staff`                     |
 
-Saved values persist to `np_settings (key="plugin.config:oauth-github")`.
+Saved values persist to the current site's
+`np_settings (key="plugin.config:oauth-github")` row.
 
 ### Precedence
 
@@ -64,12 +65,12 @@ Set both env vars or neither. A partial env source is treated as a
 misconfiguration and the provider is not registered; run
 `pnpm run doctor -- --fix-plan` to surface the same problem before boot.
 
-### Reload required for admin-form changes
+### Request-time site isolation
 
-`setup()` reads credentials once at boot. Updating the admin form
-saves to the DB but does NOT re-register the provider; visit
-`/admin/plugins/reload` (or restart the process) for the new values
-to take effect.
+The provider resolves activation, credentials, scopes, and Audience inside the
+current site scope for each OAuth request. Admin-form changes take effect
+without reload, and concurrent sites can use different OAuth apps or audiences
+without sharing secrets.
 
 ## OAuth app callback URL
 

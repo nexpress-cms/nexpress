@@ -307,6 +307,17 @@ describe("createBootstrap", () => {
     expect(host.loadPlugins).toHaveBeenCalledOnce();
   });
 
+  it("loads every configured plugin so sites can apply different activation sets", async () => {
+    const plugins = [{ id: "reading-time" }, { id: "forum" }];
+    const config = Object.assign({}, buildConfig(), { plugins });
+    const bootstrap = createBootstrap({ config, generatedSchema: {} });
+
+    await bootstrap.ensureFor("plugins");
+
+    expect(host.loadPlugins).toHaveBeenCalledWith(plugins);
+    expect(host.listPluginStates).not.toHaveBeenCalled();
+  });
+
   it("separates worker email setup from the write producer and retries producer startup", async () => {
     vi.stubEnv("NP_ENABLE_JOBS", "1");
     const emailAdapter = { kind: "resend", send: vi.fn() } as never;

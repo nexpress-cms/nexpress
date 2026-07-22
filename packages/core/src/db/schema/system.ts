@@ -306,20 +306,48 @@ export const npSites = pgTable(
 );
 
 /**
- * G.1 — lean meta row. Plugin config moved to `np_settings` rows
+ * G.1 — lean installation row. Plugin config moved to `np_settings` rows
  * keyed by `plugin.config:<id>` (see decision E in
  * `docs/design/plugin-config-auto-form.md`); the legacy `config`
  * jsonb column was dropped. Reads / writes go through
  * `getPluginConfig` / `setPluginConfig` in the config module.
+ *
+ * Plugin activation is deliberately absent here. Configured plugin code is
+ * loaded once per process, while `np_site_plugins` decides whether each site
+ * may dispatch that code. Keeping installation and activation separate lets
+ * concurrent tenants use different plugin sets without rebuilding registries.
  */
 export const npPlugins = pgTable("np_plugins", {
   id: text("id").primaryKey(),
-  enabled: boolean("enabled").default(true).notNull(),
   installedAt: timestamp("installed_at", { withTimezone: true, mode: "date" })
     .defaultNow()
     .notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
 });
+
+/**
+ * Site-scoped plugin activation overrides.
+ *
+ * The table is intentionally sparse: no row means enabled. That preserves the
+ * zero-configuration single-site path, makes newly configured plugins
+ * immediately available, and avoids materializing every site × plugin pair.
+ * A row is written on the first explicit toggle and then records the site's
+ * durable choice.
+ */
+export const npSitePlugins = pgTable(
+  "np_site_plugins",
+  {
+    siteId: text("site_id").notNull(),
+    pluginId: text("plugin_id").notNull(),
+    enabled: boolean("enabled").default(true).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.siteId, table.pluginId] }),
+    pluginIdx: index("np_site_plugins_plugin_id_idx").on(table.pluginId),
+    siteIdx: index("np_site_plugins_site_id_idx").on(table.siteId),
+  }),
+);
 
 /**
  * Phase 17 — plugin K/V storage with multi-tenant scope.

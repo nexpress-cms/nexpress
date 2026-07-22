@@ -1,28 +1,28 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
-import { npPlugins } from "../db/schema/system.js";
+import { npSitePlugins } from "../db/schema/system.js";
 import { getDb } from "../db/runtime.js";
+import { getCurrentSiteId } from "../sites/context.js";
+import { NP_DEFAULT_SITE_ID, npIsCanonicalSiteId } from "../sites/id-contract.js";
 
 /**
  * Per-request enabled gate for already-loaded plugins.
  *
- * The plugin host registers every hook and route at boot regardless of the
- * `np_plugins.enabled` row state, so toggling a plugin from the admin UI
- * historically required a server restart to take effect. This module fronts
- * the registry with a short-lived cache of the DB flag so dispatch sites
+ * The plugin host registers every configured hook and route at boot regardless
+ * of the `np_site_plugins.enabled` row state. This module fronts the registry
+ * with a short-lived cache of the site-specific DB flag so dispatch sites
  * (`runHook`, the catch-all route handler, `dispatchPluginAction`) can skip
  * disabled plugins immediately, without paying a DB round-trip per call.
  *
  * Cache semantics:
- *  - Default-enabled: a missing row OR a DB read failure yields `true`. This
- *    matches `syncPluginRegistrations` (which inserts new rows with
- *    `enabled=true`) and avoids a hard failure mode where a flaky DB silently
- *    disables every plugin.
+ *  - Default-enabled: a missing activation override OR a DB read failure yields
+ *    `true`. This keeps the sparse activation table small and avoids a hard
+ *    failure mode where a flaky DB silently disables every plugin.
  *  - 5 second TTL by default — short enough that a toggle feels immediate,
  *    long enough to absorb a burst of hook calls within one request.
- *  - `invalidatePluginEnabled(id)` is called from `updatePluginState` so the
- *    next dispatch after a toggle re-reads the DB instead of waiting out the
- *    TTL.
+ *  - `invalidatePluginEnabled(id, siteId)` is called from `updatePluginState`
+ *    so the next dispatch for that site re-reads the DB instead of waiting out
+ *    the TTL. Omitting `siteId` clears every known site entry for the plugin.
  *  - `setPluginEnabledForTest()` / `resetEnabledGate()` let unit tests
  *    bypass the DB entirely.
  */
@@ -53,25 +53,36 @@ const inflight = new Map<string, Promise<boolean>>();
 const generation = new Map<string, number>();
 let ttlMs = DEFAULT_TTL_MS;
 
-function currentGeneration(pluginId: string): number {
-  return generation.get(pluginId) ?? 0;
+function cacheKey(siteId: string, pluginId: string): string {
+  return `${siteId}\u0000${pluginId}`;
 }
 
-async function fetchEnabled(pluginId: string): Promise<boolean> {
-  if (fetchOverride) return fetchOverride(pluginId);
+function currentGeneration(key: string): number {
+  return generation.get(key) ?? 0;
+}
+
+async function resolveSiteId(siteId?: string): Promise<string> {
+  const resolved = siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+  if (!npIsCanonicalSiteId(resolved)) {
+    throw new Error("Plugin activation site id is not canonical.");
+  }
+  return resolved;
+}
+
+async function fetchEnabled(siteId: string, pluginId: string): Promise<boolean> {
+  if (fetchOverride) return fetchOverride(pluginId, siteId);
   try {
     const db = getDb();
     const rows = await db
-      .select({ enabled: npPlugins.enabled })
-      .from(npPlugins)
-      .where(eq(npPlugins.id, pluginId))
+      .select({ enabled: npSitePlugins.enabled })
+      .from(npSitePlugins)
+      .where(and(eq(npSitePlugins.siteId, siteId), eq(npSitePlugins.pluginId, pluginId)))
       .limit(1);
     const row = rows[0] as { enabled?: unknown } | undefined;
     if (row && typeof row.enabled === "boolean") {
       return row.enabled;
     }
-    // Row missing — treat as enabled. `syncPluginRegistrations` will insert
-    // the row with enabled=true on the next boot anyway.
+    // Sparse activation override missing — active by default.
     return true;
   } catch {
     // DB not ready (test, CLI scaffold) or transient failure — fail open so
@@ -80,26 +91,28 @@ async function fetchEnabled(pluginId: string): Promise<boolean> {
   }
 }
 
-export async function isPluginEnabled(pluginId: string): Promise<boolean> {
+export async function isPluginEnabled(pluginId: string, siteId?: string): Promise<boolean> {
+  const resolvedSiteId = await resolveSiteId(siteId);
+  const key = cacheKey(resolvedSiteId, pluginId);
   const now = Date.now();
-  const cached = cache.get(pluginId);
+  const cached = cache.get(key);
   if (cached && cached.expiresAt > now) {
     return cached.enabled;
   }
 
   // Coalesce concurrent lookups for the same id so a hook that fans out
   // doesn't fire N parallel SELECTs against the same row.
-  const existing = inflight.get(pluginId);
+  const existing = inflight.get(key);
   if (existing) return existing;
 
   // Capture the generation BEFORE awaiting. If the cache is invalidated
   // while we're in flight, the generation map will tick and the .then()
   // below skips the cache write.
-  const fetchGeneration = currentGeneration(pluginId);
-  const promise = fetchEnabled(pluginId)
+  const fetchGeneration = currentGeneration(key);
+  const promise = fetchEnabled(resolvedSiteId, pluginId)
     .then((enabled) => {
-      if (currentGeneration(pluginId) === fetchGeneration) {
-        cache.set(pluginId, { enabled, expiresAt: Date.now() + ttlMs });
+      if (currentGeneration(key) === fetchGeneration) {
+        cache.set(key, { enabled, expiresAt: Date.now() + ttlMs });
       }
       return enabled;
     })
@@ -107,22 +120,27 @@ export async function isPluginEnabled(pluginId: string): Promise<boolean> {
       // Only clear the inflight slot if it's still ours — a concurrent
       // invalidate may have cleared and a sibling request may have
       // installed a fresh promise. Don't yank theirs.
-      if (inflight.get(pluginId) === promise) {
-        inflight.delete(pluginId);
+      if (inflight.get(key) === promise) {
+        inflight.delete(key);
       }
     });
-  inflight.set(pluginId, promise);
+  inflight.set(key, promise);
   return promise;
 }
 
-export function invalidatePluginEnabled(pluginId: string): void {
-  cache.delete(pluginId);
-  inflight.delete(pluginId);
-  // Tick the generation so any already-running fetchEnabled() promise
-  // for this id refuses to write its result back into the cache when
-  // it eventually settles. Without the bump, a slow DB read started
-  // before the toggle could re-cache the stale value for up to TTL.
-  generation.set(pluginId, currentGeneration(pluginId) + 1);
+export function invalidatePluginEnabled(pluginId: string, siteId?: string): void {
+  const keys = siteId
+    ? [cacheKey(siteId, pluginId)]
+    : [...new Set([...cache.keys(), ...inflight.keys(), ...generation.keys()])].filter((key) =>
+        key.endsWith(`\u0000${pluginId}`),
+      );
+  for (const key of keys) {
+    cache.delete(key);
+    inflight.delete(key);
+    // Tick the generation so any already-running fetchEnabled() promise
+    // for this site/plugin refuses to write its result back into the cache.
+    generation.set(key, currentGeneration(key) + 1);
+  }
 }
 
 /**
@@ -130,8 +148,12 @@ export function invalidatePluginEnabled(pluginId: string): void {
  * it for the configured TTL so subsequent reads in the same test see the
  * forced value without hitting the DB stub.
  */
-export function setPluginEnabledForTest(pluginId: string, enabled: boolean): void {
-  cache.set(pluginId, { enabled, expiresAt: Number.POSITIVE_INFINITY });
+export function setPluginEnabledForTest(
+  pluginId: string,
+  enabled: boolean,
+  siteId = NP_DEFAULT_SITE_ID,
+): void {
+  cache.set(cacheKey(siteId, pluginId), { enabled, expiresAt: Number.POSITIVE_INFINITY });
 }
 
 export function resetEnabledGate(): void {
@@ -153,8 +175,10 @@ export function setEnabledGateTtlForTest(ms: number): void {
  * code goes through `fetchEnabled()` directly; the override is wired in
  * via this setter and torn down by `resetEnabledGate()`.
  */
-let fetchOverride: ((pluginId: string) => Promise<boolean>) | null = null;
+let fetchOverride: ((pluginId: string, siteId: string) => Promise<boolean>) | null = null;
 
-export function setFetchImplForTest(impl: ((pluginId: string) => Promise<boolean>) | null): void {
+export function setFetchImplForTest(
+  impl: ((pluginId: string, siteId: string) => Promise<boolean>) | null,
+): void {
   fetchOverride = impl;
 }

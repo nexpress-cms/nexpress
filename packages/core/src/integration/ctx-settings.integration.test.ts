@@ -99,7 +99,6 @@ describe.skipIf(skipIfNoTestDb())("ctx.settings / ctx.theme (integration)", () =
     const db = await getTestDb();
     await db.insert(npPlugins).values({
       id: "test-plugin",
-      enabled: true,
     });
 
     const ctx = makeCtx();
@@ -123,7 +122,7 @@ describe.skipIf(skipIfNoTestDb())("ctx.settings / ctx.theme (integration)", () =
       },
     ]);
     const db = await getTestDb();
-    await db.insert(npPlugins).values({ id: pluginId, enabled: true });
+    await db.insert(npPlugins).values({ id: pluginId });
 
     const ctx = makeCtx({ pluginId });
     await ctx.settings.setPlugin({ enabled: true });

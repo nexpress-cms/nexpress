@@ -6,15 +6,19 @@
 
 import { DashboardView } from "@nexpress/admin/client";
 import type { DashboardPluginWidget } from "@nexpress/admin";
-import { getDashboardWidgetsFromPlugins } from "@nexpress/core";
+import { getDashboardWidgetsFromPlugins, listEnabledPluginIds } from "@nexpress/core";
 import { ensureFor } from "../../lib/init-core";
 import { loadDashboardStats } from "../../lib/dashboard-stats";
+import { getDb } from "../../lib/db";
 
 export default async function DashboardPage() {
   await ensureFor("plugins");
 
   const stats = await loadDashboardStats();
-  const pluginWidgets: DashboardPluginWidget[] = getDashboardWidgetsFromPlugins().map((widget) => ({
+  const activePluginIds = new Set(await listEnabledPluginIds(getDb()));
+  const pluginWidgets: DashboardPluginWidget[] = getDashboardWidgetsFromPlugins(
+    activePluginIds,
+  ).map((widget) => ({
     pluginId: widget.pluginId,
     pluginName: widget.pluginName,
     id: widget.id,

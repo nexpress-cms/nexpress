@@ -129,6 +129,25 @@ describe("job runtime contract", () => {
       ok: true,
       value: { collection: "forum-posts" },
     });
+    expect(
+      npAnalyzeJobPayload("plugin:scheduledTask", {
+        siteId: "tenant-a",
+        pluginId: "analytics",
+        taskId: "daily",
+      }).ok,
+    ).toBe(true);
+    expect(
+      npAnalyzeJobPayload("plugin:scheduledTask", {
+        pluginId: "analytics",
+        taskId: "daily",
+      }).ok,
+    ).toBe(false);
+    expect(
+      npAnalyzeJobPayload("plugin:scheduledTaskTick", {
+        pluginId: "analytics",
+        taskId: "daily",
+      }).ok,
+    ).toBe(true);
     expect(npAnalyzeJobPayload("search:reindex", { collection: "Forum Posts" }).ok).toBe(false);
     expect(
       npAnalyzeJobPayload("search:reindex", { collection: "forum-posts", extra: true }).ok,

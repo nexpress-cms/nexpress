@@ -16,8 +16,8 @@ import {
   hashPassword,
   invalidateAllMemberSessions,
   issueOAuthState,
+  isOAuthProviderAvailableFor,
   npMembers,
-  oauthProviderSupportsAudience,
   requestMemberPasswordReset,
   replaceMemberPasswordAndInvalidateSessions,
   resolveMemberOAuthLogin,
@@ -419,7 +419,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
     await ensureFor("plugins");
     const { provider: providerId } = await ctx.params;
     const provider = getOAuthProvider(providerId);
-    if (!provider || !oauthProviderSupportsAudience(provider, "member")) {
+    if (!provider || !(await isOAuthProviderAvailableFor(provider, "member"))) {
       return npErrorResponse(
         new NpError(`OAuth provider "${providerId}" not registered`, "NOT_FOUND", 404),
       );
@@ -470,7 +470,7 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
     await ensureFor("write");
     const { provider: providerId } = await ctx.params;
     const provider = getOAuthProvider(providerId);
-    if (!provider || !oauthProviderSupportsAudience(provider, "member")) {
+    if (!provider || !(await isOAuthProviderAvailableFor(provider, "member"))) {
       return oauthFail(request, "unknown_provider");
     }
 

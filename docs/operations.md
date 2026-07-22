@@ -156,9 +156,9 @@ For bundled providers, set credentials from one source only:
 Partial env is a configuration error. The plugin refuses to register
 instead of mixing env and DB credentials, and doctor reports
 `oauth.github.credentials` or `oauth.google.credentials` with the
-missing variable. After saving admin-form credentials, click
-**Reload all** in `/admin/plugins` or restart the process so plugin
-setup registers the provider.
+missing variable. Admin-form credentials and plugin activation are resolved
+per site on every OAuth request, so saved changes do not require a reload and
+one site's secret never becomes another site's provider config.
 
 Callback URLs must match `SITE_URL` exactly. GitHub OAuth Apps accept
 one Authorization callback URL, so the bundled GitHub plugin exposes

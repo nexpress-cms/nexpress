@@ -1060,10 +1060,22 @@ async function checkSettingsContracts(
               updated_at as "updatedAt", updated_by as "updatedBy"
          from np_string_overrides`,
     );
+    const pluginActivations = await client.query<{
+      siteId: string;
+      pluginId: string;
+      enabled: unknown;
+      updatedAt: unknown;
+    }>(
+      `select site_id as "siteId", plugin_id as "pluginId", enabled,
+              updated_at as "updatedAt"
+         from np_site_plugins`,
+    );
+    const plugins = await client.query<{ id: string }>(`select id from np_plugins`);
     const users = await client.query<{ id: string }>(`select id from np_users`);
     await client.end();
     const siteIds = new Set(sites.rows.map((site) => site.id));
     const userIds = new Set(users.rows.map((user) => user.id));
+    const pluginIds = new Set(plugins.rows.map((plugin) => plugin.id));
     const issues = [
       ...(!siteIds.has(NP_DEFAULT_SITE_ID)
         ? [
@@ -1139,20 +1151,58 @@ async function checkSettingsContracts(
             : []),
         ];
       }),
+      ...pluginActivations.rows.flatMap((row) => [
+        ...(!siteIds.has(row.siteId)
+          ? [
+              {
+                code: "invalid-field" as const,
+                path: "sitePlugin.siteId",
+                message: `plugin activation references missing site '${row.siteId}'.`,
+              },
+            ]
+          : []),
+        ...(!pluginIds.has(row.pluginId)
+          ? [
+              {
+                code: "invalid-field" as const,
+                path: "sitePlugin.pluginId",
+                message: `plugin activation references missing plugin '${row.pluginId}'.`,
+              },
+            ]
+          : []),
+        ...(typeof row.enabled !== "boolean"
+          ? [
+              {
+                code: "invalid-field" as const,
+                path: "sitePlugin.enabled",
+                message: "plugin activation enabled must be boolean.",
+              },
+            ]
+          : []),
+        ...(!(row.updatedAt instanceof Date) || !Number.isFinite(row.updatedAt.getTime())
+          ? [
+              {
+                code: "invalid-field" as const,
+                path: "sitePlugin.updatedAt",
+                message: "plugin activation updatedAt must be a valid timestamp.",
+              },
+            ]
+          : []),
+      ]),
     ];
     return issues.length === 0
       ? {
           id: "settings.contract",
           state: "ok",
           label: "Site registry and settings contracts",
-          detail: `${sites.rows.length.toString()} site(s), ${memberships.rows.length.toString()} membership(s), ${settings.rows.length.toString()} setting row(s), ${stringOverrides.rows.length.toString()} string override(s)`,
+          detail: `${sites.rows.length.toString()} site(s), ${memberships.rows.length.toString()} membership(s), ${settings.rows.length.toString()} setting row(s), ${stringOverrides.rows.length.toString()} string override(s), ${pluginActivations.rows.length.toString()} plugin activation(s)`,
         }
       : {
           id: "settings.contract",
           state: "error",
           label: "Site registry and settings contracts",
           detail: `${issues.length.toString()} contract issue(s); first: ${issues[0]?.path ?? "settings"} ${issues[0]?.message ?? "invalid"}`,
-          hint: "Repair malformed site, membership, setting, or string override rows and remove orphan references before starting the app.",
+          hint: "Repair malformed site, membership, setting, string override, or plugin activation rows and remove orphan references before starting the app.",
         };
   } catch (error) {
     try {
