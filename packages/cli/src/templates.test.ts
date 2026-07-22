@@ -167,9 +167,11 @@ describe("getProjectFiles", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const pkg = JSON.parse(files["package.json"]) as {
       dependencies: Record<string, string>;
+      pnpm?: { overrides?: Record<string, string> };
     };
 
     expect(pkg.dependencies.sharp).toBe(CORE_SHARP_RANGE);
+    expect(pkg.pnpm?.overrides?.sharp).toBe(CORE_SHARP_RANGE.replace(/^[~^]/u, ""));
   });
 
   it("declares nodemailer directly for the default SMTP runtime", () => {

@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "@nexpress/core": "workspace:*",
-    "fast-xml-parser": "^5.9.3",
+    "fast-xml-parser": "^5.10.1",
     "node-html-parser": "^7.0.1",
     "undici": "^8.7.0"
   },
