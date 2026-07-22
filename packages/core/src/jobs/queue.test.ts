@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { registerJobHandler } from "./handlers.js";
-import { enqueueJob, getJobQueue, getOptionalJobQueue, setJobQueue } from "./queue.js";
+import {
+  enqueueJob,
+  enqueueJobWithResult,
+  getJobQueue,
+  getOptionalJobQueue,
+  setJobQueue,
+} from "./queue.js";
 
 describe("job queue", () => {
   beforeEach(() => {
@@ -68,6 +74,58 @@ describe("job queue", () => {
 
       expect(parsePayload).toHaveBeenCalledOnce();
       expect(enqueue).toHaveBeenCalledWith("test:parseOnce", { value: "canonical" });
+    });
+
+    it("returns the once-normalized payload with the enqueue result", async () => {
+      const parsePayload = vi.fn((data: Record<string, unknown>) => ({ value: data.value }));
+      registerJobHandler("test:parseResult", async () => {}, { parsePayload });
+      const enqueue = vi.fn().mockResolvedValue("job-44");
+      setJobQueue({
+        enqueue,
+        start: () => Promise.resolve(),
+        stop: () => Promise.resolve(),
+      });
+
+      await expect(
+        enqueueJobWithResult("test:parseResult", { value: "canonical" }),
+      ).resolves.toEqual({
+        id: "job-44",
+        type: "test:parseResult",
+        data: { value: "canonical" },
+      });
+      expect(parsePayload).toHaveBeenCalledOnce();
+      expect(enqueue).toHaveBeenCalledOnce();
+    });
+
+    it("classifies a quota site mismatch as payload validation before enqueue", async () => {
+      registerJobHandler(
+        "test:quotaResultMismatch",
+        async (_data: { siteId: string; ownerSiteId: string }) => {},
+        {
+          parsePayload: (data) => {
+            if (typeof data.siteId !== "string" || typeof data.ownerSiteId !== "string") {
+              throw new Error("site ownership is required");
+            }
+            return { siteId: data.siteId, ownerSiteId: data.ownerSiteId };
+          },
+          resolveSiteId: (data) => data.ownerSiteId,
+          quota: "site",
+        },
+      );
+      const enqueue = vi.fn().mockResolvedValue("job-45");
+      setJobQueue({
+        enqueue,
+        start: () => Promise.resolve(),
+        stop: () => Promise.resolve(),
+      });
+
+      await expect(
+        enqueueJobWithResult("test:quotaResultMismatch", {
+          siteId: "tenant-a",
+          ownerSiteId: "tenant-b",
+        }),
+      ).rejects.toMatchObject({ name: "NpJobPayloadValidationError" });
+      expect(enqueue).not.toHaveBeenCalled();
     });
   });
 

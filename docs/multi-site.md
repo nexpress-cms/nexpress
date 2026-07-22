@@ -268,6 +268,12 @@ on a card. Search users by email, pick a role, click Grant.
 On the default site, revocation exposes the user's global role
 again. On every other site, revocation removes access entirely.
 
+**Manage resource limits** — Admin → Sites → click "Quotas" on a card.
+Super-admins can replace that site's storage, document, and rolling hourly job
+ceilings; a blank field means unlimited. Site admins with `admin.manage` can
+read the same exact usage snapshot but only super-admins can change limits.
+See [Site resource quotas](./site-quotas.md).
+
 **Promote a super-admin** — Use the CLI (`pnpm super-admin
 <email>`) for the first one (bootstrap chicken-and-egg).
 Subsequent promotions go through the admin user page's
@@ -353,6 +359,11 @@ before asking for confirmation.
 there is no promotion/reassignment operation. `nexpress doctor` checks
 this invariant together with malformed and orphaned membership and
 settings rows.
+
+**Quota operations**: `nexpress doctor`, `nexpress ops status`, and the remote
+Admin ops equivalents include the stable `sites.quotas` check. Existing rows
+stay readable when a limit is lowered below usage. New quota-sensitive work
+fails until resources are reclaimed or the limit is raised.
 
 ---
 

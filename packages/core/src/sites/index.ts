@@ -32,11 +32,24 @@ export {
   revokeSiteMembership,
   setSuperAdmin,
 } from "./memberships.js";
+export {
+  NP_SITE_JOB_QUOTA_WINDOW_MS,
+  NP_SITE_QUOTA_SETTING_KEY,
+  getSiteQuotaSnapshot,
+  getSiteQuotaUsage,
+  getSiteQuotas,
+  setSiteQuotas,
+} from "./quotas.js";
+export type { NpSiteJobUsageReader } from "./quotas.js";
 export type {
   NpCreateSiteInput,
   NpSiteMembershipGrantInput,
   NpSiteMembershipRecord,
   NpSiteMembershipWireRecord,
+  NpSiteQuotaMetric,
+  NpSiteQuotaSnapshot,
+  NpSiteQuotaUsage,
+  NpSiteQuotas,
   NpSiteSummaryWireRecord,
   NpSiteUsage,
   NpSiteWireRecord,

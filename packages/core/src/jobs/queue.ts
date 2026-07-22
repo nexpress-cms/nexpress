@@ -1,4 +1,5 @@
 import {
+  type NpJobData,
   type NpJobPayload,
   type NpJobState,
   type NpJobStateCounts,
@@ -6,7 +7,12 @@ import {
   type NpJobType,
   type NpScheduleSummary,
 } from "../jobs-contract/index.js";
-import { normalizeRegisteredJobPayload } from "./handlers.js";
+import {
+  getSiteQuotaJobTypes,
+  normalizeRegisteredJobPayload,
+  resolveRegisteredJobQuotaSiteId,
+} from "./handlers.js";
+import { npWithSiteJobEnqueueQuota } from "../sites/quotas.js";
 
 /**
  * Phase 13 — admin-side job introspection. pg-boss tracks jobs
@@ -123,6 +129,12 @@ export interface NpJobQueue {
    */
   countByState?(options?: NpJobCountOptions): Promise<NpJobStateCounts>;
   /**
+   * Exact persisted enqueue count used by site quotas. Implementations must
+   * count both active and archived rows created since `since` for the given
+   * quota-participating logical job types.
+   */
+  countSiteEnqueues?(siteId: string, since: Date, types: readonly NpJobType[]): Promise<number>;
+  /**
    * Phase 4.2 — per-plugin schedule observability. Returns one row per
    * `(pluginId, taskId)` aggregated over the plugin's history in
    * `pgboss.job` + `pgboss.archive`: last completion, last failure, and
@@ -197,6 +209,20 @@ export interface NpPluginScheduleStats {
 
 let jobQueue: NpJobQueue | null = null;
 
+export class NpJobPayloadValidationError extends Error {
+  override readonly name = "NpJobPayloadValidationError";
+
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+  }
+}
+
+export interface NpEnqueuedJob<TType extends NpJobType = NpJobType> {
+  id: string;
+  type: TType;
+  data: NpJobPayload<TType> & NpJobData;
+}
+
 export function setJobQueue(queue: NpJobQueue | null): void {
   jobQueue = queue;
 }
@@ -222,8 +248,45 @@ export async function enqueueJob<TType extends NpJobType>(
   data: NpJobPayload<TType>,
 ): Promise<string> {
   const normalized = normalizeRegisteredJobPayload(type, data);
+  const quotaSiteId = resolveRegisteredJobQuotaSiteId(type, normalized);
+  return enqueueNormalizedJob(type, normalized, quotaSiteId);
+}
+
+/** Enqueue once and return the exact payload produced by the registered parser. */
+export async function enqueueJobWithResult<TType extends NpJobType>(
+  type: TType,
+  data: NpJobPayload<TType>,
+): Promise<NpEnqueuedJob<TType>> {
+  let normalized: NpJobPayload<TType> & NpJobData;
+  let quotaSiteId: string | null;
+  try {
+    normalized = normalizeRegisteredJobPayload(type, data);
+    quotaSiteId = resolveRegisteredJobQuotaSiteId(type, normalized);
+  } catch (error) {
+    throw new NpJobPayloadValidationError(
+      error instanceof Error ? error.message : "Job payload does not match its handler contract.",
+      { cause: error },
+    );
+  }
+  const id = await enqueueNormalizedJob(type, normalized, quotaSiteId);
+  return { id, type, data: normalized };
+}
+
+async function enqueueNormalizedJob<TType extends NpJobType>(
+  type: TType,
+  normalized: NpJobPayload<TType> & NpJobData,
+  quotaSiteId: string | null,
+): Promise<string> {
   if (!jobQueue) return "";
-  return jobQueue.enqueue(type, normalized);
+  const queue = jobQueue;
+  if (quotaSiteId === null) return queue.enqueue(type, normalized);
+  const quotaTypes = getSiteQuotaJobTypes();
+  const countSiteEnqueues = queue.countSiteEnqueues?.bind(queue);
+  return npWithSiteJobEnqueueQuota(
+    quotaSiteId,
+    countSiteEnqueues ? (siteId, since) => countSiteEnqueues(siteId, since, quotaTypes) : undefined,
+    () => queue.enqueue(type, normalized),
+  );
 }
 
 export type {

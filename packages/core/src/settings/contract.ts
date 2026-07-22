@@ -9,6 +9,8 @@ import type {
   NpSiteMembershipGrantInput,
   NpSiteMembershipRecord,
   NpSiteMembershipWireRecord,
+  NpSiteQuotaSnapshot,
+  NpSiteQuotas,
   NpSiteRecord,
   NpSiteRuntimeSettings,
   NpSiteSummaryWireRecord,
@@ -16,6 +18,7 @@ import type {
   NpSiteWireRecord,
   NpUpdateSiteInput,
 } from "./types.js";
+import { npSiteQuotaMetrics } from "./types.js";
 import {
   npIsUserRole as npIsAuthUserRole,
   npUserRoles,
@@ -61,6 +64,18 @@ export const DEFAULT_SEO_SETTINGS: NpSeoSettings = {
   twitterHandle: null,
   defaultLocale: "en_US",
 };
+
+export const DEFAULT_SITE_QUOTAS: NpSiteQuotas = {
+  storageBytes: null,
+  documents: null,
+  jobEnqueuesPerHour: null,
+};
+
+export const npSiteQuotaLimits = {
+  storageBytes: Number.MAX_SAFE_INTEGER,
+  documents: 1_000_000_000,
+  jobEnqueuesPerHour: 1_000_000,
+} as const;
 
 const ownerPattern = new RegExp(npDynamicSettingOwnerPattern, "u");
 const pluginOwnerPattern = new RegExp(npPluginIdPattern, "u");
@@ -108,6 +123,9 @@ const siteUsageKeys = new Set([
 const generalKeys = new Set(["name", "url", "description", "defaultLocale", "timezone"]);
 const seoKeys = new Set(["defaultOgImage", "twitterHandle", "defaultLocale"]);
 const snapshotKeys = new Set(["site", "seo"]);
+const siteQuotaKeys = new Set(npSiteQuotaMetrics);
+const siteQuotaUsageKeys = new Set(["storageBytes", "documents", "jobEnqueuesLastHour"]);
+const siteQuotaSnapshotKeys = new Set(["limits", "usage", "exceeded", "unavailable"]);
 const userIdPattern = new RegExp(npUserIdPattern, "u");
 
 function issue(
@@ -872,8 +890,158 @@ export function isNpAdminSettingsSnapshot(value: unknown): value is NpAdminSetti
   return npAnalyzeAdminSettingsSnapshot(value).length === 0;
 }
 
+function analyzeNullableQuota(
+  value: unknown,
+  path: string,
+  maximum: number,
+): NpSettingContractIssue[] {
+  if (
+    value !== null &&
+    (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) > maximum)
+  ) {
+    return [
+      issue(
+        "invalid-field",
+        path,
+        `quota must be null or a non-negative safe integer no greater than ${maximum.toString()}.`,
+      ),
+    ];
+  }
+  return [];
+}
+
+export function npAnalyzeSiteQuotas(value: unknown): NpSettingContractIssue[] {
+  if (!isPlainRecord(value)) {
+    return [issue("shape", "siteQuotas", "site quotas must be a plain object.")];
+  }
+  const issues: NpSettingContractIssue[] = [];
+  pushUnknown(value, siteQuotaKeys, "siteQuotas", issues);
+  issues.push(
+    ...analyzeNullableQuota(
+      value.storageBytes,
+      "siteQuotas.storageBytes",
+      npSiteQuotaLimits.storageBytes,
+    ),
+    ...analyzeNullableQuota(value.documents, "siteQuotas.documents", npSiteQuotaLimits.documents),
+    ...analyzeNullableQuota(
+      value.jobEnqueuesPerHour,
+      "siteQuotas.jobEnqueuesPerHour",
+      npSiteQuotaLimits.jobEnqueuesPerHour,
+    ),
+  );
+  return issues;
+}
+
+export function npNormalizeSiteQuotas(value: unknown): NpSiteQuotas {
+  const first = npAnalyzeSiteQuotas(value)[0];
+  if (first) throw new Error(`Invalid site quotas at ${first.path}: ${first.message}`);
+  const quotas = value as NpSiteQuotas;
+  return {
+    storageBytes: quotas.storageBytes,
+    documents: quotas.documents,
+    jobEnqueuesPerHour: quotas.jobEnqueuesPerHour,
+  };
+}
+
+export function isNpSiteQuotas(value: unknown): value is NpSiteQuotas {
+  return npAnalyzeSiteQuotas(value).length === 0;
+}
+
+export function npAnalyzeSiteQuotaSnapshot(value: unknown): NpSettingContractIssue[] {
+  if (!isPlainRecord(value)) {
+    return [issue("shape", "siteQuota", "site quota snapshot must be a plain object.")];
+  }
+  const issues: NpSettingContractIssue[] = [];
+  pushUnknown(value, siteQuotaSnapshotKeys, "siteQuota", issues);
+  issues.push(...npAnalyzeSiteQuotas(value.limits));
+  if (!isPlainRecord(value.usage)) {
+    issues.push(issue("shape", "siteQuota.usage", "quota usage must be a plain object."));
+  } else {
+    pushUnknown(value.usage, siteQuotaUsageKeys, "siteQuota.usage", issues);
+    for (const key of ["storageBytes", "documents"] as const) {
+      const usage = value.usage[key];
+      if (!Number.isSafeInteger(usage) || (usage as number) < 0) {
+        issues.push(
+          issue(
+            "invalid-field",
+            `siteQuota.usage.${key}`,
+            `${key} usage must be a non-negative safe integer.`,
+          ),
+        );
+      }
+    }
+    const jobs = value.usage.jobEnqueuesLastHour;
+    if (jobs !== null && (!Number.isSafeInteger(jobs) || (jobs as number) < 0)) {
+      issues.push(
+        issue(
+          "invalid-field",
+          "siteQuota.usage.jobEnqueuesLastHour",
+          "job enqueue usage must be null or a non-negative safe integer.",
+        ),
+      );
+    }
+  }
+  for (const key of ["exceeded", "unavailable"] as const) {
+    const metrics = value[key];
+    if (
+      !Array.isArray(metrics) ||
+      new Set(metrics).size !== metrics.length ||
+      metrics.some((metric) => !(npSiteQuotaMetrics as readonly unknown[]).includes(metric))
+    ) {
+      issues.push(
+        issue(
+          "invalid-field",
+          `siteQuota.${key}`,
+          `${key} must contain unique canonical site quota metrics.`,
+        ),
+      );
+    }
+  }
+  if (issues.length === 0) {
+    const snapshot = value as unknown as NpSiteQuotaSnapshot;
+    const expectedExceeded = npSiteQuotaMetrics.filter((metric) => {
+      const limit = snapshot.limits[metric];
+      if (limit === null) return false;
+      const usage =
+        metric === "jobEnqueuesPerHour"
+          ? snapshot.usage.jobEnqueuesLastHour
+          : snapshot.usage[metric];
+      return usage !== null && usage > limit;
+    });
+    const expectedUnavailable =
+      snapshot.limits.jobEnqueuesPerHour !== null && snapshot.usage.jobEnqueuesLastHour === null
+        ? (["jobEnqueuesPerHour"] as const)
+        : [];
+    if (JSON.stringify(snapshot.exceeded) !== JSON.stringify(expectedExceeded)) {
+      issues.push(
+        issue("invalid-field", "siteQuota.exceeded", "exceeded must match limits and usage."),
+      );
+    }
+    if (JSON.stringify(snapshot.unavailable) !== JSON.stringify(expectedUnavailable)) {
+      issues.push(
+        issue(
+          "invalid-field",
+          "siteQuota.unavailable",
+          "unavailable must match unmeasurable configured metrics.",
+        ),
+      );
+    }
+  }
+  return issues;
+}
+
+export function isNpSiteQuotaSnapshot(value: unknown): value is NpSiteQuotaSnapshot {
+  return npAnalyzeSiteQuotaSnapshot(value).length === 0;
+}
+
+export function npAssertSiteQuotaSnapshot(value: unknown): asserts value is NpSiteQuotaSnapshot {
+  const first = npAnalyzeSiteQuotaSnapshot(value)[0];
+  if (first) throw new Error(`Invalid site quota snapshot at ${first.path}: ${first.message}`);
+}
+
 export function npClassifySettingKey(key: unknown): NpSettingContractKind | null {
   if (key === "seo") return "seo";
+  if (key === "site.quotas") return "site-quotas";
   if (key === "theme") return "theme-tokens";
   if (key === "community") return "community";
   if (key === "activeTheme") return "active-theme";
@@ -1098,6 +1266,8 @@ export function npAnalyzeSettingValue(key: unknown, value: unknown): NpSettingCo
   switch (kind) {
     case "seo":
       return npAnalyzeSeoSettings(value);
+    case "site-quotas":
+      return npAnalyzeSiteQuotas(value);
     case "theme-tokens":
       return npAnalyzeThemeTokensOverlay(value).map((entry) => ({
         code: "invalid-field" as const,

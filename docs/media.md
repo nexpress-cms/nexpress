@@ -130,6 +130,15 @@ restores that site scope for the entire processor dispatch. The built-in worker
 now runs the core image processor when a host has not supplied an override.
 Non-image uploads are stored once as `ready` and do not enqueue a Sharp job.
 
+When a site storage quota is configured, the original byte count is reserved
+under the site's transaction lock before object upload. Generated variant byte
+counts are likewise persisted before their storage writes, so concurrent image
+jobs cannot both consume the same remaining headroom. A successful retry uses
+the durable reservation; a failed attempt removes it and best-effort deletes
+partial objects. If external cleanup cannot be confirmed, the error-state
+reservation remains conservative. Soft-deleted media continues to count until
+cleanup actually reclaims the objects. See [Site resource quotas](./site-quotas.md).
+
 Processing options are exact and validated before Sharp or storage work:
 
 ```ts

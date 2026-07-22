@@ -11,6 +11,7 @@ import { getJobHandler } from "./handlers.js";
 import { resetPlugins } from "../plugins/index.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { resetEmailAdapter, setEmailAdapter } from "../email/service.js";
+import { NpRateLimitError } from "../errors.js";
 import { resetDb, setDb } from "../db/runtime.js";
 import { setJobQueue } from "./queue.js";
 
@@ -89,7 +90,7 @@ describe("built-in media job contract", () => {
     ).rejects.toThrow('Plugin "missing" is not registered');
   });
 
-  it("fans a cron tick into one exact durable job per enabled site", async () => {
+  it("attempts every enabled site even when one cron fan-out enqueue is rejected", async () => {
     const rows = Promise.resolve([
       { siteId: "default", enabled: null },
       { siteId: "tenant-a", enabled: true },
@@ -100,8 +101,20 @@ describe("built-in media job contract", () => {
           leftJoin: () => rows,
         }),
       }),
+      transaction: async (callback: (tx: unknown) => Promise<unknown>) =>
+        callback({
+          execute: () => Promise.resolve(),
+          select: () => ({
+            from: () => ({
+              where: () => ({ limit: () => Promise.resolve([]) }),
+            }),
+          }),
+        }),
     } as never);
-    const enqueue = vi.fn().mockResolvedValue("job-id");
+    const enqueue = vi
+      .fn()
+      .mockRejectedValueOnce(new NpRateLimitError("site quota reached"))
+      .mockResolvedValueOnce("job-id");
     setJobQueue({
       enqueue,
       start: () => Promise.resolve(),
@@ -109,10 +122,12 @@ describe("built-in media job contract", () => {
     });
     registerBuiltinHandlers();
 
-    await getJobHandler("plugin:scheduledTaskTick")?.({
-      pluginId: "analytics",
-      taskId: "daily",
-    });
+    await expect(
+      getJobHandler("plugin:scheduledTaskTick")?.({
+        pluginId: "analytics",
+        taskId: "daily",
+      }),
+    ).resolves.toBeUndefined();
 
     expect(enqueue).toHaveBeenCalledTimes(2);
     expect(enqueue).toHaveBeenNthCalledWith(1, "plugin:scheduledTask", {

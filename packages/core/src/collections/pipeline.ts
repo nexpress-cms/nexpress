@@ -40,6 +40,11 @@ import { getI18nConfig } from "../i18n/registry.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
+import {
+  npAssertSiteDocumentCreateQuota,
+  npLockSiteQuotas,
+  type NpSiteQuotaDb,
+} from "../sites/quotas.js";
 import { getCollectionZodSchema } from "./validation.js";
 import { getCollectionConfig, getCollectionTable, getCollectionRegistration } from "./registry.js";
 import { npRecordCollectionRuntimeDiagnostic } from "./diagnostics.js";
@@ -1253,6 +1258,15 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
   // private one opened here. Extracted into a `persist(tx)` local
   // so both branches share the body verbatim.
   const persist = async (tx: DrizzleTransactionLike): Promise<Record<string, unknown>> => {
+    if (ctx.operation === "create") {
+      const siteId = ctx.prepared.mainData.siteId;
+      if (!npIsCanonicalSiteId(siteId)) {
+        throw new Error(`Prepared ${ctx.collection} document is missing a canonical siteId.`);
+      }
+      const quotaDb = tx as unknown as NpSiteQuotaDb;
+      await npLockSiteQuotas(quotaDb, siteId);
+      await npAssertSiteDocumentCreateQuota(quotaDb, siteId);
+    }
     const persistedDoc: Record<string, unknown> =
       ctx.operation === "update"
         ? await updateMainDocument(

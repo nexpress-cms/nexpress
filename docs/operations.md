@@ -20,6 +20,7 @@ have a natural home in any single subsystem doc.
 | `INTERNAL_ERROR` with no handler context          | [observability.md § Where errors get reported](./observability.md#where-errors-get-reported) |
 | Email never arrives                               | [email.md](./email.md)                                                                       |
 | Importer stuck, partial run, resume               | [wordpress-import-guide.md](./wordpress-import-guide.md)                                     |
+| Tenant at storage/document/job capacity           | [site-quotas.md](./site-quotas.md)                                                           |
 
 ## Boot warnings
 
@@ -96,6 +97,12 @@ evidence into one action queue.
 Use the admin pages for human triage, then copy the matching `pnpm run ops:*`
 or `pnpm --silent run ops:release ... --json` command when CI, an agent handoff,
 or a runbook needs a stable artifact.
+
+The shared `sites.quotas` check reports a warning when configured usage is at
+or above a tenant ceiling. It is blocking when an hourly job ceiling is active
+but pg-boss history cannot be measured, matching the runtime's fail-closed
+admission behavior. Super-admins inspect or adjust the exact values from
+Admin → Sites → Quotas.
 
 ## SITE_URL is required for email flows
 

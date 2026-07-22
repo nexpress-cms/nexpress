@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   getJobHandler,
   getKnownJobTypes,
+  getSiteQuotaJobTypes,
   normalizeRegisteredJobPayload,
   registerJobHandler,
+  resolveRegisteredJobQuotaSiteId,
 } from "./handlers.js";
 import { getCurrentSiteId } from "../sites/context.js";
 
@@ -57,14 +59,14 @@ describe("custom job handler contracts", () => {
     );
     expect(() =>
       registerJobHandler("search:badOptions", async () => {}, { extra: true } as never),
-    ).toThrow("must contain only parsePayload and resolveSiteId");
+    ).toThrow("must contain only parsePayload, resolveSiteId, and quota");
     const accessorOptions = Object.defineProperty({}, "parsePayload", {
       enumerable: true,
       get: () => undefined,
     });
     expect(() =>
       registerJobHandler("search:accessorOptions", async () => {}, accessorOptions),
-    ).toThrow("must contain only parsePayload and resolveSiteId");
+    ).toThrow("must contain only parsePayload, resolveSiteId, and quota");
     expect(() =>
       registerJobHandler("search:badSiteResolver", async () => {}, {
         resolveSiteId: "tenant-a",
@@ -73,6 +75,54 @@ describe("custom job handler contracts", () => {
     expect(getKnownJobTypes()).toEqual(
       expect.arrayContaining(["media:processImage", "search:deduplicate", "search:nonVoid"]),
     );
+  });
+
+  it("requires explicit, top-level site ownership for quota-counted jobs", async () => {
+    const handler = async (_data: { siteId: string }): Promise<void> => {};
+    const parsePayload = (data: Record<string, unknown>): { siteId: string } => {
+      if (Object.keys(data).length !== 1 || typeof data.siteId !== "string") {
+        throw new Error("siteId is required");
+      }
+      return { siteId: data.siteId };
+    };
+    const resolveSiteId = (data: { siteId: string }): string => data.siteId;
+    expect(() => registerJobHandler("search:quotaMissingSite", handler, { quota: "site" })).toThrow(
+      "must declare resolveSiteId",
+    );
+    registerJobHandler("search:quotaScoped", handler, {
+      parsePayload,
+      resolveSiteId,
+      quota: "site",
+    });
+    const normalized = normalizeRegisteredJobPayload("search:quotaScoped", {
+      siteId: "tenant-a",
+    });
+    expect(resolveRegisteredJobQuotaSiteId("search:quotaScoped", normalized)).toBe("tenant-a");
+    expect(getSiteQuotaJobTypes()).toContain("search:quotaScoped");
+    expect(() =>
+      resolveRegisteredJobQuotaSiteId("search:quotaScoped", { tenant: "tenant-a" }),
+    ).toThrow("must resolve a canonical site id");
+
+    const mismatchedHandler = vi.fn(
+      async (_data: { siteId: string; ownerSiteId: string }): Promise<void> => {},
+    );
+    registerJobHandler("search:quotaMismatch", mismatchedHandler, {
+      parsePayload: (data) => {
+        if (typeof data.siteId !== "string" || typeof data.ownerSiteId !== "string") {
+          throw new Error("site ownership is required");
+        }
+        return { siteId: data.siteId, ownerSiteId: data.ownerSiteId };
+      },
+      resolveSiteId: (data) => data.ownerSiteId,
+      quota: "site",
+    });
+    await expect(
+      getJobHandler("search:quotaMismatch")?.({
+        siteId: "tenant-a",
+        ownerSiteId: "tenant-b",
+      }),
+    ).rejects.toThrow("payload.siteId must match its resolved site id");
+    expect(mismatchedHandler).not.toHaveBeenCalled();
   });
 
   it("runs concurrent dispatches in payload-derived isolated site scopes", async () => {

@@ -30,6 +30,12 @@ export interface NpJobHandlerOptions<TPayload extends object = NpJobData> {
    * `null` deliberately leaves the handler in its ambient/global context.
    */
   resolveSiteId?: NpJobSiteIdResolver<TPayload>;
+  /**
+   * Opt this registration into the site's rolling enqueue budget. Quota-aware
+   * payloads expose the resolved canonical id as top-level `siteId` so queue
+   * adapters can count persisted history without executing plugin code.
+   */
+  quota?: "site";
 }
 
 interface NpJobHandlerRegistration {
@@ -38,6 +44,7 @@ interface NpJobHandlerRegistration {
   sourceHandler: NpJobHandler<object>;
   sourceParser: NpJobPayloadParser<object> | undefined;
   sourceSiteIdResolver: NpJobSiteIdResolver<object> | undefined;
+  sourceQuota: "site" | undefined;
 }
 
 const registrations = new Map<NpJobType, NpJobHandlerRegistration>();
@@ -49,7 +56,7 @@ export function registerJobHandler<
   const canonicalType = npRequireJobType(type);
   if (!isExactHandlerOptions(options)) {
     throw new Error(
-      `Job handler options for "${canonicalType}" must contain only parsePayload and resolveSiteId.`,
+      `Job handler options for "${canonicalType}" must contain only parsePayload, resolveSiteId, and quota.`,
     );
   }
   if (typeof handler !== "function") {
@@ -61,12 +68,19 @@ export function registerJobHandler<
   if (options.resolveSiteId !== undefined && typeof options.resolveSiteId !== "function") {
     throw new Error(`Site id resolver for "${canonicalType}" must be a function.`);
   }
+  if (options.quota !== undefined && options.quota !== "site") {
+    throw new Error(`Job quota for "${canonicalType}" must be "site" when provided.`);
+  }
+  if (options.quota === "site" && !options.resolveSiteId) {
+    throw new Error(`Site-quota job handler "${canonicalType}" must declare resolveSiteId.`);
+  }
   const existing = registrations.get(canonicalType);
   if (existing) {
     if (
       existing.sourceHandler === handler &&
       existing.sourceParser === options.parsePayload &&
-      existing.sourceSiteIdResolver === options.resolveSiteId
+      existing.sourceSiteIdResolver === options.resolveSiteId &&
+      existing.sourceQuota === options.quota
     )
       return;
     throw new Error(`Job handler "${canonicalType}" is already registered.`);
@@ -95,6 +109,11 @@ export function registerJobHandler<
         `Site id resolver for job handler "${canonicalType}" must return a canonical site id or null.`,
       );
     }
+    if (options.quota === "site" && (payload as Record<string, unknown>).siteId !== siteId) {
+      throw new Error(
+        `Site-quota job handler "${canonicalType}" payload.siteId must match its resolved site id.`,
+      );
+    }
     return withCurrentSite(siteId, dispatch);
   };
   registrations.set(canonicalType, {
@@ -103,6 +122,7 @@ export function registerJobHandler<
     sourceHandler: handler as NpJobHandler<object>,
     sourceParser: options.parsePayload,
     sourceSiteIdResolver: options.resolveSiteId,
+    sourceQuota: options.quota,
   });
 }
 
@@ -111,7 +131,7 @@ function isExactHandlerOptions(value: unknown): value is NpJobHandlerOptions<obj
   const prototype = Object.getPrototypeOf(value) as unknown;
   if (prototype !== Object.prototype && prototype !== null) return false;
   for (const key of Reflect.ownKeys(value)) {
-    if (key !== "parsePayload" && key !== "resolveSiteId") return false;
+    if (key !== "parsePayload" && key !== "resolveSiteId" && key !== "quota") return false;
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (!descriptor?.enumerable || !("value" in descriptor)) return false;
   }
@@ -142,4 +162,26 @@ export function getKnownJobTypes(): readonly NpJobType[] {
   return Array.from(new Set<NpJobType>([...NP_BUILTIN_JOB_TYPES, ...registrations.keys()])).sort(
     (left, right) => (left < right ? -1 : left > right ? 1 : 0),
   );
+}
+
+export function getSiteQuotaJobTypes(): readonly NpJobType[] {
+  return Array.from(registrations)
+    .filter(([, registration]) => registration.sourceQuota === "site")
+    .map(([type]) => type)
+    .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+}
+
+export function resolveRegisteredJobQuotaSiteId(type: NpJobType, data: NpJobData): string | null {
+  const registration = registrations.get(type);
+  if (registration?.sourceQuota !== "site") return null;
+  const siteId = registration.sourceSiteIdResolver?.(data);
+  if (!npIsCanonicalSiteId(siteId)) {
+    throw new Error(`Site-quota job handler "${type}" must resolve a canonical site id.`);
+  }
+  if (data.siteId !== siteId) {
+    throw new Error(
+      `Site-quota job handler "${type}" payload.siteId must match its resolved site id.`,
+    );
+  }
+  return siteId;
 }

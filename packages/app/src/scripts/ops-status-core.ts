@@ -14,6 +14,7 @@ import {
 } from "./migration-status.js";
 import { checkMigrationStatusReadiness } from "./doctor-readiness.js";
 import type * as OpsJobsCore from "./ops-jobs-core.js";
+import { checkSiteQuotaUsage } from "./site-quota-check.js";
 
 type OpsEnv = Record<string, string | undefined>;
 
@@ -149,6 +150,7 @@ export async function collectOpsStatusChecks(env: OpsEnv = process.env): Promise
   checks.push(await checkWorkerHeartbeat(env));
   checks.push(await checkStorage(env));
   checks.push(await checkDatabase(env));
+  checks.push(await checkSiteQuotaUsage(env));
   checks.push(await checkMigrations(env));
   return checks;
 }

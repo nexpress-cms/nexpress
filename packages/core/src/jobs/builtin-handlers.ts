@@ -1,6 +1,8 @@
 import { sendEmail } from "../email/service.js";
 import { npInvalidateCache } from "../cache/runtime.js";
 import { buildInviteEmail, buildMemberVerifyEmail, buildResetEmail } from "../email/templates.js";
+import { NpRateLimitError } from "../errors.js";
+import { getLogger } from "../observability/logger.js";
 import {
   type NpContentAfterDeleteJobData,
   type NpContentAfterSaveJobData,
@@ -111,6 +113,7 @@ export function registerBuiltinHandlers(): void {
   registerJobHandler("media:cleanup", handleMediaCleanup);
   registerJobHandler("plugin:scheduledTask", handlePluginScheduledTask, {
     resolveSiteId: resolvePluginScheduledTaskSiteId,
+    quota: "site",
   });
   registerJobHandler("plugin:scheduledTaskTick", handlePluginScheduledTaskTick);
   registerJobHandler("system:revisionPrune", handleRevisionPrune);
@@ -238,18 +241,36 @@ async function handlePluginScheduledTask(data: NpPluginScheduledTaskJobData): Pr
 async function handlePluginScheduledTaskTick(
   data: NpPluginScheduledTaskTickJobData,
 ): Promise<void> {
-  const [{ getDb }, { listEnabledPluginSiteIds }, { enqueueJob }] = await Promise.all([
-    import("../db/runtime.js"),
-    import("../plugins/persistence.js"),
-    import("./queue.js"),
-  ]);
+  const [{ getDb }, { listEnabledPluginSiteIds }, { enqueueJob }, { recordJobLog }] =
+    await Promise.all([
+      import("../db/runtime.js"),
+      import("../plugins/persistence.js"),
+      import("./queue.js"),
+      import("./job-log.js"),
+    ]);
   const siteIds = await listEnabledPluginSiteIds(getDb(), data.pluginId);
   for (const siteId of siteIds) {
-    await enqueueJob("plugin:scheduledTask", {
-      siteId,
-      pluginId: data.pluginId,
-      taskId: data.taskId,
-    });
+    try {
+      await enqueueJob("plugin:scheduledTask", {
+        siteId,
+        pluginId: data.pluginId,
+        taskId: data.taskId,
+      });
+    } catch (error) {
+      if (!(error instanceof NpRateLimitError)) throw error;
+      const message = error.message;
+      getLogger().warn("Plugin scheduled task site enqueue rejected", {
+        siteId,
+        pluginId: data.pluginId,
+        taskId: data.taskId,
+        error: message,
+      });
+      await recordJobLog("warn", `Plugin scheduled task skipped for site ${siteId}: ${message}`, {
+        siteId,
+        pluginId: data.pluginId,
+        taskId: data.taskId,
+      });
+    }
   }
 }
 

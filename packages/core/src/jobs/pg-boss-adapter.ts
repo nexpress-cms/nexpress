@@ -20,7 +20,7 @@ import { getLogger } from "../observability/logger.js";
 import { reportError } from "../observability/error-reporter.js";
 import { npValidatePluginCronExpression } from "../plugins/scheduled-task-contract.js";
 import { getCurrentSiteId } from "../sites/context.js";
-import { NP_DEFAULT_SITE_ID } from "../sites/id-contract.js";
+import { NP_DEFAULT_SITE_ID, npIsCanonicalSiteId } from "../sites/id-contract.js";
 import { getAllJobHandlers, getJobHandler, normalizeRegisteredJobPayload } from "./handlers.js";
 import { recordJobLog, runInJobContext } from "./job-log.js";
 import {
@@ -749,6 +749,48 @@ export class PgBossAdapter implements NpJobQueue {
       rawCounts[row.state] = requireCount(row.count, `job.counts.${row.state}`);
     }
     return npRequireJobStateCounts(rawCounts);
+  }
+
+  async countSiteEnqueues(
+    siteId: string,
+    since: Date,
+    types: readonly NpJobType[],
+  ): Promise<number> {
+    if (!npIsCanonicalSiteId(siteId)) {
+      throw new Error("jobs.siteEnqueues.siteId must be canonical.");
+    }
+    if (!(since instanceof Date) || Number.isNaN(since.getTime())) {
+      throw new Error("jobs.siteEnqueues.since must be a valid Date.");
+    }
+    const queueNames = Array.from(new Set(types.map((type) => toQueueName(type))));
+    if (queueNames.length === 0) return 0;
+    const db = (
+      this.boss as unknown as {
+        db: {
+          executeSql: (
+            text: string,
+            values?: unknown[],
+          ) => Promise<{ rows: Array<{ total: unknown }> }>;
+        };
+      }
+    ).db;
+    const result = await db.executeSql(
+      `SELECT COUNT(*)::bigint AS total
+         FROM (
+           SELECT name, data, created_on FROM pgboss.job
+           UNION ALL
+           SELECT name, data, created_on FROM pgboss.archive
+         ) jobs
+        WHERE data->>'siteId' = $1
+          AND created_on >= $2
+          AND name = ANY($3::text[])`,
+      [siteId, since.toISOString(), queueNames],
+    );
+    const total = result.rows[0]?.total ?? 0;
+    if (typeof total !== "string" && typeof total !== "number") {
+      throw new Error("jobs.siteEnqueues.total must be numeric.");
+    }
+    return requireCount(total, "jobs.siteEnqueues.total");
   }
 
   async retryJob(id: string): Promise<string> {

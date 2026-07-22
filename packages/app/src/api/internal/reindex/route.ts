@@ -3,6 +3,7 @@ import {
   NpConflictError,
   NpServiceUnavailableError,
   NpValidationError,
+  enqueueJob,
   getOptionalJobQueue,
 } from "@nexpress/core";
 import {
@@ -79,7 +80,7 @@ export async function POST(request: NextRequest) {
     const failureErrors: unknown[] = [];
     for (const collection of slugs) {
       try {
-        const id = await queue.enqueue("search:reindex", { collection });
+        const id = await enqueueJob("search:reindex", { collection });
         enqueued.push({ collection, id });
       } catch (error) {
         failures.push({ collection, message: safeFailureMessage(error) });

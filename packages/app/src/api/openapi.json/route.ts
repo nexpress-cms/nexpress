@@ -45,6 +45,8 @@ import {
 import {
   npDynamicSettingOwnerPattern,
   npSettingsContractLimits,
+  npSiteQuotaLimits,
+  npSiteQuotaMetrics,
   npSiteIdPattern,
   npUserIdPattern,
 } from "@nexpress/core/settings";
@@ -1916,6 +1918,57 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
             "total",
           ].map((key) => [key, { type: "integer", minimum: 0 }]),
         ),
+      },
+    },
+    site_quotas: {
+      type: "object",
+      additionalProperties: false,
+      required: ["storageBytes", "documents", "jobEnqueuesPerHour"],
+      properties: {
+        storageBytes: {
+          type: ["integer", "null"],
+          minimum: 0,
+          maximum: npSiteQuotaLimits.storageBytes,
+        },
+        documents: {
+          type: ["integer", "null"],
+          minimum: 0,
+          maximum: npSiteQuotaLimits.documents,
+        },
+        jobEnqueuesPerHour: {
+          type: ["integer", "null"],
+          minimum: 0,
+          maximum: npSiteQuotaLimits.jobEnqueuesPerHour,
+        },
+      },
+    },
+    site_quota_usage: {
+      type: "object",
+      additionalProperties: false,
+      required: ["storageBytes", "documents", "jobEnqueuesLastHour"],
+      properties: {
+        storageBytes: { type: "integer", minimum: 0 },
+        documents: { type: "integer", minimum: 0 },
+        jobEnqueuesLastHour: { type: ["integer", "null"], minimum: 0 },
+      },
+    },
+    site_quota_snapshot: {
+      type: "object",
+      additionalProperties: false,
+      required: ["limits", "usage", "exceeded", "unavailable"],
+      properties: {
+        limits: { $ref: "#/components/schemas/site_quotas" },
+        usage: { $ref: "#/components/schemas/site_quota_usage" },
+        exceeded: {
+          type: "array",
+          uniqueItems: true,
+          items: { type: "string", enum: [...npSiteQuotaMetrics] },
+        },
+        unavailable: {
+          type: "array",
+          uniqueItems: true,
+          items: { type: "string", enum: [...npSiteQuotaMetrics] },
+        },
       },
     },
     site_general_settings: {
@@ -5679,6 +5732,51 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
           },
         },
         "403": { description: "Missing admin.manage capability on this site" },
+      },
+    },
+  };
+  paths["/api/admin/sites/{id}/quotas"] = {
+    parameters: [
+      {
+        in: "path",
+        name: "id",
+        required: true,
+        schema: { type: "string", pattern: npSiteIdPattern },
+      },
+    ],
+    get: {
+      summary: "Read exact site quota limits and usage",
+      responses: {
+        "200": {
+          description: "Site quota snapshot",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/site_quota_snapshot" },
+            },
+          },
+        },
+        "403": { description: "Missing admin.manage capability on this site" },
+      },
+    },
+    patch: {
+      summary: "Replace site quota limits (super-admin only)",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": { schema: { $ref: "#/components/schemas/site_quotas" } },
+        },
+      },
+      responses: {
+        "200": {
+          description: "Updated site quota snapshot",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/site_quota_snapshot" },
+            },
+          },
+        },
+        "400": { description: "Exact quota contract violation" },
+        "403": { description: "Super-admin required" },
       },
     },
   };
