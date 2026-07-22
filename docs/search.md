@@ -224,7 +224,10 @@ collection-keyed pg-boss stately queue so two workers never reindex the same
 collection concurrently. Different collections remain independently
 retryable. The queue has a six-hour expiry rather than pg-boss's short default.
 Producer and worker startup both create or reconcile that queue, so an internal
-trigger can safely run before the dedicated worker process comes online.
+trigger can safely run before the dedicated worker process comes online. The
+stately policy is fixed when the queue is created; startup fails with a repair
+instruction if an operator previously created that queue under another policy,
+because pg-boss does not permit in-place policy changes.
 
 The bearer-protected `POST /api/internal/reindex?collection=<slug>` endpoint
 now enqueues that durable job instead of holding the HTTP request open. Omit

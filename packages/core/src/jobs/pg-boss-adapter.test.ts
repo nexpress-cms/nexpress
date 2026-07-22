@@ -103,6 +103,7 @@ describe("PgBossAdapter persisted job contracts", () => {
       .mockResolvedValueOnce("reindex-retry")
       .mockResolvedValueOnce(null);
     const createQueue = vi.fn().mockResolvedValue(undefined);
+    const getQueue = vi.fn().mockResolvedValue({ policy: "stately" });
     const updateQueue = vi.fn().mockResolvedValue(undefined);
     const work = vi.fn().mockResolvedValue(undefined);
     const start = vi.fn().mockResolvedValue(undefined);
@@ -117,7 +118,7 @@ describe("PgBossAdapter persisted job contracts", () => {
           },
         ],
       }),
-      { send, createQueue, updateQueue, work, start },
+      { send, createQueue, getQueue, updateQueue, work, start },
     );
 
     await expect(adapter.enqueue("search:reindex", { collection: "posts" })).resolves.toBe(
@@ -132,8 +133,14 @@ describe("PgBossAdapter persisted job contracts", () => {
       'Search reindex for collection "posts" is already queued or active.',
     );
 
-    const queueOptions = {
+    const createOptions = {
       policy: "stately",
+      retryLimit: 2,
+      retryDelay: 60,
+      retryBackoff: true,
+      expireInSeconds: 21_600,
+    };
+    const updateOptions = {
       retryLimit: 2,
       retryDelay: 60,
       retryBackoff: true,
@@ -141,15 +148,17 @@ describe("PgBossAdapter persisted job contracts", () => {
     };
     await adapter.startProducer();
     expect(start).toHaveBeenCalledOnce();
-    expect(createQueue).toHaveBeenCalledWith("search.reindex", queueOptions);
-    expect(updateQueue).toHaveBeenCalledWith("search.reindex", queueOptions);
+    expect(createQueue).toHaveBeenCalledWith("search.reindex", createOptions);
+    expect(getQueue).toHaveBeenCalledWith("search.reindex");
+    expect(updateQueue).toHaveBeenCalledWith("search.reindex", updateOptions);
 
     createQueue.mockClear();
     updateQueue.mockClear();
     registerBuiltinHandlers();
     await adapter.start();
-    expect(createQueue).toHaveBeenCalledWith("search.reindex", queueOptions);
-    expect(updateQueue).toHaveBeenCalledWith("search.reindex", queueOptions);
+    expect(createQueue).toHaveBeenCalledWith("search.reindex", createOptions);
+    expect(getQueue).toHaveBeenCalledWith("search.reindex");
+    expect(updateQueue).toHaveBeenCalledWith("search.reindex", updateOptions);
 
     await expect(adapter.retryJob("failed-reindex")).resolves.toBe("reindex-retry");
     expect(send).toHaveBeenLastCalledWith(
@@ -159,6 +168,19 @@ describe("PgBossAdapter persisted job contracts", () => {
     );
     await expect(adapter.retryJob("failed-reindex")).rejects.toThrow(
       'Search reindex for collection "posts" is already queued or active.',
+    );
+  });
+
+  it("fails startup when an existing search reindex queue has the wrong immutable policy", async () => {
+    const adapter = adapterWithBoss(vi.fn(), {
+      start: vi.fn().mockResolvedValue(undefined),
+      createQueue: vi.fn().mockResolvedValue(undefined),
+      getQueue: vi.fn().mockResolvedValue({ policy: "standard" }),
+      updateQueue: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await expect(adapter.startProducer()).rejects.toThrow(
+      'Job queue "search.reindex" must use the stately policy',
     );
   });
 

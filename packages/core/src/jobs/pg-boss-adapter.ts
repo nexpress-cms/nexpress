@@ -43,12 +43,19 @@ function toQueueName(type: NpJobType): string {
   return type.replace(/:/g, ".");
 }
 
-const SEARCH_REINDEX_QUEUE_OPTIONS = {
+const SEARCH_REINDEX_QUEUE_CREATE_OPTIONS = {
   policy: "stately",
   retryLimit: 2,
   retryDelay: 60,
   retryBackoff: true,
   expireInSeconds: 6 * 60 * 60,
+} as const;
+
+const SEARCH_REINDEX_QUEUE_UPDATE_OPTIONS = {
+  retryLimit: SEARCH_REINDEX_QUEUE_CREATE_OPTIONS.retryLimit,
+  retryDelay: SEARCH_REINDEX_QUEUE_CREATE_OPTIONS.retryDelay,
+  retryBackoff: SEARCH_REINDEX_QUEUE_CREATE_OPTIONS.retryBackoff,
+  expireInSeconds: SEARCH_REINDEX_QUEUE_CREATE_OPTIONS.expireInSeconds,
 } as const;
 
 export class PgBossAdapter implements NpJobQueue {
@@ -239,11 +246,17 @@ export class PgBossAdapter implements NpJobQueue {
 
   private async ensureSearchReindexQueue(): Promise<void> {
     const queueName = toQueueName("search:reindex");
-    await this.boss.createQueue(queueName, SEARCH_REINDEX_QUEUE_OPTIONS);
+    await this.boss.createQueue(queueName, SEARCH_REINDEX_QUEUE_CREATE_OPTIONS);
+    const queue = await this.boss.getQueue(queueName);
+    if (queue?.policy !== SEARCH_REINDEX_QUEUE_CREATE_OPTIONS.policy) {
+      throw new Error(
+        `Job queue "${queueName}" must use the stately policy; pg-boss policies cannot be changed after queue creation. Drain and recreate this queue before startup.`,
+      );
+    }
     // `createQueue()` deliberately leaves an existing row unchanged. Force
-    // the long-running/singleton policy as well so a manually-created or
-    // partially-upgraded queue cannot retain the default 15-minute expiry.
-    await this.boss.updateQueue(queueName, SEARCH_REINDEX_QUEUE_OPTIONS);
+    // the mutable retry and long-running expiry settings as well. Queue policy
+    // is immutable in pg-boss, so it is verified separately above.
+    await this.boss.updateQueue(queueName, SEARCH_REINDEX_QUEUE_UPDATE_OPTIONS);
   }
 
   /**
