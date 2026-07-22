@@ -209,7 +209,7 @@
     "arctic": "^3.7.0",
     "cron-parser": "^5.6.0",
     "drizzle-orm": "^0.45.2",
-    "intl-messageformat": "^11.2.8",
+    "intl-messageformat": "^11.2.12",
     "jose": "^6.2.3",
     "pg": "^8.22.0",
     "pg-boss": "^12.26.0",
