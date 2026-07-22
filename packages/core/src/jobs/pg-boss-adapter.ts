@@ -321,6 +321,9 @@ export class PgBossAdapter implements NpJobQueue {
 
   async scheduleRecurring(): Promise<void> {
     await this.boss.schedule(toQueueName("system:revisionPrune"), "0 3 * * *", {});
+    // Reclaim soft-deleted media daily after its 30-day retention window.
+    // Offset from the revision and job-log sweeps to spread storage/DB load.
+    await this.boss.schedule(toQueueName("media:cleanup"), "15 3 * * *", {});
     await this.boss.schedule(toQueueName("system:sessionCleanup"), "0 * * * *", {});
     // Phase 20.3 — daily np_job_logs retention sweep at 03:30 UTC.
     // Offset 30 min from revisionPrune so the two cleanup jobs

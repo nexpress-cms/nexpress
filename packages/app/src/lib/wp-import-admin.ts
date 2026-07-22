@@ -15,6 +15,7 @@ import {
   npMedia,
   npMembers,
   npUsers,
+  requireSiteId,
   recordAuditEvent,
   recordJobLog,
   registerJobHandler,
@@ -970,11 +971,12 @@ function createMediaDeps(actorId: string) {
       return { id: result.id };
     },
     findExistingByHash: async (sha256: string) => {
+      const siteId = await requireSiteId();
       const db = getDb();
       const [hit] = await db
         .select({ id: npMedia.id })
         .from(npMedia)
-        .where(and(eq(npMedia.hash, sha256), isNull(npMedia.deletedAt)))
+        .where(and(eq(npMedia.siteId, siteId), eq(npMedia.hash, sha256), isNull(npMedia.deletedAt)))
         .limit(1);
       return hit ? { id: hit.id } : null;
     },

@@ -67,6 +67,9 @@ export interface NpSiteUsage {
   memberships: number;
   stringOverrides: number;
   pluginStorage: number;
+  media: number;
+  mediaFolders: number;
+  mediaRefs: number;
   comments: number;
   contentViews: number;
   reactions: number;

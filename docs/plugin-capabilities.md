@@ -53,9 +53,9 @@ form. Both stay in sync via a unit test
 | `content:read`         | `ctx.content.find`, `ctx.content.findOne`, `ctx.content.count`                                                                                     | Public-page reads; collection access fns still run.                |
 | `content:write`        | `ctx.content.create`, `ctx.content.update`                                                                                                         | Bypasses per-doc ACL — gated only by the capability.               |
 | `content:delete`       | `ctx.content.delete`                                                                                                                               | Same caveat as `content:write`.                                    |
-| `media:read`           | `ctx.media.list`, `ctx.media.getById`, `ctx.media.getUrl`                                                                                          |                                                                    |
-| `media:write`          | `ctx.media.upload`                                                                                                                                 | Uploads attribute via plugin-storage, not `np_users`.              |
-| `media:delete`         | `ctx.media.delete`                                                                                                                                 | Refuses when the doc has refs (`NpConflictError`).                 |
+| `media:read`           | `ctx.media.list`, `ctx.media.getById`, `ctx.media.getUrl`                                                                                          | Reads only the current site's media.                               |
+| `media:write`          | `ctx.media.upload`                                                                                                                                 | Stamps the current site; no `np_users` attribution.                |
+| `media:delete`         | `ctx.media.delete`                                                                                                                                 | Current-site only; refuses when the doc has refs.                  |
 | `settings:read`        | `ctx.settings.getSite`, `ctx.settings.getPlugin`                                                                                                   | Exact site identity and the calling plugin's schema-backed config. |
 | `settings:write`       | `ctx.settings.setPlugin`                                                                                                                           | Writes only the calling loaded plugin's versioned config envelope. |
 | `theme:read`           | `ctx.theme.getTokens`                                                                                                                              | Returns the fully resolved token tree.                             |
@@ -78,6 +78,8 @@ canonical record's `filesize`, its URL is resolved by the active adapter, and
 `metadata.sizes` uses the exact `NpMediaVariants` contract documented in
 [`media.md`](media.md). `ctx.media.getUrl` selects a generated `variant`, may
 disable original fallback, and returns `null` when no acceptable object exists.
+The host applies the current request/job site to every `ctx.media` method;
+plugins cannot opt into a cross-site media query by passing another site id.
 
 Lifecycle hook payloads use `principal` as the single actor field. Staff
 uploads carry `principal: { kind: "staff", user }` and `member: null`;

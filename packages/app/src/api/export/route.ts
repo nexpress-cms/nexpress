@@ -261,7 +261,9 @@ export async function GET(request: NextRequest) {
             mimeType: npMedia.mimeType,
           })
           .from(npMedia)
-          .where(and(inArray(npMedia.id, chunk), isNull(npMedia.deletedAt)))
+          .where(
+            and(eq(npMedia.siteId, siteId), inArray(npMedia.id, chunk), isNull(npMedia.deletedAt)),
+          )
           .orderBy(asc(npMedia.id))),
       );
     }

@@ -2,16 +2,20 @@ import {
   NpForbiddenError,
   NpNotFoundError,
   NpValidationError,
+  NP_DEFAULT_SITE_ID,
+  getCurrentSiteId,
+  requireSiteId,
   npMediaFolders,
   can,
 } from "@nexpress/core";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { requireAuth, requireGlobalAuth } from "../../../lib/auth-helpers";
+import { requireAuth } from "../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import { getDb } from "../../../lib/db";
+import { ensureFor } from "../../../lib/init-core";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,11 +27,16 @@ export async function GET(request: NextRequest) {
     }
 
     const parentId = request.nextUrl.searchParams.get("parentId");
+    await ensureFor("read");
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
     const db = getDb();
 
     const folders = parentId
-      ? await db.select().from(npMediaFolders).where(eq(npMediaFolders.parentId, parentId))
-      : await db.select().from(npMediaFolders);
+      ? await db
+          .select()
+          .from(npMediaFolders)
+          .where(and(eq(npMediaFolders.siteId, siteId), eq(npMediaFolders.parentId, parentId)))
+      : await db.select().from(npMediaFolders).where(eq(npMediaFolders.siteId, siteId));
 
     return npSuccessResponse(folders);
   } catch (error) {
@@ -37,7 +46,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireGlobalAuth(request);
+    const user = await requireAuth(request);
 
     if (!can(user, "content.publish")) {
       throw new NpForbiddenError("media-folders", "create");
@@ -54,13 +63,15 @@ export async function POST(request: NextRequest) {
       ]);
     }
 
+    await ensureFor("write");
+    const siteId = await requireSiteId();
     const db = getDb();
 
     if (parentId) {
       const [parent] = await db
         .select({ id: npMediaFolders.id })
         .from(npMediaFolders)
-        .where(eq(npMediaFolders.id, parentId))
+        .where(and(eq(npMediaFolders.siteId, siteId), eq(npMediaFolders.id, parentId)))
         .limit(1);
 
       if (!parent) {
@@ -68,7 +79,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const [created] = await db.insert(npMediaFolders).values({ name, parentId }).returning();
+    const [created] = await db
+      .insert(npMediaFolders)
+      .values({ siteId, name, parentId })
+      .returning();
 
     return npSuccessResponse(created, { status: 201 });
   } catch (error) {

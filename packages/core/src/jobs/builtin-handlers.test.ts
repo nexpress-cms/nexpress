@@ -31,21 +31,30 @@ describe("built-in media job contract", () => {
   });
 
   it("validates the exact payload before dispatching the configured processor", async () => {
-    const processImage = vi.fn<(_: unknown) => Promise<void>>().mockResolvedValue(undefined);
+    const processImage = vi.fn<(_: unknown) => Promise<void>>(async () => {
+      expect(await getCurrentSiteId()).toBe("tenant-a");
+    });
     configureBuiltinJobContext({ processImage });
     registerBuiltinHandlers();
     const handler = getJobHandler("media:processImage");
     expect(handler).toBeDefined();
 
-    const payload = { mediaId: "bd134b0f-b9ea-4ff4-81ef-606e42e27703" };
+    const payload = {
+      siteId: "tenant-a",
+      mediaId: "bd134b0f-b9ea-4ff4-81ef-606e42e27703",
+    };
     await handler?.(payload);
     expect(processImage).toHaveBeenCalledWith(payload);
+    expect(await getCurrentSiteId()).toBeNull();
 
     await expect(handler?.({ ...payload, extra: true })).rejects.toThrow(
       "job.data(media:processImage)",
     );
-    await expect(handler?.({ mediaId: "not-a-uuid" })).rejects.toThrow(
+    await expect(handler?.({ siteId: "tenant-a", mediaId: "not-a-uuid" })).rejects.toThrow(
       "job.data(media:processImage).mediaId",
+    );
+    await expect(handler?.({ ...payload, siteId: "Tenant A" })).rejects.toThrow(
+      "job.data(media:processImage).siteId",
     );
     expect(processImage).toHaveBeenCalledTimes(1);
   });

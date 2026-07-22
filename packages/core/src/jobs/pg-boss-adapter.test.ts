@@ -189,7 +189,10 @@ describe("PgBossAdapter persisted job contracts", () => {
       id: "job-1",
       name: "media.processImage",
       state: "failed",
-      data: { mediaId: "bd134b0f-b9ea-4ff4-81ef-606e42e27703" },
+      data: {
+        siteId: "default",
+        mediaId: "bd134b0f-b9ea-4ff4-81ef-606e42e27703",
+      },
       retry_count: 1,
       output: "failed",
       created_on: new Date("2026-07-01T00:00:00.000Z"),
@@ -222,7 +225,9 @@ describe("PgBossAdapter persisted job contracts", () => {
         Promise.resolve(
           sql.includes("COUNT(*)")
             ? { rows: [{ total: "1" }] }
-            : { rows: [{ ...row, data: { mediaId: "not-a-uuid" } }] },
+            : {
+                rows: [{ ...row, data: { siteId: "default", mediaId: "not-a-uuid" } }],
+              },
         ),
       ),
     );
@@ -264,6 +269,7 @@ describe("PgBossAdapter persisted job contracts", () => {
 
     await adapter.scheduleRecurring();
     expect(unschedule).toHaveBeenCalledWith("notifications.sendDigest");
+    expect(schedule).toHaveBeenCalledWith("media.cleanup", "15 3 * * *", {});
     expect(schedule).toHaveBeenCalledWith(
       "notifications.sendDigest",
       "0 8 * * *",
@@ -287,7 +293,10 @@ describe("PgBossAdapter persisted job contracts", () => {
             id: "job-1",
             name: "media.processImage",
             state: "completed",
-            data: { mediaId: "bd134b0f-b9ea-4ff4-81ef-606e42e27703" },
+            data: {
+              siteId: "default",
+              mediaId: "bd134b0f-b9ea-4ff4-81ef-606e42e27703",
+            },
           },
         ],
       }),

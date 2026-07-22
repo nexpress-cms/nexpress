@@ -23,8 +23,9 @@ import type { PgTable } from "drizzle-orm/pg-core";
 import type { NpFindResult } from "../config/types.js";
 import { readEnvPositiveInt } from "../config/env.js";
 import { npMembers } from "../db/schema/community.js";
-import { npMedia, npMediaRefs } from "../db/schema/media.js";
+import { npMedia, npMediaFolders, npMediaRefs } from "../db/schema/media.js";
 import { npUsers } from "../db/schema/system.js";
+import { NpValidationError } from "../errors.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { getLogger } from "../observability/logger.js";
 import { getDb } from "../db/runtime.js";
@@ -49,6 +50,8 @@ import {
 } from "../storage/operations.js";
 import { getStorageAdapter } from "../storage/registry.js";
 import type { NpStorageAdapter } from "../storage/types.js";
+import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/id-contract.js";
 
 /**
  * Trailing-window for member upload quotas (`perDay` in
@@ -117,15 +120,17 @@ export async function uploadMedia(
   // shape so the rest of this function only deals with the union.
   const resolvedUploader: NpMediaUploader =
     typeof uploader === "string" ? { kind: "staff", userId: uploader } : uploader;
+  const siteId = await requireSiteId();
 
   const id = randomUUID();
   const isProcessableImage = file.mimeType.startsWith("image/");
   const status: NpMediaStatus = isProcessableImage ? "processing" : "ready";
   const extension = resolveFileExtension(file.originalFilename, file.mimeType);
-  const storageKey = `media/${id}/original.${extension}`;
+  const storageKey = `media/${siteId}/${id}/original.${extension}`;
   const now = new Date();
   const insertValues = {
     id,
+    siteId,
     filename: file.originalFilename,
     originalFilename: file.originalFilename,
     mimeType: file.mimeType,
@@ -175,14 +180,19 @@ export async function uploadMedia(
     await dbPg.transaction(async (tx) => {
       // `pg_advisory_xact_lock` auto-releases on commit/rollback.
       // `hashtextextended` produces a stable int8 from a UUID
-      // string — collisions across different member ids are
+      // string — including the site keeps one member's independent
+      // tenant quotas from contending. Hash collisions are
       // benign (worst case some unrelated members serialize).
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${memberId}, 0))`);
-      await assertMemberUploadQuota(memberId, tx);
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${siteId}:${memberId}`}, 0))`,
+      );
+      await assertMediaFolderSite(folderId, siteId, tx as unknown as DrizzleDatabaseLike);
+      await assertMemberUploadQuota(memberId, siteId, tx);
       await tx.insert(npMedia).values(insertValues);
     });
   } else {
     const db = getDb() as unknown as DrizzleDatabaseLike;
+    await assertMediaFolderSite(folderId, siteId, db);
     await db.insert(npMedia).values(insertValues);
   }
 
@@ -203,7 +213,9 @@ export async function uploadMedia(
     // what they need to act on.
     try {
       const cleanupDb = getDb() as unknown as DrizzleDatabaseLike;
-      await cleanupDb.delete(npMedia).where(eq(npMedia.id, id));
+      await cleanupDb
+        .delete(npMedia)
+        .where(and(eq(npMedia.id, id), eq(npMedia.siteId, siteId)) as never);
     } catch (cleanupErr) {
       // Swallow so the original storage error reaches the
       // caller — that's what they need to act on. But don't go
@@ -221,7 +233,7 @@ export async function uploadMedia(
   }
 
   if (isProcessableImage) {
-    await enqueueJob("media:processImage", { mediaId: id });
+    await enqueueJob("media:processImage", { siteId, mediaId: id });
   }
 
   return { id, status };
@@ -243,6 +255,7 @@ export async function uploadMedia(
  */
 async function assertMemberUploadQuota(
   memberId: string,
+  siteId: string,
   txDb?: NodePgDatabase<Record<string, unknown>>,
 ): Promise<void> {
   const { getCommunitySettings } = await import("../community/settings.js");
@@ -262,7 +275,13 @@ async function assertMemberUploadQuota(
     const [row] = (await db
       .select({ value: count() })
       .from(npMedia)
-      .where(and(eq(npMedia.uploadedByMemberId, memberId), isNull(npMedia.deletedAt)))) as Array<{
+      .where(
+        and(
+          eq(npMedia.siteId, siteId),
+          eq(npMedia.uploadedByMemberId, memberId),
+          isNull(npMedia.deletedAt),
+        ),
+      )) as Array<{
       value: number;
     }>;
     const used = row?.value ?? 0;
@@ -280,6 +299,7 @@ async function assertMemberUploadQuota(
       .from(npMedia)
       .where(
         and(
+          eq(npMedia.siteId, siteId),
           eq(npMedia.uploadedByMemberId, memberId),
           isNull(npMedia.deletedAt),
           gte(npMedia.createdAt, since),
@@ -298,6 +318,7 @@ export async function processMediaImage(
   mediaId: string,
   config: NpMediaProcessingOptions,
 ): Promise<void> {
+  const siteId = await requireSiteId();
   const configValidation = npValidateMediaProcessingOptions(config);
   if (!configValidation.ok) {
     throw new Error(
@@ -306,7 +327,7 @@ export async function processMediaImage(
   }
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const adapter = getStorageAdapter();
-  const media = await getMediaRecordById(mediaId);
+  const media = await getMediaRecordById(mediaId, siteId);
 
   if (!media) {
     throw new Error(`Media '${mediaId}' not found.`);
@@ -321,7 +342,7 @@ export async function processMediaImage(
     });
     const format = config.format ?? "webp";
     const mimeType = getFormatMimeType(format);
-    const sizes = await uploadImageVariants(adapter, media.id, processed, format, mimeType);
+    const sizes = await uploadImageVariants(adapter, siteId, media.id, processed, format, mimeType);
     const sizesValidation = npValidateMediaVariants(sizes);
     if (!sizesValidation.ok) {
       throw new Error(
@@ -338,7 +359,7 @@ export async function processMediaImage(
         status: "ready",
         updatedAt: new Date(),
       })
-      .where(eq(npMedia.id, media.id))
+      .where(and(eq(npMedia.id, media.id), eq(npMedia.siteId, siteId)))
       .returning();
   } catch (error) {
     await db
@@ -347,7 +368,7 @@ export async function processMediaImage(
         status: "error",
         updatedAt: new Date(),
       })
-      .where(eq(npMedia.id, media.id))
+      .where(and(eq(npMedia.id, media.id), eq(npMedia.siteId, siteId)))
       .returning();
 
     throw error;
@@ -355,11 +376,12 @@ export async function processMediaImage(
 }
 
 export async function getMediaById(id: string): Promise<NpMediaRecord | null> {
+  const siteId = await resolveMediaReadSiteId();
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const [media] = await db
     .select()
     .from(npMedia)
-    .where(and(eq(npMedia.id, id), isNull(npMedia.deletedAt)))
+    .where(and(eq(npMedia.siteId, siteId), eq(npMedia.id, id), isNull(npMedia.deletedAt)))
     .limit(1);
 
   return media ? toMediaRecord(media) : null;
@@ -368,6 +390,7 @@ export async function getMediaById(id: string): Promise<NpMediaRecord | null> {
 export async function deleteMedia(
   id: string,
 ): Promise<{ deleted: boolean; references?: unknown[] }> {
+  const siteId = await requireSiteId();
   const db = getDb() as unknown as DrizzleDatabaseLike;
   return db.transaction(async (tx) => {
     // Reference writers lock the same media row before inserting np_media_refs.
@@ -376,7 +399,7 @@ export async function deleteMedia(
     const [media] = await tx
       .select()
       .from(npMedia)
-      .where(and(eq(npMedia.id, id), isNull(npMedia.deletedAt)))
+      .where(and(eq(npMedia.siteId, siteId), eq(npMedia.id, id), isNull(npMedia.deletedAt)))
       .limit(1)
       .for("update");
 
@@ -385,8 +408,21 @@ export async function deleteMedia(
     }
 
     const references = await tx.select().from(npMediaRefs).where(eq(npMediaRefs.mediaId, id));
-    if (references.length > 0) {
-      return { deleted: false, references };
+    const staffAvatars = (await tx
+      .select({ id: npUsers.id })
+      .from(npUsers)
+      .where(eq(npUsers.avatar, id))) as Array<{ id: string }>;
+    const memberAvatars = (await tx
+      .select({ id: npMembers.id })
+      .from(npMembers)
+      .where(eq(npMembers.avatar, id))) as Array<{ id: string }>;
+    const activeUses = [
+      ...references,
+      ...staffAvatars.map((row) => ({ kind: "staff-avatar", userId: row.id })),
+      ...memberAvatars.map((row) => ({ kind: "member-avatar", memberId: row.id })),
+    ];
+    if (activeUses.length > 0) {
+      return { deleted: false, references: activeUses };
     }
 
     await tx
@@ -395,7 +431,7 @@ export async function deleteMedia(
         deletedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(npMedia.id, id))
+      .where(and(eq(npMedia.siteId, siteId), eq(npMedia.id, id)))
       .returning();
 
     return { deleted: true };
@@ -429,11 +465,12 @@ export async function listMedia(options: {
    */
   q?: string;
 }): Promise<NpFindResult<NpMediaListItem>> {
+  const siteId = await resolveMediaReadSiteId();
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const page = normalizePage(options.page);
   const limit = normalizeLimit(options.limit);
   const offset = (page - 1) * limit;
-  const conditions = [isNull(npMedia.deletedAt)];
+  const conditions = [eq(npMedia.siteId, siteId), isNull(npMedia.deletedAt)];
 
   if (options.folderId) {
     conditions.push(eq(npMedia.folderId, options.folderId));
@@ -561,34 +598,44 @@ export async function cleanupDeletedMedia(olderThanDays: number): Promise<number
     return 0;
   }
 
+  const deletedIds: string[] = [];
   for (const media of mediaRows) {
     const keys = new Set<string>([media.storageKey, ...extractVariantStorageKeys(media.sizes)]);
+    let storageDeleteFailed = false;
 
     for (const key of keys) {
       try {
         await npDeleteStorageObject(adapter, key);
-      } catch {
-        continue;
+      } catch (error) {
+        storageDeleteFailed = true;
+        getLogger().warn("media cleanup storage delete failed", {
+          mediaId: media.id,
+          siteId: media.siteId,
+          storageKey: key,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
+
+    // Keep the tombstone when any object failed so a later cleanup run can
+    // retry. Storage adapters treat an already-absent key as success, making
+    // partial progress safe across retries.
+    if (!storageDeleteFailed) deletedIds.push(media.id);
   }
 
-  await db.delete(npMedia).where(
-    inArray(
-      npMedia.id,
-      mediaRows.map((media) => media.id),
-    ),
-  );
+  if (deletedIds.length === 0) return 0;
 
-  return mediaRows.length;
+  await db.delete(npMedia).where(inArray(npMedia.id, deletedIds));
+
+  return deletedIds.length;
 }
 
-async function getMediaRecordById(id: string): Promise<NpMediaRecord | null> {
+async function getMediaRecordById(id: string, siteId: string): Promise<NpMediaRecord | null> {
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const [media] = await db
     .select()
     .from(npMedia)
-    .where(and(eq(npMedia.id, id), isNull(npMedia.deletedAt)))
+    .where(and(eq(npMedia.siteId, siteId), eq(npMedia.id, id), isNull(npMedia.deletedAt)))
     .limit(1);
 
   return media ? toMediaRecord(media) : null;
@@ -596,6 +643,7 @@ async function getMediaRecordById(id: string): Promise<NpMediaRecord | null> {
 
 async function uploadImageVariants(
   adapter: NpStorageAdapter,
+  siteId: string,
   mediaId: string,
   processed: NpProcessedImageResult,
   format: string,
@@ -604,7 +652,7 @@ async function uploadImageVariants(
   const entries = await Promise.all(
     processed.variants.map(async (variant) => {
       const filename = `${variant.name}.${format}`;
-      const storageKey = `media/${mediaId}/${filename}`;
+      const storageKey = `media/${siteId}/${mediaId}/${filename}`;
 
       await npUploadStorageObject(adapter, storageKey, variant.buffer, {
         contentType: mimeType,
@@ -627,6 +675,28 @@ async function uploadImageVariants(
   );
 
   return Object.fromEntries(entries);
+}
+
+async function resolveMediaReadSiteId(): Promise<string> {
+  return (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+}
+
+async function assertMediaFolderSite(
+  folderId: string | undefined,
+  siteId: string,
+  db: DrizzleDatabaseLike,
+): Promise<void> {
+  if (!folderId) return;
+  const [folder] = await db
+    .select({ id: npMediaFolders.id })
+    .from(npMediaFolders)
+    .where(and(eq(npMediaFolders.siteId, siteId), eq(npMediaFolders.id, folderId)))
+    .limit(1);
+  if (!folder) {
+    throw new NpValidationError("Invalid media folder", [
+      { field: "folderId", message: "Folder must exist on the current site." },
+    ]);
+  }
 }
 
 function extractVariantStorageKeys(sizes: NpMediaVariants | null): string[] {

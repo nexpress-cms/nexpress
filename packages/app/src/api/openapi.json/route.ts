@@ -1872,7 +1872,11 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
         "memberships",
         "stringOverrides",
         "pluginStorage",
+        "media",
+        "mediaFolders",
+        "mediaRefs",
         "comments",
+        "contentViews",
         "reactions",
         "follows",
         "mutes",
@@ -1896,7 +1900,11 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
             "memberships",
             "stringOverrides",
             "pluginStorage",
+            "media",
+            "mediaFolders",
+            "mediaRefs",
             "comments",
+            "contentViews",
             "reactions",
             "follows",
             "mutes",
@@ -2304,6 +2312,7 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
         "Exact Admin media API record. Persisted image variants live on `sizes`; public URLs are resolved through the active storage adapter under `urls`.",
       required: [
         "id",
+        "siteId",
         "filename",
         "originalFilename",
         "mimeType",
@@ -2327,6 +2336,7 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
       ],
       properties: {
         id: { type: "string", format: "uuid" },
+        siteId: { type: "string", pattern: npSiteIdPattern },
         filename: { type: "string", minLength: 1, maxLength: npMediaContractLimits.filenameLength },
         originalFilename: {
           type: "string",
@@ -2524,8 +2534,11 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
     },
     media_folder: {
       type: "object",
+      additionalProperties: false,
+      required: ["id", "siteId", "name", "parentId", "createdAt"],
       properties: {
         id: { type: "string", format: "uuid" },
+        siteId: { type: "string", pattern: npSiteIdPattern },
         name: { type: "string" },
         parentId: { type: "string", format: "uuid", nullable: true },
         createdAt: { type: "string", format: "date-time" },

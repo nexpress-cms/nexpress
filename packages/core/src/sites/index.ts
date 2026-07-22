@@ -3,6 +3,7 @@
 export { NP_DEFAULT_SITE_ID, npIsCanonicalSiteId, npSiteIdPattern } from "./id-contract.js";
 export {
   getCurrentSiteId,
+  requireSiteId,
   resetCurrentSiteResolver,
   setCurrentSiteResolver,
   withCurrentSite,

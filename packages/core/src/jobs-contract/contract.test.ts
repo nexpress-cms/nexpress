@@ -193,7 +193,7 @@ describe("job runtime contract", () => {
           id: "job-1",
           name: "media.processImage",
           state: "failed",
-          data: { mediaId: DOCUMENT_ID },
+          data: { siteId: "default", mediaId: DOCUMENT_ID },
           retryCount: 2,
           output: "processor failed",
           createdOn: "2026-07-13T01:00:00.000Z",
@@ -214,7 +214,7 @@ describe("job runtime contract", () => {
     expect(
       npAnalyzeJobListWire({
         ...valid,
-        jobs: [{ ...valid.jobs[0], data: { mediaId: "not-a-uuid" } }],
+        jobs: [{ ...valid.jobs[0], data: { siteId: "default", mediaId: "not-a-uuid" } }],
       }).ok,
     ).toBe(false);
     expect(

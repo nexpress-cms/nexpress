@@ -145,6 +145,13 @@ rows. Runtime revision reads add collection-aware field and live block-registry
 validation before detail delivery or restore. See
 [Revisions and autosave](./revisions.md).
 
+The adjacent `media.contract` check validates exact persisted media rows and
+their site ownership graph. It reports active media with missing sites,
+cross-site folder parents, media assigned to another site's folder, and
+references whose site differs from their media owner. Repair these rather than
+copying media UUIDs between tenants; ordinary media reads fail closed to the
+current site.
+
 For bundled providers, set credentials from one source only:
 
 - Env: set both `NP_OAUTH_GITHUB_CLIENT_ID` and

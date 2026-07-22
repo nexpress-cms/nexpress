@@ -29,6 +29,7 @@ import {
   npAnalyzeSiteRecord,
 } from "@nexpress/core/settings";
 import { npAnalyzeRevision } from "@nexpress/core/revisions";
+import { npAnalyzeMediaRecord } from "@nexpress/core/media-contract";
 import { npAnalyzeCollectionSystemRow } from "@nexpress/core/collection-contract";
 import {
   npAnalyzeI18nConfig,
@@ -180,6 +181,7 @@ export async function collectDoctorChecks(
   checks.push(await checkDatabase(env));
   checks.push(await checkAuthContracts(env));
   checks.push(await checkSettingsContracts(env, projectI18nConfig));
+  checks.push(await checkMediaContracts(env));
   checks.push(await checkCollectionContracts(env));
   checks.push(await checkCommunityContracts(env));
   checks.push(await checkRevisionContracts(env));
@@ -202,6 +204,143 @@ export async function collectDoctorChecks(
   }
 
   return checks;
+}
+
+async function checkMediaContracts(env: DoctorEnv): Promise<CheckResult> {
+  const url = env.DATABASE_URL;
+  if (!url) {
+    return {
+      id: "media.contract",
+      state: "warn",
+      label: "Media ownership contracts",
+      detail: "skipped (no DATABASE_URL)",
+    };
+  }
+  let pg: PgModuleLike;
+  try {
+    pg = (await loadPg()) as PgModuleLike;
+  } catch {
+    return {
+      id: "media.contract",
+      state: "warn",
+      label: "Media ownership contracts",
+      detail: "skipped (no `pg`)",
+    };
+  }
+
+  const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
+  try {
+    await client.connect();
+    const sites = await client.query<{ id: string }>(`select id from np_sites`);
+    const media = await client.query<Record<string, unknown>>(
+      `select id, site_id as "siteId", filename, original_filename as "originalFilename",
+                mime_type as "mimeType", filesize::float8 as filesize, width, height, alt,
+                caption, focal_point as "focalPoint", sizes, storage_key as "storageKey",
+                hash, status, folder_id as "folderId", uploaded_by as "uploadedBy",
+                uploaded_by_member_id as "uploadedByMemberId", created_at as "createdAt",
+                updated_at as "updatedAt", deleted_at as "deletedAt"
+           from np_media`,
+    );
+    const folders = await client.query<{ id: string; siteId: string; parentId: string | null }>(
+      `select id, site_id as "siteId", parent_id as "parentId" from np_media_folders`,
+    );
+    const references = await client.query<{
+      id: string;
+      siteId: string;
+      mediaId: string;
+    }>(`select id, site_id as "siteId", media_id as "mediaId" from np_media_refs`);
+    await client.end();
+
+    const siteIds = new Set(sites.rows.map((row) => row.id));
+    const folderSites = new Map(folders.rows.map((row) => [row.id, row.siteId] as const));
+    const mediaOwners = new Map(
+      media.rows.flatMap((row) =>
+        typeof row.id === "string" && typeof row.siteId === "string"
+          ? ([[row.id, { siteId: row.siteId, active: row.deletedAt === null }]] as const)
+          : [],
+      ),
+    );
+    const issues: Array<{ path: string; message: string }> = media.rows.flatMap((row) =>
+      npAnalyzeMediaRecord(row).map((entry) => ({ path: entry.path, message: entry.message })),
+    );
+
+    for (const [index, row] of folders.rows.entries()) {
+      if (!siteIds.has(row.siteId)) {
+        issues.push({
+          path: `mediaFolders.${index.toString()}.siteId`,
+          message: `references missing site '${row.siteId}'.`,
+        });
+      }
+      if (row.parentId !== null && folderSites.get(row.parentId) !== row.siteId) {
+        issues.push({
+          path: `mediaFolders.${index.toString()}.parentId`,
+          message: "must reference a folder on the same site.",
+        });
+      }
+    }
+    for (const [index, row] of media.rows.entries()) {
+      if (typeof row.siteId !== "string") continue;
+      if (row.deletedAt === null && !siteIds.has(row.siteId)) {
+        issues.push({
+          path: `media.${index.toString()}.siteId`,
+          message: `active media references missing site '${row.siteId}'.`,
+        });
+      }
+      if (typeof row.folderId === "string" && folderSites.get(row.folderId) !== row.siteId) {
+        issues.push({
+          path: `media.${index.toString()}.folderId`,
+          message: "must reference a folder on the same site.",
+        });
+      }
+    }
+    for (const [index, row] of references.rows.entries()) {
+      if (!siteIds.has(row.siteId)) {
+        issues.push({
+          path: `mediaRefs.${index.toString()}.siteId`,
+          message: `references missing site '${row.siteId}'.`,
+        });
+      }
+      const owner = mediaOwners.get(row.mediaId);
+      if (owner?.siteId !== row.siteId) {
+        issues.push({
+          path: `mediaRefs.${index.toString()}.mediaId`,
+          message: "must reference media on the same site.",
+        });
+      } else if (!owner.active) {
+        issues.push({
+          path: `mediaRefs.${index.toString()}.mediaId`,
+          message: "must reference an active media row.",
+        });
+      }
+    }
+
+    return issues.length === 0
+      ? {
+          id: "media.contract",
+          state: "ok",
+          label: "Media ownership contracts",
+          detail: `${media.rows.length.toString()} media row(s), ${folders.rows.length.toString()} folder(s), ${references.rows.length.toString()} reference(s)`,
+        }
+      : {
+          id: "media.contract",
+          state: "error",
+          label: "Media ownership contracts",
+          detail: `${issues.length.toString()} contract/ownership issue(s); first: ${issues[0]?.path ?? "media"} ${issues[0]?.message ?? "invalid"}`,
+          hint: "Repair malformed media rows and remove orphaned or cross-site folder/reference links before serving media traffic.",
+        };
+  } catch (error) {
+    try {
+      await client.end();
+    } catch {
+      /* swallow */
+    }
+    return {
+      id: "media.contract",
+      state: "warn",
+      label: "Media ownership contracts",
+      detail: `could not inspect media rows: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
 async function checkI18nContract(options: CollectDoctorOptions, cwd: string): Promise<CheckResult> {

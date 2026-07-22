@@ -18,17 +18,25 @@ import type { NpMediaFocalPoint, NpMediaVariants } from "../../media-contract/ty
 
 export const npMediaStatusEnum = pgEnum("np_media_status", ["processing", "ready", "error"]);
 
-export const npMediaFolders = pgTable("np_media_folders", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  name: text("name").notNull(),
-  parentId: uuid("parent_id").references((): AnyPgColumn => npMediaFolders.id),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
-});
+export const npMediaFolders = pgTable(
+  "np_media_folders",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id").default("default").notNull(),
+    name: text("name").notNull(),
+    parentId: uuid("parent_id").references((): AnyPgColumn => npMediaFolders.id),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => ({
+    siteParentIdx: index("np_media_folders_site_parent_idx").on(table.siteId, table.parentId),
+  }),
+);
 
 export const npMedia = pgTable(
   "np_media",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id").default("default").notNull(),
     filename: text("filename").notNull(),
     originalFilename: text("original_filename").notNull(),
     mimeType: text("mime_type").notNull(),
@@ -65,6 +73,8 @@ export const npMedia = pgTable(
   (table) => ({
     hashIdx: index("np_media_hash_idx").on(table.hash),
     statusIdx: index("np_media_status_idx").on(table.status),
+    siteCreatedIdx: index("np_media_site_created_idx").on(table.siteId, table.createdAt),
+    siteHashIdx: index("np_media_site_hash_idx").on(table.siteId, table.hash),
     uploadedByMemberIdx: index("np_media_uploaded_by_member_idx").on(table.uploadedByMemberId),
   }),
 );
@@ -73,6 +83,7 @@ export const npMediaRefs = pgTable(
   "np_media_refs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id").default("default").notNull(),
     mediaId: uuid("media_id")
       .notNull()
       .references(() => npMedia.id, { onDelete: "cascade" }),
@@ -83,5 +94,10 @@ export const npMediaRefs = pgTable(
   (table) => ({
     mediaIdIdx: index("np_media_refs_media_id_idx").on(table.mediaId),
     documentIdIdx: index("np_media_refs_document_id_idx").on(table.documentId),
+    siteDocumentIdx: index("np_media_refs_site_document_idx").on(
+      table.siteId,
+      table.collection,
+      table.documentId,
+    ),
   }),
 );

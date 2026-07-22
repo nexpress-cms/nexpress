@@ -4,6 +4,8 @@ import type { PgTable } from "drizzle-orm/pg-core";
 import type { NpFieldConfig } from "../config/types.js";
 import { npMedia, npMediaRefs } from "../db/schema/media.js";
 import { isNpRichTextContent } from "../fields/rich-text.js";
+import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/id-contract.js";
 
 interface InsertValuesQuery extends Promise<unknown> {
   returning(): Promise<unknown[]>;
@@ -17,6 +19,7 @@ interface SelectQuery extends Promise<unknown[]> {
 }
 
 export interface NpMediaReference {
+  siteId: string;
   mediaId: string;
   collection: string;
   documentId: string;
@@ -57,12 +60,19 @@ export async function syncMediaRefs(
   documentId: string,
   refs: Array<{ mediaId: string; field: string }>,
 ): Promise<void> {
+  const resolvedSiteId = await requireSiteId();
   const uniqueRefs = dedupeRefs(refs);
 
   if (uniqueRefs.length === 0) {
     await tx
       .delete(npMediaRefs)
-      .where(and(eq(npMediaRefs.collection, collection), eq(npMediaRefs.documentId, documentId)));
+      .where(
+        and(
+          eq(npMediaRefs.siteId, resolvedSiteId),
+          eq(npMediaRefs.collection, collection),
+          eq(npMediaRefs.documentId, documentId),
+        ),
+      );
     return;
   }
 
@@ -70,7 +80,9 @@ export async function syncMediaRefs(
   const activeRows = (await tx
     .select({ id: npMedia.id })
     .from(npMedia)
-    .where(sql`${inArray(npMedia.id, mediaIds)} and ${isNull(npMedia.deletedAt)}`)
+    .where(
+      sql`${eq(npMedia.siteId, resolvedSiteId)} and ${inArray(npMedia.id, mediaIds)} and ${isNull(npMedia.deletedAt)}`,
+    )
     .orderBy(asc(npMedia.id))
     .for("key share")) as Array<{ id: string }>;
   if (activeRows.length !== mediaIds.length) {
@@ -79,10 +91,17 @@ export async function syncMediaRefs(
 
   await tx
     .delete(npMediaRefs)
-    .where(and(eq(npMediaRefs.collection, collection), eq(npMediaRefs.documentId, documentId)));
+    .where(
+      and(
+        eq(npMediaRefs.siteId, resolvedSiteId),
+        eq(npMediaRefs.collection, collection),
+        eq(npMediaRefs.documentId, documentId),
+      ),
+    );
 
   await tx.insert(npMediaRefs).values(
     uniqueRefs.map((ref) => ({
+      siteId: resolvedSiteId,
       mediaId: ref.mediaId,
       collection,
       documentId,
@@ -95,6 +114,7 @@ export async function listMediaReferences(
   mediaId: string,
   options: NpListMediaReferencesOptions = {},
 ): Promise<NpMediaReference[]> {
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const limit = options.limit ?? 100;
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
     throw new Error("Media reference limit must be an integer from 1 to 200.");
@@ -110,10 +130,15 @@ export async function listMediaReferences(
   const { getDb } = await import("../db/runtime.js");
   const db = getDb();
   const condition = options.field
-    ? and(eq(npMediaRefs.mediaId, mediaId), eq(npMediaRefs.field, options.field))
-    : eq(npMediaRefs.mediaId, mediaId);
+    ? and(
+        eq(npMediaRefs.siteId, siteId),
+        eq(npMediaRefs.mediaId, mediaId),
+        eq(npMediaRefs.field, options.field),
+      )
+    : and(eq(npMediaRefs.siteId, siteId), eq(npMediaRefs.mediaId, mediaId));
   const rows = await db
     .select({
+      siteId: npMediaRefs.siteId,
       mediaId: npMediaRefs.mediaId,
       collection: npMediaRefs.collection,
       documentId: npMediaRefs.documentId,
@@ -124,6 +149,7 @@ export async function listMediaReferences(
     .limit(limit);
 
   return rows.map((row) => ({
+    siteId: row.siteId,
     mediaId: row.mediaId,
     collection: row.collection,
     documentId: row.documentId,

@@ -128,8 +128,9 @@ Ordinary text, relationship IDs, JSON fields, and block props are deliberately
 not searched or rewritten. Block image/media controls currently store URLs,
 not media UUID ownership.
 
-Import matches each referenced item by SHA-256 hash, then by the exact filename
-plus MIME type as a warned fallback. An unmatched item maps only its
+Import matches each referenced item against active media owned by the target
+site, first by SHA-256 hash and then by the exact filename plus MIME type as a
+warned fallback. It never resolves a match from another tenant. An unmatched item maps only its
 schema-owned references to `null`; required collection schemas can consequently
 reject the transfer during preflight. A normal unfiltered transfer requires the
 manifest to be the exact set of referenced items. Missing or soft-deleted
@@ -139,8 +140,8 @@ If multiple active target rows match the same hash (or the same fallback pair),
 the import fails as ambiguous unless one row already preserves the source media
 UUID. It never chooses an arbitrary row based on database order.
 
-Upload/copy media objects into target storage and create their media records
-before import when content depends on them.
+Upload/copy media objects into the target site's storage context and create
+site-owned media records before import when content depends on them.
 
 ## Limits and report
 

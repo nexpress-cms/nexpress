@@ -303,15 +303,23 @@ async function runProxy(request: NextRequest, rateLimiter?: NpRateLimiterAdapter
 
   // Phase 15.6 — admin context override. The site-picker UI
   // sets this cookie when an admin (typically a super-admin)
-  // chooses which tenant to operate on. The bootstrap's
-  // resolver reads `x-np-admin-site` BEFORE x-np-host, so the
-  // cookie wins inside the admin area; the public site is
-  // unaffected (the resolver only checks the override on
-  // /admin and /api/admin paths). Validation that the user is
+  // chooses which tenant to operate on. The bootstrap's resolver reads
+  // `x-np-admin-site` BEFORE x-np-host, so the cookie wins inside the admin
+  // area and the staff-only media library API it calls. Public attachment
+  // downloads remain host-scoped. Validation that the user is
   // ALLOWED to operate on this site happens at the resolver
   // layer in core, not here — the middleware just forwards.
   const adminSite = request.cookies.get("np-admin-site")?.value;
-  if (adminSite && (pathname.startsWith("/admin") || pathname.startsWith("/api/admin"))) {
+  const isAdminMediaPath =
+    pathname === "/api/media" ||
+    pathname === "/api/media/upload" ||
+    pathname.startsWith("/api/media/folders/") ||
+    pathname === "/api/media/folders" ||
+    /^\/api\/media\/[0-9a-f-]+$/u.test(pathname);
+  if (
+    adminSite &&
+    (pathname.startsWith("/admin") || pathname.startsWith("/api/admin") || isAdminMediaPath)
+  ) {
     requestHeaders.set("x-np-admin-site", adminSite);
   }
 

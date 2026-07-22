@@ -125,9 +125,9 @@ The framework registers a handful of system handlers via
   same collection are serialized across workers and receive a six-hour expiry;
   a duplicate enqueue is rejected while one is queued or active. Start, every
   1,000 processed rows, and completion reach the per-job log.
-- `media:processImage` — Sharp-driven resize pipeline
+- `media:processImage` — site-scoped Sharp-driven resize pipeline
   (decoupled from the upload request)
-- `media:cleanup` — delete orphaned storage files
+- `media:cleanup` — daily 03:15 UTC reclamation of media soft-deleted for 30 days
 - `system:revisionPrune` — prune old revisions per
   retention policy (cron: `0 3 * * *`)
 - `system:sessionCleanup` — delete expired sessions
@@ -223,6 +223,7 @@ the configured error reporter (`getErrorReporter()`) — see
 import { enqueueJob } from "@nexpress/core/jobs";
 
 const id = await enqueueJob("media:processImage", {
+  siteId: "default",
   mediaId: "bd134b0f-b9ea-4ff4-81ef-606e42e27703",
 });
 ```
@@ -236,7 +237,8 @@ const id = await enqueueJob("media:processImage", {
   queue names.
 - Built-in payloads are exact. Empty maintenance jobs accept only `{}`;
   content jobs require a canonical `siteId` and exactly one actor (`userId` or
-  `memberId`);
+  `memberId`); media processing requires the media UUID and its canonical
+  `siteId` so worker dispatch cannot escape tenant scope;
   invalid digest cadences and unknown keys are errors.
 - Import pure client-safe types and parsers from
   `@nexpress/core/jobs-contract`. Server queue and handler functions remain in

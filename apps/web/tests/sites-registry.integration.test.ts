@@ -224,6 +224,7 @@ describe.skipIf(skipIfNoTestDb())("sites registry contracts", () => {
     const [media] = await db
       .insert(npMedia)
       .values({
+        siteId: "document-cascade",
         filename: "owned.png",
         originalFilename: "owned.png",
         mimeType: "image/png",
@@ -243,6 +244,7 @@ describe.skipIf(skipIfNoTestDb())("sites registry contracts", () => {
       changedFields: ["title"],
     });
     await db.insert(npMediaRefs).values({
+      siteId: "document-cascade",
       mediaId: media.id,
       collection: "posts",
       documentId: document.id,

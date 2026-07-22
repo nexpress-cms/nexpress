@@ -105,7 +105,9 @@ export function registerBuiltinHandlers(): void {
   });
   registerJobHandler("search:reindex", handleSearchReindex);
   registerJobHandler("content:publishScheduled", handleContentPublishScheduled);
-  registerJobHandler("media:processImage", handleMediaProcessImage);
+  registerJobHandler("media:processImage", handleMediaProcessImage, {
+    resolveSiteId: resolveMediaProcessImageSiteId,
+  });
   registerJobHandler("media:cleanup", handleMediaCleanup);
   registerJobHandler("plugin:scheduledTask", handlePluginScheduledTask, {
     resolveSiteId: resolvePluginScheduledTaskSiteId,
@@ -198,8 +200,17 @@ async function handleMediaProcessImage(payload: NpMediaProcessImageJobData): Pro
   await processMediaImage(payload.mediaId, {});
 }
 
+function resolveMediaProcessImageSiteId(payload: NpMediaProcessImageJobData): string {
+  return payload.siteId;
+}
+
 async function handleMediaCleanup(data: NpJobData): Promise<void> {
-  await builtinJobContext.cleanupMedia?.(data);
+  if (builtinJobContext.cleanupMedia) {
+    await builtinJobContext.cleanupMedia(data);
+    return;
+  }
+  const { cleanupDeletedMedia } = await import("../media/service.js");
+  await cleanupDeletedMedia(30);
 }
 
 async function handlePluginScheduledTask(data: NpPluginScheduledTaskJobData): Promise<void> {

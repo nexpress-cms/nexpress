@@ -68,7 +68,10 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
         id: "j1",
         name: "media.processImage",
         state: "created",
-        data: { mediaId: "bd134b0f-b9ea-4ff4-81ef-606e42e27703" },
+        data: {
+          siteId: "default",
+          mediaId: "bd134b0f-b9ea-4ff4-81ef-606e42e27703",
+        },
         retryCount: 0,
         output: null,
         createdOn: new Date().toISOString(),
