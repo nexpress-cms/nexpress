@@ -253,6 +253,15 @@ function packageJsonTemplate(config: TemplateConfig): string {
         tsx: "^4.20.6",
         typescript: "^5.8.0",
       },
+      // Next 16.2 stable still permits sharp 0.34.x, whose bundled libvips
+      // carries published high-severity advisories. The app already declares
+      // the Core-aligned 0.35.x range directly; force the complete install
+      // graph onto that safe version until Next raises its optional range.
+      pnpm: {
+        overrides: {
+          sharp: "0.35.3",
+        },
+      },
       // Native-build allowlist for pnpm lives in `pnpm-workspace.yaml`'s
       // `allowBuilds` block now — pnpm 10.6+ ignores
       // `pnpm.onlyBuiltDependencies` here in non-workspace projects
