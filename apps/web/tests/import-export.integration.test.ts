@@ -7,6 +7,7 @@ import {
   npNavigation,
   npPlugins,
   npSettings,
+  npSitePlugins,
   npSites,
   type NpContentTransferEnvelope,
 } from "@nexpress/core";
@@ -408,7 +409,7 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
     const session = await seedUser({ role: "admin" });
     const payload = await exportPayload(session);
     const db = await getTestDb();
-    await db.insert(npPlugins).values({ id: "not-loaded", enabled: true });
+    await db.insert(npPlugins).values({ id: "not-loaded" });
     if (payload.partial) throw new Error("expected full payload");
     payload.site = { ...payload.site, name: "Must not persist" };
     payload.plugins = [
@@ -431,9 +432,14 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
   it("invalidates the plugin enabled gate after a full import", async () => {
     const session = await seedUser({ role: "admin" });
     const db = await getTestDb();
-    invalidatePluginEnabled("reading-time");
-    await db.insert(npPlugins).values({ id: "reading-time", enabled: false });
-    expect(await isPluginEnabled("reading-time")).toBe(false);
+    invalidatePluginEnabled("reading-time", "default");
+    await db.insert(npPlugins).values({ id: "reading-time" });
+    await db.insert(npSitePlugins).values({
+      siteId: "default",
+      pluginId: "reading-time",
+      enabled: false,
+    });
+    expect(await isPluginEnabled("reading-time", "default")).toBe(false);
 
     const payload = await exportPayload(session);
     if (payload.partial) throw new Error("expected full payload");
@@ -445,8 +451,8 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
       buildRequest("/api/import", { method: "POST", session, body: payload }),
     );
     expect(response.status).toBe(200);
-    expect(await isPluginEnabled("reading-time")).toBe(true);
-    invalidatePluginEnabled("reading-time");
+    expect(await isPluginEnabled("reading-time", "default")).toBe(true);
+    invalidatePluginEnabled("reading-time", "default");
   });
 
   it("fails closed on malformed stored settings and navigation during export", async () => {

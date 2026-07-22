@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import {
   closeTestDb,
   ensureMigrated,
+  getTestDb,
   registerTestCollections,
   skipIfNoTestDb,
   truncateAll,
@@ -25,9 +26,11 @@ describe.skipIf(skipIfNoTestDb())("plugin templates (Phase 14.5)", () => {
   });
   beforeEach(async () => {
     await truncateAll();
-    const { resetPluginTemplates, resetThemes } = await import("@nexpress/core");
+    const { npPlugins, resetPluginTemplates, resetThemes } = await import("@nexpress/core");
     resetPluginTemplates();
     resetThemes();
+    const db = await getTestDb();
+    await db.insert(npPlugins).values([{ id: "docs" }, { id: "plugin-a" }, { id: "course" }]);
   });
   afterEach(async () => {
     const { resetPluginTemplates } = await import("@nexpress/core");
