@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   NpSearchContractError,
   npAnalyzeSearchAdapterResult,
+  npAnalyzeSearchReindexEnqueueResponse,
   npCreateEmptySearchResult,
   npCreateSearchResult,
   npParseSearchApiQuery,
@@ -674,5 +675,44 @@ describe("search reindex contract", () => {
         ],
       }),
     ).toThrow(/processed collection sum/u);
+  });
+
+  it("validates exact durable enqueue outcomes and count invariants", () => {
+    expect(
+      npAnalyzeSearchReindexEnqueueResponse({
+        requested: 2,
+        enqueued: [{ collection: "posts", id: "job-1" }],
+        failures: [{ collection: "pages", message: "queue unavailable" }],
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        requested: 2,
+        enqueued: [{ collection: "posts", id: "job-1" }],
+        failures: [{ collection: "pages", message: "queue unavailable" }],
+      },
+      issues: [],
+    });
+    expect(
+      npAnalyzeSearchReindexEnqueueResponse({
+        requested: 1,
+        enqueued: [{ collection: "posts", id: "job-1" }],
+        failures: [{ collection: "posts", message: "duplicate" }],
+      }).ok,
+    ).toBe(false);
+    expect(
+      npAnalyzeSearchReindexEnqueueResponse({
+        requested: 2,
+        enqueued: [{ collection: "posts", id: "job-1" }],
+        failures: [],
+      }).ok,
+    ).toBe(false);
+    expect(
+      npAnalyzeSearchReindexEnqueueResponse({
+        requested: 1,
+        enqueued: [{ collection: "posts", id: " job-1" }],
+        failures: [],
+      }).ok,
+    ).toBe(false);
   });
 });

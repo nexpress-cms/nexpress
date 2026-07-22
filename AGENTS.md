@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-22 (external search adapters can opt into one exact
+**Last refreshed:** 2026-07-22 (search reindex now uses fixed cursor batches,
+one exact collection job, cross-worker serialization, bounded progress logs,
+Admin selection, and durable internal-trigger enqueue outcomes.)
+
+**Earlier:** 2026-07-22 (external search adapters can opt into one exact
 document-v1 indexing capability; durable content jobs converge entries from
 latest persisted state while full reindex streams an atomic all-site snapshot.)
 
@@ -624,7 +628,10 @@ facets/pagination. Throws and malformed results are diagnosed and fall back to
 Postgres. Optional `indexing: { contract: "document-v1", write,
 replaceCollection }` synchronizes latest persisted state from durable content
 jobs and streams atomic all-site replacement snapshots during reindex;
-synchronization failures remain retryable. Pass `searchAdapter` to
+synchronization failures remain retryable. Reindex scans both Postgres rows and
+external refs in fixed cursor batches; `search:reindex` serializes one
+collection across workers, reports bounded job progress, and is enqueued by
+Admin or the internal trigger instead of occupying a long HTTP request. Pass `searchAdapter` to
 `createBootstrap()` for owned lifecycle wiring and optional terminal
 `shutdown()`. Author/ops guide: `docs/search.md`.
 

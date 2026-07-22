@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { NpScheduleSummary } from "./queue.js";
+import { registerBuiltinHandlers } from "./builtin-handlers.js";
 import { PgBossAdapter } from "./pg-boss-adapter.js";
 import { getRegisteredPluginSchedules, loadPlugins, resetPlugins } from "../plugins/index.js";
 import { npPluginScheduledTaskQueueName } from "../jobs-contract/index.js";
@@ -92,6 +93,73 @@ describe("PgBossAdapter persisted job contracts", () => {
     const adapter = adapterWithSql(vi.fn());
     await expect(adapter.listJobs({ limit: 201 })).rejects.toThrow(/jobs\.limit/u);
     await expect(adapter.listJobs({ since: new Date("invalid") })).rejects.toThrow(/jobs\.since/u);
+  });
+
+  it("pins durable search reindex work to a collection-keyed stately queue", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce("reindex-job")
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce("reindex-retry")
+      .mockResolvedValueOnce(null);
+    const createQueue = vi.fn().mockResolvedValue(undefined);
+    const updateQueue = vi.fn().mockResolvedValue(undefined);
+    const work = vi.fn().mockResolvedValue(undefined);
+    const start = vi.fn().mockResolvedValue(undefined);
+    const adapter = adapterWithBoss(
+      vi.fn().mockResolvedValue({
+        rows: [
+          {
+            id: "failed-reindex",
+            name: "search.reindex",
+            state: "failed",
+            data: { collection: "posts" },
+          },
+        ],
+      }),
+      { send, createQueue, updateQueue, work, start },
+    );
+
+    await expect(adapter.enqueue("search:reindex", { collection: "posts" })).resolves.toBe(
+      "reindex-job",
+    );
+    expect(send).toHaveBeenCalledWith(
+      "search.reindex",
+      { collection: "posts" },
+      { singletonKey: "posts" },
+    );
+    await expect(adapter.enqueue("search:reindex", { collection: "posts" })).rejects.toThrow(
+      'Search reindex for collection "posts" is already queued or active.',
+    );
+
+    const queueOptions = {
+      policy: "stately",
+      retryLimit: 2,
+      retryDelay: 60,
+      retryBackoff: true,
+      expireInSeconds: 21_600,
+    };
+    await adapter.startProducer();
+    expect(start).toHaveBeenCalledOnce();
+    expect(createQueue).toHaveBeenCalledWith("search.reindex", queueOptions);
+    expect(updateQueue).toHaveBeenCalledWith("search.reindex", queueOptions);
+
+    createQueue.mockClear();
+    updateQueue.mockClear();
+    registerBuiltinHandlers();
+    await adapter.start();
+    expect(createQueue).toHaveBeenCalledWith("search.reindex", queueOptions);
+    expect(updateQueue).toHaveBeenCalledWith("search.reindex", queueOptions);
+
+    await expect(adapter.retryJob("failed-reindex")).resolves.toBe("reindex-retry");
+    expect(send).toHaveBeenLastCalledWith(
+      "search.reindex",
+      { collection: "posts" },
+      { singletonKey: "posts" },
+    );
+    await expect(adapter.retryJob("failed-reindex")).rejects.toThrow(
+      'Search reindex for collection "posts" is already queued or active.',
+    );
   });
 
   it("rejects malformed rows and aggregate counts instead of substituting defaults", async () => {

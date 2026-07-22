@@ -178,6 +178,23 @@ export interface NpSearchReindexResponse {
   readonly collections: readonly NpSearchReindexResult[];
 }
 
+export interface NpSearchReindexEnqueuedJob {
+  readonly collection: string;
+  readonly id: string;
+}
+
+export interface NpSearchReindexEnqueueFailure {
+  readonly collection: string;
+  readonly message: string;
+}
+
+/** Exact accepted/failed outcome for one durable reindex enqueue request. */
+export interface NpSearchReindexEnqueueResponse {
+  readonly requested: number;
+  readonly enqueued: readonly NpSearchReindexEnqueuedJob[];
+  readonly failures: readonly NpSearchReindexEnqueueFailure[];
+}
+
 export type NpSearchContractIssueCode =
   "shape" | "unknown-field" | "invalid-field" | "max-items" | "duplicate" | "invariant";
 

@@ -56,6 +56,9 @@ export type {
   NpSearchRequestInput,
   NpSearchResult,
   NpSearchResultItem,
+  NpSearchReindexEnqueueFailure,
+  NpSearchReindexEnqueueResponse,
+  NpSearchReindexEnqueuedJob,
   NpSearchReindexResult,
   NpSearchReindexResponse,
 } from "../search/types.js";

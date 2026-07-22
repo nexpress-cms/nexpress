@@ -1,4 +1,5 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { NpConflictError } from "@nexpress/core";
 import { setJobQueue } from "@nexpress/core/bootstrap";
 
 import {
@@ -540,6 +541,122 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
     expect(capturedType).toBe("test:manual");
     expect(capturedData).toEqual({ probeId: "probe-1" });
     expect(parseCount).toBe(1);
+  });
+
+  it("POST /api/admin/jobs/enqueue validates the exact search reindex payload", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const enqueue = vi.fn().mockResolvedValue("reindex-1");
+    setJobQueue({ enqueue, start: async () => {}, stop: async () => {} });
+
+    const { POST } = await import("@/app/api/admin/jobs/enqueue/route");
+    const valid = await POST(
+      buildRequest("/api/admin/jobs/enqueue", {
+        session: admin,
+        method: "POST",
+        body: { type: "search:reindex", data: { collection: "posts" } },
+      }),
+    );
+    expect(valid.status).toBe(200);
+    expect(enqueue).toHaveBeenCalledWith("search:reindex", { collection: "posts" });
+
+    const invalid = await POST(
+      buildRequest("/api/admin/jobs/enqueue", {
+        session: admin,
+        method: "POST",
+        body: { type: "search:reindex", data: { collection: "Posts", extra: true } },
+      }),
+    );
+    expect(invalid.status).toBe(400);
+    expect(enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it("POST /api/internal/reindex enqueues a durable collection job", async () => {
+    const previousToken = process.env.NP_SCHEDULER_TOKEN;
+    process.env.NP_SCHEDULER_TOKEN = "test-reindex-token";
+    const enqueue = vi.fn().mockResolvedValue("reindex-1");
+    setJobQueue({ enqueue, start: async () => {}, stop: async () => {} });
+    try {
+      const { POST } = await import("@/app/api/internal/reindex/route");
+      const response = await POST(
+        buildRequest("/api/internal/reindex", {
+          method: "POST",
+          headers: { authorization: "Bearer test-reindex-token" },
+          query: { collection: "posts" },
+        }),
+      );
+      const { status, body } = await readJson<{
+        requested: number;
+        enqueued: Array<{ collection: string; id: string }>;
+        failures: unknown[];
+      }>(response);
+      expect(status).toBe(202);
+      expect(body).toEqual({
+        requested: 1,
+        enqueued: [{ collection: "posts", id: "reindex-1" }],
+        failures: [],
+      });
+      expect(enqueue).toHaveBeenCalledWith("search:reindex", { collection: "posts" });
+
+      const failedEnqueue = vi.fn().mockRejectedValue(new Error("queue\n\ud800 offline"));
+      setJobQueue({ enqueue: failedEnqueue, start: async () => {}, stop: async () => {} });
+      const unavailable = await POST(
+        buildRequest("/api/internal/reindex", {
+          method: "POST",
+          headers: { authorization: "Bearer test-reindex-token" },
+          query: { collection: "posts" },
+        }),
+      );
+      const failed = await readJson<{
+        error: { code: string; message: string };
+        status: number;
+      }>(unavailable);
+      expect(failed).toEqual({
+        status: 503,
+        body: {
+          error: {
+            code: "SERVICE_UNAVAILABLE",
+            message: "Search reindex jobs could not be enqueued: queue � offline",
+          },
+          status: 503,
+        },
+      });
+      expect(failedEnqueue).toHaveBeenCalledWith("search:reindex", { collection: "posts" });
+
+      setJobQueue({
+        enqueue: vi
+          .fn()
+          .mockRejectedValue(
+            new NpConflictError(
+              'Search reindex for collection "posts" is already queued or active.',
+            ),
+          ),
+        start: async () => {},
+        stop: async () => {},
+      });
+      const duplicate = await POST(
+        buildRequest("/api/internal/reindex", {
+          method: "POST",
+          headers: { authorization: "Bearer test-reindex-token" },
+          query: { collection: "posts" },
+        }),
+      );
+      expect(await readJson(duplicate)).toEqual({
+        status: 409,
+        body: {
+          error: {
+            code: "CONFLICT",
+            message: 'Search reindex for collection "posts" is already queued or active.',
+          },
+          status: 409,
+        },
+      });
+    } finally {
+      if (previousToken === undefined) {
+        delete process.env.NP_SCHEDULER_TOKEN;
+      } else {
+        process.env.NP_SCHEDULER_TOKEN = previousToken;
+      }
+    }
   });
 
   it("POST /api/admin/jobs/enqueue rejects unknown handler types (defensive UX)", async () => {

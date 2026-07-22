@@ -13,7 +13,9 @@ import {
   type NpJobData,
   type NpJobPayload,
   type NpJobType,
+  type NpSearchReindexJobData,
 } from "../jobs-contract/index.js";
+import { NpConflictError } from "../errors.js";
 import { getLogger } from "../observability/logger.js";
 import { reportError } from "../observability/error-reporter.js";
 import { npValidatePluginCronExpression } from "../plugins/scheduled-task-contract.js";
@@ -40,6 +42,14 @@ import {
 function toQueueName(type: NpJobType): string {
   return type.replace(/:/g, ".");
 }
+
+const SEARCH_REINDEX_QUEUE_OPTIONS = {
+  policy: "stately",
+  retryLimit: 2,
+  retryDelay: 60,
+  retryBackoff: true,
+  expireInSeconds: 6 * 60 * 60,
+} as const;
 
 export class PgBossAdapter implements NpJobQueue {
   private readonly boss: PgBoss;
@@ -78,9 +88,20 @@ export class PgBossAdapter implements NpJobQueue {
     // only the framework JSON + built-in contract so a custom parser runs
     // exactly once before persistence and once again before dispatch.
     const normalized = npNormalizeJobPayload(type, data);
-    const jobId = await this.boss.send(toQueueName(type), normalized);
+    const jobId = await this.boss.send(
+      toQueueName(type),
+      normalized,
+      type === "search:reindex"
+        ? { singletonKey: (normalized as NpSearchReindexJobData).collection }
+        : undefined,
+    );
 
     if (!jobId) {
+      if (type === "search:reindex") {
+        throw new NpConflictError(
+          `Search reindex for collection "${(normalized as NpSearchReindexJobData).collection}" is already queued or active.`,
+        );
+      }
       throw new Error(`Failed to enqueue job: ${type}`);
     }
 
@@ -93,6 +114,7 @@ export class PgBossAdapter implements NpJobQueue {
    */
   async startProducer(): Promise<void> {
     await this.boss.start();
+    await this.ensureSearchReindexQueue();
   }
 
   /**
@@ -108,7 +130,11 @@ export class PgBossAdapter implements NpJobQueue {
       queueName: string,
       handler: (data: NpJobData) => Promise<void>,
     ): Promise<void> => {
-      await this.boss.createQueue(queueName);
+      if (type === "search:reindex") {
+        await this.ensureSearchReindexQueue();
+      } else {
+        await this.boss.createQueue(queueName);
+      }
       const register = async () => {
         await this.boss.work(queueName, async (jobs: Job<unknown>[]) => {
           for (const job of jobs) {
@@ -209,6 +235,15 @@ export class PgBossAdapter implements NpJobQueue {
       await register();
     }
     this.workerStarted = true;
+  }
+
+  private async ensureSearchReindexQueue(): Promise<void> {
+    const queueName = toQueueName("search:reindex");
+    await this.boss.createQueue(queueName, SEARCH_REINDEX_QUEUE_OPTIONS);
+    // `createQueue()` deliberately leaves an existing row unchanged. Force
+    // the long-running/singleton policy as well so a manually-created or
+    // partially-upgraded queue cannot retain the default 15-minute expiry.
+    await this.boss.updateQueue(queueName, SEARCH_REINDEX_QUEUE_OPTIONS);
   }
 
   /**
@@ -739,8 +774,19 @@ export class PgBossAdapter implements NpJobQueue {
       throw new Error(`Job queue "${queueName}" has no registered handler contract.`);
     }
     const payload = normalizeRegisteredJobPayload(registeredType, row.data);
-    const newId = await this.boss.send(queueName, payload);
+    const newId = await this.boss.send(
+      queueName,
+      payload,
+      registeredType === "search:reindex"
+        ? { singletonKey: (payload as NpSearchReindexJobData).collection }
+        : undefined,
+    );
     if (!newId) {
+      if (registeredType === "search:reindex") {
+        throw new NpConflictError(
+          `Search reindex for collection "${(payload as NpSearchReindexJobData).collection}" is already queued or active.`,
+        );
+      }
       throw new Error(`Failed to re-enqueue ${queueName}`);
     }
     return newId;
