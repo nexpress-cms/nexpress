@@ -131,6 +131,7 @@ async function handleContentAfterSave(jobData: NpContentAfterSaveJobData): Promi
     throw error;
   }
   await revalidateContentJob(jobData, context?.data);
+  await syncContentSearchIndex(jobData);
 }
 
 async function handleContentAfterDelete(jobData: NpContentAfterDeleteJobData): Promise<void> {
@@ -142,6 +143,16 @@ async function handleContentAfterDelete(jobData: NpContentAfterDeleteJobData): P
     throw error;
   }
   await revalidateContentJob(jobData, context?.data);
+  await syncContentSearchIndex(jobData);
+}
+
+async function syncContentSearchIndex(
+  jobData: NpContentAfterSaveJobData | NpContentAfterDeleteJobData,
+): Promise<void> {
+  // Dynamic by design: jobs and collections may not statically import each
+  // other. The helper no-ops before DB access for query-only adapters.
+  const { npSyncSearchIndexDocument } = await import("../collections/search-indexing.js");
+  await npSyncSearchIndexDocument(jobData.collection, jobData.documentId, jobData.siteId);
 }
 
 async function handleMediaProcessImage(payload: NpMediaProcessImageJobData): Promise<void> {

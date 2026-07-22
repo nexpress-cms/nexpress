@@ -18,9 +18,10 @@ import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import { ensureFor } from "../../../lib/init-core";
 
 /**
- * Bearer-token-protected search-vector reindex trigger. Useful after bulk
- * imports or migrations that bypass the pipeline. Pass `?collection=<slug>`
- * to scope to one collection; omit to reindex everything.
+ * Bearer-token-protected search reindex trigger. Rebuilds Postgres vectors and
+ * any installed external indexing snapshot after bulk imports, migrations, or
+ * first-time adapter installation. Pass `?collection=<slug>` to scope to one
+ * collection; omit to reindex everything.
  *
  * Reuses NP_SCHEDULER_TOKEN — the same token guards all internal triggers.
  * Bundling under one secret avoids multiplying rotation surface.

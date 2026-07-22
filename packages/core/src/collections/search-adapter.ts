@@ -3,19 +3,26 @@ import type {
   NpSearchAdapter,
   NpSearchAdapterDiagnostics,
   NpSearchAdapterFailure,
+  NpSearchIndexFailure,
 } from "../search/types.js";
 
 let currentAdapter: NpSearchAdapter | null = null;
 let dispatchFailures = 0;
 let resultContractFailures = 0;
+let indexWriteFailures = 0;
+let indexReplaceFailures = 0;
 let shutdownFailures = 0;
 let lastFailure: NpSearchAdapterFailure | null = null;
+let lastIndexFailure: NpSearchIndexFailure | null = null;
 
 function resetDiagnostics(): void {
   dispatchFailures = 0;
   resultContractFailures = 0;
+  indexWriteFailures = 0;
+  indexReplaceFailures = 0;
   shutdownFailures = 0;
   lastFailure = null;
+  lastIndexFailure = null;
 }
 
 function failureMessage(error: unknown): string {
@@ -57,10 +64,14 @@ export function getSearchAdapterDiagnostics(): NpSearchAdapterDiagnostics {
   return Object.freeze({
     adapterKind: currentAdapter?.kind ?? null,
     audienceContract: currentAdapter?.audience ?? null,
+    indexingContract: currentAdapter?.indexing?.contract ?? null,
     dispatchFailures,
     resultContractFailures,
+    indexWriteFailures,
+    indexReplaceFailures,
     shutdownFailures,
     lastFailure,
+    lastIndexFailure,
   });
 }
 
@@ -74,6 +85,23 @@ export function npRecordSearchAdapterFailure(
   else shutdownFailures += 1;
   const message = failureMessage(error);
   lastFailure = Object.freeze({
+    adapterKind,
+    operation,
+    message,
+    occurredAt: new Date().toISOString(),
+  });
+  return message;
+}
+
+export function npRecordSearchIndexFailure(
+  adapterKind: string,
+  operation: NpSearchIndexFailure["operation"],
+  error: unknown,
+): string {
+  if (operation === "index-write") indexWriteFailures += 1;
+  else indexReplaceFailures += 1;
+  const message = failureMessage(error);
+  lastIndexFailure = Object.freeze({
     adapterKind,
     operation,
     message,

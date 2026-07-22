@@ -14,6 +14,8 @@ import {
   type NpSearchContractValidationResult,
   type NpSearchDocument,
   type NpSearchDocumentValue,
+  type NpSearchIndexMutation,
+  type NpSearchIndexingAdapter,
   type NpSearchReindexResult,
   type NpSearchReindexResponse,
   type NpSearchRequest,
@@ -51,6 +53,7 @@ export const npSearchAdapterKindPattern = "^[a-z][a-z0-9-]{0,63}$";
 
 const collectionSlugPattern = new RegExp(npSearchCollectionSlugPattern, "u");
 const adapterKindPattern = new RegExp(npSearchAdapterKindPattern, "u");
+const canonicalTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const requestKeys = new Set([
   "q",
   "collections",
@@ -63,7 +66,16 @@ const requestKeys = new Set([
 const resolvedRequestKeys = new Set(requestKeys);
 const adapterContextKeys = new Set([...requestKeys, "audience"]);
 const audienceScopeKeys = new Set(["mode", "collections"]);
-const adapterKeys = new Set(["kind", "audience", "search", "shutdown"]);
+const adapterKeys = new Set(["kind", "audience", "search", "indexing", "shutdown"]);
+const indexingAdapterKeys = new Set(["contract", "write", "replaceCollection"]);
+const indexMutationKeys = new Set([
+  "operation",
+  "collection",
+  "siteId",
+  "documentId",
+  "observedAt",
+  "doc",
+]);
 const adapterResultKeys = new Set(["results", "total", "perCollection"]);
 const resultKeys = new Set([...adapterResultKeys, "facets", "limit", "offset", "hasNextPage"]);
 const itemKeys = new Set(["collection", "doc", "score"]);
@@ -666,6 +678,7 @@ function parseAdapter(value: unknown, path: string): Parsed<NpSearchAdapter> {
   const kind = inspected.fields.kind;
   const audience = inspected.fields.audience;
   const search = inspected.fields.search;
+  const indexing = inspected.fields.indexing;
   const shutdown = inspected.fields.shutdown;
   if (
     typeof kind !== "string" ||
@@ -686,6 +699,44 @@ function parseAdapter(value: unknown, path: string): Parsed<NpSearchAdapter> {
   if (typeof search !== "function") {
     issues.push(issue("invalid-field", `${path}.search`, "must be a function."));
   }
+  let parsedIndexing: NpSearchIndexingAdapter | undefined;
+  if (indexing !== undefined) {
+    const indexingRecord = inspectRecord(indexing, `${path}.indexing`, issues);
+    if (indexingRecord) {
+      pushUnknownFields(indexingRecord, indexingAdapterKeys, `${path}.indexing`, issues);
+      const contract = indexingRecord.fields.contract;
+      const write = indexingRecord.fields.write;
+      const replaceCollection = indexingRecord.fields.replaceCollection;
+      if (contract !== "document-v1") {
+        issues.push(
+          issue(
+            "invalid-field",
+            `${path}.indexing.contract`,
+            'must declare the exact "document-v1" indexing contract.',
+          ),
+        );
+      }
+      if (typeof write !== "function") {
+        issues.push(issue("invalid-field", `${path}.indexing.write`, "must be a function."));
+      }
+      if (typeof replaceCollection !== "function") {
+        issues.push(
+          issue("invalid-field", `${path}.indexing.replaceCollection`, "must be a function."),
+        );
+      }
+      if (
+        contract === "document-v1" &&
+        typeof write === "function" &&
+        typeof replaceCollection === "function"
+      ) {
+        parsedIndexing = Object.freeze({
+          contract,
+          write: write as NpSearchIndexingAdapter["write"],
+          replaceCollection: replaceCollection as NpSearchIndexingAdapter["replaceCollection"],
+        });
+      }
+    }
+  }
   if (shutdown !== undefined && typeof shutdown !== "function") {
     issues.push(issue("invalid-field", `${path}.shutdown`, "must be a function when provided."));
   }
@@ -697,6 +748,7 @@ function parseAdapter(value: unknown, path: string): Parsed<NpSearchAdapter> {
       kind,
       audience: "document-v1",
       search: search as NpSearchAdapter["search"],
+      ...(parsedIndexing ? { indexing: parsedIndexing } : {}),
       ...(typeof shutdown === "function"
         ? { shutdown: shutdown as NonNullable<NpSearchAdapter["shutdown"]> }
         : {}),
@@ -887,6 +939,167 @@ function parseDocument(
     return null;
   }
   return parsed as NpSearchDocument;
+}
+
+function parseCanonicalTimestamp(
+  value: unknown,
+  path: string,
+  issues: NpSearchContractIssue[],
+): string | null {
+  if (typeof value !== "string" || !canonicalTimestampPattern.test(value)) {
+    issues.push(issue("invalid-field", path, "must be a canonical UTC ISO timestamp."));
+    return null;
+  }
+  let canonical: boolean;
+  try {
+    canonical = new Date(value).toISOString() === value;
+  } catch {
+    canonical = false;
+  }
+  if (!canonical) {
+    issues.push(issue("invalid-field", path, "must be a canonical UTC ISO timestamp."));
+    return null;
+  }
+  return value;
+}
+
+function parseStableDocumentId(
+  value: unknown,
+  path: string,
+  issues: NpSearchContractIssue[],
+): string | null {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > npSearchContractLimits.resultDocumentIdLength ||
+    value !== value.trim() ||
+    !isWellFormedUnicode(value) ||
+    hasUnsafeTextCodePoint(value, false)
+  ) {
+    issues.push(issue("invalid-field", path, "must be a bounded stable document id."));
+    return null;
+  }
+  return value;
+}
+
+function parseIndexMutation(
+  value: unknown,
+  audienceAware: boolean,
+  path: string,
+): Parsed<NpSearchIndexMutation> {
+  const issues: NpSearchContractIssue[] = [];
+  const inspected = inspectRecord(value, path, issues);
+  if (!inspected) return fail(issues);
+  pushUnknownFields(inspected, indexMutationKeys, path, issues);
+  const operation = inspected.fields.operation;
+  if (operation !== "upsert" && operation !== "delete") {
+    issues.push(issue("invalid-field", `${path}.operation`, "must be upsert or delete."));
+  }
+  const collection = parseCollectionSlug(inspected.fields.collection, `${path}.collection`, issues);
+  const siteId = inspected.fields.siteId;
+  if (!npIsCanonicalSiteId(siteId)) {
+    issues.push(issue("invalid-field", `${path}.siteId`, "must be a canonical site id."));
+  }
+  const documentId = parseStableDocumentId(
+    inspected.fields.documentId,
+    `${path}.documentId`,
+    issues,
+  );
+  const observedAt = parseCanonicalTimestamp(
+    inspected.fields.observedAt,
+    `${path}.observedAt`,
+    issues,
+  );
+  let doc: NpSearchDocument | null = null;
+  if (operation === "upsert") {
+    doc = parseDocument(inspected.fields.doc, `${path}.doc`, issues);
+    if (doc) {
+      const docId = parseStableDocumentId(doc.id, `${path}.doc.id`, issues);
+      if (docId && documentId && docId !== documentId) {
+        issues.push(issue("invariant", `${path}.doc.id`, "must match documentId."));
+      }
+      if (!npIsCanonicalSiteId(doc.siteId)) {
+        issues.push(issue("invalid-field", `${path}.doc.siteId`, "must be a canonical site id."));
+      } else if (typeof siteId === "string" && doc.siteId !== siteId) {
+        issues.push(issue("invariant", `${path}.doc.siteId`, "must match siteId."));
+      }
+      if (typeof doc.status !== "string" || !documentStatuses.has(doc.status)) {
+        issues.push(
+          issue("invalid-field", `${path}.doc.status`, "must be a canonical document status."),
+        );
+      }
+      if (doc.visibility !== "public" && doc.visibility !== "private") {
+        issues.push(issue("invalid-field", `${path}.doc.visibility`, "must be public or private."));
+      }
+      if (
+        doc.audience !== undefined &&
+        (typeof doc.audience !== "string" || !documentAudienceSet.has(doc.audience))
+      ) {
+        issues.push(
+          issue(
+            "invalid-field",
+            `${path}.doc.audience`,
+            'must be exactly "public", "members", or "private" when present.',
+          ),
+        );
+      }
+      if (audienceAware && doc.audience === undefined) {
+        issues.push(
+          issue(
+            "invariant",
+            `${path}.doc.audience`,
+            `audience-aware collection "${collection ?? "unknown"}" documents must expose their audience.`,
+          ),
+        );
+      }
+    }
+  } else if (inspected.keys.includes("doc")) {
+    issues.push(issue("unknown-field", `${path}.doc`, "delete mutations must not include doc."));
+  }
+  if (
+    issues.length > 0 ||
+    (operation !== "upsert" && operation !== "delete") ||
+    !collection ||
+    typeof siteId !== "string" ||
+    !documentId ||
+    !observedAt ||
+    (operation === "upsert" && !doc)
+  ) {
+    return fail(issues);
+  }
+  return {
+    issues,
+    value:
+      operation === "upsert"
+        ? Object.freeze({
+            operation,
+            collection,
+            siteId,
+            documentId,
+            observedAt,
+            doc: doc as NpSearchResultDocument,
+          })
+        : Object.freeze({ operation, collection, siteId, documentId, observedAt }),
+  };
+}
+
+export function npAnalyzeSearchIndexMutation(
+  value: unknown,
+  audienceAware = false,
+  path = "search.index.mutation",
+): NpSearchContractValidationResult<NpSearchIndexMutation> {
+  return validationResult(parseIndexMutation(value, audienceAware, path));
+}
+
+export function npRequireSearchIndexMutation(
+  value: unknown,
+  audienceAware = false,
+  path = "search.index.mutation",
+): NpSearchIndexMutation {
+  return requireParsed(
+    parseIndexMutation(value, audienceAware, path),
+    "Invalid search index mutation",
+  );
 }
 
 function parseResultItem(

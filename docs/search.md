@@ -99,6 +99,19 @@ const searchAdapter: NpSearchAdapter = {
       perCollection: page.counts,
     };
   },
+  indexing: {
+    contract: "document-v1",
+    async write(mutation) {
+      // Upsert or delete by collection + siteId + documentId. Use
+      // observedAt to reject an older operation after a newer one.
+      await applyLatestMutation(mutation);
+    },
+    async replaceCollection(context) {
+      // Stage this all-site snapshot, consume the one-shot stream fully,
+      // then publish it atomically without losing overlapping write() calls.
+      await replaceIndexGeneration(context);
+    },
+  },
 };
 
 const bootstrap = createBootstrap({
@@ -109,9 +122,11 @@ const bootstrap = createBootstrap({
 ```
 
 The adapter descriptor is exact: canonical `kind`, required
-`audience: "document-v1"`, `search()`, and optional terminal `shutdown()` that
-must resolve to void. Existing adapters must add that declaration and apply the
-new scope before upgrading. `NpSearchAdapterContext` contains normalized `q`,
+`audience: "document-v1"`, `search()`, optional `indexing`, and optional terminal
+`shutdown()` that must resolve to void. Query-only adapters remain valid and
+can omit `indexing`. When present, indexing is the exact
+`{ contract: "document-v1", write, replaceCollection }` capability; both
+methods must resolve to void. `NpSearchAdapterContext` contains normalized `q`,
 `limit`, `offset`, resolved `siteId`, and `visibility`, plus optional
 `collections` and `locale`. Its required framework-derived `audience` object is
 exactly `{ mode: "public" | "all", collections: string[] }`. The list contains
@@ -135,6 +150,48 @@ replacement resets stale diagnostics, and owner-aware reset does not detach a
 newer replacement. Custom hosts use `shutdownSearchAdapter()` for terminal
 resource cleanup.
 
+### External index synchronization
+
+`indexing.write()` receives one frozen, exact `NpSearchIndexMutation`. The
+identity is always `collection + siteId + documentId`:
+
+- `upsert` includes the complete validated JSON-safe `doc`. It carries every
+  document status and visibility because trusted `visibility: "all"` queries
+  may need them. Audience-aware collections always include canonical
+  `audience`.
+- `delete` contains only the identity and timing metadata. It does not expose a
+  deleted document snapshot.
+- both variants include canonical `observedAt`. Adapters must apply mutations
+  idempotently and must not let an older observation overwrite a newer one.
+
+Durable `content:afterSave` and `content:afterDelete` jobs dispatch these
+mutations. The worker re-reads the document at execution time rather than
+trusting the historical job operation: an existing row becomes `upsert`, and a
+missing row becomes `delete`. Delayed, duplicated, or reordered content jobs
+therefore converge on the latest persisted state. A query-only adapter is a
+no-op before hydration. A throwing indexing method or a non-void result is
+reported, counted, and rethrown so pg-boss retries it; index writes never fall
+back to Postgres as a substitute for synchronizing the external service.
+After enabling `indexing` for an existing deployment, run the internal reindex
+endpoint once to seed rows whose content jobs completed before the capability
+was installed.
+
+`replaceCollection()` participates in `reindexCollection()`. It receives one
+frozen `NpSearchIndexReplaceContext` for a collection across all sites:
+`{ collection, siteId: "*", startedAt, documents }`. `documents` is a one-shot
+`AsyncIterable<NpSearchIndexUpsert>` so the adapter contract does not require
+one second in-memory document batch. The adapter must consume it completely before resolving,
+including for an empty collection. Resolving early, returning a value, or
+throwing fails the reindex and increments `indexReplaceFailures`.
+
+Replacement is a concurrency contract as well as a transport API. Stage the
+snapshot, preserve any `write()` mutation newer than `startedAt` / its
+`observedAt`, remove only stale entries in the collection scope, and publish
+the replacement atomically. A generation swap, provider-side run marker, or
+equivalent transactional mechanism is appropriate. An implementation that
+blindly deletes and reinserts into the live generation can lose writes that
+overlap reindex and does not satisfy `document-v1`.
+
 ## Built-in Postgres path and cache
 
 The built-in path queries each registered collection with a `search_vector`,
@@ -152,12 +209,14 @@ complete result contract, including required public audiences.
 ## Reindex and operations
 
 `reindexCollection(slug)` accepts one canonical registered searchable
-collection and returns exact `{ collection, processed }`. The internal
+collection, rebuilds its Postgres vectors, and, when the installed adapter
+declares `indexing`, replaces that external collection snapshot. It returns
+exact `{ collection, processed }`. The internal
 `POST /api/internal/reindex?collection=<slug>` endpoint rejects unknown,
 duplicate, or malformed query parameters and returns exact aggregate totals.
 
 Admin Health shows `built-in Postgres tsvector` or the exact external adapter
-kind plus its `document-v1` audience contract. Contained dispatch,
-result-contract, and shutdown failures produce a warning with the last failure.
-Process code can read the same counters and active audience contract with
-`getSearchAdapterDiagnostics()`.
+kind plus its `document-v1` audience contract and `query-only` or indexing
+capability. Dispatch, result-contract, index-write, index-replace, and shutdown
+failures produce a warning with the last failure. Process code can read the
+same counters and active contracts with `getSearchAdapterDiagnostics()`.

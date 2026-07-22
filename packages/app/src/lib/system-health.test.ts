@@ -27,8 +27,11 @@ interface HealthTestRuntime {
   cacheUnavailable: number;
   searchAdapterKind: string | null;
   searchAudienceContract: "document-v1" | null;
+  searchIndexingContract: "document-v1" | null;
   searchDispatchFailures: number;
   searchResultFailures: number;
+  searchIndexWriteFailures: number;
+  searchIndexReplaceFailures: number;
   searchShutdownFailures: number;
   i18nConfigured: boolean;
   i18nLocales: number;
@@ -52,8 +55,11 @@ const runtime = vi.hoisted<HealthTestRuntime>(() => ({
   cacheUnavailable: 0,
   searchAdapterKind: null,
   searchAudienceContract: null,
+  searchIndexingContract: null,
   searchDispatchFailures: 0,
   searchResultFailures: 0,
+  searchIndexWriteFailures: 0,
+  searchIndexReplaceFailures: 0,
   searchShutdownFailures: 0,
   i18nConfigured: true,
   i18nLocales: 2,
@@ -136,8 +142,11 @@ vi.mock("@nexpress/core/search", async (importOriginal) => {
     getSearchAdapterDiagnostics: () => ({
       adapterKind: runtime.searchAdapterKind,
       audienceContract: runtime.searchAudienceContract,
+      indexingContract: runtime.searchIndexingContract,
       dispatchFailures: runtime.searchDispatchFailures,
       resultContractFailures: runtime.searchResultFailures,
+      indexWriteFailures: runtime.searchIndexWriteFailures,
+      indexReplaceFailures: runtime.searchIndexReplaceFailures,
       shutdownFailures: runtime.searchShutdownFailures,
       lastFailure:
         runtime.searchDispatchFailures +
@@ -154,6 +163,15 @@ vi.mock("@nexpress/core/search", async (importOriginal) => {
                     : "dispatch",
               message: "simulated search failure",
               occurredAt: "2026-07-15T00:00:00.000Z",
+            }
+          : null,
+      lastIndexFailure:
+        runtime.searchIndexWriteFailures + runtime.searchIndexReplaceFailures > 0
+          ? {
+              adapterKind: runtime.searchAdapterKind ?? "unknown",
+              operation: runtime.searchIndexReplaceFailures > 0 ? "index-replace" : "index-write",
+              message: "simulated search index failure",
+              occurredAt: "2026-07-16T00:00:00.000Z",
             }
           : null,
     }),
@@ -243,8 +261,11 @@ afterEach(() => {
   runtime.cacheUnavailable = 0;
   runtime.searchAdapterKind = null;
   runtime.searchAudienceContract = null;
+  runtime.searchIndexingContract = null;
   runtime.searchDispatchFailures = 0;
   runtime.searchResultFailures = 0;
+  runtime.searchIndexWriteFailures = 0;
+  runtime.searchIndexReplaceFailures = 0;
   runtime.searchShutdownFailures = 0;
   runtime.i18nConfigured = true;
   runtime.i18nLocales = 2;
@@ -330,7 +351,7 @@ describe("live search health", () => {
     expect(checkSearchAdapter()).toEqual(
       expect.objectContaining({
         state: "ok",
-        detail: "external (meilisearch) · document-v1",
+        detail: "external (meilisearch) · document-v1 · query-only",
       }),
     );
   });
@@ -342,7 +363,7 @@ describe("live search health", () => {
     expect(checkSearchAdapter()).toEqual(
       expect.objectContaining({
         state: "warn",
-        detail: "meilisearch · document-v1 · 2 failures contained",
+        detail: "meilisearch · document-v1 · query-only · 2 runtime failures",
         hint: expect.stringContaining("result-contract"),
       }),
     );
@@ -355,8 +376,22 @@ describe("live search health", () => {
     expect(checkSearchAdapter()).toEqual(
       expect.objectContaining({
         state: "warn",
-        detail: "meilisearch · document-v1 · 1 failure contained",
+        detail: "meilisearch · document-v1 · query-only · 1 runtime failure",
         hint: expect.stringContaining("shutdown"),
+      }),
+    );
+  });
+
+  it("reports indexing capability and retried synchronization failures", () => {
+    runtime.searchAdapterKind = "meilisearch";
+    runtime.searchAudienceContract = "document-v1";
+    runtime.searchIndexingContract = "document-v1";
+    runtime.searchIndexWriteFailures = 1;
+    expect(checkSearchAdapter()).toEqual(
+      expect.objectContaining({
+        state: "warn",
+        detail: "meilisearch · document-v1 · indexing document-v1 · 1 runtime failure",
+        hint: expect.stringContaining("index-write"),
       }),
     );
   });

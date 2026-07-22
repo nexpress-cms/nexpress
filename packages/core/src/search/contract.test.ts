@@ -10,6 +10,7 @@ import {
   npRequireSearchAdapter,
   npRequireSearchAdapterContext,
   npRequireSearchAdapterResult,
+  npRequireSearchIndexMutation,
   npRequireSearchReindexResult,
   npRequireSearchReindexResponse,
   npRequireSearchRequest,
@@ -186,6 +187,114 @@ describe("search adapter and result contract", () => {
     expect(() => npRequireSearchAdapter({ kind: "algolia", search: () => null })).toThrow(
       /document-v1/u,
     );
+  });
+
+  it("accepts one optional exact document indexing capability", () => {
+    const write = () => undefined;
+    const replaceCollection = () => undefined;
+    const adapter = npRequireSearchAdapter({
+      kind: "meilisearch",
+      audience: "document-v1",
+      search: () => null,
+      indexing: { contract: "document-v1", write, replaceCollection },
+    });
+
+    expect(adapter.indexing).toEqual({ contract: "document-v1", write, replaceCollection });
+    expect(Object.isFrozen(adapter.indexing)).toBe(true);
+    expect(() =>
+      npRequireSearchAdapter({
+        kind: "meilisearch",
+        audience: "document-v1",
+        search: () => null,
+        indexing: { contract: "document-v1", write },
+      }),
+    ).toThrow(/replaceCollection/u);
+    expect(() =>
+      npRequireSearchAdapter({
+        kind: "meilisearch",
+        audience: "document-v1",
+        search: () => null,
+        indexing: { contract: "document-v1", write, replaceCollection, batchSize: 100 },
+      }),
+    ).toThrow(/unsupported search field/u);
+  });
+
+  it("validates and freezes exact latest-state index mutations", () => {
+    const base = {
+      collection: "forum-posts",
+      siteId: "default",
+      documentId: "post-1",
+      observedAt: "2026-07-22T00:00:00.000Z",
+    };
+    const upsert = npRequireSearchIndexMutation(
+      {
+        operation: "upsert",
+        ...base,
+        doc: {
+          id: "post-1",
+          siteId: "default",
+          status: "published",
+          visibility: "public",
+          audience: "members",
+          title: "Member topic",
+        },
+      },
+      true,
+    );
+    const deletion = npRequireSearchIndexMutation({ operation: "delete", ...base }, true);
+
+    expect(upsert.operation).toBe("upsert");
+    expect(Object.isFrozen(upsert)).toBe(true);
+    expect(Object.isFrozen(upsert.operation === "upsert" ? upsert.doc : null)).toBe(true);
+    expect(deletion).toEqual({ operation: "delete", ...base });
+    expect(() =>
+      npRequireSearchIndexMutation(
+        {
+          operation: "upsert",
+          ...base,
+          doc: {
+            id: "other",
+            siteId: "default",
+            status: "published",
+            visibility: "public",
+            audience: "members",
+          },
+        },
+        true,
+      ),
+    ).toThrow(/must match documentId/u);
+    expect(() =>
+      npRequireSearchIndexMutation({
+        operation: "delete",
+        ...base,
+        doc: { id: "post-1" },
+      }),
+    ).toThrow(/must not include doc/u);
+    expect(() =>
+      npRequireSearchIndexMutation({ operation: "delete", ...base, doc: undefined }),
+    ).toThrow(/must not include doc/u);
+    expect(() =>
+      npRequireSearchIndexMutation({
+        operation: "delete",
+        ...base,
+        observedAt: "2026-07-22T00:00:00Z",
+      }),
+    ).toThrow(/canonical UTC ISO timestamp/u);
+    expect(() =>
+      npRequireSearchIndexMutation(
+        {
+          operation: "upsert",
+          ...base,
+          doc: {
+            id: "post-1",
+            siteId: "default",
+            status: "published",
+            visibility: "public",
+          },
+        },
+        true,
+      ),
+    ).toThrow(/must expose their audience/u);
   });
 
   it("requires one exact framework-derived audience scope", () => {

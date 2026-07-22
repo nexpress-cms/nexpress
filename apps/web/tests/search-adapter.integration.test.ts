@@ -362,6 +362,141 @@ describe.skipIf(skipIfNoTestDb())("search adapter (Phase 10.6)", () => {
     expect(ctx.audience).toEqual({ mode: "public", collections: [] });
   });
 
+  it("content jobs converge external entries on the latest persisted state", async () => {
+    const staff = await seedUser({ role: "admin" });
+    const actor = {
+      id: staff.userId,
+      email: staff.email,
+      name: "Search operator",
+      role: staff.role,
+      tokenVersion: 0,
+    };
+    const writes: unknown[] = [];
+    const {
+      deleteDocument,
+      getJobHandler,
+      registerBuiltinHandlers,
+      saveDocument,
+      setSearchAdapter,
+    } = await import("@nexpress/core");
+    setSearchAdapter({
+      kind: "capture-index",
+      audience: "document-v1",
+      search: () => null,
+      indexing: {
+        contract: "document-v1",
+        write: (mutation) => {
+          writes.push(mutation);
+        },
+        replaceCollection: async (context) => {
+          for await (const _document of context.documents) {
+            // Full consumption is part of the contract even when unused here.
+          }
+        },
+      },
+    });
+    const created = await saveDocument(
+      "posts",
+      null,
+      {
+        title: "Original search title",
+        excerpt: "summary",
+        content: npCreateEmptyRichTextContent(),
+        publishedAt: new Date().toISOString(),
+        author: staff.userId,
+      },
+      actor,
+      { status: "published" },
+    );
+    const id = created.doc.id as string;
+    await saveDocument("posts", id, { title: "Latest search title" }, actor, {
+      status: "published",
+    });
+    registerBuiltinHandlers();
+    const afterSave = getJobHandler("content:afterSave");
+    await afterSave?.({
+      siteId: "default",
+      collection: "posts",
+      documentId: id,
+      operation: "create",
+      userId: staff.userId,
+      memberId: null,
+    });
+    await deleteDocument("posts", id, actor);
+    await afterSave?.({
+      siteId: "default",
+      collection: "posts",
+      documentId: id,
+      operation: "create",
+      userId: staff.userId,
+      memberId: null,
+    });
+
+    expect(writes).toEqual([
+      expect.objectContaining({
+        operation: "upsert",
+        documentId: id,
+        doc: expect.objectContaining({ title: "Latest search title" }),
+      }),
+      expect.objectContaining({ operation: "delete", documentId: id }),
+    ]);
+  });
+
+  it("full reindex streams an exact all-site snapshot to indexing adapters", async () => {
+    const staff = await seedUser({ role: "admin" });
+    const actor = {
+      id: staff.userId,
+      email: staff.email,
+      name: "Search operator",
+      role: staff.role,
+      tokenVersion: 0,
+    };
+    const documents: unknown[] = [];
+    const { reindexCollection, saveDocument, setSearchAdapter } = await import("@nexpress/core");
+    const saved = await saveDocument(
+      "posts",
+      null,
+      {
+        title: "Replacement snapshot",
+        excerpt: "summary",
+        content: npCreateEmptyRichTextContent(),
+        publishedAt: new Date().toISOString(),
+        author: staff.userId,
+      },
+      actor,
+      { status: "published" },
+    );
+    let replacementContext: unknown = null;
+    setSearchAdapter({
+      kind: "capture-index",
+      audience: "document-v1",
+      search: () => null,
+      indexing: {
+        contract: "document-v1",
+        write: () => undefined,
+        replaceCollection: async (context) => {
+          replacementContext = context;
+          for await (const document of context.documents) documents.push(document);
+        },
+      },
+    });
+
+    const result = await reindexCollection("posts");
+
+    expect(result).toEqual({ collection: "posts", processed: 1 });
+    expect(replacementContext).toEqual(
+      expect.objectContaining({ collection: "posts", siteId: "*", startedAt: expect.any(String) }),
+    );
+    expect(documents).toEqual([
+      expect.objectContaining({
+        operation: "upsert",
+        collection: "posts",
+        documentId: saved.doc.id,
+        doc: expect.objectContaining({ title: "Replacement snapshot" }),
+      }),
+    ]);
+  });
+
   it("setSearchAdapter rejects an object missing `search()`", async () => {
     const { setSearchAdapter } = await import("@nexpress/core");
     expect(() =>
