@@ -53,6 +53,7 @@ export interface NpGetMediaUrlOptions {
 /** Server-side media row after canonical persisted-value validation. */
 export interface NpMediaRecord {
   id: string;
+  siteId: string;
   filename: string;
   originalFilename: string;
   mimeType: string;

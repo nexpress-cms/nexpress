@@ -14,6 +14,7 @@ function media(overrides: Partial<NpMediaRecord> = {}): NpMediaRecord {
   const timestamp = new Date("2026-07-20T00:00:00.000Z");
   return {
     id: attachmentId,
+    siteId: "default",
     filename: "guide.pdf",
     originalFilename: "guide.pdf",
     mimeType: "application/pdf",

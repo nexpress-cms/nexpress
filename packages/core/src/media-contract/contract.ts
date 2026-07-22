@@ -1,4 +1,5 @@
 import { npValidateRichTextContent } from "../fields/rich-text.js";
+import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 import {
   npMediaCropPositions,
   npMediaImageFormats,
@@ -51,6 +52,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 const hashPattern = /^[0-9a-f]{64}$/u;
 const recordKeys = new Set([
   "id",
+  "siteId",
   "filename",
   "originalFilename",
   "mimeType",
@@ -423,6 +425,11 @@ function analyzeRecord(value: unknown, wire: boolean): NpMediaContractIssue[] {
   if (!isPlainRecord(value)) return [issue("shape", path, "media records must be plain objects.")];
   const issues: NpMediaContractIssue[] = [];
   pushUnknownFields(value, recordKeys, path, issues);
+  if (!npIsCanonicalSiteId(value.siteId)) {
+    issues.push(
+      issue("invalid-field", `${path}.siteId`, "media siteId must be a canonical site id."),
+    );
+  }
 
   if (typeof value.id !== "string" || !uuidPattern.test(value.id)) {
     issues.push(issue("invalid-field", `${path}.id`, "media id must be a UUID."));

@@ -1,9 +1,10 @@
-import { count, desc, eq, isNull } from "drizzle-orm";
+import { and, count, desc, eq, isNull } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import {
   getAllCollectionSlugs,
   getCollectionConfig,
   getCollectionTable,
+  getCurrentSiteId,
   getSiteById,
   NP_DEFAULT_SITE_ID,
   npMedia,
@@ -48,6 +49,7 @@ function getColumn(table: PgTable, key: string): AnyPgColumn | null {
 
 export async function loadDashboardStats(): Promise<DashboardStats> {
   const db = getDb();
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const slugs = getAllCollectionSlugs();
 
   const collectionEntries: DashboardStats["collections"] = [];
@@ -63,11 +65,14 @@ export async function loadDashboardStats(): Promise<DashboardStats> {
   for (const slug of slugs) {
     const config = getCollectionConfig(slug);
     const table = getCollectionTable(slug) as PgTable;
+    const siteIdCol = getColumn(table, "siteId");
     const label = config.labels.plural;
 
-    const totalRows = (await db.select({ total: count() }).from(table)) as Array<{
-      total: number | string;
-    }>;
+    const totalRows = (
+      siteIdCol
+        ? await db.select({ total: count() }).from(table).where(eq(siteIdCol, siteId))
+        : await db.select({ total: count() }).from(table)
+    ) as Array<{ total: number | string }>;
     collectionEntries.push({
       slug,
       label,
@@ -79,7 +84,9 @@ export async function loadDashboardStats(): Promise<DashboardStats> {
       const draftRows = (await db
         .select({ total: count() })
         .from(table)
-        .where(eq(statusCol, "draft"))) as Array<{ total: number | string }>;
+        .where(
+          siteIdCol ? and(eq(siteIdCol, siteId), eq(statusCol, "draft")) : eq(statusCol, "draft"),
+        )) as Array<{ total: number | string }>;
       draftCount += Number(draftRows[0]?.total ?? 0);
     }
 
@@ -98,9 +105,8 @@ export async function loadDashboardStats(): Promise<DashboardStats> {
       recentSelect.status = statusCol;
     }
 
-    const rows = (await db
-      .select(recentSelect)
-      .from(table)
+    const recentQuery = db.select(recentSelect).from(table);
+    const rows = (await (siteIdCol ? recentQuery.where(eq(siteIdCol, siteId)) : recentQuery)
       .orderBy(desc(updatedAtCol))
       .limit(RECENT_PER_COLLECTION)) as Array<Record<string, unknown>>;
 
@@ -140,7 +146,9 @@ export async function loadDashboardStats(): Promise<DashboardStats> {
   const mediaRows = (await db
     .select({ total: count() })
     .from(npMedia)
-    .where(isNull(npMedia.deletedAt))) as Array<{ total: number | string }>;
+    .where(and(eq(npMedia.siteId, siteId), isNull(npMedia.deletedAt)))) as Array<{
+    total: number | string;
+  }>;
 
   const recentActivity = activityCandidates
     .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
@@ -158,22 +166,21 @@ export async function loadDashboardStats(): Promise<DashboardStats> {
     recentActivity,
     draftCount,
     mediaCount: Number(mediaRows[0]?.total ?? 0),
-    onboarding: await loadOnboardingState(),
+    onboarding: await loadOnboardingState(siteId),
   };
 }
 
 /**
- * Resolve the first-time-setup checklist for the default site. Each
+ * Resolve the first-time-setup checklist for the current site. Each
  * flag is best-effort: a missing setting or a thrown lookup falls back
  * to `false` (= step still pending) so the checklist never crashes the
- * dashboard render. Multi-site installs surface the *default* site's
- * state since the welcome card lives under the global dashboard route.
+ * dashboard render.
  */
-async function loadOnboardingState(): Promise<DashboardStats["onboarding"]> {
+async function loadOnboardingState(siteId: string): Promise<DashboardStats["onboarding"]> {
   // Site name set: any name other than the seeded default counts.
   let siteNameSet = false;
   try {
-    const site = await getSiteById(NP_DEFAULT_SITE_ID);
+    const site = await getSiteById(siteId);
     siteNameSet = Boolean(site && site.name && site.name !== "Default site");
   } catch {
     /* swallow — checklist falls back to "pending" */
@@ -187,14 +194,21 @@ async function loadOnboardingState(): Promise<DashboardStats["onboarding"]> {
     const db = getDb();
     const postsTable = getCollectionTable("posts") as PgTable;
     const statusCol = getColumn(postsTable, "status");
+    const siteIdCol = getColumn(postsTable, "siteId");
     const rows = statusCol
       ? ((await db
           .select({ total: count() })
           .from(postsTable)
-          .where(eq(statusCol, "published"))) as Array<{
+          .where(
+            siteIdCol
+              ? and(eq(siteIdCol, siteId), eq(statusCol, "published"))
+              : eq(statusCol, "published"),
+          )) as Array<{
           total: number | string;
         }>)
-      : ((await db.select({ total: count() }).from(postsTable)) as Array<{
+      : ((siteIdCol
+          ? await db.select({ total: count() }).from(postsTable).where(eq(siteIdCol, siteId))
+          : await db.select({ total: count() }).from(postsTable)) as Array<{
           total: number | string;
         }>);
     hasPublishedPost = Number(rows[0]?.total ?? 0) > 0;

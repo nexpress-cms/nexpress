@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-22 (plugin installation stays process-global while
+**Last refreshed:** 2026-07-22 (media, folders, references, processing jobs,
+Admin, transfer, quotas, site deletion, and doctor now share one exact
+site-owned contract with fail-closed cross-tenant access.)
+
+**Earlier:** 2026-07-22 (plugin installation stays process-global while
 site activation now uses sparse fail-open overrides across dispatch, Admin,
 blocks, patterns, templates, translations, OAuth, transfer, jobs, ops, and
 doctor; scheduled cron ticks fan out durable site-stamped executions.)

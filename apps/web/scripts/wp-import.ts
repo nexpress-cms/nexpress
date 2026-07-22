@@ -5,7 +5,9 @@ import { and, eq, isNull } from "drizzle-orm";
 import {
   type NpAuthUser,
   findDocuments,
+  getCurrentSiteId,
   hashPassword,
+  NP_DEFAULT_SITE_ID,
   npComments,
   npMedia,
   npMembers,
@@ -127,10 +129,17 @@ const operation = runCli(process.argv.slice(2), undefined, {
           // soft-deleted media from being silently revived.
           findExistingByHash: async (sha256) => {
             const db = getDb();
+            const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
             const [hit] = await db
               .select({ id: npMedia.id })
               .from(npMedia)
-              .where(and(eq(npMedia.hash, sha256), isNull(npMedia.deletedAt)))
+              .where(
+                and(
+                  eq(npMedia.siteId, siteId),
+                  eq(npMedia.hash, sha256),
+                  isNull(npMedia.deletedAt),
+                ),
+              )
               .limit(1);
             return hit ? { id: hit.id } : null;
           },

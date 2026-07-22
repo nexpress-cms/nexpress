@@ -30,6 +30,23 @@ import {
 
 `@nexpress/core/media` also re-exports the contract for server-only consumers.
 
+## Site ownership
+
+Every `np_media`, `np_media_folders`, and `np_media_refs` row carries one
+canonical `siteId`. Uploads require a site execution context, stamp that site,
+validate that an optional folder belongs to it, and write new objects below
+`media/<siteId>/<mediaId>/`. Reads, list filters, URL resolution, reference
+creation, member quotas, imports, exports, and deletes use the current site
+automatically. Knowing another site's media UUID is therefore insufficient to
+read, attach, move, process, or delete it.
+
+Code running outside a request must wrap writes in `withCurrentSite()`.
+Framework-host code can use `requireSiteId()` to project that required owner.
+Reads retain the single-site `default` fallback, while writes fail when
+bootstrap, worker, or script wiring omitted a site scope. Existing default-site
+storage keys remain valid; the migration backfills ownership without moving
+objects.
+
 ## Member attachment contract
 
 NexPress reuses media rows for downloadable document attachments. The
@@ -94,6 +111,7 @@ record. Every selected database row is validated before it leaves core. That
 includes:
 
 - UUID identifiers and at-most-one staff/member uploader;
+- one canonical site owner;
 - canonical SHA-256 hashes and relative storage keys;
 - paired width/height values;
 - `NpRichTextContent` captions;
@@ -106,10 +124,11 @@ being partially interpreted by rendering, cleanup, or API code.
 ## Processing lifecycle
 
 Image uploads start as `processing`, enqueue the exact
-`{ mediaId: <uuid> }` job payload, and become `ready` only after validated
-variant metadata is written. The built-in worker now runs the core image
-processor when a host has not supplied an override. Non-image uploads are
-stored once as `ready` and do not enqueue a Sharp job.
+`{ siteId: <canonical-site-id>, mediaId: <uuid> }` job payload, and become
+`ready` only after validated variant metadata is written. The job registry
+restores that site scope for the entire processor dispatch. The built-in worker
+now runs the core image processor when a host has not supplied an override.
+Non-image uploads are stored once as `ready` and do not enqueue a Sharp job.
 
 Processing options are exact and validated before Sharp or storage work:
 
@@ -151,7 +170,9 @@ urls: {
 List items also carry the resolved staff/member uploader summary. The Admin
 library validates every item with `isNpMediaApiItem`, reads the canonical
 `filesize`, and renders the actual resolved thumbnail URL. Search uses the
-documented `q` query parameter.
+documented `q` query parameter. Media and folder endpoints use the selected
+Admin site; create, rename, delete, and upload cannot cross that boundary.
+Deletion also refuses media still used by a document or a staff/member avatar.
 
 ## Operations
 
@@ -160,3 +181,11 @@ its objects to the storage index. Malformed maps produce the blocking
 `storage.media_contract` check instead of silently harvesting whichever keys
 happen to look usable. Original objects remain indexed so operators can still
 inspect the affected rows and storage state.
+
+`nexpress doctor` adds `media.contract`. It validates the exact persisted media
+record, active site owners, folder parent/media ownership, and reference/media
+ownership. Cross-site links and active media whose site was removed are
+blocking diagnostics. Deleted tombstones may retain a removed site id until
+the daily global cleanup job has reclaimed their storage objects after 30 days.
+If any storage delete fails, the row remains a tombstone so a later run can
+retry instead of losing the only durable pointer to the object.

@@ -444,8 +444,12 @@ function parseBuiltinPayload(
       return { collection } satisfies NpBuiltinJobPayloadMap["search:reindex"];
     }
     case "media:processImage": {
-      const input = exactRecord(value, path, ["mediaId"]);
+      const input = exactRecord(value, path, ["siteId", "mediaId"]);
+      if (!npIsCanonicalSiteId(input.siteId)) {
+        fail(`${path}.siteId`, "must be a canonical site id");
+      }
       return {
+        siteId: input.siteId,
         mediaId: uuid(input.mediaId, `${path}.mediaId`),
       } satisfies NpBuiltinJobPayloadMap["media:processImage"];
     }

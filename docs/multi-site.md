@@ -40,13 +40,13 @@ sites** keyed by hostname. Each site has its own:
 - **UI string overrides** — Phase D's `np_string_overrides`
   is per-site too, so each tenant can re-translate plugin
   strings independently.
+- **Media library** — media rows, folders, document references, processing
+  jobs, quotas, and Admin APIs are isolated by `site_id`.
 
 Shared across all sites:
 
 - **Plugin and theme code** (installed once at deploy time)
 - **User accounts** (`np_users`)
-- **Media** (`np_media`) — uploaded files are global; each
-  site's content references them via the same id.
 
 ---
 
@@ -63,6 +63,7 @@ np_sites          ← one row per tenant
   ├─ np_navigation
   ├─ np_site_memberships
   ├─ np_string_overrides
+  ├─ np_media / np_media_folders / np_media_refs
 ```
 
 **Why this model**:
@@ -138,8 +139,9 @@ claim is a new execution graph, potentially in another process. Site-aware
 jobs therefore persist `siteId` in their exact payload and register a
 `resolveSiteId` projection. The handler registry validates the payload again,
 then wraps the entire dispatch in the resolved site scope. NexPress does this
-for `content:afterSave` and `content:afterDelete`; scheduled publishing also
-runs each document's hooks and follow-up job in that document's site.
+for `content:afterSave`, `content:afterDelete`, and `media:processImage`;
+scheduled publishing also runs each document's hooks and follow-up job in that
+document's site.
 
 ---
 
@@ -339,11 +341,12 @@ the usage contract). Pass `cascade: true` (or `?cascade=true` on
 the admin API) to delete the dependent rows alongside. The usage
 scan, dependent deletes, and registry delete run in one transaction;
 an unavailable collection table or any delete failure aborts and
-rolls back the whole operation. Collection-owned revision history and
-media-reference rows are also removed by collection/document id even
-though those global tables do not carry `site_id`. The admin UI validates
-and displays the same exact site-scoped count contract before asking for
-confirmation.
+rolls back the whole operation. Collection-owned revision history is removed
+by collection/document id. Media references and folders are deleted by site;
+media rows are made unavailable in the transaction and retained as tombstones
+until the retryable global cleanup job reclaims their external storage objects.
+The admin UI validates and displays the same exact site-scoped count contract
+before asking for confirmation.
 
 `default` is a reserved, permanent id: its row must have
 `isDefault=true`, every other row must have `isDefault=false`, and
@@ -362,11 +365,6 @@ isolation know where the boundary stops:
 - **`np_users`** — accounts are global. Memberships
   (Phase 15.5+) decide which sites a user has rights on,
   so the intent is "one identity, many tenants."
-- **`np_media`** — uploads share a single bucket. Each
-  site's content references media by id; the same image
-  can be reused across tenants. A future "per-site media
-  ownership" surface would need a new column +
-  access-control hook. **Still a gap.**
 - **`np_audit_events`** — Phase 17 added a nullable
   `site_id` column + index. `recordAuditEvent` fills it
   from the current request's resolved site, so the audit

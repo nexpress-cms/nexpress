@@ -71,6 +71,7 @@ export interface NpContentAfterDeleteJobData {
 }
 
 export interface NpMediaProcessImageJobData {
+  siteId: string;
   mediaId: string;
 }
 

@@ -19,6 +19,7 @@ const adapter: NpStorageAdapter = {
 function mediaRecord(): NpMediaRecord {
   return {
     id: "bd134b0f-b9ea-4ff4-81ef-606e42e27703",
+    siteId: "default",
     filename: "photo.jpg",
     originalFilename: "photo.jpg",
     mimeType: "image/jpeg",

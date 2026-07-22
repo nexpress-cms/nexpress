@@ -1277,9 +1277,14 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
             ctx.options?.createId,
           );
     const persistedDocId = getRecordId(persistedDoc);
+    const persistedSiteId = requireDocumentSiteId(
+      persistedDoc,
+      `Persisted ${ctx.collection} document`,
+    );
 
     await syncMediaRefsForDocument(
       tx,
+      persistedSiteId,
       ctx.collection,
       persistedDocId,
       ctx.config.fields,
@@ -2250,6 +2255,7 @@ async function deleteDocumentImpl(
     source: "request",
     principal,
   });
+  const documentSiteId = requireDocumentSiteId(originalDoc, `Deleted ${collection} document`);
 
   const cascade = async (tx: DrizzleTransactionLike): Promise<void> => {
     await deleteChildTables(tx, registration.childTables, docId);
@@ -2257,7 +2263,7 @@ async function deleteDocumentImpl(
     await tx
       .delete(npMediaRefs)
       .where(
-        sql`${eq(getTableColumn(npMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "documentId"), docId)}`,
+        sql`${eq(npMediaRefs.siteId, documentSiteId)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "documentId"), docId)}`,
       );
     // Phase 9.7m: cascade comments + reactions on the deleted doc.
     // The polymorphic `(target_type, target_id)` shape on
@@ -3461,6 +3467,7 @@ function normalizeJoinIds(value: unknown): string[] {
 
 async function syncMediaRefsForDocument(
   tx: DrizzleTransactionLike,
+  siteId: string,
   collection: string,
   documentId: string,
   fields: NpFieldConfig[],
@@ -3472,7 +3479,7 @@ async function syncMediaRefsForDocument(
     await tx
       .delete(npMediaRefs)
       .where(
-        sql`${eq(getTableColumn(npMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
+        sql`${eq(npMediaRefs.siteId, siteId)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
       );
     return;
   }
@@ -3486,7 +3493,9 @@ async function syncMediaRefsForDocument(
   const activeRows = (await tx
     .select({ id: npMedia.id })
     .from(npMedia)
-    .where(sql`${inArray(npMedia.id, mediaIds)} and ${isNull(npMedia.deletedAt)}`)
+    .where(
+      sql`${eq(npMedia.siteId, siteId)} and ${inArray(npMedia.id, mediaIds)} and ${isNull(npMedia.deletedAt)}`,
+    )
     .orderBy(asc(npMedia.id))
     .for("key share")) as Array<{ id: string }>;
   const activeIds = new Set(activeRows.map((row) => row.id));
@@ -3503,11 +3512,12 @@ async function syncMediaRefsForDocument(
   await tx
     .delete(npMediaRefs)
     .where(
-      sql`${eq(getTableColumn(npMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
+      sql`${eq(npMediaRefs.siteId, siteId)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
     );
 
   const values = refs.map((ref) => ({
     id: randomUUID(),
+    siteId,
     mediaId: ref.mediaId,
     collection,
     documentId,

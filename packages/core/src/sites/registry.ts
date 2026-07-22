@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import { getAllCollectionSlugs, getCollectionTable } from "../collections/registry.js";
@@ -9,13 +9,14 @@ import {
   npComments,
   npContentViews,
   npFollows,
+  npMembers,
   npMemberMutes,
   npMemberRoles,
   npNotifications,
   npReactions,
   npReports,
 } from "../db/schema/community.js";
-import { npMediaRefs } from "../db/schema/media.js";
+import { npMedia, npMediaFolders, npMediaRefs } from "../db/schema/media.js";
 import {
   npNavigation,
   npPluginStorage,
@@ -26,6 +27,7 @@ import {
   npSites,
   npSlugHistory,
   npStringOverrides,
+  npUsers,
 } from "../db/schema/system.js";
 import { NpValidationError } from "../errors.js";
 import {
@@ -259,7 +261,6 @@ export async function updateSite(id: string, patch: NpUpdateSiteInput): Promise<
  *   - members (`np_members` is global; per-site enrollment
  *     happens through the site-scoped `bans` / `member_roles`
  *     tables which DO appear in usage)
- *   - media (`np_media` is global)
  *   - audit events with `site_id IS NULL` — those are
  *     intentional super-admin / background-job events that
  *     don't belong to any tenant.
@@ -316,6 +317,9 @@ async function getSiteUsageSummaryWithDb(
   // even though it owns thousands of community rows; deleting
   // it would silently leave them orphaned.
   const pluginStorage = await countWhere(npPluginStorage, eq(npPluginStorage.siteId, id));
+  const media = await countWhere(npMedia, eq(npMedia.siteId, id));
+  const mediaFolders = await countWhere(npMediaFolders, eq(npMediaFolders.siteId, id));
+  const mediaRefs = await countWhere(npMediaRefs, eq(npMediaRefs.siteId, id));
   const comments = await countWhere(npComments, eq(npComments.siteId, id));
   const contentViews = await countWhere(npContentViews, eq(npContentViews.siteId, id));
   const reactions = await countWhere(npReactions, eq(npReactions.siteId, id));
@@ -339,6 +343,9 @@ async function getSiteUsageSummaryWithDb(
     memberships,
     stringOverrides,
     pluginStorage,
+    media,
+    mediaFolders,
+    mediaRefs,
     comments,
     contentViews,
     reactions,
@@ -357,6 +364,9 @@ async function getSiteUsageSummaryWithDb(
       memberships +
       stringOverrides +
       pluginStorage +
+      media +
+      mediaFolders +
+      mediaRefs +
       comments +
       contentViews +
       reactions +
@@ -466,15 +476,17 @@ export async function deleteSite(id: string, options?: NpDeleteSiteOptions): Pro
           .select({ id: sql<string>`${idColumn}::text` })
           .from(table)
           .where(eq(siteIdColumn, id));
-        // These tables are intentionally global and identify their owner by
-        // collection + document id instead of site_id. Remove the rows while
-        // the owning documents are still available so site teardown does not
-        // leave revision history or media reference orphans. A SQL subquery
-        // keeps the operation bounded even for sites with many documents.
+        // Revisions identify their owner by collection + document id. Remove
+        // dependent rows while the documents are still available; a SQL
+        // subquery keeps the operation bounded for large sites.
         await tx
           .delete(npMediaRefs)
           .where(
-            and(eq(npMediaRefs.collection, slug), inArray(npMediaRefs.documentId, documentIds)),
+            and(
+              eq(npMediaRefs.siteId, id),
+              eq(npMediaRefs.collection, slug),
+              inArray(npMediaRefs.documentId, documentIds),
+            ),
           );
         await tx
           .delete(npRevisions)
@@ -500,6 +512,26 @@ export async function deleteSite(id: string, options?: NpDeleteSiteOptions): Pro
       await tx.delete(npBans).where(eq(npBans.siteId, id));
       await tx.delete(npMemberRoles).where(eq(npMemberRoles.siteId, id));
       await tx.delete(npComments).where(eq(npComments.siteId, id));
+
+      // Media bytes live outside Postgres, so deleting their rows inside this
+      // transaction would strand objects if the commit succeeds before the
+      // storage adapter can remove them. Make every asset unavailable now,
+      // remove its references/folder links, and let the global media cleanup
+      // job reclaim objects and tombstone rows through its retryable path.
+      const mediaIds = tx.select({ id: npMedia.id }).from(npMedia).where(eq(npMedia.siteId, id));
+      await tx
+        .delete(npMediaRefs)
+        .where(or(eq(npMediaRefs.siteId, id), inArray(npMediaRefs.mediaId, mediaIds)));
+      // Identity rows are process-global, but their legacy avatar column may
+      // still point at a site-owned asset. Clear those pointers before the
+      // tombstone is eventually hard-deleted.
+      await tx.update(npUsers).set({ avatar: null }).where(inArray(npUsers.avatar, mediaIds));
+      await tx.update(npMembers).set({ avatar: null }).where(inArray(npMembers.avatar, mediaIds));
+      await tx
+        .update(npMedia)
+        .set({ deletedAt: new Date(), updatedAt: new Date(), folderId: null })
+        .where(eq(npMedia.siteId, id));
+      await tx.delete(npMediaFolders).where(eq(npMediaFolders.siteId, id));
 
       await tx.delete(npStringOverrides).where(eq(npStringOverrides.siteId, id));
       await tx.delete(npSlugHistory).where(eq(npSlugHistory.siteId, id));

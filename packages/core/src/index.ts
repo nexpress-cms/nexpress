@@ -915,6 +915,7 @@ export {
   setCurrentSiteResolver,
   resetCurrentSiteResolver,
   getCurrentSiteId,
+  requireSiteId,
   withCurrentSite,
 } from "./sites/context.js";
 export {

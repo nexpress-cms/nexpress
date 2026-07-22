@@ -8,7 +8,7 @@ import {
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { requireAuth, requireGlobalAuth } from "../../../lib/auth-helpers";
+import { requireAuth } from "../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import { ensureFor } from "../../../lib/init-core";
 import { toMediaApiItem } from "../../../lib/media-response";
@@ -44,19 +44,19 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const user = await requireGlobalAuth(request);
+    const user = await requireAuth(request);
 
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("media", "delete");
     }
 
-    await ensureFor("read");
+    await ensureFor("write");
 
     const result = await deleteMedia(id);
 
     if (!result.deleted && result.references && result.references.length > 0) {
       throw new NpConflictError(
-        `Media ${id} is referenced by ${result.references.length.toString()} document(s).`,
+        `Media ${id} has ${result.references.length.toString()} active use(s).`,
         { referenceCount: result.references.length },
       );
     }

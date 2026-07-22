@@ -58,6 +58,9 @@ const SITE_USAGE_TABLES: ReadonlyArray<
   ["memberships", "np_site_memberships"],
   ["stringOverrides", "np_string_overrides"],
   ["pluginStorage", "np_plugin_storage"],
+  ["media", "np_media"],
+  ["mediaFolders", "np_media_folders"],
+  ["mediaRefs", "np_media_refs"],
   ["comments", "np_comments"],
   ["contentViews", "np_content_views"],
   ["reactions", "np_reactions"],
@@ -385,8 +388,9 @@ function DeleteSiteDialog({
                   className="mt-0.5"
                 />
                 <span className="min-w-0 break-words">
-                  Cascade-delete every row above. This is <strong>irreversible</strong> — there's no
-                  soft-delete or archive.
+                  Cascade-delete every row above. This is <strong>irreversible</strong>. Media is
+                  made unavailable immediately and its stored objects are reclaimed by the media
+                  cleanup job.
                 </span>
               </label>
             ) : null}

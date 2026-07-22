@@ -160,4 +160,38 @@ describe("shared application proxy rate limiting", () => {
     expect(response.status).toBe(200);
     expect(check).toHaveBeenCalledWith(expect.any(String), 120, 60_000);
   });
+
+  it("forwards the selected Admin site only to staff media-library routes", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "memory");
+    const { proxyModule } = await loadModules();
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: {
+        kind: "memory",
+        check: vi.fn().mockResolvedValue({ limited: false, retryAfterSeconds: 60 }),
+      },
+    });
+    const makeRequest = (path: string) =>
+      new NextRequest(`http://localhost${path}`, {
+        headers: {
+          cookie: "np-admin-site=tenant-a",
+          "x-forwarded-for": "203.0.113.8",
+        },
+      });
+
+    for (const path of [
+      "/api/media",
+      "/api/media/upload",
+      "/api/media/folders",
+      "/api/media/folders/11111111-1111-4111-8111-111111111111",
+      "/api/media/11111111-1111-4111-8111-111111111111",
+    ]) {
+      const response = await handler(makeRequest(path));
+      expect(response.headers.get("x-middleware-request-x-np-admin-site"), path).toBe("tenant-a");
+    }
+
+    const attachment = await handler(
+      makeRequest("/api/media/attachments/11111111-1111-4111-8111-111111111111"),
+    );
+    expect(attachment.headers.get("x-middleware-request-x-np-admin-site")).toBeNull();
+  });
 });

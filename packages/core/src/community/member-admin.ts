@@ -13,6 +13,7 @@ import { NpNotFoundError } from "../errors.js";
 import { deleteMedia } from "../media/service.js";
 import { npComments, npMembers } from "../db/schema/community.js";
 import { npMedia } from "../db/schema/media.js";
+import { requireSiteId } from "../sites/context.js";
 
 import { recordAuditEvent } from "./audit.js";
 import { staffDeleteComment } from "./comments.js";
@@ -132,10 +133,17 @@ export async function purgeMemberContent(
   //    `references` populated. Count those separately so the
   //    operator knows manual cleanup is still needed.
   const mediaDb = getDb();
+  const siteId = await requireSiteId();
   const liveMedia = (await mediaDb
     .select({ id: npMedia.id })
     .from(npMedia)
-    .where(and(eq(npMedia.uploadedByMemberId, memberId), isNull(npMedia.deletedAt)))) as Array<{
+    .where(
+      and(
+        eq(npMedia.siteId, siteId),
+        eq(npMedia.uploadedByMemberId, memberId),
+        isNull(npMedia.deletedAt),
+      ),
+    )) as Array<{
     id: string;
   }>;
   let mediaDeleted = 0;

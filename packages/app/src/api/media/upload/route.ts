@@ -1,12 +1,13 @@
 import {
   NpForbiddenError,
   NpValidationError,
+  requireSiteId,
   npMediaFolders,
   uploadMedia,
   can,
 } from "@nexpress/core";
 import { runHook } from "@nexpress/core/bootstrap";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "../../../lib/auth-helpers";
@@ -57,13 +58,14 @@ export async function POST(request: NextRequest) {
       typeof folderIdRaw === "string" && folderIdRaw.trim() ? folderIdRaw.trim() : undefined;
 
     await ensureFor("write");
+    const siteId = await requireSiteId();
     const db = getDb();
 
     if (folderId) {
       const [folder] = await db
         .select({ id: npMediaFolders.id })
         .from(npMediaFolders)
-        .where(eq(npMediaFolders.id, folderId))
+        .where(and(eq(npMediaFolders.siteId, siteId), eq(npMediaFolders.id, folderId)))
         .limit(1);
 
       if (!folder) {

@@ -3,6 +3,7 @@ import {
   NpForbiddenError,
   NpNotFoundError,
   NpValidationError,
+  requireSiteId,
   npMedia,
   npMediaFolders,
   can,
@@ -12,14 +13,15 @@ import { NextResponse } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { requireGlobalAuth } from "../../../../lib/auth-helpers";
+import { requireAuth } from "../../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import { getDb } from "../../../../lib/db";
+import { ensureFor } from "../../../../lib/init-core";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const user = await requireGlobalAuth(request);
+    const user = await requireAuth(request);
 
     if (!can(user, "content.publish")) {
       throw new NpForbiddenError("media-folders", "update");
@@ -34,11 +36,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       ]);
     }
 
+    await ensureFor("write");
+    const siteId = await requireSiteId();
     const db = getDb();
     const [updated] = await db
       .update(npMediaFolders)
       .set({ name })
-      .where(eq(npMediaFolders.id, id))
+      .where(and(eq(npMediaFolders.siteId, siteId), eq(npMediaFolders.id, id)))
       .returning();
 
     if (!updated) {
@@ -57,18 +61,20 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const user = await requireGlobalAuth(request);
+    const user = await requireAuth(request);
 
     if (!can(user, "admin.manage")) {
       throw new NpForbiddenError("media-folders", "delete");
     }
 
+    await ensureFor("write");
+    const siteId = await requireSiteId();
     const db = getDb();
 
     const [folder] = await db
       .select({ id: npMediaFolders.id })
       .from(npMediaFolders)
-      .where(eq(npMediaFolders.id, id))
+      .where(and(eq(npMediaFolders.siteId, siteId), eq(npMediaFolders.id, id)))
       .limit(1);
 
     if (!folder) {
@@ -78,7 +84,7 @@ export async function DELETE(
     const [mediaCount] = await db
       .select({ total: count() })
       .from(npMedia)
-      .where(and(eq(npMedia.folderId, id), isNull(npMedia.deletedAt)));
+      .where(and(eq(npMedia.siteId, siteId), eq(npMedia.folderId, id), isNull(npMedia.deletedAt)));
 
     if (Number(mediaCount.total) > 0) {
       throw new NpConflictError("Folder contains media files");
@@ -87,13 +93,15 @@ export async function DELETE(
     const [childCount] = await db
       .select({ total: count() })
       .from(npMediaFolders)
-      .where(eq(npMediaFolders.parentId, id));
+      .where(and(eq(npMediaFolders.siteId, siteId), eq(npMediaFolders.parentId, id)));
 
     if (Number(childCount.total) > 0) {
       throw new NpConflictError("Folder has child folders");
     }
 
-    await db.delete(npMediaFolders).where(eq(npMediaFolders.id, id));
+    await db
+      .delete(npMediaFolders)
+      .where(and(eq(npMediaFolders.siteId, siteId), eq(npMediaFolders.id, id)));
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {

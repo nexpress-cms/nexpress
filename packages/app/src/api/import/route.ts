@@ -251,6 +251,7 @@ async function preparePlugins(
 async function resolveMedia(
   payload: NpContentTransferEnvelope,
   referencedIds: ReadonlySet<string>,
+  siteId: string,
   addWarning: (message: string) => void,
 ): Promise<Map<string, string | null>> {
   const manifest = new Map(payload.media.map((item) => [item.id, item]));
@@ -282,7 +283,9 @@ async function resolveMedia(
           mimeType: npMedia.mimeType,
         })
         .from(npMedia)
-        .where(and(inArray(npMedia.hash, chunk), isNull(npMedia.deletedAt)))
+        .where(
+          and(eq(npMedia.siteId, siteId), inArray(npMedia.hash, chunk), isNull(npMedia.deletedAt)),
+        )
         .orderBy(asc(npMedia.id))),
     );
   }
@@ -307,7 +310,13 @@ async function resolveMedia(
           mimeType: npMedia.mimeType,
         })
         .from(npMedia)
-        .where(and(inArray(npMedia.filename, chunk), isNull(npMedia.deletedAt)))
+        .where(
+          and(
+            eq(npMedia.siteId, siteId),
+            inArray(npMedia.filename, chunk),
+            isNull(npMedia.deletedAt),
+          ),
+        )
         .orderBy(asc(npMedia.id))),
     );
   }
@@ -443,7 +452,13 @@ async function assertExternalRelationshipTargets(
           : await getDb()
               .select({ id: npMedia.id })
               .from(npMedia)
-              .where(and(inArray(npMedia.id, chunk), isNull(npMedia.deletedAt)));
+              .where(
+                and(
+                  eq(npMedia.siteId, siteId),
+                  inArray(npMedia.id, chunk),
+                  isNull(npMedia.deletedAt),
+                ),
+              );
       for (const row of rows) found.add(row.id);
     }
     for (const [id, path] of references) {
@@ -551,7 +566,7 @@ export async function POST(request: NextRequest) {
         },
       ]);
     }
-    const mediaMap = await resolveMedia(payload, referencedMediaIds, addWarning);
+    const mediaMap = await resolveMedia(payload, referencedMediaIds, siteId, addWarning);
 
     const preparedDocuments: PreparedDocument[] = [];
     const documentKeys = new Set<string>();

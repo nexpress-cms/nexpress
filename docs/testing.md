@@ -171,6 +171,7 @@ ignored `src/db/generated/*.ts` file cannot disappear in a clean clone.
 | `import-export.integration.test.ts` (18)                | exact v3 full/partial export, auth/query failures, definition-owned media, dry-run/projection, UUID idempotency, relationship ordering, atomic rollback, plugin cache, malformed state, and OpenAPI |
 | `translation-interchange-admin.integration.test.ts` (4) | Admin XLIFF/PO export, preview/apply, capability errors, and bounded upload rejection                                                                                                               |
 | `member-attachment.integration.test.ts` (5)             | signature validation, exact wire/OpenAPI, owner access/delete, public post visibility, reference deletion guard, and forum board/uploader policy                                                    |
+| `media-site-ownership.integration.test.ts` (3)          | site-stamped uploads/storage keys, cross-site read/list/delete/folder isolation, exact usage/cascade behavior, and doctor ownership diagnostics                                                     |
 | `member-profile-activity.integration.test.ts` (4)       | explicit collection opt-in, public member state, public/site visibility, stable exact document pagination, comment target anchors, and matching PII-free profile/activity HTTP wires                |
 
 The unit suites in `@nexpress/core`, `@nexpress/next`, and `@nexpress/app`
