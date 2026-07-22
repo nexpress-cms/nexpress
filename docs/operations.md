@@ -65,6 +65,11 @@ the exact external adapter kind, audience contract, and query-only/indexing
 capability. External dispatch/result-contract failures fall back to Postgres;
 index write/replace failures remain retryable; all runtime and terminal cleanup
 failures are counted and shown as warnings.
+Search reindex recovery runs through the `search:reindex` handler in
+`/admin/jobs`: choose a searchable collection, enqueue it, then inspect that
+job's bounded progress log. The internal bearer-token endpoint enqueues the
+same durable jobs and returns exact accepted/failed collection outcomes rather
+than keeping a full reindex inside one HTTP request.
 See [search.md](./search.md).
 
 ## Admin ops cockpit

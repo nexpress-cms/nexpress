@@ -125,6 +125,14 @@ describe("job runtime contract", () => {
         memberId: MEMBER_ID,
       }).ok,
     ).toBe(false);
+    expect(npAnalyzeJobPayload("search:reindex", { collection: "forum-posts" })).toEqual({
+      ok: true,
+      value: { collection: "forum-posts" },
+    });
+    expect(npAnalyzeJobPayload("search:reindex", { collection: "Forum Posts" }).ok).toBe(false);
+    expect(
+      npAnalyzeJobPayload("search:reindex", { collection: "forum-posts", extra: true }).ok,
+    ).toBe(false);
     expect(npAnalyzeJobPayload("media:cleanup", { unexpected: true }).ok).toBe(false);
     expect(npAnalyzeJobPayload("notifications:sendDigest", { cadence: "monthly" }).ok).toBe(false);
     expect(

@@ -180,8 +180,8 @@ was installed.
 frozen `NpSearchIndexReplaceContext` for a collection across all sites:
 `{ collection, siteId: "*", startedAt, documents }`. `documents` is a one-shot
 `AsyncIterable<NpSearchIndexUpsert>` so the adapter contract does not require
-one second in-memory document batch. The adapter must consume it completely before resolving,
-including for an empty collection. Resolving early, returning a value, or
+a second in-memory document batch. The adapter must consume it completely
+before resolving, including for an empty collection. Resolving early, returning a value, or
 throwing fails the reindex and increments `indexReplaceFailures`.
 
 Replacement is a concurrency contract as well as a transport API. Stage the
@@ -211,9 +211,33 @@ complete result contract, including required public audiences.
 `reindexCollection(slug)` accepts one canonical registered searchable
 collection, rebuilds its Postgres vectors, and, when the installed adapter
 declares `indexing`, replaces that external collection snapshot. It returns
-exact `{ collection, processed }`. The internal
-`POST /api/internal/reindex?collection=<slug>` endpoint rejects unknown,
-duplicate, or malformed query parameters and returns exact aggregate totals.
+exact `{ collection, processed }`. Both phases use an id-ordered cursor and
+fixed 100-row batches: the Postgres pass retains only one row batch, and the
+external pass selects only `id + siteId` before hydrating each latest document
+into the one-shot adapter stream. The implementation therefore no longer
+materializes a whole-collection row or id array in memory.
+
+Long-running operator work uses the exact built-in `search:reindex` job with
+payload `{ collection: "posts" }`. It retries from a fresh idempotent pass,
+records start/progress/completion in the standard job log, and uses a
+collection-keyed pg-boss stately queue so two workers never reindex the same
+collection concurrently. Different collections remain independently
+retryable. The queue has a six-hour expiry rather than pg-boss's short default.
+Producer and worker startup both create or reconcile that queue, so an internal
+trigger can safely run before the dedicated worker process comes online. The
+stately policy is fixed when the queue is created; startup fails with a repair
+instruction if an operator previously created that queue under another policy,
+because pg-boss does not permit in-place policy changes.
+
+The bearer-protected `POST /api/internal/reindex?collection=<slug>` endpoint
+now enqueues that durable job instead of holding the HTTP request open. Omit
+`collection` to enqueue each registered searchable collection independently.
+The exact 202 response is `{ requested, enqueued, failures }`, so a partial
+enqueue never hides which collection needs a retry. Unknown, duplicate, or
+malformed query parameters fail before queue access; a total enqueue failure
+returns 503, while an already queued or active request returns 409.
+`/admin/jobs` exposes the same handler with a selector derived from registered
+searchable collections instead of requiring hand-written JSON.
 
 Admin Health shows `built-in Postgres tsvector` or the exact external adapter
 kind plus its `document-v1` audience contract and `query-only` or indexing

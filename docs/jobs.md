@@ -120,6 +120,11 @@ The framework registers a handful of system handlers via
   lifecycle hooks have run once at the exact write boundary. The worker reads
   the latest persisted state, so stale jobs converge to upsert or delete;
   failures remain retryable.
+- `search:reindex` — exact `{ collection }` payload for a bounded Postgres
+  vector rebuild plus optional atomic external-index replacement. Runs for the
+  same collection are serialized across workers and receive a six-hour expiry;
+  a duplicate enqueue is rejected while one is queued or active. Start, every
+  1,000 processed rows, and completion reach the per-job log.
 - `media:processImage` — Sharp-driven resize pipeline
   (decoupled from the upload request)
 - `media:cleanup` — delete orphaned storage files
@@ -378,6 +383,8 @@ Common one-off runs:
 - `media:cleanup` with `{}` — sweep orphaned files
 - `system:revisionPrune` with `{}` — fire the prune now
   instead of waiting for 03:00
+- `search:reindex` — choose a searchable collection from the dedicated selector;
+  Admin sends the exact `{ "collection": "<slug>" }` payload
 
 ---
 

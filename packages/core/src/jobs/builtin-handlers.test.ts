@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const reindexCollection = vi.hoisted(() => vi.fn());
+
+vi.mock("../collections/search-api.js", () => ({
+  npReindexCollectionWithProgress: reindexCollection,
+}));
+
 import { configureBuiltinJobContext, registerBuiltinHandlers } from "./builtin-handlers.js";
 import { getJobHandler } from "./handlers.js";
 import { resetPlugins } from "../plugins/index.js";
@@ -38,6 +44,22 @@ describe("built-in media job contract", () => {
       "job.data(media:processImage).mediaId",
     );
     expect(processImage).toHaveBeenCalledTimes(1);
+  });
+
+  it("dispatches the exact durable search reindex payload through the job boundary", async () => {
+    reindexCollection.mockImplementation(async (collection, onProgress) => {
+      await onProgress?.({ phase: "postgres", processed: 1_000 });
+      return { collection, processed: 1_000 };
+    });
+    registerBuiltinHandlers();
+
+    await getJobHandler("search:reindex")?.({ collection: "posts" });
+
+    expect(reindexCollection).toHaveBeenCalledWith("posts", expect.any(Function));
+    await expect(
+      getJobHandler("search:reindex")?.({ collection: "Posts", extra: true }),
+    ).rejects.toThrow(/search:reindex/u);
+    expect(reindexCollection).toHaveBeenCalledTimes(1);
   });
 
   it("fails unknown plugin schedule jobs when no legacy dispatcher exists", async () => {

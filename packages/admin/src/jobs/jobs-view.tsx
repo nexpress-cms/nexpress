@@ -82,7 +82,11 @@ function isStateTab(tab: Tab): tab is StateTab {
   return tab !== "scheduled";
 }
 
-export function JobsView() {
+export interface JobsViewProps {
+  searchCollections?: readonly { slug: string; label: string }[];
+}
+
+export function JobsView({ searchCollections = [] }: JobsViewProps) {
   const [tab, setTab] = useState<Tab>("pending");
   const [jobs, setJobs] = useState<JobSummary[] | null>(null);
   const [supported, setSupported] = useState<boolean>(true);
@@ -362,6 +366,7 @@ export function JobsView() {
             supported={schedulesSupported}
             schedules={schedules}
             handlers={handlers}
+            searchCollections={searchCollections}
             onEnqueued={() => {
               void loadSchedules();
             }}
@@ -546,11 +551,13 @@ function SchedulesPanel({
   schedules,
   handlers,
   onEnqueued,
+  searchCollections,
 }: {
   supported: boolean;
   schedules: ScheduleSummary[] | null;
   handlers: string[];
   onEnqueued: () => void;
+  searchCollections: readonly { slug: string; label: string }[];
 }) {
   return (
     <div className="min-w-0 space-y-4">
@@ -655,7 +662,11 @@ function SchedulesPanel({
         </Card>
       </div>
 
-      <EnqueuePanel handlers={handlers} onEnqueued={onEnqueued} />
+      <EnqueuePanel
+        handlers={handlers}
+        onEnqueued={onEnqueued}
+        searchCollections={searchCollections}
+      />
     </div>
   );
 }
@@ -688,19 +699,29 @@ function scheduleKind(schedule: ScheduleSummary): {
   };
 }
 
-function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued: () => void }) {
+function EnqueuePanel({
+  handlers,
+  onEnqueued,
+  searchCollections,
+}: {
+  handlers: string[];
+  onEnqueued: () => void;
+  searchCollections: readonly { slug: string; label: string }[];
+}) {
   const [type, setType] = useState<string>("");
   const [dataText, setDataText] = useState<string>("{}");
+  const [searchCollection, setSearchCollection] = useState<string>("");
   const [busy, setBusy] = useState<boolean>(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const isSearchReindex = type === "search:reindex";
 
   async function submit() {
     setBusy(true);
     setMessage(null);
     setError(null);
-    let data: unknown = {};
-    if (dataText.trim().length > 0) {
+    let data: unknown = isSearchReindex ? { collection: searchCollection } : {};
+    if (!isSearchReindex && dataText.trim().length > 0) {
       try {
         data = JSON.parse(dataText);
       } catch {
@@ -754,7 +775,19 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
             <select
               id="np-job-enqueue-type"
               value={type}
-              onChange={(event) => setType(event.target.value)}
+              onChange={(event) => {
+                const nextType = event.target.value;
+                setType(nextType);
+                setMessage(null);
+                setError(null);
+                if (
+                  nextType === "search:reindex" &&
+                  searchCollection.length === 0 &&
+                  searchCollections.length === 1
+                ) {
+                  setSearchCollection(searchCollections[0]?.slug ?? "");
+                }
+              }}
               className="flex h-10 w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-3 text-[13px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 sm:h-8 sm:px-2.5"
             >
               <option value="">Select…</option>
@@ -765,23 +798,54 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
               ))}
             </select>
           </div>
-          <div className="min-w-0 space-y-1">
-            <label
-              htmlFor="np-job-enqueue-data"
-              className="text-xs font-medium text-muted-foreground"
-            >
-              Payload (JSON)
-            </label>
-            <textarea
-              id="np-job-enqueue-data"
-              value={dataText}
-              onChange={(event) => setDataText(event.target.value)}
-              rows={3}
-              spellCheck={false}
-              className="min-h-28 w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-3 py-2.5 font-mono text-[12px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 sm:min-h-0 sm:px-2.5 sm:py-2"
-              placeholder='{"docId": "..."}'
-            />
-          </div>
+          {isSearchReindex ? (
+            <div className="min-w-0 space-y-1">
+              <label
+                htmlFor="np-job-reindex-collection"
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Searchable collection
+              </label>
+              <select
+                id="np-job-reindex-collection"
+                value={searchCollection}
+                onChange={(event) => setSearchCollection(event.target.value)}
+                className="flex h-10 w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-3 text-[13px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 sm:h-8 sm:px-2.5"
+              >
+                <option value="">
+                  {searchCollections.length === 0 ? "No searchable collections" : "Select…"}
+                </option>
+                {searchCollections.map((collection) => (
+                  <option key={collection.slug} value={collection.slug}>
+                    {collection.label} ({collection.slug})
+                  </option>
+                ))}
+              </select>
+              <p className="break-words text-[11px] text-muted-foreground">
+                {searchCollections.length === 0
+                  ? "Register a collection with search enabled before running this handler."
+                  : "Rebuilds Postgres search vectors and any configured external index in a durable, retryable job."}
+              </p>
+            </div>
+          ) : (
+            <div className="min-w-0 space-y-1">
+              <label
+                htmlFor="np-job-enqueue-data"
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Payload (JSON)
+              </label>
+              <textarea
+                id="np-job-enqueue-data"
+                value={dataText}
+                onChange={(event) => setDataText(event.target.value)}
+                rows={3}
+                spellCheck={false}
+                className="min-h-28 w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-3 py-2.5 font-mono text-[12px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 sm:min-h-0 sm:px-2.5 sm:py-2"
+                placeholder='{"docId": "..."}'
+              />
+            </div>
+          )}
         </div>
         {error ? <p className="break-words text-xs text-destructive">{error}</p> : null}
         {message ? (
@@ -791,7 +855,7 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
           <Button
             size="sm"
             className="min-h-10 w-full sm:min-h-0 sm:w-auto"
-            disabled={busy || !type}
+            disabled={busy || !type || (isSearchReindex && !searchCollection)}
             onClick={() => void submit()}
           >
             {busy ? <Loader2 className="size-3 animate-spin" /> : <Play className="size-3" />}

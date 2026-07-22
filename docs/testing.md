@@ -148,6 +148,7 @@ describe.skipIf(skipIfNoTestDb())("my thing", () => {
 | `reset-token.integration.test.ts` (5)        | create→consume flow: password hash rotates, tokenVersion bumps, sessions delete                                                                                                                                                      |
 | `pipeline.integration.test.ts`               | saveDocument create/partial-update, exact storage hydration, site-stamped save/delete follow-up jobs, monotonic revision pruning, findDocuments round-trip, and transactional document/revision deletion                             |
 | `scheduled.integration.test.ts` (8)          | pipeline coerces published+future → scheduled; framework-managed `publishedAt` columns participate in scheduling; publishScheduledDocuments scopes hooks and exact follow-up payloads to each document site, then remains idempotent |
+| `search-reindex.integration.test.ts`         | 101-row fixture crosses the fixed 100-row keyset boundary for both Postgres-vector and external-reference scans without whole-collection materialization                                                                             |
 | `ctx-settings.integration.test.ts` (6)       | settings.getSite/getPlugin/setPlugin round-trip; theme.setTokens merges; ON CONFLICT prevents row duplication; capability gate                                                                                                       |
 
 **CLI templates (`packages/cli/src/templates.test.ts`):**

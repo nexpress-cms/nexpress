@@ -12,6 +12,7 @@ import {
   type NpNotificationDigestJobData,
   type NpPasswordResetJobData,
   type NpPluginScheduledTaskJobData,
+  type NpSearchReindexJobData,
 } from "../jobs-contract/index.js";
 import { registerJobHandler } from "./handlers.js";
 
@@ -97,6 +98,7 @@ export function registerBuiltinHandlers(): void {
   registerJobHandler("content:afterDelete", handleContentAfterDelete, {
     resolveSiteId: resolveContentJobSiteId,
   });
+  registerJobHandler("search:reindex", handleSearchReindex);
   registerJobHandler("content:publishScheduled", handleContentPublishScheduled);
   registerJobHandler("media:processImage", handleMediaProcessImage);
   registerJobHandler("media:cleanup", handleMediaCleanup);
@@ -153,6 +155,30 @@ async function syncContentSearchIndex(
   // other. The helper no-ops before DB access for query-only adapters.
   const { npSyncSearchIndexDocument } = await import("../collections/search-indexing.js");
   await npSyncSearchIndexDocument(jobData.collection, jobData.documentId, jobData.siteId);
+}
+
+async function handleSearchReindex(jobData: NpSearchReindexJobData): Promise<void> {
+  const { recordJobLog } = await import("./job-log.js");
+  const { npReindexCollectionWithProgress } = await import("../collections/search-api.js");
+  await recordJobLog("info", `Search reindex started for ${jobData.collection}.`, {
+    collection: jobData.collection,
+  });
+
+  const lastLogged = { postgres: 0, external: 0 };
+  const result = await npReindexCollectionWithProgress(jobData.collection, async (progress) => {
+    if (progress.processed - lastLogged[progress.phase] < 1_000) return;
+    lastLogged[progress.phase] = progress.processed;
+    await recordJobLog("info", `Search reindex ${progress.phase} progress.`, {
+      collection: jobData.collection,
+      phase: progress.phase,
+      processed: progress.processed,
+    });
+  });
+
+  await recordJobLog("info", `Search reindex completed for ${jobData.collection}.`, {
+    collection: result.collection,
+    processed: result.processed,
+  });
 }
 
 async function handleMediaProcessImage(payload: NpMediaProcessImageJobData): Promise<void> {

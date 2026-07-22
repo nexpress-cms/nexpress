@@ -53,18 +53,20 @@ describe("Admin jobs API inputs", () => {
   });
 
   it("requires exact enqueue and pause bodies", () => {
-    expect(npParseEnqueueJobBody({ type: "search:reindex", data: { scope: "all" } })).toEqual({
-      type: "search:reindex",
-      data: { scope: "all" },
-    });
-    expect(() => npParseEnqueueJobBody({ type: "search:reindex", data: {}, extra: true })).toThrow(
-      /Invalid input/u,
+    expect(npParseEnqueueJobBody({ type: "search:customReindex", data: { scope: "all" } })).toEqual(
+      {
+        type: "search:customReindex",
+        data: { scope: "all" },
+      },
     );
+    expect(() =>
+      npParseEnqueueJobBody({ type: "search:customReindex", data: {}, extra: true }),
+    ).toThrow(/Invalid input/u);
     expect(() => npParseEnqueueJobBody({ type: "not-canonical", data: {} })).toThrow(
       /Invalid input/u,
     );
     expect(() =>
-      npParseEnqueueJobBody({ type: "search:reindex", data: { bad: undefined } }),
+      npParseEnqueueJobBody({ type: "search:customReindex", data: { bad: undefined } }),
     ).toThrow(/Invalid input/u);
     expect(npParseJobId("job-1")).toBe("job-1");
     expect(() => npParseJobId("")).toThrow(/Invalid input/u);
@@ -76,7 +78,7 @@ describe("Admin jobs API inputs", () => {
     expect(() => npParseEmptyJobBody({ extra: true })).toThrow(/Invalid input/u);
     expect(() => npParseEmptyJobQuery(new URLSearchParams("extra=true"))).toThrow(/Invalid input/u);
 
-    const inherited = Object.create({ type: "search:reindex" }) as Record<string, unknown>;
+    const inherited = Object.create({ type: "search:customReindex" }) as Record<string, unknown>;
     inherited.data = {};
     expect(() => npParseEnqueueJobBody(inherited)).toThrow(/Invalid input/u);
 

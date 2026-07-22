@@ -11,7 +11,7 @@ import { getCurrentSiteId } from "../sites/context.js";
 describe("custom job handler contracts", () => {
   it("runs an additive custom parser before enqueue and dispatch", async () => {
     const handler = vi.fn<(data: { documentId: string }) => Promise<void>>();
-    registerJobHandler("search:reindex", handler, {
+    registerJobHandler("search:customReindex", handler, {
       parsePayload(data) {
         if (
           typeof data !== "object" ||
@@ -27,16 +27,18 @@ describe("custom job handler contracts", () => {
       },
     });
 
-    expect(normalizeRegisteredJobPayload("search:reindex", { documentId: "post-1" })).toEqual({
-      documentId: "post-1",
-    });
-    expect(() => normalizeRegisteredJobPayload("search:reindex", {})).toThrow(
+    expect(normalizeRegisteredJobPayload("search:customReindex", { documentId: "post-1" })).toEqual(
+      {
+        documentId: "post-1",
+      },
+    );
+    expect(() => normalizeRegisteredJobPayload("search:customReindex", {})).toThrow(
       "documentId is required",
     );
 
-    await getJobHandler("search:reindex")?.({ documentId: "post-2" });
+    await getJobHandler("search:customReindex")?.({ documentId: "post-2" });
     expect(handler).toHaveBeenCalledWith({ documentId: "post-2" });
-    await expect(getJobHandler("search:reindex")?.({ documentId: 42 })).rejects.toThrow(
+    await expect(getJobHandler("search:customReindex")?.({ documentId: 42 })).rejects.toThrow(
       "documentId is required",
     );
   });

@@ -435,6 +435,14 @@ function parseBuiltinPayload(
         ...parseIdentity(input, path),
       } satisfies NpBuiltinJobPayloadMap["content:afterDelete"];
     }
+    case "search:reindex": {
+      const input = exactRecord(value, path, ["collection"]);
+      const collection = boundedString(input.collection, `${path}.collection`, 63);
+      if (!COLLECTION_PATTERN.test(collection)) {
+        fail(`${path}.collection`, "must be a collection slug");
+      }
+      return { collection } satisfies NpBuiltinJobPayloadMap["search:reindex"];
+    }
     case "media:processImage": {
       const input = exactRecord(value, path, ["mediaId"]);
       return {

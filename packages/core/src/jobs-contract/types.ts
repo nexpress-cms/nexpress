@@ -1,6 +1,7 @@
 export const NP_BUILTIN_JOB_TYPES = [
   "content:afterSave",
   "content:afterDelete",
+  "search:reindex",
   "content:publishScheduled",
   "media:processImage",
   "media:cleanup",
@@ -72,6 +73,10 @@ export interface NpMediaProcessImageJobData {
   mediaId: string;
 }
 
+export interface NpSearchReindexJobData {
+  collection: string;
+}
+
 export interface NpPluginScheduledTaskJobData {
   pluginId: string;
   taskId: string;
@@ -114,6 +119,7 @@ export interface NpWordPressImportApplyJobData {
 export interface NpBuiltinJobPayloadMap {
   "content:afterSave": NpContentAfterSaveJobData;
   "content:afterDelete": NpContentAfterDeleteJobData;
+  "search:reindex": NpSearchReindexJobData;
   "content:publishScheduled": NpEmptyJobData;
   "media:processImage": NpMediaProcessImageJobData;
   "media:cleanup": NpEmptyJobData;

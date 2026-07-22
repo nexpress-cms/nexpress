@@ -151,6 +151,36 @@ describe("external search index synchronization", () => {
     expect(replaceCollection).toHaveBeenCalledOnce();
   });
 
+  it("accepts one-shot async document references without materializing the inventory", async () => {
+    const received: string[] = [];
+    setSearchAdapter({
+      kind: "capture",
+      audience: "document-v1",
+      search: () => null,
+      indexing: {
+        contract: "document-v1",
+        write: vi.fn(),
+        replaceCollection: async (context) => {
+          for await (const document of context.documents) received.push(document.documentId);
+        },
+      },
+    });
+    hydrate.mockImplementation((_collection, id) => persistedDocument(id as string));
+    let yielded = 0;
+    async function* refs() {
+      await Promise.resolve();
+      for (const documentId of ["post-1", "post-2"]) {
+        yielded += 1;
+        yield { documentId, siteId: "default" };
+      }
+    }
+
+    await npReplaceSearchCollectionIndex("forum-posts", refs(), "2026-07-22T00:00:00.000Z");
+
+    expect(yielded).toBe(2);
+    expect(received).toEqual(["post-1", "post-2"]);
+  });
+
   it("fails retryably on non-void writes and incomplete replacements", async () => {
     setSearchAdapter({
       kind: "malformed",

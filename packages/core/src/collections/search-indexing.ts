@@ -13,6 +13,9 @@ interface SearchIndexDocumentRef {
   readonly siteId: string;
 }
 
+type SearchIndexDocumentRefSource =
+  Iterable<SearchIndexDocumentRef> | AsyncIterable<SearchIndexDocumentRef>;
+
 function collectionSupportsSearch(collection: string): boolean {
   const table = getCollectionTable(collection) as Record<string, unknown>;
   return table.searchVector !== undefined;
@@ -85,7 +88,7 @@ export async function npSyncSearchIndexDocument(
 /** Reindex boundary: stream and atomically replace one collection across all sites. */
 export async function npReplaceSearchCollectionIndex(
   collection: string,
-  refs: readonly SearchIndexDocumentRef[],
+  refs: SearchIndexDocumentRefSource,
   startedAt: string,
 ): Promise<void> {
   const adapter = getSearchAdapter();
@@ -96,7 +99,7 @@ export async function npReplaceSearchCollectionIndex(
   let completed = false;
   const audienceAware = indexingAudienceAware(collection);
   async function* streamDocuments(): AsyncGenerator<NpSearchIndexUpsert> {
-    for (const ref of refs) {
+    for await (const ref of refs) {
       const mutation = await createLatestMutation(collection, ref.documentId, ref.siteId);
       if (mutation.operation === "upsert") yield mutation;
     }

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { asc, eq, gt } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import { findDocuments } from "./pipeline.js";
@@ -42,6 +42,14 @@ const TOKEN_MATCH_WEIGHT = {
 const TITLE_EXACT_BOOST = 180;
 const TITLE_PREFIX_BOOST = 100;
 const TITLE_PHRASE_BOOST = 60;
+const SEARCH_REINDEX_BATCH_SIZE = 100;
+
+export interface NpSearchReindexProgress {
+  readonly phase: "postgres" | "external";
+  readonly processed: number;
+}
+
+type SearchReindexProgressHandler = (progress: NpSearchReindexProgress) => void | Promise<void>;
 
 function hasSearchVectorColumn(table: PgTable): boolean {
   return (table as unknown as Record<string, unknown>).searchVector !== undefined;
@@ -383,6 +391,14 @@ function getTableColumn(table: PgTable, key: string): AnyPgColumn {
  * safe to run against a live collection while writes continue.
  */
 export async function reindexCollection(slug: string): Promise<NpSearchReindexResult> {
+  return npReindexCollectionWithProgress(slug);
+}
+
+/** Internal job boundary that adds progress without widening the public result contract. */
+export async function npReindexCollectionWithProgress(
+  slug: string,
+  onProgress?: SearchReindexProgressHandler,
+): Promise<NpSearchReindexResult> {
   const startedAt = new Date().toISOString();
   const collection = npRequireSearchCollectionSlug(slug, "search.reindex.collection");
   let config: NpCollectionConfig;
@@ -411,36 +427,78 @@ export async function reindexCollection(slug: string): Promise<NpSearchReindexRe
 
   const db = getDb();
   const idCol = getTableColumn(table, "id");
-  const rows = (await db.select().from(table)) as Array<Record<string, unknown>>;
+  const siteIdCol = getTableColumn(table, "siteId");
 
   let processed = 0;
-  for (const row of rows) {
-    // Phase 10.7 — match the pipeline's write path:
-    //   1. Wrap in `to_tsvector('english', $)` so Postgres
-    //      tokenizes the source text rather than parsing it
-    //      as raw tsvector syntax (the colon-content bug
-    //      that 11.x fixed for createMainDocument /
-    //      updateMainDocument). Reindex was a parallel write
-    //      path missing the same fix.
-    //   2. Apply the weighted setweight() composition so
-    //      title fields outrank body fields, matching the
-    //      pipeline.
-    const weighted = buildWeightedSearchVectorSql(config, row);
-    await db
-      .update(table)
-      .set({ searchVector: weighted })
-      .where(eq(idCol, row.id as string));
-    processed += 1;
+  let cursor: string | null = null;
+  while (true) {
+    const query = db.select().from(table);
+    const rows = (await (cursor === null
+      ? query.orderBy(asc(idCol)).limit(SEARCH_REINDEX_BATCH_SIZE)
+      : query
+          .where(gt(idCol, cursor))
+          .orderBy(asc(idCol))
+          .limit(SEARCH_REINDEX_BATCH_SIZE))) as Array<Record<string, unknown>>;
+    if (rows.length === 0) break;
+
+    for (const row of rows) {
+      const documentId = requireReindexIdentity(row.id, "document id");
+      // Phase 10.7 — match the pipeline's write path:
+      //   1. Wrap in `to_tsvector('english', $)` so Postgres
+      //      tokenizes the source text rather than parsing it
+      //      as raw tsvector syntax (the colon-content bug
+      //      that 11.x fixed for createMainDocument /
+      //      updateMainDocument). Reindex was a parallel write
+      //      path missing the same fix.
+      //   2. Apply the weighted setweight() composition so
+      //      title fields outrank body fields, matching the
+      //      pipeline.
+      const weighted = buildWeightedSearchVectorSql(config, row);
+      await db.update(table).set({ searchVector: weighted }).where(eq(idCol, documentId));
+      processed += 1;
+      cursor = documentId;
+    }
+    await onProgress?.({ phase: "postgres", processed });
   }
 
-  await npReplaceSearchCollectionIndex(
-    collection,
-    rows.map((row) => ({
-      documentId: row.id as string,
-      siteId: row.siteId as string,
-    })),
-    startedAt,
-  );
+  async function* streamDocumentRefs(): AsyncGenerator<{
+    readonly documentId: string;
+    readonly siteId: string;
+  }> {
+    let externalCursor: string | null = null;
+    let externalProcessed = 0;
+    while (true) {
+      const query = db.select({ documentId: idCol, siteId: siteIdCol }).from(table);
+      const refs = (await (externalCursor === null
+        ? query.orderBy(asc(idCol)).limit(SEARCH_REINDEX_BATCH_SIZE)
+        : query
+            .where(gt(idCol, externalCursor))
+            .orderBy(asc(idCol))
+            .limit(SEARCH_REINDEX_BATCH_SIZE))) as Array<{
+        documentId: unknown;
+        siteId: unknown;
+      }>;
+      if (refs.length === 0) break;
+
+      for (const ref of refs) {
+        const documentId = requireReindexIdentity(ref.documentId, "document id");
+        const siteId = requireReindexIdentity(ref.siteId, "site id");
+        yield { documentId, siteId };
+        externalProcessed += 1;
+        externalCursor = documentId;
+      }
+      await onProgress?.({ phase: "external", processed: externalProcessed });
+    }
+  }
+
+  await npReplaceSearchCollectionIndex(collection, streamDocumentRefs(), startedAt);
 
   return npRequireSearchReindexResult({ collection, processed });
+}
+
+function requireReindexIdentity(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`Search reindex ${label} must be a non-empty string.`);
+  }
+  return value;
 }

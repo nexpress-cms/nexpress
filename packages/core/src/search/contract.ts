@@ -16,6 +16,9 @@ import {
   type NpSearchDocumentValue,
   type NpSearchIndexMutation,
   type NpSearchIndexingAdapter,
+  type NpSearchReindexEnqueueFailure,
+  type NpSearchReindexEnqueueResponse,
+  type NpSearchReindexEnqueuedJob,
   type NpSearchReindexResult,
   type NpSearchReindexResponse,
   type NpSearchRequest,
@@ -46,6 +49,8 @@ export const npSearchContractLimits = {
   offset: 10_000,
   queryLength: 256,
   resultDocumentIdLength: 200,
+  reindexFailureMessageLength: 500,
+  reindexJobIdLength: 200,
 } as const;
 
 export const npSearchCollectionSlugPattern = "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$";
@@ -82,6 +87,9 @@ const itemKeys = new Set(["collection", "doc", "score"]);
 const facetKeys = new Set(["collection", "label", "count", "selected"]);
 const reindexResultKeys = new Set(["collection", "processed"]);
 const reindexResponseKeys = new Set(["total", "collections"]);
+const reindexEnqueueResponseKeys = new Set(["requested", "enqueued", "failures"]);
+const reindexEnqueuedJobKeys = new Set(["collection", "id"]);
+const reindexEnqueueFailureKeys = new Set(["collection", "message"]);
 const apiQueryKeys = new Set(["q", "collections", "limit", "page", "offset", "locale"]);
 const reindexQueryKeys = new Set(["collection"]);
 const documentStatuses = new Set<string>(npSearchDocumentStatuses);
@@ -1913,4 +1921,171 @@ export function npRequireSearchReindexResponse(
   path = "search.reindex.response",
 ): NpSearchReindexResponse {
   return requireParsed(parseReindexResponse(value, path), "Invalid search reindex response");
+}
+
+function parseReindexEnqueuedJob(value: unknown, path: string): Parsed<NpSearchReindexEnqueuedJob> {
+  const issues: NpSearchContractIssue[] = [];
+  const inspected = inspectRecord(value, path, issues);
+  if (!inspected) return fail(issues);
+  pushUnknownFields(inspected, reindexEnqueuedJobKeys, path, issues);
+  const collection = parseCollectionSlug(inspected.fields.collection, `${path}.collection`, issues);
+  const id = parseBoundedText(
+    inspected.fields.id,
+    `${path}.id`,
+    npSearchContractLimits.reindexJobIdLength,
+    issues,
+  );
+  if (issues.length > 0 || !collection || !id) return fail(issues);
+  return { issues, value: Object.freeze({ collection, id }) };
+}
+
+function parseReindexEnqueueFailure(
+  value: unknown,
+  path: string,
+): Parsed<NpSearchReindexEnqueueFailure> {
+  const issues: NpSearchContractIssue[] = [];
+  const inspected = inspectRecord(value, path, issues);
+  if (!inspected) return fail(issues);
+  pushUnknownFields(inspected, reindexEnqueueFailureKeys, path, issues);
+  const collection = parseCollectionSlug(inspected.fields.collection, `${path}.collection`, issues);
+  const message = parseBoundedText(
+    inspected.fields.message,
+    `${path}.message`,
+    npSearchContractLimits.reindexFailureMessageLength,
+    issues,
+  );
+  if (issues.length > 0 || !collection || !message) return fail(issues);
+  return { issues, value: Object.freeze({ collection, message }) };
+}
+
+function parseBoundedText(
+  value: unknown,
+  path: string,
+  maximum: number,
+  issues: NpSearchContractIssue[],
+): string | null {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > maximum ||
+    value !== value.trim() ||
+    !isWellFormedUnicode(value) ||
+    hasUnsafeTextCodePoint(value, false)
+  ) {
+    issues.push(
+      issue(
+        "invalid-field",
+        path,
+        `must be safe text of at most ${maximum.toString()} characters.`,
+      ),
+    );
+    return null;
+  }
+  return value;
+}
+
+function parseReindexEnqueueResponse(
+  value: unknown,
+  path: string,
+): Parsed<NpSearchReindexEnqueueResponse> {
+  const issues: NpSearchContractIssue[] = [];
+  const inspected = inspectRecord(value, path, issues);
+  if (!inspected) return fail(issues);
+  pushUnknownFields(inspected, reindexEnqueueResponseKeys, path, issues);
+  const rawEnqueued = inspectArray(
+    inspected.fields.enqueued,
+    `${path}.enqueued`,
+    npSearchContractLimits.collectionCount,
+    issues,
+  );
+  const rawFailures = inspectArray(
+    inspected.fields.failures,
+    `${path}.failures`,
+    npSearchContractLimits.collectionCount,
+    issues,
+  );
+  const enqueued: NpSearchReindexEnqueuedJob[] = [];
+  const failures: NpSearchReindexEnqueueFailure[] = [];
+  const seenCollections = new Set<string>();
+  const seenJobIds = new Set<string>();
+
+  if (rawEnqueued) {
+    for (const [index, entry] of rawEnqueued.entries()) {
+      const itemPath = `${path}.enqueued.${index.toString()}`;
+      const parsed = parseReindexEnqueuedJob(entry, itemPath);
+      issues.push(...parsed.issues);
+      if (!parsed.value) continue;
+      if (seenCollections.has(parsed.value.collection)) {
+        issues.push(issue("duplicate", `${itemPath}.collection`, "collection must be unique."));
+      } else {
+        seenCollections.add(parsed.value.collection);
+      }
+      if (seenJobIds.has(parsed.value.id)) {
+        issues.push(issue("duplicate", `${itemPath}.id`, "job id must be unique."));
+      } else {
+        seenJobIds.add(parsed.value.id);
+      }
+      enqueued.push(parsed.value);
+    }
+  }
+  if (rawFailures) {
+    for (const [index, entry] of rawFailures.entries()) {
+      const itemPath = `${path}.failures.${index.toString()}`;
+      const parsed = parseReindexEnqueueFailure(entry, itemPath);
+      issues.push(...parsed.issues);
+      if (!parsed.value) continue;
+      if (seenCollections.has(parsed.value.collection)) {
+        issues.push(issue("duplicate", `${itemPath}.collection`, "collection must be unique."));
+      } else {
+        seenCollections.add(parsed.value.collection);
+      }
+      failures.push(parsed.value);
+    }
+  }
+  const requested = inspected.fields.requested;
+  if (
+    !Number.isSafeInteger(requested) ||
+    (requested as number) < 1 ||
+    (requested as number) > npSearchContractLimits.collectionCount
+  ) {
+    issues.push(
+      issue(
+        "invalid-field",
+        `${path}.requested`,
+        `must be an integer between 1 and ${npSearchContractLimits.collectionCount.toString()}.`,
+      ),
+    );
+  } else if (requested !== enqueued.length + failures.length) {
+    issues.push(
+      issue("invariant", `${path}.requested`, "must equal enqueued plus failed collections."),
+    );
+  }
+  if (issues.length > 0 || !rawEnqueued || !rawFailures || typeof requested !== "number") {
+    return fail(issues);
+  }
+  return {
+    issues,
+    value: Object.freeze({
+      requested,
+      enqueued: Object.freeze(enqueued),
+      failures: Object.freeze(failures),
+    }),
+  };
+}
+
+export function npAnalyzeSearchReindexEnqueueResponse(
+  value: unknown,
+  path = "search.reindex.enqueue",
+): NpSearchContractValidationResult<NpSearchReindexEnqueueResponse> {
+  return validationResult(parseReindexEnqueueResponse(value, path));
+}
+
+export function npRequireSearchReindexEnqueueResponse(
+  value: unknown,
+  path = "search.reindex.enqueue",
+): NpSearchReindexEnqueueResponse {
+  return requireParsed(
+    parseReindexEnqueueResponse(value, path),
+    "Invalid search reindex enqueue response",
+  );
 }
