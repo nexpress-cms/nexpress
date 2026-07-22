@@ -64,6 +64,10 @@ documents, and malformed Unicode fail the contract.
 Every result document must include a stable string `id`, canonical `siteId`,
 canonical `status`, and `visibility`. Public searches additionally require
 `status: "published"`, `visibility: "public"`, and the exact current site.
+For a collection that declares `community.audience: true`, adapter results must
+also include its canonical `audience`; public searches accept only `public`.
+Missing, malformed, `members`, or `private` values fail the adapter result
+contract before counts, facets, cache, or callers can observe the page.
 Those required fields are represented statically by `NpSearchResultDocument`;
 all other document fields use the recursive `NpSearchDocumentValue` JSON type.
 Collection/id pairs must be unique. `perCollection` must include every
@@ -84,7 +88,10 @@ import { createBootstrap } from "@nexpress/next";
 
 const searchAdapter: NpSearchAdapter = {
   kind: "meilisearch",
+  audience: "document-v1",
   async search(context) {
+    // Apply context.audience.mode to every slug listed in
+    // context.audience.collections before calculating hits or counts.
     const page = await searchIndex(context);
     return {
       results: page.hits,
@@ -101,11 +108,23 @@ const bootstrap = createBootstrap({
 });
 ```
 
-The adapter descriptor is exact: canonical `kind`, `search()`, and optional
-terminal `shutdown()` that must resolve to void. Its
-`NpSearchAdapterContext` always contains normalized `q`, `limit`, `offset`,
-resolved `siteId`, and `visibility`, plus optional `collections` and `locale`.
-It owns only the candidate envelope: `results`, `total`, and `perCollection`.
+The adapter descriptor is exact: canonical `kind`, required
+`audience: "document-v1"`, `search()`, and optional terminal `shutdown()` that
+must resolve to void. Existing adapters must add that declaration and apply the
+new scope before upgrading. `NpSearchAdapterContext` contains normalized `q`,
+`limit`, `offset`, resolved `siteId`, and `visibility`, plus optional
+`collections` and `locale`. Its required framework-derived `audience` object is
+exactly `{ mode: "public" | "all", collections: string[] }`. The list contains
+only selected collections that opted into `community.audience`; it can be empty
+or represent one subset of a mixed catalog. Adapters must filter both hits and
+`total` / `perCollection` counts by that scope. They own only the candidate
+envelope: `results`, `total`, and `perCollection`.
+
+Framework code that previously constructed an adapter context directly should
+first build an exact `NpSearchResolvedRequest`, then call
+`resolveSearchAdapterContext()` after collections are registered. The resolver
+derives the complete audience inventory from active collection definitions;
+callers must not guess or accept that inventory from an HTTP request.
 
 Return `null`/`undefined` to deliberately use the built-in Postgres path. A
 throwing adapter or malformed adapter result is contained, reported through
@@ -124,9 +143,11 @@ globally reranks the bounded candidates. Locale filtering applies to i18n
 collections and is ignored by non-i18n collections.
 
 The public Next cache key includes site, normalized query, collection order,
-limit, offset, locale, and visibility. Cross-site `siteId: "*"` and trusted
-`visibility: "all"` requests are rejected before the public cache. Both cache
-hits and the direct fallback path revalidate the complete result contract.
+limit, offset, locale, visibility, the `document-v1` contract marker, audience
+mode, and the ordered audience-aware collection subset. Cross-site
+`siteId: "*"` and trusted `visibility: "all"` requests are rejected before the
+public cache. Both cache hits and the direct fallback path revalidate the
+complete result contract, including required public audiences.
 
 ## Reindex and operations
 
@@ -136,6 +157,7 @@ collection and returns exact `{ collection, processed }`. The internal
 duplicate, or malformed query parameters and returns exact aggregate totals.
 
 Admin Health shows `built-in Postgres tsvector` or the exact external adapter
-kind. Contained dispatch, result-contract, and shutdown failures produce a
-warning with the last failure. Process code can read the same counters with
+kind plus its `document-v1` audience contract. Contained dispatch,
+result-contract, and shutdown failures produce a warning with the last failure.
+Process code can read the same counters and active audience contract with
 `getSearchAdapterDiagnostics()`.

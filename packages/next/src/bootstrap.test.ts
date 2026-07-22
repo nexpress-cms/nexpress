@@ -121,6 +121,7 @@ describe("createBootstrap", () => {
   it("installs and closes an injected search adapter with read lifecycle ownership", async () => {
     const searchAdapter = {
       kind: "meilisearch",
+      audience: "document-v1" as const,
       search: vi.fn(() => null),
       shutdown: vi.fn(() => Promise.resolve()),
     };
@@ -138,7 +139,11 @@ describe("createBootstrap", () => {
   });
 
   it("detaches an injected search adapter during retryable read rollback", async () => {
-    const searchAdapter = { kind: "meilisearch", search: vi.fn(() => null) };
+    const searchAdapter = {
+      kind: "meilisearch",
+      audience: "document-v1" as const,
+      search: vi.fn(() => null),
+    };
     const bootstrap = createBootstrap({
       config: buildConfig(),
       generatedSchema: {},

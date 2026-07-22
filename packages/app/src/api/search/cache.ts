@@ -4,6 +4,7 @@ import {
   NpSearchContractError,
   getSearchCollectionLabels,
   npRequireSearchAdapterContext,
+  npRequireSearchResolvedRequest,
   npRequireSearchResult,
   type NpSearchAdapterContext,
   type NpSearchRequestInput,
@@ -46,11 +47,14 @@ export function buildSearchCacheKeyParts(input: NpSearchAdapterContext): string[
     request.offset.toString(),
     request.locale ?? "",
     request.visibility,
+    "document-v1",
+    request.audience.mode,
+    request.audience.collections.join(","),
   ];
 }
 
 export function buildSearchCacheTags(siteId: string): string[] {
-  const request = npRequireSearchAdapterContext({
+  const request = npRequireSearchResolvedRequest({
     q: "",
     limit: 1,
     offset: 0,
@@ -72,10 +76,23 @@ export function buildSearchCacheTags(siteId: string): string[] {
 export async function searchWithShortTtlCache(args: CachedSearchArgs): Promise<NpSearchResult> {
   const request = npRequireSearchAdapterContext(args.request);
   const collectionLabels = getSearchCollectionLabels(request.collections);
-  const cached = unstable_cache(() => args.search(request), buildSearchCacheKeyParts(request), {
-    tags: buildSearchCacheTags(request.siteId),
-    revalidate: SEARCH_CACHE_REVALIDATE_SECONDS,
-  });
+  const searchRequest: NpSearchRequestInput = {
+    q: request.q,
+    ...(request.collections ? { collections: request.collections } : {}),
+    limit: request.limit,
+    offset: request.offset,
+    ...(request.locale ? { locale: request.locale } : {}),
+    siteId: request.siteId,
+    visibility: request.visibility,
+  };
+  const cached = unstable_cache(
+    () => args.search(searchRequest),
+    buildSearchCacheKeyParts(request),
+    {
+      tags: buildSearchCacheTags(request.siteId),
+      revalidate: SEARCH_CACHE_REVALIDATE_SECONDS,
+    },
+  );
 
   try {
     const result = await cached();
@@ -84,7 +101,7 @@ export async function searchWithShortTtlCache(args: CachedSearchArgs): Promise<N
     // `unstable_cache` requires Next's incremental cache store. Tests that
     // invoke handlers directly use the same contract on the uncached path.
     if (error instanceof Error && /incrementalCache/i.test(error.message)) {
-      const result = await args.search(request);
+      const result = await args.search(searchRequest);
       return npRequireSearchResult(result, request, collectionLabels, "search.cache.result");
     }
     throw error;

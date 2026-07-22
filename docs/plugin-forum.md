@@ -227,9 +227,10 @@ commands in [Attachments](#attachments).
 whose default is `public`. Core consumes the same declaration for comments,
 reactions, follows, reports, mentions, profile activity, search, sitemap/feed,
 and attachment downloads. Invalid persisted values fail closed and reach
-Doctor. Public cross-collection search stays on the built-in Postgres path
-when its catalog contains an audience-aware collection; external adapters do
-not yet receive a viewer-audience proof in their request contract.
+Doctor. Public cross-collection search gives a `document-v1` external adapter
+the exact audience-aware collection subset and accepts only `public` Forum
+hits. Missing or restricted audience fields invalidate the complete adapter
+page and fall back to the built-in Postgres path.
 The board collection additionally declares `audienceCategoryField: "id"`, so
 an exact board-scoped category moderator can read and subscribe to that
 moderator-only board without granting site-wide access.

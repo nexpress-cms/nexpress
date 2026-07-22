@@ -26,6 +26,7 @@ interface HealthTestRuntime {
   cachePartial: number;
   cacheUnavailable: number;
   searchAdapterKind: string | null;
+  searchAudienceContract: "document-v1" | null;
   searchDispatchFailures: number;
   searchResultFailures: number;
   searchShutdownFailures: number;
@@ -50,6 +51,7 @@ const runtime = vi.hoisted<HealthTestRuntime>(() => ({
   cachePartial: 0,
   cacheUnavailable: 0,
   searchAdapterKind: null,
+  searchAudienceContract: null,
   searchDispatchFailures: 0,
   searchResultFailures: 0,
   searchShutdownFailures: 0,
@@ -133,6 +135,7 @@ vi.mock("@nexpress/core/search", async (importOriginal) => {
     ...actual,
     getSearchAdapterDiagnostics: () => ({
       adapterKind: runtime.searchAdapterKind,
+      audienceContract: runtime.searchAudienceContract,
       dispatchFailures: runtime.searchDispatchFailures,
       resultContractFailures: runtime.searchResultFailures,
       shutdownFailures: runtime.searchShutdownFailures,
@@ -239,6 +242,7 @@ afterEach(() => {
   runtime.cachePartial = 0;
   runtime.cacheUnavailable = 0;
   runtime.searchAdapterKind = null;
+  runtime.searchAudienceContract = null;
   runtime.searchDispatchFailures = 0;
   runtime.searchResultFailures = 0;
   runtime.searchShutdownFailures = 0;
@@ -322,18 +326,23 @@ describe("live search health", () => {
 
   it("reports an exact healthy external adapter kind", () => {
     runtime.searchAdapterKind = "meilisearch";
+    runtime.searchAudienceContract = "document-v1";
     expect(checkSearchAdapter()).toEqual(
-      expect.objectContaining({ state: "ok", detail: "external (meilisearch)" }),
+      expect.objectContaining({
+        state: "ok",
+        detail: "external (meilisearch) · document-v1",
+      }),
     );
   });
 
   it("surfaces contained adapter result failures", () => {
     runtime.searchAdapterKind = "meilisearch";
+    runtime.searchAudienceContract = "document-v1";
     runtime.searchResultFailures = 2;
     expect(checkSearchAdapter()).toEqual(
       expect.objectContaining({
         state: "warn",
-        detail: "meilisearch · 2 failures contained",
+        detail: "meilisearch · document-v1 · 2 failures contained",
         hint: expect.stringContaining("result-contract"),
       }),
     );
@@ -341,11 +350,12 @@ describe("live search health", () => {
 
   it("surfaces terminal cleanup failures in the same diagnostic row", () => {
     runtime.searchAdapterKind = "meilisearch";
+    runtime.searchAudienceContract = "document-v1";
     runtime.searchShutdownFailures = 1;
     expect(checkSearchAdapter()).toEqual(
       expect.objectContaining({
         state: "warn",
-        detail: "meilisearch · 1 failure contained",
+        detail: "meilisearch · document-v1 · 1 failure contained",
         hint: expect.stringContaining("shutdown"),
       }),
     );

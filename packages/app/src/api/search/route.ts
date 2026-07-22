@@ -3,7 +3,7 @@ import { NP_DEFAULT_SITE_ID, getCurrentSiteId } from "@nexpress/core/sites";
 import {
   NpSearchContractError,
   npParseSearchApiQuery,
-  npRequireSearchAdapterContext,
+  resolveSearchAdapterContext,
   searchCollections,
   type NpSearchRequest,
 } from "@nexpress/core/search";
@@ -57,10 +57,10 @@ export async function GET(request: NextRequest) {
     const localizedRequest = { ...parsed, ...(locale ? { locale } : {}) };
     await ensureFor("read");
     const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-    const searchRequest = npRequireSearchAdapterContext({ ...localizedRequest, siteId });
+    const searchRequest = resolveSearchAdapterContext({ ...localizedRequest, siteId });
     const result =
       searchRequest.q.length === 0
-        ? await searchCollections(searchRequest)
+        ? await searchCollections({ ...localizedRequest, siteId })
         : await searchWithShortTtlCache({
             request: searchRequest,
             search: searchCollections,

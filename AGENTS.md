@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-21 (community document audiences now use one
+**Last refreshed:** 2026-07-21 (external search adapters now declare and
+consume one exact document-audience v1 scope; audience-aware collections can
+stay on external indexes while malformed or restricted hits fail closed.)
+
+**Earlier:** 2026-07-21 (community document audiences now use one
 fail-closed public/member/private contract across Forum boards and posts,
 community actions, discovery, profiles, notifications, attachments, Admin,
 Doctor, both skins, and generated migrations.)
@@ -604,16 +608,17 @@ the same Core types rather than structural mirrors. Author guide: `docs/seo.md`.
 
 ### Search
 
-`@nexpress/core/search` owns the exact bounded search request, normalized
+`@nexpress/core/search` owns the exact bounded search request, resolved request,
 adapter context, candidate result, public result, and reindex contracts. Public
 search is always current-site, published, and public; trusted Core callers may
 explicitly request `visibility: "all"` or the cross-site `"*"` sentinel, but
-neither scope may enter the public Next cache. External adapters return
-only candidates; Core validates document JSON/site/status/visibility/count
-invariants and derives facets/pagination. Throws and malformed results are
-diagnosed and fall back to Postgres. Pass `searchAdapter` to `createBootstrap()`
-for owned read lifecycle wiring and optional terminal `shutdown()`. Author/ops
-guide: `docs/search.md`.
+neither scope may enter the public Next cache. External adapters declare
+`audience: "document-v1"`; their exact context identifies every selected
+audience-aware collection and its `public | all` mode. Core validates document
+JSON/site/status/visibility/audience/count invariants and derives
+facets/pagination. Throws and malformed results are diagnosed and fall back to
+Postgres. Pass `searchAdapter` to `createBootstrap()` for owned read lifecycle
+wiring and optional terminal `shutdown()`. Author/ops guide: `docs/search.md`.
 
 ### Storage
 
@@ -742,7 +747,7 @@ These are the public APIs we'll honor with semver and migration notes. Breaking 
 - **Content transfer contract** — `@nexpress/core/content-transfer` owns the exact bounded v3 `full | partial` envelope, canonical inventories, media/relationship projections, document ordering, and import report. Export derives media only from definition-owned fields and never truncates collections; import preflights active definitions, preserves document UUIDs, orders new relationship targets, and applies all database mutations in one outer transaction. The active collection OpenAPI uses the same envelope. Author/operator docs: [docs/content-transfer.md](./docs/content-transfer.md).
 - **Capability vocabulary** — `can(user, capability)` and the existing capability strings: `"admin.manage"`, `"content.publish"`, `"content.author"`, `"community.moderate"`. New capability strings will be added; existing ones won't be renamed or removed in 0.x.
 - **Subpath exports** — `@nexpress/core/api-contract`, `/auth`, `/auth-contract`, `/cache`, `/collection-contract`, `/collections`, `/community`, `/community-contract`, `/content-transfer`, `/db`, `/discovery`, `/email`, `/fields`, `/i18n-contract`, `/i18n`, `/jobs`, `/jobs-contract`, `/media`, `/media-contract`, `/navigation`, `/observability`, `/rate-limit`, `/revisions`, `/routes`, `/search`, `/seo`, `/settings`, `/sites`, `/storage`, `/theme`. Symbols inside each are stable per the rules above. `/bootstrap` is the experimental framework-host exception below.
-- **Adapters** — `NpStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NpJobQueue` (with `PgBossAdapter`), `NpLogger` + `setLogger`, `NpErrorReporter` + `setErrorReporter`, `NpEmailAdapter` + `setEmailAdapter` / `sendEmail`, `NpRateLimiterAdapter` + `npCheckRateLimit` / `npShutdownRateLimiter`, and `NpCacheInvalidationAdapter` / `NpCdnPurgeAdapter`. Storage keys/metadata and adapter Web-stream/URL/boolean/void results are exact; storage adapter kinds are canonical lowercase identifiers and may expose void-returning `shutdown()`. Cache invalidation requests/results are exact and bounded; CDN purge/shutdown resolves to void. Email messages are exact single-recipient objects; rate-limit requests and decisions are exact bounded objects. Adapter kinds are canonical lowercase identifiers, and successful send/shutdown hooks resolve to void. Optional methods (e.g. `NpJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
+- **Adapters** — `NpStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NpJobQueue` (with `PgBossAdapter`), `NpLogger` + `setLogger`, `NpErrorReporter` + `setErrorReporter`, `NpEmailAdapter` + `setEmailAdapter` / `sendEmail`, `NpRateLimiterAdapter` + `npCheckRateLimit` / `npShutdownRateLimiter`, `NpSearchAdapter`, and `NpCacheInvalidationAdapter` / `NpCdnPurgeAdapter`. Storage keys/metadata and adapter Web-stream/URL/boolean/void results are exact; storage adapter kinds are canonical lowercase identifiers and may expose void-returning `shutdown()`. Search adapters declare `audience: "document-v1"`, consume the exact framework-derived `public | all` audience scope, and return scoped documents with canonical audiences. Cache invalidation requests/results are exact and bounded; CDN purge/shutdown resolves to void. Email messages are exact single-recipient objects; rate-limit requests and decisions are exact bounded objects. Adapter kinds are canonical lowercase identifiers, and successful send/shutdown hooks resolve to void. Optional methods (e.g. `NpJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
 - **`NpPrincipal` union** — adding a variant is breaking (every `switch (principal.kind)` site needs updating, enforced by `_exhaustive: never`). The existing `"staff"` / `"member"` shape is committed.
 - **Block authoring and content** — `NpBlockDefinition` (`type`, `label`, `defaultProps`, exact `propsSchema`, `acceptsChildren?`, `render(props, children?)`) and the `NpBlockInstance` wire shape (`id`, `type`, `props`, optional exact `layout: { colSpan, mdColSpan?, lgColSpan? }`, optional `children: NpBlockInstance[]`). `NpBlockPropField` is the closed v1 discriminated union for `text`, `textarea`, `number`, `boolean`, `select`, `url`, `richtext`, `image`, `color`, `collection`, and object-only `array`; type-specific metadata/defaults, scalar sibling conditions, and recursive item schemas are validated before registration and across Admin/discovery/OpenAPI. The experimental alias-only `media` field is not part of v1. Every layout span is an integer from 1–12; the built-in grid consumes direct-child layout while every tree transform preserves it. `NpBlockContent` is the stored array type. `@nexpress/core/fields`, `@nexpress/blocks`, and `@nexpress/blocks/contracts` share `npValidateBlockContent` and `isNpBlockContent`; collection writes, generated types, OpenAPI, patterns, Admin JSON/paste/preview, translation, and unknown-block operations use that contract. Instance ids are unique across the whole tree; unknown/inactive block types remain structurally valid so content survives plugin/theme removal. Adding optional fields to the definition or instance is non-breaking. `NpBlockMetadata` (= `NpBlockDefinition` minus `render`) is the serializable subset the admin uses for the picker / props form. The shared registry helpers `registerBlock`, `getRegisteredBlocks`, `getRegisteredBlockMetadata`, `getSharedRegistry` are stable. The lightweight `@nexpress/blocks/contracts` subpath also exports `npValidateBlockDefinition`, `npAnalyzeBlockDefinitions`, and `npBlockPropFieldTypes`. Author docs: `docs/block-content.md` and `docs/plugin-blocks.md`.
 - **Plugin block contribution** — `definePlugin({ blocks: NpBlockDefinition[] })`. Definition, bootstrap, registry, and doctor validation reject malformed definitions/props schemas and same-plugin duplicate types before registration. The bootstrap (`@nexpress/next`) registers each enabled plugin block into the shared registry at boot. Same-source re-registration is idempotent for HMR/reload; cross-source type collisions remain last-loaded-wins with a warning. Author docs: `docs/plugin-blocks.md`.

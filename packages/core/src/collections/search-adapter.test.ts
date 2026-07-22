@@ -15,16 +15,25 @@ afterEach(() => {
 
 describe("search adapter runtime", () => {
   it("installs one canonical descriptor and resets stale diagnostics on replacement", () => {
-    const first = setSearchAdapter({ kind: "algolia", search: vi.fn(() => null) });
+    const first = setSearchAdapter({
+      kind: "algolia",
+      audience: "document-v1",
+      search: vi.fn(() => null),
+    });
     npRecordSearchAdapterFailure("algolia", "dispatch", new Error("offline"));
     expect(getSearchAdapterDiagnostics()).toEqual(
       expect.objectContaining({ adapterKind: "algolia", dispatchFailures: 1 }),
     );
 
-    const second = setSearchAdapter({ kind: "meilisearch", search: vi.fn(() => null) });
+    const second = setSearchAdapter({
+      kind: "meilisearch",
+      audience: "document-v1",
+      search: vi.fn(() => null),
+    });
     expect(second).not.toBe(first);
     expect(getSearchAdapterDiagnostics()).toEqual({
       adapterKind: "meilisearch",
+      audienceContract: "document-v1",
       dispatchFailures: 0,
       resultContractFailures: 0,
       shutdownFailures: 0,
@@ -58,6 +67,7 @@ describe("search adapter runtime", () => {
     const shutdown = vi.fn(() => Promise.resolve());
     const installed = setSearchAdapter({
       kind: "meilisearch",
+      audience: "document-v1",
       search: vi.fn(() => null),
       shutdown,
     });
@@ -68,6 +78,7 @@ describe("search adapter runtime", () => {
 
     const malformed = setSearchAdapter({
       kind: "malformed",
+      audience: "document-v1",
       search: vi.fn(() => null),
       shutdown: () => Promise.resolve("not-void" as never),
     });
@@ -78,8 +89,16 @@ describe("search adapter runtime", () => {
   });
 
   it("does not detach a replacement when an older owner shuts down", () => {
-    const first = setSearchAdapter({ kind: "algolia", search: vi.fn(() => null) });
-    const second = setSearchAdapter({ kind: "meilisearch", search: vi.fn(() => null) });
+    const first = setSearchAdapter({
+      kind: "algolia",
+      audience: "document-v1",
+      search: vi.fn(() => null),
+    });
+    const second = setSearchAdapter({
+      kind: "meilisearch",
+      audience: "document-v1",
+      search: vi.fn(() => null),
+    });
 
     resetSearchAdapter(first);
     expect(getSearchAdapter()).toBe(second);
