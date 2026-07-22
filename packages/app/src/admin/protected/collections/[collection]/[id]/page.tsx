@@ -2,6 +2,7 @@ import {
   getCollectionConfig,
   getCollectionTabsForSlug,
   getDocumentById,
+  listEnabledPluginIds,
   verifyTokenFull,
 } from "@nexpress/core";
 import { CollectionEditView } from "@nexpress/admin/client";
@@ -52,15 +53,18 @@ export default async function EditPage({ params }: Props) {
   const activeTheme = await getCachedActiveTheme();
   const activeThemeId = activeTheme?.manifest.id ?? null;
 
-  const tabs: CollectionTabDescriptor[] = getCollectionTabsForSlug(collection).map((tab) => ({
-    pluginId: tab.pluginId,
-    pluginName: tab.pluginName,
-    id: tab.id,
-    label: tab.label,
-    widgets: tab.widgets,
-    actions: tab.actions,
-    description: tab.description,
-  }));
+  const activePluginIds = new Set(await listEnabledPluginIds(getDb()));
+  const tabs: CollectionTabDescriptor[] = getCollectionTabsForSlug(collection, activePluginIds).map(
+    (tab) => ({
+      pluginId: tab.pluginId,
+      pluginName: tab.pluginName,
+      id: tab.id,
+      label: tab.label,
+      widgets: tab.widgets,
+      actions: tab.actions,
+      description: tab.description,
+    }),
+  );
 
   return (
     <CollectionEditView

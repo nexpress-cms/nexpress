@@ -8,6 +8,7 @@ import {
   type NpErrorReportContext,
 } from "../observability/error-reporter.js";
 import { resetCacheInvalidationAdapter, setCacheInvalidationAdapter } from "../cache/runtime.js";
+import { resetEnabledGate, setPluginEnabledForTest } from "./enabled-gate.js";
 
 // The context module pulls in `getDb`, media, and storage adapter singletons
 // transitively. The tests below only exercise surfaces that DON'T touch
@@ -244,6 +245,8 @@ describe("ctx.cache", () => {
 });
 
 describe("ctx.actions", () => {
+  afterEach(() => resetEnabledGate());
+
   it("passes the runtime context into registered action handlers", async () => {
     const ctx = buildCtx({ config: { mode: "test" } });
     ctx.actions.register("inspectCtx", (_data, actionCtx) =>
@@ -263,6 +266,70 @@ describe("ctx.actions", () => {
         config: { mode: "test" },
       },
     });
+  });
+
+  it("rebuilds setup action context at dispatch for site-scoped config", async () => {
+    const registration = { actions: new Map() };
+    const ctx = createPluginRuntimeContext({
+      pluginId: "scoped-plugin",
+      capabilities: [],
+      allowedHosts: [],
+      config: { site: "bootstrap" },
+      registration,
+      lookupRegistration: () => registration,
+      resolveActionContext: () => Promise.resolve({ config: { site: "tenant-a" } }),
+    }) as {
+      actions: {
+        register(
+          actionName: string,
+          handler: (
+            data: unknown,
+            actionCtx: { config: Record<string, unknown> },
+          ) => Promise<{ ok: boolean; data?: unknown }>,
+        ): void;
+        dispatch(pluginId: string, actionName: string): Promise<unknown>;
+      };
+    };
+
+    ctx.actions.register("config", (_data, actionCtx) =>
+      Promise.resolve({ ok: true, data: actionCtx.config }),
+    );
+
+    await expect(ctx.actions.dispatch("scoped-plugin", "config")).resolves.toEqual({
+      ok: true,
+      data: { site: "tenant-a" },
+    });
+  });
+
+  it("does not dispatch into a plugin disabled for the active site", async () => {
+    const handler = vi.fn(() => Promise.resolve({ ok: true }));
+    const target = { actions: new Map([["run", handler]]) };
+    const source = { actions: new Map() };
+    const ctx = createPluginRuntimeContext({
+      pluginId: "source-plugin",
+      capabilities: [],
+      allowedHosts: [],
+      config: {},
+      registration: source,
+      lookupRegistration: (pluginId) => (pluginId === "target-plugin" ? target : undefined),
+    }) as {
+      actions: {
+        dispatch(
+          pluginId: string,
+          actionName: string,
+        ): Promise<{
+          ok: boolean;
+          error?: string;
+        }>;
+      };
+    };
+    setPluginEnabledForTest("target-plugin", false);
+
+    await expect(ctx.actions.dispatch("target-plugin", "run")).resolves.toEqual({
+      ok: false,
+      error: 'Plugin "target-plugin" is disabled for the active site',
+    });
+    expect(handler).not.toHaveBeenCalled();
   });
 
   it("records setup registration kinds and validates typed results", async () => {

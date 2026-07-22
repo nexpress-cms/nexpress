@@ -1,7 +1,7 @@
 import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { createBlockRegistry } from "./registry.js";
+import { createBlockRegistry, registerBlock, resetSharedBlockRegistry } from "./registry.js";
 import { renderBlocks } from "./render-blocks.js";
 
 describe("renderBlocks definition contract", () => {
@@ -37,6 +37,37 @@ describe("renderBlocks definition contract", () => {
   it("keeps unknown plugin content visible as a preservation placeholder", () => {
     const tree = renderBlocks([{ id: "old-1", type: "plugin.disabled", props: {} }]);
     expect(renderToStaticMarkup(tree)).toContain("Unknown block type: plugin.disabled");
+  });
+
+  it("validates and renders against the active owner after a block collision", async () => {
+    resetSharedBlockRegistry();
+    registerBlock({
+      type: "shared-card",
+      label: "First",
+      source: "plugin:first",
+      defaultProps: {},
+      propsSchema: [],
+      render: () => <div>first owner</div>,
+    });
+    registerBlock({
+      type: "shared-card",
+      label: "Second",
+      source: "plugin:second",
+      defaultProps: {},
+      propsSchema: [
+        { name: "title", label: "Title", type: "text", translatable: true, required: true },
+      ],
+      render: () => <div>second owner</div>,
+    });
+
+    const tree = renderBlocks([{ id: "card-1", type: "shared-card", props: {} }], {
+      ctx: {
+        activeSources: { themeId: null, pluginIds: new Set(["first"]) },
+      } as never,
+    });
+    const markup = await new Response(await renderToReadableStream(tree)).text();
+    expect(markup).toContain("first owner");
+    resetSharedBlockRegistry();
   });
 
   it("renders grid child spans from the top-level layout contract", async () => {

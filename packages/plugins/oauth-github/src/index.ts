@@ -33,10 +33,9 @@ import { z } from "zod";
  * `audience` setting to `member` if the GitHub app is registered for
  * the member callback instead.
  *
- * **Reload required for admin-form changes**: `setup()` reads
- * config once at boot. If the operator updates credentials via
- * the admin form, hit `/admin/plugins/reload` (or restart the
- * process) for the new values to take effect.
+ * Admin-form config is resolved inside the current site scope for every OAuth
+ * request. Credential, scope, audience, and activation changes therefore do
+ * not require a plugin reload and cannot bleed across sites.
  */
 
 // Re-exports kept for back-compat with sites that imported the
@@ -73,7 +72,7 @@ export const githubOAuthPlugin = definePlugin<GitHubOAuthConfig>({
     author: { name: "NexPress" },
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
-    capabilities: ["network:fetch"],
+    capabilities: ["network:fetch", "settings:read"],
     allowedHosts: ["github.com", "api.github.com"],
     provides: {
       blocks: [],
@@ -104,32 +103,47 @@ export const githubOAuthPlugin = definePlugin<GitHubOAuthConfig>({
     const envSecret = process.env.NP_OAUTH_GITHUB_CLIENT_SECRET;
     const envHasAny = Boolean(envId || envSecret);
     const envHasBoth = Boolean(envId && envSecret);
-    const audience = ctx.config.audience ?? "staff";
     if (envHasAny && !envHasBoth) {
       ctx.log.error(
         "GitHub OAuth env vars are partial — set BOTH NP_OAUTH_GITHUB_CLIENT_ID and NP_OAUTH_GITHUB_CLIENT_SECRET, or unset both to fall back to the admin form. Refusing to mix env and DB credentials for the same provider.",
       );
       return;
     }
-    const clientId = envHasBoth ? envId! : ctx.config.clientId;
-    const clientSecret = envHasBoth ? envSecret! : ctx.config.clientSecret;
-    if (!clientId || !clientSecret) {
-      ctx.log.info(
-        "GitHub OAuth not configured; skipping provider registration. Set NP_OAUTH_GITHUB_CLIENT_ID and NP_OAUTH_GITHUB_CLIENT_SECRET, or fill the admin form at /admin/plugins/oauth-github.",
-      );
-      return;
-    }
+
+    const resolveSiteOptions = async () => {
+      const config = configSchema.parse(await ctx.settings.getPlugin());
+      return {
+        audience: config.audience,
+        clientId: envHasBoth ? envId! : config.clientId,
+        clientSecret: envHasBoth ? envSecret! : config.clientSecret,
+        scopes: config.scopes,
+      };
+    };
+    const resolveSiteProvider = async () => {
+      const options = await resolveSiteOptions();
+      if (!options.clientId || !options.clientSecret) {
+        throw new Error(
+          "GitHub OAuth is not configured for the current site. Set both environment variables or complete the plugin config form.",
+        );
+      }
+      return createGitHubOAuthProvider(options);
+    };
+
     registerOAuthProvider({
-      ...createGitHubOAuthProvider({
-        clientId,
-        clientSecret,
-        scopes: ctx.config.scopes,
-      }),
-      audiences: [audience],
+      id: "github",
+      label: "GitHub",
+      sourcePluginId: "oauth-github",
+      audiences: ["staff", "member"],
+      isAvailable: async (audience) => {
+        const options = await resolveSiteOptions();
+        return Boolean(options.clientId && options.clientSecret) && options.audience === audience;
+      },
+      authorize: async (params) => (await resolveSiteProvider()).authorize(params),
+      exchange: async (params) => (await resolveSiteProvider()).exchange(params),
     });
     ctx.log.info("GitHub OAuth provider registered", {
-      source: envHasBoth ? "env" : "admin",
-      audience,
+      credentials: envHasBoth ? "environment" : "site-config",
+      resolution: "request-time",
     });
   },
 });

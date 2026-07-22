@@ -96,9 +96,10 @@ as persisted collection content; see [`block-content.md`](block-content.md).
 ## Block references
 
 Shape validation runs while `definePlugin()` evaluates. Full block-reference
-validation runs in bootstrap, when the host knows the enabled contribution set:
+validation runs in bootstrap, when the host knows the configured contribution
+set:
 
-- Plugin patterns may use built-in blocks and blocks from enabled plugins.
+- Plugin patterns may use built-in blocks and blocks from configured plugins.
 - Theme patterns may additionally use blocks from their own theme.
 - A plugin pattern must not depend on a theme-only block because the pattern is
   visible independently of which theme is active.
@@ -111,6 +112,11 @@ every known instance against the registered block's prop and container contract,
 so a required prop, invalid option, malformed nested array, or forbidden child
 fails before the pattern enters Admin.
 
+At site read time, the picker keeps only patterns whose source and every nested
+block owner are active for that site. Cross-source ID/type collisions retain
+registration order, so disabling the last owner restores the previous active
+owner rather than hiding the contribution entirely.
+
 ## Validation and collisions
 
 The same contract is enforced at four boundaries:
@@ -120,10 +126,12 @@ The same contract is enforced at four boundaries:
 3. `registerPattern()` validates the concrete source and registered block types.
 4. `nexpress ops plugins doctor --json` reports static contract and ownership issues.
 
-Same-plugin duplicate IDs are errors. Different plugins still use the shared
-last-loaded-wins registry, but both static doctor and the runtime registry emit
-operator-visible ownership diagnostics. Namespace IDs with the contributor,
-for example `acme.notice-section`.
+Same-plugin duplicate IDs are errors. Different plugins use one shared
+registration-order registry: the global compatibility view is last-loaded,
+while each site resolves the last active owner and can fall back to an earlier
+one. Static doctor and the runtime registry still emit operator-visible
+ownership diagnostics. Namespace IDs with the contributor, for example
+`acme.notice-section`.
 
 | Check ID                          | State   | Meaning                                                    |
 | --------------------------------- | ------- | ---------------------------------------------------------- |

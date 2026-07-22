@@ -4,6 +4,7 @@ import {
   findDocuments,
   getAllCollectionSlugs,
   getCollectionConfig,
+  listEnabledPluginIds,
   npCollectionDocumentToWriteInput,
   saveDocument,
   type NpAuthUser,
@@ -22,6 +23,7 @@ import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response
 import { requireAuth } from "../../../../lib/auth-helpers";
 import { validateDocumentBlockContent } from "../../../../lib/block-content-validation";
 import { ensureFor } from "../../../../lib/init-core";
+import { getDb } from "../../../../lib/db";
 
 /**
  * v0.3 (C) — bulk "cleanup unknown blocks" admin action.
@@ -129,7 +131,7 @@ export async function POST(request: NextRequest) {
         { ...row, [doc.fieldName]: stripped.kept },
         getCollectionConfig(doc.collection),
       );
-      validateDocumentBlockContent(doc.collection, updatedData);
+      await validateDocumentBlockContent(doc.collection, updatedData);
       await saveDocument(doc.collection, doc.docId, updatedData, user);
       removedInstances += stripped.removed;
       updatedDocs += 1;
@@ -155,7 +157,8 @@ async function getKnownTypes(): Promise<Set<string>> {
   // "from inactive theme" placeholders, i.e. candidates to
   // strip).
   const themeId = (await getCachedActiveThemeId()) ?? null;
-  return new Set(getRegisteredBlocksForActiveSources({ themeId }).map((b) => b.type));
+  const pluginIds = new Set(await listEnabledPluginIds(getDb()));
+  return new Set(getRegisteredBlocksForActiveSources({ themeId, pluginIds }).map((b) => b.type));
 }
 
 async function scanUnknownBlocks(user: NpAuthUser): Promise<UnknownBlocksReport> {

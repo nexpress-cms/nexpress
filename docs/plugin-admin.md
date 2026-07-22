@@ -9,6 +9,30 @@ bundle.
 For the 5% case where you need bespoke UI (charts, WYSIWYG, live
 dashboards): serve a separate page from a plugin route and link to it.
 
+## Site activation
+
+Plugin packages and handler registries are installed once per server process;
+sites do not load separate copies of plugin code. `/admin/plugins` instead
+controls a sparse `np_site_plugins(site_id, plugin_id, enabled)` activation
+override for the currently selected site. A missing override means active, so
+new sites automatically see configured plugins without one row per plugin.
+
+Every runtime surface uses the same activation snapshot: hooks, API/page
+routes, action execution, Dashboard widgets, collection tabs, public discovery
+and OpenAPI, blocks, patterns, page templates, translation catalogs,
+plugin-owned OAuth providers, content transfer, and scheduled executions.
+Plugin inventory, configuration, and contract metadata remain inspectable in
+the plugin-management page even while disabled. Turning a plugin off on site A
+has no effect on site B and does not require “Reload all”. Config remains
+separate in the site's `plugin.config:<id>` setting.
+
+`np_plugins` is only the process-global installed/configured inventory. Ops
+mutations therefore require an explicit site:
+
+```bash
+pnpm --silent run ops:plugins -- disable reading-time --site default --execute --approve plugin-disable --json
+```
+
 ---
 
 ## Declaring the extension
@@ -251,6 +275,11 @@ Handlers have full `ctx` access (content, media, storage, settings, http,
 …) and return the standard `{ ok, data?, error? }` shape. The SDK exports
 `npAdminMetric()`, `npAdminStatus()`, `npAdminTable()`, and
 `npAdminActionError()` for common results.
+
+Both HTTP/Admin dispatch and plugin-to-plugin `ctx.actions.dispatch()` enforce
+the target plugin's activation for the current site. Setup-registered handlers
+also receive a freshly rebuilt request-site `ctx`, not the bootstrap site's
+config snapshot.
 
 The admin dispatches through `POST /api/plugins/:id/actions/:actionId`,
 which is admin-only + CSRF-protected + rate-limited by the existing

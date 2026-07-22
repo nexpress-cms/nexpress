@@ -110,7 +110,8 @@ For a full import:
 - portable framework settings become the target's exact portable set;
 - navigation locations become the transferred exact set;
 - listed plugins that are installed and loaded receive the validated config
-  and enabled state. Missing plugin code is warned and skipped.
+  and activation state for the target site. Missing plugin code is warned and
+  skipped; no other site's activation changes.
 
 Worker pause state and other operational/global state are not portable.
 The target's canonical site id and hostname routing also remain target-owned.

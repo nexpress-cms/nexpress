@@ -65,6 +65,9 @@ export type OAuthAudience = "staff" | "member";
 export interface OAuthProvider {
   /** Stable id used in route paths and `np_user_oauth_identities.provider`. */
   id: string;
+  /** Configured plugin that owns this provider. Framework auth surfaces use
+   * it to enforce the active site's plugin activation gate. */
+  sourcePluginId?: string;
   /** Human-readable label for admin UI / login buttons. */
   label?: string;
   /**
@@ -73,6 +76,12 @@ export interface OAuthProvider {
    * login pages.
    */
   audiences?: readonly OAuthAudience[];
+  /**
+   * Optional request-time availability check for site-scoped credentials or
+   * audience policy. Returning anything except `true`, or throwing, hides the
+   * provider and rejects start/callback dispatch for that site.
+   */
+  isAvailable?(audience: OAuthAudience): boolean | Promise<boolean>;
   /**
    * Returns a fully-qualified URL the framework should redirect the
    * browser to. Async to allow providers that need to mint per-request
@@ -97,8 +106,17 @@ export function registerOAuthProvider(provider: OAuthProvider): void {
   if (!provider.id || typeof provider.id !== "string") {
     throw new Error("OAuth provider must have a non-empty string id");
   }
+  if (
+    provider.sourcePluginId !== undefined &&
+    (typeof provider.sourcePluginId !== "string" || provider.sourcePluginId.length === 0)
+  ) {
+    throw new Error(`OAuth provider "${provider.id}" sourcePluginId must be a non-empty string`);
+  }
   if (typeof provider.authorize !== "function" || typeof provider.exchange !== "function") {
     throw new Error(`OAuth provider "${provider.id}" must implement authorize() and exchange()`);
+  }
+  if (provider.isAvailable !== undefined && typeof provider.isAvailable !== "function") {
+    throw new Error(`OAuth provider "${provider.id}" isAvailable must be a function`);
   }
   if (
     provider.audiences !== undefined &&
@@ -133,7 +151,38 @@ export function listOAuthProvidersFor(audience: OAuthAudience): OAuthProvider[] 
   );
 }
 
+/** Fail-closed request-time gate for plugin activation and dynamic config. */
+export async function isOAuthProviderAvailableFor(
+  provider: OAuthProvider,
+  audience: OAuthAudience,
+): Promise<boolean> {
+  if (!oauthProviderSupportsAudience(provider, audience)) return false;
+  try {
+    if (provider.sourcePluginId) {
+      const { isPluginEnabled } = await import("../plugins/enabled-gate.js");
+      if (!(await isPluginEnabled(provider.sourcePluginId))) return false;
+    }
+    return provider.isAvailable ? (await provider.isAvailable(audience)) === true : true;
+  } catch {
+    return false;
+  }
+}
+
 /** Reset the registry — tests use this between cases. Not for runtime use. */
 export function resetOAuthProviders(): void {
   providers.clear();
+}
+
+/** Remove providers contributed by one plugin during reload or failed setup. */
+export function unregisterOAuthProvidersBySourcePlugin(pluginId: string): void {
+  for (const [providerId, provider] of providers) {
+    if (provider.sourcePluginId === pluginId) providers.delete(providerId);
+  }
+}
+
+/** Preserve host-owned providers while rebuilding every plugin registry. */
+export function resetPluginOAuthProviders(): void {
+  for (const [providerId, provider] of providers) {
+    if (provider.sourcePluginId) providers.delete(providerId);
+  }
 }

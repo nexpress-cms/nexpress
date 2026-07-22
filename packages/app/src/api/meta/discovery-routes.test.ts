@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as BlocksModule from "@nexpress/blocks";
 import type * as CoreModule from "@nexpress/core";
+import type * as NextModule from "@nexpress/next";
 import {
   npRequireBlockDiscoveryResponse,
   npRequireCollectionDiscoveryResponse,
@@ -59,8 +60,13 @@ const mocks = vi.hoisted(() => ({
       { type: "date", name: "publishedAt", defaultValue: new Date("2026-07-16T00:00:00.000Z") },
     ],
   })),
+  getDb: vi.fn(() => ({ kind: "test-db" })),
+  listEnabledPluginIds: vi.fn(() => Promise.resolve(["legacy"])),
   getPluginDiscoveryItems: vi.fn(() => [legacyPlugin]),
-  getRegisteredBlockMetadata: vi.fn(() => [
+  createSiteScopedBlockRenderContext: vi.fn(() =>
+    Promise.resolve({ activeSources: { themeId: "default", pluginIds: new Set(["callout"]) } }),
+  ),
+  getRegisteredBlockMetadataForActiveSources: vi.fn(() => [
     {
       type: "plugin.callout",
       label: "Callout",
@@ -75,13 +81,19 @@ vi.mock("@nexpress/core", async (importOriginal) => ({
   ...(await importOriginal<typeof CoreModule>()),
   getAllCollectionSlugs: mocks.getAllCollectionSlugs,
   getCollectionConfig: mocks.getCollectionConfig,
+  listEnabledPluginIds: mocks.listEnabledPluginIds,
   getPluginDiscoveryItems: mocks.getPluginDiscoveryItems,
 }));
 vi.mock("@nexpress/blocks", async (importOriginal) => ({
   ...(await importOriginal<typeof BlocksModule>()),
-  getRegisteredBlockMetadata: mocks.getRegisteredBlockMetadata,
+  getRegisteredBlockMetadataForActiveSources: mocks.getRegisteredBlockMetadataForActiveSources,
+}));
+vi.mock("@nexpress/next", async (importOriginal) => ({
+  ...(await importOriginal<typeof NextModule>()),
+  createSiteScopedBlockRenderContext: mocks.createSiteScopedBlockRenderContext,
 }));
 vi.mock("../../lib/init-core", () => ({ ensureFor: mocks.ensureFor }));
+vi.mock("../../lib/db", () => ({ getDb: mocks.getDb }));
 
 const { GET: getBlocks } = await import("./blocks/route.js");
 const { GET: getCollections } = await import("./collections/route.js");
@@ -95,6 +107,10 @@ describe("public discovery routes", () => {
     const payload = npRequireBlockDiscoveryResponse(await response.json());
 
     expect(mocks.ensureFor).toHaveBeenCalledWith("plugins");
+    expect(mocks.getRegisteredBlockMetadataForActiveSources).toHaveBeenCalledWith({
+      themeId: "default",
+      pluginIds: new Set(["callout"]),
+    });
     expect(payload.items).toEqual([
       expect.objectContaining({ type: "plugin.callout", source: "plugin:callout" }),
     ]);
@@ -124,6 +140,8 @@ describe("public discovery routes", () => {
     const payload = npRequirePluginDiscoveryResponse(await response.json());
 
     expect(mocks.ensureFor).toHaveBeenCalledWith("plugins");
+    expect(mocks.listEnabledPluginIds).toHaveBeenCalledWith(mocks.getDb());
+    expect(mocks.getPluginDiscoveryItems).toHaveBeenCalledWith(new Set(["legacy"]));
     expect(payload.items).toEqual([legacyPlugin]);
   });
 });

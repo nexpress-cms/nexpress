@@ -11,9 +11,10 @@ import { getDb } from "@nexpress/core/db";
 import { npSettings } from "@nexpress/core/db";
 import { npValidateBlockContent, type NpBlockContent } from "@nexpress/core/fields";
 import {
-  getRegisteredBlockMetadata,
+  getRegisteredBlockMetadataForActiveSources,
   npValidateBlockContentAgainstDefinitions,
 } from "@nexpress/blocks";
+import { createSiteScopedBlockRenderContext } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
@@ -128,9 +129,10 @@ export async function POST(request: NextRequest) {
         { field: "label", message: "label is required" },
       ]);
     }
+    const ctx = await createSiteScopedBlockRenderContext();
     const blocksValidation = npValidateBlockContentAgainstDefinitions(
       body.blocks,
-      getRegisteredBlockMetadata(),
+      getRegisteredBlockMetadataForActiveSources(ctx.activeSources!),
     );
     if (!blocksValidation.ok) {
       const firstError = blocksValidation.issues.find((issue) => issue.severity === "error");

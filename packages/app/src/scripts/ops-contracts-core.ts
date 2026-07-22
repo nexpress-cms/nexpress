@@ -209,12 +209,14 @@ const OPS_CONTRACTS: OpsContract[] = [
     schemaVersions: [
       "np.ops-plugins.v1",
       "np.ops-plugins-upgrade-plan.v1",
-      "np.ops-plugins-mutation.v1",
+      "np.ops-plugins-mutation.v2",
     ],
     supports: { json: true, brief: true, noColor: true, out: true },
     artifact: { writes: true, defaultPath: ".nexpress/plugins/<mutation>.json" },
     approval: { required: true, token: "plugin-enable|plugin-disable for execute mode" },
-    notes: ["Enable/disable writes np_plugins.enabled and keeps plugin config files unchanged."],
+    notes: [
+      "Enable/disable requires --site, writes np_site_plugins, and keeps plugin config files unchanged.",
+    ],
   },
   {
     id: "release",
@@ -333,15 +335,16 @@ const OPS_CONTRACTS: OpsContract[] = [
     title: "Plugin enable/disable mutation",
     status: "shipped",
     risk: "bounded-mutation",
-    command: "nexpress ops plugins enable|disable <pluginId> --execute --approve plugin-* --json",
+    command:
+      "nexpress ops plugins enable|disable <pluginId> --site <siteId> --execute --approve plugin-* --json",
     projectCommand:
-      "pnpm --silent run ops:plugins -- enable|disable <pluginId> --execute --approve plugin-* --json",
-    schemaVersions: ["np.ops-plugins-mutation.v1"],
+      "pnpm --silent run ops:plugins -- enable|disable <pluginId> --site <siteId> --execute --approve plugin-* --json",
+    schemaVersions: ["np.ops-plugins-mutation.v2"],
     supports: { json: true, brief: true, noColor: true, out: true },
     artifact: { writes: true, defaultPath: ".nexpress/plugins/<mutation>.json" },
     approval: { required: true, token: "plugin-enable|plugin-disable" },
     notes: [
-      "Writes the DB enabled flag only; plugin package/config changes still require rebuild/deploy.",
+      "Writes one np_site_plugins activation override only; plugin package/config changes still require rebuild/deploy.",
     ],
   },
   {
@@ -376,7 +379,7 @@ const OPS_CONTRACTS: OpsContract[] = [
     projectCommand: null,
     schemaVersions: [
       "np.ops-storage-migration-apply.v1",
-      "np.ops-plugins-mutation.v1",
+      "np.ops-plugins-mutation.v2",
       "np.ops-migrate-apply.v1",
       "np.ops-backup-restore-apply.v1",
       "np.ops-cache-revalidate.v1",

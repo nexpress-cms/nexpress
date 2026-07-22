@@ -76,6 +76,19 @@ describe("plugin template registry (Phase 14.5)", () => {
     expect(entry?.label).toBe("From B");
   });
 
+  it("falls back to the earlier active owner when the later owner is disabled", () => {
+    registerPluginTemplates("a", {
+      pages: { shared: { label: "From A", component: () => null } },
+    });
+    registerPluginTemplates("b", {
+      pages: { shared: { label: "From B", component: () => null } },
+    });
+
+    expect(getPluginTemplatesForCollection("pages", new Set(["a"])).get("shared")?.label).toBe(
+      "From A",
+    );
+  });
+
   it("restores the previous owner when a colliding plugin unregisters", () => {
     registerPluginTemplates("a", {
       pages: { shared: { label: "From A", component: () => null } },

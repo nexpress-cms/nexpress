@@ -37,13 +37,18 @@ describe("enabled-gate cache invalidation race (#462)", () => {
     });
 
     // T0 — first read kicks off fetch #0. Don't await yet.
-    const readA = isPluginEnabled("foo");
+    const readA = isPluginEnabled("foo", "default");
+    // Site resolution is async. Let the DB read actually start before the
+    // toggle; invalidating before this point would correctly make the first
+    // read observe the post-toggle database state instead of a stale value.
+    await Promise.resolve();
 
     // T1 — admin toggles. invalidate clears cache + inflight + bumps gen.
-    invalidatePluginEnabled("foo");
+    invalidatePluginEnabled("foo", "default");
 
     // T2 — second read kicks off fetch #1.
-    const readB = isPluginEnabled("foo");
+    const readB = isPluginEnabled("foo", "default");
+    await Promise.resolve();
 
     // Settle them in REVERSE order: fetch #1 (the new one) reports false
     // first; fetch #0 (the old one) reports true second.
@@ -58,7 +63,7 @@ describe("enabled-gate cache invalidation race (#462)", () => {
     // generation token, A's late .then() would have overwritten this with
     // `true` and the next read would see the stale value.
     setFetchImplForTest(null); // any further fetches must hit the cache, not invent a value
-    const readC = await isPluginEnabled("foo");
+    const readC = await isPluginEnabled("foo", "default");
     expect(readC).toBe(false);
   });
 
@@ -73,5 +78,23 @@ describe("enabled-gate cache invalidation race (#462)", () => {
     // Cache hit — no second fetch.
     expect(await isPluginEnabled("foo")).toBe(true);
     expect(calls).toBe(1);
+  });
+
+  it("keeps cache and invalidation isolated by site", async () => {
+    const reads: string[] = [];
+    setFetchImplForTest((_pluginId, siteId) => {
+      reads.push(siteId);
+      return Promise.resolve(siteId !== "tenant-b");
+    });
+
+    expect(await isPluginEnabled("foo", "tenant-a")).toBe(true);
+    expect(await isPluginEnabled("foo", "tenant-b")).toBe(false);
+    expect(await isPluginEnabled("foo", "tenant-a")).toBe(true);
+    expect(reads).toEqual(["tenant-a", "tenant-b"]);
+
+    invalidatePluginEnabled("foo", "tenant-b");
+    expect(await isPluginEnabled("foo", "tenant-a")).toBe(true);
+    expect(await isPluginEnabled("foo", "tenant-b")).toBe(false);
+    expect(reads).toEqual(["tenant-a", "tenant-b", "tenant-b"]);
   });
 });

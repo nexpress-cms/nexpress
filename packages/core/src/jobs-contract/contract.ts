@@ -450,7 +450,10 @@ function parseBuiltinPayload(
       } satisfies NpBuiltinJobPayloadMap["media:processImage"];
     }
     case "plugin:scheduledTask": {
-      const input = exactRecord(value, path, ["pluginId", "taskId"]);
+      const input = exactRecord(value, path, ["siteId", "pluginId", "taskId"]);
+      if (!npIsCanonicalSiteId(input.siteId)) {
+        fail(`${path}.siteId`, "must be a canonical site id");
+      }
       const pluginId = boundedString(input.pluginId, `${path}.pluginId`, 128);
       const taskId = boundedString(input.taskId, `${path}.taskId`, 128);
       if (!PLUGIN_ID_PATTERN.test(pluginId))
@@ -458,7 +461,23 @@ function parseBuiltinPayload(
       if (!TASK_ID_PATTERN.test(taskId) || taskId === "." || taskId === "..") {
         fail(`${path}.taskId`, "must be a canonical scheduled task id");
       }
-      return { pluginId, taskId } satisfies NpBuiltinJobPayloadMap["plugin:scheduledTask"];
+      return {
+        siteId: input.siteId,
+        pluginId,
+        taskId,
+      } satisfies NpBuiltinJobPayloadMap["plugin:scheduledTask"];
+    }
+    case "plugin:scheduledTaskTick": {
+      const input = exactRecord(value, path, ["pluginId", "taskId"]);
+      const pluginId = boundedString(input.pluginId, `${path}.pluginId`, 128);
+      const taskId = boundedString(input.taskId, `${path}.taskId`, 128);
+      if (!PLUGIN_ID_PATTERN.test(pluginId)) {
+        fail(`${path}.pluginId`, "must be a canonical plugin id");
+      }
+      if (!TASK_ID_PATTERN.test(taskId) || taskId === "." || taskId === "..") {
+        fail(`${path}.taskId`, "must be a canonical scheduled task id");
+      }
+      return { pluginId, taskId } satisfies NpBuiltinJobPayloadMap["plugin:scheduledTaskTick"];
     }
     case "auth:sendPasswordReset": {
       const input = optionalRecord(
@@ -704,12 +723,12 @@ function parseSchedule(value: unknown, path: string): NpScheduleSummary {
     fail(`${path}.key`, "must match the digest cadence");
   }
   if (
-    builtinType === "plugin:scheduledTask" &&
+    builtinType === "plugin:scheduledTaskTick" &&
     name !== npPluginScheduledTaskQueueName(data.pluginId, data.taskId)
   ) {
     fail(`${path}.name`, "must match the pluginId and taskId payload");
   }
-  if (builtinType === "plugin:scheduledTask" && key !== "") {
+  if (builtinType === "plugin:scheduledTaskTick" && key !== "") {
     fail(`${path}.key`, "must be empty for a plugin scheduled task");
   }
   return {
@@ -1275,7 +1294,7 @@ export function npAnalyzeRetryAllJobsWire(value: unknown): NpJobContractResult<N
 }
 
 export function npBuiltinJobTypeForQueueName(queueName: string): NpBuiltinJobType | null {
-  if (queueName.startsWith("plugin.scheduledTask.")) return "plugin:scheduledTask";
+  if (queueName.startsWith("plugin.scheduledTask.")) return "plugin:scheduledTaskTick";
   return NP_BUILTIN_JOB_TYPES.find((type) => type.replaceAll(":", ".") === queueName) ?? null;
 }
 
@@ -1286,7 +1305,7 @@ export function npBuiltinJobTypeForQueueName(queueName: string): NpBuiltinJobTyp
  */
 export function npPluginScheduledTaskQueueName(pluginId: unknown, taskId: unknown): string {
   const payload = npNormalizeJobPayload(
-    "plugin:scheduledTask",
+    "plugin:scheduledTaskTick",
     { pluginId, taskId },
     "plugin.schedule",
   );

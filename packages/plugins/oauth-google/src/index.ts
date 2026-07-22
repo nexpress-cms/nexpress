@@ -32,10 +32,9 @@ import { z } from "zod";
  * Google OAuth web clients allow multiple Authorized redirect URIs,
  * so one client can cover both pools when both URLs are registered.
  *
- * **Reload required for admin-form changes**: `setup()` reads
- * config once at boot. If the operator updates credentials via
- * the admin form, hit `/admin/plugins/reload` (or restart the
- * process) for the new values to take effect.
+ * Admin-form config is resolved inside the current site scope for every OAuth
+ * request. Credential, scope, and activation changes therefore do not require
+ * a plugin reload and cannot bleed across sites.
  */
 
 // Re-exports kept for back-compat with sites that imported the
@@ -71,7 +70,7 @@ export const googleOAuthPlugin = definePlugin<GoogleOAuthConfig>({
     author: { name: "NexPress" },
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
-    capabilities: ["network:fetch"],
+    capabilities: ["network:fetch", "settings:read"],
     allowedHosts: ["accounts.google.com", "oauth2.googleapis.com", "openidconnect.googleapis.com"],
     provides: {
       blocks: [],
@@ -104,24 +103,39 @@ export const googleOAuthPlugin = definePlugin<GoogleOAuthConfig>({
       );
       return;
     }
-    const clientId = envHasBoth ? envId! : ctx.config.clientId;
-    const clientSecret = envHasBoth ? envSecret! : ctx.config.clientSecret;
-    if (!clientId || !clientSecret) {
-      ctx.log.info(
-        "Google OAuth not configured; skipping provider registration. Set NP_OAUTH_GOOGLE_CLIENT_ID and NP_OAUTH_GOOGLE_CLIENT_SECRET, or fill the admin form at /admin/plugins/oauth-google.",
-      );
-      return;
-    }
+    const resolveSiteOptions = async () => {
+      const config = configSchema.parse(await ctx.settings.getPlugin());
+      return {
+        clientId: envHasBoth ? envId! : config.clientId,
+        clientSecret: envHasBoth ? envSecret! : config.clientSecret,
+        scopes: config.scopes,
+      };
+    };
+    const resolveSiteProvider = async () => {
+      const options = await resolveSiteOptions();
+      if (!options.clientId || !options.clientSecret) {
+        throw new Error(
+          "Google OAuth is not configured for the current site. Set both environment variables or complete the plugin config form.",
+        );
+      }
+      return createGoogleOAuthProvider(options);
+    };
+
     registerOAuthProvider({
-      ...createGoogleOAuthProvider({
-        clientId,
-        clientSecret,
-        scopes: ctx.config.scopes,
-      }),
+      id: "google",
+      label: "Google",
+      sourcePluginId: "oauth-google",
       audiences: ["staff", "member"] as const,
+      isAvailable: async () => {
+        const options = await resolveSiteOptions();
+        return Boolean(options.clientId && options.clientSecret);
+      },
+      authorize: async (params) => (await resolveSiteProvider()).authorize(params),
+      exchange: async (params) => (await resolveSiteProvider()).exchange(params),
     });
     ctx.log.info("Google OAuth provider registered", {
-      source: envHasBoth ? "env" : "admin",
+      credentials: envHasBoth ? "environment" : "site-config",
+      resolution: "request-time",
     });
   },
 });

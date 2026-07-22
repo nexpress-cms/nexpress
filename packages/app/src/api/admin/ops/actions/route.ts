@@ -114,6 +114,7 @@ export async function POST(request: NextRequest) {
           await pluginsCore.runOpsPluginsMutation({
             action: action === "plugins.enable" ? "enable" : "disable",
             pluginId: requireString(body.pluginId, "pluginId"),
+            siteId: (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID,
             execute,
             approve,
           }),

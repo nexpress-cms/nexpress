@@ -180,9 +180,11 @@ can still temporarily contain too few children and receives a warning instead.
 ## Registration and collisions
 
 Same-plugin duplicate block types are definition errors. Across different
-plugins, the registry retains the existing last-loaded-wins behavior and emits
-a warning so operators can resolve the ownership conflict. Re-registering the
-same source remains idempotent for reload and HMR.
+plugins, the process-global registry emits a warning and keeps
+registration-order candidates. A site's active snapshot uses the last active
+owner, so disabling a colliding later owner restores the previous active block
+instead of making the type disappear. Re-registering the same source remains
+idempotent for reload and HMR.
 
 Plugin doctor uses stable checks:
 

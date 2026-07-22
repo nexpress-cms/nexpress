@@ -25,16 +25,20 @@ SDK-bypassing definitions. Plugin doctor reports malformed bundles as
 `plugins.i18n_invalid` and shared locale/key ownership as
 `plugins.translation_conflict`.
 
-Plugin bundles are source-aware. Later plugins override earlier plugins for the
-same locale/key, but reload or disable removes only that plugin's strings and
-restores the previous value. App/theme base strings remain intact. Namespace
-keys with the plugin id unless a load-order override is deliberate.
+Plugin bundles are source-aware. Later active plugins override earlier active
+plugins for the same locale/key. `t()` filters the process-wide registry by the
+current site's activation snapshot, so disabling one plugin restores the
+previous active value only for that site; reload/removal drops its process
+registration. App/theme base strings remain intact. Namespace keys with the
+plugin id unless a load-order override is deliberate.
 
 `pnpm run doctor` validates the shared project locale catalog and persisted
 override rows. Plugin doctor continues to report invalid plugin catalogs and
 cross-plugin locale/key conflicts; Admin Health also exposes contained runtime
 ICU formatting failures.
 
-Use `t()` for async render paths that include site-scoped operator overrides,
-or `tSync()` only where an async lookup is impossible. The generated
-`page-plugin` starter contains English and Korean ICU examples.
+Use `t()` for async render paths that include site-scoped operator overrides
+and plugin activation. `tSync()` exposes the process registry and cannot apply
+a request site's activation gate, so reserve it for tooling where an async
+lookup is impossible. The generated `page-plugin` starter contains English and
+Korean ICU examples.

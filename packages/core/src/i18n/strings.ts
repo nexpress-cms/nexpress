@@ -59,25 +59,49 @@ export interface NpRegisteredPluginTranslation {
   readonly message: string;
 }
 
-function effectiveBundle(locale: string): NpTranslationBundle {
-  const cached = effectiveBundleCache.get(locale);
+function effectiveBundle(
+  locale: string,
+  activePluginIds?: ReadonlySet<string>,
+): NpTranslationBundle {
+  const activeKey = activePluginIds ? [...activePluginIds].sort().join(",") : "*";
+  const cacheKey = `${locale}\u0000${activeKey}`;
+  const cached = effectiveBundleCache.get(cacheKey);
   if (cached) return cached;
 
   const merged: Record<string, string> = Object.assign(
     Object.create(null) as Record<string, string>,
     registry.get(locale) ?? {},
   );
-  for (const bundles of contributorRegistries.values()) {
+  for (const [sourceId, bundles] of contributorRegistries) {
+    if (
+      activePluginIds &&
+      sourceId.startsWith("plugin:") &&
+      !activePluginIds.has(sourceId.slice("plugin:".length))
+    ) {
+      continue;
+    }
     Object.assign(merged, bundles[locale] ?? {});
   }
   const immutable = Object.freeze(merged);
-  effectiveBundleCache.set(locale, immutable);
+  effectiveBundleCache.set(cacheKey, immutable);
   while (effectiveBundleCache.size > EFFECTIVE_BUNDLE_CACHE_LIMIT) {
     const oldest = effectiveBundleCache.keys().next().value;
     if (oldest === undefined) break;
     effectiveBundleCache.delete(oldest);
   }
   return immutable;
+}
+
+async function getActiveTranslationPluginIds(): Promise<ReadonlySet<string>> {
+  const pluginIds = [...contributorRegistries.keys()]
+    .filter((sourceId) => sourceId.startsWith("plugin:"))
+    .map((sourceId) => sourceId.slice("plugin:".length));
+  if (pluginIds.length === 0) return new Set();
+  const { isPluginEnabled } = await import("../plugins/enabled-gate.js");
+  const enabled = await Promise.all(
+    pluginIds.map(async (pluginId) => ({ pluginId, enabled: await isPluginEnabled(pluginId) })),
+  );
+  return new Set(enabled.filter((entry) => entry.enabled).map((entry) => entry.pluginId));
 }
 
 function invalidateEffectiveBundles(): void {
@@ -240,7 +264,10 @@ export async function t(
   // cache for THIS site has been loaded once before the
   // synchronous getStringOverride lookups below.
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-  await getStringOverridesForSite(siteId);
+  const [, activePluginIds] = await Promise.all([
+    getStringOverridesForSite(siteId),
+    getActiveTranslationPluginIds(),
+  ]);
 
   // 1. requested-locale override
   if (requested) {
@@ -249,7 +276,7 @@ export async function t(
   }
   // 2. requested-locale bundle
   if (requested) {
-    const bundle = effectiveBundle(requested)[normalizedKey];
+    const bundle = effectiveBundle(requested, activePluginIds)[normalizedKey];
     if (bundle !== undefined)
       return interpolate(normalizedKey, bundle, normalizedParams, requested);
   }
@@ -261,7 +288,7 @@ export async function t(
   }
   // 4. defaultLocale bundle
   if (defaultLocale && defaultLocale !== requested) {
-    const bundle = effectiveBundle(defaultLocale)[normalizedKey];
+    const bundle = effectiveBundle(defaultLocale, activePluginIds)[normalizedKey];
     if (bundle !== undefined)
       return interpolate(normalizedKey, bundle, normalizedParams, defaultLocale);
   }

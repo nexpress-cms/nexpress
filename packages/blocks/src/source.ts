@@ -1,5 +1,6 @@
-import { getRegisteredPatterns, getSharedRegistry } from "./registry.js";
-import type { NpBlockDefinition, NpBlockMetadata, NpPattern } from "./types.js";
+import { npAnalyzeBlockContent } from "./content-contract.js";
+import { getSharedBlockCandidates, getSharedPatternCandidates } from "./registry.js";
+import type { NpBlockDefinition, NpBlockInstance, NpBlockMetadata, NpPattern } from "./types.js";
 
 /**
  * Phase F.4 — block source identity model.
@@ -68,20 +69,17 @@ export interface NpActiveSourceContext {
    *  theme (every theme's blocks are filtered, render-time
    *  shows the placeholder). */
   themeId: string | null;
+  /** Plugin ids enabled for the current site. Configured plugin blocks remain
+   * process-global in the registry and are filtered here at read/render time. */
+  pluginIds: ReadonlySet<string>;
 }
 
 /**
  * Decide whether a block (or pattern) with the given `source`
- * should be active for the current site context. v0.2 only
- * filters theme sources by `themeId` — plugin / core / unknown
- * sources always pass:
+ * should be active for the current site context.
  *
- * - **Plugins** are process-global; the existing
- *   `resetSharedBlockRegistry` flow already drops disabled
- *   plugins' blocks at registry-write time, so any
- *   `plugin:<id>` source still reachable in the registry is
- *   from an enabled plugin. Re-filtering here would be
- *   redundant.
+ * - **Plugins** are registered process-wide and filtered by the site's exact
+ *   enabled id set, just like themes are filtered by active theme id.
  * - **Theme blocks** stay append-only across plugin reloads
  *   so site A active=magazine and site B active=portfolio can
  *   coexist in the same process. The per-site filter happens
@@ -100,7 +98,11 @@ export function isBlockSourceActive(
     if (parsed.id === undefined) return true;
     return parsed.id === ctx.themeId;
   }
-  // core / plugin / custom: always pass per the rules above.
+  if (parsed.kind === "plugin") {
+    if (parsed.id === undefined) return true;
+    return ctx.pluginIds.has(parsed.id);
+  }
+  // core / custom: always pass per the rules above.
   return true;
 }
 
@@ -113,9 +115,25 @@ export function isBlockSourceActive(
 export function getRegisteredBlocksForActiveSources(
   ctx: NpActiveSourceContext,
 ): NpBlockDefinition[] {
-  return getSharedRegistry()
-    .getAll()
-    .filter((b) => isBlockSourceActive(b.source, ctx));
+  const selected: NpBlockDefinition[] = [];
+  for (const candidates of getSharedBlockCandidates().values()) {
+    const definition = [...candidates]
+      .reverse()
+      .find((candidate) => isBlockSourceActive(candidate.source, ctx));
+    if (definition) selected.push(definition);
+  }
+  return selected;
+}
+
+/** Resolve the last-loaded block owner that is active for one site. */
+export function getBlockForActiveSources(
+  type: string,
+  ctx: NpActiveSourceContext,
+): NpBlockDefinition | undefined {
+  const candidates = getSharedBlockCandidates().get(type);
+  return candidates
+    ? [...candidates].reverse().find((candidate) => isBlockSourceActive(candidate.source, ctx))
+    : undefined;
 }
 
 /**
@@ -137,13 +155,30 @@ export function getRegisteredBlockMetadataForActiveSources(
 }
 
 /**
- * Phase F.5 — sister filter for patterns. Same rules as the
- * block filter (`isBlockSourceActive`): theme patterns are
- * scoped by `themeId`, plugin / built-in / custom patterns
- * always pass. The admin layout uses this so the page builder's
- * pattern picker only shows patterns for the current site's
- * active theme.
+ * Sister filter for patterns. It restores the last active owner after a
+ * collision and drops patterns whose content requires a block definition that
+ * is unavailable for the site. This keeps insertion and rendering on the same
+ * site-scoped contribution snapshot.
  */
 export function getRegisteredPatternsForActiveSources(ctx: NpActiveSourceContext): NpPattern[] {
-  return getRegisteredPatterns().filter((p) => isBlockSourceActive(p.source, ctx));
+  const definitions = getRegisteredBlocksForActiveSources(ctx);
+  const activeTypes = new Set(definitions.map((definition) => definition.type));
+  const referencesOnlyActiveTypes = (blocks: readonly NpBlockInstance[]): boolean =>
+    blocks.every(
+      (block) =>
+        activeTypes.has(block.type) &&
+        (!block.children || referencesOnlyActiveTypes(block.children)),
+    );
+  const selected: NpPattern[] = [];
+  for (const candidates of getSharedPatternCandidates().values()) {
+    const pattern = [...candidates].reverse().find((candidate) => {
+      if (!isBlockSourceActive(candidate.source, ctx)) return false;
+      if (!referencesOnlyActiveTypes(candidate.blocks)) return false;
+      return !npAnalyzeBlockContent(candidate.blocks, definitions).some(
+        (issue) => issue.severity === "error",
+      );
+    });
+    if (pattern) selected.push(pattern);
+  }
+  return selected;
 }

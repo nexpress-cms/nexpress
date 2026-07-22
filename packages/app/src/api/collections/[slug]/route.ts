@@ -103,7 +103,7 @@ export async function POST(
     await ensureFor("write");
     const data = parseBodyRecord(await readJsonBody(request));
     const saveOptions = extractSaveOptions(data);
-    validateDocumentBlockContent(slug, data);
+    await validateDocumentBlockContent(slug, data);
     const result = await createMemberDocument(slug, data, member.id, saveOptions);
     await revalidateCollection(slug, result.doc);
     return npSuccessResponse(npSerializeCollectionDocumentForApi(slug, result.doc), {

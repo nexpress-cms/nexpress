@@ -79,7 +79,7 @@ disaster recovery:
 | `np_c_*`                          | Collection content (posts, pages, taxonomies, discussions, …).                   |
 | `np_revisions`                    | Per-document version history.                                                    |
 | `np_media`, `np_media_refs`       | Media records and their content references — must match the file store.          |
-| `np_settings`                     | Site settings, active theme, plugin enable/disable.                              |
+| `np_settings`, `np_site_plugins`  | Site settings, active theme, plugin config, and per-site activation overrides.   |
 | `np_audit_events`                 | Compliance log; required for forensic review of past incidents.                  |
 | `np_navigation`                   | Header / footer menus per site.                                                  |
 | `np_sites`, `np_site_memberships` | Multi-tenant configuration; preserves per-site staff mappings.                   |

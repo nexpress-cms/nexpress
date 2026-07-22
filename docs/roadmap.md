@@ -260,7 +260,9 @@ product features below are still deferred.
 - Per-site theme selection — shipped. `np_settings.activeTheme` is keyed by
   `site_id`, and request execution resolves the active theme inside the
   canonical site scope.
-- Per-site plugin enable/disable.
+- Per-site plugin enable/disable — shipped. `np_plugins` is the global code
+  inventory and sparse `np_site_plugins` rows override activation per site;
+  missing overrides are active by default.
 - Per-site quotas (storage, post count, job throughput).
 - Billing hooks (out of scope for the open-source core; document the
   extension point).

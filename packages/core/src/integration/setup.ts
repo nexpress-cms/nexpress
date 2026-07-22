@@ -249,6 +249,7 @@ export async function truncateAll(): Promise<void> {
     "np_sessions",
     "np_revisions",
     "np_plugin_storage",
+    "np_site_plugins",
     "np_plugins",
     "np_worker_heartbeats",
     "np_job_logs",

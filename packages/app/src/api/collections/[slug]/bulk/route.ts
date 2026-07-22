@@ -87,7 +87,7 @@ export async function POST(
           continue;
         }
         const writable = npCollectionDocumentToWriteInput(existing, getCollectionConfig(slug));
-        validateDocumentBlockContent(slug, writable);
+        await validateDocumentBlockContent(slug, writable);
         await saveDocument(slug, id, writable, user, {
           status: action === "publish" ? "published" : "draft",
         });

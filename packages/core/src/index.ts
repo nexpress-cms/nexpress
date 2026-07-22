@@ -577,6 +577,7 @@ export { can, type NpCapability } from "./auth/capabilities.js";
 export {
   registerOAuthProvider,
   getOAuthProvider,
+  isOAuthProviderAvailableFor,
   listOAuthProviders,
   listOAuthProvidersFor,
   oauthProviderSupportsAudience,
@@ -991,6 +992,8 @@ export {
   isPluginEnabled,
   invalidatePluginEnabled,
   listPluginStates,
+  listEnabledPluginIds,
+  listEnabledPluginSiteIds,
   getPluginState,
   syncPluginRegistrations,
   updatePluginState,

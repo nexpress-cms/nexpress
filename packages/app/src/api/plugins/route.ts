@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
               )
             : null;
           return {
+            siteId: state.siteId,
             id: state.id,
             name: reg?.name ?? state.id,
             version: reg?.version ?? null,

@@ -32,13 +32,19 @@ completed; it never creates a second pool implicitly.
 | Intent    | Runtime guaranteed on return                                                  |
 | --------- | ----------------------------------------------------------------------------- |
 | `read`    | observability, DB, storage, cache host, collections, themes, i18n, site scope |
-| `plugins` | `read` plus enabled plugins, blocks, and patterns                             |
+| `plugins` | `read` plus every configured plugin and its process-global contributions      |
 | `worker`  | `plugins` plus the email adapter; no enqueue-only producer                    |
 | `write`   | `worker` plus the pg-boss producer when jobs are enabled                      |
 
 Routes and server components should import the app's `ensureFor()` wrapper.
 Standalone scripts may create a bootstrap directly, but must use the same
 intent contract and call `shutdown()` in their exit path.
+
+Plugin installation and module loading are process-global because concurrent
+sites share one server process. Activation is site-scoped instead: dispatch,
+Admin discovery, blocks, patterns, templates, translations, OAuth providers,
+and scheduled executions read the current site's sparse activation override.
+Changing activation never requires `reloadPlugins()`.
 
 ```ts
 const bootstrap = createBootstrap({ config, generatedSchema });

@@ -9,7 +9,7 @@ import {
   getOAuthProvider,
   hashPassword,
   issueOAuthState,
-  oauthProviderSupportsAudience,
+  isOAuthProviderAvailableFor,
   requestPasswordReset,
   replaceStaffPasswordAndInvalidateSessions,
   resolveOAuthLogin,
@@ -376,7 +376,7 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
     await ensureFor("plugins");
     const { provider: providerId } = await ctx.params;
     const provider = getOAuthProvider(providerId);
-    if (!provider || !oauthProviderSupportsAudience(provider, "staff")) {
+    if (!provider || !(await isOAuthProviderAvailableFor(provider, "staff"))) {
       return npErrorResponse(
         new NpError(`OAuth provider "${providerId}" not registered`, "NOT_FOUND", 404),
       );
@@ -430,7 +430,7 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
     await ensureFor("write");
     const { provider: providerId } = await ctx.params;
     const provider = getOAuthProvider(providerId);
-    if (!provider || !oauthProviderSupportsAudience(provider, "staff")) {
+    if (!provider || !(await isOAuthProviderAvailableFor(provider, "staff"))) {
       return oauthFail(request, "unknown_provider");
     }
 

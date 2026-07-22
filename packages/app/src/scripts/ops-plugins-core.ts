@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 
 import {
   invalidatePluginEnabled,
+  npIsCanonicalSiteId,
   npAnalyzePageTemplateRegistry,
   npAnalyzePluginDefinitionContract,
   npAnalyzePluginAdminActionContract,
@@ -219,11 +220,12 @@ export interface OpsPluginsUpgradePlanJson {
 }
 
 export interface OpsPluginsMutationJson {
-  schemaVersion: "np.ops-plugins-mutation.v1";
+  schemaVersion: "np.ops-plugins-mutation.v2";
   ok: boolean;
   status: "ready" | "attention" | "blocked";
   action: "enable" | "disable";
   pluginId: string;
+  siteId: string;
   enabled: boolean | null;
   mutation: OpsMutationAudit;
   nextCommand: string | null;
@@ -1933,9 +1935,10 @@ export function renderBriefOpsPluginsUpgradePlan(
 async function readPluginEnabledState(
   env: OpsPluginsEnv,
   pluginId: string,
+  siteId: string,
 ): Promise<
   | { ok: true; enabled: boolean | null }
-  | { ok: false; reason: "missing-url" | "query-failed"; detail: string }
+  | { ok: false; reason: "missing-url" | "missing-site" | "query-failed"; detail: string }
 > {
   const url = env.DATABASE_URL;
   if (!url) return { ok: false, reason: "missing-url", detail: "DATABASE_URL not set" };
@@ -1943,11 +1946,18 @@ async function readPluginEnabledState(
   const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
   try {
     await client.connect();
-    const result = await client.query<{ enabled: boolean }>(
-      "select enabled from np_plugins where id = $1 limit 1",
-      [pluginId],
+    const result = await client.query<{ siteExists: boolean; enabled: boolean | null }>(
+      `select exists(select 1 from np_sites where id = $2) as "siteExists",
+              (select enabled
+                 from np_site_plugins
+                where plugin_id = $1 and site_id = $2
+                limit 1) as enabled`,
+      [pluginId, siteId],
     );
     await client.end();
+    if (result.rows[0]?.siteExists !== true) {
+      return { ok: false, reason: "missing-site", detail: `Site ${siteId} does not exist` };
+    }
     return { ok: true, enabled: result.rows[0]?.enabled ?? null };
   } catch (error) {
     try {
@@ -1966,6 +1976,7 @@ async function readPluginEnabledState(
 async function writePluginEnabledState(
   env: OpsPluginsEnv,
   pluginId: string,
+  siteId: string,
   enabled: boolean,
 ): Promise<{ ok: true; enabled: boolean } | { ok: false; detail: string }> {
   const url = env.DATABASE_URL;
@@ -1974,12 +1985,27 @@ async function writePluginEnabledState(
   const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
   try {
     await client.connect();
+    const site = await client.query<{ id: string }>(
+      "select id from np_sites where id = $1 limit 1",
+      [siteId],
+    );
+    if (!site.rows[0]) {
+      await client.end();
+      return { ok: false, detail: `Site ${siteId} does not exist` };
+    }
+    await client.query(
+      `insert into np_plugins (id, installed_at, updated_at)
+       values ($1, now(), now())
+       on conflict (id) do nothing`,
+      [pluginId],
+    );
     const result = await client.query<{ enabled: boolean }>(
-      `insert into np_plugins (id, enabled, installed_at, updated_at)
-       values ($1, $2, now(), now())
-       on conflict (id) do update set enabled = excluded.enabled, updated_at = now()
+      `insert into np_site_plugins (site_id, plugin_id, enabled, updated_at)
+       values ($1, $2, $3, now())
+       on conflict (site_id, plugin_id)
+       do update set enabled = excluded.enabled, updated_at = now()
        returning enabled`,
-      [pluginId, enabled],
+      [siteId, pluginId, enabled],
     );
     await client.end();
     return { ok: true, enabled: result.rows[0]?.enabled ?? enabled };
@@ -2003,6 +2029,7 @@ function countChecks(checks: CheckResult[]): { errors: number; warnings: number 
 export async function runOpsPluginsMutation(args: {
   action: "enable" | "disable";
   pluginId: string;
+  siteId: string;
   execute?: boolean;
   approve?: string | null;
   out?: string | null;
@@ -2015,7 +2042,11 @@ export async function runOpsPluginsMutation(args: {
   const artifactPath =
     args.out ??
     (args.execute
-      ? defaultOpsArtifactPath("plugins", `${args.action}-${args.pluginId}`, startedAt)
+      ? defaultOpsArtifactPath(
+          "plugins",
+          `${args.siteId}-${args.action}-${args.pluginId}`,
+          startedAt,
+        )
       : null);
   const inventory = await collectOpsPluginsStatus(args.cwd);
   const plugin = inventory.plugins.find((entry) => entry.id === args.pluginId) ?? null;
@@ -2036,12 +2067,23 @@ export async function runOpsPluginsMutation(args: {
           hint: "Only plugins registered in nexpress.config.ts can be enabled or disabled.",
         },
   ];
+  if (!npIsCanonicalSiteId(args.siteId)) {
+    checks.push({
+      id: "plugins.mutation.site",
+      state: "error",
+      label: "Plugin activation site",
+      detail: "Invalid canonical site id",
+    });
+  }
   const desiredEnabled = args.action === "enable";
+  const validSiteId = npIsCanonicalSiteId(args.siteId);
   let enabled: boolean | null = null;
   let mutationError: string | null = null;
 
-  if (!args.execute) {
-    const current = await readPluginEnabledState(env, args.pluginId);
+  if (!validSiteId) {
+    mutationError = `Invalid canonical site id ${args.siteId}`;
+  } else if (!args.execute) {
+    const current = await readPluginEnabledState(env, args.pluginId, args.siteId);
     if (current.ok) {
       enabled = current.enabled ?? true;
       checks.push({
@@ -2054,7 +2096,7 @@ export async function runOpsPluginsMutation(args: {
     } else {
       checks.push({
         id: "plugins.mutation.current_state",
-        state: "warn",
+        state: current.reason === "missing-site" ? "error" : "warn",
         label: "Plugin DB state",
         detail: current.detail,
       });
@@ -2068,15 +2110,15 @@ export async function runOpsPluginsMutation(args: {
       detail: mutationError,
     });
   } else if (plugin) {
-    const written = await writePluginEnabledState(env, args.pluginId, desiredEnabled);
+    const written = await writePluginEnabledState(env, args.pluginId, args.siteId, desiredEnabled);
     if (written.ok) {
       enabled = written.enabled;
-      invalidatePluginEnabled(args.pluginId);
+      invalidatePluginEnabled(args.pluginId, args.siteId);
       checks.push({
         id: "plugins.mutation.write",
         state: "ok",
         label: "Plugin DB state",
-        detail: `${args.pluginId} enabled=${String(written.enabled)}`,
+        detail: `${args.siteId}/${args.pluginId} enabled=${String(written.enabled)}`,
       });
     } else {
       mutationError = written.detail;
@@ -2091,15 +2133,16 @@ export async function runOpsPluginsMutation(args: {
 
   const nextCommand = args.execute
     ? "nexpress ops plugins doctor --json"
-    : `nexpress ops plugins ${args.action} ${args.pluginId} --execute --approve ${requiredApproval} --json`;
+    : `nexpress ops plugins ${args.action} ${args.pluginId} --site ${args.siteId} --execute --approve ${requiredApproval} --json`;
   const counts = countChecks(checks);
   const status = counts.errors > 0 ? "blocked" : counts.warnings > 0 ? "attention" : "ready";
   const report: OpsPluginsMutationJson = {
-    schemaVersion: "np.ops-plugins-mutation.v1",
+    schemaVersion: "np.ops-plugins-mutation.v2",
     ok: counts.errors === 0,
     status,
     action: args.action,
     pluginId: args.pluginId,
+    siteId: args.siteId,
     enabled,
     mutation: buildOpsMutationAudit({
       action: `plugins.${args.action}`,
@@ -2109,7 +2152,7 @@ export async function runOpsPluginsMutation(args: {
       artifactPath,
       applied: Boolean(args.execute && counts.errors === 0),
       error: mutationError,
-      rollbackHint: `Run nexpress ops plugins ${desiredEnabled ? "disable" : "enable"} ${args.pluginId} --execute --approve plugin-${desiredEnabled ? "disable" : "enable"} --json`,
+      rollbackHint: `Run nexpress ops plugins ${desiredEnabled ? "disable" : "enable"} ${args.pluginId} --site ${args.siteId} --execute --approve plugin-${desiredEnabled ? "disable" : "enable"} --json`,
       nextCommand,
       startedAt,
       completedAt: new Date(),
@@ -2136,7 +2179,7 @@ export function renderBriefOpsPluginsMutation(
         : `${c.red}blocked${c.reset}`;
   const lines = [
     `${c.dim}NexPress ops plugins ${report.action}${c.reset}`,
-    `${state}: ${report.pluginId} enabled=${String(report.enabled)}`,
+    `${state}: ${report.siteId}/${report.pluginId} enabled=${String(report.enabled)}`,
   ];
   for (const check of report.checks) {
     const parts = [formatBriefState(check.state, options.color), check.id, check.label];

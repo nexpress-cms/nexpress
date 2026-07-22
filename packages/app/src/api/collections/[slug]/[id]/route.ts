@@ -113,7 +113,7 @@ export async function PATCH(
     await ensureFor("write");
     const data = parseBodyRecord(await readJsonBody(request));
     const saveOptions = extractSaveOptions(data);
-    validateDocumentBlockContent(slug, data);
+    await validateDocumentBlockContent(slug, data);
     const previous = await getCollectionDocument(slug, id, null);
     const result = await updateMemberDocument(slug, id, data, member.id, saveOptions);
 

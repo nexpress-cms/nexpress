@@ -226,9 +226,9 @@ nexpress ops plugins list --json
 nexpress ops plugins inspect <pluginId> --json
 nexpress ops plugins doctor --json
 nexpress ops plugins upgrade-plan [pluginId] --json
-nexpress ops plugins disable <pluginId> --json
-nexpress ops plugins disable <pluginId> --execute --approve plugin-disable --json
-nexpress ops plugins enable <pluginId> --execute --approve plugin-enable --json
+nexpress ops plugins disable <pluginId> --site <siteId> --json
+nexpress ops plugins disable <pluginId> --site <siteId> --execute --approve plugin-disable --json
+nexpress ops plugins enable <pluginId> --site <siteId> --execute --approve plugin-enable --json
 ```
 
 ### Admin read-only ops API
@@ -463,6 +463,11 @@ Implementation status:
   `np.ops-plugins.v1` envelope narrowed to one configured plugin, including
   manifest metadata, declared capabilities, plugin-owned contracts, and related
   diagnostics.
+- `nexpress ops plugins enable|disable <pluginId> --site <siteId> --json`
+  emits `schemaVersion: "np.ops-plugins-mutation.v2"`. Execute mode requires
+  the existing approval token and upserts only that site's sparse
+  `np_site_plugins` activation override; plugin packages and config files stay
+  unchanged.
 - `nexpress ops plugins upgrade-plan [pluginId] --json` emits
   `schemaVersion: "np.ops-plugins-upgrade-plan.v1"` with package inference,
   inspect / outdated / upgrade / verify commands, and approval flags. It does
@@ -647,7 +652,7 @@ Key shipped contracts:
 | Backups           | `pnpm --silent run ops:backup -- status / create / verify / restore-plan / restore apply --json`                                 | `np.ops-backup.v1`, `np.ops-backup-restore-plan.v1`, `np.ops-backup-restore-apply.v1`                                  |
 | Jobs              | `pnpm --silent run ops:jobs -- status / pause / resume / retry-all / drain --json`                                               | `np.ops-jobs.v1`                                                                                                       |
 | Storage           | `pnpm --silent run ops:storage -- status / verify / missing-files / orphaned-files / migrate plan / migrate apply / test --json` | `np.ops-storage.v1`, `np.ops-storage-list.v1`, `np.ops-storage-migration-plan.v1`, `np.ops-storage-migration-apply.v1` |
-| Plugins           | `pnpm --silent run ops:plugins -- list / inspect / doctor / upgrade-plan / enable / disable --json`                              | `np.ops-plugins.v1`, `np.ops-plugins-upgrade-plan.v1`, `np.ops-plugins-mutation.v1`                                    |
+| Plugins           | `pnpm --silent run ops:plugins -- list / inspect / doctor / upgrade-plan / enable / disable --json`                              | `np.ops-plugins.v1`, `np.ops-plugins-upgrade-plan.v1`, `np.ops-plugins-mutation.v2`                                    |
 | Release           | `pnpm --silent run ops:release -- check / plan / apply / verify --json`                                                          | `np.release.v1`, `np.release-plan.v1`, `np.release-apply.v1`; release artifacts under `.nexpress/releases/`            |
 | Runbooks          | `pnpm --silent run ops:runbook -- <incident> --json --out <path>`                                                                | `np.runbook.v1`; operator-provided artifact path                                                                       |
 
@@ -660,8 +665,9 @@ Mutation boundaries:
   leaves local source storage untouched.
 - `ops backup restore apply` only targets `RESTORE_DATABASE_URL` /
   `RESTORE_STORAGE_DIR` and refuses a target matching `DATABASE_URL`.
-- `ops plugins enable|disable` writes `np_plugins.enabled`; package/config file
-  changes remain outside this command.
+- `ops plugins enable|disable --site <siteId>` writes the exact site's sparse
+  `np_site_plugins` override; package/config file changes remain outside this
+  command.
 - remote mutating `/api/admin/ops/actions` is disabled unless
   `NP_REMOTE_OPS_MUTATIONS=1`.
 

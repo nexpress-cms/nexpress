@@ -50,10 +50,10 @@ diagnostic. Namespace ids when the override is not intentional. An active
 theme still wins over plugin templates with the same id because the theme is
 the site's design authority.
 
-Plugin reload removes every previous contribution before registering the
-currently enabled set. Disabling a plugin therefore removes its templates;
-if it had overridden another plugin, the earlier owner's template becomes
-effective again.
+Plugin reload rebuilds every configured contribution. Site reads filter the
+inactive owners without mutating the process-global registry, so disabling a
+plugin takes effect without reload; if it had overridden another plugin, the
+earlier active owner's template becomes effective again for that site.
 
 The `page-plugin` CLI starter and bundled `block-callout` plugin contain typed
 examples.

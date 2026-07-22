@@ -3,7 +3,11 @@ import * as React from "react";
 import { readGridChildLayout, readGridColumnCount } from "./blocks/grid.js";
 import { npAnalyzeBlockContent } from "./content-contract.js";
 import { getSharedRegistry } from "./registry.js";
-import { isBlockSourceActive } from "./source.js";
+import {
+  getBlockForActiveSources,
+  getRegisteredBlocksForActiveSources,
+  isBlockSourceActive,
+} from "./source.js";
 import type {
   NpBlockDefinition,
   NpBlockInstance,
@@ -81,7 +85,11 @@ export function renderBlocks(
   const ctx = options.ctx;
   const previewMarkers = options.previewMarkers ?? false;
   const contentErrors = new Map<string, string>();
-  const contentIssues = npAnalyzeBlockContent(pageBlocks, registry.getAll());
+  const contentDefinitions =
+    ctx?.activeSources && registry === getSharedRegistry()
+      ? getRegisteredBlocksForActiveSources(ctx.activeSources)
+      : registry.getAll();
+  const contentIssues = npAnalyzeBlockContent(pageBlocks, contentDefinitions);
   const rootContractError = contentIssues.find(
     (issue) => issue.severity === "error" && !issue.blockId,
   );
@@ -202,7 +210,10 @@ function renderBlock(
   previewMarkers: boolean,
   contentErrors: ReadonlyMap<string, string>,
 ): React.ReactElement {
-  const definition = registry.get(instance.type);
+  const definition =
+    ctx?.activeSources && registry === getSharedRegistry()
+      ? getBlockForActiveSources(instance.type, ctx.activeSources)
+      : registry.get(instance.type);
 
   if (!definition) {
     return (

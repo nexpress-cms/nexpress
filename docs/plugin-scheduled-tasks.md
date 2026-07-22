@@ -86,11 +86,20 @@ field failure. Fix the definition and restart the process before retrying.
 
 ## Worker and reload behavior
 
-At worker startup, each definition becomes one pg-boss schedule row and one
-worker queue. `/admin/plugins` → “Reload all” reconciles schedule rows, but a
-new task added in another worker process still needs a worker restart so that
-process installs its `boss.work()` loop. `/admin/jobs` → Scheduled labels the
-registered rows as plugin schedules.
+At worker startup, each definition becomes one process-global pg-boss schedule
+row and one cron-tick worker queue. A tick reads the current site inventory and
+enqueues one durable `plugin:scheduledTask` execution carrying
+`{ siteId, pluginId, taskId }` for every site where that plugin is active. The
+execution handler enters the stamped site scope before it rebuilds `ctx`, so
+site config, settings, content, storage, and logs cannot bleed across tenants.
+Disabling one site suppresses only that site's future fan-out; the shared cron
+schedule remains available to other sites.
+
+`/admin/plugins` → “Reload all” reconciles schedule rows, but a new task added
+in another worker process still needs a worker restart so that process installs
+its `boss.work()` loop. `/admin/jobs` → Scheduled labels the registered rows as
+plugin schedules, while recent run/failure statistics use only the current
+site's durable execution jobs rather than global tick rows.
 
 Use `boss.schedule()` directly only for application-local work. Plugin authors
 should prefer `scheduled` so capabilities, catalog metadata, reload, doctor,

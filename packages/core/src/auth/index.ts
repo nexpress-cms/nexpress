@@ -48,6 +48,7 @@ export { fromArctic } from "./oauth-arctic.js";
 export type { ArcticLikeProvider, ArcticLikeTokens, FromArcticOptions } from "./oauth-arctic.js";
 export {
   getOAuthProvider,
+  isOAuthProviderAvailableFor,
   listOAuthProviders,
   listOAuthProvidersFor,
   oauthProviderSupportsAudience,

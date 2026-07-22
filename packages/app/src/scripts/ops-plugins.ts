@@ -28,17 +28,18 @@ Usage:
   pnpm --silent run ops:plugins -- inspect <pluginId> --json
   pnpm --silent run ops:plugins -- doctor --json
   pnpm --silent run ops:plugins -- upgrade-plan [pluginId] --json
-  pnpm --silent run ops:plugins -- disable <pluginId> --execute --approve plugin-disable --json
-  pnpm --silent run ops:plugins -- enable <pluginId> --execute --approve plugin-enable --json
+  pnpm --silent run ops:plugins -- disable <pluginId> --site <siteId> --execute --approve plugin-disable --json
+  pnpm --silent run ops:plugins -- enable <pluginId> --site <siteId> --execute --approve plugin-enable --json
   nexpress ops plugins list --json
   nexpress ops plugins inspect <pluginId> --json
   nexpress ops plugins doctor --json
   nexpress ops plugins upgrade-plan [pluginId] --json
-  nexpress ops plugins disable <pluginId> --execute --approve plugin-disable --json
-  nexpress ops plugins enable <pluginId> --execute --approve plugin-enable --json
+  nexpress ops plugins disable <pluginId> --site <siteId> --execute --approve plugin-disable --json
+  nexpress ops plugins enable <pluginId> --site <siteId> --execute --approve plugin-enable --json
 
 Options:
   --execute    Apply enable/disable. Without this, mutation commands dry-run.
+  --site       Required site id for enable/disable.
   --approve    Required with --execute: plugin-enable or plugin-disable.
   --out <path> Write a JSON artifact to a specific path.
   --json       Print the stable machine-readable plugin report.
@@ -72,9 +73,14 @@ async function main(): Promise<void> {
   if (COMMAND === "enable" || COMMAND === "disable") {
     const pluginId = positionals[1];
     if (!pluginId) throw new Error(`Usage: nexpress ops plugins ${COMMAND} <pluginId> [--json]`);
+    const siteId = readStringArg("--site");
+    if (!siteId) {
+      throw new Error(`Usage: nexpress ops plugins ${COMMAND} <pluginId> --site <siteId> [--json]`);
+    }
     const mutationReport = await runOpsPluginsMutation({
       action: COMMAND,
       pluginId,
+      siteId,
       execute: ARGV.includes("--execute"),
       approve: readStringArg("--approve"),
       out: readStringArg("--out"),

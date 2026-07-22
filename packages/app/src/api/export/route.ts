@@ -12,9 +12,9 @@ import {
   getSiteGeneralSettings,
   getThemeById,
   getThemeSettingsWithStatus,
+  listPluginStates,
   npMedia,
   npNavigation,
-  npPlugins,
   npSettings,
 } from "@nexpress/core";
 import { npSerializeCollectionDocumentWithDiagnostics } from "@nexpress/core/collections";
@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
     const navigationRows = partial
       ? []
       : await db.select().from(npNavigation).where(eq(npNavigation.siteId, siteId));
-    const pluginRows = partial ? [] : await db.select().from(npPlugins).orderBy(asc(npPlugins.id));
+    const pluginRows = partial ? [] : await listPluginStates(db, siteId);
     const pluginStateIds = new Set(pluginRows.map((row) => row.id));
 
     const storedTheme = settingsRows.find((row) => row.key === "theme")?.value;

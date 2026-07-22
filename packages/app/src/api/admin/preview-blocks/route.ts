@@ -1,6 +1,6 @@
 import { NpForbiddenError, can, getTheme } from "@nexpress/core";
 import {
-  getRegisteredBlockMetadata,
+  getRegisteredBlockMetadataForActiveSources,
   npValidateBlockContentAgainstDefinitions,
   renderBlocks,
 } from "@nexpress/blocks";
@@ -62,10 +62,11 @@ export async function POST(request: NextRequest) {
       throw new NpForbiddenError("preview-blocks", "render");
     }
 
+    const ctx = await createSiteScopedBlockRenderContext();
     const body = (await request.json()) as { blocks?: unknown };
     const validation = npValidateBlockContentAgainstDefinitions(
       body.blocks,
-      getRegisteredBlockMetadata(),
+      getRegisteredBlockMetadataForActiveSources(ctx.activeSources!),
     );
     if (!validation.ok) {
       const firstError = validation.issues.find((issue) => issue.severity === "error");
@@ -84,7 +85,6 @@ export async function POST(request: NextRequest) {
     // this, the editor iframe shows inactive blocks rendering
     // normally while the public site shows placeholders —
     // preview disagrees with production output.
-    const ctx = await createSiteScopedBlockRenderContext();
     let bodyHtml: string;
     try {
       // `previewMarkers: true` wraps each rendered block with a

@@ -2,6 +2,7 @@ import {
   getAllCollectionSlugs,
   getCollectionConfig,
   getPluginRoutes,
+  listEnabledPluginIds,
   type NpCollectionConfig,
 } from "@nexpress/core";
 import {
@@ -593,7 +594,7 @@ function revisionSnapshotSchema(
   };
 }
 
-export function buildSpec(): OpenApiSchema {
+export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema {
   const slugs = getAllCollectionSlugs();
   const communityTargetTypeSchema: OpenApiSchema = {
     type: "string",
@@ -2168,6 +2169,7 @@ export function buildSpec(): OpenApiSchema {
     plugin_item: {
       type: "object",
       properties: {
+        siteId: { type: "string", pattern: npSiteIdPattern },
         id: { type: "string" },
         name: { type: "string" },
         version: { type: "string", nullable: true },
@@ -2191,7 +2193,7 @@ export function buildSpec(): OpenApiSchema {
         loaded: {
           type: "boolean",
           description:
-            "True when the plugin is currently registered in this process (may lag the DB flag until restart).",
+            "True when configured plugin code loaded successfully in this process; independent of the active site's enabled flag.",
         },
       },
     },
@@ -3831,7 +3833,7 @@ export function buildSpec(): OpenApiSchema {
       get: {
         summary: "Block manifests registered in this instance",
         description:
-          "Public exact discovery endpoint for the process-wide shared registry, including enabled plugin and configured theme ownership.",
+          "Public exact discovery endpoint for the current site's active plugin and theme contribution snapshot.",
         security: [],
         responses: {
           "200": {
@@ -4229,7 +4231,7 @@ export function buildSpec(): OpenApiSchema {
     },
     "/api/plugins": {
       get: {
-        summary: "List installed plugins with enabled state + registry info (admin only)",
+        summary: "List installed plugins with active-site state + registry info (admin only)",
         responses: {
           "200": {
             description: "Plugin list",
@@ -4266,7 +4268,7 @@ export function buildSpec(): OpenApiSchema {
         },
       },
       patch: {
-        summary: "Enable/disable a plugin or update its config (admin only)",
+        summary: "Enable/disable a plugin for the active site (admin only)",
         requestBody: {
           required: true,
           content: {
@@ -4275,9 +4277,9 @@ export function buildSpec(): OpenApiSchema {
                 type: "object",
                 properties: {
                   enabled: { type: "boolean" },
-                  config: { type: "object", additionalProperties: true },
                 },
-                description: "At least one of `enabled` or `config` must be provided.",
+                required: ["enabled"],
+                additionalProperties: false,
               },
             },
           },
@@ -5749,9 +5751,10 @@ export function buildSpec(): OpenApiSchema {
     },
   };
 
-  // Plugin-provided routes. These are resolved from the in-process registry,
-  // so the spec only lists plugins that actually loaded (enabled + no errors).
+  // Plugin-provided routes. The process registry already excludes load
+  // failures; the optional active set narrows it to the current site.
   for (const route of getPluginRoutes()) {
+    if (activePluginIds && !activePluginIds.has(route.pluginId)) continue;
     const fullPath = `/api/plugins/${encodeURIComponent(route.pluginId)}${route.path}`;
     const method = route.method.toLowerCase();
     const existing = (paths[fullPath] as Record<string, unknown> | undefined) ?? {};
@@ -5800,8 +5803,10 @@ export function buildSpec(): OpenApiSchema {
 
 export async function GET() {
   await ensureFor("plugins");
+  const { getDb } = await import("../../lib/db");
+  const activePluginIds = new Set(await listEnabledPluginIds(getDb()));
 
-  return NextResponse.json(buildSpec(), {
+  return NextResponse.json(buildSpec(activePluginIds), {
     headers: { "Cache-Control": "no-store" },
   });
 }

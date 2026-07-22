@@ -45,6 +45,7 @@ interface PluginAdminSettings {
 }
 
 interface PluginItem {
+  siteId: string;
   id: string;
   name: string;
   version: string | null;
@@ -396,8 +397,8 @@ export function PluginsManager() {
       setToast({
         type: "success",
         message: nextEnabled
-          ? `Enabled ${plugin.name}. Hooks, routes, and scheduled tasks resume immediately.`
-          : `Disabled ${plugin.name}. Hooks, routes, and scheduled tasks pause immediately.`,
+          ? `Enabled ${plugin.name} for this site. Hooks, routes, and scheduled tasks resume immediately.`
+          : `Disabled ${plugin.name} for this site. Hooks, routes, and scheduled tasks pause immediately.`,
       });
       await loadPlugins();
     } catch (error) {
@@ -524,7 +525,7 @@ export function PluginsManager() {
       <div className="grid min-w-0 gap-3 sm:flex sm:items-start sm:justify-between">
         <PageHeader
           title="Plugins"
-          description="Toggle and configure installed plugins. Enable / disable applies to the next request; added or removed plugin code still needs a server restart or redeploy before verification."
+          description="Toggle and configure plugins for the active site. Activation applies to the next request; added or removed plugin code still needs a server restart or redeploy before verification."
           className="min-w-0"
         />
         <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-none sm:flex sm:flex-wrap sm:items-center">

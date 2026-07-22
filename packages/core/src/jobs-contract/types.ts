@@ -6,6 +6,7 @@ export const NP_BUILTIN_JOB_TYPES = [
   "media:processImage",
   "media:cleanup",
   "plugin:scheduledTask",
+  "plugin:scheduledTaskTick",
   "system:revisionPrune",
   "system:sessionCleanup",
   "system:jobLogPrune",
@@ -78,6 +79,13 @@ export interface NpSearchReindexJobData {
 }
 
 export interface NpPluginScheduledTaskJobData {
+  siteId: string;
+  pluginId: string;
+  taskId: string;
+}
+
+/** Internal cron tick. The worker fans this out into durable site jobs. */
+export interface NpPluginScheduledTaskTickJobData {
   pluginId: string;
   taskId: string;
 }
@@ -124,6 +132,7 @@ export interface NpBuiltinJobPayloadMap {
   "media:processImage": NpMediaProcessImageJobData;
   "media:cleanup": NpEmptyJobData;
   "plugin:scheduledTask": NpPluginScheduledTaskJobData;
+  "plugin:scheduledTaskTick": NpPluginScheduledTaskTickJobData;
   "system:revisionPrune": NpEmptyJobData;
   "system:sessionCleanup": NpEmptyJobData;
   "system:jobLogPrune": NpEmptyJobData;

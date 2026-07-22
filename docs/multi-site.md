@@ -210,10 +210,11 @@ Helper APIs:
   functions run, so downstream code never authorizes against a
   stale global role in a non-default tenant.
 
-Global operator surfaces (for example jobs, remote ops, staff identity
-management, and plugin enable/reload) deliberately use the persisted global
-role instead. A per-site `admin` membership never promotes its holder into a
-cross-tenant operator.
+Global operator surfaces (for example cross-site jobs, staff identity
+management, and plugin code reload) deliberately use the persisted global role
+instead. Plugin activation and configuration are scoped to the selected site
+and use its projected `admin.manage` capability. A per-site `admin` membership
+never promotes its holder into a cross-tenant operator.
 
 - `isSuperAdmin(user)` — quick boolean check.
 

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { count, eq } from "drizzle-orm";
-import { can, isSuperAdmin, npUsers, verifyTokenFull } from "@nexpress/core";
+import { can, isSuperAdmin, listEnabledPluginIds, npUsers, verifyTokenFull } from "@nexpress/core";
 import { AdminShell, BlocksRegistryProvider } from "@nexpress/admin/client";
 import {
   getRegisteredBlockMetadataForActiveSources,
@@ -121,22 +121,20 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // blocks (which only land in the SERVER module-instance during
   // bootstrap) reach the browser editor through React props.
   //
-  // Phase F.4 — filter by the active theme so multi-site
-  // processes don't surface every installed theme's blocks in
-  // the Add-block popover. Plugin and built-in blocks are
-  // always included; only theme blocks are gated by themeId.
+  // Filter by the active theme and site-enabled plugins so multi-site
+  // processes expose one exact contribution snapshot in the Add-block
+  // popover.
   //
   // Reuses `activeTheme` resolved above (fallback to the first
   // registered theme when `np_settings.activeTheme` is unset, via
   // `getCachedActiveTheme()`). Both the collection sidebar filter
   // and the block / pattern filters need to agree on which theme
   // is active, so they share one read.
-  const sourceContext = { themeId: activeThemeId };
+  const enabledPluginIds = await listEnabledPluginIds(getDb());
+  const sourceContext = { themeId: activeThemeId, pluginIds: new Set(enabledPluginIds) };
   const blocksMetadata = getRegisteredBlockMetadataForActiveSources(sourceContext);
-  // Phase F.5 — same active-source filter for patterns. Theme
-  // patterns from the inactive theme(s) are filtered out so the
-  // page builder's pattern picker only shows the current site's
-  // patterns. Plugin / built-in / custom patterns always pass.
+  // The same source filter applies to patterns and rejects a pattern whose
+  // nested blocks are unavailable in this site snapshot.
   const patterns = getRegisteredPatternsForActiveSources(sourceContext);
   // Same trick for collection-slug options used by `propsSchema`
   // entries with `type: "collection"`. The picker can't ask the

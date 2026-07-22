@@ -14,6 +14,7 @@ import {
   npNavigation,
   npPlugins,
   npSettings,
+  npSitePlugins,
   npSites,
   npUsers,
   pluginConfigCacheTag,
@@ -572,7 +573,7 @@ export async function POST(request: NextRequest) {
             string,
             unknown
           >;
-          validateDocumentBlockContent(slug, writable);
+          await validateDocumentBlockContent(slug, writable);
         } catch (error) {
           throw new NpValidationError("Invalid content transfer document", [
             {
@@ -763,12 +764,12 @@ export async function POST(request: NextRequest) {
                   updatedBy: user.id,
                 },
               });
-            const updatedPlugins = await tx
-              .update(npPlugins)
-              .set({ enabled: plugin.enabled, updatedAt: now })
+            const installedPlugin = await tx
+              .select({ id: npPlugins.id })
+              .from(npPlugins)
               .where(eq(npPlugins.id, plugin.id))
-              .returning({ id: npPlugins.id });
-            if (updatedPlugins.length !== 1) {
+              .limit(1);
+            if (installedPlugin.length !== 1) {
               throw npContentTransferValidationError("Invalid content transfer target", [
                 {
                   field: `plugins.${plugin.id}`,
@@ -776,11 +777,18 @@ export async function POST(request: NextRequest) {
                 },
               ]);
             }
+            await tx
+              .insert(npSitePlugins)
+              .values({ siteId, pluginId: plugin.id, enabled: plugin.enabled, updatedAt: now })
+              .onConflictDoUpdate({
+                target: [npSitePlugins.siteId, npSitePlugins.pluginId],
+                set: { enabled: plugin.enabled, updatedAt: now },
+              });
           }
         });
 
         if (!partial && !payload.partial) {
-          for (const plugin of preparedPlugins) invalidatePluginEnabled(plugin.id);
+          for (const plugin of preparedPlugins) invalidatePluginEnabled(plugin.id, siteId);
           const navigationLocations = new Set([
             ...previousNavigationLocations,
             ...Object.keys(payload.navigation),

@@ -19,7 +19,9 @@ import { NpConflictError } from "../errors.js";
 import { getLogger } from "../observability/logger.js";
 import { reportError } from "../observability/error-reporter.js";
 import { npValidatePluginCronExpression } from "../plugins/scheduled-task-contract.js";
-import { getAllJobHandlers, normalizeRegisteredJobPayload } from "./handlers.js";
+import { getCurrentSiteId } from "../sites/context.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/id-contract.js";
+import { getAllJobHandlers, getJobHandler, normalizeRegisteredJobPayload } from "./handlers.js";
 import { recordJobLog, runInJobContext } from "./job-log.js";
 import {
   type NpJobCountOptions,
@@ -192,9 +194,8 @@ export class PgBossAdapter implements NpJobQueue {
     // pg-boss enforces a 1:1 mapping between schedule name and
     // queue, so each `definePlugin({ scheduled })` entry needs
     // its own queue. The dispatcher inside the handler delegates
-    // to the registered handler via `runPluginScheduledTask`.
-    const { getRegisteredPluginSchedules, runPluginScheduledTask } =
-      await import("../plugins/host.js");
+    // into one durable execution job per currently-enabled site.
+    const { getRegisteredPluginSchedules } = await import("../plugins/host.js");
     for (const schedule of getRegisteredPluginSchedules()) {
       const queueName = npPluginScheduledTaskQueueName(schedule.pluginId, schedule.taskId);
       await this.boss.createQueue(queueName);
@@ -203,23 +204,27 @@ export class PgBossAdapter implements NpJobQueue {
           for (const job of jobs) {
             await runInJobContext(job.id, async () => {
               try {
-                const payload = normalizeRegisteredJobPayload("plugin:scheduledTask", job.data);
+                const payload = normalizeRegisteredJobPayload("plugin:scheduledTaskTick", job.data);
                 if (payload.pluginId !== schedule.pluginId || payload.taskId !== schedule.taskId) {
                   throw new Error(
                     `Plugin schedule payload does not match queue ${schedule.pluginId}:${schedule.taskId}.`,
                   );
                 }
-                await runPluginScheduledTask(schedule.pluginId, schedule.taskId);
+                const tickHandler = getJobHandler("plugin:scheduledTaskTick");
+                if (!tickHandler) {
+                  throw new Error("Plugin scheduled task tick handler is not registered.");
+                }
+                await tickHandler(payload);
               } catch (error) {
                 const err = error instanceof Error ? error : new Error(String(error));
-                getLogger().error("Plugin scheduled task threw", {
+                getLogger().error("Plugin scheduled task tick failed", {
                   pluginId: schedule.pluginId,
                   taskId: schedule.taskId,
                   jobId: job.id,
                   error: err.message,
                   stack: err.stack,
                 });
-                await recordJobLog("error", `Plugin scheduled task threw: ${err.message}`, {
+                await recordJobLog("error", `Plugin scheduled task tick failed: ${err.message}`, {
                   pluginId: schedule.pluginId,
                   taskId: schedule.taskId,
                   ...(err.stack ? { stack: err.stack } : {}),
@@ -518,10 +523,11 @@ export class PgBossAdapter implements NpJobQueue {
       1,
       365,
     );
-    const canonicalPluginId = npNormalizeJobPayload("plugin:scheduledTask", {
+    const canonicalPluginId = npNormalizeJobPayload("plugin:scheduledTaskTick", {
       pluginId,
       taskId: "contract-probe",
     }).pluginId;
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
     const db = (
       this.boss as unknown as {
         db: {
@@ -542,30 +548,24 @@ export class PgBossAdapter implements NpJobQueue {
       }
     ).db;
 
-    // Plugin schedule jobs land in pg-boss under two name shapes:
-    //   - `plugin.scheduledTask`                       — `schedulePluginTask()` enqueues
-    //     here for one-shot "Run now" invocations (handlePluginScheduledTask
-    //     dispatches by `(pluginId, taskId)` from the payload).
-    //   - `plugin.scheduledTask.<hex(pluginId)>.<hex(taskId)>` — cron schedules. Each entry
-    //     declared via `definePlugin({ scheduled: [...] })` gets its own queue +
-    //     row in `pgboss.schedule` (Phase 19).
-    // Both share the `(pluginId, taskId)` payload shape, so we filter by name
-    // prefix and join on `data->>'pluginId'` to collect either source. The
-    // earlier `name = 'plugin.scheduledTask'` filter only matched the first
-    // shape, leaving cron-scheduled stats permanently at zero.
+    // Cron ticks only fan out work; site health is measured from the durable
+    // `plugin.scheduledTask` execution jobs so one tenant's failure cannot
+    // pollute another tenant's Admin statistics.
     const result = await db.executeSql(
       `WITH plugin_jobs AS (
          SELECT state, completed_on, data
            FROM pgboss.job
-          WHERE (name = 'plugin.scheduledTask' OR name LIKE 'plugin.scheduledTask.%')
+          WHERE name = 'plugin.scheduledTask'
             AND data->>'pluginId' = $1
-            AND completed_on > NOW() - ($2 || ' days')::interval
+            AND data->>'siteId' = $2
+            AND completed_on > NOW() - ($3 || ' days')::interval
          UNION ALL
          SELECT state, completed_on, data
            FROM pgboss.archive
-          WHERE (name = 'plugin.scheduledTask' OR name LIKE 'plugin.scheduledTask.%')
+          WHERE name = 'plugin.scheduledTask'
             AND data->>'pluginId' = $1
-            AND completed_on > NOW() - ($2 || ' days')::interval
+            AND data->>'siteId' = $2
+            AND completed_on > NOW() - ($3 || ' days')::interval
        )
        SELECT data->>'taskId' AS task_id,
               MAX(completed_on) AS last_run,
@@ -576,11 +576,12 @@ export class PgBossAdapter implements NpJobQueue {
          FROM plugin_jobs
         WHERE data->>'taskId' IS NOT NULL
         GROUP BY data->>'taskId'`,
-      [canonicalPluginId, String(windowDays)],
+      [canonicalPluginId, siteId, String(windowDays)],
     );
 
     return result.rows.map((row, index) => {
       const payload = npNormalizeJobPayload("plugin:scheduledTask", {
+        siteId,
         pluginId: canonicalPluginId,
         taskId: row.task_id,
       });
@@ -945,9 +946,6 @@ function findRegisteredTypeForQueueName(queueName: string): NpJobType | null {
   if (builtin) return builtin;
   for (const type of getAllJobHandlers().keys()) {
     if (toQueueName(type) === queueName) return type;
-  }
-  if (queueName.startsWith(`${toQueueName("plugin:scheduledTask")}.`)) {
-    return "plugin:scheduledTask";
   }
   return null;
 }

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
-import { npPlugins } from "../db/schema/system.js";
+import { npPlugins, npSites } from "../db/schema/system.js";
 import {
   getPluginState,
   listPluginStates,
@@ -10,10 +10,7 @@ import {
 } from "../plugins/persistence.js";
 import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } from "./setup.js";
 
-// G.1 — np_plugins.config column dropped; this suite now covers
-// the lean state row (id, enabled, installed_at, updated_at). Plugin
-// config persistence has its own coverage in the unit suite
-// (config.test.ts) and a follow-up integration suite (config.integration.test.ts).
+// Installation lives in np_plugins; activation is a sparse per-site override.
 describe.skipIf(skipIfNoTestDb())("plugin persistence (integration)", () => {
   beforeAll(async () => {
     await ensureMigrated();
@@ -60,6 +57,21 @@ describe.skipIf(skipIfNoTestDb())("plugin persistence (integration)", () => {
     expect(afterEnabled?.installedAt).toBeInstanceOf(Date);
   });
 
+  it("isolates activation across sites while missing overrides default enabled", async () => {
+    const db = await getTestDb();
+    await syncPluginRegistrations(db, ["scoped"]);
+    await db.insert(npSites).values({
+      id: "tenant-a",
+      name: "Tenant A",
+      isDefault: false,
+    });
+
+    await updatePluginState(db, "scoped", { enabled: false }, "default");
+
+    expect((await getPluginState(db, "scoped", "default"))?.enabled).toBe(false);
+    expect((await getPluginState(db, "scoped", "tenant-a"))?.enabled).toBe(true);
+  });
+
   it("updatePluginState returns null for an unknown plugin id", async () => {
     const db = await getTestDb();
     const result = await updatePluginState(db, "does-not-exist", { enabled: false });
@@ -70,10 +82,10 @@ describe.skipIf(skipIfNoTestDb())("plugin persistence (integration)", () => {
     const db = await getTestDb();
     await db.insert(npPlugins).values({
       id: "delta",
-      enabled: false,
       installedAt: new Date("2026-01-01T00:00:00Z"),
       updatedAt: new Date("2026-02-01T00:00:00Z"),
     });
+    await updatePluginState(db, "delta", { enabled: false });
 
     const state = await getPluginState(db, "delta");
     expect(state).toBeTruthy();
