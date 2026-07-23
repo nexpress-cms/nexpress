@@ -1,5 +1,38 @@
 # @nexpress/blocks
 
+## 0.5.0
+
+### Minor Changes
+
+- cace33b: Promote responsive block placement to the exact top-level `NpBlockInstance.layout` wire contract across validation, OpenAPI, rendering, and Admin editing. Grid layouts no longer read the retired experimental `props._layout` convention.
+
+### Patch Changes
+
+- 258a9b7: Stabilize the exact block prop schema contract across author types, runtime validation, Admin controls, public discovery, OpenAPI, plugin doctor, and generated plugin scaffolds. The unfinished `media` alias is removed in favor of `image`, and `patternMessage` is replaced by the type-neutral `validationMessage`.
+- b9d699d: Scope plugin activation to one site through sparse activation overrides while
+  keeping configured code loaded process-wide. Gate dispatch, Admin and public
+  contributions, OAuth, transfer, ops, and scheduled executions by the same site
+  snapshot; preserve active owners across block, pattern, and template collisions.
+- Updated dependencies [cace33b]
+- Updated dependencies [3969569]
+- Updated dependencies [3d6d276]
+- Updated dependencies [df355e8]
+- Updated dependencies [258a9b7]
+- Updated dependencies [1dadf0c]
+- Updated dependencies [1909079]
+- Updated dependencies [d4e109e]
+- Updated dependencies [a5898f2]
+- Updated dependencies [1d9ef80]
+- Updated dependencies [839f2f9]
+- Updated dependencies [7d0f4fb]
+- Updated dependencies [66c7f66]
+- Updated dependencies [305ba8a]
+- Updated dependencies [c6d72b8]
+- Updated dependencies [7ec1b9c]
+- Updated dependencies [b9d699d]
+  - @nexpress/core@0.5.0
+  - @nexpress/editor@0.5.0
+
 ## 0.4.1
 
 ### Patch Changes

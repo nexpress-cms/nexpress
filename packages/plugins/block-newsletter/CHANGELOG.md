@@ -1,5 +1,15 @@
 # @nexpress/plugin-block-newsletter
 
+## 0.5.0
+
+### Patch Changes
+
+- Updated dependencies [cace33b]
+- Updated dependencies [258a9b7]
+- Updated dependencies [b9d699d]
+  - @nexpress/blocks@0.5.0
+  - @nexpress/plugin-sdk@0.5.0
+
 ## 0.4.1
 
 ### Patch Changes
