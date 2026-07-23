@@ -1,5 +1,80 @@
 # @nexpress/plugin-forum
 
+## 0.5.0
+
+### Patch Changes
+
+- 3969569: Complete the shared public comment experience with exact enriched list windows,
+  batched public author and reaction projections, reply trees, owner edit/delete,
+  pagination, localized forum copy, and stable theme hooks. Keep all mutations on
+  the existing community routes and add exact OpenAPI, integration, model, and
+  contract coverage without a new forum-specific schema.
+- a4ebc50: Complete the forum skin contract across index, list, detail, create, edit, and
+  authentication-gated composer surfaces. Fix classic mobile table alignment,
+  preserve primary CTA styling, and ship forum-owned rich-text typography.
+- 3d6d276: Complete the community report contract with report-enabled collection targets,
+  race-safe unresolved deduplication, contextual Admin rows, and target-serialized
+  dismiss, comment-hide, and document-unpublish actions. Add localized forum post
+  reporting that follows configured collection slugs and update OpenAPI, doctor,
+  and docs.
+- 1dadf0c: Add validated member attachments with board-specific forum policy, race-safe reference/deletion ownership, owner/public download authorization, exact client and OpenAPI contracts, generated app routes, and bundled skin support.
+- 1909079: Add one fail-closed community document audience contract and apply it across forum boards, posts, discovery, engagement, notifications, profiles, and protected attachments.
+- d4e109e: Add opt-in document reactions and privacy-preserving daily-unique views, one
+  bounded batch engagement summary contract, forum list/detail metrics and
+  recommendation UI, and a recent-popularity home feed. Include migration,
+  OpenAPI, doctor, site cleanup, scaffold, theme hooks, and operator guidance.
+- ec4d6ca: Add site-scoped forum board-directory and latest/notice feed blocks plus a
+  community-home pattern. The blocks close over configured forum paths and
+  collection slugs, reject unsafe board keys before querying, filter stale or
+  orphaned cross-board rows, and publish stable theme hooks with complete
+  fallback styles.
+- a5898f2: Replace placeholder thread and tag follows with opt-in collection document
+  subscriptions, bounded activity fan-out, actionable notification destinations,
+  transactional cleanup, and orphan diagnostics. Add board and post subscription
+  controls to both bundled forum skins with deduplicated new-post and new-comment
+  notifications.
+- 1d9ef80: Add the multi-board forum factory, classic Korean-style skin, row-aware member-write policy, board moderation, locked comment UI, and default scaffold registration.
+- 839f2f9: Add explicit collection-owned public member activity with PII-free profile and
+  exact document/comment page contracts, validated API and OpenAPI surfaces,
+  prepared theme renderer props, forum opt-in, a complete community-theme view,
+  comment anchors, and scaffolded route coverage.
+
+  `GET /api/members/{handle}` now returns the exact profile fields directly;
+  clients using the previous `{ member: ... }` wrapper should read those fields
+  from the response root.
+
+- 7d0f4fb: Add one declarative thread/category/collection moderation contract across member document writes, comments, reports, Admin role targets, doctor diagnostics, OpenAPI, and both forum skins. Scoped moderators now receive exact edit, delete, hide, restore, lock, pin, and report actions without a plugin-specific role system.
+- 8e77f7e: Add bounded board-scoped title/body search, category and member filters,
+  filter-preserving pagination, and discovery controls to the forum list skin
+  contract. Malformed filters and out-of-range pages now fail closed, while
+  pinned notices remain limited to the unfiltered public first page.
+- d72fcd5: Add the bundled `community-full` forum skin with policy summaries, author
+  identity, notices, status-rich rows, numbered pagination, complete detail and
+  composer surfaces, and responsive mobile layouts. Publish theme-token and
+  style-slot metadata plus optional `--np-forum-*` overrides while moving
+  self-contained forum structure into the `np-blocks` layer.
+- Updated dependencies [cace33b]
+- Updated dependencies [3969569]
+- Updated dependencies [3d6d276]
+- Updated dependencies [df355e8]
+- Updated dependencies [258a9b7]
+- Updated dependencies [1dadf0c]
+- Updated dependencies [1909079]
+- Updated dependencies [d4e109e]
+- Updated dependencies [a5898f2]
+- Updated dependencies [1d9ef80]
+- Updated dependencies [839f2f9]
+- Updated dependencies [7d0f4fb]
+- Updated dependencies [66c7f66]
+- Updated dependencies [305ba8a]
+- Updated dependencies [c6d72b8]
+- Updated dependencies [7ec1b9c]
+- Updated dependencies [b9d699d]
+  - @nexpress/core@0.5.0
+  - @nexpress/next@0.5.0
+  - @nexpress/plugin-sdk@0.5.0
+  - @nexpress/editor@0.5.0
+
 ## 0.4.1
 
 ### Patch Changes

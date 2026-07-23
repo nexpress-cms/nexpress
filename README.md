@@ -10,7 +10,7 @@ No black-box backend. The app stays yours.
 [Deploy](#deploy-bridge) ·
 [Docs](#docs)
 
-> **Status — pre-1.0 (`v0.4.x`).** Public APIs follow the
+> **Status — pre-1.0 (`v0.5.x`).** Public APIs follow the
 > [stability contract](./AGENTS.md#stability-pre-10). Breaking changes during
 > `0.x` ship as minor bumps with searchable changelog entries.
 

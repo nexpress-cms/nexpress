@@ -1,5 +1,55 @@
 # @nexpress/next
 
+## 0.5.0
+
+### Patch Changes
+
+- 3969569: Complete the shared public comment experience with exact enriched list windows,
+  batched public author and reaction projections, reply trees, owner edit/delete,
+  pagination, localized forum copy, and stable theme hooks. Keep all mutations on
+  the existing community routes and add exact OpenAPI, integration, model, and
+  contract coverage without a new forum-specific schema.
+- 3d6d276: Complete the community report contract with report-enabled collection targets,
+  race-safe unresolved deduplication, contextual Admin rows, and target-serialized
+  dismiss, comment-hide, and document-unpublish actions. Add localized forum post
+  reporting that follows configured collection slugs and update OpenAPI, doctor,
+  and docs.
+- 1d9ef80: Add the multi-board forum factory, classic Korean-style skin, row-aware member-write policy, board moderation, locked comment UI, and default scaffold registration.
+- 839f2f9: Add explicit collection-owned public member activity with PII-free profile and
+  exact document/comment page contracts, validated API and OpenAPI surfaces,
+  prepared theme renderer props, forum opt-in, a complete community-theme view,
+  comment anchors, and scaffolded route coverage.
+
+  `GET /api/members/{handle}` now returns the exact profile fields directly;
+  clients using the previous `{ member: ... }` wrapper should read those fields
+  from the response root.
+
+- 7d0f4fb: Add one declarative thread/category/collection moderation contract across member document writes, comments, reports, Admin role targets, doctor diagnostics, OpenAPI, and both forum skins. Scoped moderators now receive exact edit, delete, hide, restore, lock, pin, and report actions without a plugin-specific role system.
+- b9d699d: Scope plugin activation to one site through sparse activation overrides while
+  keeping configured code loaded process-wide. Gate dispatch, Admin and public
+  contributions, OAuth, transfer, ops, and scheduled executions by the same site
+  snapshot; preserve active owners across block, pattern, and template collisions.
+- Updated dependencies [cace33b]
+- Updated dependencies [3969569]
+- Updated dependencies [3d6d276]
+- Updated dependencies [df355e8]
+- Updated dependencies [258a9b7]
+- Updated dependencies [1dadf0c]
+- Updated dependencies [1909079]
+- Updated dependencies [d4e109e]
+- Updated dependencies [a5898f2]
+- Updated dependencies [1d9ef80]
+- Updated dependencies [839f2f9]
+- Updated dependencies [7d0f4fb]
+- Updated dependencies [66c7f66]
+- Updated dependencies [305ba8a]
+- Updated dependencies [c6d72b8]
+- Updated dependencies [7ec1b9c]
+- Updated dependencies [b9d699d]
+  - @nexpress/core@0.5.0
+  - @nexpress/blocks@0.5.0
+  - @nexpress/theme@0.5.0
+
 ## 0.4.1
 
 ### Patch Changes

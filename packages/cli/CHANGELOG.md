@@ -1,5 +1,31 @@
 # create-nexpress
 
+## 0.1.37
+
+### Patch Changes
+
+- 32d9d37: Add the independent Korean community portal theme with dense article feeds,
+  member surfaces, Korean starter content, responsive navigation, and optional
+  forum enhancement through the plugin's public CSS variables and data hooks.
+  Register the theme in the default app and fresh scaffold bundle.
+- 1dadf0c: Add validated member attachments with board-specific forum policy, race-safe reference/deletion ownership, owner/public download authorization, exact client and OpenAPI contracts, generated app routes, and bundled skin support.
+- d4e109e: Add opt-in document reactions and privacy-preserving daily-unique views, one
+  bounded batch engagement summary contract, forum list/detail metrics and
+  recommendation UI, and a recent-popularity home feed. Include migration,
+  OpenAPI, doctor, site cleanup, scaffold, theme hooks, and operator guidance.
+- 456d744: Make the shared TypeScript base consumer-safe and ensure generated sites refresh collection code before checking or building clean clones.
+- 839f2f9: Add explicit collection-owned public member activity with PII-free profile and
+  exact document/comment page contracts, validated API and OpenAPI surfaces,
+  prepared theme renderer props, forum opt-in, a complete community-theme view,
+  comment anchors, and scaffolded route coverage.
+
+  `GET /api/members/{handle}` now returns the exact profile fields directly;
+  clients using the previous `{ member: ... }` wrapper should read those fields
+  from the response root.
+
+- 866abf5: Raise vulnerable XML parsing dependencies to their patched floor and force newly scaffolded projects onto the safe Sharp/libvips release selected by NexPress Core.
+- 7ec1b9c: Add exact per-site storage, document, and hourly job quotas with atomic enforcement, Admin and OpenAPI surfaces, operational diagnostics, and scaffold support.
+
 ## 0.1.36
 
 ### Patch Changes

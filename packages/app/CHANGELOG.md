@@ -1,5 +1,112 @@
 # @nexpress/app
 
+## 0.5.0
+
+### Patch Changes
+
+- 32d9d37: Add the independent Korean community portal theme with dense article feeds,
+  member surfaces, Korean starter content, responsive navigation, and optional
+  forum enhancement through the plugin's public CSS variables and data hooks.
+  Register the theme in the default app and fresh scaffold bundle.
+- cace33b: Promote responsive block placement to the exact top-level `NpBlockInstance.layout` wire contract across validation, OpenAPI, rendering, and Admin editing. Grid layouts no longer read the retired experimental `props._layout` convention.
+- 3969569: Complete the shared public comment experience with exact enriched list windows,
+  batched public author and reaction projections, reply trees, owner edit/delete,
+  pagination, localized forum copy, and stable theme hooks. Keep all mutations on
+  the existing community routes and add exact OpenAPI, integration, model, and
+  contract coverage without a new forum-specific schema.
+- 3d6d276: Complete the community report contract with report-enabled collection targets,
+  race-safe unresolved deduplication, contextual Admin rows, and target-serialized
+  dismiss, comment-hide, and document-unpublish actions. Add localized forum post
+  reporting that follows configured collection slugs and update OpenAPI, doctor,
+  and docs.
+- df355e8: Run search reindexing through an exact durable collection job with fixed cursor batches, cross-worker serialization, bounded job progress, Admin collection selection, and non-blocking internal trigger outcomes while preserving the synchronous Core API.
+- 258a9b7: Stabilize the exact block prop schema contract across author types, runtime validation, Admin controls, public discovery, OpenAPI, plugin doctor, and generated plugin scaffolds. The unfinished `media` alias is removed in favor of `image`, and `patternMessage` is replaced by the type-neutral `validationMessage`.
+- 1dadf0c: Add validated member attachments with board-specific forum policy, race-safe reference/deletion ownership, owner/public download authorization, exact client and OpenAPI contracts, generated app routes, and bundled skin support.
+- 1909079: Add one fail-closed community document audience contract and apply it across forum boards, posts, discovery, engagement, notifications, profiles, and protected attachments.
+- d4e109e: Add opt-in document reactions and privacy-preserving daily-unique views, one
+  bounded batch engagement summary contract, forum list/detail metrics and
+  recommendation UI, and a recent-popularity home feed. Include migration,
+  OpenAPI, doctor, site cleanup, scaffold, theme hooks, and operator guidance.
+- a5898f2: Replace placeholder thread and tag follows with opt-in collection document
+  subscriptions, bounded activity fan-out, actionable notification destinations,
+  transactional cleanup, and orphan diagnostics. Add board and post subscription
+  controls to both bundled forum skins with deduplicated new-post and new-comment
+  notifications.
+- 456d744: Make the shared TypeScript base consumer-safe and ensure generated sites refresh collection code before checking or building clean clones.
+- 1d9ef80: Add the multi-board forum factory, classic Korean-style skin, row-aware member-write policy, board moderation, locked comment UI, and default scaffold registration.
+- 839f2f9: Add explicit collection-owned public member activity with PII-free profile and
+  exact document/comment page contracts, validated API and OpenAPI surfaces,
+  prepared theme renderer props, forum opt-in, a complete community-theme view,
+  comment anchors, and scaffolded route coverage.
+
+  `GET /api/members/{handle}` now returns the exact profile fields directly;
+  clients using the previous `{ member: ... }` wrapper should read those fields
+  from the response root.
+
+- 7d0f4fb: Add one declarative thread/category/collection moderation contract across member document writes, comments, reports, Admin role targets, doctor diagnostics, OpenAPI, and both forum skins. Scoped moderators now receive exact edit, delete, hide, restore, lock, pin, and report actions without a plugin-specific role system.
+- 66c7f66: Complete the external search adapter audience contract with one framework-derived `public | all` scope, exact audience-aware collection inventories, fail-closed result validation, cache separation, OpenAPI, health diagnostics, and Postgres fallback.
+
+  Migration: every `NpSearchAdapter` must declare `audience: "document-v1"`, filter hits and counts for the collections in `context.audience.collections`, and return each scoped document's canonical `audience` field. Framework/tests that manually constructed `NpSearchAdapterContext` should construct an `NpSearchResolvedRequest` and call `resolveSearchAdapterContext()` after collection registration.
+
+- 305ba8a: Add an optional exact external search indexing capability with durable latest-state upsert/delete jobs, streamed atomic all-site replacement during reindex, retryable diagnostics, and live health visibility while preserving query-only adapters.
+- c6d72b8: Scope media records, folders, references, processing jobs, Admin surfaces, transfers, quotas, diagnostics, and site deletion to one canonical site owner.
+- 7ec1b9c: Add exact per-site storage, document, and hourly job quotas with atomic enforcement, Admin and OpenAPI surfaces, operational diagnostics, and scaffold support.
+- b9d699d: Scope plugin activation to one site through sparse activation overrides while
+  keeping configured code loaded process-wide. Gate dispatch, Admin and public
+  contributions, OAuth, transfer, ops, and scheduled executions by the same site
+  snapshot; preserve active owners across block, pattern, and template collisions.
+- Updated dependencies [32d9d37]
+- Updated dependencies [cace33b]
+- Updated dependencies [3969569]
+- Updated dependencies [a4ebc50]
+- Updated dependencies [3d6d276]
+- Updated dependencies [df355e8]
+- Updated dependencies [258a9b7]
+- Updated dependencies [1dadf0c]
+- Updated dependencies [1909079]
+- Updated dependencies [d4e109e]
+- Updated dependencies [ec4d6ca]
+- Updated dependencies [a5898f2]
+- Updated dependencies [1d9ef80]
+- Updated dependencies [839f2f9]
+- Updated dependencies [7d0f4fb]
+- Updated dependencies [66c7f66]
+- Updated dependencies [305ba8a]
+- Updated dependencies [8e77f7e]
+- Updated dependencies [866abf5]
+- Updated dependencies [c6d72b8]
+- Updated dependencies [7ec1b9c]
+- Updated dependencies [b9d699d]
+- Updated dependencies [d72fcd5]
+  - @nexpress/theme-community@0.5.0
+  - @nexpress/core@0.5.0
+  - @nexpress/blocks@0.5.0
+  - @nexpress/admin@0.5.0
+  - @nexpress/next@0.5.0
+  - @nexpress/plugin-forum@0.5.0
+  - @nexpress/plugin-sdk@0.5.0
+  - @nexpress/theme@0.5.0
+  - @nexpress/wp-import@0.5.0
+  - @nexpress/xliff@0.5.0
+  - @nexpress/auth-pages@0.5.0
+  - @nexpress/plugin-oauth-github@0.5.0
+  - @nexpress/plugin-oauth-google@0.5.0
+  - @nexpress/editor@0.5.0
+  - @nexpress/gettext@0.5.0
+  - @nexpress/plugin-reading-time@0.5.0
+  - @nexpress/plugin-seo-audit@0.5.0
+  - @nexpress/theme-default@0.5.0
+  - @nexpress/theme-docs@0.5.0
+  - @nexpress/theme-magazine@0.5.0
+  - @nexpress/theme-portfolio@0.5.0
+  - @nexpress/translation@0.5.0
+  - @nexpress/plugin-block-callout@0.5.0
+  - @nexpress/plugin-block-embed@0.5.0
+  - @nexpress/plugin-block-latest-posts@0.5.0
+  - @nexpress/plugin-block-newsletter@0.5.0
+  - @nexpress/plugin-block-pricing@0.5.0
+  - @nexpress/plugin-block-stats@0.5.0
+
 ## 0.4.1
 
 ### Patch Changes
